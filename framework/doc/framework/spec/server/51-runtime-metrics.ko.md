@@ -83,18 +83,18 @@ Logical Multicast의 `targets`는 remote node 수만 기록한다. local matchin
 | `zlink.actor.count` | updown | `{actor}` | `mesh_name` | 현재 Actor 수 |
 | `zlink.actor.queue.depth` | observable | `{item}` | `mesh_name` | Actor application queue의 pending payload 수 |
 | `zlink.actor.queue.wait.duration` | histogram | `s` | `mesh_name` | Actor payload admission부터 turn 시작까지의 시간 |
-| `zlink.transfer.started` | counter | `{transfer}` | `mesh_name`, `object_kind`, `policy` | Actor·Instance Spot transfer 시작 누계 |
-| `zlink.transfer.completed` | counter | `{transfer}` | `mesh_name`, `object_kind`, `policy`, `outcome` | transfer terminal 결과 누계 |
-| `zlink.transfer.duration` | histogram | `s` | `mesh_name`, `object_kind`, `policy`, `outcome` | prepare부터 terminal phase까지의 시간 |
-| `zlink.transfer.recovered` | counter | `{transfer}` | `mesh_name`, `object_kind` | recovery coordinator가 이어서 처리한 transfer 수 |
-| `zlink.transfer.journal.messages` | histogram | `{message}` | `mesh_name`, `object_kind` | transfer envelope에 포함한 accepted message 수 |
-| `zlink.transfer.bytes` | histogram | `By` | `mesh_name`, `object_kind`, `state_contract` | immutable transfer envelope 크기 |
+| `zlink.relocation.started` | counter | `{relocation}` | `mesh_name`, `object_kind`, `policy` | Actor·Instance Spot relocation 시작 누계 |
+| `zlink.relocation.completed` | counter | `{relocation}` | `mesh_name`, `object_kind`, `policy`, `outcome` | relocation terminal 결과 누계 |
+| `zlink.relocation.duration` | histogram | `s` | `mesh_name`, `object_kind`, `policy`, `outcome` | prepare부터 terminal phase까지의 시간 |
+| `zlink.relocation.recovered` | counter | `{relocation}` | `mesh_name`, `object_kind` | recovery coordinator가 이어서 처리한 relocation 수 |
+| `zlink.relocation.journal.messages` | histogram | `{message}` | `mesh_name`, `object_kind` | relocation envelope에 포함한 accepted message 수 |
+| `zlink.relocation.bytes` | histogram | `By` | `mesh_name`, `object_kind`, `state_contract` | immutable relocation envelope 크기 |
 | `zlink.stream.connections.active` | updown | `{connection}` | `transport` | 현재 STREAM session 수 |
 | `zlink.stream.connections.opened` | counter | `{connection}` | `transport` | STREAM session open 누계 |
 | `zlink.stream.connections.closed` | counter | `{connection}` | `transport`, `close_reason` | STREAM session close 누계 |
 
 `spot_kind`는 `entry|user|instance`, `object_kind`는 `actor|instance_spot`, `policy`는
-`recreate|snapshot`, transfer `outcome`은 `completed|aborted|recovered|failed|shutdown`, `transport`는
+`recreate|snapshot`, relocation `outcome`은 `completed|aborted|recovered|failed|shutdown`, `transport`는
 등록 시점에 정해지는 닫힌 값이다. `close_reason`은
 `client_close|idle_timeout|heartbeat_timeout|server_shutdown|protocol_error|transport_error`다.
 
@@ -142,7 +142,7 @@ Activation `outcome`은 `ready|rejected|conflict|timed_out|shutdown|store_failur
 `record_kind`는 `mesh_node_descriptor|client_server_server_descriptor|fanout_publisher_descriptor|spot|instance_spot|actor`,
 `scope_kind`는 `mesh|channel`의 닫힌 값이다. MeshNode·Spot·Actor record는 `mesh`와 MeshName을,
 ClientServer server·fanout publisher descriptor는 `channel`과 ChannelName을 `scope_name`에 기록한다.
-`operation`은 `read|compare_exchange|transfer_put|transfer_get|transfer_delete|lease_renew|release`, fanout
+`operation`은 `read|compare_exchange|relocation_put|relocation_get|relocation_delete|lease_renew|release`, fanout
 `reason`은 `backpressure|target_closed|shutdown`이다. classic fanout의 packet name과 내부 transport
 filter 값은 metric label로 기록하지 않는다.
 
@@ -152,7 +152,7 @@ filter 값은 metric label로 기록하지 않는다.
 
 | 허용 | 금지 |
 |---|---|
-| `mesh_name`, `channel_name`, `scope_kind`, `scope_name`, 정적 `source`, `surface`, `message_kind`, `outcome`, `reason`, `domain`, `owner_kind`, `object_kind`, `policy`, `spot_kind`, 등록된 `instance_spot_type`, 등록된 `state_contract`, `record_kind`, `transport`, `close_reason`, `intent`, `state` | topic, Actor ID, Spot RID, RID, endpoint, session ID, transfer ID, user ID, correlation ID, flow ID, application metadata value |
+| `mesh_name`, `channel_name`, `scope_kind`, `scope_name`, 정적 `source`, `surface`, `message_kind`, `outcome`, `reason`, `domain`, `owner_kind`, `object_kind`, `policy`, `spot_kind`, 등록된 `instance_spot_type`, 등록된 `state_contract`, `record_kind`, `transport`, `close_reason`, `intent`, `state` | topic, Actor ID, Spot RID, RID, endpoint, session ID, relocation ID, user ID, correlation ID, flow ID, application metadata value |
 
 MeshName, ChannelName과 `scope_name`도 host 등록값으로 닫힌 집합일 때만 label로 사용한다. 실행 중 payload나 metadata에서
 새 label value를 만들지 않는다. packet name별 metric이 필요하면 startup에 등록된 bounded handler key만

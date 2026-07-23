@@ -1,6 +1,6 @@
 # Java SpotActorTransfer E2E feature map
 
-기준 문서: `framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md`
+기준 문서: `framework/doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md`
 
 이 문서는 Config 10의 계약 시나리오와 Java E2E의 현재 검증 범위를 연결한다. `run_e2e.sh all`은
 아래 20개 ID를 각각 별도 실행하며, client도 같은 ID를 직접 선택한다.

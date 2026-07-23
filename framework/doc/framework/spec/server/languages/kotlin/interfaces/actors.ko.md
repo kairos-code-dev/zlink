@@ -22,6 +22,28 @@ Actor type은 UTF-8 1..255 bytes의 stable exact value다. `Create`에서 Ready 
 합류한다. 다른 type이면 `ActorTypeMismatch`다. Kotlin은 local Actor create, directory, resolver 또는
 hidden remote retry를 추가하지 않는다.
 
+Kotlin은 Java `ZLinkActorRelocationAdapter<TActor>`와 `ZLinkRelocationPolicy<TInstance>`를 그대로 사용한다.
+Opaque Java `byte[]`는 Kotlin `ByteArray`로 보이며 `capture`와 `restore`의 asynchronous completion은
+`CompletionStage`다. 별도 suspending adapter, `TState`, `stateContractId`, state class와 `ZLinkMessage` 기반
+relocation API를 만들지 않는다. Snapshot policy는
+`ZLinkRelocationPolicy.snapshot(ActorAdapter::class.java)`로 구성하며 factory와 adapter target의 일치는 socket
+bind 전에 검증한다. Java interop에서 null adapter class를 전달한 policy도 bind 전에 `InvalidConfiguration`으로
+거부한다.
+
+Snapshot Actor adapter는 maintenance cross-node materialization, remote User·Entry Spot join과 whole User Spot
+relocation의 각 Actor participant에 사용한다. Same-node join, `Disabled`와 `Recreate`에서는 호출하지 않는다.
+Capture가 반환한 `ByteArray`는 최대 64 MiB이며 adapter가 completion까지 소유한다. Java runtime은 completion에서
+복사한다. Restore는 호출마다
+fresh defensive copy를 받고 completion 뒤 보관하지 않는다. Empty `ByteArray`도 유효한 Snapshot state다.
+Factory는 target attempt마다 fresh Actor instance를 만들며 source나 이전 attempt instance를 재사용하지 않는다.
+같은 attempt의 restore는 반복될 수 있다. Capture exception은 source authority와 admission을 유지하고, restore
+exception은 target을 sealed 상태로 유지한 채 same payload retry 또는 target replacement로 처리한다. Null stage와
+null capture payload는 contract 위반이다. Host Retire의 precommit adapter exception·contract violation은 deadline이
+먼저 확정되지 않았으면 `Blocked/StateIncompatible`, deadline이 먼저 확정되면 `Blocked/DeadlineExceeded`다.
+Stale attempt cancellation은 terminal result를 commit하지 못한다. 두 callback은 at-least-once이고 stale attempt와
+겹칠 수 있으므로 retry-safe해야 한다. Kotlin coroutine 안에서 exception을 정상 completion으로 바꾸거나 empty
+`ByteArray`를 failure fallback으로 반환하지 않는다.
+
 ## Kotlin source signature
 
 ```kotlin
@@ -109,11 +131,6 @@ inline suspend fun <reified TReply> ZLinkActorJoinCall.yieldJoinReply():
     ZLinkActorJoinResult<TReply>
 
 suspend fun <T> ZLinkWorkerCall<T>.yieldWorker(): T
-
-inline fun <TInstance, reified TState, reified TAdapter> snapshotTransfer(
-    stateContractId: String,
-): ZLinkTransferPolicy<TInstance>
-    where TAdapter : ZLinkTransferStateAdapter<TInstance, TState>
 ```
 
 ## Exact generated JVM signature
@@ -138,11 +155,11 @@ public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestH
 public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
   public static final <TReply> java.lang.Object requestToActorAwait(systems.zlink.framework.actors.ZLinkActorClient, java.lang.String, java.lang.Object, java.lang.Class<TReply>, kotlin.coroutines.Continuation<? super TReply>);
   public static final <TReply> java.lang.Object requestToActorAwait(systems.zlink.framework.actors.ZLinkActorClient, java.lang.String, java.lang.Object, kotlin.coroutines.Continuation<? super TReply>);
-  public static final <TInstance, TState, TAdapter extends systems.zlink.framework.actors.ZLinkTransferStateAdapter<TInstance, TState>> systems.zlink.framework.actors.ZLinkTransferPolicy<TInstance> snapshotTransfer(java.lang.String);
 }
 ```
 
-Factory registration은 `Disabled`, `Recreate`, `Snapshot` 중 하나를 반드시 받는다. Kotlin reified helper도
-policy를 생략하는 overload나 default argument를 생성하지 않는다. Exact `ActorRef`를 받는 public operation은
+Factory registration은 `Disabled`, `Recreate`, `Snapshot` 중 하나를 반드시 받는다. Kotlin은 Snapshot policy와
+adapter registration을 위한 reified helper, policy를 생략하는 overload와 default argument를 생성하지 않는다.
+Exact `ActorRef`를 받는 public operation은
 destroy와 session bind뿐이다. Missing exact ref는 `false`, generation 불일치는 `ActorGenerationStale`, seal된
 이관 구간은 `ActorMoving`으로 처리한다.

@@ -11,12 +11,12 @@ MeshNode의 object role은 `None`, `Client`, `Server` 중 하나다. `objects()`
 함께 제공한다. Client와 Server는 Location Store가 필요하다. None에는 object manager나 factory가 없다.
 한 node에서 role을 중복 선택하면 startup configuration error다.
 
-`ZLinkFrameworkOptions.addLocationStore(...)`와 `addTransferStore(...)`는 Java public member를 그대로 사용한다.
-`RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있으면 Transfer Store를 정확히 하나 등록해야 하며 missing·duplicate는
-socket bind 전에 configuration error다. `DISABLED` factory와 same-node join만 사용하는 host에는 Transfer Store가
+`ZLinkFrameworkOptions.addLocationStore(...)`와 `addRelocationStore(...)`는 Java public member를 그대로 사용한다.
+`RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있으면 Relocation Store를 정확히 하나 등록해야 하며 missing·duplicate는
+socket bind 전에 configuration error다. `DISABLED` factory와 same-node join만 사용하는 host에는 Relocation Store가
 필수가 아니다. 두 capability를 묶는 Kotlin DSL이나 Redis 전용 registration helper는 제공하지 않는다.
-완료 가능한 모든 cross-node Actor·Spot 이동은 Transfer Store를 사용한다. `RECREATE`도 accepted journal과 recovery
-payload를 저장하며 `SNAPSHOT`은 application state를 추가로 저장한다. Same-node Actor join은 Transfer payload를
+완료 가능한 모든 cross-node Actor·Spot 이동은 Relocation Store를 사용한다. `RECREATE`도 accepted journal과 recovery
+payload를 저장하며 `SNAPSHOT`은 application state를 추가로 저장한다. Same-node Actor join은 Relocation payload를
 만들지 않고, `DISABLED` cross-node 이동은 capture 전에 거부한다.
 
 다음 Java builder member는 Kotlin에서 property 변환 없이 같은 JVM signature로 직접 호출한다.
@@ -58,13 +58,13 @@ inline fun <reified TActor, reified TFactory>
     ZLinkMeshObjectServerBuilder.actorFactory(
         actorType: String,
         placement: ZLinkObjectPlacementOptions?,
-        transfer: ZLinkTransferPolicy<TActor>,
+        relocation: ZLinkRelocationPolicy<TActor>,
     ): ZLinkMeshObjectServerBuilder
     where TActor : ZLinkActor,
           TFactory : ZLinkActorFactory
 ```
 
-`placement`은 nullable이지만 `transfer`에는 default가 없다. Placement option은 placement profile collection,
+`placement`은 nullable이지만 `relocation`에는 default가 없다. Placement option은 placement profile collection,
 type별 `maxActiveObjects`, `maxPendingActivations`만 가진다. Node default는 active 10000, pending 128이고
 type override 범위는 1..`Int.MAX_VALUE`다. Effective capacity는 node와 type 값 중 작은 값이다. Node placement
 weight는 0..100이고 기본값은 100이다. Channel weight와 별개이며 runtime update와 descriptor snapshot에
@@ -77,7 +77,11 @@ ASCII `[A-Za-z0-9._-]` 1..64자이고 full RID는 UTF-8 255 bytes 이하다. Act
 
 모든 Actor, User Spot, Instance Spot factory는 stable type, optional typed placement와 명시적인
 `Disabled`·`Recreate`·`Snapshot` policy를 받는다. Policy를 생략하는 Kotlin overload와 `$default` JVM member는
-생성하지 않는다. `ZLinkStreamNodeBuilder.enableActorDispatch()`는 인자가 없고 global ID가 Mesh를 결정한다.
+생성하지 않는다. Snapshot은 Java `ZLinkRelocationPolicy.snapshot(Adapter::class.java)`를 직접 사용한다. Actor
+factory adapter는 `ZLinkActorRelocationAdapter`, User·Instance Spot factory adapter는
+`ZLinkSpotRelocationAdapter`인지 socket bind 전에 검증한다. Kotlin 전용 policy, reified adapter registration과
+suspending adapter를 추가하지 않는다. `ZLinkStreamNodeBuilder.enableActorDispatch()`는 인자가 없고 global ID가
+Mesh를 결정한다.
 
 ## Exact generated JVM signature
 
@@ -90,7 +94,7 @@ public final class systems.zlink.framework.kotlin.ZLinkDispatchOptionsExtensions
   public static final systems.zlink.framework.configuration.ZLinkDispatchOptions configureDispatch(systems.zlink.framework.configuration.ZLinkFrameworkOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkDispatchOptions, kotlin.Unit>);
 }
 public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
-  public static final <TActor extends systems.zlink.framework.actors.ZLinkActor, TFactory extends systems.zlink.framework.actors.ZLinkActorFactory> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder actorFactory(systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder, java.lang.String, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkTransferPolicy<TActor>);
+  public static final <TActor extends systems.zlink.framework.actors.ZLinkActor, TFactory extends systems.zlink.framework.actors.ZLinkActorFactory> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder actorFactory(systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder, java.lang.String, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
   public static final systems.zlink.framework.configuration.ZLinkFrameworkOptions configureStreamCompression(systems.zlink.framework.configuration.ZLinkFrameworkOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder, kotlin.Unit>);
 }
 ```

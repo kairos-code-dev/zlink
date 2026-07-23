@@ -3,11 +3,16 @@
 [인터페이스 목차](README.ko.md) · [Java Location](../../java/interfaces/location-maintenance.ko.md) ·
 [Location runtime](../../../40-location-runtime.ko.md) · [Location Store](../../../41-location-store-redis.ko.md)
 
-Kotlin은 Java `ZLinkLocationStore`와 `ZLinkTransferStore`를 별도 capability로 사용한다. Location Store는
-descriptor, authority, placement reservation과 canonical participant set을 소유하고 Transfer Store는 immutable
+Kotlin은 Java `ZLinkLocationStore`와 `ZLinkRelocationStore`를 별도 capability로 사용한다. Location Store는
+descriptor, authority, placement reservation과 canonical participant set을 소유하고 Relocation Store는 immutable
 state·journal payload만 저장한다. Actor·Spot별 Store interface는 만들지 않는다. Kotlin의 두 suspending base class는
 각 Java `CompletionStage` contract를 coroutine으로 연결할 뿐 key, version, generation, reservation, aggregate
-fence와 transfer reference의 의미를 바꾸지 않는다.
+fence와 relocation reference의 의미를 바꾸지 않는다.
+
+Kotlin configuration은 Java `ZLinkLocationOptions`의 relocation 제한을 그대로 사용한다. 기본값은 active outbound
+64, active inbound 64, concurrent Capture 8, concurrent Restore 8, encoded payload in flight 268,435,456 bytes다.
+다섯 값은 모두 양수이고 같은 process의 모든 MeshNode가 공유한다. 모든 permit을 얻기 전에는 source queue를
+seal하지 않으며 byte 한도를 넘는 단일 User Spot aggregate만 다른 payload 단계와 겹치지 않게 단독 실행한다.
 
 Global authority key는 ActorId 또는 SpotRid를 기준으로 정한다. ActorId, SpotRid와 stable type은 UTF-8
 1..255 bytes의 case-sensitive exact value다. Authority snapshot의 object generation과 owner generation은
@@ -363,59 +368,59 @@ abstract class ZLinkSuspendingLocationStore(
     ): ZLinkLocationPage<ZLinkRouteLocation>
 }
 
-abstract class ZLinkSuspendingTransferStore(
+abstract class ZLinkSuspendingRelocationStore(
     scope: CoroutineScope = dispatcherScope(Dispatchers.IO),
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
-) : ZLinkTransferStore {
+) : ZLinkRelocationStore {
     private fun <T> async(block: suspend () -> T): CompletionStage<T>
 
     final override fun put(
         payload: ByteArray,
         retention: Duration,
         cancellation: ZLinkStoreCancellation,
-    ): CompletionStage<ZLinkTransferStored> =
+    ): CompletionStage<ZLinkRelocationStored> =
         async { putSuspending(payload, retention, cancellation) }
 
     final override fun get(
         reference: String,
         cancellation: ZLinkStoreCancellation,
-    ): CompletionStage<ZLinkTransferReadResult> =
+    ): CompletionStage<ZLinkRelocationReadResult> =
         async { getSuspending(reference, cancellation) }
 
     final override fun renew(
         reference: String,
         retention: Duration,
         cancellation: ZLinkStoreCancellation,
-    ): CompletionStage<ZLinkTransferRenewResult> =
+    ): CompletionStage<ZLinkRelocationRenewResult> =
         async { renewSuspending(reference, retention, cancellation) }
 
     final override fun delete(
         reference: String,
         cancellation: ZLinkStoreCancellation,
-    ): CompletionStage<ZLinkTransferDeleteResult> =
+    ): CompletionStage<ZLinkRelocationDeleteResult> =
         async { deleteSuspending(reference, cancellation) }
 
     protected abstract suspend fun putSuspending(
         payload: ByteArray,
         retention: Duration,
         cancellation: ZLinkStoreCancellation,
-    ): ZLinkTransferStored
+    ): ZLinkRelocationStored
 
     protected abstract suspend fun getSuspending(
         reference: String,
         cancellation: ZLinkStoreCancellation,
-    ): ZLinkTransferReadResult
+    ): ZLinkRelocationReadResult
 
     protected abstract suspend fun renewSuspending(
         reference: String,
         retention: Duration,
         cancellation: ZLinkStoreCancellation,
-    ): ZLinkTransferRenewResult
+    ): ZLinkRelocationRenewResult
 
     protected abstract suspend fun deleteSuspending(
         reference: String,
         cancellation: ZLinkStoreCancellation,
-    ): ZLinkTransferDeleteResult
+    ): ZLinkRelocationDeleteResult
 }
 ```
 
@@ -432,18 +437,22 @@ interface는 제공하지 않는다.
 
 Aggregate ID는 0이 아닌 128-bit 값이고 participant는 최대 1024개다. Encoded aggregate record는 최대
 1 MiB다. Location Store의 participant list가 bounded canonical authority이며 prepare request의 32-byte
-`inventoryDigest`는 participant별 mutation까지 포함한다. Transfer manifest는 payload lookup projection이고 두
+`inventoryDigest`는 participant별 mutation까지 포함한다. Relocation manifest는 payload lookup projection이고 두
 digest가 일치할 때만 restore와 replay를 시작한다. Proposal, policy preflight, seal, capture, reservation prepare,
-owner와 membership aggregate commit, restore·callback·ACK 순서는 Framework runtime이 조정한다. Location Store의
+restore, owner와 membership aggregate commit, callback·replay·ACK 순서는 Framework runtime이 조정한다. Location Store의
 authority·membership aggregate commit만 하나의 transaction domain에 포함하며 Application과 provider adapter에는
 이 순서를 조립하는 별도 public API가 없다.
 
-Runtime은 immutable Transfer root를 먼저 저장하고 reference·checksum·retention과 manifest digest를 검증한 뒤
+Kotlin descriptor와 provider는 Java `ZLinkObjectCapability.hasSnapshotAdapter()`를 그대로 사용한다. 이 값은 target에
+해당 object kind의 Snapshot adapter가 등록되어 있는지만 나타내며 application state의 format, version이나 contract
+ID를 광고하지 않는다. Kotlin 전용 descriptor field나 state contract 집합을 추가하지 않는다.
+
+Runtime은 immutable Relocation root를 먼저 저장하고 reference·checksum·retention과 manifest digest를 검증한 뒤
 Location Store의 단일 CAS로 reference를 공개한다. CAS 전에 실패하거나 CAS conflict가 발생한 committed root는
 orphan이며 고정 retention과 cleanup으로 제거한다. Root 교체는 새 root 저장과 검증, Location reference CAS,
-이전 root cleanup 순서다. Transfer payload 사용을 끝낼 때는 Location Store에서 reference 사용 종료를 CAS한 뒤
-Transfer Store에서 payload를 삭제한다. 두 Store 사이 transaction이나 2PC는 요구하지 않는다.
-Java에서 상속한 `ZLinkTransferStored.checksumCrc32c()`는 저장된 immutable root bytes의 CRC32C(Castagnoli)를
+이전 root cleanup 순서다. Relocation payload 사용을 끝낼 때는 Location Store에서 reference 사용 종료를 CAS한 뒤
+Relocation Store에서 payload를 삭제한다. 두 Store 사이 transaction이나 2PC는 요구하지 않는다.
+Java에서 상속한 `ZLinkRelocationStored.checksumCrc32c()`는 저장된 immutable root bytes의 CRC32C(Castagnoli)를
 나타내는 `0..0xFFFF_FFFFL` 범위의 `Long`이다. Kotlin runtime은 이 값을 Location authority에 publish할
 u32 checksum과 비교하며 범위를 벗어난 provider 결과를 contract violation으로 처리한다.
 
@@ -514,17 +523,17 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingLocationStor
   protected abstract java.lang.Object resolveRouteSuspending(systems.zlink.framework.locations.ZLinkRouteLocationKey, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkRouteLocation>);
   protected abstract java.lang.Object listRouteLocationsSuspending(systems.zlink.framework.locations.ZLinkRouteLocationFilter, systems.zlink.framework.locations.ZLinkPageRequest, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkLocationPage<systems.zlink.framework.locations.ZLinkRouteLocation>>);
 }
-public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingTransferStore implements systems.zlink.framework.locations.ZLinkTransferStore {
-  public systems.zlink.framework.kotlin.ZLinkSuspendingTransferStore();
-  public systems.zlink.framework.kotlin.ZLinkSuspendingTransferStore(kotlinx.coroutines.CoroutineScope, kotlinx.coroutines.CoroutineDispatcher);
-  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferStored> put(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferReadResult> get(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferRenewResult> renew(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferDeleteResult> delete(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  protected abstract java.lang.Object putSuspending(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkTransferStored>);
-  protected abstract java.lang.Object getSuspending(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkTransferReadResult>);
-  protected abstract java.lang.Object renewSuspending(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkTransferRenewResult>);
-  protected abstract java.lang.Object deleteSuspending(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkTransferDeleteResult>);
+public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingRelocationStore implements systems.zlink.framework.locations.ZLinkRelocationStore {
+  public systems.zlink.framework.kotlin.ZLinkSuspendingRelocationStore();
+  public systems.zlink.framework.kotlin.ZLinkSuspendingRelocationStore(kotlinx.coroutines.CoroutineScope, kotlinx.coroutines.CoroutineDispatcher);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationStored> put(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationReadResult> get(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationRenewResult> renew(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationDeleteResult> delete(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  protected abstract java.lang.Object putSuspending(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkRelocationStored>);
+  protected abstract java.lang.Object getSuspending(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkRelocationReadResult>);
+  protected abstract java.lang.Object renewSuspending(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkRelocationRenewResult>);
+  protected abstract java.lang.Object deleteSuspending(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkRelocationDeleteResult>);
 }
 ```
 
@@ -533,7 +542,7 @@ Provider에 전달한 `ByteArray`는 `CompletionStage` 완료까지 immutable하
 Actor directory, slot acquire/release/provider와 unbounded object list extension을 제공하지 않는다. 운영 조회는
 Java의 bounded page operation을 직접 사용한다. Route miss는 negative cache에 저장하지 않는다.
 
-공식 Redis extension도 Java의 `ZLinkRedisLocationStore`와 `ZLinkRedisTransferStore`를 별도 instance로 사용한다.
+공식 Redis extension도 Java의 `ZLinkRedisLocationStore`와 `ZLinkRedisRelocationStore`를 별도 instance로 사용한다.
 같은 Redis deployment를 서로 다른 prefix로 사용할 수 있지만 한 instance가 두 capability를 함께 구현하지 않는다.
-Published reference의 permanent missing 또는 checksum·inventory digest mismatch는 `TransferDataLost`이며 이전 owner로
+Published reference의 permanent missing 또는 checksum·inventory digest mismatch는 `RelocationDataLost`이며 이전 owner로
 rollback하지 않는다.

@@ -33,8 +33,11 @@ export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> extends 
     readonly context: ZLinkEntrySpotContext<TActor>;
     configure?(): void;
     onInitialize?(): Promise<void>;
-    onClosing?(): Promise<void>;
+    onClosing?(
+        context: ZLinkSpotClosingContext,
+        cleanupSignal: AbortSignal): Promise<void>;
     onCreateActor?(actor: TActor, createRequest: ZLinkMessage): Promise<void>;
+    onActorRelocated?(actor: TActor): Promise<void>;
 }
 
 export interface ZLinkEntrySpotActorRequestHandler<TActor extends ZLinkActor, TRequest, TReply> {
@@ -76,6 +79,21 @@ Entry Spot의 RID는 Framework가 MeshNode startup에서 발급한다. 애플리
 제공하지 않는다. Actor create는 선택한 owner MeshNode의 Entry Spot membership과 Actor Ready barrier를 같은
 lifecycle에서 완료한다. 이후 one-way 업무 message는 Actor queue로 직접 전달되며 Entry Spot callback을
 경유하지 않는다.
+
+`onActorRelocated?(actor)`는 default no-op이 가능한 maintenance 전용 async Entry Spot callback이다. Maintenance가
+Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter `restore(...)`를 먼저 완료하고 Recreate는
+payload restore 없이 factory materialization을 완료한다. Accepted journal replay도 target staging에서 끝낸 뒤
+Prepared CAS와 Location authority·Entry membership commit을 수행한다. Commit 뒤 target `onActorRelocated(...)`와 source
+`onLeaveActor(...)`를 실행한다. 두 callback, durable source cleanup, Completed CAS, route ACK와 steady normalization을
+모두 완료한 뒤 Actor dispatch admission을 연다. 두 callback
+중 하나가 throw하거나 rejected Promise로 끝나도 authority를 source로 rollback하지 않고 target을 sealed 상태로
+유지한 채 exact relocation fence로 retry한다. 두 callback은 at-least-once 호출될 수 있으므로 retry-safe해야 한다.
+
+일반 same-node·remote User·Entry Spot join은 기존 admission·joined callback과 source leave callback을 사용하며
+`onActorRelocated(...)`를 호출하지 않는다. Maintenance relocation에서는 target의 일반 join callback을 호출하지 않지만
+실제 source Entry membership을 끝내므로 source `onLeaveActor(...)`는 commit 뒤 호출한다. Whole User Spot aggregate
+relocation에서는 membership이 유지되므로 member Actor에 대한 Entry Spot 또는 User Spot membership callback을
+모두 호출하지 않는다. Disabled operation에서도 `onActorRelocated(...)`를 호출하지 않는다.
 
 `ZLinkFanoutClient.publish(...)`는 typed event의 packet name을 topic으로 사용하는 호출과 topic을 명시하는
 호출을 함께 제공한다. `ZLinkFanoutPublishCall`은 local publisher transport의 bounded admission만
@@ -225,6 +243,7 @@ export interface ZLinkPublishResult {
 }
 
 export interface ZLinkPublishContext extends ZLinkHandlerContext {
+    readonly channelName: string;
     readonly topic: string;
     readonly source?: string;
 }
@@ -251,6 +270,7 @@ export interface ZLinkRequestCall {
 }
 
 export interface ZLinkRequestContext extends ZLinkHandlerContext {
+    readonly channelName: string;
 }
 
 export interface ZLinkRequestHandler<TRequest, TResponse> {
@@ -262,8 +282,8 @@ export interface ZLinkRouteClient {
     requestToNode(meshName: string, targetNodeRid: RoutingId, request: unknown): ZLinkRequestCall;
     sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
     requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
-    sendToSpot(spotRid: SpotRid, message: unknown): ZLinkSendCall;
-    requestToSpot(spotRid: SpotRid, request: unknown): ZLinkRequestCall;
+    sendToSpot(spotRid: SpotRid, message: unknown): ZLinkSpotSendCall;
+    requestToSpot(spotRid: SpotRid, request: unknown): ZLinkSpotRequestCall;
 }
 
 export interface ZLinkRouteConfig {
@@ -372,6 +392,7 @@ export interface ZLinkSubmitResult {
 }
 
 export interface ZLinkSendContext extends ZLinkHandlerContext {
+    readonly channelName: string;
 }
 
 export interface ZLinkSendHandler<TMessage> {
@@ -474,7 +495,7 @@ export interface ZLinkSessionContext {
 
 export interface ZLinkSessionDispatchContext {
     readonly packetName: string;
-    readonly metadata: ReadonlyMap<string, string>;
+    readonly metadata: ZLinkMessageMetadata;
     readonly canReply: boolean;
 }
 
@@ -492,6 +513,13 @@ export interface ZLinkSessionPacketHandler<TSessionContext, TMessage = ZLinkMess
 }
 
 export interface ZLinkSessionReplyCall {
+    compress(enabled?: boolean): this;
+    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+}
+
+export interface ZLinkSessionSendCall {
+    metadata(key: string, value: string): this;
+    metadata(metadata: ZLinkMessageMetadata): this;
     compress(enabled?: boolean): this;
     submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
 }

@@ -31,10 +31,10 @@ enum class stream_close_reason_t : std::uint8_t {
 class stream_compression_codec_t {
 public:
     virtual ~stream_compression_codec_t() = default;
-    virtual zlink::message_t compress(
-      const zlink::message_t &payload) const = 0;
-    virtual zlink::message_t decompress(
-      const zlink::message_t &payload,
+    virtual zlink::framework::message_t compress(
+      const zlink::framework::message_t &payload) const = 0;
+    virtual zlink::framework::message_t decompress(
+      const zlink::framework::message_t &payload,
       std::size_t max_decompressed_size) const = 0;
 };
 
@@ -84,10 +84,15 @@ public:
     stream_t &operator=(const stream_t &) = default;
 
     std::string session_id() const;
+    std::optional<zlink::routing_id_t> routing_id() const;
+    std::optional<std::string> local_address() const;
+    std::optional<std::string> remote_address() const;
     session_actor_manager_t &actors();
     task_t<void> close();
-    stream_send_call_t write_packet(const zlink::message_t &payload);
-    stream_write_call_t reply_packet(const zlink::message_t &payload);
+    stream_send_call_t write_packet(
+      const zlink::framework::message_t &payload);
+    stream_write_call_t reply_packet(
+      const zlink::framework::message_t &payload);
 };
 
 class packet_stream_session_t {
@@ -101,7 +106,7 @@ public:
     virtual task_t<void> on_packet(
       stream_t &stream,
       const stream_dispatch_context_t &dispatch,
-      const zlink::message_t &payload);
+      const zlink::framework::message_t &payload);
 };
 
 class stream_builder_t {
@@ -167,6 +172,10 @@ public:
 [Actor interface](05-actors.ko.md)가 소유한다. `stream_send_call_t`와 `stream_write_call_t`의
 metadata·compression·`submit()` member는 [Channel messaging](03-channel-messaging.ko.md)의 call family와
 같은 admission 계약을 유지한다.
+STREAM application callback, send·reply와 compression extension은 binding message가 아니라
+`zlink::framework::message_t`를 사용한다. Framework codec registry가 typed payload와 이 message 경계를 변환한다.
+`stream_t`의 optional routing ID와 local·remote address는 handshake가 확인한 session identity snapshot이며 packet
+dispatch까지 보존한다.
 Session callback은 받은 `stream_t`의 `actors()`로 해당 session의 Actor binding manager에 접근한다.
 Actor dispatch는 global ActorId lookup과 exact `actor_ref_t` bind를 사용하므로 target MeshName 또는 local Actor
 overload를 등록하지 않는다. Object role `client`·`server`와 Location Store가 없으면 startup이

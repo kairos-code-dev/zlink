@@ -42,7 +42,9 @@ Local Server weight를 실행 중 바꾸는 operation은 ChannelName으로 membe
 ChannelName이 물리 topology 하나에만 속하므로 MeshName을 다시 요구하지 않는다. 선택된 physical MeshName,
 RID와 descriptor revision은 runtime monitoring이 제공한다.
 
-ChannelName은 하나의 process에서 물리 Channel topology 하나에만 대응해야 한다. 호출을 시작하는 역할에서는
+ChannelName은 하나의 process에서 물리 Channel topology 하나에만 대응해야 한다. 이 유일성은 deployment 전체에서
+ChannelName을 한 번만 등록한다는 뜻이 아니다. 서로 다른 process의 여러 Server MeshNode는 같은 ChannelName
+membership에 참여할 수 있다. 호출을 시작하는 역할에서는
 그 topology의 송신 경로 하나를 가리킨다. 같은 이름을 서로 다른 RouteMesh, RouteMesh와 ClientServer 또는
 서로 다른 ClientServer 등록에 사용하면 역할과 관계없이 startup이 실패한다. 같은 RouteMesh 또는 같은
 ClientServer target 집합의 여러 process가 같은 Server ChannelName에 참여하는 것은 허용한다.
@@ -94,7 +96,7 @@ polling 또는 handshake가 최신 revision으로 수렴한다. weight 변경만
 
 Manual mode도 같은 handshake와 admission을 사용한다. expected RID를 지정한 연결은 remote RID가 다르면
 실패한다. expected RID를 생략하면 handshake가 identity를 확정한다. Manual peer 연결과 Spot·Actor location
-조회는 서로 다른 기능이다. 분산 Spot·Actor 주소 또는 Actor transfer를 사용하면 peer 연결 방법과 관계없이
+조회는 서로 다른 기능이다. 분산 Spot·Actor 주소 또는 Actor relocation을 사용하면 peer 연결 방법과 관계없이
 Redis location store를 등록해야 한다.
 
 ## 5. Readiness와 선택

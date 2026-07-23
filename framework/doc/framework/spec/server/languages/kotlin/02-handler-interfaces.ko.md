@@ -9,4 +9,4 @@ Kotlin coroutine handler, call extension과 generated JVM signature는
 - [STREAM session](interfaces/stream-session.ko.md)
 - [Monitoring](interfaces/monitoring.ko.md)
 
-Kotlin은 Java factory에 연결된 maintenance policy를 재사용하며 별도 transfer registry를 추가하지 않는다.
+Kotlin은 Java factory에 연결된 maintenance policy를 재사용하며 별도 relocation registry를 추가하지 않는다.

@@ -27,15 +27,16 @@ Application record는 connection ID, binding generation, ActorRef와 current aut
 infrastructure completion은 서로 다른 queue에서 처리한다. Disconnect, timeout과 reply가 경쟁해도 operation ID별
 terminal result 하나만 완료한다.
 
-## 3. Transfer barrier
+## 3. Relocation barrier
 
-Transfer는 User Spot과 member Actor를 generic aggregate로 묶는다. Target reservation은 exact participant inventory와
+Relocation은 User Spot과 member Actor를 generic aggregate로 묶는다. Target reservation은 exact participant inventory와
 target owner fence를 고정한다. Aggregate commit은 Actor owner, AuthorityOwnerGeneration과 target Spot membership을
 원자적으로 바꾸며 session route는 committed authority만 사용한다.
 
 Connection-bound source에서 수락한 request는 capture 전에 terminal drain하고 durable journal로 이동하지 않는다.
-Deadline 안에 끝나지 않으면 pre-capture abort로 source binding과 admission을 복원한다. Commit 뒤 target factory,
-restore, membership callback과 replay를 끝내고 source cleanup을 durable하게 완료한 뒤 route command를 보낸다.
+Deadline 안에 끝나지 않으면 pre-capture abort로 source binding과 admission을 복원한다. Target factory·restore와
+journal staging은 owner commit 전에 끝내고, commit 뒤 membership callback과 replay, source ingress hold relay와
+durable cleanup을 완료한 다음 route command를 보낸다.
 Route ACK와 steady normalization 전에는 target application admission을 열지 않는다.
 
 ## 4. Abort와 reconnect

@@ -51,7 +51,7 @@ stateDiagram-v2
 
 Raw connect 성공만으로 Ready가 되지 않는다. Current physical connection에서 transport setup과 Framework service
 admission이 모두 성공해야 Ready index에 넣는다. Admission과 함께 initial 15초 deadline을 시작한다. Draining peer는
-새 application selection에서 제외하지만 accepted reply, transfer control과 STREAM barrier가 끝날 때까지 current
+새 application selection에서 제외하지만 accepted reply, relocation control과 STREAM barrier가 끝날 때까지 current
 connection을 유지할 수 있다.
 
 Orderly disconnect와 raw transport failure는 즉시 not-ready로 전환한다. Timer를 기다리거나 reconnect 전까지 Ready
@@ -127,7 +127,7 @@ request를 수락하지 않았음이 확정되면 route failure로 끝낸다. �
 ## 7. 종료와 cleanup
 
 Host admission seal은 peer를 신규 selection에서 제외하지만 accepted completion과 maintenance control에 필요한
-connection은 deadline까지 유지한다. Reply relay, STREAM route ACK와 transfer completion을 처리한 뒤 reconnect
+connection은 deadline까지 유지한다. Reply relay, STREAM route ACK와 relocation completion을 처리한 뒤 reconnect
 intent를 제거하고 raw socket을 닫는다.
 
 Terminal cleanup은 connection의 scheduler entry, monitor subscription, reconnect timer와 pending callback을 함께

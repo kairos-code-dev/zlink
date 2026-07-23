@@ -4,7 +4,7 @@
 
 ```java
 public enum ZLinkFrameworkRuntimeState {
-    PREPARING(0), SERVING(1), DRAINING(2), STOPPED(3), ERROR(4);
+    PREPARING(0), SERVING(1), RETIRING(2), DRAINING(3), STOPPED(4), ERROR(5);
     private final int wireValue;
     ZLinkFrameworkRuntimeState(int wireValue) { this.wireValue = wireValue; }
     public int wireValue() { return wireValue; }
@@ -26,8 +26,8 @@ public enum ZLinkTerminationOutcome {
 
 public enum ZLinkTerminationReason {
     NONE(0), TARGET_UNAVAILABLE(1), STORE_UNAVAILABLE(2),
-    TRANSFER_DISABLED(3), STATE_INCOMPATIBLE(4),
-    DEADLINE_EXCEEDED(5), TRANSFER_FAILED(6),
+    RELOCATION_DISABLED(3), STATE_INCOMPATIBLE(4),
+    DEADLINE_EXCEEDED(5), RELOCATION_FAILED(6),
     TEARDOWN_FAILED(7), RUNTIME_NOT_READY(8);
     private final int wireValue;
     ZLinkTerminationReason(int wireValue) { this.wireValue = wireValue; }
@@ -79,18 +79,22 @@ public final class ZLinkFrameworkRuntime
 }
 ```
 
-`retire()`는 continuity preflight와 필요한 transfer를 수행한 뒤 host를 종료한다. User Spot이 하나라도
-남아 있거나 `Disabled` policy object를 옮겨야 하면 admission을 변경하지 않고
-`Blocked/TransferDisabled`로 끝난다. `shutdown()`은 새 transfer를 시작하지 않는다. 두 operation 모두
+`retire()`는 continuity preflight와 필요한 relocation을 수행한 뒤 host를 종료한다. User Spot은 Spot과 current
+member Actor 전체를 하나의 bounded aggregate로 옮긴다. Aggregate participant 하나라도 `Disabled`이면
+`Blocked/RelocationDisabled`, target·capacity·reservation을 확보할 수 없으면 `Blocked/TargetUnavailable`,
+application version·type·Snapshot adapter capability가 맞지 않으면 `Blocked/StateIncompatible`로 끝난다. 이
+preflight failure는 admission을 변경하지 않는다. User Spot이 존재한다는 사실만으로 Retire를 차단하지 않는다.
+`shutdown()`은 새 relocation을 시작하지 않는다. 두 operation 모두
 숨은 remote `GetOrCreate`를 수행하지 않으며, waiter cancellation은 이미 시작한 shared operation을
 취소하지 않는다. 각 호출은 shared operation 결과를 따르는 전용 `CompletableFuture` view를 반환한다.
 `toCompletableFuture().cancel(...)`은 그 waiter만 해제하며 host operation은 계속 진행되고 다른 waiter는 같은
 terminal 결과를 받는다. 별도 public cancellation token이나 host operation 취소 member를 추가하지 않는다.
 
-`Blocked/DeadlineExceeded`는 seal과 첫 `CAPTURED` commit 전의 preflight가 deadline 안에 끝나지 않은
-결과다. 이 경우 host state와 admission은 그대로 유지한다. Seal 뒤 bounded teardown이 deadline을 넘으면
-`ForceStopped/DeadlineExceeded`를 반환한다. 두 결과는 같은 reason을 사용하지만 phase와 side effect가
-다르며 enum을 추가하지 않는다.
+모든 target을 `Prepared`로 만들고 `Draining` descriptor를 publish하기 전에 deadline이 먼저 끝나면 relocation
+reference와 reservation을 durable abort 순서로 정리하고 source authority와 admission을 복원한 뒤
+`Blocked/DeadlineExceeded`를 반환한다. `Draining` publish 뒤 deadline은 source로 rollback하지 않고 bounded
+teardown과 recovery handoff를 수행한 뒤 `ForceStopped/DeadlineExceeded`로 끝난다. 두 결과는 같은 reason을
+사용하지만 phase와 side effect가 다르며 enum을 추가하지 않는다.
 
 `ZLinkFrameworkRuntime`은 RouteMesh, ClientServer와 automatic fanout의 monitoring view를 각각 하나씩
 소유한다. 세 accessor는 runtime 수명 동안 같은 객체를 반환하며 호출할 때 새 adapter를 만들지 않는다.
@@ -129,10 +133,10 @@ public final class systems.zlink.framework.runtime.host.ZLinkTerminationReason e
   public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason NONE;
   public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason TARGET_UNAVAILABLE;
   public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason STORE_UNAVAILABLE;
-  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason TRANSFER_DISABLED;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason RELOCATION_DISABLED;
   public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason STATE_INCOMPATIBLE;
   public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason DEADLINE_EXCEEDED;
-  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason TRANSFER_FAILED;
+  public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason RELOCATION_FAILED;
   public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason TEARDOWN_FAILED;
   public static final systems.zlink.framework.runtime.host.ZLinkTerminationReason RUNTIME_NOT_READY;
   public int wireValue();
@@ -198,7 +202,7 @@ public final class systems.zlink.framework.errors.ZLinkFrameworkErrorKind extend
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind ROUTING_ID_CONFLICT;
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_GENERATION_STALE;
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_MOVING;
-  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind TRANSFER_DATA_LOST;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RELOCATION_DATA_LOST;
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind[] values();
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind valueOf(java.lang.String);
   public int value();
@@ -220,8 +224,8 @@ public class systems.zlink.framework.errors.ZLinkFrameworkException extends java
 `OBJECT_CLIENT_NOT_CONFIGURED=22`, `MESH_SELECTION_REQUIRED=23`, `MESH_NOT_FOUND=24`,
 `INVALID_CONFIGURATION=25`, `ALREADY_SUBMITTED=26`, `ACTOR_GENERATION_STALE=27`, `ACTOR_MOVING=28`,
 `DEADLINE_EXCEEDED=29`, `PLACEMENT_CAPACITY_EXHAUSTED=30`, `ROUTING_ID_CONFLICT=31`,
-`SPOT_GENERATION_STALE=32`, `SPOT_MOVING=33`, `TRANSFER_DATA_LOST=34`를 고정한다. `fromValue(int)`도 같은
-mapping을 사용한다. `TRANSFER_DATA_LOST`는 Location authority가 공개한 Transfer payload가 영구적으로
+`SPOT_GENERATION_STALE=32`, `SPOT_MOVING=33`, `RELOCATION_DATA_LOST=34`를 고정한다. `fromValue(int)`도 같은
+mapping을 사용한다. `RELOCATION_DATA_LOST`는 Location authority가 공개한 Relocation payload가 영구적으로
 없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 재시도하거나 이전 owner로 rollback하지 않는다.
 
 ## Serializer와 오류 public signature

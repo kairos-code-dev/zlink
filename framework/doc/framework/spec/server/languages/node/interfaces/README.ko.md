@@ -10,14 +10,14 @@ public TypeScript declaration을 범주별로 고정한다. 같은 declaration�
 
 | 번호 | 문서 | 범위 |
 |---:|---|---|
-| 01 | [기초 타입과 구성](01-foundation-configuration.ko.md) | global ID·ref, object role·capacity, explicit transfer policy |
-| 02 | [Channel, request와 routing](02-channel-messaging.ko.md) | Channel·Fanout·RouteMesh 호출, message와 handler |
+| 01 | [기초 타입과 구성](01-foundation-configuration.ko.md) | global ID·ref, object role·capacity, Actor·Spot relocation adapter와 explicit policy |
+| 02 | [Channel, request와 routing](02-channel-messaging.ko.md) | Entry Spot relocation callback, Channel·Fanout·RouteMesh 호출과 handler |
 | 03 | [Location, monitoring과 metrics](03-location-observability.ko.md) | discovery, runtime event, metric과 tracing |
-| 04 | [Spot과 Instance Spot](04-spots.ko.md) | Spot lifecycle, single-use manager와 ID-only outbound call |
+| 04 | [Spot과 Instance Spot](04-spots.ko.md) | Spot lifecycle, User Spot manager와 Instance cold activation fluent call |
 | 05 | [Actor와 session binding](05-actors.ko.md) | Actor lifecycle, Actor call과 bound session |
 | 06 | [STREAM, timer와 worker](06-stream-worker.ko.md) | STREAM session, timer와 worker scheduling |
 | 07 | [NestJS host adapter](07-nestjs-host.ko.md) | module, DI token, decorator와 host builder |
-| 08 | [Location Store와 maintenance](08-location-maintenance.ko.md) | descriptor, generic Reserve·Commit·Abort, authority와 Transfer Store |
+| 08 | [Location Store와 maintenance](08-location-maintenance.ko.md) | descriptor, generic Reserve·Commit·Abort, authority와 Relocation Store |
 | 09 | [Automatic Routing ID](09-routing-id-allocation.ko.md) | prefix 기반 RID 생성과 descriptor owner claim |
 
 배포 package와 이 목차가 가리키는 모든 파일의 export 이름 집합은 양방향으로 같아야 한다.

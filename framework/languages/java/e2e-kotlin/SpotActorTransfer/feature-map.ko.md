@@ -1,6 +1,6 @@
 # Kotlin SpotActorTransfer E2E feature map
 
-기준 문서는 [Config 10 — Spot·Actor transfer](../../../../doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md)다.
+기준 문서는 [Config 10 — Spot·Actor relocation](../../../../doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md)이다.
 Kotlin lane은 Java와 shared transfer fixture를 사용하더라도 Kotlin client와 server entry point에서
 각 정식 시나리오를 독립적으로 증명해야 한다.
 

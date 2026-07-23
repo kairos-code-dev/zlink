@@ -16,7 +16,12 @@ struct location_options_t {
     std::chrono::milliseconds owner_lease_fencing_margin{5000};
     std::chrono::milliseconds owner_lease_renew_timeout{3000};
     std::chrono::milliseconds route_cache_max_age{15000};
-    std::chrono::milliseconds transfer_forwarding_window{30000};
+    std::chrono::milliseconds relocation_forwarding_window{30000};
+    std::size_t max_active_outbound_relocations = 64;
+    std::size_t max_active_inbound_relocations = 64;
+    std::size_t max_concurrent_relocation_captures = 8;
+    std::size_t max_concurrent_relocation_restores = 8;
+    std::uint64_t max_relocation_payload_in_flight_bytes = 268435456;
 };
 
 } // namespace zlink::framework
@@ -26,7 +31,7 @@ Store 등록과 location option member는
 [Configuration과 host](02-configuration-host.ko.md)의 `zlink_framework_options_t`가 소유한다.
 
 Store는 host마다 하나만 등록한다. Object role `client`·`server`, automatic discovery, fanout publisher descriptor
-게시, global Spot·Actor 위치 또는 transfer를 설정했는데 필요한 capability가 없으면 host는 socket
+게시, global Spot·Actor 위치 또는 relocation을 설정했는데 필요한 capability가 없으면 host는 socket
 bind 전에 구성 오류로 종료한다. Store를 등록하지 않은 fanout publisher는 manual endpoint 대상으로
 동작한다. Object role `none`인 explicit manual topology만 Store 없이 시작할 수 있으며 manager, factory와 hidden
 local Actor·Spot runtime을 만들지 않는다.
@@ -34,13 +39,24 @@ local Actor·Spot runtime을 만들지 않는다.
 Lease와 polling duration은 양수여야 한다. Location Store와 owner lease runtime을 사용하는 모든 host는
 `owner_lease_renew_interval + owner_lease_renew_timeout < owner_lease_ttl - owner_lease_fencing_margin`을
 만족해야 한다. Route cache와 forwarding duration은 0이면 각각 비활성화한다. 둘 다 양수이면
-`transfer_forwarding_window >= route_cache_max_age + 5s`를 만족해야 한다.
+`relocation_forwarding_window >= route_cache_max_age + 5s`를 만족해야 한다.
 
 `store_failure_grace`는 discovery reconcile과 새 outbound connect에만 적용한다. Store failure 동안 마지막 stable
 desired set을 grace까지 고정하고 existing admitted transport에는 service liveness를 계속 적용한다. Grace 뒤에는
 stable store snapshot을 다시 얻기 전까지 새 connection을 만들지 않는다. 이 값은 owner·coordinator lease나 local
 authority deadline을 연장하지 않으며 stateful message, timer, factory와 CAS admission은 마지막 valid monotonic
 lease deadline에서 닫힌다. Recovery는 exact owner token과 stable page set을 재검증한 뒤 diff와 connect를 수행한다.
+
+다섯 relocation 제한 option은 모두 양수여야 하며 process 전체의 Actor·Spot relocation에 적용한다.
+Outbound와 inbound active unit은 각각 최대 64개이고, Capture와 Restore callback은 각각 최대 8개를 동시에
+실행한다. Payload 단계에서 encoded bytes의 합은 기본 268,435,456 bytes(256 MiB)를 넘지 않는다. 이 byte 합에는
+application state, 실행하지 않은 message queue, Actor accepted journal, timer의 logical registration과 pending tick,
+relocation manifest와 Framework metadata를 모두 포함한다. User Spot aggregate 하나가 byte 한도를 넘으면 다른
+relocation payload 단계와 겹치지 않는 동안에만 단독으로 진행할 수 있다.
+
+Framework는 active unit, callback과 예상 payload byte permit을 모두 확보하기 전에는 source Actor·Spot queue를
+seal하지 않는다. Permit을 기다리는 동안 source는 application message와 timer dispatch를 계속 처리한다. 실행 중
+option 변경은 새 relocation admission에만 적용하며 이미 permit을 확보한 unit의 한도를 줄이지 않는다.
 
 ## 2. Store-neutral record와 capability
 
@@ -181,10 +197,12 @@ enum class maintenance_policy_kind_t {
 
 struct object_capability_t {
     placement_object_kind_t object_kind;
-    std::string type;
+    std::string stable_type;
     maintenance_policy_kind_t policy;
-    std::set<std::string> readable_state_contract_ids;
-    std::uint64_t available;
+    bool has_snapshot_adapter;
+    std::set<std::string> placement_profiles;
+    std::optional<std::uint32_t> active_limit;
+    std::optional<std::uint32_t> pending_limit;
 };
 
 struct mesh_node_descriptor_t {
@@ -447,7 +465,7 @@ User·Instance Spot owner state는 global SpotRid에서 파생한 하나의 opaq
 Create·GetOrCreate의 generic `reserve(...)`가 kind conflict, object generation과 pending capacity를 원자적으로
 결정한다. Entry Spot은 host descriptor에 속하며 caller creation authority를 갖지 않는다. `spot_location_t`는 Framework가 authority
 payload와 page를 decode해서 만드는 운영 조회 projection이며 provider write·remove·resolve interface가 아니다.
-Provider는 Spot kind, type, owner state와 Actor transfer phase를 해석하지 않는다.
+Provider는 Spot kind, type, owner state와 Actor relocation phase를 해석하지 않는다.
 `spot_ref_t::object_generation()`과 `actor_ref_t::object_generation()`은 provider의
 `object_generation`을 그대로 사용한다. Authority envelope의 `authority_owner_generation`은 authority owner
 이관 fence이고 descriptor·projection의 `lease_generation`은 host lease fence다. 두 generation을 합치거나
@@ -614,9 +632,9 @@ public:
 `location_store_t`는 descriptor, owner lease와 opaque authority CAS를 하나의
 등록 capability로 제공한다. 여기서 필수 descriptor는 MeshNode다. ClientServer, fanout, generic peer와 route
 capability는 해당 기능을 구성할 때 provider가 추가로 구현한다. Entry·User·Instance Spot owner와 Actor
-transfer state machine은 Framework 내부 payload다. Provider는 payload 형식, Spot kind, phase와 recovery
+relocation state machine은 Framework 내부 payload다. Provider는 payload 형식, Spot kind, phase와 recovery
 cursor를 해석하지 않는다.
-Transfer payload 보관은 별도 `transfer_store_t` capability다. `Recreate` 또는 `Snapshot` factory가 하나라도
+Relocation payload 보관은 별도 `relocation_store_t` capability다. `Recreate` 또는 `Snapshot` factory가 하나라도
 있는 host만 정확히 하나를 함께 등록하며 `Disabled` factory만 있는 same-node host에는 필요하지 않다.
 
 ## 4. 공식 Redis package
@@ -636,12 +654,12 @@ struct redis_location_options_t {
     redis_location_options_t &set_key_prefix(std::string value);
 };
 
-struct redis_transfer_options_t {
+struct redis_relocation_options_t {
     std::string connection_string;
     std::string key_prefix;
 
-    redis_transfer_options_t &set_connection_string(std::string value);
-    redis_transfer_options_t &set_key_prefix(std::string value);
+    redis_relocation_options_t &set_connection_string(std::string value);
+    redis_relocation_options_t &set_key_prefix(std::string value);
 };
 
 class redis_location_store_t final : public location_store_t,
@@ -655,10 +673,10 @@ public:
     ~redis_location_store_t();
 };
 
-class redis_transfer_store_t final : public transfer_store_t {
+class redis_relocation_store_t final : public relocation_store_t {
 public:
-    explicit redis_transfer_store_t(redis_transfer_options_t options);
-    ~redis_transfer_store_t();
+    explicit redis_relocation_store_t(redis_relocation_options_t options);
+    ~redis_relocation_store_t();
 };
 
 } // namespace zlink::framework::locations::redis
@@ -679,28 +697,28 @@ API를 재사용하지 않는다. Automatic subscriber는 같은 ChannelName의 
 descriptor를 모두 연결한다.
 
 MeshNode descriptor의 `spot_types`와 `object_capabilities`는 startup 전에 등록한 stable ID를 UTF-8 byte
-순서로 정렬해 기록한다. Actor와 Instance Spot capability는 object kind와 type별 maintenance policy,
-읽을 수 있는 state contract ID 집합과 현재 capacity를 한 항목에 함께 둔다. 서로 무관한 type과 state
-contract를 flat set의 cross-product로 해석할 수 없다. `application_version`은 0 이상인 signed 64-bit
+순서로 정렬해 기록한다. Actor와 User·Instance Spot capability는 object kind와 type별 maintenance policy와 현재
+Snapshot adapter 등록 여부, placement profile과 optional active·pending limit을 한 항목에 함께 둔다.
+`application_version`은 0 이상인 signed 64-bit
 deployment ordinal이다. Object capacity, maintenance wave와 runtime state는
 descriptor revision을 증가시켜 갱신한다. `spot_location_t`는 authority row를 Framework가 decode한
 projection이며 endpoint를 복제하지 않고 owner node RID와 object generation을 보존한다. Redis provider는
-`redis_location_store_t`는 authority CAS만 구현하고 `redis_transfer_store_t`는 opaque state, accepted journal,
-full inventory와 replay payload만 저장한다. Location Store가 phase, transfer reference와 checksum, canonical
+`redis_location_store_t`는 authority CAS만 구현하고 `redis_relocation_store_t`는 opaque state, accepted journal,
+full inventory와 replay payload만 저장한다. Location Store가 phase, relocation reference와 checksum, canonical
 participant set과 mutation, aggregate generation, membership·aggregate count와 inventory digest를 소유한다.
-Transfer manifest는 payload lookup에만 사용하며 authority가 아니다. Spot kind별 write와 Actor transfer phase별
+Relocation manifest는 payload lookup에만 사용하며 authority가 아니다. Spot kind별 write와 Actor relocation phase별
 Redis operation은 public interface로 제공하지 않는다.
 
-Framework는 transfer root를 먼저 저장하고 canonical inventory digest와 일치하는지 검증한 뒤 Location Store
+Framework는 relocation root를 먼저 저장하고 canonical inventory digest와 일치하는지 검증한 뒤 Location Store
 CAS로 reference를 공개한다. Root 교체도 새 root 저장과 검증, Location CAS, 이전 reference release, 이전 payload
-delete 순서를 지킨다. Transfer payload 사용을 끝낼 때는 Location Store에서 reference 사용 종료를 CAS한 뒤
-Transfer Store에서 payload를 삭제한다. 참조된 payload가 없거나 digest가 다르면 `TransferDataLost`로 종료하고 이전 owner로
+delete 순서를 지킨다. Relocation payload 사용을 끝낼 때는 Location Store에서 reference 사용 종료를 CAS한 뒤
+Relocation Store에서 payload를 삭제한다. 참조된 payload가 없거나 digest가 다르면 `RelocationDataLost`로 종료하고 이전 owner로
 rollback하지 않는다.
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
-ChannelName key set, Spot type set와 object capability의 kind·type·policy·readable contract set은 첫 admission 뒤
-해당 lifecycle에서 바뀌지 않는다. Channel weight 값, capability capacity, maintenance wave와 runtime state만
-mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고
+ChannelName key set, Spot type set와 object capability의 kind·stable type·policy·Snapshot adapter·profile·limit은
+첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight와 placement weight, maintenance wave와 runtime
+state만 mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고
 `descriptor_revision`을 strictly 증가시켜야 한다. Provider는 stale revision이나 immutable field 변경을 원자적으로
 거부하며 일부 field만 적용하지 않는다. ClientServer와 fanout descriptor도 같은 identity·revision fence를
 적용한다.

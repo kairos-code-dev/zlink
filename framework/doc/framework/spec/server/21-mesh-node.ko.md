@@ -63,16 +63,16 @@ Object role은 MeshNode마다 한 번 선택한다.
 runtime을 만들지 않는다. Factory와 Entry Spot 등록은 `Server` builder만 제공한다. Entry Spot RID는 Framework가
 발급하며 caller가 생성하거나 fixed RID를 지정하지 않는다.
 
-Actor, User Spot과 Instance Spot factory는 stable type과 transfer policy를 반드시 등록한다. Stable type은 UTF-8
+Actor, User Spot과 Instance Spot factory는 stable type과 relocation policy를 반드시 등록한다. Stable type은 UTF-8
 1..255 bytes, case-sensitive exact value이며 normalization하지 않는다. 언어 class FQN은 wire와 Store identity로
-사용하지 않는다. 같은 object kind와 stable type의 중복 등록은 startup 오류다. Transfer policy는 `Disabled`,
+사용하지 않는다. 같은 object kind와 stable type의 중복 등록은 startup 오류다. Relocation policy는 `Disabled`,
 `Recreate`, `Snapshot` 가운데 하나이며 생략하는 overload나 compatibility default를 제공하지 않는다.
 
 ## 5. Placement capability
 
 Object Server descriptor는 node-wide placement weight, node capacity와 등록한 type별 capability를 게시한다.
 
-- Placement weight는 0..100이고 기본값은 100이다. Channel weight와 분리한다. 0은 신규 create와 transfer
+- Placement weight는 0..100이고 기본값은 100이다. Channel weight와 분리한다. 0은 신규 create와 relocation
   target에서만 제외하며 existing traffic과 이미 완료된 reservation은 취소하지 않는다.
 - Node capacity 기본값은 active 10,000, pending 128이다.
 - Type별 limit은 생략하면 node limit을 공유한다. 명시하면 1..`2^31-1`이고 node limit보다 작은 값을 적용한다.
@@ -120,7 +120,7 @@ connection 재생성이나 application message replay를 일으키지 않으며 
 | Target | Selection과 delivery |
 |---|---|
 | Node direct | 같은 MeshName의 exact target RID로 한 번 제출 |
-| Channel | 같은 MeshName의 ready Server member 가운데 positive channel weight 비율로 한 node를 선택 |
+| Channel | process-local ChannelName index가 고른 Mesh에서 ready Server member 가운데 positive channel weight 비율로 한 node를 선택 |
 | Logical Multicast | target ChannelName의 ready remote node 전체와 조건부 local Spot subscription에 전달 |
 | Actor direct | global ActorId의 current authority와 ObjectGeneration을 확인한 owner route로 제출 |
 | Spot direct | global SpotRid의 current authority와 ObjectGeneration을 확인한 owner route로 제출 |
@@ -133,8 +133,12 @@ Node direct는 exact MeshName과 RID가 operation 의미에 포함되는 infrast
 사용한다. 여러 node가 제공하는 application request는 ChannelName으로 선택한다. Actor와 Spot 메시징은 global
 ActorId 또는 SpotRid를 target으로 사용하며 NodeRid와 MeshName을 caller target으로 받지 않는다.
 
+기존 Actor·Spot의 current MeshName과 NodeRid는 Location Store authority가 제공한다. Missing Instance Spot만
+Spot direct fluent call의 Instance intent에서 optional initial Mesh와 stable type을 받는다. Initial Mesh는 cold
+activation placement에만 사용하며 existing owner의 현재 Mesh를 제한하거나 이동시키지 않는다.
+
 Application payload는 owner의 application turn에서 직렬로 처리한다. Completion, send-ready, location reconcile,
-reservation과 transfer control은 infrastructure task에서 계속 진행한다. Transport readiness callback에서 application
+reservation과 relocation control은 infrastructure task에서 계속 진행한다. Transport readiness callback에서 application
 handler를 직접 실행하지 않는다.
 
 ChannelName handler와 RID direct handler는 서로 다른 namespace를 사용한다. Channel handler context는
@@ -147,11 +151,13 @@ storage의 reference를 확보해 Spot queue에 넣는다.
 
 ## 8. Drain과 종료
 
-`Draining` node는 새 Channel selection, create와 transfer target에서 제외한다. 이미 reservation을 완료한 create,
-accepted message, completion과 transfer barrier는 정해진 deadline과 fence에 따라 terminal 상태까지 진행한다.
+`Retiring` node는 새 Channel selection, create·membership과 relocation target에서 제외하지만 아직 permit을 얻지 못한
+relocation unit의 existing owner message와 timer는 계속 처리한다. Unit별 seal이 끝나 source application dispatch가
+모두 닫히면 `Draining`으로 전환한다. 이미 reservation을 완료한 create, accepted message, completion과 relocation
+barrier는 정해진 deadline과 fence에 따라 terminal 상태까지 진행한다.
 종료와 handoff 순서는 [54 Host retirement와 shutdown](54-graceful-drain-handoff.ko.md)이 소유한다.
 
-`Shutdown`은 새 transfer를 시작하지 않는다. `Retire`는 등록한 policy에 따라 Actor, User Spot aggregate와 Instance
+`Shutdown`은 새 relocation을 시작하지 않는다. `Retire`는 등록한 policy에 따라 Actor, User Spot aggregate와 Instance
 Spot을 이전한다. Node weight 0 또는 drain 전환은 existing object를 숨겨서 다시 만들거나 application payload를
 다른 owner에 새 operation으로 제출하는 근거가 아니다.
 

@@ -6,11 +6,11 @@ Application 공개 API나 공통 native runtime을 제공하지 않는다.
 - `service-wire-v1.schema.json`: command, flag, field, bound와 RouteMesh·ClientServer·fanout liveness profile의 단일
   생성 입력
 - `validate-service-wire-schema.mjs`: integer encoding, 재귀 aggregate length capacity, field reference,
-  정렬·중복, closed union, TLV 순서, durable checksum·semantic relation과 exact transfer state rule을 확인하는 생성
+  정렬·중복, closed union, TLV 순서, durable checksum·semantic relation과 exact relocation state rule을 확인하는 생성
   전 gate
-- `golden/durable-authority-v1.json`: 네 runtime이 full maintenance transfer authority bytes를 읽고 쓰는 golden
+- `golden/durable-authority-v1.json`: 네 runtime이 full maintenance relocation authority bytes를 읽고 쓰는 golden
   fixture
-- `golden/transfer-envelope-v1.json`: 네 runtime이 non-empty Instance request journal·completion bytes를 읽고
+- `golden/relocation-envelope-v1.json`: 네 runtime이 non-empty Instance request journal·completion bytes를 읽고
   쓰는 golden fixture
 - `golden/authority-key-v1.json`: MeshName과 독립적인 global ActorId·SpotRid를 canonical Store key로 만드는
   정상 encoding fixture
@@ -26,12 +26,12 @@ Codec table이나 fixture를 생성하기 전에 다음 명령이 성공해야 �
 4개 flag, 35개 bound, durable fixture 3개와 logical·JSON·authority key fixture를 확인한다. `--self-test`는
 contract amendment fixture 1개와 159가지 invalid mutation이 실제로
 거부되는지도 확인한다. 여기에는 integer overflow, length capacity 초과, 잘못된 정렬 field, enum domain 이탈,
-conditional discriminator 오류, TLV 순서·required capability 제약 변경, transfer vector 불일치, durable
-magic·version·length·checksum·semantic·order·range 훼손, transfer graph·policy 오류와 fanout socket·beacon·deadline
+conditional discriminator 오류, TLV 순서·required capability 제약 변경, relocation vector 불일치, durable
+magic·version·length·checksum·semantic·order·range 훼손, relocation graph·policy 오류와 fanout socket·beacon·deadline
 변경이 포함된다.
 
 Framework error는 `none=0`, 그 외에는 `wire value = public error kind + 1`로 변환한다. Service wire에서
-사용하지 않는 public-only error에 대응하는 wire `23..34`는 예약 구간이다. `TransferDataLost`는 wire `35`에서
+사용하지 않는 public-only error에 대응하는 wire `23..34`는 예약 구간이다. `RelocationDataLost`는 wire `35`에서
 public `34`로 decode하며, decoder fixture가 예약 구간과 이 변환을 함께 검증한다.
 
 ```bash
@@ -43,7 +43,7 @@ node framework/runtime/protocol/verify-service-wire-decoder-fixtures.mjs
 ```
 
 Durable fixture의 header는 4-byte magic, version `1`, zero flags, big-endian `u32` body length, exact body와
-trailing CRC32C 순서다. CRC32C는 magic부터 body의 마지막 byte까지 포함한다. Location·Transfer Store provider는
+trailing CRC32C 순서다. CRC32C는 magic부터 body의 마지막 byte까지 포함한다. Location·Relocation Store provider는
 이 bytes를 해석하지 않고 opaque value로 저장한다. Validator는 fixture를 semantic value로 decode한 뒤 다시
 encode한 body도 원래 bytes와 일치하는지 확인한다.
 

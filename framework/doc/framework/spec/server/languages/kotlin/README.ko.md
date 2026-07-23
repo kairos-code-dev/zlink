@@ -13,8 +13,9 @@ Java API를 기다리는 server extension도 이 디렉토리의 정식 계약�
 ChannelName 단일 호출, RouteMesh·ClientServer role builder, listener network identity, handler context와
 전용 descriptor·runtime은 Java 정본 타입을 재사용하고 Kotlin DSL만 관용적으로 투영한다.
 
-Global ActorId·SpotRid, exact ActorRef·SpotRef, manager의 명시적인 create/get-or-create, actor-free Instance
-Spot lifecycle과 Location provider의 opaque authority capability도 Java 정본 타입을 재사용한다. Kotlin은
+Global ActorId·SpotRid, exact ActorRef·SpotRef, User Spot manager의 명시적인 create/get-or-create,
+actor-free Instance Spot lifecycle과 Location provider의 opaque authority capability도 Java 정본 타입을
+재사용한다. Kotlin은
 ID-only direct call에 `send`와 `request` extension만 추가하며 Java member와 충돌하는 suspend
 `requestToSpot`을 선언하지 않는다. 정확한 extension과 Store type 재사용은
 [기능별 interfaces](interfaces/README.ko.md)가 고정한다.
@@ -28,7 +29,11 @@ global ID로 current authority를 resolve하며 process-local handle이나 별�
 
 ## 취소 인자
 
-Kotlin public interface에는 framework `CancellationToken`이나 같은 목적의 별도 취소
+Kotlin application callback과 call interface에는 framework `CancellationToken`이나 같은 목적의 별도 취소
 인자를 두지 않는다. `suspend` 함수는 호출한 coroutine의 lifecycle을 따르며, 이 동작을
 별도 token parameter로 중복 표현하지 않는다. timeout, host shutdown과 resource cleanup은
 각 기능 계약을 따른다.
+
+Java provider·adapter ABI에서 재사용하는 `ZLinkStoreCancellation`과 `ZLinkRelocationCancellation`은 Kotlin
+lifecycle token이 아니라 해당 SPI operation의 fence다. Kotlin suspending lifecycle callback에는 이 타입을
+투영하지 않는다.

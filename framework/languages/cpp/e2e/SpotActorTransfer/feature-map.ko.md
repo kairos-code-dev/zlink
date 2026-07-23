@@ -1,6 +1,6 @@
 # C++ SpotActorTransfer E2E feature map
 
-기준 문서: `framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md`
+기준 문서: `framework/doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md`
 
 이 문서는 C++ Config 10 E2E의 현재 구현 상태를 공통 시나리오별로 기록한다. runner는 actor node
 두 개와 session gateway 두 개, consumer를 서로 다른 process로 시작한다. actor는 처음 소유하는

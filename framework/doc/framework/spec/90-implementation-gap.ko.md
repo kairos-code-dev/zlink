@@ -54,14 +54,14 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.26 | Java/Kotlin | Config 5·7 E2E가 exact RouteMesh runtime options 대신 ChannelName 전용 options를 사용한다 |
 | §12.27 | `.NET`, Java/Kotlin, C++ | Actor location이 Spot lifecycle generation을 보존하지 않아 Spot RID 재사용 뒤 stale membership을 구분할 수 없다 |
 | §12.28 | 전 언어 | STREAM Actor dispatch가 target MeshName을 지정하는 public 설정과 startup 검증을 제공하지 않는다 |
-| §12.29 | 전 언어 | Location provider의 opaque authority CAS와 Transfer Store를 transfer coordinator에 연결하지 않아 process 장애 뒤 Actor·Instance transfer를 복구할 수 없다 |
+| §12.29 | 전 언어 | Location provider의 opaque authority CAS와 Relocation Store를 relocation coordinator에 연결하지 않아 process 장애 뒤 Actor·Instance relocation을 복구할 수 없다 |
 | §12.30 | C++ | STREAM TLS server 설정이 client 인증서 요구 여부를 받지 않는다 |
-| §12.31 | 전 언어 | Actor transfer metric이 `mesh_name`, 닫힌 `outcome`과 실패 terminal을 기록하지 않는다 |
+| §12.31 | 전 언어 | Actor relocation metric이 `mesh_name`, 닫힌 `outcome`과 실패 terminal을 기록하지 않는다 |
 | §12.32 | 전 언어 | 알 수 없는 non-JSON content-type을 decode 전에 거부하지 않는다 |
 | §12.33 | Java/Kotlin, Node, C++ | MeshName 중심 RouteMesh·MeshNode 등록 표면이 package·sample·E2E까지 일관되게 적용되지 않았고 분리 builder나 production in-memory location helper가 남아 있다 |
 | §12.34 | `.NET`, C++ | ActorRef의 공통 세 필드 밖 공개 상태가 남아 있다 |
 | §12.35 | C++ | Actor generation이 하나의 lifetime 안에서 join마다 증가한다 |
-| §12.36 | C++ | `Retire`·`Shutdown`, terminal result, factory-attached transfer policy와 provider capability가 exact interface에 맞게 구현되지 않았다 |
+| §12.36 | C++ | `Retire`·`Shutdown`, terminal result, factory-attached relocation policy와 provider capability가 exact interface에 맞게 구현되지 않았다 |
 | §12.37 | `.NET` | RouteMesh runtime snapshot의 Core 미노출 필드를 빈 값이나 근사값으로 채운다. Drain은 RouteMesh가 하나인 host에서만 host 공유 operation을 사용하고, 둘 이상이면 다른 MeshNode까지 종료하지 않도록 요청을 거부한다 |
 | §12.38 | Java/Kotlin | RouteMesh runtime snapshot의 Core 미노출 필드를 빈 값이나 근사값으로 채운다. Drain은 RouteMesh가 하나인 host에서만 host 공유 operation을 사용하고, 둘 이상이면 다른 MeshNode까지 종료하지 않도록 요청을 거부한다 |
 | §12.39 | 전 언어 | ChannelName 단일 주소, role builder, ClientServer 전용 discovery·runtime과 listener network identity가 source·package에 적용되지 않았다 |
@@ -215,7 +215,7 @@ generation의 membership과 새 membership을 구분한다.
 contract test로 고정해야 한다.
 
 - Actor가 Spot에 join할 때 현재 Spot generation을 location row에 기록한다.
-- resolve와 transfer admission은 row의 Spot generation과 현재 Spot owner를 함께 검증한다.
+- resolve와 relocation admission은 row의 Spot generation과 현재 Spot owner를 함께 검증한다.
 - Redis round-trip이 unsigned 64-bit generation을 손실 없이 보존한다.
 - 같은 Spot RID를 더 큰 generation으로 다시 만든 뒤 낮은 generation의 actor row를 stale로 거부한다.
 
@@ -246,32 +246,32 @@ node가 target MeshName 하나를 등록 시점에 명시하도록 고정한다.
 - 두 STREAM node가 서로 다른 MeshName을 선택하면 resolve·bind·dispatch state를 공유하지 않는다.
 - 다른 MeshName의 ActorRef는 bind 또는 dispatch 전에 target 오류로 거부한다.
 
-### 12.29 전 언어 durable authority와 Transfer Store 연결 미구현
+### 12.29 전 언어 durable authority와 Relocation Store 연결 미구현
 
 [Spot Actor §7](server/23-spot-actor.ko.md#7-failure와-recovery)과
 [Redis Location Store §4.2](server/41-location-store-redis.ko.md#42-expectation과-mutation)은 current
-owner와 transfer state를 같은 durable authority에서 원자적으로 전이하고, process 종료 뒤 successor가
-immutable transfer root와 replay cursor로 처리를 이어 가도록 요구한다.
+owner와 relocation state를 같은 durable authority에서 원자적으로 전이하고, process 종료 뒤 successor가
+immutable relocation root와 replay cursor로 처리를 이어 가도록 요구한다.
 
 목표 exact interface는 Actor·Instance phase별 Store를 공개하지 않는다. Root에 등록한 Location provider가
 opaque payload의 read와 expected Store version 기반 compare-exchange를 제공한다. Framework coordinator만
-transfer phase, source·target identity, object fence와 recovery lease를 해석한다. `Recreate` 또는 `Snapshot`
+relocation phase, source·target identity, object fence와 recovery lease를 해석한다. `Recreate` 또는 `Snapshot`
 `Recreate` 또는 `Snapshot` policy를 사용하는 host는 accepted journal, application state와 recovery payload를 보존할
-Transfer Store도 정확히 하나 등록한다.
+Relocation Store도 정확히 하나 등록한다.
 
-현재 언어별 source에는 phase별 Actor transfer Store, Instance owner Store, in-memory pending map과 별도 transfer
+현재 언어별 source에는 phase별 Actor relocation Store, Instance owner Store, in-memory pending map과 별도 relocation
 adapter가 섞여 있다. 이 구조는 provider에 Framework 상태 기계를 누출하고 Actor·Instance가 서로 다른 recovery
-규칙을 갖게 만든다. 일부 Node Redis 전이는 존재하지만 공통 opaque authority 계약, durable transfer root와 process
+규칙을 갖게 만든다. 일부 Node Redis 전이는 존재하지만 공통 opaque authority 계약, durable relocation root와 process
 장애 E2E가 연결되지 않아 목표 기능으로 판단하지 않는다.
 
-각 언어는 공식 Location Store와 Transfer Store 구현을 별도 class로 제공하고 다음을 contract test로 고정해야 한다.
+각 언어는 공식 Location Store와 Relocation Store 구현을 별도 class로 제공하고 다음을 contract test로 고정해야 한다.
 
 - Logical authority key는 object kind와 logical identity를 충돌 없이 encode한다.
 - Read는 current payload, opaque Store version, Store time과 조건부 lease expiry를 한 snapshot으로 반환한다.
 - Compare-exchange는 expected version이 current일 때만 owner와 transaction payload를 한 번에 바꾼다.
 - Commit 전 abort와 commit 뒤 recovery는 같은 authority revision과 coordinator lease로 순서를 정한다.
-- Transfer reference, checksum과 replay cursor는 authority CAS와 연결되고 orphan payload는 retention expiry가 정리한다.
-- 같은 object의 동시 transfer, 늦은 source cleanup과 commit 이후 callback 실패가 committed target을 지우지 않는다.
+- Relocation reference, checksum과 replay cursor는 authority CAS와 연결되고 orphan payload는 retention expiry가 정리한다.
+- 같은 object의 동시 relocation, 늦은 source cleanup과 commit 이후 callback 실패가 committed target을 지우지 않는다.
 
 ### 12.30 C++ STREAM TLS client 인증서 요구 설정 미구현
 
@@ -288,11 +288,11 @@ C++ node options builder, registration snapshot과 stream runtime에 bool을 보
 TLS 공개 메서드는 제거한다. false에서 일반 TLS client가 연결되며 true에서 인증서 없는 client가 session
 생성 전에 거부되는 실제 TLS contract test를 추가해야 한다.
 
-### 12.31 전 언어 Actor transfer metric outcome 미구현
+### 12.31 전 언어 Actor relocation metric outcome 미구현
 
 [Runtime Metrics §4](server/51-runtime-metrics.ko.md#4-object와-stream-계기)는
-`zlink.actor.transfers`와 `zlink.actor.transfer.duration`에 `mesh_name`과 닫힌
-`outcome=activated|aborted|timed_out|shutdown`을 기록하도록 고정한다. Duration은 transfer 시작부터
+`zlink.actor.relocations`와 `zlink.actor.relocation.duration`에 `mesh_name`과 닫힌
+`outcome=activated|aborted|timed_out|shutdown`을 기록하도록 고정한다. Duration은 relocation 시작부터
 activation 또는 실패 terminal까지의 시간이며 location commit만으로 성공을 기록하지 않는다.
 
 현재 구현은 성공 경로의 label 없는 값만 기록한다.
@@ -301,12 +301,12 @@ activation 또는 실패 terminal까지의 시간이며 location commit만으로
   histogram에 tag를 전달하지 않는다.
 - Java `ZLinkActorRuntime.java:629-633`은 두 계기를 `Map.of()` 빈 label로 기록한다.
 - Kotlin은 Java runtime을 공유한다.
-- Node `actor-transfer-runtime.ts:146-157`은 commit callback에서 label 없이 count와 duration을 기록한다.
+- Node `actor-relocation-runtime.ts:146-157`은 commit callback에서 label 없이 count와 duration을 기록한다.
 - C++ `spot_runtime.cpp:3126-3128`은 label 없이 counter와 histogram을 기록한다.
 
-각 언어는 transfer operation이 MeshName, 시작 시각과 terminal outcome을 한 context로 소유하게 하고,
+각 언어는 relocation operation이 MeshName, 시작 시각과 terminal outcome을 한 context로 소유하게 하고,
 activation·abort·timeout·shutdown의 각 terminal에서 정확히 한 번 기록해야 한다. 실패 뒤 성공으로 다시
-세거나 local join을 transfer로 세지 않는 contract test와 Config 11 OBS-B2를 label까지 검증하도록 갱신한다.
+세거나 local join을 relocation으로 세지 않는 contract test와 Config 11 OBS-B2를 label까지 검증하도록 갱신한다.
 
 ### 12.32 전 언어 수신 content-type 검증 결함
 
@@ -367,17 +367,17 @@ Actor manager와 runtime registry가 소유하며 application의 참조 복원 �
 
 **C++ 미충족.** [Spot과 Actor membership §1](server/23-spot-actor.ko.md#1-identity와-authority)은 Actor
 generation을 생성 성공 시 해당 Actor lifetime의 값으로 확정하며 destroy까지 변경하지 않도록 고정한다.
-같은 MeshNode의 Spot 이동과 다른 MeshNode로의 transfer는 source와 target에서 같은 Actor generation을
+같은 MeshNode의 Spot 이동과 다른 MeshNode로의 relocation은 source와 target에서 같은 Actor generation을
 사용하고, 성공한 location commit에서 current Spot authority만 바뀌어야 한다.
 
-C++ runtime은 같은 MeshNode의 이동과 remote transfer target `ActorRef`를 만들 때 기존 generation에 1을
+C++ runtime은 같은 MeshNode의 이동과 remote relocation target `ActorRef`를 만들 때 기존 generation에 1을
 더한다(`spot_runtime.cpp:1227-1229`, `2662-2665`, `3206-3209`, `3406-3409`). C++ ST-F2와 contract
 gate도 이 값을 요구한다. Java testkit의 fake backend와 `.NET` 단위 테스트의 remote join mock에도 같은
 증가 방식이 남아 있어 contract test가 잘못된 값을 정상으로 받아들일 수 있다.
 
 **고쳐야 할 것:**
 
-- C++에서 생성 시 확정한 Actor generation이 destroy까지 변경되지 않게 하고, join·transfer target
+- C++에서 생성 시 확정한 Actor generation이 destroy까지 변경되지 않게 하고, join·relocation target
   `ActorRef`가 source Actor ID와 generation을 그대로 사용하게 한다.
 - C++ E2E와 contract test, Java testkit과 `.NET` test double에서 이동 전후 generation 동일성을 검증한다.
 - 성공한 이동에서는 owner Node RID와 current Spot authority만 바뀌고, destroy 뒤 새 Actor 생성에서만 다음
@@ -389,15 +389,15 @@ gate도 이 값을 요구한다. Java testkit의 fake backend와 `.NET` 단위 �
 `Retire`와 `Shutdown`으로 고정하고, 구현 상세 상태 기계는 runtime 내부에 둔다. 현재 install-tree header에는
 `app_t::drain`, `await_drained`, `stop`, `request_stop`이 존재하지만 다음 목표 member는 아직 없다.
 
-- continuity를 준비한 뒤 종료하는 `retire`와 새 transfer 없이 bounded 종료를 수행하는 `shutdown`
+- continuity를 준비한 뒤 종료하는 `retire`와 새 relocation 없이 bounded 종료를 수행하는 `shutdown`
 - terminal intent·outcome·reason·result와 Framework runtime state
-- Actor와 Instance Spot factory에 연결하는 typed transfer policy와 Snapshot state adapter
-- opaque authority CAS와 Transfer Store capability
+- Actor와 Instance Spot factory에 연결하는 typed relocation policy와 Snapshot state adapter
+- opaque authority CAS와 Relocation Store capability
 - Framework runtime maintenance snapshot과 event
 
 `Retire`와 `Shutdown` 외의 기존 lifecycle 호출을 source compatibility 때문에 유지해야 하면 새 state나 결과를
 소유하지 않는 deprecated facade로만 둘 수 있다. 새 guide와 sample은 facade를 사용하지 않는다. 별도 Actor
-transfer registry, phase별 Store와 public operation state machine은 추가하지 않는다. Install-tree header와 clean
+relocation registry, phase별 Store와 public operation state machine은 추가하지 않는다. Install-tree header와 clean
 consumer contract test가 exact interface와 일치해야 한다.
 
 ### 12.37 .NET IZLinkRouteMeshRuntime snapshot의 Core 미노출 필드
@@ -405,7 +405,7 @@ consumer contract test가 exact interface와 일치해야 한다.
 **.NET 부분 충족.** [.NET topology monitoring](server/languages/dotnet/interfaces/10-topology-monitoring.ko.md)과
 [Runtime monitoring](server/50-runtime-monitoring.ko.md)은 MeshNode snapshot에 peer별 ChannelName
 set, channel별 ready member 수, Logical Multicast admission 누계(backpressure·remote/local
-snapshot·admitted·dropped), drain seal 상태와 pending transfer·STREAM barrier
+snapshot·admitted·dropped), drain seal 상태와 pending relocation·STREAM barrier
 수를 요구한다.
 
 현재 .NET `IZLinkRouteMeshRuntime` 구현은 exact interface와 event stream(polling 파생)을
@@ -431,7 +431,7 @@ status·monitor가 다음
 값을 제공하지 않아 snapshot 전체를 실측값으로 채울 수 없다.
 
 - Logical Multicast의 backpressure 및 remote/local snapshot·admitted·dropped 누계
-- drain deadline·work seal과 pending transfer·STREAM barrier 수
+- drain deadline·work seal과 pending relocation·STREAM barrier 수
 - location store의 마지막 실패 시각
 
 현재 이 값은 0·빈 `Optional`로 채운다. host drain을 MeshName별
@@ -589,12 +589,12 @@ validation, cancellation·timeout·shutdown terminal 경합, no late admission�
 
 ### 12.44 전 언어 global Spot placement 계약 미구현
 
-정식 계약은 Spot manager의 명시적인 `Create`와 `GetOrCreate`가 User·Instance Spot의 global Spot RID,
-stable type과 kind를 기준으로 placement를 시작하도록 요구한다. 두 operation은 target node나 endpoint를 받지
-않으며 single-use call로 동작한다. Direct send/request는 global Spot RID만 받아 existing Ready owner를
-resolve한다. Missing Instance Spot의 일반 message는 최초 creation intent를 만들지 않는다. 최초 create가
-기록한 type과 Mesh는 owner loss 뒤 reactivation에 사용한다. 별도 address, resolver와 handle은 제공하지
-않는다.
+정식 계약은 Spot manager의 명시적인 `Create`와 `GetOrCreate`가 User Spot만 생성하도록 요구한다. 두 operation은
+target node나 endpoint를 받지 않으며 single-use call로 동작한다. Direct send/request의 시작 method는 global
+Spot RID만 받고 Spot 전용 fluent call을 반환한다. Instance intent가 없는 call은 existing Ready owner만
+resolve한다. Instance intent를 가진 call만 Missing Instance Spot의 cold activation을 시작하며 stable type을
+생략하면 선택한 Mesh의 distinct Instance type이 하나일 때 자동 선택한다. 여러 type이면 caller가 type을
+명시한다. 별도 address, resolver와 handle은 제공하지 않는다.
 
 현재 Core public header와 runtime의 Instance Spot driver, activation token과 binding projection은 10.x 전환 중
 생긴 구현 입력이다. 11.0 목표는 이 service 상태 기계를 Core 또는 공통 C ABI에 유지하지 않는다. 각 언어
@@ -604,8 +604,8 @@ API가 아니며 application이나 일반 binding 사용자에게 노출하지 �
 
 Framework의 현재 차이는 다음과 같다.
 
-- 다섯 언어의 source에는 exact interface가 정한 global `SpotRef`, Spot manager create call, actor-free
-  lifecycle, type factory와 Spot RID-only send/request가 완성되어 있지 않다. Application one-way call은 동기
+- 다섯 언어의 source에는 exact interface가 정한 global `SpotRef`, User Spot manager create call, actor-free
+  lifecycle, type factory와 Spot 전용 fluent send/request가 완성되어 있지 않다. Application one-way call은 동기
   `TrySubmit` 없이 언어별 비동기 submit 하나만 제공해야 한다.
 - Java의 기존 Spot interface는 Actor lifecycle을 함께 상속하므로 actor-free base를 분리하지 않으면 모든
   Java Spot factory가 Instance 등록에서 거부된다. Node.js도 일반 Spot과 Instance lifecycle type을 분리해야
@@ -613,20 +613,21 @@ Framework의 현재 차이는 다음과 같다.
 - 공식 Redis extension과 공통 Location provider에는 opaque authority read·compare-exchange, Store time과 lease
   snapshot이 구현되어 있지 않거나 Actor·Instance phase별 API로 나뉘어 있다. Instance factory를 등록한
   runtime은 provider의 authority capability를 startup에서 검사해야 하며 MeshNode descriptor에 Instance type,
-  transfer policy와 application version capability를 게시해야 한다.
+  relocation policy와 application version capability를 게시해야 한다.
 - Source coordinator, eligible-node selection, generic reservation, Ready-visible ordering, factory 실패 cleanup,
   lease-derived local admission deadline, bounded stale-route forwarding과 Retire·close 순서가 구현되어 있지 않다.
 - Activation outcome·duration, pending budget, claim conflict·takeover metric과 `surface=instance_spot` message-flow
   drop 관측이 언어별 runtime에 연결되어 있지 않다.
 - PlayerQuest와 OrderWorkflow sample은 User Spot의 수동 local GetOrCreate·resolve 절차를 사용한다. Global
-  manager create 경쟁, close 뒤 Instance 재활성화와 외부 state 복구를 검증하지 않는다.
+  User Spot manager create 경쟁, Instance fluent cold activation, close 뒤 새 generation 활성화와 외부 state 복구를
+  검증하지 않는다.
 
 구현은 protocol schema, authority fixture와 다섯 언어 exact interface를 먼저 고정한 뒤 C++·.NET·JVM·Node.js
 runtime에서 병렬로 진행한다. Java와 Kotlin은 JVM runtime을 공유하지만 각 public artifact의 signature를 따로
 검증한다. 네 runtime과 cross-language E2E가 같은 동작을 증명한 candidate에서 Core service driver와 네 binding
 projection을 제거한다.
-Remote target의 queue 미수락 receipt와 자동 request 재제출은 첫 계약에 추가하지 않는다. 일반 message도
-durable creation intent 없이 owner를 선택하거나 Instance를 선제 activation하지 않는다.
+Remote target의 queue 미수락 receipt와 자동 request 재제출은 첫 계약에 추가하지 않는다. Instance intent가
+없는 일반 message는 durable creation intent 없이 owner를 선택하거나 Instance를 선제 activation하지 않는다.
 
 ## 13. 샘플 계약 차이
 

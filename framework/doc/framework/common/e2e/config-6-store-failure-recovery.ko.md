@@ -2,9 +2,9 @@
 [E2E 목차](README.ko.md) | [이전: Resilience](config-5-resilience-lifecycle.ko.md) | [다음: Monitoring](config-7-monitoring.ko.md)
 <!-- framework-adapter-nav:end -->
 
-# Config 6 — Location store 장애·복구 배포
+# Config 6 — Location·Relocation store 장애·복구 배포
 
-공유 location store가 일시 중단되거나 복구되는 조건을 검증한다. Config 1이 정상 상태의 자동
+분리 등록한 location store와 relocation store가 일시 중단되거나 복구되는 조건을 검증한다. Config 1이 정상 상태의 자동
 연결과 messaging을 다룬다면, 여기서는 store 장애 중 기존 연결 유지, owner lease가 만료된
 descriptor 제외와 복구 순서를 확인한다.
 
@@ -20,7 +20,8 @@ descriptor 제외와 복구 순서를 확인한다.
 
 fail-static 표, owner lease 모델, watch/polling, 복구 순서 같은 계약 상세는
 [location runtime spec](../../spec/server/40-location-runtime.ko.md)과
-[Redis store spec](../../spec/server/41-location-store-redis.ko.md)을 기준으로 하고 이 문서에서
+[Redis location store spec](../../spec/server/41-location-store-redis.ko.md),
+[Redis relocation store spec](../../spec/server/42-relocation-store-redis.ko.md)을 기준으로 하고 이 문서에서
 반복하지 않는다.
 
 판정은 public 표면으로만 한다. 등록한 `IZLinkLocationStore`의 bounded descriptor page를 끝까지 읽고 각
@@ -34,7 +35,8 @@ descriptor의 owner ID를 `ReadOwnerLeaseAsync(ownerId)`로 exact 조회해 desc
   시 신규 outbound connect 중단, owner lease 만료로 인한 stale descriptor 제외, store 복구 순서(owner
   lease와 local MeshNode descriptor 재등록 → owner lease renew interval 1회 유예 → disconnect diff), watch가 없는
   store 구성의 polling fallback, runtime status 관측, store가 끊기지 않고 응답만 느려질 때
-  Redis client 호출이 무관한 concurrent 처리를 막지 않는지(비블로킹 실측).
+  Redis client 호출이 무관한 concurrent 처리를 막지 않는지(비블로킹 실측), immutable Relocation payload의
+  renew·orphan cleanup·recovery와 두 Store의 독립 장애.
 - 여기서 다루지 않는 것: 정상 상태 자동 연결·scale·failover(Config 1), provider 노드 자체의
   restart/crash resilience(Config 5), monitoring event 표면(Config 7), store 제품 자체의
   HA/복제(store 구현체 책임).
@@ -43,15 +45,16 @@ descriptor의 owner ID를 `ReadOwnerLeaseAsync(ownerId)`로 exact 조회해 desc
 
 | 역할 | 수 | 구성 |
 |------|----|------|
-| location store | 1 | 공식 Redis location store extension이 사용하는 Redis instance. 실행마다 전용 key prefix. harness가 정지/재기동해 store 장애를 만든다. |
-| provider (api 노드) | 2 (`api-a`, `api-b`) | MeshNode의 ChannelName handler. `AddLocationStore(new ZLinkRedisLocationStore(...))`로 store를 등록하면 framework lifecycle이 descriptor와 owner lease를 자동 갱신한다. `/evidence`·`/health` + runtime query 조회용 HTTP endpoint. |
-| consumer | 1 | 같은 store를 등록하고 descriptor 기반 자동 discovery로 provider와 연결한다. 지속 request로 연결 유지 여부를 관측하고 MeshNode runtime snapshot을 HTTP endpoint로 노출한다. |
+| location store | 1 | 공식 Redis location store extension. 실행마다 전용 location key prefix를 사용한다. Harness가 이 capability만 정지·지연·복구할 수 있다. |
+| relocation store | 1 | 공식 Redis relocation store extension. 기본 topology는 같은 Redis deployment를 공유하되 별도 relocation key prefix와 별도 Store instance를 등록한다. Track F에서는 이 capability만 독립적으로 정지·지연·복구할 수 있다. |
+| provider (api·object server 노드) | 2 (`api-a`, `api-b`) | ChannelName handler와 Object Server 역할을 함께 등록한다. `RecoveryActor`와 `RecoverySnapshotSpot`에는 `Snapshot` policy와 kind별 Relocation Adapter를, `RecoveryInstanceSpot`에는 adapter 없는 `Recreate` policy를 등록하고 별도 negative type에만 `Disabled`를 사용한다. 모든 stable factory type은 explicit policy와 positive placement capacity를 제공한다. `AddLocationStore(...)`와 `AddRelocationStore(...)`를 각각 호출하며 `/evidence`·`/health`와 runtime query endpoint를 제공한다. |
+| consumer | 1 | Object Client 역할과 두 Store를 별도 등록하고 descriptor 기반 automatic discovery로 provider와 연결한다. 지속 request와 Track F의 object operation으로 연결·authority 상태를 관측하고 MeshNode runtime snapshot을 HTTP endpoint로 노출한다. |
 | probe | 시나리오별 | 각 역할 server의 runtime snapshot과 store descriptor·lease 조회 결과를 확인하는 client 흐름. |
 
 시간 관련 option(owner lease renew interval, owner lease TTL, polling interval, store failure grace)은
 시나리오가 유한 시간 안에 기다릴 수 있도록 짧게 설정한다(예: lease renew 1초, lease TTL 3초,
 polling 0.5초). 값 자체는 언어별 option 표면을 따르되, 의미는
-[40 §2.4](../../spec/server/40-location-runtime.ko.md#24-owner-lease)의
+[40 §4](../../spec/server/40-location-runtime.ko.md#4-owner-lease와-local-admission-deadline)의
 option 정의와 같아야 한다. 이 값들은 `run_e2e.sh` 상단의 명시적 config 상수로 두고 시나리오 대기 시간의 근거로
 사용한다.
 
@@ -92,7 +95,9 @@ lease-renew/lease/grace 상수에서 계산한 별도 이름의 시나리오 대
 
 **검증 질문:** watch를 제공하지 않는 store 구성에서도, polling만으로 peer 변경이 polling interval 안에 같은 결과로 반영되는가.
 
-- 절차: watch를 구현하지 않은 store 구현체를 `AddLocationStore(instance)`로 등록한 배포에서, provider 하나를 추가로 띄웠다가 정상 종료한다. 등록 표면은 통합 계약 인스턴스 하나뿐이며 책임별 개별 등록 함수는 없다([40 §3](../../spec/server/40-location-runtime.ko.md)).
+- 절차: watch를 구현하지 않은 Location Store 구현체를 `AddLocationStore(instance)`로 등록한 배포에서,
+  provider 하나를 추가로 시작했다가 정상 종료한다. Relocation Store는 별도 `AddRelocationStore(instance)`로
+  등록하며 polling discovery 검증에는 장애를 주입하지 않는다([40 §3](../../spec/server/40-location-runtime.ko.md)).
 - 검증: watch event 없이 polling만으로 추가·제거가 peer intent와 runtime snapshot에 반영된다.
   추가 후 polling interval 몇 tick 안에 새 provider가 ready member가 되고, 제거 후 그 provider를
   선택하지 않는다. watch를 지원하는 Redis extension 배포와 결과 의미가 같다.
@@ -157,22 +162,22 @@ descriptor가 성공 결과에서 제외되고 consumer가 연결을 정리하�
   이전 endpoint에 반복 timeout이 발생하지 않는다.
 - 세부 동작: descriptor remove 없는 crash 전파 — owner lease 만료로 stale descriptor 제외.
 
-#### SF-C2 graceful shutdown 대조 (drain 뒤 owner 정리)
+#### SF-C2 Shutdown 대조 (owner 정리)
 
 우선순위: `P1`
 
-**검증 질문:** 정상 종료한 provider는 먼저 배정 대상에서 제외되고, drain 완료 시 owner descriptor와 lease를
-정리해 crash 경로처럼 종료 뒤 lease 만료를 기다리지 않는가.
+**검증 질문:** `Shutdown`으로 정상 종료한 provider는 먼저 배정 대상에서 제외되고, bounded cleanup이
+완료되면 owner descriptor와 lease를 정리해 crash 경로처럼 종료 뒤 lease 만료를 기다리지 않는가.
 
-- 절차: `api-b`의 정상 종료를 요청한다. `Draining=true`가 게시된 동안 새 요청이 `api-b`에
-  배정되지 않는지 확인하고, 30초 기본 drain deadline 안에 process가 강제 종료 없이 종료되는지
-  기다린다. terminal 종료 직후 owner descriptor가 사라지는지 확인한다.
-- 검증: drain 중에는 descriptor를 유지해 기존 연결과 작업을 정리하지만 신규 배정에서는 제외된다.
-  정상 종료가 완료되면 `ListMeshNodesAsync(meshName)`에서 `api-b` descriptor가 별도 lease 만료 대기 없이
-  사라지고 consumer가 그쪽으로 더 가지 않는다. SF-C1과 달리 강제 종료나 lease 만료만으로
-  통과시키지 않는다.
-- 세부 동작: draining marker 게시 → 기존 작업 drain → owner 단위 descriptor bulk remove와 lease 제거 →
-  terminal 정상 종료.
+- 절차: `api-b` host에서 public `Shutdown`을 요청한다. Host가 `Draining`을 게시한 동안 새 요청이
+  `api-b`에 배정되지 않는지 확인하고, 30초 기본 deadline 안에 process가 강제 종료 없이 종료되는지
+  기다린다. terminal `Stopped/None` 직후 owner descriptor가 사라지는지 확인한다.
+- 검증: `Draining` 중에는 descriptor를 유지해 이미 수락한 작업과 resource를 정리하지만 신규 배정에서는
+  제외된다. `Shutdown`이 `Stopped/None`으로 완료되면 `ListMeshNodesAsync(meshName)`에서 `api-b`
+  descriptor가 별도 lease 만료 대기 없이 사라지고 consumer가 그쪽으로 더 가지 않는다. SF-C1과 달리
+  강제 종료나 lease 만료만으로 통과시키지 않는다.
+- 세부 동작: `Shutdown` admission seal → `Draining` 게시 → accepted work와 resource의 bounded cleanup →
+  owner 단위 descriptor bulk remove와 lease 제거 → `Stopped/None`.
 
 #### SF-C3 stale owner lease token과 generation fencing
 
@@ -290,7 +295,11 @@ mesh 전체의 불필요한 재연결이 발생하지 않는가.
   점유하지 않음을 검증. 이 트랙은 store 자체의 정상/비정상보다 client 구현의 비블로킹 여부를 보는
   점에서 Track A~D와 다르다.
 
-### Track F — Authority interop과 checkpoint 보존
+### Track F — Authority interop과 relocation 보존
+
+Track F는 Location Store의 authority CAS와 Relocation Store의 immutable payload Put·Get·renew·delete를 별도
+failure point로 주입한다. Payload를 먼저 준비하고 Location Store reference CAS로 publish하는 순서를 검증하며,
+두 Store 사이의 distributed transaction이나 provider 전용 묶음 등록 API를 사용하지 않는다.
 
 #### SF-F1 언어 간 authority key·payload interop
 
@@ -302,29 +311,32 @@ mesh 전체의 불필요한 재연결이 발생하지 않는가.
 - 검증: 모든 조합이 `authority-key-v1`의 같은 Store key를 사용하고 opaque store version,
   object kind, owner과 phase를 같게 해석한다. Unknown field·code를 추측해 수용하지 않는다.
 
-#### SF-F2 current checkpoint renew과 orphan 정리
+#### SF-F2 current relocation renew과 orphan 정리
 
 우선순위: `P0`
 
-- 절차: Virtual clock으로 capture를 길게 지연하면서 여러 checkpoint chunk를 기록한다. 일부 staged chunk의
+- 절차: Virtual clock으로 capture를 길게 지연하면서 여러 relocation chunk를 기록한다. 일부 staged chunk의
   remaining lease를 12시간 이하로 만들고 renew 한 건을 실패시킨다. 성공 반복에서는 complete manifest tree를
-  renew한 뒤 authority CAS로 current reference를 확정한다. 별도 checkpoint는 authority CAS에 실패해 orphan으로
+  renew한 뒤 authority CAS로 current reference를 확정한다. 별도 relocation은 authority CAS에 실패해 orphan으로
   남긴다. Harness가 provider 기준 시각과 renew cycle을 제어해 24시간 retention 경계를 통과시킨다.
 - 검증: Current authority owner 또는 recovery coordinator가 현재 reference만 renew해 recovery를
   계속할 수 있고 orphan은 TTL 뒤 제거된다. Reference가 CAS로 교체되거나 해제되면 이전
   reference renew는 stale 결과로 종료하고 cleanup한다. `Captured`·`Prepared` CAS 직전에는 root와 모든 chunk가
   12시간보다 긴 lease를 가졌는지 provider 시각으로 확인한다. Missing component나 renew 실패가 있으면 root를
-  authority에 연결하지 않고 precommit abort하며 partial checkpoint를 current로 공개하지 않는다.
+  authority에 연결하지 않고 precommit abort하며 partial relocation을 current로 공개하지 않는다.
 
-#### SF-F3 checkpoint recovery horizon 초과
+#### SF-F3 relocation recovery horizon 초과
 
 우선순위: `P1`
 
-- 절차: Store와 모든 recovery coordinator를 24시간 이상 사용할 수 없는 상태로 두고
-  checkpoint renew가 발생하지 않게 한 뒤 Store를 복구한다.
-- 검증: Runtime은 없는 checkpoint를 새 state로 추측하거나 기존 owner를 재사용하지 않는다.
-  Operation은 recovery horizon 초과를 표현하는 terminal failure 하나로 완료하고 metric·event에
-  object kind, phase와 checkpoint reference hash를 기록한다.
+- 절차: Relocation Store와 모든 recovery coordinator를 24시간 이상 사용할 수 없는 상태로 두고
+  relocation renew가 발생하지 않게 한 뒤 Store를 복구한다. Location Store에는 current authority가
+  이미 publish한 relocation reference를 그대로 유지한다.
+- 검증: Published reference가 가리키는 payload가 retention 이후 영구적으로 없으면 Runtime은 새 state를
+  추측하거나 이전 owner로 rollback하지 않고 non-retriable `RelocationDataLost`로 끝낸다. 진행 중인 `Retire`는
+  `ForceStopped/RelocationFailed`로 terminal 완료하고 detail에 `RelocationDataLost`를 보존한다. Metric·event에는
+  object kind, phase와 relocation reference hash를 기록한다. Authority에 publish되지 않은 orphan expiry는 이
+  data-loss 결과로 분류하지 않는다.
 
 #### SF-F4 authority generation 원자 전이와 exhaustion
 
@@ -347,13 +359,16 @@ mesh 전체의 불필요한 재연결이 발생하지 않는가.
 
 우선순위: `P0`
 
-- 절차: Actor transfer와 Instance activation을 각각 durable authority의 `Activating`·`Committed` 단계에서
-  멈춘다. Authority에는 checkpoint reference, replay cursor와 현재 generation을 기록한다. Process를
-  중지해 owner lease를 만료시킨 뒤 authority row가 유지되는지 확인하고, successor가 새 owner token과
-  `new_owner` CAS로 recovery를 계속한다.
-- 검증: Owner lease expiry는 descriptor와 신규 admission만 무효화하고 authority row, phase, checkpoint
+- 절차: Instance cold activation은 durable authority의 `Creating`에서 `Ready` commit 전에 멈추고, 별도
+  Actor relocation은 `Committed`에서 target activation이 끝나기 전에 멈춘다. Creation authority에는 immutable
+  creation intent·reservation과 현재 generation을, relocation authority에는 published relocation reference·replay
+  cursor와 현재 generation을 기록한다. 각 process를 중지해 owner lease를 만료시킨 뒤 authority row가
+  유지되는지 확인하고 successor가 새 owner token과 `new_owner` CAS로 해당 state machine의 recovery를 계속한다.
+- 검증: Owner lease expiry는 descriptor와 신규 admission만 무효화하고 authority row, phase, relocation
   reference, replay cursor와 object generation을 삭제하지 않는다. Successor만 더 높은 owner generation으로
-  복구를 완료한다. 이전 owner의 늦은 phase CAS와 cleanup은 stale이며 current authority를 변경하지 않는다.
+  Instance는 같은 ObjectGeneration으로 factory·`Ready` barrier를 수렴시키고 Actor relocation은 published root에서
+  current target activation을 이어서 완료한다. 이전 owner의 늦은 phase CAS와 cleanup은 stale이며 current
+  authority를 변경하지 않는다.
   Authority row는 terminal cleanup의 explicit fenced delete 전까지 TTL 없이 유지된다. Durable owner tuple의
   owner ID와 owner lease generation은 current host lease와 모두 일치해야 하며, 같은 owner ID를 새 generation으로
   다시 claim해도 이전 authority admission이나 owner ID만 사용한 bulk cleanup을 유효하게 만들지 않는다.
@@ -372,26 +387,26 @@ mesh 전체의 불필요한 재연결이 발생하지 않는가.
   이후 background scan이 새 orphaned transaction을 발견한다. Concurrent mutation이 recovery row를 영구히
   누락시키거나 같은 store version을 두 coordinator가 소유하면 실패다.
 
-#### SF-F7 chunked checkpoint manifest
+#### SF-F7 chunked relocation manifest
 
 우선순위: `P0`
 
-- 절차: 64 MiB보다 큰 accepted journal과 Snapshot state를 만들어 reversible seal 뒤 logical checkpoint를
+- 절차: 64 MiB보다 큰 accepted journal과 Snapshot state를 만들어 reversible seal 뒤 logical relocation을
   여러 immutable data chunk와 root manifest로 저장한다. Chunk write, manifest write, authority CAS, renew와
-  cleanup 사이에서 process를 각각 종료한다. Empty Recreate transfer도 별도 실행한다.
+  cleanup 사이에서 process를 각각 종료한다. Empty Recreate relocation도 별도 실행한다.
 - 검증: 각 data chunk는 64 MiB 이하이고 manifest가 total length·checksum, 1부터 시작하는 order와 각
   reference·length·checksum을 고정한다. Authority는 manifest reference 하나만 가리키며 target은 전체 payload를
   한 번에 allocation하지 않고 bounded streaming validation·replay로 원래 journal과 state를 복원한다. Authority
   CAS 전 chunk·manifest는 orphan으로 만료되고, current manifest와 모든 chunk는 함께 renew된다. Reference CAS
-  제거 뒤 cleanup은 반복해도 같은 결과다. Empty transfer도 zero-data deterministic manifest 하나를 기록한다.
-  Chunk 수 4,096 또는 logical 256 GiB ceiling을 넘으면 checkpoint가 state transfer 계약과 호환되지 않으므로
+  제거 뒤 cleanup은 반복해도 같은 결과다. Empty relocation도 zero-data deterministic manifest 하나를 기록한다.
+  Chunk 수 4,096 또는 logical 256 GiB ceiling을 넘으면 relocation이 state relocation 계약과 호환되지 않으므로
   reversible seal을 풀고 `Blocked/StateIncompatible`로 끝내며 `Draining`을 게시하지 않는다.
 
-#### SF-F8 transfer target reservation lease fence
+#### SF-F8 relocation target reservation lease fence
 
 우선순위: `P0`
 
-- 절차: Target이 transfer capacity를 offer하고 reservation ACK를 보낸 직후 target process만 pause한다.
+- 절차: Target이 relocation capacity를 offer하고 reservation ACK를 보낸 직후 target process만 pause한다.
   Transport I/O는 유지한 채 target host owner lease를 만료시키고, 같은 target node lifecycle에서 늦은 ACK와
   activation completion을 전달한다. 별도 반복에서는 같은 owner ID를 더 높은 lease generation으로 다시
   claim한다.
@@ -410,19 +425,19 @@ mesh 전체의 불필요한 재연결이 발생하지 않는가.
   authority를 삭제하지 않으며 owner index와 각 row의 owner ID·lease generation을 같은 provider operation에서
   확인한다.
 
-#### SF-F10 compact authority와 checkpoint completion
+#### SF-F10 compact authority와 relocation completion
 
 우선순위: `P0`
 
-- 절차: Accepted request와 large reply completion을 계속 추가하면서 transfer phase CAS와 authority recovery
-  scan을 실행한다. Late completion 두 개가 같은 current checkpoint root에서 새 completion chunk와 root
+- 절차: Accepted request와 large reply completion을 계속 추가하면서 relocation phase CAS와 authority recovery
+  scan을 실행한다. Late completion 두 개가 같은 current relocation root에서 새 completion chunk와 root
   manifest를 동시에 만들도록 경쟁시킨다. Scan은 item 1,000개보다 먼저 encoded bytes 4 MiB에 도달하는
   authority payload를 포함한다.
-- 검증: Authority payload는 1 MiB 이하의 phase·fence·target·reservation·checkpoint reference와 compact
+- 검증: Authority payload는 1 MiB 이하의 phase·fence·target·reservation·relocation reference와 compact
   cursor/count만 보유하고 full journal·reply payload·terminal completion map을 중복하지 않는다. Completion
-  bytes는 checkpoint logical stream의 immutable chunk만 소유한다. Completion 추가와 ACK·exact request-source
+  bytes는 relocation logical stream의 immutable chunk만 소유한다. Completion 추가와 ACK·exact request-source
   lease-expiry 전이는 새 immutable root를 만들고 expected authority store version CAS 한 번으로 root·checksum,
-  terminal completion count와 pending relay count를 함께 교체한다. 두 count는 참조 checkpoint에서 계산하며
+  terminal completion count와 pending relay count를 함께 교체한다. 두 count는 참조 relocation에서 계산하며
   accepted request count와 terminal completion count가 다르거나 pending relay count가 pending delivery entry
   수와 다르면 recovery error로 처리하고 `Completed`를 금지한다. Delivery state는 pending에서
   `terminalReceived`, `alreadyTerminal`, `sourceLeaseExpired` 중 하나로만 단조 전이한다. Root reference CAS
@@ -435,12 +450,12 @@ mesh 전체의 불필요한 재연결이 발생하지 않는가.
 
 우선순위: `P0`
 
-- 절차: Authority CAS와 content-addressed checkpoint Put의 provider invocation 직전·직후에 waiter cancellation,
+- 절차: Authority CAS와 content-addressed relocation Put의 provider invocation 직전·직후에 waiter cancellation,
   timeout과 응답 유실을 각각 주입한다. Input byte buffer는 operation 완료 전까지 동일 내용을 유지하고,
   성공 결과로 받은 byte buffer를 provider 내부 pool에서 재사용하려는 변이도 실행한다.
 - 검증: Invocation 전에 이미 취소된 operation은 I/O와 commit이 0건이다. Invocation 뒤 취소·timeout·응답 유실은
   no-commit으로 추정하지 않고 exact authority read와 expected fence로 결과를 reconcile한 뒤에만 retry한다.
-  Checkpoint Put은 같은 content reference를 verify·retry하고 authority에 연결되지 않은 committed Put은 orphan
+  Relocation Put은 같은 content reference를 verify·retry하고 authority에 연결되지 않은 committed Put은 orphan
   retention과 cleanup을 따른다. Provider는 operation 완료 뒤 input을 보관할 때 완료 전에 copy하며 success result
   bytes를 mutate·reuse하지 않는다. Mutable-buffer 언어 adapter의 defensive snapshot 뒤에도 checksum과 replay가
   같아야 한다.

@@ -80,7 +80,7 @@ public record ZLinkFrameworkRuntimeSnapshot(
     boolean workSealed,
     Optional<ZLinkTerminationReason> blockerReason,
     long pendingRequestCount,
-    long pendingTransferCount,
+    long pendingRelocationCount,
     long pendingStreamBarrierCount,
     Optional<ZLinkTerminationResult> terminalResult,
     long sequence,

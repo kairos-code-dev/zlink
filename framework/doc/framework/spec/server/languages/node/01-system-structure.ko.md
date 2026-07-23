@@ -82,7 +82,7 @@ subpath는 제공하지 않는다. 정확한 계약은
 |---|---|---|
 | channel/fanout/route handler | `providers` + handler 등록 표면 | channel이 그 handler group을 dispatch할 때 |
 | Entry Spot, user Spot | `providers` + `addEntrySpot(...)` / `addSpotFactory(...)` | MeshNode·SpotManager가 local Spot을 활성화할 때 |
-| Instance Spot | `providers` + `addInstanceSpotFactory(...)` | manager가 explicit create intent로 cold activation을 시작할 때 |
+| Instance Spot | `providers` + `addInstanceSpotFactory(...)` | Spot direct fluent call이 Instance cold activation을 시작할 때 |
 | Spot packet·subscribe·actor·timer handler | handler decorator + `zlinkDiscoverProviders(...)` | 그 Spot 실행 문맥에서 처리할 때 |
 | actor factory | `providers` + `addActorFactory(...)` | ActorManager가 actor를 생성할 때 |
 | stream session(또는 factory) | `providers` + `streams` 설정 | stream 연결을 session으로 활성화할 때 |
@@ -196,7 +196,7 @@ operator가 hook 전에 주입받은 `ZLinkFrameworkRuntime.retire(...)`를 호�
 `Retire`가 `Draining`을 시작했다면 새 `Shutdown`을 만들지 않고 그 shared operation에 합류한다.
 
 1. Framework runtime의 host maintenance barrier에서 신규 application admission을 닫는다.
-2. 이미 수락한 작업과 진행 중인 transfer·STREAM barrier를 deadline까지 처리한다.
+2. 이미 수락한 작업과 진행 중인 relocation·STREAM barrier를 deadline까지 처리한다.
 3. Spot·Actor authority, descriptor, listener와 raw transport를 Framework runtime이 정리한다.
 4. terminal result와 event를 완료한 뒤 monitoring observer를 닫는다.
 5. NestJS adapter가 registration과 backend context를 마지막에 정리한다.
@@ -242,7 +242,7 @@ Spot·Actor factory는 owner MeshNode에 등록한다. Spot direct와 Logical Mu
 | `configureSpotPublisher()` | Logical Multicast의 ROUTER 송신 설정 |
 | `addEntrySpot(TEntrySpot)` | Entry Spot handler registry 타입 |
 | `addSpotFactory(TSpot)` | 이 노드가 만들 수 있는 spot 타입 |
-| `addInstanceSpotFactory(type, TSpot, placement, transfer)` | 이 노드가 activation할 수 있는 actor-free Instance Spot 타입 |
+| `addInstanceSpotFactory(type, TSpot, placement, relocation)` | 이 노드가 activation할 수 있는 actor-free Instance Spot 타입 |
 | MeshNode channel client | Spot handler의 ChannelName send/request가 공유하는 client |
 
 중복 등록과 타입 규칙은
@@ -264,17 +264,18 @@ peer는 route mesh builder의 `connect(...)`로 지정한다.
 ### 7.2 Instance Spot 등록
 
 Instance Spot factory는 배포 사이에도 유지되는 stable type, actor-free Spot provider, placement limit과
-transfer policy를 함께 등록한다. 같은 MeshNode에서 같은 stable type이나 같은 provider class를 User Spot
+relocation policy를 함께 등록한다. 같은 MeshNode에서 같은 stable type이나 같은 provider class를 User Spot
 factory와 중복 등록하면 socket bind 전에 구성 오류로 실패한다.
 
 Instance Spot provider는 direct packet과 timer handler만 등록할 수 있다. Actor handler나 Logical Multicast
 subscription을 등록하면 location을 `Ready`로 바꾸기 전에 activation이 실패한다. Provider scope는 activation이
 실패하거나 Instance Spot이 닫힐 때 한 번만 정리한다.
 
-Manager의 explicit `create` 또는 `getOrCreate`만 global Spot RID, stable type, kind와 최초 Mesh를 durable
-creation intent로 기록한다. Cold Instance activation과 owner loss 뒤 reactivation은 이 intent를 사용한다.
-일반 message는 Spot RID만 받으며 missing RID에 intent를 만들거나 factory를 시작하지 않는다. Application은
-target node, owner token, generation 또는 retry option을 전달하지 않는다.
+Spot direct fluent call의 Instance intent만 global Spot RID, stable type과 최초 Mesh를 durable creation intent로
+기록한다. Stable type을 생략하면 선택한 Mesh의 serving descriptor에 distinct Instance type이 하나일 때 자동
+선택하고 여러 type이면 caller가 stable type을 명시한다. Marker가 없는 일반 message는 Spot RID만 받으며
+missing RID에 intent를 만들거나 factory를 시작하지 않는다. Application은 target node, owner token, generation
+또는 retry option을 전달하지 않는다.
 
 Ready location은 global Spot RID와 exact object generation을 포함하는 immutable `SpotRef`로 관측한다. 일반
 message는 ref가 아니라 Spot RID를 사용하고, exact ref는 close에만 사용한다. Store version과 owner fence는

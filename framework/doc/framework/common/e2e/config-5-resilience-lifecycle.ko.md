@@ -19,8 +19,17 @@
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 전용 key prefix. RL-C4에서 일시 정지 대상. |
-| provider | 2~3 | Config 1과 같은 ChannelName provider다. `AddLocationStore(...)`로 store를 등록하면 MeshNode descriptor가 자동 갱신된다. 시나리오에서 provider를 강제 종료·재시작·교체한다. |
+| relocation store | 1 | 공식 Redis relocation store extension이 사용하는 Redis instance. Location Store와 별도 key prefix와 등록 표면을 사용한다. Track F의 `Recreate`·`Snapshot` relocation payload와 accepted journal을 저장한다. |
+| provider | 2~3 | Config 1과 같은 ChannelName provider다. `AddLocationStore(...)`로 store를 등록하면 MeshNode descriptor가 자동 갱신된다. Automatic discovery lifecycle마다 Framework가 새 RID를 발급한다. 시나리오에서 provider를 강제 종료·재시작·교체한다. |
+| Object Server | 2 | Location Store와 Relocation Store를 등록한다. 두 node 모두 충분한 active·pending capacity를 게시하고 아래 stable type의 factory, 명시적 relocation policy와 필요한 adapter를 같은 capability로 등록한다. |
 | consumer | 시나리오별 | 지속 트래픽을 보내며 복구를 관측한다. |
+
+Track F의 Object Server는 standalone Actor, User Spot, Instance Spot을 각각 검증할 stable type을 등록한다.
+`Recreate` type은 factory와 policy만 등록하고, `Snapshot` type은 factory·policy와 Actor 또는 Spot
+RelocationAdapter를 함께 등록한다. Entry membership 시나리오는 `Snapshot` Actor type을 사용한다. User Spot
+aggregate 시나리오는 Spot과 member Actor를 모두 `Snapshot`으로 등록한다. Blocker를 검증할 때만 별도의
+`Disabled` participant type을 사용한다. Target node의 capability와 capacity는 성공 시나리오의 전체 bounded
+participant inventory를 수용할 수 있어야 한다.
 
 스크립트가 기본 배포를 시작한 뒤, 시나리오별로 provider 프로세스(또는 RL-C4의 store 프로세스)를
 SIGTERM·SIGKILL로 종료하거나 새 endpoint로 재기동한다.
@@ -46,7 +55,7 @@ snapshot에서 제거·추가가 반영되는지 확인하는 방식처럼
 
 로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
 폴더에 파일로 남기고, message flow 추적을 `key_transitions` 이상으로 켜 `corr=`로 디버깅한다. 특히
-crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는지 좁힌다.
+crash·termination·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는지 좁힌다.
 
 ## 4. 시나리오
 
@@ -56,15 +65,16 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 우선순위: `P1`
 
-**검증 질문:** 같은 논리 provider가 중단되었다가 같은 rid·endpoint로 재시작하면, 다운 구간에는
+**검증 질문:** provider가 중단되었다가 같은 endpoint와 새 RID로 재시작하면, 다운 구간에는
 정해진 오류가 발생하고 복구 뒤에는 consumer 재시작 없이 정상화되는가.
 
 - 절차: 이 시나리오에서는 대체 provider를 두지 않는다. provider에 `SIGTERM`을 보내 정상 종료를
-  시작하고 terminal `Drained`와 store descriptor snapshot에서 old descriptor 제거를 확인한다. down 상태에서
-  짧은 timeout의 target 미지정 request 한 건을 보낸 뒤 provider를 같은 rid·endpoint로 재시작한다.
-- 검증: 종료 전에 시작한 request는 drain deadline 안에서 정상 reply로 끝난다. old descriptor 제거 뒤의
+  시작하고 terminal `Stopped/None`과 store descriptor snapshot에서 old descriptor 제거를 확인한다. down 상태에서
+  짧은 timeout의 target 미지정 request 한 건을 보낸 뒤 provider를 같은 endpoint로 재시작한다. Automatic
+  discovery가 새 lifecycle RID를 발급하며 application은 이전 RID를 다시 설정하지 않는다.
+- 검증: 종료 전에 시작한 request는 `Shutdown` deadline 안에서 정상 reply로 끝난다. old descriptor 제거 뒤의
   target 미지정 request는 send readiness 한계 안에서 `RouteNotConnected`로 끝나며 자동 재전송되지
-  않는다. 재시작 뒤 MeshNode descriptor가 같은 RID·endpoint와 새 owner generation으로 다시 조회되고
+  않는다. 재시작 뒤 이전 RID와 다른 RID, 같은 endpoint를 가진 새 MeshNode descriptor가 조회되고
   `ConnectionReady` 뒤 follow-up request 20개가 모두 성공한다. consumer 재시작은 없다. crash restart는
   RL-A2의 old lease 만료 경로에서 별도로 검증한다.
 - 세부 동작: 재기동 복구.
@@ -73,18 +83,18 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 우선순위: `P2`
 
-**검증 질문:** provider가 다른 endpoint와 같은 RID로 재시작되어도 MeshNode descriptor가 새 주소로
+**검증 질문:** provider가 다른 endpoint와 새 RID로 replacement되어도 MeshNode descriptor가 새 주소로
 갱신되고 consumer가 이전 주소를 선택하지 않는가.
 
 - 절차: 처리 시간을 제어할 수 있는 request가 old provider handler에서 시작됐다는 evidence를 확인한 뒤
   provider를 `SIGKILL`한다. old MeshNode descriptor가 owner lease 만료로 성공 조회에서 제외될 때까지
-  기다린 다음, 다른 endpoint·같은 RID의 provider를 시작한다. 대체 provider는
-  `SetRoutingId(...)`/`routingId(...)`로 같은 RID를 설정한다.
+  기다린 다음, 다른 endpoint에서 provider replacement를 시작한다. Automatic discovery가 이전 lifecycle과
+  다른 새 RID를 발급하며 fixed RID 설정은 사용하지 않는다.
 - 검증: old in-flight request는 RL-B2의 crash 오류 계약대로 유한 시간 안에 끝난다. MeshNode
-  descriptor가 새 owner generation과 새 endpoint로 다시 조회되고, consumer가 old endpoint를 선택하지 않는다.
+  descriptor가 이전과 다른 RID, 새 owner generation과 새 endpoint로 다시 조회되고, consumer가 old endpoint를 선택하지 않는다.
   replacement 뒤 반복 request가 모두 새 provider evidence에 기록된다. (정상 종료 replacement 경로는
   Config 1 RM-A4, 여기서는 crash in-flight·반복 복구 관점을 검증한다.)
-- 세부 동작: 같은 논리 identity의 새 endpoint replacement. 이미 실행 중인 다른 provider가 처리를
+- 세부 동작: 새 lifecycle identity와 새 endpoint를 사용하는 replacement. 이미 실행 중인 다른 provider가 처리를
   계속하는 failover와 구분한다.
 
 #### RL-A3 client reconnect storm
@@ -95,8 +105,8 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 준비되고 messaging이 정상화되는가.
 
 - 절차: client 100개를 시작해 각각 request 한 건의 성공과 연결 준비를 확인한다 → server에
-  `SIGTERM`을 보내 terminal `Drained`와 old descriptor 제거를 기다린다 → 같은 rid·endpoint로 server를
-  재시작한다 → client별 `ConnectionReady`를 최대 30초까지 기다린다 → 각 client가 고유 correlation의
+  `SIGTERM`을 보내 terminal `Stopped/None`과 old descriptor 제거를 기다린다 → 같은 endpoint에서 새 RID로
+  server를 재시작한다 → client별 `ConnectionReady`를 최대 30초까지 기다린다 → 각 client가 고유 correlation의
   request를 한 건씩 보낸다.
 - 검증: 재시작 뒤 30초 안에 100개 client가 모두 `ConnectionReady`를 기록하고 100개 follow-up request가
   각각 한 번 성공한다. 중복 reply, 무한 reconnect loop, 남은 pending request가 없어야 한다. client
@@ -112,16 +122,17 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 
 - 절차: old와 new provider는 overlap 구간에 서로 다른 rid를 사용하고 version은 handler evidence에
   기록한다. request를 고정된 간격과 timeout으로 계속 보낸다. rolling 경로는 새 version provider 하나를
-  새 RID로 시작해 MeshNode descriptor 반영과 실제 request 성공을 확인한 뒤 old provider 하나를 `Drain(deadline)`으로
+  새 RID로 시작해 MeshNode descriptor 반영과 실제 request 성공을 확인한 뒤 old provider 하나를 `Retire(deadline)`로
   정상 종료하며, 같은 순서를 old provider가 없어질 때까지 반복한다. blue-green 경로는 green set 전체를
-  시작해 모든 MeshNode descriptor와 각 provider의 request evidence를 확인한 뒤 blue set을 drain한다. 각 drain은
-  `Draining=true` 반영과 terminal `Drained`를 확인하고, 다음 old provider를 내리기 전에 하나 이상의
+  시작해 모든 MeshNode descriptor와 각 provider의 request evidence를 확인한 뒤 blue set의 host를 하나씩
+  `Retire(deadline)`한다. 각 `Retire`는
+  `Draining=true` 반영과 terminal `Stopped/None`을 확인하고, 다음 old provider를 내리기 전에 하나 이상의
   serving new provider가 남아 있는지 runtime query로 확인한다.
 - 검증: 전환 구간의 모든 request가 설정한 timeout 안에 정상 reply로 끝나고 pending이 남지 않는다.
   각 단계에서 serving target이 0이 되는 순간이 없어야 한다. 완료 뒤 descriptor 성공 조회에는 새
   version set의 RID만 남고, 검증 구간의 신규 request evidence도 새 version에서만 기록된다. version은
   MeshNode descriptor의 존재만으로 추정하지 않고 실제 handler evidence로 판정한다. old endpoint로의
-  반복 timeout, old provider의 신규 handler-start evidence, `ForceStopping`은 없어야 한다.
+  반복 timeout, old provider의 신규 handler-start evidence, `ForceStopped` outcome은 없어야 한다.
 - 세부 동작: 무중단 배포 전환.
 
 #### RL-A5 provider flapping
@@ -129,13 +140,14 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 우선순위: `P2`
 
 **검증 질문:** provider B를 정상 종료·재시작하는 cycle을 반복해도 A의 처리는 유지되고 B의 location과
-연결이 매번 하나의 새 generation으로 수렴하는가.
+연결이 매번 하나의 새 lifecycle RID로 수렴하는가.
 
-- 절차: A·B 분산을 확인한다. 아래 cycle을 5회 반복한다: B에 `SIGTERM` → terminal `Drained`와 B descriptor
-  제거 확인 → target 미지정 request 10개가 모두 A에서 성공 → B를 같은 rid·endpoint로 재시작 → B의
-  새 owner generation row와 `ConnectionReady` 확인 → 최대 20개 request 안에 A·B handler evidence를
+- 절차: A·B 분산을 확인한다. 아래 cycle을 5회 반복한다: B에 `SIGTERM` → terminal `Stopped/None`과 B descriptor
+  제거 확인 → target 미지정 request 10개가 모두 A에서 성공 → B를 같은 endpoint와 새 RID로 재시작 → B의
+  새 descriptor와 `ConnectionReady` 확인 → 최대 20개 request 안에 A·B handler evidence를
   모두 확인. 다음 cycle은 이 준비가 끝난 뒤에만 시작한다.
-- 검증: 5회 모두 B의 유효한 descriptor는 최대 하나이고 generation은 직전 cycle보다 증가한다. B가 제외된
+- 검증: 5회 모두 종료한 B의 이전 RID는 성공 조회에서 제외되고 새 lifecycle RID의 유효한 descriptor만
+  하나다. B가 제외된
   구간의 request는 모두 A에서 성공하고, B 복구 뒤에는 A·B가 다시 처리한다. stale endpoint timeout,
   claim conflict, 중복된 유효 descriptor와 pending request가 없어야 한다. crash·lease 만료 반복은 RL-C2가
   다룬다.
@@ -176,7 +188,7 @@ crash·drain·failover 시나리오는 `corr=` 흐름으로 어디서 끊겼는�
 endpoint를 선택하지 않으며, 종료 직전에 완료된 request의 reply는 정상 수신되는가.
 
 - 절차: provider에 정상 종료(`StopAsync`/lifetime stop)를 요청한다.
-- 검증: 종료 후 provider의 MeshNode descriptor가 store에서 제거되고(MeshNode runtime snapshot에서 사라짐 — shutdown 경로의 owner lease 제거 + descriptor bulk remove) consumer가 그 endpoint로 더 가지 않는다(stale 회피). 종료 시점에 이미 완료된 request의 reply는 정상 수신된다. socket weight로 신규 부하만 제외하는 경로는 RL-B4·RL-B5에서, graceful drain lifecycle은 RL-A4와 Config 11에서 별도로 다룬다.
+- 검증: 종료 후 provider의 MeshNode descriptor가 store에서 제거되고(MeshNode runtime snapshot에서 사라짐 — `Shutdown` 경로의 owner lease 제거 + descriptor bulk remove) consumer가 그 endpoint로 더 가지 않는다(stale 회피). 종료 시점에 이미 완료된 request의 reply는 정상 수신된다. socket weight로 신규 부하만 제외하는 경로는 RL-B4·RL-B5에서, host `Retire` lifecycle은 RL-A4와 Config 11에서 별도로 다룬다.
 - 세부 동작: 정상 종료 시 descriptor 제거 + stale endpoint 회피.
 
 #### RL-B4 ChannelName weight 부하 제외 / 복원
@@ -194,13 +206,14 @@ endpoint를 선택하지 않으며, 종료 직전에 완료된 request의 reply�
   다른 노드가 처리한다(후보가 그 노드뿐이면 정해진 public error). 노드는 종료되지 않고 descriptor와
   기존 연결도 유지된다. weight 복원 뒤 다시 부하 분산 대상이 되어 request를 처리한다. consumer
   재시작은 없다. local getter 변경만으로 전파 완료를 판정하지 않는다.
-- 세부 동작: ChannelName weight 기반 select-one 부하 제외·복원(노드 종료와 graceful drain lifecycle 아님).
+- 세부 동작: ChannelName weight 기반 select-one 부하 제외·복원(host 종료 lifecycle 아님).
 
 > **`Weight`와 `Draining` 상태는 다른 축이다.** `Weight = 0`은 ChannelName의 신규 select-one 대상에서
-> 해당 membership만 제외한다. Drain은 MeshNode를 신규 자동 선택에서 제외할 뿐 아니라 node-local 신규
+> 해당 membership만 제외한다. `Retire`와 `Shutdown`의 admission seal은 MeshNode를 신규 자동 선택에서
+> 제외할 뿐 아니라 node-local 신규
 > application admission도 seal하므로, 호출자가 target을 직접 지정해 우회할 수 없다
-> ([54 §3~4](../../spec/server/54-graceful-drain-handoff.ko.md#3-drain-순서)). 이 시나리오는 channel
-> request의 weight 축만 검증하며 Actor·Spot drain 동작은 Config 11이 담당한다.
+> ([54 §4~6](../../spec/server/54-graceful-drain-handoff.ko.md#4-retire-진행-순서)). 이 시나리오는 channel
+> request의 weight 축만 검증하며 Actor·Spot `Retire`·`Shutdown` 동작은 Config 11이 담당한다.
 
 #### RL-B5 ChannelName weight 변경 중 in-flight 완료
 
@@ -263,22 +276,22 @@ descriptor가 성공 결과에서 제외되고 consumer가 정상 provider만 �
   미구현으로 표시한다. lease 만료의 정밀 검증은 Config 6 SF-C1이 담당한다.
 - 세부 동작: 비정상 종료 + owner lease 만료 stale 정리.
 
-#### RL-C3 프로세스 정상 정지·재시작 후 topology 재수렴
+#### RL-C3 프로세스 정상 정지·새 lifecycle 재시작 후 topology 재수렴
 
 우선순위: `P2`
 
-**검증 질문:** provider process를 정상 종료했다가 재시작하면 old location이 제거되고 새 owner
-generation으로 topology가 다시 수렴하며 같은 RID의 유효한 descriptor가 둘 남지 않는가.
+**검증 질문:** provider process를 정상 종료했다가 재시작하면 old location이 제거되고 새 RID의
+descriptor로 topology가 다시 수렴하며 이전 lifecycle descriptor가 남지 않는가.
 
 - 절차: provider process를 `SIGTERM`으로 정상 종료하고 descriptor 성공 조회에서 old descriptor가
-  제거됐는지 확인한다. 그 뒤 같은 RID·endpoint로 process를 재시작하고 store/runtime snapshot과
+  제거됐는지 확인한다. 그 뒤 같은 endpoint와 automatic discovery가 발급한 새 RID로 process를 재시작하고 store/runtime snapshot과
   지속 request를 관찰한다.
   실제 network partition과 `SIGSTOP`/`SIGCONT` pause는 연결·lease 조건이 다르므로 이 시나리오에 섞지
   않는다. network partition은 proxy/iptables 같은 별도 harness가 마련되면 별도 시나리오로 추가한다.
-- 검증: 종료 구간의 request 결과는 RL-A1의 restart 오류 계약을 따른다. 복구 뒤 provider가 새 owner
-  generation의 owner lease와 MeshNode descriptor를 등록하고 MeshNode topology가 다시 수렴해 messaging이 정상화된다.
-  같은 RID의 유효한 MeshNode descriptor는 하나뿐이며 old generation descriptor는 성공 결과에 남지 않는다.
-- 세부 동작: 정상 process restart 뒤 owner generation·topology 재수렴.
+- 검증: 종료 구간의 request 결과는 RL-A1의 restart 오류 계약을 따른다. 복구 뒤 provider가 새 RID의 owner
+  lease와 MeshNode descriptor를 등록하고 MeshNode topology가 다시 수렴해 messaging이 정상화된다.
+  이전 RID와 old generation descriptor는 성공 결과에 남지 않는다.
+- 세부 동작: 정상 process restart 뒤 새 lifecycle identity와 topology 재수렴.
 
 #### RL-C4 location store restart/outage 복구
 
@@ -444,12 +457,12 @@ monitor callback이 남지 않는가.
 우선순위: `P0`
 
 - 절차: Target capacity preflight와 source admission seal 사이에 application message를 queue 상한까지
-  제출한다. Reversible seal, exact inventory capture, target reservation과 transfer commit의 실행 순서를
+  제출한다. Reversible seal, exact inventory capture, target reservation과 relocation commit의 실행 순서를
   바꾸어 반복한다.
 - 검증: 성공으로 반환한 preflight 뒤 accepted work가 reservation 부족으로 유실되지 않는다.
   Reservation이 부족하면 source admission과 descriptor state를 원래대로 복원하고 `Blocked`로 종료한다.
-  Target replacement는 target attempt generation과 reservation만 바꾸며 stable transfer ID가 소유한 immutable
-  checkpoint, accepted journal, replay cursor와 operation terminal record를 다시 쓰거나 다른 key로 옮기지 않는다.
+  Target replacement는 target attempt generation과 reservation만 바꾸며 stable relocation ID가 소유한 immutable
+  relocation, accepted journal, replay cursor와 operation terminal record를 다시 쓰거나 다른 key로 옮기지 않는다.
 
 #### RL-F2 Actor owner ABA fence
 
@@ -474,7 +487,7 @@ monitor callback이 남지 않는가.
 
 우선순위: `P0`
 
-- 절차: 정상 ClientServer client→server 연결을 admission한 뒤 RouteMesh node·Spot·Actor·transfer command와
+- 절차: 정상 ClientServer client→server 연결을 admission한 뒤 RouteMesh node·Spot·Actor·relocation command와
   server→client application command를 각각 음성 fixture로 주입한다. 동시에 별도 정상 ClientServer 연결에서
   유효한 client→server request를 계속 처리한다.
 - 검증: ClientServer role과 direction allowlist에 없는 command는 application handler나 authority state에
@@ -485,18 +498,18 @@ monitor callback이 남지 않는가.
 
 우선순위: `P0`
 
-- 절차: Actor와 Instance Spot transfer를 target restore·journal replay가 끝난 `Activated`에서 멈춘다. Target
+- 절차: Actor와 Instance Spot relocation을 target restore·journal replay가 끝난 `Activated`에서 멈춘다. Target
   application call과 bound-session packet을 제출하고 source cleanup 전후에 source·target을 각각 종료한다.
   별도 실행에서는 source cleanup을 terminal로 확인한 뒤 authority `Completed` CAS를 수행하고 같은 call을
   다시 제출한다.
 - 검증: `Activated`에서는 restored target과 session route가 준비되어도 application·session ingress와 public
-  ready가 열리지 않는다. Transfer 시작 때 source node와 exact source owner ID·host lease generation을 durable
+  ready가 열리지 않는다. Relocation 시작 때 source node와 exact source owner ID·host lease generation을 durable
   subrecord에 고정하며 main owner가 target으로 바뀌어도 이 source token을 유지한다. `Completed` 전 crash는
-  immutable checkpoint를 사용한 replacement 하나로 수렴하고
+  immutable relocation을 사용한 replacement 하나로 수렴하고
   target에서 새 업무를 처리한 evidence가 없다. Source cleanup terminal은 current source owner token으로
   인증한 completion 또는 exact source lease expiry를 확인한 coordinator의 fenced CAS로 authority에 먼저
-  기록한다. 이 증거와 `Completed` CAS 뒤에만 steady authority로 정규화하고 ready·ingress를 열어 checkpoint
-  reference를 fenced release한다. `Completed` 뒤 owner loss는 종료된 transfer checkpoint를 replay하지 않고
+  기록한다. 이 증거와 `Completed` CAS 뒤에만 steady authority로 정규화하고 ready·ingress를 열어 relocation
+  reference를 fenced release한다. `Completed` 뒤 owner loss는 종료된 relocation을 replay하지 않고
   일반 owner-loss 결과로 처리한다.
 
 #### RL-F6 admitted descriptor update fence
@@ -512,38 +525,39 @@ monitor callback이 남지 않는가.
   application handler와 selection에 적용하지 않고 offending connection을 not-ready와 protocol error로
   종료한다. Reconnect한 새 physical connection은 service admission을 처음부터 다시 수행한다.
 
-#### RL-F7 transferred request reply ACK barrier
+#### RL-F7 relocated request reply ACK barrier
 
 우선순위: `P0`
 
 - 절차: 서로 다른 reply correlation을 가진 node·Channel·Spot·Actor·Instance·bound-session accepted request를
-  Transfer journal에 포함하고 target에서 처리해 reply를 만든다. `replyRelay`,
+  Relocation journal에 포함하고 target에서 처리해 reply를 만든다. `replyRelay`,
   `replyRelayAck`와 ACK 재전송을 각각 한 번씩 유실한다. 다른 반복에서는 원 caller의 timeout·cancellation,
   request-source connection 종료·재연결, request-source host lease expiry와 reply 도착을 경쟁시킨다.
-- 검증: Target은 stable transfer ID와 operation ID로 terminal completion을 checkpoint stream에 기록하고 current
+- 검증: Target은 stable relocation ID와 operation ID로 terminal completion을 relocation stream에 기록하고 current
   request record에 보존한 exact nonzero reply route로 응답한다. Operation ID를 reply route로 대신하지 않으며
   request 종류마다 원 correlation으로 terminal result 하나가 도착한다. Current request-source connection의
   `terminalReceived` 또는 `alreadyTerminal` ACK까지 relay를 재전송한다. ACK가
   유실되면 source가 이미 terminal이어도 같은 결과로 다시 ACK하며 application completion은 한 번뿐이다.
   Physical connection close는 terminal 증거가 아니므로 current route에서 relay를 계속한다. 모든 accepted
   request가 ACK되거나 accepted record에 고정한 exact request-source owner lease expiry로 caller terminal이
-  확정되기 전에는 source cleanup terminal, authority `Completed`와 checkpoint release를 수행하지 않는다.
-  Source lease가 유지된 partition이 host deadline을 넘으면 `ForceStopped`로 끝내되 reply bytes와 checkpoint는
+  확정되기 전에는 source cleanup terminal, authority `Completed`와 relocation release를 수행하지 않는다.
+  Source lease가 유지된 partition이 host deadline을 넘으면 `ForceStopped`로 끝내되 reply bytes와 relocation은
   recovery retention 동안 유지한다.
 
 #### RL-F8 manual source의 accepted work와 maintenance capture
 
 우선순위: `P0`
 
-- 절차: Location Store를 사용하지 않는 manual RouteMesh peer에서 target object로 장기 request와 one-way send를
+- 절차: Object role `None`이고 Location Store와 Relocation Store를 사용하지 않는 fixed-RID manual RouteMesh
+  peer에서 target object로 장기 request와 one-way send를
   각각 수락시킨 뒤 target host `Retire`를 시작한다. 첫 반복은 두 작업을 capture 전에 완료하고, 두 번째 반복은
   reversible seal deadline을 넘도록 handler를 지연한다. Manual peer를 재시작해 같은 RID로 새 service
   connection도 admission한다.
 - 검증: Manual peer lifecycle generation은 runtime이 만든 nonzero opaque equality token이며 숫자 대소로 restart를
   판정하지 않는다. Current physical connection handover가 이전 connection event를 fence한다. Connection-bound
   request와 one-way send는 durable accepted journal과 reply relay에 포함하지 않고 모두 `Captured` 전에 terminal
-  drain한다. 하나라도 deadline 안에 끝나지 않으면 transfer는 pre-Captured abort, `Retire`는
-  `Blocked/TransferDisabled`이고 source admission을 복원한다. Durable accepted journal은 exact source owner lease로
+  완료한다. 하나라도 deadline 안에 끝나지 않으면 relocation은 pre-Captured abort, `Retire`는
+  `Blocked/DeadlineExceeded`이고 source admission을 복원한다. Durable accepted journal은 exact source owner lease로
   fence할 수 있는 lease-backed accepted work만 기록한다.
 
 #### RL-F9 preflight deadline과 seal 경계
@@ -556,22 +570,94 @@ monitor callback이 남지 않는가.
   유지한다. Seal 뒤 timeout만 `ForceStopped/DeadlineExceeded`이며 bounded teardown을 수행한다. 두 결과가 같은
   reason을 사용하더라도 outcome과 state transition을 바꾸어 해석하지 않는다.
 
-#### RL-F10 Retire Actor의 target Entry membership
+#### RL-F10 Retire Actor와 User Spot aggregate 이전
 
 우선순위: `P0`
 
-- 절차: 첫 반복은 source Entry Spot에만 Actor를 둔 뒤 host `Retire`를 실행한다. Target offer와 Prepared
+- 절차: 첫 반복은 `Snapshot` policy와 Actor RelocationAdapter를 등록한 Actor를 source Entry Spot에 둔 뒤 host
+  `Retire`를 실행한다. Target offer와 Prepared
   evidence에 target node의 initialized Entry Spot identity를 기록하고 NewOwner CAS 전후 authority를 관찰한다.
-  두 번째 반복은 Actor를 User Spot에 join한 상태로 `Retire`를 호출한다.
+  두 번째 반복은 `Snapshot` policy와 Spot RelocationAdapter를 등록한 User Spot에 `Snapshot` Actor를 join한
+  상태로 `Retire`를 호출한다. 두 target은 같은 stable type capability, adapter capability와 aggregate 전체를
+  수용할 capacity를 게시한다.
 - 검증: Entry member Actor는 ObjectGeneration을 유지하면서 owner node, AuthorityOwnerGeneration과 current Spot을
-  target Entry Spot RID·ObjectGeneration·kind로 한 CAS에서 바꾼다. Target factory·restore와 `OnJoinedActor`가
-  journal replay보다 먼저 끝나고 source `OnLeaveActor`와 old Entry membership 제거는 durable cleanup에 포함된다.
-  Admission은 Completed, bound-session route ACK와 steady normalization 전까지 닫혀 있다. User Spot member가 있는
-  반복은 seal 전에 `Blocked/TransferDisabled`로 끝나며 authority와 admission을 바꾸지 않는다.
+  target Entry Spot RID·ObjectGeneration·kind로 한 CAS에서 바꾼다. Target factory가 만든 Actor에 Snapshot
+  Adapter의 `Restore`와 journal staging을 끝낸 뒤 authority를 commit하고, target Entry Spot `OnActorRelocated`와
+  journal replay를 수행한다. 이어서 source Entry Spot `OnLeaveActor`와 old Entry membership 제거를 durable
+  source cleanup으로 완료한다.
+  이 `Restore` 검증은 `Snapshot` participant에만 적용하며 RL-F10에 `Recreate` 반복을 섞지 않는다.
+  Callback·replay·cleanup은 current attempt에서 retry-safe하며 source cleanup 뒤 `Completed`, bound-session
+  route ACK와 steady normalization 전까지 admission을 닫는다. User Spot member가 있는
+  반복은 Spot과 current member Actor 전체의 Snapshot payload와 accepted journal을 하나의 immutable relocation
+  root에 저장하고 membership을 유지한 채 owner·membership aggregate commit에 성공한다. User Spot aggregate는
+  Actor join·leave·relocation callback을 호출하지 않는다. `RelocationDisabled` blocker가 필요하면 이 성공 반복을
+  바꾸지 않고 별도의 `Disabled` participant fixture로 preflight abort와 source authority 보존을 검증한다.
+
+#### RL-F11 readiness-first relocation과 느린 turn 격리
+
+우선순위: `P0`
+
+- 절차: 한 source Framework process에 standalone Actor, User Spot aggregate와 Instance Spot을 합쳐 80개의
+  relocation unit을 배치한다. 일부 unit의 현재 turn은 network I/O barrier에서 지연하고 나머지는 즉시
+  완료되게 한 뒤 `Retire`를 시작한다. Framework relocation notification이 각 execution queue에 도달한 시각,
+  turn boundary, permit 획득, seal과 relocation terminal marker를 기록한다.
+- 검증: 현재 turn을 끝낸 unit부터 종류와 등록 순서에 관계없이 relocation을 시작한다. 느린 unit은
+  `WaitingTurn`인 동안 기존 owner에서 업무를 계속 처리하며 ready unit을 막지 않는다. Process 전체 active
+  outbound·inbound relocation은 각각 64를 넘지 않고, permit을 얻지 못한 unit에는 seal·hold queue가 생기지
+  않는다. User Spot과 member Actor는 하나의 aggregate permit과 commit generation을 사용하며 개별 Actor가
+  먼저 공개되지 않는다.
+- 세부 동작: Framework queue notification, readiness-first 선택, bounded sliding concurrency와 aggregate 단위.
+
+#### RL-F12 User Spot queue·hold relay·timer 자동 복원
+
+우선순위: `P0`
+
+- 절차: Snapshot User Spot과 member Actor에 periodic timer를 등록한다. Source User Spot의 현재 turn `R0`를
+  barrier에서 지연하고, 아직 실행하지 않은 direct message `Q1 -> Q2`, Actor message `A1 -> A2`와 pending
+  timer tick을 queue에 수락시킨다. Relocation notification 뒤 `R0`만 완료시킨다. Source seal을 확인한 다음
+  이전 owner route로 request와 one-way `H1 -> H2`를 추가 제출하고 target restore·authority commit·route
+  normalization을 순서대로 진행한다.
+- 검증: Framework는 `R0` 뒤 다음 application turn을 source에서 실행하지 않는다. `Q1`, `Q2`, `A1`, `A2`,
+  logical timer registration과 pending tick은 application state와 함께 immutable relocation payload에 저장된다.
+  Target은 native timer handle을 새로 만들고 application이 timer를 다시 등록하지 않아도 timer name, interval,
+  overrun policy, 마지막 완료 sequence와 다음 예정 시각을 복원한다. Application 실행 순서는 frozen queue와
+  pending tick의 원래 ordering boundary를 보존한 뒤 `H1 -> H2`, Ready 이후 target이 직접 수락한 message
+  순서이며 각 operation과 tick은 정확히 한 번만 관측된다.
+- 세부 동작: 현재 turn만 source에서 완료, 미실행 queue와 logical timer의 durable relocation, seal 중 ingress
+  hold와 commit 뒤 relay.
+
+#### RL-F13 relocation count·callback·payload permit
+
+우선순위: `P0`
+
+- 절차: 첫 반복은 encoded relocation payload가 각각 약 1 MiB인 80개의 standalone Actor를 동시에 ready로
+  만든다. 두 번째 반복은 64 MiB payload를 반환하는 Actor를 여덟 개 준비한다. Capture·Restore adapter와
+  instrumented Relocation Store가 active operation, callback concurrency와 encoded bytes in flight의 high-water를
+  기록한다. 별도 반복에서는 256 MiB를 넘는 하나의 User Spot aggregate를 준비한다.
+- 검증: 기본 설정에서 active outbound·inbound relocation high-water는 각각 64 이하이고 Capture·Restore
+  callback은 각각 8 이하이며 encoded payload in flight는 256 MiB 이하이다. 1 MiB 반복은 active unit 64개까지
+  진행하고 나머지는 source admission을 유지한다. 64 MiB 반복은 payload 단계가 동시에 네 개를 넘지 않는다.
+  256 MiB를 넘는 단일 aggregate는 다른 relocation과 겹치지 않고 단독 진행한다. Count·callback·byte permit을
+  모두 확보하기 전에 해당 unit의 source queue를 seal하면 실패다.
+- 세부 동작: 기본 `64/64`, `8/8`, 256 MiB의 독립 gate와 oversized aggregate 단독 실행.
+
+#### RL-F14 precommit abort의 frozen·hold queue 복원
+
+우선순위: `P0`
+
+- 절차: User Spot의 현재 turn을 완료한 뒤 frozen queue `Q1 -> Q2`와 seal 중 hold queue `H1 -> H2`를 만든다.
+  Target reservation failure와 Restore failure를 authority commit 전에 각각 주입한다. Abort authority CAS,
+  route abort ACK와 source steady normalization을 단계별로 지연한다.
+- 검증: Abort가 durable하게 확정되기 전에는 source admission을 열지 않는다. 정상화 뒤 source는
+  `Q1 -> Q2 -> H1 -> H2` 순서와 original operation ID·reply route를 보존해 정확히 한 번 처리한다. Frozen
+  queue나 hold queue를 다른 owner에 숨겨서 제출하지 않고, timer registration과 pending tick도 source의 같은
+  logical schedule로 복원한다. Abort cleanup 뒤 relocation payload와 target staging이 남지 않는다.
+- 세부 동작: relocation 전 실패에서 queue·timer·reply identity의 source 복원.
 
 ## 5. 완료 기준
 
-- `P1`과 Track F의 `P0` 시나리오는 지원 언어에서 구현한다. `P2`는 선택이며
-  미구현 이유를 남긴다.
+- 모든 `P0`와 connection liveness 묶음 `RL-E1`~`RL-E5`는 네 runtime lane과 다섯 public 언어 표현에서
+  구현한다. 모든 `P1`은 해당 formal capability를 지원하는 언어에서 구현한다. `P2`는 선택이며 미구현
+  이유를 남긴다.
 - 복구 시나리오는 복구 후 follow-up request 성공 + runtime query MeshNode descriptor snapshot의 제거/추가 반영으로 관측한다(내부 pending/stale 상태는 public 표면이 아니므로 직접 단언하지 않는다).
 - public contract만 직접 호출하고 `ensure`로 단언한다.

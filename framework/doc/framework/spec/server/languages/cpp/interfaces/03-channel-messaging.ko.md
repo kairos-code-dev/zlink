@@ -97,8 +97,10 @@ struct object_capacity_options_t {
     std::uint32_t pending_limit = 128;
 };
 
-struct object_type_capacity_t {
-    std::uint32_t limit;
+struct object_placement_options_t {
+    std::vector<std::string> placement_profiles;
+    std::optional<std::uint32_t> active_limit;
+    std::optional<std::uint32_t> pending_limit;
 };
 
 class mesh_node_builder_t {
@@ -140,23 +142,25 @@ public:
     mesh_node_builder_t &add_spot_factory(
       std::string stable_type,
       std::function<std::shared_ptr<TSpot>()> factory,
-      transfer_policy_t<TSpot> transfer,
-      std::optional<object_type_capacity_t> capacity = std::nullopt);
+      relocation_policy_t<TSpot> relocation,
+      object_placement_options_t placement);
 
     template <typename TSpot>
       requires std::derived_from<TSpot, instance_spot_t>
     mesh_node_builder_t &add_instance_spot_factory(
       std::string stable_type,
       std::function<std::shared_ptr<TSpot>()> factory,
-      transfer_policy_t<TSpot> transfer,
-      std::optional<object_type_capacity_t> capacity = std::nullopt);
+      relocation_policy_t<TSpot> relocation,
+      object_placement_options_t placement);
 
     template <typename TActor, typename TActorFactory>
+      requires std::derived_from<TActor, actor_t> &&
+        std::derived_from<TActorFactory, actor_factory_t<TActor>>
     mesh_node_builder_t &add_actor_factory(
       std::string stable_type,
-      TActorFactory factory,
-      transfer_policy_t<TActor> transfer,
-      std::optional<object_type_capacity_t> capacity = std::nullopt);
+      std::shared_ptr<TActorFactory> factory,
+      relocation_policy_t<TActor> relocation,
+      object_placement_options_t placement);
 
 };
 
@@ -239,8 +243,12 @@ struct mesh_node_snapshot_t {
     std::string endpoint;
     mesh_node_state_t state;
     object_role_t object_role;
+    std::int64_t application_version;
     std::uint8_t placement_weight;
     object_capacity_snapshot_t object_capacity;
+    std::uint64_t placement_reservation_failure_count;
+    std::optional<std::string> last_placement_reservation_failure;
+    std::vector<object_capability_t> object_capabilities;
     std::uint64_t sequence;
     std::chrono::system_clock::time_point observed_at;
     std::vector<std::string> descriptor_sources;
@@ -463,17 +471,24 @@ Object role `none`인 explicit manual topology에서만 허용한다.
 
 Object role `server`는 `client` 기능을 포함한다. `client`와 `server`는 Location Store가 필수이며 `none`은
 manager, factory와 hidden local object runtime을 만들지 않는다. Placement weight는 `0..100`, 기본값은 100이고
-0은 새 create·transfer target에서만 제외한다. Capacity 기본값은 active 10000, pending 128이며 type별 limit은
-`1..2147483647`이다. Actor·User Spot·Instance Spot factory는 transfer policy를 항상 명시하며 이를 생략하는
-overload는 없다.
+0은 새 create·relocation target에서만 제외한다. Capacity 기본값은 active 10000, pending 128이며 type별 limit은
+`1..2147483647`이다. `object_placement_options_t`는 type별 active·pending limit과 UTF-8 1..255 byte
+placement profile collection을 함께 등록한다. Profile과 capacity를 생략하면 node-wide 설정을 공유한다.
+Actor·User Spot·Instance Spot factory는 relocation policy를 항상 명시하며 이를 생략하는
+overload는 없다. Snapshot Actor factory에는 `actor_relocation_adapter_t<TActor>`, Snapshot User·Instance Spot
+factory에는 `spot_relocation_adapter_t<TSpot>`가 필요하다. Factory 종류와 adapter 종류 또는 instance type이
+일치하지 않으면 socket bind 전에 configuration error로 실패한다.
+
+Factory와 Entry Spot member는 Object role `server`에서만 유효하다. 단일 C++ builder가 이 member를 함께
+노출하더라도 `none` 또는 `client` role에 factory를 등록한 조합은 socket bind 전에 configuration error로 실패한다.
 
 Entry Spot RID는 Framework가 startup에서 발급한다. Caller가 RID를 전달하거나 Entry Spot별 option을 구성하는
 public member는 제공하지 않는다. Entry Spot factory 등록과 초기화가 완료된 뒤에만 Framework가 descriptor와
 resolver에 RID를 게시한다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
-Spot type과 stateful object capability collection은 각각 최대 1024개이고, capability 하나의 readable state
-contract ID도 최대 1024개다. Runtime은 완성된 descriptor를 socket bind 전에 한 번에 검증한다. Bound를 넘으면
+Spot type과 stateful object capability collection은 각각 최대 1024개다. Runtime은 완성된 descriptor를 socket
+bind 전에 한 번에 검증한다. Bound를 넘으면
 startup을 실패시키며 collection을 truncate·split하거나 descriptor 일부를 게시하지 않는다.
 
 Topology 등록은 `zlink_framework_options_t`의 `add_route_mesh(...)`,
@@ -687,7 +702,7 @@ enum class framework_error_kind_t {
     routing_id_conflict = 31,
     spot_generation_stale = 32,
     spot_moving = 33,                  // retriable
-    transfer_data_lost = 34            // non-retriable
+    relocation_data_lost = 34            // non-retriable
 };
 
 class framework_exception_t : public std::exception {
@@ -770,10 +785,20 @@ public:
     task_t<TActor> async();
 };
 
+class message_metadata_t {
+public:
+    std::optional<std::string_view> find(std::string_view key) const;
+    bool contains(std::string_view key) const;
+    bool empty() const noexcept;
+    const std::map<std::string, std::string> &values() const noexcept;
+};
+
 struct handler_context_t {
     std::string channel_name;
     std::string packet_name;
     std::string content_type;
+    message_metadata_t metadata;
+    std::optional<std::string> correlation_id;
 };
 
 struct request_context_t : handler_context_t {};
@@ -816,9 +841,9 @@ serializer를 통해 typed payload로 변환하고, DI에서 owner를 resolve한
 
 handler method는 payload만 받을 수도 있고, payload 뒤에 typed context를 함께 받을 수도
 있다. request handler는 `request_context_t`, send handler는 `send_context_t`, event/publish
-handler는 `publish_context_t`를 받는다. context에는 channel, packet 이름, content type처럼
-사용자가 정책 판단에 쓰는 값만 둔다. raw multipart header나 dispatch table은 public context로
-노출하지 않는다.
+handler는 `publish_context_t`를 받는다. Channel context는 ChannelName, packet name, content type, immutable
+metadata와 correlation ID를 제공한다. Node direct context는 MeshName, source·target RID와 같은 metadata·correlation
+정보를 제공한다. Raw multipart header나 dispatch table은 public context로 노출하지 않는다.
 
 handler filter는 `.NET`의 handler filter처럼 handler 호출 앞뒤의 공통 처리를 맡는다.
 일반 application 설정에서는 `options.use_filter<TFilter>()`로 등록한다. filter 타입은
@@ -917,6 +942,9 @@ public:
       const std::string &channel_name) const;
 };
 
+class spot_send_call_t;
+class spot_request_call_t;
+
 class route_client_t {
 public:
     ~route_client_t();
@@ -945,16 +973,44 @@ public:
       TRequest request);
 
     template <typename TMessage>
-    route_send_call_t send_to_spot(spot_rid_t target, TMessage message);
+    spot_send_call_t send_to_spot(spot_rid_t target, TMessage message);
 
     template <typename TRequest>
-    channel_request_call_t request_to_spot(spot_rid_t target, TRequest request);
+    spot_request_call_t request_to_spot(spot_rid_t target, TRequest request);
 };
 
 class route_send_call_t {
 public:
     route_send_call_t &metadata(std::string key, std::string value);
     task_t<submit_result_t> submit();
+};
+
+class spot_send_call_t {
+public:
+    spot_send_call_t &metadata(std::string key, std::string value);
+    spot_send_call_t &instance_spot();
+    spot_send_call_t &instance_spot(std::string stable_type);
+    spot_send_call_t &in_mesh(std::string mesh_name);
+    spot_send_call_t &placement_profile(placement_profile_t profile);
+    spot_send_call_t &affinity_key(affinity_key_t key);
+    task_t<submit_result_t> submit();
+};
+
+class spot_request_call_t {
+public:
+    spot_request_call_t &timeout(std::chrono::milliseconds timeout);
+    spot_request_call_t &metadata(std::string key, std::string value);
+    spot_request_call_t &instance_spot();
+    spot_request_call_t &instance_spot(std::string stable_type);
+    spot_request_call_t &in_mesh(std::string mesh_name);
+    spot_request_call_t &placement_profile(placement_profile_t profile);
+    spot_request_call_t &affinity_key(affinity_key_t key);
+
+    template <typename TReply>
+    task_t<TReply> async();
+
+    template <typename TReply>
+    task_t<TReply> yield();
 };
 
 class fanout_publish_call_t {
@@ -985,6 +1041,17 @@ public:
 
 } // namespace zlink::framework
 ```
+
+`send_to_spot(...)`과 `request_to_spot(...)`의 target은 항상 global `spot_rid_t` 하나다. Fluent option은
+Missing Instance Spot의 cold activation intent를 표현하며 address에 MeshName, stable type, owner RID 또는
+generation을 추가하지 않는다. Instance marker를 설정하지 않은 call은 existing-only이고 Missing RID에서
+target-not-found로 끝난다.
+
+`instance_spot()`은 stable type을 생략하고 `instance_spot(stable_type)`은 stable type을 명시한다.
+`in_mesh(...)`, `placement_profile(...)`과 `affinity_key(...)`는 Instance marker와 함께 Missing RID의 최초
+placement에만 적용한다. Marker와 각 option은 한 call에서 한 번만 설정할 수 있고 중복 설정은
+`invalid_configuration`이다. `submit()`, `async<TReply>()` 또는 `yield<TReply>()` 가운데 terminal operation도
+한 번만 시작할 수 있으며 두 번째 호출은 `already_submitted`다.
 
 Public API는 transport 종류와 무관하게 channel name과 typed payload를 기준으로 유지한다.
 `publisher_t::publish(...)`는 typed event의 packet name을 topic으로 사용하는 편의 호출과 topic을
@@ -1050,8 +1117,11 @@ framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성
 struct route_handler_context_t {
     std::string mesh_name;
     zlink::routing_id_t source_node_rid;
+    zlink::routing_id_t target_node_rid;
     std::string packet_name;
     std::string content_type;
+    message_metadata_t metadata;
+    std::optional<std::string> correlation_id;
 };
 class channel_client_t {
 public:

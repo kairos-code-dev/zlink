@@ -106,7 +106,8 @@ export interface ZLinkActorSendCall {
 
 `create`와 `getOrCreate`가 반환하는 call은 single-use다. 같은 option을 두 번 설정하면
 `InvalidConfiguration`, terminal `submit(...)`을 두 번 호출하면 `AlreadySubmitted`다. `inMesh(...)`를
-생략했는데 eligible Mesh가 둘 이상이면 `MeshSelectionRequired`, 하나도 없으면 `MeshNotFound`다.
+생략했는데 eligible Mesh가 둘 이상이면 `MeshSelectionRequired`, object-role Mesh가 하나도 없으면
+`ObjectClientNotConfigured`다. 명시한 Mesh가 없으면 `MeshNotFound`다.
 `placementProfile`과 `affinityKey`는 UTF-8 1..255 bytes이며 target RID나 predicate를 공개하지 않는다.
 
 `create`는 같은 ActorId의 ready incarnation이 있으면 `ActorAlreadyExists`, stable type이 다르면
@@ -118,6 +119,11 @@ Actor create는 선택한 owner MeshNode의 Entry Spot membership과 Ready barri
 Ready 이후 one-way message는 Actor queue에 직접 제출한다. Resolve 또는 queue admission 이후 stale route가
 확인되어도 Framework는 새 owner를 찾아 같은 operation을 hidden retry하지 않는다.
 
+`ZLinkActorContext.spotRid`가 없으면 Actor는 current Entry Spot member이고 값이 있으면 해당 User Spot member다.
+같은 상태를 나타내는 별도 boolean이나 mutable Spot instance를 제공하지 않는다. `findSpot(actorId)`도 current User
+Spot membership만 `SpotRef`로 반환하며 Entry Spot에서는 `undefined`다. Factory는 target attempt마다 새 Actor와
+context를 만들고 cross-node restore가 실패한 instance를 다음 attempt에 재사용하지 않는다.
+
 ## 3. Session binding
 
 Session binding은 `ActorRef.actorId + objectGeneration`의 exact incarnation을 고정한다. Local Actor instance를
@@ -128,6 +134,6 @@ Session binding은 `ActorRef.actorId + objectGeneration`의 exact incarnation을
 교체되거나 binding generation이 바뀌면 이전 operation을 새 connection으로 retarget하거나 hidden retry하지
 않는다. Disconnect는 binding만 해제하며 Actor와 Spot membership은 유지한다.
 
-Public trace category는 `actor-transfer`다. 의미와 검증 기준은
+Public trace category는 `actor-relocation`다. 의미와 검증 기준은
 [Actor model](../../../22-actor-model.ko.md), [Spot·Actor membership](../../../23-spot-actor.ko.md),
 [Session Actor dispatch](../../../31-session-actor-dispatch.ko.md)가 소유한다.

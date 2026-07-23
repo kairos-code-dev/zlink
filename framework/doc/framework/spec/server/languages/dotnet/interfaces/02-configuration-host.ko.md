@@ -62,8 +62,8 @@ Framework를 등록하면 다음 service가 public DI surface로 제공된다.
 | service | lifetime | 책임 |
 |---|---|---|
 | `IZLinkRouteClient` | singleton | Node direct와 ChannelName send/request |
-| `IZLinkSpotClient` | singleton | global SpotRid direct send/request |
-| `IZLinkSpotManager` | singleton | Spot 생성, resolve와 종료 |
+| `IZLinkSpotClient` | singleton | global SpotRid direct send/request와 명시적 Instance cold activation |
+| `IZLinkSpotManager` | singleton | User Spot 생성, resolve와 exact 종료 |
 | `IZLinkSpotPublisherClient` | singleton | Spot Logical Multicast publish |
 | `IZLinkFanoutClient` | singleton | classic fanout ChannelName에 typed event publish |
 | `IZLinkActorClient` | singleton | global ActorId direct send/request |
@@ -82,7 +82,7 @@ service locator로 사용하지 않고 constructor injection을 사용한다.
 
 ## 5. Redis location store 등록
 
-자동 discovery, 분산 Spot·Actor address, Instance Spot activation 또는 Actor transfer를 사용하는 host는
+자동 discovery, 분산 Spot·Actor address, Instance Spot activation 또는 Actor relocation을 사용하는 host는
 `Zlink.Framework.Locations.Redis`가 제공하는 store instance를 만든 뒤 root에 명시적으로 등록한다.
 
 ```csharp
@@ -90,14 +90,14 @@ services.AddZLinkFramework(options =>
 {
     options.AddLocationStore(
         new ZLinkRedisLocationStore(redisOptions)); // Location record, lease와 owner authority를 함께 맡는다.
-    options.AddTransferStore(
-        new ZLinkRedisTransferStore(transferOptions)); // immutable transfer payload를 별도 capability로 보관한다.
+    options.AddRelocationStore(
+        new ZLinkRedisRelocationStore(relocationOptions)); // immutable relocation payload를 별도 capability로 보관한다.
 });
 ```
 
-Redis 전용 registration helper는 제공하지 않는다. Root의 `AddLocationStore(...)`와 `AddTransferStore(...)`는
+Redis 전용 registration helper는 제공하지 않는다. Root의 `AddLocationStore(...)`와 `AddRelocationStore(...)`는
 각 interface instance를 하나씩 받는다. Location instance는 authority CAS와 generic placement
-Reserve·Commit·Abort를 반드시 제공하며 Transfer instance는 immutable payload operation만 제공한다. 한 instance가
+Reserve·Commit·Abort를 반드시 제공하며 Relocation instance는 immutable payload operation만 제공한다. 한 instance가
 두 capability를 함께 구현하는 것을 공식 Redis 계약으로 제공하지 않는다.
 
 Manual peer만 사용하고 분산 location 기능을 사용하지 않는 MeshNode는 location store 없이 시작할 수 있다.
@@ -125,11 +125,11 @@ Host는 network bind 전에 다음 조건을 검증한다.
 - 같은 owner namespace의 handler key 중복
 - Spot, Actor와 STREAM factory의 owner 관계
 - Object role의 중복 선택, Client·Server role의 Location Store 등록과 None role의 factory 부재
-- Actor·User Spot·Instance Spot의 stable type·구현 class 중복, explicit transfer policy와 type별 capacity
+- Actor·User Spot·Instance Spot의 stable type·구현 class 중복, explicit relocation policy와 type별 capacity
 - Node placement weight·active/pending capacity와 placement profile 범위
 - Host `ApplicationVersion` 범위와 `MaintenanceWave` 형식
-- `Snapshot` policy의 state contract ID·adapter type
-- `Recreate` 또는 `Snapshot` factory가 하나라도 있을 때 Transfer Store가 정확히 하나 등록되었는지 여부
+- `Snapshot` policy의 Actor·Spot adapter type과 factory 대상의 일치 여부
+- `Recreate` 또는 `Snapshot` factory가 하나라도 있을 때 Relocation Store가 정확히 하나 등록되었는지 여부
 - 자동 discovery 또는 분산 location 기능에 필요한 store instance
 - automatic discovery·object role과 fixed routing ID의 잘못된 조합, RID prefix 형식
 - TLS certificate, key와 trust 설정

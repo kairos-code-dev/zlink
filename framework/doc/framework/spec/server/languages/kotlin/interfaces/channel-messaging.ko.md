@@ -5,6 +5,11 @@
 Kotlin은 Java Channel client와 call을 사용하고 `CompletionStage.await()`로 기다린다. Coroutine extension은
 ChannelName과 typed reply를 관용적으로 투영하지만 별도 request 상태 기계를 만들지 않는다.
 
+Spot direct send/request는 Channel call로 축소하지 않는다. Java `ZLinkRouteClient`가 반환하는
+`ZLinkSpotSendCall`과 `ZLinkSpotRequestCall`을 유지해야 Missing Instance cold activation의
+`instanceSpot`, `inMesh`, `placementProfile`과 `affinityKey`를 terminal submit 전에 구성할 수 있다. Kotlin의
+Spot 전용 extension과 exact JVM signature는 [Spot 인터페이스](spots.ko.md)가 소유한다.
+
 ## Kotlin source signature
 
 ```kotlin

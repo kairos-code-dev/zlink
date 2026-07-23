@@ -46,7 +46,7 @@ remote handler completion을 뜻하지 않는다.
 
 | 필드 | 닫힌 값 |
 |---|---|
-| `surface` | `node`, `channel`, `spot`, `instance_spot`, `logical_multicast`, `actor`, `stream`, `classic_fanout`, `actor_transfer` |
+| `surface` | `node`, `channel`, `spot`, `instance_spot`, `logical_multicast`, `actor`, `stream`, `classic_fanout`, `actor_relocation` |
 | `message_kind` | `send`, `request`, `response`, `error`, `publish`, `control` |
 | `flow_origin` | `inbound`, `timer`, `application`, `lifecycle` |
 
@@ -179,7 +179,7 @@ sink callback 실패는 bounded fallback logger에만 기록하고 다시 runtim
 - Spot direct application queue admission과 handler completion
 - Instance Spot resolve·claim·activation barrier, application admission과 post-submit one-way drop
 - Logical Multicast origin admission, remote target submit, local match와 target drop
-- Actor queue admission, handler completion과 transfer terminal result
+- Actor queue admission, handler completion과 relocation terminal result
 - STREAM session receive, Actor dispatch, reply와 bound-session send
 - classic fanout publish·receive와 Framework가 원인을 확인한 drop
 - request timeout, cancellation, shutdown과 dispatch error

@@ -1,6 +1,6 @@
 # .NET SpotActorTransfer E2E feature map
 
-기준 문서: `framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md`
+기준 문서: `framework/doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md`
 
 | 시나리오 | 상태 | 근거 |
 |----------|------|------|

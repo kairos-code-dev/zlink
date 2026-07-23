@@ -34,15 +34,19 @@ Call object는 operation 종류에 맞는 terminator만 제공한다. 언어별 
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 쓰는 공유 Redis. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록한다. |
-| play 노드 | 2 (`play-a`, `play-b`) | Entry Spot + `TurnProbeSpot` + actor mailbox + timer + worker. MeshNode ROUTER 하나에 ChannelName·Spot·Actor를 등록하고 descriptor와 Spot location row를 자동 게시한다. |
+| play 노드 | 2 (`play-a`, `play-b`) | Location Store를 등록한 Object Server. Entry Spot, stable User Spot type `turn-probe.spot`, stable Actor type `turn-probe.actor`의 factory를 제공한다. 두 factory는 명시적 `Disabled` policy를 사용하고 placement weight `100`, node capacity active `128`·pending `32`를 고정한다. `TurnProbeSpot` + actor mailbox + timer + worker를 실행하고 descriptor와 Spot·Actor location row를 자동 게시한다. |
 | delay service | 2 (`delay-a`, `delay-b`) | ChannelName request를 받아 지정한 시간 뒤 reply한다. handler가 기다릴 **framework request** 역할이다. |
 | **external API** | 1 (`ext-api`) | **framework 밖의 순수 HTTP 서버.** 지정한 시간 뒤 JSON을 돌려준다. framework HTTP client가 호출할 **외부·레거시 API** 역할이다. zlink channel이 아니다. |
-| session gateway | 2 (`session-a`, `session-b`) | stream session을 받고 play 노드에 시나리오 packet을 relay한다. |
+| session gateway | 2 (`session-a`, `session-b`) | Location Store를 등록한 Object Client. stream session을 받고 global Actor·Spot address로 play 노드에 시나리오 packet을 relay하며 factory와 placement target은 제공하지 않는다. |
 | consumer | 시나리오별 | 언어별 stream connector로 session gateway에 접속한다. |
 
 `TurnProbeSpot`은 상태를 가진 작은 probe spot이다. handler는 evidence에 `started`, `held`,
 `released`, `resumed`, `completed` 같은 marker와 **turn id**를 남긴다. actor와 timer handler도
 mailbox id, 실행 순서, 처리 노드를 evidence로 남긴다.
+
+Track E의 Entry Spot, User Spot A·B와 Actor는 모두 `play-a`에 배치해 same-node join을 검증한다. 따라서
+`Disabled` policy가 join을 막지 않으며 Relocation Store와 relocation adapter가 필요하지 않다. `play-b`는
+TD-F1의 remote Spot request target으로만 사용하고 이 config에서 cross-node object relocation을 시작하지 않는다.
 
 **`TurnProbeSpot`은 공유 counter 하나를 갖는다.** `async`가 turn을 유지하는지 검증할 때
 read-modify-write 불변식이 await를 가로질러 유지되는지 확인하는 데 쓴다.
@@ -277,7 +281,7 @@ terminator가 정하는가.
 
 - 절차: Entry Spot membership을 가진 actor의 handler가 `JoinSpot(...).Async(...)`로 user Spot에 join한다.
 - 검증: join이 timeout 없이 완료되고 evidence 순서는 `target OnActorJoin → location CAS commit →
-  source OnLeaveActor → target OnJoinedActor`다([23 §3](../../spec/server/23-spot-actor.ko.md#3-join-commit)).
+  source OnLeaveActor → target OnJoinedActor`다([23 §4](../../spec/server/23-spot-actor.ko.md#4-join-의미와-commit-순서)).
   Entry Spot도 이 join의 source이므로 source leave를 생략하지 않는다. 다른 actor의 join·packet이 그 사이
   막히지 않는다.
 - 세부 동작: Actor packet은 Actor turn에서 실행되며 Spot control turn을 점유하지 않는다.
@@ -291,7 +295,7 @@ terminator가 정하는가.
 - 절차: user Spot A membership을 가진 actor의 handler가 자기 Actor turn을 유지한 채
   `JoinSpot(B).Async(...)`를 호출한다.
 - 검증: **join이 timeout 없이 완료된다.** evidence 순서는 `target OnActorJoin → location CAS commit →
-  source OnLeaveActor → target OnJoinedActor`다([23 §3](../../spec/server/23-spot-actor.ko.md#3-join-commit)).
+  source OnLeaveActor → target OnJoinedActor`다([23 §4](../../spec/server/23-spot-actor.ko.md#4-join-의미와-commit-순서)).
   CAS 실패 주입에서는 source leave와 target membership evidence가 없어야 한다. 세 lifecycle callback은
   각각 해당 Spot의 control claim에서 실행되고 caller의 Actor turn id와 달라야 한다.
 - 세부 동작: Actor caller turn과 Spot lifecycle control claim의 독립 진행.
@@ -341,12 +345,24 @@ terminator가 정하는가.
   영구 점유되지 않는다.**
 - 세부 동작: 실패 경로의 turn 회수.
 
-#### TD-F5 대기 중 cancellation과 shutdown
+#### TD-F5 대기 waiter cancellation
 
 우선순위: `P1`
 
-- 절차: 대기 중 취소하거나 runtime을 종료한다.
-- 검증: continuation이 중단되고 다음 작업이 진행된다. shutdown이 무한 대기하지 않는다.
+- 절차: 지연된 외부 request를 `.Async(...)` 또는 `.Yield(...)`로 기다리는 waiter만 취소한다.
+- 검증: 해당 waiter continuation은 언어별 cancellation 결과로 끝나고 shared runtime이나 이미 수락한 remote
+  operation을 취소한 것으로 간주하지 않는다. Spot·Actor가 `Serving`인 동안 후속 작업은 정상 진행된다.
+
+#### TD-F5A 대기 중 host Shutdown
+
+우선순위: `P1`
+
+- 절차: 지연된 외부 request가 이미 수락된 상태에서 host `Shutdown`을 시작하고 admission seal과 deadline을
+  관찰한다. Seal 뒤 같은 Spot·Actor에 새 작업도 제출한다.
+- 검증: Seal 뒤 신규 작업은 `Shutdown`으로 거부된다. 이미 수락한 continuation은 deadline 안에 정상 terminal로
+  끝나거나 deadline 경계에서 owner별 shutdown terminal을 정확히 한 번 받는다. Seal 뒤 “다음 작업이
+  진행된다”고 단언하지 않는다. Host는 bounded `Stopped/None` 또는 `ForceStopped/DeadlineExceeded`로 끝나며
+  무한 대기하지 않는다.
 
 #### TD-F6 wait-for 사이클은 timeout으로 끝난다
 

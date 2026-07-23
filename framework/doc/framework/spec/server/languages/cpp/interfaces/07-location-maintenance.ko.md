@@ -2,16 +2,16 @@
 
 [C++ exact interface 목차](README.ko.md)
 
-## 1. Authority와 Transfer provider capability
+## 1. Authority와 Relocation provider capability
 
 `location_store_t`는 아래 opaque authority CAS를 필수 capability로 제공한다. `Recreate` 또는 `Snapshot`
 factory가 하나라도 있는 host는 opaque state, accepted journal, full inventory와 replay payload를 보존하기 위해
-Transfer Store를 정확히 하나 별도로 등록한다. `Disabled` factory만 있고 same-node lifecycle만 사용하는 host에는
-Transfer payload가 필요하지 않다. 필요한 Store가 없거나 중복 등록되면 socket bind 전에 configuration error로
+Relocation Store를 정확히 하나 별도로 등록한다. `Disabled` factory만 있고 same-node lifecycle만 사용하는 host에는
+Relocation payload가 필요하지 않다. 필요한 Store가 없거나 중복 등록되면 socket bind 전에 configuration error로
 종료한다. Application service code는 두 provider operation을 직접 호출하지 않는다.
 
-완료 가능한 모든 cross-node Actor·Spot 이동은 Transfer Store를 사용한다. `Recreate`도 accepted journal과
-recovery payload를 저장하며 `Snapshot`은 application state를 추가로 저장한다. Same-node Actor join은 Transfer
+완료 가능한 모든 cross-node Actor·Spot 이동은 Relocation Store를 사용한다. `Recreate`도 accepted journal과
+recovery payload를 저장하며 `Snapshot`은 application state를 추가로 저장한다. Same-node Actor join은 Relocation
 payload를 만들지 않고, `Disabled` cross-node 이동은 capture 전에 거부한다.
 
 ```cpp
@@ -257,40 +257,40 @@ public:
       std::stop_token cancellation = {}) = 0;
 };
 
-struct transfer_stored_t {
+struct relocation_stored_t {
     std::string reference;
     std::uint32_t checksum_crc32c;
     std::chrono::system_clock::time_point expires_at;
     std::chrono::system_clock::time_point store_now;
 };
-struct transfer_found_t { std::vector<std::byte> payload; };
-struct transfer_missing_t {};
-using transfer_read_result_t =
-  std::variant<transfer_found_t, transfer_missing_t>;
-enum class transfer_delete_result_t { deleted = 0, missing = 1 };
-struct transfer_renewed_t {
+struct relocation_found_t { std::vector<std::byte> payload; };
+struct relocation_missing_t {};
+using relocation_read_result_t =
+  std::variant<relocation_found_t, relocation_missing_t>;
+enum class relocation_delete_result_t { deleted = 0, missing = 1 };
+struct relocation_renewed_t {
     std::chrono::system_clock::time_point expires_at;
     std::chrono::system_clock::time_point store_now;
 };
-struct transfer_renew_missing_t {};
-using transfer_renew_result_t =
-  std::variant<transfer_renewed_t, transfer_renew_missing_t>;
+struct relocation_renew_missing_t {};
+using relocation_renew_result_t =
+  std::variant<relocation_renewed_t, relocation_renew_missing_t>;
 
-class transfer_store_t {
+class relocation_store_t {
 public:
-    virtual ~transfer_store_t() = default;
-    virtual task_t<transfer_stored_t> put_transfer(
+    virtual ~relocation_store_t() = default;
+    virtual task_t<relocation_stored_t> put_relocation(
       std::vector<std::byte> payload,
       std::chrono::hours retention,
       std::stop_token cancellation = {}) = 0;
-    virtual task_t<transfer_read_result_t> get_transfer(
+    virtual task_t<relocation_read_result_t> get_relocation(
       std::string reference,
       std::stop_token cancellation = {}) = 0;
-    virtual task_t<transfer_renew_result_t> renew_transfer(
+    virtual task_t<relocation_renew_result_t> renew_relocation(
       std::string reference,
       std::chrono::hours retention,
       std::stop_token cancellation = {}) = 0;
-    virtual task_t<transfer_delete_result_t> delete_transfer(
+    virtual task_t<relocation_delete_result_t> delete_relocation(
       std::string reference,
       std::stop_token cancellation = {}) = 0;
 };
@@ -338,7 +338,7 @@ Provider가 cursor가 가리키는 scan을 만료시켰으면 이어지는 page 
 한 authority opaque payload의 encoded 크기는 최대 1 MiB다. Scan `limit`은 `1..1000`이고 provider는
 encoded page 4 MiB에 먼저 도달하면 요청보다 적은 entry와 `next_cursor`를 반환한다. 이 byte limit을
 바꾸는 public option은 없다. Hot authority row는 compact metadata와 replay cursor만 보관하며 complete terminal
-reply bytes는 transfer stream에 저장한다.
+reply bytes는 relocation stream에 저장한다.
 Page는 opaque key와 payload를 반환하며 provider는 payload를 해석하지 않는다. Framework operational
 query가 Actor projection을 decode하며 이 목록은 routing authority로 사용하지 않는다. Provider domain은
 영구적인 global object generation, authority owner generation과 Store revision counter를 각각 하나씩 유지한다.
@@ -349,24 +349,24 @@ global Store revision으로 fence한다. Delete는 row를 완전히 제거하고
 유지할 수 있다. Payload에 generation을 중복 encode하지 않는다. Authority row는
 TTL을 갖지 않고 explicit fenced delete가 성공할 때까지 유지된다. Owner·coordinator lease는 별도 token row에
 저장하며 lease 만료나 reclaim이 authority row를 삭제하거나 수정하지 않는다. Framework는
-transfer put과 renew의 retention에 24시간을 전달한다. Authority의 current transfer reference를 확인한
+relocation put과 renew의 retention에 24시간을 전달한다. Authority의 current relocation reference를 확인한
 owner 또는 recovery coordinator만 renew를 호출한다. Renew 성공은 provider clock의 새 expiry와 Store time을
-반환한다. Missing reference는 `transfer_renew_missing_t` 정상 결과이며 retention은 application option이
-아니다. Framework는 logical transfer payload를 immutable 64 MiB chunk 최대 4096개와 root manifest로 내부에서
-나누므로 logical state ceiling은 256 GiB다. Transfer Store의 opaque put/get interface는 바꾸지 않으며
+반환한다. Missing reference는 `relocation_renew_missing_t` 정상 결과이며 retention은 application option이
+아니다. Framework는 logical relocation payload를 immutable 64 MiB chunk 최대 4096개와 root manifest로 내부에서
+나누므로 logical state ceiling은 256 GiB다. Relocation Store의 opaque put/get interface는 바꾸지 않으며
 chunk 크기, 개수와 manifest를 설정하는 public option도 제공하지 않는다. Capture가 ceiling을 넘으면 seal을
 되돌려 normal messaging을 다시 허용하고 Retire 결과를 `blocked`로 종료한다. 일반 message의 negotiated
-effective bound는 transfer chunk 크기 때문에 줄이지 않는다. Provider는 key, authority payload와 transfer
+effective bound는 relocation chunk 크기 때문에 줄이지 않는다. Provider는 key, authority payload와 relocation
 payload를 해석하지 않는다.
 
-Location Store는 phase, transfer reference와 checksum, canonical participant set, participant mutation,
-aggregate generation, membership·aggregate count와 inventory digest를 authority로 소유한다. Transfer manifest는
+Location Store는 phase, relocation reference와 checksum, canonical participant set, participant mutation,
+aggregate generation, membership·aggregate count와 inventory digest를 authority로 소유한다. Relocation manifest는
 opaque state, accepted journal, full inventory와 replay payload를 찾는 용도일 뿐 authority가 아니다. Framework는
 manifest를 먼저 저장하고 digest가 Location Store의 canonical inventory digest와 일치하는지 확인한 뒤 authority
 CAS로 reference를 공개한다. Root를 교체할 때도 새 root 저장과 digest 검증을 먼저 수행하고, CAS가 성공한 뒤
-이전 reference를 release한 다음 이전 payload를 삭제한다. Transfer payload 사용을 끝낼 때는 Location Store에서
-reference 사용 종료를 CAS한 뒤 Transfer Store에서 payload를 삭제한다. 두 Store 사이 transaction은 요구하지 않는다.
-Authority가 참조하는 Transfer payload가 없거나 digest가 일치하지 않으면 `TransferDataLost`로 종료하며 이전
+이전 reference를 release한 다음 이전 payload를 삭제한다. Relocation payload 사용을 끝낼 때는 Location Store에서
+reference 사용 종료를 CAS한 뒤 Relocation Store에서 payload를 삭제한다. 두 Store 사이 transaction은 요구하지 않는다.
+Authority가 참조하는 Relocation payload가 없거나 digest가 일치하지 않으면 `RelocationDataLost`로 종료하며 이전
 owner로 rollback하지 않는다. Restore와 accepted journal replay는 manifest digest와 `inventory_digest`가 exact
 match인 경우에만 시작한다.
 
@@ -377,7 +377,7 @@ provider는 non-retriable `authority_generation_exhausted_t`를 반환한다. �
 반환한다. Transport 또는 provider exception은 이 닫힌 결과와 구분한다. Framework는 기존 lifecycle failure로
 operation을 닫으며 application용 error enum을 추가하지 않는다.
 
-Framework가 provider에 넘긴 authority와 transfer 입력 buffer는 asynchronous operation이 끝날 때까지
+Framework가 provider에 넘긴 authority와 relocation 입력 buffer는 asynchronous operation이 끝날 때까지
 유효하며 바뀌지 않는다. Provider가 완료 뒤에도 buffer를 보관하려면 먼저 복사해야 한다. Provider가 성공
 result로 반환한 payload storage는 result가 사용되는 동안 안정적이어야 하며 provider는 반환 뒤 그 storage를
 수정하거나 다른 result에 재사용하지 않는다. Mutable buffer 기반 adapter는 provider boundary에서 snapshot을
@@ -386,12 +386,12 @@ result로 반환한 payload storage는 result가 사용되는 동안 안정적�
 Cancellation이 provider 호출 전에 이미 요청되었으면 Framework는 provider operation을 시작하지 않으므로 I/O와
 commit이 없다. Provider operation을 시작한 뒤 waiter가 취소되거나 오류로 끝나면 commit 여부는 알 수 없다.
 Authority CAS는 같은 exact key와 expectation의 StoreVersion을 다시 읽어 결과를 reconcile한 뒤 retry한다.
-Transfer put은 content-addressed reference를 확인한 뒤 idempotent하게 retry한다. Authority에 연결되지 않은
+Relocation put은 content-addressed reference를 확인한 뒤 idempotent하게 retry한다. Authority에 연결되지 않은
 committed put은 orphan이며 고정 retention과 cleanup으로 제거한다. 이 의미를 표현하는 public result는 추가하지
 않는다.
 
 Location record, owner lease, watch와 Redis provider의 exact declaration은
 [Location Store·Redis](07-location-store.ko.md)가 소유한다. 이 문서는 stateful maintenance에서 추가로
-필요한 authority와 Transfer provider capability만 소유한다. Authority Store를 root에 별도로 등록하는
-member는 제공하지 않는다. Location Store와 Transfer Store 등록 member는
+필요한 authority와 Relocation provider capability만 소유한다. Authority Store를 root에 별도로 등록하는
+member는 제공하지 않는다. Location Store와 Relocation Store 등록 member는
 [Configuration과 host](02-configuration-host.ko.md)의 `zlink_framework_options_t`가 소유한다.

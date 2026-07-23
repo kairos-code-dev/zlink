@@ -1,0 +1,486 @@
+<!-- framework-adapter-nav:start -->
+[E2E 목차](README.ko.md) | [이전: To-actor messaging](config-9-to-actor-messaging.ko.md) | [다음: 관측·운영 배포](config-11-observability-ops.ko.md)
+<!-- framework-adapter-nav:end -->
+
+# Config 10 — Spot actor join/relocation 배포
+
+actor가 Entry Spot과 user Spot 사이를 이동하거나, 다른 MeshNode의 user Spot으로 relocation될 때
+[Spot Actor Join / Relocation 공통 스펙](../../spec/server/23-spot-actor.ko.md)을 실제 배포 형태에서 만족하는지
+검증한다. 이 config는 단순 Spot request 성공 여부가 아니라 admission, leave, relocation, joined,
+authority commit, bound session route, failure cleanup이 같은 순서와 의미로 관찰되는지 본다.
+
+이 문서는 e2e 시나리오 정의만 둔다. 언어별 구현은 public framework API와 역할 server endpoint로
+작성해야 한다. 현재 언어별 구현이 공통 스펙의 목표 공개 계약을 아직 제공하지 못하면 skip으로 완료
+처리하지 않고 feature-map에 public contract parity gap으로 남긴다. 내부 helper, raw frame 조작,
+테스트 전용 adapter로 이 config를 통과시키면 안 된다.
+
+이 config의 actor 이동은 공개 relocation 계약을 호출해 처리 주체를 명시적으로 바꾸는 동작이다.
+MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 동작은 계약하지 않는다. MeshNode
+증설과 신규 배치는 Config 2 SM-G2에서 검증하고, 운영자가 host `Retire`로 기존 actor를
+다른 node로 인계하는 동작은 Config 11의 maintenance handoff 시나리오에서 검증한다.
+
+## 1. 목적과 범위
+
+- 다룬다: 같은 node join 순서, remote actor relocation 정상 경로, relocation state 복원, 빈 state relocation, admission/commit
+  분리, source node down 전후 동작, authority commit 시점, moving 중 actor packet admission 차단,
+  `Recreate`·`Snapshot` adapter 경계와 callback 실패, bound session 이전, **seal 전에 수락한 Actor journal의
+  순서 보존·Ready 전 replay, stale-route forwarding과 mapping 축출, request reply correlation과 timeout**.
+- 여기서 다루지 않는다: 일반 spot messaging 전체(Config 2), 비동기 handler 완료 후 mailbox 재개(Config 8),
+  actor id 기반 no-bind send/request(Config 9), location store 자체 장애(Config 6).
+- 계약 근거: `OnActorJoin`은 admission만 담당하고 actor instance를 받지 않는다. admission accept 뒤
+  durable Actor authority row는 CAS commit 시점부터 target owner를 가리킨다. Remote relocation의 target
+  factory·`Restore`·journal staging은 commit 전에 끝난다. Commit 뒤 callback과 journal replay, durable source
+  cleanup, `Completed`, route ACK와 steady normalization을 모두 끝낸 뒤에만 target을 `Ready`로 공개하고
+  admission과 성공 reply를 연다. 같은 node join에는 이 relocation phase와 Relocation Store를 적용하지 않는다.
+
+## 2. 서버 구성 (한 번 구동, 공유)
+
+| 역할 | 수 | 구성 |
+|------|----|------|
+| location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. Actor·Spot authority row와 owner lease는 framework lifecycle이 관리한다. |
+| relocation store | 1 | 공식 Redis relocation store extension. Location Store와 같은 deployment를 사용할 수 있지만 별도 prefix와 `AddRelocationStore(...)` 등록을 사용한다. |
+| actor 노드 | 2 (`actor-a`, `actor-b`) | Object Server role의 Entry Spot + User Spot + Actor mailbox host. 두 node에 같은 stable Actor·User Spot type, positive placement capacity와 explicit relocation policy를 등록한다. Snapshot type은 kind별 adapter를 등록하고 Recreate type은 adapter 없이 factory만 등록한다. Lifecycle callback과 adapter는 order marker를 남긴다. |
+| session gateway | 2 (`session-a`, `session-b`) | Object Client role과 Location Store를 등록하고 stream session, exact `ActorRef` bind와 actor push를 관찰한다. Remote relocation 뒤 bound session push가 target actor로 이어지는지 검증한다. |
+| relocation controller | 1 | Object Client role과 Location Store를 등록한 실제 사용자 요청 역할 server. HTTP endpoint 안에서 actor 생성, join, global Actor ID packet send와 failure injection을 public framework API로 실행한다. |
+| consumer | 시나리오별 | HTTP client wrapper로 relocation controller endpoint를 호출하고, 필요한 경우 stream connector로 session gateway에 연결해 push와 bind 상태를 관찰한다. |
+
+actor 노드는 아래 evidence를 공통으로 남긴다.
+
+- actor id, actor type, actor generation 또는 ref snapshot, source/target spot rid, source/target node rid.
+- callback order marker: `admission`, `source_sealed`, `capture`, `target_factory`, `restore`, `journal_staged`,
+  `prepared`, `authority_committed`, `joined`, `journal_replayed`, `leave`, `source_cleanup`, `completed`,
+  `route_ack`, `steady_normalized`, `ready`, `admission_open`, `success_reply`.
+- accepted-work marker: `journal_accepted`(seal 전에 수락), `journal_staged`(target queue 준비),
+  `journal_replayed`(commit 뒤 replay), `moving_rejected`(seal 뒤 `ActorMoving`),
+  `straggler_forward`(commit 뒤 stale route relay), `mapping_evicted`(window 후 축출),
+  `stale_fail_fast`(축출 뒤 stale route 거부).
+  각 actor packet은 arrival sequence index를 함께 남겨 target 처리 순서와 대조할 수 있어야 한다.
+- `OnActorJoin` 입력 snapshot. actor id 외에 actor instance나 route metadata가 전달되었거나 저장되면 실패 evidence로 남긴다.
+- relocation state marker. state를 담는 actor type은 source actor state version과 target actor 복원 state가 같은지 확인할 수 있어야 한다. 빈 state actor type은 target `OnJoinedActor` 이후 별도 조회 marker를 남긴다.
+- actor packet handler marker. moving 중 source와 target 양쪽 handler가 동시에 처리하지 않았는지 대조한다.
+- bound session snapshot. relocation 전후 push 대상 session gateway와 client connector를 비교한다.
+
+relocation controller는 시나리오 실행 전용 driver가 아니다. consumer는 실제 app endpoint를 호출하고,
+그 endpoint 내부에서 framework의 public actor/spot API가 실행되어야 한다. 장애 주입은 endpoint가
+application 상태를 바꾸거나 `run_e2e.sh`가 역할 process를 중단하는 방식으로만 수행한다.
+
+## 3. 실행 모델
+
+`run_e2e.sh`가 Redis(전용 key prefix) 준비 → actor 노드 → session gateway → relocation controller
+순으로 시작한 뒤 client 시나리오를 순차 실행한다. 각 시나리오는 독립 actor id와 spot id를 사용해야
+한다. 시나리오가 process 중단이나 route 차단을 사용하면 follow-up 검증 뒤 반드시 원래 topology를
+복구하거나 다음 시나리오가 새 prefix를 쓰게 한다.
+
+로그는 [README](README.ko.md) §6(로깅과 메시지 흐름 추적, 필수 공통)대로 모든 프로세스가 `log/`
+폴더에 파일로 남기고, message flow 추적을 지원하는 언어는 최소 `key_transitions`로 켠다. 실패 시에는
+actor id, relocation id, source/target node rid, callback order marker, authority snapshot, bound
+session snapshot을 함께 남긴다.
+
+## 4. 시나리오
+
+### Track A — local join
+
+#### ST-A1 local join accept 순서
+
+우선순위: `P0`
+
+**검증 질문:** 같은 node에서 actor가 Entry Spot에서 user Spot으로 join할 때 admission, leave, location
+commit, joined, success reply가 정해진 순서로 관찰되는가.
+
+- 절차: consumer가 relocation controller endpoint를 호출해 `actor-local-ok`를 만들고 같은 node의 user
+  Spot으로 `JoinSpot`을 실행한다. controller는 join reply를 받은 뒤 같은 global Actor ID로 actor packet을 보내
+  committed target membership에서 처리되는지 확인한다.
+- 검증: evidence order는 `admission -> authority_committed -> leave -> joined -> success_reply`다.
+  `OnActorJoin` evidence에는 actor id와 request만 있고 actor instance snapshot이나 route metadata가 없어야 한다.
+  success reply 전에 authority row가 committed target User Spot을 가리켜야 한다. join 이후 packet은 target
+  Actor handler에서만 처리되고 Spot lifecycle callback을 경유하지 않는다.
+- 검증: 이 local join에는 `capture`, `target_factory`, `restore`, `journal_staged`, relocation `completed`,
+  forwarding mapping marker가 없어야 한다. Relocation Store를 읽거나 쓰지 않는다.
+- 세부 동작: 같은 node join 완료 조건과 actor instance 미노출 admission.
+
+#### ST-A2 local join reject side effect 없음
+
+우선순위: `P0`
+
+**검증 질문:** target admission이 reject하면 source membership, source location, handler dispatch가
+그대로 유지되는가.
+
+- 절차: `actor-local-reject`를 Entry Spot에 만든 뒤 target User Spot의 join handler가 typed rejection reply와
+  함께 거부하도록 request를 보낸다. 이후 같은 global Actor ID로 actor packet을 보낸다.
+- 검증: Public join call은 exception이 아니라 `Rejected` result와 typed reply를 반환한다. Wire terminal은
+  `ok`, Framework failure code는 `none`이며 target admission·policy failure의 `rejected` terminal과 섞이지
+  않는다. Source `OnLeaveActor`, target `OnJoinedActor`, target authority commit evidence가 없어야 한다.
+  Actor authority는 source Entry Spot을 유지한다. Actor packet은 source membership의 Actor handler에서
+  처리되고 target membership이 생긴 것처럼 처리되지 않는다.
+- 세부 동작: reject 시 side effect 없음.
+
+#### ST-A3 target joined 전 packet dispatch 차단
+
+우선순위: `P0`
+
+**검증 질문:** target `OnJoinedActor`가 지연되는 동안 actor packet이 source와 target 양쪽에서 동시에
+처리되지 않는가.
+
+- 절차: target `OnJoinedActor`가 bounded latch를 기다리도록 설정한 뒤 local join을 시작한다. Local membership
+  control barrier가 닫힌 동안 같은 actor로 packet을 보낸다. latch를 해제한 뒤 follow-up packet을 보낸다.
+- 검증: membership 변경 구간에는 source와 target Actor handler가 같은 actor packet을 동시에 처리한 evidence가
+  없어야 한다. target `OnJoinedActor` 완료 전 target Actor handler 성공 evidence도 없어야 한다. latch 해제
+  뒤 follow-up packet은 target Actor handler에서 처리된다. Relocation Store, factory·adapter, accepted journal,
+  `Completed`와 forwarding mapping을 사용한 evidence가 있으면 실패다.
+- 세부 동작: relocation sequence를 사용하지 않는 local membership barrier.
+
+### Track B — remote relocation 정상 경로
+
+#### ST-B1 remote relocation 성공 순서와 state 복원
+
+우선순위: `P0`
+
+**검증 질문:** actor가 `actor-a`에서 `actor-b`의 user Spot으로 이동할 때 relocation state가 복원되고
+callback 순서가 공통 스펙과 일치하는가.
+
+- 절차: `actor-remote-ok`를 `actor-a`에 만들고 mutable state를 설정한다. controller가 `actor-b`의
+  user Spot으로 join을 실행한다. Source Actor relocation adapter의 `Capture`는 application 형식의
+  opaque bytes를 반환하고 target factory가 staging Actor를 만든 뒤 같은 adapter의 `Restore`가 bytes를
+  적용한다. Seal 전에 수락했지만 처리되지 않은 Actor packet 하나를 함께 준비해 accepted journal의 staging과
+  replay도 관찰한다.
+- 검증: evidence order는 `admission -> source_sealed -> capture -> target_factory -> restore -> journal_staged ->
+  prepared -> authority_committed -> joined -> journal_replayed -> leave -> source_cleanup -> completed ->
+  route_ack -> steady_normalized -> ready -> admission_open -> success_reply`다. `Restore`와 journal staging은 authority commit 전에
+  완료되어야 한다. Target `OnActorJoin` admission callback은 Actor ID와 join request만 받고, commit 뒤
+  `OnJoinedActor`는 target factory가 만든 concrete Actor instance를 받는다. Target joined callback과 journal
+  replay 뒤 source `OnLeaveActor`를 durable cleanup의 일부로 실행한다. 두 callback의 인자를 서로 바꾸거나
+  admission callback에 mutable Actor를 노출하면 실패다. Accepted journal replay는 commit 뒤 정해진 단계에서
+  실행하지만, durable source cleanup, `Completed`, route ACK와 steady normalization 전에 새 target application
+  admission으로 들어온 handler를 실행하거나 join 성공 reply를 반환하면 실패다. Join 완료
+  뒤 authority snapshot으로 current generation을 확인하고 global Actor ID로 state 조회 request를 보내 source
+  state version이 복원되었는지 확인한다. source와
+  target Actor ID와 object generation은 유지되고 owner generation과 owner snapshot만 target owner 값으로
+  바뀐다.
+- 세부 동작: remote admission/commit 분리 + relocation state 복원.
+
+#### ST-B2 commit 뒤 source 종료와 cleanup recovery
+
+우선순위: `P0`
+
+**검증 질문:** authority commit 뒤 source cleanup이 끝나기 전에 source가 사라져도 target recovery가 cleanup과
+Ready barrier를 끝낸 뒤 join을 완료하는가.
+
+- 절차: remote relocation 정상 경로를 실행하되 authority commit과 callback·journal replay 뒤, source가
+  `source_cleanup` marker를 남기기 전에 대기하도록 설정한다. 이 시점에 join success reply와 새 target
+  application admission handler가 모두 0건임을 확인한 뒤 `run_e2e.sh`가 `actor-a` process에 `SIGKILL`을 보낸다.
+  `Retire`나 `Shutdown`으로 cleanup을
+  완료하는 경로를 섞지 않는다. Recovery coordinator가 expired source lease와 exact immutable source token으로
+  durable cleanup을 종결하도록 기다린 뒤 target actor에게 packet을 보낸다.
+- 검증: source process 종료는 committed ownership을 source로 rollback하지 않는다. Evidence는 recovery의
+  `source_cleanup -> completed -> route_ack -> steady_normalized -> ready -> admission_open -> success_reply`
+  순서로 이어진다. Original caller는 recovery가 Ready barrier를 끝낸 뒤 성공을 받으며, Framework가 Ready 전에
+  성공을 반환해서는 안 된다. Ready 뒤 packet만 target Actor handler에서 처리된다. Stale source
+  release 재시도가 target authority의 object·owner generation을 지우면 실패다.
+- 세부 동작: commit 뒤 durable source cleanup recovery와 success barrier.
+
+#### ST-B3 Recreate policy의 adapter 없는 relocation
+
+우선순위: `P0`
+
+**검증 질문:** `Recreate` policy를 등록한 Actor가 application state adapter 없이 factory와 accepted journal만으로
+remote relocation을 완료하는가.
+
+- 절차: `actor-recreate` type에 actor factory와 `Recreate` relocation policy를 등록하고 relocation adapter는
+  등록하지 않는다. 같은 node
+  join이 아니라 반드시 다른 node user Spot으로 remote relocation을 시도한다.
+- 검증: remote relocation은 성공한다. Evidence order는 `admission -> source_sealed -> target_factory -> journal_staged ->
+  prepared -> authority_committed -> joined -> journal_replayed -> leave -> source_cleanup -> completed ->
+  route_ack -> steady_normalized -> ready -> admission_open -> success_reply`다. `Capture`·`Restore`
+  marker는 모두 0건이어야 한다.
+  source `OnLeaveActor`, target `OnJoinedActor`, target authority commit이 모두 정상 순서로 관찰된다.
+  Accepted journal도 비어 있으면 source requirement의 message·byte는 0이고 target capacity offer는 양수다.
+  Runtime은 비어 있는 deterministic relocation envelope과 reservation generation을 기록한다.
+- 세부 동작: `Recreate` policy의 application state 없는 relocation과 all-zero accepted journal.
+
+#### ST-B4 remote relocation empty state
+
+우선순위: `P0`
+
+**검증 질문:** `Snapshot` relocation adapter가 empty byte sequence를 반환해도 target actor가 만들어지고
+domain state를 별도로 읽어 올 수 있는가.
+
+- 절차: `actor-empty-state` type에 `Snapshot` policy와 custom relocation adapter를 등록한다. Source
+  `Capture`는 empty byte sequence를 반환한다. Target factory가 Actor를 만든 뒤 `Restore`는 빈 bytes를
+  해당 instance에 적용한다. Target `OnJoinedActor`는 actor id로 별도 저장소에서 domain state를 읽고
+  marker를 남긴다.
+- 검증: remote relocation은 성공한다. Evidence order는 `admission -> source_sealed -> capture_empty -> target_factory ->
+  restore_empty -> journal_staged -> prepared -> authority_committed -> joined -> domain_state_loaded -> journal_replayed ->
+  leave -> source_cleanup -> completed -> route_ack -> steady_normalized -> ready -> admission_open ->
+  success_reply`다. Empty bytes와 adapter 미등록을 같은 의미로 취급하지 않는다.
+- 세부 동작: `Snapshot` adapter의 empty application state relocation.
+
+### Track C — failure/recovery
+
+#### ST-C1 source down after admission before commit
+
+우선순위: `P0`
+
+**검증 질문:** source node가 authority commit 전에 비정상 종료되었을 때 durable relocation root publication
+전·후 경계에 따라 abort 또는 recovery로 수렴하는가.
+
+- 절차: 독립된 두 topology를 사용한다. (a) `Capture` 전 또는 Relocation Store Put은 완료됐지만
+  Location authority에 root reference를 CAS하기 전 source를 `SIGKILL`한다. (b) authority에 `Captured`
+  root가 연결되었거나 target이 `Prepared`를 완료한 evidence 후, authority commit 전 source를
+  `SIGKILL`한다. 정상 `Retire`·`Shutdown`은 사용하지 않는다.
+- 검증: (a)는 unlinked payload를 orphan cleanup하고 target membership·handler dispatch·hidden request replay가
+  0건이다. Original caller는 connection failure 또는 timeout terminal을 따른다. (b)는 authority에 연결된
+  immutable root와 accepted journal을 사용해 current target 또는 fenced replacement의 factory·`Restore`·commit을
+  재개한다. Commit 뒤 callback·journal replay, durable source cleanup, `Completed`, route ACK와 steady normalization,
+  `Ready`를 순서대로 끝낸 뒤에만 target admission과 success reply를 연다. 두 경로 모두 source·target partial
+  membership을 동시에 공개하지 않는다.
+- 세부 동작: pre-publication abort와 post-publication durable recovery 경계.
+
+#### ST-C2 source down after target commit
+
+우선순위: `P0`
+
+**검증 질문:** target authority commit 직후 source node가 비정상 종료되어도 target recovery가 남은 activation과
+completion barrier를 끝내는가.
+
+- 절차: remote relocation 정상 경로에서 `authority_committed` evidence 직후, callback과 journal replay 전에
+  `actor-a` process에 `SIGKILL`을 보낸다. Target recovery가 callback·journal replay, source lease expiry 기반
+  durable cleanup, `Completed`, route ACK와 steady normalization을 재개하도록 한다. `Retire`나 `Shutdown`의
+  cleanup 결과를 source 장애 evidence로 사용하지 않는다.
+- 검증: Actor authority row는 target User Spot과 target node를 계속 가리킨다. 전체 completion barrier 전에는
+  target Actor packet, bound session push와 success reply가 모두 0건이다. `ready -> admission_open ->
+  success_reply` 뒤에만 packet과 push가 성공한다. Stale source cleanup이나 source process 종료가 target ownership을
+  지우면 실패다.
+- 세부 동작: authority commit 뒤 target recovery와 rollback 금지.
+
+#### ST-C3 callback과 relocation 실패 분류
+
+우선순위: `P1`
+
+**검증 질문:** relocation 단계별 application 실패가 공통 스펙의 결과로 분류되는가.
+
+- 절차: 같은 actor type으로 `Capture`, source `OnLeaveActor`, `Restore`, target `OnJoinedActor`가
+  각각 실패하도록 네 개의 독립 시나리오를 실행한다.
+- 검증: `Capture` 또는 `Restore` 실패는 source leave 없이 source membership을 유지한다.
+  `OnLeaveActor`와 `OnJoinedActor` 실패는 authority commit 뒤 실패이므로 caller success가 없어야 하지만
+  target membership을 source로 rollback하면 안 된다. Target Actor packet dispatch를 차단한 recoverable
+  reconciliation 상태에서 callback, replay, cleanup, `Completed`, route ACK와 steady normalization을 재개한다.
+  모든 gate를 끝내 `Ready`가 된 뒤에만 target admission과 success가 가능하다.
+- 세부 동작: 실패 지점별 join 결과.
+
+### Track D — authority/routing/dispatch
+
+#### ST-D1 authority commit 시점
+
+우선순위: `P0`
+
+**검증 질문:** authority commit 뒤 target `OnJoinedActor`가 완료되기 전에는 committed row와 아직 준비되지
+않은 target Actor route가 구분되는가.
+
+- 절차: local join과 remote relocation 각각에서 target `OnJoinedActor`를 지연시킨다. 지연 중 location query
+  endpoint와 actor packet route를 반복하지 않고 bounded evidence wait로 한 번씩 관찰한다. 이후 latch를
+  해제하고 다시 관찰한다.
+- 검증: 두 경로 모두 지연 중 authority row는 committed target owner를 가리키지만 target Actor route는 ready가
+  아니며 packet handler를 실행하지 않는다. Local join은 callback과 local membership barrier만 끝낸 뒤 route를
+  공개하며 relocation phase와 Store를 사용하지 않는다. Remote relocation은 `OnJoinedActor` 완료만으로 route를 공개하지
+  않고 journal replay, durable source cleanup, `Completed`, route ACK와 steady normalization까지 끝낸 뒤에만 새
+  owner route가 `Ready`로 공개되고 packet이 처리된다. Remote relocation에서만 owner generation이 증가한다.
+- 세부 동작: durable authority commit과 target route activation 구분.
+
+#### ST-D2 stale source release authority fencing
+
+우선순위: `P1`
+
+**검증 질문:** source cleanup이나 stale owner release가 target authority를 변경하지 않는가.
+
+- 절차: remote relocation에서 current source cleanup은 정상 완료하되 같은 exact source token의 중복 cleanup
+  retry가 Ready 뒤 늦게 실행되도록 지연한다. Target Actor에게 packet을 보내고 target authority의 object
+  generation, owner generation과 store version을 기록한 뒤 지연된 stale retry를 실행한다.
+- 검증: cleanup 전후 target authority 값이 유지된다. cleanup 뒤 follow-up packet도 target에서 처리된다.
+  source cleanup이 target owner row를 삭제하거나 stale route로 되돌리면 실패다.
+- 세부 동작: expected-version CAS와 stale cleanup 격리.
+
+### Track E — bound session relocation
+
+#### ST-E1 remote relocation 뒤 bound session push
+
+우선순위: `P0`
+
+**검증 질문:** session에 bind된 actor가 remote relocation된 뒤 actor push가 target actor에서 기존 client로
+이어지는가.
+
+- 절차: consumer가 `session-a`에 연결해 `actor-bound-relocation`를 bind한다. relocation 전 actor가
+  `BeforeRelocationNotify`를 push해 client가 받는지 확인한다. remote relocation을 실행한 뒤 target actor가
+  `AfterRelocationNotify`를 push하게 한다.
+- 검증: 두 notify는 같은 client connector가 받는다. relocation 뒤 push evidence는 target actor와 target
+  node에서 발생해야 한다. Session route switch ACK와 steady normalization 전에는 `AfterRelocationNotify`와
+  target admission이 없어야 한다. Source process가 종료되면 recovery가 durable cleanup을 대신 완료한 뒤에만
+  route를 전환하며, cleanup이 terminal이 아닌 상태에서 target push를 먼저 성공시키면 실패다.
+- 세부 동작: bound session route 이전.
+
+#### ST-E2 실패한 relocation은 bound session route를 바꾸지 않음
+
+우선순위: `P0`
+
+**검증 질문:** remote relocation이 commit 전에 실패하면 기존 bound session binding이 성공한 relocation처럼
+바뀌지 않는가.
+
+- 절차: Consumer가 actor를 bind한 뒤 remote relocation을 시작하고 target admission accept 뒤 source down
+  before commit 또는 relocation adapter 실패를 주입한다. Session ingress seal 뒤 durable `Aborted` authority CAS,
+  source-route abort command·ACK, reservation·relocation cleanup과 steady source normalization 경계마다
+  coordinator를 한 번씩 종료한다. 이후 source가 계속 실행 중인 경우 기존 actor가
+  `AfterFailedRelocationNotify`를 push하게 한다.
+- 검증: `Aborted` 결정 전에는 abort route를 보내거나 source ingress를 열지 않는다. Recovery는 `Aborted`
+  authority에서 source-route command를 idempotent하게 재전송하고 current session owner의 routed ACK를 받은 뒤
+  cleanup과 steady source normalization을 완료한 경우에만 source admission을 다시 연다. 실패한 relocation은
+  target bound session route를 만들지 않는다. Source actor가 유지되면 기존 client connector가 follow-up notify를
+  받는다. Source가 비정상 종료된 경우에는 client reconnect/recreate 흐름으로 분류되고 target actor push 성공으로
+  보이면 실패다.
+- 세부 동작: 실패한 relocation의 bound session 비오염.
+
+### Track F — accepted journal과 stale-route forwarding
+
+[Actor model §3·§8](../../spec/server/22-actor-model.ko.md)과
+[Spot Actor §4·§8](../../spec/server/23-spot-actor.ko.md)에 따라 seal 전에 Actor queue가 수락한 work만
+accepted journal로 고정한다. Seal 뒤 새 operation은 `ActorMoving`으로 끝나며 journal이나 forwarding queue에
+숨겨서 보관하지 않는다. Commit 뒤 이전 owner route로 늦게 도착한 stale operation만 bounded forwarding
+대상이다. 모든 시나리오는 operation ID와 accepted sequence로 수락, staging, replay와 terminal 결과를 대조한다.
+
+#### ST-F1 in-flight handoff order
+
+우선순위: `P0`
+
+**검증 질문:** seal 전에 수락한 Actor packet이 target staging queue에 같은 순서로 준비되고, commit 뒤
+Ready 공개 전에 replay되는가.
+
+- 절차: `actor-inflight-order`의 Actor queue claim을 bounded barrier로 지연해 handler가 시작되지 않게 하고
+  controller가 lease-backed packet `P1 -> P2 -> P3`을 source Actor queue에 순서대로 수락시킨다.
+  `journal_accepted` evidence를 확인한 뒤
+  `actor-b`의 user Spot으로 remote relocation을 시작한다. Source seal 뒤 추가 packet `P4`도 보낸다.
+- 검증: `P1 -> P2 -> P3`은 accepted boundary와 frozen journal에 같은 sequence로 기록되고 target factory와
+  optional `Restore` 뒤 handler를 실행하지 않은 채 staging queue에 준비된다. Commit 뒤 callback과 함께
+  `P1 -> P2 -> P3` 순서로 replay되고, source handler가 실행한 evidence는 없어야 한다. `P4`는
+  `ActorMoving`으로 끝나며 journal, forwarding queue와 어느 Actor handler에도 들어가지 않는다. Journal replay,
+  source cleanup, `Completed`, route ACK와 steady normalization이 끝나기 전에 target을 `Ready`로 공개하면 실패다.
+- 세부 동작: seal 전 accepted journal 고정, seal 뒤 `ActorMoving`, Ready 전 replay.
+
+#### ST-F2 direct overtakes prevented
+
+우선순위: `P0`
+
+**검증 질문:** Ready 공개 직후 새 owner가 수락한 direct packet이 accepted journal replay보다 먼저 처리되지
+않는가.
+
+- 절차: `actor-inflight-overtake`의 source queue가 `B1 -> B2`를 수락했지만 처리하지 않은 상태에서 remote
+  relocation을 시작한다. Target의 `journal_staged`와 authority commit을 확인하되 route ACK와 steady normalization을
+  지연한다. Target route가 `Ready`로 공개된 직후 controller가 global Actor ID로 direct packet `D1`을 보낸다.
+- 검증: target 처리 순서는 `B1 -> B2 -> D1`이다. Evidence order는 `journal_staged -> authority_committed ->
+  journal_replayed -> source_cleanup -> completed -> route_ack -> steady_normalized -> ready -> D1_accepted`다.
+  `D1`이 Ready 전에 수락되거나 `B1`·`B2`보다 먼저 처리되면 실패다.
+- 세부 동작: accepted journal replay와 Ready barrier를 사용한 direct 추월 차단.
+
+#### ST-F3 bound session cross-move order
+
+우선순위: `P0`
+
+**검증 질문:** bound session의 connection-bound work를 `Captured` 전에 terminal drain하고, route switch 뒤
+새 packet이 이전 sequence를 추월하지 않는가.
+
+- 절차: consumer가 `session-a`에 연결해 `actor-bound-order`를 bind한다. Client가 `S1 -> S2`를 보내 source
+  Actor queue가 수락한 뒤 remote relocation을 시작한다. Session owner는 binding ingress를 reversible하게 seal하고
+  마지막 accepted binding sequence를 source에 전달한다. `S1`과 `S2`가 terminal state가 될 때까지 `Captured`
+  전 drain하고, 이 connection-bound work가 durable accepted journal에 들어가지 않았음을 확인한다. `Completed`
+  뒤 current owner fence를 검증한 route ACK와 steady normalization으로 binding route를 바꾼 다음 ingress를 열어
+  `S3 -> S4`를 보낸다.
+- 검증: Actor 처리와 request terminal evidence는 `S1 -> S2 -> S3 -> S4` 순서를 유지한다. `S1`·`S2`를
+  accepted journal에서 replay하거나 terminal 전 `Captured`로 진행하면 실패다. `S3`·`S4`는 current binding token과
+  owner generation을 가진 route ACK 뒤에만 target으로 전달되고 어느 operation도 누락·중복되지 않는다.
+- 세부 동작: bound-session pre-capture drain과 route-switch sequence barrier.
+
+#### ST-F3A paused session owner lease fence
+
+우선순위: `P0`
+
+**검증 질문:** Session owner process가 pause되어 host lease가 만료돼도 transport I/O가 유지되는 경우, 늦은
+seal·route ACK가 Actor binding route를 바꾸지 못하는가.
+
+- 절차: `ST-F3`의 binding ingress seal 뒤 session owner process의 application runtime을 pause하고 transport
+  fixture는 connection을 유지한다. Host owner lease가 만료된 뒤 이전 owner의 `sessionRelocationSealed`와
+  `sessionRelocationRouted`를 전달한다. Successor session owner는 새 owner token으로 같은 binding을 복구한다.
+- 검증: Sender의 local monotonic admission deadline을 넘긴 command와 receiver가 current descriptor의 owner
+  ID·owner lease generation을 다시 확인했을 때 일치하지 않는 command는 route publication과 unseal에 사용하지
+  않는다. Successor token과 exact session·binding generation을 가진 ACK 하나만 route를 바꾸며 packet 누락,
+  중복과 FIFO 역전이 없다.
+- 세부 동작: Bound-session barrier의 host lease fencing과 transport liveness 분리.
+
+#### ST-F4 straggler forward then fail-fast
+
+우선순위: `P1`
+
+**검증 질문:** authority commit 전에 이전 owner route로 전송된 straggler가 forwarding window(기본 30초)
+안에서는 target으로 relay되고, window 초과분은 fail-fast로 분류되는가.
+
+- 절차: `actor-straggler`의 relocation authority commit 전에 source owner route로 이미 전송된 packet `G1`과
+  `G2`를 transport fixture에서 각각 지연한다. `G1`은 commit 뒤 forwarding window 안에, `G2`는 window가
+  지난 뒤 source에 전달한다. Public caller는 global Actor ID만 사용하고 transport fixture가 resolve된 이전
+  owner route의 delivery만 지연한다. Object generation은 relocation 전후 동일하며 fixture가 caller에게 이전
+  owner route를 노출하거나 선택하게 해서는 안 된다. 공통 기본값 30초도 option snapshot으로 확인하되 이
+  시나리오는 topology의 `RelocationForwardingWindow`를 짧게 설정해 실행 시간을 줄일 수 있다.
+- 검증: `G1`은 original operation ID, generation, payload와 reply route를 보존한 `straggler_forward`를 거친다.
+  Target admission이 아직 닫혀 있으면 Ready까지 handler 실행을 기다린 뒤 target Actor에서 처리된다. `G2`는 `stale_fail_fast`로
+  분류되고 target에서 처리되지 않으며, caller는 terminal 결과를 확인한 뒤 명시적으로 다시 제출해야 한다.
+  framework가 `G2`를 자동 저장·재전송한 evidence가 있으면 실패다.
+- 세부 동작: straggler bounded forwarding과 cutoff.
+
+#### ST-F5 forwarding mapping eviction
+
+우선순위: `P1`
+
+**검증 질문:** window 후 forwarding mapping이 축출되어 누수가 없고, window 안 재이동은 entry를 갱신하는가
+([Spot Actor §8](../../spec/server/23-spot-actor.ko.md#8-route-forwarding)).
+
+- 절차: 두 부분으로 실행한다. (a) `actor-map-evict`를 remote relocation한 뒤 window 경과를 bounded wait로
+  두고 `mapping_evicted` marker를 관찰한다. (b) `actor-map-chain`을 window 안에 `actor-a -> actor-b ->
+  actor-a의 다른 user Spot`처럼 **다른 node로 두 번** 연속 이동시키고 각 node의 forwarding entry snapshot을
+  관찰한다. 첫 node(`actor-a`)의 old ref로 straggler를 주입한다.
+- 검증: (a) window 경과 후 `mapping_evicted`가 남고, 이후 old ref packet은 `stale_fail_fast`다. (b) **각
+  source node는 그 actor에 대해 entry가 최대 하나**이고 그 entry는 자기 **다음 hop**을 가리킨다(첫 node는
+  두 번째 node를, 두 번째 node는 최종 target을). 첫 node에 주입한 straggler는 hop을 따라 최종 target까지
+  전달된다. 한 node 안에 이전 target을 가리키는 잔여 entry가 함께 남으면 실패다. 각 window 경과 후 모든
+  entry가 축출되어 누수가 없다.
+- 세부 동작: mapping retained state의 bounded 축출과 node별 chained forward(hop 전달).
+
+#### ST-F6 in-flight request reply correlation과 timeout
+
+우선순위: `P1`
+
+**검증 질문:** seal 전에 수락한 lease-backed request가 replay된 뒤 original reply route로 correlate되고,
+timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되는가
+([Actor model §8](../../spec/server/22-actor-model.ko.md#8-실패와-관측),
+[Flow Correlation §7](../../spec/server/53-flow-correlation.ko.md#7-reply와-failure)).
+
+- 절차: 세 부분으로 실행한다. (a) 충분히 긴 timeout의 lease-backed request를 source가 수락한 직후 handler
+  실행 전에 remote relocation을 시작한다. (b) 같은 accepted-before-seal 흐름에서 caller timeout을 Ready보다
+  짧게 두고 target의 replay completion을 지연한다. (c) Source seal evidence 뒤 새 request를 제출한다.
+- 검증: (a) accepted journal은 original operation ID와 reply route를 보존하고 target replay 결과가 원래
+  caller에 한 번만 correlate된다. Durable terminal completion과 reply relay ACK를 끝내지 않고 source cleanup이나
+  `Completed`를 통과하면 실패다. (b)는 normal request timeout으로 끝나며 뒤늦은 replay reply는 late-reply
+  drop된다. Framework가 새 operation으로 숨겨서 재제출하지 않는다. (c)는 `ActorMoving`으로 즉시 끝나며
+  journal, forwarding queue와 target handler에 들어가지 않는다.
+- 세부 동작: accepted request replay, durable reply correlation, timeout과 moving rejection 분리.
+
+## 5. 완료 기준
+
+- Track A, Track B, Track C의 `P0` 시나리오는 모든 framework 언어가 같은 의미로 구현해야 한다.
+- Track D와 Track E의 `P0` 시나리오는 네 runtime lane과 다섯 public 언어 표현에서 public API만으로 모두
+  통과해야 한다. 구현 gap이나 필요한 public 표면 누락은 이 config의 완료를 차단한다.
+- Track F의 `P0` 시나리오(ST-F1~F3, ST-F3A)는 네 runtime lane과 다섯 public 언어 표현에서 같은 순서 의미로
+  통과해야 한다. `P1`(ST-F4~F6)은 지원 범위를 ledger에 기록하되 formal contract에 포함된 기능의 구현 gap을
+  completion으로 처리하지 않는다.
+- callback order는 단순 로그 문자열 grep이 아니라 역할 server evidence와 message flow correlation id로
+  검증한다.
+- location 검증은 public Actor·Spot manager의 `Find`, runtime snapshot 또는 역할 server endpoint로 관찰한다. 내부 store key를 client가
+  직접 읽어 성공 판정하면 안 된다.
+- failure injection은 application endpoint 또는 runner process control로만 한다. framework private state를
+  직접 조작하는 테스트 전용 adapter는 사용하지 않는다.
+- 모든 `P0` 시나리오는 source/target node rid, actor id, relocation id, callback order marker, location
+  snapshot, bound session snapshot을 실패 evidence에 남겨야 한다.

@@ -64,7 +64,9 @@ monitoring으로 보고한다.
 Global Spot·Actor send도 같은 비동기 terminator를 사용한다. Source는 current Ready authority를 resolve하고
 local outbound admission으로 submit을 완료한다. Cache hit도 같은 public 의미를 유지하므로 cache 상태에 따라
 동기 submit을 제공하거나 caller에게 owner node와 generation을 요구하지 않는다. Message call은 Missing
-object의 creation intent를 만들지 않는다.
+object의 creation intent를 기본적으로 만들지 않는다. Spot 전용 fluent call에서 Instance intent를 명시한
+경우에만 Missing Spot의 cold activation을 같은 terminal operation 안에서 시작한다. 시작 method는 계속 global
+Spot RID만 받으며 optional stable type과 initial Mesh는 fluent call의 cold activation option이다.
 
 유효한 one-way call은 `Submitted`, `Backpressured`, `TimedOut`, `TargetNotFound`, `RouteNotConnected`,
 `Shutdown` 가운데 하나로 완료한다. 잘못된 argument·handle·state와 중복 submit은 local exceptional
@@ -137,10 +139,10 @@ Spot은 MeshNode가 소유하는 logical mailbox다. Spot direct message, Logica
 lifecycle callback은 같은 Spot의 application turn에서 직렬로 처리한다. Node callback이 Spot queue를
 대신 읽지 않는다.
 
-Instance Spot은 Actor membership이 없는 Spot kind다. Missing object 생성은 manager의 explicit
-Create·GetOrCreate만 시작한다. Location Store reservation이 정한 owner 하나가 factory를 실행하고 location이
-`Ready`로 commit된 뒤 Framework activation barrier를 연다. Creating 경쟁자는 같은 attempt의 terminal 결과에
-합류하며 별도 factory나 message를 시작하지 않는다.
+Instance Spot은 Actor membership이 없는 Spot kind다. Missing Instance 생성은 Spot direct fluent call의
+명시적인 Instance intent만 시작한다. Location Store reservation이 정한 owner 하나가 factory를 실행하고
+location이 `Ready`로 commit된 뒤 Framework activation barrier를 연다. Creating 경쟁자는 같은 attempt의
+terminal 결과에 합류하며 별도 factory나 message를 시작하지 않는다.
 
 `ActorRef`와 `SpotRef`는 global ID, ObjectGeneration, 조회 시점의 MeshName과 NodeRid를 담은 immutable location
 snapshot이다. Endpoint, 내부 frame과 runtime resource는 포함하지 않는다. 일반 message는 ref가 아니라 global
@@ -180,9 +182,11 @@ handler 예외는 one-way 경로에서도 error로 기록한다. observer 실패
 
 ## 10. 종료
 
-`Retire` 또는 `Shutdown`이 admission seal을 시작하면 새 channel 선택, Logical Multicast target과 새 상태 배정을
-제한한다. 이미 admission한 message, request completion, Actor transfer와 STREAM session barrier는 설정된
-deadline까지 진행한다. Deadline 뒤 남은 operation은 owner별 terminal shutdown 결과로 완료한다.
+`Retire`가 `Retiring` intent를 게시하거나 `Shutdown`이 admission seal을 시작하면 새 channel 선택, Logical Multicast
+target과 새 상태 배정을 제한한다. `Retiring`에서 permit을 얻지 못한 relocation unit은 기존 message와 timer를 계속
+처리하며 queue turn 경계에서 permit을 얻은 뒤에만 seal한다. `Draining` 뒤에는 이미 admission한 message, request
+completion, Actor relocation과 STREAM session barrier만 설정된 deadline까지 진행한다. Deadline 뒤 남은 operation은
+owner별 terminal shutdown 결과로 완료한다.
 
 Draining MeshNode는 새 Instance placement 후보에서 제외된다. `Shutdown`은 기존 Instance Spot을 다른 node로
 이동시키지 않고 수락된 turn을 deadline까지 처리한 뒤 정리한다. `Retire`는 type별 maintenance policy와

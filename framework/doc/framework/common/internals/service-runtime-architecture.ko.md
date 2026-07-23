@@ -37,7 +37,7 @@ builder와 DTO에 transport handle, frame layout과 scheduling option을 추가�
 언어별 이름은 달라도 runtime은 host coordinator, raw transport gateway, protocol codec, topology·peer registry,
 mailbox scheduler, operation registry, object runtime, authority coordinator와 observability 책임을 분리한다. Raw
 gateway는 protocol이나 object state를 소유하지 않고 protocol codec은 handler를 호출하지 않는다. Store provider는
-Framework transfer phase와 transfer envelope을 해석하지 않는다.
+Framework relocation phase와 relocation envelope을 해석하지 않는다.
 
 Process에는 host runtime aggregate 하나가 존재한다. Aggregate는 여러 RouteMesh, ClientServer, fanout과
 STREAM topology를 한 lifecycle로 조정한다. Topology별 runtime은 selection과 monitoring view를
@@ -83,7 +83,7 @@ operation table을 유지한다. Runtime은 target handler 실행 여부가 불�
 ## 4. Mailbox
 
 Application domain은 handler turn, Spot·Actor admission, timer와 session callback을 처리한다. Infrastructure
-domain은 peer admission, send-ready, request completion, lease, transfer recovery, host barrier와 STREAM fence를
+domain은 peer admission, send-ready, request completion, lease, relocation recovery, host barrier와 STREAM fence를
 처리한다. 두 domain은 bounded queue와 scheduling state를 분리한다.
 
 Application callback이 비동기 대기 중이어도 infrastructure domain은 계속 진행해야 한다. Observer와 metric
@@ -99,6 +99,10 @@ application admission을 열지 않는다.
 종료는 host maintenance barrier가 소유한다. `Retire`와 `Shutdown`의 차이, first-intent-wins, waiter cancellation,
 deadline과 terminal result는 정식 lifecycle spec을 따른다. Topology resource를 따로 닫는 operation이 host
 barrier를 우회하지 않는다.
+
+`Retire`는 host를 `Retiring`으로 게시한 뒤 unit queue에 infrastructure intent notification을 예약한다. 이 상태에서는
+새 selection·placement를 막지만 permit을 얻지 못한 unit의 application mailbox는 계속 처리한다. 모든 unit이 source
+dispatch에서 분리된 뒤에만 `Draining`으로 바꾸고 topology resource cleanup을 시작한다.
 
 ## 6. 구현 검증
 

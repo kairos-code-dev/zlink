@@ -178,7 +178,7 @@ owner queue에 들어가 새 turn으로 재개한다. 어느 경우에도 한 ow
 
 각 언어 service runtime은 application domain과 infrastructure domain을 독립적으로 진행한다. Payload decoding,
 user callback과 exception mapping은 application turn에서 처리한다. Completion, send-ready, peer lifecycle,
-transfer control과 shutdown barrier는 infrastructure task에서 처리한다. Application handler가 대기 중이어도
+relocation control과 shutdown barrier는 infrastructure task에서 처리한다. Application handler가 대기 중이어도
 infrastructure task를 진행할 수 있어야 한다.
 
 Object placement와 activation도 infrastructure task에서 처리한다. Location Store reservation이 확정한 owner만
@@ -222,9 +222,10 @@ cancellation 상태를 유지하지만 공유 `CompletionStage`와 runtime opera
 `ZLinkPublishResult`로 완료한다. 이는 operation cancellation이 아니다. Drain·shutdown도 시작된 transaction의
 결과를 기다리며, host drain deadline을 넘긴 경우에만 전체 runtime의 bounded force stop 규칙을 따른다.
 
-MeshNode가 drain을 시작하면 새 ChannelName 선택과 Logical Multicast target에서 제외된다. 이미 수락한
-application record, request completion, Actor transfer와 STREAM barrier는 shutdown deadline까지 진행한다.
-Deadline 뒤에는 남은 claim을 revoke하고 대기 중인 operation을 shutdown 결과로 완료한다.
+MeshNode가 `Retiring`으로 전환되면 새 ChannelName 선택과 Logical Multicast target에서 제외된다. Relocation permit을
+얻지 못한 unit의 application claim은 계속 진행하고, permit을 얻은 queue turn 경계에서만 해당 unit을 seal한다.
+`Draining` 뒤에는 이미 수락한 application record, request completion, Actor relocation과 STREAM barrier만 shutdown
+deadline까지 진행한다. Deadline 뒤에는 남은 claim을 revoke하고 대기 중인 operation을 shutdown 결과로 완료한다.
 
 Draining MeshNode는 새 object placement 후보에서도 제외된다. Pending activation은 drain deadline과 Framework
 activation deadline 가운데 먼저 도달한 경계에서 request를 한 번 terminal 완료하고 one-way payload를 drop 처리한다.

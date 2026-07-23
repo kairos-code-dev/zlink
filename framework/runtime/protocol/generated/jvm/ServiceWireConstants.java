@@ -26,22 +26,22 @@ public final class ServiceWireConstants {
     public static final int COMMAND_ACTOR_DESTROY = 27;
     public static final int COMMAND_ACTOR_JOIN = 28;
     public static final int COMMAND_ACTOR_LEFT = 29;
-    public static final int COMMAND_TRANSFER_READY = 30;
-    public static final int COMMAND_TRANSFER_DATA = 31;
-    public static final int COMMAND_TRANSFER_ACK = 32;
+    public static final int COMMAND_RELOCATION_READY = 30;
+    public static final int COMMAND_RELOCATION_DATA = 31;
+    public static final int COMMAND_RELOCATION_ACK = 32;
     public static final int COMMAND_REPLY_RELAY = 33;
-    public static final int COMMAND_TRANSFER_SEAL = 34;
-    public static final int COMMAND_TRANSFER_COMPLETE = 35;
+    public static final int COMMAND_RELOCATION_SEAL = 34;
+    public static final int COMMAND_RELOCATION_COMPLETE = 35;
     public static final int COMMAND_BOUND_SESSION_SEND = 36;
     public static final int COMMAND_ACTOR_JOINED = 37;
     public static final int COMMAND_BOUND_SESSION_BIND = 38;
     public static final int COMMAND_INSTANCE_SPOT = 39;
-    public static final int COMMAND_TRANSFER_PREPARE = 40;
-    public static final int COMMAND_TRANSFER_RESERVED = 41;
-    public static final int COMMAND_SESSION_TRANSFER_SEAL = 42;
-    public static final int COMMAND_SESSION_TRANSFER_SEALED = 43;
-    public static final int COMMAND_SESSION_TRANSFER_ROUTE = 44;
-    public static final int COMMAND_SESSION_TRANSFER_ROUTED = 45;
+    public static final int COMMAND_RELOCATION_PREPARE = 40;
+    public static final int COMMAND_RELOCATION_RESERVED = 41;
+    public static final int COMMAND_SESSION_RELOCATION_SEAL = 42;
+    public static final int COMMAND_SESSION_RELOCATION_SEALED = 43;
+    public static final int COMMAND_SESSION_RELOCATION_ROUTE = 44;
+    public static final int COMMAND_SESSION_RELOCATION_ROUTED = 45;
     public static final int COMMAND_REPLY_RELAY_ACK = 46;
     public static final int FLAG_METADATA = 1;
     public static final int FLAG_BOUND_SESSION = 2;
@@ -70,6 +70,6 @@ public final class ServiceWireConstants {
     public static final long FRAMEWORK_ERROR_WORKER_FAILED = 20L;
     public static final long FRAMEWORK_ERROR_ACTOR_LOCATION_STALE = 21L;
     public static final long FRAMEWORK_ERROR_ACTOR_CREATE_REJECTED = 22L;
-    public static final long FRAMEWORK_ERROR_TRANSFER_DATA_LOST = 35L;
+    public static final long FRAMEWORK_ERROR_RELOCATION_DATA_LOST = 35L;
     private ServiceWireConstants() {}
 }

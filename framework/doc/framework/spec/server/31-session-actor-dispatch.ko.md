@@ -59,7 +59,7 @@ binding에 적용하지 않는다.
 
 Target에 exact Actor가 없고 active committed forwarding mapping이 있으면 original bind control request와 reply
 route를 mapping target으로 relay한다. Mapping이 없거나 만료됐으면 `ActorLocationStale`, 같은 ActorId의
-ObjectGeneration이 다르면 `ActorGenerationStale`, transfer pre-commit seal 중이면 `ActorMoving`으로 끝난다.
+ObjectGeneration이 다르면 `ActorGenerationStale`, relocation pre-commit seal 중이면 `ActorMoving`으로 끝난다.
 Source는 Store에서 새 route를 찾아 같은 bind를 hidden retry하지 않는다. `BindOrGet`의 Get은 같은 session의
 exact ActorId·ObjectGeneration binding만 반환하며 다른 generation이나 directory Actor를 반환하지 않는다.
 
@@ -68,7 +68,7 @@ Binding route는 Framework가 관리한다. Application이 별도 Location row, 
 지정하는 global proxy를 제공하지 않는다. Disconnect는 binding을 해제하지만 Actor를 destroy하거나 membership을
 바꾸지 않는다.
 
-## 5. Actor transfer route barrier
+## 5. Actor relocation route barrier
 
 Actor가 다른 MeshNode로 이동해도 physical STREAM connection과 session scope는 session owner process에 유지된다.
 Socket, transport handle과 session callback state를 target Actor process로 이동하거나 복제하지 않는다.
@@ -77,12 +77,14 @@ Socket, transport handle과 session callback state를 target Actor process로 �
    barrier에 기록한다.
 2. Session owner는 ingress를 reversible하게 seal하고 exact high-water를 ACK한다.
 3. Bound-session request는 Captured CAS 전에 terminal drain하며 durable journal에 넣지 않는다.
-4. Lease-backed one-way packet만 negotiated boundary 안에서 transfer envelope에 포함할 수 있다.
-5. Target은 Transfer Store root의 restore와 replay를 끝내고 새 route를 stage하지만 switch·unseal하지 않는다.
+4. Lease-backed one-way packet만 negotiated boundary 안에서 relocation envelope에 포함할 수 있다.
+5. Target은 Relocation Store root를 restore하고 accepted journal을 실행하지 않은 staging queue로 준비한다. 새 route를
+   stage하지만 switch·unseal하지 않는다.
 6. Durable source cleanup과 Completed authority CAS 뒤 target이 session route commit을 보낸다.
 7. Session owner는 exact Actor ObjectGeneration, 이전·target AuthorityOwnerGeneration, binding generation,
    session owner lease와 high-water를 검증해 route를 atomic switch하고 routed ACK를 보낸다.
-8. Maintenance authority를 steady target으로 normalize한 뒤에만 target Actor packet·push admission을 연다.
+8. Owner commit 뒤 lifecycle callback과 accepted journal replay를 완료하고 maintenance authority를 steady target으로
+   normalize한 뒤에만 target Actor packet·push admission을 연다.
 
 Activated, Cleaning과 Completed만으로 route나 admission을 열 수 없다. 이전 owner, stale authority owner generation,
 binding token과 sequence의 packet·reply·push·close는 current connection에 적용하지 않는다.
@@ -96,17 +98,17 @@ Commit 뒤에는 source route로 rollback하지 않는다. Current target 또는
 Completed, route switch ACK와 steady normalization을 이어간다. Session owner process가 종료되면 connection을 다른
 process로 복구하지 않고 닫으며 client reconnect가 새 session을 만든다.
 
-Physical disconnect는 accepted participant high-water, request terminal completion 또는 transfer cleanup의 증거가
+Physical disconnect는 accepted participant high-water, request terminal completion 또는 relocation cleanup의 증거가
 아니다. Connection-bound work와 bound-session request가 pre-Captured deadline 안에 terminal drain되지 않으면
-transfer를 abort하고 `Blocked/TransferDisabled`로 admission을 복원한다.
+relocation을 abort하고 `Blocked/DeadlineExceeded`로 admission을 복원한다.
 
 ## 7. Execution과 lifecycle
 
-같은 session의 handler turn, binding mutation, close와 transfer barrier는 session owner가 직렬화한다. Actor에
+같은 session의 handler turn, binding mutation, close와 relocation barrier는 session owner가 직렬화한다. Actor에
 제출한 뒤에는 Actor queue가 순서를 소유한다. Session turn과 Actor turn을 shared lock이나 callback stack으로 합치지
 않는다.
 
-Request completion, send-ready, binding update, transfer barrier와 disconnect cleanup은 infrastructure task에서
+Request completion, send-ready, binding update, relocation barrier와 disconnect cleanup은 infrastructure task에서
 진행한다. Session 또는 Actor application callback이 비동기 작업을 기다리는 동안에도 진행해야 한다.
 
 Actor owner host의 Retire는 §5 barrier를 사용한다. Session owner host의 Retire와 Shutdown은 신규 session·binding을
@@ -121,7 +123,7 @@ Actor owner host의 Retire는 §5 barrier를 사용한다. Session owner host의
 | Location Store 없음 | Configuration error |
 | Mapping 없는 stale ActorRef 위치 | `ActorLocationStale` |
 | 다른 ObjectGeneration | `ActorGenerationStale` |
-| Transfer pre-commit seal | `ActorMoving` |
+| Relocation pre-commit seal | `ActorMoving` |
 | 같은 packet key handler 중복 | Configuration error |
 | Actor factory 없음 | Explicit create error |
 | Current binding 없이 push·close | Session-not-bound |

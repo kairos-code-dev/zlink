@@ -56,7 +56,7 @@ Actor가 Stage state를 바꾸려면 Stage Spot으로 명시적인 send/request�
 turn에서 membership, score, world state와 broadcast 결정을 수행한다. 이 경계는 여러 Actor가 같은 Stage에
 속해도 Actor의 독립적인 payload 처리와 Stage state의 단일-writer 의미를 함께 유지한다.
 
-Spot control claim이 받는 Actor 관련 작업은 join·leave·transfer와 lifecycle notification뿐이다. 업무
+Spot control claim이 받는 Actor 관련 작업은 join·leave·relocation과 lifecycle notification뿐이다. 업무
 payload와 control 작업을 같은 callback namespace로 합치지 않는다. 자세한 Actor queue 및 control 계약은
 [22 Actor 모델](22-actor-model.ko.md)이 소유한다.
 
@@ -70,14 +70,19 @@ Spot direct, Logical Multicast와 다른 timer callback에 대해 같은 직렬�
 - fixed-rate, delay, catch-up과 overrun option은 언어별 timer 공개 계약으로 표현한다.
 - wrapper는 native handle이나 scheduler thread를 application에 노출하지 않는다.
 
+Host `Retire` 중 permit을 기다리는 Stage Spot은 message와 timer turn을 계속 처리한다. Framework의 intent
+notification은 infrastructure control이므로 Stage callback으로 전달하지 않는다. Permit을 얻은 turn 경계에서
+seal하면 실행하지 않은 tick과 logical timer registration을 relocation payload에 포함하고 target Framework가 자동
+복원한다. Stage wrapper는 `Restore`에서 같은 timer를 다시 등록하지 않는다.
+
 ## 6. 생성과 membership
 
-Stage wrapper는 Spot manager의 explicit Create·GetOrCreate에 stable type과 domain 생성 payload를 전달하고 생성
+Stage wrapper는 User Spot manager의 explicit Create·GetOrCreate에 stable type과 domain 생성 payload를 전달하고 생성
 callback 안에서 초기 Stage state를 만든다. Framework는 global Spot RID의 authority와 중복 factory 실행을
 fence한다. Admission 권한과 재활성 뒤 복원할 업무 상태는 domain 규칙으로 결정한다.
 
 Actor join은 Spot control claim에서 Stage membership 정책을 검사한다. 성공한 membership은 Actor의 현재
-Spot 위치와 Stage가 소유한 member state를 일관되게 갱신한다. transaction, fencing과 transfer barrier는
+Spot 위치와 Stage가 소유한 member state를 일관되게 갱신한다. transaction, fencing과 relocation barrier는
 [23 Spot Actor](23-spot-actor.ko.md)가 소유한다.
 
 Stage 전체 알림은 다음 중 의미에 맞는 경로를 사용한다.
@@ -116,3 +121,5 @@ Stage wrapper는 [03 메시지 모델](../03-message-model.ko.md)의 immutable m
 - request continuation이 transport thread에서 Stage state를 직접 변경하지 않는다.
 - Stage wrapper가 Framework의 public Spot·Actor·timer·location 표면만 사용한다.
 - Spot 종료 뒤 신규 timer와 message callback이 실행되지 않는다.
+- Relocation permit 전에는 Stage Spot을 seal하지 않고, seal 뒤 timer registration과 pending tick을 target에서 자동
+  복원한다.

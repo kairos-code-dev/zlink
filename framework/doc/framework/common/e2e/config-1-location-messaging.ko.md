@@ -42,8 +42,10 @@ weight를 다르게 준 provider를 따로 시작한다(공유 provider는 기�
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix로 격리한다. 별도 registry process는 실행하지 않는다. |
-| provider (api 노드) | 2 (`api-a`, `api-b`) | `AddRouteMesh(meshName)`으로 MeshNode를 만들고 profile `ChannelName` membership에 request handler(`ProfileRequest`)·send handler(`ProfileCommand`)를 등록한다. RID direct route handler(`ScenarioRoutePing`)는 같은 MeshNode에 등록하고 routing id는 `api-a`/`api-b`다. dispatch-error observer로 evidence를 기록하며 테스트용 `/evidence`·`/health` HTTP endpoint를 함께 제공한다. |
-| consumer | 시나리오별 | location store를 사용하면 같은 MeshName의 descriptor에서 peer를 자동으로 확인한다. manual topology에서는 언어별 peer-connection interface로 endpoint를 등록한다. inbound가 필요한 MeshNode만 endpoint를 bind하고 모든 MeshNode는 routing ID를 설정한다. 양쪽에 endpoint가 있으면 pairwise initiator 한쪽만 연결을 시작한다. |
+| relocation store | 1 (`RM-C10` 전용) | Snapshot adapter capability bound를 검증하는 Object Server root가 등록하는 공식 Redis relocation store extension. Location Store와 별도 key prefix를 사용한다. 다른 시나리오의 `Disabled` factory는 이 Store를 요구하지 않는다. |
+| provider (api 노드) | 2 (`api-a`, `api-b`) | `AddRouteMesh(meshName)`으로 MeshNode를 만들고 profile `ChannelName` membership에 request handler(`ProfileRequest`)·send handler(`ProfileCommand`)를 등록한다. RID direct route handler(`ScenarioRoutePing`)는 같은 MeshNode에 등록한다. Automatic routing ID는 역할 prefix `api-a`·`api-b` 뒤에 lifecycle별 32-hex suffix를 붙여 발급하며 application이 exact RID를 고정하지 않는다. Dispatch-error observer로 evidence를 기록하며 테스트용 `/evidence`·`/health` HTTP endpoint를 함께 제공한다. |
+| object authority 노드 | 2 (`profile-object`, `workflow-object`) | 각각 `profile`·`workflow` Mesh의 Object Server다. 두 노드는 같은 stable Actor type `cfg1.actor`과 User Spot type `cfg1.user-spot` factory를 `Disabled` policy로 등록하고 placement weight `100`, node capacity active `128`·pending `32`를 사용한다. RM-A7의 manager call과 direct request를 시작할 Client capability는 Server role에 포함된다. |
+| consumer | 시나리오별 | Location Store를 사용하는 automatic topology에서는 같은 MeshName의 descriptor에서 peer를 확인하고 RID prefix만 설정한다. Manual topology에서는 role `None` MeshNode에 fixed RID와 peer endpoint를 언어별 peer-connection interface로 등록한다. Inbound가 필요한 MeshNode만 endpoint를 bind하며 양쪽에 endpoint가 있으면 pairwise initiator 한쪽만 연결을 시작한다. |
 
 각 provider는 MeshName, RID, lifecycle generation, ROUTER endpoint와 `ChannelWeights`를 포함한
 MeshNode descriptor를 framework lifecycle을 통해 store에 게시한다. consumer는 MeshName과
@@ -51,11 +53,16 @@ ChannelName만 지정하며 endpoint는 descriptor에서 확인한다. 이 confi
 코드에서 직접 갱신하거나 제거하지 않는다. manual topology 시나리오만 peer endpoint를
 언어별 peer-connection interface로 지정한다. RouteMesh 구성원은 모두 `ROUTER`다.
 
+`profile-object`와 `workflow-object` root는 Location Store를 명시적으로 등록한다. 두 factory의 policy가
+모두 `Disabled`이므로 RM-A7에는 Relocation Store와 relocation adapter가 필요하지 않다. `RM-C10`의 Snapshot
+capability fixture만 Location Store와 Relocation Store를 함께 등록하고 factory kind에 맞는 adapter를
+제공한다. Channel-only provider와 consumer에 object factory를 추가하지 않는다.
+
 store 등록은 각 역할의 `*HostFactory`에서 바로 보이게 둔다.
 
 ```csharp
-// 공식 Redis extension은 peer/spot/actor/route store와 owner lease store를 결합한
-// 통합 계약 인스턴스 하나다. 전용 등록 함수는 없고 AddLocationStore로 등록한다.
+// 공식 Redis Location Store는 descriptor, owner lease와 location authority를 제공한다.
+// Relocation payload가 필요한 Object Server는 별도 AddRelocationStore로 capability를 등록한다.
 options.AddLocationStore(new ZLinkRedisLocationStore(redis =>
 {
     redis.ConnectionString = redisConnectionString;
@@ -112,25 +119,29 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 - 검증: 지정한 provider에서 처리. 자동 resolve 경로와 같은 reply 의미. auto reconcile은 manual endpoint를 끊지 않는다(manual 연결 우선).
 - 세부 동작: 수동 연결이 자동 연결과 동일 의미임을 고정.
 
-> custom resolver는 ChannelName public API에 없다. SPOT 전송 대상 조회는 location store 기반 **spot handle resolver**가 담당하며, 반환 값은 불투명한 `SpotHandle`이다. `SpotRef`는 framework 내부 주소 snapshot이라 public 표면에 노출하지 않는다([24 §2](../../spec/server/24-spot-address-messaging.ko.md)).
+> ChannelName은 process-local egress index가 선택하고 MeshName을 호출자에게 요구하지 않는다.
+> Spot direct는 global Spot RID를 받고 current owner를 Location Store에서 resolve한다. `SpotRef`는
+> create·find·exact close에 사용하는 immutable snapshot이며 messaging target은 아니다.
 
-#### RM-A4 같은 rid, 다른 endpoint replacement
+#### RM-A4 새 RID·endpoint replacement
 
 우선순위: `P0`
 
-**검증 질문:** 같은 rid의 provider를 다른 endpoint의 process로 교체해도, consumer가 새 endpoint를
-사용하고 이전 endpoint로 계속 요청하지 않는가.
+**검증 질문:** Automatic provider를 같은 application 역할의 새 process로 교체하면 새 RID·endpoint를
+발급하고, consumer가 이전 RID·endpoint로 계속 요청하지 않는가.
 
-- 절차: provider v1을 rid `api-a`/endpoint p1로 시작 → request로 v1 evidence 확인 → v1에 정상 종료를
-  요청 → terminal `Drained`와 descriptor snapshot에서 v1 제외를 확인 → provider v2를 같은 RID
-  `api-a`/endpoint p2로 시작 → `ListMeshNodesAsync(meshName)` 결과가 RID `api-a`의 endpoint를 p2로
-  보여줄 때까지 대기 → consumer 재시작 없이 다시 request. crash 뒤 lease 만료를 거치는 replacement는
+- 절차: provider v1을 automatic RID `api-a-<suffix1>`/endpoint p1로 시작 → request로 v1 evidence 확인 → v1에 정상 종료를
+  요청 → host `Shutdown` terminal `Stopped/None`과 descriptor snapshot에서 v1 제외를 확인 → provider v2를
+  같은 `api-a` 역할 prefix와 새 automatic RID `api-a-<suffix2>`/endpoint p2로 시작 →
+  `ListMeshNodesAsync(meshName)` 결과가 새 RID와 p2를 보여줄 때까지 대기 → consumer 재시작 없이 다시 request.
+  Crash 뒤 lease 만료를 거치는 replacement는
   Config 5 RL-A2가 별도로 검증한다.
 - 검증: v2 시작 전 v1 descriptor가 성공 조회에서 제외된다. v2 시작 뒤
-  `ListMeshNodesAsync(meshName)` 결과에서 RID `api-a`의 유효한 descriptor는 하나이고 endpoint가 p2다.
+  `ListMeshNodesAsync(meshName)` 결과에서 `suffix2 != suffix1`인 새 RID의 유효한 descriptor 하나가 보이고
+  endpoint가 p2다.
   교체 뒤 신규 request는 p2 evidence에 기록되고 consumer가 p1 stale endpoint로 요청하지 않는다. 이후
   연속 20개 request가 모두 성공한다.
-- 세부 동작: 같은 MeshNode key의 endpoint replacement 반영 + stale 회피. 이미 실행 중인 다른 provider가
+- 세부 동작: application 역할 replacement의 새 automatic identity 반영 + stale 회피. 이미 실행 중인 다른 provider가
   장애 직후 처리를 계속하는 failover는 RM-B3에서 별도로 검증한다.
 
 > 런타임 연결 수립/재시도/해제 제어 handle은 channel messaging public API에 없다(endpoint는 startup 설정). timeout 규칙 검증은 RM-C4가 다룬다.
@@ -149,19 +160,22 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
   다른 RouteMesh의 descriptor와 routing에 영향을 주지 않는다.
 - 세부 동작: MeshName 기반 descriptor 격리.
 
-#### RM-A7 다중 Mesh logical address 충돌 격리
+#### RM-A7 global Actor·Spot identity 충돌
 
 우선순위: `P0`
 
-**검증 질문:** 서로 다른 Mesh에 같은 Actor ID와 Spot RID가 존재해도 host-level resolve가
-지정한 Mesh의 owner만 반환하는가.
+**검증 질문:** 서로 다른 Mesh에서 같은 Actor ID 또는 Spot RID를 동시에 생성해도 Location Store
+namespace 전체에서 authority 하나로 수렴하는가.
 
-- 절차: `profile`과 `workflow` Mesh에 같은 Actor ID와 Spot RID를 각각 등록한다. 역할 server가
-  MeshName을 포함한 공개 resolver로 각 address를 조회하고 request를 제출한다.
-- 검증: 두 resolve 결과의 owner가 다르고 각 request가 지정한 Mesh의 evidence에만 기록된다.
-  MeshName을 생략하는 host-level Actor·Spot resolver는 공개 API에 없어야 한다.
-- 회귀: 두 Mesh 중 하나를 scale-in한 뒤 다른 Mesh의 같은 logical ID resolve와 request가 계속
-  성공한다.
+- 절차: `profile`과 `workflow` Object Server에서 같은 global Actor ID와 Spot RID의 `GetOrCreate`를
+  각각 동시에 시작하되 서로 다른 initial `InMesh`를 지정한다. 그 뒤 manager `Find`와
+  Actor·Spot direct request를 각각 실행한다.
+- 검증: ID별 authority CAS winner 하나만 성공하고 loser는 이미 고정된 stable type·kind과 다르면
+  typed mismatch로 끝난다. `Find`는 current owner의 `ActorRef`·`SpotRef` 하나를 반환하고 direct
+  request는 MeshName을 받지 않으며 current owner evidence에만 기록된다. 같은 ID의 Mesh별
+  authority row나 두 번째 object generation이 생기면 실패다.
+- 회귀: current owner가 있는 Mesh와 다른 `InMesh`를 후속 create에 지정해도 기존 owner를 이동시키지
+  않고 같은 current reference를 유지한다.
 
 > Track A의 `A3`·`A5`는 예약 번호로 유지한다. 신규 시나리오는 이 번호를 재사용하지 않고 새 번호를 사용한다.
 
@@ -186,10 +200,10 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 **검증 질문:** provider 한 대를 정상 종료해 제외해도, consumer가 종료된 endpoint로 요청하지 않고 남은
 provider로만 처리하는가.
 
-- 절차: A·B로 분산을 확인 → B에 정상 종료 요청 → terminal `Drained`와 store/runtime snapshot에서
+- 절차: A·B로 분산을 확인 → B에 host `Shutdown` 요청 → terminal `Stopped/None`과 store/runtime snapshot에서
   B가 제외된 것을 확인 → 다시 request.
 - 검증: B 종료 뒤 request는 A로만 처리된다. 정상 종료이므로 B의 descriptor는 owner lease 만료를 기다리지
-  않고 shutdown 경로에서 제거된다. target 미지정 지속 request는 drain 전파 구간을 포함해 모두 정상
+  않고 `Shutdown` 경로에서 제거된다. target 미지정 지속 request는 `Draining` 전파 구간을 포함해 모두 정상
   reply로 끝나며 오류와 pending이 남지 않는다. consumer가 종료된 endpoint로 timeout을 반복하지 않는다.
 - 세부 동작: 무중단 provider 감축 + shutdown 시 descriptor 제거 + stale 정리.
 
@@ -344,8 +358,12 @@ admission 결과를 유한 시간 안에 관찰하고, 적체 해소 뒤 연결�
 **검증 질문:** Host가 공개 registration을 모두 반영한 descriptor의 공통 상한을 startup에서 원자적으로
 검증하고 언어별로 truncate하거나 나누어 게시하지 않는가.
 
-- 절차: Encoded descriptor가 정확히 1 MiB 이하인 경계, 1 MiB 초과, type·stateful capability entry 1,024개와
-  1,025개, 한 type의 readable state contract 1,024개와 1,025개인 host를 각각 시작한다.
+- 절차: Encoded descriptor가 정확히 1 MiB 이하인 경계와 1 MiB 초과인 host를 각각 시작한다. Stable type
+  bound fixture는 Object Server에 `Disabled` policy의 distinct stable factory type 1,024개와 1,025개를
+  등록한다. Snapshot adapter bound fixture는 Object Server에 `Snapshot` policy와 factory kind에 맞는
+  distinct adapter capability를 1,024개와 1,025개 등록한다. 모든 fixture는 Location Store, positive
+  placement weight와 active `2,048`·pending `128` capacity를 사용한다. Snapshot fixture는 별도 Relocation
+  Store도 등록해 Store 누락 오류가 descriptor bound 결과를 가리지 않게 한다.
 - 검증: 경계 이하는 descriptor 하나로 게시되고 모든 entry가 보존된다. 한 상한이라도 넘으면 host startup이
   stable configuration error로 전체 실패하며 descriptor, owner lease와 partial capability가 Store에 남지 않는다.
   Truncate, 여러 descriptor로 split과 언어별 다른 상한은 허용하지 않는다.

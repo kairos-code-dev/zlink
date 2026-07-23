@@ -162,10 +162,9 @@ export interface ZLinkNestFrameworkOptionsBuilder {
     codecs(): ZLinkNestCodecRegistryBuilder;
     configureDispatch(): ZLinkDispatchOptionsBuilder;
     addLocationStore(store: ZLinkLocationStore): this;
-    addTransferStore(store: ZLinkTransferStore): this;
+    addRelocationStore(store: ZLinkRelocationStore): this;
     setApplicationVersion(version: bigint): this;
     setMaintenanceWave(waveId: string): this;
-    setActorTransferForwardWindow(timeoutMs: number): this;
     configureStreamCompression(): ZLinkStreamCompressionBuilder;
     configureLocations(): ZLinkLocationOptions;
     configureNetwork(): ZLinkNetworkOptions;
@@ -235,17 +234,17 @@ export interface ZLinkNestMeshObjectServerBuilder extends ZLinkNestFrameworkOpti
         spotType: string,
         implementation: Type<TSpot>,
         placement: ZLinkObjectPlacementOptions | undefined,
-        transfer: ZLinkTransferPolicy<TSpot>): this;
+        relocation: ZLinkRelocationPolicy<TSpot>): this;
     addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
         instanceSpotType: string,
         implementation: Type<TSpot>,
         placement: ZLinkObjectPlacementOptions | undefined,
-        transfer: ZLinkTransferPolicy<TSpot>): this;
+        relocation: ZLinkRelocationPolicy<TSpot>): this;
     addActorFactory<TActor extends ZLinkActor>(
         actorType: string,
         factoryType: Type<ZLinkActorFactory<TActor>>,
         placement: ZLinkObjectPlacementOptions | undefined,
-        transfer: ZLinkTransferPolicy<TActor>): this;
+        relocation: ZLinkRelocationPolicy<TActor>): this;
 }
 
 export interface ZLinkNestMeshChannelBuilder extends ZLinkNestFrameworkOptionsBuilder {

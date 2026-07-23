@@ -9,7 +9,7 @@
 공통 공개 계약을 정의한다. 이 문서는 “Actor가 어느 Spot에 속하더라도 업무 payload와 membership 제어를
 각각 어느 실행 문맥에서 처리하는가?”라는 질문에 답한다.
 
-MeshNode route와 admission은 [21 MeshNode](21-mesh-node.ko.md), Spot membership의 transaction과 transfer는
+MeshNode route와 admission은 [21 MeshNode](21-mesh-node.ko.md), Spot membership의 transaction과 relocation은
 [23 Spot Actor](23-spot-actor.ko.md), STREAM session 연동은
 [31 Session Actor Dispatch](31-session-actor-dispatch.ko.md)가 소유한다. payload와 metadata는
 [03 메시지 모델](../03-message-model.ko.md), callback 실행과 completion은
@@ -57,7 +57,7 @@ Actor handler는 Actor 자신의 상태를 소유한다. Actor handler가 room·
 읽거나 바꾸려면 명시적인 Spot send/request를 제출해야 한다. 그 작업은 target Spot turn에서 실행된다.
 Actor handler에 mutable Spot object를 직접 제공해서 두 실행 문맥의 직렬성 경계를 우회하지 않는다.
 
-ready notification, request completion, transfer barrier와 session-binding progress 같은 infrastructure
+ready notification, request completion, relocation barrier와 session-binding progress 같은 infrastructure
 작업은 Actor application claim과 분리한다. application handler가 대기 중이어도 infrastructure progress가
 계속되어야 한다.
 
@@ -70,7 +70,7 @@ lifecycle control로 제한한다.
 |---|---|
 | join | membership 허용 여부를 판단하고 Spot 소유 membership을 갱신한다. |
 | leave | membership을 해제하고 Spot 소유 정리를 수행한다. |
-| transfer prepare·commit·abort | 이동 transaction에서 Spot이 소유한 상태를 일관되게 바꾼다. |
+| relocation prepare·commit·abort | 이동 transaction에서 Spot이 소유한 상태를 일관되게 바꾼다. |
 | Actor lifecycle notification | 생성·종료와 연결된 Spot 소유 후속 작업을 실행한다. |
 
 각 control 작업은 target Spot의 control claim으로 실행되며 같은 Spot의 다른 Spot-owned callback과
@@ -98,9 +98,10 @@ key를 중복 등록하면 startup 오류다. handler 등록의 정확한 타입
 
 ## 6. Lifecycle
 
-Object Server는 Actor stable type, factory와 `Disabled`, `Recreate`, `Snapshot` 중 하나의 transfer policy를
-함께 등록한다. 생략 policy overload와 compatibility default는 제공하지 않는다. Snapshot policy는 stable
-state contract와 typed state adapter를 같은 등록에서 요구한다.
+Object Server는 Actor stable type, factory와 `Disabled`, `Recreate`, `Snapshot` 중 하나의 relocation policy를
+함께 등록한다. 생략 policy overload와 compatibility default는 제공하지 않는다. Snapshot policy는
+Actor type에 맞는 `ActorRelocationAdapter`를 같은 등록에서 요구한다. Adapter는 application이 해석하는
+opaque byte sequence만 capture·restore하며 Framework는 별도 state contract ID를 관리하지 않는다.
 
 Actor manager의 `Create`와 `GetOrCreate`는 required `ActorId`와 stable Actor type을 받는 single-use fluent
 call이다. `InMesh`, encoded creation request, `PlacementProfile`, `AffinityKey`와 timeout은 선택 항목이다.
@@ -129,7 +130,7 @@ reconcile한다.
 Manager `Find(ActorId)`는 current Ready authority의 `ActorRef`를 반환하며 creation을 시작하지 않는다. 별도
 Actor directory는 제공하지 않는다.
 
-Actor를 user Spot으로 옮기는 join·leave·transfer는
+Actor를 user Spot으로 옮기는 join·leave·relocation은
 [23 Spot Actor](23-spot-actor.ko.md)의 fencing과 barrier를 따른다. 이동 중에 수락한 payload를 이전 Spot
 callback으로 보내지 않으며, Actor queue가 순서를 유지한다.
 
@@ -172,7 +173,7 @@ session-binding state와 dispatch 결과를 구분해야 한다. Actor ID는 met
 
 - Entry Spot과 user Spot의 Actor payload가 모두 Actor queue로 직접 전달된다.
 - Actor payload가 Spot callback이나 Spot application queue를 거치지 않는다.
-- join·leave·transfer와 lifecycle control만 Spot control claim을 사용한다.
+- join·leave·relocation과 lifecycle control만 Spot control claim을 사용한다.
 - 같은 Actor의 payload가 ingress 종류와 무관하게 Actor queue 수락 순서대로 실행된다.
 - Actor handler가 mutable Spot state에 직접 접근하지 않고 명시적인 Spot 호출을 사용한다.
 - session bind와 Spot membership이 독립적으로 바뀌며 서로를 암묵적으로 변경하지 않는다.

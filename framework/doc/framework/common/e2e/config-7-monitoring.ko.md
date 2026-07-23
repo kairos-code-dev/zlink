@@ -14,7 +14,7 @@ source나 event kind를 정의하지 않는다.
 | 언어 | 정식 interface |
 |---|---|
 | C++ | [`route_mesh_runtime_t`](../../spec/server/languages/cpp/interfaces/08-monitoring.ko.md) |
-| .NET | [`IZLinkRouteMeshRuntime`](../../spec/server/languages/dotnet/05-route-mesh.ko.md#8-runtime-snapshot-event와-drain) |
+| .NET | [`IZLinkRouteMeshRuntime`](../../spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md) |
 | Java | [Java monitoring](../../spec/server/languages/java/interfaces/monitoring.ko.md) |
 | Kotlin | [Kotlin monitoring](../../spec/server/languages/kotlin/interfaces/monitoring.ko.md) |
 | Node.js | [`ZLinkRouteMeshRuntime`](../../spec/server/languages/node/interfaces/03-location-observability.ko.md) |
@@ -24,7 +24,7 @@ source나 event kind를 정의하지 않는다.
 - 다룬다: 하나의 MeshNode snapshot, peer·channel readiness 전이, Logical Multicast backpressure·drop,
   application·infrastructure claim, location health, event sequence와 observer 격리.
 - 여기서 다루지 않는다: socket 내부 monitor event, registry·Spot별 monitoring source, 집계 metric catalog와
-  exporter(Config 11), message flow trace(Config 11), drain의 전체 state machine(Config 11).
+  exporter(Config 11), message flow trace(Config 11), host `Retire`·`Shutdown`의 전체 state machine(Config 11).
 - snapshot은 현재 상태의 authority이고 event는 변화 알림이다. E2E는 event만 보고 최종 상태를
   확정하지 않으며, 항상 같은 MeshNode의 최신 snapshot과 대조한다.
 
@@ -36,9 +36,10 @@ source나 event kind를 정의하지 않는다.
 | service MeshNode | 2 (`svc-a`, `svc-b`) | 같은 MeshName과 ChannelName에 참여한다. Spot subscription, 지연 가능한 handler, runtime snapshot·event evidence endpoint를 제공한다. |
 | trigger | 시나리오별 | public ChannelName·Logical Multicast operation과 process lifecycle 조작으로 상태 전이를 만든다. |
 
-각 service host는 자기 DI container의 RouteMesh runtime을 사용한다. 다른 process의 runtime 객체를 직접
-열거나 내부 socket monitor를 조립하지 않는다. Snapshot과 event evidence에는 sequence와 source MeshName을
-함께 기록하여 서로 다른 MeshNode의 sequence를 비교하지 않게 한다.
+각 service host는 자기 DI container의 RouteMesh runtime과 host framework runtime을 사용한다. 다른 process의
+runtime 객체를 직접 열거나 내부 socket monitor를 조립하지 않는다. MeshNode snapshot·event evidence에는
+sequence와 source MeshName을 함께 기록한다. Host termination snapshot·event에는 host ID와 별도 sequence를
+기록하며 MeshName source sequence와 서로 비교하지 않는다.
 
 ## 3. 실행 모델
 
@@ -58,15 +59,18 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
 
 우선순위: `P0`
 
-**검증 질문:** 한 번의 snapshot 호출로 MeshNode, peer, channel, multicast, claim, location과 drain 상태를
-함께 읽을 수 있는가.
+**검증 질문:** MeshNode snapshot이 peer, channel, multicast, claim과 location을 일관되게 제공하고, host 종료
+상태는 MeshName과 무관한 framework runtime snapshot 한 곳에서 제공되는가.
 
-- 절차: `svc-a`만 실행한 baseline과 `svc-b`가 ready가 된 뒤의 snapshot을 각각 읽는다.
-- 검증: snapshot은 MeshName, RID, lifecycle generation, descriptor revision, endpoint, lifecycle state,
-  descriptor source, peer·channel·multicast·claim·location·drain 값을 모두 포함한다. 두 번째 snapshot의
-  sequence가 같은 `svc-a` source의 첫 snapshot보다 크고, 반환된 첫 snapshot은 두 번째 호출 뒤에도
-  바뀌지 않는 immutable value다.
-- 세부 동작: [Runtime Monitoring §2](../../spec/server/50-runtime-monitoring.ko.md#2-snapshot)의 단일
+- 절차: `svc-a`만 실행한 baseline과 `svc-b`가 ready가 된 뒤 `svc-a`의 MeshNode snapshot을 각각 읽고, 같은
+  host의 framework runtime snapshot도 별도로 읽는다.
+- 검증: MeshNode snapshot은 MeshName, RID, lifecycle generation, descriptor revision, endpoint, component
+  lifecycle state, descriptor source, peer·channel·multicast·claim·location 값을 포함한다. Host framework
+  snapshot은 MeshName 없이 runtime state, effective termination intent, deadline, sealed work, pending count와
+  terminal result를 한 번 제공한다. 두 번째 MeshNode snapshot sequence는 같은 MeshName source의 첫 값보다
+  크고, host sequence는 같은 host source 안에서만 비교한다. 반환된 snapshot은 후속 호출 뒤에도 바뀌지 않는
+  immutable value다.
+- 세부 동작: [Runtime Monitoring §2](../../spec/server/50-runtime-monitoring.ko.md#2-snapshot)의 source별
   snapshot과 sequence 계약.
 
 #### MON-A2 peer admission과 ready 전이
@@ -75,11 +79,11 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
 
 **검증 질문:** peer의 generation·descriptor revision과 실제 ready 상태가 분리되어 관찰되는가.
 
-- 절차: observer를 연 뒤 `svc-b`를 시작해 admission과 ready를 기다리고, 정상 종료 후 같은 RID와 새
-  lifecycle generation으로 다시 시작한다.
+- 절차: observer를 연 뒤 `svc-b`를 시작해 admission과 ready를 기다리고, 정상 종료 후 같은 역할 prefix와
+  새 automatic RID·lifecycle generation으로 다시 시작한다.
 - 검증: `zlink.runtime.mesh_node.peer_changed` event가 sequence 순서로 기록된다. Snapshot은 peer RID,
   lifecycle generation, descriptor revision, endpoint, admission state, ready와 last failure를 별도 field로
-  제공한다. 재시작 뒤 generation이 바뀌며 old endpoint나 old generation이 ready peer로 남지 않는다.
+  제공한다. 재시작 뒤 RID와 generation이 모두 바뀌며 old RID·endpoint·generation이 ready peer로 남지 않는다.
 - 세부 동작: peer identity와 readiness를 하나의 boolean으로 축약하지 않는다.
 
 #### MON-A3 ChannelName readiness와 선택 가능 상태
@@ -102,8 +106,8 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
 **검증 질문:** 정상 replacement와 비정상 종료가 peer·channel snapshot에서 구분되고 최신 상태로
 수렴하는가.
 
-- 절차: (a) `svc-b`를 정상 종료한 뒤 같은 RID와 새 generation으로 다시 시작한다. (b) 별도 fresh
-  topology에서 `svc-b`를 `SIGKILL`하고 owner lease 만료 뒤 다시 시작한다.
+- 절차: (a) `svc-b`를 정상 종료한 뒤 같은 역할 prefix의 새 automatic RID·generation으로 다시 시작한다.
+  (b) 별도 fresh topology에서 `svc-b`를 `SIGKILL`하고 owner lease 만료 뒤 새 RID로 다시 시작한다.
 - 검증: 두 경우 모두 peer·channel event 뒤 최신 snapshot이 ready peer와 ready member 수를 정확히
   반영한다. 비정상 종료에서는 lease 만료 전 old descriptor를 성공적인 ready route로 사용하지 않고,
   계속 실행 중인 `svc-a`의 follow-up request는 bounded terminal result를 얻는다.
@@ -120,7 +124,7 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
 - 검증: `zlink.runtime.location.store_changed` event와 snapshot의 location state, last success, last
   failure가 실제 장애·복구와 일치한다. Store 장애만으로 이미 admitted된 peer와 local queue의 메시지를
   즉시 중단하지 않으며, 복구 뒤 descriptor를 현재 owner token으로 재검증한다.
-- 세부 동작: [Location Runtime §7~8](../../spec/server/40-location-runtime.ko.md#7-failure와-recovery)의
+- 세부 동작: [Location Runtime §8](../../spec/server/40-location-runtime.ko.md#8-store-outage와-cancellation)의
   health projection.
 
 ### Track B — Logical Multicast backpressure와 drop

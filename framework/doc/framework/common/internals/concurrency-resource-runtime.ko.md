@@ -21,7 +21,7 @@ reply, lease, recovery와 shutdown을 진행한다.
 | topology runtime | raw socket, peer registry, selection snapshot, topology monitor state |
 | object aggregate | mailbox, handler scope, timer set, child Actor·session reference |
 | operation entry | correlation route, deadline task, completion과 retained request metadata |
-| transfer aggregate | reservation, authority snapshot, transfer reference, participant와 journal |
+| relocation aggregate | outbound·inbound·callback·byte permit, reservation, authority snapshot, relocation reference, participant, frozen payload와 ingress hold |
 | session aggregate | raw connection route, decoder, outbound FIFO, binding과 reply capability |
 | observer | bounded queue, sequence cursor와 cancellation registration |
 
@@ -31,10 +31,10 @@ lifetime token을 가진다. Public reference는 raw pointer가 아니며 dispos
 ## 3. Synchronization scope
 
 각 aggregate가 자신의 state와 queue를 보호하고 cross-aggregate transition은 immutable snapshot과 authority CAS로
-연결한다. Lock이 필요한 구현은 host lifecycle, topology·peer registry, object·session state, operation·transfer
+연결한다. Lock이 필요한 구현은 host lifecycle, topology·peer registry, object·session state, operation·relocation
 entry, mailbox queue, monitoring reducer 순서를 지킨다.
 
-Raw send serialization lock은 위 state lock을 해제한 뒤 획득한다. Location·Transfer Store provider, application·observer
+Raw send serialization lock은 위 state lock을 해제한 뒤 획득한다. Location·Relocation Store provider, application·observer
 callback, scheduler cancel과 raw blocking call을 lock 안에서 호출하지 않는다. Serial executor를 사용하는 runtime도
 같은 순서를 message ownership 규칙으로 보존한다.
 
@@ -57,20 +57,28 @@ operation ID는 lifecycle에서 재사용하지 않는다. Wire 64-bit correlati
 ID를 찾는 local key로만 사용한다.
 
 Object timer는 owner aggregate가 소유한다. Scheduler는 callback을 직접 실행하지 않고 generation이 포함된 mailbox
-record를 만든다. Close 또는 transfer가 timer를 detach한 뒤 발생한 tick은 fence 검사에서 폐기한다.
+record를 만든다. Close 또는 relocation이 timer를 detach한 뒤 발생한 tick은 fence 검사에서 폐기한다.
+Relocation seal은 native handle을 payload에 넣지 않고 logical registration과 pending tick을 frozen boundary에
+기록한다. Target scheduler가 새 handle을 만들기 전 stale source tick은 owner generation fence에서 폐기한다.
 
 ## 6. Bounded resource
 
-Application·infrastructure mailbox, pending admission, request table, creation follower queue, transfer journal과
-participant window, STREAM decode buffer·outbound FIFO, observer queue, protocol frame·metadata와 transfer envelope는
+Application·infrastructure mailbox, pending admission, request table, creation follower queue, relocation journal과
+participant window, STREAM decode buffer·outbound FIFO, observer queue, protocol frame·metadata와 relocation envelope는
 count와 byte limit을 가진다. Allocation 전에 capacity를 예약하고 실패를 public backpressure, target rejection
 또는 infrastructure error로 변환한다. Unbounded retry, polling loop와 observer별 전용 thread를 만들지 않는다.
+
+Relocation permit ledger는 process 단위이며 outbound·inbound active unit, `Capture`·`Restore` callback과 encoded
+payload byte를 별도로 계산한다. 기본 상한은 `64/64`, `8/8`, 256 MiB다. Queue turn 경계의 nonblocking acquire가
+모두 성공하기 전에는 unit을 seal하지 않는다. Oversized unit은 payload byte ledger가 0일 때 exclusive owner가 된다.
+Permit release는 completed·aborted·fenced cleanup의 terminal path 하나가 수행하며 late callback은 release count를
+두 번 줄일 수 없다.
 
 ## 7. Shutdown order
 
 1. 신규 application admission과 public operation 시작을 막는다.
 2. Accepted owner claim과 request completion을 deadline까지 처리한다.
-3. Transfer, Location lease와 STREAM barrier를 terminal state로 만든다.
+3. Relocation, Location lease와 STREAM barrier를 terminal state로 만든다.
 4. Object timer, session binding과 일반 observer producer를 막고 reserved terminal lane은 유지한다.
 5. Peer connector, listener와 raw socket callback을 중지한다.
 6. Scheduler와 executor queue를 drain하거나 bounded cancel한다.

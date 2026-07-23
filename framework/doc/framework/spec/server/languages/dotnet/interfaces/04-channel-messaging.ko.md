@@ -14,6 +14,7 @@ public interface IZLinkHandlerContext
     string PacketName { get; }
     string? ContentType { get; }
     ZLinkMessageMetadata Metadata { get; }
+    string? CorrelationId { get; }
     CancellationToken ConnectionAborted { get; }
 }
 
@@ -23,6 +24,7 @@ public sealed class ZLinkSendContext : IZLinkHandlerContext
     public string PacketName { get; }
     public string? ContentType { get; }
     public ZLinkMessageMetadata Metadata { get; }
+    public string? CorrelationId { get; }
     public CancellationToken ConnectionAborted { get; }
 }
 
@@ -32,6 +34,7 @@ public sealed class ZLinkRequestContext : IZLinkHandlerContext
     public string PacketName { get; }
     public string? ContentType { get; }
     public ZLinkMessageMetadata Metadata { get; }
+    public string? CorrelationId { get; }
     public CancellationToken ConnectionAborted { get; }
 }
 
@@ -42,8 +45,10 @@ public sealed class ZLinkRouteSendContext : IZLinkHandlerContext
     public string PacketName { get; }
     public string? ContentType { get; }
     public ZLinkMessageMetadata Metadata { get; }
+    public string? CorrelationId { get; }
     public CancellationToken ConnectionAborted { get; }
     public RoutingId SourceNodeRid { get; }
+    public RoutingId TargetNodeRid { get; }
 }
 
 public sealed class ZLinkRouteRequestContext : IZLinkHandlerContext
@@ -53,8 +58,10 @@ public sealed class ZLinkRouteRequestContext : IZLinkHandlerContext
     public string PacketName { get; }
     public string? ContentType { get; }
     public ZLinkMessageMetadata Metadata { get; }
+    public string? CorrelationId { get; }
     public CancellationToken ConnectionAborted { get; }
     public RoutingId SourceNodeRid { get; }
+    public RoutingId TargetNodeRid { get; }
 }
 
 public interface IZLinkSendHandler<in TMessage>
@@ -126,7 +133,8 @@ Node direct는 target RID 하나로 submit한다. Channel operation은 process-l
 round-robin으로 선택하고 같은 operation에서 submit하며 client는 선택된 RID를 반환하지 않는다.
 
 `IZLinkHandlerContext`는 nullable ChannelName을 제공한다. Channel context는 non-null ChannelName을 제공하고,
-Node direct 전용 context만 MeshName과 source RID를 추가로 제공한다.
+Node direct 전용 context만 MeshName과 source·target RID를 추가로 제공한다. Correlation ID는 request에서 non-null이고
+send에서 null이며 Framework가 reply route와 함께 보존한다.
 
 Classic fanout handler는 독립 fanout channel에서 받은 typed event만 처리한다.
 

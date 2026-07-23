@@ -9,4 +9,4 @@ Java handler와 application-facing public signature는 [exact interface 목차](
 - [STREAM session](interfaces/stream-session.ko.md)
 - [Monitoring](interfaces/monitoring.ko.md)
 
-Actor와 Instance Spot의 maintenance policy는 factory 등록에 직접 연결하며 별도 transfer registry를 두지 않는다.
+Actor와 Instance Spot의 maintenance policy는 factory 등록에 직접 연결하며 별도 relocation registry를 두지 않는다.

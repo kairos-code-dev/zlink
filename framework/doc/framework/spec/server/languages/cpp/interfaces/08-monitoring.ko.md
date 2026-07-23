@@ -15,7 +15,7 @@ struct framework_runtime_snapshot_t {
     bool work_sealed;
     std::optional<termination_reason_t> blocker_reason;
     std::uint64_t pending_request_count;
-    std::uint64_t pending_transfer_count;
+    std::uint64_t pending_relocation_count;
     std::uint64_t pending_stream_barrier_count;
     std::optional<termination_result_t> terminal_result;
     std::uint64_t sequence;

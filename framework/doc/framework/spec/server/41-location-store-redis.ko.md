@@ -1,14 +1,14 @@
 # Redis Location Store — 공통 스펙
 
 [스펙 목차](../README.ko.md) · [Location runtime](40-location-runtime.ko.md) ·
-[Redis Transfer Store](42-transfer-store-redis.ko.md) ·
+[Redis Relocation Store](42-relocation-store-redis.ko.md) ·
 [Host retirement와 shutdown](54-graceful-drain-handoff.ko.md)
 
 ## 1. 범위
 
 이 문서는 Framework 11.0 Redis Location Store가 descriptor, host owner lease, durable object authority,
 placement reservation과 aggregate commit을 저장하는 규칙을 정의한다. Provider는 object lifecycle, authority
-payload와 transfer phase를 해석하지 않는다. Framework가 schema에 따라 bytes를 encode·decode하고 Redis는 key,
+payload와 relocation phase를 해석하지 않는다. Framework가 schema에 따라 bytes를 encode·decode하고 Redis는 key,
 generation, StoreVersion과 atomic CAS만 관리한다.
 
 Redis server time이 lease 만료의 기준이다. Application host의 wall clock은 authority 판단에 사용하지 않는다.
@@ -54,7 +54,7 @@ Provider는 다음 exact operation만 제공한다.
 
 Renew와 Release는 새 LeaseGeneration을 발급하지 않으므로 `GenerationExhausted`를 반환하지 않는다.
 
-Provider-wide `ListOwnerLeases`는 제공하지 않는다. Routing, resolve와 transfer admission은 항상 필요한 OwnerId를
+Provider-wide `ListOwnerLeases`는 제공하지 않는다. Routing, resolve와 relocation admission은 항상 필요한 OwnerId를
 exact Read한다. Lease 목록은 권한 판단 근거가 아니다.
 
 `RemoveAllByOwner`는 `(OwnerId, LeaseGeneration)` exact token으로 index된 ephemeral descriptor만 제거한다.
@@ -95,8 +95,8 @@ expectation을 먼저 검증한 뒤 global counter 소비, row write와 index wr
 Authority payload에는 provider generation과 StoreVersion을 중복 encode하지 않는다. Wire fence는 provider metadata와
 opaque StoreVersion을 Framework가 조합한다. Redis script는 payload body를 parse하거나 수정하지 않는다.
 
-Framework가 encode하는 authority payload는 current owner와 location, transfer phase, `TransferId`, immutable
-source와 current target fence, Transfer Store root reference와 checksum, membership, replay·completion count를
+Framework가 encode하는 authority payload는 current owner와 location, relocation phase, `RelocationId`, immutable
+source와 current target fence, Relocation Store root reference와 checksum, membership, replay·completion count를
 포함한다. Redis provider는 이 field를 해석하지 않지만 expected StoreVersion CAS는 reference, checksum, phase,
 owner, membership과 count를 하나의 authority revision으로 바꾼다. 일부 field만 별도 operation으로 갱신하지 않는다.
 
@@ -133,8 +133,8 @@ membership mutation을 가진다. Participant는 최대 1024개이고 encoded re
 1 MiB다. Provider는 User Spot이나 Actor 의미를 해석하지 않고 expectation과 mutation vector만 처리한다.
 
 Location Store의 aggregate record가 bounded canonical participant set, participant별 mutation, aggregate generation과
-inventory digest를 권한 원본으로 저장한다. Transfer Store manifest는 participant별 state·journal payload를 찾기
-위한 같은 digest의 projection일 뿐 authority가 아니다. Location Store transaction은 Transfer Store를 호출하거나
+inventory digest를 권한 원본으로 저장한다. Relocation Store manifest는 participant별 state·journal payload를 찾기
+위한 같은 digest의 projection일 뿐 authority가 아니다. Location Store transaction은 Relocation Store를 호출하거나
 두 Store 사이 2PC를 수행하지 않는다.
 
 `PrepareAggregate`는 모든 participant expectation, target reservation과 owner lease fence를 확인하고 durable
@@ -173,14 +173,18 @@ Descriptor list는 page size 1..1000과 encoded page 최대 4 MiB를 지킨다. 
 열거 전후에 읽고 두 값이 같을 때만 전체 page 결과를 desired set으로 적용한다. 값이 다르면 결과를 버리고
 bounded retry한다. Continuation은 provider-issued opaque cursor이며 provider가 unbounded list를 먼저 만들면 안 된다.
 
-Host는 startup에서 모든 Channel, type capability와 readable state contract를 포함한 complete descriptor를 먼저
-만든다. Encoded descriptor는 최대 1 MiB, type/stateful capability vector는 각각 최대 1024개, type별 readable
-state-contract set은 최대 1024개다. 하나라도 넘으면 configuration/startup을 atomic하게 실패한다. Descriptor를
-truncate, split하거나 일부만 publish하지 않는다.
+Host는 startup에서 모든 Channel, type capability와 Snapshot adapter capability를 포함한 complete descriptor를
+먼저 만든다. Encoded descriptor는 최대 1 MiB이고 type·Snapshot capability vector는 각각 최대 1024개다.
+하나라도 넘으면 configuration/startup을 atomic하게 실패한다. Descriptor를 truncate, split하거나
+일부만 publish하지 않는다. Descriptor는 application state format·version을 싣지 않으며 그 호환성은 target
+adapter의 `Restore` 결과로 판단한다.
 
 `update`는 current admitted physical connection에만 적용한다. Topology, identity, endpoint connection identity,
 RID, lifecycle generation, normalized max message size, channel membership key, capability와 application version은
 immutable하다. Existing channel weight, runtime state, capacity와 maintenance wave만 더 큰 revision으로 갱신한다.
+Runtime state의 `Retiring`은 새 selection·placement·membership과 inbound relocation target을 닫지만 아직 seal하지
+않은 current owner route를 유지하는 Framework 의미다. Redis provider는 이 값을 재해석하지 않고 descriptor
+snapshot과 revision 규칙에 따라 저장한다.
 같은 revision·같은 bytes는 idempotent이고 lower revision은 stale다. 같은 revision의 다른 bytes나 immutable 변경은
 protocol error이며 connection을 not-ready로 바꾼다.
 
@@ -210,7 +214,7 @@ grace 동안 유지할 수 있고 existing transport는 service liveness를 계�
 snapshot을 다시 얻기 전에는 새 connection을 만들지 않는다.
 
 Grace는 host owner lease, coordinator lease와 local authority deadline을 연장하지 않는다. 마지막 valid owner lease
-read에서 계산한 monotonic deadline에 도달하면 Actor·Spot·Instance message, timer, factory completion, transfer
+read에서 계산한 monotonic deadline에 도달하면 Actor·Spot·Instance message, timer, factory completion, relocation
 source·target·coordinator CAS와 reservation admission을 seal한다. Store 복구 뒤 exact owner token과 stable page set을
 다시 검증한 다음 diff와 new connect를 적용한다.
 
@@ -225,14 +229,14 @@ hash slot에 배치되도록 prefix/hash tag를 구성한다. 이를 보장할 �
 
 Script timeout, failover와 connection loss로 commit 여부가 불명확하면 Framework는 exact Read로 결과를 확인한다.
 같은 expectation을 임의로 새 mutation처럼 재실행하지 않는다. Opaque payload decode failure, counter overflow와
-authority의 transfer reference·checksum·replay count 불일치는 recovery error이며 Ready/Completed를 publish하지
-않는다. Published authority가 가리키는 Transfer root가 영구적으로 없으면 non-retriable `TransferDataLost`로
+authority의 relocation reference·checksum·replay count 불일치는 recovery error이며 Ready/Completed를 publish하지
+않는다. Published authority가 가리키는 Relocation root가 영구적으로 없으면 non-retriable `RelocationDataLost`로
 seal하고 이전 source owner로 rollback하지 않는다.
 
 Provider operation을 시작하기 전 cancellation은 I/O와 commit을 모두 막을 수 있다. Operation을 시작한 뒤 waiter
 cancellation, timeout 또는 provider error는 commit 실패를 뜻하지 않으며 결과가 불명확하다. Authority CAS는 exact
-key와 expected fence를 다시 읽어 reconcile한 뒤에만 retry한다. Transfer Store의 Put·renew·delete retry와 orphan
-처리는 [Redis Transfer Store](42-transfer-store-redis.ko.md)가 소유한다.
+key와 expected fence를 다시 읽어 reconcile한 뒤에만 retry한다. Relocation Store의 Put·renew·delete retry와 orphan
+처리는 [Redis Relocation Store](42-relocation-store-redis.ko.md)가 소유한다.
 
 Framework가 provider에 넘긴 key와 value bytes는 async operation 완료까지 변경되지 않고 유효해야 한다. Provider가
 그 이후 bytes를 보관하려면 복사한다. Provider success result의 bytes는 immutable하고 호출자가 보관할 수 있어야
@@ -255,10 +259,10 @@ Framework가 provider에 넘긴 key와 value bytes는 async operation 완료까�
 - Creation request reference와 hash가 Ready 또는 fenced abort까지 유지되고 encoded 1 MiB bound를 지킨다.
 - Bounded aggregate transaction이 최대 1024 participant·1 MiB record에서 owner와 membership을 한 commit
   generation으로 전환하고 partial visibility를 만들지 않는다.
-- Transfer reference·checksum, owner·membership, phase와 replay·completion count가 한 authority CAS로 바뀐다.
+- Relocation reference·checksum, owner·membership, phase와 replay·completion count가 한 authority CAS로 바뀐다.
 - Bounded canonical participant set, participant별 mutation, aggregate generation과 inventory digest가 같은 Location
   transaction에서 commit된다.
-- Published transfer root가 영구적으로 없으면 `TransferDataLost`로 seal하고 source로 rollback하지 않는다.
+- Published relocation root가 영구적으로 없으면 `RelocationDataLost`로 seal하고 source로 rollback하지 않는다.
 - StoreFailureGrace가 discovery만 freeze하고 authority deadline을 연장하지 않는다.
 - Redis failover 뒤 exact read가 uncertain CAS의 실제 결과를 결정한다.
 - Commit 성공 뒤 response loss·waiter cancellation이 rollback으로 오인되지 않고 exact read로 reconcile된다.

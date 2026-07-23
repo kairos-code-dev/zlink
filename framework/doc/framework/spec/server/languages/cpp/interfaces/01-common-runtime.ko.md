@@ -364,18 +364,34 @@ template <typename TResult> class worker_call_t
 {
 public:
     using executor_t = std::function<task_t<TResult>(
-      std::optional<std::chrono::milliseconds>)>;
+      std::stop_token)>;
 
     worker_call_t() = default;
     explicit worker_call_t(executor_t executor);
     worker_call_t &timeout (std::chrono::milliseconds value);
+    void submit ();
     task_t<TResult> async ();
     task_t<TResult> yield ();
+};
+
+class worker_options_t {
+public:
+    std::size_t min_threads() const noexcept;
+    worker_options_t &min_threads(std::size_t value);
+    std::size_t max_threads() const noexcept;
+    worker_options_t &max_threads(std::size_t value);
+    std::chrono::milliseconds idle_timeout() const noexcept;
+    worker_options_t &idle_timeout(std::chrono::milliseconds value);
+    std::size_t max_queue_length() const noexcept;
+    worker_options_t &max_queue_length(std::size_t value);
 };
 ```
 
 **worker는 spot·session 실행 문맥 밖에서 실행하는 작업이다.** 완료를 원래 실행 문맥에서 재개하는
-규칙은 [비동기 실행 정책](../../../../04-async-execution-policy.ko.md)이 소유한다.
+규칙은 [비동기 실행 정책](../../../../04-async-execution-policy.ko.md)이 소유한다. Worker function에는 timeout,
+host 종료와 caller cancellation을 합친 `std::stop_token`을 전달한다. `submit()`은 결과를 기다리지
+않는 terminal이고 `async()`와 `yield()`는 각각 현재 turn을 유지하거나 양보하며 결과를 기다린다.
+`worker_options_t`의 최소·최대 thread 수, idle timeout과 queue 상한은 host 시작 전에만 설정한다.
 
 ### 7.4 오류 경계
 

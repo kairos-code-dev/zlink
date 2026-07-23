@@ -3,8 +3,8 @@
 [인터페이스 목차](README.ko.md) · [Location Runtime](../../../40-location-runtime.ko.md) ·
 [Redis Location Store](../../../41-location-store-redis.ko.md)
 
-이 문서는 Node.js Framework가 location discovery, owner authority와 transfer payload 보관에 사용하는 정확한
-TypeScript 인터페이스를 고정한다. Store provider는 authority와 transfer payload를 해석하지 않는다.
+이 문서는 Node.js Framework가 location discovery, owner authority와 relocation payload 보관에 사용하는 정확한
+TypeScript 인터페이스를 고정한다. Store provider는 authority와 relocation payload를 해석하지 않는다.
 Application service code는 provider operation을 직접 호출하지 않고 root 구성에서 provider만 등록한다.
 
 ## 1. Root 등록과 option
@@ -17,22 +17,35 @@ export interface ZLinkLocationOptions {
     storeFailureGraceMs(value: number): this;
     ownerLeaseFencingMarginMs(value: number): this;
     ownerLeaseRenewTimeoutMs(value: number): this;
+    routeCacheMaxAgeMs(value: number): this;
+    relocationForwardingWindowMs(value: number): this;
+    maxActiveOutboundRelocations(value: number): this;
+    maxActiveInboundRelocations(value: number): this;
+    maxConcurrentRelocationCaptures(value: number): this;
+    maxConcurrentRelocationRestores(value: number): this;
+    maxRelocationPayloadInFlightBytes(value: number): this;
 }
 ```
 
 Location runtime을 사용하는 application은 Location Store를 정확히 하나 등록한다. `Recreate` 또는 `Snapshot`
-factory가 하나라도 있으면 opaque state, accepted journal, full inventory와 replay payload를 보존하는 Transfer
-Store도 정확히 하나 등록한다. `Disabled` factory만 있는 same-node 구성에는 Transfer Store가 필요하지 않다.
+factory가 하나라도 있으면 opaque state, accepted journal, full inventory와 replay payload를 보존하는 Relocation
+Store도 정확히 하나 등록한다. `Disabled` factory만 있는 same-node 구성에는 Relocation Store가 필요하지 않다.
 두 Store는 별도 객체와 별도 registration이다. 필요한 Store가 없거나 같은 capability가 중복 등록되면
 Framework는 socket bind 전에 구성 오류로 종료한다.
 
-완료 가능한 모든 cross-node Actor·Spot 이동은 Transfer Store를 사용한다. `Recreate`도 accepted journal과
-recovery payload를 저장하며 `Snapshot`은 application state를 추가로 저장한다. Same-node Actor join은 Transfer
+완료 가능한 모든 cross-node Actor·Spot 이동은 Relocation Store를 사용한다. `Recreate`도 accepted journal과
+recovery payload를 저장하며 `Snapshot`은 application state를 추가로 저장한다. Same-node Actor join은 Relocation
 payload를 만들지 않고, `Disabled` cross-node 이동은 capture 전에 거부한다.
 
-여섯 duration은 모두 양수여야 한다. 기본값은 owner lease renew interval부터 순서대로 5000, 15000,
-1000, 30000, 5000, 3000밀리초다. `ownerLeaseRenewIntervalMs`의 첫 번째 값은 Store owner lease 갱신
+앞의 여섯 lease·polling duration은 모두 양수여야 하고 route cache와 relocation forwarding window는 0 이상이다.
+기본값은 선언 순서대로 5000, 15000, 1000, 30000, 5000, 3000, 15000, 30000밀리초다.
+`routeCacheMaxAgeMs`와 `relocationForwardingWindowMs`가 모두 양수이면 cache age가 forwarding window보다 최소
+5000밀리초 작아야 한다. `ownerLeaseRenewIntervalMs`의 첫 번째 값은 Store owner lease 갱신
 주기이며 service connection의 liveness interval이 아니다.
+Relocation 제한의 기본값은 active outbound 64, active inbound 64, concurrent Capture 8, concurrent Restore 8,
+encoded payload in flight 268,435,456 bytes다. 다섯 값은 모두 양수여야 하며 같은 process의 모든 MeshNode가
+공유한다. Framework는 active unit, callback과 byte permit을 모두 얻기 전에는 source queue를 seal하지 않는다.
+Byte 한도를 넘는 단일 User Spot aggregate는 다른 relocation payload 단계와 겹치지 않는 조건으로 단독 실행한다.
 Location Store와 owner lease runtime을 사용하는 모든 host는
 `ownerLeaseRenewIntervalMs + ownerLeaseRenewTimeoutMs < ownerLeaseTtlMs - ownerLeaseFencingMarginMs`를
 startup에서 검증한다.
@@ -107,10 +120,12 @@ export type ZLinkObjectMaintenancePolicyKind =
 
 export interface ZLinkObjectCapability {
     readonly objectKind: ZLinkPlacementObjectKind;
-    readonly type: string;
+    readonly stableType: string;
     readonly policy: ZLinkObjectMaintenancePolicyKind;
-    readonly readableStateContractIds: readonly string[];
-    readonly available: number;
+    readonly hasSnapshotAdapter: boolean;
+    readonly placementProfiles: readonly ZLinkPlacementProfile[];
+    readonly activeLimit?: number;
+    readonly pendingLimit?: number;
 }
 
 export interface ZLinkMeshNodeDescriptor {
@@ -122,6 +137,8 @@ export interface ZLinkMeshNodeDescriptor {
     readonly objectRole: ZLinkObjectRole;
     readonly placementWeight: number;
     readonly objectCapacity: {
+        readonly activeObjects: number;
+        readonly pendingActivations: number;
         readonly maxActiveObjects: number;
         readonly maxPendingActivations: number;
     };
@@ -258,16 +275,19 @@ export interface ZLinkOwnerLeaseStore {
 }
 ```
 
-`applicationVersion`은 `0..9223372036854775807` 범위의 `bigint`다. `objectCapabilities`는 Actor와 Instance
-Spot을 object kind와 type별로 구분하고 policy, 읽을 수 있는 state contract ID 집합과 current capacity를
-같은 항목에 둔다. Flat type과 state contract 목록을 cross-product로 조합하지 않는다. Runtime state,
-capacity, maintenance wave 또는 weight가 바뀌면 descriptor
+`applicationVersion`은 `0..9223372036854775807` 범위의 `bigint`다. `objectCapabilities`는 Actor와 User·Instance
+Spot을 object kind와 stable type별로 구분하고 policy, Snapshot adapter 등록 여부, placement profile과 type별
+capacity limit을 같은 항목에 둔다. `hasSnapshotAdapter`는 해당 kind adapter의 등록 여부만 나타내며 state format,
+version이나 contract ID를 싣지 않는다. Snapshot policy이면 이 값은 `true`여야 하고 Disabled·Recreate이면
+`false`다. Current active·pending count는 `objectCapacity`에 둔다. Runtime state,
+current capacity, maintenance wave 또는 weight가 바뀌면 descriptor
 revision을 증가시킨다. ClientServer와 fanout은 RouteMesh descriptor의 key나 store operation을 재사용하지
 않는다.
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
-ChannelName key set, Spot type set와 object capability의 kind·type·policy·readable contract set은 첫 admission 뒤
-해당 lifecycle에서 바뀌지 않는다. Channel weight 값, capability capacity, maintenance wave와 runtime state만
+ChannelName key set, Spot type set와 object capability의 kind·stable type·policy·Snapshot adapter 등록 여부·
+placement profile·limit은 첫 admission 뒤
+해당 lifecycle에서 바뀌지 않는다. Channel weight 값, current `objectCapacity`, maintenance wave와 runtime state만
 mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고
 `descriptorRevision`을 strictly 증가시켜야 한다. Provider는 stale revision이나 immutable field 변경을 원자적으로
 거부하며 일부 field만 적용하지 않는다. ClientServer와 fanout descriptor도 같은 identity·revision fence를
@@ -284,7 +304,7 @@ Entry·User·Instance Spot owner state는 global `SpotRid`에서 파생한 하�
 User Spot create와 Instance cold claim은 같은 row에 `"newObject"` compare-exchange를 수행하므로 kind
 conflict와 object generation 증가가 원자적으로 결정된다. `ZLinkSpotLocation`은 Framework가 authority
 payload와 page를 decode한 운영 projection이며 provider write·remove·resolve interface가 아니다. Provider는
-Spot kind, type, owner state와 Actor transfer phase를 해석하지 않는다.
+Spot kind, type, owner state와 Actor relocation phase를 해석하지 않는다.
 `SpotRef.objectGeneration`과 `ActorRef.objectGeneration`은 provider가 반환한
 `objectGeneration`을 그대로 사용한다. Authority `authorityOwnerGeneration`은 per-object owner 이관 fence이고
 descriptor·projection의 `leaseGeneration`은 host lease fence다. 두 generation을 합치거나 Framework 계산값으로
@@ -294,7 +314,7 @@ Maintenance owner 이관은 `"newOwner"`로 owner generation만 바꾸고 object
 또는 retry한다. Explicit close 후 cold recreate만 `"newObject"`로 새 object generation을 발급하며,
 이때 이전 handle은 영구적으로 stale다.
 
-## 3. Owner와 transfer authority
+## 3. Owner와 relocation authority
 
 ```ts
 declare const zlinkAuthorityKeyBrand: unique symbol;
@@ -402,7 +422,7 @@ Authority key와 Store version은 Framework와 provider가 만든 opaque 값이�
 반환하고 fake StoreVersion을 갖지 않는다. `compareExchangeAuthority`는 `ZLinkAuthorityExpectation`을
 받는 overload만 제공한다. `"newObject"`는 `"missing"`을, `"preserve"`·`"newOwner"`·delete는 current
 StoreVersion을 담은 `"found"`를 요구한다. Provider는 payload,
-object kind, transfer phase와 transfer reference를 해석하지 않는다. Framework runtime만 payload를 encode하고
+object kind, relocation phase와 relocation reference를 해석하지 않는다. Framework runtime만 payload를 encode하고
 phase 전이를 검증한다.
 
 Provider domain은 영구적인 global object generation, authority owner generation과 Store revision counter를
@@ -428,7 +448,7 @@ Framework가 provider operation에 넘긴 `Uint8Array`는 반환된 Promise가 s
 timestamp scalar를 즉시 snapshot한다. 호출 전에 `AbortSignal`이 이미 취소됐으면 provider를 호출하지 않고
 I/O와 commit을 수행하지 않는다. Operation이 시작된 뒤 waiter cancellation이나 error가 발생하면 commit
 여부는 unknown이며 no-commit을 보장하지 않는다. Authority CAS는 같은 key와 expected StoreVersion을 exact
-read해 reconcile한 뒤 필요하면 retry한다. Content-addressed transfer put은 같은 content를 read·verify한 뒤
+read해 reconcile한 뒤 필요하면 retry한다. Content-addressed relocation put은 같은 content를 read·verify한 뒤
 retry한다. Authority에 연결되지 않은 committed put은 orphan으로 retention까지 유지한 뒤 cleanup한다. 이
 동작을 위한 public result는 추가하지 않는다.
 
@@ -469,69 +489,69 @@ Framework는 부분 결과를 사용하지 않고 first page부터 새 scan을 �
 한 authority opaque payload의 encoded 크기는 최대 1 MiB다. Scan `limit`은 `1..1000`이고 provider는 encoded
 page 4 MiB에 먼저 도달하면 요청보다 적은 entry와 `nextCursor`를 반환한다. 이 byte limit을 바꾸는
 public option은 없다. Hot authority row는 compact metadata와 replay cursor만 보관하며 complete terminal reply
-bytes는 transfer stream에 저장한다.
+bytes는 relocation stream에 저장한다.
 
-## 4. Transfer Store
+## 4. Relocation Store
 
 ```ts
-declare const zlinkTransferReferenceBrand: unique symbol;
+declare const zlinkRelocationReferenceBrand: unique symbol;
 
-export interface ZLinkTransferReference {
+export interface ZLinkRelocationReference {
     readonly value: string;
-    readonly [zlinkTransferReferenceBrand]: true;
+    readonly [zlinkRelocationReferenceBrand]: true;
 }
 
-export interface ZLinkTransferStored {
-    readonly reference: ZLinkTransferReference;
+export interface ZLinkRelocationStored {
+    readonly reference: ZLinkRelocationReference;
     readonly checksumCrc32c: number;
     readonly expiresAt: Date;
     readonly storeNow: Date;
 }
 
-export type ZLinkTransferReadResult =
+export type ZLinkRelocationReadResult =
     | { readonly kind: "found"; readonly payload: Uint8Array }
     | { readonly kind: "missing" };
 
-export type ZLinkTransferRenewResult =
+export type ZLinkRelocationRenewResult =
     | { readonly kind: "renewed"; readonly expiresAt: Date; readonly storeNow: Date }
     | { readonly kind: "missing" };
-export type ZLinkTransferDeleteResult = "deleted" | "missing";
+export type ZLinkRelocationDeleteResult = "deleted" | "missing";
 
-export interface ZLinkTransferStore {
-    putTransfer(payload: Uint8Array, retentionMs: number,
-        signal?: AbortSignal): Promise<ZLinkTransferStored>;
-    getTransfer(reference: ZLinkTransferReference,
-        signal?: AbortSignal): Promise<ZLinkTransferReadResult>;
-    renewTransfer(reference: ZLinkTransferReference, retentionMs: number,
-        signal?: AbortSignal): Promise<ZLinkTransferRenewResult>;
-    deleteTransfer(reference: ZLinkTransferReference,
-        signal?: AbortSignal): Promise<ZLinkTransferDeleteResult>;
+export interface ZLinkRelocationStore {
+    putRelocation(payload: Uint8Array, retentionMs: number,
+        signal?: AbortSignal): Promise<ZLinkRelocationStored>;
+    getRelocation(reference: ZLinkRelocationReference,
+        signal?: AbortSignal): Promise<ZLinkRelocationReadResult>;
+    renewRelocation(reference: ZLinkRelocationReference, retentionMs: number,
+        signal?: AbortSignal): Promise<ZLinkRelocationRenewResult>;
+    deleteRelocation(reference: ZLinkRelocationReference,
+        signal?: AbortSignal): Promise<ZLinkRelocationDeleteResult>;
 }
 ```
 
 Framework는 put과 renew의 `retentionMs`에 고정된 24시간만 전달한다. 이 값은 application option으로 노출하지
-않는다. Authority의 current transfer reference를 확인한 owner 또는 recovery coordinator만
-`renewTransfer`를 호출하며, 존재하지 않는 reference는 `"missing"` 정상 결과다. `"renewed"`는 provider
+않는다. Authority의 current relocation reference를 확인한 owner 또는 recovery coordinator만
+`renewRelocation`를 호출하며, 존재하지 않는 reference는 `"missing"` 정상 결과다. `"renewed"`는 provider
 clock의 새 `expiresAt`과 `storeNow`를 반환한다. Runtime은 local clock으로 provider expiry를 추측하지 않는다.
 `checksumCrc32c`는 저장된 immutable root bytes의 CRC32C(Castagnoli)를 나타내는 `0..0xFFFF_FFFF` 정수다.
 Runtime은 이 값과 Location authority에 publish할 checksum이 정확히 같은지 검증한다.
-`getTransfer`의 `missing`은 닫힌 정상 결과다. `deleteTransfer`는 reference가 없으면 `"missing"`을
-반환하며 반복 호출해도 오류가 아니다. Provider는 transfer envelope과 업무 state를 해석하지 않는다.
+`getRelocation`의 `missing`은 닫힌 정상 결과다. `deleteRelocation`는 reference가 없으면 `"missing"`을
+반환하며 반복 호출해도 오류가 아니다. Provider는 relocation envelope과 업무 state를 해석하지 않는다.
 
-Framework는 logical transfer payload를 immutable 64 MiB chunk 최대 4096개와 root manifest로 내부에서 나누므로
-logical state ceiling은 256 GiB다. `ZLinkTransferStore`의 opaque put/get interface는 바꾸지 않으며 chunk
+Framework는 logical relocation payload를 immutable 64 MiB chunk 최대 4096개와 root manifest로 내부에서 나누므로
+logical state ceiling은 256 GiB다. `ZLinkRelocationStore`의 opaque put/get interface는 바꾸지 않으며 chunk
 크기, 개수와 manifest를 설정하는 public option도 제공하지 않는다. Capture가 ceiling을 넘으면 seal을 되돌려
 normal messaging을 다시 허용하고 Retire 결과를 `"blocked"`로 종료한다. 일반 message의 negotiated effective
-bound는 transfer chunk 크기 때문에 줄이지 않는다.
+bound는 relocation chunk 크기 때문에 줄이지 않는다.
 
-Location Store는 phase, transfer reference와 checksum, bounded canonical participant set, participant mutation,
-aggregate generation, membership·aggregate count와 inventory digest를 authority로 소유한다. Transfer manifest는
+Location Store는 phase, relocation reference와 checksum, bounded canonical participant set, participant mutation,
+aggregate generation, membership·aggregate count와 inventory digest를 authority로 소유한다. Relocation manifest는
 opaque state, accepted journal, full inventory와 replay payload lookup에만 사용하며 authority가 아니다.
-Framework는 transfer payload를 먼저 저장하고 manifest digest가 Location Store의 canonical inventory digest와
+Framework는 relocation payload를 먼저 저장하고 manifest digest가 Location Store의 canonical inventory digest와
 일치하는지 확인한 뒤 Location Store CAS로 reference를 공개한다. Root를 교체할 때도 새 root 저장과 digest
 검증을 먼저 수행하고 CAS가 성공한 뒤 이전 reference를 release한 다음 이전 payload를 삭제한다. 두 Store 사이
-transaction은 요구하지 않는다. Transfer payload 사용을 끝낼 때는 Location Store에서 reference 사용 종료를
-CAS한 뒤 Transfer Store에서 payload를 삭제한다. Authority가 참조하는 payload가 없거나 digest가 다르면 `TransferDataLost`로
+transaction은 요구하지 않는다. Relocation payload 사용을 끝낼 때는 Location Store에서 reference 사용 종료를
+CAS한 뒤 Relocation Store에서 payload를 삭제한다. Authority가 참조하는 payload가 없거나 digest가 다르면 `RelocationDataLost`로
 종료하며 이전 owner로 rollback하지 않는다. Restore와 accepted journal replay는 manifest digest와
 `inventoryDigest`가 exact match인 경우에만 시작한다.
 
@@ -713,7 +733,7 @@ reservation을 함께 검증한다. `commitAggregate(...)`는 모든 authority·
 
 `ZLinkLocationStore`는 MeshNode, owner lease와 generic authority CAS를 하나의 등록 단위로
 묶는다. ClientServer, fanout과 change stamp는 이 객체가 추가로 구현할 수 있는 선택 capability다.
-Transfer Store는 별도 등록하며 `Recreate` 또는 `Snapshot` factory가 있는 host에서 필수다.
+Relocation Store는 별도 등록하며 `Recreate` 또는 `Snapshot` factory가 있는 host에서 필수다.
 
 Spot과 Actor direct resolve는 Framework가 global key의 canonical authority를 읽고 opaque payload를 decode한다.
 Operational Spot·Actor 목록은 `listAuthorities` 결과를 decode한 projection이며 routing authority로 사용하지
@@ -743,7 +763,7 @@ export interface ZLinkRedisLocationOptions {
     readonly keyPrefix: string;
 }
 
-export interface ZLinkRedisTransferOptions {
+export interface ZLinkRedisRelocationOptions {
     readonly url?: string;
     readonly client?: RedisCommandClient;
     readonly clientOptions?: RedisClientOptions;
@@ -761,7 +781,7 @@ export declare class MutableZLinkRedisLocationOptions {
     setKeyPrefix(keyPrefix: string): this;
 }
 
-export declare class MutableZLinkRedisTransferOptions {
+export declare class MutableZLinkRedisRelocationOptions {
     url?: string;
     client?: RedisCommandClient;
     clientOptions?: RedisClientOptions;
@@ -775,8 +795,8 @@ export declare class MutableZLinkRedisTransferOptions {
 export declare function configureOptions(
     configure: (options: MutableZLinkRedisLocationOptions) => void): ZLinkRedisLocationOptions;
 
-export declare function configureTransferOptions(
-    configure: (options: MutableZLinkRedisTransferOptions) => void): ZLinkRedisTransferOptions;
+export declare function configureRelocationOptions(
+    configure: (options: MutableZLinkRedisRelocationOptions) => void): ZLinkRedisRelocationOptions;
 
 export declare class ZLinkRedisLocationStore implements
     ZLinkLocationStore,
@@ -858,17 +878,17 @@ export declare class ZLinkRedisLocationStore implements
     dispose(): Promise<void>;
 }
 
-export declare class ZLinkRedisTransferStore implements ZLinkTransferStore {
-    constructor(options: ZLinkRedisTransferOptions |
-        ((options: MutableZLinkRedisTransferOptions) => void));
-    putTransfer(payload: Uint8Array, retentionMs: number,
-        signal?: AbortSignal): Promise<ZLinkTransferStored>;
-    getTransfer(reference: ZLinkTransferReference,
-        signal?: AbortSignal): Promise<ZLinkTransferReadResult>;
-    renewTransfer(reference: ZLinkTransferReference, retentionMs: number,
-        signal?: AbortSignal): Promise<ZLinkTransferRenewResult>;
-    deleteTransfer(reference: ZLinkTransferReference,
-        signal?: AbortSignal): Promise<ZLinkTransferDeleteResult>;
+export declare class ZLinkRedisRelocationStore implements ZLinkRelocationStore {
+    constructor(options: ZLinkRedisRelocationOptions |
+        ((options: MutableZLinkRedisRelocationOptions) => void));
+    putRelocation(payload: Uint8Array, retentionMs: number,
+        signal?: AbortSignal): Promise<ZLinkRelocationStored>;
+    getRelocation(reference: ZLinkRelocationReference,
+        signal?: AbortSignal): Promise<ZLinkRelocationReadResult>;
+    renewRelocation(reference: ZLinkRelocationReference, retentionMs: number,
+        signal?: AbortSignal): Promise<ZLinkRelocationRenewResult>;
+    deleteRelocation(reference: ZLinkRelocationReference,
+        signal?: AbortSignal): Promise<ZLinkRelocationDeleteResult>;
     close(): Promise<void>;
     dispose(): Promise<void>;
 }
@@ -879,5 +899,5 @@ export declare class ZLinkRedisTransferStore implements ZLinkTransferStore {
 Redis deployment를 사용할 수 있지만 options, prefix와 lifecycle을 공유하지 않는다. Composite class는 제공하지
 않으며 cross-store transaction도 요구하지 않는다. 각 class의 `close()`와 `dispose()`는 해당 Store의 종료를
 요청하며, 종료가 시작된 뒤의 새 operation은 closed-store 오류로 실패한다.
-Descriptor kind와 key namespace, authority CAS와 Transfer Store의 저장 규칙은
+Descriptor kind와 key namespace, authority CAS와 Relocation Store의 저장 규칙은
 [Redis Location Store](../../../41-location-store-redis.ko.md)가 소유한다.

@@ -15,9 +15,10 @@ namespace zlink::framework {
 enum class framework_runtime_state_t {
     preparing = 0,
     serving = 1,
-    draining = 2,
-    stopped = 3,
-    error = 4
+    retiring = 2,
+    draining = 3,
+    stopped = 4,
+    error = 5
 };
 
 enum class termination_intent_t { retire = 0, shutdown = 1 };
@@ -26,10 +27,10 @@ enum class termination_reason_t {
     none = 0,
     target_unavailable = 1,
     store_unavailable = 2,
-    transfer_disabled = 3,
+    relocation_disabled = 3,
     state_incompatible = 4,
     deadline_exceeded = 5,
-    transfer_failed = 6,
+    relocation_failed = 6,
     teardown_failed = 7,
     runtime_not_ready = 8
 };
@@ -47,10 +48,13 @@ struct termination_result_t {
 continuity preflight가 실패하면 admission과 state를 바꾸지 않고 `blocked`를 반환한다. `shutdown()`은
 `blocked`를 반환하지 않는다.
 
-`blocked/deadline_exceeded`는 seal과 첫 `Captured` commit 전의 preflight가 deadline 안에 끝나지 않은
-결과다. 이 경우 host state와 admission은 그대로 유지한다. Seal 뒤 bounded teardown이 deadline을 넘으면
-`force_stopped/deadline_exceeded`를 반환한다. 두 결과는 같은 deadline reason을 사용하지만 phase와 side
-effect가 다르며 enum을 추가하지 않는다.
+`blocked/deadline_exceeded`는 모든 target의 `Prepared` 완료와 host `Draining` descriptor publication 전에
+deadline이 끝난 결과다. Connection-bound work와 bound-session request가 pre-`Captured` deadline 안에 terminal
+drain되지 않은 경우도 `relocation_disabled`가 아니라 이 결과를 사용한다. Framework는 relocation reference와
+reservation을 정리하고 reversible seal을 해제한 뒤 host state와 admission을 복원한다. 모든 target이
+`Prepared`이고 `Draining` publication이 성공한 뒤에는 `blocked`로 돌아가지 않는다. 이 경계 뒤 bounded teardown이
+deadline을 넘으면 `force_stopped/deadline_exceeded`를 반환한다. 두 결과는 같은 deadline reason을 사용하지만
+phase와 side effect가 다르며 enum을 추가하지 않는다.
 
 ## 2. App / Host
 
@@ -64,7 +68,7 @@ namespace zlink::framework {
 
 enum class drain_force_reason_t {
     deadline_exceeded,
-    transfer_failed,
+    relocation_failed,
     teardown_failed
 };
 struct drained_t {};
@@ -121,7 +125,7 @@ public:
 ```
 
 Deprecated `drain(deadline)`은 같은 deadline으로 `shutdown()`을 호출한다. `stopped/none`은 `drained_t`로
-변환한다. `force_stopped/deadline_exceeded`, `force_stopped/transfer_failed`,
+변환한다. `force_stopped/deadline_exceeded`, `force_stopped/relocation_failed`,
 `force_stopped/teardown_failed`는 각각 같은 이름의 `drain_force_reason_t`를 담은 `force_stopped_t`로
 변환한다. 이 목록은 허용된 Shutdown terminal result 전체를 포함한다. `blocked`는 Shutdown 결과가 아니므로
 `drain_result_t`에 추가하지 않는다. 이전 `drain_state_publish_failed`와 `owner_cleanup_failed` 값은 제공하지
@@ -499,13 +503,13 @@ public:
     handler_options_builder_t handlers();
     codec_options_builder_t codecs();
     metadata_policy_builder_t metadata();
+    network_options_t &configure_network();
+    worker_options_t &worker();
     dispatch_options_t &configure_dispatch();
     dispatch_options_t dispatch_options() const;
     location_options_t &configure_locations();
     location_options_t location_options() const;
     zlink_framework_options_t &set_max_pending(std::size_t count);
-    zlink_framework_options_t &set_actor_transfer_forward_window(
-      std::chrono::milliseconds window);
     zlink_framework_options_t &set_application_version(
       std::int64_t application_version);
     zlink_framework_options_t &set_maintenance_wave(
@@ -529,17 +533,21 @@ public:
     zlink_framework_options_t &handler_coroutine_workers(
       std::size_t worker_count);
     std::size_t handler_coroutine_workers() const noexcept;
-    zlink_framework_options_t &add_transfer_store(
-      std::shared_ptr<transfer_store_t> store);
+    zlink_framework_options_t &add_relocation_store(
+      std::shared_ptr<relocation_store_t> store);
 };
 
 } // namespace zlink::framework
 ```
 
 Location runtime을 사용하는 application은 `add_location_store(...)`로 Location Store를 정확히 하나 등록한다.
-`Recreate` 또는 `Snapshot` factory가 하나라도 있으면 `add_transfer_store(...)`로 Transfer Store도 정확히 하나
-등록한다. `Disabled` factory만 있는 same-node 구성에는 Transfer Store가 필요하지 않다. 필요한 Store가 없거나
+`Recreate` 또는 `Snapshot` factory가 하나라도 있으면 `add_relocation_store(...)`로 Relocation Store도 정확히 하나
+등록한다. `Disabled` factory만 있는 same-node 구성에는 Relocation Store가 필요하지 않다. 필요한 Store가 없거나
 같은 capability가 중복 등록되면 Framework는 socket bind 전에 configuration error로 종료한다.
+
+`configure_network()`는 process 전체의 BindHost와 AdvertiseHost 기본값을 반환하며 listener별 설정이 이 값을
+재정의한다. `worker()`는 bounded worker pool의 최소·최대 thread 수, idle timeout과 queue 상한을 반환한다.
+두 option은 host 시작 전에만 변경할 수 있다.
 
 Application version과 maintenance wave는 host 전체에 한 번 설정한다. Version은 기본값 0인 non-negative
 signed 64-bit deployment ordinal이고 모든 local MeshNode가 같은 값을 게시한다. Empty optional wave는

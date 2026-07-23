@@ -5,6 +5,9 @@
 
 ## 1. Identity와 maintenance policy
 
+Actor가 사용하는 `actor_context_t`의 exact declaration은
+[Spot interface](04-spots.ko.md)가 소유한다.
+
 ```cpp
 namespace zlink::framework {
 
@@ -28,29 +31,47 @@ public:
     const node_rid_t &node_rid() const noexcept;
 };
 
-template <typename TInstance, typename TState>
-class transfer_state_adapter_t {
+class actor_t {
 public:
-    virtual ~transfer_state_adapter_t() = default;
-    virtual task_t<TState> capture(
-      TInstance &instance,
+    virtual ~actor_t() = default;
+    const actor_id_t &actor_id() const noexcept;
+    actor_context_t &context() noexcept;
+    const actor_context_t &context() const noexcept;
+    virtual void configure() {}
+};
+
+template <typename TActor>
+  requires std::derived_from<TActor, actor_t>
+class actor_factory_t {
+public:
+    virtual ~actor_factory_t() = default;
+    virtual task_t<std::shared_ptr<TActor>> create(
+      actor_id_t actor_id,
+      actor_context_t &context,
+      std::stop_token operation_cancellation) = 0;
+};
+
+template <typename TActor>
+class actor_relocation_adapter_t {
+public:
+    virtual ~actor_relocation_adapter_t() = default;
+    virtual task_t<std::vector<std::byte>> capture(
+      TActor &actor,
       std::stop_token operation_cancellation) = 0;
     virtual task_t<void> restore(
-      TInstance &instance,
-      TState state,
+      TActor &actor,
+      std::vector<std::byte> payload,
       std::stop_token operation_cancellation) = 0;
 };
 
 template <typename TInstance>
-class transfer_policy_t {
+class relocation_policy_t {
 public:
-    static transfer_policy_t disabled();
-    static transfer_policy_t recreate();
+    static relocation_policy_t disabled();
+    static relocation_policy_t recreate();
 
-    template <typename TState, typename TAdapter>
-      requires std::derived_from<
-        TAdapter, transfer_state_adapter_t<TInstance, TState>>
-    static transfer_policy_t snapshot(std::string state_contract_id);
+    template <typename TAdapter>
+    static relocation_policy_t snapshot();
 };
 
 } // namespace zlink::framework
@@ -62,9 +83,28 @@ public:
 MeshName·NodeRid를 담는 immutable location snapshot이다. 일반 message target으로 사용하지 않는다. 별도
 `actor_ref_snapshot_t`는 제공하지 않는다.
 
-모든 Actor factory는 `transfer_policy_t<TActor>`를 명시한다. 정상 relocation과 host maintenance가 같은 policy를
-사용하며 same-node relocation도 우회하지 않는다. Snapshot adapter는 typed application state만 다루고 authority,
-transfer reference, transfer phase와 operation ID를 받지 않는다.
+`actor_t`는 ActorId와 Framework가 연결한 `actor_context_t`를 소유하는 typed lifecycle base다. Framework는
+`actor_factory_t<TActor>::create(...)`로 concrete Actor를 만든 뒤 `configure()`를 호출한다. Factory는 전달받은
+ActorId·context와 cancellation을 사용하며 다른 owner RID, relocation phase 또는 Store token을 받지 않는다.
+
+모든 Actor factory는 `relocation_policy_t<TActor>`를 명시한다. `snapshot<TAdapter>()`의 `TAdapter`는
+`actor_relocation_adapter_t<TActor>`를 구현해야 하며 다른 adapter type이면 socket bind 전에 configuration error로
+실패한다. Adapter는 application state를 opaque byte vector로만 주고받으며 typed state, 별도 contract identifier,
+message wrapper, authority, relocation reference, relocation phase와 operation ID를 받지 않는다.
+
+Framework는 Snapshot policy의 cross-node Actor materialization에서만 adapter를 호출한다. 여기에는 maintenance
+이관, remote User·Entry Spot join과 whole User Spot relocation의 각 Actor participant가 포함된다. Same-node join과
+relocation에서는 adapter를 호출하지 않으며 Disabled cross-node operation은 `capture(...)` 전에 거부한다. Recreate
+policy도 application payload를 capture하거나 restore하지 않는다. Whole User Spot relocation에서는 Spot root에
+`spot_relocation_adapter_t<TSpot>`를 사용하고 각 Actor participant에는 이 Actor adapter를 사용한다.
+
+`capture(...)` 결과는 최대 64 MiB이며 빈 vector는 유효하다. 반환한 byte vector의 소유권은 Framework로 이동하고,
+`restore(...)`에 전달한 byte vector는 해당 비동기 호출이 소유한다. Capture가 throw하거나 failed task로 끝나면
+durable abort와 source normalization 뒤 admission을 복원한다. Restore가 실패한 instance는 폐기하고 새 attempt의
+factory가 만든 instance에 같은 immutable payload를 적용한다. Framework가 operation deadline 때문에 callback을
+취소하면 `deadline_exceeded`로 분류한다. Target replacement와 response loss 때문에 두 method는 at-least-once
+호출될 수 있고 stale attempt와 successor 호출이 겹칠 수 있으므로 구현은 retry-safe해야 한다. Framework는
+adapter의 external side effect에 exactly-once를 보장하지 않는다.
 
 ## 2. ID-only messaging
 
@@ -142,6 +182,8 @@ public:
     virtual actor_create_call_t get_or_create(
       actor_id_t actor_id, std::string stable_type) = 0;
     virtual task_t<std::optional<actor_ref_t>> find(actor_id_t actor_id) = 0;
+    virtual task_t<std::optional<spot_ref_t>> find_spot(
+      actor_id_t actor_id) = 0;
     virtual task_t<bool> destroy(actor_ref_t actor) = 0;
 };
 
@@ -155,7 +197,9 @@ Mesh는 `mesh_not_found`다.
 
 `Create`는 existing identity에 `actor_already_exists`를 반환한다. `GetOrCreate`는 같은 stable type의 Ready 또는
 Creating attempt에 합류하고 type이 다르면 `actor_type_mismatch`다. Deadline은 resolve, reservation, factory와
-Ready 전체에 적용한다. `Find`는 Ready ref만 반환하며 생성하지 않는다. `Destroy`는 exact ActorRef만 변경한다.
+Ready 전체에 적용한다. `Find`는 Ready ref만 반환하며 생성하지 않는다. `FindSpot`은 current User Spot
+membership의 Ready `spot_ref_t`만 반환하고 Entry membership 또는 Missing Actor에는 빈 optional을 반환한다.
+`Destroy`는 exact ActorRef만 변경한다.
 같은 incarnation이 없으면 `false`, 다른 generation은 `actor_generation_stale`, 이동 중이면 `actor_moving`이다.
 Public Actor directory와 local Actor bind overload는 제공하지 않는다.
 
@@ -200,6 +244,6 @@ generation이 바뀌면 session-not-bound 또는 stale 결과로 끝나며, Fram
 
 ## 5. Public trace category
 
-이 문서의 declaration은 public trace의 `actor-transfer` category에 속한다. 공통 의미는
+이 문서의 declaration은 public trace의 `actor-relocation` category에 속한다. 공통 의미는
 [Actor model](../../../22-actor-model.ko.md), [Spot·Actor membership](../../../23-spot-actor.ko.md)과
 [Session Actor dispatch](../../../31-session-actor-dispatch.ko.md)가 소유한다.

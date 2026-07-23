@@ -1,6 +1,6 @@
 # Node.js SpotActorTransfer E2E feature map
 
-공통 정본은 [Config 10 — Spot·Actor transfer](../../../../doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md)다.
+공통 정본은 [Config 10 — Spot·Actor relocation](../../../../doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md)이다.
 consumer는 Node HTTP client wrapper로 역할 서버 endpoint를 호출하고, bound session 검증에는 stream
 connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 기록한다.
 

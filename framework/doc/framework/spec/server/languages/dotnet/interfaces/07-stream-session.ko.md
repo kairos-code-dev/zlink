@@ -152,7 +152,7 @@ monitoring으로 보고하며 `OnErrorAsync(...)`에 전달하지 않는다.
 Session binding은 `ActorRef.ActorId + ObjectGeneration`의 exact incarnation을 한 번 고정한다. Ref의
 MeshName·NodeRid는 최초 control route snapshot으로 사용한다. Mapping이 없으면 `ActorLocationStale`, current
 generation이 다르면 `ActorGenerationStale`, pre-commit seal 중이면 `ActorMoving`이다. Framework는 Store에서
-다른 ref를 찾아 같은 bind operation을 hidden retry하지 않는다. Bind 뒤 Actor transfer가 commit되면 runtime이
+다른 ref를 찾아 같은 bind operation을 hidden retry하지 않는다. Bind 뒤 Actor relocation이 commit되면 runtime이
 binding route를 갱신한다. Local `IZLinkActor`를 받는 overload는 제공하지 않는다.
 
 ## 2. STREAM transport handle

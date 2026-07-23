@@ -1,13 +1,13 @@
-# .NET authority와 Transfer Store 공개 인터페이스
+# .NET Authority와 Relocation Store 공개 인터페이스
 
 [.NET exact interface 목차](README.ko.md) · [Location record](08-location-maintenance.ko.md) ·
 [공통 Location runtime](../../../40-location-runtime.ko.md)
 
 ## 1. 범위
 
-이 문서는 Actor, User Spot과 Instance Spot owner·transfer authority를 원자적으로 바꾸는 provider capability와 immutable
-transfer bytes를 보관하는 provider capability를 고정한다. 두 interface는 provider 구현자를 위한 extension
-surface다. Application service code는 이 interface를 호출하거나 key, store version, payload, transfer
+이 문서는 Actor, User Spot과 Instance Spot owner·relocation authority를 원자적으로 바꾸는 provider capability와 immutable
+relocation bytes를 보관하는 provider capability를 고정한다. 두 interface는 provider 구현자를 위한 extension
+surface다. Application service code는 이 interface를 호출하거나 key, store version, payload, relocation
 reference와 retention을 조립하지 않는다.
 
 ## 2. Authority Store
@@ -257,16 +257,16 @@ version tombstone을 유지하지 않는다. Scan lease가 활성화된 동안�
 tombstone을 bounded로 유지할 수 있다. Payload에 generation을 중복 encode하지 않는다. Authority row는
 TTL을 갖지 않고 explicit fenced delete가 성공할 때까지
 유지된다. Owner·coordinator lease는 별도 token row에 저장하며 lease 만료나 reclaim이 authority row를
-삭제하거나 수정하지 않는다. Transfer phase와 recovery cursor는 opaque payload에 둔다.
+삭제하거나 수정하지 않는다. Relocation phase와 recovery cursor는 opaque payload에 둔다.
 
 `IZLinkAuthorityStore`는 별도로 등록하지 않는다. Root에 등록하는 `IZLinkLocationStore`가 이 capability를
-상속하며 같은 provider instance가 location owner와 transfer authority를 한 transaction domain에서 처리한다.
-Provider는 Instance Spot이나 Actor transfer phase별 interface를 추가로 구현하지 않는다.
+상속하며 같은 provider instance가 location owner와 relocation authority를 한 transaction domain에서 처리한다.
+Provider는 Instance Spot이나 Actor relocation phase별 interface를 추가로 구현하지 않는다.
 
 한 authority opaque payload의 encoded 크기는 최대 1 MiB다. Scan `limit`은 `1..1000`이고 provider는
 encoded page 4 MiB에 먼저 도달하면 요청보다 적은 entry와 `NextCursor`를 반환한다. 이 byte limit을
 바꾸는 public option은 없다. Hot authority row는 compact metadata와 replay cursor만 보관하며 complete terminal
-reply bytes는 transfer stream에 저장한다.
+reply bytes는 relocation stream에 저장한다.
 
 세 counter는 `1..long.MaxValue` 범위이며 wrap하거나 재사용하지 않는다. CAS 성공에 새 StoreVersion,
 ObjectGeneration 또는 AuthorityOwnerGeneration이 필요한데 해당 global counter가 최댓값이면 provider는
@@ -294,7 +294,7 @@ Aggregate ID는 `Guid.Empty`가 아닌 128-bit 값이고 `AggregateGeneration`�
 최대 1024개이며 prepare request와 durable aggregate record의 encoded 크기는 각각 최대 1 MiB다. Provider는
 participant payload와 membership mutation을 해석하지 않는다. `Participants`가 bounded canonical participant
 set의 authority이며 `InventoryDigest`는 이 exact set과 participant별 mutation을 canonical encoding한 32-byte
-SHA-256이다. Transfer root manifest의 participant inventory는 payload를 찾기 위한 projection일 뿐 authority가
+SHA-256이다. Relocation root manifest의 participant inventory는 payload를 찾기 위한 projection일 뿐 authority가
 아니며, runtime은 두 digest가 일치할 때만 restore와 replay를 시작한다. Prepare는 모든 expected StoreVersion,
 target reservation과 owner lease를 검증하고 durable prepared record를 만든다. Commit은 모든 owner,
 AuthorityOwnerGeneration과 membership visibility를 한 transaction에서 전환한다. Abort는 commit 전 prepared
@@ -305,84 +305,86 @@ Provider metadata의 `ulong` generation은 conceptual non-zero unsigned 63-bit �
 generation은 선행 0 없는 decimal string이고 enum은 위 선언의 숫자를 저장한다. Aggregate ID는 provider boundary에서
 opaque 16 bytes로 보존하며 application JSON 계약으로 노출하지 않는다.
 
-## 3. Transfer Store
+## 3. Relocation Store
 
 ```csharp
-public sealed record ZLinkTransferStored(
+public sealed record ZLinkRelocationStored(
     string Reference,
     uint ChecksumCrc32c,
     DateTimeOffset ExpiresAt,
     DateTimeOffset StoreNow);
 
-public abstract record ZLinkTransferReadResult
+public abstract record ZLinkRelocationReadResult
 {
-    private protected ZLinkTransferReadResult() { }
+    private protected ZLinkRelocationReadResult() { }
     public sealed record Found(
-        ReadOnlyMemory<byte> Payload) : ZLinkTransferReadResult;
-    public sealed record Missing : ZLinkTransferReadResult;
+        ReadOnlyMemory<byte> Payload) : ZLinkRelocationReadResult;
+    public sealed record Missing : ZLinkRelocationReadResult;
 }
 
-public enum ZLinkTransferDeleteResult
+public enum ZLinkRelocationDeleteResult
 {
     Deleted = 0,
     Missing = 1
 }
 
-public abstract record ZLinkTransferRenewResult
+public abstract record ZLinkRelocationRenewResult
 {
-    private protected ZLinkTransferRenewResult() { }
+    private protected ZLinkRelocationRenewResult() { }
     public sealed record Renewed(
         DateTimeOffset ExpiresAt,
-        DateTimeOffset StoreNow) : ZLinkTransferRenewResult;
-    public sealed record Missing : ZLinkTransferRenewResult;
+        DateTimeOffset StoreNow) : ZLinkRelocationRenewResult;
+    public sealed record Missing : ZLinkRelocationRenewResult;
 }
 
-public interface IZLinkTransferStore
+public interface IZLinkRelocationStore
 {
-    ValueTask<ZLinkTransferStored> PutTransferAsync(
+    ValueTask<ZLinkRelocationStored> PutRelocationAsync(
         ReadOnlyMemory<byte> payload,
         TimeSpan retention,
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkTransferReadResult> GetTransferAsync(
+    ValueTask<ZLinkRelocationReadResult> GetRelocationAsync(
         string reference,
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkTransferRenewResult> RenewTransferAsync(
+    ValueTask<ZLinkRelocationRenewResult> RenewRelocationAsync(
         string reference,
         TimeSpan retention,
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkTransferDeleteResult> DeleteTransferAsync(
+    ValueTask<ZLinkRelocationDeleteResult> DeleteRelocationAsync(
         string reference,
         CancellationToken cancellationToken = default);
 }
 ```
 
 Framework는 put과 renew의 `retention`에 정확히 `TimeSpan.FromHours(24)`를 넘긴다. 이 값은 application
-option이 아니다. Authority의 current transfer reference를 확인한 owner 또는 recovery coordinator만
-`RenewTransferAsync`를 호출하며, 존재하지 않는 reference는 `Missing` 정상 결과다.
+option이 아니다. Authority의 current relocation reference를 확인한 owner 또는 recovery coordinator만
+`RenewRelocationAsync`를 호출하며, 존재하지 않는 reference는 `Missing` 정상 결과다.
 Provider는 자신의 store clock에서 `ExpiresAt`을 계산하고 `Renewed`에 새 expiry와 `StoreNow`를 반환한다.
 Runtime은 이 두 값을 다음 renewal 판단에 사용하며 local clock으로 provider expiry를 추측하지 않는다.
 Provider는 reference와 payload를 opaque value로 취급한다. `ChecksumCrc32c`는 저장된 immutable root bytes의
 CRC32C(Castagnoli)를 나타내는 unsigned 32-bit 값이다. Runtime은 이 값과 Location authority에 publish할
 checksum이 정확히 같은지 검증한다.
-`GetTransferAsync`의 `Missing`은 닫힌 결과이고 `DeleteTransferAsync`의 `Missing`은 idempotent cleanup
-성공이다. Runtime은 completed·aborted transaction의 transfer를 즉시 삭제하며 실패나 orphan은 24시간 TTL이
+`GetRelocationAsync`의 `Missing`은 닫힌 결과이고 `DeleteRelocationAsync`의 `Missing`은 idempotent cleanup
+성공이다. Runtime은 completed·aborted transaction의 relocation을 즉시 삭제하며 실패나 orphan은 24시간 TTL이
 정리한다.
 
-모든 cross-node Actor·Spot 이동은 Transfer Store를 사용한다. `Recreate`도 accepted journal과 recovery payload를
-저장하며 `Snapshot`은 application state를 추가로 저장한다. Same-node Actor join은 Transfer Store를 사용하지 않고,
+모든 cross-node Actor·Spot 이동은 Relocation Store를 사용한다. `Recreate`도 accepted journal과 recovery payload를
+저장하며 `Snapshot`은 application state를 추가로 저장한다. Same-node Actor join은 Relocation Store를 사용하지 않고,
 `Disabled` cross-node 이동은 capture 전에 거부한다. Location authority가 publish한 reference가 permanent
-`Missing`이거나 checksum 또는 inventory digest가 다르면 non-retriable `TransferDataLost`로 seal하고 이전 owner로
+`Missing`이거나 checksum 또는 inventory digest가 다르면 non-retriable `RelocationDataLost`로 seal하고 이전 owner로
 rollback하지 않는다.
 
-Framework는 logical transfer를 immutable 64 MiB chunk 최대 4096개와 root manifest로 내부에서 나누므로
-logical state ceiling은 256 GiB다. `IZLinkTransferStore`의 opaque put/get interface는 바꾸지 않으며 chunk
+Framework는 logical relocation을 immutable 64 MiB chunk 최대 4096개와 root manifest로 내부에서 나누므로
+logical state ceiling은 256 GiB다. `IZLinkRelocationStore`의 opaque put/get interface는 바꾸지 않으며 chunk
 크기, 개수와 manifest를 설정하는 public option도 제공하지 않는다. Capture가 ceiling을 넘으면 seal을 되돌려
 normal messaging을 다시 허용하고 Retire 결과를 `Blocked`로 종료한다. 일반 message의 negotiated effective
-bound는 transfer chunk 크기 때문에 줄이지 않는다.
+bound는 relocation chunk 크기 때문에 줄이지 않는다.
 
-`Recreate` 또는 `Snapshot` factory를 하나라도 등록한 host는 `IZLinkTransferStore`를 정확히 하나 등록해야 한다.
-`Disabled` factory와 same-node join만 사용하는 host에는 Transfer Store가 필요하지 않다.
-`Snapshot` adapter는 typed application state만 받고 `ReadOnlyMemory<byte>`, reference와 retention을 받지 않는다.
+`Recreate` 또는 `Snapshot` factory를 하나라도 등록한 host는 `IZLinkRelocationStore`를 정확히 하나 등록해야 한다.
+`Disabled` factory와 same-node join만 사용하는 host에는 Relocation Store가 필요하지 않다.
+`Snapshot` adapter는 application payload만 capture·restore한다. Capture는 `byte[]`를 반환하고 restore는
+`ReadOnlyMemory<byte>`를 받는다. Adapter는 relocation reference, retention, accepted journal과 Location authority
+metadata를 받지 않는다.
 
 Framework가 provider에 넘긴 `ReadOnlyMemory<byte>`의 underlying storage는 asynchronous operation이 끝날 때까지
 유효하며 바뀌지 않는다. Provider가 완료 뒤에도 buffer를 보관하려면 먼저 복사해야 한다. Provider가 성공
@@ -393,8 +395,8 @@ snapshot을 만든다.
 Cancellation이 provider 호출 전에 이미 요청되었으면 Framework는 provider operation을 시작하지 않으므로 I/O와
 commit이 없다. Provider operation을 시작한 뒤 waiter가 취소되거나 오류로 끝나면 commit 여부는 알 수 없다.
 Authority CAS는 같은 exact key와 expectation의 StoreVersion을 다시 읽어 결과를 reconcile한 뒤 retry한다.
-Transfer put은 content-addressed reference를 확인한 뒤 idempotent하게 retry한다. Immutable root를 먼저 저장하고
+Relocation put은 content-addressed reference를 확인한 뒤 idempotent하게 retry한다. Immutable root를 먼저 저장하고
 reference·checksum·retention을 검증한 뒤 Location authority CAS 한 번이 visibility를 publish한다. CAS 전에 실패하거나
 CAS conflict가 발생한 committed put은 orphan이며 고정 retention과 cleanup으로 제거한다. Root 교체는 새 root 저장,
-Location reference CAS, old root cleanup 순서이고 삭제는 Location reference release CAS 뒤 Transfer delete 순서다.
+Location reference CAS, old root cleanup 순서이고 삭제는 Location reference release CAS 뒤 Relocation delete 순서다.
 두 Store 사이의 transaction이나 2PC는 요구하지 않는다. 이 의미를 표현하는 public result는 추가하지 않는다.

@@ -41,10 +41,10 @@ PLACEMENT_CAPACITY_EXHAUSTED = 30
 ROUTING_ID_CONFLICT = 31
 SPOT_GENERATION_STALE = 32
 SPOT_MOVING = 33
-TRANSFER_DATA_LOST = 34
+RELOCATION_DATA_LOST = 34
 ```
 
-`TRANSFER_DATA_LOST`는 Location authority가 공개한 Transfer payload가 영구적으로 없거나 checksum·inventory
+`RELOCATION_DATA_LOST`는 Location authority가 공개한 Relocation payload가 영구적으로 없거나 checksum·inventory
 digest가 일치하지 않을 때 반환하는 non-retriable 오류다. Runtime은 이전 owner로 rollback하지 않는다.
 Remote framework error는 `ZLinkFrameworkException`으로 전달한다. Public argument validation은 JVM 표준
 `IllegalArgumentException`, startup 구성 충돌은 `ZLinkConfigurationException`을 사용한다.

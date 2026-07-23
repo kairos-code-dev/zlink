@@ -76,16 +76,16 @@ if (mode === '--contract') {
     if (/\b(?:TrySubmit|trySubmit|try_submit)\s*(?:<[^>]*>)?\s*\(/.test(contract.code)) {
       fail(`${language} exact public declarations expose a synchronous TrySubmit terminator`);
     }
-    if (/\b(?:ActorTransferTimeout|actorTransferTimeout|actor_transfer_timeout)\b/.test(contract.code)) {
-      fail(`${language} exact public declarations expose an Actor-specific transfer timeout`);
+    if (/\b(?:ActorRelocationTimeout|actorRelocationTimeout|actor_relocation_timeout)\b/.test(contract.code)) {
+      fail(`${language} exact public declarations expose an Actor-specific relocation timeout`);
     }
   }
 
   const actorForwardWindowFragments = {
-    dotnet: 'ActorTransferForwardWindow',
-    cpp: 'set_actor_transfer_forward_window',
-    java: 'actorTransferForwardWindow',
-    node: 'setActorTransferForwardWindow',
+    dotnet: 'RelocationForwardingWindow',
+    cpp: 'relocation_forwarding_window',
+    java: 'relocationForwardingWindow',
+    node: 'relocationForwardingWindowMs',
   };
   for (const [language, fragment] of Object.entries(actorForwardWindowFragments)) {
     if (!contracts.get(language).source.includes(fragment)) {

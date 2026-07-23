@@ -36,7 +36,7 @@ snapshot의 필드와 state enum을 host lifecycle에 맞춰 바꾸거나 모든
 | Mailbox | application·infrastructure domain별 active turn과 pending work 수 |
 | Object placement | Actor·User Spot·Instance Spot의 kind·stable type별 active·pending·maximum capacity, reservation failure와 최근 placement outcome |
 | Location | store configured 여부, ready·degraded state, 마지막 성공·실패 시각 |
-| Host termination | intent, runtime state, deadline, sealed work, blocker, pending request·transfer·STREAM barrier 수와 terminal result |
+| Host termination | intent, runtime state, deadline, sealed work, blocker, pending request·relocation·STREAM barrier 수와 terminal result |
 
 ClientServer Channel snapshot은 MeshName을 요구하지 않으며 다음 값을 함께 제공한다.
 
@@ -95,10 +95,10 @@ snapshot에는 monotonic `Sequence`와 관찰 시각을 포함한다. 같은 Mes
 | `zlink.runtime.mesh_node.multicast_backpressured` | Logical Multicast admission이 backpressure를 반환 |
 | `zlink.runtime.mesh_node.multicast_dropped` | local 또는 remote target별 drop 발생 |
 | `zlink.runtime.mesh_node.mailbox_changed` | application 또는 infrastructure mailbox 상태 변경 |
-| `zlink.runtime.object.placement_changed` | create reservation, Ready·abort, capacity exhaustion 또는 transfer로 object placement 집계가 변경 |
+| `zlink.runtime.object.placement_changed` | create reservation, Ready·abort, capacity exhaustion 또는 relocation으로 object placement 집계가 변경 |
 | `zlink.runtime.mesh_node.routing_id_conflict` | automatic RID descriptor owner claim이 active conflict로 실패 |
 | `zlink.runtime.host.termination_changed` | Retire·Shutdown intent, runtime state, sealed-work 또는 terminal result 변경 |
-| `zlink.runtime.transfer.changed` | Standalone Actor·User Spot aggregate·Instance Spot transfer phase 또는 recovery 상태 변경 |
+| `zlink.runtime.relocation.changed` | Standalone Actor·User Spot aggregate·Instance Spot relocation phase 또는 recovery 상태 변경 |
 | `zlink.runtime.client_server.state_changed` | ClientServer local role, lifecycle 또는 ready state 변경 |
 | `zlink.runtime.client_server.server_changed` | server generation, revision, endpoint, weight, ready 또는 service state 변경 |
 | `zlink.runtime.fanout.publisher_changed` | automatic subscriber의 publisher 연결 대상, ready·disconnected·reconnecting 상태, draining 제외 또는 stale candidate 제외가 변경 |
@@ -144,7 +144,7 @@ discriminated union 또는 variant로 이 닫힌 관계를 보존한다.
 
 | 필드 | 값 |
 |---|---|
-| Framework runtime state | `preparing`, `serving`, `draining`, `stopped`, `error` |
+| Framework runtime state | `preparing`, `serving`, `retiring`, `draining`, `stopped`, `error` |
 | MeshNode service state | `starting`, `serving`, `draining`, `drained`, `force_stopping`, `stopped`, `faulted` |
 | Peer state | `configured`, `connecting`, `admitted`, `ready`, `draining`, `disconnected`, `rejected` |
 | ClientServer role | `client`, `server` |
@@ -169,7 +169,7 @@ coalesce할 수 있지만 다음 규칙을 지켜야 한다.
 
 - 가장 최신 snapshot sequence를 잃지 않는다.
 - backpressure와 drop 누계의 증가분을 합쳐도 count를 잃지 않는다.
-- terminal termination과 transfer event를 drop하지 않는다.
+- terminal termination과 relocation event를 drop하지 않는다.
 - coalescing 또는 overflow 자체를 metric으로 기록한다.
 
 event는 변화 알림이며 현재 상태의 authority는 snapshot이다. handler가 event sequence gap을 발견하면

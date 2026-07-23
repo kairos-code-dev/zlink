@@ -20,7 +20,7 @@ Runtime은 application과 infrastructure work를 별도 bounded mailbox로 관�
 | domain | 처리 대상 | progress 규칙 |
 |---|---|---|
 | application | handler turn, Spot·Actor message, application timer, session callback | owner별 순차 실행과 quota 적용 |
-| infrastructure | peer admission, send-ready, completion, lease, transfer, recovery, termination, STREAM fence | application handler 대기와 무관하게 진행 |
+| infrastructure | peer admission, send-ready, completion, lease, relocation, recovery, termination, STREAM fence | application handler 대기와 무관하게 진행 |
 
 두 mailbox는 message count와 retained byte 한도를 가진다. Infrastructure mailbox는 reply completion, lease expiry와
 shutdown을 위한 reserve를 따로 둔다. Operation을 만들 때 terminal completion slot과 promise state를 함께
@@ -32,7 +32,7 @@ shutdown을 위한 reserve를 따로 둔다. Operation을 만들 때 terminal co
 
 1. Host와 topology의 domain admission을 확인한다.
 2. Global target identity와 ObjectGeneration·membership·authority fence를 확인한다.
-3. Transfer seal, creation barrier와 STREAM binding barrier를 확인한다.
+3. Relocation seal, creation barrier와 STREAM binding barrier를 확인한다.
 4. Queue message·byte budget과 pending admission capacity를 확인한다.
 5. Record를 enqueue하고 empty에서 non-empty로 바뀌면 ready index를 갱신한다.
 
@@ -50,6 +50,16 @@ serial을 사용해 late completion의 ABA를 막는다.
 await 중이어도 request timeout과 lease fence가 진행된다. Runtime integration은 blocking drain, callback wakeup,
 poller signal 중 wakeup mode 하나만 startup에서 선택한다. Wakeup 뒤에는 항상 level-ready index를 다시 확인한다.
 
+Host `Retiring` publication 뒤 coordinator는 relocation unit의 infrastructure mailbox에 intent notification을 넣는다.
+Application callback으로 변환하지 않는다. Notification은 current application turn이 끝난 queue boundary에서
+outbound·inbound·callback·byte permit을 nonblocking으로 얻는다. 모두 얻으면 같은 boundary에서 application gate를
+seal하고, 하나라도 실패하면 seal 없이 다음 notification을 예약한다. 따라서 permit waiter는 ready index의 application
+claim을 점유하지 않는다.
+
+Seal 전 application queue에 있지만 아직 claim하지 않은 record는 frozen relocation payload로 옮긴다. Seal 뒤 ingress는
+별도 bounded hold queue에 넣는다. Precommit abort는 hold를 source application queue 뒤에 arrival order로 연결하고,
+owner commit은 hold record의 operation identity와 fence를 유지해 target relay queue로 옮긴다.
+
 ## 5. One-way admission
 
 One-way submit은 bounded pending admission operation 하나를 만든다. Local queue 또는 raw transport가 바로
@@ -65,7 +75,7 @@ multipart가 raw transport에 수락되면 committed로 바꾼다. 이 시점부
 만들고 첫 reply, error 또는 terminator만 소비한다.
 
 Operation state는 `Pending`, `Committed`, terminal 중 하나다. Reply, timeout, cancellation, transport failure,
-transfer relay와 shutdown이 atomic transition으로 terminal owner를 경쟁한다. 승리한 path만 caller continuation을
+relocation relay와 shutdown이 atomic transition으로 terminal owner를 경쟁한다. 승리한 path만 caller continuation을
 완료한다. Table lock 안에서 application callback을 실행하지 않고 scheduler cancel과 payload dispose도 lock 밖에서
 수행한다. Late reply는 diagnostic counter만 갱신한다.
 

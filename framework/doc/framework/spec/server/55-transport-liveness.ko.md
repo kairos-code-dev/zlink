@@ -96,7 +96,7 @@ ready로 복원하지 않는다. 같은 RID의 더 큰 lifecycle generation은 �
 
 Store descriptor와 owner lease는 discovery·placement authority를 제공하지만 transport readiness를 증명하지
 않는다. Store polling 장애가 발생해도 이미 연결된 peer의 transport liveness 판정은 계속 진행한다. 반대로
-service liveness frame을 받아도 owner lease가 만료된 descriptor나 object owner를 placement·transfer authority로
+service liveness frame을 받아도 owner lease가 만료된 descriptor나 object owner를 placement·relocation authority로
 사용하지 않는다.
 
 Location option의 owner lease renew interval은 store lease 갱신 주기이며 service liveness interval이 아니다.
@@ -104,7 +104,7 @@ Location option의 owner lease renew interval은 store lease 갱신 주기이며
 
 ## 6. Host 종료와 resource 정리
 
-`Retire`와 `Shutdown`이 admission을 seal한 뒤에도 accepted reply, transfer와 STREAM barrier에 필요한 기존
+`Retire`와 `Shutdown`이 admission을 seal한 뒤에도 accepted reply, relocation과 STREAM barrier에 필요한 기존
 connection은 deadline까지 유지할 수 있다. 새 application target selection에는 포함하지 않는다. Terminal
 cleanup은 liveness timer, reconnect timer, monitor subscription과 pending callback을 connection보다 늦게
 남기지 않는다.

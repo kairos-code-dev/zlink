@@ -170,21 +170,20 @@ handler 의미(공유): 등록 방식이 다른 handler들도 전부 `Echo*Req(v
 
 우선순위: `P0`
 
-**검증 질문:** C++·.NET·Java·Kotlin·Node.js가 같은 DTO 계약으로 일반 typed message와 Snapshot state를
+**검증 질문:** C++·.NET·Java·Kotlin·Node.js가 같은 DTO 계약으로 일반 typed message를
 교환할 때 serializer 구현이 달라도 같은 application 값을 복원하는가.
 
 - 절차: 방향이 있는 언어 조합마다 exact property name과 대소문자, string enum, signed 64-bit decimal
   string, standard padded Base64 bytes, 32-bit JSON number, 유한 floating-point 값과 nullable field를 포함한
-  golden payload를 request/reply하고, 같은 값과 state contract ID로 Snapshot capture·restore도 수행한다.
-  Unknown field, duplicate field와 required field 누락 fixture를 두 경로에 각각 전달한다.
-- 검증: 일반 handler와 같은 `stateContractId`를 지원한다고 게시한 Snapshot target은 source 값을 같은 typed
-  DTO 의미로 복원한다.
-  Unknown field는 무시하지만 duplicate field와 required field 누락은 restore 전에 안정된 decode failure로
-  끝난다. Application JSON의 whitespace와 object member order가 다른 것은 허용하며 decode 뒤 다시 encode한
-  byte sequence의 일치를 요구하지 않는다. Checkpoint manifest·chunk와 Framework envelope fixture만 exact
-  canonical bytes를 요구한다.
-- 세부 동작: `framework-json-v1`의 언어 간 의미 호환성과 application payload·Framework 내부 canonical
-  format의 경계.
+  golden payload를 request/reply한다. Unknown field, duplicate field와 required field 누락 fixture를 typed
+  message 경로에 전달한다.
+- 검증: 일반 handler가 source 값을 같은 typed DTO 의미로 복원한다. Unknown field는 무시하지만
+  duplicate field와 required field 누락은 handler 전에 안정된 decode failure로 끝난다. Application JSON의
+  whitespace와 object member order가 다른 것은 허용하며 decode 뒤 다시 encode한 byte sequence의 일치를
+  요구하지 않는다.
+- 세부 동작: `framework-json-v1`의 typed application message 언어 간 의미 호환성. Snapshot relocation
+  adapter는 application이 관리하는 opaque bytes를 반환하므로 state contract ID, generic state type과
+  Framework JSON decode를 이 시나리오에서 검증하지 않는다.
 
 ## 5. 완료 기준
 

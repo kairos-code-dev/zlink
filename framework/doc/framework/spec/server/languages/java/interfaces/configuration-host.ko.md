@@ -10,7 +10,7 @@ public interface ZLinkFrameworkOptions {
     void addHandlersFromPackageOf(Class<?> markerType);
     ZLinkMetadataPolicyBuilder configureMetadata();
     void addLocationStore(ZLinkLocationStore store);
-    void addTransferStore(ZLinkTransferStore store);
+    void addRelocationStore(ZLinkRelocationStore store);
     void setApplicationVersion(long version);
     void setMaintenanceWave(String waveId);
     ZLinkLocationOptions configureLocations();
@@ -100,16 +100,16 @@ public interface ZLinkMeshObjectServerBuilder {
     ZLinkMeshObjectServerBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotClass);
     <TSpot extends ZLinkSpot> ZLinkMeshObjectServerBuilder addSpotFactory(
         String spotType, Class<TSpot> spotClass,
-        ZLinkObjectPlacementOptions placement, ZLinkTransferPolicy<TSpot> transfer);
+        ZLinkObjectPlacementOptions placement, ZLinkRelocationPolicy<TSpot> relocation);
     <TSpot extends ZLinkInstanceSpot> ZLinkMeshObjectServerBuilder addInstanceSpotFactory(
         String instanceSpotType, Class<TSpot> spotClass,
-        ZLinkObjectPlacementOptions placement, ZLinkTransferPolicy<TSpot> transfer);
+        ZLinkObjectPlacementOptions placement, ZLinkRelocationPolicy<TSpot> relocation);
     <TActor extends ZLinkActor> ZLinkMeshObjectServerBuilder addActorFactory(
         String actorType,
         Class<TActor> actorClass,
         Class<? extends ZLinkActorFactory> factoryClass,
         ZLinkObjectPlacementOptions placement,
-        ZLinkTransferPolicy<TActor> transfer);
+        ZLinkRelocationPolicy<TActor> relocation);
 }
 
 public record ZLinkObjectPlacementOptions(
@@ -134,8 +134,13 @@ public interface FanoutChannelBuilder {
 
 Object role을 생략하면 `None`이다. `client()`는 global object operation만 제공하고 placement target이 되지
 않으며 `server()`는 Client capability와 Entry Spot·factory registration을 제공한다. Client와 Server는
-Location Store가 필수다. Actor·User Spot·Instance Spot factory는 stable type과 explicit transfer policy를
+Location Store가 필수다. Actor·User Spot·Instance Spot factory는 stable type과 explicit relocation policy를
 반드시 받으며 policy를 생략하는 overload는 없다.
+
+`ZLinkRelocationPolicy.snapshot(adapterClass)`의 `Class<?>`는 factory kind에 따라 socket bind 전에 검증한다.
+Actor factory에는 같은 Actor type의 `ZLinkActorRelocationAdapter`, User·Instance Spot factory에는 같은 Spot
+type의 `ZLinkSpotRelocationAdapter`가 필요하다. `Disabled`와 `Recreate`에는 adapter class를 연결하지 않는다.
+Type mismatch는 startup configuration error이며 application traffic을 받기 전에 끝난다.
 
 Node placement weight는 0..100이고 기본값은 100이다. Node capacity 기본값은 active 10,000, pending 128이다.
 Type별 limit은 `null`이면 node limit을 공유하고 명시하면 1..`Integer.MAX_VALUE`이며 node limit보다 작은 값을
@@ -144,9 +149,9 @@ Type별 limit은 `null`이면 node limit을 공유하고 명시하면 1..`Intege
 
 Location provider는 `ZLinkLocationStore`를 통해 descriptor·location 기능과 authority CAS capability를 함께
 제공한다. 별도 `ZLinkAuthorityStore` instance를 host에 등록하지 않는다. `Recreate` 또는 `Snapshot` policy를
-하나라도 등록한 host는 `ZLinkTransferStore`를 정확히 하나 등록한다. `Disabled` factory와 same-node join만 사용하는
-host는 Transfer Store가 없어도 된다. Missing 또는 duplicate Store registration은 socket bind 전에 startup
-configuration error다. Location과 Transfer capability를 함께 등록하는 API와 Redis 전용 registration helper는
+하나라도 등록한 host는 `ZLinkRelocationStore`를 정확히 하나 등록한다. `Disabled` factory와 same-node join만 사용하는
+host는 Relocation Store가 없어도 된다. Missing 또는 duplicate Store registration은 socket bind 전에 startup
+configuration error다. Location과 Relocation capability를 함께 등록하는 API와 Redis 전용 registration helper는
 제공하지 않는다.
 
 `ApplicationVersion`은 `0..Long.MAX_VALUE` 범위의 배포 순번이다. 음수는 startup validation에서 거부한다.
@@ -172,8 +177,9 @@ owner 충돌은 새 suffix로 최대 8회 재시도한다. Fixed RID는 object r
 topology에서만 허용한다. Slot count, allocation group과 public allocation provider는 제공하지 않는다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
-Spot type과 stateful object capability collection은 각각 최대 1024개이고, capability 하나의 readable state
-contract ID도 최대 1024개다. Runtime은 완성된 descriptor를 socket bind 전에 한 번에 검증한다. Bound를 넘으면
+Spot type과 object capability collection은 각각 최대 1024개다. Relocation adapter class와 opaque application
+bytes는 peer descriptor에 게시하지 않는다. Runtime은 완성된 descriptor를 socket bind 전에 한 번에 검증한다.
+Bound를 넘으면
 startup을 실패시키며 collection을 truncate·split하거나 descriptor 일부를 게시하지 않는다.
 
 ## Exact public member `javap` inventory
@@ -446,7 +452,7 @@ public interface systems.zlink.framework.configuration.ZLinkFrameworkOptions {
   public abstract systems.zlink.framework.configuration.ZLinkCodecRegistryBuilder codecs();
   public abstract void addHandlersFromPackageOf(java.lang.Class<?>);
   public abstract systems.zlink.framework.configuration.ZLinkMetadataPolicyBuilder configureMetadata();
-  public abstract void addTransferStore(systems.zlink.framework.locations.ZLinkTransferStore);
+  public abstract void addRelocationStore(systems.zlink.framework.locations.ZLinkRelocationStore);
   public abstract void setApplicationVersion(long);
   public abstract void setMaintenanceWave(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder addRouteMesh(java.lang.String);
@@ -500,9 +506,9 @@ public interface systems.zlink.framework.configuration.ZLinkMeshObjectClientBuil
 }
 public interface systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addEntrySpot(java.lang.Class<? extends systems.zlink.framework.spots.ZLinkEntrySpot<?>>);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkTransferPolicy<TSpot>);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkTransferPolicy<TSpot>);
-  public abstract <TActor extends systems.zlink.framework.actors.ZLinkActor> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addActorFactory(java.lang.String, java.lang.Class<TActor>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkTransferPolicy<TActor>);
+  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
+  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
+  public abstract <TActor extends systems.zlink.framework.actors.ZLinkActor> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addActorFactory(java.lang.String, java.lang.Class<TActor>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
 }
 public final class systems.zlink.framework.configuration.ZLinkObjectPlacementOptions extends java.lang.Record {
   public systems.zlink.framework.configuration.ZLinkObjectPlacementOptions(java.util.Set<java.lang.String>, java.lang.Integer, java.lang.Integer);

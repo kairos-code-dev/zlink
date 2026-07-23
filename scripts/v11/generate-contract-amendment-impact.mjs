@@ -231,6 +231,10 @@ for (const documentRoot of [
   {path: 'framework/doc/framework/common/sample', kind: 'sample-contract', activationStage: 'V11-SAMPLE-SPEC-FINAL'},
 ]) {
   for (const record of baselineFiles(documentRoot.path).filter(item => item.path.endsWith('.ko.md'))) {
+    const currentSpecOwner = record.path ===
+      'framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md'
+      ? 'framework/doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md'
+      : record.path;
     addBaselineEntry({
       id: `${documentRoot.kind}:${path.basename(record.path, '.ko.md')}:${sha256(record.path).slice(0, 12)}`,
       kind: documentRoot.kind,
@@ -239,7 +243,7 @@ for (const documentRoot of [
       disposition: 'amend',
       acceptanceIntent: '통합된 formal contract와 runtime 검증 순서에 맞춰 scenario 또는 sample acceptance를 확정한다.',
       replacementCoverage: [],
-      specOwner: record.path,
+      specOwner: currentSpecOwner,
       runtimeOwner: 'V11-M6-SCAFFOLD-ZERO',
       activationStage: documentRoot.activationStage,
       quarantineStatus: 'pending-disabled-by-contract-amendment',
@@ -513,32 +517,32 @@ const plannedAdds = [
   ['sample:add:remote-object-create', 'sample-contract', 'Client와 Server role을 분리한 remote Actor·Spot create 사용 흐름을 제공한다.', 'V11-M7-SAMPLES'],
   ['regression:add:no-negative-route-cache', 'regression', 'Missing, Creating과 Store failure가 negative cache에 남지 않는지 검증한다.', 'V11-M6-SCAFFOLD-ZERO'],
   ['regression:add:global-authority-key', 'regression', 'MeshName과 독립적인 ActorId·SpotRid authority key encoding을 네 runtime에서 검증한다.', 'V11-M6-SCAFFOLD-ZERO'],
-  ['e2e:add:transfer-store-required-registration', 'e2e-scenario', 'Recreate 또는 Snapshot policy를 하나라도 등록한 Object Server가 Transfer Store를 정확히 하나 등록하고 socket bind 전에 검증을 통과한다.', 'V11-M6C-E2E'],
-  ['e2e:add:transfer-store-registration-bind-failure', 'e2e-scenario', 'Recreate 또는 Snapshot policy에서 Transfer Store가 없거나 중복 등록되면 socket bind 전에 startup configuration error로 종료한다.', 'V11-M6C-E2E'],
-  ['e2e:add:disabled-only-without-transfer-store', 'e2e-scenario', '모든 object policy가 Disabled인 Object Server는 Transfer Store 없이 시작하며 cross-node 이동을 Capture 전에 거부한다.', 'V11-M6C-E2E'],
-  ['e2e:add:same-node-join-without-transfer-payload', 'e2e-scenario', 'same-node Actor join은 Transfer Store에 payload를 쓰거나 Location Store에 transfer reference를 publish하지 않는다.', 'V11-M6B-E2E'],
-  ['e2e:add:redis-stores-shared-deployment', 'e2e-scenario', '공식 Redis Location Store와 Redis Transfer Store가 같은 Redis deployment를 사용하더라도 서로 다른 key prefix와 분리된 구현 class를 유지한다.', 'V11-M6C-E2E'],
-  ['e2e:add:redis-stores-separate-deployments', 'e2e-scenario', 'Location Store와 Transfer Store를 물리적으로 다른 Redis deployment에 배치해도 cross-node 이동의 visibility와 recovery 의미가 동일하다.', 'V11-M6C-E2E'],
-  ['e2e:add:published-transfer-data-lost', 'e2e-scenario', 'Location Store가 publish한 transfer reference의 payload가 영구적으로 없거나 checksum 또는 inventory digest가 맞지 않으면 TransferDataLost로 종료하고 이전 owner로 rollback하지 않는다.', 'V11-M6C-E2E'],
-  ['regression:add:transfer-write-before-location-cas', 'regression', 'immutable transfer root와 reference·checksum·retention 검증이 끝나기 전에 Location Store authority CAS가 실행되지 않는지 검증한다.', 'V11-M6-SCAFFOLD-ZERO'],
-  ['regression:add:transfer-cas-conflict-orphan-cleanup', 'regression', 'Transfer Store 저장 뒤 Location CAS가 충돌하면 authority를 변경하지 않고 미공개 root를 orphan TTL 또는 idempotent delete 대상으로 남긴다.', 'V11-M6-SCAFFOLD-ZERO'],
-  ['regression:add:transfer-root-replacement-order', 'regression', '새 immutable transfer root 저장, Location reference CAS, 이전 root 정리 순서를 고정하고 중간 실패가 published root를 손상하지 않는지 검증한다.', 'V11-M6-SCAFFOLD-ZERO'],
-  ['regression:add:transfer-reference-release-before-delete', 'regression', 'Location Store가 transfer reference 사용 종료를 CAS한 뒤에만 Transfer Store payload를 삭제한다.', 'V11-M6-SCAFFOLD-ZERO'],
-  ['regression:add:location-participant-digest-authority', 'regression', 'bounded canonical participant set과 inventory digest의 authority는 Location Store에만 있고 Transfer manifest는 payload 탐색에만 사용하며 두 digest가 일치해야 한다.', 'V11-M6-SCAFFOLD-ZERO'],
-  ['regression:add:transfer-data-lost-no-rollback', 'regression', 'published payload의 영구 누락, checksum 불일치와 participant inventory digest 불일치를 non-retriable TransferDataLost로 분류하고 임의 rollback을 금지한다.', 'V11-M6-SCAFFOLD-ZERO'],
+  ['e2e:add:relocation-store-required-registration', 'e2e-scenario', 'Recreate 또는 Snapshot policy를 하나라도 등록한 Object Server가 Relocation Store를 정확히 하나 등록하고 socket bind 전에 검증을 통과한다.', 'V11-M6C-E2E'],
+  ['e2e:add:relocation-store-registration-bind-failure', 'e2e-scenario', 'Recreate 또는 Snapshot policy에서 Relocation Store가 없거나 중복 등록되면 socket bind 전에 startup configuration error로 종료한다.', 'V11-M6C-E2E'],
+  ['e2e:add:disabled-only-without-relocation-store', 'e2e-scenario', '모든 object policy가 Disabled인 Object Server는 Relocation Store 없이 시작하며 cross-node 이동을 Capture 전에 거부한다.', 'V11-M6C-E2E'],
+  ['e2e:add:same-node-join-without-relocation-payload', 'e2e-scenario', 'same-node Actor join은 Relocation Store에 payload를 쓰거나 Location Store에 relocation reference를 publish하지 않는다.', 'V11-M6B-E2E'],
+  ['e2e:add:redis-stores-shared-deployment', 'e2e-scenario', '공식 Redis Location Store와 Redis Relocation Store가 같은 Redis deployment를 사용하더라도 서로 다른 key prefix와 분리된 구현 class를 유지한다.', 'V11-M6C-E2E'],
+  ['e2e:add:redis-stores-separate-deployments', 'e2e-scenario', 'Location Store와 Relocation Store를 물리적으로 다른 Redis deployment에 배치해도 cross-node 이동의 visibility와 recovery 의미가 동일하다.', 'V11-M6C-E2E'],
+  ['e2e:add:published-relocation-data-lost', 'e2e-scenario', 'Location Store가 publish한 relocation reference의 payload가 영구적으로 없거나 checksum 또는 inventory digest가 맞지 않으면 RelocationDataLost로 종료하고 이전 owner로 rollback하지 않는다.', 'V11-M6C-E2E'],
+  ['regression:add:relocation-write-before-location-cas', 'regression', 'immutable relocation root와 reference·checksum·retention 검증이 끝나기 전에 Location Store authority CAS가 실행되지 않는지 검증한다.', 'V11-M6-SCAFFOLD-ZERO'],
+  ['regression:add:relocation-cas-conflict-orphan-cleanup', 'regression', 'Relocation Store 저장 뒤 Location CAS가 충돌하면 authority를 변경하지 않고 미공개 root를 orphan TTL 또는 idempotent delete 대상으로 남긴다.', 'V11-M6-SCAFFOLD-ZERO'],
+  ['regression:add:relocation-root-replacement-order', 'regression', '새 immutable relocation root 저장, Location reference CAS, 이전 root 정리 순서를 고정하고 중간 실패가 published root를 손상하지 않는지 검증한다.', 'V11-M6-SCAFFOLD-ZERO'],
+  ['regression:add:relocation-reference-release-before-delete', 'regression', 'Location Store가 relocation reference 사용 종료를 CAS한 뒤에만 Relocation Store payload를 삭제한다.', 'V11-M6-SCAFFOLD-ZERO'],
+  ['regression:add:location-participant-digest-authority', 'regression', 'bounded canonical participant set과 inventory digest의 authority는 Location Store에만 있고 Relocation manifest는 payload 탐색에만 사용하며 두 digest가 일치해야 한다.', 'V11-M6-SCAFFOLD-ZERO'],
+  ['regression:add:relocation-data-lost-no-rollback', 'regression', 'published payload의 영구 누락, checksum 불일치와 participant inventory digest 불일치를 non-retriable RelocationDataLost로 분류하고 임의 rollback을 금지한다.', 'V11-M6-SCAFFOLD-ZERO'],
 ];
 const plannedRuntimeLanguages = ['cpp', 'dotnet', 'java', 'node'];
 const storeRegressionIds = plannedAdds
   .filter(([id, kind]) => kind === 'regression'
-    && (id.includes('transfer-') || id.includes('location-participant-digest')))
+    && (id.includes('relocation-') || id.includes('location-participant-digest')))
   .flatMap(([id]) => plannedRuntimeLanguages.map(language => `${id}:${language}`));
 for (const [id, kind, acceptanceIntent, activationStage] of plannedAdds) {
-  const storeRelated = id.includes('transfer-store')
-    || id.includes('transfer-')
+  const storeRelated = id.includes('relocation-store')
+    || id.includes('relocation-')
     || id.includes('redis-stores')
     || id.includes('location-participant-digest');
   const specOwner = storeRelated
-    ? 'framework/doc/framework/spec/server/42-transfer-store-redis.ko.md'
+    ? 'framework/doc/framework/spec/server/42-relocation-store-redis.ko.md'
     : kind.startsWith('sample')
       ? 'framework/doc/framework/common/sample/README.ko.md'
       : 'framework/doc/framework/common/e2e/README.ko.md';

@@ -16,13 +16,18 @@ Kotlin package는 Java와 JVM service runtime을 공유한다. 아래 문서는 
 
 ## 공개 API 구조
 
-Kotlin application은 Java의 lifecycle, termination, transfer policy와 Location type을 직접 사용한다. Kotlin
+Kotlin application은 Java의 lifecycle, termination, relocation policy와 Location type을 직접 사용한다. Kotlin
 package는 coroutine handler, suspending call, reified registration과 구성 DSL을 제공하며 같은 의미의 runtime
 facade나 상태 type을 중복해서 정의하지 않는다.
 
+Actor·Spot Snapshot adapter도 Java `ZLinkActorRelocationAdapter`와 `ZLinkSpotRelocationAdapter`가 정본이다. Kotlin은
+`byte[]`를 `ByteArray`로 투영하고 `CompletionStage` completion을 그대로 사용하며 별도 state DTO,
+state contract ID, suspending adapter와 reified Snapshot policy를 정의하지 않는다. Entry Spot의 coroutine
+lifecycle class만 Java default `onActorRelocated`를 `onActorRelocatedSuspending`으로 bridge한다.
+
 Channel extension은 process-local ChannelName만 받으며 MeshName과 ChannelName을 함께 받는 선택 overload를
 추가하지 않는다. Host `Retire`·`Shutdown`과 deprecated host drain은 Java 결과 type을
-그대로 사용한다. Location provider의 authority CAS와 Transfer Store도 Java public interface가 정본이다.
+그대로 사용한다. Location provider의 authority CAS와 Relocation Store도 Java public interface가 정본이다.
 
 각 기능 문서는 Kotlin source signature와 application이 실제로 link하는 generated JVM signature를 구분한다.
 Default argument, suspend continuation, extension receiver와 generic bound는 두 표현 사이에서 손실 없이 대응해야
@@ -35,10 +40,14 @@ Public generation, revision, epoch와 sequence ordinal은 Java 계약의 양수 
 ## RouteMesh 11 object runtime 기준
 
 Kotlin exact interface는 Java와 같은 global ActorId·SpotRid, immutable `ActorRef`·`SpotRef`, ID-only 일반
-messaging과 exact-ref mutation·session bind를 사용한다. Object operation은 single-use fluent
-Create/GetOrCreate이며 Mesh object role은 None, Client, Server로 구분한다. 모든 server factory는 명시적인
-transfer policy와 typed placement option을 받는다. Kotlin extension은 이 계약을 축약하거나 local fallback을
-추가하지 않는다.
+messaging과 exact-ref mutation·session bind를 사용한다. Actor와 User Spot의 create/get-or-create는 single-use
+fluent operation이다. Spot manager는 User Spot 전용이며 Instance Spot creation member를 제공하지 않는다.
+Missing Instance Spot의 cold activation은 Spot 전용 send/request call에서 `instanceSpot()` 또는
+`instanceSpot(stableType)`을 명시한 경우에만 시작한다. Marker가 없으면 not-found이고, marker만 사용한 cold
+activation은 selected Mesh의 distinct serving Instance type이 하나일 때만 type을 자동 선택한다. Existing
+authority는 등록 type 수와 관계없이 저장된 type을 사용한다. Mesh object role은 None, Client, Server로
+구분한다. 모든 server factory는 명시적인 relocation policy와 typed placement option을 받는다. Kotlin extension은
+이 계약을 축약하거나 local fallback을 추가하지 않는다.
 
 Global ref의 JSON field는 `actorId` 또는 `spotRid`, `objectGeneration`, `meshName`, `nodeRid`다.
 `objectGeneration`은 decimal string이며 unknown field는 무시하지만 duplicate field, required field 누락,

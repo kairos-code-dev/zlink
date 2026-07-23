@@ -1,7 +1,7 @@
 # .NET location provider와 Redis 공개 인터페이스
 
 [.NET exact interface 목차](README.ko.md) · [Location record](08-location-maintenance.ko.md) ·
-[Authority와 transfer](08-authority-transfer.ko.md)
+[Authority와 relocation](08-authority-relocation.ko.md)
 
 ## 1. Change stamp
 
@@ -65,24 +65,24 @@ public sealed class ZLinkRedisLocationStore :
     public ValueTask DisposeAsync();
 }
 
-public sealed class ZLinkRedisTransferOptions
+public sealed class ZLinkRedisRelocationOptions
 {
     public string? ConnectionString { get; set; }
     public StackExchange.Redis.ConfigurationOptions? ConfigurationOptions { get; set; }
     public string KeyPrefix { get; set; } = string.Empty;
 
-    public ZLinkRedisTransferOptions SetConnectionString(string connectionString);
-    public ZLinkRedisTransferOptions SetConfiguration(
+    public ZLinkRedisRelocationOptions SetConnectionString(string connectionString);
+    public ZLinkRedisRelocationOptions SetConfiguration(
         StackExchange.Redis.ConfigurationOptions configuration);
-    public ZLinkRedisTransferOptions SetKeyPrefix(string keyPrefix);
+    public ZLinkRedisRelocationOptions SetKeyPrefix(string keyPrefix);
 }
 
-public sealed class ZLinkRedisTransferStore :
-    IZLinkTransferStore,
+public sealed class ZLinkRedisRelocationStore :
+    IZLinkRelocationStore,
     IAsyncDisposable
 {
-    public ZLinkRedisTransferStore(ZLinkRedisTransferOptions options);
-    public ZLinkRedisTransferStore(Action<ZLinkRedisTransferOptions> configure);
+    public ZLinkRedisRelocationStore(ZLinkRedisRelocationOptions options);
+    public ZLinkRedisRelocationStore(Action<ZLinkRedisRelocationOptions> configure);
     public ValueTask DisposeAsync();
 }
 ```
@@ -102,16 +102,17 @@ API를 재사용하지 않는다.
 
 `ZLinkRedisLocationStore`는 `IZLinkLocationStore`가 상속한 `IZLinkAuthorityStore` capability를 같은 Redis
 connection과 key namespace에서 제공한다. Entry·User·Instance Spot은 global `SpotRid` 하나의 authority
-row와 object generation을 공유하고 Actor transfer도 opaque authority payload로 저장한다. Redis extension은
+row와 object generation을 공유하고 Actor relocation도 opaque authority payload로 저장한다. Redis extension은
 Spot kind별 write나 phase별 method를 제공하거나 payload를 해석하지 않고 generic placement
 `Reserve`·`Commit`·`Abort`, bounded aggregate operation과 expected StoreVersion CAS를 같은 transaction domain에서
-제공한다. Descriptor canonical JSON의
-type·state contract set은 UTF-8 byte 순서로 정렬하며 weight·capacity·wave·state 갱신에서도 같은 배열을
-보존한다.
+제공한다. Descriptor canonical JSON의 object capability는 object kind와 stable type의 UTF-8 byte 순서로
+정렬한다. Type별 `HasSnapshotAdapter`는 해당 kind의 Snapshot adapter 등록 여부만 저장하며 application state의
+format, version이나 contract ID를 저장하지 않는다. Weight·capacity·wave·state를 갱신해도 같은 capability 배열과
+adapter flag를 보존한다.
 
-`ZLinkRedisTransferStore`는 immutable application state, accepted journal, participant payload와 recovery root만
+`ZLinkRedisRelocationStore`는 immutable application state, accepted journal, participant payload와 recovery root만
 저장한다. Location authority나 participant membership을 변경하지 않으며 `ZLinkRedisLocationStore`가
-`IZLinkTransferStore`를 함께 구현하지 않는다. Location participant set이 authority이고 Transfer manifest는 payload
+`IZLinkRelocationStore`를 함께 구현하지 않는다. Location participant set이 authority이고 Relocation manifest는 payload
 lookup용 projection이다. Runtime은 두 inventory digest가 일치할 때만 restore와 replay를 시작한다.
 
 ## 3. 예제
@@ -123,9 +124,9 @@ services.AddZLinkFramework(options =>
         .SetConnectionString("redis-host:6379") // 공식 Redis extension의 연결 정보를 설정한다.
         .SetKeyPrefix("zlink:game:location"))); // authority transaction domain을 분리한다.
 
-    options.AddTransferStore(new ZLinkRedisTransferStore(redis => redis
+    options.AddRelocationStore(new ZLinkRedisRelocationStore(redis => redis
         .SetConnectionString("redis-host:6379") // 같은 deployment를 선택할 수 있다.
-        .SetKeyPrefix("zlink:game:transfer"))); // immutable payload key를 Location과 분리한다.
+        .SetKeyPrefix("zlink:game:relocation"))); // immutable payload key를 Location과 분리한다.
 
     options.AddRouteMesh("world")
         .Listen(7300)

@@ -60,42 +60,48 @@ export declare function selectSerializer(value: unknown, registry?: ZLinkSeriali
 export type Type<T = unknown> = new (...args: never[]) => T;
 ```
 
-## 2. 등록, topology와 transfer builder
+## 2. 등록, topology와 relocation builder
 
 ```ts
-export interface ZLinkTransferStateAdapter<TInstance, TState> {
-    capture(instance: TInstance, signal: AbortSignal): Promise<TState>;
-    restore(instance: TInstance, state: TState, signal: AbortSignal): Promise<void>;
+export interface ZLinkActorRelocationAdapter<TActor extends ZLinkActor> {
+    capture(actor: TActor, signal: AbortSignal): Promise<Uint8Array>;
+    restore(actor: TActor, payload: Uint8Array, signal: AbortSignal): Promise<void>;
 }
 
-declare const zlinkTransferPolicyBrand: unique symbol;
+export interface ZLinkSpotRelocationAdapter<TSpot extends ZLinkSpot | ZLinkInstanceSpot> {
+    capture(spot: TSpot, signal: AbortSignal): Promise<Uint8Array>;
+    restore(spot: TSpot, payload: Uint8Array, signal: AbortSignal): Promise<void>;
+}
 
-export interface ZLinkDisabledTransferPolicy<TInstance> {
-    readonly [zlinkTransferPolicyBrand]: TInstance;
+declare const zlinkRelocationPolicyBrand: unique symbol;
+
+export interface ZLinkDisabledRelocationPolicy<TInstance> {
+    readonly [zlinkRelocationPolicyBrand]: TInstance;
     readonly kind: "disabled";
 }
 
-export interface ZLinkRecreateTransferPolicy<TInstance> {
-    readonly [zlinkTransferPolicyBrand]: TInstance;
+export interface ZLinkRecreateRelocationPolicy<TInstance> {
+    readonly [zlinkRelocationPolicyBrand]: TInstance;
     readonly kind: "recreate";
 }
 
-export interface ZLinkSnapshotTransferPolicy<TInstance> {
-    readonly [zlinkTransferPolicyBrand]: TInstance;
+export interface ZLinkSnapshotRelocationPolicy<TInstance> {
+    readonly [zlinkRelocationPolicyBrand]: TInstance;
     readonly kind: "snapshot";
+    readonly adapterType: Type;
 }
 
-export type ZLinkTransferPolicy<TInstance> =
-    | ZLinkDisabledTransferPolicy<TInstance>
-    | ZLinkRecreateTransferPolicy<TInstance>
-    | ZLinkSnapshotTransferPolicy<TInstance>;
+export type ZLinkRelocationPolicy<TInstance> =
+    | ZLinkDisabledRelocationPolicy<TInstance>
+    | ZLinkRecreateRelocationPolicy<TInstance>
+    | ZLinkSnapshotRelocationPolicy<TInstance>;
 
-export declare function zlinkDisabledTransfer<T>(): ZLinkDisabledTransferPolicy<T>;
-export declare function zlinkRecreateTransfer<T>(): ZLinkRecreateTransferPolicy<T>;
-export declare function zlinkSnapshotTransfer<T, TState>(
-    stateContractId: string,
-    stateType: Type<TState>,
-    adapterType: Type<ZLinkTransferStateAdapter<T, TState>>): ZLinkSnapshotTransferPolicy<T>;
+export declare function zlinkDisabledRelocation<T>(): ZLinkDisabledRelocationPolicy<T>;
+export declare function zlinkRecreateRelocation<T>(): ZLinkRecreateRelocationPolicy<T>;
+export declare function zlinkSnapshotRelocation<TActor extends ZLinkActor>(
+    adapterType: Type<ZLinkActorRelocationAdapter<TActor>>): ZLinkSnapshotRelocationPolicy<TActor>;
+export declare function zlinkSnapshotRelocation<TSpot extends ZLinkSpot | ZLinkInstanceSpot>(
+    adapterType: Type<ZLinkSpotRelocationAdapter<TSpot>>): ZLinkSnapshotRelocationPolicy<TSpot>;
 
 export interface ZLinkAutoConnectDesiredSetChange {
     readonly autoConnectType: ZLinkLocationAutoConnectType;
@@ -195,17 +201,17 @@ export interface ZLinkMeshObjectServerBuilder {
         spotType: string,
         implementation: Type<TSpot>,
         placement: ZLinkObjectPlacementOptions | undefined,
-        transfer: ZLinkTransferPolicy<TSpot>): this;
+        relocation: ZLinkRelocationPolicy<TSpot>): this;
     addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
         instanceSpotType: string,
         implementation: Type<TSpot>,
         placement: ZLinkObjectPlacementOptions | undefined,
-        transfer: ZLinkTransferPolicy<TSpot>): this;
+        relocation: ZLinkRelocationPolicy<TSpot>): this;
     addActorFactory<TActor extends ZLinkActor>(
         actorType: string,
         factoryType: Type<ZLinkActorFactory<TActor>>,
         placement: ZLinkObjectPlacementOptions | undefined,
-        transfer: ZLinkTransferPolicy<TActor>): this;
+        relocation: ZLinkRelocationPolicy<TActor>): this;
 }
 
 export interface ZLinkNetworkOptions {
@@ -254,31 +260,58 @@ MeshNode도 시작할 수 있다. `addClientServerChannel(channelName)`의
 client는 send/request를 시작하고
 server는 수신한 send/request 처리와 reply만 수행한다.
 
-Actor와 Instance Spot의 maintenance 정책은 factory 등록과 함께 전달한다. 별도 Actor transfer adapter
-registry나 operation별 state adapter는 제공하지 않는다. Snapshot policy만 typed
-`ZLinkTransferStateAdapter<TInstance, TState>`를 사용한다.
+Actor와 User·Instance Spot의 relocation policy는 factory 등록과 함께 전달한다. Generic policy type과
+Disabled·Recreate는 유지한다. Snapshot policy는 adapter `Type` 하나만 보유한다. Actor factory에는
+`ZLinkActorRelocationAdapter<TActor>`, User·Instance Spot factory에는 `ZLinkSpotRelocationAdapter<TSpot>`가 필요하며
+종류나 instance type이 다르면 socket bind 전에 configuration error로 실패한다. 별도 adapter registry와
+operation별 adapter는 제공하지 않는다.
 
-같은 `stateContractId`를 사용하는 source와 target adapter는 `frameworkJsonV1` semantic profile로 호환되어야
-한다. 이 profile은 enum을 string, 64-bit integer를 decimal string, binary를 padded base64로 표현하고 unknown
-field는 무시한다. Duplicate field와 required field 누락은 거부한다. Application state의 JSON byte 배열 자체는
-canonical하지 않으며 Transfer Store에는 opaque bytes로 보관한다. Canonical byte identity는 Framework 내부
-root manifest, chunk와 envelope에만 적용한다. Message별 codec 등록이나 transfer 전용 codec API는 제공하지
-않는다.
+Adapter는 application state를 `Uint8Array` opaque bytes로만 주고받으며 typed state, 별도 contract identifier와
+message wrapper를 사용하지 않는다. Framework는 Snapshot policy의 cross-node materialization에서만 adapter를
+호출한다. Maintenance 이관, remote User·Entry Spot join과 whole User Spot relocation의 각 Actor participant에는
+Actor adapter를 사용한다. Whole User Spot의 Spot root와 cross-node User·Instance Spot materialization에는 Spot
+adapter를 사용한다. Same-node join·relocation에서는 adapter를 호출하지 않으며 Disabled cross-node operation은
+`capture(...)` 전에 거부한다. Recreate policy도 application payload를 capture·restore하지 않는다.
 
-Target이 `"activated"`에 도달해도 application과 session ingress는 sealed 상태를 유지하고 restore, accepted
-journal replay와 bound-session route는 staged 상태로만 준비한다. Source cleanup이 terminal 상태에 도달하고
-authority의 `"completed"` CAS가 성공한 뒤에만 target을 `"ready"`로 열고 transfer fence를 해제한다.
-`"completed"` 뒤의 target failure는 ordinary owner loss로 처리하며 이전 transfer payload를 transparent replay하지
+Target은 owner commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
+실행하지 않는다. Owner commit 뒤 Entry Spot callback과 journal replay를 실행한다. `"activated"`에 도달해도
+application과 session ingress는 sealed 상태를 유지하고 bound-session route는 staged 상태로만 준비한다. Source
+cleanup이 terminal 상태에 도달하고 authority의 `"completed"` CAS가 성공한 뒤에만 target을 `"ready"`로 열고
+relocation fence를 해제한다.
+`"completed"` 뒤의 target failure는 ordinary owner loss로 처리하며 이전 relocation payload를 transparent replay하지
 않는다. 이 barrier를 조작하는 public phase API는 제공하지 않는다.
 
-Target replacement가 발생하면 stable transfer 안의 각 attempt가 factory와 `restore(...)`를 at-least-once
-호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable transfer
+Target replacement가 발생하면 stable relocation 안의 각 attempt가 factory와 `restore(...)`를 at-least-once
+호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable relocation
 root가 authority에 연결되기 전까지 반복될 수 있다. Current exact owner와 attempt fence만 completion을 commit하고
-admission을 열 수 있다. Callback에는 transfer ID를 추가하지 않으므로 application restore와 capture는 retry-safe해야
-하며 exactly-once external side effect를 보장하지 않는다.
+admission을 열 수 있다. Callback에는 relocation ID를 추가하지 않으므로 application restore와 capture는 retry-safe해야
+하며 exactly-once external side effect를 보장하지 않는다. `capture(...)`가 throw하거나 rejected Promise로
+끝나면 relocation attempt를 게시하지 않고 durable abort와 source normalization 뒤 admission을 복원한다.
+`restore(...)` 실패는 target staging을 폐기하고 source owner를 유지한 채 같은 immutable payload retry 또는
+target replacement로 처리한다.
+Framework는 capture 결과를 즉시 복사하고 restore마다 독립된 `Uint8Array`를 전달한다.
+Adapter가 비동기 호출 뒤 payload를 보관하려면 직접 복사해야 한다.
 
-Transferred terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable
-transfer ID, operation ID, exact request-source fence(owner ID, lease generation, node RID, node generation)와
+`capture(...)`가 반환한 `Uint8Array`는 최대 64 MiB이며 길이가 0인 것은 유효한 application payload다. JavaScript runtime에서
+`null`, `undefined` 또는 `Uint8Array`가 아닌 값을 반환하면 adapter failure로 처리하며 빈 payload로 바꾸지 않는다.
+Framework는 resolved array를 callback 완료 직후 복사하므로 adapter는 완료 뒤 그 배열을 변경해도 저장된 payload에
+영향을 주지 않는다. 각 restore attempt는 factory가 새로 만든 instance와 독립된 새 `Uint8Array` copy를 받는다.
+실패한 instance나 이전 attempt의 payload array를 다음 attempt에 재사용하지 않는다.
+
+Final owner·membership commit 전 `capture(...)` 또는 `restore(...)`가 throw, reject 또는 잘못된 반환값으로
+끝나고 허용된 attempt를 모두 사용하면 `StateIncompatible`로 분류한다. Operation deadline 때문에 callback을
+취소하면 `DeadlineExceeded`를 사용하고 stale attempt cancellation은 terminal result를 commit하지 못한다. Source
+capture failure는 durable abort 뒤 reversible seal을 해제하고 target restore failure는 staging instance를
+폐기한다. 모든 target이 실패하기 전에는 deadline 안에서 replacement를 시도할 수 있다. Relocation Store, authority
+CAS, recovery transport와 teardown failure는 adapter failure가 아니며 해당
+phase의 `StoreUnavailable`, `RelocationFailed` 또는 `TeardownFailed`로 분류한다.
+
+Standalone Actor maintenance는 authority·Entry membership commit 뒤 target `onActorRelocated`와 source
+`onLeaveActor`를 호출하고 accepted journal을 replay한다. Target dispatch는 이 순서가 끝날 때까지 닫는다. Source
+process가 종료되면 durable source cleanup이 source callback 완료를 대신해 target recovery가 계속된다.
+
+Relocated terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable
+relocation ID, operation ID, exact request-source fence(owner ID, lease generation, node RID, node generation)와
 status만 가지며 payload와 metadata를 싣지 않는다. Physical connection close는 terminal 증거가 아니다. ACK 또는
 accepted record에 저장한 exact request-source lease expiry만 terminal accounting을 완료하며 public ACK API는 없다.
 
@@ -288,8 +321,8 @@ accepted record에 저장한 exact request-source lease expiry만 terminal accou
 이 용량 제한으로 admission을 판단한다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
-Spot type과 stateful object capability collection은 각각 최대 1024개이고, capability 하나의 readable state
-contract ID도 최대 1024개다. Runtime은 완성된 descriptor를 socket bind 전에 한 번에 검증한다. Bound를 넘으면
+Spot type과 stateful object capability collection은 각각 최대 1024개다. Runtime은 완성된 descriptor를 socket
+bind 전에 한 번에 검증한다. Bound를 넘으면
 startup을 실패시키며 collection을 truncate·split하거나 descriptor 일부를 게시하지 않는다.
 
 `configureNetwork()`의 기본 BindHost는 `127.0.0.1`이다. AdvertiseHost를 생략하면 wildcard가
@@ -302,7 +335,7 @@ manager를 제공하고 `objects().server()`는 그 기능과 factory·Entry Spo
 선택하거나 factory를 Server builder 밖에서 등록하면 `InvalidConfiguration`이다. Client 또는 Server role은
 Location Store가 필요하다.
 
-모든 User·Instance Spot과 Actor factory는 transfer policy를 명시해야 한다. 생략을 Disabled로 해석하지 않는다.
+모든 User·Instance Spot과 Actor factory는 relocation policy를 명시해야 한다. 생략을 Disabled로 해석하지 않는다.
 Placement profile은 UTF-8 1..255 bytes이며 factory별 capacity가 없으면 MeshNode의 object capacity를 사용한다.
 Placement weight는 양수이고 active limit은 양수, pending limit은 0 이상이다.
 
@@ -342,7 +375,7 @@ export interface ZLinkDiagnosticsOptions {
 
 export type ZLinkMessageSurface =
     | "node" | "channel" | "spot" | "instance_spot" | "logical_multicast"
-    | "actor" | "stream" | "classic_fanout" | "actor_transfer";
+    | "actor" | "stream" | "classic_fanout" | "actor_relocation";
 export type ZLinkMessageKind =
     | "send" | "request" | "response" | "error" | "publish" | "control";
 export type ZLinkMessageFlowOutcome =

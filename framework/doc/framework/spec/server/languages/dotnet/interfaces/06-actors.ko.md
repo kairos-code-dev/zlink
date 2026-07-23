@@ -78,28 +78,27 @@ public interface IZLinkActorFactory<TActor>
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkTransferStateAdapter<TInstance, TState>
-    where TInstance : class
+public interface IZLinkActorRelocationAdapter<TActor>
+    where TActor : class, IZLinkActor
 {
-    ValueTask<TState> CaptureAsync(
-        TInstance instance,
+    ValueTask<byte[]> CaptureAsync(
+        TActor actor,
         CancellationToken cancellationToken);
     ValueTask RestoreAsync(
-        TInstance instance,
-        TState state,
+        TActor actor,
+        ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken);
 }
 
-public abstract class ZLinkTransferPolicy<TInstance>
+public abstract class ZLinkRelocationPolicy<TInstance>
     where TInstance : class
 {
-    private protected ZLinkTransferPolicy();
+    private protected ZLinkRelocationPolicy();
 
-    public static ZLinkTransferPolicy<TInstance> Disabled { get; }
-    public static ZLinkTransferPolicy<TInstance> Recreate { get; }
-    public static ZLinkTransferPolicy<TInstance> Snapshot<TState, TAdapter>(
-        string stateContractId)
-        where TAdapter : class, IZLinkTransferStateAdapter<TInstance, TState>;
+    public static ZLinkRelocationPolicy<TInstance> Disabled { get; }
+    public static ZLinkRelocationPolicy<TInstance> Recreate { get; }
+    public static ZLinkRelocationPolicy<TInstance> Snapshot<TAdapter>()
+        where TAdapter : class;
 }
 
 public interface IZLinkActorClient
@@ -241,47 +240,50 @@ Actor packet handler는 Spot이 소유한 registry에 등록한다. Handler의 �
 [Spot interface](05-spots.ko.md)가 정의한다. `SpotRid == null`은 Entry Spot 단계이고 값이 있으면 해당 user
 Spot에 참여한 상태다. 같은 상태를 나타내는 별도 boolean은 제공하지 않는다.
 
-Typed state policy는 Actor factory registration이 소유한다. `Disabled`는 해당 type instance가 남아 있으면
-host `Retire`를 차단한다. `Recreate`는 target factory로 같은
-logical identity를 다시 만들고 application state를 복구하지 않는다. `Snapshot`은 adapter가 typed state만
-capture·restore하며 `stateContractId`는 비어 있을 수 없고 UTF-8 255 byte 이하여야 한다. Adapter는 raw bytes,
-transfer reference, accepted journal, transfer phase, source·target owner와 Store CAS version을 받지 않는다.
+Relocation policy는 Actor factory registration이 소유한다. `Disabled`는 cross-node materialization이 필요한
+이동을 capture 전에 거부한다. `Recreate`는 target factory로 같은 logical identity를 다시 만들고 application
+state를 복구하지 않는다. `Snapshot<TAdapter>()`은 `IZLinkActorRelocationAdapter<TActor>`가 반환한 byte 배열을
+opaque application payload로 저장하고 target Actor instance에 복원한다. 별도 application state generic과 stable
+state contract ID를 받지 않으며 Framework message wrapper를 payload로 사용하지 않는다. Adapter는 relocation
+reference, accepted journal, relocation phase, source·target owner와 Store CAS version을 받지 않는다.
 
-같은 `stateContractId`를 사용하는 source와 target adapter는 `frameworkJsonV1` semantic profile로 호환되어야
-한다. 이 profile은 enum을 string, 64-bit integer를 decimal string, binary를 padded base64로 표현하고 unknown
-field는 무시한다. Duplicate field와 required field 누락은 거부한다. Application state의 JSON byte 배열 자체는
-canonical하지 않으며 Transfer Store에는 opaque bytes로 보관한다. Canonical byte identity는 Framework 내부
-root manifest, chunk와 envelope에만 적용한다. Message별 codec 등록이나 transfer 전용 codec API는 제공하지
-않는다.
+다른 node에서 Actor instance를 materialize하는 maintenance, cross-node User Spot·Entry Spot join과 whole User
+Spot relocation의 모든 Actor participant는 같은 Actor factory policy를 사용한다. `Snapshot`일 때만 Actor adapter의
+`CaptureAsync(...)`와 `RestoreAsync(...)`를 호출한다. Same-node join은 adapter를 호출하지 않으며 `Disabled`로
+거부하지도 않는다. `Disabled` policy의 cross-node 이동은 adapter 없이 capture 전에 거부한다.
 
-Target이 `Activated`에 도달해도 application과 session ingress는 sealed 상태를 유지하고 restore, accepted
-journal replay와 bound-session route는 staged 상태로만 준비한다. Source cleanup이 terminal 상태에 도달하고
-authority의 `Completed` CAS가 성공한 뒤에만 target을 `Ready`로 열고 transfer fence를 해제한다. `Completed`
-뒤의 target failure는 ordinary owner loss로 처리하며 이전 transfer를 transparent replay하지 않는다. 이
+Target은 owner commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
+실행하지 않는다. Owner commit 뒤 lifecycle callback과 journal replay를 실행한다. `Activated`에 도달해도
+application과 session ingress는 sealed 상태를 유지하고 bound-session route는 staged 상태로만 준비한다. Source
+cleanup이 terminal 상태에 도달하고 authority의 `Completed` CAS가 성공한 뒤에만 target을 `Ready`로 열고 relocation
+fence를 해제한다. `Completed`
+뒤의 target failure는 ordinary owner loss로 처리하며 이전 relocation을 transparent replay하지 않는다. 이
 barrier를 조작하는 public phase API는 제공하지 않는다.
 
-Target replacement가 발생하면 stable transfer 안의 각 attempt가 factory와 `RestoreAsync(...)`를 at-least-once
+Target replacement가 발생하면 stable relocation 안의 각 attempt가 factory와 `RestoreAsync(...)`를 at-least-once
 호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `CaptureAsync(...)`도 immutable
-transfer root가 authority에 연결되기 전까지 반복될 수 있다. Current exact owner와 attempt fence만 completion을
-commit하고 admission을 열 수 있다. Callback에는 transfer ID를 추가하지 않으므로 application restore와 capture는
-retry-safe해야 하며 exactly-once external side effect를 보장하지 않는다.
+relocation root가 authority에 연결되기 전까지 반복될 수 있다. 두 callback은 같은 logical relocation에 대해 같은
+결과를 내도록 retry-safe해야 하며 외부 side effect의 exactly-once 실행에 의존하면 안 된다. Capture exception은
+durable abort와 source normalization 뒤 admission을 복원한다. `CaptureAsync(...)` 결과는 최대 64 MiB이며 빈
+배열은 유효하고 null은 contract 위반이다. Framework는 완료된 배열을 즉시 복사한다. `RestoreAsync(...)`의
+`ReadOnlyMemory<byte>`는 callback 완료까지만 유효하다. Restore exception이 발생한 instance는 폐기하고 새
+attempt의 factory가 만든 instance에 같은 immutable payload를 적용한다. Framework가 operation deadline 때문에
+callback을 취소하면 `DeadlineExceeded`로 분류한다. Current exact owner와 attempt fence만 completion을 commit하고
+admission을 열 수 있으며 callback에는 relocation ID를 제공하지 않는다.
 
-Transferred terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable
-transfer ID, operation ID, exact request-source fence(owner ID, lease generation, node RID, node generation)와
+Relocated terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable
+relocation ID, operation ID, exact request-source fence(owner ID, lease generation, node RID, node generation)와
 status만 가지며 payload와 metadata를 싣지 않는다. Physical connection close는 terminal 증거가 아니다. ACK 또는
 accepted record에 저장한 exact request-source lease expiry만 terminal accounting을 완료하며 public ACK API는 없다.
 
 Source는 connection-bound one-way를 포함해 admission한 모든 connection-bound work가 terminal accounting에
 도달한 뒤에만 `Captured`를 commit한다. Durable accepted journal은 exact owner lease가 있는 source에서만
-사용한다. Pre-`Captured` drain이 deadline 안에 끝나지 않으면 transfer를 abort하고 host Retire를
-`Blocked/TransferDisabled`로 끝낸다. Connection-bound one-way를 미완료 상태로 capture하는 예외는 없다.
+사용한다. Pre-`Captured` drain이 deadline 안에 끝나지 않으면 relocation을 abort하고 host Retire를
+`Blocked/DeadlineExceeded`로 끝낸다. Connection-bound one-way를 미완료 상태로 capture하는 예외는 없다.
 
-Transferable Actor는 source Entry Spot member여야 한다. User Spot member가 하나라도 남아 있으면 Retire
-preflight는 `Blocked/TransferDisabled`이고 source authority와 admission을 바꾸지 않는다. `NewOwner` CAS는
-owner, `AuthorityOwnerGeneration`과 current Spot을 target Entry identity로 원자적으로 바꾼다. Target factory와
-restore, target `OnJoinedActorAsync`, journal replay 뒤에 source `OnLeaveActorAsync`와 old Entry membership
-제거를 durable cleanup으로 수행한다. Lifecycle callback은 retry-safe해야 하며 at-least-once 호출될 수 있다.
-이 순서를 제어하는 public phase API는 없다.
+Entry Spot maintenance와 일반 join에서 실행하는 lifecycle callback의 순서, callback 실패 뒤 sealed retry와 whole
+User Spot aggregate move의 callback 생략은 [Spot interface](05-spots.ko.md)가 정한다. Actor relocation adapter는 이
+lifecycle callback을 대신하지 않는다. 이 순서를 제어하는 public phase API는 없다.
 
 새 distributed Actor는 generic placement reservation이 authority의 `Creating` row와 target pending capacity를
 함께 확보한 뒤 factory, initial Entry membership과 initialize를 수행한다. 성공하면 같은 reservation을
@@ -289,7 +291,7 @@ restore, target `OnJoinedActorAsync`, journal replay 뒤에 source `OnLeaveActor
 CAS loser는 별도 factory를 시작하지 않으며 exact reservation 결과를 read해 reconcile한다. Entry Spot
 initialization도 Host `Serving` publication보다 먼저 완료한다. 이 barrier를 위한 application API는 없다.
 
-Actor factory와 transfer policy는
+Actor factory와 relocation policy는
 [Topology configuration](03-configuration-topology.ko.md)의 `AddActorFactory<TActor,TFactory>(...)` 한 호출에서
 등록한다. Policy를 생략하는 overload는 제공하지 않는다.
 
@@ -313,5 +315,5 @@ membership의 `SpotRef`만 반환한다. 별도 Actor directory와 public handle
 않는다.
 
 `ActorRef.ObjectGeneration`은 1..`long.MaxValue`다. `MeshName`과 `NodeRid`는 조회 시점의 route snapshot이며
-logical identity에는 포함되지 않는다. Transfer 뒤에도 ActorId와 ObjectGeneration은 유지되고 새 location을
+logical identity에는 포함되지 않는다. Relocation 뒤에도 ActorId와 ObjectGeneration은 유지되고 새 location을
 가진 ref가 발급된다. 일반 messaging은 ref route를 고정하지 않는다.

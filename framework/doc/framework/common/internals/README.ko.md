@@ -11,8 +11,8 @@
 | [Service runtime architecture](service-runtime-architecture.ko.md) | raw binding 경계, mailbox, completion과 resource ownership |
 | [Mailbox and dispatch](mailbox-dispatch-runtime.ko.md) | admission gate, ready claim, one-way·request completion과 Logical Multicast |
 | [Service wire protocol](service-wire-protocol.ko.md) | multipart envelope, command ID, extension과 compatibility |
-| [Stateful maintenance](stateful-maintenance-runtime.ko.md) | host barrier, authority CAS, Transfer Store, recovery와 STREAM barrier |
-| [STREAM session](stream-session-runtime.ko.md) | connection aggregate, exact Actor binding과 transfer route barrier |
+| [Stateful maintenance](stateful-maintenance-runtime.ko.md) | host barrier, authority CAS, Relocation Store, recovery와 STREAM barrier |
+| [STREAM session](stream-session-runtime.ko.md) | connection aggregate, exact Actor binding과 relocation route barrier |
 | [Transport liveness](transport-liveness-runtime.ko.md) | Service probe·fanout beacon, raw monitor, readiness와 reconnect 경계 |
 | [Service monitoring](service-monitoring-runtime.ko.md) | monitor reducer, immutable snapshot, bounded event와 observer lifetime |
 | [Concurrency and resources](concurrency-resource-runtime.ko.md) | execution domain, resource tree, synchronization과 bounded shutdown |

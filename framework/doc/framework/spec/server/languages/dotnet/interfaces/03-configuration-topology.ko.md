@@ -27,7 +27,7 @@ public interface IZLinkFrameworkOptions
     void DisableImplicitHandlerAutoRegistration();
     IZLinkMetadataPolicyBuilder ConfigureMetadata();
     void AddLocationStore(IZLinkLocationStore store);
-    void AddTransferStore(IZLinkTransferStore store);
+    void AddRelocationStore(IZLinkRelocationStore store);
     ZLinkLocationOptions ConfigureLocations();
     IZLinkNetworkOptions ConfigureNetwork();
     IZLinkDispatchOptions ConfigureDispatch();
@@ -89,17 +89,17 @@ public interface IZLinkMeshObjectServerBuilder
     IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
         string spotType,
         ZLinkObjectPlacementOptions? placement,
-        ZLinkTransferPolicy<TSpot> transfer)
+        ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkSpot;
     IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,
         ZLinkObjectPlacementOptions? placement,
-        ZLinkTransferPolicy<TSpot> transfer)
+        ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkInstanceSpot;
     IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
         ZLinkObjectPlacementOptions? placement,
-        ZLinkTransferPolicy<TActor> transfer)
+        ZLinkRelocationPolicy<TActor> relocation)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>;
 }
@@ -259,9 +259,10 @@ RID는 UTF-8 255 bytes 이하다. Active owner 충돌은 새 suffix로 최대 8�
 허용한다. Slot count, allocation group과 public allocation provider는 제공하지 않는다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
-Spot type과 stateful object capability collection은 각각 최대 1024개이고, capability 하나의 readable state
-contract ID도 최대 1024개다. Runtime은 완성된 descriptor를 socket bind 전에 한 번에 검증한다. Bound를 넘으면
-startup을 실패시키며 collection을 truncate·split하거나 descriptor 일부를 게시하지 않는다.
+Spot type과 stateful object capability collection은 각각 최대 1024개다. Snapshot adapter 등록 여부는 각
+object capability의 `HasSnapshotAdapter`에 포함하며 별도 contract collection을 만들지 않는다. Runtime은 완성된
+descriptor를 socket bind 전에 한 번에 검증한다. Bound를 넘으면 startup을 실패시키며 collection을
+truncate·split하거나 descriptor 일부를 게시하지 않는다.
 
 `SubscriberConnections`는 manual subscriber endpoint 집합의 runtime handle이다. Builder에서 등록한
 endpoint와 같은 집합을 대상으로 연결, 해제와 현재 목록 조회를 제공한다. Automatic subscriber의
@@ -280,7 +281,7 @@ worker scheduler의 최소·최대 thread 수, idle timeout과 queue 상한을 h
 batch와 service protocol claim 크기는 public 설정으로 노출하지 않는다.
 
 `ConfigureStreamCompression()`과 `IZLinkStreamCompressionBuilder`는 STREAM payload compression을 고른다.
-이 builder는 service transport lifecycle이나 transfer codec을 설정하지 않는다.
+이 builder는 service transport lifecycle이나 relocation codec을 설정하지 않는다.
 
 `ApplicationVersion`은 host 전체에 한 번 설정하며 `0..long.MaxValue` 범위이고 기본값은 `0`이다. 모든 local
 MeshNode가 이 값을 게시하며 음수는 startup 전에 `ZLinkConfigurationException`으로 거부한다.
@@ -290,7 +291,7 @@ MeshNode가 이 값을 게시하며 음수는 startup 전에 `ZLinkConfiguration
 client를 제공하지만 placement target이 되지 않는다. `Server()`는 Client capability를 포함하며 Entry Spot과
 factory를 등록한다. 두 role은 Location Store가 필수다. Role은 한 번만 선택할 수 있다.
 
-Actor·User Spot·Instance Spot factory는 stable type, placement option과 explicit transfer policy를 같은
+Actor·User Spot·Instance Spot factory는 stable type, placement option과 explicit relocation policy를 같은
 registration에서 고정한다. Policy를 생략하는 overload는 없다. Stable type과 placement profile은 UTF-8
 1..255 bytes이고 중복 type은 startup 오류다. Entry Spot RID는 Framework가 발급한다.
 
@@ -321,6 +322,11 @@ User Spot factory와 Instance factory에 중복 등록할 수 없다. `TSpot`이
 `IZLinkSpotActorLifecycle<TActor>`도 구현하면
 actor-free 계약과 충돌하므로 startup이 실패한다. 두 option은 local MeshNode와 Instance type별로 적용한다.
 등록한 type set은 descriptor를 처음 게시하기 전에 고정하며 startup 이후 변경하지 않는다.
+
+`ZLinkRelocationPolicy<TInstance>.Snapshot<TAdapter>()`은 state type이나 state contract ID를 받지 않는다. Actor
+factory 등록에서는 `TAdapter`가 `IZLinkActorRelocationAdapter<TActor>`를, User·Instance Spot factory 등록에서는
+`IZLinkSpotRelocationAdapter<TSpot>`을 구현해야 한다. Factory 대상과 adapter 종류가 맞지 않으면 socket bind 전에
+startup configuration error로 실패한다. `Disabled`와 `Recreate`는 adapter type을 요구하지 않는다.
 
 expected RID를 생략하면 admission handshake가 remote identity를 결정한다. expected RID를 지정한 경우
 handshake identity가 다르면 연결을 admission하지 않는다. Manual 연결도 자동 discovery 연결과 같은
@@ -433,7 +439,7 @@ mailbox의 메시지 수와 byte 수 상한이다. 0은 Framework profile의 유
 용량 설정을 따른다.
 
 실행 중에는 `Mesh(meshName).PlacementWeight`와 `Channel(channelName).Weight`를 변경할 수 있다.
-두 weight는 서로 독립적이며 node weight는 object create·transfer target selection에만 사용한다.
+두 weight는 서로 독립적이며 node weight는 object create·relocation target selection에만 사용한다.
 ChannelName은 local RouteMesh 또는 ClientServer Server 등록을 유일하게 고른다. HWM과 timeout은
 `ConfigureRouterSocket()`에서 startup 전에 설정한다. MeshNode가 지원하지 않는 raw ROUTER option을 이
 interface에 노출하지 않는다.
@@ -464,7 +470,7 @@ public interface IZLinkMetadataCall<TSelf>
 
 ## 7. Location store와 startup
 
-자동 discovery, 분산 Spot·Actor 주소 또는 Actor transfer를 사용하는 host는 location store를 명시적으로
+자동 discovery, 분산 Spot·Actor 주소 또는 Actor relocation을 사용하는 host는 location store를 명시적으로
 등록해야 한다. 공식 Redis location store package가 production 기본 구현이다. 등록이 없으면 host startup이
 실패한다. process-local in-memory 구현은 단일 process contract test에서만 등록할 수 있다.
 정확한 store capability와 Redis 생성자·option은

@@ -42,16 +42,23 @@ send·reply call이다. Stream connector package의 send builder, 반환 type과
 
 | 역할 | 수 | 책임 |
 |---|---:|---|
-| `AdmissionCaller` | 1 | 이 host가 source인 RouteMesh·ClientServer Channel, Spot·Actor와 Logical Multicast call을 시작한다 |
-| `MeshTarget` | 2 | RouteMesh Channel handler, local·remote Spot과 Actor, Logical Multicast subscription을 제공한다 |
+| location store | 1 | Automatic topology와 global Spot·Actor authority가 공유하는 공식 Redis Location Store. 실행마다 전용 key prefix를 사용한다. |
+| `AdmissionCaller` | 1 | Location Store를 등록한 Object Client. 이 host가 source인 RouteMesh·ClientServer Channel, global Spot·Actor와 Logical Multicast call을 시작하지만 factory와 placement target은 제공하지 않는다. |
+| `MeshTarget` | 2 | Location Store를 등록한 Object Server. Entry Spot, stable User Spot type `admission.spot`과 Actor type `admission.actor` factory를 명시적 `Disabled` policy로 등록하고 placement weight `100`, node capacity active `128`·pending `32`를 사용한다. RouteMesh Channel handler, local·remote Spot·Actor handler와 User Spot의 Logical Multicast subscription을 제공한다. |
 | `ClientServerTarget` | 2 | 전용 ClientServer Channel의 send handler를 제공하고 select-one 재선택 대상을 분리한다 |
-| `SessionGateway` | 2 | local·remote bound session, session Actor relay와 server STREAM session을 제공하고 이 family의 public call을 시작한다 |
+| `SessionGateway` | 2 | Location Store를 등록한 Object Client. local·remote bound session, global Actor relay와 server STREAM session을 제공하고 이 family의 public call을 시작하지만 object factory는 제공하지 않는다. |
 | `FanoutPublisher` | 1 | classic fanout publisher와 publish endpoint를 제공하고 fanout public call을 시작한다 |
 | `FanoutSubscriber` | 1 | classic fanout subscriber handler와 delivery evidence를 제공한다 |
 | `StreamPeer` | 1 | server STREAM session에 연결하고 wire 수신 순서와 request sequence를 기록한다 |
 | `ReceiverGate` | 경로별 1 | 연결은 유지하되 target 방향 read를 중단·재개하는 runner 소유 TCP gate다 |
 | `LocalMailboxGate` | local family별 1 | Local Spot·Actor·bound relay mailbox를 작은 budget과 handler barrier로 포화시키는 in-process fixture다 |
 | `EvidenceCollector` | 1 | 각 source host가 종료되기 전에 보낸 operation evidence를 저장하고 source host 종료 뒤에도 조회 endpoint를 유지한다 |
+
+Stateful scenario는 close·destroy 뒤 recreate로 generation을 바꾸고 cross-node relocation은 시작하지 않는다.
+따라서 `MeshTarget`의 모든 factory는 `Disabled`를 사용하며 Relocation Store와 relocation adapter를 등록하지
+않는다. SA-E2E-06에서 `Retire`하는 `AdmissionCaller`와 `SessionGateway`는 Object Client라 local object
+inventory가 없고, 다른 Channel·session component의 eligible target만 preflight한다. Object operation을
+시작하지 않는 역할에는 object role을 추가하지 않는다.
 
 각 역할 server는 그 host가 source인 public call을 시작하는 실제 application endpoint를 가진다. Client는 이
 endpoint를 HTTP client wrapper로 호출한다. Framework call을 대신 실행하는 별도 driver server는 두지 않는다.
@@ -288,22 +295,26 @@ public result, 역할 server evidence와 사용한 gate 기록을 함께 대조�
   한 번이고 handler 실행은 0이다.
 - **공통 evidence:** Resolve snapshot, known target ID, route-ready state, public status와 handler count를 남긴다.
 
-### SA-E2E-06 — shutdown·drain admission 거부
+### SA-E2E-06 — Retire·Shutdown admission 거부
 
-- **목적:** Shutdown 또는 drain이 새 one-way admission을 terminal `Shutdown`으로 한 번만 거부하는지 확인한다.
-- **Topology·사전 조건:** Target이 아니라 family별 public call의 실제 source host를 drain과 shutdown 대상으로
+- **목적:** `Retire` 또는 `Shutdown`의 admission seal 뒤 새 one-way call이 terminal `Shutdown`으로 한 번만
+  거부되는지 확인한다.
+- **Topology·사전 조건:** Target이 아니라 family별 public call의 실제 source host를 `Retire`와 `Shutdown` 대상으로
   사용한다. RouteMesh·ClientServer Channel, Spot·Actor와 Logical Multicast는 `AdmissionCaller`, classic fanout은
   `FanoutPublisher`, bound session·session Actor relay와 server STREAM은 해당 `SessionGateway`가 source다. 미리
   만든 public call 작업은 각 source Framework admission barrier 뒤에서 기다리게 한다. Receiver gate는 열어
   capacity 실패와 섞이지 않게 한다. Source host가 종료된 뒤에도 결과를 조회할 수 있도록 operation evidence와
   admission-closed marker는 독립 process인 `EvidenceCollector`로 전송한다.
-- **절차:** `SA-E2E-06.a`는 family별 source host의 drain을 시작하고 admission-closed marker를 확인한 뒤 public
+- **절차:** `SA-E2E-06.a`는 continuity preflight가 성공하도록 eligible target을 준비한 뒤 family별 source host의
+  `Retire`를 시작하고 `Draining`과 admission-closed marker를 확인한 다음 public
   call barrier를 해제한다. `SA-E2E-06.b`는 같은 source에서 pending operation을 만든 뒤 해당 source Framework
-  host의 shutdown과 경쟁시킨다. Target 역할 server의 drain·shutdown 결과와 source host 안의 control endpoint를
+  host의 `Shutdown`과 경쟁시킨다. Target 역할 server의 `Retire`·`Shutdown` 결과와 source host 안의 control endpoint를
   종료 후 evidence로 사용하지 않는다.
-- **기대 결과:** 신규 call이나 shutdown winner는 `Shutdown` 한 번이다. `TimedOut`으로 바뀌거나 drain 뒤
-  admission되지 않는다.
-- **공통 evidence:** Family별 source 역할·process·host ID, source drain admission-closed marker, terminal
+- **기대 결과:** admission seal 뒤의 신규 call과 `Shutdown`이 먼저 선형화된 pending call은 `Shutdown` 한 번이다.
+  이미 transport admission을 완료한 call의 `Submitted` 결과는 바꾸지 않는다. 어느 결과도 뒤늦게
+  `TimedOut`으로 바뀌거나 `Draining` 뒤 새로 admission되지 않는다.
+- **공통 evidence:** Family별 source 역할·process·host ID, effective termination intent, source
+  `Draining`·admission-closed marker, terminal
   status·count, transport attempt·commit과 target handler count를 `EvidenceCollector`에서 조회한다. Collector
   process ID가 종료한 source와 다르고 scenario 조회가 source 종료 뒤에도 성공하는지 함께 기록한다.
 
@@ -380,30 +391,33 @@ public result, 역할 server evidence와 사용한 gate 기록을 함께 대조�
 - **공통 evidence:** ClientServer ChannelName, DEALER deadline, RouteMesh 비교값, gate 기록과 terminal status를
   남긴다.
 
-### SA-E2E-11 — Spot resolve와 route admission
+### SA-E2E-11 — Spot resolve generation과 route admission
 
 - **목적:** Spot direct send가 location resolve 실패와 resolved owner route의 capacity 결과를 구분하는지 확인한다.
-- **Topology·사전 조건:** 존재하지 않는 Spot ID, 이전 generation의 stale Spot handle과 ready location을 가진
-  remote Spot을 준비한다. Remote owner의 receiver gate를 독립 제어한다.
-- **절차:** Missing Spot과 stale Spot에 한 번씩 보내고, resolved Spot에는 즉시 수락·pending 뒤 수락·deadline
-  만료를 실행한다.
-- **기대 결과:** Missing Spot과 stale Spot은 모두 `TargetNotFound`이며 remote creation이나 현재 owner로의 자동
-  치환을 시도하지 않는다. Resolved Spot은 route capacity에 따라 `Submitted` 또는 `TimedOut`이고 handler
-  delivery는 성공 sequence에만 있다.
-- **공통 evidence:** Location resolve result와 generation, owner route, admission terminal과 Spot handler sequence를
-  남긴다.
+- **Topology·사전 조건:** 존재하지 않는 global Spot RID와 ready location을 가진 remote Spot을 준비한다.
+  Ready Spot은 resolve와 outbound admission 사이에서 close·recreate하여 generation을 바꿀 수 있고 current
+  owner의 receiver gate를 독립 제어할 수 있어야 한다.
+- **절차:** Missing RID로 한 번 보낸다. Ready RID는 resolve barrier에서 정지한 뒤 close·recreate하고 barrier를
+  해제한다. 별도 fresh operation으로 즉시 수락·pending 뒤 수락·deadline 만료를 실행한다.
+- **기대 결과:** Missing Spot은 `TargetNotFound`이며 remote creation을 시작하지 않는다. Generation 교체 전
+  operation은 새 incarnation으로 자동 retarget되지 않고 terminal 한 번으로 끝나며 잘못된 handler 실행은 0이다.
+  Fresh operation은 route capacity에 따라 `Submitted` 또는 `TimedOut`이고 handler delivery는 성공 sequence에만 있다.
+- **공통 evidence:** Global Spot RID, resolve에서 선택한 object·owner generation, current generation, owner route,
+  admission terminal과 generation별 Spot handler sequence를 남긴다. Public call에는 handle·ref·owner를 넘기지 않는다.
 
-### SA-E2E-12 — Actor stale target과 route admission
+### SA-E2E-12 — Actor resolve generation과 route admission
 
-- **목적:** Actor direct send가 stale actor location과 현재 generation owner의 route capacity를 구분하는지 확인한다.
-- **Topology·사전 조건:** 이전 generation의 Actor handle과 현재 generation의 remote Actor를 준비한다. Current
-  owner의 receiver gate를 닫을 수 있어야 한다.
-- **절차:** Stale handle call 뒤 current handle의 gate-open·gate-closed case를 실행한다. Stale handle을 현재 owner로
-  자동 치환하지 않는다.
-- **기대 결과:** Stale Actor target은 `TargetNotFound`로 terminal 완료되고 handler 실행은 0이다. Current target은
-  capacity에 따라 `Submitted` 또는 `TimedOut`이며 generation을 섞지 않는다.
-- **공통 evidence:** Handle generation, resolved owner generation, terminal status와 generation별 handler count를
-  기록한다.
+- **목적:** Actor direct send가 global `ActorId` resolve 뒤 generation 교체와 current owner route capacity를
+  구분하는지 확인한다.
+- **Topology·사전 조건:** Remote Actor를 준비하고 resolve와 admission 사이에서 current `ActorRef`로
+  destroy한 뒤 같은 global ID·stable type으로 recreate해 ObjectGeneration을 바꿀 수 있어야 한다. Current
+  owner의 receiver gate도 닫을 수 있어야 한다. 이 scenario는 owner relocation을 사용하지 않는다.
+- **절차:** Global `ActorId` call을 resolve barrier에 멈춘 뒤 generation을 교체하고 해제한다. 이어서 같은 ID의
+  fresh call로 gate-open·gate-closed case를 실행한다.
+- **기대 결과:** 이전 operation은 current incarnation으로 자동 retarget되지 않고 terminal 한 번으로 끝나며
+  generation별 handler 실행을 섞지 않는다. Fresh operation은 capacity에 따라 `Submitted` 또는 `TimedOut`이다.
+- **공통 evidence:** Global Actor ID, resolved·current object generation과 owner fence, terminal status와
+  generation별 handler count를 기록한다. Public call에는 `ActorRef`·handle·owner를 넘기지 않는다.
 
 ### SA-E2E-13 — Logical Multicast snapshot 단일 처리와 partial detail
 
@@ -509,16 +523,18 @@ public result, 역할 server evidence와 사용한 gate 기록을 함께 대조�
   call object ID별 transport attempt·commit·terminal count와 peer reply wire sequence를 기록한다. Concurrent
   case는 claim winner ID와 loser의 attempt·commit 0을 함께 남긴다.
 
-### SA-E2E-18 — direct target 고정과 select-one commit 전 재선택
+### SA-E2E-18 — direct logical target fence와 select-one commit 전 재선택
 
-- **목적:** Direct call은 Node RID, Spot·Actor owner와 handle generation, session binding token을 유지하고,
+- **목적:** Direct call은 Node의 `(MeshName, NodeRid)`, global Spot RID, global Actor ID와 session binding token을
+  유지하고,
   ChannelName select-one은 admission되기 전까지 현재 eligible member를 다시 선택할 수 있음을 구분해
   확인한다. 두 경로 모두 commit 뒤
   같은 operation을 replay하지 않아야 한다.
 - **Topology·사전 조건:** 다음 하위 case를 독립 topology로 실행한다.
-  - `SA-E2E-18.a`: Node direct, Spot, Actor와 bound session handle별로 `ReceiverGate`를 닫아 pending operation을
-    만든다. Node는 RID, Spot·Actor는 owner와 handle generation, bound session은 binding token을 각각 고정하고
-    그 identity의 현재 connection만 종료할 수 있어야 한다.
+  - `SA-E2E-18.a`: Node direct, Spot, Actor와 bound session별로 `ReceiverGate`를 닫아 pending operation을
+    만든다. Node는 `(MeshName, NodeRid)`, Spot은 global Spot RID, Actor는 global Actor ID, bound session은
+    binding token을 public identity로 고정한다. Spot·Actor의 resolved generation과 owner fence는 내부 admission
+    evidence로만 기록하고 해당 current connection을 종료할 수 있어야 한다.
   - `SA-E2E-18.b`: RouteMesh select-one을 검증한다. 같은 ChannelName에 RouteMesh member A와 B를 준비한다.
     첫 attempt 시점에는 A만 eligible하고 A의
     receiver gate를 닫아 `EAGAIN`을 만든다. Commit 전에 B를 ready·eligible로 바꾸고 A를 eligible set에서
@@ -532,14 +548,14 @@ public result, 역할 server evidence와 사용한 gate 기록을 함께 대조�
   ID로 한 번 submit한다. `SA-E2E-18.b`와 `SA-E2E-18.c`는 각각 A에서 최초 attempt가 실패한 뒤 B를 eligible로
   전환한다. Runtime이 관측한 route·capacity signal로 같은 operation을 한 번 재시도하게 하고, successful
   admission 뒤 B의 connection을 종료·복구해도 같은 operation을 다시 제출하지 않는지 확인한다.
-- **기대 결과:** Direct handle의 기존 operation은 `RouteNotConnected`로 한 번 완료되고 commit과 handler delivery는
+- **기대 결과:** Direct logical target의 기존 operation은 `RouteNotConnected`로 한 번 완료되고 commit과 handler delivery는
   0이다. Connection 복구가 기존 operation을 자동 제출하지 않는다. 새 operation만 복구된 route에서 `Submitted`로
   완료된다. RouteMesh와 ClientServer의 각 select-one
   operation은 public invocation 1회 안에서 A에 대한 최초 attempt와 B에 대한 commit 전 retry를 수행한다.
   Successful admission이 B를 최종 target으로 확정하고 결과는 `Submitted`, commit은 1회, B의 handler count는
   최대 1이다. 어느 하위 case도 commit된 payload를 route 복구나 member 변경 뒤 replay하지 않는다.
-- **공통 evidence:** Direct case는 old·new operation ID, Node RID·Spot/Actor owner·handle generation·session binding token과
-  old·new physical connection generation을 남긴다. 두 select-one case는 family 이름과 attempt별 eligible
+- **공통 evidence:** Direct case는 old·new operation ID, Node `(MeshName, NodeRid)`·global Spot RID·global Actor ID·session binding token,
+  resolve에서 고정한 Spot·Actor generation·owner fence와 old·new physical connection generation을 남긴다. 두 select-one case는 family 이름과 attempt별 eligible
   snapshot·selected member·connection generation, successful admission target과 commit 시각을 각각 남긴다.
   모든 case는 public invocation·transport attempt·commit,
   terminal count와 target별 sequence count를 구분해 기록한다.

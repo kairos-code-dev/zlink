@@ -6,18 +6,18 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 4080,
-      "sha256": "651cb522544ccf96e40a4830c3b1815a5d3c3646b4c0a2dabbb383f3443ff63b",
+      "count": 4265,
+      "sha256": "160a65a48a6c8ac44e3c970a4362b728918216615a7dee114672fc1426cf6eb4",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
-      "count": 936,
-      "sha256": "6378e78bd931f119e1ea2aeec86d83fd6a1d907b0c11219f0d669a27745c212d",
+      "count": 960,
+      "sha256": "c23489606b4040034cccdf848b388d31ffacb6cdea6c9a8b214eb40fc9615202",
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {
-      "count": 1206,
-      "sha256": "2adc9c1de77f70456704767249107b8afbca41ff6eab9fee877dd6ec441f3bc6",
+      "count": 1201,
+      "sha256": "8de7557f0c6e2ca17989702c8e4342aa6f28d7d6c0e293576bb94601ebca0e48",
       "specReason": "The v11 formal contract intentionally omits this exact frozen-baseline member; the target exact-interface absence and POSD removal policies own the change."
     },
     "overrideReasons": {
@@ -27,16 +27,16 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_entry_spot#8c9b77c5034824f9",
         "baselineSignatureSha256": "8c9b77c5034824f9ac9e6386fe5550565a7d795ea8a09839f758761ec36d6c8d",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_entry_spot#3a23022e9f8d66f1",
-        "targetSignatureSha256": "3a23022e9f8d66f115a5765e1746b8335fafc20dced19b53c45dd22e65b0ac08",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_entry_spot#c669c5c0fa60bace",
+        "targetSignatureSha256": "c669c5c0fa60baceb4124870a77ea2072ae079c1d0eec14bb9acb6509fe9866d",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_entry_spot#8e6651ab27576f66",
         "baselineSignatureSha256": "8e6651ab27576f66f207564a1da738f4f63d546491956bac9805258b5e3079f7",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_entry_spot#9d85f21336b7ecdc",
-        "targetSignatureSha256": "9d85f21336b7ecdcab3fd72157c8d6e7d3085d8235067c4a18d9ca98ed1bdfbe",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_entry_spot#377a6b7a5d49a604",
+        "targetSignatureSha256": "377a6b7a5d49a604353461337dfad8be6e07e58046367ecdc9ec3e411fd8368d",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -531,8 +531,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#6815e691e5e6eea7",
         "baselineSignatureSha256": "6815e691e5e6eea72c016364e7442389b2f838a3e093e4b15adf25f16e2dd8a3",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#fab57737262664cb",
-        "targetSignatureSha256": "fab57737262664cbf8c74ec88f33666511d33e5af59a8bb166660097ec82cf88",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#334101bbce032d7b",
+        "targetSignatureSha256": "334101bbce032d7b42637b384e541a1e7a7c27cf463f888b40bc58027e0ea646",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -605,6 +605,14 @@
         "baselineSignatureSha256": "62107018e9dde4ea03e182c99f7aa537c7030c44384431f32d037aa0a8928ad5",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::owner_lease_store_t.renew_owner_lease#29e3d5bd6e3a7424",
         "targetSignatureSha256": "29e3d5bd6e3a74241d440c44b6dc2879a8da37f157c5a9e95066e84901731772",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::packet_stream_session_t.on_packet#62ca4649e5d1c7ab",
+        "baselineSignatureSha256": "62ca4649e5d1c7ab0270dca89fc2952aa3ff54261f3be8a4b4ba5b8662d9b8a4",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::packet_stream_session_t.on_packet#5ac503af5937a789",
+        "targetSignatureSha256": "5ac503af5937a789fa1343d4a0f2ac2a7c97b6c02bd8a0d1447b36e826dc82f2",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -683,8 +691,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.request_to_spot#dca021b9caff2c29",
         "baselineSignatureSha256": "dca021b9caff2c29a3e45a682585324efd0bb5def8c081c3259f58621d4a4c27",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.request_to_spot#9ac0fca51eaaa664",
-        "targetSignatureSha256": "9ac0fca51eaaa6640368bda65e29c8d15701b216c707c7387dbb5ec939a3ebd7",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.request_to_spot#1f6f69a586ecb248",
+        "targetSignatureSha256": "1f6f69a586ecb2480a1e592bfd6be78ccad4c6af32477fdbc98ae5eefb78233b",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -699,8 +707,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.send_to_spot#af93c76a0468de69",
         "baselineSignatureSha256": "af93c76a0468de692df5890b65b7c47f3f7ee12c8fc777b93e32ce841264230a",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.send_to_spot#2b9c7960eb8f6ba4",
-        "targetSignatureSha256": "2b9c7960eb8f6ba4b36ef2b8b610cc931ccc006d76cec1dbe68c60ed03026168",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.send_to_spot#46e77449d50b2110",
+        "targetSignatureSha256": "46e77449d50b2110f12aeadd0730767987a8892c8acb14454a55b9d670c36bae",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -795,8 +803,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.request_to_spot#474ecba2939b8aeb",
         "baselineSignatureSha256": "474ecba2939b8aebc444889adbc6f08333808cd88ef8452e945636d6d06bfb71",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.request_to_spot#0341e8f3c7bfd112",
-        "targetSignatureSha256": "0341e8f3c7bfd112435305f2815a903cbb23ed4f82164d2434a33c578e3863d3",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.request_to_spot#1f6f69a586ecb248",
+        "targetSignatureSha256": "1f6f69a586ecb2480a1e592bfd6be78ccad4c6af32477fdbc98ae5eefb78233b",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -819,8 +827,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.send_to_spot#14914b3e0a554dca",
         "baselineSignatureSha256": "14914b3e0a554dca7574773106b334a4deb7735d3705f92f79bf454d803b9041",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.send_to_spot#45bc0e6076bde018",
-        "targetSignatureSha256": "45bc0e6076bde01894ce5234d6a133b9c2a3e47cfa72b104844f6ccf79b796c5",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.send_to_spot#06915cef5d78d425",
+        "targetSignatureSha256": "06915cef5d78d425504f258ac6f95a8ee3cb64350ca9b7c8778e778c459b9217",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -921,6 +929,22 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_compression_codec_t.compress#1d21a1fad7012356",
+        "baselineSignatureSha256": "1d21a1fad7012356ccb19914ecaa68e38b5a45ddd58de02e8e918e3c4ec77ee4",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_compression_codec_t.compress#176c4951809c801b",
+        "targetSignatureSha256": "176c4951809c801bdd4791b982e810851c93e7210f470a3109d82f38fc0fabed",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_compression_codec_t.decompress#bdea0192d0e18245",
+        "baselineSignatureSha256": "bdea0192d0e18245d77dddfcb1ee7cd5abeecc53cb53aab516bdb136aee2128f",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_compression_codec_t.decompress#c2b3db9cfee6d43c",
+        "targetSignatureSha256": "c2b3db9cfee6d43c7516c8893e13042fb58c4beb45c1ab3991efbdbda57d761a",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_node_options_builder_t.enable_actor_dispatch#83116a8c08767fba",
         "baselineSignatureSha256": "83116a8c08767fbacfa41951e4b308ab179912aa54bff78d7277bc5392ac2950",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_node_options_builder_t.enable_actor_dispatch#3bee5e3881ffb4b1",
@@ -941,6 +965,22 @@
         "baselineSignatureSha256": "b3fa03708709af940568e1863b20e875f6964a786837587fa463ca9e7791f779",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_node_options_builder_t.set_tls_server#635cc0a2faed845f",
         "targetSignatureSha256": "635cc0a2faed845f14a4e18652c26f0b3befc7fba65195fab47089be242ae072",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.reply_packet#10ba52ab45ea26eb",
+        "baselineSignatureSha256": "10ba52ab45ea26eb4ee32f53643b50b370078d759de0f3bcc40f266246745d10",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.reply_packet#09918c05b34c9f9c",
+        "targetSignatureSha256": "09918c05b34c9f9c49214a515f1a1ca69ea017b005315ba06ef54c06214bafca",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.write_packet#3f839a191307ff7d",
+        "baselineSignatureSha256": "3f839a191307ff7dfb5bf2f21d3e714cae733302450f594fa6fa430c24ffa3c0",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::stream_t.write_packet#864f2013fc8b21b2",
+        "targetSignatureSha256": "864f2013fc8b21b25e2511de1338f7fd0d7287201992debfb72b7c35e2ce16c5",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1081,6 +1121,38 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::worker_options_t.idle_timeout#217bca1bc864fe1e",
+        "baselineSignatureSha256": "217bca1bc864fe1e206ac5d2b1c2af1e3e42828acecf8031420905abdd9dfb83",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::worker_options_t.idle_timeout#4e33fc72a1e27e0d",
+        "targetSignatureSha256": "4e33fc72a1e27e0dc5115d78e4d5dde74bf97848902c38850e8ff54b3f22a170",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::worker_options_t.max_queue_length#4b80cd9c76a00afb",
+        "baselineSignatureSha256": "4b80cd9c76a00afbe17514dce8ac732f5ff544b99526556cc3edca33cc8e6f06",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::worker_options_t.max_queue_length#8692f9d410adfa22",
+        "targetSignatureSha256": "8692f9d410adfa22e1569a9db90a378a006a3b409dcc0cc2645f90bc0c4f1e95",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::worker_options_t.max_threads#01e224dad3b11ac6",
+        "baselineSignatureSha256": "01e224dad3b11ac6b4079843b8ed1ba1a09e5afb54514b5812ab102817008bfb",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::worker_options_t.max_threads#2ebc8ce0859a3844",
+        "targetSignatureSha256": "2ebc8ce0859a384401edd3e4cec0d1fdc628e6b71e6cd3e36270265de7d45d58",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::worker_options_t.min_threads#5227381435a148d3",
+        "baselineSignatureSha256": "5227381435a148d35fa4cae02e5ca74fcda50461fae1100c3ed21cee6fd34791",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::worker_options_t.min_threads#1d800461df7aebdb",
+        "targetSignatureSha256": "1d800461df7aebdb7cd81f16e77ac639dda173d071b91ee7d9791a448e695bc4",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::zlink_framework_options_t.codecs#df8d6ab2754267d6",
         "baselineSignatureSha256": "df8d6ab2754267d615f4e26601ec15bf4be62bd4c12296b2c8dda57cd6dac1e8",
         "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::zlink_framework_options_t.codecs#397d9dce357096f0",
@@ -1211,8 +1283,8 @@
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkEntrySpot.OnClosingAsync#1a3f8920f7c59905",
         "baselineSignatureSha256": "1a3f8920f7c599050d39a4df52569c8b601cb5c9f5de502d7dcd62d3057f2bc3",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkEntrySpot.OnClosingAsync#4e4cc63622a9704d",
-        "targetSignatureSha256": "4e4cc63622a9704dd14b7bcef29b52f213b744cc2cba91d2db3ccb6f75afe76d",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkEntrySpot.OnClosingAsync#da1f4363d830ac3b",
+        "targetSignatureSha256": "da1f4363d830ac3b80f7700d742d8878e06bdc737368cc82bfee68142ae532c7",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1331,8 +1403,8 @@
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpot.OnClosingAsync#1a3f8920f7c59905",
         "baselineSignatureSha256": "1a3f8920f7c599050d39a4df52569c8b601cb5c9f5de502d7dcd62d3057f2bc3",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpot.OnClosingAsync#4e4cc63622a9704d",
-        "targetSignatureSha256": "4e4cc63622a9704dd14b7bcef29b52f213b744cc2cba91d2db3ccb6f75afe76d",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpot.OnClosingAsync#da1f4363d830ac3b",
+        "targetSignatureSha256": "da1f4363d830ac3b80f7700d742d8878e06bdc737368cc82bfee68142ae532c7",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1387,32 +1459,32 @@
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.RequestToSpot#8658bdbd4e4d48c0",
         "baselineSignatureSha256": "8658bdbd4e4d48c0dac39b574c86d26207f14de78a0e9e82500466288ce3a9cd",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.RequestToSpot#423f115b3757cdda",
-        "targetSignatureSha256": "423f115b3757cddaccba28f45bdc7a4b6b34671336c34031d67ef2091221109a",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.RequestToSpot#e83afffaa0913f23",
+        "targetSignatureSha256": "e83afffaa0913f23c6646dbbb7d0e18b413c23e4a9728a9298abd03381774ee1",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.SendToSpot#46ffd8f01f7d1689",
         "baselineSignatureSha256": "46ffd8f01f7d1689e7f4db527aeb4af60c1190affb4953f2833db56fcc759a5b",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.SendToSpot#23ff1e23b4a2e9bb",
-        "targetSignatureSha256": "23ff1e23b4a2e9bbd5e602b95cc4c4aecf558f02985fc5819e08a2beaa161d07",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.SendToSpot#802a45b907904a72",
+        "targetSignatureSha256": "802a45b907904a72adc389f966a7669f3babd0caa3df8f01c863c4a787af4b3c",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.RequestToSpot#8658bdbd4e4d48c0",
         "baselineSignatureSha256": "8658bdbd4e4d48c0dac39b574c86d26207f14de78a0e9e82500466288ce3a9cd",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.RequestToSpot#423f115b3757cdda",
-        "targetSignatureSha256": "423f115b3757cddaccba28f45bdc7a4b6b34671336c34031d67ef2091221109a",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.RequestToSpot#e83afffaa0913f23",
+        "targetSignatureSha256": "e83afffaa0913f23c6646dbbb7d0e18b413c23e4a9728a9298abd03381774ee1",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.SendToSpot#46ffd8f01f7d1689",
         "baselineSignatureSha256": "46ffd8f01f7d1689e7f4db527aeb4af60c1190affb4953f2833db56fcc759a5b",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.SendToSpot#23ff1e23b4a2e9bb",
-        "targetSignatureSha256": "23ff1e23b4a2e9bbd5e602b95cc4c4aecf558f02985fc5819e08a2beaa161d07",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.SendToSpot#802a45b907904a72",
+        "targetSignatureSha256": "802a45b907904a72adc389f966a7669f3babd0caa3df8f01c863c4a787af4b3c",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1531,8 +1603,8 @@
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToSpot#8f7f50e026fb4422",
         "baselineSignatureSha256": "8f7f50e026fb44221b6744d9b0108a314a97dc88048bc7a9196786c6ed5bf8be",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToSpot#5f39d653d114ff85",
-        "targetSignatureSha256": "5f39d653d114ff859dd554fda61f8c9776c965f82fa0abe170c0c94eb4c43521",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToSpot#5861b824c10d4ebb",
+        "targetSignatureSha256": "5861b824c10d4ebb673e1f4c95d614cad5c645398d738948436edef3ca726bc7",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1547,8 +1619,8 @@
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.sendToSpot#d3602cc8ef6f84da",
         "baselineSignatureSha256": "d3602cc8ef6f84da936b709ad3fa3c0ad24f366ebc9505f2d5c4b570ade6b556",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.sendToSpot#d753375a78d5e584",
-        "targetSignatureSha256": "d753375a78d5e584068181ad3735f7e4deda1dbebcc7be5828b809c281df4407",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.sendToSpot#873e243d5bd279c6",
+        "targetSignatureSha256": "873e243d5bd279c6fa61bd909fdf59530280337a79bf8310e34ae39f46d13b87",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1565,6 +1637,38 @@
         "baselineSignatureSha256": "19a823936849e151b20be51d712e27b89552494429b91706ad99ef48d9722d75",
         "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotLocationKey.ZLinkSpotLocationKey#fd1cbcb5feb300ba",
         "targetSignatureSha256": "fd1cbcb5feb300ba225abdba9b22fa9221a9f116ed2ac725fdfbdf43f34b2154",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.close#a8f3085d2a1804c0",
+        "baselineSignatureSha256": "a8f3085d2a1804c0a9328b903cdbb55ac53be5ba32d27b95b63df0a31cd41e94",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.close#af2c624924e50be6",
+        "targetSignatureSha256": "af2c624924e50be6ec8d191c96fa62a7868f2583b317c9ac432fa2d73f88c344",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.create#6ea35783e8446d09",
+        "baselineSignatureSha256": "6ea35783e8446d09f55411ffdf33efff30e2c566f26721b1902e9e4f4fad5765",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.create#fbe6060aaa7b7df4",
+        "targetSignatureSha256": "fbe6060aaa7b7df4d31bfe1a181778dd34fb60d2f9fa9e12de0d77e112a0febd",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.find#d1e0ae511923c07c",
+        "baselineSignatureSha256": "d1e0ae511923c07c281288029f6faa8d142ae8312604af3b24ab9e31267d1ee8",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.find#7d5468559909d30b",
+        "targetSignatureSha256": "7d5468559909d30bb2179f31519168af0264ed2424d42b48c85e95948b7c8283",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.getOrCreate#250a5c3b8d846fc9",
+        "baselineSignatureSha256": "250a5c3b8d846fc9a137aae9f97ad272bd6107ff439ff8d126133ae80b71727c",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.getOrCreate#9dfb4b52d32adfda",
+        "targetSignatureSha256": "9dfb4b52d32adfda5f77c84bb15dae4db664e17dfdf780590ff1a78b9c16cb84",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1611,8 +1715,8 @@
       {
         "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#e2406c40ce5dc81e",
         "baselineSignatureSha256": "e2406c40ce5dc81ec589fd442cbefd36c587b90cc727602c2e0f2e9798d92e41",
-        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#c9c27fce84b4c9b8",
-        "targetSignatureSha256": "c9c27fce84b4c9b83da474cf464e15e6e1116a1773b3bbad29bb43a730588285",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#0e2687c2ddf93e4d",
+        "targetSignatureSha256": "0e2687c2ddf93e4dd7d51c4e2596577e12d73e4d94a7ebde4d9c750f3469d504",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1635,8 +1739,8 @@
       {
         "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.send#1de1336aaf8b36b6",
         "baselineSignatureSha256": "1de1336aaf8b36b649762cb127b7f28d8adfdd089c97a6e42a5825983e618ad4",
-        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.send#e3fa5490fb45305d",
-        "targetSignatureSha256": "e3fa5490fb45305d9996fc1d0db465cff1b9ae469ae3d87ca044d9af3284f86c",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.send#127744bd765a1a85",
+        "targetSignatureSha256": "127744bd765a1a859c246b56c5c7cc11472935357e69def73412fbc425bdc9b5",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1661,6 +1765,14 @@
         "baselineSignatureSha256": "e5120df9f1d14abcce6a5641c15a913f800323c179282fb8082ab13dbe744a71",
         "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingEntrySpot.onActorJoinSuspending#e5a380092632c57a",
         "targetSignatureSha256": "e5a380092632c57a1ce30aedacd244234a2b0954282ae1be9faf9267cf997939",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingEntrySpot.onClosingSuspending#fd838d89283eabcf",
+        "baselineSignatureSha256": "fd838d89283eabcf1ff073e670cdb7db1a80159dbd1a58de63939adb82137bc3",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingEntrySpot.onClosingSuspending#9e1c60150c8b24cd",
+        "targetSignatureSha256": "9e1c60150c8b24cd840fc4b112ec1306cedeca0fd0ebdae8cdf2500146964cc4",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1717,6 +1829,14 @@
         "baselineSignatureSha256": "e5120df9f1d14abcce6a5641c15a913f800323c179282fb8082ab13dbe744a71",
         "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingSpot.onActorJoinSuspending#e5a380092632c57a",
         "targetSignatureSha256": "e5a380092632c57a1ce30aedacd244234a2b0954282ae1be9faf9267cf997939",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingSpot.onClosingSuspending#fd838d89283eabcf",
+        "baselineSignatureSha256": "fd838d89283eabcf1ff073e670cdb7db1a80159dbd1a58de63939adb82137bc3",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingSpot.onClosingSuspending#9e1c60150c8b24cd",
+        "targetSignatureSha256": "9e1c60150c8b24cd840fc4b112ec1306cedeca0fd0ebdae8cdf2500146964cc4",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1897,6 +2017,14 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkEntrySpot.onClosing#18f473740a2d9413",
+        "baselineSignatureSha256": "18f473740a2d9413161bc966d6fb3c6ae9774528f3ca0b63aa11f7e3cce9f94b",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkEntrySpot.onClosing#f4a9cdc4a822cae8",
+        "targetSignatureSha256": "f4a9cdc4a822cae87b50b3752282dbd0dbea55f342ba2b6bfebb487240140e02",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkEntrySpotContext.destroyActor#9c71fdc85eab7c69",
         "baselineSignatureSha256": "9c71fdc85eab7c6934224e0632ad4565d54ef2647fb41c3c5d2fa73e547224d9",
         "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkEntrySpotContext.destroyActor#3daca274ab27e50b",
@@ -1921,6 +2049,22 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkHandlerContext.connectionAborted#10890bb823552c0c",
+        "baselineSignatureSha256": "10890bb823552c0c617bf342dd6902485f1c6dd3b58473014146d72fe03f3d06",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkHandlerContext.connectionAborted#42f075f257828e05",
+        "targetSignatureSha256": "42f075f257828e051a5af62a2e678cea1040e91c57ecc1105de6c6cf36d61e9a",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkHandlerContext.packetName#ec919c82b75e415f",
+        "baselineSignatureSha256": "ec919c82b75e415f1b830c3001e0694633fc80792db3a6beb1c7acf083b0b02a",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkHandlerContext.packetName#bd0f5f84d26712a6",
+        "targetSignatureSha256": "bd0f5f84d26712a69be99b00de799f3a55fbda49721b25af05d6d77d634e6e8b",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkLocationChangeStampScope.kind#2d929bf08c1ea6f9",
         "baselineSignatureSha256": "2d929bf08c1ea6f9e935054a3e6e172c68c56cd68c1c1bd2600e3cbe3d6e3109",
         "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkLocationChangeStampScope.kind#348e5de84c0f78ed",
@@ -1941,6 +2085,62 @@
         "baselineSignatureSha256": "73020040e086002c2d8afd818cf539f44072a6ab2d0b3ceca268144f55a977bf",
         "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeLocationStore.listMeshNodes#852bfc63000498f5",
         "targetSignatureSha256": "852bfc63000498f5a64550f1722684ca662a9847cc3c5d57f8aeb4a9604442b7",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Drained#6b4deeed4897b71e",
+        "baselineSignatureSha256": "6b4deeed4897b71e5e52ec014926a0545c72bbdae7db8789e04738cea32292c1",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Drained#ae805b17acedfc2f",
+        "targetSignatureSha256": "ae805b17acedfc2f3f1eb5a94edd38b254059048a1e5fbe21bf72d3dfd69da02",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Draining#6fcf4ae0d3a59ecf",
+        "baselineSignatureSha256": "6fcf4ae0d3a59ecf2ea05c10ba710c926a01b43d96d5458478f5dc9a308e09b5",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Draining#09809aa01b0e7879",
+        "targetSignatureSha256": "09809aa01b0e7879c46c8cc45d56a9ab068d1e729db9429f08b5531b670310e5",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Faulted#717ec40662d73789",
+        "baselineSignatureSha256": "717ec40662d73789bd9cdb43235e48f78b498381c3680de50de422ab2b26db00",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Faulted#6423d899cf8790fa",
+        "targetSignatureSha256": "6423d899cf8790fae2ac54d9180c51e39d488a77eaff17a56c13f26ea35cac92",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.ForceStopping#249def01812fd9e2",
+        "baselineSignatureSha256": "249def01812fd9e201c78f032845fc74ddaf2cb24f69c712c326747a79813063",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.ForceStopping#9112dab3e7dbb838",
+        "targetSignatureSha256": "9112dab3e7dbb83821272be6facc19b0bbc32ed7a1369d309578cebb5b7fab90",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Serving#7582a564926d8521",
+        "baselineSignatureSha256": "7582a564926d852102ed17f268c54d197c6943348771f90f60e0a9b79d130cd3",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Serving#d501b09d974ddcf7",
+        "targetSignatureSha256": "d501b09d974ddcf7a0b50215339ab48b71764f87d93bf5975921fc09472fdd82",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Starting#da34635001ebea62",
+        "baselineSignatureSha256": "da34635001ebea622038cdac9965be947bffac04aceafcf6920485206c2deb4d",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Starting#84f6a75f3a1f81fd",
+        "targetSignatureSha256": "84f6a75f3a1f81fd8c05b8d6aea842aa9ddfd3e7908b58ad5619956f08ff0050",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Stopped#93c9adbb81b38435",
+        "baselineSignatureSha256": "93c9adbb81b38435b3ae092c3d6e0e7fe7d9c84253a980d381111e7a07daeea4",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkMeshNodeState.Stopped#ec35d59c7fb80682",
+        "targetSignatureSha256": "ec35d59c7fb8068264bd64227a063c27d5017b8983566f55efd4affce2b666df",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1995,8 +2195,8 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToSpot#e1c58802115d3e92",
         "baselineSignatureSha256": "e1c58802115d3e921c77c25cec04a2e83b26d4c25940aa7a3ce13a5e334dad3c",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToSpot#1289a0d18ed1dc71",
-        "targetSignatureSha256": "1289a0d18ed1dc71e9248efa9817fb6a1b3f7e1ee776f47a4a5778ba722dec98",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToSpot#ac1adca2a47b6346",
+        "targetSignatureSha256": "ac1adca2a47b63468e7bf3d888048ef75639970f58e2495ba25358b3aa696b0e",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2011,8 +2211,8 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.sendToSpot#fed98c8705e3e871",
         "baselineSignatureSha256": "fed98c8705e3e8712030d072fbfaa47bf7a31ece77e11440d4f1b575d4683f8c",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.sendToSpot#7a01a1371331b8da",
-        "targetSignatureSha256": "7a01a1371331b8da011b4b854ae8dc1363df2f1cebc229ecb72a5a0c86dde679",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.sendToSpot#3eae5a034745b202",
+        "targetSignatureSha256": "3eae5a034745b202d805912255b32fe67068773d74c6d1034e82a2eec59e1bcb",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2057,10 +2257,34 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionDispatchContext.metadata#d96cf625bf274edb",
+        "baselineSignatureSha256": "d96cf625bf274edbf04a9dbea87612b0483da85f7854313b68b77d41b1f301e9",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionDispatchContext.metadata#bb4c535a8e5b1c2d",
+        "targetSignatureSha256": "bb4c535a8e5b1c2dfc04ac88f4aa4f3a3546272be5087a4f5afe3e993a2be576",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionReplyCall.submit#32d9d155b44aebf4",
         "baselineSignatureSha256": "32d9d155b44aebf4aca8fb36d24da0eb9fa00d0418f231088633e8650508d3ff",
         "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionReplyCall.submit#8d0bc6fad6aa487a",
         "targetSignatureSha256": "8d0bc6fad6aa487aab9dd730a6c5f3423493939f5b386f50023ac11fed311417",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionSendCall.submit#32d9d155b44aebf4",
+        "baselineSignatureSha256": "32d9d155b44aebf4aca8fb36d24da0eb9fa00d0418f231088633e8650508d3ff",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSessionSendCall.submit#8d0bc6fad6aa487a",
+        "targetSignatureSha256": "8d0bc6fad6aa487aab9dd730a6c5f3423493939f5b386f50023ac11fed311417",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpot.onClosing#18f473740a2d9413",
+        "baselineSignatureSha256": "18f473740a2d9413161bc966d6fb3c6ae9774528f3ca0b63aa11f7e3cce9f94b",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpot.onClosing#f4a9cdc4a822cae8",
+        "targetSignatureSha256": "f4a9cdc4a822cae87b50b3752282dbd0dbea55f342ba2b6bfebb487240140e02",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2099,8 +2323,8 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.create#662908048a9633f0",
         "baselineSignatureSha256": "662908048a9633f0ea049ab86d48b333a40c51161d2f35ddcef6312c211d96b1",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.create#b08f60185f57d2c2",
-        "targetSignatureSha256": "b08f60185f57d2c2c3f375074109c3e2e80402c6d94ec94d127a128b57baaf26",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.create#dd062428a07319f6",
+        "targetSignatureSha256": "dd062428a07319f6487bc30bb5474f933667f35828f22d591546f7a8b9d33d14",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2115,24 +2339,24 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.getOrCreate#248b48c561bc623a",
         "baselineSignatureSha256": "248b48c561bc623a904e9caa6ccb98cb56bdd2e7ac97f3d86b8c191f3ec601b1",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.getOrCreate#de3fe07a2d62cf98",
-        "targetSignatureSha256": "de3fe07a2d62cf984b836077f1c80e78f6f4624aafa37dcce2062d1ad08bf9c3",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.getOrCreate#2e96603d0afbb855",
+        "targetSignatureSha256": "2e96603d0afbb855ea25c5873764179c40d5ba79c793b71e30cab9f2b1c3e18b",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.requestToSpot#e1c58802115d3e92",
         "baselineSignatureSha256": "e1c58802115d3e921c77c25cec04a2e83b26d4c25940aa7a3ce13a5e334dad3c",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.requestToSpot#1289a0d18ed1dc71",
-        "targetSignatureSha256": "1289a0d18ed1dc71e9248efa9817fb6a1b3f7e1ee776f47a4a5778ba722dec98",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.requestToSpot#ac1adca2a47b6346",
+        "targetSignatureSha256": "ac1adca2a47b63468e7bf3d888048ef75639970f58e2495ba25358b3aa696b0e",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.sendToSpot#fed98c8705e3e871",
         "baselineSignatureSha256": "fed98c8705e3e8712030d072fbfaa47bf7a31ece77e11440d4f1b575d4683f8c",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.sendToSpot#7a01a1371331b8da",
-        "targetSignatureSha256": "7a01a1371331b8da011b4b854ae8dc1363df2f1cebc229ecb72a5a0c86dde679",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.sendToSpot#3eae5a034745b202",
+        "targetSignatureSha256": "3eae5a034745b202d805912255b32fe67068773d74c6d1034e82a2eec59e1bcb",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2223,7 +2447,7 @@
     },
     {
       "document": "framework/doc/framework/spec/server/languages/dotnet/interfaces/02-configuration-host.ko.md",
-      "sha256": "d804c37a90544dae76e9d69cf2802ab4b520d0847b3b3515a0e242d1dd3d5184",
+      "sha256": "68091963c8bebd8923f26379e4263a081048fc92a696e8c2cc87c090f046ac39",
       "role": "application-example",
       "reason": "The fenced block demonstrates application use and is not a package-owned declaration."
     },
@@ -2296,7 +2520,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2309,7 +2533,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2320,7 +2544,7 @@
           "categoryIds": [
             "topology-discovery",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "location-authority"
           ]
         },
@@ -2345,7 +2569,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2390,7 +2614,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2401,7 +2625,7 @@
           "categoryIds": [
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "observability-diagnostics"
           ]
@@ -2420,7 +2644,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2431,7 +2655,7 @@
           "categoryIds": [
             "topology-discovery",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "location-authority"
           ]
         },
@@ -2442,7 +2666,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2487,7 +2711,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2500,7 +2724,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "observability-diagnostics"
           ]
@@ -2510,7 +2734,7 @@
           "categoryIds": [
             "topology-discovery",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "location-authority"
           ]
         },
@@ -2528,7 +2752,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2575,7 +2799,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "observability-diagnostics"
           ]
@@ -2585,7 +2809,7 @@
           "categoryIds": [
             "topology-discovery",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "location-authority"
           ]
         },
@@ -2596,7 +2820,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2639,7 +2863,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2652,7 +2876,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "observability-diagnostics"
           ]
@@ -2669,7 +2893,7 @@
           "categoryIds": [
             "topology-discovery",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "location-authority"
           ]
         },
@@ -2680,7 +2904,7 @@
             "topology-discovery",
             "messaging-execution",
             "spot-instance",
-            "actor-transfer",
+            "actor-relocation",
             "stream-session",
             "location-authority",
             "observability-diagnostics"
@@ -2695,7 +2919,7 @@
           "categoryIds": [
             "messaging-execution",
             "spot-instance",
-            "actor-transfer"
+            "actor-relocation"
           ]
         }
       ]
@@ -2745,6 +2969,10 @@
         "V11-E2E-M46",
         "V11-E2E-M58",
         "V11-E2E-M67",
+        "V11-E2E-M69",
+        "V11-E2E-M70",
+        "V11-E2E-M71",
+        "V11-E2E-M74",
         "V11-RACE-12",
         "V11-RACE-37"
       ],
@@ -2844,6 +3072,7 @@
         "V11-E2E-M28",
         "V11-E2E-M48",
         "V11-E2E-M56",
+        "V11-E2E-M73",
         "V11-RACE-02",
         "V11-RACE-05",
         "V11-RACE-27"
@@ -2899,6 +3128,7 @@
         "V11-E2E-M62",
         "V11-E2E-M63",
         "V11-E2E-M65",
+        "V11-E2E-M72",
         "V11-RACE-01",
         "V11-RACE-06",
         "V11-RACE-28",
@@ -2910,7 +3140,7 @@
       ]
     },
     {
-      "id": "actor-transfer",
+      "id": "actor-relocation",
       "documentPatterns": [
         "/README\\.ko\\.md$",
         "/(?:[0-9]+-)?(?:actors|spots|bound-stream-session|location-maintenance)\\.ko\\.md$"
@@ -3041,12 +3271,12 @@
       "id": "location-authority",
       "documentPatterns": [
         "/README\\.ko\\.md$",
-        "/(?:[0-9]+-)?(?:authority-transfer|location-maintenance|location-provider-redis|location-store|routing-id-allocation|location-observability)\\.ko\\.md$"
+        "/(?:[0-9]+-)?(?:authority-relocation|location-maintenance|location-provider-redis|location-store|routing-id-allocation|location-observability)\\.ko\\.md$"
       ],
       "formalSpecOwners": [
         "framework/doc/framework/spec/server/40-location-runtime.ko.md",
         "framework/doc/framework/spec/server/41-location-store-redis.ko.md",
-        "framework/doc/framework/spec/server/42-transfer-store-redis.ko.md",
+        "framework/doc/framework/spec/server/42-relocation-store-redis.ko.md",
         "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md"
       ],
       "decisionIds": [
@@ -3185,13 +3415,13 @@
     },
     {
       "id": "POSD-V11-04",
-      "subject": "Actor transfer timing",
+      "subject": "Actor relocation timing",
       "alternatives": [
-        "Actor-specific transfer timeout plus forwarding window",
+        "Actor-specific relocation timeout plus forwarding window",
         "forwarding window plus host deadline"
       ],
       "selected": "forwarding window plus host deadline",
-      "callerBurden": "The application does not coordinate two overlapping transfer deadlines.",
+      "callerBurden": "The application does not coordinate two overlapping relocation deadlines.",
       "informationHiding": "The host operation owns the terminal time bound."
     },
     {
@@ -3214,29 +3444,29 @@
       ],
       "selected": "opaque expected-version CAS",
       "callerBurden": "Store providers implement one concurrency primitive instead of the Framework state machine.",
-      "informationHiding": "Transfer phases remain owned by the Framework runtime."
+      "informationHiding": "Relocation phases remain owned by the Framework runtime."
     },
     {
       "id": "POSD-V11-07",
-      "subject": "Transfer policy ownership",
+      "subject": "Relocation policy ownership",
       "alternatives": [
         "separate adapter registry",
         "typed policy attached to the factory"
       ],
       "selected": "typed policy attached to the factory",
       "callerBurden": "Type creation and state policy are configured in one place.",
-      "informationHiding": "The runtime does not expose a second transfer registry."
+      "informationHiding": "The runtime does not expose a second relocation registry."
     },
     {
       "id": "POSD-V11-08",
-      "subject": "Transfer initiation",
+      "subject": "Relocation initiation",
       "alternatives": [
         "one public operation per object",
         "host Retire operation"
       ],
       "selected": "host Retire operation",
       "callerBurden": "Applications do not assemble target, phase and retry order.",
-      "informationHiding": "The runtime owns the distributed transfer state machine."
+      "informationHiding": "The runtime owns the distributed relocation state machine."
     },
     {
       "id": "POSD-V11-09",
@@ -3273,9 +3503,9 @@
     },
     {
       "id": "POSD-V11-12",
-      "subject": "Transfer data",
+      "subject": "Relocation data",
       "alternatives": [
-        "Checkpoint Store for every transfer byte",
+        "Checkpoint Store for every relocation byte",
         "peer staging plus durable Checkpoint Store"
       ],
       "selected": "peer staging plus durable Checkpoint Store",
@@ -3442,10 +3672,10 @@
       "id": "POSD-V11-27",
       "subject": "Actor location source of truth",
       "alternatives": [
-        "maintain a typed Actor location row beside transfer authority",
-        "store owner location and transfer state in one opaque authority row"
+        "maintain a typed Actor location row beside relocation authority",
+        "store owner location and relocation state in one opaque authority row"
       ],
-      "selected": "store owner location and transfer state in one opaque authority row",
+      "selected": "store owner location and relocation state in one opaque authority row",
       "callerBurden": "Actor directory and Spot-handle resolution use one logical identity without reconciling two records.",
       "informationHiding": "Providers expose generic paged authority enumeration; the Framework decodes operational list projections and never uses them as routing authority."
     },
@@ -3575,26 +3805,26 @@
       "subject": "Session Actor relay reply capability",
       "alternatives": [
         "infer a current request from Actor state",
-        "transfer an explicit dispatch context"
+        "relocation an explicit dispatch context"
       ],
-      "selected": "transfer an explicit dispatch context",
+      "selected": "relocation an explicit dispatch context",
       "callerBurden": "Actor code relays one typed request without constructing correlation or retry state.",
       "informationHiding": "The runtime owns terminal-once reply correlation and admission failure mapping."
     },
     {
       "id": "POSD-V11-40",
-      "subject": "Transfer state JSON compatibility",
+      "subject": "Relocation application state ownership",
       "alternatives": [
-        "byte-canonical application JSON or message-specific codec registration",
-        "frameworkJsonV1 semantic profile keyed by stateContractId"
+        "Framework-owned state type, contract identifier and serialization profile",
+        "application-owned opaque bytes"
       ],
-      "selected": "frameworkJsonV1 semantic profile keyed by stateContractId",
-      "callerBurden": "Adapters exchange typed state without registering per-message codecs or reproducing canonical bytes.",
-      "informationHiding": "Only internal manifest, chunk and envelope bytes are canonical; application checkpoint bytes stay opaque."
+      "selected": "application-owned opaque bytes",
+      "callerBurden": "Adapters only capture and restore bytes; the application owns its format, version and migration.",
+      "informationHiding": "Framework validates only internal manifest, chunk and checksum data and does not expose a state contract registry."
     },
     {
       "id": "POSD-V11-41",
-      "subject": "Transfer completion admission barrier",
+      "subject": "Relocation completion admission barrier",
       "alternatives": [
         "open the target at Activated",
         "keep ingress sealed through source cleanup and Completed CAS"
@@ -3649,14 +3879,14 @@
     },
     {
       "id": "POSD-V11-46",
-      "subject": "Transferred terminal reply acknowledgement",
+      "subject": "Relocated terminal reply acknowledgement",
       "alternatives": [
         "expose reply acknowledgement to Actor code",
         "use one internal replyRelayAck barrier"
       ],
       "selected": "use one internal replyRelayAck barrier",
       "callerBurden": "Application handlers complete a reply once without coordinating relay durability.",
-      "informationHiding": "Internal command 46 carries only transferId, operationId, the exact request-source owner and node fence, and status; ACK or stored source-lease expiry, never connection close, supplies terminal accounting."
+      "informationHiding": "Internal command 46 carries only relocationId, operationId, the exact request-source owner and node fence, and status; ACK or stored source-lease expiry, never connection close, supplies terminal accounting."
     },
     {
       "id": "POSD-V11-47",
@@ -3682,13 +3912,13 @@
     },
     {
       "id": "POSD-V11-49",
-      "subject": "Transfer session and target reservations",
+      "subject": "Relocation session and target reservations",
       "alternatives": [
         "reuse host lease as every transient reservation",
         "keep internal token-fenced session-owner and target-reservation leases"
       ],
       "selected": "keep internal token-fenced session-owner and target-reservation leases",
-      "callerBurden": "Applications do not renew or order transient transfer reservations.",
+      "callerBurden": "Applications do not renew or order transient relocation reservations.",
       "informationHiding": "The runtime binds both internal leases to current owner and authority generations and releases them at terminal barriers."
     },
     {
@@ -3710,7 +3940,7 @@
         "define attempt-level at-least-once callbacks under an exact current fence"
       ],
       "selected": "define attempt-level at-least-once callbacks under an exact current fence",
-      "callerBurden": "Application capture and restoration are retry-safe and do not depend on an exposed transfer ID.",
+      "callerBurden": "Application capture and restoration are retry-safe and do not depend on an exposed relocation ID.",
       "informationHiding": "Only the current owner and attempt may commit completion or open admission; stale callbacks may overlap but cannot commit."
     },
     {
@@ -3770,7 +4000,7 @@
     },
     {
       "id": "POSD-V11-57",
-      "subject": "Pre-Captured drain and transferable membership",
+      "subject": "Pre-Captured drain and relocationable membership",
       "alternatives": [
         "capture incomplete connection-bound work or User Spot membership",
         "drain terminal work and require source Entry membership before capture"
@@ -3868,10 +4098,10 @@
     },
     {
       "id": "REMOVED-PHASE-STORES-AND-ADAPTERS",
-      "identityStem": "phase-specific Store and transfer adapter surface",
+      "identityStem": "phase-specific Store and relocation adapter surface",
       "categoryIds": [
         "spot-instance",
-        "actor-transfer",
+        "actor-relocation",
         "location-authority"
       ],
       "decisionIds": [
@@ -3895,7 +4125,7 @@
       "identityStem": "MeshNode drain policy surface",
       "categoryIds": [
         "host-lifecycle",
-        "actor-transfer"
+        "actor-relocation"
       ],
       "decisionIds": [
         "POSD-V11-09"
@@ -3906,7 +4136,7 @@
       "identityStem": "unified eight-callback Spot lifecycle surface",
       "categoryIds": [
         "spot-instance",
-        "actor-transfer"
+        "actor-relocation"
       ],
       "decisionIds": [
         "POSD-V11-16"
@@ -3927,7 +4157,7 @@
       "id": "REMOVED-TYPE-BEARING-ACTOR-REFERENCE",
       "identityStem": "Actor type field and typed snapshot restoration in ActorRef",
       "categoryIds": [
-        "actor-transfer"
+        "actor-relocation"
       ],
       "decisionIds": [
         "POSD-V11-18"
@@ -3938,7 +4168,7 @@
       "identityStem": "RID-only or Actor-ID-only Spot resolver overload",
       "categoryIds": [
         "topology-discovery",
-        "actor-transfer",
+        "actor-relocation",
         "location-authority"
       ],
       "decisionIds": [
@@ -3960,7 +4190,7 @@
       "id": "REMOVED-ACTOR-PLACEMENT-HINT",
       "identityStem": "caller-provided Actor node and route placement hint",
       "categoryIds": [
-        "actor-transfer"
+        "actor-relocation"
       ],
       "decisionIds": [
         "POSD-V11-21"
@@ -3971,7 +4201,7 @@
       "identityStem": "unconstrained C++ Spot registration and empty lifecycle tag base",
       "categoryIds": [
         "spot-instance",
-        "actor-transfer"
+        "actor-relocation"
       ],
       "decisionIds": [
         "POSD-V11-22"
@@ -3991,7 +4221,7 @@
       "id": "REMOVED-MEMBERSHIP-CAS-CALLBACK-DATA",
       "identityStem": "membership epoch and expected CAS fields in Actor lifecycle callback data",
       "categoryIds": [
-        "actor-transfer"
+        "actor-relocation"
       ],
       "decisionIds": [
         "POSD-V11-24"
@@ -4013,7 +4243,7 @@
       "id": "REMOVED-TYPED-ACTOR-LOCATION-SPI",
       "identityStem": "typed Actor location provider update remove and resolve surface",
       "categoryIds": [
-        "actor-transfer",
+        "actor-relocation",
         "location-authority"
       ],
       "decisionIds": [
@@ -4025,7 +4255,7 @@
       "identityStem": "independent Actor type Instance type state contract and capacity collections",
       "categoryIds": [
         "topology-discovery",
-        "actor-transfer",
+        "actor-relocation",
         "location-authority"
       ],
       "decisionIds": [
@@ -4036,7 +4266,7 @@
       "id": "REMOVED-FRAMEWORK-INVENTED-AUTHORITY-GENERATION",
       "identityStem": "Framework-generated owner and object counters outside provider CAS",
       "categoryIds": [
-        "actor-transfer",
+        "actor-relocation",
         "location-authority"
       ],
       "decisionIds": [
@@ -4047,7 +4277,7 @@
       "id": "REMOVED-ACTOR-DIRECTORY-ENSURE",
       "identityStem": "type-ambiguous ActorDirectory ensure and hidden remote creation surface",
       "categoryIds": [
-        "actor-transfer"
+        "actor-relocation"
       ],
       "decisionIds": [
         "POSD-V11-21",
@@ -4059,7 +4289,7 @@
       "identityStem": "ActorContext handler registry and self-leave surface",
       "categoryIds": [
         "spot-instance",
-        "actor-transfer"
+        "actor-relocation"
       ],
       "decisionIds": [
         "POSD-V11-31"
@@ -4114,7 +4344,7 @@
       "id": "REMOVED-AUTHORITY-TTL",
       "identityStem": "authority row lease expiry and lease duration fields",
       "categoryIds": [
-        "actor-transfer",
+        "actor-relocation",
         "location-authority"
       ],
       "decisionIds": [
@@ -4125,7 +4355,7 @@
       "id": "REMOVED-PER-KEY-GENERATION-TOMBSTONE",
       "identityStem": "per-key authority counter and permanent version tombstone",
       "categoryIds": [
-        "actor-transfer",
+        "actor-relocation",
         "location-authority"
       ],
       "decisionIds": [
@@ -4137,7 +4367,7 @@
       "identityStem": "public checkpoint chunk size count and manifest configuration",
       "categoryIds": [
         "host-lifecycle",
-        "actor-transfer",
+        "actor-relocation",
         "location-authority"
       ],
       "decisionIds": [
@@ -4145,10 +4375,10 @@
       ]
     },
     {
-      "id": "REMOVED-TRANSFER-PHASE-CONTROL",
+      "id": "REMOVED-RELOCATION-PHASE-CONTROL",
       "identityStem": "public Activated Completed Ready and reply acknowledgement controls",
       "categoryIds": [
-        "actor-transfer",
+        "actor-relocation",
         "stream-session",
         "location-authority"
       ],
@@ -4158,10 +4388,10 @@
       ]
     },
     {
-      "id": "REMOVED-PUBLIC-TRANSFER-SUBLEASES",
+      "id": "REMOVED-PUBLIC-RELOCATION-SUBLEASES",
       "identityStem": "public session-owner and target-reservation lease surface",
       "categoryIds": [
-        "actor-transfer",
+        "actor-relocation",
         "stream-session",
         "location-authority"
       ],
@@ -4196,7 +4426,7 @@
       "id": "REMOVED-GENERIC-AUTHORITY-OWNER-GENERATION-NAME",
       "identityStem": "generic OwnerGeneration authority metadata field name",
       "categoryIds": [
-        "actor-transfer",
+        "actor-relocation",
         "location-authority"
       ],
       "decisionIds": [

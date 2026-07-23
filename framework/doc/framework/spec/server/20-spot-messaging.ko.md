@@ -29,27 +29,33 @@ hidden local object runtime을 제공하지 않는다.
 
 Spot direct와 Logical Multicast는 Node·Channel 메시징과 같은 MeshNode ROUTER를 사용하며 Spot 전용 ROUTER 또는
 PUB/SUB mesh를 만들지 않는다. Framework가 logical create에서 eligible remote server를 선택할 수 있지만
-application은 target RID, endpoint와 owner generation을 지정하지 않는다. Instance Spot도 first-message cold
-activation을 사용하지 않고 명시적인 creation intent를 먼저 commit한다. 자세한 identity, creation과
-reactivation은 [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 소유한다.
+application은 target RID, endpoint와 owner generation을 지정하지 않는다. Instance Spot의 Missing authority는
+Spot direct fluent call이 명시한 Instance intent로 cold activation할 수 있다. 별도 create operation은 제공하지
+않는다. 자세한 identity, creation과 cold activation은
+[24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 소유한다.
 
 classic fanout은 별도 PUB/SUB socket 계약이다. 서비스 event fanout과 Spot Logical Multicast는 서로
 다른 기능이며 어느 한쪽이 다른 쪽의 연결이나 구독 상태를 공유하지 않는다.
 
 ## 3. Spot direct
 
-Spot direct send/request는 global Spot RID만 대상으로 받는다. Framework는 positive route cache 또는 Location
-Store에서 current Ready incarnation과 owner route를 resolve하고, 선택한 ObjectGeneration과 owner fence를
-target admission에 고정한다. 수신 MeshNode는 target Spot의 application queue에 payload를 제출한다. 일반
-message는 Missing Spot의 type이나 최초 Mesh를 제공하거나 creation을 시작하지 않는다. Ready owner가 없는 기존
-Instance Spot의 reactivation은 authority에 저장한 creation intent를 사용하며 message target은 계속 Spot RID다.
+Spot direct send/request의 시작 method는 global Spot RID만 대상으로 받는다. Framework는 positive route cache
+또는 Location Store에서 current Ready incarnation과 owner route를 resolve하고, 선택한 ObjectGeneration과 owner
+fence를 target admission에 고정한다. 수신 MeshNode는 target Spot의 application queue에 payload를 제출한다.
+
+Spot 전용 call builder가 Instance intent를 갖지 않으면 Missing Spot에서 target-not-found로 끝난다. Instance
+intent를 명시하면 optional stable type과 최초 Mesh·placement option을 사용해 cold activation할 수 있다. Type을
+생략한 경우 선택한 Mesh에 등록된 distinct Instance type이 하나일 때만 자동 선택한다. 여러 MeshNode가 같은
+type을 등록한 것은 distinct type 하나다. 여러 type이 있으면 caller가 stable type을 명시해야 한다. Existing
+authority에는 Location Store가 보유한 kind·type과 current Mesh를 사용하며 MeshName을 messaging target으로
+요구하지 않는다.
 
 Spot direct send는 비동기 submit 하나만 제공한다. Immediate-only 동기 terminator는 제공하지 않으며, queue가
 일시적으로 가득 차면 owner MeshNode ROUTER의 유한한 send timeout까지 admission을 기다린다. 완료 결과는
 local outbound admission만 나타내고 target Spot handler 실행은 기다리지 않는다. `Submitted`,
 `Backpressured`, `TimedOut`, `TargetNotFound`, `RouteNotConnected`, `Shutdown`의 의미와 cancellation·local
 오류 경계는 [04 비동기 실행 정책 §1.3](../04-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
-Reactivation을 포함하는 submit도 source outbound admission에서 같은 결과를 완료하며 target application queue의
+Cold activation을 포함하는 submit도 source outbound admission에서 같은 결과를 완료하며 target application queue의
 handler 실행을 기다리지 않는다. Target runtime은 location owner claim을 새로 만들지 않고 committed authority를
 검증한다.
 
@@ -58,8 +64,9 @@ handler 실행을 기다리지 않는다. Target runtime은 location owner claim
 - Spot direct request를 다른 Spot으로 자동 재전송하지 않는다.
 - owner 변경, route cache와 stale route 처리 규칙은
   [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 정한다.
-- Instance Spot의 create request는 일반 message가 아니다. Actor-free lifecycle의 Configure와 initialize,
-  location `Ready` commit과 activation barrier가 끝난 뒤부터 일반 direct payload를 수락한다.
+- Instance Spot의 별도 create request는 없다. Fluent call의 최초 application message는 actor-free lifecycle의
+  Configure와 initialize, location `Ready` commit과 activation barrier가 끝난 뒤 일반 direct payload로 한 번
+  dispatch된다.
 
 ### 3.1 Spot에서 Channel 호출
 
@@ -152,7 +159,7 @@ queue나 Spot callback에 넣지 않고 Actor queue로 직접 제출한다. Acto
 Spot 호출을 제출해야 한다. Actor payload와 membership 제어의 경계는
 [22 Actor 모델](22-actor-model.ko.md)이 소유한다.
 
-ready notification, completion, send-ready와 transfer progress 같은 infrastructure 작업은 Spot
+ready notification, completion, send-ready와 relocation progress 같은 infrastructure 작업은 Spot
 application claim과 분리한다. application callback이 대기 중이어도 infrastructure progress가 막히지
 않아야 한다.
 
@@ -184,7 +191,8 @@ drop과 Spot dispatch 결과를 구분해야 한다. topic과 Spot RID는 metric
 
 - Spot direct와 Logical Multicast가 MeshNode ROUTER 하나만 사용한다.
 - Spot direct가 global Spot RID만 받고 MeshName, owner RID와 generation을 application에 요구하지 않는다.
-- Missing Instance Spot의 일반 message가 type·Mesh를 새로 제공하거나 creation intent를 만들지 않는다.
+- Instance intent가 없는 Missing Spot message가 type·Mesh를 새로 제공하거나 creation intent를 만들지 않는다.
+- Instance intent를 가진 call만 Missing Spot의 type을 명시하거나 유일한 type을 자동 선택해 cold activation한다.
 - Spot Channel 호출이 ChannelName에 등록된 다른 RouteMesh 또는 ClientServer 송신 경로를 사용하고 원래
   Spot의 `Async`·`Yield`와 generation completion을 보존한다.
 - Logical Multicast가 remote MeshNode마다 한 번만 전송되고 수신 node가 local subscription만 검사한다.

@@ -90,16 +90,16 @@ for (const fixture of fixtures.frameworkErrors.malformed) {
     if (error.code !== fixture.error) throw error;
   }
 }
-const transferDataLost = fixtures.frameworkErrors.canonical.find(
-  (entry) => entry.name === "transferDataLost",
+const relocationDataLost = fixtures.frameworkErrors.canonical.find(
+  (entry) => entry.name === "relocationDataLost",
 );
-if (transferDataLost?.wireValue !== 35 || transferDataLost.publicValue !== 34) {
-  throw new Error("TransferDataLost must decode from wire 35 to public 34");
+if (relocationDataLost?.wireValue !== 35 || relocationDataLost.publicValue !== 34) {
+  throw new Error("RelocationDataLost must decode from wire 35 to public 34");
 }
 
 console.log(
   `service wire decoder fixtures valid: canonical=${fixtures.canonical.length} `
     + `malformed=${fixtures.malformed.length} frameworkErrors=${fixtures.frameworkErrors.canonical.length} `
     + `frameworkErrorMalformed=${fixtures.frameworkErrors.malformed.length} probeEcho=pass `
-    + `TransferDataLost=wire35/public34`,
+    + `RelocationDataLost=wire35/public34`,
 );

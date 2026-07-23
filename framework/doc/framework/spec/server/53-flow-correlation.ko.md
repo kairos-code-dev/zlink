@@ -69,7 +69,7 @@ Framework는 인과 관계가 있는 다음 operation에 flow ID와 root origin�
 | Instance Spot direct | resolve·claim·activation barrier를 지나 first Spot application turn까지 보존 |
 | Logical Multicast | 모든 remote MeshNode와 local matching Spot이 같은 flow ID 사용 |
 | Actor direct·STREAM Actor dispatch | target Actor queue와 request reply까지 보존 |
-| Actor transfer | transfer control과 target Actor의 관련 lifecycle 작업에 보존 |
+| Actor relocation | relocation control과 target Actor의 관련 lifecycle 작업에 보존 |
 | bound-session push | 현재 Actor operation에서 파생된 push에 보존 |
 | classic fanout | 각 subscriber branch가 같은 flow ID 사용 |
 

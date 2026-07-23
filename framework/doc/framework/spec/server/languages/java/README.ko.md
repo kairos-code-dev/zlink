@@ -16,3 +16,14 @@ provider는 descriptor·location 기능과 opaque authority CAS capability를 �
 
 **기능의 의미와 동작 규칙은 [공통 스펙](../../../README.ko.md)이 소유한다.** 이 디렉토리는 그 의미가
 이 언어에서 갖는 **정확한 public API**만 고정한다.
+
+## 취소 표현
+
+Java lifecycle callback과 host operation에 .NET `CancellationToken`을 모방한 범용 Framework token을 추가하지
+않는다. `CompletionStage` waiter cancellation은 이미 시작한 shared operation을 중단하지 않으며, Spot closing은
+context의 absolute deadline에 Framework가 stage completion 대기를 끝내는 방식으로 제한한다.
+
+`ZLinkRelocationCancellation`, `ZLinkStoreCancellation`과 `ZLinkWorkerCancellation`은 범용 lifecycle token이
+아니다. 각각 stale relocation attempt의 adapter completion 차단, provider I/O의 operation cancellation과 CPU·I/O
+worker 실행 중단만 표현하는 SPI 전용 타입이다. 이 타입을 handler, Spot lifecycle, host termination이나 일반
+message API에 재사용하지 않는다.

@@ -47,7 +47,7 @@ export declare enum ZLinkFrameworkErrorKind {
     RoutingIdConflict = "routingIdConflict",
     SpotGenerationStale = "spotGenerationStale",
     SpotMoving = "spotMoving",
-    TransferDataLost = "transferDataLost"
+    RelocationDataLost = "relocationDataLost"
 }
 
 export declare const ZLINK_FRAMEWORK_ERROR_KIND_VALUES:
@@ -73,10 +73,9 @@ export interface ZLinkFrameworkOptions {
     configureWorker(options: ZLinkWorkerOptions): this;
     configureDispatch(): ZLinkDispatchOptionsBuilder;
     addLocationStore(store: ZLinkLocationStore): this;
-    addTransferStore(store: ZLinkTransferStore): this;
+    addRelocationStore(store: ZLinkRelocationStore): this;
     setApplicationVersion(version: bigint): this;
     setMaintenanceWave(waveId: string): this;
-    setActorTransferForwardWindow(timeoutMs: number): this;
     configureLocations(): ZLinkLocationOptions;
     configureNetwork(): ZLinkNetworkOptions;
     configureStreamCompression(): ZLinkStreamCompressionBuilder;
@@ -88,9 +87,9 @@ export interface ZLinkFrameworkOptions {
 
 export interface ZLinkHandlerContext {
     readonly channelName?: string;
-    readonly packetName?: string;
+    readonly packetName: string;
     readonly contentType?: string;
-    readonly connectionAborted?: AbortSignal;
+    readonly connectionAborted: AbortSignal;
     readonly metadata: ZLinkMessageMetadata;
 }
 
@@ -103,8 +102,10 @@ export interface ZLinkHandlerFilter {
 export declare function ZLinkHandlerGroup(groupName: string): ClassDecorator;
 
 export interface ZLinkHandlerInvocation {
-    readonly message: unknown;
-    readonly context: ZLinkHandlerContext;
+    readonly ownerKind: string;
+    readonly channelName?: string;
+    readonly packetName: string;
+    readonly metadata: ZLinkMessageMetadata;
 }
 
 export type ZLinkLocationActorEvent = ZLinkRuntimeEvent & ({
@@ -133,7 +134,7 @@ export declare enum ZLinkLocationAutoConnectType {
 `MeshNotFound=24`, `InvalidConfiguration=25`, `AlreadySubmitted=26`,
 `ActorGenerationStale=27`, `ActorMoving=28`, `DeadlineExceeded=29`,
 `PlacementCapacityExhausted=30`, `RoutingIdConflict=31`, `SpotGenerationStale=32`,
-`SpotMoving=33`, `TransferDataLost=34`를 반환한다. `TransferDataLost`는 Location authority가 공개한 Transfer
+`SpotMoving=33`, `RelocationDataLost=34`를 반환한다. `RelocationDataLost`는 Location authority가 공개한 Relocation
 payload가 영구적으로 없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 이전 owner로 rollback하지
 않는다. 기본 retriable kind는 `RouteNotConnected`, `ActorLocationStale`,
 `ActorMoving`, `DeadlineExceeded`, `PlacementCapacityExhausted`, `SpotMoving`이다.
@@ -517,21 +518,22 @@ export interface ZLinkMeshPeerSnapshot {
 }
 
 export declare enum ZLinkMeshNodeState {
-    Starting = 1,
-    Serving = 2,
-    Draining = 3,
-    Drained = 4,
-    ForceStopping = 5,
-    Stopped = 6,
-    Faulted = 7
+    Starting = 0,
+    Serving = 1,
+    Draining = 2,
+    Drained = 3,
+    ForceStopping = 4,
+    Stopped = 5,
+    Faulted = 6
 }
 
 export declare enum ZLinkFrameworkRuntimeState {
     Preparing = 0,
     Serving = 1,
-    Draining = 2,
-    Stopped = 3,
-    Error = 4
+    Retiring = 2,
+    Draining = 3,
+    Stopped = 4,
+    Error = 5
 }
 
 export declare enum ZLinkTerminationIntent {
@@ -549,10 +551,10 @@ export declare enum ZLinkTerminationReason {
     None = 0,
     TargetUnavailable = 1,
     StoreUnavailable = 2,
-    TransferDisabled = 3,
+    RelocationDisabled = 3,
     StateIncompatible = 4,
     DeadlineExceeded = 5,
-    TransferFailed = 6,
+    RelocationFailed = 6,
     TeardownFailed = 7,
     RuntimeNotReady = 8
 }
@@ -617,7 +619,7 @@ export interface ZLinkFrameworkRuntimeSnapshot {
     readonly workSealed: boolean;
     readonly blockerReason?: ZLinkTerminationReason;
     readonly pendingRequestCount: bigint;
-    readonly pendingTransferCount: bigint;
+    readonly pendingRelocationCount: bigint;
     readonly pendingStreamBarrierCount: bigint;
     readonly terminalResult?: ZLinkTerminationResult;
     readonly sequence: bigint;
@@ -628,10 +630,15 @@ export interface ZLinkFrameworkRuntimeEvent {
     readonly identifier: "zlink.runtime.host.termination_changed";
     readonly sequence: bigint;
     readonly timestamp: Date;
-    readonly runtime: ZLinkFrameworkRuntimeSnapshot;
+    readonly state: ZLinkFrameworkRuntimeState;
+    readonly effectiveIntent?: ZLinkTerminationIntent;
+    readonly outcome?: ZLinkTerminationOutcome;
+    readonly reason?: ZLinkTerminationReason;
 }
 
 export interface ZLinkFrameworkRuntime {
+    readonly state: ZLinkFrameworkRuntimeState;
+    readonly isReady: boolean;
     snapshot(): ZLinkFrameworkRuntimeSnapshot;
     observe(capacity?: number, signal?: AbortSignal): AsyncIterable<ZLinkFrameworkRuntimeEvent>;
     retire(options?: ZLinkTerminationOptions): Promise<ZLinkTerminationResult>;
@@ -652,6 +659,10 @@ export interface ZLinkMeshNodeSnapshot {
         readonly activeObjects: number;
         readonly pendingActivations: number;
     };
+    readonly applicationVersion: bigint;
+    readonly placementReservationFailureCount: bigint;
+    readonly lastPlacementReservationFailure?: string;
+    readonly objectCapabilities: readonly ZLinkObjectCapability[];
     readonly state: ZLinkMeshNodeState;
     readonly sequence: bigint;
     readonly observedAt: Date;
@@ -801,7 +812,9 @@ export interface ZLinkFanoutRuntime {
 
 ```
 
-Host `retire()`에서 `Blocked/DeadlineExceeded`는 seal과 첫 `captured` commit 전 preflight timeout이다. 이
-경우 host state와 admission은 그대로 유지한다. Seal 뒤 bounded teardown timeout은
-`ForceStopped/DeadlineExceeded`다. 두 결과는 같은 reason을 사용하지만 phase와 side effect가 다르며 enum을
-추가하지 않는다.
+Host `retire()`에서 deadline이 모든 target의 `Prepared`와 host `Draining` descriptor publication 전에 끝나면
+relocation reference와 reservation을 정리하고 reversible seal을 해제한 뒤 `Blocked/DeadlineExceeded`로 끝난다.
+모든 target이 `Prepared`이고 `Draining` publication이 성공한 뒤에는 `Blocked`로 돌아가지 않는다. 이 경계 뒤의
+deadline은 admission을 닫은 채 recovery handoff와 bounded teardown을 수행하고
+`ForceStopped/DeadlineExceeded`로 끝낸다. 두 결과는 같은 reason을 사용하지만 phase와 side effect가 다르며
+별도 enum을 추가하지 않는다.

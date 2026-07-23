@@ -118,21 +118,21 @@ const expectedTerminationResultContract = {
   outcomes: [
     { name: 'Stopped', wire_value: 0, reasons: ['None'] },
     { name: 'Blocked', wire_value: 1, reasons: [
-      'TargetUnavailable', 'StoreUnavailable', 'TransferDisabled', 'StateIncompatible',
+      'TargetUnavailable', 'StoreUnavailable', 'RelocationDisabled', 'StateIncompatible',
       'DeadlineExceeded', 'RuntimeNotReady',
     ] },
     { name: 'ForceStopped', wire_value: 2, reasons: [
-      'DeadlineExceeded', 'TransferFailed', 'TeardownFailed',
+      'DeadlineExceeded', 'RelocationFailed', 'TeardownFailed',
     ] },
   ],
   reasons: [
     { name: 'None', wire_value: 0 },
     { name: 'TargetUnavailable', wire_value: 1 },
     { name: 'StoreUnavailable', wire_value: 2 },
-    { name: 'TransferDisabled', wire_value: 3 },
+    { name: 'RelocationDisabled', wire_value: 3 },
     { name: 'StateIncompatible', wire_value: 4 },
     { name: 'DeadlineExceeded', wire_value: 5 },
-    { name: 'TransferFailed', wire_value: 6 },
+    { name: 'RelocationFailed', wire_value: 6 },
     { name: 'TeardownFailed', wire_value: 7 },
     { name: 'RuntimeNotReady', wire_value: 8 },
   ],
@@ -788,7 +788,7 @@ if (!cppDrainReasonMatch) {
     .split(',')
     .map(value => value.trim())
     .filter(Boolean);
-  const expectedReasons = ['deadline_exceeded', 'transfer_failed', 'teardown_failed'];
+  const expectedReasons = ['deadline_exceeded', 'relocation_failed', 'teardown_failed'];
   if (JSON.stringify(actualReasons) !== JSON.stringify(expectedReasons)) {
     fail(`C++ deprecated drain reasons are not the closed Shutdown mapping: actual=${actualReasons.join(',')}`);
   }
@@ -797,7 +797,7 @@ const cppTerminationNormalized = cppTerminationContract.source.replace(/\s+/gu, 
 for (const fragment of [
   'Deprecated `drain(deadline)`은 같은 deadline으로 `shutdown()`을 호출한다.',
   '`stopped/none`은 `drained_t`로 변환한다.',
-  '`force_stopped/deadline_exceeded`, `force_stopped/transfer_failed`, `force_stopped/teardown_failed`는 각각 같은 이름의 `drain_force_reason_t`',
+  '`force_stopped/deadline_exceeded`, `force_stopped/relocation_failed`, `force_stopped/teardown_failed`는 각각 같은 이름의 `drain_force_reason_t`',
   '`blocked`는 Shutdown 결과가 아니므로 `drain_result_t`에 추가하지 않는다.',
 ]) {
   if (!cppTerminationNormalized.includes(fragment)) {
@@ -1056,16 +1056,16 @@ if (typeof consolidation.directory !== 'string'
     fail('v11 consolidation must declare 4 unique central profile IDs');
   }
   const parallelReviewRows = new Set(consolidation.required_parallel_review_rows);
-  if (consolidation.required_parallel_review_rows.length !== 11
+  if (consolidation.required_parallel_review_rows.length !== 12
       || parallelReviewRows.size !== consolidation.required_parallel_review_rows.length
       || consolidation.required_parallel_review_rows.some(id => !/^V11-R[A-Z0-9-]*$/u.test(id))) {
-    fail('v11 consolidation must declare 11 unique parallel review row IDs');
+    fail('v11 consolidation must declare 12 unique parallel review row IDs');
   }
   const xhighReviewRows = new Set(consolidation.required_xhigh_review_rows);
-  if (consolidation.required_xhigh_review_rows.length !== 2
+  if (consolidation.required_xhigh_review_rows.length !== 3
       || xhighReviewRows.size !== consolidation.required_xhigh_review_rows.length
       || consolidation.required_xhigh_review_rows.some(id => !parallelReviewRows.has(id))) {
-    fail('v11 consolidation must declare one xhigh parallel review row ID');
+    fail('v11 consolidation must declare 3 unique xhigh parallel review row IDs');
   }
   if (consolidation.forbidden_fragments.length === 0
       || consolidation.forbidden_fragments.some(fragment => typeof fragment !== 'string'
@@ -1339,7 +1339,7 @@ const redisFixtures = [
   ['mesh-node-descriptor-v1.json', 'mesh-node-descriptor-v1'],
 ];
 const fixtureDirectory = path.join(root, 'framework/testdata/location/redis');
-for (const obsolete of ['actor-transfer-v1.json', 'instance-spot-location-v1.json']) {
+for (const obsolete of ['actor-relocation-v1.json', 'instance-spot-location-v1.json']) {
   if (fs.existsSync(path.join(fixtureDirectory, obsolete))) {
     fail(`obsolete phase-specific Redis fixture remains: ${obsolete}`);
   }
@@ -1485,33 +1485,33 @@ const validateDescriptorPayload = (name, payload) => {
     fail('MeshNode descriptor StatefulCapabilities count differs');
     return;
   }
-  const kindOrder = { actor: 1, instanceSpot: 2 };
+  const kindOrder = { actor: 1, userSpot: 2, instanceSpot: 3 };
   let previousCapability;
   for (const capability of payload.StatefulCapabilities) {
     if (JSON.stringify(Object.keys(capability)) !== JSON.stringify([
-      'ObjectKind', 'Type', 'TransferPolicy', 'ReadableStateContractIds', 'Available'])) {
+      'ObjectKind', 'StableType', 'Policy', 'HasSnapshotAdapter', 'PlacementProfiles',
+      'ActiveLimit', 'PendingLimit'])) {
       fail('MeshNode descriptor StatefulCapabilities field order differs');
       continue;
     }
     if (kindOrder[capability.ObjectKind] === undefined
-        || typeof capability.Type !== 'string' || capability.Type.length === 0
-        || !['disabled', 'recreate', 'snapshot'].includes(capability.TransferPolicy)
-        || !isStrictlyUtf8Sorted(capability.ReadableStateContractIds)
-        || !Number.isSafeInteger(capability.Available)
-        || capability.Available < 0) {
+        || typeof capability.StableType !== 'string' || capability.StableType.length === 0
+        || !['disabled', 'recreate', 'snapshot'].includes(capability.Policy)
+        || typeof capability.HasSnapshotAdapter !== 'boolean'
+        || !isStrictlyUtf8Sorted(capability.PlacementProfiles)
+        || ![capability.ActiveLimit, capability.PendingLimit].every(limit =>
+          limit === null || (Number.isSafeInteger(limit) && limit >= 0))) {
       fail('MeshNode descriptor StatefulCapabilities value differs');
     }
-    if (capability.TransferPolicy === 'snapshot'
-        ? capability.ReadableStateContractIds.length === 0
-        : capability.ReadableStateContractIds.length !== 0) {
-      fail('MeshNode descriptor transfer policy and readable contracts differ');
+    if ((capability.Policy === 'snapshot') !== capability.HasSnapshotAdapter) {
+      fail('MeshNode descriptor relocation policy and snapshot adapter capability differ');
     }
-    const current = `${capability.ObjectKind}\u0000${capability.Type}`;
+    const current = `${capability.ObjectKind}\u0000${capability.StableType}`;
     if (previousCapability !== undefined) {
       const [previousKind, previousType] = previousCapability.split('\u0000');
       if (kindOrder[previousKind] > kindOrder[capability.ObjectKind]
           || (previousKind === capability.ObjectKind
-            && compareUtf8(previousType, capability.Type) >= 0)) {
+            && compareUtf8(previousType, capability.StableType) >= 0)) {
         fail('MeshNode descriptor StatefulCapabilities must be sorted and unique');
       }
     }
@@ -1614,14 +1614,25 @@ for (const [name, format] of redisFixtures) {
 const amendedObjectSemanticFixtures = [
   ['cpp', ['04-spots.ko.md', '05-actors.ko.md'], [
     'global ActorId', 'global SpotRid', 'send(actor_id_t actor_id',
-    'send_to_spot(spot_rid_t target', 'class actor_manager_t', 'class spot_manager_t',
+    'spot_send_call_t send_to_spot(spot_rid_t target',
+    'spot_request_call_t request_to_spot(',
+    '`instance_spot()`은 stable type을 생략한 marker',
+    '`spot_manager_t`는 User Spot만 생성한다.',
+    'distinct Instance Spot type이 0개이면',
+    'class actor_manager_t', 'class spot_manager_t',
     'object_generation() const noexcept', 'actor-free lifecycle',
     'fresh incarnation으로 자동 bind하지 않는다.',
   ]],
   ['dotnet', ['05-spots.ko.md', '06-actors.ko.md', '07-stream-session.ko.md'], [
     'ActorId는 Location Store transaction domain 전체에서 유일한 logical ID',
     'SpotRid는 Location Store transaction domain 전체에서 유일한 logical ID',
-    'SendToActor<TMessage>(', 'SendToSpot<TMessage>(RoutingId spotRid',
+    'SendToActor<TMessage>(',
+    'IZLinkSpotSendCall SendToSpot<TMessage>(RoutingId spotRid',
+    'IZLinkSpotRequestCall RequestToSpot<TRequest>(RoutingId spotRid',
+    'IZLinkSpotSendCall InstanceSpot();',
+    'IZLinkSpotRequestCall InstanceSpot();',
+    '`IZLinkSpotManager`는 User Spot의 명시적 create·get-or-create, resolve와 exact close만 제공한다.',
+    '등록된 Instance Spot type이 하나일 때만',
     'public interface IZLinkActorManager', 'public interface IZLinkSpotManager',
     'ActorRef.ObjectGeneration', 'SpotRef.ObjectGeneration', 'actor-free lifecycle interface',
     '다른 ref를 찾아 같은 bind operation을 hidden retry하지 않는다.',
@@ -1629,7 +1640,13 @@ const amendedObjectSemanticFixtures = [
   ['java', ['actors.ko.md', 'spots.ko.md', 'stream-session.ko.md'], [
     'ActorId는 UTF-8 1..255 bytes의 global logical ID', 'SpotRid는 global logical ID',
     'sendToActor(java.lang.String, java.lang.Object)',
-    'sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object)',
+    'ZLinkSpotSendCall sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object)',
+    'ZLinkSpotRequestCall requestToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object)',
+    'ZLinkSpotSendCall instanceSpot();',
+    'ZLinkSpotRequestCall instanceSpot();',
+    'Spot manager는 User Spot 전용이다.',
+    'serving 가능한 distinct Instance type이',
+    '정확히 하나일 때만 그 type을 사용한다.',
     'public interface systems.zlink.framework.actors.ZLinkActorManager',
     'public interface systems.zlink.framework.spots.ZLinkSpotManager',
     'ActorRef.objectGeneration()', 'SpotRef.objectGeneration()',
@@ -1638,7 +1655,13 @@ const amendedObjectSemanticFixtures = [
   ['kotlin', ['README.ko.md', 'actors.ko.md', 'spots.ko.md', 'stream-session.ko.md'], [
     'global ActorId·SpotRid', 'ID-only 일반',
     'ZLinkActorManager.create(actorId, actorType)',
-    'ZLinkSpotManager.create(spotKind, spotType)',
+    'ZLinkSpotManager.create(spotType)',
+    'Manager는 Instance Spot',
+    'create/get-or-create를 제공하지 않는다.',
+    '`ZLinkSpotSendCall` 또는 `ZLinkSpotRequestCall`을',
+    '`instanceSpot()`이나 `instanceSpot(stableType)`을 호출한 call만',
+    'serving Instance type이 distinct',
+    'value 하나일 때만 그 type을 자동 선택한다.',
     'ActorRef(actorId, objectGeneration, meshName, nodeRid)',
     'SpotRef(spotRid, objectGeneration, meshName, nodeRid)',
     'Framework는 hidden retry나 local fallback을 수행하지 않는다.',
@@ -1646,7 +1669,12 @@ const amendedObjectSemanticFixtures = [
   ['node', ['01-foundation-configuration.ko.md', '04-spots.ko.md', '05-actors.ko.md'], [
     '`ActorId`는 Location Store transaction domain 전체에서 유일한 logical ID',
     'User·Instance SpotRid는 global key',
-    'sendToActor(actorId: ActorId', 'sendToSpot(spotRid: SpotRid',
+    'sendToActor(actorId: ActorId',
+    'sendToSpot(spotRid: SpotRid, message: unknown): ZLinkSpotSendCall',
+    'requestToSpot(spotRid: SpotRid, request: unknown): ZLinkSpotRequestCall',
+    'instanceSpot(): this;',
+    'Instance Spot에는 manager create·get-or-create를 제공하지 않는다.',
+    'distinct Instance type이 하나일 때',
     'export interface ZLinkActorManager', 'export interface ZLinkSpotManager',
     'readonly objectGeneration: bigint', 'export interface ZLinkInstanceSpot {',
     'Framework는 current ref를 다시 찾아 다른 incarnation을 닫지 않는다.',

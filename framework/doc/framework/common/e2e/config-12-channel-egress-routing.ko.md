@@ -34,11 +34,13 @@ config에서는 Channel egress index가 그 경로를 가로채지 않는 회귀
 
 | 역할 | 수 | 물리 topology와 Channel 역할 |
 |---|---:|---|
-| `Session` | 1 | `game` RouteMesh의 `game.session` Server, `game.play` Client, `game.api` Client |
-| `Play` | 1 | `game` RouteMesh의 `game.play` Server, `game.session` Client, `game.api` Client, `audit` RouteMesh의 `audit.record` Client, `workflow.command` ClientServer Client. Entry Spot과 timer 소유 |
+| location store | 1 | Automatic RouteMesh·ClientServer discovery와 Object Client·Server authority가 공유하는 공식 Redis Location Store. 실행마다 전용 key prefix를 사용한다. |
+| relocation store | 1 | CH-REG-02의 Snapshot Actor join에 사용하는 공식 Redis Relocation Store. Location Store와 별도 key prefix를 사용하며 `Session`·`Play` root가 등록한다. |
+| `Session` | 1 | `game` RouteMesh의 `game.session` Server, `game.play` Client, `game.api` Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode를 Object Server로 구성한다. Entry Spot과 stable Actor type `channel.player` factory를 명시적 `Snapshot` policy, Actor relocation adapter, placement weight `100`, active `128`·pending `32` capacity로 제공한다. |
+| `Play` | 1 | `game` RouteMesh의 `game.play` Server, `game.session` Client, `game.api` Client, `audit` RouteMesh의 `audit.record` Client, `workflow.command` ClientServer Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode만 Object Server로 구성한다. Entry Spot, stable Actor type `channel.player`과 User Spot type `channel.room` factory를 명시적 `Snapshot` policy로 제공한다. Actor·Spot factory에는 kind에 맞는 relocation adapter를 지정하고 placement weight `100`, active `128`·pending `32` capacity를 사용한다. `audit` MeshNode의 object role은 `None`이다. |
 | `Api` | 2 | `game` RouteMesh의 `game.api` Server. 서로 다른 weight와 lifecycle generation 사용 |
 | `WorkflowClient` | 1 | `workflow.command` ClientServer Client |
-| `WorkflowServer` | 2 | `workflow.command` ClientServer Server, `game` RouteMesh membership 0개. 서로 다른 weight와 drain 상태를 사용하고 Spot·Actor direct 호출을 시작 |
+| `WorkflowServer` | 2 | `workflow.command` ClientServer Server, `game` RouteMesh membership 0개. Location Store를 등록하고 `game` MeshNode를 Object Client로 구성해 Spot·Actor direct 호출을 시작하지만 factory와 placement target은 제공하지 않는다. 서로 다른 weight와 `Draining` 상태를 사용한다. |
 | `Audit` | 1 | 별도 `audit` RouteMesh의 `audit.record` Server |
 
 `Play`는 두 RouteMesh를 등록한다. `game`은 Session·Play·Api의 공통 물리 연결이고, `audit`은 분리된
@@ -48,10 +50,17 @@ Session에서 Api로 가는 정상 호출은 Play를 거치지 않고 같은 `ga
 ClientServer 역할은 RouteMesh descriptor를 사용하지 않는다. `WorkflowServer`는 전용 ClientServer
 server descriptor를 게시하고 `WorkflowClient`는 location store에서 이를 발견한다.
 
+Object role을 지정하지 않은 `Api`, `WorkflowClient`, `Audit`의 object role은 `None`이다. Automatic
+discovery에 참여하는 역할은 object role과 무관하게 Location Store를 등록한다. CH-REG-02의 cross-node
+Actor join은 `Session` Entry Spot에서 `Play` User Spot으로 진행하며 두 Object Server의 같은 stable Actor
+type·Snapshot adapter capability와 충분한 target headroom을 사용한다. Channel egress 검증과 무관한 host에
+object factory를 추가하지 않는다.
+
 ## 3. 공통 fixture와 관측 값
 
 언어별 구현은 다음 파일을 자기 소스에 복사해 소유하지 않는다. 저장소 공통 fixture의 같은 JSON을
-읽고 구성 snapshot과 비교한다.
+읽고 Channel topology projection과 비교한다. Object role·factory·Store prerequisite는 §2의 role 설정과
+role server startup evidence로 별도 확인하며 Channel-only fixture에 중복하지 않는다.
 
 ```text
 framework/doc/framework/common/e2e/fixtures/
@@ -79,7 +88,7 @@ Fixture는 최소한 다음 정보를 가진다.
 
 - process-local ChannelName과 선택한 egress 종류
 - RouteMesh peer의 논리 RID와 실제 connection 수
-- ClientServer ready server identity, weight, generation과 drain state
+- ClientServer ready server identity, weight, generation과 `Draining` state
 - request correlation의 시작·terminal 횟수
 - listener의 configured bind endpoint, actual bound endpoint와 advertised endpoint
 - handler 실행 횟수와 unsolicited message drop·protocol 오류 수
@@ -106,12 +115,12 @@ Play Entry Spot의 packet handler는 `workflow.command` request를 `async`로 �
 두 호출의 serial turn 순서, timeout, cancellation과 shutdown 경쟁이 공통 실행 정책과 일치해야 한다.
 다른 egress의 reply를 Spot application queue에 새 packet으로 넣으면 실패다.
 
-### CH-E2E-04 — ClientServer server 선택, drain과 재시작
+### CH-E2E-04 — ClientServer server 선택, Shutdown과 재시작
 
 두 WorkflowServer를 positive weight로 시작해 선택 비율과 같은 weight의 순환 순서를 확인한다. 한
-server의 weight를 0으로 바꾸고 drain하면 새 request 대상에서 제외되지만 이미 수락한 request는 deadline
-안에서 끝나야 한다. 같은 server identity를 다시 시작하면 새 lifecycle generation만 ready가 되고 이전
-generation의 늦은 reply가 새 request를 완료하지 않아야 한다.
+server의 weight를 0으로 바꾸고 `Shutdown`하면 새 request 대상에서 제외되지만 이미 수락한 request는 deadline
+안에서 끝나야 한다. 같은 논리 역할을 다시 시작하면 automatic topology가 새 RID와 lifecycle generation을
+발급하고 이전 generation의 늦은 reply가 새 request를 완료하지 않아야 한다.
 
 ### CH-E2E-05 — ClientServer 방향 제한
 
@@ -160,6 +169,18 @@ ClientServer descriptor가 섞이면 실패다.
 WorkflowClient가 `workflow.command`에 one-way send를 제출한다. Ready server 하나의 send handler만 한 번
 실행되고 reply token, client 수신 packet과 request completion을 만들지 않아야 한다.
 
+### CH-E2E-11 — ToChannel 다른 MeshNode Server 호출
+
+`Session`과 `Api` Server를 같은 `game` RouteMesh의 서로 다른 process·MeshNode로 시작한다.
+`Session`은 MeshName, target RID와 endpoint를 전달하지 않고 process-local `game.api` ChannelName만으로
+`RequestToChannel`·`SendToChannel`을 제출한다.
+
+Framework는 `game.api` Server membership의 positive-weight ready member 중 remote `Api` MeshNode를 선택해야
+한다. Request는 해당 remote handler reply로 terminal-once 완료되고 send는 outbound admission으로
+완료된다. Remote evidence에 packet이 각각 한 번 기록되고 source·target이 동일 peer connection을
+공유하되 ChannelName handler namespace와 reply correlation이 유지되어야 한다. 등록하지 않은 다른
+RouteMesh나 ClientServer egress를 fallback·relay로 사용하면 실패다.
+
 ## 5. 회귀 gate
 
 Config 12 구현과 함께 다음 회귀를 실행한다.
@@ -167,10 +188,10 @@ Config 12 구현과 함께 다음 회귀를 실행한다.
 | ID | 검증 범위 | 실패 조건 |
 |---|---|---|
 | `CH-REG-01` | 기존 같은 RouteMesh Channel send/request와 weighted routing | handler, weight 또는 reply 의미가 바뀐다 |
-| `CH-REG-02` | Node·Spot·Actor direct, join, transfer와 bound-session push | Channel egress index가 상태 주소 route를 가로챈다 |
+| `CH-REG-02` | `Session`·`Play` Object Server의 Node·Spot·Actor direct, Snapshot Actor join과 bound-session push. 두 root의 Location·Relocation Store, stable factory type, adapter capability와 target capacity를 startup evidence로 먼저 확인한다. | Channel egress index가 상태 주소 route를 가로채거나 stateful prerequisite 없이 scenario를 시작한다. |
 | `CH-REG-03` | Logical Multicast와 classic Pub/Sub | ClientServer 경로로 잘못 선택되거나 대상 수가 바뀐다 |
 | `CH-REG-04` | reply·timeout·cancellation·disconnect·Spot shutdown 경쟁 | completion이 누락·중복되거나 늦은 reply가 새 generation에 전달된다 |
-| `CH-REG-05` | 같은 endpoint·RID 재시작, reciprocal handover와 ready 복구 | 재연결 뒤 request가 소실되거나 이전 generation을 선택한다 |
+| `CH-REG-05` | 같은 endpoint의 automatic 역할 교체, 새 RID·generation과 reciprocal handover | 재연결 뒤 request가 소실되거나 이전 RID·generation을 선택한다 |
 | `CH-REG-06` | local 정상 완료 시간 | timeout 증가나 반복 retry가 있어야 통과한다 |
 | `CH-REG-07` | 7개 공통 sample 구성 snapshot | 공통 sample topology fixture와 다르다 |
 | `CH-REG-08` | 물리 peer와 listener 수 | 같은 peer pair에 반대 방향 또는 RouteMesh·ClientServer 중복 연결이 생긴다 |
@@ -178,7 +199,7 @@ Config 12 구현과 함께 다음 회귀를 실행한다.
 
 ## 6. 언어별 feature map과 runner inventory
 
-각 언어 feature map은 `CH-E2E-01~10`, `CH-REG-01~09`를 한 행씩 대응시킨다.
+각 언어 feature map은 `CH-E2E-01~11`, `CH-REG-01~09`를 한 행씩 대응시킨다.
 구현 전에는 `planned` 또는 구체적 gap으로 표시하고 runner·assertion·evidence 경로없이
 `implemented`로 표시하지 않는다. Java와 Kotlin은 binding/runtime을 공유하지만 각 언어의
 public builder와 handler 문법을 compile fixture로 검증한다. Runtime E2E는 JVM lane에서 한
@@ -200,7 +221,7 @@ fixture 복사본을 두지 않는다. 통합 runner inventory에는 `ChannelEgr
 
 ```text
 all
-CH-E2E-01 ... CH-E2E-10
+CH-E2E-01 ... CH-E2E-11
 CH-REG-01 ... CH-REG-09
 ```
 
@@ -212,8 +233,9 @@ descriptor 불일치와 completion 중복은 retry하지 않는다. Local readin
 
 ## 7. 완료 조건
 
-- 네 framework lane과 Java/Kotlin public compile fixture가 `CH-E2E-01~10`, `CH-REG-01~09`를 모두 통과한다.
-- 공통 fixture와 언어별 구성 snapshot의 차이가 없다.
+- 네 framework lane과 Java/Kotlin public compile fixture가 `CH-E2E-01~11`, `CH-REG-01~09`를 모두 통과한다.
+- 공통 fixture와 언어별 구성의 Channel topology projection에 차이가 없다. Object prerequisite는 §2의
+  role server startup evidence와 일치한다.
 - 종료 뒤 남은 server/client/Redis process가 없고 native assertion과 timeout이 없다.
 - Public API snapshot, 정식 exact interface, sample source와 실제 package가 같은 signature를 사용한다.
 - 같은 peer pair의 중복 물리 연결과 topology descriptor 혼용이 없다.

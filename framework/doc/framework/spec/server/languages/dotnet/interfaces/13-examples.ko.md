@@ -21,7 +21,7 @@ services.AddZLinkFramework(options =>
         .AddSpotFactory<StageSpot>(
             "stage",
             placement: null,
-            transfer: ZLinkTransferPolicy<StageSpot>.Disabled);
+            relocation: ZLinkRelocationPolicy<StageSpot>.Disabled);
 
     mesh.Channel("game")
         .Server() // handler와 weight를 제공하는 target membership이다.

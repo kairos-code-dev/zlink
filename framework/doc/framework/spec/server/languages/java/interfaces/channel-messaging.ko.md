@@ -65,8 +65,8 @@ public interface ZLinkRouteClient {
         String meshName, RoutingId target, Object request);
     ZLinkSendCall sendToChannel(String channelName, Object message);
     ZLinkRequestCall requestToChannel(String channelName, Object request);
-    ZLinkSendCall sendToSpot(RoutingId spotRid, Object message);
-    ZLinkRequestCall requestToSpot(RoutingId spotRid, Object request);
+    ZLinkSpotSendCall sendToSpot(RoutingId spotRid, Object message);
+    ZLinkSpotRequestCall requestToSpot(RoutingId spotRid, Object request);
 }
 
 public interface ZLinkFanoutClient {
@@ -92,6 +92,12 @@ public final class ZLinkRequestFailureException extends RuntimeException {
 Channel 호출은 process-local ChannelName index만 사용한다. 호출자가 MeshName과 ChannelName을 함께 넘겨
 물리 배선을 고르는 overload는 제공하지 않는다. `sendToNode(String, RoutingId, Object)`는 exact RID를
 지정하므로 첫 인자를 MeshName으로 해석한다.
+
+Spot direct operation은 global SpotRid만 address로 받고 Spot 전용 fluent call을 반환한다. 이 call의
+`instanceSpot()` marker와 placement option은 Missing Instance Spot의 cold activation intent를 표현한다. Marker가
+없으면 Missing authority를 not-found로 끝낸다. Existing authority는 저장된 kind·stable type과 current owner를
+사용하므로 type이나 Mesh를 다시 요구하지 않는다. 세부 member와 cold activation 선택 규칙은
+[Java Spot 인터페이스](spots.ko.md)가 소유한다.
 
 `channel(channelName)`과 `addClientServerChannel(channelName)`이 반환하는 builder에서는 `client()` 또는
 `server()`를 정확히 한 번 선택한다. 역할을 선택하기 전에는 weight와 handler를 설정할 수 없으며,
@@ -214,9 +220,9 @@ public interface systems.zlink.framework.channels.ZLinkRouteClient {
   public abstract systems.zlink.framework.channels.ZLinkSendCall sendToChannel(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToChannel(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkSendCall sendToNode(java.lang.String, systems.zlink.contracts.core.RoutingId, java.lang.Object);
-  public abstract systems.zlink.framework.channels.ZLinkSendCall sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
+  public abstract systems.zlink.framework.spots.ZLinkSpotSendCall sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToNode(java.lang.String, systems.zlink.contracts.core.RoutingId, java.lang.Object);
-  public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
+  public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
 }
 public interface systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions {
   public abstract systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptions mesh(java.lang.String);

@@ -61,15 +61,15 @@ export const closedCatchAllExpectations = {
     identitySetSha256: '1cbe6e9160f7bad5a480e643feae184e10f83f9d36ef086097ccd49967c991ab',
   },
   'node-reviewed-contract-set': {
-    count: 59,
-    identitySetSha256: '8dba9a58fd81c96453072ce5d5410f0bd4b5315f9910539324a9d46af76504f5',
+    count: 56,
+    identitySetSha256: 'bfbd12fbb0328f3c5d9d10dbe508edb9f001249fca95fdff1ffa472a7635c5c0',
   },
 };
 
 export const sourceJvmParityExpectation = {
-  groups: 43,
-  recoveredPairs: 39,
-  identitySetSha256: '3f081c48ebebe6b3ac2bb490e0e8987e342510544611c397543ee5b1dc7fd926',
+  groups: 44,
+  recoveredPairs: 40,
+  identitySetSha256: 'a7a9bddbd92d04a617d423f8dfb50ce0e095c72a5311d0aee130d80e3328e14d',
 };
 
 const rules = [
@@ -84,7 +84,14 @@ const rules = [
     matches: value => /checkpoint|transferstore|transferreference|transferstored/u.test(value)
       && !/redis/u.test(value),
     decisions: ['CA-D31', 'CA-D36'],
-    coverage: () => ['e2e:add:transfer-store-required-registration'],
+    coverage: () => ['e2e:add:relocation-store-required-registration'],
+  },
+  {
+    id: 'relocation-vocabulary-breaking-rename',
+    matches: value => /transfer/u.test(value)
+      && !/checkpoint|transferstore|transferreference|transferstored|redis|forward|routecache/u.test(value),
+    decisions: ['CA-D36', 'CA-D37', 'CA-D38', 'CA-D39', 'CA-D40', 'CA-D41', 'CA-D42', 'CA-D43'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
   },
   {
     id: 'instance-spot-explicit-create',
@@ -106,15 +113,33 @@ const rules = [
   },
   {
     id: 'exact-object-mutation',
-    matches: value => /destroy|closespot|closeasync/u.test(value),
+    matches: value => /destroy|closespot|closeasync|spotmanagerclose/u.test(value),
     decisions: ['CA-D27'],
     coverage: () => ['e2e:add:exact-generation-mutation-bind'],
+  },
+  {
+    id: 'opaque-object-capability',
+    matches: value => /objectcapability(?:.*)(?:readablestatecontractids|type)/u.test(value),
+    decisions: ['CA-D14', 'CA-D37', 'CA-D39'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'spot-context-logical-identity',
+    matches: value => /spotcommoncontext(?:.*)(?:spotname|routingid)/u.test(value),
+    decisions: ['CA-D01', 'CA-D02'],
+    coverage: () => ['e2e:add:global-spot-explicit-create'],
+  },
+  {
+    id: 'reviewed-exact-surface-cleanup',
+    matches: value => /zlinkentryspotcontext|zlinkframeworkruntimeeventruntime|zlinkhandlerinvocation(?:context|message)/u.test(value),
+    decisions: ['CA-D29'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
   },
   {
     id: 'actor-spot-relocation',
     matches: value => /joinentryspot/u.test(value),
     decisions: ['CA-D07'],
-    coverage: () => ['e2e:add:same-node-join-without-transfer-payload'],
+    coverage: () => ['e2e:add:same-node-join-without-relocation-payload'],
   },
   {
     id: 'session-actor-bind-reference',

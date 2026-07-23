@@ -9,9 +9,10 @@ public enum ZLinkFrameworkRuntimeState
 {
     Preparing = 0,
     Serving = 1,
-    Draining = 2,
-    Stopped = 3,
-    Error = 4
+    Retiring = 2,
+    Draining = 3,
+    Stopped = 4,
+    Error = 5
 }
 
 public enum ZLinkFrameworkTerminationIntent
@@ -32,10 +33,10 @@ public enum ZLinkFrameworkTerminationReason
     None = 0,
     TargetUnavailable = 1,
     StoreUnavailable = 2,
-    TransferDisabled = 3,
+    RelocationDisabled = 3,
     StateIncompatible = 4,
     DeadlineExceeded = 5,
-    TransferFailed = 6,
+    RelocationFailed = 6,
     TeardownFailed = 7,
     RuntimeNotReady = 8
 }
@@ -52,7 +53,7 @@ public sealed record ZLinkFrameworkRuntimeSnapshot(
     bool WorkSealed,
     ZLinkFrameworkTerminationReason? BlockerReason,
     ulong PendingRequestCount,
-    ulong PendingTransferCount,
+    ulong PendingRelocationCount,
     ulong PendingStreamBarrierCount,
     ZLinkFrameworkTerminationResult? TerminalResult,
     ulong Sequence,
@@ -376,15 +377,16 @@ barrier 앞의 pending message와 byte를 각각 나타낸다. `LastActivationOu
 preflight waiter에게만 공유하며 host terminal result로 저장하지 않는다.
 
 `Preparing` 또는 `Error`의 `RetireAsync`는 admission을 바꾸지 않고
-`Blocked/RuntimeNotReady`를 반환한다. `ShutdownAsync`는 두 state에서도 bounded cleanup을 시작한다. User Spot
-instance가 하나라도 남아 있으면 `RetireAsync` preflight는 `Blocked/TransferDisabled`로 끝난다. Enum의 숫자와
-허용 outcome·reason 조합은 [Host Retire, Shutdown & Handoff](../../../54-graceful-drain-handoff.ko.md)를
+`Blocked/RuntimeNotReady`를 반환한다. `ShutdownAsync`는 두 state에서도 bounded cleanup을 시작한다. User Spot과
+seal 시점의 member Actor는 bounded aggregate로 함께 이전한다. Participant의 `Disabled` policy나 호환 target 부재는
+aggregate 전체를 commit 전에 차단한다. Enum의 숫자와 허용 outcome·reason 조합은
+[Host Retire, Shutdown & Handoff](../../../54-graceful-drain-handoff.ko.md)를
 그대로 투영한다.
 
-`Blocked/DeadlineExceeded`는 seal과 첫 `Captured` commit 전의 preflight가 deadline 안에 끝나지 않은
-결과다. 이 경우 host state와 admission은 그대로 유지한다. Seal 뒤 bounded teardown이 deadline을 넘으면
-`ForceStopped/DeadlineExceeded`를 반환한다. 두 결과는 같은 reason을 사용하지만 phase와 side effect가
-다르며 enum을 추가하지 않는다.
+`Blocked/DeadlineExceeded`는 모든 target의 `Prepared` 완료와 `Draining` publication 전에 deadline이 끝난
+결과다. Framework는 reversible 작업을 정리하고 host state와 admission을 복원한다. `Draining` publication 뒤
+bounded teardown이 deadline을 넘으면 `ForceStopped/DeadlineExceeded`를 반환한다. 두 결과는 같은 reason을
+사용하지만 phase와 side effect가 다르며 enum을 추가하지 않는다.
 
 `IZLinkClientServerRuntime`은 ChannelName으로 ClientServer snapshot과 event를 제공하며 MeshName을 받지
 않는다. Remote Server RID와 endpoint는 관측 값이고 target 선택 API가 아니다.

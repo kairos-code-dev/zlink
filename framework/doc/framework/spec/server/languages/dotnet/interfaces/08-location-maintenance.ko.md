@@ -25,7 +25,12 @@ public sealed class ZLinkLocationOptions
     public TimeSpan OwnerLeaseFencingMargin { get; set; } = TimeSpan.FromSeconds(5);
     public TimeSpan OwnerLeaseRenewTimeout { get; set; } = TimeSpan.FromSeconds(3);
     public TimeSpan RouteCacheMaxAge { get; set; } = TimeSpan.FromSeconds(15);
-    public TimeSpan TransferForwardingWindow { get; set; } = TimeSpan.FromSeconds(30);
+    public TimeSpan RelocationForwardingWindow { get; set; } = TimeSpan.FromSeconds(30);
+    public int MaxActiveOutboundRelocations { get; set; } = 64;
+    public int MaxActiveInboundRelocations { get; set; } = 64;
+    public int MaxConcurrentRelocationCaptures { get; set; } = 8;
+    public int MaxConcurrentRelocationRestores { get; set; } = 8;
+    public long MaxRelocationPayloadInFlightBytes { get; set; } = 268_435_456;
 }
 ```
 
@@ -34,14 +39,14 @@ Root의 `AddLocationStore(IZLinkLocationStore)`와 `ConfigureLocations()` 시그
 사용하는 store와 option 타입을 소유한다.
 
 Store는 host마다 정확히 하나만 등록할 수 있다. Object role이 `Client` 또는 `Server`인 MeshNode, automatic
-discovery, fanout publisher descriptor 또는 stateful transfer를 구성했는데 store를 등록하지 않으면 startup이
+discovery, fanout publisher descriptor 또는 stateful relocation을 구성했는데 store를 등록하지 않으면 startup이
 `ZLinkConfigurationException`으로 실패한다. Store를 등록하지 않은 fanout publisher는 manual endpoint
 대상으로 동작한다. Object role `None`인 manual MeshNode와 manual fanout publisher·subscriber는 store를 등록하지
 않아도 된다. `None`은 manager, factory, placement와 hidden local object runtime을 만들지 않는다.
 
-Lease와 polling option은 0보다 커야 한다. `RouteCacheMaxAge`와 `TransferForwardingWindow`는 0 이상이다.
+Lease와 polling option은 0보다 커야 한다. `RouteCacheMaxAge`와 `RelocationForwardingWindow`는 0 이상이다.
 둘 다 양수이면 cache age가 forwarding window보다 최소 5초 작아야 한다. 0인 값은 각각 cache 또는 forwarding을
-끈다. 실행 중 변경은 새 cache entry와 새 transfer에만 적용한다. Location Store와 owner lease runtime을 사용하는
+끈다. 실행 중 변경은 새 cache entry와 새 relocation에만 적용한다. Location Store와 owner lease runtime을 사용하는
 모든 host는 routing ID mode와 관계없이 다음 관계를 만족해야 한다.
 
 ```text
@@ -59,6 +64,17 @@ desired set을 grace까지 고정하고 existing admitted transport에는 servic
 stable store snapshot을 다시 얻기 전까지 새 connection을 만들지 않는다. 이 값은 owner·coordinator lease나 local
 authority deadline을 연장하지 않으며 stateful message, timer, factory와 CAS admission은 마지막 valid monotonic
 lease deadline에서 닫힌다. Recovery는 exact owner token과 stable page set을 재검증한 뒤 diff와 connect를 수행한다.
+
+다섯 relocation 제한 option은 모두 양수여야 하며 process 전체의 Actor·Spot relocation에 적용한다.
+Outbound와 inbound active unit은 각각 최대 64개이고, Capture와 Restore callback은 각각 최대 8개를 동시에
+실행한다. Payload 단계에서 encoded bytes의 합은 기본 268,435,456 bytes(256 MiB)를 넘지 않는다. 이 byte 합에는
+application state, 실행하지 않은 message queue, Actor accepted journal, timer의 logical registration과 pending tick,
+relocation manifest와 Framework metadata를 모두 포함한다. User Spot aggregate 하나가 byte 한도를 넘으면 다른
+relocation payload 단계와 겹치지 않는 동안에만 단독으로 진행할 수 있다.
+
+Framework는 active unit, callback과 예상 payload byte permit을 모두 확보하기 전에는 source Actor·Spot queue를
+seal하지 않는다. Permit을 기다리는 동안 source는 application message와 timer dispatch를 계속 처리한다. 실행 중
+option 변경은 새 relocation admission에만 적용하며 이미 permit을 확보한 unit의 한도를 줄이지 않는다.
 
 ## 3. 공통 쓰기 결과와 owner lease
 
@@ -263,7 +279,7 @@ public sealed record ZLinkObjectCapability(
     ZLinkPlacementObjectKind ObjectKind,
     string StableType,
     ZLinkObjectMaintenancePolicyKind Policy,
-    IReadOnlySet<string> ReadableStateContractIds,
+    bool HasSnapshotAdapter,
     IReadOnlySet<string> PlacementProfiles,
     int? ActiveLimit,
     int? PendingLimit);
@@ -276,17 +292,18 @@ public sealed record ZLinkPlacementCapacity(
 ```
 
 `ChannelWeights`의 key 집합은 descriptor를 처음 게시하기 전에 고정한 ChannelName membership과 같다.
-Stable type, placement profile과 readable state contract ID는 UTF-8 byte 순서로 정렬한다.
-`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 stable type, policy, profile과 type별 capacity limit을
-한 항목에 함께 둔다. 서로 무관한 type과 state contract를 flat set의 cross-product로 해석할 수 없다.
+Stable type과 placement profile은 UTF-8 byte 순서로 정렬한다.
+`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 stable type, policy, Snapshot adapter 등록 여부, profile과
+type별 capacity limit을 한 항목에 함께 둔다. `HasSnapshotAdapter`는 target에 해당 object kind의 adapter가
+등록되어 있는지만 나타내며 application state의 format, version이나 contract ID를 광고하지 않는다.
 `ApplicationVersion`은 `0..long.MaxValue`이고 Redis JSON에서는 선행 0 없는 10진 integer로 저장한다. Channel
 weight, placement weight, active·pending count, maintenance wave와 runtime state는 실행 중 바뀔 수 있다. Spot과 Actor 운영 projection은 owner
 MeshNode의 RID와 generation을 함께 보존한다. Resolver는 owner lease와 같은 generation의 descriptor가 모두
 유효할 때만 projection을 성공 결과로 사용한다.
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
-ChannelName key set, object role과 object capability의 kind·type·policy·profile·limit·readable
-contract set은 첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight 값, placement weight,
+ChannelName key set, object role과 object capability의 kind·type·policy·Snapshot adapter 등록 여부·profile·limit은
+첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight 값, placement weight,
 active·pending count, maintenance wave와 runtime state만
 mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고
 `DescriptorRevision`을 strictly 증가시켜야 한다. Provider는 stale revision이나 immutable field 변경을 원자적으로
@@ -400,7 +417,7 @@ retriable conflict나 provider exception이 아니며 row·index·counter를 바
 release에는 새 generation이 필요하지 않으므로 이 결과를 추가하지 않는다.
 
 `IZLinkLocationStore`는 descriptor·owner lease capability와 `IZLinkAuthorityStore`를 함께 상속한다.
-Authority Store는 별도로 등록하지 않으며 root에 등록한 같은 provider가 owner와 transfer authority를 원자적으로
+Authority Store는 별도로 등록하지 않으며 root에 등록한 같은 provider가 owner와 relocation authority를 원자적으로
 compare-exchange한다. ClientServer와 fanout은 선택 capability이며, 해당 기능을 구성했는데 provider가 필요한
 capability를 구현하지 않으면 startup validation이 실패한다.
 
@@ -442,11 +459,11 @@ subscriber의 connection-intent 계산에 있다. Automatic subscriber는 선택
 Entry·User·Instance Spot owner state는 global `SpotRid`에서 파생한 하나의 authority key를 공유한다.
 User Spot create와 Instance cold claim은 같은 row에 generic placement reserve를 수행하므로 kind conflict,
 object generation과 capacity 증가가 원자적으로 결정된다. `ZLinkSpotLocation`은 Framework가 authority payload를 decode한
-운영 projection이며 provider write·remove·resolve interface가 아니다. Actor transfer도 같은 generic authority
-capability의 별도 key를 사용한다. Provider는 Spot kind, owner state나 transfer phase를 해석하지 않는다.
+운영 projection이며 provider write·remove·resolve interface가 아니다. Actor relocation도 같은 generic authority
+capability의 별도 key를 사용한다. Provider는 Spot kind, owner state나 relocation phase를 해석하지 않는다.
 
 Application service는 authority provider interface를 직접 호출하지 않는다. Authority key와 payload의 정확한
-구성은 [Authority와 transfer](08-authority-transfer.ko.md)가 소유한다.
+구성은 [Authority와 relocation](08-authority-relocation.ko.md)가 소유한다.
 
 ## 6. Location operational query
 

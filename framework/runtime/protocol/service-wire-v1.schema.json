@@ -17,7 +17,7 @@
     { "name": "metadataBytes", "value": 1024 },
     { "name": "packetNameBytes", "value": 255 },
     { "name": "contentTypeBytes", "value": 255 },
-    { "name": "transferReferenceBytes", "value": 4096 },
+    { "name": "relocationReferenceBytes", "value": 4096 },
     { "name": "creationContentReferenceBytes", "value": 4096 },
     { "name": "authorityStoreVersionBytes", "value": 4096 },
     { "name": "wireU32CompleteMessageBytes", "value": 4294967295 },
@@ -27,12 +27,12 @@
     { "name": "authorityEnvelopeBytes", "value": 1048576 },
     { "name": "descriptorPageBytes", "value": 4194304 },
     { "name": "authorityScanPageBytes", "value": 4194304 },
-    { "name": "transferChunkBytes", "value": 67108864 },
-    { "name": "transferChunkEnvelopeBytes", "value": 67108886 },
-    { "name": "transferChunkCount", "value": 4096 },
-    { "name": "transferLogicalBytes", "value": 274877906944 },
-    { "name": "transferManifestBytes", "value": 33554432 },
-    { "name": "transferControlEnvelopeBytes", "value": 1048576 },
+    { "name": "relocationChunkBytes", "value": 67108864 },
+    { "name": "relocationChunkEnvelopeBytes", "value": 67108886 },
+    { "name": "relocationChunkCount", "value": 4096 },
+    { "name": "relocationLogicalBytes", "value": 274877906944 },
+    { "name": "relocationManifestBytes", "value": 33554432 },
+    { "name": "relocationControlEnvelopeBytes", "value": 1048576 },
     { "name": "applicationVersionMax", "value": "9223372036854775807" },
     { "name": "weightMax", "value": 100 },
     { "name": "creationIntentBytes", "value": 1048576 },
@@ -77,14 +77,14 @@
       "source": "source-operation-table"
     },
     {
-      "name": "durableTransferPresent",
+      "name": "durableRelocationPresent",
       "valueKind": "boolean",
-      "source": "current-transfer-authority"
+      "source": "current-relocation-authority"
     },
     {
       "name": "applicationSnapshotPresent",
       "valueKind": "boolean",
-      "source": "current-transfer-authority"
+      "source": "current-relocation-authority"
     }
   ],
   "semanticConstraints": [
@@ -98,7 +98,7 @@
       },
       "then": {
         "contextEquals": {
-          "name": "durableTransferPresent",
+          "name": "durableRelocationPresent",
           "value": true
         }
       }
@@ -110,7 +110,7 @@
         {
         "operationKind": "steady",
         "objectKinds": ["actor", "spot"],
-        "transferState": "absent",
+        "relocationState": "absent",
         "spotKinds": ["entry", "user", "instance"],
         "instanceAuthorityStates": ["ready"]
         },
@@ -118,26 +118,26 @@
         "operationKind": "coldActivation",
         "objectKind": "spot",
         "spotKind": "instance",
-        "transferState": "absent",
+        "relocationState": "absent",
         "authorityStates": ["coldActivating"]
         },
         {
-        "operationKind": "maintenanceTransfer",
+        "operationKind": "maintenanceRelocation",
         "objectKinds": ["actor", "spot"],
         "spotKinds": ["user", "instance"],
-        "transferState": "present",
-        "transferPhase": "non-none",
-        "userAuthorityStates": ["transferring"],
-        "instanceAuthorityStates": ["transferring"],
+        "relocationState": "present",
+        "relocationPhase": "non-none",
+        "userAuthorityStates": ["relocating"],
+        "instanceAuthorityStates": ["relocating"],
         "instancePhaseStates": {
-          "transferring": ["preparing", "captured", "prepared", "committed", "activating", "activated", "cleaning", "completed", "aborted"]
+          "relocating": ["preparing", "captured", "prepared", "committed", "activating", "activated", "cleaning", "completed", "aborted"]
         }
         },
         {
         "operationKind": "close",
         "objectKind": "spot",
         "spotKinds": ["entry", "user", "instance"],
-        "transferState": "absent",
+        "relocationState": "absent",
         "authorityStates": ["closing"]
         }
       ]
@@ -160,8 +160,8 @@
       "providerPayloadInterpretation": "forbidden"
     },
     {
-      "kind": "transfer-journal-integrity",
-      "transferType": "transfer-envelope-v1",
+      "kind": "relocation-journal-integrity",
+      "relocationType": "relocation-envelope-v1",
       "progressField": "participantProgress",
       "journalField": "journal",
       "completionField": "terminalCompletions",
@@ -174,12 +174,12 @@
       "terminalCompletionMustMatchRequestRecord": true,
       "requestReplayBinding": "operation-id-exact-request-source-fence-and-reply-route-id-are-one-immutable-accepted-record-identity",
       "operationIdRole": "dedupe-identity-never-a-reply-route-substitute",
-      "authorityTransferAtomicity": {
+      "authorityRelocationAtomicity": {
         "mutationEvents": ["completion-append", "replyRelayAck", "requestSourceLeaseExpired"],
-        "writeOrder": "new-immutable-transfer-root-then-one-expected-store-version-authority-cas",
-        "casFields": ["transfer-reference", "transfer-checksum", "terminalCompletionCount", "pendingRelayCount"],
-        "terminalCompletionCount": "equals-referenced-transfer-terminal-completion-entry-count",
-        "pendingRelayCount": "equals-referenced-transfer-deliveryState-pending-count",
+        "writeOrder": "new-immutable-relocation-root-then-one-expected-store-version-authority-cas",
+        "casFields": ["relocation-reference", "relocation-checksum", "terminalCompletionCount", "pendingRelayCount"],
+        "terminalCompletionCount": "equals-referenced-relocation-terminal-completion-entry-count",
+        "pendingRelayCount": "equals-referenced-relocation-deliveryState-pending-count",
         "completedGate": "accepted-request-count-equals-terminal-completion-count-and-pending-relay-count-zero",
         "deliveryStateTransition": "pending-to-terminalReceived-or-alreadyTerminal-or-sourceLeaseExpired-only",
         "mismatch": "recovery-error-and-completed-forbidden"
@@ -194,19 +194,19 @@
       "instanceRequestDiscriminator": "request"
     },
     {
-      "kind": "location-transfer-storage-integrity",
+      "kind": "location-relocation-storage-integrity",
       "locationAuthorityOwns": [
         "descriptor-and-owner-lease",
         "object-authority-and-reservation",
         "aggregate-generation-and-canonical-participant-mutations",
-        "inventory-digest-and-transfer-reference",
+        "inventory-digest-and-relocation-reference",
         "participant-replay-cursors-and-terminal-completion-count"
       ],
-      "transferRootRole": "immutable-payload-lookup-projection-never-authority",
+      "relocationRootRole": "immutable-payload-lookup-projection-never-authority",
       "publicationOrder": [
-        "write-all-immutable-transfer-chunks",
-        "write-immutable-transfer-root-manifest",
-        "read-and-verify-complete-root-from-transfer-provider",
+        "write-all-immutable-relocation-chunks",
+        "write-immutable-relocation-root-manifest",
+        "read-and-verify-complete-root-from-relocation-provider",
         "one-location-expected-store-version-cas-publishes-reference-checksum-replay-and-completion-counts"
       ],
       "aggregateAuthority": {
@@ -217,23 +217,23 @@
           "aggregateGeneration",
           "participants-and-mutations",
           "inventoryDigestSha256",
-          "transferReference-and-checksum"
+          "relocationReference-and-checksum"
         ],
-        "transferManifestDigest": "must-equal-location-authority-inventory-digest",
+        "relocationManifestDigest": "must-equal-location-authority-inventory-digest",
         "manifestAuthority": "forbidden"
       },
       "replacement": "write-and-verify-new-root-before-one-location-authority-cas-replaces-reference-and-counts",
       "orphanCleanup": "unpublished-or-replaced-root-is-not-authority-and-is-deleted-or-expires",
-      "deleteOrder": "release-or-replace-location-authority-reference-before-idempotent-transfer-root-delete",
-      "backend": "location-and-transfer-providers-may-use-different-backends-connections-and-failure-domains",
-      "clock": "retention-and-renewal-use-transfer-provider-storeNow-and-expiresAt-only",
-      "publishedTransferDataLoss": {
+      "deleteOrder": "release-or-replace-location-authority-reference-before-idempotent-relocation-root-delete",
+      "backend": "location-and-relocation-providers-may-use-different-backends-connections-and-failure-domains",
+      "clock": "retention-and-renewal-use-relocation-provider-storeNow-and-expiresAt-only",
+      "publishedRelocationDataLoss": {
         "closedTerminalTriggers": [
           "permanent-published-payload-missing",
           "published-payload-checksum-mismatch",
           "published-payload-inventory-digest-mismatch"
         ],
-        "failureCode": "transferDataLost",
+        "failureCode": "relocationDataLost",
         "retriable": false,
         "rollback": "forbidden",
         "publication": "Ready-and-Completed-forbidden"
@@ -249,25 +249,25 @@
         "activationFailureOperationKind": "coldActivation",
         "activationFailureForbidsTerminalResult": "ok"
       },
-      "maintenanceTransfer": {
-        "requiresTransferId": true,
+      "maintenanceRelocation": {
+        "requiresRelocationId": true,
         "requiresTargetAttemptGenerationAsPeerFence": true,
         "requiresParticipantSequence": true
       },
       "acknowledgement": {
         "command": "replyRelayAck",
-        "scope": "maintenanceTransfer-only",
-        "identity": ["stable-transfer-id", "operation-id"],
+        "scope": "maintenanceRelocation-only",
+        "identity": ["stable-relocation-id", "operation-id"],
         "requestSource": "authenticated-exact-source-owner-lease-node-rid-and-generation",
         "statuses": ["terminalReceived", "alreadyTerminal"],
-        "targetPersistence": "transfer-root-cas-before-ack-effect",
+        "targetPersistence": "relocation-root-cas-before-ack-effect",
         "targetRetry": "retransmit-same-terminal-across-connection-replacement-until-ack-or-exact-request-source-owner-lease-expiry",
         "sourceDuplicate": "reply-already-terminal-still-emits-alreadyTerminal-ack",
         "completionGate": "pending-relay-count-zero-and-each-accepted-request-has-authenticated-ack-or-store-confirmed-exact-request-source-owner-lease-expiry",
         "physicalConnectionClose": "never-terminal-proof",
-        "retireWhileSourceLeaseValid": "forceStopped-and-retain-transfer-root-and-reply-bytes-for-retention-window"
+        "retireWhileSourceLeaseValid": "forceStopped-and-retain-relocation-root-and-reply-bytes-for-retention-window"
       },
-      "terminalOwnership": "stable-transfer-id-and-operation-id-once-independent-of-target-attempt",
+      "terminalOwnership": "stable-relocation-id-and-operation-id-once-independent-of-target-attempt",
       "replyRoute": "request-only"
     },
     {
@@ -329,39 +329,39 @@
       "send": "no-operation-timeout"
     },
     {
-      "kind": "transfer-authority-phase-boundaries",
+      "kind": "relocation-authority-phase-boundaries",
       "authorityType": "authority-payload-v1",
       "writes": "exact-store-version-cas-each-phase",
       "rules": [
         {
           "phase": "preparing",
           "after": ["local-admission-seal", "accepted-boundaries-fixed"],
-          "transfer": "absent",
+          "relocation": "absent",
           "targetReservation": "absent"
         },
         {
           "phase": "captured",
-          "after": ["immutable-transfer-put"],
-          "transfer": "present",
+          "after": ["immutable-relocation-put"],
+          "relocation": "present",
           "targetReservation": "absent"
         },
         {
           "phase": "prepared",
-          "after": ["transfer-reserved-ack-validated"],
-          "transfer": "present",
+          "after": ["relocation-reserved-ack-validated"],
+          "relocation": "present",
           "targetReservation": "present"
         }
       ],
       "closedOwnerTargetRules": {
         "preparingAndCaptured": "main-owner-is-immutable-source-target-attempt-token-and-reservation-absent",
-        "prepared": "main-owner-is-source-exact-nonzero-target-attempt-owner-lease-node-reservation-and-transfer-present",
-        "committedThroughCompleted": "main-owner-is-exact-current-target-and-same-attempt-reservation-transfer-present",
-        "aborted": "main-owner-is-source-until-session-abort-ack-transfer-orphan-cleanup-and-steady-source-normalization"
+        "prepared": "main-owner-is-source-exact-nonzero-target-attempt-owner-lease-node-reservation-and-relocation-present",
+        "committedThroughCompleted": "main-owner-is-exact-current-target-and-same-attempt-reservation-relocation-present",
+        "aborted": "main-owner-is-source-until-session-abort-ack-relocation-orphan-cleanup-and-steady-source-normalization"
       },
       "preparedToCommitted": "one-newOwner-cas",
       "sourceFence": "source-owner-id-lease-generation-node-rid-and-generation-immutable-through-terminal",
       "replacementMutation": "target-attempt-target-owner-lease-node-and-reservation-only-postcommit-reenters-committed",
-      "readyProjection": "forbidden-while-maintenance-transfer-payload-present-including-aborted"
+      "readyProjection": "forbidden-while-maintenance-relocation-payload-present-including-aborted"
     },
     {
       "kind": "complete-message-bound-integrity",
@@ -386,8 +386,8 @@
       "sequenceFields": [
         "journal-entry.sequence",
         "request-completion-entry.sequence",
-        "transferData.sequence",
-        "reply-relay-context.maintenanceTransfer.sequence"
+        "relocationData.sequence",
+        "reply-relay-context.maintenanceRelocation.sequence"
       ],
       "sequenceStart": 1,
       "zeroMeaning": "no-accepted-or-replayed-record",
@@ -403,7 +403,7 @@
         "frozen-record-body.completion.failureCode",
         "reply.failureCode",
         "replyRelay.failureCode",
-        "transfer-control-data.failureCode"
+        "relocation-control-data.failureCode"
       ],
       "success": {
         "terminalResult": "ok",
@@ -442,7 +442,7 @@
           "workerFailed": "internalError",
           "actorLocationStale": "conflict",
           "actorCreateRejected": "rejected",
-          "transferDataLost": "internalError"
+          "relocationDataLost": "internalError"
         }
       },
       "unknownFailureCode": "protocol-error-before-application-dispatch",
@@ -485,19 +485,19 @@
       "authorityOwnerGenerationOverflow": "terminal-authority-error-no-wire-emission"
     },
     {
-      "kind": "transfer-participant-resource-integrity",
+      "kind": "relocation-participant-resource-integrity",
       "participantIdentity": {
         "objectMailbox": "exactly-one-participant-id-1-no-binding-fields",
         "boundSession": "participant-id-from-2-in-ascending-session-rid-order-with-nonzero-binding-generation",
         "sessionOwnerRoute": "node-rid-lifecycle-generation-owner-id-and-lease-generation-match-current-descriptor-and-host-lease-before-seal-or-route-switch",
-        "sessionRid": "unique-within-transfer-transaction",
-        "stability": "same-id-and-fence-for-transfer-recovery-and-retransmit"
+        "sessionRid": "unique-within-relocation-transaction",
+        "stability": "same-id-and-fence-for-relocation-recovery-and-retransmit"
       },
       "cardinality": {
         "actor": "exactly-one-objectMailbox-and-zero-or-one-boundSession",
         "instanceSpot": "exactly-one-objectMailbox-and-no-boundSession"
       },
-      "transferReady": {
+      "relocationReady": {
         "targetToSource": {
           "role": "target",
           "offeredMessages": "nonzero",
@@ -513,18 +513,18 @@
           "checkedAllowanceSums": "less-than-or-equal-stored-target-offer"
         }
       },
-      "transferData": {
+      "relocationData": {
         "participant": "must-be-negotiated",
         "sequence": "nonzero-and-less-than-or-equal-allowanceMessages",
         "cumulativeBytes": "sum-unique-canonical-frozen-record-encoded-bytes-less-than-or-equal-allowanceBytes",
         "duplicateSameBytes": "idempotent-no-capacity-recharge",
         "duplicateDifferentBytes": "protocol-error"
       },
-      "transferAck": {
+      "relocationAck": {
         "participant": "must-be-negotiated",
         "highWater": "less-than-or-equal-allowanceMessages"
       },
-      "transferSeal": {
+      "relocationSeal": {
         "request": {
           "response": false,
           "direction": "target-to-source",
@@ -540,18 +540,18 @@
       "checkedU64Overflow": "protocol-error"
     },
     {
-      "kind": "transfer-reservation-handshake-integrity",
+      "kind": "relocation-reservation-handshake-integrity",
       "sequence": [
-        "source-transferPrepare-exact-sealed-inventory",
-        "target-transferReady-capacity-offer",
-        "source-transferReady-exact-accept",
-        "target-transferReserved-reservation-ack",
+        "source-relocationPrepare-exact-sealed-inventory",
+        "target-relocationReady-capacity-offer",
+        "source-relocationReady-exact-accept",
+        "target-relocationReserved-reservation-ack",
         "source-prepared-authority-cas"
       ],
-      "identity": ["stable-transfer-id", "target-attempt-generation", "object-identity"],
+      "identity": ["stable-relocation-id", "target-attempt-generation", "object-identity"],
       "prepare": {
         "phase": "captured",
-        "transfer": "required",
+        "relocation": "required",
         "requirements": "exact-participant-set-and-checked-message-byte-sums"
       },
       "offer": "nonzero-capacity-and-empty-participant-vector",
@@ -564,9 +564,9 @@
       "crossCandidateReplay": "forbidden"
     },
     {
-      "kind": "transfer-replacement-round-integrity",
+      "kind": "relocation-replacement-round-integrity",
       "authorityType": "authority-payload-v1",
-      "fenceType": "transfer-coordinator-fence",
+      "fenceType": "relocation-coordinator-fence",
       "rounds": {
         "initial": {
           "phase": "captured",
@@ -584,31 +584,31 @@
           "proposedTargetAttemptGeneration": "current-target-attempt-generation-plus-one"
         }
       },
-      "requirementsSource": "exact-current-transfer-participant-inventory",
+      "requirementsSource": "exact-current-relocation-participant-inventory",
       "sequence": [
-        "initiator-transferPrepare",
-        "candidate-transferReady-offer",
-        "initiator-transferReady-accept",
-        "candidate-transferReserved-ack",
+        "initiator-relocationPrepare",
+        "candidate-relocationReady-offer",
+        "initiator-relocationReady-accept",
+        "candidate-relocationReserved-ack",
         "expected-version-authority-cas"
       ],
       "replacementCas": "after-ack-atomically-replace-target-attempt-generation-target-and-reservation-prepared-stays-prepared-post-commit-resets-to-committed",
       "oldTargetFence": "old-target-attempt-generation-or-authority-store-version-rejected",
-      "transferIdentity": "stable-transfer-id-transfer-root-and-journal-never-rewritten-only-for-target-replacement",
+      "relocationIdentity": "stable-relocation-id-relocation-root-and-journal-never-rewritten-only-for-target-replacement",
       "targetActivationRetry": "factory-and-restore-are-at-least-once-across-attempts-and-stale-attempts-may-overlap",
       "targetCommitFence": "only-current-exact-owner-and-target-attempt-may-commit-completion-or-open-admission",
-      "callbackContract": "retry-safe-no-exactly-once-external-side-effect-guarantee-and-no-public-transfer-id",
+      "callbackContract": "retry-safe-no-exactly-once-external-side-effect-guarantee-and-no-public-relocation-id",
       "crossCandidateReplay": "candidate-node-rid-and-generation-must-match-admitted-peer",
       "ackBeforeCasCrash": "retry-identical-round-or-release-orphan-reservation-before-new-candidate",
       "casBeforeReplyCrash": "read-current-authority-and-continue-new-target-without-second-cas"
     },
     {
-      "kind": "transfer-coordinator-authorization-integrity",
+      "kind": "relocation-coordinator-authorization-integrity",
       "authorityType": "authority-payload-v1",
-      "fenceType": "transfer-coordinator-fence",
+      "fenceType": "relocation-coordinator-fence",
       "receiverValidation": [
         "exact-read-current-authority-by-object-key",
-        "compare-transfer-id-target-attempt-generation-when-present-phase-and-expected-store-version",
+        "compare-relocation-id-target-attempt-generation-when-present-phase-and-expected-store-version",
         "compare-coordinator-owner-id-lease-generation-node-rid-and-node-generation",
         "read-current-owner-lease-token",
         "match-authenticated-admitted-peer-rid-and-generation-to-declared-sender-role"
@@ -619,26 +619,26 @@
       "aba": "global-lease-generation-prevents-owner-id-reuse-from-revalidating-old-control"
     },
     {
-      "kind": "bound-session-transfer-barrier-integrity",
+      "kind": "bound-session-relocation-barrier-integrity",
       "sequence": [
-        "source-sessionTransferSeal",
+        "source-sessionRelocationSeal",
         "session-owner-reversible-ingress-seal",
-        "session-owner-sessionTransferSealed-high-water",
+        "session-owner-sessionRelocationSealed-high-water",
         "source-receives-every-sequence-through-high-water",
-        "source-captured-transfer",
+        "source-captured-relocation",
         "target-restores-and-replays-through-high-water",
         "target-stage-bound-session-route-without-switch-or-unseal",
         "durable-source-cleanup-state-cas",
         "completed-authority-cas",
-        "target-sessionTransferRoute-commit",
+        "target-sessionRelocationRoute-commit",
         "session-owner-atomic-route-switch-after-completed",
-        "session-owner-sessionTransferRouted-ack",
+        "session-owner-sessionRelocationRouted-ack",
         "maintenance-authority-normalized-to-steady",
         "target-open-application-admission-and-publish-ready"
       ],
       "participantIdentity": "session-owner-node-rid-generation-owner-id-lease-generation-session-rid-binding-generation",
       "recordSequence": "bound-session-actorSend-or-actorRequest-sourceSessionSequence",
-      "transferRelation": "participant-sequence-equals-session-sequence-and-accepted-boundary-equals-sealed-high-water",
+      "relocationRelation": "participant-sequence-equals-session-sequence-and-accepted-boundary-equals-sealed-high-water",
       "commitFence": "binding-generation-actor-object-generation-previous-and-target-owner-generation-session-owner-node-generation",
       "sessionOwnerLeaseFence": "owner-id-and-lease-generation-exact-descriptor-and-current-host-lease-read",
       "senderAdmissionDeadline": "local-monotonic-deadline-derived-from-last-successful-host-lease-read",
@@ -651,8 +651,8 @@
       "sessionOwnerRestart": "stale-node-generation-protocol-error-no-route-switch"
     },
     {
-      "kind": "transfer-complete-integrity",
-      "command": "transferComplete",
+      "kind": "relocation-complete-integrity",
+      "command": "relocationComplete",
       "direction": "source-or-current-coordinator-to-current-target",
       "preconditions": [
         "all-negotiated-participants-sealed",
@@ -664,11 +664,11 @@
       "targetEffect": "validate-durable-source-cleanup-state-and-notify-finalization-once",
       "cleanupGate": "target-activation-complete-and-durable-source-cleanup-state-terminal",
       "servingGate": "completed-authority-cas-then-bound-session-route-acks-before-application-admission-or-ready-publish",
-      "replacementWindow": "all-nonterminal-phases-before-completed-from-immutable-transfer",
-      "afterCompletedFailure": "ordinary-owner-loss-never-replay-retired-transfer-transfer",
-      "finalization": "after-completed-and-bound-session-route-acks-cas-maintenance-authority-to-steady-without-transfer-before-ready-projection",
-      "resolverProjection": "maintenance-transfer-authority-is-never-ready-even-when-target-owner-is-recorded",
-      "duplicate": "idempotent-by-stable-transfer-id-and-durable-source-cleanup-state-target-attempt-is-only-a-peer-fence",
+      "replacementWindow": "all-nonterminal-phases-before-completed-from-immutable-relocation",
+      "afterCompletedFailure": "ordinary-owner-loss-never-replays-retired-relocation",
+      "finalization": "after-completed-and-bound-session-route-acks-cas-maintenance-authority-to-steady-without-relocation-before-ready-projection",
+      "resolverProjection": "maintenance-relocation-authority-is-never-ready-even-when-target-owner-is-recorded",
+      "duplicate": "idempotent-by-stable-relocation-id-and-durable-source-cleanup-state-target-attempt-is-only-a-peer-fence",
       "reorder": "hold-until-preconditions",
       "wrongDirection": "protocol-error"
     },
@@ -720,7 +720,7 @@
         "actorRequest": { "operationKind": "actorRequest", "operationId": "nonzero" },
         "completion": { "operationKind": "non-none", "operationId": "nonzero" },
         "sendReady": { "operationKind": "none", "operationId": "zero" },
-        "transferControl": { "operationKind": "none", "operationId": "zero" },
+        "relocationControl": { "operationKind": "none", "operationId": "zero" },
         "instanceSpotActivation": { "innerSend": ["none", "zero"], "innerRequest": ["instanceSpotRequest", "nonzero"] }
       },
       "replyRoute": {
@@ -741,19 +741,19 @@
         "runtimeLifetimeUnion": "leaseBacked-owner-id-and-lease-generation-or-connectionBound-current-physical-connection-lifetime",
         "durableRecord": "leaseBacked-only-all-frozen-sources-carry-exact-owner-id-and-lease-generation",
         "preCapturedDrain": "all-connectionBound-accepted-work-and-all-boundSession-requests-must-reach-terminal-before-captured-cas",
-        "drainFailure": "pre-captured-abort-and-retire-blocked-transferDisabled-then-restore-admission",
+        "drainFailure": "pre-captured-abort-and-retire-blocked-relocationDisabled-then-restore-admission",
         "connectionBoundFrozenRecord": "forbidden"
       },
-      "sourceIdentityMismatch": "protocol-error-before-replay-or-transfer-admission"
+      "sourceIdentityMismatch": "protocol-error-before-replay-or-relocation-admission"
     },
     {
       "kind": "durable-operation-identity-integrity",
-      "transferId": "runtime-generated-nonzero-128-bit-csprng",
-      "transferIdScope": "unique-across-active-and-retained-transfer-roots-collision-rejected-and-regenerated",
+      "relocationId": "runtime-generated-nonzero-128-bit-csprng",
+      "relocationIdScope": "unique-across-active-and-retained-relocation-roots-collision-rejected-and-regenerated",
       "operationId": "nonzero-unique-within-source-owner-lifecycle-for-terminal-dedupe",
       "replyRouteId": "nonzero-unique-within-source-owner-lifecycle-for-correlation-only",
       "counterWrapOrReuse": "forbidden-terminal-runtime-error",
-      "terminalIdentity": "stable-transfer-id-plus-operation-id",
+      "terminalIdentity": "stable-relocation-id-plus-operation-id",
       "publicExposure": "forbidden"
     },
     {
@@ -794,8 +794,8 @@
     },
     {
       "kind": "actor-retire-membership-integrity",
-      "transferable": "source-entry-spot-current-member-only",
-      "userSpotMember": "preflight-blocked-transferDisabled-state-and-admission-unchanged",
+      "relocatable": "source-entry-spot-current-member-only",
+      "userSpotMember": "preflight-blocked-relocationDisabled-state-and-admission-unchanged",
       "targetOffer": "compatible-initialized-target-entry-spot-rid-object-generation-and-kind",
       "commit": "newOwner-cas-atomically-updates-owner-authority-owner-generation-and-current-target-entry-spot",
       "targetOrder": "factory-restore-then-target-entry-onJoinedActor-then-journal-replay",
@@ -821,11 +821,11 @@
       "overflow": "atomic-configuration-failure-never-truncate-split-or-publish-partial"
     },
     {
-      "kind": "transfer-application-state-integrity",
-      "stateType": "transfer-application-state",
+      "kind": "relocation-application-state-integrity",
+      "stateType": "relocation-application-state",
       "recreate": "hasState-false-no-contract-serializer-or-payload",
       "snapshot": "hasState-true-nonempty-contract-frameworkJsonV1-and-nonempty-payload",
-      "transferPresence": "every-transfer-including-empty-recreate-writes-one-deterministic-envelope",
+      "relocationPresence": "every-relocation-including-empty-recreate-writes-one-deterministic-envelope",
       "storage": "canonical-logical-stream-split-into-immutable-chunks-and-one-root-manifest",
       "chunking": "ordered-byte-stream-may-split-within-a-frozen-record",
       "unknownSerializer": "protocol-error-before-restore"
@@ -834,7 +834,7 @@
       "kind": "framework-json-v1-integrity",
       "profile": "frameworkJsonV1Profile",
       "applicationPayloadBytes": "opaque-after-profile-validation-no-byte-canonicalization",
-      "transferStateBytes": "opaque-after-profile-validation-no-byte-canonicalization",
+      "relocationStateBytes": "opaque-after-profile-validation-no-byte-canonicalization",
       "stateContractId": "asserts-target-adapter-semantic-compatibility",
       "goldenFixture": "golden/framework-json-v1.json"
     },
@@ -980,7 +980,7 @@
     "delayedOperation": "stale-no-mutation",
     "overflow": "claim-or-takeover-GenerationExhausted-non-retriable-no-row-index-or-counter-mutation-or-consumption-renew-and-release-excluded"
   },
-  "transferRetentionPolicy": {
+  "relocationRetentionPolicy": {
     "retentionMs": 86400000,
     "renewThresholdMs": 43200000,
     "leaseOwner": "current-authority-owner-or-recovery-coordinator",
@@ -999,14 +999,14 @@
       "idempotent-delete-no-longer-referenced-manifest-and-all-chunks"
     ],
     "reader": "current-authority-reference-only",
-    "providerClock": "transfer-storeNow-and-expiresAt-independent-of-location-provider-clock",
-    "recoveryHorizon": "permanent-published-root-missing-is-non-retriable-TransferDataLost-no-rollback",
+    "providerClock": "relocation-storeNow-and-expiresAt-independent-of-location-provider-clock",
+    "recoveryHorizon": "permanent-published-root-missing-is-non-retriable-RelocationDataLost-no-rollback",
     "publicOption": "forbidden"
   },
-  "transferStorageProfile": {
-    "logicalStreamType": "transfer-envelope-v1",
-    "manifestFormat": "transfer-manifest-v1",
-    "chunkFormat": "transfer-data-chunk-v1",
+  "relocationStorageProfile": {
+    "logicalStreamType": "relocation-envelope-v1",
+    "manifestFormat": "relocation-manifest-v1",
+    "chunkFormat": "relocation-data-chunk-v1",
     "chunkDataMaximumBytes": 67108864,
     "chunkCountMaximum": 4096,
     "logicalMaximumBytes": 274877906944,
@@ -1014,9 +1014,9 @@
     "writeOrder": ["all-immutable-chunks", "immutable-root-manifest", "read-and-verify-complete-root", "location-authority-reference-cas"],
     "authority": "forbidden-payload-lookup-projection-only",
     "backend": "may-differ-from-location-store",
-    "clock": "transfer-provider-storeNow-and-expiresAt-only",
+    "clock": "relocation-provider-storeNow-and-expiresAt-only",
     "writeFailure": "unreferenced-chunks-or-manifest-are-orphans-never-authority",
-    "emptyTransfer": "deterministic-zero-data-manifest-with-no-chunks",
+    "emptyRelocation": "deterministic-zero-data-manifest-with-no-chunks",
     "streaming": "chunk-validated-and-incrementally-decoded-with-bounded-memory",
     "recordSplit": "allowed-across-chunk-boundaries",
     "oversize": "reversible-seal-rollback-and-blocked-state-incompatible-before-draining"
@@ -1047,11 +1047,11 @@
     "reversibleSeal": "hold-new-submissions-without-admission-result",
     "sizingSnapshot": "exact-participant-boundaries-messages-and-bytes-after-seal",
     "timerAdmissionSeal": "stop-new-tick-admission-and-wait-all-pre-seal-accepted-timer-turns",
-    "acceptedTimerTurns": "drain-on-source-before-transfer-and-exclude-from-journal-boundary",
-    "futureTimerSchedule": "not-transferred-recreated-only-by-target-lifecycle-or-snapshot-state",
+    "acceptedTimerTurns": "drain-on-source-before-relocation-and-exclude-from-journal-boundary",
+    "futureTimerSchedule": "not-relocated-recreated-only-by-target-lifecycle-or-snapshot-state",
     "requestDrainBeforeCaptured": "all-connectionBound-accepted-work-and-boundSession-requests-must-be-terminal-and-are-never-journaled",
-    "requestDrainFailure": "abort-before-captured-retire-blocked-transferDisabled-and-restore-admission",
-    "phaseOrder": ["preparing-cas", "transfer-put", "captured-cas", "target-reserve", "prepared-cas"],
+    "requestDrainFailure": "abort-before-captured-retire-blocked-relocationDisabled-and-restore-admission",
+    "phaseOrder": ["preparing-cas", "relocation-put", "captured-cas", "target-reserve", "prepared-cas"],
     "durableReplayBoundary": "complete-root-linked-by-captured-cas",
     "sourceCrashBeforeCaptured": "fenced-abort-no-maintenance-continuity-original-request-uses-normal-connection-failure-timeout-or-cancellation-terminal",
     "unlinkedPutAfterCrash": "orphan-cleanup-never-replay-authority",
@@ -1069,20 +1069,20 @@
       { "name": "None", "wireValue": 0 },
       { "name": "TargetUnavailable", "wireValue": 1 },
       { "name": "StoreUnavailable", "wireValue": 2 },
-      { "name": "TransferDisabled", "wireValue": 3 },
+      { "name": "RelocationDisabled", "wireValue": 3 },
       { "name": "StateIncompatible", "wireValue": 4 },
       { "name": "DeadlineExceeded", "wireValue": 5 },
-      { "name": "TransferFailed", "wireValue": 6 },
+      { "name": "RelocationFailed", "wireValue": 6 },
       { "name": "TeardownFailed", "wireValue": 7 },
       { "name": "RuntimeNotReady", "wireValue": 8 }
     ],
     "allowedPairs": [
       { "outcome": "Stopped", "reasons": ["None"] },
-      { "outcome": "Blocked", "reasons": ["TargetUnavailable", "StoreUnavailable", "TransferDisabled", "StateIncompatible", "DeadlineExceeded", "RuntimeNotReady"] },
-      { "outcome": "ForceStopped", "reasons": ["DeadlineExceeded", "TransferFailed", "TeardownFailed"] }
+      { "outcome": "Blocked", "reasons": ["TargetUnavailable", "StoreUnavailable", "RelocationDisabled", "StateIncompatible", "DeadlineExceeded", "RuntimeNotReady"] },
+      { "outcome": "ForceStopped", "reasons": ["DeadlineExceeded", "RelocationFailed", "TeardownFailed"] }
     ],
     "undefinedPair": "protocol-error",
-    "transferCeilingBeforeDraining": "Blocked/StateIncompatible",
+    "relocationCeilingBeforeDraining": "Blocked/StateIncompatible",
     "preCapturedDeadline": "Blocked/DeadlineExceeded",
     "postCapturedDeadline": "ForceStopped/DeadlineExceeded",
     "teardownFailure": "ForceStopped/TeardownFailed"
@@ -1185,11 +1185,11 @@
       "maximum": "9223372036854775807"
     },
     {
-      "name": "transfer-logical-length",
+      "name": "relocation-logical-length",
       "kind": "integer",
       "encoding": "u64",
       "minimum": 0,
-      "maximum": { "$bound": "transferLogicalBytes" }
+      "maximum": { "$bound": "relocationLogicalBytes" }
     },
     {
       "name": "application-version",
@@ -1451,7 +1451,7 @@
         { "name": "creating", "value": 0 },
         { "name": "ready", "value": 1 },
         { "name": "closing", "value": 2 },
-        { "name": "transferring", "value": 3 }
+        { "name": "relocating", "value": 3 }
       ]
     },
     {
@@ -1464,7 +1464,7 @@
       ]
     },
     {
-      "name": "transfer-policy-kind",
+      "name": "relocation-policy-kind",
       "kind": "enum",
       "encoding": "u8",
       "values": [
@@ -1474,7 +1474,7 @@
       ]
     },
     {
-      "name": "transfer-serializer-kind",
+      "name": "relocation-serializer-kind",
       "kind": "enum",
       "encoding": "u8",
       "values": [
@@ -1491,7 +1491,7 @@
       ]
     },
     {
-      "name": "transfer-role",
+      "name": "relocation-role",
       "kind": "enum",
       "encoding": "u8",
       "values": [
@@ -1501,7 +1501,7 @@
       ]
     },
     {
-      "name": "transfer-reservation-round-kind",
+      "name": "relocation-reservation-round-kind",
       "kind": "enum",
       "encoding": "u8",
       "values": [
@@ -1511,7 +1511,7 @@
       ]
     },
     {
-      "name": "transfer-participant-kind",
+      "name": "relocation-participant-kind",
       "kind": "enum",
       "encoding": "u8",
       "values": [
@@ -1566,7 +1566,7 @@
         { "name": "actorRequest", "value": 10 },
         { "name": "completion", "value": 11 },
         { "name": "sendReady", "value": 12 },
-        { "name": "transferControl", "value": 13 },
+        { "name": "relocationControl", "value": 13 },
         { "name": "instanceSpotActivation", "value": 14 }
       ]
     },
@@ -1641,7 +1641,7 @@
       ]
     },
     {
-      "name": "session-transfer-route-action",
+      "name": "session-relocation-route-action",
       "kind": "enum",
       "encoding": "u8",
       "values": [
@@ -1650,7 +1650,7 @@
       ]
     },
     {
-      "name": "transfer-phase",
+      "name": "relocation-phase",
       "kind": "enum",
       "encoding": "u8",
       "values": [
@@ -1703,7 +1703,7 @@
       "values": [
         { "name": "steady", "value": 0 },
         { "name": "coldActivation", "value": 1 },
-        { "name": "maintenanceTransfer", "value": 2 },
+        { "name": "maintenanceRelocation", "value": 2 },
         { "name": "close", "value": 3 }
       ]
     },
@@ -1776,7 +1776,7 @@
         { "name": "workerFailed", "value": 20 },
         { "name": "actorLocationStale", "value": 21 },
         { "name": "actorCreateRejected", "value": 22 },
-        { "name": "transferDataLost", "value": 35 }
+        { "name": "relocationDataLost", "value": 35 }
       ]
     },
     {
@@ -1796,7 +1796,7 @@
         { "name": "coldActivating", "value": 1 },
         { "name": "ready", "value": 2 },
         { "name": "closing", "value": 3 },
-        { "name": "transferring", "value": 4 }
+        { "name": "relocating", "value": 4 }
       ]
     },
     {
@@ -1805,7 +1805,7 @@
       "encoding": "u8",
       "values": [
         { "name": "coldActivation", "value": 1 },
-        { "name": "maintenanceTransfer", "value": 2 }
+        { "name": "maintenanceRelocation", "value": 2 }
       ]
     },
     {
@@ -1917,10 +1917,10 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "session-transfer-route-update",
+      "name": "session-relocation-route-update",
       "kind": "conditional-union",
       "discriminators": [
-        { "name": "action", "source": "wire", "$ref": "session-transfer-route-action" }
+        { "name": "action", "source": "wire", "$ref": "session-relocation-route-action" }
       ],
       "bodyLengthType": { "$ref": "u16" },
       "bodyLengthCovers": "selected-case",
@@ -2055,7 +2055,7 @@
       "name": "maintenance-aggregate-participant-v1",
       "kind": "struct",
       "fields": [
-        { "name": "object", "$ref": "transfer-object-identity" },
+        { "name": "object", "$ref": "relocation-object-identity" },
         { "name": "expectedStoreVersion", "$ref": "authority-store-version" },
         { "name": "mutation", "$ref": "aggregate-participant-mutation-bytes" }
       ],
@@ -2084,7 +2084,7 @@
         { "name": "ownerSpot", "$ref": "spot-ref" },
         { "name": "participants", "$ref": "aggregate-participant-vector" },
         { "name": "inventoryDigestSha256", "$ref": "sha256-bytes" },
-        { "name": "transferRoot", "$ref": "transfer-root-pointer" }
+        { "name": "relocationRoot", "$ref": "relocation-root-pointer" }
       ],
       "trailingBytes": "forbidden"
     },
@@ -2148,7 +2148,7 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-object-identity",
+      "name": "relocation-object-identity",
       "kind": "conditional-union",
       "discriminators": [
         {
@@ -2238,7 +2238,7 @@
           ]
         },
         {
-          "when": { "authorityState": "transferring" },
+          "when": { "authorityState": "relocating" },
           "fields": [
             { "name": "instanceType", "$ref": "text8" },
             { "name": "spotRid", "$ref": "rid" }
@@ -2340,11 +2340,11 @@
       "nul": "forbidden"
     },
     {
-      "name": "transfer-reference",
+      "name": "relocation-reference",
       "kind": "length-prefixed-text",
       "lengthType": { "$ref": "u16" },
       "minimumBytes": 1,
-      "maximumBytes": { "$bound": "transferReferenceBytes" },
+      "maximumBytes": { "$bound": "relocationReferenceBytes" },
       "encoding": "utf-8",
       "nul": "forbidden"
     },
@@ -2369,7 +2369,7 @@
       ]
     },
     {
-      "name": "transfer-coordinator-fence",
+      "name": "relocation-coordinator-fence",
       "kind": "struct",
       "fields": [
         { "name": "coordinatorOwnerId", "$ref": "text8" },
@@ -2381,7 +2381,7 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-reservation-candidate",
+      "name": "relocation-reservation-candidate",
       "kind": "struct",
       "fields": [
         { "name": "targetNodeRid", "$ref": "rid" },
@@ -2392,7 +2392,7 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-source-cleanup-fence",
+      "name": "relocation-source-cleanup-fence",
       "kind": "struct",
       "fields": [
         { "name": "sourceOwnerId", "$ref": "text8" },
@@ -2414,7 +2414,7 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-id",
+      "name": "relocation-id",
       "kind": "struct",
       "fields": [
         { "name": "high", "$ref": "u64" },
@@ -2493,7 +2493,7 @@
       "fields": [
         { "name": "objectKind", "$ref": "stateful-object-kind" },
         { "name": "type", "$ref": "text8" },
-        { "name": "transferPolicy", "$ref": "transfer-policy-kind" },
+        { "name": "relocationPolicy", "$ref": "relocation-policy-kind" },
         { "name": "placementProfiles", "$ref": "sorted-text8-vector" },
         { "name": "activeCapacityLimit", "$ref": "object-capacity-limit" },
         { "name": "pendingCapacityLimit", "$ref": "object-pending-capacity-limit" },
@@ -2626,10 +2626,10 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-participant-identity",
+      "name": "relocation-participant-identity",
       "kind": "conditional-union",
       "discriminators": [
-        { "name": "participantKind", "source": "wire", "$ref": "transfer-participant-kind" }
+        { "name": "participantKind", "source": "wire", "$ref": "relocation-participant-kind" }
       ],
       "bodyLengthType": { "$ref": "u16" },
       "bodyLengthCovers": "selected-case",
@@ -2655,7 +2655,7 @@
       "kind": "struct",
       "fields": [
         { "name": "participantId", "$ref": "nonzero-u64" },
-        { "name": "identity", "$ref": "transfer-participant-identity" },
+        { "name": "identity", "$ref": "relocation-participant-identity" },
         { "name": "allowanceMessages", "$ref": "ordinal-or-zero" },
         { "name": "allowanceBytes", "$ref": "ordinal-or-zero" }
       ]
@@ -2823,11 +2823,11 @@
           ]
         },
         {
-          "when": { "contextKind": "maintenanceTransfer" },
+          "when": { "contextKind": "maintenanceRelocation" },
           "fields": [
-            { "name": "transfer", "$ref": "transfer-id" },
+            { "name": "relocation", "$ref": "relocation-id" },
             { "name": "targetAttemptGeneration", "$ref": "nonzero-u64" },
-            { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
+            { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
             { "name": "participantId", "$ref": "nonzero-u64" },
             { "name": "sequence", "$ref": "nonzero-u64" }
           ]
@@ -2940,22 +2940,22 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-control-data",
+      "name": "relocation-control-data",
       "kind": "struct",
       "fields": [
-        { "name": "phase", "$ref": "transfer-phase" },
-        { "name": "role", "$ref": "transfer-role" },
-        { "name": "transfer", "$ref": "transfer-id" },
-        { "name": "object", "$ref": "transfer-object-identity" },
+        { "name": "phase", "$ref": "relocation-phase" },
+        { "name": "role", "$ref": "relocation-role" },
+        { "name": "relocation", "$ref": "relocation-id" },
+        { "name": "object", "$ref": "relocation-object-identity" },
         { "name": "terminalResult", "$ref": "request-terminal-result" },
         { "name": "failureCode", "$ref": "framework-error-code" }
       ],
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-extension",
+      "name": "relocation-extension",
       "kind": "tlv32",
-      "maximumEncodedBytes": { "$bound": "transferControlEnvelopeBytes" },
+      "maximumEncodedBytes": { "$bound": "relocationControlEnvelopeBytes" },
       "totalLengthType": { "$ref": "u32" },
       "fieldIdType": { "$ref": "u8" },
       "fieldLengthType": { "$ref": "u32" },
@@ -2963,8 +2963,8 @@
         { "id": 2, "name": "sourceNodeGeneration", "$ref": "nonzero-u64", "required": true },
         { "id": 3, "name": "targetNodeGeneration", "$ref": "nonzero-u64", "required": true },
         { "id": 4, "name": "reservationGeneration", "$ref": "nonzero-u64", "required": true },
-        { "id": 5, "name": "transferReference", "$ref": "transfer-reference", "required": false },
-        { "id": 6, "name": "transferChecksumCrc32c", "$ref": "u32", "required": false },
+        { "id": 5, "name": "relocationReference", "$ref": "relocation-reference", "required": false },
+        { "id": 6, "name": "relocationChecksumCrc32c", "$ref": "u32", "required": false },
         { "id": 7, "name": "stateContractId", "$ref": "text8", "required": false },
         { "id": 8, "name": "applicationVersion", "$ref": "application-version", "required": true },
         {
@@ -2978,20 +2978,20 @@
         {
           "when": {
             "contextEquals": {
-              "name": "durableTransferPresent",
+              "name": "durableRelocationPresent",
               "value": true
             }
           },
-          "require": ["transferReference", "transferChecksumCrc32c"]
+          "require": ["relocationReference", "relocationChecksumCrc32c"]
         },
         {
           "when": {
             "contextEquals": {
-              "name": "durableTransferPresent",
+              "name": "durableRelocationPresent",
               "value": false
             }
           },
-          "forbid": ["transferReference", "transferChecksumCrc32c", "stateContractId"]
+          "forbid": ["relocationReference", "relocationChecksumCrc32c", "stateContractId"]
         },
         {
           "when": {
@@ -3000,7 +3000,7 @@
               "value": true
             }
           },
-          "require": ["transferReference", "transferChecksumCrc32c", "stateContractId"]
+          "require": ["relocationReference", "relocationChecksumCrc32c", "stateContractId"]
         },
         {
           "when": {
@@ -3166,8 +3166,8 @@
           "fields": [{ "name": "destination", "$ref": "send-ready-destination" }]
         },
         {
-          "when": { "recordKind": "transferControl" },
-          "fields": [{ "name": "control", "$ref": "transfer-control-data" }]
+          "when": { "recordKind": "relocationControl" },
+          "fields": [{ "name": "control", "$ref": "relocation-control-data" }]
         },
         {
           "when": { "recordKind": "instanceSpotActivation" },
@@ -3299,19 +3299,19 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-root-pointer",
+      "name": "relocation-root-pointer",
       "kind": "conditional-union",
       "discriminators": [
-        { "name": "hasTransfer", "source": "wire", "$ref": "bool8" }
+        { "name": "hasRelocation", "source": "wire", "$ref": "bool8" }
       ],
       "bodyLengthType": { "$ref": "u16" },
       "bodyLengthCovers": "selected-case",
       "cases": [
-        { "when": { "hasTransfer": "false" }, "fields": [] },
+        { "when": { "hasRelocation": "false" }, "fields": [] },
         {
-          "when": { "hasTransfer": "true" },
+          "when": { "hasRelocation": "true" },
           "fields": [
-            { "name": "reference", "$ref": "transfer-reference" },
+            { "name": "reference", "$ref": "relocation-reference" },
             { "name": "checksumCrc32c", "$ref": "u32" }
           ]
         }
@@ -3320,20 +3320,20 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "authority-transfer-state",
+      "name": "authority-relocation-state",
       "kind": "conditional-union",
       "discriminators": [
-        { "name": "hasTransfer", "source": "wire", "$ref": "bool8" }
+        { "name": "hasRelocation", "source": "wire", "$ref": "bool8" }
       ],
       "bodyLengthType": { "$ref": "u32" },
       "bodyLengthCovers": "selected-case",
       "maximumEncodedBytes": { "$bound": "authorityEnvelopeBytes" },
       "cases": [
-        { "when": { "hasTransfer": "false" }, "fields": [] },
+        { "when": { "hasRelocation": "false" }, "fields": [] },
         {
-          "when": { "hasTransfer": "true" },
+          "when": { "hasRelocation": "true" },
           "fields": [
-            { "name": "transfer", "$ref": "transfer-id" },
+            { "name": "relocation", "$ref": "relocation-id" },
             { "name": "targetAttemptGeneration", "$ref": "ordinal-or-zero" },
             { "name": "sourceNodeRid", "$ref": "rid" },
             { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
@@ -3348,8 +3348,8 @@
             { "name": "coordinatorLeaseGeneration", "$ref": "nonzero-u64" },
             { "name": "coordinatorNodeRid", "$ref": "rid" },
             { "name": "coordinatorNodeGeneration", "$ref": "nonzero-u64" },
-            { "name": "phase", "$ref": "transfer-phase" },
-            { "name": "transferRoot", "$ref": "transfer-root-pointer" },
+            { "name": "phase", "$ref": "relocation-phase" },
+            { "name": "relocationRoot", "$ref": "relocation-root-pointer" },
             { "name": "applicationVersion", "$ref": "application-version" },
             { "name": "participantProgress", "$ref": "participant-progress-vector" },
             { "name": "terminalCompletionCount", "$ref": "u32" },
@@ -3372,7 +3372,7 @@
         { "name": "ownerMeshName", "$ref": "text8" },
         { "name": "ownerNodeRid", "$ref": "rid" },
         { "name": "ownerNodeGeneration", "$ref": "nonzero-u64" },
-        { "name": "transferState", "$ref": "authority-transfer-state" }
+        { "name": "relocationState", "$ref": "authority-relocation-state" }
       ],
       "trailingBytes": "forbidden"
     },
@@ -3406,51 +3406,51 @@
       "kind": "length-prefixed-bytes",
       "lengthType": { "$ref": "u32" },
       "minimumBytes": 0,
-      "maximumBytes": { "$bound": "transferChunkBytes" }
+      "maximumBytes": { "$bound": "relocationChunkBytes" }
     },
     {
       "name": "durable-state-blob",
       "kind": "length-prefixed-bytes",
       "lengthType": { "$ref": "u64" },
       "minimumBytes": 1,
-      "maximumBytes": { "$bound": "transferLogicalBytes" }
+      "maximumBytes": { "$bound": "relocationLogicalBytes" }
     },
     {
-      "name": "transfer-chunk-entry-v1",
+      "name": "relocation-chunk-entry-v1",
       "kind": "struct",
       "fields": [
         { "name": "order", "$ref": "u32" },
-        { "name": "reference", "$ref": "transfer-reference" },
+        { "name": "reference", "$ref": "relocation-reference" },
         { "name": "length", "$ref": "nonzero-u64" },
         { "name": "checksumCrc32c", "$ref": "u32" }
       ],
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-chunk-vector-v1",
+      "name": "relocation-chunk-vector-v1",
       "kind": "vector",
       "countType": { "$ref": "u32" },
-      "maximumItems": { "$bound": "transferChunkCount" },
-      "item": { "$ref": "transfer-chunk-entry-v1" },
+      "maximumItems": { "$bound": "relocationChunkCount" },
+      "item": { "$ref": "relocation-chunk-entry-v1" },
       "constraints": [
         { "kind": "sorted", "field": "order", "comparison": "unsigned-wire-value" },
         { "kind": "unique", "field": "order" }
       ]
     },
     {
-      "name": "transfer-manifest-v1",
+      "name": "relocation-manifest-v1",
       "kind": "struct",
       "fields": [
         { "name": "logicalFormatVersion", "$ref": "u8", "constant": 1 },
-        { "name": "totalLength", "$ref": "transfer-logical-length" },
+        { "name": "totalLength", "$ref": "relocation-logical-length" },
         { "name": "totalChecksumCrc32c", "$ref": "u32" },
         { "name": "inventoryDigestSha256", "$ref": "sha256-bytes" },
-        { "name": "chunks", "$ref": "transfer-chunk-vector-v1" }
+        { "name": "chunks", "$ref": "relocation-chunk-vector-v1" }
       ],
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-data-chunk-v1",
+      "name": "relocation-data-chunk-v1",
       "kind": "struct",
       "fields": [
         { "name": "order", "$ref": "u32" },
@@ -3459,21 +3459,21 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-application-state",
+      "name": "relocation-application-state",
       "kind": "conditional-union",
       "discriminators": [
         { "name": "hasState", "source": "wire", "$ref": "bool8" }
       ],
       "bodyLengthType": { "$ref": "u64" },
       "bodyLengthCovers": "selected-case",
-      "maximumEncodedBytes": { "$bound": "transferLogicalBytes" },
+      "maximumEncodedBytes": { "$bound": "relocationLogicalBytes" },
       "cases": [
         { "when": { "hasState": "false" }, "fields": [] },
         {
           "when": { "hasState": "true" },
           "fields": [
             { "name": "stateContractId", "$ref": "text8" },
-            { "name": "serializer", "$ref": "transfer-serializer-kind", "constant": "frameworkJsonV1" },
+            { "name": "serializer", "$ref": "relocation-serializer-kind", "constant": "frameworkJsonV1" },
             { "name": "payload", "$ref": "durable-state-blob" }
           ]
         }
@@ -3482,13 +3482,13 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "transfer-envelope-v1",
+      "name": "relocation-envelope-v1",
       "kind": "struct",
       "fields": [
-        { "name": "transfer", "$ref": "transfer-id" },
-        { "name": "object", "$ref": "transfer-object-identity" },
+        { "name": "relocation", "$ref": "relocation-id" },
+        { "name": "object", "$ref": "relocation-object-identity" },
         { "name": "applicationVersion", "$ref": "application-version" },
-        { "name": "applicationState", "$ref": "transfer-application-state" },
+        { "name": "applicationState", "$ref": "relocation-application-state" },
         { "name": "participantProgress", "$ref": "participant-progress-vector" },
         { "name": "journal", "$ref": "journal-vector" },
         { "name": "terminalCompletions", "$ref": "request-completion-vector" }
@@ -3516,50 +3516,50 @@
       "providerInterpretation": "opaque-bytes"
     },
     {
-      "name": "transfer-data-chunk-v1",
+      "name": "relocation-data-chunk-v1",
       "magic": [90, 76, 84, 67],
       "formatVersion": 1,
       "flags": 0,
       "byteOrder": "big-endian",
       "bodyLengthType": { "$ref": "u32" },
-      "maximumEncodedBytes": { "$bound": "transferChunkEnvelopeBytes" },
-      "body": { "$ref": "transfer-data-chunk-v1" },
+      "maximumEncodedBytes": { "$bound": "relocationChunkEnvelopeBytes" },
+      "body": { "$ref": "relocation-data-chunk-v1" },
       "checksum": {
         "algorithm": "crc32c-castagnoli",
         "encoding": "u32-big-endian",
         "coverage": "magic-through-body",
         "position": "trailing"
       },
-      "goldenFixture": "golden/transfer-data-chunk-v1.json",
+      "goldenFixture": "golden/relocation-data-chunk-v1.json",
       "providerInterpretation": "opaque-bytes"
     },
     {
-      "name": "transfer-manifest-v1",
+      "name": "relocation-manifest-v1",
       "magic": [90, 76, 84, 77],
       "formatVersion": 1,
       "flags": 0,
       "byteOrder": "big-endian",
       "bodyLengthType": { "$ref": "u32" },
-      "maximumEncodedBytes": { "$bound": "transferManifestBytes" },
-      "body": { "$ref": "transfer-manifest-v1" },
+      "maximumEncodedBytes": { "$bound": "relocationManifestBytes" },
+      "body": { "$ref": "relocation-manifest-v1" },
       "checksum": {
         "algorithm": "crc32c-castagnoli",
         "encoding": "u32-big-endian",
         "coverage": "magic-through-body",
         "position": "trailing"
       },
-      "goldenFixture": "golden/transfer-manifest-v1.json",
+      "goldenFixture": "golden/relocation-manifest-v1.json",
       "providerInterpretation": "opaque-bytes"
     }
   ],
-  "transferLogicalStreamFormat": {
-    "name": "transfer-envelope-v1",
+  "relocationLogicalStreamFormat": {
+    "name": "relocation-envelope-v1",
     "encoding": "canonical-big-endian-field-stream-without-monolithic-provider-envelope",
-    "body": { "$ref": "transfer-envelope-v1" },
-    "maximumBytes": { "$bound": "transferLogicalBytes" },
+    "body": { "$ref": "relocation-envelope-v1" },
+    "maximumBytes": { "$bound": "relocationLogicalBytes" },
     "chunkSplit": "any-byte-boundary-including-within-frozen-record",
     "replay": "bounded-incremental-decode-without-whole-stream-allocation",
-    "goldenFixture": "golden/transfer-envelope-v1.json"
+    "goldenFixture": "golden/relocation-envelope-v1.json"
   },
   "commands": [
     {
@@ -3834,36 +3834,36 @@
     },
     {
       "id": 30,
-      "name": "transferReady",
+      "name": "relocationReady",
       "domain": "infrastructure",
       "allowedFlags": ["extension"],
       "requiredFlags": ["extension"],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
+        { "name": "relocation", "$ref": "relocation-id" },
         { "name": "targetAttemptGeneration", "$ref": "nonzero-u64" },
-        { "name": "roundKind", "$ref": "transfer-reservation-round-kind" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
-        { "name": "candidate", "$ref": "transfer-reservation-candidate" },
-        { "name": "object", "$ref": "transfer-object-identity" },
-        { "name": "role", "$ref": "transfer-role" },
+        { "name": "roundKind", "$ref": "relocation-reservation-round-kind" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
+        { "name": "candidate", "$ref": "relocation-reservation-candidate" },
+        { "name": "object", "$ref": "relocation-object-identity" },
+        { "name": "role", "$ref": "relocation-role" },
         { "name": "offeredMessages", "$ref": "ordinal-or-zero" },
         { "name": "offeredBytes", "$ref": "ordinal-or-zero" },
         { "name": "participants", "$ref": "participant-vector" },
-        { "name": "extension", "$ref": "transfer-extension" }
+        { "name": "extension", "$ref": "relocation-extension" }
       ],
       "payload": "forbidden"
     },
     {
       "id": 31,
-      "name": "transferData",
+      "name": "relocationData",
       "domain": "infrastructure",
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
+        { "name": "relocation", "$ref": "relocation-id" },
         { "name": "targetAttemptGeneration", "$ref": "nonzero-u64" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
-        { "name": "senderRole", "$ref": "transfer-role" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
+        { "name": "senderRole", "$ref": "relocation-role" },
         { "name": "participantId", "$ref": "nonzero-u64" },
         { "name": "sequence", "$ref": "nonzero-u64" },
         { "name": "record", "$ref": "frozen-record" }
@@ -3872,15 +3872,15 @@
     },
     {
       "id": 32,
-      "name": "transferAck",
+      "name": "relocationAck",
       "domain": "infrastructure",
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
+        { "name": "relocation", "$ref": "relocation-id" },
         { "name": "targetAttemptGeneration", "$ref": "nonzero-u64" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
-        { "name": "senderRole", "$ref": "transfer-role" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
+        { "name": "senderRole", "$ref": "relocation-role" },
         { "name": "participantId", "$ref": "nonzero-u64" },
         { "name": "highWater", "$ref": "ordinal-or-zero" }
       ],
@@ -3904,15 +3904,15 @@
     },
     {
       "id": 34,
-      "name": "transferSeal",
+      "name": "relocationSeal",
       "domain": "infrastructure",
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
+        { "name": "relocation", "$ref": "relocation-id" },
         { "name": "targetAttemptGeneration", "$ref": "nonzero-u64" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
-        { "name": "senderRole", "$ref": "transfer-role" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
+        { "name": "senderRole", "$ref": "relocation-role" },
         { "name": "response", "$ref": "bool8" },
         { "name": "participants", "$ref": "participant-terminal-vector" }
       ],
@@ -3920,16 +3920,16 @@
     },
     {
       "id": 35,
-      "name": "transferComplete",
+      "name": "relocationComplete",
       "domain": "infrastructure",
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
+        { "name": "relocation", "$ref": "relocation-id" },
         { "name": "targetAttemptGeneration", "$ref": "nonzero-u64" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
-        { "name": "senderRole", "$ref": "transfer-role" },
-        { "name": "source", "$ref": "transfer-source-cleanup-fence" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
+        { "name": "senderRole", "$ref": "relocation-role" },
+        { "name": "source", "$ref": "relocation-source-cleanup-fence" },
         { "name": "sourceCleanupState", "$ref": "source-cleanup-state" }
       ],
       "payload": "forbidden"
@@ -3995,40 +3995,40 @@
     },
     {
       "id": 40,
-      "name": "transferPrepare",
+      "name": "relocationPrepare",
       "domain": "infrastructure",
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
+        { "name": "relocation", "$ref": "relocation-id" },
         { "name": "targetAttemptGeneration", "$ref": "nonzero-u64" },
-        { "name": "roundKind", "$ref": "transfer-reservation-round-kind" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
-        { "name": "candidate", "$ref": "transfer-reservation-candidate" },
-        { "name": "initiatorRole", "$ref": "transfer-role" },
-        { "name": "object", "$ref": "transfer-object-identity" },
+        { "name": "roundKind", "$ref": "relocation-reservation-round-kind" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
+        { "name": "candidate", "$ref": "relocation-reservation-candidate" },
+        { "name": "initiatorRole", "$ref": "relocation-role" },
+        { "name": "object", "$ref": "relocation-object-identity" },
         { "name": "sourceNodeRid", "$ref": "rid" },
         { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "requiredMessages", "$ref": "ordinal-or-zero" },
         { "name": "requiredBytes", "$ref": "ordinal-or-zero" },
         { "name": "requirements", "$ref": "participant-vector" },
-        { "name": "transferRoot", "$ref": "transfer-root-pointer" },
+        { "name": "relocationRoot", "$ref": "relocation-root-pointer" },
         { "name": "applicationVersion", "$ref": "application-version" }
       ],
       "payload": "forbidden"
     },
     {
       "id": 41,
-      "name": "transferReserved",
+      "name": "relocationReserved",
       "domain": "infrastructure",
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
+        { "name": "relocation", "$ref": "relocation-id" },
         { "name": "targetAttemptGeneration", "$ref": "nonzero-u64" },
-        { "name": "roundKind", "$ref": "transfer-reservation-round-kind" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
-        { "name": "candidate", "$ref": "transfer-reservation-candidate" },
+        { "name": "roundKind", "$ref": "relocation-reservation-round-kind" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
+        { "name": "candidate", "$ref": "relocation-reservation-candidate" },
         { "name": "reservationGeneration", "$ref": "nonzero-u64" },
         { "name": "participants", "$ref": "participant-vector" }
       ],
@@ -4036,14 +4036,14 @@
     },
     {
       "id": 42,
-      "name": "sessionTransferSeal",
+      "name": "sessionRelocationSeal",
       "domain": "infrastructure",
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
-        { "name": "senderRole", "$ref": "transfer-role" },
+        { "name": "relocation", "$ref": "relocation-id" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
+        { "name": "senderRole", "$ref": "relocation-role" },
         { "name": "actor", "$ref": "actor-route-fence" },
         { "name": "sessionOwnerNodeRid", "$ref": "rid" },
         { "name": "sessionOwnerNodeGeneration", "$ref": "nonzero-u64" },
@@ -4056,13 +4056,13 @@
     },
     {
       "id": 43,
-      "name": "sessionTransferSealed",
+      "name": "sessionRelocationSealed",
       "domain": "infrastructure",
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
+        { "name": "relocation", "$ref": "relocation-id" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
         { "name": "actor", "$ref": "actor-route-fence" },
         { "name": "sessionOwnerNodeRid", "$ref": "rid" },
         { "name": "sessionOwnerNodeGeneration", "$ref": "nonzero-u64" },
@@ -4076,14 +4076,14 @@
     },
     {
       "id": 44,
-      "name": "sessionTransferRoute",
+      "name": "sessionRelocationRoute",
       "domain": "infrastructure",
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
-        { "name": "senderRole", "$ref": "transfer-role" },
+        { "name": "relocation", "$ref": "relocation-id" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
+        { "name": "senderRole", "$ref": "relocation-role" },
         { "name": "actor", "$ref": "actor-ref" },
         { "name": "sessionOwnerNodeRid", "$ref": "rid" },
         { "name": "sessionOwnerNodeGeneration", "$ref": "nonzero-u64" },
@@ -4091,19 +4091,19 @@
         { "name": "sessionOwnerLeaseGeneration", "$ref": "nonzero-u64" },
         { "name": "sessionRid", "$ref": "rid" },
         { "name": "bindingGeneration", "$ref": "nonzero-u64" },
-        { "name": "route", "$ref": "session-transfer-route-update" }
+        { "name": "route", "$ref": "session-relocation-route-update" }
       ],
       "payload": "forbidden"
     },
     {
       "id": 45,
-      "name": "sessionTransferRouted",
+      "name": "sessionRelocationRouted",
       "domain": "infrastructure",
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
+        { "name": "relocation", "$ref": "relocation-id" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
         { "name": "actor", "$ref": "actor-ref" },
         { "name": "sessionOwnerNodeRid", "$ref": "rid" },
         { "name": "sessionOwnerNodeGeneration", "$ref": "nonzero-u64" },
@@ -4111,7 +4111,7 @@
         { "name": "sessionOwnerLeaseGeneration", "$ref": "nonzero-u64" },
         { "name": "sessionRid", "$ref": "rid" },
         { "name": "bindingGeneration", "$ref": "nonzero-u64" },
-        { "name": "action", "$ref": "session-transfer-route-action" },
+        { "name": "action", "$ref": "session-relocation-route-action" },
         { "name": "currentAuthorityOwnerGeneration", "$ref": "nonzero-u64" },
         { "name": "lastAcceptedSessionSequence", "$ref": "ordinal-or-zero" }
       ],
@@ -4124,8 +4124,8 @@
       "allowedFlags": [],
       "requiredFlags": [],
       "body": [
-        { "name": "transfer", "$ref": "transfer-id" },
-        { "name": "coordinator", "$ref": "transfer-coordinator-fence" },
+        { "name": "relocation", "$ref": "relocation-id" },
+        { "name": "coordinator", "$ref": "relocation-coordinator-fence" },
         { "name": "operation", "$ref": "operation-id" },
         { "name": "requestSource", "$ref": "request-source-fence" },
         { "name": "status", "$ref": "reply-relay-ack-status" }
@@ -4133,25 +4133,25 @@
       "payload": "forbidden"
     }
   ],
-  "transferStateMachine": {
-    "phaseType": { "$ref": "transfer-phase" },
+  "relocationStateMachine": {
+    "phaseType": { "$ref": "relocation-phase" },
     "authorityCommitOrder": [
       {
         "phase": "preparing",
         "after": ["local-admission-seal", "accepted-boundaries-fixed"],
-        "transfer": "absent",
+        "relocation": "absent",
         "targetReservation": "absent"
       },
       {
         "phase": "captured",
-        "after": ["immutable-transfer-put"],
-        "transfer": "present",
+        "after": ["immutable-relocation-put"],
+        "relocation": "present",
         "targetReservation": "absent"
       },
       {
         "phase": "prepared",
-        "after": ["transfer-reserved-ack-validated"],
-        "transfer": "present",
+        "after": ["relocation-reserved-ack-validated"],
+        "relocation": "present",
         "targetReservation": "present"
       }
     ],
@@ -4173,7 +4173,7 @@
     ],
     "commandRules": [
       {
-        "command": "sessionTransferSeal",
+        "command": "sessionRelocationSeal",
         "senderRoles": ["source", "coordinator"],
         "phases": ["preparing"],
         "duplicate": "idempotent-if-identical-else-protocol-error",
@@ -4181,15 +4181,15 @@
         "loss": "retransmit-until-sealed-or-deadline"
       },
       {
-        "command": "sessionTransferSealed",
+        "command": "sessionRelocationSealed",
         "senderKind": "sessionOwner",
         "phases": ["preparing"],
         "duplicate": "idempotent-if-identical-else-protocol-error",
-        "reorder": "hold-until-matching-sessionTransferSeal",
+        "reorder": "hold-until-matching-sessionRelocationSeal",
         "loss": "retransmit-until-captured-or-abort"
       },
       {
-        "command": "sessionTransferRoute",
+        "command": "sessionRelocationRoute",
         "senderRoles": ["source", "target", "coordinator"],
         "phases": ["aborted", "completed"],
         "actionRules": {
@@ -4201,7 +4201,7 @@
         "loss": "retransmit-until-routed-ack"
       },
       {
-        "command": "sessionTransferRouted",
+        "command": "sessionRelocationRouted",
         "senderKind": "sessionOwner",
         "phases": ["aborted", "completed"],
         "actionRules": {
@@ -4213,7 +4213,7 @@
         "loss": "retransmit-until-source-reopen-or-target-ready"
       },
       {
-        "command": "transferPrepare",
+        "command": "relocationPrepare",
         "senderRoles": ["source", "coordinator"],
         "phases": ["captured", "prepared", "committed", "activating", "activated", "cleaning"],
         "duplicate": "idempotent-if-identical-else-protocol-error",
@@ -4221,15 +4221,15 @@
         "loss": "retransmit-until-deadline"
       },
       {
-        "command": "transferReady",
+        "command": "relocationReady",
         "senderRoles": ["source", "target", "coordinator"],
         "phases": ["captured", "prepared", "committed", "activating", "activated", "cleaning"],
         "duplicate": "idempotent-if-identical-else-protocol-error",
-        "reorder": "hold-until-matching-transferPrepare-or-target-offer",
+        "reorder": "hold-until-matching-relocationPrepare-or-target-offer",
         "loss": "retransmit-until-deadline"
       },
       {
-        "command": "transferReserved",
+        "command": "relocationReserved",
         "senderRoles": ["target"],
         "phases": ["captured", "prepared", "committed", "activating", "activated", "cleaning"],
         "duplicate": "idempotent-if-identical-else-protocol-error",
@@ -4237,18 +4237,18 @@
         "loss": "retransmit-until-prepared-or-deadline"
       },
       {
-        "command": "transferData",
+        "command": "relocationData",
         "senderRoles": ["source", "coordinator"],
         "phases": ["prepared", "committed", "activating"],
-        "duplicate": "idempotent-by-stable-transfer-id-target-attempt-generation-participant-sequence",
+        "duplicate": "idempotent-by-stable-relocation-id-target-attempt-generation-participant-sequence",
         "reorder": "stage-by-participant-sequence",
-        "loss": "recover-from-transfer-or-retransmit"
+        "loss": "recover-from-relocation-or-retransmit"
       },
       {
-        "command": "transferAck",
+        "command": "relocationAck",
         "senderRoles": ["target"],
         "phases": ["prepared", "committed", "activating"],
-        "duplicate": "keep-monotonic-high-water-by-stable-transfer-id-target-attempt-generation-participant",
+        "duplicate": "keep-monotonic-high-water-by-stable-relocation-id-target-attempt-generation-participant",
         "reorder": "ignore-lower-high-water",
         "loss": "data-retransmit-regenerates-ack"
       },
@@ -4267,10 +4267,10 @@
           "loss": "source-operation-deadline-only-no-replay-restart"
           },
           {
-            "context": "maintenanceTransfer",
+            "context": "maintenanceRelocation",
             "senderRoles": ["target"],
             "phases": ["committed", "activating", "activated", "cleaning"],
-            "duplicate": "terminal-once-by-stable-transfer-id-operation-id-target-attempt-is-peer-fence-only",
+            "duplicate": "terminal-once-by-stable-relocation-id-operation-id-target-attempt-is-peer-fence-only",
             "reorder": "hold-until-operation-known",
             "loss": "recover-from-durable-completion"
           }
@@ -4280,12 +4280,12 @@
         "command": "replyRelayAck",
         "senderKind": "requestSource",
         "phases": ["committed", "activating", "activated", "cleaning"],
-        "duplicate": "idempotent-by-stable-transfer-id-operation-id-and-status",
+        "duplicate": "idempotent-by-stable-relocation-id-operation-id-and-status",
         "reorder": "hold-until-matching-durable-completion-or-retransmit-causes-source-reack",
         "loss": "target-retransmits-terminal-until-ack-or-exact-request-source-owner-lease-expiry"
       },
       {
-        "command": "transferSeal",
+        "command": "relocationSeal",
         "senderRoles": ["source", "target", "coordinator"],
         "phases": ["prepared", "committed", "activating"],
         "duplicate": "idempotent-if-identical-else-protocol-error",
@@ -4293,10 +4293,10 @@
         "loss": "retransmit-until-deadline"
       },
       {
-        "command": "transferComplete",
+        "command": "relocationComplete",
         "senderRoles": ["source", "coordinator"],
         "phases": ["activated", "cleaning", "completed"],
-        "duplicate": "idempotent-by-stable-transfer-id-target-attempt-generation-and-source-cleanup-state",
+        "duplicate": "idempotent-by-stable-relocation-id-target-attempt-generation-and-source-cleanup-state",
         "reorder": "hold-until-activated-sealed-and-durable-source-cleanup-terminal",
         "loss": "recover-from-durable-authority"
       }

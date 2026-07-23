@@ -74,7 +74,7 @@ const fixtures = {
         error: "unknown-framework-error",
       },
       {
-        name: "unknownAfterTransferDataLost",
+        name: "unknownAfterRelocationDataLost",
         wireValue: frameworkErrors.at(-1).value + 1,
         error: "unknown-framework-error",
       },

@@ -10,7 +10,7 @@
 | [Configuration과 host](interfaces/02-configuration-host.ko.md) | ASP.NET Core 등록, package 경계, DI와 startup |
 | [Topology configuration](interfaces/03-configuration-topology.ko.md) | RouteMesh·ClientServer·fanout builder와 runtime option |
 | [Location과 maintenance](interfaces/08-location-maintenance.ko.md) | descriptor, owner authority와 Instance location |
-| [Authority와 transfer](interfaces/08-authority-transfer.ko.md) | opaque CAS와 24시간 Transfer Store |
+| [Authority와 relocation](interfaces/08-authority-relocation.ko.md) | opaque CAS와 24시간 Relocation Store |
 | [Host monitoring](interfaces/10-topology-monitoring.ko.md) | host state, Retire·Shutdown result, snapshot과 event |
 
 Stream connector client는 별도 package이며
@@ -27,8 +27,9 @@ Stream connector client는 별도 package이며
 - metadata는 handler에 변경할 수 없는 `ZLinkMessageMetadata` snapshot으로 전달한다.
 - Object role은 MeshNode마다 `None`, `Client`, `Server` 중 하나이며 Client와 Server는 Redis location store
   instance를 명시적으로 등록한다.
-- Actor·User Spot·Instance Spot의 일반 message는 global ID만 받는다. Manager create는 stable type과 optional
-  Mesh·placement를 받고 remote placement를 수행하며 exact mutation은 `ActorRef` 또는 `SpotRef`를 받는다.
+- Actor·User Spot·Instance Spot의 일반 message는 global ID만 받는다. Actor와 User Spot의 manager create는
+  stable type과 optional Mesh·placement를 받고 remote placement를 수행하며 exact mutation은 `ActorRef` 또는
+  `SpotRef`를 받는다. Missing Instance Spot은 Spot 전용 fluent call에서 activation을 명시한다.
 - Host lifecycle은 `IZLinkFrameworkRuntime`의 `RetireAsync(...)`와 `ShutdownAsync(...)`가 소유한다.
 - Framework service runtime은 bindings의 public raw socket API만 사용하고 Core service C API, private SPI,
   reflection과 native symbol 직접 호출을 사용하지 않는다.

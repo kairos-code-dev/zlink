@@ -31,7 +31,7 @@ const uniqueSorted = values => [...new Set(values)]
   .sort((left, right) => left.localeCompare(right, 'en'));
 const sourceLine = (source, offset) => source.slice(0, offset).split(/\r?\n/u).length;
 const requiredScenarioIds = () => [
-  ...Array.from({length: 68}, (_, index) => `V11-E2E-M${String(index + 1).padStart(2, '0')}`),
+  ...Array.from({length: 74}, (_, index) => `V11-E2E-M${String(index + 1).padStart(2, '0')}`),
   ...Array.from({length: 6}, (_, index) => `V11-E2E-L${String(index + 1).padStart(2, '0')}`),
   ...Array.from({length: 38}, (_, index) => `V11-RACE-${String(index + 1).padStart(2, '0')}`),
 ].sort((left, right) => left.localeCompare(right, 'en'));

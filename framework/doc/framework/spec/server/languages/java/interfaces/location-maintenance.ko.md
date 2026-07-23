@@ -18,8 +18,18 @@ public final class ZLinkLocationOptions {
     void setOwnerLeaseRenewTimeout(Duration value);
     Duration routeCacheMaxAge();
     void setRouteCacheMaxAge(Duration value);
-    Duration transferForwardingWindow();
-    void setTransferForwardingWindow(Duration value);
+    Duration relocationForwardingWindow();
+    void setRelocationForwardingWindow(Duration value);
+    int maxActiveOutboundRelocations();
+    void setMaxActiveOutboundRelocations(int value);
+    int maxActiveInboundRelocations();
+    void setMaxActiveInboundRelocations(int value);
+    int maxConcurrentRelocationCaptures();
+    void setMaxConcurrentRelocationCaptures(int value);
+    int maxConcurrentRelocationRestores();
+    void setMaxConcurrentRelocationRestores(int value);
+    long maxRelocationPayloadInFlightBytes();
+    void setMaxRelocationPayloadInFlightBytes(long value);
 }
 
 public final class ZLinkRedisLocationOptions {
@@ -43,18 +53,18 @@ public final class ZLinkRedisLocationStore
     public void close();
 }
 
-public final class ZLinkRedisTransferOptions {
+public final class ZLinkRedisRelocationOptions {
     public String connectionString();
-    public ZLinkRedisTransferOptions setConnectionString(String value);
+    public ZLinkRedisRelocationOptions setConnectionString(String value);
     public String keyPrefix();
-    public ZLinkRedisTransferOptions setKeyPrefix(String value);
+    public ZLinkRedisRelocationOptions setKeyPrefix(String value);
     public Duration commandTimeout();
-    public ZLinkRedisTransferOptions setCommandTimeout(Duration value);
+    public ZLinkRedisRelocationOptions setCommandTimeout(Duration value);
 }
 
-public final class ZLinkRedisTransferStore
-    implements ZLinkTransferStore, AutoCloseable {
-    public ZLinkRedisTransferStore(ZLinkRedisTransferOptions options);
+public final class ZLinkRedisRelocationStore
+    implements ZLinkRelocationStore, AutoCloseable {
+    public ZLinkRedisRelocationStore(ZLinkRedisRelocationOptions options);
     public void close();
 }
 ```
@@ -62,13 +72,17 @@ public final class ZLinkRedisTransferStore
 `ZLinkLocationOptions` 기본값은 `ownerLeaseRenewInterval=5초`, `ownerLeaseTtl=15초`,
 `pollingInterval=1초`, `storeFailureGrace=30초`, `ownerLeaseFencingMargin=5초`,
 `ownerLeaseRenewTimeout=3초`다. 첫 값은 Location owner lease 갱신 주기이며 service liveness heartbeat가 아니다.
-`routeCacheMaxAge` 기본값은 15초, `transferForwardingWindow` 기본값은 30초다. 0은 각각 cache 또는
+`routeCacheMaxAge` 기본값은 15초, `relocationForwardingWindow` 기본값은 30초다. 0은 각각 cache 또는
 forwarding을 끈다. 둘 다 양수이면 cache age가 forwarding window보다 최소 5초 작아야 한다.
+Relocation 제한의 기본값은 active outbound 64, active inbound 64, concurrent Capture 8, concurrent Restore 8,
+encoded payload in flight 268,435,456 bytes다. 다섯 값은 모두 양수여야 하며 같은 process의 모든 MeshNode가
+공유한다. Framework는 active unit, callback과 byte permit을 모두 얻기 전에는 source queue를 seal하지 않는다.
+Byte 한도를 넘는 단일 User Spot aggregate는 다른 relocation payload 단계와 겹치지 않는 조건으로 단독 실행한다.
 Location Store와 owner lease runtime을 사용하는 모든 host는
 `ownerLeaseRenewInterval + ownerLeaseRenewTimeout < ownerLeaseTtl - ownerLeaseFencingMargin`을 startup에서
 검증한다.
 
-공식 Redis extension은 `ZLinkRedisLocationStore`와 `ZLinkRedisTransferStore`를 별도 class와 options로 제공한다.
+공식 Redis extension은 `ZLinkRedisLocationStore`와 `ZLinkRedisRelocationStore`를 별도 class와 options로 제공한다.
 한 class가 두 interface를 함께 구현하지 않는다. 두 Store는 같은 Redis deployment를 서로 다른 key prefix로
 사용하거나 서로 다른 Redis를 사용할 수 있다. Connection 공유는 구현 세부 사항이고 correctness 조건이 아니다.
 같은 deployment에서 prefix가 겹치면 socket bind 전에 startup configuration error로 실패한다.
@@ -177,28 +191,28 @@ public interface ZLinkAuthorityStore {
         ZLinkAggregateFence fence, ZLinkStoreCancellation cancellation);
 }
 
-public record ZLinkTransferStored(
+public record ZLinkRelocationStored(
     String reference, long checksumCrc32c, Instant expiresAt, Instant storeNow) {}
-public sealed interface ZLinkTransferReadResult
-    permits ZLinkTransferFound, ZLinkTransferMissing {}
-public record ZLinkTransferFound(byte[] payload)
-    implements ZLinkTransferReadResult {}
-public record ZLinkTransferMissing() implements ZLinkTransferReadResult {}
-public enum ZLinkTransferDeleteResult { DELETED, MISSING }
-public sealed interface ZLinkTransferRenewResult
-    permits ZLinkTransferRenewed, ZLinkTransferRenewMissing {}
-public record ZLinkTransferRenewed(Instant expiresAt, Instant storeNow)
-    implements ZLinkTransferRenewResult {}
-public record ZLinkTransferRenewMissing() implements ZLinkTransferRenewResult {}
+public sealed interface ZLinkRelocationReadResult
+    permits ZLinkRelocationFound, ZLinkRelocationMissing {}
+public record ZLinkRelocationFound(byte[] payload)
+    implements ZLinkRelocationReadResult {}
+public record ZLinkRelocationMissing() implements ZLinkRelocationReadResult {}
+public enum ZLinkRelocationDeleteResult { DELETED, MISSING }
+public sealed interface ZLinkRelocationRenewResult
+    permits ZLinkRelocationRenewed, ZLinkRelocationRenewMissing {}
+public record ZLinkRelocationRenewed(Instant expiresAt, Instant storeNow)
+    implements ZLinkRelocationRenewResult {}
+public record ZLinkRelocationRenewMissing() implements ZLinkRelocationRenewResult {}
 
-public interface ZLinkTransferStore {
-    CompletionStage<ZLinkTransferStored> put(
+public interface ZLinkRelocationStore {
+    CompletionStage<ZLinkRelocationStored> put(
         byte[] payload, Duration retention, ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkTransferReadResult> get(
+    CompletionStage<ZLinkRelocationReadResult> get(
         String reference, ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkTransferRenewResult> renew(
+    CompletionStage<ZLinkRelocationRenewResult> renew(
         String reference, Duration retention, ZLinkStoreCancellation cancellation);
-    CompletionStage<ZLinkTransferDeleteResult> delete(
+    CompletionStage<ZLinkRelocationDeleteResult> delete(
         String reference, ZLinkStoreCancellation cancellation);
 }
 
@@ -231,9 +245,9 @@ public enum ZLinkObjectMaintenancePolicyKind {
 
 public record ZLinkObjectCapability(
     ZLinkPlacementObjectKind objectKind,
-    String type,
+    String stableType,
     ZLinkObjectMaintenancePolicyKind policy,
-    Set<String> readableStateContractIds,
+    boolean hasSnapshotAdapter,
     Set<String> placementProfiles,
     Integer activeLimit,
     Integer pendingLimit) {}
@@ -469,8 +483,10 @@ public interface ZLinkLocationStore extends
 
 `ZLinkLocationStore`가 MeshNode descriptor, owner lease와 generic authority capability를 함께 제공한다.
 User·Instance Spot은 global `SpotRid`에서 파생한 하나의 authority key를 공유한다. User Spot
-create와 Instance cold claim은 같은 row에 `NEW_OBJECT` compare-exchange를 수행하므로 kind conflict와 object
-generation 증가가 원자적으로 결정된다. Actor direct resolve도 canonical authority key를 읽는다. Operational
+create와 Instance cold claim은 generic `reserve`가 같은 row의 `Missing → Creating`, object generation 발급과
+target pending capacity 증가를 한 transaction으로 처리한다. 성공한 activation은 같은 reservation의 `commit`으로
+`Ready`와 active capacity를 함께 공개하고 실패는 exact fence의 `abort`로 정리한다. 따라서 kind conflict,
+generation과 capacity를 단일-key `NEW_OBJECT` CAS와 별도 capacity mutation으로 나누지 않는다. Actor direct resolve도 canonical authority key를 읽는다. Operational
 Spot·Actor 목록은 Framework가 authority enumeration과 opaque payload를 decode한 projection이며 routing
 authority가 아니다. `ZLinkSpotLocation`은 이 projection type이고 provider write·remove·resolve interface가
 아니다. `ZLinkSpotLocation.spotGeneration`, `SpotRef.objectGeneration()`과
@@ -487,17 +503,17 @@ interface를 추가로 구현한다. Host가 별도 `ZLinkAuthorityStore` instan
 Unconditional write와 delete는 제공하지 않는다. Provider는
 payload를 해석하지 않고 store clock과 current value를 같은 operation 결과로 반환한다. Authority row는
 TTL을 갖지 않고 explicit fenced delete가 성공할 때까지 유지된다. Owner·coordinator lease는 별도 token row에
-저장하며 lease 만료나 reclaim이 authority row를 삭제하거나 수정하지 않는다. Transfer
+저장하며 lease 만료나 reclaim이 authority row를 삭제하거나 수정하지 않는다. Relocation
 put과 renew의 retention은 Framework가 24시간으로 전달하며 별도 public setting을 제공하지 않는다. Current
 authority reference를 확인한 coordinator만 renew를 호출하고 missing reference는
-`ZLinkTransferRenewMissing` 정상 결과다. `ZLinkTransferRenewed`는 provider clock의 새 expiry와 Store
+`ZLinkRelocationRenewMissing` 정상 결과다. `ZLinkRelocationRenewed`는 provider clock의 새 expiry와 Store
 time을 반환하며 runtime은 local clock으로 provider expiry를 추측하지 않는다.
 
-Framework는 logical transfer를 immutable 64 MiB chunk 최대 4096개와 root manifest로 내부에서 나누므로
-logical state ceiling은 256 GiB다. `ZLinkTransferStore`의 opaque put/get interface는 바꾸지 않으며 chunk
+Framework는 logical relocation을 immutable 64 MiB chunk 최대 4096개와 root manifest로 내부에서 나누므로
+logical state ceiling은 256 GiB다. `ZLinkRelocationStore`의 opaque put/get interface는 바꾸지 않으며 chunk
 크기, 개수와 manifest를 설정하는 public option도 제공하지 않는다. Capture가 ceiling을 넘으면 seal을 되돌려
 normal messaging을 다시 허용하고 Retire 결과를 `BLOCKED`로 종료한다. 일반 message의 negotiated effective
-bound는 transfer chunk 크기 때문에 줄이지 않는다.
+bound는 relocation chunk 크기 때문에 줄이지 않는다.
 
 Missing read는 `storeNow`만 반환하고 fake StoreVersion을 갖지 않는다. `compareExchange`는
 `ZLinkAuthorityExpectation`을 받는 overload만 제공한다. `NEW_OBJECT`는
@@ -524,21 +540,21 @@ Mutable buffer를 사용하는 adapter는 public boundary에서 snapshot을 만�
 operation은 provider를 호출하지 않고 I/O와 commit을 수행하지 않는다. Operation이 시작된 뒤 waiter
 cancellation이나 error가 발생하면 commit 여부는 unknown이며 no-commit을 보장하지 않는다. Authority CAS는
 같은 key와 expected StoreVersion을 exact read해 결과를 reconcile한 뒤 필요하면 retry한다. Content-addressed
-transfer put은 같은 content를 read·verify한 뒤 retry한다. Authority에 연결되지 않은 committed put은 orphan으로
+relocation put은 같은 content를 read·verify한 뒤 retry한다. Authority에 연결되지 않은 committed put은 orphan으로
 retention까지 유지한 뒤 cleanup한다. 이 동작을 위한 public result는 추가하지 않는다.
 
-모든 cross-node Actor·Spot 이동은 Transfer Store를 사용한다. `RECREATE`도 accepted journal과 recovery payload를
-저장하고 `SNAPSHOT`은 application state를 추가한다. Same-node Actor join에는 Transfer payload를 만들지 않으며
+모든 cross-node Actor·Spot 이동은 Relocation Store를 사용한다. `RECREATE`도 accepted journal과 recovery payload를
+저장하고 `SNAPSHOT`은 application state를 추가한다. Same-node Actor join에는 Relocation payload를 만들지 않으며
 `DISABLED` cross-node 이동은 capture 전에 거부한다. Runtime은 immutable root와 manifest를 먼저 저장하고
 reference·checksum·retention을 검증한 뒤 Location authority CAS 한 번으로 publish한다. Aggregate prepare의
 `participants`는 Location Store가 소유하는 bounded canonical participant set이고 `inventoryDigest`는 participant별
-mutation까지 포함한 exact 32-byte SHA-256이다. Transfer manifest의 inventory는 payload lookup projection일 뿐
+mutation까지 포함한 exact 32-byte SHA-256이다. Relocation manifest의 inventory는 payload lookup projection일 뿐
 authority가 아니며 두 digest가 일치해야 restore와 replay를 시작한다.
 
 CAS conflict 전에 저장된 root는 orphan retention으로 제거한다. Root 교체는 new root 저장, Location reference CAS,
-old root cleanup 순서이며 삭제는 Location reference release CAS 뒤 Transfer delete 순서다. 두 Store 사이의 transaction이나
+old root cleanup 순서이며 삭제는 Location reference release CAS 뒤 Relocation delete 순서다. 두 Store 사이의 transaction이나
 2PC는 요구하지 않는다. Published reference가 permanent missing이거나 checksum·inventory digest가 다르면
-non-retriable `TransferDataLost`로 seal하며 이전 owner로 rollback하지 않는다.
+non-retriable `RelocationDataLost`로 seal하며 이전 owner로 rollback하지 않는다.
 
 Framework는 host process lifecycle마다 새 owner ID를 만들고 application이 owner ID를 설정하거나
 이전 lifecycle의 값을 재사용하는 API를 제공하지 않는다. 한 host의 모든
@@ -577,18 +593,19 @@ Provider가 cursor가 가리키는 scan을 만료시켰으면 이어지는 page 
 한 authority opaque payload의 encoded 크기는 최대 1 MiB다. Scan `limit`은 `1..1000`이고 provider는 encoded
 page 4 MiB에 먼저 도달하면 요청보다 적은 entry와 `nextCursor`를 반환한다. 이 byte limit을 바꾸는
 public option은 없다. Hot authority row는 compact metadata와 replay cursor만 보관하며 complete terminal reply
-bytes는 transfer stream에 저장한다.
+bytes는 relocation stream에 저장한다.
 
-MeshNode의 `objectCapabilities`는 Actor와 Instance Spot을 object kind와 type별로 구분하고 maintenance policy,
-읽을 수 있는 state contract ID 집합과 current capacity를 같은 항목에 둔다. Flat type과 state contract set을
-cross-product로 조합하지 않는다.
+MeshNode의 `objectCapabilities`는 Actor·User Spot·Instance Spot을 object kind와 type별로 구분하고 maintenance
+policy, Snapshot adapter 등록 여부, placement profile과 type별 capacity limit을 같은 항목에 둔다.
+`hasSnapshotAdapter`는 target에 해당 object kind의 adapter가 등록되어 있는지만 나타내며 application state의
+format, version이나 contract ID를 광고하지 않는다.
 
 MeshNode descriptor는 `ZLinkFrameworkRuntimeState` 하나로 lifecycle 상태를 나타낸다. 별도 `draining`
 boolean을 두지 않으므로 서로 모순되는 상태 조합을 만들 수 없다.
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
-ChannelName key set, Spot type set와 object capability의 kind·type·policy·readable contract set은 첫 admission 뒤
-해당 lifecycle에서 바뀌지 않는다. Channel weight 값, capability capacity, maintenance wave와 runtime state만
+ChannelName key set, Spot type set와 object capability의 kind·type·policy·Snapshot adapter 등록 여부·profile·limit은
+첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight 값, capability capacity, maintenance wave와 runtime state만
 mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고
 `descriptorRevision`을 strictly 증가시켜야 한다. Provider는 stale revision이나 immutable field 변경을 원자적으로
 거부하며 일부 field만 적용하지 않는다. ClientServer와 fanout descriptor도 같은 identity·revision fence를
@@ -601,8 +618,8 @@ Application이 값을 선택하는 option은 없다. 순서를 비교하는 값�
 `Long.MAX_VALUE`인 상태에서 다음 값이 필요하면 host를 `ERROR`로 seal하고 wrap하지 않는다. Runtime은
 lifetime token의 source를 application callback에 노출하지 않는다.
 
-JVM runtime은 owner와 transfer를 같은 authority row에서 `Preparing`, `Captured`, `Prepared`, `Committed`,
-`Activating`, `Activated`, `Cleaning`, `Completed`, `Aborted` phase로 진행한다. 별도 actor-transfer row나
+JVM runtime은 owner와 relocation을 같은 authority row에서 `Preparing`, `Captured`, `Prepared`, `Committed`,
+`Activating`, `Activated`, `Cleaning`, `Completed`, `Aborted` phase로 진행한다. 별도 actor-relocation row나
 application이 조립하는 owner token을 만들지 않는다. Location owner lease와 service liveness는 서로 다른
 계약이다.
 
@@ -635,8 +652,8 @@ public final class systems.zlink.framework.locations.ZLinkLocationOptions {
   public void setOwnerLeaseRenewTimeout(java.time.Duration);
   public java.time.Duration routeCacheMaxAge();
   public void setRouteCacheMaxAge(java.time.Duration);
-  public java.time.Duration transferForwardingWindow();
-  public void setTransferForwardingWindow(java.time.Duration);
+  public java.time.Duration relocationForwardingWindow();
+  public void setRelocationForwardingWindow(java.time.Duration);
 }
 public final class systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions {
   public systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions();
@@ -647,14 +664,14 @@ public final class systems.zlink.framework.locations.redis.ZLinkRedisLocationOpt
   public java.time.Duration commandTimeout();
   public systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions setCommandTimeout(java.time.Duration);
 }
-public final class systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions {
-  public systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions();
+public final class systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions {
+  public systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions();
   public java.lang.String connectionString();
-  public systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions setConnectionString(java.lang.String);
+  public systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions setConnectionString(java.lang.String);
   public java.lang.String keyPrefix();
-  public systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions setKeyPrefix(java.lang.String);
+  public systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions setKeyPrefix(java.lang.String);
   public java.time.Duration commandTimeout();
-  public systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions setCommandTimeout(java.time.Duration);
+  public systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions setCommandTimeout(java.time.Duration);
 }
 public final class systems.zlink.framework.locations.ZLinkPlacementObjectKind extends java.lang.Enum<systems.zlink.framework.locations.ZLinkPlacementObjectKind> {
   public static final systems.zlink.framework.locations.ZLinkPlacementObjectKind ACTOR;
@@ -681,14 +698,14 @@ public final class systems.zlink.framework.locations.ZLinkObjectMaintenancePolic
   public int value();
 }
 public final class systems.zlink.framework.locations.ZLinkObjectCapability extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkObjectCapability(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind, java.util.Set<java.lang.String>, java.util.Set<java.lang.String>, java.lang.Integer, java.lang.Integer);
+  public systems.zlink.framework.locations.ZLinkObjectCapability(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind, boolean, java.util.Set<java.lang.String>, java.lang.Integer, java.lang.Integer);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
   public systems.zlink.framework.locations.ZLinkPlacementObjectKind objectKind();
-  public java.lang.String type();
+  public java.lang.String stableType();
   public systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind policy();
-  public java.util.Set<java.lang.String> readableStateContractIds();
+  public boolean hasSnapshotAdapter();
   public java.util.Set<java.lang.String> placementProfiles();
   public java.lang.Integer activeLimit();
   public java.lang.Integer pendingLimit();
@@ -851,12 +868,12 @@ public final class systems.zlink.framework.locations.redis.ZLinkRedisLocationSto
   public java.util.concurrent.CompletionStage<java.lang.Long> getChangeStamp(systems.zlink.framework.locations.ZLinkLocationChangeStampScope);
   public void close();
 }
-public final class systems.zlink.framework.locations.redis.ZLinkRedisTransferStore implements systems.zlink.framework.locations.ZLinkTransferStore, java.lang.AutoCloseable {
-  public systems.zlink.framework.locations.redis.ZLinkRedisTransferStore(systems.zlink.framework.locations.redis.ZLinkRedisTransferOptions);
-  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferStored> put(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferReadResult> get(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferRenewResult> renew(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferDeleteResult> delete(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
+public final class systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore implements systems.zlink.framework.locations.ZLinkRelocationStore, java.lang.AutoCloseable {
+  public systems.zlink.framework.locations.redis.ZLinkRedisRelocationStore(systems.zlink.framework.locations.redis.ZLinkRedisRelocationOptions);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationStored> put(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationReadResult> get(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationRenewResult> renew(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationDeleteResult> delete(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public void close();
 }
 public interface systems.zlink.framework.locations.ZLinkStoreCancellation {
@@ -1010,8 +1027,8 @@ public interface systems.zlink.framework.locations.ZLinkAuthorityStore {
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregateCommitResult> commitAggregate(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregateAbortResult> abortAggregate(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
 }
-public final class systems.zlink.framework.locations.ZLinkTransferStored extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkTransferStored(java.lang.String, long, java.time.Instant, java.time.Instant);
+public final class systems.zlink.framework.locations.ZLinkRelocationStored extends java.lang.Record {
+  public systems.zlink.framework.locations.ZLinkRelocationStored(java.lang.String, long, java.time.Instant, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -1020,50 +1037,50 @@ public final class systems.zlink.framework.locations.ZLinkTransferStored extends
   public java.time.Instant expiresAt();
   public java.time.Instant storeNow();
 }
-public sealed interface systems.zlink.framework.locations.ZLinkTransferReadResult
-    permits systems.zlink.framework.locations.ZLinkTransferFound,
-            systems.zlink.framework.locations.ZLinkTransferMissing {
+public sealed interface systems.zlink.framework.locations.ZLinkRelocationReadResult
+    permits systems.zlink.framework.locations.ZLinkRelocationFound,
+            systems.zlink.framework.locations.ZLinkRelocationMissing {
 }
-public final class systems.zlink.framework.locations.ZLinkTransferFound extends java.lang.Record implements systems.zlink.framework.locations.ZLinkTransferReadResult {
-  public systems.zlink.framework.locations.ZLinkTransferFound(byte[]);
+public final class systems.zlink.framework.locations.ZLinkRelocationFound extends java.lang.Record implements systems.zlink.framework.locations.ZLinkRelocationReadResult {
+  public systems.zlink.framework.locations.ZLinkRelocationFound(byte[]);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
   public byte[] payload();
 }
-public final class systems.zlink.framework.locations.ZLinkTransferMissing extends java.lang.Record implements systems.zlink.framework.locations.ZLinkTransferReadResult {
-  public systems.zlink.framework.locations.ZLinkTransferMissing();
+public final class systems.zlink.framework.locations.ZLinkRelocationMissing extends java.lang.Record implements systems.zlink.framework.locations.ZLinkRelocationReadResult {
+  public systems.zlink.framework.locations.ZLinkRelocationMissing();
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
 }
-public final class systems.zlink.framework.locations.ZLinkTransferDeleteResult extends java.lang.Enum<systems.zlink.framework.locations.ZLinkTransferDeleteResult> {
-  public static final systems.zlink.framework.locations.ZLinkTransferDeleteResult DELETED;
-  public static final systems.zlink.framework.locations.ZLinkTransferDeleteResult MISSING;
-  public static systems.zlink.framework.locations.ZLinkTransferDeleteResult[] values();
-  public static systems.zlink.framework.locations.ZLinkTransferDeleteResult valueOf(java.lang.String);
+public final class systems.zlink.framework.locations.ZLinkRelocationDeleteResult extends java.lang.Enum<systems.zlink.framework.locations.ZLinkRelocationDeleteResult> {
+  public static final systems.zlink.framework.locations.ZLinkRelocationDeleteResult DELETED;
+  public static final systems.zlink.framework.locations.ZLinkRelocationDeleteResult MISSING;
+  public static systems.zlink.framework.locations.ZLinkRelocationDeleteResult[] values();
+  public static systems.zlink.framework.locations.ZLinkRelocationDeleteResult valueOf(java.lang.String);
 }
-public sealed interface systems.zlink.framework.locations.ZLinkTransferRenewResult permits systems.zlink.framework.locations.ZLinkTransferRenewed, systems.zlink.framework.locations.ZLinkTransferRenewMissing {
+public sealed interface systems.zlink.framework.locations.ZLinkRelocationRenewResult permits systems.zlink.framework.locations.ZLinkRelocationRenewed, systems.zlink.framework.locations.ZLinkRelocationRenewMissing {
 }
-public final class systems.zlink.framework.locations.ZLinkTransferRenewed extends java.lang.Record implements systems.zlink.framework.locations.ZLinkTransferRenewResult {
-  public systems.zlink.framework.locations.ZLinkTransferRenewed(java.time.Instant, java.time.Instant);
+public final class systems.zlink.framework.locations.ZLinkRelocationRenewed extends java.lang.Record implements systems.zlink.framework.locations.ZLinkRelocationRenewResult {
+  public systems.zlink.framework.locations.ZLinkRelocationRenewed(java.time.Instant, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
   public java.time.Instant expiresAt();
   public java.time.Instant storeNow();
 }
-public final class systems.zlink.framework.locations.ZLinkTransferRenewMissing extends java.lang.Record implements systems.zlink.framework.locations.ZLinkTransferRenewResult {
-  public systems.zlink.framework.locations.ZLinkTransferRenewMissing();
+public final class systems.zlink.framework.locations.ZLinkRelocationRenewMissing extends java.lang.Record implements systems.zlink.framework.locations.ZLinkRelocationRenewResult {
+  public systems.zlink.framework.locations.ZLinkRelocationRenewMissing();
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
 }
-public interface systems.zlink.framework.locations.ZLinkTransferStore {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferStored> put(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferReadResult> get(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferRenewResult> renew(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkTransferDeleteResult> delete(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
+public interface systems.zlink.framework.locations.ZLinkRelocationStore {
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationStored> put(byte[], java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationReadResult> get(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationRenewResult> renew(java.lang.String, java.time.Duration, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationDeleteResult> delete(java.lang.String, systems.zlink.framework.locations.ZLinkStoreCancellation);
 }
 public interface systems.zlink.framework.locations.ZLinkLocationChangeStampStore {
   public abstract java.util.concurrent.CompletionStage<java.lang.Long> getChangeStamp(systems.zlink.framework.locations.ZLinkLocationChangeStampScope);

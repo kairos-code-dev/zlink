@@ -8,17 +8,17 @@
     "e2e_path": "framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md",
     "outcomes": [
       { "name": "Stopped", "wire_value": 0, "reasons": ["None"] },
-      { "name": "Blocked", "wire_value": 1, "reasons": ["TargetUnavailable", "StoreUnavailable", "TransferDisabled", "StateIncompatible", "DeadlineExceeded", "RuntimeNotReady"] },
-      { "name": "ForceStopped", "wire_value": 2, "reasons": ["DeadlineExceeded", "TransferFailed", "TeardownFailed"] }
+      { "name": "Blocked", "wire_value": 1, "reasons": ["TargetUnavailable", "StoreUnavailable", "RelocationDisabled", "StateIncompatible", "DeadlineExceeded", "RuntimeNotReady"] },
+      { "name": "ForceStopped", "wire_value": 2, "reasons": ["DeadlineExceeded", "RelocationFailed", "TeardownFailed"] }
     ],
     "reasons": [
       { "name": "None", "wire_value": 0 },
       { "name": "TargetUnavailable", "wire_value": 1 },
       { "name": "StoreUnavailable", "wire_value": 2 },
-      { "name": "TransferDisabled", "wire_value": 3 },
+      { "name": "RelocationDisabled", "wire_value": 3 },
       { "name": "StateIncompatible", "wire_value": 4 },
       { "name": "DeadlineExceeded", "wire_value": 5 },
-      { "name": "TransferFailed", "wire_value": 6 },
+      { "name": "RelocationFailed", "wire_value": 6 },
       { "name": "TeardownFailed", "wire_value": 7 },
       { "name": "RuntimeNotReady", "wire_value": 8 }
     ],
@@ -44,24 +44,33 @@
         "public interface IZLinkMeshChannelRoleBuilder",
         "public interface IZLinkSendCall",
         "public interface IZLinkSpotActorLifecycle<TActor>",
+        "public interface IZLinkActorRelocationAdapter<TActor>",
+        "public interface IZLinkSpotRelocationAdapter<TSpot>",
+        "ValueTask OnActorRelocatedAsync(",
+        "public int MaxActiveOutboundRelocations { get; set; } = 64;",
+        "Retiring = 2,",
+        "bool HasSnapshotAdapter",
         "public readonly record struct ActorRef(",
         "public readonly record struct SpotRef(",
         "public interface IZLinkActorManager",
         "public interface IZLinkSpotManager",
+        "public interface IZLinkSpotSendCall",
+        "IZLinkSpotSendCall InstanceSpot();",
+        "IZLinkSpotCreateCall Create(string spotType);",
         "ReserveAsync(",
         "SetRoutingIdPrefix(string prefix)",
         "public interface IZLinkLocationStore",
-        "void AddTransferStore(IZLinkTransferStore store);",
-        "public interface IZLinkTransferStore",
-        "public sealed class ZLinkRedisTransferStore",
+        "void AddRelocationStore(IZLinkRelocationStore store);",
+        "public interface IZLinkRelocationStore",
+        "public sealed class ZLinkRedisRelocationStore",
         "uint ChecksumCrc32c",
         "ZLinkClientServerServerState",
         "ZLinkFanoutPublisherConnectionState"
       ],
       "forbidden_file_fragments": {
-        "05-spots.ko.md": ["InstanceSpotAddress", "public abstract class SpotHandle", "IZLinkSpotHandleResolver"],
+        "05-spots.ko.md": ["InstanceSpotAddress", "public abstract class SpotHandle", "IZLinkSpotHandleResolver", "ZLinkCreatableSpotKind"],
         "06-actors.ko.md": ["IZLinkActorDirectory", "IZLinkActorSpotHandleResolver"],
-        "08-authority-transfer.ko.md": ["ReservePlacementAsync(", "CommitPlacementAsync(", "AbortPlacementAsync(", "Checkpoint"],
+        "08-authority-relocation.ko.md": ["ReservePlacementAsync(", "CommitPlacementAsync(", "AbortPlacementAsync(", "Checkpoint"],
         "09-routing-id-allocation.ko.md": ["IZLinkRoutingIdSlot", "IZLinkAllocatedRoutingIdProvider"]
       }
     },
@@ -74,22 +83,30 @@
         "class mesh_channel_builder_t",
         "class send_call_t",
         "on_actor_join(",
+        "class actor_relocation_adapter_t",
+        "class spot_relocation_adapter_t",
+        "on_actor_relocated(TActor &actor)",
+        "std::size_t max_active_outbound_relocations = 64;",
+        "retiring = 2,",
         "class actor_ref_t final",
         "class spot_ref_t final",
         "class actor_manager_t",
         "class spot_manager_t",
+        "class spot_send_call_t",
+        "spot_send_call_t &instance_spot();",
+        "virtual spot_create_call_t create(std::string stable_type) = 0;",
         "task_t<object_reserve_result_t> reserve(",
         "set_automatic_routing_id_prefix(std::string prefix)",
         "class location_store_t",
-        "std::shared_ptr<transfer_store_t> store);",
-        "class transfer_store_t",
-        "class redis_transfer_store_t",
+        "std::shared_ptr<relocation_store_t> store);",
+        "class relocation_store_t",
+        "class redis_relocation_store_t",
         "std::uint32_t checksum_crc32c;",
         "client_server_server_state_t",
         "fanout_publisher_connection_state_t"
       ],
       "forbidden_file_fragments": {
-        "04-spots.ko.md": ["instance_spot_address_t", "spot_handle_t", "spot_handle_resolver_t"],
+        "04-spots.ko.md": ["instance_spot_address_t", "spot_handle_t", "spot_handle_resolver_t", "create(spot_kind_t"],
         "05-actors.ko.md": ["actor_directory_t", "actor_spot_handle_resolver_t"],
         "07-location-store.ko.md": ["routing_id_slot_allocation", "allocated_routing_id_provider_t", "Checkpoint"]
       }
@@ -103,16 +120,25 @@
         "interface ZLinkMeshChannelBuilder",
         "ZLinkSendCall {",
         "ZLinkSpotActorLifecycle<TActor extends",
+        "interface ZLinkActorRelocationAdapter<TActor extends",
+        "interface ZLinkSpotRelocationAdapter<TSpot>",
+        "default CompletionStage<Void> onActorRelocated(TActor actor)",
+        "int maxActiveOutboundRelocations();",
+        "RETIRING(2)",
+        "boolean hasSnapshotAdapter",
         "public final class systems.zlink.framework.actors.ActorRef",
         "public final class systems.zlink.framework.spots.SpotRef",
         "public interface systems.zlink.framework.actors.ZLinkActorManager",
         "public interface systems.zlink.framework.spots.ZLinkSpotManager",
+        "public interface ZLinkSpotSendCall extends ZLinkSendCall",
+        "ZLinkSpotSendCall instanceSpot();",
+        "ZLinkSpotCreateCall create(String spotType);",
         "ZLinkObjectReserveResult> reserve(",
         "setRoutingIdPrefix(java.lang.String)",
         "interface ZLinkLocationStore",
-        "void addTransferStore(ZLinkTransferStore store);",
-        "interface ZLinkTransferStore",
-        "class ZLinkRedisTransferStore",
+        "void addRelocationStore(ZLinkRelocationStore store);",
+        "interface ZLinkRelocationStore",
+        "class ZLinkRedisRelocationStore",
         "long checksumCrc32c",
         "public interface ZLinkRuntimeQuery",
         "public record ZLinkFrameworkRuntimeSnapshot(",
@@ -164,7 +190,8 @@
         "spots.ko.md": [
           "InstanceSpotAddress",
           "public interface systems.zlink.framework.spots.SpotHandle {",
-          "ZLinkSpotHandleResolver"
+          "ZLinkSpotHandleResolver",
+          "ZLinkCreatableSpotKind"
         ],
         "location-maintenance.ko.md": [
           "ZLinkRoutingIdSlot",
@@ -195,11 +222,17 @@
         "CompletionStage<T>.await()",
         "fun ZLinkDispatchOptions.onMessageFlow(",
         "onActorJoinSuspending(",
+        "ZLinkActorRelocationAdapter<TActor>",
+        "ZLinkSpotRelocationAdapter<TSpot>",
+        "onActorRelocatedSuspending(",
+        "active outbound\n64, active inbound 64",
+        "`RETIRING(2)`",
+        "hasSnapshotAdapter()",
         "actor: ActorRef",
         "protected abstract suspend fun createActor(",
         "protected abstract suspend fun reserveSuspending(",
         "class ZLinkSuspendingLocationStore",
-        "class ZLinkSuspendingTransferStore",
+        "class ZLinkSuspendingRelocationStore",
         "prepareAggregateSuspending(",
         "commitAggregateSuspending(",
         "abortAggregateSuspending(",
@@ -231,6 +264,11 @@
         "export interface ZLinkMeshChannelBuilder",
         "export interface ZLinkSendCall",
         "export interface ZLinkSpotActorLifecycle",
+        "export interface ZLinkActorRelocationAdapter<TActor extends ZLinkActor>",
+        "export interface ZLinkSpotRelocationAdapter<TSpot extends ZLinkSpot | ZLinkInstanceSpot>",
+        "onActorRelocated?(actor: TActor): Promise<void>;",
+        "maxActiveOutboundRelocations(value: number): this;",
+        "Retiring = 2,",
         "export interface ZLinkInstanceSpot {",
         "readonly context: ZLinkInstanceSpotContext;",
         "sendToSpot(spotRid: SpotRid",
@@ -238,19 +276,22 @@
         "export interface SpotRef",
         "export interface ZLinkActorManager",
         "export interface ZLinkSpotManager",
+        "export interface ZLinkSpotSendCall",
+        "instanceSpot(): this;",
+        "create(spotType: string): ZLinkSpotCreateCall;",
         "export interface ZLinkObjectReserveRequest",
         "setRoutingIdPrefix(prefix: string)",
         "export interface ZLinkLocationStore",
-        "addTransferStore(store: ZLinkTransferStore): this",
-        "export interface ZLinkTransferStore",
-        "export declare class ZLinkRedisTransferStore",
+        "addRelocationStore(store: ZLinkRelocationStore): this",
+        "export interface ZLinkRelocationStore",
+        "export declare class ZLinkRedisRelocationStore",
         "readonly checksumCrc32c: number;",
         "ZLinkClientServerServerState",
         "ZLinkFanoutPublisherConnectionState"
       ],
       "forbidden_file_fragments": {
         "01-foundation-configuration.ko.md": ["InstanceSpotAddress", "export interface SpotHandle {"],
-        "04-spots.ko.md": ["InstanceSpotAddress", "export interface SpotHandle {", "ZLinkSpotHandleResolver"],
+        "04-spots.ko.md": ["InstanceSpotAddress", "export interface SpotHandle {", "ZLinkSpotHandleResolver", "create(spotKind:"],
         "05-actors.ko.md": ["ZLinkActorDirectory", "ZLinkActorSpotHandleResolver"],
         "08-location-maintenance.ko.md": ["Checkpoint"],
         "09-routing-id-allocation.ko.md": ["ZLinkRoutingIdSlot", "ZLinkAllocatedRoutingIdProvider"]
@@ -290,7 +331,8 @@
   "forbidden_public_code_patterns": [
     "\\b(?:TrySubmit|trySubmit|try_submit)\\b",
     "\\b(?:ZLinkMeshNodeDrainPolicy|mesh_node_drain_policy_t|DrainNatural|ReleaseAndRecreate)\\b",
-    "\\b(?:IZLinkActorTransferStore|actor_transfer_store_t|ZLinkActorTransferStore|IZLinkInstanceSpotLocationStore|instance_spot_location_store_t|ZLinkInstanceSpotLocationStore|IZLinkActorTransferAdapter|actor_transfer_adapter_t|ZLinkActorTransferAdapter)\\b",
+    "\\b(?:IZLinkRelocationStateAdapter|ZLinkRelocationStateAdapter|relocation_state_adapter_t)\\b",
+    "\\b(?:IZLinkActorRelocationStore|actor_relocation_store_t|ZLinkActorRelocationStore|IZLinkInstanceSpotLocationStore|instance_spot_location_store_t|ZLinkInstanceSpotLocationStore)\\b",
     "\\bzlink_(?:mesh_node|instance_spot|spot)_[a-z0-9_]+\\s*\\("
   ],
   "consolidated_internal_document_sets": [
@@ -377,6 +419,7 @@
       "V11-R3",
       "V11-R4",
       "V11-R4A",
+      "V11-R4B",
       "V11-R5A",
       "V11-R5B",
       "V11-R5C",
@@ -386,6 +429,7 @@
     ],
     "required_xhigh_review_rows": [
       "V11-R4A",
+      "V11-R4B",
       "V11-R5D"
     ],
     "forbidden_fragments": [
@@ -429,7 +473,7 @@
           "| `P-DELIVERY` | `gpt-5.6 medium` |",
           "| `P-SCAN` | `gpt-5.6-terra low` 또는 `gpt-5.6-terra medium` |",
           "`xhigh`는 재현되지 않은 race",
-          "`P-XHIGH`는 `V11-R4A`와 `V11-R5D`에서 의무적으로 사용한다.",
+          "`P-XHIGH`는 `V11-R4A`, `V11-R4B`와 `V11-R5D`에서 의무적으로 사용한다.",
           "그 밖의 row에서 `xhigh`를 임의로 사용하는 경우",
           "임의로 사용하는 경우 상향 이유와 조정 범위는",
           "실제 사용한 model,",
@@ -611,7 +655,7 @@
         "messageContractId:",
         "relaySerial:u64",
         "payloadFrame1:",
-        "actorTransferReady"
+        "actorRelocationReady"
       ]
     },
     {
@@ -641,7 +685,7 @@
     },
     {
       "path": "framework/doc/framework/spec/server/24-spot-address-messaging.ko.md",
-      "required_fragments": ["global SpotRid", "creation intent", "activation barrier"],
+      "required_fragments": ["global SpotRid", "creation intent", "activation barrier", "existing-only operation", "distinct Instance type"],
       "forbidden_fragments": ["InstanceSpotAddress의 첫", "address cold activation", "ReleaseAndRecreate"]
     },
     {
@@ -651,7 +695,7 @@
     },
     {
       "path": "framework/doc/framework/spec/server/54-graceful-drain-handoff.ko.md",
-      "required_fragments": ["Retire", "Shutdown", "admission seal", "partial termination operation은 제공하지 않는다", "| 0 | `Stopped` | `None` |", "| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `TransferDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RuntimeNotReady` |", "| 2 | `ForceStopped` | `DeadlineExceeded`, `TransferFailed`, `TeardownFailed` |"],
+      "required_fragments": ["Retire", "Shutdown", "admission seal", "partial termination operation은 제공하지 않는다", "| 0 | `Stopped` | `None` |", "| 1 | `Blocked` | `TargetUnavailable`, `StoreUnavailable`, `RelocationDisabled`, `StateIncompatible`, `DeadlineExceeded`, `RuntimeNotReady` |", "| 2 | `ForceStopped` | `DeadlineExceeded`, `RelocationFailed`, `TeardownFailed` |"],
       "forbidden_fragments": ["ZLinkMeshNodeDrainPolicy", "ReleaseAndRecreate", "DrainNatural", "CheckpointTooLarge", "| `Completed` |", "| `Failed` |"]
     },
     {

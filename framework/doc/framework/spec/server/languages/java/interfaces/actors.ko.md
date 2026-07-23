@@ -11,87 +11,110 @@ public interface ZLinkActorHandlerRegistry {
     void addHandler(Class<?> handlerType);
 }
 
-public interface ZLinkTransferCancellation {
+public interface ZLinkRelocationCancellation {
     boolean isCancellationRequested();
 }
 
-public interface ZLinkTransferStateAdapter<TInstance, TState> {
-    CompletionStage<TState> capture(
-        TInstance instance, ZLinkTransferCancellation cancellation);
+public interface ZLinkActorRelocationAdapter<TActor extends ZLinkActor> {
+    CompletionStage<byte[]> capture(
+        TActor actor, ZLinkRelocationCancellation cancellation);
     CompletionStage<Void> restore(
-        TInstance instance, TState state, ZLinkTransferCancellation cancellation);
+        TActor actor, byte[] state, ZLinkRelocationCancellation cancellation);
 }
 
-public sealed interface ZLinkTransferPolicy<TInstance>
-    permits ZLinkTransferPolicy.Disabled,
-            ZLinkTransferPolicy.Recreate,
-            ZLinkTransferPolicy.Snapshot {
-    record Disabled<T>() implements ZLinkTransferPolicy<T> {}
-    record Recreate<T>() implements ZLinkTransferPolicy<T> {}
-    record Snapshot<T, TState>(
-        String stateContractId,
-        Class<TState> stateClass,
-        Class<? extends ZLinkTransferStateAdapter<T, TState>> adapterClass)
-        implements ZLinkTransferPolicy<T> {}
+public sealed interface ZLinkRelocationPolicy<TInstance>
+    permits ZLinkRelocationPolicy.Disabled,
+            ZLinkRelocationPolicy.Recreate,
+            ZLinkRelocationPolicy.Snapshot {
+    record Disabled<T>() implements ZLinkRelocationPolicy<T> {}
+    record Recreate<T>() implements ZLinkRelocationPolicy<T> {}
+    record Snapshot<T>(Class<?> adapterClass)
+        implements ZLinkRelocationPolicy<T> {}
 
-    static <T> ZLinkTransferPolicy<T> disabled() {
+    static <T> ZLinkRelocationPolicy<T> disabled() {
         return new Disabled<>();
     }
-    static <T> ZLinkTransferPolicy<T> recreate() {
+    static <T> ZLinkRelocationPolicy<T> recreate() {
         return new Recreate<>();
     }
-    static <T, TState> ZLinkTransferPolicy<T> snapshot(
-        String stateContractId,
-        Class<TState> stateClass,
-        Class<? extends ZLinkTransferStateAdapter<T, TState>> adapterClass) {
-        return new Snapshot<>(stateContractId, stateClass, adapterClass);
+    static <T> ZLinkRelocationPolicy<T> snapshot(Class<?> adapterClass) {
+        return new Snapshot<>(adapterClass);
     }
 }
 
 ```
 
 Factory registration의 정확한 builder member는
-[구성과 host](configuration-host.ko.md)가 소유한다. Stateful maintenance policy는 Actor factory 등록에
+[구성과 host](configuration-host.ko.md)가 소유한다. Cross-node relocation policy는 Actor factory 등록에
 직접 연결한다. Runtime은 factory가 반환한 Actor를 명시한 `actorClass`로 검사해 type 불일치를 startup
-오류로 반환한다. Factory와 분리된 transfer registry는 제공하지 않는다.
-`Snapshot` adapter는 factory가 만든 instance의 typed state만 capture·restore하며 owner claim, transfer
-envelope, generation과 recovery phase를 받지 않는다.
+오류로 반환한다. Factory와 분리된 relocation registry는 제공하지 않는다.
+`Snapshot` Actor policy의 `adapterClass`는 해당 Actor type의
+`ZLinkActorRelocationAdapter<TActor>`를 구현해야 한다. User·Instance Spot policy의 adapter type 검증은
+[Spot 인터페이스](spots.ko.md)가 소유한다. `Class<?>`를 받는 것은 Java type erasure 때문에 policy value를
+공통으로 유지하기 위한 표현이며, Framework는 factory type과 adapter generic target이 일치하는지 socket bind
+전에 검사한다. Mismatch는 startup configuration error다.
+`snapshot(null)`과 null adapter class를 가진 policy도 socket bind 전에 `InvalidConfiguration`으로 거부한다.
 
-같은 `stateContractId`를 사용하는 source와 target adapter는 `frameworkJsonV1` semantic profile로 호환되어야
-한다. 이 profile은 enum을 string, 64-bit integer를 decimal string, binary를 padded base64로 표현하고 unknown
-field는 무시한다. Duplicate field와 required field 누락은 거부한다. Application state의 JSON byte 배열 자체는
-canonical하지 않으며 Transfer Store에는 opaque bytes로 보관한다. Canonical byte identity는 Framework 내부
-root manifest, chunk와 envelope에만 적용한다. Message별 codec 등록이나 transfer 전용 codec API는 제공하지
-않는다.
+Actor adapter는 application state를 최대 64 MiB의 opaque `byte[]`로 capture·restore한다. Public state DTO, `TState`,
+`stateContractId`, state class와 `ZLinkMessage`를 relocation surface에 두지 않는다. Framework는 capture가 정상
+완료한 배열을 즉시 복사한다. Capture가 반환한 배열은 adapter가 계속 소유하며 completion 뒤 재사용하거나
+변경해도 저장 payload가 바뀌지 않는다. Restore에는 호출마다 저장 payload의 fresh defensive copy를 전달하고
+adapter는 stage가 끝난 뒤 그 배열을 보관하지 않는다. 길이가 0인 배열도 유효한 Snapshot state이며 `Recreate`로
+해석하거나 Restore를 생략하지 않는다. Adapter는 owner claim, relocation envelope, generation과 recovery phase를
+받지 않는다.
+
+Cross-node materialization에서 Actor factory가 `Snapshot` policy를 사용하면 maintenance Actor relocation,
+remote User·Entry Spot join과 whole User Spot relocation의 각 Actor participant에 같은 Actor adapter를 사용한다.
+Same-node join과 `Disabled` policy에서는 adapter를 호출하지 않는다. `Recreate`는 application state를 capture하지
+않으므로 adapter가 없다.
 
 Target이 `Activated`에 도달해도 application과 session ingress는 sealed 상태를 유지하고 restore, accepted
 journal replay와 bound-session route는 staged 상태로만 준비한다. Source cleanup이 terminal 상태에 도달하고
-authority의 `COMPLETED` CAS가 성공한 뒤에만 target을 `READY`로 열고 transfer fence를 해제한다. `COMPLETED`
-뒤의 target failure는 ordinary owner loss로 처리하며 이전 transfer를 transparent replay하지 않는다. 이
+authority의 `COMPLETED` CAS가 성공한 뒤에만 target을 `READY`로 열고 relocation fence를 해제한다. `COMPLETED`
+뒤의 target failure는 ordinary owner loss로 처리하며 이전 relocation을 transparent replay하지 않는다. 이
 barrier를 조작하는 public phase API는 제공하지 않는다.
 
-Target replacement가 발생하면 stable transfer 안의 각 attempt가 factory와 `restore(...)`를 at-least-once
-호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable transfer
+Target replacement가 발생하면 stable relocation 안의 각 attempt가 factory와 `restore(...)`를 at-least-once
+호출할 수 있고 중단된 stale attempt callback이 successor와 겹칠 수 있다. `capture(...)`도 immutable relocation
 root가 authority에 연결되기 전까지 반복될 수 있다. Current exact owner와 attempt fence만 completion을 commit하고
-admission을 열 수 있다. Callback에는 transfer ID를 추가하지 않으므로 application restore와 capture는 retry-safe해야
-하며 exactly-once external side effect를 보장하지 않는다.
+admission을 열 수 있다. Callback에는 relocation ID를 추가하지 않으므로 application restore와 capture는 retry-safe해야
+하며 exactly-once external side effect를 보장하지 않는다. Factory는 target attempt마다 fresh Actor instance를
+만들고 Framework는 그 attempt의 `restore(...)`만 해당 instance에 호출한다. Source instance나 이전 target
+attempt의 instance를 새 attempt에 재사용하지 않으며 같은 attempt에서는 restore가 반복될 수 있다.
 
-Transferred terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable
-transfer ID, operation ID, exact request-source fence(owner ID, lease generation, node RID, node generation)와
+Capture stage가 exception으로 끝나면 authority publication 전에 attempt를 abort하고 source authority와 admission을
+유지한다. Restore stage가 exception으로 끝나면 target admission을 sealed 상태로 유지하고 같은 immutable payload의
+retry 또는 target replacement를 수행한다. Exception을 빈 payload나 정상 completion으로 바꾸지 않는다. Capture의
+null stage와 null `byte[]`, Restore의 null stage는 adapter contract 위반이다. Host Retire에서 deadline이 먼저
+확정되지 않은 precommit adapter exception과 contract 위반은 `Blocked/StateIncompatible`로 분류한다. Deadline이
+먼저 확정되면 `Blocked/DeadlineExceeded`를 사용하며 stale target attempt의 cancellation은 terminal result를
+commit하지 못한다. Adapter는
+반복 호출과 stale attempt overlap을 허용하도록 retry-safe해야 하며 callback 안의 외부 side effect를 exactly-once로
+간주할 수 없다.
+
+Relocated terminal reply accounting은 internal command ID 46 `replyRelayAck`를 사용한다. 이 command는 stable
+relocation ID, operation ID, exact request-source fence(owner ID, lease generation, node RID, node generation)와
 status만 가지며 payload와 metadata를 싣지 않는다. Physical connection close는 terminal 증거가 아니다. ACK 또는
 accepted record에 저장한 exact request-source lease expiry만 terminal accounting을 완료하며 public ACK API는 없다.
 
 Source는 connection-bound one-way를 포함해 admission한 모든 connection-bound work가 terminal accounting에
 도달한 뒤에만 `CAPTURED`를 commit한다. Durable accepted journal은 exact owner lease가 있는 source에서만
-사용한다. Pre-`CAPTURED` drain이 deadline 안에 끝나지 않으면 transfer를 abort하고 host Retire를
-`BLOCKED/TRANSFER_DISABLED`로 끝낸다. Connection-bound one-way를 미완료 상태로 capture하는 예외는 없다.
+사용한다. Pre-`CAPTURED` drain이 deadline 안에 끝나지 않으면 relocation을 abort하고 host Retire를
+`BLOCKED/DEADLINE_EXCEEDED`로 끝낸다. Durable abort와 source normalization이 끝나기 전에 source admission을
+열지 않는다. Connection-bound one-way를 미완료 상태로 capture하는 예외는 없다.
 
-Transferable Actor는 source Entry Spot member여야 한다. User Spot member가 하나라도 남아 있으면 Retire
-preflight는 `BLOCKED/TRANSFER_DISABLED`이고 source authority와 admission을 바꾸지 않는다. `NEW_OWNER` CAS는
-owner, authority owner generation과 current Spot을 target Entry identity로 원자적으로 바꾼다. Target factory와
-restore, target `onJoinedActor`, journal replay 뒤에 source `onLeaveActor`와 old Entry membership 제거를
-durable cleanup으로 수행한다. Lifecycle callback은 retry-safe해야 하며 at-least-once 호출될 수 있다. 이
-순서를 제어하는 public phase API는 없다.
+Standalone relocation의 Actor는 source Entry Spot member여야 한다. User Spot member Actor는 standalone relocation으로
+분리하지 않고 Spot과 current member 전체를 bounded aggregate로 함께 옮긴다. User Spot membership 자체는 Retire
+blocker가 아니며 participant 하나라도 `Disabled`이거나 호환 target을 확보할 수 없을 때만 aggregate 전체를
+차단한다. `Disabled` participant는 `BLOCKED/RELOCATION_DISABLED`, target·capacity·reservation 부재는
+`BLOCKED/TARGET_UNAVAILABLE`, application version·type·Snapshot adapter capability 불일치는
+`BLOCKED/STATE_INCOMPATIBLE`다. Standalone Actor는 target factory와 restore를 끝내고 accepted journal을
+application handler가 실행하지 않은 staging queue로 준비한 뒤 `NEW_OWNER` CAS를 수행한다. 이 CAS는
+owner, authority owner generation과 current Spot을 target Entry identity로
+원자적으로 바꾼다. Commit 뒤 target `onActorRelocated`와 source `onLeaveActor`를 호출하고 journal replay와 dispatch를
+개방한다. Callback 실패는 commit을 rollback하거나 source owner를 복원하지 않으며 callback을 retry한다.
+Source process가 종료되면 durable source cleanup이 source callback 완료를 대신해 target recovery가 계속된다.
+Lifecycle callback은 retry-safe해야 하며 at-least-once 호출될 수 있다. 이 순서를 제어하는 public phase API는 없다.
 
 새 distributed Actor는 generic placement reservation으로 `CREATING` authority와 target pending capacity를
 함께 확보한 뒤 factory, initial Entry membership과 initialize를 수행한다. 성공하면 같은 reservation을
@@ -105,41 +128,39 @@ durable cleanup으로 수행한다. Lifecycle callback은 retry-safe해야 하�
 public interface systems.zlink.framework.actors.ZLinkActorFactory {
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActor> create(java.lang.String, systems.zlink.framework.actors.ZLinkActorContext);
 }
-public interface systems.zlink.framework.actors.ZLinkTransferCancellation {
+public interface systems.zlink.framework.actors.ZLinkRelocationCancellation {
   public abstract boolean isCancellationRequested();
 }
-public interface systems.zlink.framework.actors.ZLinkTransferStateAdapter<TInstance, TState> {
-  public abstract java.util.concurrent.CompletionStage<TState> capture(TInstance, systems.zlink.framework.actors.ZLinkTransferCancellation);
-  public abstract java.util.concurrent.CompletionStage<java.lang.Void> restore(TInstance, TState, systems.zlink.framework.actors.ZLinkTransferCancellation);
+public interface systems.zlink.framework.actors.ZLinkActorRelocationAdapter<TActor extends systems.zlink.framework.actors.ZLinkActor> {
+  public abstract java.util.concurrent.CompletionStage<byte[]> capture(TActor, systems.zlink.framework.actors.ZLinkRelocationCancellation);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> restore(TActor, byte[], systems.zlink.framework.actors.ZLinkRelocationCancellation);
 }
-public sealed interface systems.zlink.framework.actors.ZLinkTransferPolicy<TInstance>
-    permits systems.zlink.framework.actors.ZLinkTransferPolicy.Disabled,
-            systems.zlink.framework.actors.ZLinkTransferPolicy.Recreate,
-            systems.zlink.framework.actors.ZLinkTransferPolicy.Snapshot {
-  public static <T> systems.zlink.framework.actors.ZLinkTransferPolicy<T> disabled();
-  public static <T> systems.zlink.framework.actors.ZLinkTransferPolicy<T> recreate();
-  public static <T, TState> systems.zlink.framework.actors.ZLinkTransferPolicy<T> snapshot(java.lang.String, java.lang.Class<TState>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkTransferStateAdapter<T, TState>>);
+public sealed interface systems.zlink.framework.actors.ZLinkRelocationPolicy<TInstance>
+    permits systems.zlink.framework.actors.ZLinkRelocationPolicy.Disabled,
+            systems.zlink.framework.actors.ZLinkRelocationPolicy.Recreate,
+            systems.zlink.framework.actors.ZLinkRelocationPolicy.Snapshot {
+  public static <T> systems.zlink.framework.actors.ZLinkRelocationPolicy<T> disabled();
+  public static <T> systems.zlink.framework.actors.ZLinkRelocationPolicy<T> recreate();
+  public static <T> systems.zlink.framework.actors.ZLinkRelocationPolicy<T> snapshot(java.lang.Class<?>);
 }
-public final class systems.zlink.framework.actors.ZLinkTransferPolicy$Disabled<T> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkTransferPolicy<T> {
-  public systems.zlink.framework.actors.ZLinkTransferPolicy$Disabled();
+public final class systems.zlink.framework.actors.ZLinkRelocationPolicy$Disabled<T> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkRelocationPolicy<T> {
+  public systems.zlink.framework.actors.ZLinkRelocationPolicy$Disabled();
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
 }
-public final class systems.zlink.framework.actors.ZLinkTransferPolicy$Recreate<T> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkTransferPolicy<T> {
-  public systems.zlink.framework.actors.ZLinkTransferPolicy$Recreate();
+public final class systems.zlink.framework.actors.ZLinkRelocationPolicy$Recreate<T> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkRelocationPolicy<T> {
+  public systems.zlink.framework.actors.ZLinkRelocationPolicy$Recreate();
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
 }
-public final class systems.zlink.framework.actors.ZLinkTransferPolicy$Snapshot<T, TState> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkTransferPolicy<T> {
-  public systems.zlink.framework.actors.ZLinkTransferPolicy$Snapshot(java.lang.String, java.lang.Class<TState>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkTransferStateAdapter<T, TState>>);
+public final class systems.zlink.framework.actors.ZLinkRelocationPolicy$Snapshot<T> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkRelocationPolicy<T> {
+  public systems.zlink.framework.actors.ZLinkRelocationPolicy$Snapshot(java.lang.Class<?>);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
-  public java.lang.String stateContractId();
-  public java.lang.Class<TState> stateClass();
-  public java.lang.Class<? extends systems.zlink.framework.actors.ZLinkTransferStateAdapter<T, TState>> adapterClass();
+  public java.lang.Class<?> adapterClass();
 }
 public interface systems.zlink.framework.actors.ZLinkActorHandlerRegistry {
   public abstract void addHandler(java.lang.Class<?>);

@@ -28,13 +28,14 @@ Framework root는 process의 host lifecycle과 DI에 한 번 등록한다. Root 
 | ClientServer Channel | ChannelName으로 client 또는 server 역할 하나를 등록한다 |
 | classic fanout | MeshNode와 독립된 publisher/subscriber channel을 등록한다 |
 | STREAM node | STREAM endpoint와 session handler를 등록한다 |
-| Location Store | owner, location, generation, transfer authority와 aggregate를 원자적으로 저장할 instance를 등록한다 |
-| Transfer Store | cross-node transfer의 immutable state·journal·replay payload를 저장할 instance를 등록한다 |
+| Location Store | owner, location, generation, relocation authority와 aggregate를 원자적으로 저장할 instance를 등록한다 |
+| Relocation Store | cross-node relocation의 immutable state·journal·replay payload를 저장할 instance를 등록한다 |
 | codec extension | typed payload serializer를 등록한다 |
 | handler와 filter | dispatch handler, filter와 metadata policy를 등록한다 |
 | worker | bounded worker scheduler의 동시성, idle timeout과 queue 상한을 설정한다 |
 | network identity | listener가 공통으로 사용할 bind host와 advertised host를 설정한다 |
 | deployment identity | target eligibility에 사용할 application version과 maintenance wave를 설정한다 |
+| relocation limits | process 전체 outbound·inbound unit, `Capture`·`Restore` callback과 encoded payload in-flight 상한을 설정한다 |
 
 같은 root를 process에 두 번 구성하거나 같은 MeshName을 중복 등록하면 startup에서 설정 오류가 발생한다.
 같은 ChannelName을 서로 다른 RouteMesh 또는 ClientServer topology에 등록해도 역할과 관계없이 startup에서
@@ -63,7 +64,7 @@ RouteMesh 등록은 MeshName 하나를 받고 MeshNode builder를 반환한다. 
 - node direct와 channel handler
 - `None`, `Client`, `Server` 중 하나인 object role
 - Object Server의 Entry Spot, user Spot, typed Actor와 actor-free Instance Spot factory
-- 모든 object factory에 명시하는 `Disabled`, `Recreate`, `Snapshot` transfer policy
+- 모든 object factory에 명시하는 `Disabled`, `Recreate`, `Snapshot` relocation policy
 - placement profile, node·type별 capacity, node-wide placement weight
 - route cache age와 stale route forwarding window
 - Logical Multicast publish policy
@@ -72,9 +73,9 @@ MeshName은 물리 mesh의 이름이고 ChannelName은 논리 membership이다. 
 개 등록할 수 있다. `ChannelName` 호출은 별도 socket을 만들지 않는다. host가 시작된 뒤 MeshName,
 routing ID, endpoint와 membership set은 바꿀 수 없다.
 
-Location option의 `RouteCacheMaxAge` 기본값은 15초이고 `TransferForwardingWindow` 기본값은 30초다. 둘 다
+Location option의 `RouteCacheMaxAge` 기본값은 15초이고 `RelocationForwardingWindow` 기본값은 30초다. 둘 다
 0이면 route cache와 forwarding을 끈다. 양수이면 cache age가 forwarding window보다 최소 5초 작아야 한다.
-실행 중 변경한 값은 새 cache entry와 새 transfer부터 적용한다. Forwarding window가 끝난 stale route는
+실행 중 변경한 값은 새 cache entry와 새 relocation부터 적용한다. Forwarding window가 끝난 stale route는
 stale-location 오류로 실패하며 Framework가 자동으로 다시 보내지 않는다.
 
 RouteMesh Channel builder는 `Client`와 `Server` 역할을 구분한다. `Client`는 ChannelName을 해당 MeshNode의
@@ -93,7 +94,7 @@ Client capability를 포함하며 factory와 placement target을 제공한다. `
 필수다. Factory는 Object Server builder에만 등록하며 같은 stable type을 중복 등록하면 startup이 실패한다.
 
 Object Server는 Channel weight와 독립된 node-wide placement weight를 사용한다. 범위는 0부터 100까지이고
-기본값은 100이다. 0인 node는 새 placement와 transfer target에서 제외하지만 Ready object와 이미 reservation을
+기본값은 100이다. 0인 node는 새 placement와 relocation target에서 제외하지만 Ready object와 이미 reservation을
 확보한 attempt는 유지한다. Node 전체 기본 capacity는 active 10,000개와 pending 128개다. Stable type별
 capacity는 생략하면 node limit을 공유하며, 명시할 때는 1부터 `2^31-1`까지의 값으로 node limit보다 작게
 제한한다. Runtime은 active·pending capacity를 먼저 적용하고 남은 후보를 placement weight 비율로 선택한다.
@@ -108,8 +109,9 @@ Framework의 `MaxMessageSize = 0`은 Framework가 transport 기본값보다 작�
 언어별 internals가 소유하며 application public API에 노출하지 않는다.
 
 MeshNode builder에는 drain policy나 lifecycle command를 추가하지 않는다. Host의 continuity maintenance는
-Framework runtime의 `Retire`, 일반 종료는 `Shutdown`이 수행한다. `Draining`은 두 operation 진행 중에
-관측되는 state이며 Channel weight 0을 lifecycle state 대신 사용하지 않는다.
+Framework runtime의 `Retire`, 일반 종료는 `Shutdown`이 수행한다. `Retiring`은 permit을 얻은 relocation unit부터
+진행하면서 나머지 unit의 application 처리를 유지하는 state이고, `Draining`은 source application dispatch를 모두
+끝낸 뒤 resource를 정리하는 state다. Channel weight 0을 lifecycle state 대신 사용하지 않는다.
 
 ## 4. Manual peer
 
@@ -235,7 +237,7 @@ dependency를 사용한다. Root singleton으로 한 번 resolve해 여러 dispa
 
 Framework scheduler는 ready owner의 bounded mailbox를 drain하고 Node, Spot과 Actor handler를 해당
 application 실행 문맥에서 호출한다. Transport readiness는 application callback 인자가 아니다. Completion,
-send-ready와 transfer control은 application handler가 점유할 수 없는 infrastructure 실행 영역에서 진행한다.
+send-ready와 relocation control은 application handler가 점유할 수 없는 infrastructure 실행 영역에서 진행한다.
 
 ## 9. Codec
 
@@ -266,7 +268,7 @@ Codec은 업무 객체와 payload bytes 사이의 변환만 담당한다. Packet
 타입까지 같아야 한다는 뜻은 아니다. JSON 기본 codec은 별도 등록 없이 사용하며, 다른 codec도 메시지마다
 등록하지 않고 root 또는 connector instance에 한 번 등록한다.
 
-## 10. Location Store와 Transfer Store
+## 10. Location Store와 Relocation Store
 
 자동 discovery에 참여하는 classic fanout publisher, endpoint 없는 fanout subscriber와 Object Client·Server
 role을 사용하는 host는 location store를 명시적으로 등록한다. 공식 production store는 별도 package로
@@ -279,20 +281,31 @@ Redis connection과 key prefix는 store instance를 만들 때 설정한다. 자
 한 process 안의 contract test에서만 사용할 수 있다.
 
 Object role이 `None`이고 manual peer만 사용하는 host는 store 없이 MeshNode를 구성할 수 있다.
-Object Server factory에 `Recreate` 또는 `Snapshot` policy를 하나라도 등록한 Framework root는 opaque Transfer
-Store를 정확히 하나 등록해야 한다. Same-node Actor join은 Transfer payload를 만들지 않지만 factory 등록 시점에는
+Object Server factory에 `Recreate` 또는 `Snapshot` policy를 하나라도 등록한 Framework root는 opaque Relocation
+Store를 정확히 하나 등록해야 한다. Same-node Actor join은 Relocation payload를 만들지 않지만 factory 등록 시점에는
 향후 cross-node join과 host `Retire`를 배제할 수 없으므로 이 조건을 완화하지 않는다. 모든 factory가 `Disabled`이면
-Transfer Store가 필요하지 않으며 cross-node transfer를 capture 전에 거부한다.
+Relocation Store가 필요하지 않으며 cross-node relocation을 capture 전에 거부한다.
 
-Location provider가 owner·transfer authority compare-exchange, generic placement reservation·aggregate commit과
-store clock capability를 제공하지 않거나 required Transfer Store가 없거나 둘 이상이면 socket bind 전에 startup
+Location provider가 owner·relocation authority compare-exchange, generic placement reservation·aggregate commit과
+store clock capability를 제공하지 않거나 required Relocation Store가 없거나 둘 이상이면 socket bind 전에 startup
 configuration error로 실패한다. 두 Store를 함께 등록하거나 Redis 구현을 직접 등록하는 전용 API는 제공하지
-않는다. 공식 Redis Transfer Store와 cross-store 규칙은 [Redis Transfer Store](server/42-transfer-store-redis.ko.md),
+않는다. 공식 Redis Relocation Store와 cross-store 규칙은 [Redis Relocation Store](server/42-relocation-store-redis.ko.md),
 Store interface와 이동별 사용 조건은 [40 Location runtime](server/40-location-runtime.ko.md)이 소유한다.
 
-Location Store interface와 Transfer Store interface는 서로 상속하지 않는다. Root는 각각의 generic Store instance를
+Location Store interface와 Relocation Store interface는 서로 상속하지 않는다. Root는 각각의 generic Store instance를
 받는 두 registration operation을 독립적으로 제공한다. Actor·Spot별 Store, 두 Store를 한 번에 등록하는 bundle과
 Redis 전용 registration operation은 public contract에 포함하지 않는다.
+
+Location option은 process 전체 relocation 제한 다섯 개를 제공한다. 기본값은 active outbound 64, active inbound
+64, concurrent `Capture` 8, concurrent `Restore` 8, encoded payload in-flight 268,435,456 bytes(256 MiB)다.
+모든 값은 양수여야 한다. Payload byte에는 application state, 실행하지 않은 message queue, accepted journal,
+timer logical registration·pending tick, relocation manifest와 Framework metadata를 포함한다.
+
+Framework는 active unit, callback과 예상 payload byte permit을 모두 nonblocking으로 확보한 queue turn 경계에서만
+source unit을 seal한다. Permit을 얻지 못하면 application message와 timer dispatch를 계속하고 intent notification을
+다시 예약한다. User Spot aggregate를 포함한 단일 relocation unit의 encoded payload가 byte 상한보다 크면 다른
+payload가 in-flight가 아닌 동안에만 oversized unit 하나로 진행한다. 실행 중 option 변경은 새 relocation admission에만
+적용하며 이미 permit을 얻은 unit의 상한을 줄이지 않는다.
 
 ## 11. Classic fanout
 
@@ -349,16 +362,18 @@ Spot factory와 typed Actor factory는 Object Server builder에 등록한다. Us
 Entry Spot RID는 Framework가 발급하고 caller가 생성하지 않는다. Instance Spot은 actor-free lifecycle을
 사용하며 Actor handler, Actor membership과 Logical Multicast subscription을 등록할 수 없다.
 
-Actor manager와 Spot manager는 global ID를 받는 `Create`, `GetOrCreate`, `Find` family를 제공한다. Actor
-`Create`·`GetOrCreate`는 Actor ID와 stable type을, Spot `GetOrCreate`는 caller가 정한 Spot RID와 stable type을
-필수로 받는다. Spot `Create`는 Framework가 global Spot RID를 생성한다. Optional fluent 설정은 initial Mesh,
+Actor manager와 User Spot manager는 global ID를 받는 `Create`, `GetOrCreate`, `Find` family를 제공한다. Actor
+`Create`·`GetOrCreate`는 Actor ID와 stable type을, User Spot `GetOrCreate`는 caller가 정한 Spot RID와 stable
+type을 필수로 받는다. User Spot `Create`는 Framework가 global Spot RID를 생성한다. Optional fluent 설정은 initial Mesh,
 최대 1 MiB로 encode되는 creation request, placement profile, affinity key와 deadline이다. 같은 option을 두 번
 설정하면 `InvalidConfiguration`, terminal submit을 두 번 실행하면 `AlreadySubmitted`다.
 
 Initial Mesh를 명시하면 해당 Mesh를 사용한다. 생략했을 때 object role Mesh가 하나면 자동으로 선택하고,
 없으면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`다. 존재하지 않는 Mesh를 명시하면
-`MeshNotFound`다. Message call은 create intent를 만들지 않는다. Ready owner가 없는 Instance Spot의
-reactivation은 manager가 authority에 기록한 stable type과 initial Mesh를 사용한다.
+`MeshNotFound`다. Instance Spot은 manager create family를 제공하지 않는다. Spot direct fluent call에서
+Instance intent를 명시한 경우에만 Missing authority의 cold activation을 시작한다. Stable type을 생략하면
+선택한 Mesh의 serving descriptor에 등록된 distinct Instance type이 하나일 때만 자동 선택한다. 여러 type이면
+caller가 stable type을 명시해야 한다.
 
 Create는 같은 ID의 Ready incarnation이 있으면 already-exists 오류로 끝난다. GetOrCreate는 같은 stable type의
 Ready incarnation을 반환하고 Creating attempt가 있으면 같은 attempt의 terminal 결과를 deadline까지 기다린다.
@@ -368,17 +383,21 @@ hash로 저장한다. Factory는 logical key, ObjectGeneration과 attempt를 기
 결과로 수렴해야 한다.
 
 Actor·User Spot·Instance Spot factory는 생성할 구체 type과 `Disabled`, `Recreate`, `Snapshot` 중 하나의
-transfer policy를 같은 type registration에서 고정한다. `Disabled`는 cross-node transfer를 거부하고,
-`Recreate`는 application state payload 없이 같은 logical ID의 typed factory를 실행하며, `Snapshot`은 typed
-state adapter로 업무 상태를 capture·restore한다. Same-node Actor join에는 transfer policy를 적용하지 않는다.
-Transfer ID, target RID, transfer reference, journal cursor와 authority revision은 application callback에
+relocation policy를 같은 type registration에서 고정한다. `Disabled`는 cross-node relocation을 거부하고,
+`Recreate`는 application state payload 없이 같은 logical ID의 typed factory를 실행한다. `Snapshot`은
+Actor factory에 `ActorRelocationAdapter`, User·Instance Spot factory에 `SpotRelocationAdapter`를 지정한다.
+Adapter의 `Capture`는 source instance에서 opaque byte sequence를 반환하고 `Restore`는 target factory가 만든
+instance에 같은 byte sequence를 적용한다. Application이 byte format, version과 migration을 관리하며
+Framework는 state contract ID, state type, relocation codec 등록 API를 제공하지 않는다. Same-node Actor join에는
+relocation policy를 적용하지 않는다.
+Relocation ID, target RID, relocation reference, journal cursor와 authority revision은 application callback에
 노출하지 않는다.
 
 Create와 lookup은 immutable `ActorRef` 또는 `SpotRef`를 반환한다. Ref는 global ID, non-zero unsigned 63-bit
 `ObjectGeneration`, 조회 시점의 MeshName과 NodeRid를 담은 location snapshot이다. JSON generation은 decimal
 string으로 encode한다. Ref는 runtime resource나 local object를 소유하지 않는다. 일반 message는 global ID로
 current authority를 resolve하며 ref의 location을 target으로 고정하지 않는다. Destroy와 Close는 exact ref를
-받는다. 같은 incarnation이 없으면 `false`, generation이 다르거나 transfer seal 중이면 typed stale·moving
+받는다. 같은 incarnation이 없으면 `false`, generation이 다르거나 relocation seal 중이면 typed stale·moving
 오류로 끝나며 current ref를 다시 찾아 다른 incarnation을 종료하지 않는다.
 
 Manager `Find`는 global ID의 current Ready ref를 반환한다. Actor가 현재 속한 User Spot을 조회하는 operation도
@@ -388,6 +407,13 @@ current `SpotRef`만 반환한다. Location operational query는 page size 1..10
 Actor factory는 Actor lifecycle을 만들고 Actor handler는 Actor context의 handler registry에 등록한다.
 Actor message는 Actor mailbox로 직접 dispatch한다. Actor message를 Node callback이나 Spot packet handler가
 다시 분류하지 않는다.
+
+Spot direct 시작 method는 global Spot RID와 payload를 받고 Spot 전용 send/request call을 반환한다. 이 call은
+metadata와 terminal 외에 Instance intent, optional stable type, initial Mesh, placement profile과 affinity key를
+설정할 수 있다. Instance intent가 없는 call은 existing-only이며 Missing에서 target-not-found다. Instance
+intent를 가진 call은 Location resolve와 cold activation claim을 분리하지 않고 하나의 terminal operation으로
+수행한다. Existing authority가 있으면 저장된 kind·type과 current Mesh를 사용하며 cold activation option으로
+현재 owner를 제한하거나 이동시키지 않는다.
 
 STREAM node는 MeshNode와 독립적으로 등록할 수 있다. Session과 Actor binding을 사용하면 STREAM session
 service가 raw STREAM과 MeshNode의 관계를 소유한다. Session ingress는 bound Actor mailbox로 전달되고,
@@ -434,13 +460,13 @@ Actor egress는 bound session FIFO를 사용한다. Actor dispatch capability를
 | 31 | `RoutingIdConflict` | no |
 | 32 | `SpotGenerationStale` | no |
 | 33 | `SpotMoving` | yes |
-| 34 | `TransferDataLost` | no |
+| 34 | `RelocationDataLost` | no |
 
 `RouteNotConnected`는 알려진 target의 pipe가 준비되지 않은 상태이고, `RequestTargetNotFound`는 등록한
 송신 경로에 현재 선택 가능한 target snapshot이 없거나 ChannelName 송신 경로 자체가 없는 상태다.
 `ActorLocationStale`은 cached route와 forwarding mapping으로 current owner에 도달할 수 없는 상태다.
 Generation stale은 exact ref가 current incarnation과 다른 상태이고 moving은 pre-commit seal이 새 application
-admission을 거부한 상태다. `TransferDataLost`는 Location authority가 publish한 immutable Transfer root를 영구적으로
+admission을 거부한 상태다. `RelocationDataLost`는 Location authority가 publish한 immutable Relocation root를 영구적으로
 읽을 수 없거나 checksum·inventory digest가 일치하지 않는 상태다. 이미 commit된 owner·membership을 source로
 rollback하지 않으며 같은 reference를 다시 시도해 복구 가능한 오류로 분류하지 않는다.
 
@@ -531,12 +557,12 @@ Framework는 host가 message를 받기 전에 최소한 다음 설정을 검증�
 - Object role과 manager·factory·placement target의 일치
 - Spot, Actor, STREAM session factory와 owner 관계
 - User·Instance Spot stable type 중복, actor-free Instance lifecycle, node·type별 active·pending capacity
-- 모든 Actor·User Spot·Instance Spot factory의 explicit transfer policy와 Snapshot state contract ID, `Recreate` 또는
-  `Snapshot` 사용 시 정확히 하나의 Transfer Store
-- 분산 owner 또는 transfer를 사용할 때 authority CAS·store clock capability
+- 모든 Actor·User Spot·Instance Spot factory의 explicit relocation policy, Snapshot adapter kind와 대상 type의 일치,
+  `Recreate` 또는 `Snapshot` 사용 시 정확히 하나의 Relocation Store
+- 분산 owner 또는 relocation을 사용할 때 authority CAS·store clock capability
 - placement reservation·aggregate commit capability와 object descriptor limit
 - route cache age·forwarding window 조합과 host termination deadline
-- application version, maintenance wave와 state reader capability의 유효성
+- application version, maintenance wave와 relocation adapter registration의 유효성
 - TLS certificate, key와 trust 설정의 완전성
 - bind host, advertised host와 실제 bound port로 만든 endpoint의 유효성
 

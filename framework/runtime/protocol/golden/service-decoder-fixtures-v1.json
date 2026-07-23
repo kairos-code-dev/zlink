@@ -278,7 +278,7 @@
         "publicValue": 21
       },
       {
-        "name": "transferDataLost",
+        "name": "relocationDataLost",
         "wireValue": 35,
         "publicValue": 34
       }
@@ -300,7 +300,7 @@
         "error": "unknown-framework-error"
       },
       {
-        "name": "unknownAfterTransferDataLost",
+        "name": "unknownAfterRelocationDataLost",
         "wireValue": 36,
         "error": "unknown-framework-error"
       }

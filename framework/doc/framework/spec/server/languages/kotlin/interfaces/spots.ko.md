@@ -30,6 +30,15 @@ existing authority를 resolve하는 데는 필요하지 않다. Caller가 명시
 `inMesh`, `placementProfile`과 `affinityKey`는 Missing cold activation placement에만 적용하며 existing owner를
 재배치하지 않는다. Kotlin은 이 fluent state를 숨기는 terminal request extension을 제공하지 않는다.
 
+Source는 Ready authority가 있으면 current owner에게 일반 message를 보내고, Missing authority와 Instance
+intent가 있으면 eligible target을 선택해 SpotRid, stable type, creation intent와 first message를 포함한
+activation envelope를 보낸다. Source는 placement reservation을 만들지 않는다. Activation envelope는 Ready
+CAS 전에 target으로 전달할 수 있는 Framework infrastructure message이며 application handler로 dispatch하지
+않는다. Target Java runtime은 local exact instance가 없을 때만 자신을 owner로 Reserve하고 factory와 initialize를
+실행한다. CAS loser는 factory를 시작하지 않고 current authority를 읽어 owner에게 reroute하거나 진행 중인
+attempt에 합류한다. Ready commit 뒤 envelope의 first message를 local application queue에 exactly once
+제출한다. Authority와 일치하지 않는 local-only instance는 message를 처리하지 못하도록 fence한다.
+
 Kotlin은 Java `ZLinkSpotRelocationAdapter<TSpot>`를 그대로 구현한다. Opaque `byte[]`는 `ByteArray`로 보이고
 `capture`와 `restore`는 Java 계약과 같은 `CompletionStage`를 반환한다. 별도 suspending Spot adapter,
 `TState`, `stateContractId`, state class와 `ZLinkMessage` relocation surface는 제공하지 않는다. Snapshot policy는

@@ -244,10 +244,18 @@ Distinct type이 여러 개인데 type을 생략하면 `InvalidConfiguration`이
 stable type을 사용하므로 caller가 type을 다시 제공하지 않아도 된다. Instance marker를 사용했는데 existing
 authority가 User Spot이거나 명시한 type과 authority type이 다르면 `SpotTypeMismatch`다.
 
-Terminal call은 Location read와 activation claim을 별도 operation으로 나누지 않는다. Missing authority에서는
-generic Store reservation이 Creating row, first-message reference와 pending capacity를 원자적으로 확보한다.
-Factory와 initialize가 완료되면 Ready와 active capacity를 commit하고 activation barrier 뒤 first message를
-application queue에 한 번 제출한다. Existing User kind나 다른 Instance type은 `SpotTypeMismatch`다.
+Terminal call에서 source는 `Ready` authority가 있으면 current owner에게 일반 message를 보낸다. Missing
+authority와 Instance intent가 있으면 eligible target을 선택하고 SpotRid, stable type, creation intent와 first
+message를 포함한 activation envelope를 그 target에 보낸다. Source는 generic Store reservation을 만들지 않는다.
+Activation envelope는 `Ready` 전에도 target transport로 전달할 수 있는 Framework infrastructure message이며
+application handler로 dispatch하지 않는다.
+
+Target runtime은 local exact instance를 먼저 확인하고, 없을 때만 자신을 owner로 Creating row와 pending
+capacity를 Reserve한 뒤 factory와 initialize를 실행한다. CAS loser는 factory를 시작하지 않고 current
+authority를 읽어 owner에게 reroute하거나 진행 중인 attempt에 합류한다. Commit이 Ready와 active capacity를
+게시한 뒤 envelope의 first message를 local application queue에 exactly once 제출한다. Authority와 일치하지
+않는 local-only instance는 message를 처리하지 못하도록 fence한다. Existing User kind나 다른 Instance type은
+`SpotTypeMismatch`다.
 
 User Spot의 `close(spotRef)`는 active Actor membership이 남아 있으면 `false`를 반환한다. Framework는 Actor를
 자동으로 leave·destroy하지 않는다. One-way Spot message는 local outbound admission까지만 기다리며, target

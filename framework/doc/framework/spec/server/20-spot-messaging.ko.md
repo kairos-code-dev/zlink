@@ -55,18 +55,20 @@ Spot direct send는 비동기 submit 하나만 제공한다. Immediate-only 동�
 local outbound admission만 나타내고 target Spot handler 실행은 기다리지 않는다. `Submitted`,
 `Backpressured`, `TimedOut`, `TargetNotFound`, `RouteNotConnected`, `Shutdown`의 의미와 cancellation·local
 오류 경계는 [04 비동기 실행 정책 §1.3](../04-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
-Cold activation을 포함하는 submit도 source outbound admission에서 같은 결과를 완료하며 target application queue의
-handler 실행을 기다리지 않는다. Target runtime은 location owner claim을 새로 만들지 않고 committed authority를
-검증한다.
+Cold activation을 포함하는 submit도 source가 activation envelope를 선택한 target transport에 수락시킨 시점에
+같은 결과를 완료하며 target의 reservation, factory, Ready commit과 application handler 실행을 기다리지 않는다.
+Activation envelope는 최초 application message와 operation identity·reply correlation·deadline, global Spot RID,
+선택한 Mesh·stable type과 target descriptor fence를 함께 보존한다. Target runtime은 local exact instance가 없으면
+자신을 owner로 generic placement reservation을 획득한 뒤에만 factory를 실행한다.
 
 - local Spot과 remote Spot은 같은 handler 및 실행 의미를 가진다.
 - 호출자는 owner RID, endpoint 또는 내부 route frame을 조립하지 않는다.
 - Spot direct request를 다른 Spot으로 자동 재전송하지 않는다.
 - owner 변경, route cache와 stale route 처리 규칙은
   [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 정한다.
-- Instance Spot의 별도 create request는 없다. Fluent call의 최초 application message는 actor-free lifecycle의
-  Configure와 initialize, location `Ready` commit과 activation barrier가 끝난 뒤 일반 direct payload로 한 번
-  dispatch된다.
+- Instance Spot의 별도 create request는 없다. Fluent call의 최초 application message는 activation envelope에
+  포함되며 actor-free lifecycle의 Configure와 initialize, location `Ready` commit과 activation barrier가 끝난
+  뒤 같은 target의 application queue에 한 번 제출된다. Ready 뒤 source가 두 번째 direct message를 만들지 않는다.
 
 ### 3.1 Spot에서 Channel 호출
 
@@ -193,6 +195,8 @@ drop과 Spot dispatch 결과를 구분해야 한다. topic과 Spot RID는 metric
 - Spot direct가 global Spot RID만 받고 MeshName, owner RID와 generation을 application에 요구하지 않는다.
 - Instance intent가 없는 Missing Spot message가 type·Mesh를 새로 제공하거나 creation intent를 만들지 않는다.
 - Instance intent를 가진 call만 Missing Spot의 type을 명시하거나 유일한 type을 자동 선택해 cold activation한다.
+- Missing Instance activation에서는 source가 owner claim을 선점하지 않고 최초 message를 포함한 activation
+  envelope를 target에 제출하며, target의 CAS winner만 owner claim과 factory를 만든다.
 - Spot Channel 호출이 ChannelName에 등록된 다른 RouteMesh 또는 ClientServer 송신 경로를 사용하고 원래
   Spot의 `Async`·`Yield`와 generation completion을 보존한다.
 - Logical Multicast가 remote MeshNode마다 한 번만 전송되고 수신 node가 local subscription만 검사한다.

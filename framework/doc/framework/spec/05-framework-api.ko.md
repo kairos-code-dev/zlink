@@ -376,6 +376,14 @@ Instance intent를 명시한 경우에만 Missing authority의 cold activation�
 선택한 Mesh의 serving descriptor에 등록된 distinct Instance type이 하나일 때만 자동 선택한다. 여러 type이면
 caller가 stable type을 명시해야 한다.
 
+Missing Instance Spot call에서 source Framework는 최초 message와 operation identity·reply correlation·deadline,
+선택한 Mesh·stable type과 target descriptor fence를 activation envelope에 넣어 eligible target으로 전송한다.
+Source는 owner claim이나 reservation을 먼저 만들지 않는다. Target runtime이 current authority와 local exact
+instance를 확인하고, Missing이면 자신을 owner로 generic reservation을 획득한다. CAS winner만 factory와
+initialize를 실행하고 Ready commit 뒤 envelope message를 local queue에 한 번 제출한다. CAS loser는 local
+instance를 만들지 않는다. 이 순서는 public call을 check와 create로 나누거나 application에 target node를
+노출하지 않는다.
+
 Create는 같은 ID의 Ready incarnation이 있으면 already-exists 오류로 끝난다. GetOrCreate는 같은 stable type의
 Ready incarnation을 반환하고 Creating attempt가 있으면 같은 attempt의 terminal 결과를 deadline까지 기다린다.
 다른 object kind나 stable type은 type-mismatch 오류다. Reservation CAS에서 패배한 caller는 별도 factory를

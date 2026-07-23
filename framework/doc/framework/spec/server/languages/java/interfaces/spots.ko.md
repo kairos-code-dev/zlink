@@ -155,8 +155,18 @@ at-least-once와 retry-safe 계약을 따른다.
 callback을 호출하지 않는다. Whole User Spot aggregate relocation에서는 member Actor에 대한
 Entry/User Spot membership callback을 호출하지 않는다.
 
-User·Instance Spot은 generic placement reservation으로 `CREATING` authority와 pending capacity를 함께 확보한
-뒤 factory와 initialize를 수행한다. 성공하면 Ready와 active capacity로 commit하고 실패하면 abort한다.
+User Spot은 manager operation이 generic placement reservation을 시작한다. Instance Spot은 source-side
+reservation을 사용하지 않는다. Source는 Ready authority가 있으면 current owner에게 일반 message를 보내고,
+Missing authority와 Instance intent가 있으면 eligible target을 선택해 SpotRid, stable type, creation intent와
+first message를 포함한 activation envelope를 보낸다. 이 envelope는 Ready 전에도 target transport로 전달할 수
+있는 Framework infrastructure message이며 application handler로 dispatch하지 않는다.
+
+Target runtime은 local exact instance를 확인하고, 없을 때만 자신을 owner로 `CREATING` authority와 pending
+capacity를 Reserve한 뒤 factory와 initialize를 수행한다. CAS loser는 factory를 시작하지 않고 current
+authority를 읽어 owner에게 reroute하거나 진행 중인 attempt에 합류한다. Ready와 active capacity를 commit한
+뒤 envelope의 first message를 local application queue에 exactly once 제출한다. Authority와 일치하지 않는
+local-only instance는 message를 처리하지 못하도록 fence한다. Target activation이 실패하면 exact reservation을
+abort한다.
 
 User·Instance Spot relocation에서는 Framework가 `addTimer(...)`로 만든 logical timer registration, 마지막 완료
 tick sequence, 다음 예정 시각과 아직 실행하지 않은 pending tick을 relocation payload에 포함한다. Target은 새
@@ -177,8 +187,9 @@ Entry·User·Instance Spot만 callback을 받고 Actor별 closing callback은 �
 membership과 local instance가 유효한 상태에서 callback을 실행하고 completion 뒤 scope와 authority를 정리한다.
 Standalone Actor relocation은 Entry Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
 
-일반 message는 Ready owner를 resolve한다. Missing RID에서는 위 Instance marker가 있는 call만 creation intent를
-만든다. Owner loss 뒤 Instance reactivation은 authority에 저장된 stable type과 initial Mesh를 사용한다.
+일반 message는 Ready owner를 resolve한다. Missing RID에서는 위 Instance marker가 있는 call만 target-owned
+activation envelope를 만든다. Owner loss 뒤 Instance reactivation은 authority에 저장된 stable type과 initial
+Mesh를 사용한다.
 
 Cold Instance factory·initialize가 실패하면 durable public `FAILED` state를 게시하지 않는다. Runtime은 local
 failed barrier를 유지하고 exact authority fence로 delete한 뒤 read해 reconcile한다. Delete 확인 전 같은 address

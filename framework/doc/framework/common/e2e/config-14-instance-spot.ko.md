@@ -27,14 +27,16 @@ activation, owner claim, barrier와 queue를 해석하지 않는다.
   optional stable type, initial Mesh, placement profile과 affinity key를 설정한다.
 - 선택한 Object Mesh에서 type을 제공하고 `Serving` 상태이며 maintenance 대상이 아닌 node만
   placement 후보가 된다.
-- Source runtime은 public send deadline 안에서 Location Store resolve, eligible target 선택과 `Creating`
-  authority claim을 끝낸 뒤 fenced outbound record를 제출하며 caller에게 endpoint, node RID, owner token과
-  generation을 요구하지 않는다.
-- Target runtime은 새 claim을 만들지 않는다. Source가 전달한 current authority와 owner lease fence를 exact
-  확인하고 activation leader 하나만 factory를 실행한 뒤 `Ready` CAS를 수행한다.
-- Source가 `Creating` claim 뒤 target submit 전에 종료되면 exact target owner는 initial·background bounded
-  authority scan으로 기존 claim을 발견해 같은 activation barrier를 idempotent하게 재개한다. Scan은 owner를
-  선택하거나 새 row를 만들지 않고 original operation payload를 숨게 재제출하지 않는다.
+- Source runtime은 public send deadline 안에서 Location Store resolve와 eligible target 선택을 끝내고, global
+  Spot RID·stable type·target descriptor fence·operation identity·reply correlation·deadline과 first message를
+  포함한 activation envelope를 target transport에 제출한다. Source는 owner claim이나 `Creating` authority를
+  만들지 않으며 caller에게 endpoint, node RID, owner token과 generation을 요구하지 않는다.
+- Target runtime은 current authority와 local Instance registry를 확인한다. Missing이면 target 자신을 owner로
+  generic reservation을 획득하고 CAS winner 하나만 factory를 실행한 뒤 `Ready` commit을 수행한다.
+- Target이 reservation을 획득한 뒤 종료되면 exact target owner는 initial·background bounded authority scan으로
+  자신의 기존 claim과 immutable first-message reference를 발견해 같은 activation barrier를 idempotent하게
+  재개한다. Source가 envelope admission 전에 종료된 경우에는 authority row가 없으며 다음 call만 activation을
+  새로 시작한다.
 - Internal activation barrier가 닫혀 있는 동안 업무 message와 timer를 application handler에 전달하지
   않는다.
 - `Ready` owner에 보낸 후속 message는 cold first message를 추월하지 않는다.
@@ -138,9 +140,9 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-F03` | Builder | Existing-only·Instance marker, optional type inference, `InMesh`·profile·affinity와 send/request terminal이 다섯 public 언어에서 같은 의미를 가짐 |
 | `IS-F04` | Descriptor | Instance type set을 정렬·중복 제거해 게시하고 runtime 중 변경하지 않음 |
 | `IS-F05` | Placement | 선택한 initial Mesh, valid lease·generation, `Serving`, type·profile·capacity를 모두 만족하는 node만 선택 |
-| `IS-F06` | Location authority | Claim, `Ready`, `Closing`, release가 opaque expected-version CAS와 같은 state transition을 사용 |
-| `IS-F07` | Activation leader | 같은 global Spot RID의 concurrent call이 leader, factory, DI scope과 type slot 하나로 수렴 |
-| `IS-F08` | Ordering | Configure, message 없는 initialize, `Ready` CAS, barrier open, first message 순서를 지킴 |
+| `IS-F06` | Location authority | Target-owned claim, `Ready`, `Closing`, release가 opaque expected-version CAS와 같은 state transition을 사용 |
+| `IS-F07` | Activation leader | 같은 global Spot RID의 concurrent envelope가 target CAS winner, factory, DI scope과 type slot 하나로 수렴 |
+| `IS-F08` | Ordering | Activation envelope admission, target reservation, Configure, message 없는 initialize, `Ready` CAS, barrier open, envelope의 first message 순서를 지킴 |
 | `IS-F09` | Failure cleanup | Factory·initialize·`Ready`·barrier 실패에서 local barrier를 닫고 request를 typed terminal-once로 완료하며 one-way drop·event를 기록한다. Exact owner fence로 row를 삭제한 뒤 Missing 또는 current replacement를 확인하고 queue·scope·slot을 한 번 정리하며 같은 registry에서 hidden rerun을 하지 않음 |
 | `IS-F10` | 재제출 경계 | CAS loser redirect 한 번 외의 hidden retry·replay가 없음 |
 | `IS-F11` | Lease fence | Local monotonic deadline 뒤 stale message·timer·factory completion·CAS를 application admission 전에 거부 |
@@ -153,13 +155,13 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 
 | ID | 검증 대상 | 완료 조건 |
 |---|---|---|
-| `IS-P01` | Cold target | Global Spot RID, selected initial Mesh, node·Spot identity, Instance type, packet contract과 request correlation을 보존 |
-| `IS-P02` | Authority fence | Source가 outbound 전 claim한 owner ID, authority owner generation, object generation, store version과 lease-derived deadline을 target admission에서 exact match하며 target claim은 0건 |
+| `IS-P01` | Cold target | Activation envelope가 global Spot RID, selected initial Mesh, target descriptor fence, Instance type, first packet contract, operation identity·request correlation과 deadline을 보존 |
+| `IS-P02` | Authority fence | Source claim은 0건이다. Target은 envelope의 descriptor lifecycle·owner lease와 current Store state를 exact 확인하고 자신을 owner로 reservation을 획득하며 CAS winner만 object·authority owner generation을 발급함 |
 | `IS-P03` | Bounded queue | Activation 중 message·byte 상한, FIFO과 request terminal-once를 보존 |
 | `IS-P04` | Barrier | `Ready` CAS 전 application handler count 0, barrier open 뒤 admission sequence 순서를 보존 |
 | `IS-P05` | Failure code | Stable wire code, payload presence과 unknown code를 네 decoder가 같게 검증 |
 | `IS-P06` | Resource cleanup | Close, lease expiry, activation abort과 host terminal 뒤 pending operation·timer·scope·socket이 남지 않음 |
-| `IS-P07` | Lost source submit | Source claim 뒤 submit 전 crash를 target owner의 bounded recovery scan이 같은 generation·barrier로 수렴시키고 original payload는 재제출하지 않음 |
+| `IS-P07` | Activation crash recovery | Envelope admission 전 source crash는 authority를 남기지 않는다. Target reservation 뒤 crash는 target owner의 bounded recovery scan이 durable first-message reference와 같은 generation·barrier로 수렴시킴 |
 | `IS-P08` | Activation failure release | Factory·initialize·`Ready` 실패는 current Store version, object generation, authority owner generation과 owner lease를 모두 확인한 delete로만 `Creating` row를 제거한다. 결과가 불명확하면 exact read로 수렴하고 Missing 뒤 다음 caller만 새 generation으로 claim함 |
 
 ## 5. 회귀 시나리오
@@ -185,8 +187,8 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 
 | ID | 시나리오 | 완료 조건 |
 |---|---|---|
-| `IS-E2E-01` | Cold request | Row가 없는 global Spot RID의 Instance-intent request가 claim·factory·`Ready` 뒤 handler에서 한 번 실행되고 reply를 반환 |
-| `IS-E2E-02` | Cold send | Resolve·selection·claim과 outbound admission은 같은 send deadline 안에서 끝나고 Submit은 outbound admission으로 완료되며 target factory·Ready를 기다리지 않음. Target activation 실패는 이미 반환한 결과를 바꾸지 않고 drop·flow event로 관측 |
+| `IS-E2E-01` | Cold request | Row가 없는 global Spot RID의 Instance-intent request envelope가 target-owned claim·factory·`Ready` 뒤 handler에서 한 번 실행되고 reply를 반환 |
+| `IS-E2E-02` | Cold send | Resolve·selection과 activation envelope outbound admission은 같은 send deadline 안에서 끝나고 Submit은 outbound admission으로 완료되며 target reservation·factory·Ready를 기다리지 않음. Target activation 실패는 이미 반환한 결과를 바꾸지 않고 drop·flow event로 관측 |
 | `IS-E2E-03` | Concurrent first call | 두 caller의 request 100개가 authority owner·runtime object·factory 하나와 handler concurrency 1로 수렴 |
 | `IS-E2E-04` | Different RID | 여러 RID가 eligible node에 분산되고 RID별 serial queue가 서로를 차단하지 않음 |
 | `IS-E2E-05` | `Ready` owner crash | Lease 만료 전에는 새 owner가 없고 expiry 뒤 새 call만 같은 object generation과 더 높은 authority owner generation으로 복구 |
@@ -210,13 +212,13 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-E2E-23` | Handler capability | Actor handler·Logical Multicast subscription 등록이 `Ready` 전에 실패하고 authority·scope·slot을 정리 |
 | `IS-E2E-24` | Late lease response | Store call 중 pause 시간이 deadline을 넘으면 과거 응답으로 admission을 다시 열지 않음 |
 | `IS-E2E-25` | `Ready` 후 barrier 실패 | Claim에서 발급한 nonzero object generation을 바꾸지 않고 authority를 `Closing`·release하며 runtime object·scope·slot을 한 번 정리해 dangling `Ready` row를 남기지 않음 |
-| `IS-E2E-26` | Concurrent claim | Leader 하나만 factory·`Ready`·barrier open을 수행하고 follower reservation을 반환 |
+| `IS-E2E-26` | Concurrent claim | 서로 다른 target에 도착한 envelope 중 Store CAS winner 하나만 factory·`Ready`·barrier open을 수행하고 loser target은 local instance를 만들지 않음 |
 | `IS-E2E-27` | Deadline isolation | 짧은 request만 timeout되고 긴 request·send와 shared activation은 계속됨 |
 | `IS-E2E-28` | Close·admission 경쟁 | Internal seal과 `Closing` CAS 사이 cached submit을 handler queue에 수락하지 않음 |
 | `IS-E2E-29` | Cross-Mesh in-flight `Retire` | Mesh B가 수락한 completion·claim release 뒤 Mesh A의 원래 Spot turn이 재개 |
 | `IS-E2E-30` | Multi-Mesh concurrent `Retire` | 새 dependency 없이 shared deadline 안에 완료하거나 각 terminal result를 한 번만 반환 |
-| `IS-E2E-31` | Remote CAS loser | 별도 owner object를 만들지 않고 `Ready` 뒤 current direct route로 한 번만 redirect하며 correlation·payload를 보존 |
-| `IS-E2E-32` | Claim 뒤 source crash | Source가 `Creating` CAS 뒤 outbound submit 전에 종료되어도 exact target owner의 bounded scan이 factory·Ready barrier를 한 번 재개하고 row가 고착되지 않음. Original request payload와 handler call은 숨게 재제출하지 않고 caller는 normal timeout/failure를 따름 |
+| `IS-E2E-31` | Remote CAS loser | 서로 다른 target의 reservation 경쟁에서 loser가 별도 owner object를 만들지 않고 `Ready` winner route로 한 번만 redirect하며 operation identity·correlation·payload·deadline을 보존 |
+| `IS-E2E-32` | Activation crash boundary | Source가 activation envelope admission 전에 종료되면 authority row와 factory가 0건이다. Target이 reservation을 획득한 뒤 종료되면 exact target owner의 bounded scan이 durable first-message reference로 factory·Ready barrier를 한 번 재개하고 row가 고착되지 않음 |
 | `IS-E2E-33` | Cold activation failure release | Factory·initialize·`Ready` 각 실패에서 current request는 typed terminal 하나, accepted one-way는 drop·event 하나로 끝나고 application handler는 실행되지 않음. Exact fenced delete의 응답 손실은 row read로 재확인하며 Missing 또는 current replacement가 확인될 때까지 registry는 failed·sealed를 유지한다. Missing 뒤의 다음 caller만 새 object·authority owner generation으로 새 factory를 시작하고 이전 registry는 hidden rerun하지 않음 |
 
 ## 7. Reference sample gate

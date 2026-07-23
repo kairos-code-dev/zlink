@@ -177,7 +177,8 @@ sink callback 실패는 bounded fallback logger에만 기록하고 다시 runtim
 
 - Node direct와 RouteMesh·ClientServer ChannelName select-one submit·receive·dispatch·reply
 - Spot direct application queue admission과 handler completion
-- Instance Spot resolve·claim·activation barrier, application admission과 post-submit one-way drop
+- Instance Spot source resolve·activation-envelope submit, target-owned claim·activation barrier, application
+  admission과 post-submit one-way drop
 - Logical Multicast origin admission, remote target submit, local match와 target drop
 - Actor queue admission, handler completion과 relocation terminal result
 - STREAM session receive, Actor dispatch, reply와 bound-session send

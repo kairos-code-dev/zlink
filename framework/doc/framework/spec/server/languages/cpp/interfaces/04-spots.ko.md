@@ -438,9 +438,17 @@ fencing 조건을 만족하는 location row만 해제한다.
 User Spot은 manager의 explicit Create·GetOrCreate가 `Creating` reservation을 시작한다. Instance Spot은
 `spot_send_call_t` 또는 `spot_request_call_t`에서 `instance_spot()`을 선택한 direct call만 missing RID의
 cold activation을 시작한다. Marker가 없는 일반 send·request에서 RID가 없으면 `spot_route_not_found`로
-끝나며 factory를 실행하거나 creation intent를 기록하지 않는다. Factory와 initialize가 끝난 뒤 generic
-Store Commit이 reservation과 pending-to-active capacity를 함께 전환하고 `Ready`를 공개한다. 실패는 exact
-Abort로 authority와 pending capacity를 함께 정리한다.
+끝나며 factory를 실행하거나 creation intent를 기록하지 않는다. Source는 Ready authority가 있으면 current
+owner에게 일반 message를 보내고, Missing이면 target을 선택해 SpotRid, stable type, creation intent와 first
+message를 포함한 activation envelope를 보낸다. Source는 creation reservation을 만들지 않는다. 이 envelope는
+CAS 전에 target으로 보낼 수 있는 Framework infrastructure message이며 application handler로 dispatch하지 않는다.
+
+Target runtime은 local exact instance가 없을 때만 자신을 owner로 generic Store Reserve를 수행하고 factory와
+initialize를 실행한다. CAS loser는 factory를 만들지 않고 current authority를 읽어 owner에게 reroute하거나
+진행 중인 attempt에 합류한다. Commit이 reservation과 pending-to-active capacity를 함께 전환해 `Ready`를
+공개한 뒤 envelope의 first message를 local queue에 exactly once 제출한다. Authority와 일치하지 않는
+local-only instance는 message를 처리하지 못하도록 fence한다. 실패는 exact Abort로 authority와 pending
+capacity를 함께 정리한다.
 
 User Spot과 member Actor의 relocation은 generic aggregate로 처리한다. Active membership이 있다는 이유만으로
 Retire를 차단하지 않으며 aggregate owner와 membership을 한 commit에서 전환한다. `spot_context_t::close()`와
@@ -452,8 +460,8 @@ Retire를 차단하지 않으며 aggregate owner와 membership을 한 commit에�
 Actor 전체를 bounded aggregate로 이전한다.
 
 Instance Spot factory는 actor-free lifecycle만 구현한다. Source runtime은 Instance Spot marker가 있는 direct
-call에서만 missing RID의 creation reservation을 시작한다. Target은 수신 message를 근거로 별도 creation claim을
-시작하지 않는다. `instance_spot()`은 stable type을 생략한 marker이고,
+call에서만 missing RID의 activation envelope를 target에 보낸다. Target runtime은 envelope를 근거로 자신을
+owner로 creation claim을 시작한다. `instance_spot()`은 stable type을 생략한 marker이고,
 `instance_spot(stable_type)`은 type을 명시한 marker다. `in_mesh(mesh_name)`,
 `placement_profile(profile)`과 `affinity_key(key)`는 missing RID의 target 선택에만 사용한다. 이미 `Ready`인
 authority row가 있으면 global SpotRid로 현재 owner를 찾으므로 marker와 stable type이 없어도 같은 row로

@@ -28,14 +28,19 @@ topology는 Node direct와 Channel operation만 사용할 수 있다.
 ## 2. Creation authority와 Ready barrier
 
 Actor와 User Spot manager create, Instance Spot direct cold activation은 generic placement reservation을 사용한다.
+Manager create는 coordinator가 target transport 전에 reservation을 획득한다. Instance Spot은 source가 최초
+message를 포함한 activation envelope를 target에 제출하고, target runtime이 local exact instance가 없을 때
+자신을 owner로 reservation을 획득한다.
 
-1. Manager가 global key, stable type, optional Mesh·placement와 durable creation request를 고정한다.
-2. Runtime이 role, type capability, active·pending capacity를 먼저 검사하고 positive node-wide weight 후보를
-   선택한다.
+1. Runtime이 global key, stable type, optional Mesh·placement와 durable creation input을 고정하고 role, type
+   capability, active·pending capacity를 만족하는 positive node-wide weight 후보를 선택한다.
+2. Actor·User Spot manager create는 coordinator가 `Reserve`를 호출한다. Instance Spot은 source가 first-message
+   activation envelope를 후보 target에 먼저 제출하고 target activation registry가 `Reserve`를 호출한다.
 3. Store `Reserve`가 `Missing → Creating` authority와 target pending capacity를 하나의 transaction으로
    고정한다.
-4. Target activation registry가 exact reservation fence에서 factory와 initialize를 실행한다.
-5. Store `Commit`이 같은 fence를 `Ready`로 바꾸고 pending capacity를 active로 전환한다.
+4. CAS winner target만 exact reservation fence에서 factory와 initialize를 실행한다.
+5. Store `Commit`이 같은 fence를 `Ready`로 바꾸고 pending capacity를 active로 전환한다. Instance Spot은
+   envelope에 포함된 first message를 activation barrier 뒤 local queue에 한 번 제출한다.
 6. `Abort`는 exact Creating authority와 pending capacity만 해제한다.
 
 Reservation은 object kind, global key, stable type, target descriptor, capacity delta와 exact owner fence를

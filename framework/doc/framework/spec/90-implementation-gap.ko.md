@@ -619,8 +619,10 @@ Framework의 현재 차이는 다음과 같다.
   snapshot이 구현되어 있지 않거나 Actor·Instance phase별 API로 나뉘어 있다. Instance factory를 등록한
   runtime은 provider의 authority capability를 startup에서 검사해야 하며 MeshNode descriptor에 Instance type,
   relocation policy와 application version capability를 게시해야 한다.
-- Source coordinator, eligible-node selection, generic reservation, Ready-visible ordering, factory 실패 cleanup,
-  lease-derived local admission deadline, bounded stale-route forwarding과 Retire·close 순서가 구현되어 있지 않다.
+- Source의 eligible-node selection과 first-message activation envelope, target-owned generic reservation,
+  Ready-visible ordering, factory 실패 cleanup, lease-derived local admission deadline, bounded stale-route
+  forwarding과 Retire·close 순서가 구현되어 있지 않다. Source가 target transport 전에 Instance owner claim을
+  만드는 현재 구현은 목표 계약이 아니며 target CAS winner만 factory를 실행하도록 교체해야 한다.
 - Activation outcome·duration, pending budget, claim conflict·takeover metric과 `surface=instance_spot` message-flow
   drop 관측이 언어별 runtime에 연결되어 있지 않다.
 - PlayerQuest와 OrderWorkflow sample은 User Spot의 수동 local GetOrCreate·resolve 절차를 사용한다. Global

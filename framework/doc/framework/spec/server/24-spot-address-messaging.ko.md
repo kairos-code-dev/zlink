@@ -99,13 +99,24 @@ Terminal call은 별도 check와 send로 나누지 않고 다음 순서로 resol
 5. stable type을 명시하면 해당 capability를 가진 serving node만 후보로 사용한다.
 6. stable type을 생략하면 선택한 Mesh의 serving descriptor에 등록된 distinct Instance type을 계산한다. 하나면
    자동 선택하고, 0개이면 target-not-found, 둘 이상이면 required type을 생략한 `InvalidConfiguration`이다.
-7. Location Store의 generic placement reservation이 authority의 `Creating` 상태와 target pending capacity를 한
-   transaction으로 확보한다. Factory와 initialize가 성공하면 같은 reservation을 `Ready`와 active capacity로
-   commit하고, 실패하면 abort한다. Ready commit 뒤 최초 message를 application queue에 정확히 한 번 제출한다.
+7. Source는 global Spot RID, 선택한 Mesh·stable type과 target descriptor fence, operation identity·reply
+   correlation·deadline 및 최초 application message를 하나의 activation envelope에 넣어 선택한 target으로
+   전송한다. Source는 target transport 전 owner claim이나 `Creating` authority를 만들지 않는다.
+8. Target runtime은 current authority와 local Instance registry를 함께 확인한다. Ready authority가 자신과
+   local exact instance를 가리키면 기존 queue에 envelope message를 제출한다. Local instance만 있고 current
+   authority가 다르면 stale local instance로 fence하며 dispatch하지 않는다.
+9. Authority가 Missing이고 local exact instance가 없으면 target runtime이 자신을 owner로 generic `Reserve`를
+   호출한다. Store는 target descriptor lifecycle·owner lease·type·capacity를 다시 확인하고 `Missing → Creating`
+   authority, immutable first-message reference와 target pending capacity를 한 transaction으로 기록한다.
+10. CAS winner target만 factory와 initialize를 실행한다. 같은 reservation의 `Commit`이 `Ready`와 active
+    capacity를 게시한 뒤 activation barrier를 열고 envelope에 포함된 최초 message를 local application queue에
+    정확히 한 번 제출한다. Source가 Ready 뒤 두 번째 direct message를 만들지 않는다.
 
 여러 MeshNode가 같은 stable Instance type을 등록한 경우 distinct type 하나이며 placement 후보가 여러 개인
-것으로 처리한다. Concurrent cold call은 같은 reservation과 factory execution 하나에 합류하며 CAS loser가 별도
-factory를 실행하지 않는다. 기존 authority가
+것으로 처리한다. Concurrent cold call이 서로 다른 target에 도착해도 Store CAS winner의 reservation과 factory
+execution 하나로 수렴한다. CAS loser target은 local Spot을 만들지 않는다. Winner authority가 Ready이면 original
+operation identity·payload·reply correlation과 deadline을 보존해 current owner로 한 번만 redirect하고, Creating이면
+그 activation completion에 합류한다. 기존 authority가
 User Spot이거나 builder에 명시한 stable type과 다르면 `SpotTypeMismatch`다. 기존 Instance Spot에 type을 명시하지
 않은 일반 direct call은 authority에 저장된 type을 사용하므로 등록 type 수와 관계없이 전송할 수 있다.
 
@@ -123,7 +134,8 @@ admission에 고정한다. Local과 remote owner는 같은 handler, metadata와 
 - Timeout, cancellation, disconnect와 실행 여부가 불명확한 failure 뒤 다른 owner에게 자동 재제출하지 않는다.
 
 One-way call은 local outbound admission까지만 기다린다. Cold activation이 필요해도 application handler 실행은
-기다리지 않는다. Request는 resolve, cold activation, 최초 message dispatch와 reply를 하나의 deadline 안에서
+기다리지 않는다. 여기서 outbound admission은 activation envelope가 선택한 target transport에 수락된 시점이며
+reservation이나 Ready commit 완료를 뜻하지 않는다. Request는 resolve, cold activation, 최초 message dispatch와 reply를 하나의 deadline 안에서
 terminal-once로 완료한다. Target queue admission 뒤의
 failure를 current owner를 다시 찾아 hidden retry하지 않는다.
 
@@ -208,7 +220,11 @@ label로 사용하지 않는다.
 - Instance intent가 없는 Missing Spot message가 creation intent를 만들지 않는다.
 - Instance intent가 Missing Spot에서만 optional initial Mesh와 stable type을 사용해 cold activation을 시작한다.
 - 선택한 Mesh의 distinct Instance type이 하나면 type을 자동 선택하고 여러 개면 type 명시를 요구한다.
-- Cold activation이 owner·factory 하나와 Ready barrier 뒤 최초 message 한 번으로 수렴한다.
+- Cold activation source가 owner claim을 만들지 않고 최초 message를 포함한 activation envelope를 target에
+  제출한다.
+- Target의 CAS winner만 owner claim·factory를 만들고 Ready barrier 뒤 envelope message를 local queue에 한
+  번 제출한다.
+- Authority와 일치하지 않는 local Instance를 dispatch하지 않고 CAS loser가 별도 instance를 만들지 않는다.
 - Missing, Creating과 Store failure를 negative cache하지 않는다.
 - Forwarding이 committed mapping과 bounded queue만 사용하고 operation identity를 보존한다.
 - Close가 exact generation을 검사하고 새 incarnation으로 retarget하지 않는다.

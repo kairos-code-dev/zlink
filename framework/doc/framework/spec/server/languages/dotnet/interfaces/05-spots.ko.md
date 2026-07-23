@@ -566,15 +566,24 @@ MeshNode의 send deadline에 resolve, cold activation과 outbound admission을 �
 
 `IZLinkInstanceSpot`은 `IZLinkSpot`을 상속하지 않는 actor-free lifecycle interface다. Direct packet과 timer
 handler만 등록할 수 있고 Actor handler나 Logical Multicast subscription을 등록하면 Framework가
-`Ready` commit 전에 activation을 거부한다. Lifecycle은 scope와 Spot을 만든 뒤 Configure,
-`OnInitializeAsync`, Location `Ready` commit 순서로 실행한다. `OnCreateAsync` 또는 empty
-`ZLinkMessage`를 사용하지 않으며 첫 업무 message는 barrier 뒤 direct handler에 전달한다.
+`Ready` commit 전에 activation을 거부한다. Target runtime은 activation envelope를 받은 뒤 local exact
+instance를 확인하고, 없으면 자신을 owner로 generic placement를 Reserve한다. Lifecycle은 target scope와 Spot을
+만든 뒤 Configure, `OnInitializeAsync`, Location `Ready` commit 순서로 실행한다. `OnCreateAsync` 또는 empty
+`ZLinkMessage`를 사용하지 않으며 envelope의 첫 업무 message는 commit barrier 뒤 direct handler에 exactly once
+전달한다.
 
-Store-backed User Spot은 manager create operation이, Instance Spot은 `InstanceSpot(...)`을 명시한 direct
-message call이 generic placement reservation으로 `Creating` row와 target pending capacity를 함께 확보한 뒤
-factory, `Configure`, `OnInitializeAsync`를 수행한다. 성공하면 같은 reservation을 `Ready`와 active
-capacity로 commit하고 실패하면 abort한다. Resolve와 remote messaging은 `Ready`만 사용한다. CAS
-loser는 별도 factory를 시작하지 않으며 exact reservation 결과를 read해 reconcile한다. 이
+Store-backed User Spot은 manager create operation이 reservation을 시작한다. Instance Spot은 다른 순서를
+사용한다. Source는 `Ready` authority가 있으면 current owner에게 일반 message를 보내고, Missing authority와
+`InstanceSpot(...)` intent가 있으면 eligible target을 선택해 first message와 creation intent가 든 activation
+envelope를 보낸다. 이 envelope는 `Ready` 전 application dispatch가 아니라 target activation을 요청하는
+Framework infrastructure message다. Source는 placement reservation을 만들지 않는다.
+
+Target runtime은 local exact instance가 없을 때만 자신을 owner로 `Creating` row와 pending capacity를
+Reserve하고 factory, `Configure`, `OnInitializeAsync`를 수행한다. CAS loser는 factory를 시작하지 않고 current
+authority를 읽어 owner에게 reroute하거나 진행 중인 attempt에 합류한다. Commit이 `Ready`와 active capacity를
+게시한 뒤에만 envelope의 first message를 local application queue에 exactly once 제출한다. Authority와
+일치하지 않는 local-only instance는 message를 처리하지 못하도록 fence한다. Activation envelope transport는
+CAS 전에 허용하지만 일반 Spot transport와 application dispatch는 current `Ready` authority만 사용한다. 이
 barrier를 제어하는 별도 application API는 없다.
 
 `CloseAsync(spotRef)`는 exact incarnation만 닫는다. 해당 incarnation이 없으면 `false`, generation이 다르면

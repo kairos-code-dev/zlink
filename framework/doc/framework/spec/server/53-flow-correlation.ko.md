@@ -66,7 +66,7 @@ Framework는 인과 관계가 있는 다음 operation에 flow ID와 root origin�
 |---|---|
 | Node direct·ChannelName | 선택된 RouteMesh 또는 ClientServer target의 handler context까지 보존 |
 | Spot direct | target Spot application turn까지 보존 |
-| Instance Spot direct | resolve·claim·activation barrier를 지나 first Spot application turn까지 보존 |
+| Instance Spot direct | source resolve·activation envelope, target-owned claim·activation barrier를 지나 first Spot application turn까지 보존 |
 | Logical Multicast | 모든 remote MeshNode와 local matching Spot이 같은 flow ID 사용 |
 | Actor direct·STREAM Actor dispatch | target Actor queue와 request reply까지 보존 |
 | Actor relocation | relocation control과 target Actor의 관련 lifecycle 작업에 보존 |
@@ -128,8 +128,8 @@ Framework는 flow ID와 correlation ID에 user ID, Actor ID, Spot RID, endpoint 
 
 - request와 terminal reply가 같은 correlation ID를 사용하고 한 번만 완료된다.
 - 같은 causal flow의 Node·Channel·Spot·Actor·STREAM hop이 같은 flow ID를 사용한다.
-- Instance Spot의 resolve·claim·activation barrier와 first handler가 같은 flow·correlation을 유지하며 CAS
-  loser redirect가 새 ID를 만들지 않는다.
+- Instance Spot의 source resolve·activation envelope, target-owned claim·activation barrier와 first handler가
+  같은 flow·correlation을 유지하며 CAS loser redirect가 새 ID를 만들지 않는다.
 - Logical Multicast와 classic fanout의 모든 branch가 root flow ID를 보존한다.
 - tracing off node도 inbound flow ID를 다음 관련 hop에 전달한다.
 - callback 종료 뒤 관련 없는 callback에 flow context가 남지 않는다.

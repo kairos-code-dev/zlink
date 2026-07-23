@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Zlink.Framework.Runtime.Host;
 
@@ -24,6 +25,18 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
         Func<ZLinkFrameworkComponentState> getOrStartState,
         Func<IZLinkBackendSpotNode?> getActorSpotNode)
     {
+        var loggerFactory = services.GetService<ILoggerFactory>();
+        var channelLogger = loggerFactory?.CreateLogger("Zlink.Framework.ClientServer")
+                            ?? NullLogger.Instance;
+        var channelDispatchErrors = new ZLinkDispatchErrorReporter(
+            registration.DispatchOptions,
+            ZLinkMessageFlowTracer.CreateLogger(loggerFactory, channelLogger),
+            runtime);
+        IReadOnlySet<string> ResolveHandlerGroups(string channelName) =>
+            registration.Channels.TryGetValue(channelName, out var channel)
+                ? channel.HandlerGroups
+                : new HashSet<string>(StringComparer.Ordinal);
+
         var channels = new ZLinkChannelRuntimeManager(
             backendAdapterFactory,
             registration,
@@ -33,7 +46,26 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
                     dispatcher,
                     registration,
                     runtime,
-                    services.GetService<ILoggerFactory>()?.CreateLogger<ZLinkFanoutPacketDispatcher>())));
+                    loggerFactory?.CreateLogger<ZLinkFanoutPacketDispatcher>()),
+                new ZLinkClientServerDispatcher(
+                    new ZLinkChannelCommandDispatchPipeline(
+                        string.Empty,
+                        handlerRegistry,
+                        dispatcher,
+                        ResolveHandlerGroups,
+                        LogLevel.Warning,
+                        channelDispatchErrors,
+                        registration.Codecs,
+                        channelLogger),
+                    new ZLinkChannelRequestDispatchPipeline(
+                        string.Empty,
+                        handlerRegistry,
+                        dispatcher,
+                        ResolveHandlerGroups,
+                        registration.Codecs,
+                        channelDispatchErrors,
+                        channelLogger),
+                    registration.Codecs)));
         var streams = new ZLinkStreamRuntimeManager(services, backendAdapterFactory, registration);
         var spots = new ZLinkSpotRuntimeManager(
             services,

@@ -29,6 +29,7 @@ import type {
   ZLinkTimerOptions
 } from '@zlink-systems/framework';
 import type {
+  ZLinkChannelOptions,
   ZLinkChannelPublishHandlerRegistration,
   ZLinkClientCapabilityOptions,
   ZLinkCodecRegistryOptions,
@@ -71,6 +72,13 @@ export interface InternalZLinkNestFanoutChannelOptions extends ZLinkNestHandlerD
   readonly subscriber?: ZLinkClientCapabilityOptions;
   readonly publishHandlers?: readonly ZLinkChannelPublishHandlerRegistration[];
   readonly publishHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
+}
+
+export interface InternalZLinkNestClientServerChannelOptions extends ZLinkNestHandlerDiscoveryOptions {
+  readonly client?: ZLinkClientCapabilityOptions;
+  readonly server?: NonNullable<ZLinkChannelOptions['server']>;
+  readonly requestHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
+  readonly sendHandlerTypes?: readonly ZLinkNestManualHandlerOptions[];
 }
 
 export interface ZLinkNestHandlerOptions {
@@ -173,6 +181,7 @@ export interface ZLinkNestModuleRegistrationOptions extends Omit<
   'channels' | 'routeChannels' | 'streamNodes' | 'spotNodes'
 > {
   readonly [ZLINK_MODULE_OPTIONS_BRAND]: true;
+  readonly clientServerChannels?: Readonly<Record<string, InternalZLinkNestClientServerChannelOptions>>;
   readonly fanoutChannels?: Readonly<Record<string, InternalZLinkNestFanoutChannelOptions>>;
   readonly spotNodes?: readonly (string | ZLinkSpotNodeRegistrationOptions)[] |
     Readonly<Record<string, ZLinkSpotNodeOptions>>;
@@ -189,6 +198,7 @@ export interface ZLinkNestFrameworkOptionsBuilder {
   setActorTransferForwardWindow(timeoutMs: number): this;
   configureStreamCompression(): ZLinkStreamCompressionBuilder;
   configureLocations(): ZLinkLocationOptions;
+  addClientServerChannel(name: string): ZLinkNestClientServerChannelRoleBuilder;
   addFanoutChannel(name: string): ZLinkNestFanoutChannelBuilder;
   addRouteMesh(name: string): ZLinkNestMeshNodeBuilder;
   addStreamNode(name: string): ZLinkNestStreamNodeBuilder;
@@ -215,6 +225,25 @@ export interface ZLinkNestFanoutChannelBuilder extends ZLinkNestFrameworkOptions
   setRoutingIdAllocationGroup(groupName: string): this;
   enableSubscriber(endpoint?: string | readonly string[]): this;
   addPublishHandler(packetName: string, handlerType: Type): this;
+  addHandlerGroup(groupName: string): this;
+}
+
+export interface ZLinkNestClientServerChannelRoleBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  client(): ZLinkNestClientServerChannelClientBuilder;
+  server(): ZLinkNestClientServerChannelServerBuilder;
+}
+
+export interface ZLinkNestClientServerChannelClientBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  connect(endpoint: string): this;
+}
+
+export interface ZLinkNestClientServerChannelServerBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  listen(port?: number): this;
+  setBindHost(bindHost: string): this;
+  setAdvertiseHost(advertiseHost: string): this;
+  setWeight(weight: number): this;
+  addSendHandler(packetName: string, handlerType: Type): this;
+  addRequestHandler(packetName: string, handlerType: Type): this;
   addHandlerGroup(groupName: string): this;
 }
 

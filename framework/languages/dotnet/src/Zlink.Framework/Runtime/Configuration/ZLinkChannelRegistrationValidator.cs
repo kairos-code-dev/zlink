@@ -9,6 +9,23 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     {
         ValidateChannelShape(channel);
 
+        if (channel.Server is not null
+            && string.IsNullOrWhiteSpace(channel.Server.BindEndpoint))
+            throw new ZLinkConfigurationException(
+                $"ClientServer channel '{channel.ChannelName}' server must define a bind endpoint.");
+
+        if (channel.Client is not null)
+        {
+            ZLinkPeerAcquisitionPolicy.RequirePeerSource(
+                $"ClientServer channel '{channel.ChannelName}' client",
+                autoConnectConfigured,
+                channel.Client.ManualConnections);
+            channel.Client.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(
+                autoConnectConfigured,
+                channel.Client.ManualConnections);
+            channel.Client.ManualConnections.Freeze(channel.Client.AcquisitionMode);
+        }
+
         if (channel.Publisher is not null && string.IsNullOrWhiteSpace(channel.Publisher.BindEndpoint))
             throw new ZLinkConfigurationException(
                 $"channel '{channel.ChannelName}' publisher must define a bind endpoint.");
@@ -25,7 +42,28 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             channel.Subscriber.ManualConnections.Freeze(channel.Subscriber.AcquisitionMode);
         }
 
-        ValidateFanoutHandlerExposure(channel, handlerExposure.ValidateChannel(channel));
+        var exposedKinds = handlerExposure.ValidateChannel(channel);
+        if (channel.AutoConnectType == ZLinkLocationAutoConnectType.ClientServer)
+            ValidateClientServerHandlerExposure(channel, exposedKinds);
+        else
+            ValidateFanoutHandlerExposure(channel, exposedKinds);
+    }
+
+    private static void ValidateClientServerHandlerExposure(
+        ZLinkChannelRegistration channel,
+        IReadOnlySet<ZLinkMessageKind> exposedKinds)
+    {
+        var hasHandlers = exposedKinds.Contains(ZLinkMessageKind.Command)
+                          || exposedKinds.Contains(ZLinkMessageKind.Request);
+        if (channel.ClientServerRole == ZLinkClientServerRole.Client && hasHandlers)
+            throw new ZLinkConfigurationException(
+                $"ClientServer channel '{channel.ChannelName}' client cannot expose handlers.");
+        if (channel.ClientServerRole == ZLinkClientServerRole.Server && !hasHandlers)
+            throw new ZLinkConfigurationException(
+                $"ClientServer channel '{channel.ChannelName}' server must expose a send or request handler.");
+        if (channel.PublishHandlers.Count > 0)
+            throw new ZLinkConfigurationException(
+                $"ClientServer channel '{channel.ChannelName}' cannot register publish handlers.");
     }
 
     private static void ValidateFanoutHandlerExposure(
@@ -49,6 +87,21 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
     private static void ValidateChannelShape(ZLinkChannelRegistration channel)
     {
+        if (channel.AutoConnectType == ZLinkLocationAutoConnectType.ClientServer)
+        {
+            var validClient = channel.ClientServerRole == ZLinkClientServerRole.Client
+                              && channel.Client is not null && channel.Server is null;
+            var validServer = channel.ClientServerRole == ZLinkClientServerRole.Server
+                              && channel.Server is not null && channel.Client is null;
+            if (!validClient && !validServer)
+                throw new ZLinkConfigurationException(
+                    $"ClientServer channel '{channel.ChannelName}' must select Client or Server exactly once.");
+            if (channel.Publisher is not null || channel.Subscriber is not null)
+                throw new ZLinkConfigurationException(
+                    $"ClientServer channel '{channel.ChannelName}' cannot enable fanout capabilities.");
+            return;
+        }
+
         if (channel.AutoConnectType != ZLinkLocationAutoConnectType.Fanout)
             throw new ZLinkConfigurationException(
                 $"channel '{channel.ChannelName}' must declare fanout topology.");

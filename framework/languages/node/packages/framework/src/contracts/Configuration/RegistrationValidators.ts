@@ -41,6 +41,7 @@ export function validateFrameworkRegistration(
   validateWorkerOptions(registration.worker);
   validateMonitoring(registration);
   validateLocationRegistration(registration);
+  validateClientServerLocationStore(registration);
   validateActorTransferAuthority(registration);
   validateRoutingIdAllocations(registration);
 }
@@ -126,6 +127,25 @@ function validateLocationRegistration(registration: ZLinkFrameworkRegistration):
   if (locations.useInMemoryStores && locations.storeInstance !== undefined) {
     throw new ZLinkConfigurationException(
       'In-memory location stores cannot be combined with explicit location store registrations.'
+    );
+  }
+}
+
+function validateClientServerLocationStore(registration: ZLinkFrameworkRegistration): void {
+  const requiresDedicatedStore = [...registration.channels.values()].some((channel) =>
+    channel.server !== undefined
+    || (channel.client !== undefined && (channel.client.manualConnections?.length ?? 0) === 0));
+  if (!requiresDedicatedStore || registration.locations.useInMemoryStores) return;
+  const store = registration.locations.storeInstance as Partial<Record<
+    'updateClientServer' | 'removeClientServer' | 'listClientServers',
+    unknown
+  >> | undefined;
+  if (store === undefined) return;
+  if (typeof store.updateClientServer !== 'function'
+    || typeof store.removeClientServer !== 'function'
+    || typeof store.listClientServers !== 'function') {
+    throw new ZLinkConfigurationException(
+      'ClientServer automatic discovery requires dedicated ClientServer descriptor store operations.'
     );
   }
 }

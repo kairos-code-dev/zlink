@@ -165,8 +165,7 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         ZLinkAutoConnectExecutor executor,
         Map<String, String> metadata,
         List<String> capabilities) {
-        boolean advertisable = ZLinkAutoConnectPlanner.hasRid(nodeRid)
-            || (endpoint != null && !endpoint.isBlank());
+        boolean advertisable = shouldAdvertise(type, role, nodeRid, endpoint);
         if (!advertisable && executor == ZLinkAutoConnectExecutor.NONE) {
             return;
         }
@@ -174,7 +173,8 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             new ZLinkAutoConnectPlanner.Local(type, meshName, role, nodeRid, endpoint);
         ZLinkPeerLocation row = advertisable
             ? new ZLinkPeerLocation(
-                type, meshName, nodeRid, role, endpoint, weight, false, 0,
+                type, meshName, nodeRid, role, endpoint, weight, false,
+                newLifecycleGeneration(),
                 metadata, capabilities, "", 0, Instant.EPOCH)
             : null;
         ZLinkAutoConnectReconciler reconciler = new ZLinkAutoConnectReconciler(
@@ -185,6 +185,24 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
             executor,
             options);
         loops.add(new ZLinkAutoConnectLoop(reconciler, options));
+    }
+
+    static boolean shouldAdvertise(
+        ZLinkLocationAutoConnectType type,
+        ZLinkLocationRole role,
+        RoutingId nodeRid,
+        String endpoint) {
+        boolean hasEndpoint = endpoint != null && !endpoint.isBlank();
+        return switch (type) {
+            case CLIENT_SERVER -> role == ZLinkLocationRole.ROUTER && hasEndpoint;
+            case FANOUT -> role == ZLinkLocationRole.PUB && hasEndpoint;
+            default -> ZLinkAutoConnectPlanner.hasRid(nodeRid) || hasEndpoint;
+        };
+    }
+
+    private static long newLifecycleGeneration() {
+        return java.util.concurrent.ThreadLocalRandom.current()
+            .nextLong(1, Long.MAX_VALUE);
     }
 
     @Override

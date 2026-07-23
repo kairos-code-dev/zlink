@@ -10,20 +10,19 @@ public sealed class ChannelContracts
         typeof(IZLinkSendCall),
         typeof(IZLinkRequestCall),
         typeof(IZLinkMetadataCall<>))]
-    public async Task Route_client_sends_and_requests_by_mesh_and_channel_name()
+    public async Task Route_client_sends_and_requests_by_channel_name()
     {
         var client = new ExampleRouteClient();
 
-        var sent = await client.SendToChannel("game", "api", new AuthenticateRequest("player-1"))
+        var sent = await client.SendToChannel("api", new AuthenticateRequest("player-1"))
             .SubmitAsync();
         Assert.Equal(ZLinkSubmitStatus.Submitted, sent.Status);
 
         var reply = await client
-            .RequestToChannel("game", "api", new AuthenticateRequest("player-1"))
+            .RequestToChannel("api", new AuthenticateRequest("player-1"))
             .Timeout(TimeSpan.FromSeconds(3))
             .Async<AuthenticateReply>();
 
-        Assert.Equal("game", client.MeshName);
         Assert.Equal("api", client.ChannelName);
         Assert.Equal("player-1", reply.PlayerId);
     }
@@ -95,12 +94,12 @@ public sealed class ChannelContracts
 
         // gRPC unary RPC -> request/response on a logical channel name.
         var placed = await orders
-            .RequestToChannel("commerce", "orders", new PlaceOrder("order-1042", "acct-77", 18742))
+            .RequestToChannel("orders", new PlaceOrder("order-1042", "acct-77", 18742))
             .Timeout(TimeSpan.FromSeconds(2))
             .Async<OrderPlaced>();
 
         // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
-        _ = await orders.SendToChannel("commerce", "inventory", new ReserveStock("order-1042", "sku-9", 3))
+        _ = await orders.SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
             .SubmitAsync();
 
         // gRPC server-streaming / event feed -> pub/sub fan-out to many subscribers.
@@ -109,7 +108,6 @@ public sealed class ChannelContracts
             .SubmitAsync();
 
         Assert.Equal("order-1042", placed.OrderId); // unary RPC reply correlated by type
-        Assert.Equal("commerce", orders.MeshName);
         Assert.Equal("inventory", orders.ChannelName);
         Assert.Equal(
             ("order.events", "order.status"),
@@ -139,8 +137,6 @@ public sealed class ChannelContracts
         public string? RouterChannelId { get; private set; }
 
         public RoutingId TargetNodeRid { get; private set; }
-
-        public string? MeshName { get; private set; }
 
         public string? ChannelName { get; private set; }
 
@@ -179,21 +175,17 @@ public sealed class ChannelContracts
         }
 
         public IZLinkSendCall SendToChannel<TMessage>(
-            string meshName,
             string channelName,
             TMessage message)
         {
-            MeshName = meshName;
             ChannelName = channelName;
             return new ExampleRouteSendCall();
         }
 
         public IZLinkRequestCall RequestToChannel<TRequest>(
-            string meshName,
             string channelName,
             TRequest request)
         {
-            MeshName = meshName;
             ChannelName = channelName;
             object reply = request switch
             {

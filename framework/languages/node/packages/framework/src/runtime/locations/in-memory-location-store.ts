@@ -32,6 +32,8 @@ import {
   type ZLinkLocationWriteResult,
   type ZLinkMeshNodeDescriptor,
   type ZLinkMeshNodeDescriptorKey,
+  type ZLinkClientServerServerDescriptor,
+  type ZLinkClientServerServerDescriptorKey,
   type ZLinkRoutingIdSlotAcquireRequest,
   type ZLinkRoutingIdSlotAcquireResult,
   type ZLinkRoutingIdSlotAllocation,
@@ -79,6 +81,7 @@ export class ZLinkInMemoryLocationStore implements
   ZLinkRoutingIdSlotAllocationStore {
   private readonly leases = new Map<string, InMemoryOwnerLease>();
   private readonly meshNodes = new RowTable<ZLinkMeshNodeDescriptor>();
+  private readonly clientServers = new RowTable<ZLinkClientServerServerDescriptor>();
   private readonly peers = new RowTable<ZLinkPeerLocation>();
   private readonly spots = new RowTable<ZLinkSpotLocation>();
   private readonly actors = new RowTable<ZLinkActorLocation>();
@@ -270,6 +273,83 @@ export class ZLinkInMemoryLocationStore implements
 
   async listMeshNodes(meshName: string): Promise<readonly ZLinkMeshNodeDescriptor[]> {
     return [...this.meshNodes.rows.values()].filter((row) => row.meshName === meshName);
+  }
+
+  async updateClientServer(
+    descriptor: ZLinkClientServerServerDescriptor,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult> {
+    signal?.throwIfAborted();
+    validateClientServerDescriptor(descriptor);
+    const key = clientServerKey(descriptor.channelName, descriptor.serverRid);
+    const current = this.clientServers.rows.get(key);
+    const lease = this.leases.get(descriptor.ownerId);
+    const updatedAt = this.now();
+    if (lease === undefined
+      || lease.token.leaseGeneration !== descriptor.leaseGeneration
+      || lease.leaseExpiresAt.getTime() <= updatedAt.getTime()) {
+      return rejectedConflict();
+    }
+    if (current === undefined) {
+      if (intent !== ZLinkLocationWriteIntent.NewClaim
+        && intent !== ZLinkLocationWriteIntent.Takeover) return ignoredStale();
+      const generation = (this.clientServers.generations.get(key) ?? 0n) + 1n;
+      this.clientServers.rows.set(key, { ...descriptor, updatedAt });
+      this.clientServers.generations.set(key, generation);
+      this.bump(ZLinkLocationKind.ClientServer, descriptor.channelName);
+      return stored(generation, updatedAt);
+    }
+    const currentLease = this.leases.get(current.ownerId);
+    if ((currentLease === undefined || currentLease.leaseExpiresAt.getTime() <= updatedAt.getTime())
+      && (intent === ZLinkLocationWriteIntent.NewClaim
+        || intent === ZLinkLocationWriteIntent.Takeover)) {
+      const generation = (this.clientServers.generations.get(key) ?? 0n) + 1n;
+      this.clientServers.rows.set(key, { ...descriptor, updatedAt });
+      this.clientServers.generations.set(key, generation);
+      this.bump(ZLinkLocationKind.ClientServer, descriptor.channelName);
+      return stored(generation, updatedAt);
+    }
+    if (clientServerDescriptorFingerprint(current) === clientServerDescriptorFingerprint(descriptor)) {
+      return stored(this.clientServers.generations.get(key) ?? 1n, current.updatedAt);
+    }
+    if (current.ownerId !== descriptor.ownerId
+      || current.leaseGeneration !== descriptor.leaseGeneration
+      || current.lifecycleGeneration !== descriptor.lifecycleGeneration
+      || descriptor.descriptorRevision <= current.descriptorRevision
+      || clientServerImmutableFingerprint(current) !== clientServerImmutableFingerprint(descriptor)) {
+      return ignoredStale();
+    }
+    this.clientServers.rows.set(key, { ...descriptor, updatedAt });
+    this.bump(ZLinkLocationKind.ClientServer, descriptor.channelName);
+    return stored(this.clientServers.generations.get(key) ?? 1n, updatedAt);
+  }
+
+  async removeClientServer(
+    key: ZLinkClientServerServerDescriptorKey,
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteStatus> {
+    signal?.throwIfAborted();
+    const encoded = clientServerKey(key.channelName, key.serverRid);
+    const current = this.clientServers.rows.get(encoded);
+    if (current === undefined
+      || current.ownerId !== owner.ownerId
+      || current.leaseGeneration !== owner.leaseGeneration) {
+      return ZLinkLocationWriteStatus.IgnoredStale;
+    }
+    this.clientServers.rows.delete(encoded);
+    this.bump(ZLinkLocationKind.ClientServer, key.channelName);
+    return ZLinkLocationWriteStatus.Stored;
+  }
+
+  async listClientServers(
+    channelName: string,
+    page: ZLinkPageRequest = {},
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkClientServerServerDescriptor>> {
+    signal?.throwIfAborted();
+    return pageRows(this.clientServers, (row) => row.channelName === channelName, page);
   }
 
   async acquireRoutingIdSlot(
@@ -755,6 +835,13 @@ export class ZLinkInMemoryLocationStore implements
     removed += this.removeByOwner(this.spots, ownerId, (row) => row.ownerId, ZLinkLocationKind.Spot, (row) => row.meshName);
     removed += this.removeByOwner(this.actors, ownerId, (row) => row.ownerId, ZLinkLocationKind.Actor, () => undefined);
     removed += this.removeByOwner(this.routes, ownerId, (row) => row.ownerId, ZLinkLocationKind.Route, () => undefined);
+    removed += this.removeByOwner(
+      this.clientServers,
+      ownerId,
+      (row) => row.ownerId,
+      ZLinkLocationKind.ClientServer,
+      (row) => row.channelName
+    );
     return BigInt(removed);
   }
 
@@ -964,9 +1051,10 @@ function meshNodeImmutableFingerprint(descriptor: ZLinkMeshNodeDescriptor): stri
       ...capability,
       placementProfiles: [...capability.placementProfiles].sort()
     }))
-    .sort((left, right) =>
-      left.objectKind.localeCompare(right.objectKind)
-      || left.stableType.localeCompare(right.stableType));
+    .sort((left, right) => {
+      const byKind = left.objectKind.localeCompare(right.objectKind);
+      return byKind !== 0 ? byKind : left.stableType.localeCompare(right.stableType);
+    });
   return JSON.stringify({
     meshName: descriptor.meshName,
     rid: String(descriptor.rid),
@@ -1023,6 +1111,53 @@ function meshNodeKey(meshName: string, rid: RoutingId): string {
     ? rid
     : (rid as unknown as { toHex(): string }).toHex();
   return `${meshName.length}:${meshName}:${value.length}:${value}`;
+}
+
+function clientServerKey(channelName: string, serverRid: RoutingId): string {
+  const value = typeof serverRid === 'string'
+    ? serverRid
+    : (serverRid as unknown as { toHex(): string }).toHex();
+  return `${channelName.length}:${channelName}:${value.length}:${value}`;
+}
+
+function validateClientServerDescriptor(descriptor: ZLinkClientServerServerDescriptor): void {
+  if (!validDescriptorText(descriptor.channelName)
+    || !validDescriptorText(String(descriptor.serverRid))
+    || !validDescriptorText(descriptor.endpoint)
+    || !validDescriptorText(descriptor.securityIdentity)
+    || !validDescriptorText(descriptor.ownerId)) {
+    throw new TypeError('ClientServer descriptor identity and endpoint are required.');
+  }
+  const maxGeneration = 0x7fff_ffff_ffff_ffffn;
+  if (descriptor.lifecycleGeneration < 1n || descriptor.lifecycleGeneration > maxGeneration
+    || descriptor.descriptorRevision < 1n || descriptor.descriptorRevision > maxGeneration
+    || descriptor.leaseGeneration < 1n || descriptor.leaseGeneration > maxGeneration) {
+    throw new RangeError('ClientServer descriptor generations are invalid.');
+  }
+  if (!Number.isInteger(descriptor.weight) || descriptor.weight < 0 || descriptor.weight > 100) {
+    throw new RangeError('ClientServer descriptor weight must be between 0 and 100.');
+  }
+}
+
+function clientServerImmutableFingerprint(descriptor: ZLinkClientServerServerDescriptor): string {
+  return JSON.stringify({
+    channelName: descriptor.channelName,
+    serverRid: String(descriptor.serverRid),
+    lifecycleGeneration: descriptor.lifecycleGeneration.toString(),
+    endpoint: descriptor.endpoint,
+    securityIdentity: descriptor.securityIdentity,
+    ownerId: descriptor.ownerId,
+    leaseGeneration: descriptor.leaseGeneration.toString()
+  });
+}
+
+function clientServerDescriptorFingerprint(descriptor: ZLinkClientServerServerDescriptor): string {
+  return JSON.stringify({
+    immutable: clientServerImmutableFingerprint(descriptor),
+    descriptorRevision: descriptor.descriptorRevision.toString(),
+    weight: descriptor.weight,
+    state: descriptor.state
+  });
 }
 
 function actorTransferKey(meshName: string, actorId: string): string {

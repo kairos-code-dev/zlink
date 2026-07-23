@@ -5,6 +5,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import type { RoutingId } from '../../contracts/Common';
 import type {
+  ZLinkClientServerLocationStore,
   ZLinkPeerLocationStore,
   ZLinkRouteLocationStore
 } from '../../contracts/Locations/Stores';
@@ -60,6 +61,7 @@ import type { ZLinkOwnershipLostEvent } from './lifecycle-runtime';
 
 export interface ZLinkLocationRuntimeStores {
   readonly locationStore: ZLinkLocationStore;
+  readonly clientServerStore?: ZLinkClientServerLocationStore;
   readonly peerStore: ZLinkPeerLocationStore;
   readonly spotStore: ZLinkSpotLocationStore;
   readonly actorStore: ZLinkActorLocationStore;
@@ -155,6 +157,10 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
 
   get nodeRid(): RoutingId | undefined {
     return this.nodeRidValue;
+  }
+
+  get currentOwnerToken(): ZLinkLocationOwnerToken | undefined {
+    return this.ownerToken;
   }
 
   addOwnershipLostHandler(handler: (event: ZLinkOwnershipLostEvent) => void): void {
@@ -426,6 +432,11 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       ownerLeaseHealthy: this.ownerLeaseHealthy,
       ownerLeaseRenewedAt: this.ownerLeaseRenewedAt
     };
+  }
+
+  reportDiscoveryFailure(error: unknown): void {
+    this.metrics?.count('zlink.location.discovery.failures');
+    this.recordFailure(errorMessage(error));
   }
 
   async listPeerLocations(filter: ZLinkPeerLocationFilter, signal?: AbortSignal): Promise<readonly ZLinkPeerLocation[]> {

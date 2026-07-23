@@ -128,6 +128,15 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         return new ZLinkFanoutChannelBuilder(channel);
     }
 
+    public IZLinkClientServerChannelRoleBuilder AddClientServerChannel(
+        string channelName)
+    {
+        var channel = AddChannelRegistration(
+            channelName,
+            ZLinkLocationAutoConnectType.ClientServer);
+        return new ZLinkClientServerChannelRoleBuilder(channel);
+    }
+
     // Test-only in-memory location store registration (spec 05-route-mesh §7 /
     // gap 90 §12.33 S8-08). Not on IZLinkFrameworkOptions; single-process contract
     // tests reach it through the internal ZLinkTestLocationStores helper. Production

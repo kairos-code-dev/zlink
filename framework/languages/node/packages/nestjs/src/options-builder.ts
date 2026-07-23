@@ -32,9 +32,13 @@ import {
 } from '@zlink-systems/framework';
 import {
   ZLINK_MODULE_OPTIONS_BRAND,
+  type InternalZLinkNestClientServerChannelOptions,
   type Mutable,
   type MutableCodecRegistryOptions,
   type ZLinkModuleOptions,
+  type ZLinkNestClientServerChannelClientBuilder,
+  type ZLinkNestClientServerChannelRoleBuilder,
+  type ZLinkNestClientServerChannelServerBuilder,
   type ZLinkNestCodecRegistryBuilder,
   type ZLinkNestFanoutChannelBuilder,
   type InternalZLinkNestFanoutChannelOptions,
@@ -55,6 +59,7 @@ type ZLinkNestBuilderAdditionalOptions = Omit<
 
 interface ZLinkNestBuilderState {
   additionalOptions: ZLinkNestBuilderAdditionalOptions;
+  readonly clientServerChannels: Record<string, InternalZLinkNestClientServerChannelOptions>;
   readonly fanoutChannels: Record<string, InternalZLinkNestFanoutChannelOptions>;
   readonly streams: Record<string, ZLinkStreamNodeOptions>;
   readonly spotNodes: Record<string, ZLinkSpotNodeOptions>;
@@ -66,6 +71,7 @@ function createBuilderState(): ZLinkNestBuilderState {
   const codecOptions: MutableCodecRegistryOptions = { serializers: [], streamCodecs: [] };
   return {
     additionalOptions: {},
+    clientServerChannels: {},
     fanoutChannels: {},
     streams: {},
     spotNodes: {},
@@ -190,6 +196,16 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     return new DefaultZLinkNestFanoutChannelBuilder(this.state, name, this.state.fanoutChannels[name]);
   }
 
+  addClientServerChannel(name: string): ZLinkNestClientServerChannelRoleBuilder {
+    this.ensureChannelAvailable(name);
+    this.state.clientServerChannels[name] = {};
+    return new DefaultZLinkNestClientServerChannelRoleBuilder(
+      this.state,
+      name,
+      this.state.clientServerChannels[name]
+    );
+  }
+
   addRouteMesh(name: string): ZLinkNestMeshNodeBuilder {
     if (name.trim().length === 0 || name.trim() !== name) {
       throw new framework.ZLinkConfigurationException('RouteMesh name must not be empty or padded.');
@@ -212,6 +228,7 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     }
     if (
       Object.prototype.hasOwnProperty.call(this.state.fanoutChannels, name)
+      || Object.prototype.hasOwnProperty.call(this.state.clientServerChannels, name)
     ) {
       throw new framework.ZLinkConfigurationException(`Duplicate channel '${name}'.`);
     }
@@ -221,6 +238,7 @@ abstract class ZLinkNestOptionsBuilder implements ZLinkNestFrameworkOptionsBuild
     const options: ZLinkNestModuleRegistrationOptions = {
       [ZLINK_MODULE_OPTIONS_BRAND]: true,
       ...this.state.additionalOptions,
+      clientServerChannels: { ...this.state.clientServerChannels },
       fanoutChannels: { ...this.state.fanoutChannels },
       streams: { ...this.state.streams },
       spotNodes: { ...this.state.spotNodes },
@@ -316,6 +334,147 @@ class DefaultZLinkNestFanoutChannelBuilder extends ZLinkNestOptionsBuilder imple
   addPublishHandler(packetName: string, handlerType: Type): this {
     this.channelOptions.publishHandlerTypes = [...(this.channelOptions.publishHandlerTypes ?? []), { packetName, handlerType }];
     return this;
+  }
+}
+
+class DefaultZLinkNestClientServerChannelRoleBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestClientServerChannelRoleBuilder {
+  private selected = false;
+
+  constructor(
+    state: ZLinkNestBuilderState,
+    private readonly name: string,
+    private readonly channel: Mutable<InternalZLinkNestClientServerChannelOptions>
+  ) {
+    super(state);
+  }
+
+  client(): ZLinkNestClientServerChannelClientBuilder {
+    this.select();
+    this.channel.client = { manualConnections: [] };
+    return new DefaultZLinkNestClientServerChannelClientBuilder(this.state, this.name, this.channel);
+  }
+
+  server(): ZLinkNestClientServerChannelServerBuilder {
+    this.select();
+    this.channel.server = {};
+    return new DefaultZLinkNestClientServerChannelServerBuilder(this.state, this.name, this.channel);
+  }
+
+  private select(): void {
+    if (this.selected) {
+      throw new framework.ZLinkConfigurationException(
+        `ClientServer channel '${this.name}' role is already selected.`
+      );
+    }
+    this.selected = true;
+  }
+}
+
+class DefaultZLinkNestClientServerChannelClientBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestClientServerChannelClientBuilder {
+  constructor(
+    state: ZLinkNestBuilderState,
+    private readonly name: string,
+    private readonly channel: Mutable<InternalZLinkNestClientServerChannelOptions>
+  ) {
+    super(state);
+  }
+
+  connect(endpoint: string): this {
+    requireClientServerText(endpoint, `ClientServer channel '${this.name}' endpoint`);
+    const connections = [...(this.channel.client?.manualConnections ?? [])];
+    if (!connections.includes(endpoint)) connections.push(endpoint);
+    this.channel.client = { ...this.channel.client, manualConnections: connections };
+    return this;
+  }
+}
+
+class DefaultZLinkNestClientServerChannelServerBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestClientServerChannelServerBuilder {
+  constructor(
+    state: ZLinkNestBuilderState,
+    private readonly name: string,
+    private readonly channel: Mutable<InternalZLinkNestClientServerChannelOptions>
+  ) {
+    super(state);
+  }
+
+  listen(port = 0): this {
+    if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+      throw new framework.ZLinkConfigurationException(
+        `ClientServer channel '${this.name}' port must be between 0 and 65535.`
+      );
+    }
+    this.updateServer({ port });
+    this.updateBind();
+    return this;
+  }
+
+  setBindHost(bindHost: string): this {
+    requireClientServerText(bindHost, `ClientServer channel '${this.name}' bind host`);
+    this.updateServer({ bindHost });
+    if (this.server.port !== undefined) this.updateBind();
+    return this;
+  }
+
+  setAdvertiseHost(advertiseHost: string): this {
+    requireClientServerText(advertiseHost, `ClientServer channel '${this.name}' advertise host`);
+    this.updateServer({ advertiseHost });
+    return this;
+  }
+
+  setWeight(weight: number): this {
+    if (!Number.isInteger(weight) || weight < 0 || weight > 100) {
+      throw new framework.ZLinkConfigurationException(
+        `ClientServer channel '${this.name}' weight must be between 0 and 100.`
+      );
+    }
+    this.updateServer({ weight });
+    return this;
+  }
+
+  addSendHandler(packetName: string, handlerType: Type): this {
+    requireClientServerText(packetName, `ClientServer channel '${this.name}' send packet name`);
+    this.channel.sendHandlerTypes = [
+      ...(this.channel.sendHandlerTypes ?? []),
+      { packetName, handlerType }
+    ];
+    return this;
+  }
+
+  addRequestHandler(packetName: string, handlerType: Type): this {
+    requireClientServerText(packetName, `ClientServer channel '${this.name}' request packet name`);
+    this.channel.requestHandlerTypes = [
+      ...(this.channel.requestHandlerTypes ?? []),
+      { packetName, handlerType }
+    ];
+    return this;
+  }
+
+  addHandlerGroup(groupName: string): this {
+    requireClientServerText(groupName, `ClientServer channel '${this.name}' handler group`);
+    this.channel.handlerGroups = [...(this.channel.handlerGroups ?? []), groupName];
+    return this;
+  }
+
+  private get server(): NonNullable<InternalZLinkNestClientServerChannelOptions['server']> {
+    return this.channel.server!;
+  }
+
+  private updateServer(
+    values: Partial<NonNullable<InternalZLinkNestClientServerChannelOptions['server']>>
+  ): void {
+    this.channel.server = { ...this.channel.server, ...values };
+  }
+
+  private updateBind(): void {
+    const host = this.server.bindHost ?? '127.0.0.1';
+    const endpointHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+    this.updateServer({ bind: `tcp://${endpointHost}:${this.server.port ?? 0}` });
+  }
+}
+
+function requireClientServerText(value: string, label: string): void {
+  if (value.trim().length === 0 || value.trim() !== value) {
+    throw new framework.ZLinkConfigurationException(`${label} must not be empty or padded.`);
   }
 }
 

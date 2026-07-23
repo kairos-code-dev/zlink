@@ -1162,19 +1162,41 @@ lifecycle generation의 tuple로 바꾸고 같은 RID의 새 lifecycle에서 soc
 C++ M6A runtime과 mixed-mode startup focused test가 통과했다. JVM planner도 role·RID 또는 endpoint와
 lifecycle generation을 intent key로 사용하고 manual peer handover에서 stable peer identity로 이전 lifecycle을
 교체한다. No-arg subscriber만 automatic mode를 선택하며 manual endpoint와 섞으면 startup error로 끝낸다.
-Java core focused 74건과 Kotlin contract test가 통과했다. Node planner와 SpotNode executor도 lifecycle
-generation을 intent와 disconnected 판정에 포함했고 Framework·NestJS builder가 automatic·manual subscriber
-혼합을 양쪽 호출 순서에서 거부한다. Workspace typecheck, forced Framework·NestJS build, changed-source
-lint, lifecycle 1/1과 startup validation 9/9가 통과했다. Node의 제거된 legacy ClientServer·SpotMesh enum을
-참조하는 기존 unit scenario 6건과 .NET·Node dedicated ClientServer public/runtime surface는 계속 source
-gap으로 유지한다. 이 checkpoint는 해당 gap을 숨기거나 `V11-M6A-*`를 완료로 판정하지 않는다.
+Client와 fanout Subscriber는 descriptor를 게시하지 않고 Server와 Publisher만 게시하도록 role별 source를
+분리했다. Descriptor lifecycle은 Store CAS generation과 분리한 nonzero token으로 유지한다. Java core,
+Kotlin과 Redis의 Gradle 22 task가 통과했다. 별도 `contractTest` source 두 곳은 제거된
+`renewOwnerLease(String, RoutingId, Duration)`를 호출하는 기존 signature gap으로 분리했다. Node planner와
+SpotNode executor도 lifecycle generation을 intent와 disconnected 판정에 포함했고 Framework·NestJS builder가
+automatic·manual subscriber 혼합을 양쪽 호출 순서에서 거부한다.
+
+Dedicated ClientServer source checkpoint(2026-07-23)에서 .NET과 Node에 role을 정확히 한 번 선택하는
+Client·Server builder를 추가하고 process-local unique ChannelName만 받는 send·request 표면을 연결했다.
+.NET은 Client 전용 DEALER와 Server 전용 ROUTER, manual endpoint, typed handler dispatch, protocol error
+reply와 request terminal 처리를 구현했다. 실제 두 runtime의 send와 request/reply, role 검증과 동일
+RID·endpoint의 새 lifecycle에서 disconnect·reconnect readiness reset을 포함한 focused 5/5가 통과했고
+Framework build는 warning·error 0이다. Node Framework·NestJS는 Client manual connect, Server bind·actual
+port advertise, weight와 manual·group handler 조합을 구현했다. 전용 ClientServer descriptor·key·Store
+contract와 in-memory owner lease·lifecycle·revision fence, Server Serving publish→Draining→remove,
+automatic Client의 `(ChannelName, Server RID, lifecycle)` intent를 연결했다. Same endpoint/new lifecycle도
+transport readiness를 reset하고 polling 오류는 Location runtime status·metric에 기록한다. Full build,
+workspace typecheck, M6A runtime 6/6, 관련 contract 48/48와 추가 focused 7/7이 통과했다. 두 언어의 공식
+Redis provider operation과 handshake·security admission 뒤 ready 승격, descriptor weight의 outbound 선택
+연결은 계속 진행한다. Sample·E2E와 Core·bindings는 변경하거나 실행하지 않았다. 이 checkpoint는
+`V11-M6A-DN`·`V11-M6A-NODE`를 완료로 판정하지 않는다.
 
 Documentation verifier checkpoint(2026-07-23)에서 service wire schema 37 commands·157 types와 186개
-negative self-test는 통과했다. 이후 v11-first C++ public member review가 승인된 baseline
-`4265 / cefe23a9...`와 현재 candidate `4428 / 803e9c88...`의 차이를 감지해 중단됐다. 이 차이는
-Redis physical schema나 topology 문서 오류가 아니라 진행 중인 C++ public contract member set의 review
-gate다. Member diff를 별도 검토해 승인하기 전에는 baseline을 재생성하지 않으며 verifier 전체 통과
-증거로 기록하지 않는다.
+negative self-test는 통과했다. 최초 v11-first candidate는 Codex 5.6 sol xhigh review에서 C# semicolon-only
+record span, non-export TypeScript brand, computed symbol property와 C++ default argument `{}`의 false
+member를 발견해 세 차례 거부됐다. Extractor가 owner span, package-private symbol, 괄호 안 brace를 정확히
+구분하도록 수정하고 stale override보다 exact baseline·target overload를 먼저 보존하는 refresh 순서를
+추가했다. Parser·stale-first overload 회귀 6건을 추가한 최종 trace는 56 documents, 177 code blocks,
+1690 declaration owners, 6496 members이며 reviewed-new member는
+`4367 / 40a99f2735193c902343d653457da5c3e038647ca8c8ef6118e744dc7b113d30`, owner는
+`1000 / ea545f28a93075107baf897c404706c5278c2bc541eebb15a761cc647fe0a046`이다.
+Override 297개, intentional removal 1188개이며 unclassified·ambiguous·unknown/unowned는 모두 0이다.
+`--write`·`--check`·`--self-test`, `verify-framework-doc-contracts.sh`와 `git diff --check`가 통과했다.
+Codex 5.6 sol xhigh와 Claude Sonnet은 수정 뒤 독립 재계산과 refresh idempotence를 확인하고 모두
+`ACCEPT`로 판정했다.
 
 ### 10.4 Runtime 완료 후 E2E·sample spec 확정과 단계별 활성화
 

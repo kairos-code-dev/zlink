@@ -22,6 +22,23 @@ internal sealed class ZLinkChannelRuntimeManager(
         }
     }
 
+    public ZLinkChannelRuntimeBundle GetClientServerClientBundle(
+        ZLinkFrameworkComponentState state,
+        string channelName)
+    {
+        lock (state.SyncRoot)
+        {
+            if (state.ClientServerClientBundles.TryGetValue(channelName, out var bundle))
+                return bundle;
+            if (!registration.Channels.TryGetValue(channelName, out var channel)
+                || channel.ClientServerRole != ZLinkClientServerRole.Client)
+                throw new ZLinkConfigurationException(
+                    $"ClientServer client channel '{channelName}' is not registered.");
+            throw new ZLinkConfigurationException(
+                $"ClientServer client channel '{channelName}' is not initialized.");
+        }
+    }
+
     public async ValueTask InitializeInboundChannelsAsync(
         ZLinkFrameworkComponentState state,
         IZLinkChannelBackendAdapter adapter)
@@ -30,6 +47,24 @@ internal sealed class ZLinkChannelRuntimeManager(
         {
             var channelName = entry.Key;
             var channel = entry.Value;
+
+            if (channel.ClientServerRole == ZLinkClientServerRole.Server)
+            {
+                var bundle = await _bundleFactory.CreateClientServerServerBundleAsync(
+                        state,
+                        adapter,
+                        channelName,
+                        channel)
+                    .ConfigureAwait(false);
+                state.ClientServerServerBundles.Add(channelName, bundle);
+                state.ListenerTasks.Add(state.TaskRunner.Run(
+                    $"client-server:{channelName}",
+                    ct => new ValueTask(receiveLoop.RunClientServerLoopAsync(
+                        channelName,
+                        (IZLinkBackendRouterSocket)bundle.Socket,
+                        state.ErrorSink,
+                        ct))));
+            }
 
             if (channel.Subscriber is not null)
             {
@@ -52,6 +87,18 @@ internal sealed class ZLinkChannelRuntimeManager(
     {
         foreach (var entry in registration.Channels)
         {
+            if (entry.Value.ClientServerRole == ZLinkClientServerRole.Client)
+            {
+                state.ClientServerClientBundles.Add(
+                    entry.Key,
+                    await _bundleFactory.CreateClientServerClientBundleAsync(
+                            state,
+                            adapter,
+                            entry.Key,
+                            entry.Value)
+                        .ConfigureAwait(false));
+            }
+
             if (entry.Value.Publisher is null) continue;
 
             state.PublisherBundles.Add(
@@ -74,6 +121,11 @@ internal sealed class ZLinkChannelRuntimeManager(
                 : throw new InvalidOperationException(
                     $"Socket monitoring source '{sourceName}' is not registered."),
             "publisher" => GetPublisherBundle(state, channelName).Socket,
+            "client" => GetClientServerClientBundle(state, channelName).Socket,
+            "server" => state.ClientServerServerBundles.TryGetValue(channelName, out var serverBundle)
+                ? serverBundle.Socket
+                : throw new InvalidOperationException(
+                    $"Socket monitoring source '{sourceName}' is not registered."),
             _ => throw new InvalidOperationException(
                 $"Socket monitoring source '{sourceName}' is not registered.")
         };

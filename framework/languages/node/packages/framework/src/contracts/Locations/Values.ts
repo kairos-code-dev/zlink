@@ -27,5 +27,6 @@ export enum ZLinkLocationKind {
   Peer = 1,
   Spot = 2,
   Actor = 3,
-  Route = 4
+  Route = 4,
+  ClientServer = 5
 }

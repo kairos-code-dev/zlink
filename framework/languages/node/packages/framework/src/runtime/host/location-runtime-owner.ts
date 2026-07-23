@@ -225,6 +225,7 @@ export class ZLinkLocationRuntimeOwner {
       const store = new ZLinkInMemoryLocationStore();
       return {
         locationStore: store,
+        clientServerStore: store,
         peerStore: store,
         spotStore: store,
         actorStore: store,
@@ -237,6 +238,7 @@ export class ZLinkLocationRuntimeOwner {
       const runtimeStore = requireOperationalLocationStore(store);
       return {
         locationStore: store,
+        clientServerStore: isClientServerLocationStore(store) ? store : undefined,
         peerStore: runtimeStore,
         spotStore: store,
         actorStore: store,
@@ -331,4 +333,16 @@ function isActorTransferStore(value: unknown): value is ZLinkActorTransferStore 
     && typeof store.abortActorTransfer === 'function'
     && typeof store.takeOverActorTransfer === 'function'
     && typeof store.resolveActorTransfer === 'function';
+}
+
+function isClientServerLocationStore(
+  value: unknown
+): value is import('../../contracts').ZLinkClientServerLocationStore {
+  const store = value as Partial<Record<
+    'updateClientServer' | 'removeClientServer' | 'listClientServers',
+    unknown
+  >> | undefined;
+  return typeof store?.updateClientServer === 'function'
+    && typeof store.removeClientServer === 'function'
+    && typeof store.listClientServers === 'function';
 }

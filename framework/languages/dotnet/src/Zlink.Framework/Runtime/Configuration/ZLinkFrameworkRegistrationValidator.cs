@@ -31,6 +31,25 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 globalEntrySpots,
                 handlerExposure);
 
+        var clientServerChannels = registration.Channels.Values
+            .Where(static channel =>
+                channel.AutoConnectType == ZLinkLocationAutoConnectType.ClientServer)
+            .Select(static channel => channel.ChannelName)
+            .ToHashSet(StringComparer.Ordinal);
+        if (clientServerChannels.Count > 0
+            && registration.Locations.Enabled
+            && !registration.Locations.UseInMemoryStores
+            && registration.Locations.StoreInstance
+                is not IZLinkClientServerLocationStore)
+            throw new ZLinkConfigurationException(
+                "ClientServer automatic discovery requires the registered "
+                + "location store to implement IZLinkClientServerLocationStore.");
+        foreach (var node in registration.SpotNodes.Values)
+        foreach (var membership in node.ChannelMemberships)
+            if (clientServerChannels.Contains(membership.ChannelName))
+                throw new ZLinkConfigurationException(
+                    $"ChannelName '{membership.ChannelName}' is registered on both RouteMesh and ClientServer physical paths.");
+
         var actorCapableNodes = registration.SpotNodes.Values
             .Where(static spotNode => spotNode.ActorFactories.Count > 0)
             .ToArray();

@@ -30,7 +30,11 @@ internal sealed class ZLinkHandlerExposureCatalog
 
     public IReadOnlySet<ZLinkMessageKind> ValidateChannel(ZLinkChannelRegistration channel)
     {
-        ValidateChannelMappedGroups(channel, FanoutKinds);
+        ValidateChannelMappedGroups(
+            channel,
+            channel.AutoConnectType == ZLinkLocationAutoConnectType.ClientServer
+                ? MeshChannelKinds
+                : FanoutKinds);
 
         ValidateExplicitChannelDuplicates(channel);
         var exposed = SelectMapped(_scannedChannels, channel.HandlerGroups);

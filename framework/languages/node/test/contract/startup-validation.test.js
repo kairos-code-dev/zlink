@@ -219,6 +219,51 @@ test('Node live socket send timeout setter applies the same public range', () =>
   assert.equal(socket.sendTimeoutMs, 2_147_483_647);
 });
 
+test('ClientServer role builders map only the selected role into the channel runtime', () => {
+  class NoticeHandler {}
+  class QueryHandler {}
+
+  const options = framework.createFrameworkOptions((builder) => {
+    builder.addClientServerChannel('orders.client')
+      .client()
+      .connect('tcp://127.0.0.1:9401');
+    builder.addClientServerChannel('orders.server')
+      .server()
+      .setBindHost('0.0.0.0')
+      .setAdvertiseHost('orders.internal')
+      .listen(9401)
+      .setWeight(75)
+      .addSendHandler(NoticeHandler)
+      .addRequestHandler(QueryHandler);
+  });
+  const registration = framework.createFrameworkRegistration(options);
+  const client = registration.channels.get('orders.client');
+  const server = registration.channels.get('orders.server');
+
+  assert.deepEqual(client.client.manualConnections, ['tcp://127.0.0.1:9401']);
+  assert.equal(client.server, undefined);
+  assert.equal(server.client, undefined);
+  assert.equal(server.server.bind, 'tcp://0.0.0.0:9401');
+  assert.equal(server.server.advertiseHost, 'orders.internal');
+  assert.equal(server.server.weight, 75);
+  assert.deepEqual(server.sendHandlers.map((handler) => handler.handlerType), [NoticeHandler]);
+  assert.deepEqual(server.requestHandlers.map((handler) => handler.handlerType), [QueryHandler]);
+  assert.deepEqual([...registration.channelClients], ['orders.client']);
+});
+
+test('ClientServer registration rejects duplicate topology names and repeated role selection', () => {
+  assert.throws(() => framework.createFrameworkOptions((builder) => {
+    builder.addClientServerChannel('orders');
+    builder.addFanoutChannel('orders');
+  }), /Duplicate channel 'orders'/);
+
+  assert.throws(() => framework.createFrameworkOptions((builder) => {
+    const role = builder.addClientServerChannel('orders');
+    role.client();
+    role.server();
+  }), /role is already selected/);
+});
+
 async function assertNestStartupRejects(options, pattern) {
   class InvalidConfigurationModule {}
   Module({ imports: [nestjs.ZLinkModule.forRoot(options)] })(InvalidConfigurationModule);

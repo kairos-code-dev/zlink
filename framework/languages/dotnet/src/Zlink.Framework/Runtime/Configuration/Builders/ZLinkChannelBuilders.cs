@@ -1,5 +1,108 @@
 namespace Zlink.Framework.Runtime.Configuration.Builders;
 
+internal sealed class ZLinkClientServerChannelRoleBuilder(
+    ZLinkChannelRegistration registration)
+    : IZLinkClientServerChannelRoleBuilder
+{
+    public IZLinkClientServerChannelClientBuilder Client()
+    {
+        SelectRole(ZLinkClientServerRole.Client);
+        registration.Client = new ZLinkChannelClientCapabilityRegistration();
+        return new ZLinkClientServerChannelClientBuilder(registration.Client);
+    }
+
+    public IZLinkClientServerChannelServerBuilder Server()
+    {
+        SelectRole(ZLinkClientServerRole.Server);
+        registration.Server = new ZLinkChannelServerCapabilityRegistration();
+        return new ZLinkClientServerChannelServerBuilder(registration, registration.Server);
+    }
+
+    private void SelectRole(ZLinkClientServerRole role)
+    {
+        if (registration.ClientServerRole is not null)
+            throw new ZLinkConfigurationException(
+                $"ClientServer channel '{registration.ChannelName}' role must be selected exactly once.");
+        registration.ClientServerRole = role;
+    }
+}
+
+internal sealed class ZLinkClientServerChannelClientBuilder(
+    ZLinkChannelClientCapabilityRegistration client)
+    : IZLinkClientServerChannelClientBuilder
+{
+    public IZLinkClientServerChannelClientBuilder Connect(string endpoint)
+    {
+        ZLinkChannelEndpointBuilderSupport.AddManualConnection(
+            client.ManualConnections,
+            endpoint,
+            "ClientServer client endpoint must not be empty.");
+        return this;
+    }
+}
+
+internal sealed class ZLinkClientServerChannelServerBuilder(
+    ZLinkChannelRegistration registration,
+    ZLinkChannelServerCapabilityRegistration server)
+    : IZLinkClientServerChannelServerBuilder
+{
+    public IZLinkClientServerChannelServerBuilder Listen(int port = 0)
+    {
+        if (port is < 0 or > 65535)
+            throw new ZLinkConfigurationException(
+                "ClientServer listen port must be between 0 and 65535.");
+        server.ListenPort = port;
+        return this;
+    }
+
+    public IZLinkClientServerChannelServerBuilder SetBindHost(string bindHost)
+    {
+        server.BindHost = ZLinkChannelEndpointBuilderSupport.Validate(
+            bindHost,
+            "ClientServer bind host must not be empty.");
+        return this;
+    }
+
+    public IZLinkClientServerChannelServerBuilder SetAdvertiseHost(string advertiseHost)
+    {
+        server.AdvertiseHost = ZLinkChannelEndpointBuilderSupport.Validate(
+            advertiseHost,
+            "ClientServer advertise host must not be empty.");
+        return this;
+    }
+
+    public IZLinkClientServerChannelServerBuilder SetWeight(int weight)
+    {
+        server.SocketConfig.Weight = weight;
+        return this;
+    }
+
+    public IZLinkClientServerChannelServerBuilder AddHandlerGroup(string groupName)
+    {
+        ZLinkHandlerGroupBuilderSupport.AddHandlerGroup(registration, groupName);
+        return this;
+    }
+
+    public IZLinkClientServerChannelServerBuilder AddSendHandler<THandler, TMessage>(
+        string? packetName = null)
+        where THandler : class, IZLinkSendHandler<TMessage>
+    {
+        ZLinkChannelHandlerRegistrationBuilder.AddSendHandler<THandler, TMessage>(
+            registration,
+            packetName);
+        return this;
+    }
+
+    public IZLinkClientServerChannelServerBuilder AddRequestHandler<THandler, TRequest, TReply>(
+        string? packetName = null)
+        where THandler : class, IZLinkRequestHandler<TRequest, TReply>
+    {
+        ZLinkChannelHandlerRegistrationBuilder.AddRequestHandler<THandler, TRequest, TReply>(
+            registration,
+            packetName);
+        return this;
+    }
+}
 
 internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registration)
     : IZLinkFanoutChannelBuilder

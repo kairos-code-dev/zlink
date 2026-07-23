@@ -149,6 +149,9 @@ export interface ZLinkChannelOptions {
   readonly sendHandlers?: readonly ZLinkChannelSendHandlerRegistration[];
   readonly server?: {
     readonly bind?: string;
+    readonly bindHost?: string;
+    readonly advertiseHost?: string;
+    readonly port?: number;
     readonly routingId?: string;
     readonly weight?: number;
     readonly sendHighWaterMark?: number;

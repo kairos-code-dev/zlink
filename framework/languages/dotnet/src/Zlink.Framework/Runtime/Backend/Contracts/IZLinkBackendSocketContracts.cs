@@ -64,6 +64,8 @@ internal interface IZLinkBackendDealerSocket : IZLinkBackendConnectableSocket, I
 internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, IZLinkBackendWeightedSocket,
     IZLinkBackendSocketOptions
 {
+    string GetLastEndpoint() => string.Empty;
+
     void OnSendReady(Action handler);
 
     void SetRoutingId(RoutingId routingId);

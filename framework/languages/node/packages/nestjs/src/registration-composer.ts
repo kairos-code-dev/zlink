@@ -21,10 +21,13 @@ import {
   type DiscoveredNestSpotTimerProvider
 } from './provider-discovery';
 import {
+  createDiscoveredChannelSendHandlers,
   createDiscoveredPublishHandlers,
   createDiscoveredRequestHandlers,
   createDiscoveredSendHandlers,
-  createManualPublishHandlers
+  createManualPublishHandlers,
+  createManualRequestHandlers,
+  createManualSendHandlers
 } from './handler-adapters';
 import { framework } from './framework-loader';
 import { SpotNodeHandlerRegistry } from './spot-node-handler-registry';
@@ -32,6 +35,11 @@ import { SpotNodeHandlerRegistry } from './spot-node-handler-registry';
 
 export function hasNestHandlerDiscovery(options: ZLinkNestModuleRegistrationOptions): boolean {
   return hasConfiguredSpotNodes(options.spotNodes)
+    || Object.values(options.clientServerChannels ?? {}).some(
+      (channel) => (channel.handlerGroups ?? []).length > 0
+        || (channel.requestHandlerTypes ?? []).length > 0
+        || (channel.sendHandlerTypes ?? []).length > 0
+    )
     || Object.values(options.fanoutChannels ?? {}).some(
       (channel) => (channel.handlerGroups ?? []).length > 0
         || (channel.publishHandlerTypes ?? []).length > 0
@@ -73,6 +81,23 @@ export function createDiscoveredOptions(
         ...(existingChannel?.publishHandlers ?? []),
         ...manualPublishHandlers,
         ...publishHandlers
+      ]
+    };
+  }
+
+  for (const [channelName, channel] of Object.entries(options.clientServerChannels ?? {})) {
+    const existingChannel = channels[channelName];
+    channels[channelName] = {
+      ...existingChannel,
+      requestHandlers: [
+        ...(existingChannel.requestHandlers ?? []),
+        ...createManualRequestHandlers(channel.requestHandlerTypes, moduleRef),
+        ...createDiscoveredRequestHandlers(providerRefs, channel.handlerGroups, moduleRef)
+      ],
+      sendHandlers: [
+        ...(existingChannel.sendHandlers ?? []),
+        ...createManualSendHandlers(channel.sendHandlerTypes, moduleRef),
+        ...createDiscoveredChannelSendHandlers(providerRefs, channel.handlerGroups, moduleRef)
       ]
     };
   }
@@ -312,6 +337,14 @@ function requireSpotSubscriptionChannelName(ref: DiscoveredNestSpotProvider): st
 
 export function createRegistrationOptions(options: ZLinkNestModuleRegistrationOptions): ZLinkFrameworkRegistrationOptions {
   const channels: Record<string, ZLinkChannelOptions> = {};
+
+  for (const [name, channel] of Object.entries(options.clientServerChannels ?? {})) {
+    assertChannelNameAvailable(channels, name, 'ClientServerChannel');
+    channels[name] = {
+      client: channel.client,
+      server: channel.server
+    };
+  }
 
   for (const [name, channel] of Object.entries(options.fanoutChannels ?? {})) {
     assertChannelNameAvailable(channels, name, 'FanoutChannel');

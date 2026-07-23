@@ -18,7 +18,6 @@ public interface IZLinkRouteClient
     /// RID is not returned and the send is not re-submitted to another member.
     /// </summary>
     IZLinkSendCall SendToChannel<TMessage>(
-        string meshName,
         string channelName,
         TMessage message);
 
@@ -29,7 +28,6 @@ public interface IZLinkRouteClient
     /// request may already have executed.
     /// </summary>
     IZLinkRequestCall RequestToChannel<TRequest>(
-        string meshName,
         string channelName,
         TRequest request);
 }

@@ -44,6 +44,12 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
 
     public Dictionary<string, ZLinkChannelRuntimeBundle> PublisherBundles { get; } = new(StringComparer.Ordinal);
 
+    public Dictionary<string, ZLinkChannelRuntimeBundle> ClientServerClientBundles { get; } =
+        new(StringComparer.Ordinal);
+
+    public Dictionary<string, ZLinkChannelRuntimeBundle> ClientServerServerBundles { get; } =
+        new(StringComparer.Ordinal);
+
     public Dictionary<string, ZLinkSpotNodeRuntime> SpotNodes { get; } = new(StringComparer.Ordinal);
 
     public Dictionary<string, ZLinkStreamNodeRuntime> StreamNodes { get; } = new(StringComparer.Ordinal);
@@ -89,6 +95,8 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
                 resources = new RuntimeResources(
                     SpotNodes.Values.ToArray(),
                     StreamNodes.Values.ToArray(),
+                    ClientServerClientBundles.Values.ToArray(),
+                    ClientServerServerBundles.Values.ToArray(),
                     PublisherBundles.Values.ToArray(),
                     SubscriberBundles.Values.ToArray(),
                     ListenerTasks.ToArray());
@@ -113,6 +121,12 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
 
         foreach (var stream in resources.StreamNodes)
             await CaptureAsync(() => DisposeSafelyAsync(stream)).ConfigureAwait(false);
+
+        foreach (var bundle in resources.ClientServerClientBundles)
+            await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
+
+        foreach (var bundle in resources.ClientServerServerBundles)
+            await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
 
         // A STREAM node's native session service is created from the shared
         // MeshNode. Destroy the dependent session service and socket before
@@ -184,6 +198,8 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
     private sealed record RuntimeResources(
         ZLinkSpotNodeRuntime[] SpotNodes,
         ZLinkStreamNodeRuntime[] StreamNodes,
+        ZLinkChannelRuntimeBundle[] ClientServerClientBundles,
+        ZLinkChannelRuntimeBundle[] ClientServerServerBundles,
         ZLinkChannelRuntimeBundle[] PublisherBundles,
         ZLinkChannelRuntimeBundle[] SubscriberBundles,
         Task[] ListenerTasks);

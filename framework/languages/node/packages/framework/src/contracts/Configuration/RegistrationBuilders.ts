@@ -17,6 +17,9 @@ import type {
   ZLinkHandlerFilter,
   ZLinkSpot,
   ZLinkActorTransferAdapter,
+  ZLinkClientServerChannelClientBuilder,
+  ZLinkClientServerChannelRoleBuilder,
+  ZLinkClientServerChannelServerBuilder,
   ZLinkStreamCompressionBuilder,
   ZLinkStreamCompressionCodec,
   ZLinkStreamNodeBuilder,
@@ -154,6 +157,10 @@ class ZLinkFrameworkOptionsBuilder implements ZLinkFrameworkOptions {
 
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder {
     return new DefaultFanoutChannelBuilder(name, this.channel(name));
+  }
+
+  addClientServerChannel(name: string): ZLinkClientServerChannelRoleBuilder {
+    return new DefaultClientServerChannelRoleBuilder(name, this.channel(name));
   }
 
   addStreamNode(name: string): ZLinkStreamNodeBuilder {
@@ -355,6 +362,124 @@ class DefaultFanoutChannelBuilder implements ZLinkFanoutChannelBuilder {
       );
     }
     this.subscriberMode = mode;
+  }
+}
+
+class DefaultClientServerChannelRoleBuilder implements ZLinkClientServerChannelRoleBuilder {
+  private selected = false;
+
+  constructor(
+    private readonly name: string,
+    private readonly channel: MutableChannelOptions
+  ) {}
+
+  client(): ZLinkClientServerChannelClientBuilder {
+    this.select();
+    this.channel.client = { manualConnections: [] };
+    return new DefaultClientServerChannelClientBuilder(this.name, this.channel.client);
+  }
+
+  server(): ZLinkClientServerChannelServerBuilder {
+    this.select();
+    this.channel.server = {};
+    return new DefaultClientServerChannelServerBuilder(this.name, this.channel);
+  }
+
+  private select(): void {
+    if (this.selected) {
+      throw new ZLinkConfigurationException(
+        `ClientServer channel '${this.name}' role is already selected.`
+      );
+    }
+    this.selected = true;
+  }
+}
+
+class DefaultClientServerChannelClientBuilder implements ZLinkClientServerChannelClientBuilder {
+  constructor(
+    private readonly name: string,
+    private readonly client: MutableClientCapabilityOptions
+  ) {}
+
+  connect(endpoint: string): this {
+    requireRegistrationName(endpoint, `ClientServer channel '${this.name}' endpoint`);
+    this.client.manualConnections ??= [];
+    if (!this.client.manualConnections.includes(endpoint)) {
+      this.client.manualConnections.push(endpoint);
+    }
+    return this;
+  }
+}
+
+class DefaultClientServerChannelServerBuilder implements ZLinkClientServerChannelServerBuilder {
+  constructor(
+    private readonly name: string,
+    private readonly channel: MutableChannelOptions
+  ) {}
+
+  listen(port = 0): this {
+    if (!Number.isInteger(port) || port < 0 || port > 65_535) {
+      throw new ZLinkConfigurationException(
+        `ClientServer channel '${this.name}' port must be between 0 and 65535.`
+      );
+    }
+    this.server.port = port;
+    this.updateBind();
+    return this;
+  }
+
+  setBindHost(bindHost: string): this {
+    requireRegistrationName(bindHost, `ClientServer channel '${this.name}' bind host`);
+    this.server.bindHost = bindHost;
+    if (this.server.port !== undefined) this.updateBind();
+    return this;
+  }
+
+  setAdvertiseHost(advertiseHost: string): this {
+    requireRegistrationName(advertiseHost, `ClientServer channel '${this.name}' advertise host`);
+    this.server.advertiseHost = advertiseHost;
+    return this;
+  }
+
+  setWeight(weight: number): this {
+    if (!Number.isInteger(weight) || weight < 0 || weight > 100) {
+      throw new ZLinkConfigurationException(
+        `ClientServer channel '${this.name}' weight must be between 0 and 100.`
+      );
+    }
+    this.server.weight = weight;
+    return this;
+  }
+
+  addHandlerGroup(groupName: string): this {
+    requireRegistrationName(groupName, `ClientServer channel '${this.name}' handler group`);
+    this.channel.handlerGroups ??= [];
+    if (!this.channel.handlerGroups.includes(groupName)) this.channel.handlerGroups.push(groupName);
+    return this;
+  }
+
+  addSendHandler<TMessage>(handlerType: Type<import('../Handlers').ZLinkSendHandler<TMessage>>): this {
+    this.channel.sendHandlers ??= [];
+    this.channel.sendHandlers.push({ packetName: handlerPacketName(handlerType), handlerType });
+    return this;
+  }
+
+  addRequestHandler<TRequest, TReply>(
+    handlerType: Type<import('../Handlers').ZLinkRequestHandler<TRequest, TReply>>
+  ): this {
+    this.channel.requestHandlers ??= [];
+    this.channel.requestHandlers.push({ packetName: handlerPacketName(handlerType), handlerType });
+    return this;
+  }
+
+  private get server(): MutableServerCapabilityOptions {
+    return this.channel.server!;
+  }
+
+  private updateBind(): void {
+    const host = this.server.bindHost ?? '127.0.0.1';
+    const endpointHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+    this.server.bind = `tcp://${endpointHost}:${this.server.port ?? 0}`;
   }
 }
 
@@ -756,6 +881,24 @@ interface MutableChannelOptions {
   publisher?: MutablePublisherCapabilityOptions;
   publishHandlers?: ZLinkChannelPublishHandlerRegistration[];
   subscriber?: MutableClientCapabilityOptions;
+  client?: MutableClientCapabilityOptions;
+  server?: MutableServerCapabilityOptions;
+  handlerGroups?: string[];
+  requestHandlers?: Array<{ packetName: string; handlerType: Type }>;
+  sendHandlers?: Array<{ packetName: string; handlerType: Type }>;
+}
+
+interface MutableServerCapabilityOptions {
+  bind?: string;
+  bindHost?: string;
+  advertiseHost?: string;
+  port?: number;
+  routingId?: string;
+  weight?: number;
+  sendHighWaterMark?: number;
+  receiveHighWaterMark?: number;
+  sendTimeoutMs?: number;
+  maxMessageSize?: number;
 }
 
 interface MutableClientCapabilityOptions {

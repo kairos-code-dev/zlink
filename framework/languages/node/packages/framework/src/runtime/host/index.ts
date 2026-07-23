@@ -473,13 +473,15 @@ export class ZLinkFrameworkRuntimeHost implements
       );
       await spotNodeRuntime.start();
       channelRuntime.bindRouteMeshRouters();
+      // Start bound receivers before publishing Serving descriptors. A
+      // discovered ClientServer endpoint must already be able to dispatch.
+      this.state.listenerTasks.push(...channelRuntime.start(this.state.taskRunner));
       const locationRuntime = await this.locationOwner.startForRuntime(
         this.meshRouters.primaryMeshName(),
         spotNodeRuntime,
         channelRuntime
       );
       startedLocationRuntime = locationRuntime;
-      this.state.listenerTasks.push(...channelRuntime.start(this.state.taskRunner));
       this.spotNodeRuntime = spotNodeRuntime;
       streamRuntime = new ZLinkStreamRuntimeManager({
         registration: this.options.registration,

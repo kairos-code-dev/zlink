@@ -582,6 +582,18 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void fanoutRejectsManualThenAutomaticSubscriberConfiguration() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addLocationStore(new ZLinkInMemoryLocationStore());
+        var channel = options.addFanoutChannel("events");
+        channel.enableSubscriber("inproc://events");
+        channel.enableSubscriber();
+        channel.addPublishHandler(EventHandler.class, String.class, "Event");
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
+    }
+
+    @Test
     void fanoutChannelRejectsDuplicatePublishHandlerPacketName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 

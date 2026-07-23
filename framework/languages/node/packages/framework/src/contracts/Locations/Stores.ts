@@ -12,6 +12,8 @@ import type {
   ZLinkLocationWriteStatus,
   ZLinkMeshNodeDescriptor,
   ZLinkMeshNodeDescriptorKey,
+  ZLinkClientServerServerDescriptor,
+  ZLinkClientServerServerDescriptorKey,
   ZLinkOwnerLeaseClaimResult,
   ZLinkOwnerLeaseReadResult,
   ZLinkOwnerLeaseReleaseResult,
@@ -44,6 +46,24 @@ export interface ZLinkLocationStore extends
   ZLinkObjectCreationStore,
   ZLinkRelocationCapacityStore {
   removeAllByOwner(owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<bigint>;
+}
+
+export interface ZLinkClientServerLocationStore {
+  updateClientServer(
+    descriptor: ZLinkClientServerServerDescriptor,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult>;
+  removeClientServer(
+    key: ZLinkClientServerServerDescriptorKey,
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteStatus>;
+  listClientServers(
+    channelName: string,
+    page?: ZLinkPageRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkClientServerServerDescriptor>>;
 }
 
 export interface ZLinkMeshNodeLocationStore {

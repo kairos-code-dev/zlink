@@ -24,6 +24,11 @@ export interface ZLinkMeshNodeDescriptorKey {
   readonly rid: RoutingId;
 }
 
+export interface ZLinkClientServerServerDescriptorKey {
+  readonly channelName: string;
+  readonly serverRid: RoutingId;
+}
+
 export interface ZLinkActorLocationKey {
   readonly meshName: string;
   readonly actorId: string;
@@ -38,7 +43,11 @@ export type ZLinkLocationKey =
   | { readonly kind: ZLinkLocationKind.Peer; readonly key: ZLinkPeerLocationKey }
   | { readonly kind: ZLinkLocationKind.Spot; readonly key: ZLinkSpotLocationKey }
   | { readonly kind: ZLinkLocationKind.Actor; readonly key: ZLinkActorLocationKey }
-  | { readonly kind: ZLinkLocationKind.Route; readonly key: ZLinkRouteLocationKey };
+  | { readonly kind: ZLinkLocationKind.Route; readonly key: ZLinkRouteLocationKey }
+  | {
+      readonly kind: ZLinkLocationKind.ClientServer;
+      readonly key: ZLinkClientServerServerDescriptorKey;
+    };
 
 export interface ZLinkPeerLocationFilter {
   readonly autoConnectType?: ZLinkLocationAutoConnectType;

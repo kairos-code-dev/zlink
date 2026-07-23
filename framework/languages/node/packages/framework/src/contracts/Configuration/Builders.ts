@@ -40,8 +40,28 @@ export interface ZLinkFrameworkOptions {
   configureLocations(): ZLinkLocationOptions;
   configureStreamCompression(): ZLinkStreamCompressionBuilder;
   addRouteMesh(meshName: string): ZLinkMeshNodeBuilder;
+  addClientServerChannel(name: string): ZLinkClientServerChannelRoleBuilder;
   addFanoutChannel(name: string): ZLinkFanoutChannelBuilder;
   addStreamNode(name: string): ZLinkStreamNodeBuilder;
+}
+
+export interface ZLinkClientServerChannelRoleBuilder {
+  client(): ZLinkClientServerChannelClientBuilder;
+  server(): ZLinkClientServerChannelServerBuilder;
+}
+
+export interface ZLinkClientServerChannelClientBuilder {
+  connect(endpoint: string): this;
+}
+
+export interface ZLinkClientServerChannelServerBuilder {
+  listen(port?: number): this;
+  setBindHost(bindHost: string): this;
+  setAdvertiseHost(advertiseHost: string): this;
+  setWeight(weight: number): this;
+  addHandlerGroup(groupName: string): this;
+  addSendHandler<TMessage>(handlerType: Type<ZLinkSendHandler<TMessage>>): this;
+  addRequestHandler<TRequest, TReply>(handlerType: Type<ZLinkRequestHandler<TRequest, TReply>>): this;
 }
 
 export interface ZLinkMeshPeerConnection {

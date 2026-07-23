@@ -4,6 +4,7 @@ export { zlinkDefaultLocationOptions } from './Options';
 export * from './Resolvers';
 export type {
   ZLinkActorLocationStore,
+  ZLinkClientServerLocationStore,
   ZLinkLocationChangeStampStore,
   ZLinkLocationStore,
   ZLinkLocationWatchStore,

@@ -19,6 +19,15 @@ import { ZLinkAsyncSubmitter } from '../messaging';
 import { ZLinkRouteDisconnectedError } from './route-disconnected-error';
 import { attachEndpointConnections } from '../../contracts/Configuration/RuntimeEndpointConnections';
 import { ZLinkRouteMemberSnapshot } from './route-member-snapshot';
+import { randomBytes, randomUUID } from 'node:crypto';
+
+const MAX_LIFECYCLE_GENERATION = 0x7fff_ffff_ffff_ffffn;
+
+export interface ZLinkClientServerServerSocketIdentity {
+  readonly serverRid: string;
+  readonly lifecycleGeneration: bigint;
+  readonly endpoint: string;
+}
 
 export class ZLinkChannelSocketRegistry {
   private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
@@ -27,6 +36,10 @@ export class ZLinkChannelSocketRegistry {
   private readonly subscribers = new Map<string, ZLinkBackendSubscriberSocket>();
   private readonly routeRouters = new Map<string, ZLinkBackendRouterSocket>();
   private readonly routeMembers = new ZLinkRouteMemberSnapshot();
+  private readonly clientServerIdentities = new Map<string, {
+    readonly serverRid: string;
+    readonly lifecycleGeneration: bigint;
+  }>();
   private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
   private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
   private readonly ownedMonitors = new Set<ZLinkBackendSocketMonitor>();
@@ -119,9 +132,12 @@ export class ZLinkChannelSocketRegistry {
 
     const router = this.adapter.createRouterSocket(this.context);
     router.setChannelName(channelName);
-    if (channel.server.routingId !== undefined && channel.server.routingId.length > 0) {
-      router.setRoutingId(channel.server.routingId);
-    }
+    const identity = this.clientServerIdentities.get(channelName) ?? {
+      serverRid: channel.server.routingId ?? `cs-${randomUUID()}`,
+      lifecycleGeneration: newLifecycleGeneration()
+    };
+    this.clientServerIdentities.set(channelName, identity);
+    router.setRoutingId(identity.serverRid);
     if (channel.server.weight !== undefined) {
       router.peerWeight = channel.server.weight;
     }
@@ -130,6 +146,25 @@ export class ZLinkChannelSocketRegistry {
     router.bind(channel.server.bind);
     this.channelRouters.set(channelName, router);
     return router;
+  }
+
+  clientServerServerIdentity(channelName: string): ZLinkClientServerServerSocketIdentity {
+    const router = this.channelRouter(channelName);
+    const identity = this.clientServerIdentities.get(channelName);
+    const channel = this.registration.channels.get(channelName);
+    if (identity === undefined || channel?.server === undefined) {
+      throw new ZLinkConfigurationException(`Channel server '${channelName}' is not registered.`);
+    }
+    const boundEndpoint = router.lastEndpoint ?? channel.server.bind;
+    if (boundEndpoint === undefined || boundEndpoint.length === 0) {
+      throw new ZLinkConfigurationException(
+        `Channel server '${channelName}' did not report its bound endpoint.`
+      );
+    }
+    return {
+      ...identity,
+      endpoint: advertisedEndpoint(boundEndpoint, channel.server.advertiseHost)
+    };
   }
 
   clientServerServerSocket(channelName: string): ZLinkBackendRouterSocket {
@@ -301,6 +336,27 @@ function deriveRoutingId(baseRoutingId: string, suffix: string): string {
     );
   }
   return derived;
+}
+
+function newLifecycleGeneration(): bigint {
+  for (;;) {
+    const value = randomBytes(8).readBigUInt64BE() & MAX_LIFECYCLE_GENERATION;
+    if (value !== 0n) return value;
+  }
+}
+
+function advertisedEndpoint(boundEndpoint: string, advertiseHost: string | undefined): string {
+  if (advertiseHost === undefined) return boundEndpoint;
+  const match = /^tcp:\/\/(?:\[[^\]]+\]|[^:]+):(\d+)$/.exec(boundEndpoint);
+  if (match === null) {
+    throw new ZLinkConfigurationException(
+      `ClientServer advertised host requires a TCP endpoint, received '${boundEndpoint}'.`
+    );
+  }
+  const host = advertiseHost.includes(':') && !advertiseHost.startsWith('[')
+    ? `[${advertiseHost}]`
+    : advertiseHost;
+  return `tcp://${host}:${match[1]}`;
 }
 
 function applySocketConfig(

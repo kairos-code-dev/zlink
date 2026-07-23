@@ -7,6 +7,96 @@ internal sealed partial class ZLinkFrameworkRuntime
         return _channels.GetPublisherBundle(GetOrStartState(), channelName);
     }
 
+    internal ZLinkChannelRuntimeBundle GetClientServerClientBundle(string channelName)
+    {
+        return _channels.GetClientServerClientBundle(GetOrStartState(), channelName);
+    }
+
+    internal async ValueTask<ZLinkSubmitResult> SendToChannelAsync(
+        string channelName,
+        IReadOnlyList<Message> parts,
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        if (Registration.Channels.TryGetValue(channelName, out var channel)
+            && channel.ClientServerRole == ZLinkClientServerRole.Client)
+        {
+            if (!metadata.IsEmpty)
+                throw ZLinkClassicCallSupport.MetadataNotSupported();
+            var bundle = _channels.GetClientServerClientBundle(GetOrStartState(), channelName);
+            var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
+            return await (bundle.Submitter
+                          ?? throw new InvalidOperationException(
+                              $"ClientServer client '{channelName}' submitter is not initialized."))
+                .SubmitAsync(
+                    parts,
+                    pending => dealer.Send(pending, SendFlags.DontWait),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var meshName = ResolveRouteMeshForChannel(channelName);
+        return await GetMeshNodeRuntime(meshName).EntryOutbound
+            .SendToChannelAsync(channelName, parts, cancellationToken, metadata)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<IReadOnlyList<Message>> RequestToChannelAsync(
+        string channelName,
+        IReadOnlyList<Message> parts,
+        TimeSpan timeout,
+        CancellationToken cancellationToken,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        if (Registration.Channels.TryGetValue(channelName, out var channel)
+            && channel.ClientServerRole == ZLinkClientServerRole.Client)
+        {
+            if (!metadata.IsEmpty)
+                throw ZLinkClassicCallSupport.MetadataNotSupported();
+            var bundle = _channels.GetClientServerClientBundle(GetOrStartState(), channelName);
+            var dealer = (IZLinkBackendDealerSocket)bundle.Socket;
+            return await ZLinkRawRequestSubmitter.SubmitAsync(
+                    bundle.Submitter
+                    ?? throw new InvalidOperationException(
+                        $"ClientServer client '{channelName}' submitter is not initialized."),
+                    parts,
+                    (pending, callback, nativeTimeout) => dealer.Request(
+                        pending,
+                        callback,
+                        SendFlags.DontWait,
+                        nativeTimeout),
+                    timeout,
+                    $"ClientServer request failed for '{channelName}': {{0}}.",
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var meshName = ResolveRouteMeshForChannel(channelName);
+        return await GetMeshNodeRuntime(meshName).EntryOutbound
+            .RequestToChannelAsync(channelName, parts, timeout, cancellationToken, metadata)
+            .ConfigureAwait(false);
+    }
+
+    private string ResolveRouteMeshForChannel(string channelName)
+    {
+        var matches = Registration.SpotNodes.Values
+            .Where(node => node.ChannelMemberships.Any(
+                membership => StringComparer.Ordinal.Equals(
+                    membership.ChannelName,
+                    channelName)))
+            .Select(node => node.SpotNodeName)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        return matches.Length switch
+        {
+            1 => matches[0],
+            0 => throw new ZLinkConfigurationException(
+                $"No process-local RouteMesh or ClientServer client is registered for ChannelName '{channelName}'."),
+            _ => throw new ZLinkConfigurationException(
+                $"ChannelName '{channelName}' resolves to more than one process-local RouteMesh.")
+        };
+    }
+
     /// <summary>
     /// Classifies the target from the auto-connect reconciler's desired-set
     /// snapshot — never from the store, so the send path stays free of

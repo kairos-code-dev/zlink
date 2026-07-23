@@ -45,6 +45,7 @@ import type { ZLinkChannelEnvelopeCodecRegistry } from './channel-envelope';
 import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
 import { ZLinkSpotRouteBridgeRawReplyRegistry } from './spot-route-bridge-raw-reply';
 import { ZLinkSpotRouteDispatchStrategy } from './spot-route-dispatch-strategy';
+import { ZLinkClientServerLocationRuntime } from './client-server-location-runtime';
 
 export interface ZLinkChannelRuntimeLifecycleOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -67,6 +68,7 @@ export class ZLinkChannelRuntimeLifecycle {
   private readonly meshChannelDispatchers = new Map<string, ZLinkChannelRequestDispatcher>();
   private readonly meshRouteDispatchers = new Map<string, ZLinkRoutePacketDispatcher>();
   private locationAutoConnect?: ZLinkChannelLocationAutoConnectContext;
+  private clientServerLocation?: ZLinkClientServerLocationRuntime;
 
   constructor(private readonly options: ZLinkChannelRuntimeLifecycleOptions) {}
 
@@ -81,12 +83,24 @@ export class ZLinkChannelRuntimeLifecycle {
 
   async startLocationAutoConnect(signal?: AbortSignal): Promise<void> {
     const location = this.locationAutoConnect;
-    if (location === undefined || this.autoConnectLoops.length > 0) {
+    if (location === undefined
+      || this.autoConnectLoops.length > 0
+      || this.clientServerLocation !== undefined) {
       return;
     }
 
     const capabilities = buildChannelAutoConnectCapabilities(this.options.registration, this.options.sockets);
     try {
+      if (hasClientServerLocationTopology(this.options.registration)) {
+        this.clientServerLocation = new ZLinkClientServerLocationRuntime(
+          this.options.registration,
+          this.options.sockets,
+          location.runtime,
+          location.stores,
+          location.options
+        );
+        await this.clientServerLocation.start(signal);
+      }
       for (const capability of capabilities) {
         const reconciler = new ZLinkAutoConnectReconciler({
           local: capability.local,
@@ -112,6 +126,8 @@ export class ZLinkChannelRuntimeLifecycle {
     } catch (error) {
       await Promise.allSettled(this.autoConnectLoops.map((loop) => loop.stop(signal)));
       this.autoConnectLoops.length = 0;
+      await this.clientServerLocation?.stop(signal).catch(() => undefined);
+      this.clientServerLocation = undefined;
       throw error;
     }
   }
@@ -237,11 +253,13 @@ export class ZLinkChannelRuntimeLifecycle {
     const subscriberLoops = [...this.subscriberReceiveLoops];
     const routeLoops = [...this.routeReceiveLoops];
     const autoConnectLoops = [...this.autoConnectLoops];
+    const clientServerLocation = this.clientServerLocation;
     const spotRouteBridges = [...this.options.spotRouteBridges.values()];
     this.channelReceiveLoops.length = 0;
     this.subscriberReceiveLoops.length = 0;
     this.routeReceiveLoops.length = 0;
     this.autoConnectLoops.length = 0;
+    this.clientServerLocation = undefined;
     this.meshChannelDispatchers.clear();
     this.meshRouteDispatchers.clear();
     this.options.spotRouteBridges.clear();
@@ -250,10 +268,13 @@ export class ZLinkChannelRuntimeLifecycle {
       ...subscriberLoops.map((loop) => loop.stop()),
       ...routeLoops.map((loop) => loop.stop())
     ];
-    const stopped = await Promise.allSettled([
+    const transportStopped = await Promise.allSettled([
       ...loopStops,
       ...autoConnectLoops.map((loop) => loop.stop(signal))
     ]);
+    const descriptorStopped = clientServerLocation === undefined
+      ? []
+      : await Promise.allSettled([clientServerLocation.stop(signal)]);
     this.options.spotRouteBridgeRawReplies.rejectAll(
       new ZLinkConfigurationException('Channel runtime disposed before the SPOT route reply arrived.')
     );
@@ -261,7 +282,7 @@ export class ZLinkChannelRuntimeLifecycle {
       ...spotRouteBridges.map((bridge) => bridge.dispose()),
       this.options.sockets.dispose()
     ]);
-    const errors = [...stopped, ...cleanup]
+    const errors = [...transportStopped, ...descriptorStopped, ...cleanup]
       .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
       .map((result) => result.reason);
     if (errors.length === 1) throw errors[0];
@@ -296,8 +317,18 @@ export class ZLinkChannelRuntimeLifecycle {
         channelName,
         codecs: this.options.codecs,
         dispatchErrors: this.options.dispatchServices.dispatchErrorReporter(taskRunner.errorSink),
-        handlers: new Map(channel.requestHandlers?.map((handler) => [handler.packetName, handler.handler])),
-        sendHandlers: new Map(channel.sendHandlers?.map((handler) => [handler.packetName, handler.handler])),
+        handlers: new Map(channel.requestHandlers?.map((handler) => [
+          handler.packetName,
+          handler.handler ?? this.options.dispatchServices.channelRequestHandler(
+            requireChannelHandlerType(handler.handlerType, channelName, handler.packetName)
+          )
+        ])),
+        sendHandlers: new Map(channel.sendHandlers?.map((handler) => [
+          handler.packetName,
+          handler.handler ?? this.options.dispatchServices.channelSendHandler(
+            requireChannelHandlerType(handler.handlerType, channelName, handler.packetName)
+          )
+        ])),
         filters: this.options.dispatchServices.handlerFilters(),
         unhandled: this.options.registration.dispatch?.unhandled,
         replySubmitter: this.options.sockets.requireSubmitter(router)
@@ -396,6 +427,29 @@ export class ZLinkChannelRuntimeLifecycle {
   }
 }
 
+function requireChannelHandlerType(
+  handlerType: import('../../contracts').Type | undefined,
+  channelName: string,
+  packetName: string
+): import('../../contracts').Type {
+  if (handlerType === undefined) {
+    throw new ZLinkConfigurationException(
+      `Channel '${channelName}' handler '${packetName}' has neither an instance nor a handler type.`
+    );
+  }
+  return handlerType;
+}
+
 function meshChannelKey(meshName: string, channelName: string): string {
   return `${meshName}\u0000${channelName}`;
+}
+
+function hasClientServerLocationTopology(registration: ZLinkFrameworkRegistration): boolean {
+  for (const channel of registration.channels.values()) {
+    if (channel.server !== undefined
+      || (channel.client !== undefined && (channel.client.manualConnections?.length ?? 0) === 0)) {
+      return true;
+    }
+  }
+  return false;
 }

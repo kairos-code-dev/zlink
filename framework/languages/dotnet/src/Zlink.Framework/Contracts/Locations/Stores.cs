@@ -53,6 +53,24 @@ public interface IZLinkMeshNodeLocationStore
         CancellationToken cancellationToken = default);
 }
 
+public interface IZLinkClientServerLocationStore
+{
+    ValueTask<ZLinkLocationWriteResult> UpdateClientServerAsync(
+        ZLinkClientServerServerDescriptor descriptor,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkLocationWriteStatus> RemoveClientServerAsync(
+        ZLinkClientServerServerDescriptorKey key,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkLocationPage<ZLinkClientServerServerDescriptor>> ListClientServersAsync(
+        string channelName,
+        ZLinkPageRequest page,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IZLinkSpotLocationStore
 {
     ValueTask<ZLinkLocationWriteResult> UpdateSpotAsync(

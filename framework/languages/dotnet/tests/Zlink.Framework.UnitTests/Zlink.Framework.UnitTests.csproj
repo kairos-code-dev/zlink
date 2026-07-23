@@ -58,6 +58,7 @@
         <Compile Include="Runtime/BackendStreamSocketConcurrencyTests.cs"/>
         <Compile Include="Runtime/BackendMonitorWrapperTests.cs"/>
         <Compile Include="Runtime/CoverageCriticalRuntimeTests.cs"/>
+        <Compile Include="Runtime/ClientServerChannelRuntimeTests.cs"/>
         <Compile Include="Runtime/CustomSerializerEnvelopeTests.cs"/>
         <Compile Include="Runtime/DrainCoordinatorTests.cs"/>
         <Compile Include="Runtime/EntrySpotActorDispatchTests.cs"/>

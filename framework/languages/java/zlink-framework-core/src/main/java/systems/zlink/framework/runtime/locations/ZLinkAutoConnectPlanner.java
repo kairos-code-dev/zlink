@@ -113,7 +113,7 @@ final class ZLinkAutoConnectPlanner {
             peer.endpoint(),
             peer.metadata(),
             peer.ownerId(),
-            peer.generation());
+            lifecycleGenerationOf(peer));
     }
 
     private static PeerDecision skip(ZLinkPeerLocation peer, String reason) {
@@ -128,7 +128,11 @@ final class ZLinkAutoConnectPlanner {
             + "|"
             + identity
             + "|"
-            + peer.generation();
+            + lifecycleGenerationOf(peer);
+    }
+
+    private static long lifecycleGenerationOf(ZLinkPeerLocation peer) {
+        return peer.value() > 0 ? peer.value() : peer.generation();
     }
 
     private static boolean isSelf(Local local, ZLinkPeerLocation peer) {

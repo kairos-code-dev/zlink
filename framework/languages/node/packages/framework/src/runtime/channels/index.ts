@@ -2,6 +2,7 @@ export {
   ZLinkChannelRuntimeManager,
   type ZLinkChannelRuntimeManagerOptions
 } from './channel-runtime-manager';
+export { ZLinkClientServerLocationRuntime } from './client-server-location-runtime';
 export {
   ZLinkRuntimeChannelTransport,
   ZLinkRuntimeRouteTransport,

@@ -309,6 +309,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkSpotLocationStore>(store);
             services.AddSingleton<IZLinkActorLocationStore>(store);
             services.AddSingleton<IZLinkOwnerLeaseStore>(store);
+            if (store is IZLinkClientServerLocationStore clientServerStore)
+                services.AddSingleton(clientServerStore);
             if (store is IZLinkLocationChangeStampStore changeStamps)
                 services.AddSingleton(changeStamps);
             if (store is IZLinkLocationWatchStore watch)
@@ -328,6 +330,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkActorLocationStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
             services.AddSingleton<IZLinkOwnerLeaseStore>(
+                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+            services.AddSingleton<IZLinkClientServerLocationStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
             services.AddSingleton<IZLinkLocationChangeStampStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
@@ -441,7 +445,8 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetService<IZLinkLocationChangeStampStore>(),
                 provider.GetService<IZLinkLocationWatchStore>(),
                 events: provider.GetRequiredService<ZLinkLocationEventEmitter>(),
-                leaseTracker: provider.GetRequiredService<ZLinkOwnerLeaseTracker>());
+                leaseTracker: provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
+                clientServerStore: provider.GetService<IZLinkClientServerLocationStore>());
             // The store owner enforces this dependency even when host startup
             // fails and the DI container starts disposing services concurrently.
             owner?.RegisterBeforeStoreDispose(host);

@@ -15,6 +15,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     private readonly ZLinkLocationRuntime _runtime;
     private readonly IZLinkMeshNodeLocationResolver _peers;
     private readonly ZLinkLocationOptions _options;
+    private readonly IZLinkClientServerLocationStore? _clientServerStore;
     private readonly IZLinkLocationChangeStampStore? _stampStore;
     private readonly IZLinkLocationWatchStore? _watchStore;
     private readonly ZLinkOwnerLeaseTracker? _leaseTracker;
@@ -29,6 +30,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         (ZLinkLocationAutoConnectType Type, string MeshName, ZLinkLocationRole Role),
         ZLinkAutoConnectReconciler> _localReconcilers = new();
     private readonly object _disposeGate = new();
+    private ZLinkClientServerDiscovery? _clientServerDiscovery;
     private int _disposed;
     private Task? _disposeTask;
 
@@ -40,11 +42,13 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         IZLinkLocationWatchStore? watchStore = null,
         TimeProvider? timeProvider = null,
         ZLinkLocationEventEmitter? events = null,
-        ZLinkOwnerLeaseTracker? leaseTracker = null)
+        ZLinkOwnerLeaseTracker? leaseTracker = null,
+        IZLinkClientServerLocationStore? clientServerStore = null)
     {
         _runtime = runtime;
         _peers = peers;
         _options = options;
+        _clientServerStore = clientServerStore;
         _stampStore = stampStore;
         _watchStore = watchStore;
         _leaseTracker = leaseTracker;
@@ -62,6 +66,21 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         {
             if (_loops.Count != 0) return;
             var registration = state.Registration;
+            if (registration.Channels.Values.Any(static channel =>
+                    channel.ClientServerRole is not null))
+            {
+                if (_clientServerStore is null)
+                    throw new ZLinkConfigurationException(
+                        "ClientServer automatic discovery requires a location store "
+                        + "that implements IZLinkClientServerLocationStore.");
+                _clientServerDiscovery = new ZLinkClientServerDiscovery(
+                    _clientServerStore,
+                    _runtime,
+                    _options,
+                    _leaseTracker);
+                await _clientServerDiscovery.StartAsync(state, cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
         foreach (var (name, channel) in registration.Channels)
         {
@@ -186,6 +205,10 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         try
         {
             var published = true;
+            if (_clientServerDiscovery is not null)
+                published &= await _clientServerDiscovery
+                    .MarkDrainingAsync(cancellationToken)
+                    .ConfigureAwait(false);
             foreach (var reconciler in _reconcilers)
                 published &= await reconciler.MarkDrainingAsync(cancellationToken).ConfigureAwait(false);
             return published;
@@ -247,12 +270,25 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
 
     private async ValueTask DisposeGenerationAsync()
     {
+        var clientServerDiscovery = _clientServerDiscovery;
+        _clientServerDiscovery = null;
         var loops = _loops.ToArray();
         var reconcilers = _reconcilers.ToArray();
         _loops.Clear();
         _reconcilers.Clear();
         _routeMeshReconcilers.Clear();
         List<Exception>? failures = null;
+        if (clientServerDiscovery is not null)
+        {
+            try
+            {
+                await clientServerDiscovery.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                (failures ??= []).Add(exception);
+            }
+        }
         foreach (var loop in loops)
         {
             try
@@ -309,7 +345,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 effectiveLifecycleGeneration, DescriptorRevision: 1,
                 endpoint,
                 new Dictionary<string, int>(StringComparer.Ordinal) { [meshName] = (int)weight },
-                SecurityIdentity: string.Empty,
+                SecurityIdentity: ZLinkTransportSecurityIdentity.Plaintext,
                 OwnerId: string.Empty,
                 LeaseGeneration: 0,
                 UpdatedAt: default)

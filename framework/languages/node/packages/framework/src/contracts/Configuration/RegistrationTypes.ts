@@ -126,6 +126,9 @@ export interface ZLinkChannelOptions {
   readonly sendHandlers?: readonly ZLinkChannelSendHandlerRegistration[];
   readonly server?: {
     readonly bind?: string;
+    readonly bindHost?: string;
+    readonly advertiseHost?: string;
+    readonly port?: number;
     readonly routingId?: string;
     readonly weight?: number;
     readonly sendHighWaterMark?: number;
@@ -371,16 +374,18 @@ export interface ZLinkChannelPublishHandlerRegistration {
 
 export interface ZLinkChannelRequestHandlerRegistration {
   readonly packetName: string;
-  readonly handler: {
+  readonly handler?: {
     handle(payload: unknown, context: ZLinkRequestContext): Promise<unknown>;
   };
+  readonly handlerType?: Type;
 }
 
 export interface ZLinkChannelSendHandlerRegistration {
   readonly packetName: string;
-  readonly handler: {
+  readonly handler?: {
     handle(payload: unknown, context: ZLinkSendContext): Promise<void>;
   };
+  readonly handlerType?: Type;
 }
 
 export interface ZLinkChannelPublishHandler {

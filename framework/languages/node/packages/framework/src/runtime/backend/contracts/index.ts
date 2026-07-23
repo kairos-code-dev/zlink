@@ -280,6 +280,7 @@ export interface ZLinkBackendContext extends ZLinkBackendObject {
 }
 
 export interface ZLinkBackendSocket extends ZLinkBackendObject {
+  readonly lastEndpoint?: string;
   bind(endpoint: string): void;
   setChannelName(channelName: string): void;
   dispose(): Promise<void>;

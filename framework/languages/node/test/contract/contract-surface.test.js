@@ -349,19 +349,35 @@ test('location wire enums retain numeric values while Node-facing result enums u
   assert.equal(framework.zlinkLocationRoleName, undefined);
 });
 
-test('formal RouteMesh declarations exclude removed topology builders', () => {
+test('formal declarations expose role-specific ClientServer builders and exclude removed combined builders', () => {
   const frameworkDeclarations = readTree(declarationsRoot);
   const nestDeclarations = readTree(path.join(workspaceRoot, 'packages', 'nestjs', 'dist'));
   const removedNames = [
     'ZLinkClientServerChannelBuilder',
     'ZLinkRouteMeshChannelBuilder',
-    'ZLinkNestClientServerChannelBuilder',
-    'addClientServerChannel'
+    'ZLinkNestClientServerChannelBuilder'
   ];
 
   for (const name of removedNames) {
     assert.equal(frameworkDeclarations.includes(name), false, `framework declaration retained ${name}`);
     assert.equal(nestDeclarations.includes(name), false, `Nest declaration retained ${name}`);
+  }
+
+  for (const name of [
+    'ZLinkClientServerChannelRoleBuilder',
+    'ZLinkClientServerChannelClientBuilder',
+    'ZLinkClientServerChannelServerBuilder',
+    'addClientServerChannel'
+  ]) {
+    assert.equal(frameworkDeclarations.includes(name), true, `framework declaration missing ${name}`);
+  }
+  for (const name of [
+    'ZLinkNestClientServerChannelRoleBuilder',
+    'ZLinkNestClientServerChannelClientBuilder',
+    'ZLinkNestClientServerChannelServerBuilder',
+    'addClientServerChannel'
+  ]) {
+    assert.equal(nestDeclarations.includes(name), true, `Nest declaration missing ${name}`);
   }
 });
 
@@ -410,10 +426,12 @@ test('location contract declarations fix store resolver runtime query watch and 
   const actorFilter = declarationBody(declarations, 'ZLinkActorLocationFilter');
   const changed = declarationBody(declarations, 'ZLinkLocationChanged');
   const runtimeQuery = declarationBody(declarations, 'ZLinkLocationRuntimeQuery');
+  const clientServerStore = declarationBody(declarations, 'ZLinkClientServerLocationStore');
+  const clientServerDescriptor = declarationBody(declarations, 'ZLinkClientServerServerDescriptor');
 
   assert.match(interfaceHeader(declarations, 'ZLinkLocationStore'), /extends\s+ZLinkMeshNodeLocationStore,\s*ZLinkSpotLocationStore,\s*ZLinkActorLocationStore,\s*ZLinkOwnerLeaseStore,\s*ZLinkActorTransferStore/);
   assert.doesNotMatch(interfaceHeader(declarations, 'ZLinkLocationStore'), /ZLink(?:Peer|Route)LocationStore/);
-  assert.match(locationStore, /removeAllByOwner\(ownerId: string, signal\?: AbortSignal\): Promise<bigint>/);
+  assert.match(locationStore, /removeAllByOwner\(owner: ZLinkLocationOwnerToken, signal\?: AbortSignal\): Promise<bigint>/);
   assert.equal(/\bremove(?:Peer|Spot|Actor|Route)?ByOwner\b/.test(locationStore), false);
 
   assert.match(declarationBody(declarations, 'ZLinkPeerLocationResolver'), /listLivePeers\(filter: ZLinkPeerLocationFilter, signal\?: AbortSignal\): Promise<readonly ZLinkPeerLocation\[]>/);
@@ -442,7 +460,17 @@ test('location contract declarations fix store resolver runtime query watch and 
   assert.match(changed, /readonly key: ZLinkLocationKey/);
   assert.equal(changed.includes('locationKey'), false);
   assert.equal(changed.includes('string'), false);
-  assert.match(declarations, /export type ZLinkLocationKey = \{\s*readonly kind: ZLinkLocationKind\.Peer;\s*readonly key: ZLinkPeerLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Spot;\s*readonly key: ZLinkSpotLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Actor;\s*readonly key: ZLinkActorLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Route;\s*readonly key: ZLinkRouteLocationKey;\s*\};/);
+  assert.match(declarations, /export type ZLinkLocationKey = \{\s*readonly kind: ZLinkLocationKind\.Peer;\s*readonly key: ZLinkPeerLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Spot;\s*readonly key: ZLinkSpotLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Actor;\s*readonly key: ZLinkActorLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.Route;\s*readonly key: ZLinkRouteLocationKey;\s*\} \| \{\s*readonly kind: ZLinkLocationKind\.ClientServer;\s*readonly key: ZLinkClientServerServerDescriptorKey;\s*\};/);
+  assert.match(clientServerStore, /updateClientServer\(/);
+  assert.match(clientServerStore, /removeClientServer\(/);
+  assert.match(clientServerStore, /listClientServers\(/);
+  for (const field of [
+    'channelName', 'serverRid', 'lifecycleGeneration', 'descriptorRevision',
+    'endpoint', 'weight', 'state', 'securityIdentity', 'ownerId',
+    'leaseGeneration', 'updatedAt'
+  ]) {
+    assert.match(clientServerDescriptor, new RegExp(`readonly ${field}:`));
+  }
 
   assert.match(actorLocation, /readonly actorId: string/);
   assert.match(actorLocation, /readonly meshName: string/);

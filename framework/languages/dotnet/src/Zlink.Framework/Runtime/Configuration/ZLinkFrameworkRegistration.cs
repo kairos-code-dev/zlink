@@ -164,6 +164,12 @@ internal sealed class ZLinkMetadataPolicyRegistration
     public HashSet<string> ActorToSessionKeys { get; } = new(StringComparer.Ordinal);
 }
 
+internal enum ZLinkClientServerRole
+{
+    Client,
+    Server
+}
+
 // Mesh channel marker: AddRouteMesh(meshName) registers the mesh discovery
 // name and the MeshNode references it through SpotMeshChannelName. Peer
 // acquisition is owned by location-store auto-connect or manual wiring.
@@ -174,6 +180,12 @@ internal sealed class ZLinkChannelRegistration
     public TimeSpan? DefaultRequestTimeout { get; set; }
 
     public ZLinkLocationAutoConnectType AutoConnectType { get; set; }
+
+    public ZLinkClientServerRole? ClientServerRole { get; set; }
+
+    public ZLinkChannelServerCapabilityRegistration? Server { get; set; }
+
+    public ZLinkChannelClientCapabilityRegistration? Client { get; set; }
 
     public ZLinkChannelPublisherCapabilityRegistration? Publisher { get; set; }
 
@@ -192,6 +204,36 @@ internal sealed class ZLinkChannelRegistration
     public List<ZLinkChannelHandlerRegistration> RequestHandlers { get; } = [];
 
     public List<ZLinkChannelHandlerRegistration> PublishHandlers { get; } = [];
+}
+
+internal sealed class ZLinkChannelServerCapabilityRegistration
+{
+    public RoutingId ServerRid { get; } =
+        RoutingId.From($"cs-{Guid.NewGuid():N}");
+
+    public int ListenPort { get; set; }
+
+    public string BindHost { get; set; } = "127.0.0.1";
+
+    public string? AdvertiseHost { get; set; }
+
+    public string BindEndpoint => $"tcp://{BindHost}:{ListenPort}";
+
+    public ZLinkSocketConfig SocketConfig { get; } = new();
+
+    public ZLinkRouteConfig RoutingConfig { get; } = new();
+}
+
+internal sealed class ZLinkChannelClientCapabilityRegistration
+{
+    public ZLinkPeerAcquisitionMode AcquisitionMode { get; set; } =
+        ZLinkPeerAcquisitionMode.Manual;
+
+    public ZLinkSocketConfig SocketConfig { get; } = new();
+
+    public ZLinkOutboundRouteConfig RoutingConfig { get; } = new();
+
+    public ZLinkEndpointConnections ManualConnections { get; } = new();
 }
 
 internal sealed class ZLinkChannelPublisherCapabilityRegistration

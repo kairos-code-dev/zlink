@@ -30,6 +30,7 @@ export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & 
       recvHwm?: number;
       sendTimeout?: number;
       maxMsgSize?: bigint;
+      lastEndpoint?: string;
     };
   };
   const adapter = {
@@ -62,6 +63,9 @@ export function wrapSocket<T extends { close(): void }>(nativeInstance: T): T & 
     setChannelName(channelName: string): void {
       const setChannelName = (nativeInstance as T & { setChannelName?: (value: string) => void }).setChannelName;
       setChannelName?.call(nativeInstance, channelName);
+    },
+    get lastEndpoint(): string | undefined {
+      return socket.options?.lastEndpoint;
     },
     setRoutingId(routingId: unknown): void {
       (nativeInstance as T & { setRoutingId(value: unknown): void }).setRoutingId(toNativeRoutingId(routingId));

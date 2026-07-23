@@ -1,4 +1,7 @@
 export type {
+  ZLinkClientServerChannelClientBuilder,
+  ZLinkClientServerChannelRoleBuilder,
+  ZLinkClientServerChannelServerBuilder,
   ZLinkFanoutChannelBuilder,
   ZLinkFrameworkOptions,
   ZLinkMeshChannelBuilder,

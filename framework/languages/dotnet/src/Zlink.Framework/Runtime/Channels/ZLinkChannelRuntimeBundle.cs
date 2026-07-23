@@ -7,6 +7,8 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
     private readonly object _disposeGate = new();
     private readonly HashSet<string> _manualConnections = new(StringComparer.Ordinal);
     private int _disposed;
+    private long _autoConnectAttemptCount;
+    private long _autoDisconnectAttemptCount;
     private Task? _disposeTask;
 
     public ZLinkChannelRuntimeBundle(
@@ -30,6 +32,12 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
     public string? SocketRole { get; }
 
     public SemaphoreSlim ReceiveGate { get; } = new(1, 1);
+
+    internal long AutoConnectAttemptCount =>
+        Volatile.Read(ref _autoConnectAttemptCount);
+
+    internal long AutoDisconnectAttemptCount =>
+        Volatile.Read(ref _autoDisconnectAttemptCount);
 
     public ValueTask DisposeAsync()
     {
@@ -73,12 +81,30 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
 
     public bool ConnectAuto(IZLinkBackendConnectableSocket socket, string endpoint)
     {
-        lock (_connectionGate) return Acquire(_autoConnections, endpoint, () => socket.Connect(endpoint), false);
+        lock (_connectionGate)
+            return Acquire(
+                _autoConnections,
+                endpoint,
+                () =>
+                {
+                    Interlocked.Increment(ref _autoConnectAttemptCount);
+                    socket.Connect(endpoint);
+                },
+                false);
     }
 
     public bool DisconnectAuto(IZLinkBackendConnectableSocket socket, string endpoint)
     {
-        lock (_connectionGate) return Release(_autoConnections, endpoint, () => socket.Disconnect(endpoint), false);
+        lock (_connectionGate)
+            return Release(
+                _autoConnections,
+                endpoint,
+                () =>
+                {
+                    Interlocked.Increment(ref _autoDisconnectAttemptCount);
+                    socket.Disconnect(endpoint);
+                },
+                false);
     }
 
     private bool Acquire(HashSet<string> source, string endpoint, Action connect, bool throwOnFailure)

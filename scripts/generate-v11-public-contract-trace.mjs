@@ -125,9 +125,12 @@ const ownerSpans = (source, tag) => {
   for (const match of masked.matchAll(ownerPatternFor(tag))) {
     const open = masked.indexOf('{', match.index + match[0].length);
     const semicolon = masked.indexOf(';', match.index + match[0].length);
-    if (open < 0 || (semicolon >= 0 && semicolon < open && match[1] === 'type')) {
+    const semicolonTerminated = semicolon >= 0
+      && semicolon < open
+      && (match[1] === 'type' || (tag === 'csharp' && match[1].startsWith('record')));
+    if (open < 0 || semicolonTerminated) {
       spans.push({
-        close: match.index + match[0].length,
+        close: semicolon >= 0 ? semicolon : match.index + match[0].length,
         kind: match[1].replace(/\s+/gu, '-'),
         name: match[2],
         nameEnd: match.index + match[0].length,
@@ -244,8 +247,12 @@ const memberNameFromUnit = (unit, tag) => {
   const callable = /(~?[A-Za-z_$][\w$]*)\??\s*(?:<[^<>;{}()]*>)?\s*\(/u.exec(stripped);
   if (callable) return callable[1];
   if (tag === 'ts' || tag === 'typescript') {
+    if (/^declare\s+(?:const|let|var)\b/u.test(stripped)) return undefined;
     const exportedValue = /^(?:export\s+)?(?:declare\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)/u.exec(stripped);
     if (exportedValue) return exportedValue[1];
+    const typescriptComputedProperty =
+      /^(?:(?:public|private|protected|static|readonly|abstract|declare)\s+)*\[([A-Za-z_$][\w$]*)\]\??\s*:/u.exec(stripped);
+    if (typescriptComputedProperty) return `[${typescriptComputedProperty[1]}]`;
     const typescriptProperty = /^(?:(?:public|private|protected|static|readonly|abstract|declare)\s+)*([A-Za-z_$][\w$]*)\??\s*:/u.exec(stripped);
     if (typescriptProperty) return typescriptProperty[1];
   }
@@ -437,6 +444,13 @@ const extractMembers = context => {
       const previousSemicolon = masked.lastIndexOf(';', index - 1);
       const previousClose = masked.lastIndexOf('}', index - 1);
       const start = Math.max(owner.open, previousSemicolon, previousClose) + 1;
+      const signatureMask = masked.slice(start, index);
+      const parenthesisDepth = [...signatureMask].reduce((value, character) => {
+        if (character === '(') return value + 1;
+        if (character === ')') return value - 1;
+        return value;
+      }, 0);
+      if (parenthesisDepth !== 0) continue;
       const signature = source.slice(start, index).trim();
       if (!signature.includes('(')
           || /^(?:if|for|while|switch|catch|lock|using|checked|unchecked)\b/u.test(signature)
@@ -452,7 +466,7 @@ const extractMembers = context => {
   }
 
   for (const span of spans) {
-    const headerEnd = span.open >= 0 ? span.open : span.nameEnd;
+    const headerEnd = span.open >= 0 ? span.open : span.close;
     const header = source.slice(span.start, headerEnd);
     if (/\brecord\b/u.test(header) || (block.tag === 'kotlin' && header.includes('('))) {
       const open = masked.indexOf('(', span.nameEnd - span.name.length);
@@ -527,6 +541,19 @@ const gitText = arguments_ => execFileSync('git', arguments_, {
 
 const memberOwnerNameKey = member =>
   `${member.language}\0${member.ownerIdentity}\0${member.memberName}`;
+
+const orderOverridesForRefresh = (overrides, baselineByIdentity, targetByIdentity) =>
+  overrides
+    .map((override, index) => {
+      const baseline = baselineByIdentity.get(override.baselineIdentity);
+      const target = targetByIdentity.get(override.targetIdentity);
+      const score =
+        (baseline?.signatureSha256 === override.baselineSignatureSha256 ? 1 : 0)
+        + (target?.signatureSha256 === override.targetSignatureSha256 ? 1 : 0);
+      return {index, override, score};
+    })
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .map(candidate => candidate.override);
 
 const blockSimilarity = (left, right) => {
   const tokens = source => new Set(source.match(/[A-Za-z_][A-Za-z0-9_]*/gu) || []);
@@ -959,11 +986,24 @@ const buildTrace = (config, {refreshReview = false} = {}) => {
   let supersededOverrides = 0;
   if (refreshReview) {
     const refreshedOverrides = [];
+    const refreshedBaselineIdentities = new Set();
     const refreshedTargetIdentities = new Set();
-    for (const override of config.baseline?.memberOverrides || []) {
-      const baseline = baselineByIdentity.get(override.baselineIdentity);
+    const orderedOverrides = orderOverridesForRefresh(
+      config.baseline?.memberOverrides || [],
+      baselineByIdentity,
+      targetByIdentity);
+    for (const override of orderedOverrides) {
+      let baseline = baselineByIdentity.get(override.baselineIdentity);
       if (!baseline || baseline.signatureSha256 !== override.baselineSignatureSha256) {
-        throw new Error(`member override does not name an exact baseline signature: ${override.baselineIdentity || '<missing>'}`);
+        const identityPrefix = override.baselineIdentity?.slice(
+          0,
+          override.baselineIdentity.lastIndexOf('#') + 1);
+        const candidates = baselineMembers.filter(member =>
+          identityPrefix && member.identity.startsWith(identityPrefix));
+        if (candidates.length !== 1) {
+          throw new Error(`member override does not name an exact baseline signature: ${override.baselineIdentity || '<missing>'}`);
+        }
+        [baseline] = candidates;
       }
       let target = targetByIdentity.get(override.targetIdentity);
       if (!target || target.signatureSha256 !== override.targetSignatureSha256) {
@@ -988,12 +1028,17 @@ const buildTrace = (config, {refreshReview = false} = {}) => {
         }
         [target] = candidates;
       }
-      if (classifiedTarget.has(target.identity)) continue;
+      if (classifiedTarget.has(target.identity)
+          || refreshedBaselineIdentities.has(baseline.identity)
+          || refreshedTargetIdentities.has(target.identity)) continue;
       refreshedOverrides.push({
         ...override,
+        baselineIdentity: baseline.identity,
+        baselineSignatureSha256: baseline.signatureSha256,
         targetIdentity: target.identity,
         targetSignatureSha256: target.signatureSha256,
       });
+      refreshedBaselineIdentities.add(baseline.identity);
       refreshedTargetIdentities.add(target.identity);
     }
     config.baseline.memberOverrides = refreshedOverrides;
@@ -1700,6 +1745,87 @@ const runNegativeSelfTests = trace => {
   return tests.length;
 };
 
+const runExtractorSelfTests = () => {
+  const csharp = [
+    'public readonly record struct ScanExpired(string Cursor);',
+    'public readonly record struct ZLinkRelocationCapacityFence(string Value) {',
+    '    public string Value { get; } = Value;',
+    '}',
+  ].join('\n');
+  const spans = ownerSpans(csharp, 'csharp');
+  const scanExpired = spans.find(span => span.name === 'ScanExpired');
+  if (!scanExpired
+      || scanExpired.open !== -1
+      || csharp.slice(scanExpired.start, scanExpired.close + 1)
+        !== 'public readonly record struct ScanExpired(string Cursor);') {
+    throw new Error('extractor self-test failed: semicolon-only C# record span crossed into the next owner');
+  }
+  if (memberNameFromUnit('declare const privateBrand: unique symbol;', 'typescript') !== undefined) {
+    throw new Error('extractor self-test failed: non-exported TypeScript brand declaration became public');
+  }
+  if (memberNameFromUnit('readonly [privateBrand]: true;', 'typescript') !== '[privateBrand]') {
+    throw new Error('extractor self-test failed: computed TypeScript property lost its symbol name');
+  }
+  if (memberNameFromUnit('export declare const PUBLIC_TOKEN: unique symbol;', 'typescript') !== 'PUBLIC_TOKEN') {
+    throw new Error('extractor self-test failed: exported TypeScript token was omitted');
+  }
+  const cpp = [
+    'class location_store_t {',
+    'public:',
+    '    virtual result_t compare_exchange_authority(',
+    '        key_t key,',
+    '        std::stop_token cancellation = {}) = 0;',
+    '};',
+  ].join('\n');
+  const cppMembers = extractMembers({
+    block: {
+      id: 'cpp:extractor-self-test',
+      source: cpp,
+      startLine: 1,
+      tag: 'cpp',
+    },
+    categories: [],
+    disposition: 'self-test',
+    document: 'extractor-self-test',
+    language: 'cpp',
+    packages: ['extractor-self-test'],
+  }).filter(member => member.memberName === 'compare_exchange_authority');
+  if (cppMembers.length !== 1
+      || !cppMembers[0].normalizedSignature.includes('cancellation ={})')) {
+    throw new Error(
+      `extractor self-test failed: C++ default initializer became a duplicate method body:`
+      + ` ${JSON.stringify(cppMembers.map(member => member.normalizedSignature))}`);
+  }
+  const exactBaseline = {
+    identity: 'cpp|pkg|pkg::publisher_t.publish#valid',
+    signatureSha256: 'baseline-valid',
+  };
+  const exactTarget = {
+    identity: 'cpp|pkg|pkg::publisher_t.publish#target-valid',
+    signatureSha256: 'target-valid',
+  };
+  const staleFirst = {
+    baselineIdentity: 'cpp|pkg|pkg::publisher_t.publish#stale',
+    baselineSignatureSha256: 'baseline-stale',
+    targetIdentity: 'cpp|pkg|pkg::publisher_t.publish#target-stale',
+    targetSignatureSha256: 'target-stale',
+  };
+  const validSecond = {
+    baselineIdentity: exactBaseline.identity,
+    baselineSignatureSha256: exactBaseline.signatureSha256,
+    targetIdentity: exactTarget.identity,
+    targetSignatureSha256: exactTarget.signatureSha256,
+  };
+  const ordered = orderOverridesForRefresh(
+    [staleFirst, validSecond],
+    new Map([[exactBaseline.identity, exactBaseline]]),
+    new Map([[exactTarget.identity, exactTarget]]));
+  if (ordered[0] !== validSecond) {
+    throw new Error('extractor self-test failed: stale override took precedence over an exact overload');
+  }
+  return 6;
+};
+
 const loadConfig = () => JSON.parse(fs.readFileSync(configPath, 'utf8'));
 const command = process.argv[2];
 if (!['--write', '--check', '--self-test', '--review-candidates', '--refresh-review'].includes(command)) {
@@ -1708,6 +1834,7 @@ if (!['--write', '--check', '--self-test', '--review-candidates', '--refresh-rev
 }
 
 try {
+  const extractorCases = runExtractorSelfTests();
   const config = loadConfig();
   const trace = buildTrace(config, {refreshReview: command === '--refresh-review'});
   if (command === '--refresh-review') {
@@ -1775,7 +1902,8 @@ try {
         + ` ambiguous=${trace.summary.ambiguousMembers}`
         + ` removals=${trace.summary.intentionalRemovals}`
         + ` unknown_or_unowned=${trace.summary.unknownOrUnowned}`
-        + ` negative_mutations=${negativeMutations}\n`);
+        + ` negative_mutations=${negativeMutations}`
+        + ` extractor_cases=${extractorCases}\n`);
   }
 } catch (error) {
   if ((command === '--review-candidates' || command === '--refresh-review')

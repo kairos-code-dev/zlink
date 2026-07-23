@@ -6,6 +6,75 @@ internal sealed class ZLinkChannelBundleFactory(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration)
 {
+    public async ValueTask<ZLinkChannelRuntimeBundle> CreateClientServerClientBundleAsync(
+        ZLinkFrameworkComponentState state,
+        IZLinkChannelBackendAdapter adapter,
+        string channelName,
+        ZLinkChannelRegistration channel)
+    {
+        IZLinkBackendDealerSocket? dealer = null;
+        ZLinkChannelRuntimeBundle? bundle = null;
+        try
+        {
+            dealer = adapter.CreateDealerSocket(state.Context);
+            dealer.SetChannelName(channelName);
+            ApplySocketConfig(dealer, channel.Client!.SocketConfig);
+            dealer.SetProbe(true);
+            bundle = new ZLinkChannelRuntimeBundle(
+                dealer,
+                new ZLinkAsyncSubmitter(
+                    dealer.OnSendReady,
+                    channel.Client.SocketConfig.SendTimeout
+                    ?? registration.DefaultSocketSendTimeout,
+                    state.StopTokenSource.Token,
+                    ZLinkAsyncSubmitter.ResolvePendingCapacity(
+                        channel.Client.SocketConfig.SendHighWaterMark)),
+                socketRole: "client");
+
+            channel.Client.ManualConnections.Attach(
+                endpoint => bundle.ConnectManual(dealer, endpoint),
+                endpoint => bundle.DisconnectManual(dealer, endpoint));
+            return bundle;
+        }
+        catch (Exception initializationFailure)
+        {
+            await ThrowAfterCleanupAsync(initializationFailure, bundle, dealer).ConfigureAwait(false);
+            throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
+        }
+    }
+
+    public async ValueTask<ZLinkChannelRuntimeBundle> CreateClientServerServerBundleAsync(
+        ZLinkFrameworkComponentState state,
+        IZLinkChannelBackendAdapter adapter,
+        string channelName,
+        ZLinkChannelRegistration channel)
+    {
+        IZLinkBackendRouterSocket? router = null;
+        ZLinkChannelRuntimeBundle? bundle = null;
+        try
+        {
+            router = adapter.CreateRouterSocket(state.Context);
+            router.SetChannelName(channelName);
+            var serverRid = channel.Server!.ServerRid;
+            router.SetRoutingId(serverRid);
+            ApplySocketConfig(router, channel.Server!.SocketConfig);
+            router.SetMandatory(true);
+            router.SetHandover(true);
+            router.SetPeerWeight(channel.Server.SocketConfig.Weight);
+            router.Bind(channel.Server.BindEndpoint);
+            bundle = new ZLinkChannelRuntimeBundle(
+                router,
+                localRid: serverRid,
+                socketRole: "server");
+            return bundle;
+        }
+        catch (Exception initializationFailure)
+        {
+            await ThrowAfterCleanupAsync(initializationFailure, bundle, router).ConfigureAwait(false);
+            throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
+        }
+    }
+
     public async ValueTask<ZLinkChannelRuntimeBundle> CreateSubscriberBundleAsync(
         ZLinkFrameworkComponentState state,
         IZLinkChannelBackendAdapter adapter,

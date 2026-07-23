@@ -40,6 +40,18 @@ export function createDiscoveredSendHandlers(
   }));
 }
 
+export function createDiscoveredChannelSendHandlers(
+  providerRefs: readonly DiscoveredNestProvider[],
+  handlerGroups: readonly string[] | undefined,
+  moduleRef: ModuleRef
+): NonNullable<ZLinkChannelOptions['sendHandlers']> {
+  return createDiscoveredHandlerRegistrations(providerRefs, handlerGroups, 'send', (ref, metadata) => ({
+    async handle(payload: Buffer, context: ZLinkSendContext) {
+      await invokeDiscoveredHandler(moduleRef, ref, metadata, payload, context);
+    }
+  }));
+}
+
 export function createDiscoveredPublishHandlers(
   providerRefs: readonly DiscoveredNestProvider[],
   handlerGroups: readonly string[] | undefined,

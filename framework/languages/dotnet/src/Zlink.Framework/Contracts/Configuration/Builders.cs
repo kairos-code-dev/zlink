@@ -43,6 +43,39 @@ public interface IZLinkFanoutChannelBuilder
         where THandler : class, IZLinkFanoutHandler<TEvent>;
 }
 
+public interface IZLinkClientServerChannelRoleBuilder
+{
+    IZLinkClientServerChannelClientBuilder Client();
+
+    IZLinkClientServerChannelServerBuilder Server();
+}
+
+public interface IZLinkClientServerChannelClientBuilder
+{
+    IZLinkClientServerChannelClientBuilder Connect(string endpoint);
+}
+
+public interface IZLinkClientServerChannelServerBuilder
+{
+    IZLinkClientServerChannelServerBuilder Listen(int port = 0);
+
+    IZLinkClientServerChannelServerBuilder SetBindHost(string bindHost);
+
+    IZLinkClientServerChannelServerBuilder SetAdvertiseHost(string advertiseHost);
+
+    IZLinkClientServerChannelServerBuilder SetWeight(int weight);
+
+    IZLinkClientServerChannelServerBuilder AddHandlerGroup(string groupName);
+
+    IZLinkClientServerChannelServerBuilder AddSendHandler<THandler, TMessage>(
+        string? packetName = null)
+        where THandler : class, IZLinkSendHandler<TMessage>;
+
+    IZLinkClientServerChannelServerBuilder AddRequestHandler<THandler, TRequest, TReply>(
+        string? packetName = null)
+        where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
+}
+
 // The unified MeshNode registration surface and supporting types live in
 // MeshNodeBuilders.cs.
 
@@ -81,6 +114,8 @@ public interface IZLinkFrameworkOptions
     IZLinkMetadataPolicyBuilder ConfigureMetadata();
 
     IZLinkFanoutChannelBuilder AddFanoutChannel(string channelName);
+
+    IZLinkClientServerChannelRoleBuilder AddClientServerChannel(string channelName);
 
     /// <summary>
     /// Registers one physical location store instance for every store role,

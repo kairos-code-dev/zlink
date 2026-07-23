@@ -21,19 +21,17 @@ internal sealed class ZLinkRouteClient(ZLinkFrameworkRuntime runtime) : IZLinkRo
     }
 
     public IZLinkSendCall SendToChannel<TMessage>(
-        string meshName,
         string channelName,
         TMessage message)
     {
-        return new ZLinkMeshChannelSendCall<TMessage>(runtime, meshName, channelName, message);
+        return new ZLinkChannelSendCall<TMessage>(runtime, channelName, message);
     }
 
     public IZLinkRequestCall RequestToChannel<TRequest>(
-        string meshName,
         string channelName,
         TRequest request)
     {
-        return new ZLinkMeshChannelRequestCall<TRequest>(runtime, meshName, channelName, request);
+        return new ZLinkChannelRequestCall<TRequest>(runtime, channelName, request);
     }
 
 }
@@ -59,9 +57,8 @@ internal sealed class ZLinkSpotClient(ZLinkFrameworkRuntime runtime) : IZLinkSpo
             nameof(target));
 }
 
-internal sealed class ZLinkMeshChannelSendCall<TMessage>(
+internal sealed class ZLinkChannelSendCall<TMessage>(
     ZLinkFrameworkRuntime runtime,
-    string meshName,
     string channelName,
     TMessage message) : IZLinkSendCall
 {
@@ -84,9 +81,12 @@ internal sealed class ZLinkMeshChannelSendCall<TMessage>(
     {
         cancellationToken.ThrowIfCancellationRequested();
         var parts = Encode();
-        return await runtime.GetMeshNodeRuntime(meshName).EntryOutbound
-                .SendToChannelAsync(channelName, parts, cancellationToken, _metadata.Encode())
-                .ConfigureAwait(false);
+        return await runtime.SendToChannelAsync(
+                channelName,
+                parts,
+                cancellationToken,
+                _metadata.Encode())
+            .ConfigureAwait(false);
     }
 
     private IReadOnlyList<Message> Encode()
@@ -99,9 +99,8 @@ internal sealed class ZLinkMeshChannelSendCall<TMessage>(
     }
 }
 
-internal sealed class ZLinkMeshChannelRequestCall<TRequest>(
+internal sealed class ZLinkChannelRequestCall<TRequest>(
     ZLinkFrameworkRuntime runtime,
-    string meshName,
     string channelName,
     TRequest request) : IZLinkRequestCall
 {
@@ -143,17 +142,20 @@ internal sealed class ZLinkMeshChannelRequestCall<TRequest>(
     private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
     {
         var packetName = ZLinkMessageNameResolver.ResolveFromMessage(request);
-        var nodeRuntime = runtime.GetMeshNodeRuntime(meshName);
-        var timeout = _timeout ?? nodeRuntime.Registration.DefaultRequestTimeout
-            ?? runtime.Registration.DefaultRequestTimeout;
+        var timeout = _timeout ?? runtime.Registration.ResolveChannelRequestTimeout(channelName);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Request,
             channelName,
             packetName,
             timeout);
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, request, runtime.Registration.Codecs);
-        var reply = await nodeRuntime.EntryOutbound
-            .RequestToChannelAsync(channelName, parts, timeout, cancellationToken, _metadata.Encode())
+        var reply = await runtime
+            .RequestToChannelAsync(
+                channelName,
+                parts,
+                timeout,
+                cancellationToken,
+                _metadata.Encode())
             .ConfigureAwait(false);
         return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<TReply>(
             reply,

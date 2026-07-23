@@ -41,6 +41,23 @@ public readonly record struct ZLinkMeshNodeDescriptorKey(
     string MeshName,
     RoutingId Rid);
 
+public sealed record ZLinkClientServerServerDescriptor(
+    string ChannelName,
+    RoutingId ServerRid,
+    ulong LifecycleGeneration,
+    ulong DescriptorRevision,
+    string Endpoint,
+    int Weight,
+    ZLinkFrameworkRuntimeState State,
+    string SecurityIdentity,
+    string OwnerId,
+    long LeaseGeneration,
+    DateTimeOffset UpdatedAt);
+
+public readonly record struct ZLinkClientServerServerDescriptorKey(
+    string ChannelName,
+    RoutingId ServerRid);
+
 public enum ZLinkMeshNodeObjectRole
 {
     None = 0,

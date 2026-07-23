@@ -130,6 +130,80 @@ final class ZLinkAutoConnectPlannerTest {
             2)));
     }
 
+    @Test
+    void connectionIntentUsesDescriptorLifecycleInsteadOfStoreGeneration() {
+        var local = local(
+            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            ZLinkLocationRole.DEALER,
+            "client-local",
+            "");
+        var descriptor = new ZLinkPeerLocation(
+            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            "mesh",
+            RoutingId.from("server"),
+            ZLinkLocationRole.ROUTER,
+            "inproc://server",
+            100,
+            false,
+            73,
+            Map.of(),
+            List.of(),
+            "server-owner",
+            900,
+            Instant.EPOCH);
+
+        var desired = ZLinkAutoConnectPlanner.computeDesired(
+            local,
+            List.of(descriptor));
+
+        var target = desired.get(targetKey(
+            ZLinkLocationRole.ROUTER,
+            descriptor.nodeRid(),
+            73));
+        assertEquals(73, target.lifecycleGeneration());
+    }
+
+    @Test
+    void asymmetricTopologiesOnlyDialFromOutboundRole() {
+        assertTrue(hasTarget(
+            local(ZLinkLocationAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.DEALER, "client", ""),
+            peer(ZLinkLocationAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.ROUTER, "server", "inproc://server")));
+        assertFalse(hasTarget(
+            local(ZLinkLocationAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.ROUTER, "server", "inproc://server"),
+            peer(ZLinkLocationAutoConnectType.CLIENT_SERVER, ZLinkLocationRole.DEALER, "client", "")));
+        assertTrue(hasTarget(
+            local(ZLinkLocationAutoConnectType.FANOUT, ZLinkLocationRole.SUB, "subscriber", ""),
+            peer(ZLinkLocationAutoConnectType.FANOUT, ZLinkLocationRole.PUB, "publisher", "inproc://publisher")));
+        assertFalse(hasTarget(
+            local(ZLinkLocationAutoConnectType.FANOUT, ZLinkLocationRole.PUB, "publisher", "inproc://publisher"),
+            peer(ZLinkLocationAutoConnectType.FANOUT, ZLinkLocationRole.SUB, "subscriber", "")));
+    }
+
+    @Test
+    void asymmetricTopologiesOnlyAdvertiseInboundRole() {
+        RoutingId rid = RoutingId.from("node");
+        assertTrue(ZLinkLocationAutoConnectHost.shouldAdvertise(
+            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            ZLinkLocationRole.ROUTER,
+            rid,
+            "inproc://server"));
+        assertFalse(ZLinkLocationAutoConnectHost.shouldAdvertise(
+            ZLinkLocationAutoConnectType.CLIENT_SERVER,
+            ZLinkLocationRole.DEALER,
+            rid,
+            ""));
+        assertTrue(ZLinkLocationAutoConnectHost.shouldAdvertise(
+            ZLinkLocationAutoConnectType.FANOUT,
+            ZLinkLocationRole.PUB,
+            rid,
+            "inproc://publisher"));
+        assertFalse(ZLinkLocationAutoConnectHost.shouldAdvertise(
+            ZLinkLocationAutoConnectType.FANOUT,
+            ZLinkLocationRole.SUB,
+            rid,
+            ""));
+    }
+
     private static boolean hasTarget(
         ZLinkAutoConnectPlanner.Local local,
         ZLinkPeerLocation peer) {

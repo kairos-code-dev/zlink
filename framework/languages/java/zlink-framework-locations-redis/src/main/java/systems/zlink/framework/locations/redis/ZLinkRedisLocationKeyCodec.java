@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptorKey;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
@@ -48,6 +49,25 @@ final class ZLinkRedisLocationKeyCodec {
                 "invalid stored ClientServer descriptor key");
         }
         return new ZLinkClientServerServerDescriptorKey(
+            channel.value,
+            RoutingId.fromHex(rid.value));
+    }
+
+    static String encodeFanoutPublisherKey(
+        ZLinkFanoutPublisherDescriptorKey key) {
+        return encode(key.channelName(), key.publisherRid().toHex());
+    }
+
+    static ZLinkFanoutPublisherDescriptorKey
+        decodeFanoutPublisherKey(String encoded) {
+        byte[] bytes = encoded.getBytes(StandardCharsets.UTF_8);
+        Segment channel = decodeSegment(bytes, 0);
+        Segment rid = decodeSegment(bytes, channel.nextOffset);
+        if (rid.nextOffset != bytes.length) {
+            throw new IllegalStateException(
+                "invalid stored fanout publisher descriptor key");
+        }
+        return new ZLinkFanoutPublisherDescriptorKey(
             channel.value,
             RoutingId.fromHex(rid.value));
     }

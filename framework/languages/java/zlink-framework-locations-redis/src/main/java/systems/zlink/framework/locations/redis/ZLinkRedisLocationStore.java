@@ -12,6 +12,9 @@ import systems.zlink.framework.locations.ZLinkActorLocationKey;
 import systems.zlink.framework.locations.ZLinkClientServerLocationStore;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptorKey;
+import systems.zlink.framework.locations.ZLinkFanoutLocationStore;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampScope;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampStore;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
@@ -61,6 +64,7 @@ import systems.zlink.framework.locations.ZLinkStoreCancellation;
 public final class ZLinkRedisLocationStore implements
     ZLinkLocationStore,
     ZLinkClientServerLocationStore,
+    ZLinkFanoutLocationStore,
     ZLinkLocationChangeStampStore,
     ZLinkRoutingIdSlotAllocationStore,
     AutoCloseable {
@@ -148,6 +152,41 @@ public final class ZLinkRedisLocationStore implements
                 "channelName must be non-blank text without NUL");
         }
         return rows.listClientServers(channelName, page);
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationWriteResult>
+        updateFanoutPublisher(
+            ZLinkFanoutPublisherDescriptor descriptor,
+            ZLinkLocationWriteIntent intent) {
+        return scripts.writeFanoutPublisher(
+            Objects.requireNonNull(descriptor, "descriptor"),
+            Objects.requireNonNull(intent, "intent"));
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationWriteStatus>
+        removeFanoutPublisher(
+            ZLinkFanoutPublisherDescriptorKey key,
+            ZLinkLocationOwnerToken owner) {
+        return scripts.removeFanoutPublisher(
+            Objects.requireNonNull(key, "key"),
+            Objects.requireNonNull(owner, "owner"));
+    }
+
+    @Override
+    public CompletionStage<
+        ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>>
+        listFanoutPublishers(
+            String channelName,
+            ZLinkPageRequest page) {
+        if (channelName == null
+            || channelName.isBlank()
+            || channelName.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException(
+                "channelName must be non-blank text without NUL");
+        }
+        return rows.listFanoutPublishers(channelName, page);
     }
 
     CompletionStage<byte[]> readAuthorityMembershipMutation(

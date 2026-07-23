@@ -91,6 +91,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerKind;
 import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.internal.channels.ZLinkClientServerRuntimeConfiguration;
+import systems.zlink.framework.runtime.internal.channels.ZLinkFanoutRuntimeConfiguration;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkFrameworkErrorReply;
@@ -130,6 +131,7 @@ public final class ZLinkChannelRuntime
     private final ZLinkBackendAdapterOptions adapterOptions;
     private final ZLinkChannelBackendAdapter channelBackend;
     private final ZLinkMonitoringBackendAdapter clientServerMonitoringBackend;
+    private final ZLinkMonitoringBackendAdapter fanoutMonitoringBackend;
     private final ZLinkDispatchErrorReporter dispatchErrors;
     private final ZLinkChannelDispatchReporter dispatchReporter;
     private final ZLinkChannelMessageDispatcher messageDispatcher;
@@ -152,6 +154,7 @@ public final class ZLinkChannelRuntime
         return thread;
     });
     private volatile boolean running = true;
+    private ZLinkFanoutLocationRuntime fanoutLocationRuntime;
 
     public record AutoConnectSurface(
         ZLinkLocationAutoConnectType type,
@@ -358,6 +361,11 @@ public final class ZLinkChannelRuntime
                 backendFactory,
                 adapterOptions,
                 registration.channels());
+        this.fanoutMonitoringBackend =
+            tryCreateFanoutMonitoringBackend(
+                backendFactory,
+                adapterOptions,
+                registration.channels());
         ZLinkScannedHandlerCatalog handlerCatalog =
             ZLinkHandlerScanner.scan(registration.handlerPackageMarkers());
         ZLinkChannelHandlerCatalog channelHandlers =
@@ -399,6 +407,7 @@ public final class ZLinkChannelRuntime
                 TimeUnit.MILLISECONDS);
         }
         installClientServerLocationRuntime(handlerFactory);
+        installFanoutLocationRuntime(handlerFactory);
     }
 
 
@@ -462,6 +471,88 @@ public final class ZLinkChannelRuntime
             || registrations.stream().noneMatch(
                 channel -> channel.kind() == ChannelKind.CLIENT_SERVER
                     && channel.clientEnabled())) {
+            return null;
+        }
+        try {
+            return backendFactory.createMonitoringAdapter(
+                adapterOptions);
+        } catch (UnsupportedOperationException unavailable) {
+            return null;
+        }
+    }
+
+    private void installFanoutLocationRuntime(
+        ZLinkHandlerActivator activator) {
+        ZLinkFanoutRuntimeConfiguration configuration;
+        try {
+            configuration = (ZLinkFanoutRuntimeConfiguration)
+                activator.create(ZLinkFanoutRuntimeConfiguration.class);
+        } catch (RuntimeException unavailable) {
+            return;
+        }
+        if (configuration == null || configuration.store() == null) {
+            return;
+        }
+        boolean hasAutomaticSubscriber = autoConnectSurfaces().stream()
+            .anyMatch(surface ->
+                surface.type() == ZLinkLocationAutoConnectType.FANOUT
+                    && surface.role() == ZLinkLocationRole.SUB);
+        if (hasAutomaticSubscriber
+            && (backendFactory == null
+                || adapterOptions == null
+                || fanoutMonitoringBackend == null)) {
+            throw new ZLinkConfigurationException(
+                "automatic classic fanout discovery requires "
+                    + "a monitoring backend");
+        }
+        ZLinkMonitoringBackendAdapter monitoring =
+            fanoutMonitoringBackend == null
+                ? socket -> {
+                    throw new UnsupportedOperationException(
+                        "fanout subscriber monitoring is unavailable");
+                }
+                : fanoutMonitoringBackend;
+        ZLinkFanoutLocationRuntime runtime =
+            new ZLinkFanoutLocationRuntime(
+                configuration.store(),
+                configuration.owner(),
+                channelBackend,
+                monitoring,
+                context,
+                sockets,
+                configuration.options().pollingInterval(),
+                configuration.options().listPageSize(),
+                messageDispatcher::dispatchPublish);
+        fanoutLocationRuntime = runtime;
+        List<AutoConnectSurface> surfaces = autoConnectSurfaces();
+        configuration.install(
+            new ZLinkFanoutRuntimeConfiguration.Lifecycle() {
+                @Override
+                public CompletionStage<Void> start() {
+                    return runtime.start(surfaces);
+                }
+
+                @Override
+                public CompletionStage<Void> markDraining() {
+                    return runtime.markDraining();
+                }
+
+                @Override
+                public CompletionStage<Void> stop() {
+                    return runtime.stop();
+                }
+            });
+    }
+
+    private static ZLinkMonitoringBackendAdapter
+        tryCreateFanoutMonitoringBackend(
+            ZLinkBackendAdapterProvider backendFactory,
+            ZLinkBackendAdapterOptions adapterOptions,
+            List<ChannelRegistration> registrations) {
+        if (backendFactory == null
+            || registrations.stream().noneMatch(
+                channel -> channel.kind() == ChannelKind.FANOUT
+                    && channel.automaticSubscriberEnabled())) {
             return null;
         }
         try {
@@ -1146,6 +1237,9 @@ public final class ZLinkChannelRuntime
     @Override
     public void close() {
         beginClose();
+        if (fanoutLocationRuntime != null) {
+            fanoutLocationRuntime.close();
+        }
         receiveLoops.close();
         spotRouteBridgeDrainLoopExecutor.shutdownNow();
         spotRouteBridgeExecutor.shutdown();

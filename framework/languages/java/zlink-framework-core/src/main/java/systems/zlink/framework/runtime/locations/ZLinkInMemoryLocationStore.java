@@ -18,6 +18,9 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationFilter;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
+import systems.zlink.framework.locations.ZLinkFanoutLocationStore;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampScope;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampStore;
 import systems.zlink.framework.locations.ZLinkLocationKind;
@@ -55,6 +58,7 @@ import systems.zlink.framework.locations.ZLinkSpotLocationKey;
 
 public final class ZLinkInMemoryLocationStore implements
     ZLinkLocationStore,
+    ZLinkFanoutLocationStore,
     ZLinkLocationChangeStampStore,
     ZLinkRoutingIdSlotAllocationStore {
 
@@ -64,6 +68,8 @@ public final class ZLinkInMemoryLocationStore implements
     private final Map<String, LeaseRow> leases = new HashMap<>();
     private long ownerLeaseGeneration;
     private final RowTable<ZLinkMeshNodeDescriptor> meshNodes =
+        new RowTable<>();
+    private final RowTable<ZLinkFanoutPublisherDescriptor> fanoutPublishers =
         new RowTable<>();
     private final RowTable<ZLinkPeerLocation> peers = new RowTable<>();
     private final RowTable<ZLinkSpotLocation> spots = new RowTable<>();
@@ -283,6 +289,112 @@ public final class ZLinkInMemoryLocationStore implements
                 .map(this::projectCapacity)
                 .toList(),
             stored.continuationToken()));
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationWriteResult> updateFanoutPublisher(
+        ZLinkFanoutPublisherDescriptor descriptor,
+        ZLinkLocationWriteIntent intent) {
+        Objects.requireNonNull(descriptor, "descriptor");
+        Objects.requireNonNull(intent, "intent");
+        validateFanoutDescriptor(descriptor);
+        synchronized (gate) {
+            ZLinkLocationOwnerToken owner = new ZLinkLocationOwnerToken(
+                descriptor.ownerId(),
+                descriptor.leaseGeneration());
+            if (!isExactOwnerLeaseLive(owner)) {
+                return completed(ZLinkLocationWriteResult.ignoredStale());
+            }
+            String key = fanoutPublisherKey(
+                new ZLinkFanoutPublisherDescriptorKey(
+                    descriptor.channelName(),
+                    descriptor.publisherRid()));
+            ZLinkFanoutPublisherDescriptor current =
+                fanoutPublishers.rows.get(key);
+            boolean currentLive = current != null
+                && isExactOwnerLeaseLive(new ZLinkLocationOwnerToken(
+                    current.ownerId(),
+                    current.leaseGeneration()));
+            if ((intent == ZLinkLocationWriteIntent.NEW_CLAIM
+                || intent == ZLinkLocationWriteIntent.TAKEOVER)
+                && currentLive
+                && !hasSameFanoutDescriptorFields(current, descriptor)) {
+                return completed(ZLinkLocationWriteResult.rejectedConflict());
+            }
+            if (current == null || !currentLive) {
+                if (intent != ZLinkLocationWriteIntent.NEW_CLAIM
+                    && intent != ZLinkLocationWriteIntent.TAKEOVER) {
+                    return completed(ZLinkLocationWriteResult.ignoredStale());
+                }
+                long generation =
+                    fanoutPublishers.generations.getOrDefault(key, 0L) + 1L;
+                Instant now = clock.instant();
+                fanoutPublishers.generations.put(key, generation);
+                fanoutPublishers.rows.put(
+                    key,
+                    copyFanoutDescriptor(descriptor, now));
+                return completed(
+                    ZLinkLocationWriteResult.stored(generation, now));
+            }
+            long generation =
+                fanoutPublishers.generations.getOrDefault(key, 1L);
+            if (hasSameFanoutDescriptorFields(current, descriptor)) {
+                return completed(ZLinkLocationWriteResult.stored(
+                    generation,
+                    current.updatedAt()));
+            }
+            if (!current.ownerId().equals(descriptor.ownerId())
+                || current.leaseGeneration() != descriptor.leaseGeneration()
+                || current.lifecycleGeneration()
+                    != descriptor.lifecycleGeneration()
+                || descriptor.descriptorRevision()
+                    <= current.descriptorRevision()
+                || !hasSameImmutableFanoutDescriptorFields(
+                    current,
+                    descriptor)) {
+                return completed(ZLinkLocationWriteResult.ignoredStale());
+            }
+            Instant now = clock.instant();
+            fanoutPublishers.rows.put(
+                key,
+                copyFanoutDescriptor(descriptor, now));
+            return completed(ZLinkLocationWriteResult.stored(generation, now));
+        }
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationWriteStatus> removeFanoutPublisher(
+        ZLinkFanoutPublisherDescriptorKey key,
+        ZLinkLocationOwnerToken owner) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(owner, "owner");
+        synchronized (gate) {
+            String encoded = fanoutPublisherKey(key);
+            ZLinkFanoutPublisherDescriptor current =
+                fanoutPublishers.rows.get(encoded);
+            if (current == null
+                || !current.ownerId().equals(owner.ownerId())
+                || current.leaseGeneration() != owner.leaseGeneration()) {
+                return completed(ZLinkLocationWriteStatus.IGNORED_STALE);
+            }
+            fanoutPublishers.rows.remove(encoded);
+            return completed(ZLinkLocationWriteStatus.STORED);
+        }
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>>
+        listFanoutPublishers(String channelName, ZLinkPageRequest page) {
+        Objects.requireNonNull(channelName, "channelName");
+        synchronized (gate) {
+            return completed(page(
+                fanoutPublishers,
+                row -> row.channelName().equals(channelName)
+                    && isExactOwnerLeaseLive(new ZLinkLocationOwnerToken(
+                        row.ownerId(),
+                        row.leaseGeneration())),
+                page));
+        }
     }
 
     @Override
@@ -587,6 +699,15 @@ public final class ZLinkInMemoryLocationStore implements
                 .toList();
             descriptorKeys.forEach(meshNodes.rows::remove);
             removed += descriptorKeys.size();
+            List<String> fanoutKeys = fanoutPublishers.rows.entrySet()
+                .stream()
+                .filter(entry -> entry.getValue().ownerId().equals(ownerId)
+                    && entry.getValue().leaseGeneration()
+                        == owner.leaseGeneration())
+                .map(Map.Entry::getKey)
+                .toList();
+            fanoutKeys.forEach(fanoutPublishers.rows::remove);
+            removed += fanoutKeys.size();
             removed += removeByOwner(peers, ownerId, ZLinkPeerLocation::ownerId, ZLinkLocationKind.PEER, ZLinkPeerLocation::meshName);
             removed += removeByOwner(spots, ownerId, ZLinkSpotLocation::ownerId, ZLinkLocationKind.SPOT, ZLinkSpotLocation::meshName);
             removed += removeByOwner(actors, ownerId, ZLinkActorLocation::ownerId, ZLinkLocationKind.ACTOR, row -> null);
@@ -876,6 +997,72 @@ public final class ZLinkInMemoryLocationStore implements
             + key.rid().toHex().length()
             + ":"
             + key.rid().toHex();
+    }
+
+    private static String fanoutPublisherKey(
+        ZLinkFanoutPublisherDescriptorKey key) {
+        return ZLinkLocationKeyCodec.encodeFanoutPublisherKey(key);
+    }
+
+    private static void validateFanoutDescriptor(
+        ZLinkFanoutPublisherDescriptor descriptor) {
+        if (descriptor.channelName() == null
+            || descriptor.channelName().isBlank()
+            || descriptor.publisherRid() == null
+            || descriptor.endpoint() == null
+            || descriptor.endpoint().isBlank()
+            || descriptor.securityIdentity() == null
+            || descriptor.securityIdentity().isBlank()
+            || descriptor.ownerId() == null
+            || descriptor.ownerId().isBlank()) {
+            throw new IllegalArgumentException(
+                "fanout descriptor identity and endpoint are required");
+        }
+        if (descriptor.lifecycleGeneration() < 1
+            || descriptor.descriptorRevision() < 1
+            || descriptor.leaseGeneration() < 1) {
+            throw new IllegalArgumentException(
+                "fanout descriptor generations must be positive");
+        }
+    }
+
+    private static ZLinkFanoutPublisherDescriptor copyFanoutDescriptor(
+        ZLinkFanoutPublisherDescriptor descriptor,
+        Instant updatedAt) {
+        return new ZLinkFanoutPublisherDescriptor(
+            descriptor.channelName(),
+            descriptor.publisherRid(),
+            descriptor.lifecycleGeneration(),
+            descriptor.descriptorRevision(),
+            descriptor.endpoint(),
+            descriptor.state(),
+            descriptor.securityIdentity(),
+            descriptor.ownerId(),
+            descriptor.leaseGeneration(),
+            updatedAt);
+    }
+
+    private static boolean hasSameImmutableFanoutDescriptorFields(
+        ZLinkFanoutPublisherDescriptor current,
+        ZLinkFanoutPublisherDescriptor candidate) {
+        return current.channelName().equals(candidate.channelName())
+            && current.publisherRid().equals(candidate.publisherRid())
+            && current.lifecycleGeneration()
+                == candidate.lifecycleGeneration()
+            && current.endpoint().equals(candidate.endpoint())
+            && current.securityIdentity().equals(
+                candidate.securityIdentity())
+            && current.ownerId().equals(candidate.ownerId())
+            && current.leaseGeneration() == candidate.leaseGeneration();
+    }
+
+    private static boolean hasSameFanoutDescriptorFields(
+        ZLinkFanoutPublisherDescriptor current,
+        ZLinkFanoutPublisherDescriptor candidate) {
+        return hasSameImmutableFanoutDescriptorFields(current, candidate)
+            && current.descriptorRevision()
+                == candidate.descriptorRevision()
+            && current.state() == candidate.state();
     }
 
     private static ZLinkMeshNodeDescriptor copyDescriptor(

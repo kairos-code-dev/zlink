@@ -83,15 +83,25 @@ final class ZLinkChannelRuntimeConfigurator {
         if (channel.publisherEnabled()) {
             ZLinkBackendPublisherSocket publisher = backend.createPublisherSocket(context);
             publisher.setChannelName(channel.name());
-            if (channel.routingId() != null) {
-                publisher.setRoutingId(channel.routingId());
-            }
+            systems.zlink.contracts.core.RoutingId publisherRoutingId =
+                channel.routingId() == null
+                    ? systems.zlink.contracts.core.RoutingId.from(
+                        java.util.UUID.randomUUID())
+                    : channel.routingId();
+            publisher.setRoutingId(publisherRoutingId);
             for (String endpoint : channel.publisherBinds()) {
                 publisher.bind(endpoint);
             }
-            sockets.registerPublisher(channel.name(), publisher);
+            sockets.registerPublisher(
+                channel.name(), publisherRoutingId, publisher);
         }
         if (!channel.subscriberEnabled()) {
+            return;
+        }
+        if (channel.automaticSubscriberEnabled()) {
+            dispatchRegistry.registerFanout(
+                channel.name(),
+                handlers.publishHandlers(channel));
             return;
         }
         ZLinkBackendSubscriberSocket subscriber = backend.createSubscriberSocket(context);

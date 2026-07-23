@@ -502,6 +502,144 @@ final class ZLinkRedisLocationScriptsClient {
                     ::propagateWriteFailure);
     }
 
+    CompletionStage<ZLinkLocationWriteResult> writeFanoutPublisher(
+        systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor
+            descriptor,
+        ZLinkLocationWriteIntent intent) {
+        validateFanoutPublisher(descriptor);
+        var key = new systems.zlink.framework.locations
+            .ZLinkFanoutPublisherDescriptorKey(
+                descriptor.channelName(),
+                descriptor.publisherRid());
+        String rowKey =
+            ZLinkRedisLocationKeyCodec.encodeFanoutPublisherKey(key);
+        String json =
+            ZLinkRedisLocationRowJson.serializeFanoutPublisher(
+                descriptor);
+        if (json.getBytes(StandardCharsets.UTF_8).length
+            > 1024 * 1024) {
+            throw new IllegalArgumentException(
+                "encoded fanout publisher descriptor exceeds 1 MiB");
+        }
+        String descriptorRow =
+            keys.fanoutPublisherDescriptorRowKey(rowKey);
+        String metadata =
+            keys.fanoutPublisherDescriptorMetadataKey(rowKey);
+        return connection.commands()
+            .thenCompose(redis -> redis.hmget(
+                    metadata,
+                    "ownerId",
+                    "ownerLeaseGeneration")
+                .thenCompose(previous -> {
+                    String previousOwner =
+                        hashField(previous, "ownerId");
+                    String previousLease =
+                        hashField(
+                            previous,
+                            "ownerLeaseGeneration");
+                    String placeholder = keys.schemaKey();
+                    return redis.<List<Object>>eval(
+                        ZLinkRedisLocationScripts
+                            .WRITE_FANOUT_PUBLISHER,
+                        ScriptOutputType.MULTI,
+                        new String[] {
+                            descriptorRow,
+                            metadata,
+                            keys.fanoutPublisherDescriptorIndexKey(),
+                            keys.leaseKey(descriptor.ownerId()),
+                            keys.counterKey(),
+                            keys.fanoutPublisherOwnerTokenIndexKey(
+                                descriptor.ownerId(),
+                                descriptor.leaseGeneration()),
+                            previousOwner == null
+                                ? placeholder
+                                : keys.leaseKey(previousOwner),
+                            previousOwner == null
+                                || previousLease == null
+                                ? placeholder
+                                : keys
+                                    .fanoutPublisherOwnerTokenIndexKey(
+                                        previousOwner,
+                                        Long.parseLong(
+                                            previousLease)),
+                            keys
+                                .fanoutPublisherDescriptorGlobalStampKey(),
+                            keys.fanoutPublisherDescriptorStampKey(
+                                descriptor.channelName()),
+                            keys
+                                .fanoutPublisherDescriptorChannelIndexKey(
+                                    descriptor.channelName())
+                        },
+                        intentName(intent),
+                        descriptor.ownerId(),
+                        Long.toString(
+                            descriptor.leaseGeneration()),
+                        Long.toString(
+                            descriptor.lifecycleGeneration()),
+                        Long.toString(
+                            descriptor.descriptorRevision()),
+                        ZLinkRedisLocationRowJson
+                            .fanoutPublisherImmutableFingerprint(
+                                descriptor),
+                        json,
+                        descriptor.state().name()
+                            .toLowerCase(
+                                java.util.Locale.ROOT),
+                        "",
+                        descriptor.channelName(),
+                        rowKey,
+                        previousOwner == null
+                            ? ""
+                            : previousOwner,
+                        previousLease == null
+                            ? ""
+                            : previousLease);
+                }))
+            .thenApply(
+                ZLinkRedisLocationScriptsClient::toWriteResult)
+            .exceptionally(
+                ZLinkRedisLocationScriptsClient
+                    ::propagateWriteFailure);
+    }
+
+    CompletionStage<ZLinkLocationWriteStatus>
+        removeFanoutPublisher(
+            systems.zlink.framework.locations
+                .ZLinkFanoutPublisherDescriptorKey key,
+            ZLinkLocationOwnerToken owner) {
+        String rowKey =
+            ZLinkRedisLocationKeyCodec.encodeFanoutPublisherKey(key);
+        return connection.commands()
+            .thenCompose(redis -> redis.<List<Object>>eval(
+                ZLinkRedisLocationScripts.REMOVE_FANOUT_PUBLISHER,
+                ScriptOutputType.MULTI,
+                new String[] {
+                    keys.fanoutPublisherDescriptorRowKey(rowKey),
+                    keys.fanoutPublisherDescriptorMetadataKey(rowKey),
+                    keys.fanoutPublisherDescriptorIndexKey(),
+                    keys.fanoutPublisherOwnerTokenIndexKey(
+                        owner.ownerId(),
+                        owner.leaseGeneration()),
+                    keys
+                        .fanoutPublisherDescriptorGlobalStampKey(),
+                    keys.fanoutPublisherDescriptorStampKey(
+                        key.channelName()),
+                    keys
+                        .fanoutPublisherDescriptorChannelIndexKey(
+                            key.channelName())
+                },
+                owner.ownerId(),
+                Long.toString(owner.leaseGeneration()),
+                rowKey))
+            .thenApply(raw ->
+                "stored".equals(string(raw.getFirst()))
+                    ? ZLinkLocationWriteStatus.STORED
+                    : ZLinkLocationWriteStatus.IGNORED_STALE)
+            .exceptionally(
+                ZLinkRedisLocationScriptsClient
+                    ::propagateWriteFailure);
+    }
+
     CompletionStage<Map<String, String>> readMeshNodeHashFields(
         ZLinkMeshNodeDescriptorKey key) {
         String rowKey =
@@ -642,7 +780,11 @@ final class ZLinkRedisLocationScriptsClient {
             .thenCompose(removed ->
                 removeAllClientServersByOwner(owner)
                     .thenApply(clientServerRemoved ->
-                        removed + clientServerRemoved));
+                        removed + clientServerRemoved))
+            .thenCompose(removed ->
+                removeAllFanoutPublishersByOwner(owner)
+                    .thenApply(fanoutRemoved ->
+                        removed + fanoutRemoved));
     }
 
     private CompletionStage<Long> removeAllClientServersByOwner(
@@ -660,6 +802,32 @@ final class ZLinkRedisLocationScriptsClient {
                             .decodeClientServerKey(member);
                         removed = removed.thenCompose(count ->
                             removeClientServer(key, owner)
+                                .thenApply(status ->
+                                    status
+                                        == ZLinkLocationWriteStatus
+                                            .STORED
+                                            ? count + 1
+                                            : count));
+                    }
+                    return removed;
+                }));
+    }
+
+    private CompletionStage<Long> removeAllFanoutPublishersByOwner(
+        ZLinkLocationOwnerToken owner) {
+        return connection.commands()
+            .thenCompose(redis -> redis.smembers(
+                    keys.fanoutPublisherOwnerTokenIndexKey(
+                        owner.ownerId(),
+                        owner.leaseGeneration()))
+                .thenCompose(members -> {
+                    CompletionStage<Long> removed =
+                        CompletableFuture.completedFuture(0L);
+                    for (String member : members) {
+                        var key = ZLinkRedisLocationKeyCodec
+                            .decodeFanoutPublisherKey(member);
+                        removed = removed.thenCompose(count ->
+                            removeFanoutPublisher(key, owner)
                                 .thenApply(status ->
                                     status
                                         == ZLinkLocationWriteStatus
@@ -872,6 +1040,26 @@ final class ZLinkRedisLocationScriptsClient {
             case RENEW -> "renew";
             case TAKEOVER -> "takeover";
         };
+    }
+
+    private static void validateFanoutPublisher(
+        systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor
+            descriptor) {
+        if (descriptor.channelName() == null
+            || descriptor.channelName().isBlank()
+            || descriptor.publisherRid() == null
+            || descriptor.endpoint() == null
+            || descriptor.endpoint().isBlank()
+            || descriptor.securityIdentity() == null
+            || descriptor.securityIdentity().isBlank()
+            || descriptor.ownerId() == null
+            || descriptor.ownerId().isBlank()
+            || descriptor.lifecycleGeneration() < 1
+            || descriptor.descriptorRevision() < 1
+            || descriptor.leaseGeneration() < 1) {
+            throw new IllegalArgumentException(
+                "fanout publisher descriptor is invalid");
+        }
     }
 
     private static String hashField(

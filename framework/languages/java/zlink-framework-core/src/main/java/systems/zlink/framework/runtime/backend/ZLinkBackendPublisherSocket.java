@@ -10,5 +10,9 @@ public interface ZLinkBackendPublisherSocket extends ZLinkBackendSocket {
 
     void setRoutingId(RoutingId routingId);
 
+    default String lastEndpoint() {
+        return null;
+    }
+
     boolean publish(String topic, List<Message> parts, SendFlags flags);
 }

@@ -37,6 +37,7 @@ final class ZLinkChannelSocketRegistry {
     private final Map<String, ZLinkBackendRouterSocket> servers = new HashMap<>();
     private final Map<String, RoutingId> serverRoutingIds = new HashMap<>();
     private final Map<String, ZLinkBackendPublisherSocket> publishers = new HashMap<>();
+    private final Map<String, RoutingId> publisherRoutingIds = new HashMap<>();
     private final Map<String, ZLinkBackendSubscriberSocket> subscribers = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> routeRouters = new HashMap<>();
     private final Map<String, ClientServerConnection> clientServerConnections =
@@ -81,8 +82,12 @@ final class ZLinkChannelSocketRegistry {
         ownedSockets.add(socket);
     }
 
-    void registerPublisher(String channelName, ZLinkBackendPublisherSocket socket) {
+    void registerPublisher(
+        String channelName,
+        RoutingId routingId,
+        ZLinkBackendPublisherSocket socket) {
         publishers.put(channelName, socket);
+        publisherRoutingIds.put(channelName, routingId);
         ownedSockets.add(socket);
     }
 
@@ -891,15 +896,14 @@ final class ZLinkChannelSocketRegistry {
                     ZLinkLocationAutoConnectType.FANOUT,
                     channel.name(),
                     ZLinkLocationRole.PUB,
-                    channel.routingId(),
-                    endpoint,
+                    publisherRoutingIds.get(channel.name()),
+                    advertisedEndpoint(endpoint, publishers.get(channel.name())),
                     100,
                     null,
                     List.of()));
             }
         }
-        ZLinkBackendSubscriberSocket subscriber = subscribers.get(channel.name());
-        if (subscriber != null && channel.automaticSubscriberEnabled()) {
+        if (channel.automaticSubscriberEnabled()) {
             surfaces.add(new ZLinkChannelRuntime.AutoConnectSurface(
                 ZLinkLocationAutoConnectType.FANOUT,
                 channel.name(),
@@ -907,7 +911,7 @@ final class ZLinkChannelSocketRegistry {
                 channel.routingId(),
                 "",
                 100,
-                subscriber,
+                null,
                 channel.subscriberManualEndpoints()));
         }
     }
@@ -950,6 +954,18 @@ final class ZLinkChannelSocketRegistry {
             return configuredEndpoint;
         }
         String boundEndpoint = router.lastEndpoint();
+        return boundEndpoint == null || boundEndpoint.isBlank()
+            ? configuredEndpoint
+            : boundEndpoint;
+    }
+
+    private static String advertisedEndpoint(
+        String configuredEndpoint,
+        ZLinkBackendPublisherSocket publisher) {
+        if (!configuredEndpoint.endsWith(":0")) {
+            return configuredEndpoint;
+        }
+        String boundEndpoint = publisher.lastEndpoint();
         return boundEndpoint == null || boundEndpoint.isBlank()
             ? configuredEndpoint
             : boundEndpoint;

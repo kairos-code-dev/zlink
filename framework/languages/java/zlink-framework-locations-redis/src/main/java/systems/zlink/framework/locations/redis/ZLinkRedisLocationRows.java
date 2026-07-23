@@ -3,6 +3,7 @@ package systems.zlink.framework.locations.redis;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScanCursor;
+import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.ValueScanCursor;
 import io.lettuce.core.api.async.RedisAsyncCommands;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +19,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Predicate;
 import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 
 final class ZLinkRedisLocationRows {
@@ -74,27 +76,65 @@ final class ZLinkRedisLocationRows {
         listClientServers(
             String channelName,
             ZLinkPageRequest page) {
+        return listServiceDescriptors(
+            "client-server",
+            channelName,
+            page,
+            keys.clientServerDescriptorChannelIndexKey(channelName),
+            keys::clientServerDescriptorRowKey,
+            ZLinkRedisLocationRowJson::deserializeClientServer,
+            row -> new ServiceOwner(
+                row.ownerId(), row.leaseGeneration()));
+    }
+
+    CompletionStage<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>>
+        listFanoutPublishers(
+            String channelName,
+            ZLinkPageRequest page) {
+        return listServiceDescriptors(
+            "fanout-publisher",
+            channelName,
+            page,
+            keys.fanoutPublisherDescriptorChannelIndexKey(channelName),
+            keys::fanoutPublisherDescriptorRowKey,
+            ZLinkRedisLocationRowJson::deserializeFanoutPublisher,
+            row -> new ServiceOwner(
+                row.ownerId(), row.leaseGeneration()));
+    }
+
+    private <T> CompletionStage<ZLinkLocationPage<T>>
+        listServiceDescriptors(
+            String family,
+            String channelName,
+            ZLinkPageRequest page,
+            String channelIndex,
+            java.util.function.Function<String, String> rowPhysicalKey,
+            RowDeserializer<T> deserializer,
+            java.util.function.Function<T, ServiceOwner> owner) {
         ZLinkPageRequest safePage =
             page == null ? ZLinkPageRequest.firstPage() : page;
         int pageSize =
             safePage.pageSize() <= 0 ? 100 : safePage.pageSize();
         if (pageSize > 1000) {
             throw new IllegalArgumentException(
-                "ClientServer page size must be in 1..1000");
+                family + " page size must be in 1..1000");
         }
-        int offset = decodeClientServerCursor(
+        int offset = decodeServiceCursor(
+            family,
             channelName,
             safePage.continuationToken());
         return connection.commands()
             .thenCompose(redis -> redis.zrange(
-                    keys.clientServerDescriptorChannelIndexKey(
-                        channelName),
+                    channelIndex,
                     offset,
                     offset + pageSize)
-                .thenCompose(members -> loadClientServerPage(
+                .thenCompose(members -> loadServicePage(
                         redis,
                         members,
-                        pageSize)
+                        pageSize,
+                        rowPhysicalKey,
+                        deserializer,
+                        owner)
                     .thenApply(loaded -> {
                         boolean hasMore =
                             loaded.consumed() < members.size()
@@ -102,53 +142,66 @@ final class ZLinkRedisLocationRows {
                         return new ZLinkLocationPage<>(
                             List.copyOf(loaded.items()),
                             hasMore
-                                ? encodeClientServerCursor(
+                                ? encodeServiceCursor(
+                                    family,
                                     channelName,
                                     offset + loaded.consumed())
                                 : null);
                     })));
     }
 
-    private CompletionStage<ClientServerPageAccumulator>
-        loadClientServerPage(
+    private <T> CompletionStage<ServicePageAccumulator<T>>
+        loadServicePage(
             RedisAsyncCommands<String, String> redis,
             List<String> members,
-            int pageSize) {
-        return loadClientServerPage(
+            int pageSize,
+            java.util.function.Function<String, String> rowPhysicalKey,
+            RowDeserializer<T> deserializer,
+            java.util.function.Function<T, ServiceOwner> owner) {
+        return loadServicePage(
             redis,
             members,
             pageSize,
+            rowPhysicalKey,
+            deserializer,
+            owner,
             0,
-            new ClientServerPageAccumulator(
+            new ServicePageAccumulator<>(
                 new ArrayList<>(),
                 0,
                 0));
     }
 
-    private CompletionStage<ClientServerPageAccumulator>
-        loadClientServerPage(
+    private <T> CompletionStage<ServicePageAccumulator<T>>
+        loadServicePage(
             RedisAsyncCommands<String, String> redis,
             List<String> members,
             int pageSize,
+            java.util.function.Function<String, String> rowPhysicalKey,
+            RowDeserializer<T> deserializer,
+            java.util.function.Function<T, ServiceOwner> owner,
             int index,
-            ClientServerPageAccumulator accumulator) {
+            ServicePageAccumulator<T> accumulator) {
         if (index >= members.size()
             || accumulator.items().size() >= pageSize) {
             return CompletableFuture.completedFuture(accumulator);
         }
         String rowKey = members.get(index);
         return redis.hmget(
-                keys.clientServerDescriptorRowKey(rowKey),
+                rowPhysicalKey.apply(rowKey),
                 ROW_FIELDS)
             .thenCompose(fields -> {
                 String json = field(fields, "json");
                 if (json == null) {
-                    return loadClientServerPage(
+                    return loadServicePage(
                         redis,
                         members,
                         pageSize,
+                        rowPhysicalKey,
+                        deserializer,
+                        owner,
                         index + 1,
-                        new ClientServerPageAccumulator(
+                        new ServicePageAccumulator<>(
                             accumulator.items(),
                             accumulator.encodedBytes(),
                             accumulator.consumed() + 1));
@@ -161,37 +214,69 @@ final class ZLinkRedisLocationRows {
                     return CompletableFuture.completedFuture(
                         accumulator);
                 }
-                ZLinkClientServerServerDescriptor row =
-                    materialize(
-                        fields,
-                        ZLinkRedisLocationRowJson
-                            ::deserializeClientServer);
-                if (row != null) {
-                    accumulator.items().add(row);
-                }
-                return loadClientServerPage(
-                    redis,
-                    members,
-                    pageSize,
-                    index + 1,
-                    new ClientServerPageAccumulator(
-                        accumulator.items(),
-                        accumulator.encodedBytes() + rowBytes,
-                        accumulator.consumed() + 1));
+                T row = materialize(fields, deserializer);
+                CompletionStage<Boolean> live = row == null
+                    ? CompletableFuture.completedFuture(false)
+                    : isLiveServiceOwner(redis, owner.apply(row));
+                return live.thenCompose(isLive -> {
+                    if (isLive) {
+                        accumulator.items().add(row);
+                    }
+                    return loadServicePage(
+                        redis,
+                        members,
+                        pageSize,
+                        rowPhysicalKey,
+                        deserializer,
+                        owner,
+                        index + 1,
+                        new ServicePageAccumulator<>(
+                            accumulator.items(),
+                            accumulator.encodedBytes() + rowBytes,
+                            accumulator.consumed() + 1));
+                });
             });
     }
 
-    private static String encodeClientServerCursor(
+    private CompletionStage<Boolean> isLiveServiceOwner(
+        RedisAsyncCommands<String, String> redis,
+        ServiceOwner owner) {
+        return redis.<Long>eval(
+                """
+                local lease = redis.call(
+                    'HMGET', KEYS[1],
+                    'ownerId', 'generation', 'expiresAt')
+                local now = redis.call('TIME')
+                local nowMs =
+                    tonumber(now[1]) * 1000
+                    + math.floor(tonumber(now[2]) / 1000)
+                if lease[1] == ARGV[1]
+                    and lease[2] == ARGV[2]
+                    and tonumber(lease[3] or '0') > nowMs then
+                    return 1
+                end
+                return 0
+                """,
+                ScriptOutputType.INTEGER,
+                new String[] {keys.leaseKey(owner.ownerId())},
+                owner.ownerId(),
+                Long.toString(owner.leaseGeneration()))
+            .thenApply(value -> value != null && value == 1L);
+    }
+
+    private static String encodeServiceCursor(
+        String family,
         String channelName,
         int offset) {
         return Base64.getUrlEncoder()
             .withoutPadding()
             .encodeToString(
-                (channelName + "\0" + offset)
+                (family + "\0" + channelName + "\0" + offset)
                     .getBytes(StandardCharsets.UTF_8));
     }
 
-    private static int decodeClientServerCursor(
+    private static int decodeServiceCursor(
+        String family,
         String channelName,
         String token) {
         if (token == null || token.isBlank()) {
@@ -206,9 +291,10 @@ final class ZLinkRedisLocationRows {
                 Base64.getUrlDecoder().decode(token),
                 StandardCharsets.UTF_8);
             int separator = decoded.lastIndexOf('\0');
+            String identity = family + "\0" + channelName;
             if (separator <= 0
                 || !decoded.substring(0, separator)
-                    .equals(channelName)) {
+                    .equals(identity)) {
                 throw new IllegalArgumentException();
             }
             int offset = Integer.parseInt(
@@ -219,15 +305,20 @@ final class ZLinkRedisLocationRows {
             return offset;
         } catch (IllegalArgumentException error) {
             throw new IllegalArgumentException(
-                "ClientServer continuation token is invalid",
+                family + " continuation token is invalid",
                 error);
         }
     }
 
-    private record ClientServerPageAccumulator(
-        List<ZLinkClientServerServerDescriptor> items,
+    private record ServicePageAccumulator<T>(
+        List<T> items,
         int encodedBytes,
         int consumed) {
+    }
+
+    private record ServiceOwner(
+        String ownerId,
+        long leaseGeneration) {
     }
 
     private <T> CompletionStage<List<T>> loadRows(

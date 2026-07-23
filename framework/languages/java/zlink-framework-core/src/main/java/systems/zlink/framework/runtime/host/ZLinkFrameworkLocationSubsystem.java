@@ -13,6 +13,7 @@ import systems.zlink.framework.runtime.locations.ZLinkLocationStoreResolver;
 import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 import systems.zlink.framework.runtime.internal.channels.ZLinkClientServerRuntimeConfiguration;
+import systems.zlink.framework.runtime.internal.channels.ZLinkFanoutRuntimeConfiguration;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.spots.ActorSpotHandleResolver;
 import systems.zlink.framework.spots.ZLinkStoreSpotHandleResolver;
@@ -83,11 +84,19 @@ final class ZLinkFrameworkLocationSubsystem {
         runtimeHandlers.add(
             ZLinkClientServerRuntimeConfiguration.class,
             clientServerConfiguration);
+        ZLinkFanoutRuntimeConfiguration fanoutConfiguration =
+            new ZLinkFanoutRuntimeConfiguration(
+                locationStores.fanoutStore(),
+                registration.locations().options());
+        runtimeHandlers.add(
+            ZLinkFanoutRuntimeConfiguration.class,
+            fanoutConfiguration);
         ZLinkLocationAutoConnectHost locationAutoConnectHost = new ZLinkLocationAutoConnectHost(
             locationRuntime,
             storeLocationResolvers,
             registration.locations().options(),
-            clientServerConfiguration);
+            clientServerConfiguration,
+            fanoutConfiguration);
         ZLinkStoreLocationResolvers.AddressResolvers locationAddressResolvers =
             new ZLinkStoreLocationResolvers.AddressResolvers(
                 spotMeshNames(registration),

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
@@ -33,6 +34,35 @@ import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 class ZLinkRedisLocationRowJsonTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Instant UPDATED_AT = Instant.parse("2026-07-03T00:00:00Z");
+
+    @Test
+    void fanoutPublisherRowRoundTripsDedicatedDescriptorFields() {
+        ZLinkFanoutPublisherDescriptor original =
+            new ZLinkFanoutPublisherDescriptor(
+                "events",
+                RoutingId.from(new byte[] {0x00, (byte) 0xff, 0x01}),
+                7,
+                11,
+                "tcp://127.0.0.1:7400",
+                ZLinkFrameworkRuntimeState.SERVING,
+                "cluster-a",
+                "owner-a",
+                3,
+                UPDATED_AT);
+
+        ZLinkFanoutPublisherDescriptor decoded =
+            ZLinkRedisLocationRowJson.deserializeFanoutPublisher(
+                ZLinkRedisLocationRowJson.serializeFanoutPublisher(original),
+                3,
+                UPDATED_AT);
+
+        assertEquals(original, decoded);
+        assertEquals(
+            ZLinkRedisLocationRowJson
+                .fanoutPublisherImmutableFingerprint(original),
+            ZLinkRedisLocationRowJson
+                .fanoutPublisherImmutableFingerprint(decoded));
+    }
 
     @Test
     void canonicalHybridSchemaUsesOneFixedProviderHashTag() {

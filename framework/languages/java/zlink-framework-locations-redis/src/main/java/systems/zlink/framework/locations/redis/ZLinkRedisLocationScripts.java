@@ -324,6 +324,14 @@ final class ZLinkRedisLocationScripts {
         return {'stored', generation, nowMs}
         """;
 
+    // Both service descriptor families share the same atomic fence algorithm.
+    // Their physical keys, indexes, immutable digest and row codec remain
+    // dedicated to the descriptor family.
+    static final String WRITE_FANOUT_PUBLISHER =
+        WRITE_CLIENT_SERVER;
+    static final String REMOVE_FANOUT_PUBLISHER =
+        REMOVE_CLIENT_SERVER;
+
     static final String REMOVE = PROLOGUE + """
 
         local currentOwner = redis.call('HGET', KEYS[1], 'owner')

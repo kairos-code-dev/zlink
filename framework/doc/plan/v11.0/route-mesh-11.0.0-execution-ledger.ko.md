@@ -1320,6 +1320,21 @@ test·assemble과 Kotlin main·test compile, `git diff --check`가 통과했다.
 source를 변경하거나 실행하지 않았다. Dedicated fanout과 다른 M6A 잔여가 있으므로
 `V11-M6A-JVM` 상태는 계속 `수정 진행`으로 유지한다.
 
+JVM dedicated fanout checkpoint(2026-07-24)에서 exact
+`ZLinkFanoutPublisherDescriptor`와 key, 선택 capability인 `ZLinkFanoutLocationStore`를 public source에
+추가하고 in-memory와 공식 Redis provider가 이를 구현하도록 연결했다. Publisher는 raw PUB가 실제 bind한
+endpoint를 게시하며 automatic subscriber는 generic peer planner를 사용하지 않고 publisher
+RID·lifecycle별 전용 SUB와 monitor를 만든다. Native connection과 최초 valid beacon 또는 application
+record를 모두 확인한 뒤 ready로 판정하고, reserved beacon은 application handler에 전달하지 않는다.
+5초 beacon·15초 deadline은 publisher connection별로 격리하며 manual publisher·subscriber 경로는
+유지한다. 같은 connection ID의 이전 monitor callback은 current connection identity로 fence하고,
+pending Store reconcile은 lifecycle epoch를 확인해 stop·close 뒤 connection을 다시 만들지 못한다.
+Redis list는 server time과 exact owner ID·lease generation·expiry를 한 번에 검사해 만료되거나 해제된
+owner의 descriptor를 반환하지 않는다. 독립 Codex 5.6 sol xhigh review에서 발견한 이 세 P1을 수정한 뒤
+재리뷰가 `APPROVE`로 끝났다. JVM core 전체 test·assemble, Redis provider 전체 test, Kotlin main·test
+compile과 `git diff --check`가 통과했다. Core·bindings와 Sample·E2E source를 변경하거나 실행하지
+않았다. 다른 M6A·review 잔여가 있으므로 `V11-M6A-JVM` 상태는 계속 `수정 진행`으로 유지한다.
+
 C++ ClientServer runtime checkpoint(2026-07-24)에서 exact descriptor·key·선택
 `client_server_location_store_t`와 공식 Redis capability를 추가하고, generic ClientServer peer
 publication·list를 dedicated Store runtime으로 교체했다. Discovery Server는 raw ROUTER가 bind한 실제

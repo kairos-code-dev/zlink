@@ -182,6 +182,103 @@ class ZLinkRedisLocationStoreTest {
     }
 
     @Test
+    void fanoutPublisherPhysicalEncodingMatchesSharedFixture()
+        throws Exception {
+        JsonNode fixture = redisFixture(
+            "fanout-publisher-descriptor-v1.json");
+        JsonNode row = fixture.path("row");
+        JsonNode hash = row.path("hash");
+        var descriptor =
+            new systems.zlink.framework.locations
+                .ZLinkFanoutPublisherDescriptor(
+                    "events",
+                    RoutingId.from("events-pub-a"),
+                    7,
+                    3,
+                    "tcp://10.0.0.3:7500",
+                    systems.zlink.framework.runtime.host
+                        .ZLinkFrameworkRuntimeState.SERVING,
+                    "cluster-a",
+                    "fanout-owner-a",
+                    5,
+                    Instant.parse("2024-07-15T00:00:00Z"));
+        assertEquals(
+            row.path("key").asText(),
+            ZLinkRedisLocationKeyCodec.encodeFanoutPublisherKey(
+                new systems.zlink.framework.locations
+                    .ZLinkFanoutPublisherDescriptorKey(
+                        descriptor.channelName(),
+                        descriptor.publisherRid())));
+        assertEquals(
+            hash.path("json").asText(),
+            ZLinkRedisLocationRowJson.serializeFanoutPublisher(
+                descriptor));
+    }
+
+    @Test
+    void fanoutPublisherListExcludesReleasedOwnerLease()
+        throws Exception {
+        String endpoint =
+            System.getenv("ZLINK_REDIS_LOCATION_ENDPOINT");
+        assumeTrue(
+            endpoint != null && !endpoint.isBlank(),
+            "ZLINK_REDIS_LOCATION_ENDPOINT is not set");
+        try (ZLinkRedisLocationStore store =
+            new ZLinkRedisLocationStore(
+                new ZLinkRedisLocationOptions()
+                    .setConnectionString(endpoint)
+                    .setKeyPrefix(
+                        "zlink:fanout-lease-test:"
+                            + UUID.randomUUID()))) {
+            ZLinkLocationOwnerToken owner = assertInstanceOf(
+                ZLinkOwnerLeaseClaimed.class,
+                store.claimOwnerLease(
+                        "fanout-owner",
+                        Duration.ofSeconds(30))
+                    .toCompletableFuture().get())
+                .token();
+            var descriptor =
+                new systems.zlink.framework.locations
+                    .ZLinkFanoutPublisherDescriptor(
+                        "events",
+                        RoutingId.from("publisher"),
+                        7,
+                        1,
+                        "tcp://127.0.0.1:7500",
+                        systems.zlink.framework.runtime.host
+                            .ZLinkFrameworkRuntimeState.SERVING,
+                        "default",
+                        owner.ownerId(),
+                        owner.leaseGeneration(),
+                        Instant.now());
+            assertEquals(
+                ZLinkLocationWriteStatus.STORED,
+                store.updateFanoutPublisher(
+                        descriptor,
+                        ZLinkLocationWriteIntent.NEW_CLAIM)
+                    .toCompletableFuture().get()
+                    .status());
+            assertEquals(
+                1,
+                store.listFanoutPublishers(
+                        "events",
+                        ZLinkPageRequest.firstPage())
+                    .toCompletableFuture().get()
+                    .items().size());
+
+            store.releaseOwnerLease(owner)
+                .toCompletableFuture().get();
+
+            assertTrue(
+                store.listFanoutPublishers(
+                        "events",
+                        ZLinkPageRequest.firstPage())
+                    .toCompletableFuture().get()
+                    .items().isEmpty());
+        }
+    }
+
+    @Test
     void redisLocationSchemaGateRejectsIncompatibleMarker()
         throws Exception {
         String endpoint =

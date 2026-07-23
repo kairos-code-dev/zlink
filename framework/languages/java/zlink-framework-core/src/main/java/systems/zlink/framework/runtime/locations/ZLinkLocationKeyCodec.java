@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.locations;
 import java.util.HexFormat;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkPeerLocationKey;
@@ -40,6 +41,11 @@ final class ZLinkLocationKeyCodec {
 
     static String encodeRouteKey(ZLinkRouteLocationKey key) {
         return encode(Integer.toString(key.routeKind().value()), key.routeKey());
+    }
+
+    static String encodeFanoutPublisherKey(
+        ZLinkFanoutPublisherDescriptorKey key) {
+        return encode(key.channelName(), toHex(key.publisherRid()));
     }
 
     private static String encode(String... segments) {

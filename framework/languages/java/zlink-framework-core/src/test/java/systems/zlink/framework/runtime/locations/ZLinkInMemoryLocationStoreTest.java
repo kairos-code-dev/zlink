@@ -20,6 +20,8 @@ import systems.zlink.framework.locations.ZLinkAuthorityGenerationTransition;
 import systems.zlink.framework.locations.ZLinkAuthorityPut;
 import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
 import systems.zlink.framework.locations.ZLinkAuthorityStored;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampScope;
 import systems.zlink.framework.locations.ZLinkLocationKind;
@@ -57,6 +59,53 @@ import systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult;
 class ZLinkInMemoryLocationStoreTest {
     private static final Instant NOW = Instant.parse("2026-07-03T00:00:00Z");
     private static final RoutingId NODE_A = RoutingId.from(new byte[] {0x01});
+
+    @Test
+    void fanoutPublisherUsesDedicatedLifecycleAndOwnerFences()
+        throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(
+            Clock.fixed(NOW, ZoneOffset.UTC));
+        ZLinkLocationOwnerToken owner = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("fanout-owner", Duration.ofSeconds(30))
+                .toCompletableFuture().get()).token();
+        ZLinkFanoutPublisherDescriptor initial =
+            fanoutPublisher(owner, 7, 1, "tcp://127.0.0.1:7400");
+
+        assertEquals(
+            ZLinkLocationWriteStatus.STORED,
+            store.updateFanoutPublisher(
+                    initial, ZLinkLocationWriteIntent.NEW_CLAIM)
+                .toCompletableFuture().get().status());
+        assertEquals(
+            ZLinkLocationWriteStatus.IGNORED_STALE,
+            store.updateFanoutPublisher(
+                    fanoutPublisher(
+                        owner, 7, 1, "tcp://127.0.0.1:7401"),
+                    ZLinkLocationWriteIntent.RENEW)
+                .toCompletableFuture().get().status());
+        ZLinkFanoutPublisherDescriptor renewed =
+            fanoutPublisher(owner, 7, 2, initial.endpoint());
+        assertEquals(
+            ZLinkLocationWriteStatus.STORED,
+            store.updateFanoutPublisher(
+                    renewed, ZLinkLocationWriteIntent.RENEW)
+                .toCompletableFuture().get().status());
+        assertEquals(
+            List.of(renewed),
+            store.listFanoutPublishers(
+                    "events",
+                    systems.zlink.framework.locations.ZLinkPageRequest
+                        .firstPage())
+                .toCompletableFuture().get().items());
+        assertEquals(
+            ZLinkLocationWriteStatus.STORED,
+            store.removeFanoutPublisher(
+                    new ZLinkFanoutPublisherDescriptorKey(
+                        "events", NODE_A),
+                    owner)
+                .toCompletableFuture().get());
+    }
 
     @Test
     void ownerLeaseUsesExactTokenForReadRenewAndRelease() throws Exception {
@@ -449,6 +498,25 @@ class ZLinkInMemoryLocationStoreTest {
                 systems.zlink.framework.locations.ZLinkPageRequest
                     .firstPage())
             .toCompletableFuture().get().items().getFirst();
+    }
+
+    private static ZLinkFanoutPublisherDescriptor fanoutPublisher(
+        ZLinkLocationOwnerToken owner,
+        long lifecycleGeneration,
+        long revision,
+        String endpoint) {
+        return new ZLinkFanoutPublisherDescriptor(
+            "events",
+            NODE_A,
+            lifecycleGeneration,
+            revision,
+            endpoint,
+            systems.zlink.framework.runtime.host
+                .ZLinkFrameworkRuntimeState.SERVING,
+            "security",
+            owner.ownerId(),
+            owner.leaseGeneration(),
+            NOW);
     }
 
     private static ZLinkMeshNodeDescriptor meshNodeDescriptor(

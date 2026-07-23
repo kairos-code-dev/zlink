@@ -19,6 +19,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendRouterSocket;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.internal.channels.ZLinkClientServerRuntimeConfiguration;
+import systems.zlink.framework.runtime.internal.channels.ZLinkFanoutRuntimeConfiguration;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
 import systems.zlink.framework.runtime.spots.SpotNodeRegistration;
@@ -32,13 +33,14 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
     private final ZLinkPeerLocationResolver peers;
     private final ZLinkLocationOptions options;
     private final ZLinkClientServerRuntimeConfiguration clientServers;
+    private final ZLinkFanoutRuntimeConfiguration fanout;
     private final List<ZLinkAutoConnectLoop> loops = new ArrayList<>();
 
     public ZLinkLocationAutoConnectHost(
         ZLinkLocationRuntime runtime,
         ZLinkPeerLocationResolver peers,
         ZLinkLocationOptions options) {
-        this(runtime, peers, options, null);
+        this(runtime, peers, options, null, null);
     }
 
     public ZLinkLocationAutoConnectHost(
@@ -46,10 +48,20 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         ZLinkPeerLocationResolver peers,
         ZLinkLocationOptions options,
         ZLinkClientServerRuntimeConfiguration clientServers) {
+        this(runtime, peers, options, clientServers, null);
+    }
+
+    public ZLinkLocationAutoConnectHost(
+        ZLinkLocationRuntime runtime,
+        ZLinkPeerLocationResolver peers,
+        ZLinkLocationOptions options,
+        ZLinkClientServerRuntimeConfiguration clientServers,
+        ZLinkFanoutRuntimeConfiguration fanout) {
         this.runtime = Objects.requireNonNull(runtime, "runtime");
         this.peers = Objects.requireNonNull(peers, "peers");
         this.options = Objects.requireNonNull(options, "options");
         this.clientServers = clientServers;
+        this.fanout = fanout;
     }
 
     public CompletionStage<Void> start(
@@ -73,8 +85,26 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
                     "automatic ClientServer channels require "
                         + "ZLinkClientServerLocationStore"));
         }
+        boolean hasAutomaticFanoutSubscriber = surfaces.stream().anyMatch(
+            surface -> surface.type() == ZLinkLocationAutoConnectType.FANOUT
+                && surface.role() == ZLinkLocationRole.SUB);
+        boolean hasFanoutPublisher = surfaces.stream().anyMatch(
+            surface -> surface.type() == ZLinkLocationAutoConnectType.FANOUT
+                && surface.role() == ZLinkLocationRole.PUB);
+        boolean hasAutomaticFanout = hasAutomaticFanoutSubscriber
+            || (hasFanoutPublisher
+                && fanout != null
+                && fanout.store() != null);
+        if (hasAutomaticFanoutSubscriber
+            && (fanout == null || fanout.store() == null)) {
+            return CompletableFuture.failedFuture(
+                new systems.zlink.framework.errors.ZLinkConfigurationException(
+                    "automatic classic fanout requires "
+                        + "ZLinkFanoutLocationStore"));
+        }
         for (ZLinkChannelRuntime.AutoConnectSurface surface : surfaces) {
-            if (surface.type() == ZLinkLocationAutoConnectType.CLIENT_SERVER) {
+            if (surface.type() == ZLinkLocationAutoConnectType.CLIENT_SERVER
+                || surface.type() == ZLinkLocationAutoConnectType.FANOUT) {
                 continue;
             }
             addChannelLoop(surface);
@@ -130,6 +160,9 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         CompletionStage<Void> chain = hasAutomaticClientServer
             ? startClientServers()
             : CompletableFuture.completedFuture(null);
+        if (hasAutomaticFanout) {
+            chain = chain.thenCompose(ignored -> startFanout());
+        }
         for (ZLinkAutoConnectLoop loop : loops) {
             chain = chain.thenCompose(ignored -> loop.start());
         }
@@ -140,6 +173,9 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         CompletionStage<Void> chain = clientServers == null
             ? CompletableFuture.completedFuture(null)
             : clientServers.stop();
+        if (fanout != null) {
+            chain = chain.thenCompose(ignored -> fanout.stop());
+        }
         for (ZLinkAutoConnectLoop loop : loops) {
             chain = chain.thenCompose(ignored -> loop.stop());
         }
@@ -161,10 +197,18 @@ public final class ZLinkLocationAutoConnectHost implements AutoCloseable {
         return clientServers.start();
     }
 
+    private CompletionStage<Void> startFanout() {
+        fanout.setOwner(runtime.ownerTokenSnapshot());
+        return fanout.start();
+    }
+
     public CompletionStage<Void> markDraining() {
         CompletionStage<Void> chain = clientServers == null
             ? CompletableFuture.completedFuture(null)
             : clientServers.markDraining();
+        if (fanout != null) {
+            chain = chain.thenCompose(ignored -> fanout.markDraining());
+        }
         for (ZLinkAutoConnectLoop loop : loops) {
             chain = chain.thenCompose(ignored -> loop.markDraining());
         }

@@ -15,6 +15,7 @@ record ZLinkJavaPublisherSocket(PubSocket socket)
     @Override public void bind(String endpoint) { socket.bind(endpoint); }
     @Override public void setChannelName(String channelName) { ZLinkJavaSocketSupport.validateChannelName(channelName); }
     @Override public void setRoutingId(RoutingId routingId) { socket.setRoutingId(routingId); }
+    @Override public String lastEndpoint() { return socket.options().lastEndpoint(); }
     @Override public boolean publish(String topic, List<Message> parts, SendFlags flags) {
         return ZLinkJavaSocketSupport.submit(socket.publish(topic), parts, flags);
     }

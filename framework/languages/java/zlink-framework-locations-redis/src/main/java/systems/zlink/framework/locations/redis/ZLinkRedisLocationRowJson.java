@@ -26,6 +26,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
@@ -178,6 +179,68 @@ final class ZLinkRedisLocationRowJson {
         appendImmutableSegment(
             preimage,
             row.serverRid().toHex().toLowerCase(
+                java.util.Locale.ROOT));
+        appendImmutableSegment(
+            preimage,
+            Long.toString(row.lifecycleGeneration()));
+        appendImmutableSegment(preimage, row.endpoint());
+        appendImmutableSegment(preimage, row.securityIdentity());
+        try {
+            return HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(
+                    preimage.toString().getBytes(
+                        StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(
+                "SHA-256 is unavailable",
+                impossible);
+        }
+    }
+
+    static String serializeFanoutPublisher(
+        ZLinkFanoutPublisherDescriptor row) {
+        ObjectNode node = JSON.createObjectNode();
+        node.put("ChannelName", row.channelName());
+        putRid(node, "PublisherRid", row.publisherRid());
+        node.put("LifecycleGeneration", row.lifecycleGeneration());
+        node.put("DescriptorRevision", row.descriptorRevision());
+        node.put("Endpoint", row.endpoint());
+        node.put("State", runtimeStateName(row.state()));
+        node.put("SecurityIdentity", row.securityIdentity());
+        node.put("OwnerId", row.ownerId());
+        node.put("OwnerLeaseGeneration", row.leaseGeneration());
+        putInstant(node, "UpdatedAt", row.updatedAt());
+        return write(node);
+    }
+
+    static ZLinkFanoutPublisherDescriptor deserializeFanoutPublisher(
+        String json,
+        long storeGeneration,
+        Instant updatedAt) {
+        JsonNode node = read(json);
+        return new ZLinkFanoutPublisherDescriptor(
+            text(node, "ChannelName"),
+            rid(node, "PublisherRid"),
+            node.path("LifecycleGeneration").asLong(),
+            node.path("DescriptorRevision").asLong(),
+            text(node, "Endpoint"),
+            runtimeState(text(node, "State")),
+            text(node, "SecurityIdentity"),
+            text(node, "OwnerId"),
+            node.path("OwnerLeaseGeneration").asLong(),
+            updatedAt);
+    }
+
+    static String fanoutPublisherImmutableFingerprint(
+        ZLinkFanoutPublisherDescriptor row) {
+        StringBuilder preimage = new StringBuilder();
+        appendImmutableSegment(
+            preimage,
+            "zlink-fanout-publisher-immutable-v1");
+        appendImmutableSegment(preimage, row.channelName());
+        appendImmutableSegment(
+            preimage,
+            row.publisherRid().toHex().toLowerCase(
                 java.util.Locale.ROOT));
         appendImmutableSegment(
             preimage,

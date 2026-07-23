@@ -207,6 +207,43 @@ final class ZLinkRedisLocationKeys {
         return domainBase() + ":descriptor:client-server:stamp";
     }
 
+    String fanoutPublisherDescriptorRowKey(String encodedKey) {
+        return domainBase() + ":descriptor:fanout-publisher:"
+            + sha256Hex(encodedKey);
+    }
+
+    String fanoutPublisherDescriptorMetadataKey(String encodedKey) {
+        return domainBase() + ":descriptor-admission:fanout-publisher:"
+            + sha256Hex(encodedKey);
+    }
+
+    String fanoutPublisherDescriptorIndexKey() {
+        return domainBase() + ":descriptor:fanout-publisher:index";
+    }
+
+    String fanoutPublisherDescriptorChannelIndexKey(
+        String channelName) {
+        return domainBase()
+            + ":descriptor:fanout-publisher:channel:"
+            + sha256Hex(channelName);
+    }
+
+    String fanoutPublisherOwnerTokenIndexKey(
+        String ownerId,
+        long leaseGeneration) {
+        return domainBase() + ":descriptor:fanout-publisher:owner:"
+            + sha256Hex(ownerId + "\0" + leaseGeneration);
+    }
+
+    String fanoutPublisherDescriptorStampKey(String channelName) {
+        return domainBase() + ":descriptor:fanout-publisher:stamp:"
+            + sha256Hex(channelName);
+    }
+
+    String fanoutPublisherDescriptorGlobalStampKey() {
+        return domainBase() + ":descriptor:fanout-publisher:stamp";
+    }
+
     String encodedAuthorityKey(String authorityKey) {
         return HexFormat.of().formatHex(
             authorityKey.getBytes(StandardCharsets.UTF_8));

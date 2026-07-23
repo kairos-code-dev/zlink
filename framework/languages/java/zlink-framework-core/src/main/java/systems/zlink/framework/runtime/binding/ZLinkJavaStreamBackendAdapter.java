@@ -13,7 +13,7 @@ final class ZLinkJavaStreamBackendAdapter implements ZLinkStreamBackendAdapter {
         return new ZLinkJavaStreamSocket(
             ZLinkJavaSocketOptions.configureFrameworkSocket(
                 nativeContext(context).createStreamSocket()),
-            meshNode == null ? null : (ZLinkJavaMeshNode) meshNode);
+            meshNode == null ? null : (ZLinkJavaRawMeshNode) meshNode);
     }
 
     private static Context nativeContext(ZLinkBackendContext context) {

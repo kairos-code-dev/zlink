@@ -50,6 +50,7 @@ export interface ZLinkRawMonitorPort {
 
 export interface ZLinkRawRouterPort extends ZLinkRawSocketPort {
   setRoutingId(routingId: string): void;
+  connectToRoutingId(routingId: string, endpoint: string): void;
   send(targetRid: string, parts: readonly Uint8Array[], dontWait?: boolean): boolean;
   request(
     targetRid: string,
@@ -225,11 +226,20 @@ abstract class NodeRawSocketPort<TSocket extends Socket> implements ZLinkRawSock
 class NodeRawRouterPort extends NodeRawSocketPort<RouterSocket> implements ZLinkRawRouterPort {
   constructor(socket: RouterSocket) {
     super(socket);
+    socket.options.handover = true;
+    socket.options.mandatory = true;
+    socket.options.probe = true;
   }
 
   setRoutingId(routingId: string): void {
     this.requireOpen();
     this.socket.setRoutingId(bindingRoutingId(routingId));
+  }
+
+  connectToRoutingId(routingId: string, endpoint: string): void {
+    this.requireOpen();
+    this.socket.options.setConnectRoutingId(bindingRoutingId(routingId));
+    this.connect(endpoint);
   }
 
   send(targetRid: string, parts: readonly Uint8Array[], dontWait = false): boolean {

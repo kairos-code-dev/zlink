@@ -1,11 +1,11 @@
 namespace Zlink.Framework.Runtime.Host;
 
-internal sealed class ZLinkFrameworkRuntimeState : IAsyncDisposable
+internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
 {
     private readonly object _disposeGate = new();
     private Task? _disposeTask;
 
-    public ZLinkFrameworkRuntimeState(
+    public ZLinkFrameworkComponentState(
         IZLinkBackendContext context,
         ZLinkFrameworkRegistration registration,
         IServiceProvider services,

@@ -260,7 +260,8 @@ public final class ZLinkMeshApplicationDispatcher
         ReplyToken token = record.receive().replyToken();
         ChannelRouteRequestHandlerRegistration route = namespace.routeRequests.get(packetName);
         ChannelRequestHandlerRegistration channel = namespace.channelRequests.get(packetName);
-        if (token == null || (route == null && channel == null)) {
+        if ((token == null && !record.canReply())
+            || (route == null && channel == null)) {
             reject(record, "MeshNode request handler is not registered: " + packetName, claim);
             return;
         }
@@ -280,9 +281,9 @@ public final class ZLinkMeshApplicationDispatcher
                         metadata));
             return invocation.<Void>handle((reply, error) -> {
                 if (error == null) {
-                    replyAndClose(token, List.of(reply));
+                    replyAndClose(record, token, List.of(reply));
                 } else {
-                    replyError(token, error.getMessage());
+                    replyError(record, token, error.getMessage());
                 }
                 return null;
             }).whenComplete((ignored, error) -> closeRecord(record, claim));
@@ -299,8 +300,8 @@ public final class ZLinkMeshApplicationDispatcher
         ZLinkMeshDrainCoordinator.Claim claim) {
         ReplyToken token = record.receive().replyToken();
         try {
-            if (token != null) {
-                replyError(token, message);
+            if (token != null || record.canReply()) {
+                replyError(record, token, message);
             }
         } finally {
             closeRecord(record, claim);
@@ -323,9 +324,31 @@ public final class ZLinkMeshApplicationDispatcher
         replyAndClose(token, ZLinkFrameworkErrorReply.create(message));
     }
 
+    private void replyError(
+        ZLinkMeshDispatchRecord record,
+        ReplyToken token,
+        String message) {
+        replyAndClose(record, token, ZLinkFrameworkErrorReply.create(message));
+    }
+
     private void replyAndClose(ReplyToken token, List<Message> parts) {
         try {
             replies.send(token, parts);
+        } finally {
+            parts.forEach(Message::close);
+        }
+    }
+
+    private void replyAndClose(
+        ZLinkMeshDispatchRecord record,
+        ReplyToken token,
+        List<Message> parts) {
+        try {
+            if (record.canReply()) {
+                record.reply(parts);
+            } else {
+                replies.send(token, parts);
+            }
         } finally {
             parts.forEach(Message::close);
         }

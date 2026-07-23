@@ -14,9 +14,28 @@ import systems.zlink.contracts.service.spot.ReceiveRecord;
 public record ZLinkMeshDispatchRecord(
     ReadyRecord owner,
     ReceiveRecord receive,
-    List<Message> parts) implements AutoCloseable {
+    List<Message> parts,
+    java.util.function.Consumer<List<Message>> frameworkReply) implements AutoCloseable {
     public ZLinkMeshDispatchRecord {
         parts = List.copyOf(parts);
+    }
+
+    public ZLinkMeshDispatchRecord(
+        ReadyRecord owner,
+        ReceiveRecord receive,
+        List<Message> parts) {
+        this(owner, receive, parts, null);
+    }
+
+    public boolean canReply() {
+        return frameworkReply != null;
+    }
+
+    public void reply(List<Message> replyParts) {
+        if (frameworkReply == null) {
+            throw new IllegalStateException("dispatch record has no reply route");
+        }
+        frameworkReply.accept(List.copyOf(replyParts));
     }
 
     @Override

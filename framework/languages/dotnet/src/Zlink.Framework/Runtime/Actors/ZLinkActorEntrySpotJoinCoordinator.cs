@@ -6,7 +6,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
     ZLinkFrameworkRegistration registration,
     ZLinkSpotRuntimeManager spots,
     ZLinkActorSessionManager actorSessionManager,
-    Func<ZLinkFrameworkRuntimeState> getState,
+    Func<ZLinkFrameworkComponentState> getState,
     Func<IZLinkBackendSpotNode?> getActorSpotNode,
     ZLinkMessageFlowTracer flow)
 {
@@ -118,7 +118,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
     }
 
     private async ValueTask<ZLinkActorJoinResult> JoinRemoteAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         RoutingId spotNodeRid,
         IZLinkActor actor,
         ZLinkActorRuntimeState actorState,

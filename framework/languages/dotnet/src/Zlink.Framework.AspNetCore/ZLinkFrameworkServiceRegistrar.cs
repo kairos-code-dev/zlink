@@ -142,6 +142,13 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetService<ILogger<ZLinkDrainCoordinator>>()));
         services.TryAddSingleton<IZLinkDrainControl>(static provider =>
             provider.GetRequiredService<ZLinkDrainCoordinator>());
+        services.TryAddSingleton<ZLinkFrameworkMaintenanceRuntime>(static provider =>
+            new ZLinkFrameworkMaintenanceRuntime(
+                provider.GetRequiredService<ZLinkDrainCoordinator>(),
+                provider.GetRequiredService<ZLinkFrameworkRuntime>().PreflightRetireAsync,
+                provider.GetRequiredService<ZLinkFrameworkRuntime>().GetDrainRemainderCounts));
+        services.TryAddSingleton<IZLinkFrameworkRuntime>(static provider =>
+            provider.GetRequiredService<ZLinkFrameworkMaintenanceRuntime>());
         services.AddSingleton<IHostedService>(static provider =>
             new ZLinkFrameworkHostedService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
@@ -152,7 +159,8 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetService<ZLinkLocationLifecycle>(),
                 provider.GetService<ZLinkAllocatedRoutingIdRuntime>(),
                 provider.GetService<IHostApplicationLifetime>(),
-                provider.GetRequiredService<ZLinkDrainCoordinator>()));
+                provider.GetRequiredService<ZLinkDrainCoordinator>(),
+                provider.GetRequiredService<ZLinkFrameworkMaintenanceRuntime>()));
 
         return services;
     }

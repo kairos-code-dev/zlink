@@ -2,8 +2,6 @@
 
 package systems.zlink.contracts.service.spot;
 
-import systems.zlink.runtime.nativeapi.InternalAccess;
-
 /** A reusable buffer that receives dispatch ready records from a mesh node. */
 public interface ReadyBatch extends AutoCloseable {
     /** Returns the number of ready records currently held. */
@@ -23,6 +21,6 @@ public interface ReadyBatch extends AutoCloseable {
 
     /** Creates a ready batch with the given record capacity. */
     static ReadyBatch create(int recordCapacity) {
-        return InternalAccess.dispatchNewReadyBatch(recordCapacity);
+        return new FrameworkReadyBatch(recordCapacity);
     }
 }

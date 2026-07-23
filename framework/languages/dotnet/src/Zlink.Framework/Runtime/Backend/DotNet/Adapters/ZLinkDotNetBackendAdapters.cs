@@ -59,7 +59,7 @@ internal sealed class ZLinkDotNetSpotBackendAdapter : IZLinkSpotBackendAdapter
         var nativeContext = (context as ZLinkBackendContextWrapper)?.NativeContext
                             ?? throw new InvalidOperationException("Expected the .NET backend context wrapper.");
         return new ZLinkBackendSpotNodeWrapper(
-            nativeContext.CreateMeshNode(new Systems.Zlink.MeshNodeOptions { MeshName = meshName }));
+            new ZLinkManagedMeshNode(nativeContext, meshName));
     }
 }
 
@@ -84,8 +84,10 @@ internal sealed class ZLinkDotNetStreamBackendAdapter : IZLinkStreamBackendAdapt
             return new ZLinkBackendStreamSocketWrapper(
                 socket, shared.NativeNode, shared.Completions, ownsNode: false);
 
-        var node = nativeContext.CreateMeshNode(
-            new Systems.Zlink.MeshNodeOptions { MeshName = standaloneMeshName });
+        var node = new ZLinkManagedMeshNode(nativeContext, standaloneMeshName);
+        node.SetRoutingId(RoutingId.From(Guid.NewGuid()));
+        node.SetBind($"inproc://zlink-stream-{Guid.NewGuid():N}");
+        node.Start();
         return new ZLinkBackendStreamSocketWrapper(
             socket, node, completions: null, ownsNode: true);
     }

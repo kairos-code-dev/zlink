@@ -53,7 +53,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     }
 
     internal async ValueTask StartAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);

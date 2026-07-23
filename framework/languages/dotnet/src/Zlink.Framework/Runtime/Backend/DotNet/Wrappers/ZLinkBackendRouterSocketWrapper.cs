@@ -15,7 +15,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
 
     public void SetChannelName(string channelName)
     {
-        nativeSocket.SetChannelName(channelName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
     }
 
     public void SetMaxMessageSize(long value)

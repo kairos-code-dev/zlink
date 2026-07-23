@@ -18,13 +18,13 @@ internal sealed class ZLinkSpotRuntimeManager(
 
     public ZLinkEntrySpotActorRouter EntrySpotActors => _entrySpotActors;
 
-    public async ValueTask InitializeSpotNodesAsync(ZLinkFrameworkRuntimeState state)
+    public async ValueTask InitializeSpotNodesAsync(ZLinkFrameworkComponentState state)
     {
         await _nodeInitializer.InitializeAsync(state).ConfigureAwait(false);
     }
 
     public ZLinkSpotPublisherBundle GetPublisherBundle(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         string channelName)
     {
         if (state.SpotNodes.TryGetValue(channelName, out var node))
@@ -35,7 +35,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     public async ValueTask<ZLinkSpotCreateResult> CreateAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         Type spotType,
         ZLinkMessage request,
         CancellationToken cancellationToken)
@@ -45,7 +45,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         Type spotType,
         RoutingId spotRid,
         ZLinkMessage request,
@@ -60,7 +60,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     public async ValueTask<ZLinkSpotInfo?> GetAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
@@ -74,7 +74,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     public async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         CancellationToken cancellationToken)
     {
         var results = new List<ZLinkSpotInfo>();
@@ -86,7 +86,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     public async ValueTask<bool> CloseAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         RoutingId spotRid,
         CancellationToken cancellationToken)
     {
@@ -98,7 +98,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     public async ValueTask<ZLinkSpotActorJoinResult> JoinActorAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         RoutingId spotRid,
         IZLinkActor actor,
         ZLinkMessage request,
@@ -111,7 +111,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     public async ValueTask<bool> TryNotifyJoinedSpotActorDisconnectedAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         string actorId,
         CancellationToken cancellationToken)
     {
@@ -128,14 +128,14 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         string spotNodeName)
     {
         return GetNode(state, spotNodeName).GetMonitoringSnapshot();
     }
 
     private static ZLinkSpotNodeRuntime GetNode(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         string spotNodeName)
     {
         return state.SpotNodes.TryGetValue(spotNodeName, out var node)
@@ -144,7 +144,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     private static ZLinkSpotNodeRuntime GetNodeForSpotFactory(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         Type spotType)
     {
         foreach (var node in state.SpotNodes.Values)
@@ -155,7 +155,7 @@ internal sealed class ZLinkSpotRuntimeManager(
     }
 
     public ZLinkSpotActivation? GetActivationBySpotRid(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         RoutingId spotRid)
     {
         foreach (var node in state.SpotNodes.Values)

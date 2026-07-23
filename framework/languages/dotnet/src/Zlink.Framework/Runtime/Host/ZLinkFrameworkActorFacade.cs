@@ -6,7 +6,7 @@ internal sealed class ZLinkFrameworkActorFacade(
     IServiceProvider services,
     ZLinkSpotRuntimeManager spots,
     ZLinkActorSessionManager actorSessionManager,
-    Func<ZLinkFrameworkRuntimeState> getState,
+    Func<ZLinkFrameworkComponentState> getState,
     Func<IZLinkBackendSpotNode?> getActorSpotNode)
 {
     private readonly ZLinkActorEntrySpotJoinCoordinator _entrySpotJoin = new(

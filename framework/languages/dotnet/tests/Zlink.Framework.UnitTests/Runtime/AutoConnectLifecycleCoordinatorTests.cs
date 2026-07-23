@@ -72,7 +72,7 @@ public sealed class AutoConnectLifecycleCoordinatorTests
             requiresSocketMonitoring);
     }
 
-    private static ZLinkFrameworkRuntimeState UninitializedState() =>
-        (ZLinkFrameworkRuntimeState)RuntimeHelpers.GetUninitializedObject(
-            typeof(ZLinkFrameworkRuntimeState));
+    private static ZLinkFrameworkComponentState UninitializedState() =>
+        (ZLinkFrameworkComponentState)RuntimeHelpers.GetUninitializedObject(
+            typeof(ZLinkFrameworkComponentState));
 }

@@ -3,7 +3,6 @@
 package systems.zlink.contracts.service.spot;
 
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.util.List;
 
 /** A reusable buffer that receives message records drained from a claim. */
@@ -25,7 +24,7 @@ public interface ReceiveBatch extends AutoCloseable {
 
     /** Creates a receive batch with the given capacities. */
     static ReceiveBatch create(int messageCapacity, int partCapacity, int byteCapacity) {
-        return InternalAccess.dispatchNewReceiveBatch(messageCapacity, partCapacity,
-            byteCapacity);
+        return new FrameworkReceiveBatch(
+            messageCapacity, partCapacity, byteCapacity);
     }
 }

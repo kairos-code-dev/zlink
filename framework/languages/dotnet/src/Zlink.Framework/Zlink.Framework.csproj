@@ -5,6 +5,7 @@
         <RootNamespace>Zlink.Framework</RootNamespace>
         <Description>ZLink framework core abstractions and runtime for .NET.</Description>
         <IsPackable>true</IsPackable>
+        <NoWarn>$(NoWarn);ZLINK1100</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>

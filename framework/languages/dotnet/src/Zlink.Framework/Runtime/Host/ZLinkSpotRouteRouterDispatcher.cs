@@ -4,7 +4,7 @@ using Zlink.Framework.Runtime.Spots;
 namespace Zlink.Framework.Runtime.Host;
 
 internal sealed class ZLinkSpotRouteRouterDispatcher(
-    Func<ZLinkFrameworkRuntimeState> getState)
+    Func<ZLinkFrameworkComponentState> getState)
 {
     public ValueTask<ZLinkSubmitResult> SendAsync(
         string routerChannelId,

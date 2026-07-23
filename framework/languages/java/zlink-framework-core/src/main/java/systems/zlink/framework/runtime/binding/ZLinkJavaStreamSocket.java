@@ -3,15 +3,14 @@ package systems.zlink.framework.runtime.binding;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.eventing.MonitorEventType;
 import systems.zlink.contracts.eventing.SocketMonitor;
-import systems.zlink.contracts.errors.ZlinkSubmitException;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.ActorRef;
-import systems.zlink.contracts.service.spot.StreamSessionBinding;
-import systems.zlink.contracts.service.spot.StreamSessionService;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.contracts.sockets.StreamSocket;
@@ -26,17 +25,15 @@ import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderCodec;
 
 final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJavaSocketBacked {
     private final StreamSocket socket;
-    private final ZLinkJavaMeshNode meshNode;
-    private final StreamSessionService sessionService;
+    private final ZLinkJavaRawMeshNode meshNode;
+    private final Map<BindingKey, ZLinkBackendActorRef> bindings =
+        new ConcurrentHashMap<>();
     private SocketMonitor monitor;
     private boolean sessionServiceStarted;
 
-    ZLinkJavaStreamSocket(StreamSocket socket, ZLinkJavaMeshNode meshNode) {
+    ZLinkJavaStreamSocket(StreamSocket socket, ZLinkJavaRawMeshNode meshNode) {
         this.socket = socket;
         this.meshNode = meshNode;
-        this.sessionService = meshNode == null
-            ? null
-            : StreamSessionService.create(meshNode.nativeNode(), socket);
     }
 
     @Override public Socket nativeSocket() { return socket; }
@@ -59,8 +56,7 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
             handler.handle(routingId, 0, event.event().name())));
     }
     @Override public void startSessionService() {
-        if (sessionService != null && !sessionServiceStarted) {
-            sessionService.start();
+        if (meshNode != null && !sessionServiceStarted) {
             sessionServiceStarted = true;
         }
     }
@@ -81,37 +77,40 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
     }
     @Override public ZLinkBackendActorBindOperation bindActor(RoutingId sessionRid, ZLinkBackendActorRef actor) {
         return timeout -> {
+            requireSessionRuntime();
+            BindingKey key = new BindingKey(sessionRid, actor.actorId());
+            ZLinkBackendActorRef current = bindings.putIfAbsent(key, actor);
+            if (current != null && !current.equals(actor)) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "STREAM session has a stale Actor binding"));
+            }
             try {
-                return meshNode.track(
-                    requireSessionService().bindActor(sessionRid, toNative(actor), timeout));
-            } catch (ZlinkSubmitException error) {
-                throw new IllegalStateException(
-                    "STREAM actor bind submit failed: result=" + error.getResult()
-                        + " errno=" + error.getNativeErrno()
-                        + " session=" + sessionRid
-                        + " actor=" + actor.actorId()
-                        + " generation=" + actor.generation(),
-                    error);
+                rawSpotNode().bindStreamSession(
+                    sessionRid, actor, this);
+                return CompletableFuture.completedFuture(null);
+            } catch (RuntimeException failure) {
+                bindings.remove(key, actor);
+                return CompletableFuture.failedFuture(failure);
             }
         };
     }
     @Override public ZLinkBackendActorUnbindOperation unbindActor(RoutingId sessionRid, String actorId) {
         return timeout -> {
-            StreamSessionBinding binding = requireBinding(sessionRid, actorId);
-            return meshNode.track(requireSessionService().unbindActor(
-                sessionRid,
-                binding.actor(),
-                binding.bindingGeneration(),
-                timeout));
+            ZLinkBackendActorRef actor = requireBinding(sessionRid, actorId);
+            rawSpotNode().unbindStreamSession(sessionRid, actor, this);
+            bindings.remove(new BindingKey(sessionRid, actorId), actor);
+            return CompletableFuture.completedFuture(null);
         };
     }
     @Override public boolean sendBoundActor(RoutingId sessionRid, String actorId, List<Message> parts, SendFlags flags) {
-        requireSessionService().sendToActor(
+        ZLinkBackendActorRef actor = requireBinding(sessionRid, actorId);
+        return rawSpotNode().forwardActorBoundSession(
+            actor,
+            meshNode.routingId(),
             sessionRid,
-            requireBinding(sessionRid, actorId).actor(),
             parts,
             flags);
-        return true;
     }
     @Override public boolean relayBoundActor(
         RoutingId sessionRid,
@@ -121,12 +120,13 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         SendFlags flags) {
         Message header = Message.from(ZLinkStreamHeaderCodec.encode(streamHeader));
         try {
-            requireSessionService().sendToActor(
+            ZLinkBackendActorRef actor = requireBinding(sessionRid, actorId);
+            return rawSpotNode().forwardActorBoundSession(
+                actor,
+                meshNode.routingId(),
                 sessionRid,
-                requireBinding(sessionRid, actorId).actor(),
                 prepend(header, parts),
                 flags);
-            return true;
         } finally {
             header.close();
         }
@@ -134,8 +134,11 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
     @Override public void close() {
         notifyAdmissionShutdown();
         closeMonitor();
-        if (sessionService != null) {
-            sessionService.close();
+        if (meshNode != null) {
+            bindings.forEach((key, actor) ->
+                rawSpotNode().unbindStreamSession(
+                    key.sessionRid(), actor, this));
+            bindings.clear();
         }
         socket.close();
     }
@@ -154,23 +157,30 @@ final class ZLinkJavaStreamSocket implements ZLinkBackendStreamSocket, ZLinkJava
         return result;
     }
 
-    private StreamSessionBinding requireBinding(RoutingId sessionRid, String actorId) {
-        return requireSessionService().bindings(sessionRid).stream()
-            .filter(binding -> binding.actor().actorId().equals(actorId))
-            .findFirst()
-            .orElseThrow(() -> new IllegalStateException(
-                "STREAM session is not bound to actor: " + actorId));
+    private ZLinkBackendActorRef requireBinding(
+        RoutingId sessionRid,
+        String actorId) {
+        requireSessionRuntime();
+        ZLinkBackendActorRef actor =
+            bindings.get(new BindingKey(sessionRid, actorId));
+        if (actor == null) {
+            throw new IllegalStateException(
+                "STREAM session is not bound to actor: " + actorId);
+        }
+        return actor;
     }
 
-    private static ActorRef toNative(ZLinkBackendActorRef actor) {
-        return new ActorRef(actor.nodeRid(), actor.actorId(), actor.generation());
+    private ZLinkJavaRawSpotNode rawSpotNode() {
+        return (ZLinkJavaRawSpotNode) meshNode.spotNode();
     }
 
-    private StreamSessionService requireSessionService() {
-        if (sessionService == null) {
+    private void requireSessionRuntime() {
+        if (meshNode == null || !sessionServiceStarted) {
             throw new IllegalStateException(
                 "STREAM actor dispatch is not enabled for this stream node");
         }
-        return sessionService;
+    }
+
+    private record BindingKey(RoutingId sessionRid, String actorId) {
     }
 }

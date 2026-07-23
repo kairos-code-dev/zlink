@@ -13,16 +13,16 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Owns request correlation, deadline, and terminal-once completion. */
-final class ZLinkServiceOperationRegistry implements AutoCloseable {
+public final class ZLinkServiceOperationRegistry implements AutoCloseable {
     private final ScheduledExecutorService scheduler;
     private final Map<UUID, Entry<?>> entries = new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
 
-    ZLinkServiceOperationRegistry(ScheduledExecutorService scheduler) {
+    public ZLinkServiceOperationRegistry(ScheduledExecutorService scheduler) {
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
     }
 
-    synchronized <T> Operation<T> register(Duration timeout) {
+    public synchronized <T> Operation<T> register(Duration timeout) {
         Objects.requireNonNull(timeout, "timeout");
         if (timeout.isNegative() || timeout.isZero()) {
             throw new IllegalArgumentException("timeout must be positive");
@@ -47,7 +47,7 @@ final class ZLinkServiceOperationRegistry implements AutoCloseable {
         return new Operation<>(id, entry.completion);
     }
 
-    <T> boolean complete(UUID id, T value) {
+    public <T> boolean complete(UUID id, T value) {
         @SuppressWarnings("unchecked")
         Entry<T> entry = (Entry<T>) entries.remove(Objects.requireNonNull(id, "id"));
         if (entry == null) {
@@ -57,7 +57,7 @@ final class ZLinkServiceOperationRegistry implements AutoCloseable {
         return entry.completion.complete(value);
     }
 
-    boolean completeExceptionally(UUID id, Throwable failure) {
+    public boolean completeExceptionally(UUID id, Throwable failure) {
         Entry<?> entry = entries.remove(Objects.requireNonNull(id, "id"));
         if (entry == null) {
             return false;
@@ -67,7 +67,7 @@ final class ZLinkServiceOperationRegistry implements AutoCloseable {
             Objects.requireNonNull(failure, "failure"));
     }
 
-    int pendingCount() {
+    public int pendingCount() {
         return entries.size();
     }
 
@@ -87,8 +87,8 @@ final class ZLinkServiceOperationRegistry implements AutoCloseable {
         }
     }
 
-    record Operation<T>(UUID id, CompletableFuture<T> completion) {
-        Operation {
+    public record Operation<T>(UUID id, CompletableFuture<T> completion) {
+        public Operation {
             Objects.requireNonNull(id, "id");
             Objects.requireNonNull(completion, "completion");
         }

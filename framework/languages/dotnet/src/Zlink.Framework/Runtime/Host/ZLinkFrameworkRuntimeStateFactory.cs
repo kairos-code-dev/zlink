@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Runtime.Host;
 
-internal sealed class ZLinkFrameworkRuntimeStateFactory(
+internal sealed class ZLinkFrameworkComponentStateFactory(
     ZLinkFrameworkRuntime frameworkRuntime,
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration,
@@ -8,7 +8,7 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
     ZLinkStreamRuntimeManager streams,
     ZLinkSpotRuntimeManager spots)
 {
-    public async ValueTask<ZLinkFrameworkRuntimeState> CreateAsync()
+    public async ValueTask<ZLinkFrameworkComponentState> CreateAsync()
     {
         await ZLinkSpotStartupValidator.ValidateAsync(
                 frameworkRuntime.Services,
@@ -17,12 +17,12 @@ internal sealed class ZLinkFrameworkRuntimeStateFactory(
 
         var channelAdapter = backendAdapterFactory.CreateChannelAdapter();
         IZLinkBackendContext? context = null;
-        ZLinkFrameworkRuntimeState? state = null;
+        ZLinkFrameworkComponentState? state = null;
 
         try
         {
             context = channelAdapter.CreateContext();
-            state = new ZLinkFrameworkRuntimeState(
+            state = new ZLinkFrameworkComponentState(
                 context,
                 registration,
                 frameworkRuntime.Services,

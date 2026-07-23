@@ -7,7 +7,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
         runtime: runtime);
 
     public async ValueTask<bool> TryAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkActor actor,
         ZlinkStreamHeader header,
         Message body,
@@ -55,7 +55,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
     }
 
     public async ValueTask<EntrySpotActorReplyDispatchResult> TrySubmitForReplyAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkActor actor,
         ZLinkActorRuntimeState runtimeState,
         ZlinkStreamHeader header,
@@ -153,7 +153,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
     }
 
     public async ValueTask NotifyJoinedAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkActor actor,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
@@ -170,7 +170,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
     }
 
     public async ValueTask NotifyCreatedAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkActor actor,
         ZLinkMessage createRequest,
         RoutingId? targetNodeRid,
@@ -189,7 +189,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
     }
 
     public async ValueTask NotifyLeftAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkActor actor,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
@@ -206,7 +206,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
     }
 
     public async ValueTask<bool> TryNotifyDisconnectedAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkActor actor,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
@@ -235,7 +235,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
 
 
     private static async ValueTask NotifyLifecycleAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkActor actor,
         RoutingId? targetNodeRid,
         TryResolveLifecycle resolve,
@@ -254,7 +254,7 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
     }
 
     private static async ValueTask NotifyLifecycleAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkActor actor,
         ZLinkMessage? request,
         RoutingId? targetNodeRid,

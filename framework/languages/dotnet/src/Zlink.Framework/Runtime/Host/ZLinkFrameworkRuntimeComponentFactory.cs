@@ -7,7 +7,7 @@ internal sealed record ZLinkFrameworkRuntimeComponents(
     ZLinkChannelRuntimeManager Channels,
     ZLinkStreamRuntimeManager Streams,
     ZLinkSpotRuntimeManager Spots,
-    ZLinkFrameworkRuntimeStateFactory StateFactory,
+    ZLinkFrameworkComponentStateFactory StateFactory,
     ZLinkActorSessionManager ActorSessionManager,
     ZLinkFrameworkActorFacade Actors);
 
@@ -21,7 +21,7 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
         ZLinkLocationLifecycle? locationLifecycle,
         ZLinkHandlerRegistry handlerRegistry,
         ZLinkHandlerDispatcher dispatcher,
-        Func<ZLinkFrameworkRuntimeState> getOrStartState,
+        Func<ZLinkFrameworkComponentState> getOrStartState,
         Func<IZLinkBackendSpotNode?> getActorSpotNode)
     {
         var channels = new ZLinkChannelRuntimeManager(
@@ -41,7 +41,7 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
             backendAdapterFactory,
             registration,
             locationLifecycle);
-        var stateFactory = new ZLinkFrameworkRuntimeStateFactory(
+        var stateFactory = new ZLinkFrameworkComponentStateFactory(
             runtime,
             backendAdapterFactory,
             registration,

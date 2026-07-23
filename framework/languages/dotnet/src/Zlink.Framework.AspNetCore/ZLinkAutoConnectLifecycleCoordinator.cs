@@ -8,10 +8,10 @@ namespace Zlink.Framework.AspNetCore;
 internal sealed class ZLinkAutoConnectLifecycleCoordinator
 {
     private readonly object _gate = new();
-    private readonly Func<ZLinkFrameworkRuntimeState, CancellationToken, ValueTask>? _start;
+    private readonly Func<ZLinkFrameworkComponentState, CancellationToken, ValueTask>? _start;
     private readonly Func<CancellationToken, ValueTask>? _stop;
     private readonly bool _requiresSocketMonitoring;
-    private ZLinkFrameworkRuntimeState? _state;
+    private ZLinkFrameworkComponentState? _state;
     private Task? _startTask;
     private Task? _stopTask;
     private bool _socketMonitoringReady;
@@ -27,7 +27,7 @@ internal sealed class ZLinkAutoConnectLifecycleCoordinator
     }
 
     internal ZLinkAutoConnectLifecycleCoordinator(
-        Func<ZLinkFrameworkRuntimeState, CancellationToken, ValueTask>? start,
+        Func<ZLinkFrameworkComponentState, CancellationToken, ValueTask>? start,
         Func<CancellationToken, ValueTask>? stop,
         bool requiresSocketMonitoring)
     {
@@ -37,7 +37,7 @@ internal sealed class ZLinkAutoConnectLifecycleCoordinator
     }
 
     internal Task FrameworkReadyAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         CancellationToken cancellationToken)
     {
         lock (_gate)

@@ -9,7 +9,7 @@ internal sealed class ZLinkSpotNodeInitializer(
     ZLinkFrameworkRegistration registration,
     ZLinkLocationLifecycle? locationLifecycle)
 {
-    public async ValueTask InitializeAsync(ZLinkFrameworkRuntimeState state)
+    public async ValueTask InitializeAsync(ZLinkFrameworkComponentState state)
     {
         if (registration.SpotNodes.Count == 0) return;
 

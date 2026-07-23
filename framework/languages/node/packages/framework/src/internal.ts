@@ -18,5 +18,6 @@ export * from './runtime/codecs';
 export * from './runtime/execution';
 export * from './runtime/handlers';
 export * from './runtime/messaging';
+export * from './runtime/foundation';
 export * from './contracts/Configuration/Registration';
 export * from './contracts/Configuration/DispatchObserverRegistration';

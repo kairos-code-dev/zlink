@@ -1,0 +1,951 @@
+using System.Buffers.Binary;
+using System.Text;
+using Systems.Zlink.Framework.Runtime.Protocol;
+
+namespace Zlink.Framework.Runtime.Service;
+
+internal static class ZLinkServiceWireCodec
+{
+    internal enum DecodeError
+    {
+        None = 0,
+        InvalidMagic,
+        UnsupportedVersion,
+        UnknownCommand,
+        ForbiddenFlag,
+        InvalidField,
+        TruncatedField,
+        TrailingByte
+    }
+
+    internal readonly record struct LivenessRecord(
+        ServiceWireConstants.Command Command,
+        ulong ProbeId);
+
+    internal readonly record struct ApplicationRecord(
+        ServiceWireConstants.Command Command,
+        ulong Correlation,
+        string? ChannelName,
+        bool HasMetadata);
+
+    internal readonly record struct ReplyRecord(
+        ulong Correlation,
+        int TerminalResult,
+        uint FailureCode);
+
+    internal readonly record struct StatefulRecord(
+        ServiceWireConstants.Command Command,
+        ulong Correlation,
+        RoutingId SourceSpotRid,
+        RoutingId TargetSpotRid,
+        ulong TargetSpotGeneration,
+        ActorRef TargetActor,
+        RoutingId TargetNodeRid,
+        ulong TargetNodeGeneration,
+        ulong AuthorityOwnerGeneration,
+        bool HasMetadata);
+
+    internal readonly record struct AdmissionRecord(
+        string MeshName,
+        string AdvertisedEndpoint,
+        ulong LifecycleGeneration,
+        ulong DescriptorRevision,
+        IReadOnlyDictionary<string, uint> Channels);
+
+    internal static byte[] EncodeLiveness(
+        ServiceWireConstants.Command command,
+        ulong probeId)
+    {
+        if (command is not (ServiceWireConstants.Command.LivenessProbe
+            or ServiceWireConstants.Command.LivenessAck))
+            throw new ArgumentOutOfRangeException(nameof(command));
+        if (probeId == 0)
+            throw new ArgumentOutOfRangeException(nameof(probeId));
+
+        var bytes = Prefix(command, ServiceWireConstants.Flag.None, sizeof(ulong));
+        BinaryPrimitives.WriteUInt64BigEndian(bytes.AsSpan(5), probeId);
+        return bytes;
+    }
+
+    internal static bool TryDecodeLiveness(
+        ReadOnlySpan<byte> bytes,
+        out LivenessRecord record,
+        out DecodeError error)
+    {
+        record = default;
+        if (!TryDecodePrefix(bytes, out var command, out var flags, out error))
+            return false;
+        if (command is not (ServiceWireConstants.Command.LivenessProbe
+            or ServiceWireConstants.Command.LivenessAck))
+        {
+            error = DecodeError.UnknownCommand;
+            return false;
+        }
+        if (flags != ServiceWireConstants.Flag.None)
+        {
+            error = DecodeError.ForbiddenFlag;
+            return false;
+        }
+        if (bytes.Length < 13)
+        {
+            error = DecodeError.TruncatedField;
+            return false;
+        }
+        if (bytes.Length > 13)
+        {
+            error = DecodeError.TrailingByte;
+            return false;
+        }
+
+        var probeId = BinaryPrimitives.ReadUInt64BigEndian(bytes[5..]);
+        if (probeId == 0)
+        {
+            error = DecodeError.InvalidField;
+            return false;
+        }
+
+        record = new LivenessRecord(command, probeId);
+        error = DecodeError.None;
+        return true;
+    }
+
+    internal static byte[] EncodeApplication(
+        ServiceWireConstants.Command command,
+        ulong correlation,
+        string? channelName,
+        bool hasMetadata)
+    {
+        var request = command is ServiceWireConstants.Command.NodeRequest
+            or ServiceWireConstants.Command.ChannelRequest;
+        var channel = command is ServiceWireConstants.Command.ChannelSend
+            or ServiceWireConstants.Command.ChannelRequest;
+        if (command is not (ServiceWireConstants.Command.NodeSend
+            or ServiceWireConstants.Command.NodeRequest
+            or ServiceWireConstants.Command.ChannelSend
+            or ServiceWireConstants.Command.ChannelRequest))
+            throw new ArgumentOutOfRangeException(nameof(command));
+        if (request != (correlation != 0))
+            throw new ArgumentOutOfRangeException(nameof(correlation));
+
+        var encodedChannel = channel
+            ? EncodeText(channelName
+                ?? throw new ArgumentNullException(nameof(channelName)))
+            : Array.Empty<byte>();
+        var bodyLength = (request ? sizeof(ulong) : 0) + encodedChannel.Length;
+        var flags = hasMetadata
+            ? ServiceWireConstants.Flag.Metadata
+            : ServiceWireConstants.Flag.None;
+        var bytes = Prefix(command, flags, bodyLength);
+        var offset = 5;
+        if (request)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(bytes.AsSpan(offset), correlation);
+            offset += sizeof(ulong);
+        }
+        encodedChannel.CopyTo(bytes, offset);
+        return bytes;
+    }
+
+    internal static bool TryDecodeApplication(
+        ReadOnlySpan<byte> bytes,
+        out ApplicationRecord record,
+        out DecodeError error)
+    {
+        record = default;
+        if (!TryDecodePrefix(bytes, out var command, out var flags, out error))
+            return false;
+        if (command is not (ServiceWireConstants.Command.NodeSend
+            or ServiceWireConstants.Command.NodeRequest
+            or ServiceWireConstants.Command.ChannelSend
+            or ServiceWireConstants.Command.ChannelRequest))
+        {
+            error = DecodeError.UnknownCommand;
+            return false;
+        }
+        if ((flags & ~ServiceWireConstants.Flag.Metadata) != 0)
+        {
+            error = DecodeError.ForbiddenFlag;
+            return false;
+        }
+
+        var offset = 5;
+        var request = command is ServiceWireConstants.Command.NodeRequest
+            or ServiceWireConstants.Command.ChannelRequest;
+        ulong correlation = 0;
+        if (request)
+        {
+            if (bytes.Length - offset < sizeof(ulong))
+            {
+                error = DecodeError.TruncatedField;
+                return false;
+            }
+            correlation = BinaryPrimitives.ReadUInt64BigEndian(bytes[offset..]);
+            offset += sizeof(ulong);
+            if (correlation == 0)
+            {
+                error = DecodeError.InvalidField;
+                return false;
+            }
+        }
+
+        string? channelName = null;
+        if (command is ServiceWireConstants.Command.ChannelSend
+            or ServiceWireConstants.Command.ChannelRequest)
+        {
+            if (!TryDecodeText(bytes[offset..], out channelName, out var consumed, out error))
+                return false;
+            offset += consumed;
+        }
+
+        if (offset != bytes.Length)
+        {
+            error = DecodeError.TrailingByte;
+            return false;
+        }
+
+        record = new ApplicationRecord(
+            command,
+            correlation,
+            channelName,
+            (flags & ServiceWireConstants.Flag.Metadata) != 0);
+        error = DecodeError.None;
+        return true;
+    }
+
+    internal static byte[] EncodeReply(
+        ulong correlation,
+        int terminalResult,
+        uint failureCode)
+    {
+        if (correlation == 0)
+            throw new ArgumentOutOfRangeException(nameof(correlation));
+
+        // request-specific-tail is a u16 length-delimited union. M6A node and
+        // channel requests have no success tail, so its exact encoding is zero.
+        var bytes = Prefix(
+            ServiceWireConstants.Command.Reply,
+            ServiceWireConstants.Flag.None,
+            sizeof(ulong) + sizeof(uint) + sizeof(uint) + sizeof(ushort));
+        var span = bytes.AsSpan(5);
+        BinaryPrimitives.WriteUInt64BigEndian(span, correlation);
+        BinaryPrimitives.WriteInt32BigEndian(span[8..], terminalResult);
+        BinaryPrimitives.WriteUInt32BigEndian(span[12..], failureCode);
+        BinaryPrimitives.WriteUInt16BigEndian(span[16..], 0);
+        return bytes;
+    }
+
+    internal static bool TryDecodeReply(
+        ReadOnlySpan<byte> bytes,
+        out ReplyRecord record,
+        out DecodeError error)
+    {
+        record = default;
+        if (!TryDecodePrefix(bytes, out var command, out var flags, out error))
+            return false;
+        if (command != ServiceWireConstants.Command.Reply)
+        {
+            error = DecodeError.UnknownCommand;
+            return false;
+        }
+        if (flags != ServiceWireConstants.Flag.None)
+        {
+            error = DecodeError.ForbiddenFlag;
+            return false;
+        }
+        if (bytes.Length < 23)
+        {
+            error = DecodeError.TruncatedField;
+            return false;
+        }
+        if (bytes.Length > 23)
+        {
+            error = DecodeError.TrailingByte;
+            return false;
+        }
+
+        var span = bytes[5..];
+        var correlation = BinaryPrimitives.ReadUInt64BigEndian(span);
+        var terminalResult = BinaryPrimitives.ReadInt32BigEndian(span[8..]);
+        var failureCode = BinaryPrimitives.ReadUInt32BigEndian(span[12..]);
+        var tailLength = BinaryPrimitives.ReadUInt16BigEndian(span[16..]);
+        if (correlation == 0 || tailLength != 0)
+        {
+            error = DecodeError.InvalidField;
+            return false;
+        }
+
+        record = new ReplyRecord(correlation, terminalResult, failureCode);
+        error = DecodeError.None;
+        return true;
+    }
+
+    internal static byte[] EncodeSpot(
+        ServiceWireConstants.Command command,
+        ulong correlation,
+        RoutingId sourceSpotRid,
+        RoutingId targetSpotRid,
+        ulong targetSpotGeneration,
+        RoutingId targetNodeRid,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        bool hasMetadata)
+    {
+        var request = command == ServiceWireConstants.Command.SpotRequest;
+        if (command is not (ServiceWireConstants.Command.SpotSend
+            or ServiceWireConstants.Command.SpotRequest)
+            || request != (correlation != 0)
+            || targetSpotGeneration == 0
+            || targetNodeGeneration == 0
+            || authorityOwnerGeneration == 0)
+            throw new ArgumentOutOfRangeException(nameof(command));
+        var body = new WireWriter();
+        if (request)
+            body.U64(correlation);
+        body.Rid(sourceSpotRid);
+        body.Rid(targetSpotRid);
+        body.U64(targetSpotGeneration);
+        body.Rid(targetNodeRid);
+        body.U64(targetNodeGeneration);
+        body.U64(authorityOwnerGeneration);
+        var result = Prefix(
+            command,
+            hasMetadata ? ServiceWireConstants.Flag.Metadata : ServiceWireConstants.Flag.None,
+            body.Count);
+        body.CopyTo(result.AsSpan(5));
+        return result;
+    }
+
+    internal static byte[] EncodeActor(
+        ServiceWireConstants.Command command,
+        ulong correlation,
+        ActorRef targetActor,
+        RoutingId targetNodeRid,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        bool hasMetadata)
+    {
+        var request = command == ServiceWireConstants.Command.ActorRequest;
+        if (command is not (ServiceWireConstants.Command.ActorSend
+            or ServiceWireConstants.Command.ActorRequest)
+            || request != (correlation != 0)
+            || targetActor.Generation == 0
+            || targetNodeGeneration == 0
+            || authorityOwnerGeneration == 0)
+            throw new ArgumentOutOfRangeException(nameof(command));
+        var body = new WireWriter();
+        if (request)
+            body.U64(correlation);
+        body.U8(0); // optional source Actor: absent
+        body.U16(0);
+        body.Text8(targetActor.ActorId);
+        body.U64(targetActor.Generation);
+        body.Rid(targetNodeRid);
+        body.U64(targetNodeGeneration);
+        body.U64(authorityOwnerGeneration);
+        var result = Prefix(
+            command,
+            hasMetadata ? ServiceWireConstants.Flag.Metadata : ServiceWireConstants.Flag.None,
+            body.Count);
+        body.CopyTo(result.AsSpan(5));
+        return result;
+    }
+
+    internal static bool TryDecodeStateful(
+        ReadOnlySpan<byte> bytes,
+        out StatefulRecord record,
+        out DecodeError error)
+    {
+        record = default;
+        if (!TryDecodePrefix(bytes, out var command, out var flags, out error))
+            return false;
+        if (command is not (ServiceWireConstants.Command.SpotSend
+            or ServiceWireConstants.Command.SpotRequest
+            or ServiceWireConstants.Command.ActorSend
+            or ServiceWireConstants.Command.ActorRequest))
+        {
+            error = DecodeError.UnknownCommand;
+            return false;
+        }
+        if ((flags & ~ServiceWireConstants.Flag.Metadata) != 0)
+        {
+            error = DecodeError.ForbiddenFlag;
+            return false;
+        }
+
+        var reader = new WireReader(bytes[5..]);
+        var request = command is ServiceWireConstants.Command.SpotRequest
+            or ServiceWireConstants.Command.ActorRequest;
+        ulong correlation = 0;
+        if (request
+            && (!reader.TryU64(out correlation) || correlation == 0))
+        {
+            error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
+            return false;
+        }
+
+        RoutingId sourceSpotRid = default;
+        RoutingId targetSpotRid = default;
+        ulong targetSpotGeneration = 0;
+        ActorRef targetActor = default;
+        if (command is ServiceWireConstants.Command.SpotSend
+            or ServiceWireConstants.Command.SpotRequest)
+        {
+            if (!reader.TryRid(out sourceSpotRid)
+                || !reader.TryRid(out targetSpotRid)
+                || !reader.TryU64(out targetSpotGeneration)
+                || targetSpotGeneration == 0)
+            {
+                error = reader.Truncated
+                    ? DecodeError.TruncatedField
+                    : DecodeError.InvalidField;
+                return false;
+            }
+        }
+        else
+        {
+            if (!reader.TryU8(out var hasSource)
+                || hasSource != 0
+                || !reader.TryU16(out var sourceLength)
+                || sourceLength != 0
+                || !reader.TryText8(out var actorId)
+                || !reader.TryU64(out var actorGeneration)
+                || actorGeneration == 0)
+            {
+                error = reader.Truncated
+                    ? DecodeError.TruncatedField
+                    : DecodeError.InvalidField;
+                return false;
+            }
+            targetActor = new ActorRef(default, actorId, actorGeneration);
+        }
+
+        if (!reader.TryRid(out var targetNodeRid)
+            || !reader.TryU64(out var targetNodeGeneration)
+            || targetNodeGeneration == 0
+            || !reader.TryU64(out var authorityOwnerGeneration)
+            || authorityOwnerGeneration == 0
+            || reader.Remaining != 0)
+        {
+            error = reader.Truncated
+                ? DecodeError.TruncatedField
+                : reader.Remaining != 0
+                    ? DecodeError.TrailingByte
+                    : DecodeError.InvalidField;
+            return false;
+        }
+        if (!string.IsNullOrEmpty(targetActor.ActorId))
+            targetActor = new ActorRef(
+                targetNodeRid,
+                targetActor.ActorId,
+                targetActor.Generation);
+        record = new StatefulRecord(
+            command,
+            correlation,
+            sourceSpotRid,
+            targetSpotRid,
+            targetSpotGeneration,
+            targetActor,
+            targetNodeRid,
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            (flags & ServiceWireConstants.Flag.Metadata) != 0);
+        error = DecodeError.None;
+        return true;
+    }
+
+    internal static byte[] EncodeRouteAdmission(
+        ServiceWireConstants.Command command,
+        string meshName,
+        string advertisedEndpoint,
+        ulong lifecycleGeneration,
+        ulong descriptorRevision,
+        IReadOnlyDictionary<string, uint> channels)
+    {
+        if (command is not (ServiceWireConstants.Command.Hello
+            or ServiceWireConstants.Command.Admit
+            or ServiceWireConstants.Command.Update))
+            throw new ArgumentOutOfRangeException(nameof(command));
+        if (lifecycleGeneration == 0)
+            throw new ArgumentOutOfRangeException(nameof(lifecycleGeneration));
+        if (descriptorRevision == 0)
+            throw new ArgumentOutOfRangeException(nameof(descriptorRevision));
+        ArgumentNullException.ThrowIfNull(channels);
+
+        var body = new WireWriter();
+        body.Text8(meshName);
+        body.Text8("none");
+        body.U32(int.MaxValue);
+        body.U64(lifecycleGeneration);
+        body.U64(descriptorRevision);
+        body.Text16(advertisedEndpoint, requireNonEmpty: true);
+        var orderedChannels = channels.OrderBy(
+            static entry => entry.Key,
+            StringComparer.Ordinal).ToArray();
+        if (orderedChannels.Length > ushort.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(channels));
+        body.U16((ushort)orderedChannels.Length);
+        foreach (var (name, weight) in orderedChannels)
+        {
+            if (weight > 100)
+                throw new ArgumentOutOfRangeException(nameof(channels));
+            body.Text8(name);
+            body.U32(weight);
+        }
+        body.Bytes(EncodeDescriptorExtension());
+
+        var admission = new WireWriter();
+        admission.U8(1); // service-topology-kind.routeMesh
+        admission.U32(checked((uint)body.Count));
+        admission.Bytes(body.ToArray());
+
+        var result = Prefix(command, ServiceWireConstants.Flag.None, admission.Count);
+        admission.CopyTo(result.AsSpan(5));
+        return result;
+    }
+
+    internal static bool TryDecodeRouteAdmission(
+        ReadOnlySpan<byte> bytes,
+        out ServiceWireConstants.Command command,
+        out AdmissionRecord admission,
+        out DecodeError error)
+    {
+        admission = default;
+        if (!TryDecodePrefix(bytes, out command, out var flags, out error))
+            return false;
+        if (command is not (ServiceWireConstants.Command.Hello
+            or ServiceWireConstants.Command.Admit
+            or ServiceWireConstants.Command.Update))
+        {
+            error = DecodeError.UnknownCommand;
+            return false;
+        }
+        if (flags != ServiceWireConstants.Flag.None)
+        {
+            error = DecodeError.ForbiddenFlag;
+            return false;
+        }
+
+        var reader = new WireReader(bytes[5..]);
+        if (!reader.TryU8(out var topology)
+            || topology != 1
+            || !reader.TryU32(out var bodyLength)
+            || bodyLength != reader.Remaining)
+        {
+            error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
+            return false;
+        }
+        if (!reader.TryText8(out var meshName)
+            || !reader.TryText8(out _)
+            || !reader.TryU32(out var maxMessageBytes)
+            || maxMessageBytes == 0
+            || !reader.TryU64(out var lifecycleGeneration)
+            || lifecycleGeneration == 0
+            || !reader.TryU64(out var descriptorRevision)
+            || descriptorRevision == 0
+            || !reader.TryText16(out var endpoint, requireNonEmpty: true)
+            || !reader.TryU16(out var channelCount))
+        {
+            error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
+            return false;
+        }
+
+        var channels = new Dictionary<string, uint>(
+            channelCount,
+            StringComparer.Ordinal);
+        string? previousChannel = null;
+        for (var index = 0; index < channelCount; index++)
+        {
+            if (!reader.TryText8(out var channel)
+                || !reader.TryU32(out var weight)
+                || weight > 100
+                || (previousChannel is not null
+                    && StringComparer.Ordinal.Compare(previousChannel, channel) >= 0)
+                || !channels.TryAdd(channel, weight))
+            {
+                error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
+                return false;
+            }
+            previousChannel = channel;
+        }
+
+        if (!TryDecodeDescriptorExtension(ref reader))
+        {
+            error = reader.Truncated ? DecodeError.TruncatedField : DecodeError.InvalidField;
+            return false;
+        }
+        if (reader.Remaining != 0)
+        {
+            error = DecodeError.TrailingByte;
+            return false;
+        }
+
+        admission = new AdmissionRecord(
+            meshName,
+            endpoint,
+            lifecycleGeneration,
+            descriptorRevision,
+            channels);
+        error = DecodeError.None;
+        return true;
+    }
+
+    internal static byte[] EncodeText(string value)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(value);
+        if (value.Contains('\0'))
+            throw new ArgumentException("Text must not contain NUL.", nameof(value));
+        var count = Encoding.UTF8.GetByteCount(value);
+        if (count is 0 or > byte.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(value));
+
+        var bytes = new byte[count + 1];
+        bytes[0] = (byte)count;
+        Encoding.UTF8.GetBytes(value, bytes.AsSpan(1));
+        return bytes;
+    }
+
+    private static byte[] Prefix(
+        ServiceWireConstants.Command command,
+        ServiceWireConstants.Flag flags,
+        int bodyLength)
+    {
+        var bytes = new byte[5 + bodyLength];
+        bytes[0] = ServiceWireConstants.Magic0;
+        bytes[1] = ServiceWireConstants.Magic1;
+        bytes[2] = ServiceWireConstants.WireMajor;
+        bytes[3] = (byte)command;
+        bytes[4] = (byte)flags;
+        return bytes;
+    }
+
+    private static byte[] EncodeDescriptorExtension()
+    {
+        var fields = new WireWriter();
+        fields.Tlv(1, [1]); // runtime-state.serving
+
+        var applicationVersion = new byte[sizeof(long)];
+        BinaryPrimitives.WriteInt64BigEndian(applicationVersion, 0);
+        fields.Tlv(2, applicationVersion);
+
+        var capabilities = new WireWriter();
+        capabilities.U16(1);
+        capabilities.Text8(ServiceWireConstants.RequiredCapability);
+        fields.Tlv(6, capabilities.ToArray());
+        fields.Tlv(7, [0]); // object-role.none
+        fields.TlvU32(8, 100);
+        fields.TlvU32(9, 10_000);
+        fields.TlvU32(10, 128);
+        fields.TlvU32(11, 0);
+        fields.TlvU32(12, 0);
+
+        var result = new WireWriter();
+        result.U32(checked((uint)fields.Count));
+        result.Bytes(fields.ToArray());
+        return result.ToArray();
+    }
+
+    private static bool TryDecodeDescriptorExtension(ref WireReader reader)
+    {
+        if (!reader.TryU32(out var length) || length > reader.Remaining)
+            return false;
+        if (!reader.TrySlice(checked((int)length), out var extensionBytes))
+            return false;
+
+        var extension = new WireReader(extensionBytes);
+        var required = new HashSet<byte>();
+        byte previousId = 0;
+        var hasCapability = false;
+        while (extension.Remaining > 0)
+        {
+            if (!extension.TryU8(out var id)
+                || id <= previousId
+                || !extension.TryU32(out var fieldLength)
+                || fieldLength > extension.Remaining
+                || !extension.TrySlice(checked((int)fieldLength), out var field))
+                return false;
+            previousId = id;
+            if (id is 1 or 2 or 6 or 7 or 8 or 9 or 10 or 11 or 12)
+                required.Add(id);
+            if (id == 6)
+            {
+                var capabilityReader = new WireReader(field);
+                if (!capabilityReader.TryU16(out var count))
+                    return false;
+                for (var index = 0; index < count; index++)
+                {
+                    if (!capabilityReader.TryText8(out var capability))
+                        return false;
+                    hasCapability |= string.Equals(
+                        capability,
+                        ServiceWireConstants.RequiredCapability,
+                        StringComparison.Ordinal);
+                }
+                if (capabilityReader.Remaining != 0)
+                    return false;
+            }
+        }
+
+        return hasCapability
+               && required.SetEquals(new byte[] { 1, 2, 6, 7, 8, 9, 10, 11, 12 });
+    }
+
+    private static bool TryDecodePrefix(
+        ReadOnlySpan<byte> bytes,
+        out ServiceWireConstants.Command command,
+        out ServiceWireConstants.Flag flags,
+        out DecodeError error)
+    {
+        command = default;
+        flags = default;
+        if (bytes.Length < 5)
+        {
+            error = DecodeError.TruncatedField;
+            return false;
+        }
+        if (bytes[0] != ServiceWireConstants.Magic0
+            || bytes[1] != ServiceWireConstants.Magic1)
+        {
+            error = DecodeError.InvalidMagic;
+            return false;
+        }
+        if (bytes[2] != ServiceWireConstants.WireMajor)
+        {
+            error = DecodeError.UnsupportedVersion;
+            return false;
+        }
+
+        command = (ServiceWireConstants.Command)bytes[3];
+        flags = (ServiceWireConstants.Flag)bytes[4];
+        error = DecodeError.None;
+        return true;
+    }
+
+    private static bool TryDecodeText(
+        ReadOnlySpan<byte> bytes,
+        out string value,
+        out int consumed,
+        out DecodeError error)
+    {
+        value = string.Empty;
+        consumed = 0;
+        if (bytes.Length < 1)
+        {
+            error = DecodeError.TruncatedField;
+            return false;
+        }
+        var count = bytes[0];
+        if (count == 0)
+        {
+            error = DecodeError.InvalidField;
+            return false;
+        }
+        if (bytes.Length < count + 1)
+        {
+            error = DecodeError.TruncatedField;
+            return false;
+        }
+        var content = bytes.Slice(1, count);
+        if (content.IndexOf((byte)0) >= 0)
+        {
+            error = DecodeError.InvalidField;
+            return false;
+        }
+        try
+        {
+            value = new UTF8Encoding(false, true).GetString(content);
+        }
+        catch (DecoderFallbackException)
+        {
+            error = DecodeError.InvalidField;
+            return false;
+        }
+        consumed = count + 1;
+        error = DecodeError.None;
+        return true;
+    }
+
+    private sealed class WireWriter
+    {
+        private readonly List<byte> _bytes = new();
+        internal int Count => _bytes.Count;
+        internal void U8(byte value) => _bytes.Add(value);
+        internal void U16(ushort value)
+        {
+            _bytes.Add((byte)(value >> 8));
+            _bytes.Add((byte)value);
+        }
+        internal void U32(uint value)
+        {
+            _bytes.Add((byte)(value >> 24));
+            _bytes.Add((byte)(value >> 16));
+            _bytes.Add((byte)(value >> 8));
+            _bytes.Add((byte)value);
+        }
+        internal void U64(ulong value)
+        {
+            U32((uint)(value >> 32));
+            U32((uint)value);
+        }
+        internal void Text8(string value) => Bytes(EncodeText(value));
+        internal void Rid(RoutingId value)
+        {
+            if (value.IsEmpty)
+                throw new ArgumentException("Routing id is required.", nameof(value));
+            U8(checked((byte)value.Size));
+            Bytes(value.ToBytes());
+        }
+        internal void Text16(string value, bool requireNonEmpty)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            if (requireNonEmpty)
+                ArgumentException.ThrowIfNullOrEmpty(value);
+            if (value.Contains('\0'))
+                throw new ArgumentException("Text must not contain NUL.", nameof(value));
+            var encoded = Encoding.UTF8.GetBytes(value);
+            if (encoded.Length > ushort.MaxValue)
+                throw new ArgumentOutOfRangeException(nameof(value));
+            U16((ushort)encoded.Length);
+            Bytes(encoded);
+        }
+        internal void Bytes(ReadOnlySpan<byte> value)
+        {
+            foreach (var item in value)
+                _bytes.Add(item);
+        }
+        internal void Tlv(byte id, ReadOnlySpan<byte> value)
+        {
+            U8(id);
+            U32(checked((uint)value.Length));
+            Bytes(value);
+        }
+        internal void TlvU32(byte id, uint value)
+        {
+            Span<byte> bytes = stackalloc byte[sizeof(uint)];
+            BinaryPrimitives.WriteUInt32BigEndian(bytes, value);
+            Tlv(id, bytes);
+        }
+        internal byte[] ToArray() => _bytes.ToArray();
+        internal void CopyTo(Span<byte> destination) =>
+            _bytes.ToArray().CopyTo(destination);
+    }
+
+    private ref struct WireReader
+    {
+        private ReadOnlySpan<byte> _bytes;
+        private int _offset;
+        internal WireReader(ReadOnlySpan<byte> bytes)
+        {
+            _bytes = bytes;
+            _offset = 0;
+            Truncated = false;
+        }
+        internal int Remaining => _bytes.Length - _offset;
+        internal bool Truncated { get; private set; }
+        internal bool TryU8(out byte value)
+        {
+            if (Remaining < 1)
+            {
+                Truncated = true;
+                value = 0;
+                return false;
+            }
+            value = _bytes[_offset++];
+            return true;
+        }
+        internal bool TryU16(out ushort value)
+        {
+            if (Remaining < sizeof(ushort))
+            {
+                Truncated = true;
+                value = 0;
+                return false;
+            }
+            value = BinaryPrimitives.ReadUInt16BigEndian(_bytes[_offset..]);
+            _offset += sizeof(ushort);
+            return true;
+        }
+        internal bool TryU32(out uint value)
+        {
+            if (Remaining < sizeof(uint))
+            {
+                Truncated = true;
+                value = 0;
+                return false;
+            }
+            value = BinaryPrimitives.ReadUInt32BigEndian(_bytes[_offset..]);
+            _offset += sizeof(uint);
+            return true;
+        }
+        internal bool TryU64(out ulong value)
+        {
+            if (Remaining < sizeof(ulong))
+            {
+                Truncated = true;
+                value = 0;
+                return false;
+            }
+            value = BinaryPrimitives.ReadUInt64BigEndian(_bytes[_offset..]);
+            _offset += sizeof(ulong);
+            return true;
+        }
+        internal bool TrySlice(int length, out ReadOnlySpan<byte> value)
+        {
+            if (length < 0 || Remaining < length)
+            {
+                Truncated = true;
+                value = default;
+                return false;
+            }
+            value = _bytes.Slice(_offset, length);
+            _offset += length;
+            return true;
+        }
+        internal bool TryText8(out string value)
+        {
+            if (!TryU8(out var length) || length == 0)
+            {
+                value = string.Empty;
+                return false;
+            }
+            return TryUtf8(length, out value);
+        }
+        internal bool TryRid(out RoutingId value)
+        {
+            if (!TryU8(out var length) || length == 0
+                || !TrySlice(length, out var encoded))
+            {
+                value = default;
+                return false;
+            }
+            value = RoutingId.From(encoded);
+            return true;
+        }
+        internal bool TryText16(out string value, bool requireNonEmpty)
+        {
+            if (!TryU16(out var length) || (requireNonEmpty && length == 0))
+            {
+                value = string.Empty;
+                return false;
+            }
+            return TryUtf8(length, out value);
+        }
+        private bool TryUtf8(int length, out string value)
+        {
+            if (!TrySlice(length, out var encoded) || encoded.IndexOf((byte)0) >= 0)
+            {
+                value = string.Empty;
+                return false;
+            }
+            try
+            {
+                value = new UTF8Encoding(false, true).GetString(encoded);
+                return true;
+            }
+            catch (DecoderFallbackException)
+            {
+                value = string.Empty;
+                return false;
+            }
+        }
+    }
+}

@@ -38,7 +38,8 @@ export const ReceiveKind = Object.freeze({
   ActorRequest: 10,
   Completion: 11,
   SendReady: 12,
-  TransferControl: 13
+  TransferControl: 13,
+  InstanceSpotActivation: 14
 } as const);
 
 export const OperationKind = Object.freeze({
@@ -52,7 +53,8 @@ export const OperationKind = Object.freeze({
   ActorLeave: 8,
   StreamBind: 9,
   StreamUnbind: 10,
-  StreamClose: 11
+  StreamClose: 11,
+  InstanceSpotRequest: 12
 } as const);
 
 export const ActorLifecycleKind = Object.freeze({

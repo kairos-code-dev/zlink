@@ -13,7 +13,7 @@ internal sealed class ZLinkBackendPublisherSocketWrapper(IPubSocket nativeSocket
 
     public void SetChannelName(string channelName)
     {
-        nativeSocket.SetChannelName(channelName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
     }
 
     public void SetRoutingId(RoutingId routingId)

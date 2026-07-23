@@ -5,6 +5,7 @@
         <AssemblyName>Zlink.Framework.AspNetCore</AssemblyName>
         <RootNamespace>Zlink.Framework.AspNetCore</RootNamespace>
         <Description>ASP.NET Core integration layer for ZLink framework.</Description>
+        <NoWarn>$(NoWarn);ZLINK1100</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>

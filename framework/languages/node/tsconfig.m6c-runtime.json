@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "outDir": "build/m6c-runtime",
+    "rootDir": "../..",
+    "types": ["node"]
+  },
+  "include": [
+    "packages/framework/src/runtime/foundation/**/*.ts",
+    "test/m6c/**/*.ts"
+  ]
+}

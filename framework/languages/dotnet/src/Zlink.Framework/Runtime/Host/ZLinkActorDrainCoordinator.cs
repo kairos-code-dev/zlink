@@ -11,6 +11,39 @@ internal sealed class ZLinkActorDrainCoordinator(
     IServiceProvider services,
     ZLinkFrameworkRegistration registration)
 {
+    public async ValueTask<ZLinkFrameworkTerminationReason?> PreflightAsync(
+        CancellationToken cancellationToken)
+    {
+        var states = actorSessions.SnapshotStates();
+        if (states.Length == 0)
+            return null;
+
+        try
+        {
+            foreach (var actorType in states
+                         .Select(static state => state.ActorType)
+                         .Where(static actorType => !string.IsNullOrWhiteSpace(actorType))
+                         .Distinct(StringComparer.Ordinal))
+            {
+                var targets = await ResolveTargetsAsync(actorType!, cancellationToken)
+                    .ConfigureAwait(false);
+                foreach (var state in states.Where(state =>
+                             string.Equals(state.ActorType, actorType, StringComparison.Ordinal)))
+                {
+                    if (state.Actor is null || state.NativeActorRef is not { } actorRef)
+                        continue;
+                    if (!targets.Any(target => target != actorRef.NodeRid))
+                        return ZLinkFrameworkTerminationReason.TargetUnavailable;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        return null;
+    }
+
     public async ValueTask<bool> DrainAsync(CancellationToken cancellationToken)
     {
         var states = actorSessions.SnapshotStates();

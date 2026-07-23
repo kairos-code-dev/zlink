@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.internal.backend;
 
 import java.util.List;
+import java.util.Optional;
 import java.time.Duration;
 import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
@@ -83,5 +84,9 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
 
     default ZLinkInternalSpotNode spotNode() {
         throw new UnsupportedOperationException("MeshNode Spot backend is not available");
+    }
+
+    default Optional<RoutingId> selectPlacementTarget() {
+        return Optional.empty();
     }
 }

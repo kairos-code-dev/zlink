@@ -6,7 +6,6 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.StreamSocket;
-import systems.zlink.runtime.nativeapi.InternalAccess;
 import java.time.Duration;
 import java.util.List;
 
@@ -14,7 +13,8 @@ import java.util.List;
 public interface StreamSessionService extends AutoCloseable {
     /** Creates a STREAM session service over the given node and stream socket. */
     static StreamSessionService create(MeshNode node, StreamSocket stream) {
-        return InternalAccess.createStreamSessionService(node, stream);
+        throw new UnsupportedOperationException(
+            "STREAM session service is provided by the Framework stream runtime");
     }
 
     /** Starts the service. */

@@ -13,11 +13,65 @@ import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.binding.ZLinkJavaBackendAdapterFactory;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.*;
 import systems.zlink.framework.runtime.locations.ZLinkLocationAutoConnectHost;
 
 final class ZLinkFrameworkRuntimeDrainRouteTest {
+    @Test
+    void shutdownPublishesTheHostWideTerminalContract() throws Exception {
+        DefaultZLinkFrameworkOptions options =
+            new DefaultZLinkFrameworkOptions();
+        ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(
+            options,
+            new ZLinkJavaBackendAdapterFactory());
+        long deadline = System.nanoTime()
+            + java.time.Duration.ofSeconds(1).toNanos();
+        while (!runtime.isReady() && System.nanoTime() < deadline) {
+            Thread.sleep(1);
+        }
+        CompletableFuture<ZLinkTerminationResult> observed =
+            new CompletableFuture<>();
+        runtime.observe(1).subscribe(new java.util.concurrent.Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(
+                java.util.concurrent.Flow.Subscription subscription) {
+                subscription.request(Long.MAX_VALUE);
+            }
+
+            @Override
+            public void onNext(
+                systems.zlink.framework.monitoring
+                    .ZLinkFrameworkRuntimeEvent event) {
+                event.runtime().terminalResult().ifPresent(observed::complete);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                observed.completeExceptionally(throwable);
+            }
+
+            @Override
+            public void onComplete() {
+            }
+        });
+
+        ZLinkTerminationResult result = runtime.shutdown(
+                java.time.Duration.ofSeconds(1))
+            .toCompletableFuture()
+            .get(2, TimeUnit.SECONDS);
+
+        assertEquals(ZLinkTerminationIntent.SHUTDOWN, result.effectiveIntent());
+        assertEquals(ZLinkTerminationOutcome.STOPPED, result.outcome());
+        assertEquals(ZLinkTerminationReason.NONE, result.reason());
+        assertEquals(ZLinkFrameworkRuntimeState.STOPPED, runtime.state());
+        assertEquals(
+            result,
+            runtime.snapshot().terminalResult().orElseThrow());
+        assertEquals(result, observed.get(1, TimeUnit.SECONDS));
+    }
+
     @Test
     void drainWaiterTimeoutDoesNotCompleteSharedDrainState() {
         CompletableFuture<String> shared = new CompletableFuture<>();

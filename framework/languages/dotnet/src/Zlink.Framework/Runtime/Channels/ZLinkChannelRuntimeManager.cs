@@ -8,7 +8,7 @@ internal sealed class ZLinkChannelRuntimeManager(
     private readonly ZLinkChannelBundleFactory _bundleFactory = new(backendAdapterFactory, registration);
 
     public ZLinkChannelRuntimeBundle GetPublisherBundle(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         string channelName)
     {
         lock (state.SyncRoot)
@@ -23,7 +23,7 @@ internal sealed class ZLinkChannelRuntimeManager(
     }
 
     public async ValueTask InitializeInboundChannelsAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkChannelBackendAdapter adapter)
     {
         foreach (var entry in registration.Channels)
@@ -47,7 +47,7 @@ internal sealed class ZLinkChannelRuntimeManager(
     }
 
     public async ValueTask InitializePublisherChannelsAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkChannelBackendAdapter adapter)
     {
         foreach (var entry in registration.Channels)
@@ -62,7 +62,7 @@ internal sealed class ZLinkChannelRuntimeManager(
     }
 
     public IZLinkBackendSocket GetMonitoringSocket(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         string sourceName)
     {
         var (channelName, capability) = ParseChannelCapabilitySource(sourceName);

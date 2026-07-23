@@ -192,7 +192,7 @@ public sealed class SharedAsyncDisposalTests
         var proxy = (BlockingContextProxy)(object)context;
         var failure = new InvalidOperationException("context cleanup failed");
         proxy.DisposeFailure = failure;
-        var state = new ZLinkFrameworkRuntimeState(
+        var state = new ZLinkFrameworkComponentState(
             context,
             new ZLinkFrameworkRegistration(),
             services,

@@ -58,7 +58,7 @@ internal sealed class ZLinkBackendStreamSocketWrapper : IZLinkBackendStreamSocke
 
     public void SetChannelName(string channelName)
     {
-        _socket.SetChannelName(channelName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
     }
 
     public void SetTlsServer(string certPath, string keyPath, bool requireClientCert)

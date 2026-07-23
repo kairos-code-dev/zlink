@@ -46,7 +46,10 @@ import java.util.concurrent.TimeUnit;
 public final class ZLinkFrameworkRuntime
     implements AutoCloseable,
         systems.zlink.framework.configuration.ZLinkMessageFlowControl,
-        systems.zlink.framework.monitoring.ZLinkDrainControl {
+        systems.zlink.framework.monitoring.ZLinkDrainControl,
+        systems.zlink.framework.monitoring.ZLinkRuntimeQuery {
+    public static final java.time.Duration DEFAULT_TERMINATION_DEADLINE =
+        java.time.Duration.ofSeconds(30);
     private final ZLinkChannelRuntime channels;
     private final ZLinkMeshNodesRuntime meshNodes;
     private final ZLinkSpotRuntime spots;
@@ -71,6 +74,33 @@ public final class ZLinkFrameworkRuntime
         new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicBoolean ready =
         new java.util.concurrent.atomic.AtomicBoolean(false);
+    private final java.util.concurrent.atomic.AtomicReference<
+        ZLinkFrameworkRuntimeState> runtimeState =
+        new java.util.concurrent.atomic.AtomicReference<>(
+            ZLinkFrameworkRuntimeState.PREPARING);
+    private final java.util.concurrent.atomic.AtomicReference<
+        ZLinkTerminationIntent> effectiveTerminationIntent =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    private final java.util.concurrent.atomic.AtomicReference<
+        ZLinkTerminationReason> terminationBlocker =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    private final java.util.concurrent.atomic.AtomicReference<
+        ZLinkTerminationResult> terminalTermination =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    private final java.util.concurrent.atomic.AtomicReference<
+        java.util.concurrent.CompletableFuture<ZLinkTerminationResult>>
+        activeTermination =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    private final java.util.concurrent.atomic.AtomicReference<
+        java.time.Instant> terminationDeadline =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    private final java.util.concurrent.atomic.AtomicLong terminationSequence =
+        new java.util.concurrent.atomic.AtomicLong();
+    private final java.util.concurrent.CopyOnWriteArrayList<
+        java.util.concurrent.SubmissionPublisher<
+            systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeEvent>>
+        terminationObservers =
+        new java.util.concurrent.CopyOnWriteArrayList<>();
     private final java.util.concurrent.atomic.AtomicBoolean drainStarted =
         new java.util.concurrent.atomic.AtomicBoolean(false);
     private final java.util.concurrent.atomic.AtomicBoolean drainTerminalStarted =
@@ -248,7 +278,10 @@ public final class ZLinkFrameworkRuntime
                         allocatedRoutingIds.markReady();
                     }
                     ready.set(true);
+                    publishRuntimeState(ZLinkFrameworkRuntimeState.SERVING);
                     publishDrainState(systems.zlink.framework.monitoring.ZLinkDrainState.SERVING);
+                } else if (failure != null) {
+                    publishRuntimeState(ZLinkFrameworkRuntimeState.ERROR);
                 }
             });
     }
@@ -431,6 +464,264 @@ public final class ZLinkFrameworkRuntime
     }
 
     @Override
+    public ZLinkFrameworkRuntimeState state() {
+        return runtimeState.get();
+    }
+
+    @Override
+    public systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeSnapshot
+        snapshot() {
+        return runtimeSnapshot(terminationSequence.get());
+    }
+
+    @Override
+    public java.util.concurrent.Flow.Publisher<
+        systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeEvent>
+        observe(int capacity) {
+        if (capacity <= 0) {
+            throw new IllegalArgumentException(
+                "observer capacity must be positive");
+        }
+        var publisher = new java.util.concurrent.SubmissionPublisher<
+            systems.zlink.framework.monitoring.ZLinkFrameworkRuntimeEvent>(
+                java.util.concurrent.ForkJoinPool.commonPool(),
+                capacity);
+        return subscriber -> {
+            publisher.subscribe(subscriber);
+            terminationObservers.addIfAbsent(publisher);
+            long sequence = terminationSequence.incrementAndGet();
+            publisher.submit(new systems.zlink.framework.monitoring
+                .ZLinkFrameworkRuntimeEvent(
+                    sequence,
+                    java.time.Instant.now(),
+                    runtimeSnapshot(sequence)));
+        };
+    }
+
+    public java.util.concurrent.CompletionStage<ZLinkTerminationResult>
+        retire() {
+        return retire(DEFAULT_TERMINATION_DEADLINE);
+    }
+
+    public java.util.concurrent.CompletionStage<ZLinkTerminationResult>
+        retire(java.time.Duration deadline) {
+        return beginTermination(ZLinkTerminationIntent.RETIRE, deadline);
+    }
+
+    public java.util.concurrent.CompletionStage<ZLinkTerminationResult>
+        shutdown() {
+        return shutdown(DEFAULT_TERMINATION_DEADLINE);
+    }
+
+    public java.util.concurrent.CompletionStage<ZLinkTerminationResult>
+        shutdown(java.time.Duration deadline) {
+        return beginTermination(ZLinkTerminationIntent.SHUTDOWN, deadline);
+    }
+
+    private java.util.concurrent.CompletionStage<ZLinkTerminationResult>
+        beginTermination(
+            ZLinkTerminationIntent intent,
+            java.time.Duration deadline) {
+        java.util.Objects.requireNonNull(intent, "intent");
+        java.util.Objects.requireNonNull(deadline, "deadline");
+        if (deadline.isZero() || deadline.isNegative()) {
+            throw new IllegalArgumentException(
+                "termination deadline must be positive");
+        }
+        java.util.concurrent.CompletableFuture<ZLinkTerminationResult>
+            current = activeTermination.get();
+        if (current != null) {
+            if (intent == ZLinkTerminationIntent.SHUTDOWN
+                && !drainStarted.get()
+                && effectiveTerminationIntent.compareAndSet(
+                    ZLinkTerminationIntent.RETIRE,
+                    ZLinkTerminationIntent.SHUTDOWN)) {
+                startLegacyTermination(current, deadline);
+            }
+            return independentWaiter(current);
+        }
+        var candidate =
+            new java.util.concurrent.CompletableFuture<
+                ZLinkTerminationResult>();
+        if (!activeTermination.compareAndSet(null, candidate)) {
+            return beginTermination(intent, deadline);
+        }
+        terminalTermination.set(null);
+        terminationBlocker.set(null);
+        terminationDeadline.set(java.time.Instant.now().plus(deadline));
+        effectiveTerminationIntent.set(intent);
+        publishRuntimeState(runtimeState.get());
+        if (intent == ZLinkTerminationIntent.SHUTDOWN) {
+            startLegacyTermination(candidate, deadline);
+            return independentWaiter(candidate);
+        }
+        retirePreflight().whenComplete((reason, failure) -> {
+            if (candidate.isDone()) {
+                return;
+            }
+            if (effectiveTerminationIntent.get()
+                == ZLinkTerminationIntent.SHUTDOWN) {
+                startLegacyTermination(candidate, deadline);
+                return;
+            }
+            ZLinkTerminationReason blocker = failure == null
+                ? reason
+                : ZLinkTerminationReason.STORE_UNAVAILABLE;
+            if (blocker != ZLinkTerminationReason.NONE) {
+                terminationBlocker.set(blocker);
+                ZLinkTerminationResult blocked =
+                    new ZLinkTerminationResult(
+                        ZLinkTerminationIntent.RETIRE,
+                        ZLinkTerminationOutcome.BLOCKED,
+                        blocker);
+                terminalTermination.set(blocked);
+                publishRuntimeState(ZLinkFrameworkRuntimeState.SERVING);
+                candidate.complete(blocked);
+                effectiveTerminationIntent.compareAndSet(
+                    ZLinkTerminationIntent.RETIRE, null);
+                activeTermination.compareAndSet(candidate, null);
+                return;
+            }
+            publishRuntimeState(ZLinkFrameworkRuntimeState.RETIRING);
+            startLegacyTermination(candidate, deadline);
+        });
+        return independentWaiter(candidate);
+    }
+
+    private void startLegacyTermination(
+        java.util.concurrent.CompletableFuture<ZLinkTerminationResult>
+            completion,
+        java.time.Duration deadline) {
+        drain(deadline).whenComplete((result, failure) -> {
+            if (completion.isDone()) {
+                return;
+            }
+            ZLinkTerminationIntent intent =
+                effectiveTerminationIntent.get();
+            if (intent == null) {
+                intent = ZLinkTerminationIntent.SHUTDOWN;
+            }
+            ZLinkTerminationResult terminal;
+            if (failure != null) {
+                terminal = new ZLinkTerminationResult(
+                    intent,
+                    ZLinkTerminationOutcome.FORCE_STOPPED,
+                    ZLinkTerminationReason.TEARDOWN_FAILED);
+            } else if (
+                result instanceof systems.zlink.framework.monitoring.Drained) {
+                terminal = new ZLinkTerminationResult(
+                    intent,
+                    ZLinkTerminationOutcome.STOPPED,
+                    ZLinkTerminationReason.NONE);
+            } else {
+                terminal = new ZLinkTerminationResult(
+                    intent,
+                    ZLinkTerminationOutcome.FORCE_STOPPED,
+                    ZLinkTerminationReason.DEADLINE_EXCEEDED);
+            }
+            terminalTermination.set(terminal);
+            publishRuntimeState(ZLinkFrameworkRuntimeState.STOPPED);
+            completion.complete(terminal);
+        });
+    }
+
+    private java.util.concurrent.CompletionStage<ZLinkTerminationReason>
+        retirePreflight() {
+        if (!ready.get()) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkTerminationReason.RUNTIME_NOT_READY);
+        }
+        if (actors == null || actors.activeActorTypes().isEmpty()) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkTerminationReason.NONE);
+        }
+        if (storeLocationResolvers == null || spots == null) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkTerminationReason.STORE_UNAVAILABLE);
+        }
+        java.util.Set<RoutingId> localNodes = new java.util.HashSet<>();
+        spots.nodesByName().values().forEach(
+            node -> localNodes.add(node.routingId()));
+        java.util.concurrent.CompletionStage<ZLinkTerminationReason> result =
+            java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkTerminationReason.NONE);
+        for (String actorType :
+            actors.activeActorTypes().stream().sorted().toList()) {
+            result = result.thenCompose(current -> {
+                if (current != ZLinkTerminationReason.NONE) {
+                    return java.util.concurrent.CompletableFuture
+                        .completedFuture(current);
+                }
+                String meshName =
+                    actorDrainMeshName(registration, actorType);
+                if (meshName == null) {
+                    return java.util.concurrent.CompletableFuture
+                        .completedFuture(
+                            ZLinkTerminationReason.TARGET_UNAVAILABLE);
+                }
+                return storeLocationResolvers.listLivePeers(
+                    new systems.zlink.framework.locations
+                        .ZLinkPeerLocationFilter(
+                            systems.zlink.framework.locations
+                                .ZLinkLocationAutoConnectType.SPOT_MESH,
+                            meshName,
+                            systems.zlink.framework.locations
+                                .ZLinkLocationRole.SPOT,
+                            null,
+                            null))
+                    .thenApply(found -> found.stream()
+                        .filter(peer -> !peer.draining())
+                        .anyMatch(peer -> isEligibleActorHandoffTarget(
+                            peer,
+                            actorType,
+                            localNodes))
+                            ? ZLinkTerminationReason.NONE
+                            : ZLinkTerminationReason.TARGET_UNAVAILABLE);
+            });
+        }
+        return result;
+    }
+
+    private systems.zlink.framework.monitoring
+        .ZLinkFrameworkRuntimeSnapshot runtimeSnapshot(long sequence) {
+        return new systems.zlink.framework.monitoring
+            .ZLinkFrameworkRuntimeSnapshot(
+                runtimeState.get(),
+                java.util.Optional.ofNullable(
+                    effectiveTerminationIntent.get()),
+                java.util.Optional.ofNullable(terminationDeadline.get()),
+                drainStarted.get(),
+                java.util.Optional.ofNullable(terminationBlocker.get()),
+                0,
+                0,
+                0,
+                java.util.Optional.ofNullable(terminalTermination.get()),
+                sequence,
+                java.time.Instant.now());
+    }
+
+    private void publishRuntimeState(
+        ZLinkFrameworkRuntimeState state) {
+        runtimeState.set(state);
+        long sequence = terminationSequence.incrementAndGet();
+        var event = new systems.zlink.framework.monitoring
+            .ZLinkFrameworkRuntimeEvent(
+                sequence,
+                java.time.Instant.now(),
+                runtimeSnapshot(sequence));
+        terminationObservers.forEach(publisher -> publisher.submit(event));
+        if (state == ZLinkFrameworkRuntimeState.STOPPED
+            || state == ZLinkFrameworkRuntimeState.ERROR) {
+            terminationObservers.forEach(
+                java.util.concurrent.SubmissionPublisher::close);
+            terminationObservers.clear();
+        }
+        if (eventDispatcher != null) {
+            eventDispatcher.publish(event);
+        }
+    }
+
+    @Override
     public void close() {
         try {
             closeAsync().toCompletableFuture().get();
@@ -491,6 +782,17 @@ public final class ZLinkFrameworkRuntime
                 publishDrainState(systems.zlink.framework.monitoring.ZLinkDrainState.DRAINED);
                 drained.complete(new systems.zlink.framework.monitoring.Drained());
             }
+            if (failure != null) {
+                publishRuntimeState(ZLinkFrameworkRuntimeState.ERROR);
+            } else if (!drainStarted.get()) {
+                publishRuntimeState(ZLinkFrameworkRuntimeState.STOPPED);
+            } else if (activeTermination.get() == null) {
+                terminalTermination.set(new ZLinkTerminationResult(
+                    ZLinkTerminationIntent.SHUTDOWN,
+                    ZLinkTerminationOutcome.STOPPED,
+                    ZLinkTerminationReason.NONE));
+                publishRuntimeState(ZLinkFrameworkRuntimeState.STOPPED);
+            }
         });
     }
 
@@ -507,6 +809,10 @@ public final class ZLinkFrameworkRuntime
             throw new IllegalArgumentException("deadline must be positive");
         }
         if (drainStarted.compareAndSet(false, true)) {
+            effectiveTerminationIntent.compareAndSet(
+                null, ZLinkTerminationIntent.SHUTDOWN);
+            terminationDeadline.compareAndSet(
+                null, java.time.Instant.now().plus(deadline));
             meshDrains.sealAll();
             if (streams != null) {
                 streams.beginDrain();
@@ -518,6 +824,7 @@ public final class ZLinkFrameworkRuntime
                 actors.beginDrain();
             }
             ready.set(false);
+            publishRuntimeState(ZLinkFrameworkRuntimeState.DRAINING);
             publishDrainState(systems.zlink.framework.monitoring.ZLinkDrainState.DRAINING);
             runDrain();
             java.util.concurrent.CompletableFuture.delayedExecutor(

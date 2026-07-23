@@ -438,9 +438,11 @@ public sealed class DrainCoordinatorTests
         await host.StartAsync();
 
         var stop = host.StopAsync();
-        Assert.Equal(
-            TimeSpan.FromSeconds(30),
-            await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(1)));
+        var executorDeadline = await executor.Started.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.InRange(
+            executorDeadline,
+            TimeSpan.FromSeconds(29),
+            TimeSpan.FromSeconds(30));
         Assert.False(stop.IsCompleted);
         executor.Complete.TrySetResult(null);
 

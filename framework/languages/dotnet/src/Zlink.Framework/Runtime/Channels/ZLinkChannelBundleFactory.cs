@@ -7,7 +7,7 @@ internal sealed class ZLinkChannelBundleFactory(
     ZLinkFrameworkRegistration registration)
 {
     public async ValueTask<ZLinkChannelRuntimeBundle> CreateSubscriberBundleAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         IZLinkChannelBackendAdapter adapter,
         string channelName,
         ZLinkChannelRegistration channel)
@@ -46,7 +46,7 @@ internal sealed class ZLinkChannelBundleFactory(
     }
 
     public async ValueTask<ZLinkChannelRuntimeBundle> CreatePublisherBundleAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         string channelName,
         ZLinkChannelRegistration channel,
         IZLinkChannelBackendAdapter? adapter = null)

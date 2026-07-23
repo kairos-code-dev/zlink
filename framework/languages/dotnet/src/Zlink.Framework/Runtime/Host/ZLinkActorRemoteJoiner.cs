@@ -8,7 +8,7 @@ internal sealed class ZLinkActorRemoteJoiner(
     ZLinkActorSessionManager actorSessionManager)
 {
     public async ValueTask<ZLinkActorJoinResult> JoinAsync(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         RoutingId spotRid,
         IZLinkActor actor,
         ZLinkBackendActorRef actorRef,

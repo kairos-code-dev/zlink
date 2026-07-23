@@ -88,6 +88,18 @@ internal static class ZLinkRuntimeMetrics
         Meter.CreateCounter<long>("zlink.drain.actors.handed_off", "{actor}");
     private static readonly Counter<long> DrainForced =
         Meter.CreateCounter<long>("zlink.drain.forced", "{item}");
+    private static readonly ConcurrentDictionary<object, Func<string>> TerminationStateProviders =
+        new();
+    private static readonly ObservableGauge<long> TerminationState =
+        Meter.CreateObservableGauge(
+            "zlink.termination.state",
+            ObserveTerminationStates);
+    private static readonly Histogram<double> TerminationDuration =
+        Meter.CreateHistogram<double>("zlink.termination.duration", "s");
+    private static readonly Counter<long> TerminationBlocked =
+        Meter.CreateCounter<long>("zlink.termination.blocked", "{operation}");
+    private static readonly Counter<long> TerminationForced =
+        Meter.CreateCounter<long>("zlink.termination.forced", "{operation}");
 
     public static void RecordStreamOpened()
     {
@@ -213,6 +225,14 @@ internal static class ZLinkRuntimeMetrics
         return new ProviderRegistration(() => DrainStateProviders.TryRemove(owner, out _));
     }
 
+    public static IDisposable RegisterTerminationState(Func<string> snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var owner = new object();
+        TerminationStateProviders[owner] = snapshot;
+        return new ProviderRegistration(() => TerminationStateProviders.TryRemove(owner, out _));
+    }
+
     public static void RecordLocationStoreError() => SafeAdd(LocationStoreErrors, 1);
 
     public static void RecordOwnerLeaseRenewFailure() =>
@@ -261,6 +281,34 @@ internal static class ZLinkRuntimeMetrics
         if (count > 0) SafeAdd(DrainForced, count, "kind", kind);
     }
 
+    public static long StartTermination() => StartTimestamp(TerminationDuration);
+
+    public static void CompleteTermination(
+        long startedTimestamp,
+        string intent,
+        string outcome,
+        string reason)
+    {
+        if (startedTimestamp != 0 && TerminationDuration.Enabled)
+            SafeRecord(
+                TerminationDuration,
+                Stopwatch.GetElapsedTime(startedTimestamp).TotalSeconds,
+                "intent",
+                intent,
+                "outcome",
+                outcome);
+        if (string.Equals(outcome, "blocked", StringComparison.Ordinal))
+            SafeAdd(TerminationBlocked, 1, "reason", reason);
+        else if (string.Equals(outcome, "force_stopped", StringComparison.Ordinal))
+            SafeAdd(
+                TerminationForced,
+                1,
+                "intent",
+                intent,
+                "reason",
+                reason);
+    }
+
     private static long ObserveLocationPeers()
     {
         long total = 0;
@@ -278,6 +326,25 @@ internal static class ZLinkRuntimeMetrics
     private static IEnumerable<Measurement<long>> ObserveDrainStates()
     {
         foreach (var snapshot in DrainStateProviders.Values)
+        {
+            string state;
+            try
+            {
+                state = snapshot();
+            }
+            catch
+            {
+                continue;
+            }
+            yield return new Measurement<long>(
+                1,
+                new KeyValuePair<string, object?>("state", state));
+        }
+    }
+
+    private static IEnumerable<Measurement<long>> ObserveTerminationStates()
+    {
+        foreach (var snapshot in TerminationStateProviders.Values)
         {
             string state;
             try
@@ -393,6 +460,27 @@ internal static class ZLinkRuntimeMetrics
         }
     }
 
+    private static void SafeAdd(
+        Counter<long> counter,
+        long value,
+        string firstTagName,
+        object? firstTagValue,
+        string secondTagName,
+        object? secondTagValue)
+    {
+        if (!counter.Enabled) return;
+        try
+        {
+            counter.Add(
+                value,
+                new KeyValuePair<string, object?>(firstTagName, firstTagValue),
+                new KeyValuePair<string, object?>(secondTagName, secondTagValue));
+        }
+        catch
+        {
+        }
+    }
+
     private static void SafeRecord(Histogram<double> histogram, double value)
     {
         if (!histogram.Enabled) return;
@@ -415,6 +503,27 @@ internal static class ZLinkRuntimeMetrics
         try
         {
             histogram.Record(value, new KeyValuePair<string, object?>(tagName, tagValue));
+        }
+        catch
+        {
+        }
+    }
+
+    private static void SafeRecord(
+        Histogram<double> histogram,
+        double value,
+        string firstTagName,
+        object? firstTagValue,
+        string secondTagName,
+        object? secondTagValue)
+    {
+        if (!histogram.Enabled) return;
+        try
+        {
+            histogram.Record(
+                value,
+                new KeyValuePair<string, object?>(firstTagName, firstTagValue),
+                new KeyValuePair<string, object?>(secondTagName, secondTagValue));
         }
         catch
         {

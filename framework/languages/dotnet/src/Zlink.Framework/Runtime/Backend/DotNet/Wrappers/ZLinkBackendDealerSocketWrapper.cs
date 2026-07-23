@@ -19,7 +19,7 @@ internal sealed class ZLinkBackendDealerSocketWrapper(IDealerSocket nativeSocket
 
     public void SetChannelName(string channelName)
     {
-        nativeSocket.SetChannelName(channelName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
     }
 
     public void SetMaxMessageSize(long value)

@@ -564,8 +564,6 @@ final class LocationContractTest {
             "addActorLocationStore",
             "addRouteLocationStore",
             "addOwnerLeaseStore",
-            "STORE_UNAVAILABLE",
-            "StoreUnavailable",
             "ZLinkRouteLocationResolver",
             "ZLinkActorRefResolver",
             "ZLinkSpotLocationResolver",

@@ -5,7 +5,7 @@ internal sealed class ZLinkStreamRuntimeManager(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration)
 {
-    public async ValueTask InitializeStreamNodesAsync(ZLinkFrameworkRuntimeState state)
+    public async ValueTask InitializeStreamNodesAsync(ZLinkFrameworkComponentState state)
     {
         if (registration.StreamNodes.Count == 0) return;
 
@@ -75,7 +75,7 @@ internal sealed class ZLinkStreamRuntimeManager(
     }
 
     private static IZLinkBackendSpotNode? ResolveActorDispatchNode(
-        ZLinkFrameworkRuntimeState state,
+        ZLinkFrameworkComponentState state,
         ZLinkStreamNodeRegistration streamNodeRegistration)
     {
         if (streamNodeRegistration.ActorDispatchMeshName is not { } dispatchMeshName)

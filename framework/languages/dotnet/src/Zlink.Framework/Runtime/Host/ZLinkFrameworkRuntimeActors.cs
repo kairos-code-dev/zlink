@@ -57,6 +57,14 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal ValueTask<bool> DrainActorsAsync(CancellationToken cancellationToken) =>
         _actorDrainCoordinator.DrainAsync(cancellationToken);
 
+    internal async ValueTask<ZLinkFrameworkTerminationReason?> PreflightRetireAsync(
+        CancellationToken cancellationToken)
+    {
+        await WaitForAcceptedActorHandoffsAsync(cancellationToken).ConfigureAwait(false);
+        return await _actorDrainCoordinator.PreflightAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal static string? ResolveActorDrainMeshName(
         ZLinkFrameworkRegistration registration,
         string actorType)

@@ -145,7 +145,14 @@ internal sealed class MeshReadyBatch : IDisposable
     public int Count => _entries.Count;
     public MeshReadyRecord this[int index] => _entries[index].Record;
     public MeshClaim TakeClaim(int index) => _entries[index].Claim;
-    internal void Reset() => _entries.Clear();
+    internal void Add(MeshReadyRecord record, MeshClaim claim) =>
+        _entries.Add((record, claim));
+    internal void Reset()
+    {
+        foreach (var (_, claim) in _entries)
+            claim.Dispose();
+        _entries.Clear();
+    }
     public void Dispose() => Reset();
 }
 
@@ -156,21 +163,37 @@ internal sealed class MeshReceiveBatch : IDisposable
     public MeshReceiveRecord this[int index] => _entries[index].Record;
     public IReadOnlyList<Message> RetainMessage(int index) =>
         _entries[index].Parts.Select(Message.From).ToArray();
-    public void Reset() => _entries.Clear();
+    internal void Add(MeshReceiveRecord record, IReadOnlyList<Message> parts) =>
+        _entries.Add((record, parts));
+    public void Reset()
+    {
+        foreach (var (_, parts) in _entries)
+            foreach (var part in parts)
+                part.Dispose();
+        _entries.Clear();
+    }
     public void Dispose() => Reset();
 }
 
 internal sealed class MeshClaim : IDisposable
 {
     internal Func<MeshReceiveBatch, RecvFlags, bool>? Receiver { get; init; }
+    internal Action? Releaser { get; init; }
+    private int _disposed;
     public bool Receive(MeshReceiveBatch batch, RecvFlags flags = RecvFlags.None) =>
-        Receiver?.Invoke(batch, flags) ?? false;
-    public void Dispose() { }
+        Volatile.Read(ref _disposed) == 0 && (Receiver?.Invoke(batch, flags) ?? false);
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            Releaser?.Invoke();
+    }
 }
 
 internal readonly struct MeshReceiveRecord
 {
     private readonly Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? _reply;
+    private readonly Func<ActorJoinResult, IReadOnlyList<Message>, SendFlags, SubmitResult>?
+        _joinReply;
     internal MeshReceiveRecord(
         MeshRecordKind kind, MeshReadyDomains domain, RoutingId sourceNodeRid,
         RoutingId sourceSpotRid, ulong sourceBindingGeneration, ActorRef sourceActor,
@@ -178,7 +201,9 @@ internal readonly struct MeshReceiveRecord
         string? channelName, string? topic, byte[]? applicationMetadata,
         int partOffset, int partCount, int terminalResult, int failureErrno,
         MeshRecordPayload? kindData,
-        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply = null)
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? reply = null,
+        Func<ActorJoinResult, IReadOnlyList<Message>, SendFlags, SubmitResult>?
+            joinReply = null)
     {
         Kind = kind; Domain = domain; SourceNodeRid = sourceNodeRid;
         SourceSpotRid = sourceSpotRid; SourceBindingGeneration = sourceBindingGeneration;
@@ -186,6 +211,7 @@ internal readonly struct MeshReceiveRecord
         ChannelName = channelName; Topic = topic; ApplicationMetadata = applicationMetadata;
         PartOffset = partOffset; PartCount = partCount; TerminalResult = terminalResult;
         FailureErrno = failureErrno; KindData = kindData; _reply = reply;
+        _joinReply = joinReply;
     }
     public MeshRecordKind Kind { get; }
     public MeshReadyDomains Domain { get; }
@@ -212,7 +238,8 @@ internal readonly struct MeshReceiveRecord
     public SubmitResult ReplyJoin(
         ActorJoinResult result,
         IReadOnlyList<Message> parts,
-        SendFlags flags = SendFlags.None) => Reply(parts, flags);
+        SendFlags flags = SendFlags.None) =>
+        _joinReply?.Invoke(result, parts, flags) ?? Reply(parts, flags);
 
     internal static MeshReceiveRecord CompletionFailure(
         MeshOperationId operationId,

@@ -13,7 +13,8 @@ internal sealed class ZLinkFrameworkHostedService(
     ZLinkLocationLifecycle? locationLifecycle,
     ZLinkAllocatedRoutingIdRuntime? allocatedRoutingIds,
     IHostApplicationLifetime? applicationLifetime,
-    ZLinkDrainCoordinator drain) : IHostedService
+    ZLinkDrainCoordinator drain,
+    ZLinkFrameworkMaintenanceRuntime maintenance) : IHostedService
 {
     private readonly RoutingId _locationNodeRid = RoutingId.From(Guid.NewGuid().ToString("n"));
     private readonly object _fencingGate = new();
@@ -44,9 +45,11 @@ internal sealed class ZLinkFrameworkHostedService(
             allocatedRoutingIds?.MarkReady();
             var state = await runtime.EnsureStartedStateAsync(cancellationToken).ConfigureAwait(false);
             await autoConnectLifecycle.FrameworkReadyAsync(state, cancellationToken).ConfigureAwait(false);
+            maintenance.MarkServing();
         }
         catch (Exception startFailure)
         {
+            maintenance.MarkError();
             try
             {
                 await StopCoreAsync().ConfigureAwait(false);
@@ -69,7 +72,7 @@ internal sealed class ZLinkFrameworkHostedService(
     {
         try
         {
-            await drain.DrainAsync(cancellationToken).ConfigureAwait(false);
+            await maintenance.ShutdownAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

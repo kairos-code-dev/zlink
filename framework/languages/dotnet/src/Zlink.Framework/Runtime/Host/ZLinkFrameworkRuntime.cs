@@ -33,14 +33,14 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private readonly IZLinkAutoConnectTopologyQuery? _topologyQuery;
     private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
     private readonly ZLinkSpotRuntimeManager _spots;
-    private readonly ZLinkFrameworkRuntimeStateFactory _stateFactory;
+    private readonly ZLinkFrameworkComponentStateFactory _stateFactory;
     private readonly ZLinkStreamRuntimeManager _streams;
     private readonly object _workerPoolGate = new();
     private ZLinkMessageFlowTracer? _flow;
     private ILogger? _actorHandoffLogger;
     private ZLinkRuntimeErrorSink? _generationErrorSink = new();
     private int _lifecyclePhase;
-    private ZLinkFrameworkRuntimeState? _state;
+    private ZLinkFrameworkComponentState? _state;
     private ZLinkWorkerPool? _workerPool;
     private TaskCompletionSource? _operationsDrained;
     private int _activeOperations;
@@ -372,7 +372,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         return state is not null && state.MessageFlowObservers.Enqueue(flow);
     }
 
-    internal ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateForRoutingAsync(
+    internal ValueTask<ZLinkFrameworkComponentState> GetStartedStateForRoutingAsync(
         CancellationToken cancellationToken)
     {
         return GetStartedStateAsync(cancellationToken);
@@ -508,7 +508,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     }
 
     private async ValueTask<List<Exception>> CleanupRuntimeGenerationAsync(
-        ZLinkFrameworkRuntimeState? state)
+        ZLinkFrameworkComponentState? state)
     {
         var failures = new List<Exception>();
         ZLinkWorkerPool? workerPool;
@@ -573,7 +573,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
                 : new[] { primaryFailure }.Concat(cleanupFailures));
     }
 
-    private async ValueTask<ZLinkFrameworkRuntimeState> GetStartedStateAsync(
+    private async ValueTask<ZLinkFrameworkComponentState> GetStartedStateAsync(
         CancellationToken cancellationToken)
     {
         var phase = (ZLinkRuntimeLifecyclePhase)Volatile.Read(ref _lifecyclePhase);
@@ -586,7 +586,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             : throw new InvalidOperationException("ZLink framework runtime is not started.");
     }
 
-    private ZLinkFrameworkRuntimeState GetOrStartState()
+    private ZLinkFrameworkComponentState GetOrStartState()
     {
         if (!IsStarted || _state is null)
             throw new InvalidOperationException(
@@ -686,13 +686,13 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
 
     internal sealed class ZLinkRuntimeOperationOwnership(
         ZLinkFrameworkRuntime runtime,
-        ZLinkFrameworkRuntimeState state)
+        ZLinkFrameworkComponentState state)
     {
         private int _active = 1;
 
         public ZLinkFrameworkRuntime Runtime { get; } = runtime;
 
-        public ZLinkFrameworkRuntimeState State { get; } = state;
+        public ZLinkFrameworkComponentState State { get; } = state;
 
         public bool IsActive => Volatile.Read(ref _active) != 0;
 

@@ -1205,7 +1205,7 @@ public sealed partial class EntrySpotActorDispatchTests
         var (runtime, _) = await CreateStartedRuntimeAsync(node);
         try
         {
-            var state = GetPrivateField<ZLinkFrameworkRuntimeState>(runtime, "_state");
+            var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
             var target = state.SpotNodes["entry"];
             var catalog = GetPrivateField<ZLinkSpotNodeCatalog>(target, "_spots");
 
@@ -1243,7 +1243,7 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             var creation = runtime.CreateAsync<BlockingCreateSpot>().AsTask();
             await probe.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            var state = GetPrivateField<ZLinkFrameworkRuntimeState>(runtime, "_state");
+            var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
             var catalog = GetPrivateField<ZLinkSpotNodeCatalog>(state.SpotNodes["entry"], "_spots");
 
             var firstDispose = catalog.DisposeAsync().AsTask();
@@ -1321,7 +1321,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var actor = Assert.IsType<ProbeActor>(
                 (await runtime.CreateActorAsync(actorRef.ActorId, "probe")).Actor);
             var created = await runtime.CreateAsync<BlockingActorJoinSpot>();
-            var state = GetPrivateField<ZLinkFrameworkRuntimeState>(runtime, "_state");
+            var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
             var catalog = GetPrivateField<ZLinkSpotNodeCatalog>(state.SpotNodes["entry"], "_spots");
             var activations = GetPrivateField<Dictionary<RoutingId, ZLinkSpotActivation>>(catalog, "_spots");
             var activation = activations[created.SpotRid];
@@ -1368,7 +1368,7 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             var creation = runtime.GetOrCreateAsync<BlockingCreateSpot>(RoutingId.From("blocked-create")).AsTask();
             await probe.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            var state = GetPrivateField<ZLinkFrameworkRuntimeState>(runtime, "_state");
+            var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
             var catalog = GetPrivateField<ZLinkSpotNodeCatalog>(state.SpotNodes["entry"], "_spots");
             var firstDispose = catalog.DisposeAsync().AsTask();
             var secondDispose = catalog.DisposeAsync().AsTask();
@@ -2154,7 +2154,7 @@ public sealed partial class EntrySpotActorDispatchTests
         var node = new CapturingSpotNode();
         ConfigureNotConnectedEntryJoin(node);
         var (runtime, actorRef) = await CreateStartedRuntimeAsync(node);
-        var state = GetPrivateField<ZLinkFrameworkRuntimeState>(runtime, "_state");
+        var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
         var target = state.SpotNodes["entry"];
         var activation = GetPrivateField<ZLinkEntrySpotActivation>(target, "_entrySpotActivation");
         SetPrivateField<ZLinkEntrySpotActivation?>(target, "_entrySpotActivation", null);
@@ -2354,7 +2354,7 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             var actor = RegisterProbeActor(runtime, actorRef);
             var target = await runtime.CreateAsync<JoinTargetSpot>();
-            var state = GetPrivateField<ZLinkFrameworkRuntimeState>(runtime, "_state");
+            var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
             var spots = GetPrivateField<ZLinkSpotRuntimeManager>(runtime, "_spots");
             var actorSessions = GetPrivateField<ZLinkActorSessionManager>(runtime, "_actorSessionManager");
             var joiner = new ZLinkActorRemoteJoiner(
@@ -2421,7 +2421,7 @@ public sealed partial class EntrySpotActorDispatchTests
         {
             var actor = RegisterProbeActor(runtime, actorRef);
             var target = await runtime.CreateAsync<JoinTargetSpot>();
-            var state = GetPrivateField<ZLinkFrameworkRuntimeState>(runtime, "_state");
+            var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
             var spots = GetPrivateField<ZLinkSpotRuntimeManager>(runtime, "_spots");
             var actorSessions = GetPrivateField<ZLinkActorSessionManager>(runtime, "_actorSessionManager");
             var joiner = new ZLinkActorRemoteJoiner(
@@ -2492,7 +2492,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 replyHeader = ZLinkEnvelopeCodec.DecodeHeader(reply);
                 return (result, reply);
             };
-            var state = GetPrivateField<ZLinkFrameworkRuntimeState>(runtime, "_state");
+            var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
             var spots = GetPrivateField<ZLinkSpotRuntimeManager>(runtime, "_spots");
             var actorSessions = GetPrivateField<ZLinkActorSessionManager>(runtime, "_actorSessionManager");
             var joiner = new ZLinkActorRemoteJoiner(

@@ -436,10 +436,7 @@ stateful_error_t stateful_object_runtime_t::enqueue (
         return error;
     }
     if (object->state == object_state_t::moving
-        && domain == turn_domain_t::infrastructure) {
-        return stateful_error_t::moving;
-    }
-    if (object->state == object_state_t::moving) {
+        && domain == turn_domain_t::application) {
         if (object->queue.held_application.size ()
             >= _application_capacity) {
             return stateful_error_t::backpressured;
@@ -620,6 +617,146 @@ std::vector<logical_timer_t> stateful_object_runtime_t::timers (
         result.push_back (timer);
     }
     return result;
+}
+
+std::pair<stateful_error_t, relocation_seal_t>
+stateful_object_runtime_t::try_seal_relocation (
+  const object_ref_t &owner)
+{
+    std::lock_guard lock (_mutex);
+    stateful_error_t error = stateful_error_t::none;
+    auto *object = find_record_locked (owner, error);
+    if (object == nullptr) {
+        return {error, {}};
+    }
+    if (object->state != object_state_t::ready) {
+        return {object->state == object_state_t::moving
+                  ? stateful_error_t::moving
+                  : stateful_error_t::conflict,
+                {}};
+    }
+    if (object->queue.application_active) {
+        return {stateful_error_t::backpressured, {}};
+    }
+    if (_next_relocation_token == 0) {
+        return {stateful_error_t::conflict, {}};
+    }
+
+    frozen_object_state_t frozen{
+      .owner = object->reference,
+      .stable_type = object->stable_type,
+      .pending_application = {},
+      .timers = {}};
+    frozen.pending_application.reserve (object->queue.application.size ());
+    while (!object->queue.application.empty ()) {
+        frozen.pending_application.push_back (
+          std::move (object->queue.application.front ()));
+        object->queue.application.pop_front ();
+    }
+    frozen.timers.reserve (object->timers.size ());
+    for (const auto &[_, timer] : object->timers)
+        frozen.timers.push_back (timer);
+
+    const auto token = _next_relocation_token++;
+    object->state = object_state_t::moving;
+    _relocation_seals.emplace (
+      token, relocation_seal_state_t{key_for (owner), frozen});
+    return {stateful_error_t::none, relocation_seal_t{token, std::move (frozen)}};
+}
+
+stateful_error_t stateful_object_runtime_t::abort_relocation (
+  std::uint64_t token)
+{
+    std::lock_guard lock (_mutex);
+    const auto seal = _relocation_seals.find (token);
+    if (seal == _relocation_seals.end ()) {
+        return stateful_error_t::not_found;
+    }
+    const auto object = _objects.find (seal->second.key);
+    if (object == _objects.end ()
+        || object->second.state != object_state_t::moving) {
+        return stateful_error_t::conflict;
+    }
+    auto &record = object->second;
+    for (auto &pending : seal->second.frozen.pending_application)
+        record.queue.application.push_back (std::move (pending));
+    while (!record.queue.held_application.empty ()) {
+        record.queue.application.push_back (
+          std::move (record.queue.held_application.front ()));
+        record.queue.held_application.pop_front ();
+    }
+    record.state = object_state_t::ready;
+    _relocation_seals.erase (seal);
+    return stateful_error_t::none;
+}
+
+std::pair<stateful_error_t, object_ref_t>
+stateful_object_runtime_t::commit_relocation (
+  std::uint64_t token,
+  std::string target_node_id)
+{
+    if (!valid_text (target_node_id)) {
+        return {stateful_error_t::invalid, {}};
+    }
+    std::lock_guard lock (_mutex);
+    const auto seal = _relocation_seals.find (token);
+    if (seal == _relocation_seals.end ()) {
+        return {stateful_error_t::not_found, {}};
+    }
+    const auto object = _objects.find (seal->second.key);
+    if (object == _objects.end ()
+        || object->second.state != object_state_t::moving) {
+        return {stateful_error_t::conflict, {}};
+    }
+    auto &record = object->second;
+    if (record.reference.authority_owner_generation
+        == std::numeric_limits<std::uint64_t>::max ()) {
+        return {stateful_error_t::conflict, {}};
+    }
+    record.reference.node_id = std::move (target_node_id);
+    ++record.reference.authority_owner_generation;
+    for (auto &pending : seal->second.frozen.pending_application)
+        record.queue.application.push_back (std::move (pending));
+    while (!record.queue.held_application.empty ()) {
+        record.queue.application.push_back (
+          std::move (record.queue.held_application.front ()));
+        record.queue.held_application.pop_front ();
+    }
+    record.state = object_state_t::ready;
+    auto result = record.reference;
+    _relocation_seals.erase (seal);
+    return {stateful_error_t::none, std::move (result)};
+}
+
+stateful_error_t stateful_object_runtime_t::restore_relocation (
+  frozen_object_state_t frozen,
+  object_ref_t target)
+{
+    if (!valid_text (frozen.stable_type)
+        || frozen.owner.kind != target.kind
+        || frozen.owner.key != target.key
+        || frozen.owner.object_generation != target.object_generation
+        || target.authority_owner_generation
+             <= frozen.owner.authority_owner_generation
+        || !valid_text (target.node_id)) {
+        return stateful_error_t::invalid;
+    }
+    std::lock_guard lock (_mutex);
+    const auto key = key_for (target);
+    if (_objects.contains (key)) {
+        return stateful_error_t::already_exists;
+    }
+    object_record_t record;
+    record.reference = std::move (target);
+    record.stable_type = std::move (frozen.stable_type);
+    record.state = object_state_t::ready;
+    for (auto &pending : frozen.pending_application)
+        record.queue.application.push_back (std::move (pending));
+    for (auto &timer : frozen.timers)
+        record.timers.emplace (timer.timer_id, std::move (timer));
+    _last_generation[key] = record.reference.object_generation;
+    _objects.emplace (key, std::move (record));
+    return stateful_error_t::none;
 }
 
 bool stateful_object_runtime_t::valid_text (const std::string &value)

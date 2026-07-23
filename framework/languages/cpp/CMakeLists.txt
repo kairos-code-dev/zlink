@@ -105,6 +105,9 @@ set(ZLINK_FRAMEWORK_CPP_M6B_RUNTIME_SOURCES
   framework/src/runtime/stateful/stateful_object_runtime.cpp
   framework/src/runtime/stateful/stream_session_registry.cpp)
 
+set(ZLINK_FRAMEWORK_CPP_M6C_RUNTIME_SOURCES
+  framework/src/runtime/stateful/maintenance_runtime.cpp)
+
 add_library(zlink_framework_m6a_runtime STATIC
   ${ZLINK_FRAMEWORK_CPP_M6A_RUNTIME_SOURCES})
 target_compile_features(zlink_framework_m6a_runtime PUBLIC cxx_std_20)
@@ -127,9 +130,21 @@ target_link_libraries(zlink_framework_m6b_runtime PUBLIC
   zlink_framework_m6a_runtime
   Threads::Threads)
 
+add_library(zlink_framework_m6c_runtime STATIC
+  ${ZLINK_FRAMEWORK_CPP_M6C_RUNTIME_SOURCES})
+target_compile_features(zlink_framework_m6c_runtime PUBLIC cxx_std_20)
+target_include_directories(zlink_framework_m6c_runtime PRIVATE
+  ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+  ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+  ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+target_link_libraries(zlink_framework_m6c_runtime PUBLIC
+  zlink_framework_m6b_runtime
+  Threads::Threads)
+
 add_library(zlink_framework STATIC
   ${ZLINK_FRAMEWORK_CPP_M6A_RUNTIME_SOURCES}
   ${ZLINK_FRAMEWORK_CPP_M6B_RUNTIME_SOURCES}
+  ${ZLINK_FRAMEWORK_CPP_M6C_RUNTIME_SOURCES}
   framework/src/runtime/channels/channel_packet_dispatcher.cpp
   framework/src/runtime/channels/channel_host_service.cpp
   framework/src/runtime/channels/channel_bundle_factory.cpp
@@ -796,6 +811,22 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
     COMMAND test_cpp_framework_m6b_runtime)
   set_tests_properties(test_cpp_framework_m6b_runtime PROPERTIES
     LABELS "framework-unit;framework-m6-runtime;stateful;spot;actor;stream-session"
+    TIMEOUT 30)
+
+  add_executable(test_cpp_framework_m6c_runtime
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_m6c_runtime.cpp)
+  target_compile_features(test_cpp_framework_m6c_runtime PRIVATE cxx_std_20)
+  target_include_directories(test_cpp_framework_m6c_runtime PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+  target_link_libraries(test_cpp_framework_m6c_runtime PRIVATE
+    zlink_framework_m6c_runtime
+    Threads::Threads)
+  add_test(NAME test_cpp_framework_m6c_runtime
+    COMMAND test_cpp_framework_m6c_runtime)
+  set_tests_properties(test_cpp_framework_m6c_runtime PROPERTIES
+    LABELS "framework-unit;framework-m6-runtime;maintenance;relocation;recovery;resource"
     TIMEOUT 30)
 
 endif()

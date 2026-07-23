@@ -131,6 +131,23 @@ struct logical_timer_t
                             const logical_timer_t &) = default;
 };
 
+struct frozen_object_state_t
+{
+    object_ref_t owner;
+    std::string stable_type;
+    std::vector<turn_record_t> pending_application;
+    std::vector<logical_timer_t> timers;
+
+    friend bool operator== (const frozen_object_state_t &,
+                            const frozen_object_state_t &) = default;
+};
+
+struct relocation_seal_t
+{
+    std::uint64_t token = 0;
+    frozen_object_state_t frozen;
+};
+
 class stateful_object_runtime_t
 {
   public:
@@ -182,6 +199,14 @@ class stateful_object_runtime_t
       std::vector<std::uint8_t> payload);
     std::vector<logical_timer_t> timers (
       const object_ref_t &owner) const;
+    std::pair<stateful_error_t, relocation_seal_t>
+    try_seal_relocation (const object_ref_t &owner);
+    stateful_error_t abort_relocation (std::uint64_t token);
+    std::pair<stateful_error_t, object_ref_t>
+    commit_relocation (std::uint64_t token, std::string target_node_id);
+    stateful_error_t restore_relocation (
+      frozen_object_state_t frozen,
+      object_ref_t target);
 
   private:
     struct object_key_t
@@ -218,6 +243,12 @@ class stateful_object_runtime_t
         std::string previous_membership;
     };
 
+    struct relocation_seal_state_t
+    {
+        object_key_t key;
+        frozen_object_state_t frozen;
+    };
+
     static bool valid_text (const std::string &value);
     static bool same_exact_ref (const object_ref_t &left,
                                 const object_ref_t &right);
@@ -239,8 +270,10 @@ class stateful_object_runtime_t
     std::map<object_key_t, std::uint64_t> _last_generation;
     std::map<std::uint64_t, object_key_t> _attempts;
     std::map<std::uint64_t, membership_move_t> _membership_moves;
+    std::map<std::uint64_t, relocation_seal_state_t> _relocation_seals;
     std::uint64_t _next_attempt = 1;
     std::uint64_t _next_membership_token = 1;
+    std::uint64_t _next_relocation_token = 1;
 };
 
 } // namespace zlink::framework::runtime::stateful

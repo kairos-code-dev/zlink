@@ -3,6 +3,7 @@
 
 #include "runtime/foundation/operation_registry.hpp"
 #include "runtime/mesh/raw_mesh_node_owner.hpp"
+#include "runtime/stateful/maintenance_runtime.hpp"
 #include "runtime/stateful/stateful_object_runtime.hpp"
 #include "runtime/stateful/stream_session_registry.hpp"
 
@@ -347,6 +348,12 @@ class public_host_runtime_t :
     mesh::raw_mesh_node_owner_t &transport () noexcept;
     stateful::stateful_object_runtime_t &objects () noexcept;
     stateful::stream_session_registry_t &sessions () noexcept;
+    void configure_maintenance (
+      std::shared_ptr<stateful::authority_relocation_port_t> authority,
+      std::shared_ptr<stateful::relocation_store_port_t> relocations,
+      stateful::relocation_limits_t limits = {},
+      stateful::maintenance_runtime_t::observer_t observer = {});
+    stateful::maintenance_runtime_t *maintenance () noexcept;
 
     spot_handle_t entry_spot ();
     spot_handle_t get_or_create_spot (const zlink::routing_id_t &routing_id);
@@ -425,6 +432,7 @@ class public_host_runtime_t :
     std::shared_ptr<mesh::raw_mesh_node_owner_t> _transport;
     stateful::stateful_object_runtime_t _objects;
     stateful::stream_session_registry_t _sessions;
+    std::unique_ptr<stateful::maintenance_runtime_t> _maintenance;
     mutable std::mutex _mutex;
     std::map<std::pair<std::uint64_t, std::uint64_t>,
              std::pair<receive_record_t, std::vector<zlink::message_t>>>

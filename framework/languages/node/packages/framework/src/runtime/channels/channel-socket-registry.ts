@@ -37,6 +37,11 @@ import {
   isClientServerControlFrame,
   type ZLinkClientServerAdmission
 } from './client-server-service-wire';
+import {
+  FANOUT_LIVENESS_PAYLOAD,
+  FANOUT_LIVENESS_TOPIC,
+  classifyFanoutInbound
+} from './fanout-service-wire';
 
 const MAX_LIFECYCLE_GENERATION = 0x7fff_ffff_ffff_ffffn;
 const CLIENT_SERVER_PROBE_INTERVAL_MS = 5_000;
@@ -73,6 +78,23 @@ interface ClientServerPhysicalConnection {
   admissionAttempt?: symbol;
 }
 
+export interface ZLinkFanoutConnectionCallbacks {
+  readonly onReady: () => void;
+  readonly onTerminated: (reason: 'disconnect' | 'deadline' | 'protocol') => void;
+}
+
+interface FanoutPublisherConnection {
+  readonly channelName: string;
+  readonly endpoint: string;
+  readonly subscriber: ZLinkBackendSubscriberSocket;
+  readonly monitor: ZLinkBackendSocketMonitor;
+  readonly callbacks: ZLinkFanoutConnectionCallbacks;
+  readonly physicalConnectionId: symbol;
+  transportReady: boolean;
+  ready: boolean;
+  deadlineAt?: number;
+}
+
 export class ZLinkChannelSocketRegistry {
   private readonly clientDealers = new Map<string, ZLinkBackendDealerSocket>();
   private readonly channelRouters = new Map<string, ZLinkBackendRouterSocket>();
@@ -106,9 +128,14 @@ export class ZLinkChannelSocketRegistry {
   private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
   private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
   private readonly ownedMonitors = new Set<ZLinkBackendSocketMonitor>();
+  private readonly fanoutConnections =
+    new Map<string, FanoutPublisherConnection>();
+  private readonly fanoutPublisherNextBeacon = new Map<string, number>();
   private clientServerLivenessTimer?: NodeJS.Timeout;
   private nextClientServerProbeId = 1n;
   private readonly clientServerMonitorHandlers =
+    new Map<string, Set<(event: ZLinkBackendSocketMonitorEvent) => void>>();
+  private readonly fanoutMonitorHandlers =
     new Map<string, Set<(event: ZLinkBackendSocketMonitorEvent) => void>>();
 
   constructor(
@@ -123,6 +150,7 @@ export class ZLinkChannelSocketRegistry {
     const sockets = [
       ...this.clientDealers.values(),
       ...[...new Set(this.clientServerConnections.values())].map(value => value.dealer),
+      ...[...this.fanoutConnections.values()].map(value => value.subscriber),
       ...this.channelRouters.values(),
       ...this.publishers.values(),
       ...this.subscribers.values(),
@@ -135,6 +163,9 @@ export class ZLinkChannelSocketRegistry {
     this.clientServerAdmittedClients.clear();
     this.clientServerServerPeers.clear();
     this.clientServerMonitorHandlers.clear();
+    this.fanoutMonitorHandlers.clear();
+    this.fanoutConnections.clear();
+    this.fanoutPublisherNextBeacon.clear();
     if (this.clientServerLivenessTimer !== undefined) {
       clearInterval(this.clientServerLivenessTimer);
       this.clientServerLivenessTimer = undefined;
@@ -699,6 +730,208 @@ export class ZLinkChannelSocketRegistry {
       peer.outstandingProbeId = probeId;
       this.requestClientServerServerLiveness(peer, probeId);
     }
+    this.tickFanoutLiveness(nowMs);
+  }
+
+  openFanoutSubscriberConnection(
+    channelName: string,
+    connectionId: string,
+    endpoint: string,
+    callbacks: ZLinkFanoutConnectionCallbacks
+  ): ZLinkBackendSubscriberSocket {
+    if (this.fanoutConnections.has(connectionId)) {
+      throw new ZLinkConfigurationException(
+        `Fanout connection '${connectionId}' is already open.`
+      );
+    }
+    if (this.monitoringAdapter === undefined) {
+      throw new ZLinkConfigurationException(
+        'Fanout subscriber connections require socket monitoring.'
+      );
+    }
+    const channel = this.registration.channels.get(channelName);
+    if (channel?.subscriber === undefined) {
+      throw new ZLinkConfigurationException(
+        `Fanout subscriber '${channelName}' is not registered.`
+      );
+    }
+    const subscriber = this.adapter.createSubscriberSocket(this.context);
+    subscriber.setChannelName(channelName);
+    subscriber.setSubscription('');
+    subscriber.setSubscription(FANOUT_LIVENESS_TOPIC);
+    const monitor = this.monitoringAdapter.openSocketMonitor(subscriber);
+    const connection: FanoutPublisherConnection = {
+      channelName,
+      endpoint,
+      subscriber,
+      monitor,
+      callbacks,
+      physicalConnectionId: Symbol(connectionId),
+      transportReady: false,
+      ready: false
+    };
+    this.fanoutConnections.set(connectionId, connection);
+    this.ownedMonitors.add(monitor);
+    this.ensureClientServerLivenessTimer();
+    try {
+      monitor.onEvent((event) => {
+        if (this.fanoutConnections.get(connectionId) !== connection) return;
+        for (const handler of this.fanoutMonitorHandlers.get(channelName) ?? []) {
+          handler(event);
+        }
+        if (event.nativeEvent === ZLinkSocketNativeEventType.ConnectionReady) {
+          connection.transportReady = true;
+          return;
+        }
+        if (event.nativeEvent === ZLinkSocketNativeEventType.Disconnected
+          || event.nativeEvent === ZLinkSocketNativeEventType.Closed
+          || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedNoDetail
+          || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedProtocol
+          || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedAuth) {
+          connection.transportReady = false;
+          connection.ready = false;
+          connection.deadlineAt = undefined;
+          callbacks.onTerminated('disconnect');
+        }
+      });
+      subscriber.connect(endpoint);
+    } catch (error) {
+      this.fanoutConnections.delete(connectionId);
+      this.ownedMonitors.delete(monitor);
+      void Promise.allSettled([monitor.dispose(), subscriber.dispose()]);
+      throw error;
+    }
+    return subscriber;
+  }
+
+  async closeFanoutSubscriberConnection(
+    connectionId: string
+  ): Promise<void> {
+    const connection = this.fanoutConnections.get(connectionId);
+    if (connection === undefined) return;
+    this.fanoutConnections.delete(connectionId);
+    try {
+      connection.subscriber.disconnect(connection.endpoint);
+    } catch {
+      // Disposal remains the terminal cleanup path.
+    }
+    this.ownedMonitors.delete(connection.monitor);
+    const results = await Promise.allSettled([
+      connection.monitor.dispose(),
+      connection.subscriber.dispose()
+    ]);
+    const errors = results
+      .filter((result): result is PromiseRejectedResult =>
+        result.status === 'rejected')
+      .map(result => result.reason);
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(
+        errors,
+        `Fanout connection '${connectionId}' cleanup failed.`
+      );
+    }
+  }
+
+  handleFanoutInbound(
+    connectionId: string,
+    topicMessage: {
+      readonly topic: string;
+      readonly parts: readonly { data(): Uint8Array }[];
+    },
+    source: ZLinkBackendSubscriberSocket,
+    nowMs = performance.now()
+  ): boolean {
+    const connection = this.fanoutConnections.get(connectionId);
+    if (connection === undefined || connection.subscriber !== source) {
+      return true;
+    }
+    const kind = classifyFanoutInbound(
+      topicMessage.topic,
+      topicMessage.parts
+    );
+    if (kind === 'protocolError') {
+      connection.ready = false;
+      connection.deadlineAt = undefined;
+      connection.callbacks.onTerminated('protocol');
+      return true;
+    }
+    connection.deadlineAt = nowMs + CLIENT_SERVER_PEER_DEADLINE_MS;
+    if (!connection.ready) {
+      connection.ready = true;
+      connection.callbacks.onReady();
+    }
+    return kind === 'beacon';
+  }
+
+  isFanoutConnectionReady(connectionId: string): boolean {
+    return this.fanoutConnections.get(connectionId)?.ready === true;
+  }
+
+  fanoutMonitoringSource(channelName: string): ZLinkBackendSocketMonitor {
+    if (this.registration.channels.get(channelName)?.subscriber === undefined) {
+      throw new ZLinkConfigurationException(
+        `Fanout subscriber '${channelName}' is not registered.`
+      );
+    }
+    let handler:
+      ((event: ZLinkBackendSocketMonitorEvent) => void) | undefined;
+    let disposed = false;
+    return {
+      nativeInstance: {},
+      onEvent: next => {
+        if (disposed) return;
+        if (handler !== undefined) {
+          this.fanoutMonitorHandlers.get(channelName)?.delete(handler);
+        }
+        handler = next;
+        let handlers = this.fanoutMonitorHandlers.get(channelName);
+        if (handlers === undefined) {
+          handlers = new Set();
+          this.fanoutMonitorHandlers.set(channelName, handlers);
+        }
+        handlers.add(next);
+      },
+      recv: () => {
+        throw new ZLinkConfigurationException(
+          'Aggregated fanout monitoring is callback-only.'
+        );
+      },
+      dispose: async () => {
+        disposed = true;
+        if (handler !== undefined) {
+          this.fanoutMonitorHandlers.get(channelName)?.delete(handler);
+        }
+      }
+    };
+  }
+
+  private tickFanoutLiveness(nowMs: number): void {
+    for (const [channelName, publisher] of this.publishers) {
+      const next = this.fanoutPublisherNextBeacon.get(channelName) ?? nowMs;
+      if (nowMs < next) continue;
+      this.fanoutPublisherNextBeacon.set(
+        channelName,
+        nowMs + CLIENT_SERVER_PROBE_INTERVAL_MS
+      );
+      const payload = BindingMessage.from(FANOUT_LIVENESS_PAYLOAD);
+      try {
+        publisher.publish(FANOUT_LIVENESS_TOPIC, payload, 0);
+      } finally {
+        payload.close();
+      }
+    }
+    for (const [connectionId, connection] of [...this.fanoutConnections]) {
+      if (connection.deadlineAt === undefined
+        || nowMs < connection.deadlineAt) continue;
+      connection.ready = false;
+      connection.deadlineAt = undefined;
+      connection.callbacks.onTerminated('deadline');
+      if (this.fanoutConnections.get(connectionId) === connection) {
+        void this.closeFanoutSubscriberConnection(connectionId)
+          .catch(error => this.oneWayFailureSink?.(error));
+      }
+    }
   }
 
   private openManualClientServerConnection(channelName: string, endpoint: string): void {
@@ -1004,6 +1237,11 @@ export class ZLinkChannelSocketRegistry {
     this.trackSubmitter(publisher);
     publisher.bind(channel.publisher.bind);
     this.publishers.set(channelName, publisher);
+    this.fanoutPublisherNextBeacon.set(
+      channelName,
+      performance.now() + CLIENT_SERVER_PROBE_INTERVAL_MS
+    );
+    this.ensureClientServerLivenessTimer();
     return publisher;
   }
 

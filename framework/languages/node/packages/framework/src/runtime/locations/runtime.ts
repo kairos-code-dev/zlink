@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { RoutingId } from '../../contracts/Common';
 import type {
   ZLinkClientServerLocationStore,
+  ZLinkFanoutLocationStore,
   ZLinkPeerLocationStore,
   ZLinkRouteLocationStore
 } from '../../contracts/Locations/Stores';
@@ -62,6 +63,7 @@ import type { ZLinkOwnershipLostEvent } from './lifecycle-runtime';
 export interface ZLinkLocationRuntimeStores {
   readonly locationStore: ZLinkLocationStore;
   readonly clientServerStore?: ZLinkClientServerLocationStore;
+  readonly fanoutStore?: ZLinkFanoutLocationStore;
   readonly peerStore: ZLinkPeerLocationStore;
   readonly spotStore: ZLinkSpotLocationStore;
   readonly actorStore: ZLinkActorLocationStore;

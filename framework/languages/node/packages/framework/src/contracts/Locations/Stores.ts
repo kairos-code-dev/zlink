@@ -14,6 +14,8 @@ import type {
   ZLinkMeshNodeDescriptorKey,
   ZLinkClientServerServerDescriptor,
   ZLinkClientServerServerDescriptorKey,
+  ZLinkFanoutPublisherDescriptor,
+  ZLinkFanoutPublisherDescriptorKey,
   ZLinkOwnerLeaseClaimResult,
   ZLinkOwnerLeaseReadResult,
   ZLinkOwnerLeaseReleaseResult,
@@ -64,6 +66,24 @@ export interface ZLinkClientServerLocationStore {
     page?: ZLinkPageRequest,
     signal?: AbortSignal
   ): Promise<ZLinkLocationPage<ZLinkClientServerServerDescriptor>>;
+}
+
+export interface ZLinkFanoutLocationStore {
+  updateFanoutPublisher(
+    descriptor: ZLinkFanoutPublisherDescriptor,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult>;
+  removeFanoutPublisher(
+    key: ZLinkFanoutPublisherDescriptorKey,
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteStatus>;
+  listFanoutPublishers(
+    channelName: string,
+    page?: ZLinkPageRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>>;
 }
 
 export interface ZLinkMeshNodeLocationStore {

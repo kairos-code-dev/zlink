@@ -87,6 +87,19 @@ export interface ZLinkClientServerServerDescriptor {
   readonly updatedAt: Date;
 }
 
+export interface ZLinkFanoutPublisherDescriptor {
+  readonly channelName: string;
+  readonly publisherRid: RoutingId;
+  readonly lifecycleGeneration: bigint;
+  readonly descriptorRevision: bigint;
+  readonly endpoint: string;
+  readonly state: ZLinkFrameworkRuntimeState;
+  readonly securityIdentity: string;
+  readonly ownerId: string;
+  readonly leaseGeneration: bigint;
+  readonly updatedAt: Date;
+}
+
 export interface ZLinkSpotLocation {
   readonly meshName: string;
   readonly spotRid: RoutingId;

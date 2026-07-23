@@ -137,7 +137,7 @@ export class ZLinkChannelRuntimeManager {
       case 'publisher':
         return adapter.openSocketMonitor(this.sockets['publisher'](channelName));
       case 'subscriber':
-        return adapter.openSocketMonitor(this.sockets['subscriber'](channelName));
+        return this.sockets.fanoutMonitoringSource(channelName);
       case 'router':
         return adapter.openSocketMonitor(this.sockets.routeRouter(channelName));
       default:

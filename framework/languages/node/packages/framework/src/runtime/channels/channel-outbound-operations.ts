@@ -21,6 +21,7 @@ import {
   type ZLinkChannelEnvelopeCodecRegistry,
   ZLinkChannelMessageKind
 } from './channel-envelope';
+import { requirePublicFanoutTopic } from './fanout-service-wire';
 import { ZLinkChannelDispatchServices } from './channel-dispatch-services';
 import { codecsForFrameworkPacket } from './channel-framework-packets';
 import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
@@ -217,6 +218,7 @@ export class ZLinkChannelOutboundOperations {
     event: unknown,
     metadata: ReadonlyMap<string, string> = new Map()
   ): ZLinkPublishResult {
+    requirePublicFanoutTopic(topic);
     const publisher = this.sockets['publisher'](channelName);
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
@@ -251,6 +253,7 @@ export class ZLinkChannelOutboundOperations {
     metadata: ReadonlyMap<string, string> = new Map()
   ): Promise<ZLinkPublishResult> {
     throwIfAborted(signal);
+    requirePublicFanoutTopic(topic);
     const publisher = this.sockets['publisher'](channelName);
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(

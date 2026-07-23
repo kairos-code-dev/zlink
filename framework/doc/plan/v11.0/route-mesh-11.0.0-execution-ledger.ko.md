@@ -1241,6 +1241,21 @@ probe send가 backpressure를 반환해도 deadline 전에는 연결 종료로 �
 않았다. Dedicated fanout과 다른 M6A 잔여가 있으므로 `V11-M6A-NODE` 상태는 계속 `수정 진행`으로
 유지한다.
 
+Node dedicated fanout checkpoint(2026-07-24)에서 generic peer descriptor와 shared SUB 경로를 제거하고
+exact `ZLinkFanoutPublisherDescriptor`·key·`ZLinkFanoutLocationStore`를 public contract, in-memory와 공식
+Redis provider에 연결했다. Store는 lifecycle·revision·immutable identity·owner token fence, exact owner
+cleanup과 bounded page를 구현하며 공식 fixture의 key·row와 일치한다. Publisher는 실제 bind endpoint를
+전용 descriptor에 게시하고 5초마다 reserved beacon을 보낸다. Automatic subscriber는 같은 ChannelName의
+publisher RID·lifecycle마다 SUB와 monitor 하나를 소유하며 first valid beacon/application payload 뒤에만
+ready가 되고 15초 deadline은 해당 publisher connection만 교체한다. Reserved beacon은 application
+dispatch에 전달하지 않는다. Protocol error와 deadline 뒤에는 새 physical SUB를 만들며 target identity와
+controller attempt를 함께 fence해 늦은 termination이 successor를 닫거나 제거된 descriptor를 다시 열지
+못한다. Manual endpoint별 SUB 경로는 유지하고 automatic과 함께 구성하면 startup에서 거부한다. Workspace
+typecheck·build, focused fanout 7/7 clean exit, 실제 Redis fanout fixture/fence, ClientServer 16/16,
+M6A 6/6, changed-source ESLint와 `git diff --check`가 통과했다. Core·bindings와 Sample·E2E source를
+변경하거나 실행하지 않았다. 다른 M6A·review 잔여가 있으므로 `V11-M6A-NODE` 상태는 계속
+`수정 진행`으로 유지한다.
+
 JVM ClientServer provider checkpoint(2026-07-24)에서 Java public source에 exact
 `ZLinkClientServerServerDescriptor`, key와 선택 capability인 `ZLinkClientServerLocationStore`를 추가하고
 공식 Redis provider가 이를 직접 구현하도록 연결했다. Redis row는 fixture와 같은 field 순서·상태 이름을

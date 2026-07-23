@@ -7,6 +7,7 @@ import {
   type RoutingId,
   type ZLinkActorLocation,
   type ZLinkClientServerServerDescriptor,
+  type ZLinkFanoutPublisherDescriptor,
   type ZLinkMeshNodeDescriptor,
   type ZLinkPeerLocation,
   type ZLinkRouteLocation,
@@ -15,6 +16,7 @@ import {
 import {
   encodeActorKey,
   encodeClientServerServerKey,
+  encodeFanoutPublisherKey,
   encodeMeshNodeKey,
   encodePeerKey,
   encodeRouteKey,
@@ -84,6 +86,28 @@ export const kindClientServer: LocationKind<ZLinkClientServerServerDescriptor> =
   toJsonText: clientServerToJsonText,
   fromJson: clientServerFromJson,
   fromJsonText: (json, generation, updatedAt) => clientServerFromJson(
+    JSON.parse(json.replace(
+      /("(?:LifecycleGeneration|DescriptorRevision|OwnerLeaseGeneration)":)([0-9]+)/g,
+      '$1"$2"'
+    )),
+    generation,
+    updatedAt
+  )
+};
+
+export const kindFanoutPublisher: LocationKind<ZLinkFanoutPublisherDescriptor> = {
+  tag: 'fanout-publisher',
+  encodeKey: (row) => encodeFanoutPublisherKey({
+    channelName: row.channelName,
+    publisherRid: row.publisherRid
+  }),
+  meshOf: (row) => row.channelName,
+  ownerOf: (row) => row.ownerId,
+  generationOf: () => 0n,
+  toJson: fanoutPublisherToJson,
+  toJsonText: fanoutPublisherToJsonText,
+  fromJson: fanoutPublisherFromJson,
+  fromJsonText: (json, generation, updatedAt) => fanoutPublisherFromJson(
     JSON.parse(json.replace(
       /("(?:LifecycleGeneration|DescriptorRevision|OwnerLeaseGeneration)":)([0-9]+)/g,
       '$1"$2"'
@@ -292,6 +316,63 @@ function clientServerFromJson(
     descriptorRevision: unsignedBigIntOf(row.DescriptorRevision),
     endpoint: stringOf(row.Endpoint),
     weight: numberOf(row.Weight),
+    state: runtimeStateFromName(row.State),
+    securityIdentity: stringOf(row.SecurityIdentity),
+    ownerId: stringOf(row.OwnerId),
+    leaseGeneration: unsignedBigIntOf(
+      row.OwnerLeaseGeneration ?? row.LeaseGeneration
+    ),
+    updatedAt
+  };
+}
+
+function fanoutPublisherToJson(row: ZLinkFanoutPublisherDescriptor): unknown {
+  return {
+    ChannelName: row.channelName,
+    PublisherRid: routingIdHex(row.publisherRid),
+    LifecycleGeneration: requiredUnsignedNumber(row.lifecycleGeneration, 'LifecycleGeneration'),
+    DescriptorRevision: requiredUnsignedNumber(row.descriptorRevision, 'DescriptorRevision'),
+    Endpoint: row.endpoint,
+    State: runtimeStateToName(row.state),
+    SecurityIdentity: row.securityIdentity,
+    OwnerId: row.ownerId,
+    OwnerLeaseGeneration: requiredUnsignedNumber(
+      row.leaseGeneration,
+      'OwnerLeaseGeneration'
+    ),
+    UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
+  };
+}
+
+function fanoutPublisherToJsonText(row: ZLinkFanoutPublisherDescriptor): string {
+  return [
+    '{',
+    `"ChannelName":${JSON.stringify(row.channelName)}`,
+    `,"PublisherRid":${JSON.stringify(routingIdHex(row.publisherRid))}`,
+    `,"LifecycleGeneration":${requiredUnsigned(row.lifecycleGeneration, 'LifecycleGeneration')}`,
+    `,"DescriptorRevision":${requiredUnsigned(row.descriptorRevision, 'DescriptorRevision')}`,
+    `,"Endpoint":${JSON.stringify(row.endpoint)}`,
+    `,"State":${JSON.stringify(runtimeStateToName(row.state))}`,
+    `,"SecurityIdentity":${JSON.stringify(row.securityIdentity)}`,
+    `,"OwnerId":${JSON.stringify(row.ownerId)}`,
+    `,"OwnerLeaseGeneration":${requiredUnsigned(row.leaseGeneration, 'OwnerLeaseGeneration')}`,
+    `,"UpdatedAt":${JSON.stringify(formatDotNetDateTimeOffset(row.updatedAt))}`,
+    '}'
+  ].join('');
+}
+
+function fanoutPublisherFromJson(
+  json: unknown,
+  _generation: bigint,
+  updatedAt: Date
+): ZLinkFanoutPublisherDescriptor {
+  const row = objectOf(json);
+  return {
+    channelName: stringOf(row.ChannelName),
+    publisherRid: ridOf(row.PublisherRid),
+    lifecycleGeneration: unsignedBigIntOf(row.LifecycleGeneration),
+    descriptorRevision: unsignedBigIntOf(row.DescriptorRevision),
+    endpoint: stringOf(row.Endpoint),
     state: runtimeStateFromName(row.State),
     securityIdentity: stringOf(row.SecurityIdentity),
     ownerId: stringOf(row.OwnerId),

@@ -239,7 +239,7 @@ redis.call('SREM', KEYS[4], ARGV[3])
 return {'stored', generation, nowMs}
 `;
 
-export const CLIENT_SERVER_DESCRIPTOR_WRITE_SCRIPT = PROLOGUE + `
+export const SERVICE_DESCRIPTOR_WRITE_SCRIPT = PROLOGUE + `
 local intent = ARGV[1]
 local owner = ARGV[2]
 local leaseGeneration = ARGV[3]
@@ -334,7 +334,7 @@ store(gen)
 return {'stored', gen, nowMs}
 `;
 
-export const CLIENT_SERVER_DESCRIPTOR_REMOVE_SCRIPT = PROLOGUE + `
+export const SERVICE_DESCRIPTOR_REMOVE_SCRIPT = PROLOGUE + `
 local owner = redis.call('HGET', KEYS[2], 'ownerId')
 local leaseGeneration = redis.call('HGET', KEYS[2], 'ownerLeaseGeneration')
 if not owner or owner ~= ARGV[1] or leaseGeneration ~= ARGV[2] then

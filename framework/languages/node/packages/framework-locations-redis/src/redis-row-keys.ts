@@ -21,6 +21,11 @@ export interface ClientServerServerKey {
   readonly serverRid: RoutingId;
 }
 
+export interface FanoutPublisherKey {
+  readonly channelName: string;
+  readonly publisherRid: RoutingId;
+}
+
 export interface ActorKey {
   readonly meshName?: string;
   readonly actorId: string;
@@ -52,6 +57,10 @@ export function encodeMeshNodeKey(key: MeshNodeKey): string {
 
 export function encodeClientServerServerKey(key: ClientServerServerKey): string {
   return encodeKeySegments(key.channelName, routingIdHex(key.serverRid));
+}
+
+export function encodeFanoutPublisherKey(key: FanoutPublisherKey): string {
+  return encodeKeySegments(key.channelName, routingIdHex(key.publisherRid));
 }
 
 export function encodeActorKey(key: ActorKey): string {

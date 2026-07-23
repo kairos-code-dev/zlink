@@ -163,7 +163,10 @@ export class ZLinkSubscriberReceiveLoop {
   constructor(
     private readonly adapter: ZLinkChannelBackendAdapter,
     private readonly subscriber: ZLinkBackendSubscriberSocket,
-    private readonly dispatcher: ZLinkChannelPublishDispatchLoop
+    private readonly dispatcher: ZLinkChannelPublishDispatchLoop,
+    private readonly infrastructureHandler?: (
+      topicMessage: ReturnType<ZLinkChannelBackendAdapter['createTopicMessage']>
+    ) => boolean
   ) {
     this.poller = adapter.createReadablePoller(subscriber);
   }
@@ -212,6 +215,9 @@ export class ZLinkSubscriberReceiveLoop {
 
   private async dispatchAndClose(topicMessage: ReturnType<ZLinkChannelBackendAdapter['createTopicMessage']>): Promise<void> {
     try {
+      if (this.infrastructureHandler?.(topicMessage) === true) {
+        return;
+      }
       await this.dispatcher.dispatch(topicMessage);
     } finally {
       closeMessages(topicMessage.parts as readonly Message[]);

@@ -34,6 +34,9 @@ import {
   type ZLinkMeshNodeDescriptorKey,
   type ZLinkClientServerServerDescriptor,
   type ZLinkClientServerServerDescriptorKey,
+  type ZLinkFanoutLocationStore,
+  type ZLinkFanoutPublisherDescriptor,
+  type ZLinkFanoutPublisherDescriptorKey,
   type ZLinkRoutingIdSlotAcquireRequest,
   type ZLinkRoutingIdSlotAcquireResult,
   type ZLinkRoutingIdSlotAllocation,
@@ -77,11 +80,13 @@ import {
 
 export class ZLinkInMemoryLocationStore implements
   ZLinkLocationStore,
+  ZLinkFanoutLocationStore,
   ZLinkLocationChangeStampStore,
   ZLinkRoutingIdSlotAllocationStore {
   private readonly leases = new Map<string, InMemoryOwnerLease>();
   private readonly meshNodes = new RowTable<ZLinkMeshNodeDescriptor>();
   private readonly clientServers = new RowTable<ZLinkClientServerServerDescriptor>();
+  private readonly fanoutPublishers = new RowTable<ZLinkFanoutPublisherDescriptor>();
   private readonly peers = new RowTable<ZLinkPeerLocation>();
   private readonly spots = new RowTable<ZLinkSpotLocation>();
   private readonly actors = new RowTable<ZLinkActorLocation>();
@@ -350,6 +355,86 @@ export class ZLinkInMemoryLocationStore implements
   ): Promise<ZLinkLocationPage<ZLinkClientServerServerDescriptor>> {
     signal?.throwIfAborted();
     return pageRows(this.clientServers, (row) => row.channelName === channelName, page);
+  }
+
+  async updateFanoutPublisher(
+    descriptor: ZLinkFanoutPublisherDescriptor,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult> {
+    signal?.throwIfAborted();
+    validateFanoutPublisherDescriptor(descriptor);
+    const key = fanoutPublisherKey(descriptor.channelName, descriptor.publisherRid);
+    const current = this.fanoutPublishers.rows.get(key);
+    const lease = this.leases.get(descriptor.ownerId);
+    const updatedAt = this.now();
+    if (lease === undefined
+      || lease.token.leaseGeneration !== descriptor.leaseGeneration
+      || lease.leaseExpiresAt.getTime() <= updatedAt.getTime()) {
+      return rejectedConflict();
+    }
+    if (current === undefined) {
+      if (intent !== ZLinkLocationWriteIntent.NewClaim
+        && intent !== ZLinkLocationWriteIntent.Takeover) return ignoredStale();
+      const generation = (this.fanoutPublishers.generations.get(key) ?? 0n) + 1n;
+      this.fanoutPublishers.rows.set(key, { ...descriptor, updatedAt });
+      this.fanoutPublishers.generations.set(key, generation);
+      return stored(generation, updatedAt);
+    }
+    const currentLease = this.leases.get(current.ownerId);
+    if ((currentLease === undefined || currentLease.leaseExpiresAt.getTime() <= updatedAt.getTime())
+      && (intent === ZLinkLocationWriteIntent.NewClaim
+        || intent === ZLinkLocationWriteIntent.Takeover)) {
+      const generation = (this.fanoutPublishers.generations.get(key) ?? 0n) + 1n;
+      this.fanoutPublishers.rows.set(key, { ...descriptor, updatedAt });
+      this.fanoutPublishers.generations.set(key, generation);
+      return stored(generation, updatedAt);
+    }
+    if (fanoutPublisherDescriptorFingerprint(current)
+      === fanoutPublisherDescriptorFingerprint(descriptor)) {
+      return stored(this.fanoutPublishers.generations.get(key) ?? 1n, current.updatedAt);
+    }
+    if (current.ownerId !== descriptor.ownerId
+      || current.leaseGeneration !== descriptor.leaseGeneration
+      || current.lifecycleGeneration !== descriptor.lifecycleGeneration
+      || descriptor.descriptorRevision <= current.descriptorRevision
+      || fanoutPublisherImmutableFingerprint(current)
+        !== fanoutPublisherImmutableFingerprint(descriptor)) {
+      return ignoredStale();
+    }
+    this.fanoutPublishers.rows.set(key, { ...descriptor, updatedAt });
+    return stored(this.fanoutPublishers.generations.get(key) ?? 1n, updatedAt);
+  }
+
+  async removeFanoutPublisher(
+    key: ZLinkFanoutPublisherDescriptorKey,
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteStatus> {
+    signal?.throwIfAborted();
+    const encoded = fanoutPublisherKey(key.channelName, key.publisherRid);
+    const current = this.fanoutPublishers.rows.get(encoded);
+    if (current === undefined
+      || current.ownerId !== owner.ownerId
+      || current.leaseGeneration !== owner.leaseGeneration) {
+      return ZLinkLocationWriteStatus.IgnoredStale;
+    }
+    this.fanoutPublishers.rows.delete(encoded);
+    return ZLinkLocationWriteStatus.Stored;
+  }
+
+  async listFanoutPublishers(
+    channelName: string,
+    page: ZLinkPageRequest = {},
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkFanoutPublisherDescriptor>> {
+    signal?.throwIfAborted();
+    const storeNow = this.now();
+    return pageRows(
+      this.fanoutPublishers,
+      (row) => row.channelName === channelName && this.isOwnerLive(row.ownerId, storeNow),
+      page
+    );
   }
 
   async acquireRoutingIdSlot(
@@ -842,6 +927,7 @@ export class ZLinkInMemoryLocationStore implements
       ZLinkLocationKind.ClientServer,
       (row) => row.channelName
     );
+    removed += this.removeFanoutByOwner(owner);
     return BigInt(removed);
   }
 
@@ -974,6 +1060,16 @@ export class ZLinkInMemoryLocationStore implements
     if (meshName !== undefined) {
       this.bumpScope({ kind });
     }
+  }
+
+  private removeFanoutByOwner(owner: ZLinkLocationOwnerToken): number {
+    let removed = 0;
+    for (const [key, row] of this.fanoutPublishers.rows) {
+      if (row.ownerId !== owner.ownerId || row.leaseGeneration !== owner.leaseGeneration) continue;
+      this.fanoutPublishers.rows.delete(key);
+      removed++;
+    }
+    return removed;
   }
 
   private bumpScope(scope: ZLinkLocationChangeStampScope): void {
@@ -1120,6 +1216,13 @@ function clientServerKey(channelName: string, serverRid: RoutingId): string {
   return `${channelName.length}:${channelName}:${value.length}:${value}`;
 }
 
+function fanoutPublisherKey(channelName: string, publisherRid: RoutingId): string {
+  const value = typeof publisherRid === 'string'
+    ? publisherRid
+    : (publisherRid as unknown as { toHex(): string }).toHex();
+  return `${channelName.length}:${channelName}:${value.length}:${value}`;
+}
+
 function validateClientServerDescriptor(descriptor: ZLinkClientServerServerDescriptor): void {
   if (!validDescriptorText(descriptor.channelName)
     || !validDescriptorText(String(descriptor.serverRid))
@@ -1156,6 +1259,42 @@ function clientServerDescriptorFingerprint(descriptor: ZLinkClientServerServerDe
     immutable: clientServerImmutableFingerprint(descriptor),
     descriptorRevision: descriptor.descriptorRevision.toString(),
     weight: descriptor.weight,
+    state: descriptor.state
+  });
+}
+
+function validateFanoutPublisherDescriptor(descriptor: ZLinkFanoutPublisherDescriptor): void {
+  if (!validDescriptorText(descriptor.channelName)
+    || !validDescriptorText(String(descriptor.publisherRid))
+    || !validDescriptorText(descriptor.endpoint)
+    || !validDescriptorText(descriptor.securityIdentity)
+    || !validDescriptorText(descriptor.ownerId)) {
+    throw new TypeError('Fanout publisher descriptor identity and endpoint are required.');
+  }
+  const maxGeneration = 0x7fff_ffff_ffff_ffffn;
+  if (descriptor.lifecycleGeneration < 1n || descriptor.lifecycleGeneration > maxGeneration
+    || descriptor.descriptorRevision < 1n || descriptor.descriptorRevision > maxGeneration
+    || descriptor.leaseGeneration < 1n || descriptor.leaseGeneration > maxGeneration) {
+    throw new RangeError('Fanout publisher descriptor generations are invalid.');
+  }
+}
+
+function fanoutPublisherImmutableFingerprint(descriptor: ZLinkFanoutPublisherDescriptor): string {
+  return JSON.stringify({
+    channelName: descriptor.channelName,
+    publisherRid: String(descriptor.publisherRid),
+    lifecycleGeneration: descriptor.lifecycleGeneration.toString(),
+    endpoint: descriptor.endpoint,
+    securityIdentity: descriptor.securityIdentity,
+    ownerId: descriptor.ownerId,
+    leaseGeneration: descriptor.leaseGeneration.toString()
+  });
+}
+
+function fanoutPublisherDescriptorFingerprint(descriptor: ZLinkFanoutPublisherDescriptor): string {
+  return JSON.stringify({
+    immutable: fanoutPublisherImmutableFingerprint(descriptor),
+    descriptorRevision: descriptor.descriptorRevision.toString(),
     state: descriptor.state
   });
 }

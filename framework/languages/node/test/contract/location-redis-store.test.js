@@ -877,6 +877,158 @@ test('redis ClientServer descriptors enforce revision, lifecycle takeover, pagin
   }
 });
 
+test('redis fanout publisher descriptors match the fixture and enforce dedicated fences', async (t) => {
+  const fixture = await redisFixture();
+  if (fixture === undefined) {
+    t.skip('Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT or run Redis on 127.0.0.1:16379/6379.');
+    return;
+  }
+  const prefix = `zlink:node-location-fanout:${process.pid}:${Date.now()}`;
+  const store = new redisLocations.ZLinkRedisLocationStore({ url: fixture.url, keyPrefix: prefix });
+  try {
+    const owner = await store.claimOwnerLease('fanout-owner-a', 30_000);
+    assert.equal(owner.kind, 'claimed');
+    const initial = fanoutPublisherDescriptor(
+      'events-pub-a',
+      owner.token.ownerId,
+      owner.token.leaseGeneration
+    );
+    const claimed = await store.updateFanoutPublisher(
+      initial,
+      framework.ZLinkLocationWriteIntent.NewClaim
+    );
+    assert.equal(claimed.status, framework.ZLinkLocationWriteStatus.Stored);
+    assert.equal(claimed.generation, 1n);
+
+    assert.equal(
+      (await store.updateFanoutPublisher(
+        { ...initial, state: framework.ZLinkFrameworkRuntimeState.Draining },
+        framework.ZLinkLocationWriteIntent.Renew
+      )).status,
+      framework.ZLinkLocationWriteStatus.IgnoredStale
+    );
+    assert.equal(
+      (await store.updateFanoutPublisher(
+        { ...initial, descriptorRevision: 4n, endpoint: 'tcp://10.0.0.9:7500' },
+        framework.ZLinkLocationWriteIntent.Renew
+      )).status,
+      framework.ZLinkLocationWriteStatus.IgnoredStale
+    );
+    assert.equal(
+      (await store.updateFanoutPublisher(
+        { ...initial, lifecycleGeneration: 8n, descriptorRevision: 4n },
+        framework.ZLinkLocationWriteIntent.Renew
+      )).status,
+      framework.ZLinkLocationWriteStatus.IgnoredStale
+    );
+    assert.equal(
+      (await store.updateFanoutPublisher(
+        {
+          ...initial,
+          descriptorRevision: 4n,
+          state: framework.ZLinkFrameworkRuntimeState.Draining
+        },
+        framework.ZLinkLocationWriteIntent.Renew
+      )).status,
+      framework.ZLinkLocationWriteStatus.Stored
+    );
+
+    const fixtureContract = redisSemanticFixture('fanout-publisher-descriptor-v1.json');
+    const rowDigest = createHash('sha256')
+      .update(fixtureContract.row.key, 'utf8')
+      .digest('hex');
+    const physicalKey =
+      `${prefix}:{zlink-location-v1}:descriptor:fanout-publisher:${rowDigest}`;
+    const storedHash = await fixture.client.hGetAll(physicalKey);
+    assert.deepEqual(Object.keys(storedHash).sort(), fixtureContract.hashFields.slice().sort());
+    assert.equal(storedHash.owner, initial.ownerId);
+    assert.equal(storedHash.channel, initial.channelName);
+    assert.deepEqual(JSON.parse(storedHash.json), {
+      ...JSON.parse(fixtureContract.row.hash.json),
+      DescriptorRevision: 4,
+      State: 'Draining',
+      OwnerLeaseGeneration: Number(owner.token.leaseGeneration)
+    });
+
+    const second = fanoutPublisherDescriptor(
+      'events-pub-b',
+      owner.token.ownerId,
+      owner.token.leaseGeneration
+    );
+    assert.equal(
+      (await store.updateFanoutPublisher(
+        second,
+        framework.ZLinkLocationWriteIntent.NewClaim
+      )).status,
+      framework.ZLinkLocationWriteStatus.Stored
+    );
+    const listed = [];
+    let continuationToken;
+    do {
+      const page = await store.listFanoutPublishers('events', {
+        pageSize: 1,
+        continuationToken
+      });
+      listed.push(...page.items);
+      continuationToken = page.continuationToken;
+    } while (continuationToken !== undefined);
+    assert.deepEqual(
+      listed.map(row => row.publisherRid.toHex()).sort(),
+      [rid('events-pub-a').toHex(), rid('events-pub-b').toHex()].sort()
+    );
+    await assert.rejects(
+      store.listFanoutPublishers('events', {
+        pageSize: 1,
+        continuationToken: Buffer.from(JSON.stringify({
+          kind: 'client-server-v1',
+          channelName: 'events',
+          offset: 1
+        })).toString('base64url')
+      }),
+      /continuation token/
+    );
+
+    const audit = {
+      ...fanoutPublisherDescriptor(
+        'audit-pub-a',
+        owner.token.ownerId,
+        owner.token.leaseGeneration
+      ),
+      channelName: 'audit'
+    };
+    assert.equal(
+      (await store.updateFanoutPublisher(
+        audit,
+        framework.ZLinkLocationWriteIntent.NewClaim
+      )).status,
+      framework.ZLinkLocationWriteStatus.Stored
+    );
+    assert.equal(
+      await store.removeFanoutPublisher(
+        { channelName: 'audit', publisherRid: audit.publisherRid },
+        {
+          ownerId: owner.token.ownerId,
+          leaseGeneration: owner.token.leaseGeneration + 1n
+        }
+      ),
+      framework.ZLinkLocationWriteStatus.IgnoredStale
+    );
+    assert.equal(
+      await store.removeFanoutPublisher(
+        { channelName: 'audit', publisherRid: audit.publisherRid },
+        owner.token
+      ),
+      framework.ZLinkLocationWriteStatus.Stored
+    );
+    assert.equal(await store.removeAllByOwner(owner.token), 2n);
+    assert.equal((await store.listFanoutPublishers('events')).items.length, 0);
+  } finally {
+    await store.dispose();
+    await cleanupPrefix(fixture.client, prefix);
+    await fixture.client.quit();
+  }
+});
+
 test('redis location store validates required connection options', () => {
   assert.throws(
     () => new redisLocations.ZLinkRedisLocationStore({ url: 'redis://127.0.0.1:6379', keyPrefix: '' }),
@@ -1078,6 +1230,21 @@ function clientServerDescriptor(serverName, ownerId, leaseGeneration) {
     descriptorRevision: 3n,
     endpoint: 'tcp://10.0.0.2:7400',
     weight: 100,
+    state: framework.ZLinkFrameworkRuntimeState.Serving,
+    securityIdentity: 'cluster-a',
+    ownerId,
+    leaseGeneration,
+    updatedAt: new Date('2024-07-15T00:00:00.000Z')
+  };
+}
+
+function fanoutPublisherDescriptor(publisherName, ownerId, leaseGeneration) {
+  return {
+    channelName: 'events',
+    publisherRid: rid(publisherName),
+    lifecycleGeneration: 7n,
+    descriptorRevision: 3n,
+    endpoint: 'tcp://10.0.0.3:7500',
     state: framework.ZLinkFrameworkRuntimeState.Serving,
     securityIdentity: 'cluster-a',
     ownerId,

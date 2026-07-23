@@ -6,6 +6,7 @@ import type {
   ZLinkRuntimeEventPublisher
 } from '../../contracts';
 import type {
+  ZLinkFanoutLocationStore,
   ZLinkPeerLocationStore,
   ZLinkRouteLocationStore
 } from '../../contracts/Locations/Stores';
@@ -226,6 +227,7 @@ export class ZLinkLocationRuntimeOwner {
       return {
         locationStore: store,
         clientServerStore: store,
+        fanoutStore: store,
         peerStore: store,
         spotStore: store,
         actorStore: store,
@@ -239,6 +241,7 @@ export class ZLinkLocationRuntimeOwner {
       return {
         locationStore: store,
         clientServerStore: isClientServerLocationStore(store) ? store : undefined,
+        fanoutStore: isFanoutLocationStore(store) ? store : undefined,
         peerStore: runtimeStore,
         spotStore: store,
         actorStore: store,
@@ -315,6 +318,13 @@ function isRoutingIdAllocationStore(value: unknown): value is ZLinkRoutingIdSlot
   return typeof store?.acquireRoutingIdSlot === 'function'
     && typeof store.releaseRoutingIdSlot === 'function'
     && typeof store.listRoutingIdSlots === 'function';
+}
+
+function isFanoutLocationStore(value: unknown): value is ZLinkFanoutLocationStore {
+  const store = value as Partial<ZLinkFanoutLocationStore> | undefined;
+  return typeof store?.updateFanoutPublisher === 'function'
+    && typeof store.removeFanoutPublisher === 'function'
+    && typeof store.listFanoutPublishers === 'function';
 }
 
 function isActorTransferStore(value: unknown): value is ZLinkActorTransferStore {

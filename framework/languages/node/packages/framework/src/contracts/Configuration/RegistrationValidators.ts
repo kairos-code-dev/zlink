@@ -42,6 +42,7 @@ export function validateFrameworkRegistration(
   validateMonitoring(registration);
   validateLocationRegistration(registration);
   validateClientServerLocationStore(registration);
+  validateFanoutLocationStore(registration);
   validateActorTransferAuthority(registration);
   validateRoutingIdAllocations(registration);
 }
@@ -146,6 +147,27 @@ function validateClientServerLocationStore(registration: ZLinkFrameworkRegistrat
     || typeof store.listClientServers !== 'function') {
     throw new ZLinkConfigurationException(
       'ClientServer automatic discovery requires dedicated ClientServer descriptor store operations.'
+    );
+  }
+}
+
+function validateFanoutLocationStore(registration: ZLinkFrameworkRegistration): void {
+  const hasStore = hasLocationStores(registration);
+  const requiresDedicatedStore = [...registration.channels.values()].some((channel) =>
+    (channel.publisher !== undefined && hasStore)
+    || (channel.subscriber !== undefined
+      && (channel.subscriber.manualConnections?.length ?? 0) === 0));
+  if (!requiresDedicatedStore || registration.locations.useInMemoryStores) return;
+  const store = registration.locations.storeInstance as Partial<Record<
+    'updateFanoutPublisher' | 'removeFanoutPublisher' | 'listFanoutPublishers',
+    unknown
+  >> | undefined;
+  if (store === undefined) return;
+  if (typeof store.updateFanoutPublisher !== 'function'
+    || typeof store.removeFanoutPublisher !== 'function'
+    || typeof store.listFanoutPublishers !== 'function') {
+    throw new ZLinkConfigurationException(
+      'Classic fanout automatic discovery requires dedicated fanout publisher descriptor store operations.'
     );
   }
 }

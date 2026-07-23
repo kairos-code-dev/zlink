@@ -90,6 +90,26 @@ export class RedisStoreKeys {
     return `${this.authorityDomain}:descriptor:client-server:owner:${digest(`${ownerId}\0${leaseGeneration}`)}`;
   }
 
+  descriptorFanoutPublisher(canonicalKey: string): string {
+    return `${this.authorityDomain}:descriptor:fanout-publisher:${digest(canonicalKey)}`;
+  }
+
+  descriptorAdmissionFanoutPublisher(canonicalKey: string): string {
+    return `${this.authorityDomain}:descriptor-admission:fanout-publisher:${digest(canonicalKey)}`;
+  }
+
+  descriptorFanoutPublisherIndex(): string {
+    return `${this.authorityDomain}:descriptor:fanout-publisher:index`;
+  }
+
+  descriptorFanoutPublisherChannelIndex(channelName: string): string {
+    return `${this.authorityDomain}:descriptor:fanout-publisher:channel:${digest(channelName)}`;
+  }
+
+  descriptorFanoutPublisherOwnerIndex(ownerId: string, leaseGeneration: string): string {
+    return `${this.authorityDomain}:descriptor:fanout-publisher:owner:${digest(`${ownerId}\0${leaseGeneration}`)}`;
+  }
+
   authorityCurrent(authorityKey: string): string {
     return `${this.authorityDomain}:authority:current:${digest(authorityKey)}`;
   }

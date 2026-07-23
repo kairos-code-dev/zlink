@@ -29,6 +29,11 @@ export interface ZLinkClientServerServerDescriptorKey {
   readonly serverRid: RoutingId;
 }
 
+export interface ZLinkFanoutPublisherDescriptorKey {
+  readonly channelName: string;
+  readonly publisherRid: RoutingId;
+}
+
 export interface ZLinkActorLocationKey {
   readonly meshName: string;
   readonly actorId: string;

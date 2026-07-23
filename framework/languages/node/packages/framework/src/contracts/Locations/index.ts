@@ -5,6 +5,7 @@ export * from './Resolvers';
 export type {
   ZLinkActorLocationStore,
   ZLinkClientServerLocationStore,
+  ZLinkFanoutLocationStore,
   ZLinkLocationChangeStampStore,
   ZLinkLocationStore,
   ZLinkLocationWatchStore,

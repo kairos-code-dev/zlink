@@ -12,8 +12,6 @@ import {
 } from '../backend/contracts';
 import type { ZLinkRuntimeTaskRunner } from '../execution';
 import {
-  ZLinkAutoConnectLoop,
-  ZLinkAutoConnectReconciler,
   ZLinkLocationRuntime,
   type ZLinkLocationEventSink,
   type ZLinkLocationRuntimeStores
@@ -22,7 +20,6 @@ import type { Message } from '@zlink-systems/zlink';
 import type { ReceiveRecord } from '../foundation/service-runtime-contracts';
 import type { RoutingId } from '../../contracts';
 import {
-  buildChannelAutoConnectCapabilities,
   createChannelLocationAutoConnectContext,
   type ZLinkChannelLocationAutoConnectContext
 } from './channel-autoconnect';
@@ -46,6 +43,7 @@ import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
 import { ZLinkSpotRouteBridgeRawReplyRegistry } from './spot-route-bridge-raw-reply';
 import { ZLinkSpotRouteDispatchStrategy } from './spot-route-dispatch-strategy';
 import { ZLinkClientServerLocationRuntime } from './client-server-location-runtime';
+import { ZLinkFanoutLocationRuntime } from './fanout-location-runtime';
 
 export interface ZLinkChannelRuntimeLifecycleOptions {
   readonly registration: ZLinkFrameworkRegistration;
@@ -64,11 +62,12 @@ export class ZLinkChannelRuntimeLifecycle {
   private readonly channelReceiveLoops: ZLinkChannelReceiveLoop[] = [];
   private readonly subscriberReceiveLoops: ZLinkSubscriberReceiveLoop[] = [];
   private readonly routeReceiveLoops: Array<{ stop(): Promise<void> }> = [];
-  private readonly autoConnectLoops: ZLinkAutoConnectLoop[] = [];
   private readonly meshChannelDispatchers = new Map<string, ZLinkChannelRequestDispatcher>();
   private readonly meshRouteDispatchers = new Map<string, ZLinkRoutePacketDispatcher>();
   private locationAutoConnect?: ZLinkChannelLocationAutoConnectContext;
   private clientServerLocation?: ZLinkClientServerLocationRuntime;
+  private fanoutLocation?: ZLinkFanoutLocationRuntime;
+  private taskRunner?: ZLinkRuntimeTaskRunner;
 
   constructor(private readonly options: ZLinkChannelRuntimeLifecycleOptions) {}
 
@@ -84,12 +83,11 @@ export class ZLinkChannelRuntimeLifecycle {
   async startLocationAutoConnect(signal?: AbortSignal): Promise<void> {
     const location = this.locationAutoConnect;
     if (location === undefined
-      || this.autoConnectLoops.length > 0
-      || this.clientServerLocation !== undefined) {
+      || this.clientServerLocation !== undefined
+      || this.fanoutLocation !== undefined) {
       return;
     }
 
-    const capabilities = buildChannelAutoConnectCapabilities(this.options.registration, this.options.sockets);
     try {
       if (hasClientServerLocationTopology(this.options.registration)) {
         this.clientServerLocation = new ZLinkClientServerLocationRuntime(
@@ -101,33 +99,27 @@ export class ZLinkChannelRuntimeLifecycle {
         );
         await this.clientServerLocation.start(signal);
       }
-      for (const capability of capabilities) {
-        const reconciler = new ZLinkAutoConnectReconciler({
-          local: capability.local,
-          localRow: capability.localRow,
-          runtime: location.runtime,
-          peerResolver: location.resolver,
-          executor: capability.executor,
-          reconcilePeers: capability.reconcilePeers,
-          events: location.events,
-          options: location.options
-        });
-        const loop = new ZLinkAutoConnectLoop({
-          reconciler,
-          local: capability.local,
-          options: location.options,
-          changeStampStore: location.changeStampStore,
-          watchStore: location.watchStore,
-          leaseTracker: location.leaseTracker
-        });
-        await loop.start(signal);
-        this.autoConnectLoops.push(loop);
+      if (hasFanoutLocationTopology(this.options.registration)) {
+        this.fanoutLocation = new ZLinkFanoutLocationRuntime(
+          this.options.registration,
+          this.options.sockets,
+          location.runtime,
+          location.stores,
+          location.options,
+          (channelName, connectionId, subscriber) =>
+            this.startFanoutSubscriberLoop(
+              channelName,
+              connectionId,
+              subscriber
+            )
+        );
+        await this.fanoutLocation.start(signal);
       }
     } catch (error) {
-      await Promise.allSettled(this.autoConnectLoops.map((loop) => loop.stop(signal)));
-      this.autoConnectLoops.length = 0;
       await this.clientServerLocation?.stop(signal).catch(() => undefined);
       this.clientServerLocation = undefined;
+      await this.fanoutLocation?.stop(signal).catch(() => undefined);
+      this.fanoutLocation = undefined;
       throw error;
     }
   }
@@ -141,6 +133,7 @@ export class ZLinkChannelRuntimeLifecycle {
   }
 
   start(taskRunner?: ZLinkRuntimeTaskRunner): Promise<void>[] {
+    this.taskRunner = taskRunner;
     this.prepareMeshDispatch(taskRunner);
     this.openOutboundSockets();
     const tasks = [
@@ -252,14 +245,15 @@ export class ZLinkChannelRuntimeLifecycle {
     const channelLoops = [...this.channelReceiveLoops];
     const subscriberLoops = [...this.subscriberReceiveLoops];
     const routeLoops = [...this.routeReceiveLoops];
-    const autoConnectLoops = [...this.autoConnectLoops];
     const clientServerLocation = this.clientServerLocation;
+    const fanoutLocation = this.fanoutLocation;
     const spotRouteBridges = [...this.options.spotRouteBridges.values()];
     this.channelReceiveLoops.length = 0;
     this.subscriberReceiveLoops.length = 0;
     this.routeReceiveLoops.length = 0;
-    this.autoConnectLoops.length = 0;
     this.clientServerLocation = undefined;
+    this.fanoutLocation = undefined;
+    this.taskRunner = undefined;
     this.meshChannelDispatchers.clear();
     this.meshRouteDispatchers.clear();
     this.options.spotRouteBridges.clear();
@@ -269,12 +263,14 @@ export class ZLinkChannelRuntimeLifecycle {
       ...routeLoops.map((loop) => loop.stop())
     ];
     const transportStopped = await Promise.allSettled([
-      ...loopStops,
-      ...autoConnectLoops.map((loop) => loop.stop(signal))
+      ...loopStops
     ]);
     const descriptorStopped = clientServerLocation === undefined
       ? []
       : await Promise.allSettled([clientServerLocation.stop(signal)]);
+    const fanoutDescriptorStopped = fanoutLocation === undefined
+      ? []
+      : await Promise.allSettled([fanoutLocation.stop(signal)]);
     this.options.spotRouteBridgeRawReplies.rejectAll(
       new ZLinkConfigurationException('Channel runtime disposed before the SPOT route reply arrived.')
     );
@@ -282,7 +278,12 @@ export class ZLinkChannelRuntimeLifecycle {
       ...spotRouteBridges.map((bridge) => bridge.dispose()),
       this.options.sockets.dispose()
     ]);
-    const errors = [...transportStopped, ...descriptorStopped, ...cleanup]
+    const errors = [
+      ...transportStopped,
+      ...descriptorStopped,
+      ...fanoutDescriptorStopped,
+      ...cleanup
+    ]
       .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
       .map((result) => result.reason);
     if (errors.length === 1) throw errors[0];
@@ -357,7 +358,6 @@ export class ZLinkChannelRuntimeLifecycle {
           `Fanout channel '${channelName}' publish handler dispatch requires a runtime task runner.`
         );
       }
-      const subscriber = this.options.sockets['subscriber'](channelName);
       const dispatcher = new ZLinkChannelPublishDispatcher({
         channelName,
         codecs: this.options.codecs,
@@ -367,11 +367,130 @@ export class ZLinkChannelRuntimeLifecycle {
         unhandled: this.options.registration.dispatch?.unhandled,
         metrics: this.options.dispatchServices.metrics()
       });
-      const loop = new ZLinkSubscriberReceiveLoop(this.options.adapter, subscriber, dispatcher);
-      this.subscriberReceiveLoops.push(loop);
-      tasks.push(taskRunner.run(`subscriber:${channelName}`, (signal) => loop.run(signal)));
+      const endpoints = channel.subscriber.manualConnections ?? [];
+      for (const [index, endpoint] of endpoints.entries()) {
+        tasks.push(this.openManualFanoutSubscriber(
+          channelName,
+          endpoint,
+          index,
+          taskRunner,
+          dispatcher
+        ));
+      }
     }
     return tasks;
+  }
+
+  private openManualFanoutSubscriber(
+    channelName: string,
+    endpoint: string,
+    index: number,
+    taskRunner: ZLinkRuntimeTaskRunner,
+    dispatcher: ZLinkChannelPublishDispatcher
+  ): Promise<void> {
+    const connectionId = `manual\0${channelName}\0${endpoint}`;
+    let loop: ZLinkSubscriberReceiveLoop;
+    let reconnecting = false;
+    const subscriber = this.options.sockets.openFanoutSubscriberConnection(
+      channelName,
+      connectionId,
+      endpoint,
+      {
+        onReady() {},
+        onTerminated: () => {
+          if (reconnecting) return;
+          reconnecting = true;
+          setImmediate(() => {
+            void loop.stop()
+              .then(() => this.removeSubscriberReceiveLoop(loop))
+              .then(() => this.options.sockets
+                .closeFanoutSubscriberConnection(connectionId))
+              .then(() => {
+                if (this.taskRunner === taskRunner) {
+                  void this.openManualFanoutSubscriber(
+                    channelName,
+                    endpoint,
+                    index,
+                    taskRunner,
+                    dispatcher
+                  );
+                }
+              })
+              .catch(error => taskRunner.errorSink
+                .reportRuntimeTaskException(
+                  `subscriber:${channelName}:manual:${index}:reconnect`,
+                  error
+                ));
+          });
+        }
+      }
+    );
+    loop = new ZLinkSubscriberReceiveLoop(
+      this.options.adapter,
+      subscriber,
+      dispatcher,
+          message => this.options.sockets.handleFanoutInbound(
+            connectionId,
+            message,
+            subscriber
+      )
+    );
+    this.subscriberReceiveLoops.push(loop);
+    return taskRunner.run(
+      `subscriber:${channelName}:manual:${index}`,
+      signal => loop.run(signal)
+    );
+  }
+
+  private startFanoutSubscriberLoop(
+    channelName: string,
+    connectionId: string,
+    subscriber: import('../backend/contracts').ZLinkBackendSubscriberSocket
+  ): () => Promise<void> {
+    const taskRunner = this.taskRunner;
+    const channel = this.options.registration.channels.get(channelName);
+    if (taskRunner === undefined || channel === undefined) {
+      throw new ZLinkConfigurationException(
+        `Fanout subscriber '${channelName}' requires a running task runner.`
+      );
+    }
+    const dispatcher = new ZLinkChannelPublishDispatcher({
+      channelName,
+      codecs: this.options.codecs,
+      dispatchErrors: this.options.dispatchServices
+        .dispatchErrorReporter(taskRunner.errorSink),
+      handlers: new Map(channel.publishHandlers?.map(handler => [
+        handler.packetName,
+        handler.handler
+      ])),
+      filters: this.options.dispatchServices.handlerFilters(),
+      unhandled: this.options.registration.dispatch?.unhandled,
+      metrics: this.options.dispatchServices.metrics()
+    });
+    const loop = new ZLinkSubscriberReceiveLoop(
+      this.options.adapter,
+      subscriber,
+      dispatcher,
+      message => this.options.sockets.handleFanoutInbound(
+        connectionId,
+        message,
+        subscriber
+      )
+    );
+    this.subscriberReceiveLoops.push(loop);
+    void taskRunner.run(
+      `subscriber:${channelName}:automatic:${connectionId}`,
+      signal => loop.run(signal)
+    );
+    return async () => {
+      await loop.stop();
+      this.removeSubscriberReceiveLoop(loop);
+    };
+  }
+
+  private removeSubscriberReceiveLoop(loop: ZLinkSubscriberReceiveLoop): void {
+    const index = this.subscriberReceiveLoops.indexOf(loop);
+    if (index >= 0) this.subscriberReceiveLoops.splice(index, 1);
   }
 
   private startRouteReceivers(taskRunner: ZLinkRuntimeTaskRunner | undefined): Promise<void>[] {
@@ -453,6 +572,19 @@ function hasClientServerLocationTopology(registration: ZLinkFrameworkRegistratio
   for (const channel of registration.channels.values()) {
     if (channel.server !== undefined
       || (channel.client !== undefined && (channel.client.manualConnections?.length ?? 0) === 0)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasFanoutLocationTopology(
+  registration: ZLinkFrameworkRegistration
+): boolean {
+  for (const channel of registration.channels.values()) {
+    if (channel.publisher !== undefined
+      || (channel.subscriber !== undefined
+        && (channel.subscriber.manualConnections?.length ?? 0) === 0)) {
       return true;
     }
   }

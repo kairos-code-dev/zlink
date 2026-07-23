@@ -195,7 +195,16 @@ final class ZLinkRedisAuthorityClient {
         end
         local currentReservation = redis.call('HGET', KEYS[1], 'reservationVersion')
         if not currentReservation then
-            return {'already-committed', nowMs}
+            if redis.call('HGET', KEYS[1], 'allocationState') == 'active'
+                and redis.call('HGET', KEYS[1], 'objectGeneration') == ARGV[2]
+                and redis.call('HGET', KEYS[1], 'ownerGeneration') == ARGV[3]
+                and redis.call('HGET', KEYS[1], 'ownerId') == ARGV[4]
+                and redis.call('HGET', KEYS[1], 'ownerLeaseGeneration') == ARGV[5]
+                and redis.call('HGET', KEYS[1], 'targetDescriptor') == ARGV[6]
+                and redis.call('HGET', KEYS[1], 'targetDescriptorLifecycleGeneration') == ARGV[7] then
+                return {'already-committed', nowMs}
+            end
+            return {'stale', nowMs}
         end
         if currentReservation ~= ARGV[1]
             or redis.call('HGET', KEYS[1], 'objectGeneration') ~= ARGV[2]
@@ -275,7 +284,12 @@ final class ZLinkRedisAuthorityClient {
         end
         if redis.call('HGET', KEYS[1], 'ownerId') ~= ARGV[2]
             or redis.call('HGET', KEYS[1], 'ownerLeaseGeneration') ~= ARGV[3]
-            or not leaseIsLive(ARGV[2], ARGV[3]) then
+            or redis.call('HGET', KEYS[1], 'allocationState') ~= 'active'
+            or redis.call('HGET', KEYS[1], 'allocationObjectKind') ~= ARGV[6]
+            or redis.call('HGET', KEYS[1], 'stableType') ~= ARGV[7]
+            or redis.call('HGET', KEYS[1], 'targetDescriptor') ~= ARGV[8]
+            or redis.call('HGET', KEYS[1], 'targetDescriptorLifecycleGeneration') ~= ARGV[9]
+            or redis.call('HGET', KEYS[1], 'allocationCapacityDelta') ~= ARGV[10] then
             return {'conflict', nowMs}
         end
         if not leaseIsLive(ARGV[4], ARGV[5]) then
@@ -585,7 +599,13 @@ final class ZLinkRedisAuthorityClient {
                     request.sourceOwner().leaseGeneration()),
                 request.targetOwner().ownerId(),
                 Long.toString(
-                    request.targetOwner().leaseGeneration())))
+                    request.targetOwner().leaseGeneration()),
+                Integer.toString(request.objectKind().value()),
+                request.stableType(),
+                descriptorKey(request.sourceDescriptor()),
+                Long.toString(
+                    request.sourceDescriptorLifecycleGeneration()),
+                Integer.toString(request.capacityDelta())))
             .thenCompose(raw -> {
                 String status = string(raw.getFirst());
                 if ("conflict".equals(status)) {
@@ -612,22 +632,31 @@ final class ZLinkRedisAuthorityClient {
     CompletionStage<ZLinkAggregatePrepareResult> prepareAggregate(
         ZLinkAggregatePrepareRequest request,
         ZLinkStoreCancellation cancellation) {
-        return unsupportedAggregate(
-            "aggregate prepare requires relocation capacity reservations backed by the exact MeshNode capacity descriptor");
+        if (cancelled(cancellation)) {
+            return cancelledStage();
+        }
+        return CompletableFuture.completedFuture(
+            new ZLinkAggregateConflict());
     }
 
     CompletionStage<ZLinkAggregateCommitResult> commitAggregate(
         ZLinkAggregateFence fence,
         ZLinkStoreCancellation cancellation) {
-        return unsupportedAggregate(
-            "aggregate commit requires a prepared relocation capacity aggregate");
+        if (cancelled(cancellation)) {
+            return cancelledStage();
+        }
+        return CompletableFuture.completedFuture(
+            ZLinkAggregateCommitResult.STALE);
     }
 
     CompletionStage<ZLinkAggregateAbortResult> abortAggregate(
         ZLinkAggregateFence fence,
         ZLinkStoreCancellation cancellation) {
-        return unsupportedAggregate(
-            "aggregate abort requires a prepared relocation capacity aggregate");
+        if (cancelled(cancellation)) {
+            return cancelledStage();
+        }
+        return CompletableFuture.completedFuture(
+            ZLinkAggregateAbortResult.STALE);
     }
 
     private ZLinkAuthorityReadResult readResult(List<Object> raw) {
@@ -746,11 +775,6 @@ final class ZLinkRedisAuthorityClient {
         return CompletableFuture.failedFuture(
             new java.util.concurrent.CancellationException(
                 "store operation was cancelled before I/O"));
-    }
-
-    private static <T> CompletionStage<T> unsupportedAggregate(String message) {
-        return CompletableFuture.failedFuture(
-            new IllegalStateException(message));
     }
 
     private static String encode(byte[] value) {

@@ -241,6 +241,35 @@ class ZLinkRedisLocationStoreTest {
                         new byte[] {1, 2},
                         () -> false)
                     .toCompletableFuture().get());
+            assertEquals(
+                systems.zlink.framework.locations
+                    .ZLinkObjectCommitResult.ALREADY_COMMITTED,
+                store.commit(
+                        reserved.reservation(),
+                        new byte[] {1, 2},
+                        () -> false)
+                    .toCompletableFuture().get());
+            var staleReservation =
+                new systems.zlink.framework.locations
+                    .ZLinkObjectReservation(
+                        reserved.reservation().authorityKey(),
+                        reserved.reservation().storeVersion(),
+                        reserved.reservation().objectGeneration(),
+                        reserved.reservation()
+                            .authorityOwnerGeneration(),
+                        reserved.reservation().reservationVersion(),
+                        reserved.reservation().targetDescriptor(),
+                        reserved.reservation()
+                            .targetDescriptorLifecycleGeneration() + 1,
+                        reserved.reservation().targetOwner());
+            assertEquals(
+                systems.zlink.framework.locations
+                    .ZLinkObjectCommitResult.STALE,
+                store.commit(
+                        staleReservation,
+                        new byte[] {1, 2},
+                        () -> false)
+                    .toCompletableFuture().get());
             var current = assertInstanceOf(
                 systems.zlink.framework.locations.ZLinkAuthoritySnapshot.class,
                 store.read(request.authorityKey(), () -> false)
@@ -281,6 +310,163 @@ class ZLinkRedisLocationStoreTest {
                             updated.storeVersion()),
                         new systems.zlink.framework.locations.ZLinkAuthorityDelete(),
                         () -> false)
+                    .toCompletableFuture().get());
+        }
+    }
+
+    @Test
+    void redisRelocationCapacityUsesDurableSourceAllocationAfterSourceLeaseRelease()
+        throws Exception {
+        String endpoint = System.getenv("ZLINK_REDIS_LOCATION_ENDPOINT");
+        assumeTrue(endpoint != null && !endpoint.isBlank(),
+            "ZLINK_REDIS_LOCATION_ENDPOINT is not set");
+        try (ZLinkRedisLocationStore store = new ZLinkRedisLocationStore(
+            new ZLinkRedisLocationOptions()
+                .setConnectionString(endpoint)
+                .setKeyPrefix(
+                    "zlink:authority-relocation-test:"
+                        + UUID.randomUUID()))) {
+            var source = assertInstanceOf(
+                ZLinkOwnerLeaseClaimed.class,
+                store.claimOwnerLease(
+                        "source-owner",
+                        Duration.ofSeconds(30))
+                    .toCompletableFuture().get()).token();
+            var target = assertInstanceOf(
+                ZLinkOwnerLeaseClaimed.class,
+                store.claimOwnerLease(
+                        "target-owner",
+                        Duration.ofSeconds(30))
+                    .toCompletableFuture().get()).token();
+            String authorityKey = "zla1:a:4:game:7:actor-2";
+            var sourceDescriptor =
+                new systems.zlink.framework.locations
+                    .ZLinkMeshNodeDescriptorKey("game", NODE_A);
+            var targetDescriptor =
+                new systems.zlink.framework.locations
+                    .ZLinkMeshNodeDescriptorKey(
+                        "game",
+                        RoutingId.from(new byte[] {0x02}));
+            var reservation = assertInstanceOf(
+                systems.zlink.framework.locations.ZLinkObjectReserved.class,
+                store.reserve(
+                        new systems.zlink.framework.locations
+                            .ZLinkObjectReservationRequest(
+                                systems.zlink.framework.locations
+                                    .ZLinkPlacementObjectKind.ACTOR,
+                                authorityKey,
+                                "player",
+                                Optional.empty(),
+                                Optional.empty(),
+                                "creation-root",
+                                new byte[32],
+                                32,
+                                sourceDescriptor,
+                                7,
+                                source,
+                                new byte[] {1},
+                                1),
+                        () -> false)
+                    .toCompletableFuture().get()).reservation();
+            assertEquals(
+                systems.zlink.framework.locations
+                    .ZLinkObjectCommitResult.COMMITTED,
+                store.commit(reservation, new byte[] {2}, () -> false)
+                    .toCompletableFuture().get());
+            var current = assertInstanceOf(
+                systems.zlink.framework.locations
+                    .ZLinkAuthoritySnapshot.class,
+                store.read(authorityKey, () -> false)
+                    .toCompletableFuture().get());
+            assertEquals(
+                systems.zlink.framework.locations
+                    .ZLinkOwnerLeaseReleaseResult.RELEASED,
+                store.releaseOwnerLease(source)
+                    .toCompletableFuture().get());
+
+            var request =
+                new systems.zlink.framework.locations
+                    .ZLinkRelocationCapacityReservationRequest(
+                        UUID.randomUUID(),
+                        authorityKey,
+                        current.storeVersion(),
+                        current.allocation().objectKind(),
+                        current.allocation().stableType(),
+                        current.allocation().descriptor(),
+                        current.allocation()
+                            .descriptorLifecycleGeneration(),
+                        source,
+                        targetDescriptor,
+                        9,
+                        target,
+                        current.allocation().capacityDelta());
+            assertInstanceOf(
+                systems.zlink.framework.locations
+                    .ZLinkRelocationCapacityTargetUnavailable.class,
+                store.reserveRelocationCapacity(request, () -> false)
+                    .toCompletableFuture().get());
+
+            var mismatched =
+                new systems.zlink.framework.locations
+                    .ZLinkRelocationCapacityReservationRequest(
+                        UUID.randomUUID(),
+                        authorityKey,
+                        current.storeVersion(),
+                        current.allocation().objectKind(),
+                        "different-type",
+                        current.allocation().descriptor(),
+                        current.allocation()
+                            .descriptorLifecycleGeneration(),
+                        source,
+                        targetDescriptor,
+                        9,
+                        target,
+                        current.allocation().capacityDelta());
+            assertInstanceOf(
+                systems.zlink.framework.locations
+                    .ZLinkRelocationCapacityConflict.class,
+                store.reserveRelocationCapacity(mismatched, () -> false)
+                    .toCompletableFuture().get());
+
+            UUID aggregateId = UUID.randomUUID();
+            var aggregateRequest =
+                new systems.zlink.framework.locations
+                    .ZLinkAggregatePrepareRequest(
+                        aggregateId,
+                        1,
+                        List.of(
+                            new systems.zlink.framework.locations
+                                .ZLinkAggregateParticipant(
+                                    authorityKey,
+                                    current.storeVersion(),
+                                    systems.zlink.framework.locations
+                                        .ZLinkAuthorityGenerationTransition
+                                        .NEW_OWNER,
+                                    new byte[] {3},
+                                    new byte[] {4})),
+                        new byte[32],
+                        List.of(
+                            new systems.zlink.framework.locations
+                                .ZLinkRelocationCapacityFence(
+                                    request.reservationId().toString())),
+                        target);
+            assertInstanceOf(
+                systems.zlink.framework.locations
+                    .ZLinkAggregateConflict.class,
+                store.prepareAggregate(aggregateRequest, () -> false)
+                    .toCompletableFuture().get());
+            var aggregateFence =
+                new systems.zlink.framework.locations
+                    .ZLinkAggregateFence(aggregateId, 1);
+            assertEquals(
+                systems.zlink.framework.locations
+                    .ZLinkAggregateCommitResult.STALE,
+                store.commitAggregate(aggregateFence, () -> false)
+                    .toCompletableFuture().get());
+            assertEquals(
+                systems.zlink.framework.locations
+                    .ZLinkAggregateAbortResult.STALE,
+                store.abortAggregate(aggregateFence, () -> false)
                     .toCompletableFuture().get());
         }
     }

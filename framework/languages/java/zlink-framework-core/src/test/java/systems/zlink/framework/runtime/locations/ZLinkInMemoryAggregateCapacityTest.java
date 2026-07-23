@@ -38,6 +38,14 @@ final class ZLinkInMemoryAggregateCapacityTest {
                     fixture.capacityRequest,
                     () -> false)
                 .toCompletableFuture().get());
+        fixture.targetDescriptorLive.set(false);
+        assertInstanceOf(
+            ZLinkRelocationCapacityAlreadyReserved.class,
+            fixture.store.reserveRelocationCapacity(
+                    fixture.capacityRequest,
+                    () -> false)
+                .toCompletableFuture().get());
+        fixture.targetDescriptorLive.set(true);
         ZLinkAggregatePrepareRequest request =
             aggregateRequest(
                 UUID.randomUUID(),
@@ -48,6 +56,12 @@ final class ZLinkInMemoryAggregateCapacityTest {
         var prepared = assertInstanceOf(
             ZLinkAggregatePrepared.class,
             fixture.store.prepareAggregate(request, () -> false)
+                .toCompletableFuture().get());
+        assertInstanceOf(
+            ZLinkRelocationCapacityAlreadyReserved.class,
+            fixture.store.reserveRelocationCapacity(
+                    fixture.capacityRequest,
+                    () -> false)
                 .toCompletableFuture().get());
         assertEquals(
             1,
@@ -133,6 +147,34 @@ final class ZLinkInMemoryAggregateCapacityTest {
         assertEquals(
             0,
             fixture.store.pendingCapacity(TARGET_DESCRIPTOR, 9));
+    }
+
+    @Test
+    void aggregateRejectsDuplicateParticipantBeforeBindingCapacity()
+        throws Exception {
+        Fixture fixture = fixture();
+        ZLinkAggregateParticipant participant =
+            new ZLinkAggregateParticipant(
+                fixture.key,
+                fixture.current.storeVersion(),
+                ZLinkAuthorityGenerationTransition.PRESERVE,
+                new byte[] {2},
+                new byte[] {3});
+        var request = new ZLinkAggregatePrepareRequest(
+            UUID.randomUUID(),
+            1,
+            List.of(participant, participant),
+            new byte[32],
+            List.of(),
+            fixture.target);
+
+        assertInstanceOf(
+            ZLinkAggregateConflict.class,
+            fixture.store.prepareAggregate(request, () -> false)
+                .toCompletableFuture().get());
+        assertEquals(
+            fixture.current.storeVersion(),
+            current(fixture).storeVersion());
     }
 
     @Test

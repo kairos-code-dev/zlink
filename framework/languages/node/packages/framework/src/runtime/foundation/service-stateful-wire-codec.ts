@@ -62,6 +62,14 @@ export interface ServiceInstanceRouteFence {
   readonly storeVersion: string;
 }
 
+export interface ServiceInstanceActivationTarget {
+  readonly targetNodeRid: string;
+  readonly targetNodeGeneration: bigint;
+  readonly targetSpotRid: string;
+  readonly stableType: string;
+  readonly descriptorVersion: string;
+}
+
 export type ServiceBoundSessionTransition =
   | { readonly state: 'active'; readonly generation: bigint }
   | { readonly state: 'tombstone'; readonly retiredGeneration: bigint };
@@ -117,12 +125,25 @@ export type ServiceStatefulWireRecord =
     }
   | {
       readonly kind: 'instanceSpot';
+      readonly activation: 'ready';
       readonly route: ServiceInstanceRouteFence;
       readonly sourceNodeGeneration: bigint;
       readonly sourceNodeRid: string;
       readonly sourceSpotRid?: string;
       readonly operationKind: 'send' | 'request';
       readonly operation: { readonly high: bigint; readonly low: bigint };
+      readonly replyRouteId?: bigint;
+    }
+  | {
+      readonly kind: 'instanceSpot';
+      readonly activation: 'missing';
+      readonly target: ServiceInstanceActivationTarget;
+      readonly sourceNodeGeneration: bigint;
+      readonly sourceNodeRid: string;
+      readonly sourceSpotRid?: string;
+      readonly operationKind: 'send' | 'request';
+      readonly operation: { readonly high: bigint; readonly low: bigint };
+      readonly deadlineUnixMs: bigint;
       readonly replyRouteId?: bigint;
     };
 
@@ -318,6 +339,50 @@ export function encodeInstanceSpotHeader(
   );
 }
 
+export function encodeInstanceSpotActivationHeader(
+  target: ServiceInstanceActivationTarget,
+  sourceNodeGeneration: bigint,
+  sourceNodeRid: string,
+  sourceSpotRid: string | undefined,
+  operationKind: 'send' | 'request',
+  operation: { readonly high: bigint; readonly low: bigint },
+  deadlineUnixMs: bigint,
+  replyRouteId?: bigint
+): Buffer {
+  if (operation.high === 0n && operation.low === 0n) {
+    throw new RangeError('Instance Spot activation requires a non-zero operation identity.');
+  }
+  if (deadlineUnixMs <= 0n) {
+    throw new RangeError('Instance Spot activation requires a positive deadline.');
+  }
+  if (operationKind === 'send' && replyRouteId !== undefined) {
+    throw new RangeError('Instance Spot send must not carry a reply route.');
+  }
+  const targetBody = concat(
+    rid(target.targetNodeRid, 'targetNodeRid'),
+    u64(target.targetNodeGeneration),
+    rid(target.targetSpotRid, 'targetSpotRid'),
+    text16(target.stableType, 'stableType'),
+    text16(target.descriptorVersion, 'descriptorVersion')
+  );
+  return concat(
+    prefix(M6bServiceWireCommand.instanceSpot),
+    Buffer.of(2),
+    u16(targetBody.byteLength),
+    targetBody,
+    u64Any(sourceNodeGeneration),
+    rid(sourceNodeRid, 'sourceNodeRid'),
+    optionalRid(sourceSpotRid),
+    Buffer.of(operationKind === 'send' ? 1 : 2),
+    u64Any(operation.high),
+    u64Any(operation.low),
+    u64(deadlineUnixMs),
+    ...(operationKind === 'request'
+      ? [u64(requirePositive(replyRouteId, 'replyRouteId'))]
+      : [])
+  );
+}
+
 export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireRecord {
   const reader = new Reader(frame);
   const command = reader.prefix();
@@ -436,19 +501,32 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
     }
     case M6bServiceWireCommand.instanceSpot: {
       requireFlags(command.flags, 0);
-      if (reader.u8('instanceRoute.version') !== 1) fail('Unsupported Instance route version.');
+      const version = reader.u8('instanceRoute.version');
+      if (version !== 1 && version !== 2) fail('Unsupported Instance route version.');
       const routeLength = reader.u16('instanceRoute.length');
       const routeEnd = reader.offset + routeLength;
-      const route: ServiceInstanceRouteFence = {
+      const commonTarget = {
         targetNodeRid: reader.rid('targetNodeRid'),
         targetNodeGeneration: reader.nonZeroU64('targetNodeGeneration'),
-        targetSpotRid: reader.rid('targetSpotRid'),
-        objectGeneration: reader.nonZeroU64('objectGeneration'),
-        ownerId: reader.text8('ownerId'),
-        authorityOwnerGeneration: reader.nonZeroU64('authorityOwnerGeneration'),
-        leaseGeneration: reader.nonZeroU64('leaseGeneration'),
-        storeVersion: reader.text16('storeVersion')
+        targetSpotRid: reader.rid('targetSpotRid')
       };
+      const route: ServiceInstanceRouteFence | undefined = version === 1
+        ? {
+            ...commonTarget,
+            objectGeneration: reader.nonZeroU64('objectGeneration'),
+            ownerId: reader.text8('ownerId'),
+            authorityOwnerGeneration: reader.nonZeroU64('authorityOwnerGeneration'),
+            leaseGeneration: reader.nonZeroU64('leaseGeneration'),
+            storeVersion: reader.text16('storeVersion')
+          }
+        : undefined;
+      const target: ServiceInstanceActivationTarget | undefined = version === 2
+        ? {
+            ...commonTarget,
+            stableType: reader.text16('stableType'),
+            descriptorVersion: reader.text16('descriptorVersion')
+          }
+        : undefined;
       if (reader.offset !== routeEnd) fail('Invalid Instance route body length.');
       const sourceNodeGeneration = reader.nonZeroU64('sourceNodeGeneration');
       const sourceNodeRid = reader.rid('sourceNodeRid');
@@ -460,19 +538,24 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
         low: reader.u64('operation.low')
       };
       const operationKind = operationValue === 1 ? 'send' as const : 'request' as const;
-      if (
+      if (version === 1 && (
         (operationKind === 'send' && (operation.high !== 0n || operation.low !== 0n))
         || (operationKind === 'request' && operation.high === 0n && operation.low === 0n)
-      ) {
+      )) {
         fail('Invalid Instance operation identity.');
       }
+      if (version === 2 && operation.high === 0n && operation.low === 0n) {
+        fail('Instance activation requires a non-zero operation identity.');
+      }
+      const deadlineUnixMs = version === 2
+        ? reader.nonZeroU64('deadlineUnixMs')
+        : undefined;
       const replyRouteId = operationKind === 'request'
         ? reader.nonZeroU64('replyRouteId')
         : undefined;
       reader.end();
-      return {
-        kind: 'instanceSpot',
-        route,
+      const common = {
+        kind: 'instanceSpot' as const,
         sourceNodeGeneration,
         sourceNodeRid,
         ...(sourceSpotRid === undefined ? {} : { sourceSpotRid }),
@@ -480,6 +563,14 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
         operation,
         ...(replyRouteId === undefined ? {} : { replyRouteId })
       };
+      return version === 1
+        ? { ...common, activation: 'ready', route: route! }
+        : {
+            ...common,
+            activation: 'missing',
+            target: target!,
+            deadlineUnixMs: deadlineUnixMs!
+          };
     }
     default:
       fail(`Command '${command.command}' is not owned by the M6B codec.`);

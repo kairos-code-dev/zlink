@@ -24,7 +24,9 @@ import type {
   RawServiceMeshRuntime
 } from '../../packages/framework/src/runtime/foundation/raw-service-mesh-runtime';
 import {
-  ServiceStatefulRuntime
+  ServiceInstanceActivationRedirectError,
+  ServiceStatefulRuntime,
+  type ServiceInstanceActivationAuthority
 } from '../../packages/framework/src/runtime/foundation/service-stateful-runtime';
 import {
   ServiceStaleGenerationError,
@@ -38,9 +40,13 @@ import {
   decodeStatefulReply,
   encodeActorHeader,
   encodeBoundSessionBindHeader,
+  encodeInstanceSpotActivationHeader,
   encodeSpotHeader,
   encodeStatefulReply
 } from '../../packages/framework/src/runtime/foundation/service-stateful-wire-codec';
+import {
+  encodeApplicationPayload
+} from '../../packages/framework/src/runtime/foundation/service-wire-m6a-codec';
 
 test('M6B command and flag constants match the generated service wire schema', () => {
   for (const name of Object.keys(M6bServiceWireCommand) as Array<keyof typeof M6bServiceWireCommand>) {
@@ -215,6 +221,180 @@ test('remote create reservations are idempotent per attempt and fence stale atte
   const committed = target.commitReservation(newer.reservation);
   assert.equal('kind' in committed ? committed.kind : undefined, 'instance');
   assert.equal(target.reserve('instanceSpot', 'tenant-42', 'OtherWorker', 12n).kind, 'typeMismatch');
+});
+
+test('target-owned Instance activation reserves before factory, commits before one queue admission', () => {
+  const queued: unknown[] = [];
+  let ingress!: (record: {
+    readonly command: number;
+    readonly flags: number;
+    readonly sourceRoutingId: string;
+    readonly parts: readonly Buffer[];
+  }) => string | undefined;
+  const raw = {
+    topology: {
+      peer: (nodeRid: string) => nodeRid === 'source'
+        ? { descriptor: { lifecycleGeneration: 7n } }
+        : undefined
+    },
+    mailbox: {
+      tryEnqueue: (record: unknown) => {
+        queued.push(record);
+        return true;
+      }
+    },
+    setServiceIngress: (handler: typeof ingress) => {
+      ingress = handler;
+    }
+  } as unknown as RawServiceMeshRuntime;
+  const runtime = new ServiceStatefulRuntime(raw, 'target', 3n);
+  const events: string[] = [];
+  let committedRoute: ReturnType<ServiceInstanceActivationAuthority['read']> = { kind: 'missing' };
+  const authority: ServiceInstanceActivationAuthority = {
+    read: () => {
+      events.push('read');
+      return committedRoute;
+    },
+    reserve: () => {
+      events.push('reserve');
+      assert.equal(runtime.registry.spot('tenant-42'), undefined);
+      return {
+        kind: 'reserved',
+        reservation: { attempt: 11n, token: 'reservation-11' }
+      };
+    },
+    commit: (_target, _reservation, spot) => {
+      events.push('commit');
+      assert.equal(runtime.registry.spot('tenant-42'), spot);
+      const committed = {
+        kind: 'committed',
+        route: {
+          targetNodeRid: 'target',
+          targetNodeGeneration: 3n,
+          targetSpotRid: 'tenant-42',
+          objectGeneration: spot.ref.generation,
+          ownerId: 'target',
+          authorityOwnerGeneration: spot.authorityOwnerGeneration,
+          leaseGeneration: 1n,
+          storeVersion: '12'
+        }
+      } as const;
+      committedRoute = { kind: 'ready', route: committed.route };
+      return committed;
+    },
+    abort: () => {
+      assert.fail('successful activation must not abort');
+    }
+  };
+  runtime.registerInstanceActivationAuthority(authority);
+
+  const target = {
+    targetNodeRid: 'target',
+    targetNodeGeneration: 3n,
+    targetSpotRid: 'tenant-42',
+    stableType: 'TenantWorker',
+    descriptorVersion: 'descriptor-5'
+  };
+  const header = encodeInstanceSpotActivationHeader(
+    target,
+    7n,
+    'source',
+    undefined,
+    'send',
+    { high: 7n, low: 31n },
+    BigInt(Date.now() + 10_000)
+  );
+  const parts = [
+    header,
+    encodeApplicationPayload({
+      packetName: 'FirstMessage',
+      contentType: 'application/octet-stream',
+      payload: Buffer.from('first')
+    })
+  ];
+  const record = {
+    command: M6bServiceWireCommand.instanceSpot,
+    flags: 0,
+    sourceRoutingId: 'source',
+    parts
+  };
+  assert.equal(ingress(record), 'application');
+  assert.deepEqual(events, ['read', 'reserve', 'commit']);
+  assert.equal(runtime.registry.spot('tenant-42')?.stableType, 'TenantWorker');
+  assert.equal(queued.length, 1);
+
+  assert.equal(ingress(record), 'application');
+  assert.deepEqual(events, ['read', 'reserve', 'commit', 'read']);
+  assert.equal(queued.length, 1);
+  runtime.close();
+});
+
+test('Instance activation CAS loser does not invoke the local factory', () => {
+  let ingress!: (record: {
+    readonly command: number;
+    readonly flags: number;
+    readonly sourceRoutingId: string;
+    readonly parts: readonly Buffer[];
+  }) => string | undefined;
+  const raw = {
+    topology: {
+      peer: () => ({ descriptor: { lifecycleGeneration: 7n } })
+    },
+    mailbox: { tryEnqueue: () => true },
+    setServiceIngress: (handler: typeof ingress) => {
+      ingress = handler;
+    }
+  } as unknown as RawServiceMeshRuntime;
+  const runtime = new ServiceStatefulRuntime(raw, 'target', 3n);
+  const winnerRoute = {
+    targetNodeRid: 'other-target',
+    targetNodeGeneration: 8n,
+    targetSpotRid: 'tenant-42',
+    objectGeneration: 2n,
+    ownerId: 'other-target',
+    authorityOwnerGeneration: 9n,
+    leaseGeneration: 4n,
+    storeVersion: '19'
+  };
+  runtime.registerInstanceActivationAuthority({
+    read: () => ({ kind: 'missing' }),
+    reserve: () => ({ kind: 'ready', route: winnerRoute }),
+    commit: () => assert.fail('CAS loser must not commit'),
+    abort: () => assert.fail('CAS loser must not abort another owner')
+  });
+  const header = encodeInstanceSpotActivationHeader(
+    {
+      targetNodeRid: 'target',
+      targetNodeGeneration: 3n,
+      targetSpotRid: 'tenant-42',
+      stableType: 'TenantWorker',
+      descriptorVersion: 'descriptor-5'
+    },
+    7n,
+    'source',
+    undefined,
+    'send',
+    { high: 7n, low: 32n },
+    BigInt(Date.now() + 10_000)
+  );
+  assert.throws(
+    () => ingress({
+      command: M6bServiceWireCommand.instanceSpot,
+      flags: 0,
+      sourceRoutingId: 'source',
+      parts: [
+        header,
+        encodeApplicationPayload({
+          packetName: 'FirstMessage',
+          contentType: 'application/octet-stream',
+          payload: Buffer.from('first')
+        })
+      ]
+    }),
+    ServiceInstanceActivationRedirectError
+  );
+  assert.equal(runtime.registry.spot('tenant-42'), undefined);
+  runtime.close();
 });
 
 test('membership and session binding generations advance without losing the binding', () => {

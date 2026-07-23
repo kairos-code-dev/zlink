@@ -33,6 +33,7 @@ import {
   encodeActorLookupHeader,
   encodeBoundSessionBindHeader,
   encodeBoundSessionSendHeader,
+  encodeInstanceSpotActivationHeader,
   encodeInstanceSpotHeader,
   encodeLogicalMulticastHeader,
   encodeSpotHeader,
@@ -40,6 +41,7 @@ import {
   M6bServiceWireCommand,
   sessionBindingFromWire,
   type ServiceActorRouteFence,
+  type ServiceInstanceActivationTarget,
   type ServiceInstanceRouteFence,
   type ServiceSpotRouteFence,
   type ServiceStatefulReplyTail,
@@ -97,6 +99,45 @@ interface ServiceInstanceIntent {
   readonly route: ServiceInstanceRouteFence;
 }
 
+export interface ServiceInstanceActivationReservation {
+  readonly attempt: bigint;
+  readonly token: string;
+}
+
+export type ServiceInstanceAuthorityRead =
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'ready'; readonly route: ServiceInstanceRouteFence };
+
+export type ServiceInstanceAuthorityReserve =
+  | { readonly kind: 'reserved'; readonly reservation: ServiceInstanceActivationReservation }
+  | { readonly kind: 'ready'; readonly route: ServiceInstanceRouteFence };
+
+/**
+ * Synchronous authority port used by the raw ingress turn. An asynchronous
+ * provider must complete outside this turn and re-enter with its result.
+ */
+export interface ServiceInstanceActivationAuthority {
+  read(target: ServiceInstanceActivationTarget): ServiceInstanceAuthorityRead;
+  reserve(
+    target: ServiceInstanceActivationTarget,
+    operation: { readonly high: bigint; readonly low: bigint },
+    deadlineUnixMs: bigint
+  ): ServiceInstanceAuthorityReserve;
+  commit(
+    target: ServiceInstanceActivationTarget,
+    reservation: ServiceInstanceActivationReservation,
+    spot: ServiceSpotState
+  ): { readonly kind: 'committed' | 'lost'; readonly route: ServiceInstanceRouteFence };
+  abort(target: ServiceInstanceActivationTarget, reservation: ServiceInstanceActivationReservation): void;
+}
+
+export class ServiceInstanceActivationRedirectError extends Error {
+  constructor(readonly route: ServiceInstanceRouteFence) {
+    super(`Instance Spot '${route.targetSpotRid}' is owned by '${route.targetNodeRid}'.`);
+    this.name = 'ServiceInstanceActivationRedirectError';
+  }
+}
+
 export interface ServiceLogicalMulticastDetail {
   readonly snapshotRemoteTargetCount: number;
   readonly admittedRemoteTargetCount: number;
@@ -118,10 +159,13 @@ export class ServiceStatefulRuntime {
   private readonly sessionDeliveries = new Map<string, ServiceSessionDelivery>();
   private readonly subscriptions = new Map<string, Set<string>>();
   private readonly instanceIntents = new Map<string, ServiceInstanceIntent>();
+  private readonly admittedInstanceOperations = new Map<string, bigint>();
   private readonly actorRoutes = new Map<string, ServiceActorRouteFence>();
   private readonly spotRoutes = new Map<string, ServiceSpotRouteFence>();
   private nextSpotId = 1n;
   private nextSessionSequence = 1n;
+  private nextInstanceOperation = 1n;
+  private instanceAuthority?: ServiceInstanceActivationAuthority;
   private closed = false;
 
   constructor(
@@ -188,6 +232,14 @@ export class ServiceStatefulRuntime {
       throw new ServiceStaleGenerationError('spot', route.targetSpotRid);
     }
     this.instanceIntents.set(route.targetSpotRid, Object.freeze({ instanceType, route: { ...route } }));
+  }
+
+  registerInstanceActivationAuthority(authority: ServiceInstanceActivationAuthority): void {
+    this.requireOpen();
+    if (this.instanceAuthority !== undefined && this.instanceAuthority !== authority) {
+      throw new Error('Instance activation authority is already registered.');
+    }
+    this.instanceAuthority = authority;
   }
 
   rememberActorRoute(route: ServiceActorRouteFence): void {
@@ -393,6 +445,27 @@ export class ServiceStatefulRuntime {
     ]);
   }
 
+  sendToMissingInstanceSpot(
+    target: ServiceInstanceActivationTarget,
+    payload: ServiceApplicationPayload,
+    deadlineUnixMs: bigint,
+    sourceSpotRid?: string
+  ): number {
+    const operation = { high: this.nodeGeneration, low: this.nextInstanceOperation++ };
+    return this.submitOneWay(target.targetNodeRid, [
+      encodeInstanceSpotActivationHeader(
+        target,
+        this.nodeGeneration,
+        this.nodeRid,
+        sourceSpotRid,
+        'send',
+        operation,
+        deadlineUnixMs
+      ),
+      encodeApplicationPayload(payload)
+    ]);
+  }
+
   requestToInstanceSpot(
     route: ServiceInstanceRouteFence,
     payload: ServiceApplicationPayload,
@@ -411,6 +484,36 @@ export class ServiceStatefulRuntime {
           sourceSpotRid,
           'request',
           { high: 2n, low: pending.id },
+          pending.id
+        ),
+        encodeApplicationPayload(payload)
+      ],
+      timeoutMs,
+      'instanceSpotRequest'
+    );
+    return pending;
+  }
+
+  requestToMissingInstanceSpot(
+    target: ServiceInstanceActivationTarget,
+    payload: ServiceApplicationPayload,
+    timeoutMs: number,
+    sourceSpotRid?: string
+  ): ServiceStatefulPendingOperation {
+    const pending = this.operations.reserve(timeoutMs);
+    const deadlineUnixMs = BigInt(Date.now() + timeoutMs);
+    this.submitRequest(
+      pending,
+      target.targetNodeRid,
+      [
+        encodeInstanceSpotActivationHeader(
+          target,
+          this.nodeGeneration,
+          this.nodeRid,
+          sourceSpotRid,
+          'request',
+          { high: this.nodeGeneration, low: pending.id },
+          deadlineUnixMs,
           pending.id
         ),
         encodeApplicationPayload(payload)
@@ -799,7 +902,16 @@ export class ServiceStatefulRuntime {
     payload: ServiceApplicationPayload
   ): RawServicePumpResult {
     const spot = this.requireInstanceActivation(ingress, record);
-    return this.enqueueApplication(
+    let operationKey: string | undefined;
+    if (record.activation === 'missing') {
+      const now = BigInt(Date.now());
+      for (const [key, deadline] of this.admittedInstanceOperations) {
+        if (deadline < now) this.admittedInstanceOperations.delete(key);
+      }
+      operationKey = instanceOperationKey(record);
+      if (this.admittedInstanceOperations.has(operationKey)) return 'application';
+    }
+    const result = this.enqueueApplication(
       ingress,
       `spot:${spot.ref.spotRid}`,
       payload,
@@ -820,6 +932,10 @@ export class ServiceStatefulRuntime {
           : {})
       }
     );
+    if (operationKey !== undefined && result === 'application' && record.activation === 'missing') {
+      this.admittedInstanceOperations.set(operationKey, record.deadlineUnixMs);
+    }
+    return result;
   }
 
   private requireInstanceActivation(
@@ -829,7 +945,17 @@ export class ServiceStatefulRuntime {
     if (
       record.sourceNodeRid !== ingress.sourceRoutingId
       || record.sourceNodeGeneration !== this.peerGeneration(record.sourceNodeRid)
-      || record.route.targetNodeRid !== this.nodeRid
+    ) {
+      throw new ServiceStaleGenerationError(
+        'spot',
+        record.activation === 'ready' ? record.route.targetSpotRid : record.target.targetSpotRid
+      );
+    }
+    if (record.activation === 'missing') {
+      return this.activateMissingInstance(record);
+    }
+    if (
+      record.route.targetNodeRid !== this.nodeRid
       || record.route.targetNodeGeneration !== this.nodeGeneration
     ) {
       throw new ServiceStaleGenerationError('spot', record.route.targetSpotRid);
@@ -845,6 +971,75 @@ export class ServiceStatefulRuntime {
     );
     if (activation.spot.ref.generation !== record.route.objectGeneration) {
       throw new ServiceStaleGenerationError('spot', record.route.targetSpotRid);
+    }
+    return activation.spot;
+  }
+
+  private activateMissingInstance(
+    record: Extract<
+      ServiceStatefulWireRecord,
+      { readonly kind: 'instanceSpot'; readonly activation: 'missing' }
+    >
+  ): ServiceSpotState {
+    const target = record.target;
+    if (
+      target.targetNodeRid !== this.nodeRid
+      || target.targetNodeGeneration !== this.nodeGeneration
+      || record.deadlineUnixMs < BigInt(Date.now())
+    ) {
+      throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+    }
+    const authority = this.instanceAuthority;
+    if (authority === undefined) {
+      throw new Error('Instance activation authority is not registered.');
+    }
+
+    const local = this.registry.spot(target.targetSpotRid);
+    const current = authority.read(target);
+    if (local !== undefined) {
+      if (
+        local.kind !== 'instance'
+        || local.stableType !== target.stableType
+        || current.kind !== 'ready'
+        || !routeMatchesLocal(current.route, local, this.nodeRid, this.nodeGeneration)
+      ) {
+        throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+      }
+      return local;
+    }
+    if (current.kind === 'ready') {
+      throw new ServiceInstanceActivationRedirectError(current.route);
+    }
+
+    const reserved = authority.reserve(target, record.operation, record.deadlineUnixMs);
+    if (reserved.kind === 'ready') {
+      throw new ServiceInstanceActivationRedirectError(reserved.route);
+    }
+
+    let activation: { readonly spot: ServiceSpotState; readonly created: boolean };
+    try {
+      activation = this.activateInstanceSpot(
+        target.targetSpotRid,
+        target.stableType,
+        reserved.reservation.attempt
+      );
+    } catch (error) {
+      authority.abort(target, reserved.reservation);
+      throw error;
+    }
+    const committed = authority.commit(target, reserved.reservation, activation.spot);
+    if (committed.kind === 'lost') {
+      if (activation.created) this.registry.closeSpot(activation.spot.ref);
+      throw new ServiceInstanceActivationRedirectError(committed.route);
+    }
+    if (!routeMatchesLocal(
+      committed.route,
+      activation.spot,
+      this.nodeRid,
+      this.nodeGeneration
+    )) {
+      if (activation.created) this.registry.closeSpot(activation.spot.ref);
+      throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
     }
     return activation.spot;
   }
@@ -1523,6 +1718,26 @@ function sameInstanceRoute(left: ServiceInstanceRouteFence, right: ServiceInstan
     && left.authorityOwnerGeneration === right.authorityOwnerGeneration
     && left.leaseGeneration === right.leaseGeneration
     && left.storeVersion === right.storeVersion;
+}
+
+function routeMatchesLocal(
+  route: ServiceInstanceRouteFence,
+  spot: ServiceSpotState,
+  nodeRid: string,
+  nodeGeneration: bigint
+): boolean {
+  return route.targetNodeRid === nodeRid
+    && route.targetNodeGeneration === nodeGeneration
+    && route.targetSpotRid === spot.ref.spotRid
+    && route.objectGeneration === spot.ref.generation
+    && route.authorityOwnerGeneration === spot.authorityOwnerGeneration;
+}
+
+function instanceOperationKey(
+  record: Extract<ServiceStatefulWireRecord, { readonly kind: 'instanceSpot' }>
+): string {
+  return `${record.sourceNodeRid}\0${record.sourceNodeGeneration}\0`
+    + `${record.operation.high}\0${record.operation.low}`;
 }
 
 function subscriptionKey(channelName: string, topicFilter: string): string {

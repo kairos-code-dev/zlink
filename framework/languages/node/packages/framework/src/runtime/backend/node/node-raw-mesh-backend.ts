@@ -1288,6 +1288,12 @@ function decodeStatefulRecord(
       if (stateful.reply === undefined || stateful.targetSpot === undefined) {
         return SubmitResult.InvalidState;
       }
+      const membershipEpoch = stateful.kindData?.kind === 'actorControl'
+        ? stateful.kindData.currentMembershipEpoch
+        : undefined;
+      if (joinResult === 0 && membershipEpoch === undefined) {
+        return SubmitResult.InvalidState;
+      }
       const replyParts = Array.isArray(parts) ? parts : [parts];
       return stateful.reply(
         RequestResult.Ok,
@@ -1296,7 +1302,8 @@ function decodeStatefulRecord(
         {
           kind: 'actorJoin',
           joinResult: joinResult === 0 ? 0 : 1,
-          spot: stateful.targetSpot
+          spot: stateful.targetSpot,
+          ...(membershipEpoch === undefined ? {} : { membershipEpoch })
         }
       ) ? SubmitResult.Ok : SubmitResult.InvalidState;
     }

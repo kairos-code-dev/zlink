@@ -118,6 +118,8 @@ export class ServiceStatefulRuntime {
   private readonly sessionDeliveries = new Map<string, ServiceSessionDelivery>();
   private readonly subscriptions = new Map<string, Set<string>>();
   private readonly instanceIntents = new Map<string, ServiceInstanceIntent>();
+  private readonly actorRoutes = new Map<string, ServiceActorRouteFence>();
+  private readonly spotRoutes = new Map<string, ServiceSpotRouteFence>();
   private nextSpotId = 1n;
   private nextSessionSequence = 1n;
   private closed = false;
@@ -188,6 +190,26 @@ export class ServiceStatefulRuntime {
     this.instanceIntents.set(route.targetSpotRid, Object.freeze({ instanceType, route: { ...route } }));
   }
 
+  rememberActorRoute(route: ServiceActorRouteFence): void {
+    if (route.actor.nodeRid.length === 0) {
+      throw new TypeError('Actor route requires a target node.');
+    }
+    this.actorRoutes.set(actorKey(route.actor), Object.freeze({
+      actor: Object.freeze({ ...route.actor }),
+      targetNodeGeneration: route.targetNodeGeneration,
+      authorityOwnerGeneration: route.authorityOwnerGeneration
+    }));
+  }
+
+  rememberSpotRoute(route: ServiceSpotRouteFence): void {
+    this.spotRoutes.set(spotKey(route.spot), Object.freeze({
+      spot: Object.freeze({ ...route.spot }),
+      targetNodeRid: route.targetNodeRid,
+      targetNodeGeneration: route.targetNodeGeneration,
+      authorityOwnerGeneration: route.authorityOwnerGeneration
+    }));
+  }
+
   actor(actorId: string): ServiceActorState | undefined {
     return this.registry.actor(actorId);
   }
@@ -249,16 +271,13 @@ export class ServiceStatefulRuntime {
     sourceSpotRid: string,
     targetNodeRid: string,
     targetSpot: ServiceSpotRef,
-    targetNodeGeneration: bigint,
-    authorityOwnerGeneration: bigint,
+    _targetNodeGeneration: bigint,
+    _authorityOwnerGeneration: bigint,
     payload: ServiceApplicationPayload
   ): number {
-    const header = encodeSpotHeader('spotSend', sourceSpotRid, {
-      spot: targetSpot,
-      targetNodeRid,
-      targetNodeGeneration,
-      authorityOwnerGeneration
-    });
+    const target = this.trySpotFence(targetNodeRid, targetSpot);
+    if (target === undefined) return SubmitResult.NotFound;
+    const header = encodeSpotHeader('spotSend', sourceSpotRid, target);
     return this.submitOneWay(targetNodeRid, [header, encodeApplicationPayload(payload)]);
   }
 
@@ -266,18 +285,21 @@ export class ServiceStatefulRuntime {
     sourceSpotRid: string,
     targetNodeRid: string,
     targetSpot: ServiceSpotRef,
-    targetNodeGeneration: bigint,
-    authorityOwnerGeneration: bigint,
+    _targetNodeGeneration: bigint,
+    _authorityOwnerGeneration: bigint,
     payload: ServiceApplicationPayload,
     timeoutMs: number
   ): ServiceStatefulPendingOperation {
     const pending = this.operations.reserve(timeoutMs);
-    const header = encodeSpotHeader('spotRequest', sourceSpotRid, {
-      spot: targetSpot,
-      targetNodeRid,
-      targetNodeGeneration,
-      authorityOwnerGeneration
-    }, pending.id);
+    const target = this.trySpotFence(targetNodeRid, targetSpot);
+    if (target === undefined) {
+      this.operations.reply(pending.id, {
+        terminalResult: RequestResult.NotFound,
+        failureCode: ACTOR_ROUTE_STALE
+      });
+      return pending;
+    }
+    const header = encodeSpotHeader('spotRequest', sourceSpotRid, target, pending.id);
     this.submitRequest(
       pending,
       targetNodeRid,
@@ -290,19 +312,17 @@ export class ServiceStatefulRuntime {
 
   sendToActor(
     target: ServiceActorRef,
-    targetNodeGeneration: bigint,
-    authorityOwnerGeneration: bigint,
+    _targetNodeGeneration: bigint,
+    _authorityOwnerGeneration: bigint,
     payload: ServiceApplicationPayload,
     sourceActor?: ServiceActorRef,
     boundSession?: { readonly sessionRid: string; readonly bindingGeneration: bigint }
   ): number {
+    const route = this.tryActorFence(target);
+    if (route === undefined) return SubmitResult.NotFound;
     const header = encodeActorHeader(
       'actorSend',
-      {
-        actor: target,
-        targetNodeGeneration,
-        authorityOwnerGeneration
-      },
+      route,
       undefined,
       sourceActor,
       boundSession === undefined
@@ -317,21 +337,25 @@ export class ServiceStatefulRuntime {
 
   requestToActor(
     target: ServiceActorRef,
-    targetNodeGeneration: bigint,
-    authorityOwnerGeneration: bigint,
+    _targetNodeGeneration: bigint,
+    _authorityOwnerGeneration: bigint,
     payload: ServiceApplicationPayload,
     timeoutMs: number,
     sourceActor?: ServiceActorRef,
     boundSession?: { readonly sessionRid: string; readonly bindingGeneration: bigint }
   ): ServiceStatefulPendingOperation {
     const pending = this.operations.reserve(timeoutMs);
+    const route = this.tryActorFence(target);
+    if (route === undefined) {
+      this.operations.reply(pending.id, {
+        terminalResult: RequestResult.NotFound,
+        failureCode: ACTOR_ROUTE_STALE
+      });
+      return pending;
+    }
     const header = encodeActorHeader(
       'actorRequest',
-      {
-        actor: target,
-        targetNodeGeneration,
-        authorityOwnerGeneration
-      },
+      route,
       pending.id,
       sourceActor,
       boundSession === undefined
@@ -441,15 +465,21 @@ export class ServiceStatefulRuntime {
     timeoutMs: number
   ): ServiceStatefulPendingOperation {
     const pending = this.operations.reserve(timeoutMs);
-    const target: ServiceSpotRouteFence = {
-      spot: { ...targetSpot, generation: targetSpotGeneration },
-      targetNodeRid,
-      targetNodeGeneration: this.peerGeneration(targetNodeRid),
-      authorityOwnerGeneration: targetSpotGeneration
-    };
+    const target = this.trySpotFence(targetNodeRid, {
+      ...targetSpot,
+      generation: targetSpotGeneration
+    });
+    const actorRoute = this.tryActorFence(actor);
+    if (target === undefined || actorRoute === undefined) {
+      this.operations.reply(pending.id, {
+        terminalResult: RequestResult.NotFound,
+        failureCode: ACTOR_ROUTE_STALE
+      });
+      return pending;
+    }
     const header = encodeActorJoinHeader(
       pending.id,
-      this.actorFence(actor),
+      actorRoute,
       targetSpot.spotRid === targetNodeRid,
       target
     );
@@ -640,6 +670,8 @@ export class ServiceStatefulRuntime {
     this.closed = true;
     this.operations.close();
     this.sessionDeliveries.clear();
+    this.actorRoutes.clear();
+    this.spotRoutes.clear();
   }
 
   private ingress(record: RawServiceIngressRecord): RawServicePumpResult | undefined {
@@ -880,6 +912,7 @@ export class ServiceStatefulRuntime {
         kind: 'actorLookup',
         actor: actor.ref,
         spot: actor.spot,
+        membershipEpoch: actor.membershipEpoch,
         authorityOwnerGeneration: actor.authorityOwnerGeneration
       });
     }
@@ -1306,13 +1339,19 @@ export class ServiceStatefulRuntime {
   ): ServiceStatefulResult {
     let kindData: ReceiveKindData | undefined;
     if (tail?.kind === 'actorLookup') {
+      const resolvedActor = { ...tail.actor, nodeRid: targetNodeRid };
+      this.rememberActorRoute({
+        actor: resolvedActor,
+        targetNodeGeneration: this.peerGeneration(targetNodeRid),
+        authorityOwnerGeneration: tail.authorityOwnerGeneration
+      });
       kindData = {
         kind: 'actorLookupCompletion',
         location: {
-          actor: { ...tail.actor, nodeRid: targetNodeRid },
+          actor: resolvedActor,
           spotRid: tail.spot.spotRid,
           spotGeneration: tail.spot.generation,
-          membershipEpoch: tail.authorityOwnerGeneration
+          membershipEpoch: tail.membershipEpoch
         }
       };
     } else if (tail?.kind === 'actorJoin' && actor !== undefined) {
@@ -1326,7 +1365,7 @@ export class ServiceStatefulRuntime {
           actor: joinedActor,
           spotRid: spot?.spotRid ?? null,
           spotGeneration: spot?.generation ?? 0n,
-          membershipEpoch: 1n
+          membershipEpoch: tail.membershipEpoch ?? 1n
         }
       } satisfies ActorJoinCompletionPayload;
     }
@@ -1361,17 +1400,52 @@ export class ServiceStatefulRuntime {
   }
 
   private actorFence(actor: ServiceActorRef): ServiceActorRouteFence {
+    const route = this.tryActorFence(actor);
+    if (route === undefined) throw new ServiceStaleGenerationError('actor', actor.actorId);
+    return route;
+  }
+
+  private tryActorFence(actor: ServiceActorRef): ServiceActorRouteFence | undefined {
     const local = actor.nodeRid === this.nodeRid ? this.registry.actor(actor.actorId) : undefined;
-    return {
-      actor,
-      targetNodeGeneration: this.peerGeneration(actor.nodeRid),
-      authorityOwnerGeneration: local?.authorityOwnerGeneration ?? actor.generation
-    };
+    if (local !== undefined && sameActorRef(local.ref, actor)) {
+      return {
+        actor,
+        targetNodeGeneration: this.nodeGeneration,
+        authorityOwnerGeneration: local.authorityOwnerGeneration
+      };
+    }
+    const route = this.actorRoutes.get(actorKey(actor));
+    return route !== undefined && sameActorRef(route.actor, actor) ? route : undefined;
+  }
+
+  private trySpotFence(
+    targetNodeRid: string,
+    spot: ServiceSpotRef
+  ): ServiceSpotRouteFence | undefined {
+    const local = targetNodeRid === this.nodeRid ? this.registry.spot(spot.spotRid) : undefined;
+    if (local !== undefined && sameSpotRef(local.ref, spot)) {
+      return {
+        spot,
+        targetNodeRid,
+        targetNodeGeneration: this.nodeGeneration,
+        authorityOwnerGeneration: local.authorityOwnerGeneration
+      };
+    }
+    const route = this.spotRoutes.get(spotKey(spot));
+    return route !== undefined
+      && route.targetNodeRid === targetNodeRid
+      && sameSpotRef(route.spot, spot)
+      ? route
+      : undefined;
   }
 
   private peerGeneration(nodeRid: string): bigint {
     if (nodeRid === this.nodeRid) return this.nodeGeneration;
-    return this.raw.topology.peer(nodeRid)?.descriptor.lifecycleGeneration ?? 1n;
+    const peer = this.raw.topology.peer(nodeRid);
+    if (peer === undefined) {
+      throw new Error(`Node '${nodeRid}' has no admitted lifecycle generation.`);
+    }
+    return peer.descriptor.lifecycleGeneration;
   }
 
   private commitJoinedActor(actor: ServiceActorRef, spot: ServiceSpotRef, membershipEpoch: bigint): void {
@@ -1417,6 +1491,20 @@ function failure(error: unknown): ServiceStatefulResult {
 
 function actorKey(actor: ServiceActorRef): string {
   return `${actor.actorId}\0${actor.generation}`;
+}
+
+function spotKey(spot: ServiceSpotRef): string {
+  return `${spot.spotRid}\0${spot.generation}`;
+}
+
+function sameActorRef(left: ServiceActorRef, right: ServiceActorRef): boolean {
+  return left.nodeRid === right.nodeRid
+    && left.actorId === right.actorId
+    && left.generation === right.generation;
+}
+
+function sameSpotRef(left: ServiceSpotRef, right: ServiceSpotRef): boolean {
+  return left.spotRid === right.spotRid && left.generation === right.generation;
 }
 
 function statefulCorrelation(record: ServiceStatefulWireRecord): bigint | undefined {

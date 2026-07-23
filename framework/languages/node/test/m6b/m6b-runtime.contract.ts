@@ -20,6 +20,12 @@ import {
 import {
   ZLinkNodeRawMeshBackend
 } from '../../packages/framework/src/runtime/backend/node/node-raw-mesh-backend';
+import type {
+  RawServiceMeshRuntime
+} from '../../packages/framework/src/runtime/foundation/raw-service-mesh-runtime';
+import {
+  ServiceStatefulRuntime
+} from '../../packages/framework/src/runtime/foundation/service-stateful-runtime';
 import {
   ServiceStaleGenerationError,
   ServiceStatefulRegistry,
@@ -106,6 +112,7 @@ test('stateful replies preserve operation-specific tails', () => {
     kind: 'actorLookup',
     actor,
     spot: { spotRid: 'spot-a', generation: 7n },
+    membershipEpoch: 4n,
     authorityOwnerGeneration: 8n
   });
   assert.deepEqual(decodeStatefulReply(encoded, 17n, 'actorLookup'), {
@@ -116,10 +123,62 @@ test('stateful replies preserve operation-specific tails', () => {
       kind: 'actorLookup',
       actor: { nodeRid: '', actorId: 'actor-a', generation: 5n },
       spot: { spotRid: 'spot-a', generation: 7n },
+      membershipEpoch: 4n,
       authorityOwnerGeneration: 8n
     }
   });
   assert.throws(() => decodeStatefulReply(encoded, 18n, 'actorLookup'));
+});
+
+test('outbound stateful routes use resolved authority generations and never object generations', () => {
+  const sent: Array<{ readonly target: string; readonly parts: readonly Buffer[] }> = [];
+  const raw = {
+    topology: {
+      peer: (nodeRid: string) => nodeRid === 'node-b'
+        ? { descriptor: { lifecycleGeneration: 7n } }
+        : undefined
+    },
+    setServiceIngress: () => {},
+    sendService: (target: string, parts: readonly Buffer[]) => {
+      sent.push({ target, parts });
+      return true;
+    }
+  } as unknown as RawServiceMeshRuntime;
+  const runtime = new ServiceStatefulRuntime(raw, 'node-a', 3n);
+  const payload = {
+    packetName: 'AuthorityFence',
+    contentType: 'application/octet-stream',
+    payload: Buffer.from('payload')
+  };
+  const actor = { nodeRid: 'node-b', actorId: 'actor-a', generation: 5n };
+  assert.equal(runtime.sendToActor(actor, 7n, actor.generation, payload), SubmitResult.NotFound);
+  runtime.rememberActorRoute({
+    actor,
+    targetNodeGeneration: 7n,
+    authorityOwnerGeneration: 11n
+  });
+  assert.equal(runtime.sendToActor(actor, 7n, actor.generation, payload), SubmitResult.Ok);
+  const actorHeader = decodeStatefulHeader(sent.at(-1)!.parts[0]!);
+  assert.equal(actorHeader.kind, 'actorSend');
+  if (actorHeader.kind === 'actorSend') {
+    assert.equal(actorHeader.target.authorityOwnerGeneration, 11n);
+  }
+
+  const spot = { spotRid: 'spot-a', generation: 6n };
+  assert.equal(runtime.sendToSpot('source', 'node-b', spot, 7n, spot.generation, payload), SubmitResult.NotFound);
+  runtime.rememberSpotRoute({
+    spot,
+    targetNodeRid: 'node-b',
+    targetNodeGeneration: 7n,
+    authorityOwnerGeneration: 13n
+  });
+  assert.equal(runtime.sendToSpot('source', 'node-b', spot, 7n, spot.generation, payload), SubmitResult.Ok);
+  const spotHeader = decodeStatefulHeader(sent.at(-1)!.parts[0]!);
+  assert.equal(spotHeader.kind, 'spotSend');
+  if (spotHeader.kind === 'spotSend') {
+    assert.equal(spotHeader.target.authorityOwnerGeneration, 13n);
+  }
+  runtime.close();
 });
 
 test('global Spot and Actor identities fence stale generations and retain stable type', () => {

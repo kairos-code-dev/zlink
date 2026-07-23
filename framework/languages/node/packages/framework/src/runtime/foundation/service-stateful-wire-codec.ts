@@ -131,12 +131,14 @@ export type ServiceStatefulReplyTail =
       readonly kind: 'actorLookup';
       readonly actor: ServiceActorRef;
       readonly spot: ServiceSpotRef;
+      readonly membershipEpoch: bigint;
       readonly authorityOwnerGeneration: bigint;
     }
   | {
       readonly kind: 'actorJoin';
       readonly joinResult: 0 | 1;
       readonly spot?: ServiceSpotRef;
+      readonly membershipEpoch?: bigint;
     }
   | {
       readonly kind: 'streamBind';
@@ -523,6 +525,7 @@ export function decodeStatefulReply(
           spotRid: reader.rid('spotRid'),
           generation: reader.nonZeroU64('spotGeneration')
         },
+        membershipEpoch: reader.nonZeroU64('membershipEpoch'),
         authorityOwnerGeneration: reader.nonZeroU64('authorityOwnerGeneration')
       };
     } else if (operationKind === 'actorJoin') {
@@ -533,15 +536,18 @@ export function decodeStatefulReply(
       let spot: ServiceSpotRef | undefined;
       if (joinResult === 0) {
         spot = reader.spotRef();
+        const membershipEpoch = reader.nonZeroU64('membershipEpoch');
+        if (reader.offset !== bodyEnd) fail('Invalid actor join body length.');
+        tail = { kind: 'actorJoin', joinResult, spot, membershipEpoch };
       } else {
         const hasSpot = reader.bool8('hasSpot');
         const optionalLength = reader.u16('optionalSpotLength');
         const optionalEnd = reader.offset + optionalLength;
         if (hasSpot) spot = reader.spotRef();
         if (reader.offset !== optionalEnd) fail('Invalid optional Spot body length.');
+        if (reader.offset !== bodyEnd) fail('Invalid actor join body length.');
+        tail = { kind: 'actorJoin', joinResult, ...(spot === undefined ? {} : { spot }) };
       }
-      if (reader.offset !== bodyEnd) fail('Invalid actor join body length.');
-      tail = { kind: 'actorJoin', joinResult, ...(spot === undefined ? {} : { spot }) };
     } else if (operationKind === 'streamBind') {
       tail = {
         kind: 'streamBind',
@@ -582,12 +588,16 @@ function encodeReplyTail(tail: ServiceStatefulReplyTail): Buffer {
         actorRef(tail.actor),
         rid(tail.spot.spotRid, 'spotRid'),
         u64(tail.spot.generation),
+        u64(tail.membershipEpoch),
         u64(tail.authorityOwnerGeneration)
       );
     case 'actorJoin': {
       if (tail.joinResult === 0) {
         if (tail.spot === undefined) fail('Accepted actor join requires a SpotRef.');
-        const body = spotRef(tail.spot);
+        if (tail.membershipEpoch === undefined) {
+          fail('Accepted actor join requires a membership epoch.');
+        }
+        const body = concat(spotRef(tail.spot), u64(tail.membershipEpoch));
         return concat(u32(0, 'joinResult'), u16(body.byteLength), body);
       }
       const optional = tail.spot === undefined

@@ -1,0 +1,412 @@
+/* SPDX-License-Identifier: FSL-1.1-ALv2 */
+#pragma once
+
+#include <zlink/framework/contracts/dispatch/task.hpp>
+#include <zlink/framework/contracts/locations/values.hpp>
+#include <zlink/framework/contracts/locations/writes.hpp>
+#include <zlink/framework/contracts/placement.hpp>
+#include <zlink/framework/contracts/spots/spot_identity.hpp>
+
+#include <array>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <stop_token>
+#include <string>
+#include <string_view>
+#include <variant>
+#include <vector>
+
+namespace zlink::framework
+{
+
+struct authority_key_t
+{
+    std::string value;
+};
+
+struct authority_snapshot_t
+{
+    std::string store_version;
+    std::vector<std::byte> payload;
+    std::uint64_t object_generation = 0;
+    std::uint64_t authority_owner_generation = 0;
+    location_owner_token_t owner;
+    std::chrono::system_clock::time_point store_now;
+};
+
+struct authority_missing_t
+{
+    std::chrono::system_clock::time_point store_now;
+};
+
+using authority_read_result_t =
+  std::variant<authority_missing_t, authority_snapshot_t>;
+
+struct authority_expect_missing_t
+{
+};
+struct authority_expect_found_t
+{
+    std::string store_version;
+};
+using authority_expectation_t =
+  std::variant<authority_expect_missing_t, authority_expect_found_t>;
+
+enum class authority_generation_transition_t
+{
+    preserve = 1,
+    new_owner = 2,
+    new_object = 3
+};
+
+struct authority_entry_t
+{
+    authority_key_t key;
+    authority_snapshot_t snapshot;
+};
+
+class authority_scan_cursor_t final
+{
+  public:
+    explicit authority_scan_cursor_t (std::string encoded) :
+        _encoded (std::move (encoded))
+    {
+        if (_encoded.empty () || _encoded.size () > 4096)
+            throw std::invalid_argument (
+              "authority scan cursor must contain 1..4096 bytes");
+    }
+
+    std::string_view encoded () const noexcept { return _encoded; }
+
+  private:
+    std::string _encoded;
+};
+
+struct authority_page_t
+{
+    std::vector<authority_entry_t> items;
+    std::optional<authority_scan_cursor_t> next_cursor;
+};
+struct authority_scan_expired_t
+{
+};
+using authority_scan_result_t =
+  std::variant<authority_page_t, authority_scan_expired_t>;
+
+struct authority_put_t
+{
+    std::vector<std::byte> payload;
+    authority_generation_transition_t generation_transition =
+      authority_generation_transition_t::preserve;
+    std::optional<location_owner_token_t> target_owner;
+};
+struct authority_delete_t
+{
+};
+using authority_mutation_t =
+  std::variant<authority_put_t, authority_delete_t>;
+
+struct authority_stored_t
+{
+    authority_snapshot_t snapshot;
+};
+struct authority_deleted_t
+{
+    std::string store_version;
+    std::chrono::system_clock::time_point store_now;
+};
+struct authority_conflict_t
+{
+    authority_read_result_t current;
+};
+struct authority_generation_exhausted_t
+{
+};
+using authority_compare_exchange_result_t = std::variant<
+  authority_stored_t,
+  authority_deleted_t,
+  authority_conflict_t,
+  authority_generation_exhausted_t>;
+
+class authority_store_t
+{
+  public:
+    virtual ~authority_store_t () = default;
+    virtual task_t<authority_read_result_t> read_authority (
+      authority_key_t key,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<authority_compare_exchange_result_t>
+    compare_exchange_authority (
+      authority_key_t key,
+      authority_expectation_t expectation,
+      authority_mutation_t mutation,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<authority_scan_result_t> list_authorities (
+      std::string prefix,
+      std::optional<authority_scan_cursor_t> cursor,
+      std::size_t limit,
+      std::stop_token cancellation = {}) = 0;
+};
+
+struct object_creation_key_t
+{
+    placement_object_kind_t kind = placement_object_kind_t::actor;
+    std::string global_id;
+};
+struct object_creation_target_t
+{
+    std::string mesh_name;
+    node_rid_t node_rid;
+    std::uint64_t node_lifecycle_generation = 0;
+    location_owner_token_t owner;
+};
+struct object_creation_intent_t
+{
+    std::string stable_type;
+    std::optional<placement_profile_t> placement_profile;
+    std::optional<affinity_key_t> affinity_key;
+    std::string request_content_reference;
+    std::array<std::byte, 32> request_sha256{};
+    std::uint64_t request_encoded_size = 0;
+};
+struct object_reserve_request_t
+{
+    object_creation_key_t key;
+    object_creation_intent_t intent;
+    object_creation_target_t target;
+    std::uint32_t pending_capacity_delta = 1;
+};
+struct object_reservation_fence_t
+{
+    std::string reservation_id;
+    std::string expected_store_version;
+    std::uint64_t object_generation = 0;
+    std::uint64_t authority_owner_generation = 0;
+    object_creation_target_t target;
+    std::uint32_t pending_capacity_delta = 0;
+};
+struct object_reserved_t
+{
+    object_reservation_fence_t fence;
+    authority_snapshot_t creating;
+};
+struct object_already_exists_t
+{
+    authority_snapshot_t current;
+};
+struct object_type_mismatch_t
+{
+    authority_snapshot_t current;
+};
+struct object_placement_capacity_exhausted_t
+{
+};
+struct object_reserve_conflict_t
+{
+    authority_read_result_t current;
+};
+using object_reserve_result_t = std::variant<
+  object_reserved_t,
+  object_already_exists_t,
+  object_type_mismatch_t,
+  object_placement_capacity_exhausted_t,
+  object_reserve_conflict_t,
+  authority_generation_exhausted_t>;
+
+struct object_commit_request_t
+{
+    object_creation_key_t key;
+    object_reservation_fence_t fence;
+};
+struct object_committed_t
+{
+    authority_snapshot_t ready;
+};
+struct object_already_committed_t
+{
+    authority_snapshot_t ready;
+};
+struct object_commit_stale_t
+{
+};
+struct object_commit_conflict_t
+{
+    authority_read_result_t current;
+};
+using object_commit_result_t = std::variant<
+  object_committed_t,
+  object_already_committed_t,
+  object_commit_stale_t,
+  object_commit_conflict_t,
+  authority_generation_exhausted_t>;
+
+struct object_abort_request_t
+{
+    object_creation_key_t key;
+    object_reservation_fence_t fence;
+};
+struct object_aborted_t
+{
+};
+struct object_already_aborted_t
+{
+};
+struct object_abort_stale_t
+{
+};
+struct object_abort_conflict_t
+{
+    authority_read_result_t current;
+};
+using object_abort_result_t = std::variant<
+  object_aborted_t,
+  object_already_aborted_t,
+  object_abort_stale_t,
+  object_abort_conflict_t,
+  authority_generation_exhausted_t>;
+
+struct aggregate_id_t
+{
+    std::array<std::byte, 16> value{};
+};
+struct inventory_digest_t
+{
+    std::array<std::byte, 32> value{};
+};
+struct aggregate_participant_t
+{
+    authority_key_t key;
+    std::string expected_store_version;
+    authority_generation_transition_t owner_transition =
+      authority_generation_transition_t::new_owner;
+    std::vector<std::byte> authority_payload;
+    std::vector<std::byte> membership_mutation;
+};
+struct aggregate_prepare_request_t
+{
+    aggregate_id_t aggregate_id;
+    std::uint64_t aggregate_generation = 0;
+    std::vector<aggregate_participant_t> participants;
+    inventory_digest_t inventory_digest;
+    std::vector<object_reservation_fence_t> target_reservations;
+    location_owner_token_t target_owner;
+};
+struct aggregate_fence_t
+{
+    aggregate_id_t aggregate_id;
+    std::uint64_t aggregate_generation = 0;
+};
+struct aggregate_prepared_t
+{
+    aggregate_fence_t fence;
+};
+struct aggregate_already_prepared_t
+{
+    aggregate_fence_t fence;
+};
+struct aggregate_prepare_conflict_t
+{
+};
+struct aggregate_prepare_stale_t
+{
+};
+using aggregate_prepare_result_t = std::variant<
+  aggregate_prepared_t,
+  aggregate_already_prepared_t,
+  aggregate_prepare_conflict_t,
+  aggregate_prepare_stale_t,
+  authority_generation_exhausted_t>;
+
+enum class aggregate_commit_result_t : std::uint8_t
+{
+    committed = 1,
+    already_committed = 2,
+    stale = 3,
+    generation_exhausted = 4
+};
+enum class aggregate_abort_result_t : std::uint8_t
+{
+    aborted = 1,
+    already_aborted = 2,
+    stale = 3
+};
+
+class object_creation_store_t
+{
+  public:
+    virtual ~object_creation_store_t () = default;
+    virtual task_t<object_reserve_result_t> reserve (
+      object_reserve_request_t request,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<object_commit_result_t> commit (
+      object_commit_request_t request,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<object_abort_result_t> abort (
+      object_abort_request_t request,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<aggregate_prepare_result_t> prepare_aggregate (
+      aggregate_prepare_request_t request,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<aggregate_commit_result_t> commit_aggregate (
+      aggregate_fence_t fence,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<aggregate_abort_result_t> abort_aggregate (
+      aggregate_fence_t fence,
+      std::stop_token cancellation = {}) = 0;
+};
+
+struct relocation_stored_t
+{
+    std::string reference;
+    std::uint32_t checksum_crc32c = 0;
+    std::chrono::system_clock::time_point expires_at;
+    std::chrono::system_clock::time_point store_now;
+};
+struct relocation_found_t
+{
+    std::vector<std::byte> payload;
+};
+struct relocation_missing_t
+{
+};
+using relocation_read_result_t =
+  std::variant<relocation_found_t, relocation_missing_t>;
+enum class relocation_delete_result_t
+{
+    deleted = 0,
+    missing = 1
+};
+struct relocation_renewed_t
+{
+    std::chrono::system_clock::time_point expires_at;
+    std::chrono::system_clock::time_point store_now;
+};
+struct relocation_renew_missing_t
+{
+};
+using relocation_renew_result_t =
+  std::variant<relocation_renewed_t, relocation_renew_missing_t>;
+
+class relocation_store_t
+{
+  public:
+    virtual ~relocation_store_t () = default;
+    virtual task_t<relocation_stored_t> put_relocation (
+      std::vector<std::byte> payload,
+      std::chrono::hours retention,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<relocation_read_result_t> get_relocation (
+      std::string reference,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<relocation_renew_result_t> renew_relocation (
+      std::string reference,
+      std::chrono::hours retention,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<relocation_delete_result_t> delete_relocation (
+      std::string reference,
+      std::stop_token cancellation = {}) = 0;
+};
+
+} // namespace zlink::framework

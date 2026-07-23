@@ -46,4 +46,11 @@ enum class location_kind_t
     route = 4
 };
 
+enum class placement_object_kind_t
+{
+    actor = 1,
+    user_spot = 2,
+    instance_spot = 3
+};
+
 } // namespace zlink::framework

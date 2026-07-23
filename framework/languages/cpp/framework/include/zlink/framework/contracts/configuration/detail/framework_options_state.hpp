@@ -330,6 +330,7 @@ struct framework_options_state_t
     std::map<std::string, stream_session_factory_t> stream_session_factories;
     bool use_in_memory_location_stores = false;
     bool has_location_store_instance = false;
+    bool has_relocation_store_instance = false;
     // In-flight handoff (spot-actor.ko.md 10.4): deployment override for the
     // straggler forwarding window, applied to every spot node.
     std::optional<std::chrono::milliseconds> actor_transfer_forward_window;

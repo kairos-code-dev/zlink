@@ -11,6 +11,7 @@
 #include <zlink/framework/contracts/eventing/events.hpp>
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
+#include <zlink/framework/contracts/locations/maintenance_stores.hpp>
 #include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <algorithm>
@@ -1081,6 +1082,26 @@ class zlink_framework_options_t
         return *this;
     }
 
+    zlink_framework_options_t &
+    add_relocation_store (std::shared_ptr<relocation_store_t> store)
+    {
+        if (!store) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "relocation store instance must not be null");
+        }
+        if (_options->has_relocation_store_instance) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "relocation store must be registered exactly once");
+        }
+        _options->has_relocation_store_instance = true;
+        _services->add_factory<relocation_store_t> (
+          [store] (service_provider_t &) { return store; },
+          service_lifetime_t::singleton);
+        return *this;
+    }
+
     client_server_channel_builder_t add_client_server_channel (std::string channel_name)
     {
         return client_server_channel_builder_t (std::move (channel_name), _options,
@@ -1177,6 +1198,22 @@ class zlink_framework_options_t
               return std::static_pointer_cast<location_store_t> (store);
           },
           service_lifetime_t::singleton);
+        if (auto authority_store =
+              std::dynamic_pointer_cast<authority_store_t> (store)) {
+            _services->add_factory<authority_store_t> (
+              [authority_store] (service_provider_t &) {
+                  return authority_store;
+              },
+              service_lifetime_t::singleton);
+        }
+        if (auto creation_store =
+              std::dynamic_pointer_cast<object_creation_store_t> (store)) {
+            _services->add_factory<object_creation_store_t> (
+              [creation_store] (service_provider_t &) {
+                  return creation_store;
+              },
+              service_lifetime_t::singleton);
+        }
         if (auto change_stamp_store =
               std::dynamic_pointer_cast<location_change_stamp_store_t> (store)) {
             _services->add_factory<location_change_stamp_store_t> (

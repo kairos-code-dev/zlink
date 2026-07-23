@@ -829,6 +829,18 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_FOUNDATION_TESTS)
     LABELS "framework-unit;framework-m6-runtime;maintenance;relocation;recovery;resource"
     TIMEOUT 30)
 
+  add_executable(test_cpp_framework_termination_facade
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_termination_facade.cpp)
+  target_compile_features(test_cpp_framework_termination_facade PRIVATE cxx_std_20)
+  target_link_libraries(test_cpp_framework_termination_facade PRIVATE
+    zlink_framework
+    Threads::Threads)
+  add_test(NAME test_cpp_framework_termination_facade
+    COMMAND test_cpp_framework_termination_facade)
+  set_tests_properties(test_cpp_framework_termination_facade PROPERTIES
+    LABELS "framework-unit;framework-m6-runtime;maintenance;termination"
+    TIMEOUT 30)
+
 endif()
 
 if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)

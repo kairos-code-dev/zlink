@@ -30,6 +30,8 @@
 #include <zlink/framework/contracts/handlers/handler_registry.hpp>
 #include <zlink/framework/contracts/http/http.hpp>
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
+#include <zlink/framework/contracts/locations/maintenance_stores.hpp>
+#include <zlink/framework/contracts/placement.hpp>
 #include <zlink/framework/contracts/messaging/message.hpp>
 #include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>

@@ -16,6 +16,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <stop_token>
 #include <utility>
 #include <variant>
 
@@ -86,14 +87,19 @@ class app_t
 
     int run (int argc, char **argv);
 
-    /* Starts (or joins) the shared graceful-drain operation. Every caller
-     * receives the same terminal result; later calls never move the deadline.
-     * The parameterless overload uses the contract-wide 30 second default. */
+    [[deprecated("use shutdown()")]]
     task_t<drain_result_t> drain (std::chrono::milliseconds deadline);
+    [[deprecated("use shutdown()")]]
     task_t<drain_result_t> drain ();
-    /* Joins the shared terminal result; may be awaited before drain starts. */
+    [[deprecated("use shutdown()")]]
     task_t<drain_result_t> await_drained ();
-    /* Placement-candidate readiness: false from the moment draining starts. */
+    task_t<termination_result_t> retire (
+      std::chrono::milliseconds deadline = std::chrono::seconds (30),
+      std::stop_token wait_cancellation = {});
+    task_t<termination_result_t> shutdown (
+      std::chrono::milliseconds deadline = std::chrono::seconds (30),
+      std::stop_token wait_cancellation = {});
+    framework_runtime_state_t runtime_state () const noexcept;
     bool is_ready () const noexcept;
 
     void stop () noexcept;
@@ -102,7 +108,11 @@ class app_t
   private:
     friend class app_advanced_t;
 
-    static void run_shared_drain (detail::app_state_t &state) noexcept;
+    static void run_shared_termination (detail::app_state_t &state) noexcept;
+    task_t<termination_result_t> terminate (
+      termination_intent_t intent,
+      std::chrono::milliseconds deadline,
+      std::stop_token wait_cancellation);
 
     service_collection_t &_services () noexcept;
     handler_registry_t &_handlers () noexcept;

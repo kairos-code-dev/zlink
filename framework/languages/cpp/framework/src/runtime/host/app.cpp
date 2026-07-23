@@ -24,6 +24,7 @@
 #include "runtime/configuration/endpoint_connections.hpp"
 #include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
+#include "runtime/stateful/public_store_adapters.hpp"
 #include "runtime/streams/stream_host_service.hpp"
 
 #include <algorithm>
@@ -260,20 +261,64 @@ class app_state_t
         }
     }
 
-    /* Shared drain operation (graceful-drain-handoff §6): drain() is
-     * idempotent, the first call fixes the deadline, and every waiter joins
-     * the same terminal result. */
-    struct drain_operation_t
+    struct termination_waiter_t :
+        public std::enable_shared_from_this<termination_waiter_t>
+    {
+        task_completion_source_t<termination_result_t> completion;
+        std::atomic_bool completed = false;
+        std::optional<std::stop_callback<std::function<void ()>>>
+          cancellation;
+
+        task_t<termination_result_t> task ()
+        {
+            return completion.task ();
+        }
+
+        void arm (std::stop_token token)
+        {
+            if (!token.stop_possible ())
+                return;
+            std::weak_ptr<termination_waiter_t> weak =
+              shared_from_this ();
+            cancellation.emplace (
+              token, [weak] {
+                  if (auto waiter = weak.lock ())
+                      waiter->cancel ();
+              });
+        }
+
+        void complete (termination_result_t result)
+        {
+            if (completed.exchange (true, std::memory_order_acq_rel))
+                return;
+            completion.complete (
+              result_t<termination_result_t>::success (result));
+        }
+
+        void cancel ()
+        {
+            if (completed.exchange (true, std::memory_order_acq_rel))
+                return;
+            completion.complete (
+              detail::boundary_failure<termination_result_t> (
+                detail::boundary_error_t::cancelled,
+                "termination waiter was cancelled"));
+        }
+    };
+
+    struct termination_operation_t
     {
         std::mutex mutex;
         bool started = false;
         bool terminal = false;
-        drain_result_t result = drained_t{};
+        termination_intent_t effective_intent =
+          termination_intent_t::shutdown;
+        termination_result_t result{};
         std::chrono::milliseconds deadline{30000};
-        std::vector<detail::task_completion_source_t<drain_result_t>> waiters;
+        std::vector<std::shared_ptr<termination_waiter_t>> waiters;
         std::thread worker;
 
-        ~drain_operation_t ()
+        ~termination_operation_t ()
         {
             if (worker.joinable ()) {
                 worker.join ();
@@ -282,7 +327,13 @@ class app_state_t
     };
 
     std::shared_ptr<std::atomic_bool> draining = std::make_shared<std::atomic_bool> (false);
-    drain_operation_t drain_operation;
+    std::atomic<framework_runtime_state_t> runtime_state =
+      framework_runtime_state_t::preparing;
+    termination_operation_t termination_operation;
+    std::mutex termination_teardown_mutex;
+    std::condition_variable termination_teardown_changed;
+    bool run_active = false;
+    bool teardown_complete = false;
 
     service_collection_t services;
     handler_registry_t handlers;
@@ -362,6 +413,12 @@ one_way_native_submit_result (zlink::submit_result_t result, std::string_view op
 
 namespace zlink::framework
 {
+
+namespace
+{
+task_t<drain_result_t>
+to_drain_task (task_t<termination_result_t> termination);
+}
 
 app_t::app_t () : _state (std::make_unique<detail::app_state_t> ())
 {
@@ -535,6 +592,22 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto http_snapshot = options.http ().snapshot ();
     options.apply ();
+    if (_state->services.contains (
+          std::type_index (typeid (relocation_store_t)))
+        && !_state->services.contains (
+          std::type_index (
+            typeid (runtime::stateful::relocation_store_port_t)))) {
+        _state->services.add_factory<
+          runtime::stateful::relocation_store_port_t> (
+          [] (service_provider_t &provider) {
+              return std::unique_ptr<
+                runtime::stateful::relocation_store_port_t> (
+                std::make_unique<
+                  runtime::stateful::public_relocation_store_adapter_t> (
+                  provider.get_required<relocation_store_t> ()));
+          },
+          service_lifetime_t::singleton);
+    }
     if (!_state->services.contains (std::type_index (typeid (location_store_t)))) {
         auto store = std::make_shared<runtime::in_memory_location_store_t> ();
         _state->services.add_factory<location_store_t> (
@@ -753,9 +826,9 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             mesh_nodes,
             location_runtime ? &location_runtime->get () : nullptr,
             [this] (std::chrono::milliseconds deadline) {
-                return drain (deadline);
+                return to_drain_task (shutdown (deadline));
             },
-            [this] { return await_drained (); });
+            [this] { return to_drain_task (shutdown ()); });
         _state->services.add_factory<route_mesh_runtime_t> (
           [mesh_runtime] (service_provider_t &) {
               return std::static_pointer_cast<route_mesh_runtime_t> (mesh_runtime);
@@ -1169,9 +1242,21 @@ int app_t::run (int argc, char **argv)
     std::signal (SIGTERM, handle_process_signal);
 
     auto provider = _state->services.build_provider ();
+    {
+        std::lock_guard lock (_state->termination_teardown_mutex);
+        if (_state->runtime_state.load (std::memory_order_acquire)
+            == framework_runtime_state_t::stopped)
+            return 0;
+        _state->run_active = true;
+        _state->teardown_complete = false;
+    }
     std::vector<hosted_service_t *> started;
     try {
         _state->start_hosted_services (provider, started);
+        auto expected = framework_runtime_state_t::preparing;
+        (void) _state->runtime_state.compare_exchange_strong (
+          expected, framework_runtime_state_t::serving,
+          std::memory_order_acq_rel);
         try {
             runtime::runtime_metrics_t drain_metrics (
               detail::monitoring_runtime_t::from (_state->monitoring).state ());
@@ -1184,13 +1269,15 @@ int app_t::run (int argc, char **argv)
         }
         while (!_state->stop_requested.load (std::memory_order_acquire)) {
             if (g_stop_signal_requested != 0) {
-                _state->stop_requested.store (true, std::memory_order_release);
-                break;
+                g_stop_signal_requested = 0;
+                (void) shutdown ();
             }
             std::this_thread::sleep_for (std::chrono::milliseconds (1));
         }
     }
     catch (...) {
+        _state->runtime_state.store (
+          framework_runtime_state_t::error, std::memory_order_release);
         _state->stop_hosted_services (started);
         detail::channel_runtime_t::from (_state->zlink.message_bus ()).shutdown ();
         detail::drain_zlink_builder_runtime (_state->zlink);
@@ -1198,6 +1285,12 @@ int app_t::run (int argc, char **argv)
         detail::shutdown_stream_dispatch_executor ();
         detail::shutdown_handler_invocation_executor ();
         provider.close ();
+        {
+            std::lock_guard lock (_state->termination_teardown_mutex);
+            _state->run_active = false;
+            _state->teardown_complete = true;
+        }
+        _state->termination_teardown_changed.notify_all ();
         throw;
     }
 
@@ -1237,6 +1330,14 @@ int app_t::run (int argc, char **argv)
     if (trace_enabled) {
         std::cerr << "zlink-cpp-host-stop stage=after-provider-close" << std::endl;
     }
+    {
+        std::lock_guard lock (_state->termination_teardown_mutex);
+        _state->run_active = false;
+        _state->teardown_complete = true;
+    }
+    _state->termination_teardown_changed.notify_all ();
+    _state->runtime_state.store (
+      framework_runtime_state_t::stopped, std::memory_order_release);
     return _state->stop_requested.load (std::memory_order_acquire) ? 0 : _state->exit_code;
 }
 
@@ -1258,55 +1359,161 @@ const char *drain_state_name (drain_state_t state) noexcept
     return "unknown";
 }
 
+task_t<drain_result_t>
+to_drain_task (task_t<termination_result_t> termination)
+{
+    auto source =
+      std::make_shared<detail::task_completion_source_t<drain_result_t>> ();
+    auto output = source->task ();
+    auto observed =
+      std::make_shared<task_t<termination_result_t>> (
+        std::move (termination));
+    detail::observe_task_completion (
+      *observed,
+      [source, observed] (const result_t<termination_result_t> &result) {
+          if (!result) {
+              source->complete (
+                detail::propagate_failure<drain_result_t> (
+                  result, "shutdown failed"));
+              return;
+          }
+          const auto terminal = result.value ();
+          if (terminal.outcome == termination_outcome_t::stopped) {
+              source->complete (
+                result_t<drain_result_t>::success (drained_t{}));
+              return;
+          }
+          drain_force_reason_t reason =
+            drain_force_reason_t::teardown_failed;
+          if (terminal.reason == termination_reason_t::deadline_exceeded)
+              reason = drain_force_reason_t::deadline_exceeded;
+          else if (terminal.reason
+                   == termination_reason_t::relocation_failed)
+              reason = drain_force_reason_t::relocation_failed;
+          source->complete (
+            result_t<drain_result_t>::success (
+              force_stopped_t{reason}));
+      });
+    return output;
+}
+
 } // namespace
 
 bool app_t::is_ready () const noexcept
 {
-    return !_state->draining->load (std::memory_order_acquire);
+    return runtime_state () == framework_runtime_state_t::serving;
+}
+
+framework_runtime_state_t app_t::runtime_state () const noexcept
+{
+    return _state->runtime_state.load (std::memory_order_acquire);
 }
 
 task_t<drain_result_t> app_t::await_drained ()
 {
-    auto &operation = _state->drain_operation;
-    std::lock_guard lock (operation.mutex);
-    if (operation.terminal) {
-        return task_t<drain_result_t> (result_t<drain_result_t>::success (operation.result));
-    }
-    detail::task_completion_source_t<drain_result_t> waiter;
-    auto task = waiter.task ();
-    operation.waiters.push_back (std::move (waiter));
-    return task;
+    return to_drain_task (shutdown ());
 }
 
 task_t<drain_result_t> app_t::drain ()
 {
-    return drain (std::chrono::milliseconds (30000));
+    return to_drain_task (shutdown ());
 }
 
 task_t<drain_result_t> app_t::drain (std::chrono::milliseconds deadline)
 {
-    if (deadline <= std::chrono::milliseconds::zero ()) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "drain deadline must be greater than zero");
-    }
-    auto &operation = _state->drain_operation;
-    {
-        std::lock_guard lock (operation.mutex);
-        if (!operation.started) {
-            operation.started = true;
-            operation.deadline = deadline;
-            _state->draining->store (true, std::memory_order_release);
-            auto *state = _state.get ();
-            operation.worker = std::thread ([state] { run_shared_drain (*state); });
-        }
-    }
-    return await_drained ();
+    return to_drain_task (shutdown (deadline));
 }
 
-void app_t::run_shared_drain (detail::app_state_t &state) noexcept
+task_t<termination_result_t> app_t::retire (
+  std::chrono::milliseconds deadline,
+  std::stop_token wait_cancellation)
+{
+    return terminate (
+      termination_intent_t::retire, deadline, wait_cancellation);
+}
+
+task_t<termination_result_t> app_t::shutdown (
+  std::chrono::milliseconds deadline,
+  std::stop_token wait_cancellation)
+{
+    return terminate (
+      termination_intent_t::shutdown, deadline, wait_cancellation);
+}
+
+task_t<termination_result_t> app_t::terminate (
+  termination_intent_t intent,
+  std::chrono::milliseconds deadline,
+  std::stop_token wait_cancellation)
+{
+    if (deadline <= std::chrono::milliseconds::zero ()) {
+        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
+                                     "termination deadline must be greater than zero");
+    }
+    std::optional<termination_reason_t> blocker;
+    if (intent == termination_intent_t::retire) {
+        if (runtime_state () != framework_runtime_state_t::serving) {
+            blocker = termination_reason_t::runtime_not_ready;
+        } else if (
+          !_state->services.contains (
+            std::type_index (typeid (relocation_store_t)))
+          || !_state->services.contains (
+            std::type_index (typeid (authority_store_t)))
+          || !_state->services.contains (
+            std::type_index (typeid (object_creation_store_t)))) {
+            blocker = termination_reason_t::store_unavailable;
+        } else {
+            blocker = termination_reason_t::target_unavailable;
+        }
+    }
+    auto &operation = _state->termination_operation;
+    std::shared_ptr<detail::app_state_t::termination_waiter_t> waiter;
+    task_t<termination_result_t> task (
+      result_t<termination_result_t>::success ({}));
+    {
+        std::lock_guard lock (operation.mutex);
+        if (operation.terminal) {
+            return task_t<termination_result_t> (
+              result_t<termination_result_t>::success (
+                operation.result));
+        }
+        if (!operation.started) {
+            if (blocker) {
+                return task_t<termination_result_t> (
+                  result_t<termination_result_t>::success (
+                    {termination_intent_t::retire,
+                     termination_outcome_t::blocked,
+                     *blocker}));
+            }
+            operation.started = true;
+            operation.effective_intent = intent;
+            operation.deadline = deadline;
+            _state->draining->store (true, std::memory_order_release);
+            _state->runtime_state.store (
+              intent == termination_intent_t::retire
+                ? framework_runtime_state_t::retiring
+                : framework_runtime_state_t::draining,
+              std::memory_order_release);
+            auto *state = _state.get ();
+            operation.worker =
+              std::thread ([state] { run_shared_termination (*state); });
+        }
+        waiter =
+          std::make_shared<detail::app_state_t::termination_waiter_t> ();
+        task = waiter->task ();
+        operation.waiters.push_back (waiter);
+    }
+    waiter->arm (wait_cancellation);
+    return task;
+}
+
+void app_t::run_shared_termination (
+  detail::app_state_t &state) noexcept
 {
     const auto started_at = std::chrono::steady_clock::now ();
-    const auto deadline_at = started_at + state.drain_operation.deadline;
+    const auto deadline_at =
+      started_at + state.termination_operation.deadline;
+    const auto effective_intent =
+      state.termination_operation.effective_intent;
     auto publisher = state.monitoring.publisher ();
     auto emit_state = [&] (drain_state_t drain_state) {
         try {
@@ -1374,13 +1581,14 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
             }
         }
         if (!marker_published)
-            force (drain_force_reason_t::draining_state_publish_failed);
+            force (drain_force_reason_t::teardown_failed);
     }
 
     /* Keep the typed marker and owner lease observable until every polling
      * consumer has had one bounded opportunity to exclude this node from new
      * assignments. Existing auto-connect sockets remain established. */
-    if (std::holds_alternative<drained_t> (result)) {
+    if (effective_intent == termination_intent_t::retire
+        && std::holds_alternative<drained_t> (result)) {
         const bool has_auto_connect =
           std::any_of (state.hosted_services.begin (), state.hosted_services.end (),
                        [] (const auto &service) {
@@ -1440,7 +1648,8 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
         }
     }
 
-    if (std::holds_alternative<drained_t> (result)) {
+    if (effective_intent == termination_intent_t::retire
+        && std::holds_alternative<drained_t> (result)) {
         bool actors_completed = false;
         try {
             auto provider = state.services.build_provider ();
@@ -1525,7 +1734,7 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
         if (!actors_completed)
             force (std::chrono::steady_clock::now () >= deadline_at
                      ? drain_force_reason_t::deadline_exceeded
-                     : drain_force_reason_t::teardown_failed);
+                     : drain_force_reason_t::relocation_failed);
     }
 
     if (std::holds_alternative<drained_t> (result)) {
@@ -1560,12 +1769,12 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
             auto provider = state.services.build_provider ();
             if (auto location_runtime = provider.get<runtime::location_runtime_t> ()) {
                 if (!location_runtime->get ().cleanup_owner ()) {
-                    force (drain_force_reason_t::owner_cleanup_failed);
+                    force (drain_force_reason_t::teardown_failed);
                 }
             }
         }
         catch (...) {
-            force (drain_force_reason_t::owner_cleanup_failed);
+            force (drain_force_reason_t::teardown_failed);
         }
     }
 
@@ -1608,24 +1817,64 @@ void app_t::run_shared_drain (detail::app_state_t &state) noexcept
     catch (...) {
     }
 
-    std::vector<detail::task_completion_source_t<drain_result_t>> waiters;
+    termination_reason_t terminal_reason = termination_reason_t::none;
+    if (const auto *forced = std::get_if<force_stopped_t> (&result)) {
+        switch (forced->reason) {
+        case drain_force_reason_t::deadline_exceeded:
+            terminal_reason = termination_reason_t::deadline_exceeded;
+            break;
+        case drain_force_reason_t::relocation_failed:
+            terminal_reason = termination_reason_t::relocation_failed;
+            break;
+        case drain_force_reason_t::teardown_failed:
+            terminal_reason = termination_reason_t::teardown_failed;
+            break;
+        }
+    }
+    termination_result_t terminal{
+      effective_intent,
+      force_stopped ? termination_outcome_t::force_stopped
+                    : termination_outcome_t::stopped,
+      terminal_reason};
+    state.stop_requested.store (true, std::memory_order_release);
     {
-        std::lock_guard lock (state.drain_operation.mutex);
-        if (!state.drain_operation.terminal) {
-            state.drain_operation.terminal = true;
-            state.drain_operation.result = result;
-            waiters = std::move (state.drain_operation.waiters);
-            state.drain_operation.waiters.clear ();
+        std::unique_lock lock (state.termination_teardown_mutex);
+        if (state.run_active) {
+            state.termination_teardown_changed.wait (
+              lock, [&] { return state.teardown_complete; });
+        }
+    }
+    if (terminal.outcome == termination_outcome_t::stopped
+        && std::chrono::steady_clock::now () >= deadline_at) {
+        terminal.outcome = termination_outcome_t::force_stopped;
+        terminal.reason = termination_reason_t::deadline_exceeded;
+    }
+    std::vector<std::shared_ptr<detail::app_state_t::termination_waiter_t>>
+      waiters;
+    {
+        std::lock_guard lock (state.termination_operation.mutex);
+        if (!state.termination_operation.terminal) {
+            state.termination_operation.terminal = true;
+            state.termination_operation.result = terminal;
+            waiters = std::move (state.termination_operation.waiters);
+            state.termination_operation.waiters.clear ();
         }
     }
     for (auto &waiter : waiters) {
-        waiter.complete (result_t<drain_result_t>::success (result));
+        waiter->complete (terminal);
     }
+    state.runtime_state.store (
+      framework_runtime_state_t::stopped, std::memory_order_release);
 }
 
 void app_t::stop () noexcept
 {
-    _state->stop_requested.store (true, std::memory_order_release);
+    try {
+        (void) shutdown ();
+    }
+    catch (...) {
+        _state->stop_requested.store (true, std::memory_order_release);
+    }
 }
 
 void app_t::request_stop () noexcept

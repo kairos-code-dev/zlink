@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/stateful/maintenance_runtime.hpp"
+#include "runtime/stateful/public_store_adapters.hpp"
 
 #include <condition_variable>
 #include <cstdlib>
@@ -36,6 +37,86 @@ std::string authority_key (object_kind_t kind, const std::string &key)
 }
 
 inventory_digest_t digest_with (std::uint8_t value);
+
+class public_memory_relocation_store_t final :
+    public zlink::framework::relocation_store_t
+{
+  public:
+    zlink::framework::task_t<zlink::framework::relocation_stored_t>
+    put_relocation (
+      std::vector<std::byte> payload,
+      std::chrono::hours retention,
+      std::stop_token) override
+    {
+        if (retention != std::chrono::hours (24))
+            throw std::runtime_error ("unexpected retention");
+        std::vector<std::uint8_t> checksum_input;
+        checksum_input.reserve (payload.size ());
+        for (const auto value : payload)
+            checksum_input.push_back (
+              std::to_integer<std::uint8_t> (value));
+        const auto reference = "public-root";
+        roots[reference] = std::move (payload);
+        return completed (
+          zlink::framework::relocation_stored_t{
+            reference,
+            maintenance_runtime_t::crc32c (checksum_input),
+            std::chrono::system_clock::now () + retention,
+            std::chrono::system_clock::now ()});
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::relocation_read_result_t>
+    get_relocation (std::string reference, std::stop_token) override
+    {
+        const auto found = roots.find (reference);
+        if (found == roots.end ())
+            return completed (
+              zlink::framework::relocation_read_result_t{
+                zlink::framework::relocation_missing_t{}});
+        return completed (
+          zlink::framework::relocation_read_result_t{
+            zlink::framework::relocation_found_t{found->second}});
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::relocation_renew_result_t>
+    renew_relocation (
+      std::string reference,
+      std::chrono::hours retention,
+      std::stop_token) override
+    {
+        if (!roots.contains (reference))
+            return completed (
+              zlink::framework::relocation_renew_result_t{
+                zlink::framework::relocation_renew_missing_t{}});
+        const auto now = std::chrono::system_clock::now ();
+        return completed (
+          zlink::framework::relocation_renew_result_t{
+            zlink::framework::relocation_renewed_t{
+              now + retention, now}});
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::relocation_delete_result_t>
+    delete_relocation (std::string reference, std::stop_token) override
+    {
+        return completed (
+          roots.erase (reference) > 0
+            ? zlink::framework::relocation_delete_result_t::deleted
+            : zlink::framework::relocation_delete_result_t::missing);
+    }
+
+  private:
+    template <typename T>
+    static zlink::framework::task_t<T> completed (T value)
+    {
+        return zlink::framework::task_t<T> (
+          zlink::framework::result_t<T>::success (std::move (value)));
+    }
+
+    std::map<std::string, std::vector<std::byte>> roots;
+};
 
 class memory_relocation_store_t final : public relocation_store_port_t
 {
@@ -807,6 +888,28 @@ void test_post_commit_failure_is_force_stopped (
       "postcommit failure must finish bounded teardown in Stopped");
 }
 
+void test_public_relocation_store_adapter (test_context_t &test)
+{
+    auto public_store =
+      std::make_shared<public_memory_relocation_store_t> ();
+    public_relocation_store_adapter_t adapter (public_store);
+    const std::vector<std::uint8_t> payload{0, 1, 127, 255};
+    const auto stored = adapter.put (payload, std::chrono::hours (24));
+    test.require (
+      stored.reference == "public-root"
+        && stored.checksum_crc32c
+             == maintenance_runtime_t::crc32c (payload),
+      "public relocation adapter must preserve reference and CRC32C");
+    test.require (
+      adapter.get (stored.reference)
+        == std::optional<std::vector<std::uint8_t>>{payload},
+      "public relocation adapter must preserve immutable payload bytes");
+    adapter.remove (stored.reference);
+    test.require (
+      !adapter.get (stored.reference),
+      "public relocation adapter must map delete and missing results");
+}
+
 } // namespace
 
 int main ()
@@ -821,5 +924,6 @@ int main ()
     test_user_spot_aggregate_and_stream_barrier (test);
     test_shutdown_wins_during_retire_preflight (test);
     test_post_commit_failure_is_force_stopped (test);
+    test_public_relocation_store_adapter (test);
     return test.failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

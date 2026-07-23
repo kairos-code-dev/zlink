@@ -547,10 +547,20 @@ final class EntrySpotActivation
 
     @Override
     public void close() {
+        close(java.time.Instant.now());
+    }
+
+    void close(java.time.Instant deadline) {
         try {
             host.awaitClosing(context.enqueueDispatch(() ->
                 host.runWithOutbound(context.dispatchOutbound(), () ->
-                    ZLinkHandlerStages.fromRunnable(entrySpot::onClosing))));
+                    ZLinkHandlerStages.fromStageSupplier(() ->
+                        entrySpot.onClosing(
+                            new systems.zlink.framework.spots
+                                .ZLinkSpotClosingContext(
+                                    systems.zlink.framework.spots
+                                        .ZLinkSpotCloseReason.HOST_SHUTDOWN,
+                                    deadline))))));
         } finally {
             closePendingActorMessage();
             closeActiveRouteReceives();

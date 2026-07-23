@@ -198,8 +198,12 @@ public final class ZLinkFrameworkRegistration {
             channel.validate(locations.enabled(), handlerCatalog);
         }
         int actorCapableNodes = 0;
+        boolean objectRoleConfigured = false;
+        boolean relocationStoreRequired = false;
         for (MeshNodeRegistration meshNode : meshNodes) {
             meshNode.validate();
+            objectRoleConfigured |= meshNode.objectRoleEnabled();
+            relocationStoreRequired |= meshNode.requiresRelocationStore();
             if (!meshNode.actorFactories().isEmpty()) {
                 actorCapableNodes++;
             }
@@ -213,6 +217,14 @@ public final class ZLinkFrameworkRegistration {
         if (actorCapableNodes > 1) {
             throw new ZLinkConfigurationException(
                 "actor factory registration is ambiguous because more than one mesh node owns actor factories");
+        }
+        if (objectRoleConfigured && !locations.enabled()) {
+            throw new ZLinkConfigurationException(
+                "Mesh object Client or Server role requires a Location Store");
+        }
+        if (relocationStoreRequired && relocationStore == null) {
+            throw new ZLinkConfigurationException(
+                "Recreate or Snapshot relocation policy requires a Relocation Store");
         }
         for (StreamNodeRegistration streamNode : streamNodes) {
             streamNode.validate(meshNodes);

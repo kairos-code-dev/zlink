@@ -585,13 +585,24 @@ final class SpotActivation
 
     @Override
     public void close() {
+        close(
+            systems.zlink.framework.spots.ZLinkSpotCloseReason.EXPLICIT_CLOSE,
+            java.time.Instant.now());
+    }
+
+    void close(
+        systems.zlink.framework.spots.ZLinkSpotCloseReason reason,
+        java.time.Instant deadline) {
         if (spot == null) {
             closeResources();
             return;
         }
         try {
             host.awaitClosing(host.runWithOutbound(context.dispatchOutbound(), () ->
-                ZLinkHandlerStages.fromRunnable(spot::onClosing)));
+                ZLinkHandlerStages.fromStageSupplier(() -> spot.onClosing(
+                    new systems.zlink.framework.spots.ZLinkSpotClosingContext(
+                        reason,
+                        deadline)))));
         } finally {
             closeResources();
         }

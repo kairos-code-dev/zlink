@@ -29,9 +29,7 @@ public record ZLinkRegisteredLocationStores(
             store,
             store,
             store,
-            store instanceof ZLinkAuthorityStore authority
-                ? authority
-                : null,
+            store,
             store instanceof ZLinkLocationChangeStampStore stamps ? stamps : null,
             store instanceof ZLinkLocationWatchStore watch ? watch : null,
             store);

@@ -30,6 +30,8 @@ public interface ZLinkMeshNodeBuilder {
 
     ZLinkMeshNodeBuilder setDefaultRequestTimeout(Duration timeout);
 
+    ZLinkMeshObjectRoleBuilder objects();
+
     <THandler extends ZLinkRouteSendHandler<TMessage>, TMessage>
     ZLinkMeshNodeBuilder addRouteSendHandler(
         Class<THandler> handlerType,

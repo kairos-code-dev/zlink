@@ -125,9 +125,83 @@ class ZLinkLocationStoreResolverTest {
 
     public static class CountingLocationStore implements ZLinkLocationStore {
         static final AtomicInteger created = new AtomicInteger();
+        private final ZLinkInMemoryAuthorityStore authority =
+            new ZLinkInMemoryAuthorityStore(java.time.Clock.systemUTC());
 
         public CountingLocationStore() {
             created.incrementAndGet();
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkAuthorityReadResult> read(
+            String key,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.read(key, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkAuthorityWriteResult>
+            compareExchange(
+                String key,
+                systems.zlink.framework.locations.ZLinkAuthorityExpectation expectation,
+                systems.zlink.framework.locations.ZLinkAuthorityMutation mutation,
+                systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.compareExchange(key, expectation, mutation, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkAuthorityScanResult> list(
+            String prefix,
+            java.util.Optional<systems.zlink.framework.locations.ZLinkAuthorityScanCursor> cursor,
+            int limit,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.list(prefix, cursor, limit, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkObjectReserveResult> reserve(
+            systems.zlink.framework.locations.ZLinkObjectReservationRequest request,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.reserve(request, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkObjectCommitResult> commit(
+            systems.zlink.framework.locations.ZLinkObjectReservation reservation,
+            byte[] readyPayload,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.commit(reservation, readyPayload, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkObjectAbortResult> abort(
+            systems.zlink.framework.locations.ZLinkObjectReservation reservation,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.abort(reservation, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkAggregatePrepareResult>
+            prepareAggregate(
+                systems.zlink.framework.locations.ZLinkAggregatePrepareRequest request,
+                systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.prepareAggregate(request, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkAggregateCommitResult>
+            commitAggregate(
+                systems.zlink.framework.locations.ZLinkAggregateFence fence,
+                systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.commitAggregate(fence, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkAggregateAbortResult>
+            abortAggregate(
+                systems.zlink.framework.locations.ZLinkAggregateFence fence,
+                systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.abortAggregate(fence, cancellation);
         }
 
         @Override

@@ -53,7 +53,6 @@ import systems.zlink.framework.locations.ZLinkStoreCancellation;
 
 public final class ZLinkRedisLocationStore implements
     ZLinkLocationStore,
-    ZLinkAuthorityStore,
     ZLinkLocationChangeStampStore,
     ZLinkRoutingIdSlotAllocationStore,
     AutoCloseable {

@@ -154,6 +154,14 @@ public final class ZLinkFrameworkRuntime
             ZLinkHandlerActivator.services(handlerFactory);
         runtimeHandlers.add(ZLinkFrameworkRegistration.class, this.registration);
         runtimeHandlers.add(ZLinkFrameworkRuntime.class, this);
+        var relocationAdapters = new systems.zlink.framework.runtime.internal.relocation
+            .ZLinkRelocationAdapterRegistry(this.registration, handlerFactory);
+        if (relocationAdapters.hasAdapters()) {
+            runtimeHandlers.add(
+                systems.zlink.framework.runtime.internal.relocation
+                    .ZLinkRelocationAdapterRegistry.class,
+                relocationAdapters);
+        }
         ZLinkFrameworkLocationSubsystem locationSubsystem =
             ZLinkFrameworkLocationSubsystem.create(this.registration, runtimeHandlers);
         if (this.registration.relocationStore() != null) {
@@ -552,7 +560,7 @@ public final class ZLinkFrameworkRuntime
                 && effectiveTerminationIntent.compareAndSet(
                     ZLinkTerminationIntent.RETIRE,
                     ZLinkTerminationIntent.SHUTDOWN)) {
-                startLegacyTermination(current, deadline);
+                startTermination(current, deadline);
             }
             return independentWaiter(current);
         }
@@ -568,7 +576,7 @@ public final class ZLinkFrameworkRuntime
         effectiveTerminationIntent.set(intent);
         publishRuntimeState(runtimeState.get());
         if (intent == ZLinkTerminationIntent.SHUTDOWN) {
-            startLegacyTermination(candidate, deadline);
+            startTermination(candidate, deadline);
             return independentWaiter(candidate);
         }
         retirePreflight().whenComplete((reason, failure) -> {
@@ -577,7 +585,7 @@ public final class ZLinkFrameworkRuntime
             }
             if (effectiveTerminationIntent.get()
                 == ZLinkTerminationIntent.SHUTDOWN) {
-                startLegacyTermination(candidate, deadline);
+                startTermination(candidate, deadline);
                 return;
             }
             ZLinkTerminationReason blocker = failure == null
@@ -599,12 +607,12 @@ public final class ZLinkFrameworkRuntime
                 return;
             }
             publishRuntimeState(ZLinkFrameworkRuntimeState.RETIRING);
-            startLegacyTermination(candidate, deadline);
+            startTermination(candidate, deadline);
         });
         return independentWaiter(candidate);
     }
 
-    private void startLegacyTermination(
+    private void startTermination(
         java.util.concurrent.CompletableFuture<ZLinkTerminationResult>
             completion,
         java.time.Duration deadline) {
@@ -646,6 +654,20 @@ public final class ZLinkFrameworkRuntime
         if (!ready.get()) {
             return java.util.concurrent.CompletableFuture.completedFuture(
                 ZLinkTerminationReason.RUNTIME_NOT_READY);
+        }
+        boolean hasActiveRelocatableWork =
+            (actors != null && !actors.activeActorTypes().isEmpty())
+                || (spots != null && spots.activeUserSpotCount() > 0);
+        if (hasActiveRelocatableWork) {
+            boolean relocationPolicyConfigured =
+                registration.meshNodes().stream()
+                    .anyMatch(
+                        systems.zlink.framework.runtime.mesh
+                            .MeshNodeRegistration::requiresRelocationStore);
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                relocationPolicyConfigured
+                    ? ZLinkTerminationReason.RELOCATION_FAILED
+                    : ZLinkTerminationReason.RELOCATION_DISABLED);
         }
         if (actors == null || actors.activeActorTypes().isEmpty()) {
             return java.util.concurrent.CompletableFuture.completedFuture(
@@ -886,24 +908,32 @@ public final class ZLinkFrameworkRuntime
                     acceptedIgnored -> streams.awaitDrainBarrier());
             }
             applicationBarrier
-                .thenCompose(acceptedIgnored -> beginActorHandoff())
-                .whenComplete((handoffCount, handoffFailure) -> {
-                if (handoffFailure != null) {
-                    forceStop(systems.zlink.framework.monitoring.ZLinkDrainForceReason.TEARDOWN_FAILED);
+                .whenComplete((barrierIgnored, barrierFailure) -> {
+                if (barrierFailure != null) {
+                    forceStop(
+                        systems.zlink.framework.monitoring
+                            .ZLinkDrainForceReason.TEARDOWN_FAILED);
                     return;
-                }
-                for (int i = 0; i < handoffCount; i++) {
-                    systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics.increment(
-                        "zlink.drain.actors.handed_off", java.util.Map.of());
                 }
                 java.util.concurrent.CompletionStage<Void> streamBarrier = streams == null
                     ? java.util.concurrent.CompletableFuture.completedFuture(null)
                     : streams.awaitDrainBarrier()
                         .thenCompose(streamIgnored -> streams.notifyServerDrain());
-                java.util.concurrent.CompletionStage<Void> spotDrain = streamBarrier.thenCompose(
+                java.util.concurrent.CompletionStage<Void> actorShutdown =
+                    streamBarrier.thenCompose(streamIgnored ->
+                        actors == null
+                            ? java.util.concurrent.CompletableFuture
+                                .completedFuture(null)
+                            : actors.closeAsync());
+                java.util.concurrent.CompletionStage<Void> spotDrain = actorShutdown.thenCompose(
                     streamIgnored -> spots == null
                         ? java.util.concurrent.CompletableFuture.completedFuture(null)
-                        : spots.continueDrain());
+                        : spots.continueDrain(
+                            systems.zlink.framework.spots
+                                .ZLinkSpotCloseReason.HOST_SHUTDOWN,
+                            java.util.Optional.ofNullable(
+                                    terminationDeadline.get())
+                                .orElseGet(java.time.Instant::now)));
                 spotDrain.thenCompose(spotIgnored -> awaitWorkloadsDrained())
                     .whenComplete((workloadsIgnored, workloadFailure) -> {
                 if (workloadFailure != null) {
@@ -914,46 +944,6 @@ public final class ZLinkFrameworkRuntime
                     });
             });
         });
-    }
-
-    private java.util.concurrent.CompletionStage<Integer> beginActorHandoff() {
-        if (actors == null || storeLocationResolvers == null || spots == null) {
-            return java.util.concurrent.CompletableFuture.completedFuture(0);
-        }
-        java.util.Set<RoutingId> localNodes = new java.util.HashSet<>();
-        for (ZLinkInternalSpotNode node : spots.nodesByName().values()) {
-            localNodes.add(node.routingId());
-        }
-        java.util.concurrent.CompletionStage<Integer> transferred =
-            java.util.concurrent.CompletableFuture.completedFuture(0);
-        for (String actorType : actors.activeActorTypes().stream().sorted().toList()) {
-            String meshName = actorDrainMeshName(registration, actorType);
-            if (meshName == null) {
-                continue;
-            }
-            String transferRouteChannel = transferRouteChannelName(registration, meshName);
-            if (transferRouteChannel == null) {
-                continue;
-            }
-            transferred = transferred.thenCompose(count -> storeLocationResolvers.listLivePeers(
-                    new systems.zlink.framework.locations.ZLinkPeerLocationFilter(
-                        systems.zlink.framework.locations.ZLinkLocationAutoConnectType.SPOT_MESH,
-                        meshName,
-                        systems.zlink.framework.locations.ZLinkLocationRole.SPOT,
-                        null,
-                        null))
-                .thenCompose(found -> found.stream()
-                    .filter(peer -> !peer.draining())
-                    .filter(peer -> isEligibleActorHandoffTarget(peer, actorType, localNodes))
-                    .sorted(java.util.Comparator.comparing(peer -> peer.nodeRid().toString()))
-                    .findFirst()
-                    .<java.util.concurrent.CompletionStage<Integer>>map(peer ->
-                        actors.handoffActorsToEntrySpot(
-                            actorType, transferRouteChannel, peer.nodeRid()))
-                    .orElseGet(() -> java.util.concurrent.CompletableFuture.completedFuture(0)))
-                .thenApply(moved -> count + moved));
-        }
-        return transferred;
     }
 
     static String actorDrainMeshName(
@@ -1001,7 +991,13 @@ public final class ZLinkFrameworkRuntime
                 java.util.concurrent.CompletionStage<Void> retrySpotDrain =
                     (actors == null || actors.drainComplete())
                         && spots != null && !spots.drainComplete()
-                    ? spots.continueDrain().exceptionally(error -> null)
+                    ? spots.continueDrain(
+                            systems.zlink.framework.spots
+                                .ZLinkSpotCloseReason.HOST_SHUTDOWN,
+                            java.util.Optional.ofNullable(
+                                    terminationDeadline.get())
+                                .orElseGet(java.time.Instant::now))
+                        .exceptionally(error -> null)
                     : java.util.concurrent.CompletableFuture.completedFuture(null);
                 retrySpotDrain.thenCompose(ignored -> awaitWorkloadsDrained())
                     .whenComplete((ignored, failure) -> {

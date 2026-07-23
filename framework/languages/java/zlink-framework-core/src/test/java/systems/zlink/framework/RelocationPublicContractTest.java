@@ -14,6 +14,11 @@ import systems.zlink.framework.actors.ZLinkActorRelocationAdapter;
 import systems.zlink.framework.actors.ZLinkRelocationCancellation;
 import systems.zlink.framework.actors.ZLinkRelocationPolicy;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
+import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder;
+import systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder;
+import systems.zlink.framework.locations.ZLinkAuthorityStore;
+import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkRelocationDeleteResult;
 import systems.zlink.framework.locations.ZLinkRelocationFound;
 import systems.zlink.framework.locations.ZLinkRelocationMissing;
@@ -119,6 +124,14 @@ final class RelocationPublicContractTest {
         assertEquals(
             ZLinkRelocationPolicy.Snapshot.class,
             ZLinkRelocationPolicy.snapshot(Object.class).getClass());
+        assertEquals(
+            ZLinkMeshObjectRoleBuilder.class,
+            ZLinkMeshNodeBuilder.class.getMethod("objects").getReturnType());
+        assertEquals(
+            ZLinkMeshObjectServerBuilder.class,
+            ZLinkMeshObjectRoleBuilder.class.getMethod("server").getReturnType());
+        assertTrue(ZLinkAuthorityStore.class.isAssignableFrom(
+            ZLinkLocationStore.class));
     }
 
     @Test

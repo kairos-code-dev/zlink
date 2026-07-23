@@ -628,8 +628,20 @@ public final class ZLinkSpotRuntime
     }
 
     public CompletionStage<Void> continueDrain() {
-        return spotLifecycle.releaseRecreatableSpots()
+        return continueDrain(
+            systems.zlink.framework.spots.ZLinkSpotCloseReason.HOST_SHUTDOWN,
+            java.time.Instant.now());
+    }
+
+    public CompletionStage<Void> continueDrain(
+        systems.zlink.framework.spots.ZLinkSpotCloseReason reason,
+        java.time.Instant deadline) {
+        return spotLifecycle.releaseRecreatableSpots(reason, deadline)
             .thenRun(this::recordDrainedRoomsIfComplete);
+    }
+
+    public int activeUserSpotCount() {
+        return spotLifecycle.userSpotCount();
     }
 
     public boolean drainComplete() {

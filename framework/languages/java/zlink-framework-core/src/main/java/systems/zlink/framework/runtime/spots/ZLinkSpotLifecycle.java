@@ -238,15 +238,28 @@ final class ZLinkSpotLifecycle {
     }
 
     CompletionStage<Void> closeAllAsync() {
+        return closeAllAsync(java.time.Instant.now());
+    }
+
+    CompletionStage<Void> closeAllAsync(java.time.Instant deadline) {
         java.util.concurrent.atomic.AtomicReference<RuntimeException> firstFailure =
             new java.util.concurrent.atomic.AtomicReference<>();
         List<EntrySpotActivation> closingEntrySpots = List.copyOf(entrySpots);
         List<SpotActivation> closingSpots = List.copyOf(spots.values());
         for (EntrySpotActivation entrySpot : closingEntrySpots) {
-            recordCloseFailure(firstFailure, closeComponent(entrySpot::close, null));
+            recordCloseFailure(
+                firstFailure,
+                closeComponent(() -> entrySpot.close(deadline), null));
         }
         for (SpotActivation spot : closingSpots) {
-            recordCloseFailure(firstFailure, closeComponent(spot::close, null));
+            recordCloseFailure(
+                firstFailure,
+                closeComponent(
+                    () -> spot.close(
+                        systems.zlink.framework.spots
+                            .ZLinkSpotCloseReason.HOST_SHUTDOWN,
+                        deadline),
+                    null));
         }
         if (!entrySpots.isEmpty()) {
             ZLinkRuntimeMetrics.add("zlink.spot.count", -entrySpots.size(), Map.of("kind", "entry"));
@@ -299,6 +312,14 @@ final class ZLinkSpotLifecycle {
     }
 
     CompletionStage<Void> releaseRecreatableSpots() {
+        return releaseRecreatableSpots(
+            systems.zlink.framework.spots.ZLinkSpotCloseReason.HOST_SHUTDOWN,
+            java.time.Instant.now());
+    }
+
+    CompletionStage<Void> releaseRecreatableSpots(
+        systems.zlink.framework.spots.ZLinkSpotCloseReason reason,
+        java.time.Instant deadline) {
         List<RoutingId> spotRids = List.copyOf(spots.keySet());
         for (RoutingId spotRid : spotRids) {
             if (actorOccupancy.hasActorsInSpot(spotRid)) {
@@ -316,7 +337,11 @@ final class ZLinkSpotLifecycle {
         java.util.concurrent.atomic.AtomicReference<RuntimeException> firstFailure =
             new java.util.concurrent.atomic.AtomicReference<>();
         for (SpotActivation activation : released) {
-            recordCloseFailure(firstFailure, closeComponent(activation::close, null));
+            recordCloseFailure(
+                firstFailure,
+                closeComponent(
+                    () -> activation.close(reason, deadline),
+                    null));
         }
         List<CompletableFuture<Void>> cleanups = new java.util.ArrayList<>(released.size());
         for (SpotActivation activation : released) {

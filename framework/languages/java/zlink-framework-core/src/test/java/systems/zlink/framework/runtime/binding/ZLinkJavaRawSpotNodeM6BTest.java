@@ -9,7 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
@@ -684,6 +687,8 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             }
 
             stream.startSessionService();
+            long firstBindingGeneration =
+                node.bindingGenerationSeed();
             stream.bindActor(sessionRid, actor)
                 .submit(Duration.ofSeconds(1)).toCompletableFuture()
                 .get(1, TimeUnit.SECONDS);
@@ -698,6 +703,27 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 sessionRid,
                 delivered.get(1, TimeUnit.SECONDS));
 
+            stream.bindActor(sessionRid, actor)
+                .submit(Duration.ofSeconds(1)).toCompletableFuture()
+                .get(1, TimeUnit.SECONDS);
+            try (Message stale = Message.from("stale-local-ingress")) {
+                assertFalse(((ZLinkJavaRawSpotNode) node.spotNode())
+                    .forwardBoundStreamSession(
+                        actor,
+                        sessionRid,
+                        firstBindingGeneration,
+                        2,
+                        stream,
+                        List.of(stale)));
+            }
+            try (Message current = Message.from("current-local-ingress")) {
+                assertTrue(stream.sendBoundActor(
+                    sessionRid,
+                    actor.actorId(),
+                    List.of(current),
+                    SendFlags.DONT_WAIT));
+            }
+
             stream.unbindActor(sessionRid, actor.actorId())
                 .submit(Duration.ofSeconds(1)).toCompletableFuture()
                 .get(1, TimeUnit.SECONDS);
@@ -708,6 +734,585 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     actor.actorId(),
                     List.of(),
                     SendFlags.DONT_WAIT));
+        }
+    }
+
+    @Test
+    void remoteBindingIdentityFencesOldOwnerEpochWithoutGlobalCounter()
+        throws Exception {
+        try (var context = Zlink.createContext();
+             var actorNode = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            RoutingId actorNodeRid =
+                RoutingId.from("jvm-m6b-identity-actor-node");
+            actorNode.setRoutingId(actorNodeRid);
+            actorNode.setBind(
+                "inproc://jvm-m6b-identity-" + System.nanoTime());
+            actorNode.start();
+            ZLinkJavaRawSpotNode target =
+                (ZLinkJavaRawSpotNode) actorNode.spotNode();
+            systems.zlink.framework.runtime.backend.ZLinkBackendActorRef
+                actor;
+            try (Message create = Message.from("create")) {
+                actor = target.createActor("actor-owner-epoch", create);
+            }
+            target.rememberActorAuthority(actor, 41);
+            var route =
+                new ZLinkServiceM6BWireCodec.ActorRouteFence(
+                    actor,
+                    actorNode.lifecycleGeneration(),
+                    41);
+            RoutingId ownerA = RoutingId.from("session-owner-a");
+            RoutingId ownerB = RoutingId.from("session-owner-b");
+            RoutingId sessionA = RoutingId.from("session-a");
+            RoutingId sessionB = RoutingId.from("session-b");
+
+            assertTrue(target.acceptRemoteStreamBinding(
+                ownerA,
+                90,
+                new ZLinkServiceM6BWireCodec.BoundSessionBind(
+                    1, route, sessionA, true, 50)));
+            assertTrue(target.acceptRemoteStreamBinding(
+                ownerB,
+                1,
+                new ZLinkServiceM6BWireCodec.BoundSessionBind(
+                    2, route, sessionB, true, 1)));
+            assertTrue(target.acceptRemoteStreamBinding(
+                ownerA,
+                90,
+                new ZLinkServiceM6BWireCodec.BoundSessionBind(
+                    3, route, sessionA, false, 50)));
+            assertBoundIngressRejected(
+                target, ownerA, 90, route, sessionA, 50, 1);
+            assertBoundIngressAccepted(
+                target, ownerB, 1, route, sessionB, 1, 1);
+
+            assertTrue(target.acceptRemoteStreamBinding(
+                ownerB,
+                2,
+                new ZLinkServiceM6BWireCodec.BoundSessionBind(
+                    4, route, sessionB, true, 1)));
+            assertTrue(target.acceptRemoteStreamBinding(
+                ownerB,
+                1,
+                new ZLinkServiceM6BWireCodec.BoundSessionBind(
+                    5, route, sessionB, false, 1)));
+            assertBoundIngressRejected(
+                target, ownerB, 1, route, sessionB, 1, 2);
+            assertBoundIngressAccepted(
+                target, ownerB, 2, route, sessionB, 1, 1);
+        }
+    }
+
+    @Test
+    void streamCloseWaitsForSlowUnbindWithinTheLifecycleBound()
+        throws Exception {
+        try (var context = Zlink.createContext();
+             var node = new ZLinkJavaRawMeshNode(context, "mesh");
+             var stream = new ZLinkJavaStreamSocket(
+                 context.createStreamSocket(),
+                 node,
+                 null,
+                 delayedUnbind(false, 100))) {
+            node.setRoutingId(RoutingId.from("slow-unbind-node"));
+            stream.startSessionService();
+            RoutingId sessionRid = RoutingId.from("slow-unbind-session");
+            var actor =
+                new systems.zlink.framework.runtime.backend
+                    .ZLinkBackendActorRef(
+                        RoutingId.from("slow-unbind-actor-node"),
+                        "slow-unbind-actor",
+                        1);
+            stream.bindActor(sessionRid, actor)
+                .submit(Duration.ofSeconds(1)).toCompletableFuture()
+                .get(1, TimeUnit.SECONDS);
+
+            long started = System.nanoTime();
+            stream.close();
+            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(
+                System.nanoTime() - started);
+            assertTrue(elapsedMillis >= 75);
+            assertTrue(elapsedMillis < 500);
+        }
+    }
+
+    @Test
+    void streamCloseObservesFailedUnbindWithoutBlockingIndefinitely()
+        throws Exception {
+        try (var context = Zlink.createContext();
+             var node = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            node.setRoutingId(RoutingId.from("failed-unbind-node"));
+            var stream = new ZLinkJavaStreamSocket(
+                context.createStreamSocket(),
+                node,
+                null,
+                delayedUnbind(true, 50));
+            stream.startSessionService();
+            RoutingId sessionRid =
+                RoutingId.from("failed-unbind-session");
+            var actor =
+                new systems.zlink.framework.runtime.backend
+                    .ZLinkBackendActorRef(
+                        RoutingId.from("failed-unbind-actor-node"),
+                        "failed-unbind-actor",
+                        1);
+            stream.bindActor(sessionRid, actor)
+                .submit(Duration.ofSeconds(1)).toCompletableFuture()
+                .get(1, TimeUnit.SECONDS);
+
+            long started = System.nanoTime();
+            assertThrows(IllegalStateException.class, stream::close);
+            long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(
+                System.nanoTime() - started);
+            assertTrue(elapsedMillis >= 25);
+            assertTrue(elapsedMillis < 500);
+            stream.close();
+        }
+    }
+
+    @Test
+    void streamClosePreservesCleanupAndNativeCloseFailures()
+        throws Exception {
+        try (var context = Zlink.createContext();
+             var node = new ZLinkJavaRawMeshNode(context, "mesh");
+             var raw = context.createStreamSocket()) {
+            node.setRoutingId(RoutingId.from("dual-close-node"));
+            var stream = new ZLinkJavaStreamSocket(
+                raw,
+                node,
+                null,
+                delayedUnbind(true, 10),
+                () -> {
+                    raw.close();
+                    throw new IllegalStateException(
+                        "simulated native close failure");
+                });
+            stream.startSessionService();
+            RoutingId sessionRid = RoutingId.from("dual-close-session");
+            var actor =
+                new systems.zlink.framework.runtime.backend
+                    .ZLinkBackendActorRef(
+                        RoutingId.from("dual-close-actor-node"),
+                        "dual-close-actor",
+                        1);
+            stream.bindActor(sessionRid, actor)
+                .submit(Duration.ofSeconds(1)).toCompletableFuture()
+                .get(1, TimeUnit.SECONDS);
+
+            IllegalStateException failure = assertThrows(
+                IllegalStateException.class,
+                stream::close);
+            assertEquals(
+                "STREAM binding cleanup did not complete",
+                failure.getMessage());
+            assertEquals(
+                "simulated unbind failure",
+                failure.getCause().getMessage());
+            assertEquals(1, failure.getSuppressed().length);
+            assertEquals(
+                "simulated native close failure",
+                failure.getSuppressed()[0].getMessage());
+        }
+    }
+
+    @Test
+    void streamCloseAggregatesSynchronousErrorAndContinuesCleanup()
+        throws Exception {
+        AtomicInteger unbindAttempts = new AtomicInteger();
+        AtomicBoolean nativeCloseAttempted = new AtomicBoolean();
+        try (var context = Zlink.createContext();
+             var node = new ZLinkJavaRawMeshNode(context, "mesh");
+             var raw = context.createStreamSocket()) {
+            node.setRoutingId(RoutingId.from("error-close-node"));
+            ZLinkJavaStreamSocket.BoundSessionLifecycle lifecycle =
+                new ZLinkJavaStreamSocket.BoundSessionLifecycle() {
+                    @Override
+                    public CompletionStage<Void> bind(
+                        RoutingId sessionRid,
+                        systems.zlink.framework.runtime.backend
+                            .ZLinkBackendActorRef actor,
+                        long bindingGeneration,
+                        Duration timeout) {
+                        return CompletableFuture.completedFuture(null);
+                    }
+
+                    @Override
+                    public CompletionStage<Void> unbind(
+                        RoutingId sessionRid,
+                        systems.zlink.framework.runtime.backend
+                            .ZLinkBackendActorRef actor,
+                        long bindingGeneration,
+                        Duration timeout) {
+                        if (unbindAttempts.incrementAndGet() == 1) {
+                            throw new AssertionError(
+                                "simulated synchronous unbind error");
+                        }
+                        return CompletableFuture.completedFuture(null);
+                    }
+                };
+            var stream = new ZLinkJavaStreamSocket(
+                raw,
+                node,
+                null,
+                lifecycle,
+                () -> {
+                    nativeCloseAttempted.set(true);
+                    raw.close();
+                    throw new IllegalStateException(
+                        "simulated native close after Error");
+                });
+            stream.startSessionService();
+            RoutingId sessionRid = RoutingId.from("error-close-session");
+            for (int index = 1; index <= 2; index++) {
+                var actor =
+                    new systems.zlink.framework.runtime.backend
+                        .ZLinkBackendActorRef(
+                            RoutingId.from("error-close-actor-node"),
+                            "error-close-actor-" + index,
+                            1);
+                stream.bindActor(sessionRid, actor)
+                    .submit(Duration.ofSeconds(1)).toCompletableFuture()
+                    .get(1, TimeUnit.SECONDS);
+            }
+
+            IllegalStateException failure = assertThrows(
+                IllegalStateException.class,
+                stream::close);
+            assertEquals(2, unbindAttempts.get());
+            assertTrue(nativeCloseAttempted.get());
+            assertTrue(failure.getCause() instanceof AssertionError);
+            assertEquals(
+                "simulated synchronous unbind error",
+                failure.getCause().getMessage());
+            assertEquals(1, failure.getSuppressed().length);
+            assertEquals(
+                "simulated native close after Error",
+                failure.getSuppressed()[0].getMessage());
+        }
+    }
+
+    private static ZLinkJavaStreamSocket.BoundSessionLifecycle
+        delayedUnbind(boolean fail, long delayMillis) {
+        return new ZLinkJavaStreamSocket.BoundSessionLifecycle() {
+            @Override
+            public CompletionStage<Void> bind(
+                RoutingId sessionRid,
+                systems.zlink.framework.runtime.backend
+                    .ZLinkBackendActorRef actor,
+                long bindingGeneration,
+                Duration timeout) {
+                return CompletableFuture.completedFuture(null);
+            }
+
+            @Override
+            public CompletionStage<Void> unbind(
+                RoutingId sessionRid,
+                systems.zlink.framework.runtime.backend
+                    .ZLinkBackendActorRef actor,
+                long bindingGeneration,
+                Duration timeout) {
+                CompletableFuture<Void> result =
+                    new CompletableFuture<>();
+                CompletableFuture.delayedExecutor(
+                    delayMillis,
+                    TimeUnit.MILLISECONDS).execute(() -> {
+                        if (fail) {
+                            result.completeExceptionally(
+                                new IllegalStateException(
+                                    "simulated unbind failure"));
+                        } else {
+                            result.complete(null);
+                        }
+                    });
+                return result;
+            }
+        };
+    }
+
+    private static void assertBoundIngressAccepted(
+        ZLinkJavaRawSpotNode target,
+        RoutingId ownerRid,
+        long ownerGeneration,
+        ZLinkServiceM6BWireCodec.ActorRouteFence route,
+        RoutingId sessionRid,
+        long bindingGeneration,
+        long sequence) {
+        int flags =
+            systems.zlink.framework.runtime.protocol
+                .ServiceWireConstants.FLAG_BOUND_SESSION
+                | systems.zlink.framework.runtime.protocol
+                    .ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+        Message payload = Message.from("bound-ingress");
+        boolean accepted = target.enqueueRemoteActor(
+                ownerRid,
+                ownerGeneration,
+                new ZLinkServiceM6BWireCodec.ActorMessage(
+                    false,
+                    flags,
+                    null,
+                    null,
+                    route,
+                    new ZLinkServiceM6BWireCodec.BoundSessionTail(
+                        sessionRid,
+                        bindingGeneration,
+                        sequence)),
+                List.of(payload),
+                null);
+        if (!accepted) {
+            payload.close();
+        }
+        assertTrue(accepted);
+    }
+
+    private static void assertBoundIngressRejected(
+        ZLinkJavaRawSpotNode target,
+        RoutingId ownerRid,
+        long ownerGeneration,
+        ZLinkServiceM6BWireCodec.ActorRouteFence route,
+        RoutingId sessionRid,
+        long bindingGeneration,
+        long sequence) {
+        int flags =
+            systems.zlink.framework.runtime.protocol
+                .ServiceWireConstants.FLAG_BOUND_SESSION
+                | systems.zlink.framework.runtime.protocol
+                    .ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+        try (Message payload = Message.from("stale-bound-ingress")) {
+            assertFalse(target.enqueueRemoteActor(
+                ownerRid,
+                ownerGeneration,
+                new ZLinkServiceM6BWireCodec.ActorMessage(
+                    false,
+                    flags,
+                    null,
+                    null,
+                    route,
+                    new ZLinkServiceM6BWireCodec.BoundSessionTail(
+                        sessionRid,
+                        bindingGeneration,
+                        sequence)),
+                List.of(payload),
+                null));
+        }
+    }
+
+    @Test
+    void remoteBoundStreamUsesRawMeshAndExactGenerationFences()
+        throws Exception {
+        String endpoint = "inproc://jvm-m6b-bound-stream-"
+            + System.nanoTime();
+        RoutingId actorNodeRid =
+            RoutingId.from("jvm-m6b-bound-actor-node");
+        RoutingId sessionNodeRid =
+            RoutingId.from("jvm-m6b-bound-session-node");
+        RoutingId sessionRid =
+            RoutingId.from("jvm-m6b-bound-session");
+        CopyOnWriteArrayList<String> pushed =
+            new CopyOnWriteArrayList<>();
+        try (var context = Zlink.createContext();
+             var actorNode = new ZLinkJavaRawMeshNode(context, "mesh");
+             var sessionNode = new ZLinkJavaRawMeshNode(context, "mesh");
+             var stream = new ZLinkJavaStreamSocket(
+                 context.createStreamSocket(),
+                 sessionNode,
+                 (rid, parts, flags) -> {
+                     assertEquals(sessionRid, rid);
+                     pushed.add(parts.getLast().toUtf8String());
+                     return true;
+                 })) {
+            actorNode.setRoutingId(actorNodeRid);
+            actorNode.setBind(endpoint);
+            sessionNode.setRoutingId(sessionNodeRid);
+            sessionNode.setBind(
+                "inproc://jvm-m6b-bound-session-owner-"
+                    + System.nanoTime());
+            actorNode.start();
+            sessionNode.start();
+            sessionNode.connectPeer(endpoint, actorNodeRid);
+
+            ZLinkBackendSpot entry = actorNode.spotNode().entrySpot();
+            CompletableFuture<RoutingId> ingress =
+                new CompletableFuture<>();
+            entry.onDispatchEvent(info -> {
+                if (info.event()
+                    != ZLinkBackendSpotDispatchEvent.ACTOR_READABLE) {
+                    return;
+                }
+                var received = info.actorMessages().getFirst();
+                ingress.complete(received.sourceSessionRid());
+                info.actorMessages().forEach(
+                    systems.zlink.framework.runtime.backend
+                        .ZLinkBackendActorReceived::close);
+            });
+            systems.zlink.framework.runtime.backend.ZLinkBackendActorRef
+                actor;
+            try (Message create = Message.from("create")) {
+                actor = actorNode.spotNode().createActor(
+                    "actor-bound-remote", create);
+            }
+            actorNode.spotNode().rememberActorAuthority(actor, 73);
+            sessionNode.spotNode().rememberActorAuthority(actor, 73);
+
+            long deadline =
+                System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            while (sessionNode.peers().stream().noneMatch(
+                    peer -> peer.routingId().equals(actorNodeRid)
+                        && peer.state()
+                            == systems.zlink.contracts.service.spot
+                                .MeshPeerState.ADMITTED)
+                && System.nanoTime() < deadline) {
+                Thread.sleep(1);
+            }
+            assertTrue(sessionNode.peers().stream().anyMatch(
+                peer -> peer.routingId().equals(actorNodeRid)
+                    && peer.state()
+                        == systems.zlink.contracts.service.spot
+                            .MeshPeerState.ADMITTED));
+
+            stream.startSessionService();
+            long firstBindingGeneration =
+                sessionNode.bindingGenerationSeed();
+            stream.bindActor(sessionRid, actor)
+                .submit(Duration.ofSeconds(1)).toCompletableFuture()
+                .get(1, TimeUnit.SECONDS);
+            try (Message message = Message.from("ingress")) {
+                assertTrue(stream.sendBoundActor(
+                    sessionRid,
+                    actor.actorId(),
+                    List.of(message),
+                    SendFlags.DONT_WAIT));
+            }
+            assertEquals(sessionRid, ingress.get(1, TimeUnit.SECONDS));
+
+            sessionNode.spotNode().rememberActorAuthority(actor, 74);
+            try (Message push = Message.from("push-one")) {
+                assertTrue(actorNode.spotNode().sendActorBoundSession(
+                    actor, List.of(push), SendFlags.DONT_WAIT));
+            }
+            while (pushed.isEmpty()
+                && System.nanoTime() < deadline) {
+                Thread.sleep(1);
+            }
+            assertEquals(List.of("push-one"), pushed);
+            sessionNode.spotNode().rememberActorAuthority(actor, 73);
+
+            stream.bindActor(sessionRid, actor)
+                .submit(Duration.ofSeconds(1)).toCompletableFuture()
+                .get(1, TimeUnit.SECONDS);
+            ZLinkJavaRawSpotNode source =
+                (ZLinkJavaRawSpotNode) sessionNode.spotNode();
+            ZLinkJavaRawSpotNode target =
+                (ZLinkJavaRawSpotNode) actorNode.spotNode();
+            var currentRoute =
+                new ZLinkServiceM6BWireCodec.ActorRouteFence(
+                    actor,
+                    actorNode.lifecycleGeneration(),
+                    73);
+            try (Message packet = Message.from("message");
+                 Message payload = Message.from("stale")) {
+                assertFalse(source.acceptBoundSessionPush(
+                    actorNodeRid,
+                    actorNode.lifecycleGeneration(),
+                    new ZLinkServiceM6BWireCodec.BoundSessionSend(
+                        currentRoute, firstBindingGeneration),
+                    List.of(packet, payload)));
+                assertFalse(source.acceptBoundSessionPush(
+                    actorNodeRid,
+                    actorNode.lifecycleGeneration() + 1,
+                    new ZLinkServiceM6BWireCodec.BoundSessionSend(
+                        currentRoute, firstBindingGeneration + 1),
+                    List.of(packet, payload)));
+                assertFalse(source.acceptBoundSessionPush(
+                    actorNodeRid,
+                    actorNode.lifecycleGeneration(),
+                    new ZLinkServiceM6BWireCodec.BoundSessionSend(
+                        new ZLinkServiceM6BWireCodec.ActorRouteFence(
+                            new systems.zlink.framework.runtime.backend
+                                .ZLinkBackendActorRef(
+                                    actorNodeRid,
+                                    actor.actorId(),
+                                    actor.generation() + 1),
+                            actorNode.lifecycleGeneration(),
+                            73),
+                        firstBindingGeneration + 1),
+                    List.of(packet, payload)));
+                assertFalse(source.acceptBoundSessionPush(
+                    actorNodeRid,
+                    actorNode.lifecycleGeneration(),
+                    new ZLinkServiceM6BWireCodec.BoundSessionSend(
+                        new ZLinkServiceM6BWireCodec.ActorRouteFence(
+                            actor,
+                            actorNode.lifecycleGeneration(),
+                            74),
+                        firstBindingGeneration + 1),
+                    List.of(packet, payload)));
+            }
+
+            int boundFlags =
+                systems.zlink.framework.runtime.protocol
+                    .ServiceWireConstants.FLAG_BOUND_SESSION
+                    | systems.zlink.framework.runtime.protocol
+                        .ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+            try (Message payload = Message.from("stale-ingress")) {
+                assertFalse(target.enqueueRemoteActor(
+                    sessionNodeRid,
+                    sessionNode.lifecycleGeneration(),
+                    new ZLinkServiceM6BWireCodec.ActorMessage(
+                        false,
+                        boundFlags,
+                        null,
+                        null,
+                        currentRoute,
+                        new ZLinkServiceM6BWireCodec.BoundSessionTail(
+                            sessionRid,
+                            firstBindingGeneration,
+                            10)),
+                    List.of(payload),
+                    null));
+                assertFalse(target.enqueueRemoteActor(
+                    sessionNodeRid,
+                    sessionNode.lifecycleGeneration() + 1,
+                    new ZLinkServiceM6BWireCodec.ActorMessage(
+                        false,
+                        boundFlags,
+                        null,
+                        null,
+                        currentRoute,
+                        new ZLinkServiceM6BWireCodec.BoundSessionTail(
+                            sessionRid,
+                            firstBindingGeneration + 1,
+                            11)),
+                    List.of(payload),
+                    null));
+            }
+
+            assertTrue(target.acceptRemoteStreamBinding(
+                sessionNodeRid,
+                sessionNode.lifecycleGeneration(),
+                new ZLinkServiceM6BWireCodec.BoundSessionBind(
+                    999,
+                    currentRoute,
+                    sessionRid,
+                    false,
+                    firstBindingGeneration)));
+            try (Message push = Message.from("push-two")) {
+                assertTrue(actorNode.spotNode().sendActorBoundSession(
+                    actor, List.of(push), SendFlags.DONT_WAIT));
+            }
+            while (pushed.size() < 2
+                && System.nanoTime() < deadline) {
+                Thread.sleep(1);
+            }
+            assertEquals(
+                List.of("push-one", "push-two"), pushed);
+
+            stream.unbindActor(sessionRid, actor.actorId())
+                .submit(Duration.ofSeconds(1)).toCompletableFuture()
+                .get(1, TimeUnit.SECONDS);
+            try (Message late = Message.from("late")) {
+                assertFalse(actorNode.spotNode().sendActorBoundSession(
+                    actor, List.of(late), SendFlags.DONT_WAIT));
+            }
+            assertEquals(2, pushed.size());
         }
     }
 

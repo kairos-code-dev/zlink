@@ -148,6 +148,12 @@ session이 받은 packet을 actor로 넘기는 계약은
 **session callback은 spot 상태를 직접 만지지 않는다.** actor dispatch나 spot 호출을 제출하는
 데까지만 책임진다([stage-wrapper-on-spot §3](25-stage-wrapper-on-spot.ko.md)).
 
+Actor가 다른 MeshNode에 있어도 physical STREAM socket과 session object는 현재 session owner에 유지된다.
+Framework는 bind control, Actor ingress와 Actor push만 MeshNode 사이 raw ROUTER service record로 전달한다.
+Application에는 target Node RID, binding generation, authority fence와 command 24·36·38 codec을 노출하지 않는다.
+Session close는 current binding generation의 tombstone을 제출하며 이전 bind의 늦은 close가 새 binding을
+해제하지 못한다.
+
 ## 9. 검증 요구
 
 | 항목 | 검증 |

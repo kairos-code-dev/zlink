@@ -91,9 +91,32 @@ public final class ZLinkServiceM6BWireCodec {
         Long correlation,
         ZLinkBackendActorRef sourceActor,
         ActorRouteFence target) {
-        if ((flags & ~ServiceWireConstants.FLAG_METADATA) != 0
+        return encodeActorHeader(
+            request,
+            flags,
+            correlation,
+            sourceActor,
+            target,
+            null);
+    }
+
+    public byte[] encodeActorHeader(
+        boolean request,
+        int flags,
+        Long correlation,
+        ZLinkBackendActorRef sourceActor,
+        ActorRouteFence target,
+        BoundSessionTail boundSession) {
+        int boundFlags =
+            ServiceWireConstants.FLAG_BOUND_SESSION
+                | ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+        if ((flags & ~(ServiceWireConstants.FLAG_METADATA | boundFlags)) != 0
             || request != (correlation != null)
-            || (correlation != null && correlation <= 0)) {
+            || (correlation != null && correlation <= 0)
+            || ((flags & boundFlags) != 0
+                && (flags & boundFlags) != boundFlags)
+            || ((flags & boundFlags) == boundFlags)
+                != (boundSession != null)) {
             throw protocol("invalid Actor message header");
         }
         Objects.requireNonNull(target, "target");
@@ -120,6 +143,16 @@ public final class ZLinkServiceM6BWireCodec {
         writer.nonzero(
             target.authorityOwnerGeneration(),
             "authorityOwnerGeneration");
+        if (boundSession != null) {
+            writer.rid(
+                boundSession.sourceSessionRid(), "sourceSessionRid");
+            writer.nonzero(
+                boundSession.sourceBindingGeneration(),
+                "sourceBindingGeneration");
+            writer.nonzero(
+                boundSession.sourceSessionSequence(),
+                "sourceSessionSequence");
+        }
         return writer.toByteArray();
     }
 
@@ -135,7 +168,13 @@ public final class ZLinkServiceM6BWireCodec {
         } else {
             throw protocol("command is not an Actor message");
         }
-        if ((header.flags() & ~ServiceWireConstants.FLAG_METADATA) != 0) {
+        int boundFlags =
+            ServiceWireConstants.FLAG_BOUND_SESSION
+                | ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+        if ((header.flags()
+                & ~(ServiceWireConstants.FLAG_METADATA | boundFlags)) != 0
+            || ((header.flags() & boundFlags) != 0
+                && (header.flags() & boundFlags) != boundFlags)) {
             throw protocol("unsupported Actor message flags");
         }
         Long correlation = request
@@ -158,13 +197,98 @@ public final class ZLinkServiceM6BWireCodec {
                 targetActorGeneration),
             reader.nonzeroU64("targetNodeGeneration"),
             reader.nonzeroU64("authorityOwnerGeneration"));
+        BoundSessionTail boundSession =
+            (header.flags() & boundFlags) == boundFlags
+                ? new BoundSessionTail(
+                    reader.rid("sourceSessionRid"),
+                    reader.nonzeroU64("sourceBindingGeneration"),
+                    reader.nonzeroU64("sourceSessionSequence"))
+                : null;
         reader.end();
         return new ActorMessage(
             request,
             header.flags(),
             correlation,
             sourceActor,
-            target);
+            target,
+            boundSession);
+    }
+
+    public byte[] encodeBoundSessionSendHeader(
+        ActorRouteFence actor,
+        long expectedBindingGeneration) {
+        Writer writer = prefix(
+            ServiceWireConstants.COMMAND_BOUND_SESSION_SEND,
+            0);
+        writeActorRoute(writer, actor);
+        writer.nonzero(
+            expectedBindingGeneration, "expectedBindingGeneration");
+        return writer.toByteArray();
+    }
+
+    public BoundSessionSend decodeBoundSessionSendHeader(byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command()
+                != ServiceWireConstants.COMMAND_BOUND_SESSION_SEND
+            || header.flags() != 0) {
+            throw protocol("command is not boundSessionSend");
+        }
+        BoundSessionSend result = new BoundSessionSend(
+            readActorRoute(reader),
+            reader.nonzeroU64("expectedBindingGeneration"));
+        reader.end();
+        return result;
+    }
+
+    public byte[] encodeBoundSessionBindHeader(BoundSessionBind binding) {
+        Objects.requireNonNull(binding, "binding");
+        Writer writer = prefix(
+            ServiceWireConstants.COMMAND_BOUND_SESSION_BIND,
+            0);
+        writer.nonzero(binding.correlation(), "correlation");
+        writeActorRoute(writer, binding.actor());
+        writer.rid(binding.sessionRid(), "sessionRid");
+        writer.u8(binding.active() ? 1 : 2);
+        writer.u16(Long.BYTES);
+        writer.nonzero(
+            binding.bindingGeneration(), binding.active()
+                ? "bindingGeneration"
+                : "retiredBindingGeneration");
+        return writer.toByteArray();
+    }
+
+    public BoundSessionBind decodeBoundSessionBindHeader(byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command()
+                != ServiceWireConstants.COMMAND_BOUND_SESSION_BIND
+            || header.flags() != 0) {
+            throw protocol("command is not boundSessionBind");
+        }
+        long correlation = reader.nonzeroU64("correlation");
+        ActorRouteFence actor = readActorRoute(reader);
+        RoutingId sessionRid = reader.rid("sessionRid");
+        int state = reader.u8("bindingState");
+        if (state != 1 && state != 2) {
+            throw protocol("unknown bound session binding state");
+        }
+        int bodyLength = reader.u16("binding.length");
+        int bodyEnd = reader.position() + bodyLength;
+        long generation = reader.nonzeroU64(
+            state == 1
+                ? "bindingGeneration"
+                : "retiredBindingGeneration");
+        if (bodyLength != Long.BYTES || reader.position() != bodyEnd) {
+            throw protocol("invalid bound session binding body length");
+        }
+        reader.end();
+        return new BoundSessionBind(
+            correlation,
+            actor,
+            sessionRid,
+            state == 1,
+            generation);
     }
 
     public byte[] encodeLogicalMulticastHeader(
@@ -346,13 +470,70 @@ public final class ZLinkServiceM6BWireCodec {
         int flags,
         Long correlation,
         ActorIdentity sourceActor,
-        ActorRouteFence target) {
+        ActorRouteFence target,
+        BoundSessionTail boundSession) {
+        public ActorMessage(
+            boolean request,
+            int flags,
+            Long correlation,
+            ActorIdentity sourceActor,
+            ActorRouteFence target) {
+            this(
+                request,
+                flags,
+                correlation,
+                sourceActor,
+                target,
+                null);
+        }
+    }
+
+    public record BoundSessionTail(
+        RoutingId sourceSessionRid,
+        long sourceBindingGeneration,
+        long sourceSessionSequence) {
+        public BoundSessionTail {
+            Objects.requireNonNull(sourceSessionRid, "sourceSessionRid");
+            if (sourceBindingGeneration <= 0
+                || sourceSessionSequence <= 0) {
+                throw protocol(
+                    "bound session tail generations must be nonzero");
+            }
+        }
     }
 
     public record ActorIdentity(String actorId, long generation) {
         public ActorIdentity {
             if (actorId == null || actorId.isBlank() || generation <= 0) {
                 throw protocol("invalid Actor identity");
+            }
+        }
+    }
+
+    public record BoundSessionSend(
+        ActorRouteFence actor,
+        long expectedBindingGeneration) {
+        public BoundSessionSend {
+            Objects.requireNonNull(actor, "actor");
+            if (expectedBindingGeneration <= 0) {
+                throw protocol(
+                    "expectedBindingGeneration must be nonzero");
+            }
+        }
+    }
+
+    public record BoundSessionBind(
+        long correlation,
+        ActorRouteFence actor,
+        RoutingId sessionRid,
+        boolean active,
+        long bindingGeneration) {
+        public BoundSessionBind {
+            Objects.requireNonNull(actor, "actor");
+            Objects.requireNonNull(sessionRid, "sessionRid");
+            if (correlation <= 0 || bindingGeneration <= 0) {
+                throw protocol(
+                    "bound session generations must be nonzero");
             }
         }
     }
@@ -415,6 +596,31 @@ public final class ZLinkServiceM6BWireCodec {
         result.u8(command);
         result.u8(flags);
         return result;
+    }
+
+    private static void writeActorRoute(
+        Writer writer,
+        ActorRouteFence target) {
+        Objects.requireNonNull(target, "target");
+        writer.text8(target.actor().actorId(), "actorId");
+        writer.nonzero(target.actor().generation(), "actorGeneration");
+        writer.rid(target.actor().nodeRid(), "targetNodeRid");
+        writer.nonzero(
+            target.targetNodeGeneration(), "targetNodeGeneration");
+        writer.nonzero(
+            target.authorityOwnerGeneration(),
+            "expectedAuthorityOwnerGeneration");
+    }
+
+    private static ActorRouteFence readActorRoute(Reader reader) {
+        String actorId = reader.text8("actorId");
+        long actorGeneration = reader.nonzeroU64("actorGeneration");
+        RoutingId targetNodeRid = reader.rid("targetNodeRid");
+        return new ActorRouteFence(
+            new ZLinkBackendActorRef(
+                targetNodeRid, actorId, actorGeneration),
+            reader.nonzeroU64("targetNodeGeneration"),
+            reader.nonzeroU64("expectedAuthorityOwnerGeneration"));
     }
 
     private static ZLinkServiceWireException protocol(String message) {

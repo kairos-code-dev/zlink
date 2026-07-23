@@ -77,6 +77,8 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     private final AtomicLong channelSelectionCursor = new AtomicLong();
     private final AtomicLong nextCorrelation = new AtomicLong(1);
     private final AtomicLong nextDispatchEnvelope = new AtomicLong(1);
+    private final long preStartBindingGenerationSeed =
+        positiveRandomLong();
     private final Map<Long, ZLinkMeshDispatchRecord> dispatchEnvelopes =
         new ConcurrentHashMap<>();
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -381,6 +383,13 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             throw new IllegalStateException("raw MeshNode is not started");
         }
         return current.lifecycleGeneration();
+    }
+
+    long bindingGenerationSeed() {
+        ZLinkServiceNodeDescriptor current = localDescriptor;
+        return current == null
+            ? preStartBindingGenerationSeed
+            : current.lifecycleGeneration();
     }
 
     boolean sendNode(
@@ -734,6 +743,44 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         return port.send(requireStarted(), actor.nodeRid(), frames);
     }
 
+    boolean sendBoundActor(
+        systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor,
+        RoutingId sourceSessionRid,
+        long sourceBindingGeneration,
+        long sourceSessionSequence,
+        List<Message> parts) {
+        Optional<ZLinkServiceTopologyRegistry.Peer> peer =
+            topology == null ? Optional.empty() : topology.peer(actor.nodeRid());
+        long authorityOwnerGeneration =
+            ((ZLinkJavaRawSpotNode) spotNode())
+                .actorAuthorityOwnerGeneration(actor);
+        if (peer.isEmpty()
+            || actor.generation() <= 0
+            || authorityOwnerGeneration <= 0) {
+            return false;
+        }
+        int boundFlags =
+            ServiceWireConstants.FLAG_BOUND_SESSION
+                | ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+        List<byte[]> frames = List.of(
+            statefulWire.encodeActorHeader(
+                false,
+                boundFlags,
+                null,
+                null,
+                new ZLinkServiceM6BWireCodec.ActorRouteFence(
+                    actor,
+                    peer.orElseThrow().descriptor()
+                        .lifecycleGeneration(),
+                    authorityOwnerGeneration),
+                new ZLinkServiceM6BWireCodec.BoundSessionTail(
+                    sourceSessionRid,
+                    sourceBindingGeneration,
+                    sourceSessionSequence)),
+            wire.encodeApplicationPayload(applicationPayload(parts)));
+        return port.send(requireStarted(), actor.nodeRid(), frames);
+    }
+
     boolean sendInstanceSpot(
         ZLinkServiceM6BWireCodec.InstanceRouteFence route,
         RoutingId sourceSpotRid,
@@ -830,6 +877,112 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             }
             return CompletableFuture.completedFuture(received.parts());
         });
+    }
+
+    CompletionStage<Void> bindRemoteStreamSession(
+        RoutingId sessionRid,
+        systems.zlink.framework.runtime.backend.ZLinkBackendActorRef actor,
+        long authorityOwnerGeneration,
+        long bindingGeneration,
+        boolean active,
+        Duration timeout) {
+        Optional<ZLinkServiceTopologyRegistry.Peer> peer =
+            topology == null ? Optional.empty() : topology.peer(actor.nodeRid());
+        if (peer.isEmpty()
+            || actor.generation() <= 0
+            || bindingGeneration <= 0
+            || authorityOwnerGeneration <= 0) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "remote Actor binding route is not connected"));
+        }
+        long correlation = allocateCorrelation();
+        byte[] frame = statefulWire.encodeBoundSessionBindHeader(
+            new ZLinkServiceM6BWireCodec.BoundSessionBind(
+                correlation,
+                new ZLinkServiceM6BWireCodec.ActorRouteFence(
+                    actor,
+                    peer.orElseThrow().descriptor()
+                        .lifecycleGeneration(),
+                    authorityOwnerGeneration),
+                sessionRid,
+                active,
+                bindingGeneration));
+        CompletableFuture<Void> completion = new CompletableFuture<>();
+        AtomicBoolean terminal = new AtomicBoolean();
+        boolean submitted = port.request(
+            requireStarted(),
+            actor.nodeRid(),
+            List.of(frame),
+            timeout,
+            (result, replyFrames) -> {
+                if (!terminal.compareAndSet(false, true)) {
+                    return;
+                }
+                if (result
+                    != systems.zlink.contracts.sockets.RequestResult.OK) {
+                    completion.completeExceptionally(
+                        new IllegalStateException(
+                            "bound session binding transport failed: "
+                                + result));
+                    return;
+                }
+                try {
+                    if (replyFrames.size() != 1) {
+                        throw new IllegalArgumentException(
+                            "bound session binding reply frame count");
+                    }
+                    ZLinkServiceM6AWireCodec.Reply reply =
+                        wire.decodeReplyHeader(replyFrames.getFirst());
+                    if (reply.correlation() != correlation
+                        || reply.terminalResult() != 0
+                        || reply.failureCode() != 0) {
+                        throw new IllegalArgumentException(
+                            "bound session binding was rejected");
+                    }
+                    completion.complete(null);
+                } catch (RuntimeException failure) {
+                    completion.completeExceptionally(failure);
+                }
+            });
+        if (!submitted && terminal.compareAndSet(false, true)) {
+            completion.completeExceptionally(
+                new IllegalStateException(
+                    "bound session binding was not submitted"));
+        }
+        return completion;
+    }
+
+    boolean sendBoundSession(
+        ZLinkJavaRawSpotNode.RemoteStreamBinding binding,
+        List<Message> parts) {
+        Optional<ZLinkServiceTopologyRegistry.Peer> peer =
+            topology == null
+                ? Optional.empty()
+                : topology.peer(binding.sessionOwnerNodeRid());
+        if (peer.isEmpty()
+            || peer.orElseThrow().descriptor().lifecycleGeneration()
+                != binding.sessionOwnerNodeGeneration()
+            || localDescriptor == null
+            || !((ZLinkJavaRawSpotNode) spotNode())
+                .isCurrentBoundActor(binding.actor())
+            || ((ZLinkJavaRawSpotNode) spotNode())
+                .actorAuthorityOwnerGeneration(binding.actor())
+                != binding.authorityOwnerGeneration()) {
+            return false;
+        }
+        List<byte[]> frames = List.of(
+            statefulWire.encodeBoundSessionSendHeader(
+                new ZLinkServiceM6BWireCodec.ActorRouteFence(
+                    binding.actor(),
+                    localDescriptor.lifecycleGeneration(),
+                    binding.authorityOwnerGeneration()),
+                binding.bindingGeneration()),
+            wire.encodeApplicationPayload(applicationPayload(parts)));
+        return port.send(
+            requireStarted(),
+            binding.sessionOwnerNodeRid(),
+            frames);
     }
 
     private void completeActorRequest(
@@ -1122,6 +1275,16 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         }
         if (command == ServiceWireConstants.COMMAND_INSTANCE_SPOT) {
             dispatchInstanceSpot(inbound, flags);
+            return;
+        }
+        if (command
+            == ServiceWireConstants.COMMAND_BOUND_SESSION_BIND) {
+            dispatchBoundSessionBind(inbound);
+            return;
+        }
+        if (command
+            == ServiceWireConstants.COMMAND_BOUND_SESSION_SEND) {
+            dispatchBoundSessionSend(inbound);
             return;
         }
         RecordKind kind;
@@ -1464,9 +1627,18 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             Message.from(payload.packetName().getBytes(StandardCharsets.UTF_8)),
             Message.from(payload.payload()));
         AtomicBoolean terminal = new AtomicBoolean();
+        Optional<ZLinkServiceTopologyRegistry.Peer> source =
+            topology.peer(inbound.source());
+        if (source.isEmpty()) {
+            messages.forEach(Message::close);
+            replyActorFailure(inbound, header, 102, 1);
+            return;
+        }
         boolean accepted = ((ZLinkJavaRawSpotNode) spotNode())
             .enqueueRemoteActor(
                 inbound.source(),
+                source.orElseThrow().descriptor()
+                    .lifecycleGeneration(),
                 header,
                 messages,
                 replyParts -> {
@@ -1486,6 +1658,79 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         if (!accepted) {
             messages.forEach(Message::close);
             replyActorFailure(inbound, header, 102, 1);
+        }
+    }
+
+    private void dispatchBoundSessionBind(
+        ZLinkJavaRawServicePort.Inbound inbound) {
+        if (inbound.frames().size() != 1
+            || inbound.requestSequence() == null) {
+            return;
+        }
+        ZLinkServiceM6BWireCodec.BoundSessionBind binding;
+        try {
+            binding = statefulWire.decodeBoundSessionBindHeader(
+                inbound.frames().getFirst());
+        } catch (RuntimeException invalid) {
+            return;
+        }
+        Optional<ZLinkServiceTopologyRegistry.Peer> source =
+            topology == null
+                ? Optional.empty()
+                : topology.peer(inbound.source());
+        boolean accepted = source.isPresent()
+            && ((ZLinkJavaRawSpotNode) spotNode())
+                .acceptRemoteStreamBinding(
+                    inbound.source(),
+                    source.orElseThrow().descriptor()
+                        .lifecycleGeneration(),
+                    binding);
+        port.reply(
+            requireStarted(),
+            inbound.source(),
+            inbound.requestSequence(),
+            List.of(wire.encodeReplyHeader(
+                binding.correlation(),
+                accepted ? 0 : 102,
+                accepted ? 0 : 1)));
+    }
+
+    private void dispatchBoundSessionSend(
+        ZLinkJavaRawServicePort.Inbound inbound) {
+        List<byte[]> frames = inbound.frames();
+        if (frames.size() != 2
+            || inbound.requestSequence() != null) {
+            return;
+        }
+        Optional<ZLinkServiceTopologyRegistry.Peer> source =
+            topology == null
+                ? Optional.empty()
+                : topology.peer(inbound.source());
+        if (source.isEmpty()) {
+            return;
+        }
+        List<Message> parts = List.of();
+        try {
+            ZLinkServiceM6BWireCodec.BoundSessionSend send =
+                statefulWire.decodeBoundSessionSendHeader(
+                    frames.getFirst());
+            ZLinkServiceM6AWireCodec.ApplicationPayload payload =
+                wire.decodeApplicationPayload(frames.get(1));
+            parts = List.of(
+                Message.from(
+                    payload.packetName().getBytes(
+                        StandardCharsets.UTF_8)),
+                Message.from(payload.payload()));
+            ((ZLinkJavaRawSpotNode) spotNode()).acceptBoundSessionPush(
+                inbound.source(),
+                source.orElseThrow().descriptor()
+                    .lifecycleGeneration(),
+                send,
+                parts);
+        } catch (RuntimeException invalid) {
+            // A malformed or stale one-way record has no terminal route.
+        } finally {
+            parts.forEach(Message::close);
         }
     }
 

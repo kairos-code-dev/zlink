@@ -10,6 +10,18 @@ generation이 다르면 `ACTOR_GENERATION_STALE`, pre-commit seal 중이면 `ACT
 새 ref를 찾아 hidden retry하지 않는다. `enableActorDispatch()`는 MeshName을 받지 않으며 startup에 Object
 Client 또는 Server role과 Location Store가 필요하다.
 
+Actor가 다른 MeshNode에 있으면 JVM runtime은 Java binding의 public raw ROUTER request·send·reply만 사용해
+command 38 bind, bound-session tail이 있는 command 24 ingress와 command 36 push를 처리한다. Public interface는
+변하지 않는다. Runtime은 Actor ObjectGeneration, source·target NodeGeneration, AuthorityOwnerGeneration,
+binding generation과 session sequence를 application callback 전에 검사한다. Rebind와 close는 exact binding
+identity transition이다. Identity는 session owner Node RID·lifecycle generation·owner-local binding generation을
+함께 사용하므로 다른 MeshNode나 재시작한 owner의 작은 local counter도 새 binding으로 등록할 수 있다. 이전 owner
+lifecycle의 push·ingress·tombstone은 current session에 적용하지 않는다.
+
+JVM backend socket close는 remote unbind completion을 bounded lifecycle deadline 안에서 관찰한다. Timeout이나
+terminal failure를 무시하지 않고 close failure로 반환하며, 성공·실패와 관계없이 local binding과 raw STREAM
+socket을 정리한다. 이 동작을 위한 추가 public member는 제공하지 않는다.
+
 ## Exact public member inventory
 
 아래 선언은 이 category의 Java public type과 member를 고정한다.

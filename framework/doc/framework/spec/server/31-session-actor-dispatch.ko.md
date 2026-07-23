@@ -68,6 +68,23 @@ Binding route는 Framework가 관리한다. Application이 별도 Location row, 
 지정하는 global proxy를 제공하지 않는다. Disconnect는 binding을 해제하지만 Actor를 destroy하거나 membership을
 바꾸지 않는다.
 
+Actor와 STREAM session이 서로 다른 MeshNode에 있으면 session owner가 `boundSessionBind(38)` control request를
+Actor owner에 보낸다. Actor owner는 Actor ObjectGeneration, target NodeGeneration과
+AuthorityOwnerGeneration을 모두 확인한 뒤 binding generation을 등록하고 terminal reply를 한 번만 반환한다.
+Session ingress는 등록된 binding generation과 session sequence를 포함한 `actorSend(24)`로 Actor owner에 전달한다.
+Actor push는 Actor owner가 `boundSessionSend(36)`로 session owner에 전달한다. Session owner는 source Actor
+ObjectGeneration, source NodeGeneration, AuthorityOwnerGeneration과 expected binding generation이 모두 current일
+때만 실제 STREAM connection에 제출한다.
+
+Binding identity는 session owner Node RID, 그 node의 lifecycle generation과 owner-local binding generation을
+함께 사용한다. Binding generation의 대소 비교는 같은 session owner lifecycle 안에서만 유효하다. 다른
+MeshNode가 bind하거나 session owner가 재시작하면 owner-local counter가 더 작아도 새 lifecycle identity로
+등록할 수 있다. Rebind는 이 identity를 두 owner에 등록한 뒤 이전 identity를 무효화한다. Unbind와 disconnect는
+`boundSessionBind(38)`의 tombstone transition으로 exact retired identity만 제거한다. 이전 owner lifecycle의 늦은
+push·ingress·close, 이전 Actor ObjectGeneration, 이전 authority owner와 재시작 전 NodeGeneration은 current
+binding이나 connection에 영향을 주지 않는다. Malformed control과 one-way record는 application queue에 넣지 않으며,
+one-way record에는 별도 terminal route를 만들지 않는다.
+
 ## 5. Actor relocation route barrier
 
 Actor가 다른 MeshNode로 이동해도 physical STREAM connection과 session scope는 session owner process에 유지된다.
@@ -108,6 +125,11 @@ relocation을 abort하고 `Blocked/DeadlineExceeded`로 admission을 복원한�
 제출한 뒤에는 Actor queue가 순서를 소유한다. Session turn과 Actor turn을 shared lock이나 callback stack으로 합치지
 않는다.
 
+STREAM transport close는 accepted binding의 exact tombstone 완료를 lifecycle deadline 안에서 기다린다. 완료되거나
+deadline·transport failure가 관찰된 뒤에 local binding과 socket을 정리한다. Cleanup failure를 무시한 채 close를
+성공으로 반환하지 않으며, 무기한 기다리지 않는다. Close가 실패해도 local binding은 제거하므로 늦은 Actor push가
+닫힌 connection으로 전달되지 않는다.
+
 Request completion, send-ready, binding update, relocation barrier와 disconnect cleanup은 infrastructure task에서
 진행한다. Session 또는 Actor application callback이 비동기 작업을 기다리는 동안에도 진행해야 한다.
 
@@ -136,6 +158,9 @@ Actor owner host의 Retire는 §5 barrier를 사용한다. Session owner host의
 - Local·remote payload가 Actor queue로 직접 전달되고 Spot callback을 거치지 않는다.
 - Bind가 exact ActorRef를 한 번 제출하고 stale route를 hidden Store retry하지 않는다.
 - Rebind 뒤 이전 token과 authority fence가 current binding을 바꾸지 않는다.
+- 두 node bind, session ingress와 Actor push가 각각 command 38, bound-session tail이 있는 command 24,
+  command 36의 raw ROUTER 경로를 사용한다.
+- Stale Actor·authority·node·binding generation과 이전 generation tombstone이 current connection에 도달하지 않는다.
 - Request reply가 original STREAM correlation으로 한 번 완료된다.
 - Physical STREAM connection과 session object를 Actor target process로 이동하지 않는다.
 - Bound-session request가 Captured 전에 terminal drain되고 durable journal에 들어가지 않는다.

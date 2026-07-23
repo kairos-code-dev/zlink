@@ -26,6 +26,7 @@ import type {
 import {
   ServiceInstanceActivationRedirectError,
   ServiceStatefulRuntime,
+  type ServiceAsyncInstanceActivationAuthority,
   type ServiceInstanceActivationAuthority
 } from '../../packages/framework/src/runtime/foundation/service-stateful-runtime';
 import {
@@ -394,6 +395,108 @@ test('Instance activation CAS loser does not invoke the local factory', () => {
     ServiceInstanceActivationRedirectError
   );
   assert.equal(runtime.registry.spot('tenant-42'), undefined);
+  runtime.close();
+});
+
+test('Promise authority resumes the retained activation envelope after Store completion', async () => {
+  let ingress!: (record: {
+    readonly command: number;
+    readonly flags: number;
+    readonly sourceRoutingId: string;
+    readonly parts: readonly Buffer[];
+  }) => string | undefined;
+  const queued: unknown[] = [];
+  const raw = {
+    topology: {
+      peer: () => ({ descriptor: { lifecycleGeneration: 7n } })
+    },
+    mailbox: {
+      tryEnqueue: (record: unknown) => {
+        queued.push(record);
+        return true;
+      }
+    },
+    setServiceIngress: (handler: typeof ingress) => {
+      ingress = handler;
+    }
+  } as unknown as RawServiceMeshRuntime;
+  const runtime = new ServiceStatefulRuntime(raw, 'target', 3n);
+  const events: string[] = [];
+  let releaseRead!: () => void;
+  const readBarrier = new Promise<void>(resolve => {
+    releaseRead = resolve;
+  });
+  const authority: ServiceAsyncInstanceActivationAuthority = {
+    read: async () => {
+      events.push('read');
+      await readBarrier;
+      return { kind: 'missing' };
+    },
+    reserve: async () => {
+      events.push('reserve');
+      return {
+        kind: 'reserved',
+        reservation: { attempt: 12n, token: 'reservation-12' }
+      };
+    },
+    commit: async (_target, _reservation, spot) => {
+      events.push('commit');
+      return {
+        kind: 'committed',
+        route: {
+          targetNodeRid: 'target',
+          targetNodeGeneration: 3n,
+          targetSpotRid: 'tenant-async',
+          objectGeneration: spot.ref.generation,
+          ownerId: 'target',
+          authorityOwnerGeneration: spot.authorityOwnerGeneration,
+          leaseGeneration: 1n,
+          storeVersion: '20'
+        }
+      };
+    },
+    abort: async () => {
+      assert.fail('successful activation must not abort');
+    }
+  };
+  runtime.registerAsyncInstanceActivationAuthority(authority);
+
+  const header = encodeInstanceSpotActivationHeader(
+    {
+      targetNodeRid: 'target',
+      targetNodeGeneration: 3n,
+      targetSpotRid: 'tenant-async',
+      stableType: 'TenantWorker',
+      descriptorVersion: 'descriptor-5'
+    },
+    7n,
+    'source',
+    undefined,
+    'send',
+    { high: 7n, low: 33n },
+    BigInt(Date.now() + 10_000)
+  );
+  assert.equal(ingress({
+    command: M6bServiceWireCommand.instanceSpot,
+    flags: 0,
+    sourceRoutingId: 'source',
+    parts: [
+      header,
+      encodeApplicationPayload({
+        packetName: 'FirstMessage',
+        contentType: 'application/octet-stream',
+        payload: Buffer.from('first')
+      })
+    ]
+  }), 'infrastructure');
+  assert.deepEqual(events, ['read']);
+  assert.equal(queued.length, 0);
+
+  releaseRead();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.deepEqual(events, ['read', 'reserve', 'commit']);
+  assert.equal(runtime.registry.spot('tenant-async')?.stableType, 'TenantWorker');
+  assert.equal(queued.length, 1);
   runtime.close();
 });
 

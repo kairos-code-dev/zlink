@@ -25,7 +25,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationPropertie
 | `ZLinkRequestHandler<T, R>` (plain `TReply` 반환) | `ZLinkSuspendingRequestHandler<T, R>` (`suspend fun handle`) |
 | `ZLinkSendHandler` / `ZLinkPublishHandler` | `ZLinkSuspendingSendHandler` / `ZLinkSuspendingPublishHandler` |
 | `ZLinkSpot<TActor>` / `ZLinkEntrySpot<TActor>` | `ZLinkSuspendingSpot<TActor>` / `ZLinkSuspendingEntrySpot<TActor>` (actor admission, joined, leave를 `suspend`로 처리) |
-| Java typed transfer policy와 state adapter | `snapshotTransfer<TInstance, TState, TAdapter>(...)` |
+| Java relocation policy와 opaque byte adapter | `ZLinkRelocationPolicy.snapshot(Adapter::class.java)` |
 | `ZLinkSession` | `ZLinkSuspendingSession` (`onConnectedSuspending` 등) |
 | `client.requestToChannel(...).submit(R::class.java)` | `client.request<R>(channel, msg)` / `call.awaitReply<R>()` |
 | `connector.on(name) { ... }` callback | `connector.kotlin().messages(name): Flow<...>` |
@@ -46,10 +46,10 @@ Java 타입은 Java spec을 따르고, Kotlin에서 새로 노출하는 `suspend
 | [Java interfaces](../spec/server/languages/java/interfaces/README.ko.md) | Kotlin이 재사용하는 Java 정본 type과 builder |
 | [Channel messaging](../spec/server/languages/java/interfaces/channel-messaging.ko.md) | channel 등록, outbound client와 dispatch |
 | [Spot](../spec/server/languages/java/interfaces/spots.ko.md) | Spot lifecycle와 factory |
-| [Actor](../spec/server/languages/java/interfaces/actors.ko.md) | actor factory, typed transfer와 bound session |
+| [Actor](../spec/server/languages/java/interfaces/actors.ko.md) | actor factory, relocation adapter와 bound session |
 | [STREAM](../spec/server/languages/java/interfaces/stream-session.ko.md) | stream node와 header session |
 | [stream-connector](../spec/stream-connector/languages/java/03-stream-connector.ko.md) | Java/Kotlin Stream Connector |
-| [Location과 maintenance](../spec/server/languages/java/interfaces/location-maintenance.ko.md) | discovery, authority와 checkpoint |
+| [Location과 maintenance](../spec/server/languages/java/interfaces/location-maintenance.ko.md) | discovery, authority와 relocation |
 | [Monitoring](../spec/server/languages/java/interfaces/monitoring.ko.md) | runtime event와 typed handler |
 
 ## 3. 내부 기준 — Java/Kotlin 공유

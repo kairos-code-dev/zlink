@@ -253,7 +253,8 @@ Spot relocation의 모든 Actor participant는 같은 Actor factory policy를 �
 거부하지도 않는다. `Disabled` policy의 cross-node 이동은 adapter 없이 capture 전에 거부한다.
 
 Target은 owner commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
-실행하지 않는다. Owner commit 뒤 lifecycle callback과 journal replay를 실행한다. `Activated`에 도달해도
+실행하지 않는다. Standalone Actor는 owner commit 뒤 lifecycle callback과 old Entry membership의 durable
+cleanup을 완료한 다음 journal replay를 실행한다. `Activated`에 도달해도
 application과 session ingress는 sealed 상태를 유지하고 bound-session route는 staged 상태로만 준비한다. Source
 cleanup이 terminal 상태에 도달하고 authority의 `Completed` CAS가 성공한 뒤에만 target을 `Ready`로 열고 relocation
 fence를 해제한다. `Completed`

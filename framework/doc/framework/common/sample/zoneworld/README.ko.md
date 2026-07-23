@@ -220,7 +220,7 @@ Application adapter가 target 점검 상태를 별도 relocation protocol로 해
 ### 2.7 봇 — bound session 없는 actor
 
 월드에는 사람이 조종하지 않는 **봇 8마리**가 상시 이동한다. 봇은 브라우저 client 없이도
-월드가 동작하는 것을 보이고, actor transfer를 계속 발생시킨다.
+월드가 동작하는 것을 보이고, actor relocation을 계속 발생시킨다.
 
 **봇은 사람 플레이어와 같은 `PlayerActor` 타입이다.** 차이는 하나뿐이다 — **bound session이
 없다.** 그래서 `MoveRejectedNotify`·`ZoneStateNotify` 같은 client push 대상이 아니다.
@@ -232,7 +232,7 @@ actor — 서버 로직이 `actorId`로 구동하는 봇/NPC"가 이 모양이�
 | 마리 수 | **8** (zone당 2) |
 | 생성 | 각 `ZoneNode`가 시작 시 자기가 호스팅하는 zone의 봇을 만든다 |
 | 구동 | zone spot의 **봇 timer(500ms)** 가 자기 zone의 봇 actor에게 `BotTickMsg`를 보낸다 |
-| 이동 | 봇 actor가 사람과 **같은 이동 경로**(§2.1·§2.2)를 탄다. 검증·zone 변경·transfer가 모두 동일하다 |
+| 이동 | 봇 actor가 사람과 **같은 이동 경로**(§2.1·§2.2)를 탄다. 검증·zone 변경·relocation이 모두 동일하다 |
 | 걸음 | 봇 tick마다 진행 방향으로 **3칸** |
 | 반전 | 이동이 거부되면(`OutOfRange`·`ZoneMaintenance` 등) **방향을 반대로 바꾼다**. 다음 tick에 반대로 진행한다 |
 | session | **없다.** 봇에게는 어떤 push도 보내지 않는다 |
@@ -242,17 +242,17 @@ actor — 서버 로직이 `actorId`로 구동하는 봇/NPC"가 이 모양이�
 
 | `PlayerId` | 초기 `X` | 초기 `Y` | `DirX` | `DirY` | 초기 zone | 넘는 경계 |
 |---|---:|---:|---:|---:|---|---|
-| `bot-nw-x` | 10 | 15 | `+1` | 0 | `zone-nw` | X → **노드 간 transfer** |
+| `bot-nw-x` | 10 | 15 | `+1` | 0 | `zone-nw` | X → **노드 간 relocation** |
 | `bot-nw-y` | 15 | 10 | 0 | `+1` | `zone-nw` | Y → 노드 내부 |
-| `bot-ne-x` | 90 | 15 | `-1` | 0 | `zone-ne` | X → **노드 간 transfer** |
+| `bot-ne-x` | 90 | 15 | `-1` | 0 | `zone-ne` | X → **노드 간 relocation** |
 | `bot-ne-y` | 85 | 10 | 0 | `+1` | `zone-ne` | Y → 노드 내부 |
-| `bot-sw-x` | 10 | 85 | `+1` | 0 | `zone-sw` | X → **노드 간 transfer** |
+| `bot-sw-x` | 10 | 85 | `+1` | 0 | `zone-sw` | X → **노드 간 relocation** |
 | `bot-sw-y` | 15 | 90 | 0 | `-1` | `zone-sw` | Y → 노드 내부 |
-| `bot-se-x` | 90 | 85 | `-1` | 0 | `zone-se` | X → **노드 간 transfer** |
+| `bot-se-x` | 90 | 85 | `-1` | 0 | `zone-se` | X → **노드 간 relocation** |
 | `bot-se-y` | 85 | 90 | 0 | `-1` | `zone-se` | Y → 노드 내부 |
 
 한 축으로만 이동하므로 `DiagonalCrossing`(§2.2)에 걸리지 않는다. X 순찰 봇 4마리가 X 경계를
-반복해서 넘으므로 **노드 간 actor transfer가 상시 발생**한다.
+반복해서 넘으므로 **노드 간 actor relocation이 상시 발생**한다.
 
 마리 수와 경로는 설정 값이다. 데모 밀도를 바꾸려면 이 표만 늘린다.
 
@@ -308,7 +308,7 @@ graph TD
     GW -->|"actor relay"| Z1
     GW -->|"actor relay"| Z2
     Z1 <-->|"border sync · Logical Multicast"| Z2
-    Z1 -->|"actor transfer (X boundary)"| Z2
+    Z1 -->|"actor relocation (X boundary)"| Z2
     OPS -->|"announce · channel fanout"| ZN
     OPS -->|"Node direct: observed RID for node 1"| Z1
     OPS -->|"Node direct: observed RID for node 2"| Z2
@@ -439,7 +439,7 @@ member 구성이 다른 probe를 같은 group에 넣으면 configuration mismatc
 |------|---------------|
 | `location store` | 공유 저장소 기반 peer discovery, 자동 연결 |
 | `Gateway` | stream node(WS), MeshNode membership, 원격 actor에 session bind, actor owner route와 bound session push |
-| `ZoneNode` | MeshNode(Entry Spot + zone Spot + player actor + 운영 ChannelName), Logical Multicast, actor cross-node transfer, fanout subscriber, local Spot runtime event |
+| `ZoneNode` | MeshNode(Entry Spot + zone Spot + player actor + 운영 ChannelName), Logical Multicast, actor cross-node relocation, fanout subscriber, local Spot runtime event |
 | `Ops` | stream node(WS), fanout publisher, Node direct client, report ChannelName handler, runtime event(location·socket) |
 | client | 브라우저 stream connector(WS) |
 
@@ -599,7 +599,7 @@ Server/Ops/
 | `World` · `MovePolicy` | 좌표계·zone 판정·인접·경계 밴드, 이동 검증(§2.2) |
 | `NodeMaintenancePolicy` | 점검 모드 판정(§2.3)과 전 노드 상태 캐시 |
 | `ZoneSpot` · `ZoneState` | `PlayerId → (X, Y, IsBot, ActorRef)` **사본** 보관, tick, 경계 동기화. mutable actor instance를 보관하지 않는다(§8.3) |
-| `PlayerActor` | 좌표 권위(§2.1), zone 변경·transfer 판정. 봇도 같은 타입이며 bound session만 없다(§2.7) |
+| `PlayerActor` | 좌표 권위(§2.1), zone 변경·relocation 판정. 봇도 같은 타입이며 bound session만 없다(§2.7) |
 | `PlayerActorRelocationAdapter` | 노드 간 relocation에서 좌표·zone·봇 방향을 opaque bytes로 capture·restore한다(§2.6) |
 | `BotPatrolPolicy` · `ZoneNodeBootstrap` | 봇 순찰 규칙(§2.7)과 시작 시 생성 |
 | `WorldAnnounceSubscriber` | fanout subscriber → **자기 노드의** zone spot으로 send |
@@ -621,7 +621,7 @@ Server/Ops/
 | `JoinWorldRes` | Gateway stream -> Client | `PlayerId`, `ZoneId`, `NodeId`, `X`, `Y` | 입장한 zone, 그 zone을 호스팅하는 노드, 시작 좌표를 반환한다. |
 | `MoveMsg` | Client -> Gateway stream -> player actor | `X`, `Y` | 목표 좌표로 이동을 요청한다(응답 없는 one-way send). |
 | `ZoneStateNotify` | zone spot -> actor -> bound session -> Client | `ZoneId`, `Tick`, `Players` | tick마다 현재 zone과 경계 밴드의 인접 zone 플레이어를 push한다. `Players`는 `PlayerId`, `X`, `Y`, `ZoneId`, `IsBot`을 가지며 §2.4 규칙으로 병합·정렬한다. 봇도 목록에 포함된다(§2.7). **bound session이 없는 actor(봇)에게는 push하지 않는다.** |
-| `ZoneChangedNotify` | player actor -> bound session -> Client | `PlayerId`, `ZoneId`, `NodeId`, `Transferred` | zone이 바뀌었음을 push한다. `Transferred`가 `true`면 actor가 다른 노드로 이동했다. |
+| `ZoneChangedNotify` | player actor -> bound session -> Client | `PlayerId`, `ZoneId`, `NodeId`, `Relocated` | zone이 바뀌었음을 push한다. `Relocated`가 `true`면 actor가 다른 노드로 이동했다. |
 | `WorldAnnounceNotify` | zone spot -> actor -> bound session -> Client | `AnnouncementId`, `Text` | 관제 공지를 push한다. client는 `AnnouncementId`로 중복을 제거한다(§8.2). |
 | `MoveRejectedNotify` | player actor -> bound session -> Client | `Reason`, `X`, `Y` | 이동 거부와 현재 좌표를 push한다. `Reason`은 `OutOfRange`, `TooFar`, `DiagonalCrossing`, `ZoneMaintenance` 중 하나다(§2.2). |
 
@@ -659,7 +659,7 @@ Server/Ops/
 | `ReportSpotEventMsg` | `ZoneNode` -> `Ops` (channel `zoneworld.report`) | `NodeId`, `Kind`, `Detail`, `OccurredAt` | **local** spot runtime event를 보고한다(§8.1). 이벤트 발생 시에만 보낸다. |
 | `ReportNodeStatusMsg` | `ZoneNode` -> `Ops` (channel `zoneworld.report`) | `NodeId`, `Zones`, `PlayerCount`, `Maintenance` | 노드 상태를 **1초마다** 보고한다. `Ops`는 이 값으로 `PlayerCount`를 채운다(§8.1). `PlayerCount`는 그 노드의 모든 zone spot이 보관 중인 플레이어 수의 합이다. |
 | `ZoneBorderEvent` | zone spot -> 인접 zone spot (**Logical Multicast**, topic `zone.border.<from>.<to>`) | `FromZoneId`, `ToZoneId`, `Tick`, `Players` | 그 경계의 밴드 안 플레이어 목록을 publish한다. 유실을 허용하며 수신측은 §2.4의 교체·만료 규칙을 따른다. |
-| `EnterZoneMsg` | player actor -> zone spot (**`JoinSpot` admission payload**) | `PlayerId`, `X`, `Y`, `IsBot`, `FromNodeId` | zone spot에 입장한다. zone 이동은 **반드시 join**이다 — join이 transfer를 일으키는 유일한 메커니즘이므로(§2.6) 이동을 평범한 send로 만들 수 없다. `ActorRef`는 싣지 않는다(§8.3). |
+| `EnterZoneMsg` | player actor -> zone spot (**`JoinSpot` admission payload**) | `PlayerId`, `X`, `Y`, `IsBot`, `FromNodeId` | zone spot에 입장한다. zone 이동은 **반드시 join**이다 — join이 relocation을 일으키는 유일한 메커니즘이므로(§2.6) 이동을 평범한 send로 만들 수 없다. `ActorRef`는 싣지 않는다(§8.3). |
 | `EnterZoneRes` | zone spot -> player actor | `ZoneId`, `NodeId`, `Error` | admission 결과. 목표 노드가 점검 중이면 거부하고 `Error`를 채운다(§2.3). |
 | `UpdatePositionMsg` | player actor -> 현재 zone spot (**Spot direct**) | `PlayerId`, `X`, `Y`, `IsBot` | zone이 바뀌지 않은 이동에서 Spot 소유 좌표 사본을 갱신한다. actor와 Spot의 mutable 상태를 같은 handler에 노출하지 않는다. |
 | `DeliverZoneStateMsg` | zone spot -> player actor (**Actor direct**) | `ZoneId`, `Tick`, `Players` | actor가 자기 bound session으로 `ZoneStateNotify`를 push하도록 요청한다. |
@@ -738,7 +738,7 @@ graph LR
 > 않는다. 그래서 **"정확히 한 번"은 계약하지 않는다.** 대신:
 > - **중복은 client가 제거한다.** `AnnouncementId`가 같으면 무시한다.
 > - **유실은 허용한다.** 공지는 재전달하지 않는다.
-> - actor transfer 중이거나 session이 bind되지 않은 플레이어는 그 공지를 받지 못할 수 있다.
+> - actor relocation 중이거나 session이 bind되지 않은 플레이어는 그 공지를 받지 못할 수 있다.
 >
 > 유실이 치명적인 신호라면 fanout이 아니라 다른 수단(요청/응답, durable store)을 써야 한다.
 
@@ -960,8 +960,8 @@ client/src/
 | **봇** | `IsBot=true`인 플레이어를 사람과 **다른 표시**로 구분한다. 8마리가 상시 이동한다 | 봇 actor(`ZW-F1`) |
 | 이동 | 방향키로 `MoveMsg`를 보낸다. **좌표를 client가 먼저 바꾸지 않는다** | 단방향 흐름(§9.1) |
 | zone·node 표시 | 현재 `ZoneId`와 `NodeId`를 항상 표시하고 `ZoneChangedNotify`로 갱신한다 | — |
-| transfer 표시 | `Transferred=true`면 노드 이동을 시각적으로 알린다 | actor transfer(`ZW-B2`) |
-| 연결 상태 | WebSocket 연결 상태를 표시한다. **zone 이동 중에도 끊기지 않음**을 확인할 수 있어야 한다 | actor transfer(`ZW-B2`) |
+| relocation 표시 | `Relocated=true`면 노드 이동을 시각적으로 알린다 | actor relocation(`ZW-B2`) |
+| 연결 상태 | WebSocket 연결 상태를 표시한다. **zone 이동 중에도 끊기지 않음**을 확인할 수 있어야 한다 | actor relocation(`ZW-B2`) |
 | 공지 | `WorldAnnounceNotify`를 표시한다. **같은 `AnnouncementId`는 무시한다** | fanout(`ZW-D1`) |
 | 거부 | `MoveRejectedNotify`의 `Reason`을 표시한다 | 점검 모드(`ZW-E1`) |
 
@@ -1008,8 +1008,8 @@ client/src/
 | `ZW-A5` | **같은 zone 좌표 갱신** | zone이 바뀌지 않는 이동 → zone spot의 좌표 사본이 갱신되고 다음 `ZoneStateNotify`에 반영된다 |
 | `ZW-B1` | **경계 동기화** | 경계 밴드의 플레이어가 **그 경계를 공유하는 인접 zone**에만 나타난다. **대각선 zone에는 나타나지 않는다** |
 | `ZW-B4` | **경계 snapshot 만료** | 인접 zone의 노드를 종료 → 3 tick 뒤 그 zone 플레이어가 `Players`에서 제거된다(§2.4) |
-| `ZW-B2` | **노드 간 transfer** | X 경계 통과 → `ZoneChangedNotify(Transferred=true, NodeId=zone-node-2)` + **WebSocket 연결 유지** + 이후 이동 동작 |
-| `ZW-B3` | **노드 내부 zone 이동** | Y 경계 통과 → `ZoneChangedNotify(Transferred=false, NodeId 불변)` |
+| `ZW-B2` | **노드 간 relocation** | X 경계 통과 → `ZoneChangedNotify(Relocated=true, NodeId=zone-node-2)` + **WebSocket 연결 유지** + 이후 이동 동작 |
+| `ZW-B3` | **노드 내부 zone 이동** | Y 경계 통과 → `ZoneChangedNotify(Relocated=false, NodeId 불변)` |
 | `ZW-C1` | 노드 관찰 | 관제 콘솔이 두 노드를 `Registered=true`, `Connected=true`로 표시. **두 플래그를 모두 확인한다** — 각각 location event와 socket event라는 다른 출처에서 오므로, 하나만 보면 다른 하나의 배선이 동작하지 않아도 통과한다 |
 | `ZW-C2` | **노드 종료** | `zone-node-2` 종료 → `NodeStatusNotify(Registered=false)`(location event). **먼저 `Registered=true`를 확인한 뒤** 전이를 본다 — `false`는 콘솔이 그 노드를 모를 때의 값이기도 해서, 그냥 기다리면 아무 일도 하지 않고 통과한다 |
 | `ZW-C3` | **연결 단절** | `Ops`↔노드 연결 단절 → `NodeStatusNotify(Connected=false)`(socket event). `ZW-C2`와 같은 이유로 **먼저 `Connected=true`를 확인한 뒤** 전이를 본다 |
@@ -1021,7 +1021,7 @@ client/src/
 | `ZW-E3` | 점검 중 이탈 | 점검 모드인 노드에서 정상 노드로 나가는 이동은 허용된다 |
 | `ZW-E6` | 점검 중 신규 입장 | 점검 모드인 노드의 zone으로 `JoinWorldReq` → 거부된다(§2.3) |
 | `ZW-F1` | **봇 존재** | client 접속 직후 `Players`에 `IsBot=true`인 봇이 있고 좌표가 tick마다 변한다. **월드 전체의 봇 8마리는 서버 로그로 확인한다** — client는 자기 zone과 인접 zone 밴드만 보므로 8마리를 한 번에 볼 수 없다(§2.7, §4.1) |
-| `ZW-F2` | **봇 노드 간 transfer** | **client를 하나도 연결하지 않은 상태**에서 X 순찰 봇이 X 경계를 넘어 actor transfer가 발생한다(서버 로그). bound session 없이도 transfer가 동작한다 |
+| `ZW-F2` | **봇 노드 간 relocation** | **client를 하나도 연결하지 않은 상태**에서 X 순찰 봇이 X 경계를 넘어 actor relocation이 발생한다(서버 로그). bound session 없이도 relocation이 동작한다 |
 | `ZW-F3` | **봇에 push하지 않음** | 봇에게 `ZoneStateNotify`·`MoveRejectedNotify`를 보내지 않는다(session 미bind actor 대상 push 시도가 없다). **부재이므로 서버 로그로 판정한다** — client는 다른 actor에게 push가 가지 않았음을 관측할 수 없다 |
 | `ZW-F4` | **봇 방향 반전** | 점검 모드인 노드로 향하던 봇의 이동이 거부되면 다음 이동부터 반대 방향을 사용한다(§2.7) |
 | `ZW-E4` | **노드 진단** | `NodeDiagnosticsReq(zone-node-1)` → `Zones=[zone-nw, zone-sw]`, `PlayerCount` 반환 |
@@ -1107,7 +1107,7 @@ client/src/
 - **`ZW-A5`** — `JoinWorld` 후 `Move(x+4, y)`(같은 zone). `WaitForPosition` → `Me(state)`의 좌표가
   갱신됐고 `ZoneId`는 여전히 `zone-nw`(zone spot의 사본이 actor 좌표를 따라옴).
 
-**Track B — 경계와 transfer**
+**Track B — 경계와 relocation**
 
 - **`ZW-B1`** — client 셋(west·east·diagonal)을 `JoinWorld`. `east.WalkTo(55,25)`(zone-ne로),
   `diagonal.WalkTo(55,55)`(zone-se로), `west.WalkTo(45,45)`(zone-nw 밴드). **east 관점**에서
@@ -1115,12 +1115,12 @@ client/src/
   표기)이며 `X>=40`인지 확인. **음성 대조**: `diagonal` 관점에서 `zone-se` 상태를 **만료의 2배 tick**
   동안 반복 관측하며 west가 **한 번도** 나타나지 않는지 확인(대각선 zone은 경계를 공유하지 않음).
 - **`ZW-B2`** — `JoinWorld` 후 `WalkTo(48,25)`. `Move(52,25)` → `WaitFor<ZoneChangedNotify>` →
-  `(zone-ne, zone-node-2, Transferred=true)`. 이어서 `Move(55,25)`+`WaitForPosition(55,25)`이
+  `(zone-ne, zone-node-2, Relocated=true)`. 이어서 `Move(55,25)`+`WaitForPosition(55,25)`이
   **같은 연결로** 동작 → bound session이 actor를 따라갔다.
 - **`ZW-B3`** — `JoinWorld` 후 `WalkTo(25,48)`. `Move(25,52)` → `WaitFor<ZoneChangedNotify>` →
-  `(zone-sw, zone-node-1, Transferred=false)`(같은 노드라 transfer 없음).
+  `(zone-sw, zone-node-1, Relocated=false)`(같은 노드라 relocation 없음).
 - **`ZW-B4` ◆** — client 둘(west·east). `east.WalkTo(52,25)`(zone-ne), `west.WalkTo(45,25)`.
-  **east가 `zone-ne` 소속으로** west에 보일 때까지 기다린다(단순히 "보이면"이 아니다 — transfer
+  **east가 `zone-ne` 소속으로** west에 보일 때까지 기다린다(단순히 "보이면"이 아니다 — relocation
   직후 잠깐 출발 zone 사본에 남는 창을 피한다). **[러너가 `zone-node-2`를 없앤다]**. 그 뒤 west의
   `zone-nw` 상태에서 **east가 없고 `zone-ne` 소속 플레이어도 전부 없는** 상태를 최대 60초 기다린다
   → 비정상 종료된 노드의 플레이어가 만료됐다. `zone-sw`(계속 실행 중인 node-1) 밴드 플레이어는
@@ -1154,9 +1154,9 @@ client/src/
   node-1 안이라 동작. **finally**: `SetMaintenance(east,false)`.
 - **`ZW-E2`** — `ResetMaintenance`. `JoinWorld`. `SetMaintenance(west,true)`. `Move(30,30)`+
   `WaitForPosition` 동작(같은 zone 이동). `WalkTo(30,48)`+`Move(30,52)`→`ZoneChangedNotify(zone-sw,
-  Transferred=false)`(노드 내부 zone 이동 허용). **finally**: 해제.
+  Relocated=false)`(노드 내부 zone 이동 허용). **finally**: 해제.
 - **`ZW-E3`** — `ResetMaintenance`. `JoinWorld`+`WalkTo(48,25)`. `SetMaintenance(west,true)`.
-  `Move(52,25)`→`ZoneChangedNotify(zone-node-2, Transferred=true)`(점검 노드에서 정상 노드로 이탈
+  `Move(52,25)`→`ZoneChangedNotify(zone-node-2, Relocated=true)`(점검 노드에서 정상 노드로 이탈
   허용). **finally**: 해제.
 - **`ZW-E4`** — `Diagnose(zone-node-1)` → `Zones`가 정렬 시 정확히 `[zone-nw, zone-sw]`, `PlayerCount>=0`.
 - **`ZW-E6`** — `ResetMaintenance` 후 `SetMaintenance(west,true)`. 새 게임 client `Connect`+`JoinWorld`
@@ -1215,7 +1215,7 @@ lease 만료를 각각 검증하므로 하나로 합치지 않는다. runner는 
 
 ```text
 topology=ready
-zoneworld-transfer=completed
+zoneworld-relocation=completed
 zoneworld-border-sync=completed
 zoneworld-ops-observe=completed
 zoneworld-ops-announce=completed
@@ -1231,7 +1231,7 @@ zoneworld=completed
 - 게임 화면과 관제 화면이 §10.0의 UI 품질 요구를 만족한다. 두 화면이 같은 시각 언어를
   쓰고, 상태(정상·점검·미연결·경고)를 색과 형태로 즉시 구분할 수 있다.
 - 노드 간 zone 이동에서 **client의 WebSocket 연결이 끊기지 않는다.**
-- 노드 내부 zone 이동에서는 actor transfer가 일어나지 않는다.
+- 노드 내부 zone 이동에서는 actor relocation이 일어나지 않는다.
 - 경계 동기화는 인접 zone별 topic으로 publish하며 대각선 zone에는 전달되지 않는다.
 - 전 노드 공지는 channel fanout이며 **발행 경로가 노드를 열거하지 않는다**. zone 배치 밖의 노드는
   `Ops`가 알지 못하는데도 공지를 받는다(§8.2, `ZW-D2`). 전달은 **best-effort**이고 중복은 client가
@@ -1296,7 +1296,7 @@ Transport 경계는 다음 세 규칙을 따른다.
 |---|---|
 | channel fanout (`AddFanoutChannel`) | 전 노드 공지와 점검 상태 전파 |
 | runtime monitoring event | 관제 노드 상태 |
-| actor cross-node transfer | 사람과 봇의 노드 간 경계 이동 |
+| actor cross-node relocation | 사람과 봇의 노드 간 경계 이동 |
 | bound session 없는 actor | Spot timer로 이동하는 봇 8마리(§2.7) |
 | Node direct | 특정 노드 점검과 진단 |
 | Logical Multicast | 인접 zone별 경계 동기화 |

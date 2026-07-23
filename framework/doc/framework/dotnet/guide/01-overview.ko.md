@@ -120,7 +120,7 @@ flowchart TB
 
 | 갈래 | ZLink로는 |
 |------|-----------|
-| ① zone 분할 | zone = `AddRouteMesh` + 노드 지목 route mesh. 경계를 넘는 플레이어는 **actor 크로스노드 transfer**가 대신 넘겨준다([07](07-actor-spot.ko.md)) |
+| ① zone 분할 | zone = `AddRouteMesh` + 노드 지목 route mesh. 경계를 넘는 플레이어는 **actor 크로스노드 relocation**이 대신 넘겨준다([07](07-actor-spot.ko.md)) |
 | ② lobby + room | 입장·매칭 = Entry Spot, 방 = room spot을 `GetOrCreate`로 — [Bingo](../../common/sample/bingo/README.ko.md)가 이 갈래 그대로다 |
 | ③ matchmaker + dedicated | 매칭 = channel handler, 판 = 아무 노드에나 `GetOrCreate`되는 room spot. client는 STREAM으로 직접 접속하고, fleet 증설 자체는 K8s가 그대로 맡는다 |
 | ④ actor 서비스 | ZLink actor — 같은 virtual actor 모델을 .NET 전용이 아니라 **폴리글랏 + 메이저 프레임워크 통합**으로 |

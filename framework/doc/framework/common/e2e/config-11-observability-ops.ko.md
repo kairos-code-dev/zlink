@@ -154,13 +154,14 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 우선순위: `P0`
 
-**검증 질문:** 룸 부하와 actor 노드 간 이동이 `spot.queue.depth`·`spot.queue.wait.duration`·`actor.relocations`에 반영되는가.
+**검증 질문:** 룸 부하와 actor 노드 간 이동이 `spot.queue.depth`·`spot.queue.wait.duration`·
+`relocation.completed`에 반영되는가.
 
 - 절차: 룸에 부하를 주고(다수 액션), player actor를 `play-a`→`play-b`로 이동시킨다.
 - 검증: `zlink.spot.queue.depth`/`queue.wait.duration`이 `spot_kind=user` 라벨로 계수되고,
-  `zlink.actor.relocations`가 target activation 1회당 1회, `relocation.duration`이 relocation 시작부터 target
-  activation 또는 실패 terminal까지의 구간을 담는다. commit ack는 중간 상태이며, 성공 reply 전달
-  완료까지 구간을 늘리지 않는다.
+  `zlink.relocation.completed`가 `object_kind=actor`의 terminal relocation 1회당 1회 증가한다.
+  `zlink.relocation.duration`은 prepare부터 `completed|aborted|recovered|failed|shutdown` terminal까지의
+  구간을 담는다. Location commit은 중간 상태이며 terminal 결과로 기록하지 않는다.
   이동 전 actor request가 pending이면 `zlink.mesh_node.requests.inflight`의 `surface=actor` 값에
   반영되고, 각 request가 terminal completion에 도달하면 기준값으로 돌아온다. spot 계기는
   `spot_kind`(`entry|user`)로 분리된다

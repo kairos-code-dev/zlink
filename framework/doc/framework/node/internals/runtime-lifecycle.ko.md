@@ -20,7 +20,7 @@ Framework spec, service wire protocol과 contract fixture다. Core service C API
 +----------------------------------------------------------+
 | NestJS adapter: DI, registration, lifecycle hooks        |
 +----------------------------------------------------------+
-| Node service runtime: routing, mailbox, owner, transfer  |
+| Node service runtime: routing, mailbox, owner, relocation |
 +----------------------------------------------------------+
 | Public Node binding: context, message, raw sockets       |
 +----------------------------------------------------------+
@@ -57,7 +57,7 @@ Raw socket receive callback은 frame 검증과 service envelope decode까지만 
 callback 안에서 직접 호출하지 않는다.
 
 - Application mailbox는 handler turn, 새 Spot·Actor 생성, join, timer와 session binding을 직렬화한다.
-- Infrastructure mailbox는 peer admission, request completion, owner lease, transfer recovery, termination
+- Infrastructure mailbox는 peer admission, request completion, owner lease, relocation recovery, termination
   barrier와 STREAM binding fence를 처리한다.
 
 두 mailbox는 같은 event loop를 사용하더라도 서로 다른 bounded queue와 scheduling flag를 가진다.
@@ -100,14 +100,14 @@ Draining 뒤 먼저 시작한 intent와 deadline은 shared operation에 고정�
 ## 7. Teardown 순서
 
 1. Admission seal 전에 수락한 handler와 request completion을 deadline까지 진행한다.
-2. Actor와 Instance Spot transfer, accepted journal replay와 STREAM binding barrier를 terminal phase로 만든다.
-3. User Spot과 transfer하지 않는 local resource를 닫는다.
+2. Actor와 Instance Spot relocation, accepted journal replay와 STREAM binding barrier를 terminal phase로 만든다.
+3. User Spot과 relocation하지 않는 local resource를 닫는다.
 4. Current authority fence로 owner record, descriptor와 lease를 정리한다.
 5. ClientServer listener, fanout publisher, peer pipe와 raw socket을 닫는다.
 6. Terminal result와 monitoring event를 publish한다.
 7. Observer, NestJS registration과 binding context를 닫는다.
 
-Deadline이나 transfer·teardown failure가 발생해도 동일 순서의 bounded cleanup을 한 번 수행한다.
+Deadline이나 relocation·teardown failure가 발생해도 동일 순서의 bounded cleanup을 한 번 수행한다.
 Terminal event를 publish하기 전에 monitoring source를 분리하지 않는다.
 
 ## 8. 구현 검증 지점

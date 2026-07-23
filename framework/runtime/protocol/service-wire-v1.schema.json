@@ -37,6 +37,7 @@
     { "name": "weightMax", "value": 100 },
     { "name": "creationIntentBytes", "value": 1048576 },
     { "name": "maintenanceAggregateParticipants", "value": 1024 },
+    { "name": "relocationResourceParticipants", "value": 2048 },
     { "name": "maintenanceAggregateBytes", "value": 1048576 },
     { "name": "routeForwardHopCount", "value": 8 },
     { "name": "routeForwardMessages", "value": 1024 },
@@ -257,7 +258,7 @@
       "acknowledgement": {
         "command": "replyRelayAck",
         "scope": "maintenanceRelocation-only",
-        "identity": ["stable-relocation-id", "operation-id"],
+        "identity": ["stable-relocation-id", "exact-request-source-fence", "operation-id"],
         "requestSource": "authenticated-exact-source-owner-lease-node-rid-and-generation",
         "statuses": ["terminalReceived", "alreadyTerminal"],
         "targetPersistence": "relocation-root-cas-before-ack-effect",
@@ -267,7 +268,7 @@
         "physicalConnectionClose": "never-terminal-proof",
         "retireWhileSourceLeaseValid": "forceStopped-and-retain-relocation-root-and-reply-bytes-for-retention-window"
       },
-      "terminalOwnership": "stable-relocation-id-and-operation-id-once-independent-of-target-attempt",
+      "terminalOwnership": "stable-relocation-id-exact-request-source-fence-and-operation-id-once-independent-of-target-attempt",
       "replyRoute": "request-only"
     },
     {
@@ -395,7 +396,7 @@
         "reply-relay-context.maintenanceRelocation.sequence"
       ],
       "relocationQueueOrdering": "journal-entry-and-pending-timer-tick-share-one-strictly-increasing-participant-sequence",
-      "crossVectorDuplicate": "forbidden",
+      "crossVectorDuplicate": "forbidden-between-journal-entry-and-relocation-pending-timer-tick-only-completion-and-relay-reference-the-original-sequence",
       "sequenceStart": 1,
       "zeroMeaning": "no-accepted-or-replayed-record",
       "progressFields": ["acceptedBoundary", "replayCursor", "highWater"],
@@ -494,15 +495,20 @@
     {
       "kind": "relocation-participant-resource-integrity",
       "participantIdentity": {
-        "objectMailbox": "exactly-one-participant-id-1-no-binding-fields",
-        "boundSession": "participant-id-from-2-in-ascending-session-rid-order-with-nonzero-binding-generation",
+        "standaloneObjectMailbox": "exactly-participant-id-1-no-binding-fields",
+        "userSpotObjectMailboxes": "participant-id-1-is-user-spot-then-member-actors-from-2-in-ascending-global-actor-id-order-no-binding-fields",
+        "boundSession": "participant-id-after-all-object-mailboxes-in-owning-object-participant-id-then-ascending-session-rid-order-with-nonzero-binding-generation",
+        "boundSessionOwner": "exact-owning-actor-from-current-binding-record",
         "sessionOwnerRoute": "node-rid-lifecycle-generation-owner-id-and-lease-generation-match-current-descriptor-and-host-lease-before-seal-or-route-switch",
         "sessionRid": "unique-within-relocation-transaction",
         "stability": "same-id-and-fence-for-relocation-recovery-and-retransmit"
       },
       "cardinality": {
         "actor": "exactly-one-objectMailbox-and-zero-or-one-boundSession",
-        "instanceSpot": "exactly-one-objectMailbox-and-no-boundSession"
+        "instanceSpot": "exactly-one-objectMailbox-and-no-boundSession",
+        "userSpotAggregate": "exactly-one-user-spot-objectMailbox-and-one-objectMailbox-per-canonical-member-actor-plus-zero-or-one-boundSession-per-member-actor",
+        "userSpotObjectMaximum": { "$bound": "maintenanceAggregateParticipants" },
+        "resourceMaximum": { "$bound": "relocationResourceParticipants" }
       },
       "relocationReady": {
         "targetToSource": {
@@ -760,7 +766,7 @@
       "operationId": "nonzero-unique-within-source-owner-lifecycle-for-terminal-dedupe",
       "replyRouteId": "nonzero-unique-within-source-owner-lifecycle-for-correlation-only",
       "counterWrapOrReuse": "forbidden-terminal-runtime-error",
-      "terminalIdentity": "stable-relocation-id-plus-operation-id",
+      "terminalIdentity": "stable-relocation-id-plus-exact-request-source-fence-plus-operation-id",
       "publicExposure": "forbidden"
     },
     {
@@ -833,7 +839,7 @@
       "stateType": "relocation-application-state",
       "recreate": "hasState-false-no-payload",
       "snapshot": "hasState-true-opaque-payload-empty-valid",
-      "participantMapping": "exactly-one-sorted-application-state-entry-per-participant-id",
+      "participantMapping": "exactly-one-sorted-application-state-entry-per-objectMailbox-participant-id-and-no-boundSession-entry",
       "participantPayloadMaximumBytes": { "$bound": "relocationChunkBytes" },
       "relocationPresence": "every-relocation-including-empty-recreate-writes-one-deterministic-envelope",
       "storage": "canonical-logical-stream-split-into-immutable-chunks-and-one-root-manifest",
@@ -2697,7 +2703,7 @@
       "name": "participant-vector",
       "kind": "vector",
       "countType": { "$ref": "u32" },
-      "maximumItems": 2,
+      "maximumItems": { "$bound": "relocationResourceParticipants" },
       "item": { "$ref": "participant-entry" },
       "constraints": [
         { "kind": "sorted", "field": "participantId", "comparison": "unsigned-wire-value" },
@@ -2716,7 +2722,7 @@
       "name": "participant-terminal-vector",
       "kind": "vector",
       "countType": { "$ref": "u32" },
-      "maximumItems": 2,
+      "maximumItems": { "$bound": "relocationResourceParticipants" },
       "item": { "$ref": "participant-terminal-entry" },
       "constraints": [
         { "kind": "sorted", "field": "participantId", "comparison": "unsigned-wire-value" },
@@ -2743,7 +2749,7 @@
       "name": "participant-progress-vector",
       "kind": "vector",
       "countType": { "$ref": "u32" },
-      "maximumItems": 2,
+      "maximumItems": { "$bound": "relocationResourceParticipants" },
       "item": { "$ref": "participant-progress-entry" },
       "constraints": [
         { "kind": "sorted", "field": "participantId", "comparison": "unsigned-wire-value" },
@@ -2755,6 +2761,7 @@
       "kind": "struct",
       "fields": [
         { "name": "operationId", "$ref": "operation-id" },
+        { "name": "requestSource", "$ref": "request-source-fence" },
         { "name": "participantId", "$ref": "nonzero-u64" },
         { "name": "sequence", "$ref": "nonzero-u64" },
         { "name": "terminalResult", "$ref": "request-terminal-result" },
@@ -2779,10 +2786,21 @@
       "constraints": [
         {
           "kind": "sorted",
-          "fields": ["operationId.high", "operationId.low"],
+          "fields": ["participantId", "sequence"],
           "comparison": "unsigned-wire-value"
         },
-        { "kind": "unique", "fields": ["operationId.high", "operationId.low"] }
+        { "kind": "unique", "fields": ["participantId", "sequence"] },
+        {
+          "kind": "unique",
+          "fields": [
+            "requestSource.sourceOwnerId",
+            "requestSource.sourceOwnerLeaseGeneration",
+            "requestSource.sourceNodeRid",
+            "requestSource.sourceNodeGeneration",
+            "operationId.high",
+            "operationId.low"
+          ]
+        }
       ]
     },
     {
@@ -3505,6 +3523,7 @@
       "name": "relocation-participant-application-state-vector",
       "kind": "vector",
       "countType": { "$ref": "u32" },
+      "maximumItems": { "$bound": "maintenanceAggregateParticipants" },
       "item": { "$ref": "relocation-participant-application-state" },
       "constraints": [
         { "kind": "sorted", "field": "participantId", "comparison": "unsigned-wire-value" },
@@ -4366,7 +4385,7 @@
             "context": "maintenanceRelocation",
             "senderRoles": ["target"],
             "phases": ["committed", "activating", "activated", "cleaning"],
-            "duplicate": "terminal-once-by-stable-relocation-id-operation-id-target-attempt-is-peer-fence-only",
+            "duplicate": "terminal-once-by-stable-relocation-id-exact-request-source-fence-and-operation-id-target-attempt-is-peer-fence-only",
             "reorder": "hold-until-operation-known",
             "loss": "recover-from-durable-completion"
           }
@@ -4376,7 +4395,7 @@
         "command": "replyRelayAck",
         "senderKind": "requestSource",
         "phases": ["committed", "activating", "activated", "cleaning"],
-        "duplicate": "idempotent-by-stable-relocation-id-operation-id-and-status",
+        "duplicate": "idempotent-by-stable-relocation-id-exact-request-source-fence-operation-id-and-status",
         "reorder": "hold-until-matching-durable-completion-or-retransmit-causes-source-reack",
         "loss": "target-retransmits-terminal-until-ack-or-exact-request-source-owner-lease-expiry"
       },

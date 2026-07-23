@@ -31,7 +31,7 @@ TypeScript 브라우저 client를 공유한다. 지원 언어는 같은 역할 �
 | [DeliveryDispatch](deliverydispatch/README.ko.md) | 배송 배차, timeout 재배정, 상태 push, 고객 stream push를 확인한다. | `Dispatch`, `CourierSession`, `CourierMeshNode` 2개, `Tracking`, `CustomerGateway` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 | [ShoppingMall](event/shoppingmall.ko.md) | `CommerceApi`(HTTP edge)와 `OrderWorkflow`(주문 owner)를 분리해 event-sourced 주문 처리와 조회 모델을 구성한다. | `CommerceApi`, `OrderWorkflow` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 | [GameQuest](event/gamequest.ko.md) | gameplay event를 player별 owner spot에 모아 event sourced quest aggregate와 조회 모델을 갱신한다. | `Session Server`, `PlayerQuestSpot` owner를 MeshNode로 분산 | location store 기반 자동 연결 | **자동 등록** | JSON |
-| [ZoneWorld](zoneworld/README.ko.md) | zone 분할 MMORPG의 경계 이동(actor transfer)·경계 동기화·봇(bound session 없는 actor)과, 그것을 운영하는 관제 콘솔(runtime event·fanout 공지·노드 지정)을 브라우저 UI로 보여 준다. | `Gateway`, `ZoneNode` 2개, `Ops` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
+| [ZoneWorld](zoneworld/README.ko.md) | zone 분할 MMORPG의 경계 이동(actor relocation)·경계 동기화·봇(bound session 없는 actor)과, 그것을 운영하는 관제 콘솔(runtime event·fanout 공지·노드 지정)을 브라우저 UI로 보여 준다. | `Gateway`, `ZoneNode` 2개, `Ops` 분리 | location store 기반 자동 연결 | **자동 등록** | JSON |
 
 > ZoneWorld는 브라우저 UI로 zone 이동과 노드 관제를 확인한다. .NET과 Node.js server는 wire 계약이
 > 같은 TypeScript client 하나를 공유한다. 실제 Chromium에서 `ws`·`wss`, request/reply, push,
@@ -43,7 +43,7 @@ Channel send/request는 ChannelName 하나로 대상을 지정한다. 샘플은 
 추가하지 않고 각 언어의 정식 Channel client를 직접 사용한다. RouteMesh와 ClientServer 선택은 개별 호출
 하나가 아니라 두 process 역할 사이의 전체 업무 방향과 상태 주소 메시징 필요 여부로 결정한다.
 
-- RID·Node·Spot·Actor 직접 메시징, actor transfer 또는 Logical Multicast가 필요한 역할은 RouteMesh를
+- RID·Node·Spot·Actor 직접 메시징, actor relocation 또는 Logical Multicast가 필요한 역할은 RouteMesh를
   사용한다.
 - 두 역할이 서로 독립적인 업무 send/request를 시작하면 하나의 RouteMesh peer 연결을 양방향으로 사용한다.
   호출 방향마다 ClientServer Channel을 만들어 연결을 중복하지 않는다.

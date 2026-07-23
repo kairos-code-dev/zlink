@@ -113,22 +113,23 @@ reply correlation, session binding과 callback을 재사용하지 않는다. Fan
 socket만 닫고 해당 publisher만 not-ready로 바꾼다. Location Store 장애가 발생해도 이미 연결된 peer의 transport
 liveness는 진행하며, service liveness ACK와 fanout beacon이 만료된 owner lease를 복구하지 않는다.
 
-## 10. Authority와 checkpoint
+## 10. Authority와 relocation payload
 
-Location runtime은 provider가 발급한 opaque store version으로 owner·transfer authority를 compare-exchange한다.
+Location runtime은 provider가 발급한 opaque store version으로 owner·relocation authority를 compare-exchange한다.
 Framework가 authority payload 안의 owner, fence, phase, coordinator lease와 recovery cursor를 encode한다.
 Provider와 application adapter는 이 내부 schema를 해석하지 않는다.
 
-Snapshot transfer는 application의 typed adapter가 만든 state를 Framework serializer로 bytes로 바꾼 뒤
-Checkpoint Store에 24시간 retention으로 저장한다. Checkpoint reference, retention, journal sequence와 transfer
-phase는 application callback에 전달하지 않는다. Commit·abort 뒤에는 checkpoint를 즉시 삭제하고, process
-중단으로 남은 orphan은 provider TTL이 정리한다.
+Snapshot relocation은 application adapter가 반환한 opaque bytes를 accepted journal·timer state와 함께
+Relocation Store에 immutable payload로 먼저 저장한다. Location Store는 reference와 checksum을 authority CAS로
+공개한다. Relocation reference, retention, journal sequence와 phase는 application callback에 전달하지 않는다.
+Reference 사용을 Location Store CAS로 끝낸 뒤 payload를 삭제하거나 recovery retention까지 유지한다. CAS 전에
+연결되지 않은 orphan은 provider TTL이 정리한다.
 
 ## 11. Retire와 Shutdown
 
 Host maintenance coordinator 하나가 `Retire`와 `Shutdown`을 직렬화한다. `Retire`는 admission을 바꾸기 전에
-target, transfer policy, provider와 capacity를 모두 preflight한다. 실패하면 state를 `Serving`으로 유지한다.
-`Shutdown`은 새 transfer를 시작하지 않고 admission seal, accepted work, STREAM barrier와 resource cleanup을
+target, relocation policy, provider와 capacity를 모두 preflight한다. 실패하면 state를 `Serving`으로 유지한다.
+`Shutdown`은 새 relocation을 시작하지 않고 admission seal, accepted work, STREAM barrier와 resource cleanup을
 deadline까지 수행한다.
 
 기존 `drain`, `await_drained`, `stop`과 `request_stop` public member는 coordinator의 Shutdown 경로에 연결한다.

@@ -357,7 +357,9 @@ Maintenance가 Actor를 다른 node의 Entry Spot에 복원하면 Actor adapter 
 Entry membership을 commit한다. Target Entry Spot의 `OnActorRelocatedAsync(...)`와 source Entry Spot의
 `OnLeaveActorAsync(...)`가 모두 성공한 뒤에만 Actor dispatch admission을 연다. 어느 callback이 실패해도
 authority를 source로 rollback하지 않고 target을 sealed 상태로 유지한 채 재시도한다.
-Source process가 종료되면 durable source cleanup이 source callback 완료를 대신하므로 target recovery를 막지 않는다.
+두 callback 뒤 old Entry membership의 durable cleanup을 완료해야 accepted journal을 replay할 수 있다.
+Source process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신하므로
+target recovery를 막지 않는다. Replay 뒤 남은 source resource cleanup은 이 lifecycle gate와 구분한다.
 일반 application join은 `OnActorJoinAsync(...)`, membership commit, `OnJoinedActorAsync(...)` 순서를 유지한다.
 Whole User Spot aggregate move는 membership callback을 호출하지 않는다. `OnActorRelocatedAsync(...)`를 포함한 lifecycle callback은 at-least-once 호출될 수 있으므로
 retry-safe해야 한다.

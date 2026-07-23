@@ -242,11 +242,13 @@ publish하지 않는다. Abort도 source route ACK와 steady source normalizatio
 ## 9. Replay와 request completion
 
 Journal entry는 participant ID와 non-zero sequence를 사용한다. Sequence는 1부터 증가하며 accepted boundary를 넘을
-수 없고 wrap하지 않는다. Duplicate record는 canonical bytes가 같을 때만 idempotent하다.
+수 없고 wrap하지 않는다. Journal entry와 pending timer tick은 같은 participant sequence를 중복 사용할 수 없다.
+Terminal completion과 reply relay는 새 queue record가 아니라 original accepted request의 sequence를 참조한다.
+Duplicate record는 canonical bytes가 같을 때만 idempotent하다.
 
 `OperationId`와 `ReplyRouteId`는 source owner lifecycle 안에서 각각 unique하고 wrap·reuse하지 않는다. Operation ID는
 deduplication에 사용하고 reply routing에는 original `ReplyRouteId`를 사용한다. Durable terminal identity는 stable
-`RelocationId`와 `OperationId`다.
+`RelocationId`, exact request-source OwnerId·LeaseGeneration·node RID·generation과 `OperationId`다.
 
 Target은 handler 결과와 delivery state를 새 immutable relocation root에 기록하고 authority CAS로 root, terminal count와
 pending relay count를 함께 바꾼다. Source의 authenticated `replyRelayAck` 또는 exact request-source owner lease

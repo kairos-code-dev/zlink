@@ -111,8 +111,9 @@ blocker가 아니며 participant 하나라도 `Disabled`이거나 호환 target�
 `BLOCKED/STATE_INCOMPATIBLE`다. Standalone Actor는 target factory와 restore를 끝내고 accepted journal을
 application handler가 실행하지 않은 staging queue로 준비한 뒤 `NEW_OWNER` CAS를 수행한다. 이 CAS는
 owner, authority owner generation과 current Spot을 target Entry identity로
-원자적으로 바꾼다. Commit 뒤 target `onActorRelocated`와 source `onLeaveActor`를 호출하고 journal replay와 dispatch를
-개방한다. Callback 실패는 commit을 rollback하거나 source owner를 복원하지 않으며 callback을 retry한다.
+원자적으로 바꾼다. Commit 뒤 target `onActorRelocated`와 source `onLeaveActor`를 호출하고 old Entry membership의
+durable cleanup을 완료한 뒤 journal replay와 dispatch를 개방한다. Callback 실패는 commit을 rollback하거나 source
+owner를 복원하지 않으며 callback을 retry한다.
 Source process가 종료되면 durable source cleanup이 source callback 완료를 대신해 target recovery가 계속된다.
 Lifecycle callback은 retry-safe해야 하며 at-least-once 호출될 수 있다. 이 순서를 제어하는 public phase API는 없다.
 

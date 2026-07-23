@@ -4,7 +4,7 @@
 
 [Framework 문서](../../README.ko.md)
 
-[스펙 목차](../spec/README.ko.md) | [공개 계약 관리](../spec/00-public-contract-governance.ko.md) | [공통 내부 구조](internals/README.ko.md) | [개요](../spec/01-overview.ko.md) | [상호작용 모델](../spec/02-interaction-model.ko.md) | [메시지 모델](../spec/03-message-model.ko.md) | [channel topology](../spec/server/10-channel-topology.ko.md) | [framework API](../spec/05-framework-api.ko.md) | [비동기 실행](../spec/04-async-execution-policy.ko.md) | [Actor 모델](../spec/server/22-actor-model.ko.md) | [Spot Actor Join / Transfer](../spec/server/23-spot-actor.ko.md) | [Session Actor Dispatch 사용성](../spec/server/31-session-actor-dispatch.ko.md) | [메시지 흐름 추적](../spec/server/52-message-flow-tracing.ko.md) | [location runtime](../spec/server/40-location-runtime.ko.md) | [Redis store](../spec/server/41-location-store-redis.ko.md) | [spot 주소 메시징](../spec/server/24-spot-address-messaging.ko.md) | [언어별 공개 계약](../spec/server/languages/README.ko.md) | [Sample/E2E 설정 정책](sample-e2e-configuration-policy.ko.md) | [공통 샘플](sample/README.ko.md) | [Scenario E2E](e2e/README.ko.md) | [Performance 테스트](perf/README.ko.md)
+[스펙 목차](../spec/README.ko.md) | [공개 계약 관리](../spec/00-public-contract-governance.ko.md) | [공통 내부 구조](internals/README.ko.md) | [개요](../spec/01-overview.ko.md) | [상호작용 모델](../spec/02-interaction-model.ko.md) | [메시지 모델](../spec/03-message-model.ko.md) | [channel topology](../spec/server/10-channel-topology.ko.md) | [framework API](../spec/05-framework-api.ko.md) | [비동기 실행](../spec/04-async-execution-policy.ko.md) | [Actor 모델](../spec/server/22-actor-model.ko.md) | [Spot Actor Join / Relocation](../spec/server/23-spot-actor.ko.md) | [Session Actor Dispatch 사용성](../spec/server/31-session-actor-dispatch.ko.md) | [메시지 흐름 추적](../spec/server/52-message-flow-tracing.ko.md) | [location runtime](../spec/server/40-location-runtime.ko.md) | [Redis store](../spec/server/41-location-store-redis.ko.md) | [spot 주소 메시징](../spec/server/24-spot-address-messaging.ko.md) | [언어별 공개 계약](../spec/server/languages/README.ko.md) | [Sample/E2E 설정 정책](sample-e2e-configuration-policy.ko.md) | [공통 샘플](sample/README.ko.md) | [Scenario E2E](e2e/README.ko.md) | [Performance 테스트](perf/README.ko.md)
 
 # ZLink Framework 공통 스펙
 
@@ -46,7 +46,7 @@
 | 5 | [05-framework-api.ko.md](../spec/05-framework-api.ko.md) | `ASP.NET Core`, `Spring Boot`, `NestJS`, `C++` standalone host 기준의 API 표면 방향을 다룬다. |
 | 6 | [비동기 실행과 coroutine 정책](../spec/04-async-execution-policy.ko.md) | async submit, blocking 대안 금지, coroutine/adapter의 공통 의미를 정의한다. |
 | 7 | [22-actor-model.ko.md](../spec/server/22-actor-model.ko.md) | actor 라이프사이클, session bind, user Spot join, outbound actor 호출과 등록 표면을 정의한다. |
-| 8 | [Spot Actor Join / Transfer](../spec/server/23-spot-actor.ko.md) | actor가 Entry Spot과 user Spot 사이를 이동할 때의 admission, commit, callback 순서와 장애 처리를 정의한다. |
+| 8 | [Spot Actor Join / Relocation](../spec/server/23-spot-actor.ko.md) | actor가 Entry Spot과 user Spot 사이를 이동할 때의 admission, commit, callback 순서와 장애 처리를 정의한다. |
 | 9 | [Session Actor Dispatch](../spec/server/31-session-actor-dispatch.ko.md) | session actor dispatch의 typed handler, route resolver, helper, `SessionProxy`, error 의미를 정의한다. |
 | 10 | [메시지 흐름 추적과 dispatch 관측](../spec/server/52-message-flow-tracing.ko.md) | 메시지 흐름 추적의 mode, event, observer, 성능, 런타임 토글과 correlation 계약을 정의한다. |
 | 11 | [40-location-runtime.ko.md](../spec/server/40-location-runtime.ko.md) | peer/spot/actor/route 위치, owner lease, store/resolver, 자동 연결과 운영 조회 계약을 정의한다. |
@@ -85,7 +85,7 @@
 | channel grouping, Discovery, 내부 매핑 | channel-topology | 필요하면 channel-topology를 링크 |
 | 프레임워크별 API 표면, DI, handler 등록 | framework-api, dotnet/ | 필요하면 해당 문서를 링크 |
 | actor 개념, 라이프사이클, session bind | actor-model | 필요하면 actor-model을 링크 |
-| Spot actor join/transfer 완료 조건과 callback 순서 | spot-actor | 필요하면 spot-actor를 링크 |
+| Spot actor join/relocation 완료 조건과 callback 순서 | spot-actor | 필요하면 spot-actor를 링크 |
 | session actor dispatch | session-actor-dispatch | 필요하면 session-actor-dispatch를 링크 |
 
 ## 4. 문서 작성 원칙

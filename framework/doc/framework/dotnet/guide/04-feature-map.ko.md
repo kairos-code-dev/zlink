@@ -89,8 +89,8 @@ flowchart TD
 actor가 다른 node로 이동하는 동안 보낸 request도 원래 caller에서 완료된다. target이
 처리한 reply는 원래 caller로 correlate되고, timeout은 caller의 기존 경로를 그대로
 따르며, 늦게 도착한 reply는 drop된다([spot-actor 스펙 §10.5](../../spec/server/23-spot-actor.ko.md)).
-이동 시점에 대기 중이던 request 수는 `zlink.actor.transfer.pending_requests.count`
-계기로 관측한다([12-operations §1](12-operations.ko.md)).
+이동 중 reply를 기다리는 request 수는 `zlink.mesh_node.requests.inflight`의
+`surface=actor` 값으로 관측한다([12-operations §1](12-operations.ko.md)).
 
 ## 6. 더 보기
 

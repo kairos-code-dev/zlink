@@ -85,7 +85,7 @@ interface ZLinkSuspendingSpotSubscriptionHandler<TSpot : Any, TEvent> {
     )
 }
 
-interface ZLinkSuspendingSpotTimerHandler<TSpot : ZLinkSpot<*>> {
+interface ZLinkSuspendingSpotTimerHandler<TSpot : Any> {
     suspend fun handle(spot: TSpot, tick: ZLinkTimerTick)
 }
 
@@ -192,7 +192,9 @@ single-use state를 숨기기 때문이다.
 
 `onActorRelocatedSuspending(actor)`는 Java `ZLinkEntrySpot.onActorRelocated(actor)`의 coroutine bridge이며 별도 lifecycle
 API가 아니다. Maintenance target은 Actor adapter restore, Location commit, 이 callback과 source Entry Spot의
-`onLeaveActorSuspending(actor)`, dispatch 개방 순서로 처리한다. 어느 callback의 exception도 commit을 rollback하지
+`onLeaveActorSuspending(actor)`, old Entry membership의 durable cleanup, accepted journal replay와 dispatch
+개방 순서로 처리한다. Source process가 종료되면 exact source fence의 durable cleanup terminal이 source
+callback 완료를 대신한다. 어느 callback의 exception도 commit을 rollback하지
 않고 target을 sealed 상태로 유지한 채 retry한다. 일반
 same-node·remote join은 `onActorJoinSuspending`과 `onJoinedActorSuspending`을 사용하며 이 callback을 호출하지
 않는다. Maintenance relocation에서는 target의 일반 join callback은 호출하지 않는다. Whole User Spot aggregate에서는

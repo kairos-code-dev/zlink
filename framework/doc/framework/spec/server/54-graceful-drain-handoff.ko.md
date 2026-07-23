@@ -171,8 +171,9 @@ Coordinator는 ready unit을 한꺼번에 seal하지 않고 permit이 허용하�
    factory와 필요한 `Restore`를 완료한다. Accepted journal과 timer state는 실행하지 않은 채 staging한다.
 5. `Prepared` CAS 뒤 owner·membership을 target으로 commit한다. Source ingress hold에 도착한 message는 original
    operation identity와 generation을 유지해 committed target으로 relay한다.
-6. Target lifecycle callback, accepted message·journal replay와 Framework timer 자동 복원, source cleanup,
-   `Completed`, bound STREAM route ACK와 steady normalization을 끝낸 뒤 target admission을 연다.
+6. Standalone Actor는 target lifecycle callback과 old Entry membership의 durable cleanup을 완료한 뒤
+   accepted message·journal을 replay한다. Framework timer를 자동 복원하고, replay 뒤 남은 source resource
+   cleanup, `Completed`, bound STREAM route ACK와 steady normalization을 끝낸 뒤 target admission을 연다.
 7. Unit의 outbound·inbound·callback·byte permit을 반환하고 다음 ready unit을 진행한다.
 
 Process별 기본 상한은 active outbound relocation unit 64개, active inbound relocation unit 64개, encoded payload

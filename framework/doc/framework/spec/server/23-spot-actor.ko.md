@@ -91,9 +91,10 @@ Cross-node join은 다음 순서를 지킨다.
 5. Target reservation과 staging Actor를 준비한다. `Snapshot`이면 target factory가 만든 Actor에 같은 adapter의
    `Restore`를 호출한다. Accepted journal은 handler를 실행하지 않고 검증해 staging queue에 준비한다.
 6. Owner와 membership을 하나의 authority commit으로 전환한다.
-7. Target joined callback과 source leave notification을 실행하고 accepted message·journal을 replay한다. Framework는
-   logical timer를 자동 복원하되 target application admission은 계속 닫아 둔다.
-8. Source durable cleanup과 Completed authority CAS, session route switch ACK와 steady target normalization을
+7. Target joined callback과 source leave notification을 실행하고 old Entry membership의 durable cleanup을
+   완료한 뒤 accepted message·journal을 replay한다. Framework는 logical timer를 자동 복원하되 target
+   application admission은 계속 닫아 둔다.
+8. Replay 뒤 남은 source resource cleanup과 Completed authority CAS, session route switch ACK와 steady target normalization을
    끝낸 뒤 target admission을 연다.
 
 Commit 전 reject, timeout, `Capture`·`Restore` failure와 CAS conflict는 target staging을 폐기하고 source owner, state와

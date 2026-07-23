@@ -47,7 +47,7 @@ API만 설명한다.
 |------|------|
 | [backend-dependency-policy](internals/backend-dependency-policy.ko.md) | backend 교체 가능성, public surface 격리 |
 | [runtime-lifecycle](internals/runtime-lifecycle.ko.md) | NestJS hook과 내부 runtime의 시작·종료 배선 |
-| [stateful-maintenance-runtime](internals/stateful-maintenance-runtime.ko.md) | authority CAS, checkpoint, recovery와 target replacement 내부 구조 |
+| [stateful-maintenance-runtime](internals/stateful-maintenance-runtime.ko.md) | authority CAS, relocation recovery와 target replacement 내부 구조 |
 | [actor-execution-serialization](internals/actor-execution-serialization.ko.md) | actor 실행 직렬화 참조 구현 — queue 소유자와 completion 의미 |
 | [regression-test-matrix](internals/regression-test-matrix.ko.md) | 회귀 테스트 기준 |
 

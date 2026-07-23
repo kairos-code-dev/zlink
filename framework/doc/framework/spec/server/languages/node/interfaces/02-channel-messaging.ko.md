@@ -85,8 +85,10 @@ Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter `rest
 payload restore 없이 factory materialization을 완료한다. Accepted journal은 checksum, 순서와 fence만 검증해
 application handler가 실행하지 않는 target staging queue에 준비한 뒤 Prepared CAS와 Location
 authority·Entry membership commit을 수행한다. Commit 뒤 target `onActorRelocated(...)`와 source
-`onLeaveActor(...)`를 완료한 다음 accepted journal을 replay한다. 두 callback과 replay, durable source cleanup,
-Completed CAS, route ACK와 steady normalization을 모두 완료한 뒤 Actor dispatch admission을 연다. 두 callback
+`onLeaveActor(...)`를 완료하고 old Entry membership의 durable cleanup을 끝낸 다음 accepted journal을 replay한다.
+Source process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신한다.
+두 callback과 old Entry membership cleanup, replay, 남은 source resource cleanup, Completed CAS, route ACK와
+steady normalization을 모두 완료한 뒤 Actor dispatch admission을 연다. 두 callback
 중 하나가 throw하거나 rejected Promise로 끝나도 authority를 source로 rollback하지 않고 target을 sealed 상태로
 유지한 채 exact relocation fence로 retry한다. 두 callback은 at-least-once 호출될 수 있으므로 retry-safe해야 한다.
 

@@ -539,12 +539,14 @@ accepted가 `true`일 때만 actor 위치를 user Spot으로 commit하고
 `entry_spot_t<TActor>::on_actor_relocated(TActor&)`는 기본 no-op implementation을 가진 maintenance 전용 async
 callback이다. Maintenance가 Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter
 `restore(...)`를 먼저 완료하고 Recreate는 payload restore 없이 factory materialization을 완료한다. 그 다음
-Location authority·Entry membership commit, target `on_actor_relocated(...)`와 source `on_leave_actor(...)` 완료, Actor
-accepted journal replay와 dispatch admission 순서로 실행한다. Journal은 commit 전에 검증해 staging queue에만
+Location authority·Entry membership commit, target `on_actor_relocated(...)`와 source `on_leave_actor(...)` 완료,
+old Entry membership의 durable cleanup, Actor accepted journal replay와 dispatch admission 순서로 실행한다.
+Source process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신한다.
+Journal은 commit 전에 검증해 staging queue에만
 준비하고 application handler를 실행하지 않는다. 두 callback 중 하나가 실패해도 authority를 source로 rollback하지 않고
 target을 sealed 상태로 유지한 채 exact relocation fence로 retry한다. 두 callback은 at-least-once 호출될 수
-있으므로 retry-safe해야 한다. Source process가 종료되면 durable source cleanup이 source callback 완료를 대신해
-target recovery가 계속된다.
+있으므로 retry-safe해야 한다. Replay 뒤 `Cleaning` phase가 처리하는 나머지 source resource cleanup은 old Entry
+membership gate와 구분한다.
 
 일반 same-node·remote User·Entry Spot join은 기존 `on_actor_join(...)`·`on_actor_joined(...)`와 source
 `on_leave_actor(...)` 계약을 사용하며 `on_actor_relocated(...)`를 호출하지 않는다. Maintenance relocation에서는 target의

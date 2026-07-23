@@ -143,8 +143,10 @@ precommit adapter exception과 contract 위반은 `Blocked/StateIncompatible`, d
 restore는 at-least-once이고 stale target attempt와 겹칠 수 있으므로 retry-safe해야 한다.
 
 Maintenance가 Actor를 target Entry Spot으로 옮길 때는 Actor adapter restore, Location authority·membership
-commit, target Entry Spot의 `onActorRelocated(actor)`와 source Entry Spot의 `onLeaveActor(actor)`, application
-dispatch 개방 순서로 진행한다. 어느 callback이 exception으로 끝나도 commit을 rollback하거나 source owner를
+commit, target Entry Spot의 `onActorRelocated(actor)`와 source Entry Spot의 `onLeaveActor(actor)`, old Entry
+membership의 durable cleanup, accepted journal replay와 application dispatch 개방 순서로 진행한다. Source
+process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신한다. 어느
+callback이 exception으로 끝나도 commit을 rollback하거나 source owner를
 복원하지 않고 target을 sealed 상태로 유지한 채 같은 relocation fence에서 retry한다. 따라서 두 callback은
 at-least-once와 retry-safe 계약을 따른다.
 
@@ -417,7 +419,7 @@ public interface systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler<TSpo
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TEvent);
   public default java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TEvent, systems.zlink.framework.channels.ZLinkPublishContext);
 }
-public interface systems.zlink.framework.spots.ZLinkSpotTimerHandler<TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> {
+public interface systems.zlink.framework.spots.ZLinkSpotTimerHandler<TSpot> {
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, systems.zlink.framework.spots.ZLinkTimerTick);
 }
 public interface systems.zlink.framework.spots.ZLinkTimer extends java.lang.AutoCloseable {

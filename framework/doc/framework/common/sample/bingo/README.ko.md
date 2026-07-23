@@ -1367,7 +1367,8 @@ listener.Start(); // runner는 "zlink metric" 로그에서 실제 값을 확인
 Prometheus나 OpenTelemetry exporter가 필요한 애플리케이션은 같은 `ZLinkMeters.Framework` meter를
 자기 metrics pipeline에 추가한다. exporter 선택과 metrics HTTP endpoint는 앱의 운영 정책이다.
 관찰 포인트: `zlink.stream.connections.active`(=CCU, `Session`),
-`zlink.spot.queue.depth`(`spot_kind=user`, `Play`), player가 다른 `Play`로 옮겨질 때 `zlink.actor.transfers`.
+`zlink.spot.queue.depth`(`spot_kind=user`, `Play`), player Actor가 다른 `Play`로 relocation될 때
+`zlink.relocation.completed`(`object_kind=actor`).
 
 ### 17.3 Graceful Drain
 

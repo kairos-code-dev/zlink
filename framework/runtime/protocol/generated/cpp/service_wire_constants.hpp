@@ -105,6 +105,7 @@ inline constexpr std::uint64_t relocationControlEnvelopeBytes = 1048576ULL;
 inline constexpr std::uint64_t weightMax = 100ULL;
 inline constexpr std::uint64_t creationIntentBytes = 1048576ULL;
 inline constexpr std::uint64_t maintenanceAggregateParticipants = 1024ULL;
+inline constexpr std::uint64_t relocationResourceParticipants = 2048ULL;
 inline constexpr std::uint64_t maintenanceAggregateBytes = 1048576ULL;
 inline constexpr std::uint64_t routeForwardHopCount = 8ULL;
 inline constexpr std::uint64_t routeForwardMessages = 1024ULL;

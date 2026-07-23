@@ -19,18 +19,18 @@ Java와 Kotlin은 JVM service runtime 하나를 검증한다. Java public ABI와
 - `ApplicationVersion`은 non-negative Java/Kotlin `long`이며 target eligibility 비교가 공통 계약과 같다.
 - `Retire`와 `Shutdown`의 effective intent, outcome과 reason wire 값이 공통 fixture와 같다.
 - `Preparing`·`Error`의 `Retire`는 `Blocked/RuntimeNotReady`이며 admission을 바꾸지 않는다.
-- User Spot 또는 `Disabled` object가 남은 `Retire`는 `Blocked/TransferDisabled`다.
-- `Recreate`와 `Snapshot`은 같은 authority CAS와 Checkpoint Store를 사용한다.
-- `Snapshot` adapter는 typed application state만 받고 owner token, checkpoint reference와 phase를 받지 않는다.
+- `Disabled` participant나 target capability가 없는 `Retire`는 `Blocked/RelocationDisabled`다.
+- `Recreate`와 `Snapshot`은 같은 Location authority CAS와 Relocation Store publication 순서를 사용한다.
+- `Snapshot` adapter는 opaque `byte[]` application state만 받고 owner token, relocation reference와 phase를 받지 않는다.
 - Instance Spot public local-only create와 existing-only resolve는 hidden remote `GetOrCreate`를 시작하지 않는다.
 - Deadline, disconnect, reply와 shutdown 경쟁에서 terminal completion은 하나다.
 
 ## 3. Location과 recovery
 
 - Authority Store read와 compare-exchange는 store version, lease와 store time을 한 결과로 반환한다.
-- Owner와 transfer는 같은 authority row의 9개 phase를 사용하고 별도 transfer row를 만들지 않는다.
+- Owner와 relocation은 같은 authority row의 9개 phase를 사용하고 별도 relocation row를 만들지 않는다.
 - Stale owner, coordinator와 lifecycle generation은 message, reply, timer와 phase write를 통과하지 못한다.
-- Checkpoint `missing`과 idempotent delete가 닫힌 결과로 처리된다.
+- Relocation payload `missing`과 idempotent delete가 닫힌 결과로 처리된다.
 - 24시간 retention orphan이 active authority로 오인되지 않는다.
 
 ## 4. Transport liveness
@@ -47,7 +47,7 @@ Java와 Kotlin은 JVM service runtime 하나를 검증한다. Java public ABI와
 
 - Java `CompletionStage`와 Kotlin `await()`가 같은 shared operation과 terminal result를 관찰한다.
 - Coroutine cancellation은 waiter만 끝내고 runtime operation을 취소하지 않는다.
-- Kotlin에 별도 lifecycle enum, termination wrapper, runtime facade와 transfer registry가 없다.
+- Kotlin에 별도 lifecycle enum, termination wrapper, runtime facade와 relocation registry가 없다.
 - Actor factory와 Snapshot state·adapter type mismatch는 socket bind 전 startup validation으로 끝난다.
 
 ## 6. E2E와 sample

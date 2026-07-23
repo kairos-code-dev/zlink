@@ -160,7 +160,7 @@ for (const scope of languageRoots) {
     for (const suite of directDirectories(e2eRoot)) {
       const stage = activationStage(suite);
       const suitePath = `${e2eRoot}/${suite}`;
-      addBaselineEntry({
+      const suiteEntry = {
         id: `e2e:${scope.language}:${suite}`,
         kind: 'e2e-scenario-suite',
         language: scope.language,
@@ -172,7 +172,17 @@ for (const scope of languageRoots) {
         runtimeOwner: languageOwner(scope.language, stage),
         activationStage: stage,
         quarantineStatus: 'pending-disabled-by-contract-amendment',
-      });
+      };
+      if (suite === 'SpotActorTransfer') {
+        entries.push({
+          ...suiteEntry,
+          quarantineStatus: 'pending-disabled-reviewed-source',
+          baselineHash: baselineHash(suitePath),
+          approvedHash: currentTrackedHash(suitePath),
+        });
+      } else {
+        addBaselineEntry(suiteEntry);
+      }
       for (const registration of registrationFiles(suitePath)) {
         addBaselineEntry({
           id: `registration:e2e:${scope.language}:${suite}:${sha256(registration.path).slice(0, 12)}`,
@@ -235,19 +245,29 @@ for (const documentRoot of [
       'framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md'
       ? 'framework/doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md'
       : record.path;
-    addBaselineEntry({
+    const contractEntry = {
       id: `${documentRoot.kind}:${path.basename(record.path, '.ko.md')}:${sha256(record.path).slice(0, 12)}`,
       kind: documentRoot.kind,
       language: 'common',
-      path: record.path,
+      path: currentSpecOwner,
       disposition: 'amend',
       acceptanceIntent: '통합된 formal contract와 runtime 검증 순서에 맞춰 scenario 또는 sample acceptance를 확정한다.',
       replacementCoverage: [],
       specOwner: currentSpecOwner,
       runtimeOwner: 'V11-M6-SCAFFOLD-ZERO',
       activationStage: documentRoot.activationStage,
-      quarantineStatus: 'pending-disabled-by-contract-amendment',
-    });
+      quarantineStatus: 'active-contract-spec',
+    };
+    if (currentSpecOwner === record.path) {
+      addBaselineEntry(contractEntry);
+    } else {
+      entries.push({
+        ...contractEntry,
+        baselinePath: record.path,
+        baselineHash: baselineHash(record.path),
+        approvedHash: null,
+      });
+    }
   }
 }
 

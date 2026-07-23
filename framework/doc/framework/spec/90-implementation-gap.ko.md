@@ -288,12 +288,12 @@ C++ node options builder, registration snapshot과 stream runtime에 bool을 보
 TLS 공개 메서드는 제거한다. false에서 일반 TLS client가 연결되며 true에서 인증서 없는 client가 session
 생성 전에 거부되는 실제 TLS contract test를 추가해야 한다.
 
-### 12.31 전 언어 Actor relocation metric outcome 미구현
+### 12.31 전 언어 relocation metric outcome 미구현
 
 [Runtime Metrics §4](server/51-runtime-metrics.ko.md#4-object와-stream-계기)는
-`zlink.actor.relocations`와 `zlink.actor.relocation.duration`에 `mesh_name`과 닫힌
-`outcome=activated|aborted|timed_out|shutdown`을 기록하도록 고정한다. Duration은 relocation 시작부터
-activation 또는 실패 terminal까지의 시간이며 location commit만으로 성공을 기록하지 않는다.
+`zlink.relocation.completed`와 `zlink.relocation.duration`에 `mesh_name`, `object_kind`, `policy`와 닫힌
+`outcome=completed|aborted|recovered|failed|shutdown`을 기록하도록 고정한다. Duration은 prepare부터
+terminal phase까지의 시간이며 Location commit만으로 성공을 기록하지 않는다.
 
 현재 구현은 성공 경로의 label 없는 값만 기록한다.
 

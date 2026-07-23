@@ -275,7 +275,7 @@ normalization이 끝난 뒤 admission을 복원한다.
 
 `OperationId`와 `ReplyRouteId`는 source owner lifecycle 안에서 각각 unique한 non-zero 값이다. Wrap과 reuse는 terminal
 runtime error다. Operation ID는 deduplication identity이고 reply route를 대신하지 않는다. Durable terminal
-identity는 stable `RelocationId`와 `OperationId` 조합이다.
+identity는 stable `RelocationId`, exact request-source fence와 `OperationId` 조합이다.
 
 Target은 terminal completion과 delivery state를 새 immutable relocation root에 쓴 뒤 authority CAS로
 `TerminalCompletionCount`와 `PendingRelayCount`를 함께 갱신한다. `replyRelay`는 original reply route와 exact request

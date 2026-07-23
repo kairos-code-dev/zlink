@@ -6,7 +6,7 @@
   "publicContractTraceDelta": {
     "path": "framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.json",
     "baselineSha256": "24de8fb8d0b4d16cc2b3ae475e16f05e6bae547bc2eaa9bc30fddf1834097c25",
-    "currentSha256": "7d050deb4f40e3caf5cd14b55eab6ef07ca9fc2e74685c624c763822d1ec6e74",
+    "currentSha256": "62294477ade32a04a8676151809388e6dcb429f497db00e0ed9bc57181779976",
     "added": 1260,
     "removed": 940,
     "replacementPolicy": {
@@ -89,7 +89,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-1-location-messaging.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "6edbcc3747221e9626f269a2c3986c1483bcf10241ae8332841efcc4242913a4",
       "approvedHash": null
     },
@@ -97,14 +97,15 @@
       "id": "e2e-contract:config-10-spot-actor-transfer:7331d122170d",
       "kind": "e2e-contract",
       "language": "common",
-      "path": "framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md",
+      "path": "framework/doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md",
       "disposition": "amend",
       "acceptanceIntent": "통합된 formal contract와 runtime 검증 순서에 맞춰 scenario 또는 sample acceptance를 확정한다.",
       "replacementCoverage": [],
       "specOwner": "framework/doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
+      "baselinePath": "framework/doc/framework/common/e2e/config-10-spot-actor-transfer.ko.md",
       "baselineHash": "13aea8b9d211fbb764008a150474ab2883a732793f905e1f874a57f030e16fbd",
       "approvedHash": null
     },
@@ -119,7 +120,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-11-observability-ops.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "ca382bf96c3c4588533bee4d6a64113ed5467daf2dc1a4ec1be3205d5c2a6b15",
       "approvedHash": null
     },
@@ -134,7 +135,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-12-channel-egress-routing.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "2b8f028949ef6a360cef72a5eede97142f91cc902f0acb441612c3fa24f0dae8",
       "approvedHash": null
     },
@@ -149,7 +150,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-13-submit-admission.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "0777832eb313273c42a7ce2c6e674ce5e922fd5bcd193fbf28e6397d231b980a",
       "approvedHash": null
     },
@@ -164,7 +165,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-14-instance-spot.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "454a8242fe2b01e636304e8755a07482e11679ef908b14a506c4d8e36e15cf6c",
       "approvedHash": null
     },
@@ -179,7 +180,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-2-spot-service.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "a627dfd91168379da4dc954eb2ee098e50c49b17fea5ac54f766998b9c448a48",
       "approvedHash": null
     },
@@ -194,7 +195,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-3-pubsub.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "8e2376c391822c31f804896bae5efde3f8fb403ddeef5c138b7496a126dc36a7",
       "approvedHash": null
     },
@@ -209,7 +210,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-4-registration-codec.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "d86df86b2d18675cd5b96bda63f267aa1ee51a677f8ac333bc7e3a789832a49d",
       "approvedHash": null
     },
@@ -224,7 +225,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-5-resilience-lifecycle.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "da6a573a4b2961cdc0a42b7303598ae89001e930113652d7fce8b1cd96090fed",
       "approvedHash": null
     },
@@ -239,7 +240,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-6-store-failure-recovery.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "70862d3d99370974b2165c674983dbf0607bf643df71bc846dcfedafbc401cf0",
       "approvedHash": null
     },
@@ -254,7 +255,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-7-monitoring.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "6d91deeed1e395b04006c13d2178d223cb058c6aa112210b35abb77e60b10a45",
       "approvedHash": null
     },
@@ -269,7 +270,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-8-execution-turn.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "57c6aadb0df2cee3c623173ccb7cd3112d698e0561adfc48ea7f7c85a8c03e02",
       "approvedHash": null
     },
@@ -284,7 +285,7 @@
       "specOwner": "framework/doc/framework/common/e2e/config-9-to-actor-messaging.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "9106a9e20b9cf4813962b67d9a1421b8a7978c6b049088e5df2df5e89a7a945c",
       "approvedHash": null
     },
@@ -299,7 +300,7 @@
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-E2E-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "176b3d14433b78ea9c3b320a1521dd426c3c3f2a7cb4b60ad0477b7872c86270",
       "approvedHash": null
     },
@@ -849,9 +850,9 @@
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M6B-CPP",
       "activationStage": "V11-M6B-E2E",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "22a908fc1df878db98603774f3a8c3911d281f86d51ff2b26b1fbad86120e6e2",
-      "approvedHash": null
+      "approvedHash": "984fe6106a23cc95df66759920448d59942eb17e85140818f3abc633443b2822"
     },
     {
       "id": "e2e:cpp:SpotService",
@@ -1074,9 +1075,9 @@
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M6B-DN",
       "activationStage": "V11-M6B-E2E",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "c84809ccd0dff9813b011ebd340d8c3c04031c0b737ce84f85063b675deef8e1",
-      "approvedHash": null
+      "approvedHash": "f919508def571016afae9f69e42adbed4f962086ba4c6071ddfbe31adbc9c983"
     },
     {
       "id": "e2e:dotnet:SpotService",
@@ -1314,9 +1315,9 @@
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M6B-JVM",
       "activationStage": "V11-M6B-E2E",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "0c44ad3c395e427ebea634d37a102ea9d5cad44ff07dec43ec7a13acdb748e7b",
-      "approvedHash": null
+      "approvedHash": "8d41f9894ceda0d6190d28515947271416430108fef353cef6eefa53663d16e7"
     },
     {
       "id": "e2e:java:SpotService",
@@ -1569,9 +1570,9 @@
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M6B-JVM",
       "activationStage": "V11-M6B-E2E",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "9256025f0490b86156cff7594100bf40005f357f176ecac33217481ad6f79128",
-      "approvedHash": null
+      "approvedHash": "05e2e40ebab2dffaab6d44ca2616b026b393e931fddab6fe0d9dad257a0faf4c"
     },
     {
       "id": "e2e:kotlin:SpotService",
@@ -1884,9 +1885,9 @@
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M6B-NODE",
       "activationStage": "V11-M6B-E2E",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "9a3978d8a4ade949d2268a21960f23b432726a74c140ba0f968c0617b800c42d",
-      "approvedHash": null
+      "approvedHash": "90481e7613b2f828e4b5a29e97c71adc7f1fbcb973981fe998f3e05bce245f58"
     },
     {
       "id": "e2e:node:SpotService",
@@ -49648,7 +49649,7 @@
       "language": "core",
       "path": "core/tests",
       "disposition": "retain",
-      "baselineHash": "c5c55015b1d3ca0d6ce7e1815160c2b09d9343013aed7129def6e9f625dd44ae",
+      "baselineHash": "7bfbd591b0bea85d59ad2404abd1c902f79f90af9f5dd45566ddf2a32ec5d180",
       "approvedHash": null,
       "acceptanceIntent": "현재 tracked Core 또는 binding의 전체 raw regression source와 registration을 보존하고 Framework runtime 구현 중 계속 실행한다.",
       "replacementCoverage": [],
@@ -52768,7 +52769,7 @@
       "language": "core",
       "path": "core/tests/unittest/unittest_poller.cpp",
       "disposition": "retain",
-      "baselineHash": "e7be1fbe1df592e4826c12bb811d4d4bd2de0f47af66b2eeed5f5c84e4c09349",
+      "baselineHash": "01f475c19246b8044e5ac622b7310fc2b8518d933466f7ce7dd6a6a386935505",
       "approvedHash": null,
       "acceptanceIntent": "현재 tracked raw regression file과 registration을 개별 항목으로 보존한다.",
       "replacementCoverage": [],
@@ -66006,7 +66007,7 @@
       "specOwner": "framework/doc/framework/common/sample/event/gamequest.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-SAMPLE-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "e0045657a82d4f032b1d291d969803bba129c3c253d5e8cb238db68ac90969a0",
       "approvedHash": null
     },
@@ -66021,7 +66022,7 @@
       "specOwner": "framework/doc/framework/common/sample/supportchat/README.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-SAMPLE-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "1cbcb23856a761c2ff67e76fb054e977fde7a029c5996501920af7d5749529a7",
       "approvedHash": null
     },
@@ -66036,7 +66037,7 @@
       "specOwner": "framework/doc/framework/common/sample/zoneworld/README.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-SAMPLE-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "82b0229f14f6d17f98a7be3ba61df9aaae2620cad0a76c70776de7952aee6410",
       "approvedHash": null
     },
@@ -66051,7 +66052,7 @@
       "specOwner": "framework/doc/framework/common/sample/event/README.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-SAMPLE-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "925190ecbadd5aab602421240f23af4997a62c77fb2d4e65a175c1f6499d79ab",
       "approvedHash": null
     },
@@ -66066,7 +66067,7 @@
       "specOwner": "framework/doc/framework/common/sample/deliverydispatch/README.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-SAMPLE-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "ca3618a3cb9e9265e29eb511fd6e1ea42bbf6610b25adb471fbced125b486789",
       "approvedHash": null
     },
@@ -66081,7 +66082,7 @@
       "specOwner": "framework/doc/framework/common/sample/tictactoe/README.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-SAMPLE-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "f11524cf5ad9ece15debe912809b94b6ca6c7242a39f7385340402d57770bb64",
       "approvedHash": null
     },
@@ -66096,7 +66097,7 @@
       "specOwner": "framework/doc/framework/common/sample/languages/README.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-SAMPLE-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "0f0b5c8374c631ef5f32c9b4cf110bf781d0dced4e2e050cbf8cdf31a307b8ad",
       "approvedHash": null
     },
@@ -66111,7 +66112,7 @@
       "specOwner": "framework/doc/framework/common/sample/bingo/README.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-SAMPLE-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "6a52792f027de9fad68013b193bd211d8ba49cde661ee1b8a190ce89923a98ad",
       "approvedHash": null
     },
@@ -66126,7 +66127,7 @@
       "specOwner": "framework/doc/framework/common/sample/README.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-SAMPLE-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "5bcce3986e2f56253e3252d4ad0ccaf468db6449e5e4893b00574972ea9aed34",
       "approvedHash": null
     },
@@ -66141,7 +66142,7 @@
       "specOwner": "framework/doc/framework/common/sample/event/shoppingmall.ko.md",
       "runtimeOwner": "V11-M6-SCAFFOLD-ZERO",
       "activationStage": "V11-SAMPLE-SPEC-FINAL",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "active-contract-spec",
       "baselineHash": "e880fd7e1a91a7da0072c7ee34d6994d11fd2f19372f981374f229f10be44aff",
       "approvedHash": null
     },

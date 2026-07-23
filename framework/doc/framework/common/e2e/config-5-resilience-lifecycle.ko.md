@@ -498,9 +498,11 @@ monitor callback이 남지 않는가.
 
 우선순위: `P0`
 
-- 절차: Actor와 Instance Spot relocation을 target restore·journal replay가 끝난 `Activated`에서 멈춘다. Target
-  application call과 bound-session packet을 제출하고 source cleanup 전후에 source·target을 각각 종료한다.
-  별도 실행에서는 source cleanup을 terminal로 확인한 뒤 authority `Completed` CAS를 수행하고 같은 call을
+- 절차: Actor와 Instance Spot relocation을 target restore·필요한 lifecycle gate·journal replay가 끝난
+  `Activated`에서 멈춘다. Standalone Actor의 old Entry membership cleanup은 lifecycle gate에 포함되어 replay
+  전에 끝난다. Target application call과 bound-session packet을 제출하고 남은 source resource cleanup 전후에
+  source·target을 각각 종료한다. 별도 실행에서는 남은 source resource cleanup을 terminal로 확인한 뒤 authority
+  `Completed` CAS를 수행하고 같은 call을
   다시 제출한다.
 - 검증: `Activated`에서는 restored target과 session route가 준비되어도 application·session ingress와 public
   ready가 열리지 않는다. Relocation 시작 때 source node와 exact source owner ID·host lease generation을 durable
@@ -533,7 +535,8 @@ monitor callback이 남지 않는가.
   Relocation journal에 포함하고 target에서 처리해 reply를 만든다. `replyRelay`,
   `replyRelayAck`와 ACK 재전송을 각각 한 번씩 유실한다. 다른 반복에서는 원 caller의 timeout·cancellation,
   request-source connection 종료·재연결, request-source host lease expiry와 reply 도착을 경쟁시킨다.
-- 검증: Target은 stable relocation ID와 operation ID로 terminal completion을 relocation stream에 기록하고 current
+- 검증: Target은 stable relocation ID, exact request-source owner fence와 operation ID로 terminal completion을
+  relocation stream에 기록하고 current
   request record에 보존한 exact nonzero reply route로 응답한다. Operation ID를 reply route로 대신하지 않으며
   request 종류마다 원 correlation으로 terminal result 하나가 도착한다. Current request-source connection의
   `terminalReceived` 또는 `alreadyTerminal` ACK까지 relay를 재전송한다. ACK가

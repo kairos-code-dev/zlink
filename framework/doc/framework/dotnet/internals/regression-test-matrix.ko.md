@@ -435,11 +435,11 @@ backend gate 와 별도로 유지한다.
 | `NodesAndServicesTests.AddZLinkFramework_Throws_WhenAddLocationStoreIsCombinedWithInMemoryStore` | 외부 store와 in-memory store를 함께 등록하면 시작 전에 실패한다. |
 | `LocationResolverTests.Rows_Of_Expired_Owner_Are_Not_Returned` | owner lease가 만료된 위치 row를 resolver가 반환하지 않는다. |
 | `AuthorityStoreTests.Missing_Version_Can_Be_Compared_And_Conflict_Returns_Current` | missing과 found를 같은 opaque expected version CAS로 처리한다. |
-| `AuthorityStoreTests.Owner_And_Transfer_Phase_Change_In_One_Cas` | Actor·Instance owner와 transfer phase가 한 payload로 바뀐다. |
-| `CheckpointStoreTests.Retention_Is_Exactly_24Hours` | Framework가 provider clock 기준 24시간 retention만 전달한다. |
-| `CheckpointStoreTests.Delete_Missing_Is_Idempotent` | missing checkpoint read는 닫힌 결과이고 반복 delete는 성공 cleanup이다. |
+| `AuthorityStoreTests.Owner_And_Relocation_Phase_Change_In_One_Cas` | Actor·Instance owner와 relocation phase가 한 payload로 바뀐다. |
+| `RelocationStoreTests.Retention_Is_Exactly_24Hours` | Framework가 provider clock 기준 24시간 retention만 전달한다. |
+| `RelocationStoreTests.Delete_Missing_Is_Idempotent` | missing relocation payload read는 닫힌 결과이고 반복 delete는 성공 cleanup이다. |
 | `FrameworkRuntimeTests.ApplicationVersion_Uses_Long_Numeric_Order` | `0..long.MaxValue` ordering과 음수 startup rejection을 검증한다. |
-| `FrameworkRuntimeTests.TypedFactory_Policy_Hides_Transfer_Protocol` | typed adapter가 application state만 받고 authority·checkpoint·journal detail을 받지 않는다. |
+| `FrameworkRuntimeTests.Factory_Policy_Hides_Relocation_Protocol` | adapter가 opaque application state만 받고 authority·relocation root·journal detail을 받지 않는다. |
 | `AutoConnectReconcilerTests.Reconcile_Connects_New_Targets_And_Disconnects_Vanished_Ones` | 자동 연결이 새 peer를 연결하고 사라진 peer를 연결 집합에서 제거한다. |
 | `RedisInMemoryParityTests.Same_Operation_Sequence_Yields_Identical_Statuses_And_Generations` | in-memory와 Redis 구현이 같은 write status와 generation을 반환한다. |
 | `E2E:RM-A1`, `E2E:RM-A4`, `E2E:RM-B1`, `E2E:RM-B2` | store 기반 자동 연결, failover, scale-out과 scale-in을 실제 프로세스에서 검증한다. |

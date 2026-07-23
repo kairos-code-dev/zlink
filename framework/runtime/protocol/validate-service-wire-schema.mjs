@@ -99,6 +99,7 @@ function validateSchema(schema) {
   const amendmentBounds = new Map([
     ["creationIntentBytes", 1048576n],
     ["maintenanceAggregateParticipants", 1024n],
+    ["relocationResourceParticipants", 2048n],
     ["maintenanceAggregateBytes", 1048576n],
     ["routeForwardHopCount", 8n],
     ["routeForwardMessages", 1024n],
@@ -1188,7 +1189,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       acknowledgement: {
         command: "replyRelayAck",
         scope: "maintenanceRelocation-only",
-        identity: ["stable-relocation-id", "operation-id"],
+        identity: ["stable-relocation-id", "exact-request-source-fence", "operation-id"],
         requestSource: "authenticated-exact-source-owner-lease-node-rid-and-generation",
         statuses: ["terminalReceived", "alreadyTerminal"],
         targetPersistence: "relocation-root-cas-before-ack-effect",
@@ -1198,7 +1199,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         physicalConnectionClose: "never-terminal-proof",
         retireWhileSourceLeaseValid: "forceStopped-and-retain-relocation-root-and-reply-bytes-for-retention-window",
       },
-      terminalOwnership: "stable-relocation-id-and-operation-id-once-independent-of-target-attempt",
+      terminalOwnership: "stable-relocation-id-exact-request-source-fence-and-operation-id-once-independent-of-target-attempt",
       replyRoute: "request-only",
     }],
     ["instance-placement-authority-fence", {
@@ -1320,7 +1321,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         "reply-relay-context.maintenanceRelocation.sequence",
       ],
       relocationQueueOrdering: "journal-entry-and-pending-timer-tick-share-one-strictly-increasing-participant-sequence",
-      crossVectorDuplicate: "forbidden",
+      crossVectorDuplicate: "forbidden-between-journal-entry-and-relocation-pending-timer-tick-only-completion-and-relay-reference-the-original-sequence",
       sequenceStart: 1,
       zeroMeaning: "no-accepted-or-replayed-record",
       progressFields: ["acceptedBoundary", "replayCursor", "highWater"],
@@ -1419,8 +1420,10 @@ function validateSemanticConstraints(constraints, contexts, fail) {
     }],
     ["relocation-participant-resource-integrity", {
       participantIdentity: {
-        objectMailbox: "exactly-one-participant-id-1-no-binding-fields",
-        boundSession: "participant-id-from-2-in-ascending-session-rid-order-with-nonzero-binding-generation",
+        standaloneObjectMailbox: "exactly-participant-id-1-no-binding-fields",
+        userSpotObjectMailboxes: "participant-id-1-is-user-spot-then-member-actors-from-2-in-ascending-global-actor-id-order-no-binding-fields",
+        boundSession: "participant-id-after-all-object-mailboxes-in-owning-object-participant-id-then-ascending-session-rid-order-with-nonzero-binding-generation",
+        boundSessionOwner: "exact-owning-actor-from-current-binding-record",
         sessionOwnerRoute: "node-rid-lifecycle-generation-owner-id-and-lease-generation-match-current-descriptor-and-host-lease-before-seal-or-route-switch",
         sessionRid: "unique-within-relocation-transaction",
         stability: "same-id-and-fence-for-relocation-recovery-and-retransmit",
@@ -1428,6 +1431,9 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       cardinality: {
         actor: "exactly-one-objectMailbox-and-zero-or-one-boundSession",
         instanceSpot: "exactly-one-objectMailbox-and-no-boundSession",
+        userSpotAggregate: "exactly-one-user-spot-objectMailbox-and-one-objectMailbox-per-canonical-member-actor-plus-zero-or-one-boundSession-per-member-actor",
+        userSpotObjectMaximum: { $bound: "maintenanceAggregateParticipants" },
+        resourceMaximum: { $bound: "relocationResourceParticipants" },
       },
       relocationReady: {
         targetToSource: {
@@ -1685,7 +1691,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       operationId: "nonzero-unique-within-source-owner-lifecycle-for-terminal-dedupe",
       replyRouteId: "nonzero-unique-within-source-owner-lifecycle-for-correlation-only",
       counterWrapOrReuse: "forbidden-terminal-runtime-error",
-      terminalIdentity: "stable-relocation-id-plus-operation-id",
+      terminalIdentity: "stable-relocation-id-plus-exact-request-source-fence-plus-operation-id",
       publicExposure: "forbidden",
     }],
     ["owner-lease-timing-integrity", {
@@ -1752,7 +1758,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       stateType: "relocation-application-state",
       recreate: "hasState-false-no-payload",
       snapshot: "hasState-true-opaque-payload-empty-valid",
-      participantMapping: "exactly-one-sorted-application-state-entry-per-participant-id",
+      participantMapping: "exactly-one-sorted-application-state-entry-per-objectMailbox-participant-id-and-no-boundSession-entry",
       participantPayloadMaximumBytes: { $bound: "relocationChunkBytes" },
       relocationPresence: "every-relocation-including-empty-recreate-writes-one-deterministic-envelope",
       storage: "canonical-logical-stream-split-into-immutable-chunks-and-one-root-manifest",
@@ -2287,6 +2293,12 @@ function decodePendingTimerTicks(reader) {
 
 function decodeRequestCompletion(reader) {
   const operationId = decodeOperationId(reader);
+  const requestSource = {
+    sourceOwnerId: reader.text8(),
+    sourceOwnerLeaseGeneration: reader.u64(),
+    sourceNodeRidUtf8Fixture: reader.text8(),
+    sourceNodeGeneration: reader.u64(),
+  };
   const participantId = reader.u64();
   const sequence = reader.u64();
   const terminalResult = fixtureEnum(FIXTURE_ENUMS.terminalResult, reader.u32(), "terminal result");
@@ -2302,6 +2314,7 @@ function decodeRequestCompletion(reader) {
   }
   return {
     operationId,
+    requestSource,
     participantId,
     sequence,
     terminalResult,
@@ -2679,7 +2692,11 @@ function encodePendingTimerTicks(writer, ticks) {
 
 function encodeRequestCompletion(writer, completion) {
   encodeOperationId(writer, completion.operationId);
-  writer.u64(completion.participantId).u64(completion.sequence)
+  writer.text8(completion.requestSource.sourceOwnerId)
+    .u64(completion.requestSource.sourceOwnerLeaseGeneration)
+    .text8(completion.requestSource.sourceNodeRidUtf8Fixture)
+    .u64(completion.requestSource.sourceNodeGeneration)
+    .u64(completion.participantId).u64(completion.sequence)
     .u32(fixtureEnumValue(FIXTURE_ENUMS.terminalResult, completion.terminalResult, "terminal result"))
     .u32(completion.failureCode)
     .u8(fixtureEnumValue(
@@ -2954,7 +2971,7 @@ function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
   );
   validateGoldenOrder(
     decoded.terminalCompletions,
-    (entry) => [entry.operationId.high, entry.operationId.low],
+    (entry) => [entry.participantId, entry.sequence],
     `${location}.terminalCompletions`,
     fail,
   );
@@ -3009,6 +3026,13 @@ function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
       entry.participantId === completion.participantId
       && entry.sequence === completion.sequence
       && JSON.stringify(entry.record.operationId) === JSON.stringify(completion.operationId)
+      && entry.record.source.sourceOwnerId === completion.requestSource.sourceOwnerId
+      && entry.record.source.sourceOwnerLeaseGeneration
+        === completion.requestSource.sourceOwnerLeaseGeneration
+      && entry.record.source.sourceNodeRidUtf8Fixture
+        === completion.requestSource.sourceNodeRidUtf8Fixture
+      && entry.record.source.sourceNodeGeneration
+        === completion.requestSource.sourceNodeGeneration
       && entry.record.replyRouteId !== null
       && entry.record.source.sourceOwnerId.length > 0
       && BigInt(entry.record.source.sourceOwnerLeaseGeneration) > 0n
@@ -3659,7 +3683,7 @@ function validateRelocationStateMachine(machine, commands, types, fail) {
           context: "maintenanceRelocation",
           senderRoles: ["target"],
           phases: ["committed", "activating", "activated", "cleaning"],
-          duplicate: "terminal-once-by-stable-relocation-id-operation-id-target-attempt-is-peer-fence-only",
+          duplicate: "terminal-once-by-stable-relocation-id-exact-request-source-fence-and-operation-id-target-attempt-is-peer-fence-only",
           reorder: "hold-until-operation-known",
           loss: "recover-from-durable-completion",
         },
@@ -3677,7 +3701,7 @@ function validateRelocationStateMachine(machine, commands, types, fail) {
       command: "replyRelayAck",
       senderKind: "requestSource",
       phases: ["committed", "activating", "activated", "cleaning"],
-      duplicate: "idempotent-by-stable-relocation-id-operation-id-and-status",
+      duplicate: "idempotent-by-stable-relocation-id-exact-request-source-fence-operation-id-and-status",
       reorder: "hold-until-matching-durable-completion-or-retransmit-causes-source-reack",
       loss: "target-retransmits-terminal-until-ack-or-exact-request-source-owner-lease-expiry",
     }],
@@ -4340,7 +4364,7 @@ function validateServiceInvariants(schema, types, fail) {
     "participant-vector", "participant-terminal-vector", "participant-progress-vector",
   ]) {
     const vector = types.get(name);
-    if (vector?.maximumItems !== 2
+    if (vector?.maximumItems?.$bound !== "relocationResourceParticipants"
         || JSON.stringify(vector.constraints) !== JSON.stringify(expectedParticipantConstraints)) {
       fail("$.types", `${name} must use the common bounded, sorted and unique participant contract`);
     }
@@ -4349,10 +4373,21 @@ function validateServiceInvariants(schema, types, fail) {
   const expectedCompletionConstraints = [
     {
       kind: "sorted",
-      fields: ["operationId.high", "operationId.low"],
+      fields: ["participantId", "sequence"],
       comparison: "unsigned-wire-value",
     },
-    { kind: "unique", fields: ["operationId.high", "operationId.low"] },
+    { kind: "unique", fields: ["participantId", "sequence"] },
+    {
+      kind: "unique",
+      fields: [
+        "requestSource.sourceOwnerId",
+        "requestSource.sourceOwnerLeaseGeneration",
+        "requestSource.sourceNodeRid",
+        "requestSource.sourceNodeGeneration",
+        "operationId.high",
+        "operationId.low",
+      ],
+    },
   ];
   if (completions?.maximumItems?.$bound !== "journalRecordCount"
       || JSON.stringify(completions.constraints) !== JSON.stringify(expectedCompletionConstraints)) {
@@ -4593,6 +4628,7 @@ function validateServiceInvariants(schema, types, fail) {
   ], "$.commands", "reply must carry the closed terminal result and Framework failure code");
   requireFields(types.get("request-completion-entry")?.fields, [
     { name: "operationId", $ref: "operation-id" },
+    { name: "requestSource", $ref: "request-source-fence" },
     { name: "participantId", $ref: "nonzero-u64" },
     { name: "sequence", $ref: "nonzero-u64" },
     { name: "terminalResult", $ref: "request-terminal-result" },
@@ -4618,7 +4654,12 @@ function validateServiceInvariants(schema, types, fail) {
     fail("$.types", "frozen completion must use the stable Framework failure code");
   }
   const relocationEnvelope = types.get("relocation-envelope-v1");
-  if (relocationEnvelope?.fields?.find((field) => field.name === "applicationStates")?.$ref
+  const relocationApplicationStates = types.get(
+    "relocation-participant-application-state-vector",
+  );
+  if (relocationApplicationStates?.maximumItems?.$bound
+        !== "maintenanceAggregateParticipants"
+      || relocationEnvelope?.fields?.find((field) => field.name === "applicationStates")?.$ref
       !== "relocation-participant-application-state-vector"
       || (relocationEnvelope?.fields ?? []).some((field) => [
         "applicationState", "capturedStoreTimeMs", "stateContractId", "serializerIdentity",
@@ -5702,9 +5743,31 @@ function runSelfTests(schema) {
       const progress = candidate.types.find((type) => type.name === "participant-progress-vector");
       progress.constraints = [];
     }],
+    ["participant progress aggregate bound reduced", (candidate) => {
+      const progress = candidate.types.find((type) => type.name === "participant-progress-vector");
+      progress.maximumItems = 2;
+    }],
+    ["relocation application state aggregate bound removed", (candidate) => {
+      const states = candidate.types.find(
+        (type) => type.name === "relocation-participant-application-state-vector",
+      );
+      delete states.maximumItems;
+    }],
     ["terminal completion bound diverges", (candidate) => {
       const completions = candidate.types.find((type) => type.name === "request-completion-vector");
       completions.maximumItems = 1;
+    }],
+    ["terminal completion request source removed", (candidate) => {
+      const completion = candidate.types.find((type) => type.name === "request-completion-entry");
+      completion.fields = completion.fields.filter((field) => field.name !== "requestSource");
+    }],
+    ["terminal completion identity weakened", (candidate) => {
+      const completions = candidate.types.find((type) => type.name === "request-completion-vector");
+      completions.constraints = [{
+        kind: "sorted",
+        fields: ["operationId.high", "operationId.low"],
+        comparison: "unsigned-wire-value",
+      }];
     }],
     ["unknown struct constraint", (candidate) => {
       const operation = candidate.types.find((type) => type.name === "operation-id");
@@ -6029,6 +6092,15 @@ function runSelfTests(schema) {
       );
       delete rule.senderKind;
       rule.senderRoles = ["source"];
+    }],
+    ["reply relay acknowledgement drops request source fence identity", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "reply-relay-context-integrity",
+      );
+      constraint.acknowledgement.identity =
+        ["stable-relocation-id", "operation-id"];
+      constraint.terminalOwnership =
+        "stable-relocation-id-and-operation-id-once-independent-of-target-attempt";
     }],
     ["frozen request reply route omitted", (candidate) => {
       const frozen = candidate.types.find((type) => type.name === "frozen-record");

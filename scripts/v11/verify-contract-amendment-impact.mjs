@@ -115,7 +115,9 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
   const ids = new Set();
   const allowedDispositions = new Set(['retain', 'amend', 'replace', 'add', 'remove']);
   const allowedQuarantine = new Set([
-    'pending-disabled-by-contract-amendment', 'active-regression', 'planned-regression',
+    'pending-disabled-by-contract-amendment', 'pending-disabled-reviewed-source',
+    'active-contract-spec',
+    'active-regression', 'planned-regression',
   ]);
   for (const entry of manifest.entries) {
     const label = entry?.id ?? '<missing-id>';
@@ -155,6 +157,10 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
           && entry.approvedHash !== null) {
         fail(`${label}: quarantined E2E/sample item must not have an approvedHash before finalization`);
       }
+      if (entry.quarantineStatus === 'pending-disabled-reviewed-source'
+          && !/^[0-9a-f]{64}$/u.test(entry.approvedHash ?? '')) {
+        fail(`${label}: reviewed but execution-disabled source requires an approvedHash`);
+      }
     } else if (['amend', 'replace', 'add'].includes(entry.disposition)
         && !/^[0-9a-f]{64}$/u.test(entry.approvedHash ?? '')) {
       fail(`${label}: finalized changed item requires approvedHash`);
@@ -176,10 +182,17 @@ function validateManifest(manifest, mode, {checkFiles = true} = {}) {
       if (entry.disposition !== 'remove') fail(`${label}: current path is missing`);
       continue;
     }
-    if (mode === 'quarantine' && entry.quarantineStatus !== 'pending-disabled-by-contract-amendment') {
+    if (mode === 'quarantine' && ![
+      'pending-disabled-by-contract-amendment',
+      'pending-disabled-reviewed-source',
+    ].includes(entry.quarantineStatus)) {
       continue;
     }
-    const expected = mode === 'finalized' && entry.approvedHash ? entry.approvedHash : entry.baselineHash;
+    const expected = entry.quarantineStatus === 'pending-disabled-reviewed-source'
+      ? entry.approvedHash
+      : mode === 'finalized' && entry.approvedHash
+        ? entry.approvedHash
+        : entry.baselineHash;
     if (expected && hash !== expected) {
       fail(`${label}: current hash differs from ${mode} approved baseline expected=${expected} actual=${hash}`);
     }

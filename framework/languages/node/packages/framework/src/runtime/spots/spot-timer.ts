@@ -31,6 +31,18 @@ type ZLinkTimerFailureReporter = (
   event?: ZLinkSpotEventKind.TimerHandlerFailed | ZLinkSpotEventKind.TimerStoppedAfterUnhandledException
 ) => Promise<void> | void;
 
+export interface ZLinkTimerRelocationState {
+  readonly name: string;
+  readonly periodMs: number;
+  readonly overrunPolicy: ZLinkTimerOverrunPolicy;
+  readonly maxCatchUpTicks: number;
+  readonly stopOnUnhandledException: boolean;
+  readonly startedAtUnixMs: number;
+  readonly deliveryIndex: bigint;
+  readonly lastScheduledIndex: bigint;
+  readonly pendingTicks: number;
+}
+
 export class ZLinkSpotTimerRegistry {
   private readonly timers = new Map<string, {
     readonly generation: bigint;
@@ -94,6 +106,39 @@ export class ZLinkSpotTimerRegistry {
     }
   }
 
+  async captureRelocation(): Promise<readonly ZLinkTimerRelocationState[]> {
+    const states: ZLinkTimerRelocationState[] = [];
+    for (const [name, entry] of [...this.timers.entries()].sort(([left], [right]) =>
+      left.localeCompare(right))) {
+      const state = await entry.timer.captureRelocation();
+      if (state.name !== name) throw new Error('Timer relocation identity changed during capture.');
+      states.push(state);
+    }
+    return states;
+  }
+
+  restoreRelocation(states: readonly ZLinkTimerRelocationState[]): void {
+    const byName = new Map(states.map(state => [state.name, state]));
+    if (byName.size !== states.length || byName.size !== this.timers.size) {
+      throw new Error('Timer relocation inventory does not match registered handlers.');
+    }
+    for (const [name, entry] of this.timers) {
+      const state = byName.get(name);
+      if (state === undefined) {
+        throw new Error(`Timer '${name}' is missing from relocation state.`);
+      }
+      entry.timer.restoreRelocation(state);
+    }
+  }
+
+  abortRelocation(states: readonly ZLinkTimerRelocationState[]): void {
+    this.restoreRelocation(states);
+  }
+
+  async commitRelocation(): Promise<void> {
+    await this.dispose();
+  }
+
   async cancel(
     name: string,
     generation: bigint,
@@ -132,7 +177,8 @@ class ZLinkRegisteredTimer implements ZLinkTimer {
 
 export class ZLinkManagedTimer implements ZLinkTimer {
   private disposed = false;
-  private readonly startedAtMs = Date.now();
+  private pausedForRelocation = false;
+  private startedAtMs = Date.now();
   private deliveryIndex = 0n;
   private lastScheduledIndex = 0n;
   private timeout: NodeJS.Timeout | undefined;
@@ -171,8 +217,53 @@ export class ZLinkManagedTimer implements ZLinkTimer {
     return this.cancel();
   }
 
+  async captureRelocation(): Promise<ZLinkTimerRelocationState> {
+    if (this.disposed) throw new Error(`Timer '${this.name}' is disposed.`);
+    this.pausedForRelocation = true;
+    if (this.timeout !== undefined) {
+      clearTimeout(this.timeout);
+      this.timeout = undefined;
+    }
+    if (this.shouldWaitForRunningOnCancel()) await this.running;
+    return {
+      name: this.name,
+      periodMs: this.periodMs,
+      overrunPolicy: this.options.overrunPolicy,
+      maxCatchUpTicks: this.options.maxCatchUpTicks,
+      stopOnUnhandledException: this.options.stopOnUnhandledException,
+      startedAtUnixMs: this.startedAtMs,
+      deliveryIndex: this.deliveryIndex,
+      lastScheduledIndex: this.lastScheduledIndex,
+      pendingTicks: 0
+    };
+  }
+
+  restoreRelocation(state: ZLinkTimerRelocationState): void {
+    if (this.disposed) throw new Error(`Timer '${this.name}' is disposed.`);
+    if (
+      state.name !== this.name
+      || state.periodMs !== this.periodMs
+      || state.overrunPolicy !== this.options.overrunPolicy
+      || state.maxCatchUpTicks !== this.options.maxCatchUpTicks
+      || state.stopOnUnhandledException !== this.options.stopOnUnhandledException
+      || !Number.isSafeInteger(state.startedAtUnixMs)
+      || state.deliveryIndex < 0n
+      || state.lastScheduledIndex < 0n
+      || state.pendingTicks !== 0
+    ) {
+      throw new Error(`Timer '${this.name}' relocation contract does not match its registration.`);
+    }
+    if (this.timeout !== undefined) clearTimeout(this.timeout);
+    this.timeout = undefined;
+    this.startedAtMs = state.startedAtUnixMs;
+    this.deliveryIndex = state.deliveryIndex;
+    this.lastScheduledIndex = state.lastScheduledIndex;
+    this.pausedForRelocation = false;
+    this.scheduleNext();
+  }
+
   private scheduleNext(): void {
-    if (this.disposed) {
+    if (this.disposed || this.pausedForRelocation) {
       return;
     }
 

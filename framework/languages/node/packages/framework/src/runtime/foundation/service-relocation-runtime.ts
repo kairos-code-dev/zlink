@@ -52,8 +52,14 @@ export interface ServiceRelocationQueuedMessage {
 
 export interface ServiceRelocationTimer {
   readonly timerId: string;
+  readonly startedAtUnixMs: number;
   readonly dueAtUnixMs: number;
-  readonly intervalMs?: number;
+  readonly intervalMs: number;
+  readonly deliveryIndex: bigint;
+  readonly lastScheduledIndex: bigint;
+  readonly overrunPolicy: string;
+  readonly maxCatchUpTicks: number;
+  readonly stopOnUnhandledException: boolean;
   readonly pendingTicks: number;
 }
 
@@ -231,10 +237,20 @@ export function encodeServiceRelocationEnvelope(envelope: ServiceRelocationEnvel
   const timers = [...envelope.timers]
     .map(timer => ({
       timerId: requireText(timer.timerId, 'timer id'),
+      startedAtUnixMs: safeInteger(timer.startedAtUnixMs, 'timer start time'),
       dueAtUnixMs: safeInteger(timer.dueAtUnixMs, 'timer due time'),
-      ...(timer.intervalMs === undefined
-        ? {}
-        : { intervalMs: positiveInteger(timer.intervalMs, 'timer interval') }),
+      intervalMs: positiveInteger(timer.intervalMs, 'timer interval'),
+      deliveryIndex: nonNegativeBigInt(timer.deliveryIndex, 'timer delivery index').toString(),
+      lastScheduledIndex: nonNegativeBigInt(
+        timer.lastScheduledIndex,
+        'timer scheduled index'
+      ).toString(),
+      overrunPolicy: requireText(timer.overrunPolicy, 'timer overrun policy'),
+      maxCatchUpTicks: positiveInteger(timer.maxCatchUpTicks, 'timer catch-up limit'),
+      stopOnUnhandledException: requireBoolean(
+        timer.stopOnUnhandledException,
+        'timer stop-on-error flag'
+      ),
       pendingTicks: nonNegativeInteger(timer.pendingTicks, 'pending timer ticks')
     }))
     .sort((left, right) => left.timerId.localeCompare(right.timerId));
@@ -287,10 +303,20 @@ export function decodeServiceRelocationEnvelope(payload: Uint8Array): ServiceRel
       const item = record(value, 'timer');
       return {
         timerId: requireText(item.timerId, 'timer id'),
+        startedAtUnixMs: safeInteger(item.startedAtUnixMs, 'timer start time'),
         dueAtUnixMs: safeInteger(item.dueAtUnixMs, 'timer due time'),
-        ...(item.intervalMs === undefined
-          ? {}
-          : { intervalMs: positiveInteger(item.intervalMs, 'timer interval') }),
+        intervalMs: positiveInteger(item.intervalMs, 'timer interval'),
+        deliveryIndex: nonNegativeBigInt(item.deliveryIndex, 'timer delivery index'),
+        lastScheduledIndex: nonNegativeBigInt(
+          item.lastScheduledIndex,
+          'timer scheduled index'
+        ),
+        overrunPolicy: requireText(item.overrunPolicy, 'timer overrun policy'),
+        maxCatchUpTicks: positiveInteger(item.maxCatchUpTicks, 'timer catch-up limit'),
+        stopOnUnhandledException: requireBoolean(
+          item.stopOnUnhandledException,
+          'timer stop-on-error flag'
+        ),
         pendingTicks: nonNegativeInteger(item.pendingTicks, 'pending timer ticks')
       };
     })
@@ -356,6 +382,17 @@ function positiveBigInt(value: unknown, label: string): bigint {
   return parsed;
 }
 
+function nonNegativeBigInt(value: unknown, label: string): bigint {
+  let parsed: bigint;
+  try {
+    parsed = typeof value === 'bigint' ? value : BigInt(requireText(value, label));
+  } catch {
+    throw new TypeError(`${label} must be a non-negative integer.`);
+  }
+  if (parsed < 0n) throw new TypeError(`${label} must be a non-negative integer.`);
+  return parsed;
+}
+
 function safeInteger(value: unknown, label: string): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
     throw new TypeError(`${label} must be a safe integer.`);
@@ -373,4 +410,9 @@ function nonNegativeInteger(value: unknown, label: string): number {
   const parsed = safeInteger(value, label);
   if (parsed < 0) throw new TypeError(`${label} must not be negative.`);
   return parsed;
+}
+
+function requireBoolean(value: unknown, label: string): boolean {
+  if (typeof value !== 'boolean') throw new TypeError(`${label} must be boolean.`);
+  return value;
 }

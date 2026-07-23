@@ -21,6 +21,12 @@ import {
   type ServiceRelocationPublication,
   type ServiceRelocationStorePort
 } from '../../packages/framework/src/runtime/foundation/service-relocation-runtime';
+import {
+  ZLinkManagedTimer
+} from '../../packages/framework/src/runtime/spots/spot-timer';
+import {
+  ZLinkTimerOverrunPolicy
+} from '../../packages/framework/src/contracts';
 
 test('Retire preflight precedes publication and ready units use bounded permits', async () => {
   const events: string[] = [];
@@ -163,6 +169,26 @@ test('mailbox seal captures queued work, holds new ingress, and restores or rela
   mailbox.close();
 });
 
+test('managed timer pauses and restores its logical schedule without native handles', async () => {
+  const options = {
+    overrunPolicy: ZLinkTimerOverrunPolicy.CatchUpBounded,
+    maxCatchUpTicks: 3,
+    stopOnUnhandledException: true
+  };
+  const source = new ZLinkManagedTimer('heartbeat', 60_000, options, async () => {});
+  const captured = await source.captureRelocation();
+  assert.equal(captured.name, 'heartbeat');
+  assert.equal(captured.periodMs, 60_000);
+  assert.equal(captured.pendingTicks, 0);
+
+  const target = new ZLinkManagedTimer('heartbeat', 60_000, options, async () => {});
+  target.restoreRelocation(captured);
+  const restored = await target.captureRelocation();
+  assert.deepEqual(restored, captured);
+  await source.dispose();
+  await target.dispose();
+});
+
 test('durable relocation stores payload before Location CAS and clears authority before delete', async () => {
   const events: string[] = [];
   const authority = new InMemoryServiceLocationAuthority(() => 100);
@@ -263,8 +289,30 @@ function relocationEnvelope(): ServiceRelocationEnvelope {
       { sequence: 1n, payload: Buffer.from('first') }
     ],
     timers: [
-      { timerId: 'idle', dueAtUnixMs: 1_000, pendingTicks: 0 },
-      { timerId: 'heartbeat', dueAtUnixMs: 500, intervalMs: 100, pendingTicks: 1 }
+      {
+        timerId: 'idle',
+        startedAtUnixMs: 100,
+        dueAtUnixMs: 1_000,
+        intervalMs: 900,
+        deliveryIndex: 0n,
+        lastScheduledIndex: 0n,
+        overrunPolicy: 'skipLateTicks',
+        maxCatchUpTicks: 1,
+        stopOnUnhandledException: false,
+        pendingTicks: 0
+      },
+      {
+        timerId: 'heartbeat',
+        startedAtUnixMs: 100,
+        dueAtUnixMs: 500,
+        intervalMs: 100,
+        deliveryIndex: 3n,
+        lastScheduledIndex: 4n,
+        overrunPolicy: 'catchUpBounded',
+        maxCatchUpTicks: 2,
+        stopOnUnhandledException: true,
+        pendingTicks: 1
+      }
     ]
   };
 }

@@ -20,9 +20,10 @@ MeshNode의 object role은 `None`, `Client`, `Server` 중 하나다. `objects()`
 한 node에서 role을 중복 선택하면 startup configuration error다.
 
 `ZLinkFrameworkOptions.addLocationStore(...)`와 `addRelocationStore(...)`는 Java public member를 그대로 사용한다.
-`RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있으면 Relocation Store를 정확히 하나 등록해야 하며 missing·duplicate는
-socket bind 전에 configuration error다. `DISABLED` factory와 same-node join만 사용하는 host에는 Relocation Store가
-필수가 아니다. 두 capability를 묶는 Kotlin DSL이나 Redis 전용 registration helper는 제공하지 않는다.
+`RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있으면 Relocation Store를
+정확히 하나 등록해야 하며 missing·duplicate는 socket bind 전에 configuration error다. Instance Spot factory가
+없고 `DISABLED` factory와 same-node join만 사용하는 host에는 Relocation Store가 필수가 아니다. 두 capability를
+묶는 Kotlin DSL이나 Redis 전용 registration helper는 제공하지 않는다.
 완료 가능한 모든 cross-node Actor·Spot 이동은 Relocation Store를 사용한다. `RECREATE`도 accepted journal과 recovery
 payload를 저장하며 `SNAPSHOT`은 application state를 추가로 저장한다. Same-node Actor join은 Relocation payload를
 만들지 않고, `DISABLED` cross-node 이동은 capture 전에 거부한다.
@@ -90,6 +91,10 @@ factory adapter는 `ZLinkActorRelocationAdapter`, User·Instance Spot factory ad
 `ZLinkSpotRelocationAdapter`인지 socket bind 전에 검증한다. Kotlin 전용 policy, reified adapter registration과
 suspending adapter를 추가하지 않는다. `ZLinkStreamNodeBuilder.enableActorDispatch()`는 인자가 없고 global ID가
 Mesh를 결정한다.
+
+`Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot factory가 하나라도 등록된 Object Server는
+Java root의 `addRelocationStore(...)`로 Relocation Store를 정확히 하나 등록한다. Instance Spot factory가 없고
+모든 factory가 `Disabled`인 same-node 구성만 이를 생략할 수 있다.
 
 ## Exact generated JVM signature
 

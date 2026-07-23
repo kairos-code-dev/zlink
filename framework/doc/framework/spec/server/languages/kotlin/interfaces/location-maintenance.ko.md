@@ -466,6 +466,13 @@ size, target descriptor, exact owner token과 pending capacity delta를 가진�
 reservation을 받으며 idempotent terminal result를 반환한다. Object별 `reserveActor`, `reserveSpot` 같은
 interface는 제공하지 않는다.
 
+Java `ZLinkAuthoritySnapshot.pendingCreation()`은 Pending allocation에서 반드시 non-empty이고 Active에서는
+empty다. 값은 provider-issued reservation ID와 Actor·User Spot·Instance Spot 생성 요청의 immutable content
+reference, exact 32-byte SHA-256과 `0..1 MiB` encoded size를 반환한다. Target-owned Instance Spot의 cold
+activation content만 complete `instance-activation-recovery-v1` envelope이며, Actor와 User Spot의 manager
+create content에는 이 envelope를 사용하지 않는다. Kotlin provider와 runtime은 별도 process-local reservation
+index를 만들지 않고 이 projection으로 exact Commit 또는 Abort fence를 복원한다.
+
 Aggregate ID는 0이 아닌 128-bit 값이고 participant는 최대 1024개다. Encoded aggregate record는 최대
 1 MiB다. Location Store의 participant list가 bounded canonical authority이며 prepare request의 32-byte
 `inventoryDigest`는 participant별 mutation까지 포함한다. Relocation manifest는 payload lookup projection이고 두

@@ -429,9 +429,10 @@ Multicast subscription 등록 member가 존재하지 않는다. 같은 MeshNode�
 
 Factory는 Instance Spot marker가 있는 direct call의 cold activation 또는 stored creation intent의
 reactivation scope에서 `TSpot` instance를 만든 뒤 `configure(instance_spot_context_t&)`와
-`on_initialize()`를 순서대로 호출한다. 빈 `message_t`를 `on_create(...)`에 넘기지 않는다. Location
-`Ready` commit이 성공한 뒤 Framework activation barrier를 열고
-첫 업무 message를 일반 packet handler에 한 번 전달한다. Close에서는
+`on_initialize()`를 순서대로 호출한다. 빈 `message_t`를 `on_create(...)`에 넘기지 않는다. Framework는 첫
+업무 message를 durable activation inbox의 첫 record로 확정하고 handler barrier를 유지한 상태에서 recovery
+root·cursor를 포함한 Location `Ready`를 commit한다. Runtime은 첫 record를 local queue head로 복원한 뒤
+activation barrier를 연다. Close에서는
 `on_closing(context, cleanup_cancellation)`을 한 번 호출하고
 fencing 조건을 만족하는 location row만 해제한다.
 
@@ -443,12 +444,16 @@ owner에게 일반 message를 보내고, Missing이면 target을 선택해 SpotR
 message를 포함한 activation envelope를 보낸다. Source는 creation reservation을 만들지 않는다. 이 envelope는
 CAS 전에 target으로 보낼 수 있는 Framework infrastructure message이며 application handler로 dispatch하지 않는다.
 
-Target runtime은 local exact instance가 없을 때만 자신을 owner로 generic Store Reserve를 수행하고 factory와
-initialize를 실행한다. CAS loser는 factory를 만들지 않고 current authority를 읽어 owner에게 reroute하거나
-진행 중인 attempt에 합류한다. Commit이 reservation과 pending-to-active capacity를 함께 전환해 `Ready`를
-공개한 뒤 envelope의 first message를 local queue에 exactly once 제출한다. Authority와 일치하지 않는
-local-only instance는 message를 처리하지 못하도록 fence한다. 실패는 exact Abort로 authority와 pending
-capacity를 함께 정리한다.
+Target runtime은 metadata presence·frame을 포함한 complete envelope를 Relocation Store에 immutable recovery root로 먼저 저장한다. Local exact
+instance가 없을 때만 자신을 owner로 generic Store Reserve를 수행하며 Pending snapshot은 provider가 발급한
+reservation fence와 recovery root receipt를 반환한다. CAS winner가 factory, initialize와 durable inbox first
+record 확정을 수행한다. CAS loser는 factory를 만들지 않고 current authority를 읽어 owner에게 reroute하거나
+진행 중인 attempt에 합류한다. Commit은 handler barrier를 유지한 채 recovery root·cursor와 `Ready`,
+pending-to-active capacity를 함께 게시한다. Runtime은 first record를 local queue head로 복원한 뒤 barrier를
+열며 source는 `Ready` 뒤 같은 message를 다시 전송하지 않는다. Authority와 일치하지 않는 local-only instance는
+message를 처리하지 못하도록 fence한다. 실패는 exact Abort로 authority와 pending capacity를 함께 정리한다.
+Recovery pointer는 첫 handler terminal completion을 durable하게 기록하고 replay cursor를 inbox sequence까지
+갱신한 뒤에만 Preserve CAS로 제거한다. Queue admission만으로 제거하지 않는다.
 
 User Spot과 member Actor의 relocation은 generic aggregate로 처리한다. Active membership이 있다는 이유만으로
 Retire를 차단하지 않으며 aggregate owner와 membership을 한 commit에서 전환한다. `spot_context_t::close()`와

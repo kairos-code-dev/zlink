@@ -4,11 +4,9 @@
 
 ## 1. Authority와 Relocation provider capability
 
-`location_store_t`는 아래 opaque authority CAS를 필수 capability로 제공한다. `Recreate` 또는 `Snapshot`
-factory가 하나라도 있는 host는 opaque state, accepted journal, full inventory와 replay payload를 보존하기 위해
-Relocation Store를 정확히 하나 별도로 등록한다. `Disabled` factory만 있고 same-node lifecycle만 사용하는 host에는
-Relocation payload가 필요하지 않다. 필요한 Store가 없거나 중복 등록되면 socket bind 전에 configuration error로
-종료한다. Application service code는 두 provider operation을 직접 호출하지 않는다.
+`location_store_t`는 아래 opaque authority CAS를 필수 capability로 제공한다. Relocation Store 등록 조건과
+missing·duplicate startup error는 [Configuration과 host](02-configuration-host.ko.md)가 소유한다. Application
+service code는 두 provider operation을 직접 호출하지 않는다.
 
 완료 가능한 모든 cross-node Actor·Spot 이동은 Relocation Store를 사용한다. `Recreate`도 accepted journal과
 recovery payload를 저장하며 `Snapshot`은 application state를 추가로 저장한다. Same-node Actor join은 Relocation
@@ -33,6 +31,12 @@ struct placement_allocation_t {
     object_creation_target_t target;
     std::uint32_t capacity_delta;
 };
+struct pending_object_creation_t {
+    std::string reservation_id;
+    std::string request_content_reference;
+    std::array<std::byte, 32> request_sha256;
+    std::uint32_t request_encoded_size;
+};
 struct authority_snapshot_t {
     std::string store_version;
     std::vector<std::byte> payload;
@@ -40,6 +44,7 @@ struct authority_snapshot_t {
     std::uint64_t authority_owner_generation;
     location_owner_token_t owner;
     placement_allocation_t allocation;
+    std::optional<pending_object_creation_t> pending_creation;
     std::chrono::system_clock::time_point store_now;
 };
 
@@ -373,7 +378,11 @@ target descriptor lifecycle과 owner lease를 다시 확인하고 Framework가 e
 `object_already_aborted_t`를 반환하고 다른 reservation generation은 stale 결과다. Counter가 소진되면 mutation과
 counter 소비 없이 `authority_generation_exhausted_t`를 반환한다. Reserve의 결과는 Reserved, AlreadyExists,
 TypeMismatch, PlacementCapacityExhausted, Conflict와 GenerationExhausted로 닫혀 있다. Provider는 object kind를
-해석하지 않는다.
+해석하지 않지만 Pending snapshot에는 `pending_creation`을 반드시 반환하고 Active snapshot에서는 `nullopt`로
+반환한다. 이 projection은 provider-issued reservation ID와 Actor·User Spot·Instance Spot 생성 요청의 immutable
+content reference, exact 32-byte SHA-256과 `0..1 MiB` encoded size를 가진다. Target-owned Instance Spot의 cold
+activation content만 complete `instance-activation-recovery-v1` envelope이며, Actor와 User Spot의 manager create
+content에는 이 envelope를 사용하지 않는다.
 
 Existing object relocation은 creation reservation을 재사용하지 않는다. `reserve_relocation_capacity`는
 non-zero 128-bit reservation ID, current authority version, kind·stable type, source·target descriptor와 exact

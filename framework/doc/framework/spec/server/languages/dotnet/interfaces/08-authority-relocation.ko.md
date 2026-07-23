@@ -29,6 +29,12 @@ public sealed record ZLinkPlacementAllocation(
     ulong DescriptorLifecycleGeneration,
     int CapacityDelta);
 
+public sealed record ZLinkPendingObjectCreation(
+    string ReservationId,
+    string RequestContentReference,
+    ReadOnlyMemory<byte> RequestSha256,
+    int RequestEncodedSize);
+
 public sealed record ZLinkAuthoritySnapshot(
     string StoreVersion,
     ReadOnlyMemory<byte> Payload,
@@ -37,6 +43,7 @@ public sealed record ZLinkAuthoritySnapshot(
     string OwnerId,
     long OwnerLeaseGeneration,
     ZLinkPlacementAllocation Allocation,
+    ZLinkPendingObjectCreation? PendingCreation,
     DateTimeOffset StoreNow);
 
 public abstract record ZLinkAuthorityReadResult
@@ -359,6 +366,14 @@ placement profile과 affinity key는 UTF-8 1..255 bytes다. Capacity delta는 we
 고정한 target descriptor lifecycle·owner token이 recovery·takeover·abort의 fence이며 elapsed time만으로
 제거하지 않는다.
 
+`PendingCreation`은 `Allocation.State == Pending`인 snapshot에서 반드시 존재하고 Active snapshot에서는 반드시
+`null`이다. Provider는 Pending current row에 reservation ID와 Actor·User Spot·Instance Spot 생성 요청의
+immutable content reference, exact 32-byte SHA-256과 `0..1 MiB` encoded size를 함께 저장한다. Target-owned
+Instance Spot의 cold activation content만 complete `instance-activation-recovery-v1` envelope이며, Actor와 User
+Spot의 manager create content에는 이 envelope를 사용하지 않는다. Framework는 snapshot의
+StoreVersion, generation, owner와 allocation target을 이 projection과 결합해 provider-issued exact reservation을
+복원한다. 별도 process-local index나 caller-generated reservation ID에 의존하지 않는다.
+
 Existing object relocation은 creation reservation을 재사용하지 않는다.
 `ReserveRelocationCapacityAsync`는 `Guid.Empty`가 아닌 reservation ID, current authority version,
 kind·stable type, source·target descriptor key·lifecycle generation과 exact owner token을 검증하고 양수인
@@ -475,8 +490,9 @@ logical state ceiling은 256 GiB다. `IZLinkRelocationStore`의 opaque put/get i
 normal messaging을 다시 허용하고 Retire 결과를 `Blocked`로 종료한다. 일반 message의 negotiated effective
 bound는 relocation chunk 크기 때문에 줄이지 않는다.
 
-`Recreate` 또는 `Snapshot` factory를 하나라도 등록한 host는 `IZLinkRelocationStore`를 정확히 하나 등록해야 한다.
-`Disabled` factory와 same-node join만 사용하는 host에는 Relocation Store가 필요하지 않다.
+`Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있는 host는
+`IZLinkRelocationStore`를 정확히 하나 등록해야 한다. Instance Spot factory가 없고 `Disabled` factory와
+same-node join만 사용하는 host에는 Relocation Store가 필요하지 않다.
 `Snapshot` adapter는 application payload만 capture·restore한다. Capture는 `byte[]`를 반환하고 restore는
 `ReadOnlyMemory<byte>`를 받는다. Adapter는 relocation reference, retention, accepted journal과 Location authority
 metadata를 받지 않는다.

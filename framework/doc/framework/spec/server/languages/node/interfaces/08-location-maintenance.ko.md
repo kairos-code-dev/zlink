@@ -28,10 +28,10 @@ export interface ZLinkLocationOptions {
 ```
 
 Location runtime을 사용하는 application은 Location Store를 정확히 하나 등록한다. `Recreate` 또는 `Snapshot`
-factory가 하나라도 있으면 opaque state, accepted journal, full inventory와 replay payload를 보존하는 Relocation
-Store도 정확히 하나 등록한다. `Disabled` factory만 있는 same-node 구성에는 Relocation Store가 필요하지 않다.
-두 Store는 별도 객체와 별도 registration이다. 필요한 Store가 없거나 같은 capability가 중복 등록되면
-Framework는 socket bind 전에 구성 오류로 종료한다.
+factory가 하나라도 있거나 Instance Spot factory가 하나라도 있으면 opaque state, accepted journal, full
+inventory와 replay payload를 보존하는 Relocation Store도 정확히 하나 등록한다. Instance Spot factory가 없고
+`Disabled` factory만 있는 same-node 구성만 이를 생략할 수 있다. 두 Store는 별도 객체와 별도 registration이다.
+필요한 Store가 없거나 같은 capability가 중복 등록되면 Framework는 socket bind 전에 구성 오류로 종료한다.
 
 완료 가능한 모든 cross-node Actor·Spot 이동은 Relocation Store를 사용한다. `Recreate`도 accepted journal과
 recovery payload를 저장하며 `Snapshot`은 application state를 추가로 저장한다. Same-node Actor join은 Relocation
@@ -344,6 +344,13 @@ export interface ZLinkPlacementAllocation {
     readonly capacityDelta: number;
 }
 
+export interface ZLinkPendingObjectCreation {
+    readonly reservationId: string;
+    readonly requestContentReference: string;
+    readonly requestSha256: Uint8Array;
+    readonly requestEncodedSize: bigint;
+}
+
 export type ZLinkAuthorityReadResult =
     | {
         readonly kind: "missing";
@@ -358,6 +365,7 @@ export type ZLinkAuthorityReadResult =
         readonly ownerId: string;
         readonly ownerLeaseGeneration: bigint;
         readonly allocation: ZLinkPlacementAllocation;
+        readonly pendingCreation?: ZLinkPendingObjectCreation;
         readonly storeNow: Date;
     };
 
@@ -788,6 +796,13 @@ revision에 그대로 기록한다. `reserve(...)`는 같은 identity의 Ready r
 `placementCapacityExhausted`로 닫는다. `pendingCapacityDelta`는 weighted placement unit이며
 `1..2147483647`이다. 새 generation을 발급할 수 없으면 `generationExhausted`다.
 
+Pending snapshot은 `pendingCreation`을 반드시 가지며 Active snapshot에는 이 field가 없어야 한다. Projection은
+provider-issued reservation ID와 Actor·User Spot·Instance Spot 생성 요청의 immutable content reference, exact
+32-byte SHA-256, `0..1 MiB` encoded size를 반환한다. Target-owned Instance Spot의 cold activation content만
+complete `instance-activation-recovery-v1` envelope이며, Actor와 User Spot의 manager create content에는 이
+envelope를 사용하지 않는다. Framework는 snapshot의 version·generation·owner·allocation과 함께 exact Commit
+또는 Abort fence를 복원한다.
+
 `commit(...)`은 reservation ID와 expected Store version을 exact 비교하고 target descriptor lifecycle과 owner
 lease를 다시 확인한다. Stale이면 mutation 0으로 reservation을 유지한다. `abort(...)`는 current lifecycle·lease를
 요구하지 않고 reservation에 고정한 이전 descriptor·capacity counter를 exact fence로 정리한다. 같은 terminal
@@ -836,7 +851,9 @@ descriptor row·lease가 stale·missing이어도 allocation match가 유지되�
 
 `ZLinkLocationStore`는 MeshNode, owner lease와 generic authority CAS를 하나의 등록 단위로
 묶는다. ClientServer, fanout과 change stamp는 이 객체가 추가로 구현할 수 있는 선택 capability다.
-Relocation Store는 별도 등록하며 `Recreate` 또는 `Snapshot` factory가 있는 host에서 필수다.
+Relocation Store는 별도 등록한다. `Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot factory가
+하나라도 있는 host는 정확히 하나 등록한다. Instance Spot factory가 없고 모든 factory가 `Disabled`인 same-node
+구성만 이를 생략할 수 있다.
 
 Spot과 Actor direct resolve는 Framework가 global key의 canonical authority를 읽고 opaque payload를 decode한다.
 Operational Spot·Actor 목록은 `listAuthorities` 결과를 decode한 projection이며 routing authority로 사용하지

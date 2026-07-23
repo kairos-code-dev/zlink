@@ -176,10 +176,13 @@ host의 `OwnerId`, `OwnerLeaseGeneration`을 분리해 보존한다. Object gene
 새 object를 만들 때만 바뀐다. Authority owner generation은 같은 object의 owner 변경을 fence한다. Host owner
 lease token은 process 전체가 공유한다.
 
-Actor와 User·Instance Spot manager create는 generic reservation 뒤 `NewObject` CAS로 final object·owner generation과
+Actor와 User Spot manager create와 target-owned Instance activation은 generic reservation으로 final object·owner generation과
 `Creating` row를 만든다. Creation record는 object kind, global key, stable type, target descriptor, capacity delta,
-fence와 최대 1 MiB request content reference·hash를 보존한다. Factory, initialize와 initial membership이 끝나야
-같은 fence로 reservation commit과 `Ready` CAS를 수행한다. Manager `Find`와 ID-only messaging은 `Ready`만 사용한다.
+provider-issued fence와 최대 1 MiB complete request envelope의 content reference·hash를 보존한다. Pending current
+row의 recovery projection으로 exact fence와 receipt를 scan 뒤 복원할 수 있다. Factory, initialize와 initial
+membership이 끝나면 같은 fence로 reservation commit과 `Ready` CAS를 수행한다. Target-owned Instance cold
+activation만 commit 전에 durable activation inbox first record도 확정한다. Manager `Find`와 ID-only messaging은
+`Ready`만 사용한다.
 Entry Spot은 startup initialization 뒤 host가 `Serving`이 되기 전에 publish하며 caller가 생성하지 않는다.
 
 Factory 실패는 local barrier를 failed 상태로 seal하고 waiting request를 한 번만 terminal 처리한다. One-way
@@ -192,11 +195,16 @@ runtime을 만들지 않는다.
 
 ## 8. Instance Spot reactivation
 
-Normal Instance send·request는 global SpotRid만 포함하며 create command가 아니다. Runtime이 사라진 durable
-Instance authority는 stored creation intent로 reactivation한다. Target host는 startup initial scan과 bounded
-background scan에서 자신이 소유한 `Creating` 또는 reactivation authority를 재개한다. Scan과 late control record는
-object key, object·owner generation과 owner lease로 key를 정한 local barrier 하나로 수렴한다. Original application
-payload를 hidden replay하지 않는다.
+Normal Instance send·request는 global SpotRid만 포함하며 create command가 아니다. Missing+Instance intent의 target은
+command 39의 optional metadata presence·frame까지 보존한 complete `instance-activation-recovery-v1` envelope를
+Relocation Store에 저장하고 receipt를 Reserve에 연결한다. 이 format과 durable activation inbox는 target-owned
+Instance cold activation에만 사용하며 Actor·User Spot generic create에는 사용하지 않는다. Target host는 startup
+initial scan과 bounded background scan에서 자신이 소유한 Pending projection 또는 Ready Instance activation
+recovery root를 재개한다. Scan과 late control record는 object key, object·owner generation과 owner lease로 key를
+정한 local barrier 하나로 수렴한다. Ready 전 durable inbox first record를 확정하고 handler는 barrier로 막으며,
+startup은 queue head를 복원하기 전에 Serving을 게시하지 않는다. 첫 handler terminal completion을 durable하게
+기록하고 replay cursor를 inbox sequence까지 갱신한 뒤에만 recovery pointer를 Preserve CAS로 제거한다. Queue
+admission만으로 pointer를 제거하지 않는다.
 
 Reactivation 실패는 local barrier를 seal하고 request를 한 번만 terminal 처리한 뒤 one-way drop event를 기록한다.
 그 다음 exact fenced delete와 read reconcile을 수행한다. Delete 전 process가 종료되면 target scan은 retry-safe

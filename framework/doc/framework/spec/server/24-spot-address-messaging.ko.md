@@ -99,18 +99,25 @@ Terminal call은 별도 check와 send로 나누지 않고 다음 순서로 resol
 5. stable type을 명시하면 해당 capability를 가진 serving node만 후보로 사용한다.
 6. stable type을 생략하면 선택한 Mesh의 serving descriptor에 등록된 distinct Instance type을 계산한다. 하나면
    자동 선택하고, 0개이면 target-not-found, 둘 이상이면 required type을 생략한 `InvalidConfiguration`이다.
-7. Source는 global Spot RID, 선택한 Mesh·stable type과 target descriptor fence, operation identity·reply
-   correlation·deadline 및 최초 application message를 하나의 activation envelope에 넣어 선택한 target으로
+7. Source는 global Spot RID, 선택한 Mesh·stable type과 target descriptor fence, source node RID·lifecycle
+   generation·optional source Spot RID, operation identity·reply correlation·deadline, command 39의 optional
+   metadata presence·frame 및 최초 application message를 하나의 activation envelope에 넣어 선택한 target으로
    전송한다. Source는 target transport 전 owner claim이나 `Creating` authority를 만들지 않는다.
 8. Target runtime은 current authority와 local Instance registry를 함께 확인한다. Ready authority가 자신과
    local exact instance를 가리키면 기존 queue에 envelope message를 제출한다. Local instance만 있고 current
    authority가 다르면 stale local instance로 fence하며 dispatch하지 않는다.
-9. Authority가 Missing이고 local exact instance가 없으면 target runtime이 자신을 owner로 generic `Reserve`를
-   호출한다. Store는 target descriptor lifecycle·owner lease·type·capacity를 다시 확인하고 `Missing → Creating`
-   authority, immutable first-message reference와 target pending capacity를 한 transaction으로 기록한다.
-10. CAS winner target만 factory와 initialize를 실행한다. 같은 reservation의 `Commit`이 `Ready`와 active
-    capacity를 게시한 뒤 activation barrier를 열고 envelope에 포함된 최초 message를 local application queue에
-    정확히 한 번 제출한다. Source가 Ready 뒤 두 번째 direct message를 만들지 않는다.
+9. Authority가 Missing이고 local exact instance가 없으면 target runtime이 complete activation envelope를
+   Relocation Store에 immutable recovery root로 저장하고 reference·hash·encoded size와 retention을 검증한다.
+   그 뒤 자신을 owner로 generic `Reserve`를 호출한다. Store는 target descriptor lifecycle·owner lease·type·capacity를
+   다시 확인하고 `Missing → Creating` authority, recovery receipt, provider-issued reservation fence와 target
+   pending capacity를 한 transaction으로 기록한다.
+10. CAS winner target만 factory와 initialize를 실행한다. Target은 recovery root의 최초 message를 durable
+    activation inbox의 첫 record로 확정하되 handler는 barrier로 계속 막는다. 같은 reservation의 `Commit`은
+    recovery root·replay cursor를 유지하는 `Ready` authority와 active capacity를 게시한다. Runtime은 첫 record를
+    local queue head로 복원한 뒤 barrier를 열며, 후속 message는 이 record를 추월하지 않는다. Source가 Ready 뒤
+    두 번째 direct message를 만들지 않는다.
+11. 첫 handler terminal completion을 durable하게 기록하고 replay cursor를 inbox sequence까지 갱신한 뒤에만
+    expected-version Preserve CAS로 recovery pointer를 제거한다. Queue admission만으로 pointer를 제거하지 않는다.
 
 여러 MeshNode가 같은 stable Instance type을 등록한 경우 distinct type 하나이며 placement 후보가 여러 개인
 것으로 처리한다. Concurrent cold call이 서로 다른 target에 도착해도 Store CAS winner의 reservation과 factory
@@ -222,8 +229,8 @@ label로 사용하지 않는다.
 - 선택한 Mesh의 distinct Instance type이 하나면 type을 자동 선택하고 여러 개면 type 명시를 요구한다.
 - Cold activation source가 owner claim을 만들지 않고 최초 message를 포함한 activation envelope를 target에
   제출한다.
-- Target의 CAS winner만 owner claim·factory를 만들고 Ready barrier 뒤 envelope message를 local queue에 한
-  번 제출한다.
+- Target의 CAS winner만 owner claim·factory를 만들고 durable inbox first record를 Ready 전에 확정한다. Ready
+  recovery pointer를 유지한 채 local queue head를 복원한 뒤 barrier를 연다.
 - Authority와 일치하지 않는 local Instance를 dispatch하지 않고 CAS loser가 별도 instance를 만들지 않는다.
 - Missing, Creating과 Store failure를 negative cache하지 않는다.
 - Forwarding이 committed mapping과 bounded queue만 사용하고 operation identity를 보존한다.

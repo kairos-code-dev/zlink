@@ -281,10 +281,11 @@ Redis connection과 key prefix는 store instance를 만들 때 설정한다. 자
 한 process 안의 contract test에서만 사용할 수 있다.
 
 Object role이 `None`이고 manual peer만 사용하는 host는 store 없이 MeshNode를 구성할 수 있다.
-Object Server factory에 `Recreate` 또는 `Snapshot` policy를 하나라도 등록한 Framework root는 opaque Relocation
-Store를 정확히 하나 등록해야 한다. Same-node Actor join은 Relocation payload를 만들지 않지만 factory 등록 시점에는
-향후 cross-node join과 host `Retire`를 배제할 수 없으므로 이 조건을 완화하지 않는다. 모든 factory가 `Disabled`이면
-Relocation Store가 필요하지 않으며 cross-node relocation을 capture 전에 거부한다.
+Object Server factory에 `Recreate` 또는 `Snapshot` policy가 하나라도 있거나 Instance Spot factory가 하나라도
+있으면 opaque Relocation Store를 정확히 하나 등록해야 한다. Same-node Actor join은 Relocation payload를 만들지
+않지만 factory 등록 시점에는 향후 cross-node join과 host `Retire`를 배제할 수 없으므로 이 조건을 완화하지 않는다.
+Instance Spot factory가 없고 모든 factory가 `Disabled`인 same-node 구성만 Relocation Store를 생략할 수 있으며,
+cross-node relocation은 capture 전에 거부한다.
 
 Location provider가 owner·relocation authority compare-exchange, generic placement reservation·aggregate commit과
 store clock capability를 제공하지 않거나 required Relocation Store가 없거나 둘 이상이면 socket bind 전에 startup
@@ -377,12 +378,18 @@ Instance intent를 명시한 경우에만 Missing authority의 cold activation�
 caller가 stable type을 명시해야 한다.
 
 Missing Instance Spot call에서 source Framework는 최초 message와 operation identity·reply correlation·deadline,
-선택한 Mesh·stable type과 target descriptor fence를 activation envelope에 넣어 eligible target으로 전송한다.
-Source는 owner claim이나 reservation을 먼저 만들지 않는다. Target runtime이 current authority와 local exact
-instance를 확인하고, Missing이면 자신을 owner로 generic reservation을 획득한다. CAS winner만 factory와
-initialize를 실행하고 Ready commit 뒤 envelope message를 local queue에 한 번 제출한다. CAS loser는 local
-instance를 만들지 않는다. 이 순서는 public call을 check와 create로 나누거나 application에 target node를
-노출하지 않는다.
+optional metadata presence·frame, 선택한 Mesh·stable type과 target descriptor fence를 activation envelope에 넣어
+eligible target으로 전송한다.
+Source는 owner claim이나 reservation을 먼저 만들지 않는다. Target runtime은 complete activation envelope를
+Relocation Store에 immutable recovery root로 저장한 뒤 current authority와 local exact instance를 확인하고,
+Missing이면 자신을 owner로 generic reservation을 획득한다. Pending authority snapshot은 provider가 발급한
+reservation fence와 recovery root receipt를 반환한다. CAS winner만 factory와 initialize를 실행하고 envelope
+message를 durable activation inbox의 첫 record로 확정한다. Handler barrier를 유지한 상태에서 recovery
+root·cursor를 포함한 `Ready`를 commit하고, 첫 record를 local queue head로 복원한 뒤 barrier를 연다. CAS loser는
+local instance를 만들지 않으며 source는 `Ready` 뒤 같은 message를 다시 전송하지 않는다. 이 순서는 public
+call을 check와 create로 나누거나 application에 target node를 노출하지 않는다.
+Recovery pointer는 첫 handler terminal completion을 durable하게 기록하고 cursor를 inbox sequence까지 갱신한 뒤에만
+Preserve CAS로 제거한다. Queue admission만으로 제거하지 않는다.
 
 Create는 같은 ID의 Ready incarnation이 있으면 already-exists 오류로 끝난다. GetOrCreate는 같은 stable type의
 Ready incarnation을 반환하고 Creating attempt가 있으면 같은 attempt의 terminal 결과를 deadline까지 기다린다.
@@ -567,7 +574,7 @@ Framework는 host가 message를 받기 전에 최소한 다음 설정을 검증�
 - Spot, Actor, STREAM session factory와 owner 관계
 - User·Instance Spot stable type 중복, actor-free Instance lifecycle, node·type별 active·pending capacity
 - 모든 Actor·User Spot·Instance Spot factory의 explicit relocation policy, Snapshot adapter kind와 대상 type의 일치,
-  `Recreate` 또는 `Snapshot` 사용 시 정확히 하나의 Relocation Store
+  Instance Spot factory가 하나라도 있거나 `Recreate` 또는 `Snapshot` 사용 시 정확히 하나의 Relocation Store
 - 분산 owner 또는 relocation을 사용할 때 authority CAS·store clock capability
 - placement reservation·aggregate commit capability와 object descriptor limit
 - route cache age·forwarding window 조합과 host termination deadline

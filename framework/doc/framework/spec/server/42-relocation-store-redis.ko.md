@@ -6,11 +6,11 @@
 
 ## 1. 범위
 
-이 문서는 Framework 11.0 Redis Relocation Store가 cross-node Actor·Spot 이동에 필요한 immutable payload를
-저장하는 규칙을 정의한다. Application state, seal 시점에 실행하지 않은 message queue, accepted journal,
+이 문서는 Framework 11.0 Redis Relocation Store가 cross-node Actor·Spot 이동과 Instance Spot cold activation
+recovery에 필요한 immutable execution payload를 저장하는 규칙을 정의한다. Application state, seal 시점에 실행하지 않은 message queue, accepted journal,
 timer logical registration·pending tick, participant payload, manifest·Framework metadata, terminal completion과
-replay·recovery payload가 이 Store에 속한다. Provider는 relocation envelope, application state, message·timer와
-journal record를 해석하지 않는다.
+replay·recovery payload, complete activation envelope와 durable activation inbox first record가 이 Store에 속한다.
+Provider는 relocation·activation envelope, application state, message·timer와 journal record를 해석하지 않는다.
 
 Relocation Store는 Location Store와 별도 public interface, 별도 등록과 별도 Redis implementation을 사용한다.
 두 implementation은 같은 Redis deployment 또는 cluster를 서로 다른 key prefix로 사용할 수 있고 물리적으로
@@ -74,6 +74,26 @@ Completion append, `replyRelayAck` 또는 exact request-source owner lease expir
 먼저 만든다. 그 뒤 Location Store expected-version CAS 한 번으로 root reference, checksum,
 `TerminalCompletionCount`와 `PendingRelayCount`를 함께 교체한다. Conflict loser의 새 root는 orphan이다.
 
+Instance Spot cold activation은 같은 publish-before-reference 원칙을 다음 순서로 사용한다.
+
+1. Target은 operation identity, send/request kind, source node RID·lifecycle generation, optional source Spot RID,
+   reply correlation, deadline, target descriptor fence, command 39의 optional metadata presence·frame과 application
+   payload를 포함한 complete activation envelope를 immutable root로 저장한다.
+2. Reference, SHA-256, encoded size와 retention을 검증한 뒤 Location Store Reserve가 `Creating` authority와
+   Pending creation projection에 receipt를 원자적으로 연결한다.
+3. Factory와 initialize 뒤 Framework는 root의 first message를 durable activation inbox의 첫 record로 확정한다.
+   Handler admission은 activation barrier로 계속 막는다.
+4. 이 root와 durable inbox 규칙은 target-owned Instance cold activation에만 적용한다. Ready commit은 recovery
+   root와 replay cursor를 authority payload에 유지한다. Runtime은 first record를 local queue head로 복원한 뒤
+   barrier를 연다. 첫 handler의 terminal completion을 durable하게 기록하고 replay cursor를 inbox sequence까지
+   갱신한 뒤 Preserve CAS로 pointer를 release한다. Queue admission만으로 release하지 않는다.
+5. Activation recovery pointer는 Ready Instance cold activation에만 존재한다. Actor, Entry Spot, User Spot,
+   Creating·Closing·Relocating authority에서는 금지한다.
+6. Pointer release가 성공한 뒤 root를 삭제한다. Reserve 전에 실패한 root와 Reserve conflict loser의 root는 orphan이다.
+
+Instance factory의 relocation policy가 `Disabled`여도 cold activation에는 이 Store를 사용한다. Instance Spot
+factory를 하나라도 등록한 Object Server는 Relocation Store를 정확히 하나 등록해야 한다.
+
 ## 5. Reference release와 data loss
 
 Target restore와 recovery는 current Location authority가 연결한 exact reference만 사용한다. Relocation manifest만으로
@@ -109,5 +129,9 @@ authority의 availability와 Relocation payload의 availability는 독립적이�
 - `Recreate`가 application state 없이도 accepted journal과 recovery payload를 Relocation Store에 기록한다.
 - Published root의 permanent missing·checksum mismatch·inventory digest mismatch가 `RelocationDataLost`이며 rollback하지
   않는다.
+- Instance activation root가 complete envelope를 보존하고 Pending authority exact read가 recovery receipt와
+  provider-issued reservation fence를 복원한다.
+- Ready commit 전에 durable activation inbox first record가 확정되며 startup Serving gate가 queue head 복원보다
+  먼저 열리지 않는다.
 - Location과 Relocation Redis가 같은 deployment와 분리 deployment에서 모두 동작하고 cross-store transaction을
   요구하지 않는다.

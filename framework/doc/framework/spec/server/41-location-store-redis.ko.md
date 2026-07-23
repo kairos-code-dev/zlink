@@ -74,9 +74,12 @@ startup을 실패한다. Migration은 serving을 닫은 상태에서 전체 inva
 Current authority HASH는 원래 canonical authority key bytes를 함께 저장하고 `D`와 exact match를 확인한다.
 그 밖에 `payload`, `storeVersion`, `objectGeneration`, `authorityOwnerGeneration`, `ownerId`,
 `ownerLeaseGeneration`, `allocationState`, `objectKind`, `stableType`, `descriptorKey`,
-`descriptorLifecycleGeneration`, `capacityDelta` field를 사용한다. Optional field를 빈 문자열이나
-synthetic `0`으로 대신하지 않는다. `objectKind`는 enum의 언어별 이름이나 정수값이 아니라
-`actor`, `user_spot`, `instance_spot` 중 하나로 저장한다.
+`descriptorLifecycleGeneration`, `capacityDelta` field를 사용한다. Pending allocation은 여기에
+`pendingCreationReservationId`, `pendingCreationReference`, `pendingCreationSha256`,
+`pendingCreationEncodedSize` 네 field를 반드시 추가한다. 이 네 field는 provider가 발급한 reservation ID와
+immutable creation content의 reference, exact 32-byte SHA-256, `0..1 MiB` encoded size를 저장한다. Active
+allocation에는 네 field를 두지 않는다. Optional field를 빈 문자열이나 synthetic `0`으로 대신하지 않는다.
+`objectKind`는 enum의 언어별 이름이나 정수값이 아니라 `actor`, `user_spot`, `instance_spot` 중 하나로 저장한다.
 
 Capacity HASH의 field도 언어에 따라 달라지지 않는 length-prefix encoding을 사용한다. 각 segment는
 `<UTF-8 byte length>:<value>`로 encode하고 separator를 추가하지 않는다. Node bucket은 canonical
@@ -333,11 +336,13 @@ snapshot 또는 tombstone을 authority history에 저장하고, 64-bit StoreRevi
 `0`인 revision index member로 추가한다. Revision을 ZSET score에 넣지 않는다. Redis score는
 IEEE-754 double이므로 `2^63-1`까지 exact StoreRevision을 표현할 수 없기 때문이다.
 
-Authority history HASH의 field encoding도 공통이다. Revision hex를 `R`이라 할 때 full snapshot은
-`R:deleted=0`과 `R:<current field name>` 13개 field를 저장한다. Tombstone은 `R:deleted=1`과
-`R:authorityKey`만 저장하며 StoreVersion은 `R`에서 복원한다. 하나의 language runtime만 해석할 수 있는
-serialized JSON value나 다른 field grouping을 사용하지 않는다. Membership history는 같은 `R`을 field로,
-immutable membership bytes를 value로 저장한다.
+Authority history HASH의 field encoding도 공통이다. Revision hex를 `R`이라 할 때 Active full snapshot은
+`R:deleted=0`과 `R:<current field name>` 13개 field를 저장한다. Pending full snapshot은 같은 13개 field와
+위 네 `R:pendingCreation*` field를 모두 저장하므로 current row와 같은 17개 field를 복원한다. Pending
+snapshot에서 네 field가 하나라도 빠지거나 Active snapshot에 하나라도 있으면 schema violation이다. Tombstone은
+`R:deleted=1`과 `R:authorityKey`만 저장하며 StoreVersion은 `R`에서 복원한다. 하나의 language runtime만 해석할
+수 있는 serialized JSON value나 다른 field grouping을 사용하지 않는다. Membership history는 같은 `R`을
+field로, immutable membership bytes를 value로 저장한다.
 
 Page provider는 먼저 bounded key candidate를 얻고 client에서 current/history key를 계산한 뒤 모든 key를
 명시적인 `KEYS`로 전달하는 bounded Lua를 실행한다. Lua는 scan ID, watermark, last key, cursor ordinal과

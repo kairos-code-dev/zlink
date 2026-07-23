@@ -250,12 +250,17 @@ message를 포함한 activation envelope를 그 target에 보낸다. Source는 g
 Activation envelope는 `Ready` 전에도 target transport로 전달할 수 있는 Framework infrastructure message이며
 application handler로 dispatch하지 않는다.
 
-Target runtime은 local exact instance를 먼저 확인하고, 없을 때만 자신을 owner로 Creating row와 pending
-capacity를 Reserve한 뒤 factory와 initialize를 실행한다. CAS loser는 factory를 시작하지 않고 current
-authority를 읽어 owner에게 reroute하거나 진행 중인 attempt에 합류한다. Commit이 Ready와 active capacity를
-게시한 뒤 envelope의 first message를 local application queue에 exactly once 제출한다. Authority와 일치하지
-않는 local-only instance는 message를 처리하지 못하도록 fence한다. Existing User kind나 다른 Instance type은
+Target runtime은 metadata presence·frame을 포함한 complete envelope를 Relocation Store에 immutable recovery root로 먼저 저장하고 local exact
+instance를 확인한다. Instance가 없을 때만 자신을 owner로 Creating row와 pending capacity를 Reserve하며 Pending
+snapshot은 provider가 발급한 reservation fence와 recovery root receipt를 반환한다. CAS winner가 factory,
+initialize와 durable activation inbox first record 확정을 수행한다. CAS loser는 factory를 시작하지 않고 current
+authority를 읽어 owner에게 reroute하거나 진행 중인 attempt에 합류한다. Commit은 handler barrier를 유지한 채
+recovery root·cursor와 Ready, active capacity를 게시한다. Runtime은 first record를 local queue head로 복원한
+뒤 barrier를 열며 source는 Ready 뒤 같은 message를 다시 전송하지 않는다. Authority와 일치하지 않는 local-only
+instance는 message를 처리하지 못하도록 fence한다. Existing User kind나 다른 Instance type은
 `SpotTypeMismatch`다.
+Recovery pointer는 첫 handler terminal completion을 durable하게 기록하고 replay cursor를 inbox sequence까지
+갱신한 뒤에만 Preserve CAS로 제거한다. Queue admission만으로 제거하지 않는다.
 
 User Spot의 `close(spotRef)`는 active Actor membership이 남아 있으면 `false`를 반환한다. Framework는 Actor를
 자동으로 leave·destroy하지 않는다. One-way Spot message는 local outbound admission까지만 기다리며, target

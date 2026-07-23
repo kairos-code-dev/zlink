@@ -8,8 +8,11 @@ Application 공개 API나 공통 native runtime을 제공하지 않는다.
 - `validate-service-wire-schema.mjs`: integer encoding, 재귀 aggregate length capacity, field reference,
   정렬·중복, closed union, TLV 순서, durable checksum·semantic relation과 exact relocation state rule을 확인하는 생성
   전 gate
-- `golden/durable-authority-v1.json`: 네 runtime이 full maintenance relocation authority bytes를 읽고 쓰는 golden
-  fixture
+- `golden/durable-authority-v1.json`: 네 runtime이 Ready Instance cold activation recovery pointer와 cursor를
+  읽고 쓰는 golden fixture
+- `golden/instance-activation-recovery-v1.json`: target-owned cold activation의 source·target lifecycle,
+  operation·reply·deadline, command 39 metadata presence·frame과 complete first application payload를 복원하는
+  immutable envelope golden fixture
 - `golden/relocation-envelope-v1.json`: 네 runtime이 non-empty Instance request journal·completion bytes를 읽고
   쓰는 golden fixture
 - `golden/authority-key-v1.json`: MeshName과 독립적인 global ActorId·SpotRid를 canonical Store key로 만드는

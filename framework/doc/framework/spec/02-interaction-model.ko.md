@@ -141,8 +141,9 @@ lifecycle callback은 같은 Spot의 application turn에서 직렬로 처리한�
 
 Instance Spot은 Actor membership이 없는 Spot kind다. Missing Instance 생성은 Spot direct fluent call의
 명시적인 Instance intent만 시작한다. Location Store reservation이 정한 owner 하나가 factory를 실행하고
-location이 `Ready`로 commit된 뒤 Framework activation barrier를 연다. Creating 경쟁자는 같은 attempt의
-terminal 결과에 합류하며 별도 factory나 message를 시작하지 않는다.
+durable activation inbox first record를 확정한 뒤 recovery root·cursor를 포함한 location `Ready`를 commit한다.
+Framework는 first record를 local queue head로 복원한 뒤 activation barrier를 연다. Creating 경쟁자는 같은
+attempt의 terminal 결과에 합류하며 별도 factory나 message를 시작하지 않는다.
 
 `ActorRef`와 `SpotRef`는 global ID, ObjectGeneration, 조회 시점의 MeshName과 NodeRid를 담은 immutable location
 snapshot이다. Endpoint, 내부 frame과 runtime resource는 포함하지 않는다. 일반 message는 ref가 아니라 global

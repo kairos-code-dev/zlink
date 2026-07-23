@@ -635,7 +635,8 @@ capability는 해당 기능을 구성할 때 provider가 추가로 구현한다.
 relocation state machine은 Framework 내부 payload다. Provider는 payload 형식, Spot kind, phase와 recovery
 cursor를 해석하지 않는다.
 Relocation payload 보관은 별도 `relocation_store_t` capability다. `Recreate` 또는 `Snapshot` factory가 하나라도
-있는 host만 정확히 하나를 함께 등록하며 `Disabled` factory만 있는 same-node host에는 필요하지 않다.
+있거나 Instance Spot factory가 하나라도 있는 host는 정확히 하나를 함께 등록한다. Instance Spot factory가 없고
+`Disabled` factory만 있는 same-node host만 이를 생략할 수 있다.
 
 ## 4. 공식 Redis package
 

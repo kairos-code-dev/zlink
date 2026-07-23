@@ -13,13 +13,15 @@ Actor·Spot identity, creation intent, relocation envelope과 relocation phase�
 Location Store와 Relocation Store는 별도 registration capability다. Location Store는 owner·location·generation,
 relocation phase와 `RelocationId`, source·target fence, Relocation root reference·checksum, canonical participant set,
 membership, placement reservation, aggregate generation·commit과 replay·completion count를 expected-version CAS로
-원자적으로 변경한다. Relocation Store는 application state, accepted journal, participant별 state·journal과
-replay·recovery payload를 immutable root로 보관한다. Actor·Spot별 Store interface는 제공하지 않는다.
+원자적으로 변경한다. Relocation Store는 application state, accepted journal, participant별 state·journal,
+cold activation의 complete first-message envelope와 replay·recovery payload를 immutable root로 보관한다.
+Actor·Spot별 Store interface는 제공하지 않는다.
 
-Object Server factory에 `Recreate` 또는 `Snapshot` policy를 하나라도 등록한 Framework root는 Relocation Store를
-정확히 하나 등록해야 한다. 누락되거나 둘 이상이면 socket bind 전에 startup configuration error다. 모든 factory가
-`Disabled`이면 Relocation Store가 필요하지 않고 cross-node 이동은 capture 전에 거부한다. Same-node Actor join은
-Location Store membership transaction만 사용하며 Relocation payload를 만들지 않는다.
+Object Server factory에 `Recreate` 또는 `Snapshot` policy를 하나라도 등록했거나 Instance Spot factory를 하나라도
+등록한 Framework root는 Relocation Store를 정확히 하나 등록해야 한다. 누락되거나 둘 이상이면 socket bind 전에
+startup configuration error다. Instance Spot factory가 없고 모든 factory가 `Disabled`이면 Relocation Store가
+필요하지 않으며 cross-node 이동은 capture 전에 거부한다. Same-node Actor join은 Location Store membership
+transaction만 사용하며 Relocation payload를 만들지 않는다.
 
 | 이동 조건 | Relocation Store 사용 |
 |---|---|
@@ -29,6 +31,7 @@ Location Store membership transaction만 사용하며 Relocation payload를 만�
 | `Snapshot` cross-node Actor·Spot 이동 | Application state, accepted journal과 recovery payload를 저장한다. |
 | Host maintenance의 Actor·User Spot aggregate | Participant별 state·journal payload와 replay manifest를 저장한다. |
 | Cross-node Actor `JoinSpot`·`JoinEntrySpot` | 이동하는 Actor의 policy에 맞는 payload를 저장한다. |
+| Instance Spot cold activation | Complete activation envelope와 durable inbox first record를 저장한다. Relocation policy가 `Disabled`여도 사용한다. |
 
 Location Store는 다음 두 종류의 정보를 분리한다.
 
@@ -216,9 +219,13 @@ Create call은 object kind에 따라 필요한 identity와 stable type, optional
 reservation, factory와 Ready barrier 전체에 적용할 하나의 end-to-end deadline을 고정한다. 같은 option을 두 번
 설정하면 `InvalidConfiguration`, terminal submit을 두 번 호출하면 `AlreadySubmitted`다.
 
-Creation request는 encoded 최대 1 MiB다. Reservation 전에 immutable content reference와 hash를 durable creation
-intent에 기록하고 Ready 또는 fenced failure cleanup까지 유지한다. Factory는 `(logical key, ObjectGeneration,
-creation attempt)`에 대해 at-least-once 실행될 수 있으므로 retry-safe해야 한다.
+Creation request는 encoded 최대 1 MiB다. Actor·User Spot manager의 generic create는 request content를 Location
+creation reservation domain에 보관하며 ZLIA root나 durable activation inbox를 사용하지 않는다. 따라서 이들의
+policy가 `Disabled`이고 Instance Spot factory가 없으면 Relocation Store가 필요하지 않다. Target-owned Instance
+cold activation만 reservation 전에 complete request envelope를 Relocation Store에 immutable하게 저장하고 content
+reference, SHA-256과 encoded size를 Pending creation projection에 기록한다. 이 Instance의 Ready payload는 첫
+handler terminal completion과 replay cursor 갱신이 끝날 때까지 recovery root를 유지한다. Factory는
+`(logical key, ObjectGeneration, creation attempt)`에 대해 at-least-once 실행될 수 있으므로 retry-safe해야 한다.
 
 Actor와 User Spot manager가 시작하는 Missing object 생성은 다음 순서를 따른다. Instance Spot은 target
 runtime이 activation envelope를 수락한 뒤 reservation을 만드는 §6.1의 순서를 사용한다.
@@ -269,11 +276,29 @@ identity·reply correlation·deadline 및 first message를 하나의 activation 
 
 Target runtime은 current authority와 local Instance registry를 확인한다. Ready authority가 target 자신과 local
 exact instance를 가리키면 기존 queue를 사용한다. Authority가 Missing이고 local exact instance가 없으면 target이
+complete activation envelope를 Relocation Store에 immutable root로 저장하고 receipt를 검증한다. 그 뒤 target이
 자신을 owner로 generic `Reserve`를 호출한다. Reserve는 target descriptor lifecycle·owner lease·type·capacity를
-같은 transaction에서 다시 확인하고 Missing authority, immutable first-message reference와 pending capacity를
-원자적으로 확정한다. Target의 CAS winner만 factory와 initialize를 실행한다. Generic `Commit`으로 Ready와
-active capacity를 게시한 뒤 activation barrier를 열고 envelope의 first message를 local application queue에
-정확히 한 번 제출한다. Source는 Ready 뒤 first message를 별도 direct call로 다시 보내지 않는다.
+같은 transaction에서 다시 확인하고 Missing authority, provider-issued reservation fence, immutable recovery
+receipt와 pending capacity를 원자적으로 확정한다. Pending authority snapshot은 exact reservation ID,
+request content reference, SHA-256과 encoded size를 반환하며 Active authority에서는 이 projection을 반환하지 않는다.
+
+Target의 CAS winner만 factory와 initialize를 실행한다. Target은 recovery root의 first message를 durable activation
+inbox의 첫 record로 확정하되 application handler는 barrier로 계속 막는다. Generic `Commit`은 recovery root와
+replay cursor를 유지한 Ready authority와 active capacity를 게시한다. Runtime은 first record를 local queue head로
+복원한 뒤 barrier를 열며 후속 message를 그 뒤에 admit한다. 첫 handler의 terminal completion을 durable하게
+기록하고 replay cursor를 inbox sequence까지 갱신한 뒤에만 expected-version `Preserve` CAS로 activation recovery
+pointer를 release한다. Queue admission만으로 pointer를 release하지 않는다. CAS가 성공한 다음 Relocation Store
+root를 idempotent하게 삭제한다. Source는 Ready 뒤 first message를 별도 direct call로 다시 보내지 않는다.
+Activation recovery pointer는 이 Ready Instance cold activation 기간에만 존재한다. Actor, Entry Spot, User Spot,
+Creating·Closing·Relocating authority와 maintenance relocation payload에는 이 pointer를 둘 수 없다.
+
+Target process가 Reserve 뒤 종료되면 startup Serving gate의 complete authority scan과 이후 bounded background
+scan이 Pending creation projection을 exact read한다. Recovery는 root reference·hash·size를 검증하고 같은
+reservation, object generation과 authority owner generation으로 factory·initialize·durable inbox·Ready commit을
+재개하거나 exact fenced Abort를 수행한다. Ready commit 뒤 queue head 복원 전에 종료되면 Ready payload의 recovery
+root와 cursor로 inbox를 먼저 복원하며, 그 전에는 해당 owner의 application admission을 열지 않는다. Relocation
+Store Put 뒤 Reserve 전에 종료된 root는 authority가 참조하지 않는 orphan이므로 retention 또는 idempotent delete로
+정리한다.
 
 Concurrent envelope가 다른 target에 도착해도 CAS winner 하나만 owner claim과 factory를 만든다. CAS loser는
 local instance를 만들지 않으며 Ready winner로 original operation을 한 번 redirect하거나 Creating completion에
@@ -568,8 +593,8 @@ runtime-owned resource보다 늦게 남지 않는다.
 - Creation request reference와 hash가 Ready 또는 fenced abort까지 유지되고 factory가 retry-safe하게 재개된다.
 - 일반 message와 find가 Missing Instance Spot을 hidden create하지 않는다.
 - Instance-intent source가 owner claim을 선점하지 않고 first-message activation envelope를 target에 제출한다.
-- Target CAS winner만 Missing→Pending reservation과 factory를 실행하고 Ready 뒤 envelope message를 local
-  queue에 한 번 제출한다.
+- Target CAS winner만 Missing→Pending reservation과 factory를 실행하고 durable inbox first record를 Ready 전에
+  확정한다. Ready recovery pointer를 유지한 채 local queue head를 복원한 뒤 barrier를 연다.
 - Missing, Creating과 Store failure를 cache하지 않고 Ready cache가 owner admission deadline을 넘지 않는다.
 - Forwarding chain이 8 hops, mapping별 1024 message·16 MiB bound와 generation 증가를 검증한다.
 - Preflight가 final reservation을 만들지 않고 queue turn 경계에서 모든 permit을 얻은 unit만 seal해 Prepared를 만든다.

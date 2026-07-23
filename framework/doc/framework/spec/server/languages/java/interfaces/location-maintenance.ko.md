@@ -125,6 +125,12 @@ public record ZLinkPlacementAllocation(
     long descriptorLifecycleGeneration,
     int capacityDelta) {}
 
+public record ZLinkPendingObjectCreation(
+    String reservationId,
+    String requestContentReference,
+    byte[] requestSha256,
+    int requestEncodedSize) {}
+
 public record ZLinkAuthoritySnapshot(
     String storeVersion,
     byte[] payload,
@@ -133,6 +139,7 @@ public record ZLinkAuthoritySnapshot(
     String ownerId,
     long ownerLeaseGeneration,
     ZLinkPlacementAllocation allocation,
+    Optional<ZLinkPendingObjectCreation> pendingCreation,
     Instant storeNow) implements ZLinkAuthorityReadResult {}
 
 public record ZLinkAuthorityEntry(
@@ -545,6 +552,14 @@ public interface ZLinkLocationStore extends
 }
 ```
 
+`pendingCreation`은 allocation이 Pending이면 반드시 non-empty이고 Active이면 반드시 empty다. Provider는
+provider-issued reservation ID와 Actor·User Spot·Instance Spot 생성 요청의 immutable content reference, exact
+32-byte SHA-256과 `0..1 MiB` encoded size를 저장한다. Framework는 snapshot의 store version, generation,
+owner와 allocation target을 이 projection과 결합해 exact Commit 또는 Abort fence를 복원하며, 별도
+process-local reservation index나 caller-generated reservation ID에 의존하지 않는다. Target-owned Instance
+Spot의 cold activation content만 complete `instance-activation-recovery-v1` envelope이며, Actor와 User Spot의
+manager create content에는 이 envelope를 사용하지 않는다.
+
 `ZLinkLocationStore`가 MeshNode descriptor, owner lease와 generic authority capability를 함께 제공한다.
 User·Instance Spot은 global `SpotRid`에서 파생한 하나의 authority key를 공유한다. User Spot
 create와 Instance cold claim은 generic `reserve`가 같은 row의 `Missing → Pending`, generation 발급과
@@ -631,6 +646,10 @@ inventory digest, target owner와 fence 목록까지 정확히 같은 duplicate�
 `ZLinkAggregateAlreadyPrepared`다. `commitAggregate`와 `abortAggregate`만 연결된 fence를 최종 확정하거나
 해제한다. Commit 직전 target descriptor·owner lease가 stale이면 authority와 fence binding을 바꾸지 않고
 `STALE`을 반환한다.
+
+`RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있는 host는
+`ZLinkRelocationStore`를 정확히 하나 등록한다. Instance Spot factory가 없고 모든 factory가 `DISABLED`인
+same-node 구성만 이를 생략할 수 있다.
 
 CAS conflict 전에 저장된 root는 orphan retention으로 제거한다. Root 교체는 new root 저장, Location reference CAS,
 old root cleanup 순서이며 삭제는 Location reference release CAS 뒤 Relocation delete 순서다. 두 Store 사이의 transaction이나
@@ -1006,7 +1025,7 @@ public final class systems.zlink.framework.locations.ZLinkAuthorityMissing exten
   public java.time.Instant storeNow();
 }
 public final class systems.zlink.framework.locations.ZLinkAuthoritySnapshot extends java.lang.Record implements systems.zlink.framework.locations.ZLinkAuthorityReadResult {
-  public systems.zlink.framework.locations.ZLinkAuthoritySnapshot(java.lang.String, byte[], long, long, java.lang.String, long, systems.zlink.framework.locations.ZLinkPlacementAllocation, java.time.Instant);
+  public systems.zlink.framework.locations.ZLinkAuthoritySnapshot(java.lang.String, byte[], long, long, java.lang.String, long, systems.zlink.framework.locations.ZLinkPlacementAllocation, java.util.Optional<systems.zlink.framework.locations.ZLinkPendingObjectCreation>, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -1017,7 +1036,18 @@ public final class systems.zlink.framework.locations.ZLinkAuthoritySnapshot exte
   public java.lang.String ownerId();
   public long ownerLeaseGeneration();
   public systems.zlink.framework.locations.ZLinkPlacementAllocation allocation();
+  public java.util.Optional<systems.zlink.framework.locations.ZLinkPendingObjectCreation> pendingCreation();
   public java.time.Instant storeNow();
+}
+public final class systems.zlink.framework.locations.ZLinkPendingObjectCreation extends java.lang.Record {
+  public systems.zlink.framework.locations.ZLinkPendingObjectCreation(java.lang.String, java.lang.String, byte[], int);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public java.lang.String reservationId();
+  public java.lang.String requestContentReference();
+  public byte[] requestSha256();
+  public int requestEncodedSize();
 }
 public final class systems.zlink.framework.locations.ZLinkPlacementAllocationState extends java.lang.Enum<systems.zlink.framework.locations.ZLinkPlacementAllocationState> {
   public static final systems.zlink.framework.locations.ZLinkPlacementAllocationState PENDING;

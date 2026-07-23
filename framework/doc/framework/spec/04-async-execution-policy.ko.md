@@ -183,8 +183,10 @@ infrastructure task를 진행할 수 있어야 한다.
 
 Object placement와 activation도 infrastructure task에서 처리한다. Location Store reservation이 확정한 owner만
 factory를 실행한다. AuthorityOwnerGeneration과 owner lease는 Store와 runtime fencing에만 사용한다.
-ObjectGeneration은 public ref와 exact-incarnation mutation·session bind에서도 사용한다. `Ready` commit 뒤 owner
-lease에서 계산한 admission deadline을 적용하고 Framework activation barrier를 연다.
+ObjectGeneration은 public ref와 exact-incarnation mutation·session bind에서도 사용한다. Instance cold
+activation은 durable inbox first record를 확정하고 recovery root·cursor를 포함한 `Ready`를 commit한다. Owner
+lease에서 계산한 admission deadline을 적용해 first record를 local queue head로 복원한 뒤 Framework activation
+barrier를 연다.
 
 Handler가 예외를 반환하면 send handler는 오류 observer와 metric에 기록한다. Request handler는 같은
 request의 framework 오류 reply를 생성한다. 오류 observer의 실패는 원래 dispatch 결과를 바꾸지 않는다.

@@ -31,8 +31,10 @@ activation, owner claim, barrier와 queue를 해석하지 않는다.
   Spot RID·stable type·target descriptor fence·operation identity·reply correlation·deadline과 first message를
   포함한 activation envelope를 target transport에 제출한다. Source는 owner claim이나 `Creating` authority를
   만들지 않으며 caller에게 endpoint, node RID, owner token과 generation을 요구하지 않는다.
-- Target runtime은 current authority와 local Instance registry를 확인한다. Missing이면 target 자신을 owner로
-  generic reservation을 획득하고 CAS winner 하나만 factory를 실행한 뒤 `Ready` commit을 수행한다.
+- Target runtime은 current authority와 local Instance registry를 확인한다. Missing이면 complete activation
+  envelope를 Relocation Store에 먼저 저장하고 target 자신을 owner로 generic reservation을 획득한다. CAS winner
+  하나만 factory를 실행한다. Factory·initialize 뒤 durable activation inbox first record를 확정하되 handler는
+  barrier로 막고, recovery root·cursor를 유지한 `Ready` commit 뒤 queue head를 복원해 barrier를 연다.
 - Target이 reservation을 획득한 뒤 종료되면 exact target owner는 initial·background bounded authority scan으로
   자신의 기존 claim과 immutable first-message reference를 발견해 같은 activation barrier를 idempotent하게
   재개한다. Source가 envelope admission 전에 종료된 경우에는 authority row가 없으며 다음 call만 activation을
@@ -81,7 +83,7 @@ endpoint를 지정해 선택하지 않고 Location authority CAS가 결정한다
 | `SpotOwner` | 1 | Object Server 역할과 Location Store를 등록하고 User Spot factory에는 stable type과 explicit `Disabled` policy를 제공한다. Entry Spot과 같은 RID의 User Spot 충돌, existing-only Spot 회귀를 검증하며 relocation은 시작하지 않는다. |
 | `MultiMeshCaller` | 1 | 다른 Object Mesh를 initial placement으로 지정하되 global RID 중복이 하나의 authority로 수렴함을 검증한다 |
 | Redis Location Store | 1 | Descriptor, owner lease, Instance authority와 CAS를 제공한다 |
-| Redis Relocation Store | 1 | Retire의 immutable application state·accepted journal payload를 보존한다. External State Store를 대신하지 않으며 별도 Store instance와 key prefix를 사용한다. |
+| Redis Relocation Store | 1 | Retire의 immutable application state·accepted journal payload와 cold activation의 complete first-message recovery root·durable inbox first record를 보존한다. External State Store를 대신하지 않으며 별도 Store instance와 key prefix를 사용한다. |
 | External State Store | 1 | Factory 복구와 reference sample의 domain state를 보존한다 |
 | `AdminAndEvidence` | 1 | Process pause·resume·crash, barrier와 bounded evidence wait를 제어하며 Framework message를 대신 보내지 않는다 |
 
@@ -142,7 +144,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-F05` | Placement | 선택한 initial Mesh, valid lease·generation, `Serving`, type·profile·capacity를 모두 만족하는 node만 선택 |
 | `IS-F06` | Location authority | Target-owned claim, `Ready`, `Closing`, release가 opaque expected-version CAS와 같은 state transition을 사용 |
 | `IS-F07` | Activation leader | 같은 global Spot RID의 concurrent envelope가 target CAS winner, factory, DI scope과 type slot 하나로 수렴 |
-| `IS-F08` | Ordering | Activation envelope admission, target reservation, Configure, message 없는 initialize, `Ready` CAS, barrier open, envelope의 first message 순서를 지킴 |
+| `IS-F08` | Ordering | Activation envelope admission, immutable recovery root Put·verify, target reservation, Configure, message 없는 initialize, durable activation inbox first record, recovery root·cursor를 유지한 `Ready` CAS, local queue head restore, barrier open 순서를 지킴. First record 확정 전 handler count는 0이고 Ready 뒤 후속 message는 이 queue head를 추월하지 않는다. 첫 handler terminal completion의 durable 기록과 cursor 갱신 전에는 recovery pointer를 release하지 않음 |
 | `IS-F09` | Failure cleanup | Factory·initialize·`Ready`·barrier 실패에서 local barrier를 닫고 request를 typed terminal-once로 완료하며 one-way drop·event를 기록한다. Exact owner fence로 row를 삭제한 뒤 Missing 또는 current replacement를 확인하고 queue·scope·slot을 한 번 정리하며 같은 registry에서 hidden rerun을 하지 않음 |
 | `IS-F10` | 재제출 경계 | CAS loser redirect 한 번 외의 hidden retry·replay가 없음 |
 | `IS-F11` | Lease fence | Local monotonic deadline 뒤 stale message·timer·factory completion·CAS를 application admission 전에 거부 |
@@ -155,14 +157,15 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 
 | ID | 검증 대상 | 완료 조건 |
 |---|---|---|
-| `IS-P01` | Cold target | Activation envelope가 global Spot RID, selected initial Mesh, target descriptor fence, Instance type, first packet contract, operation identity·request correlation과 deadline을 보존 |
+| `IS-P01` | Cold target | Activation recovery envelope가 global Spot RID, selected initial Mesh, target descriptor fence, Instance type, source node RID·lifecycle generation·optional source Spot RID, first packet contract, operation identity·request correlation과 deadline을 보존 |
 | `IS-P02` | Authority fence | Source claim은 0건이다. Target은 envelope의 descriptor lifecycle·owner lease와 current Store state를 exact 확인하고 자신을 owner로 reservation을 획득하며 CAS winner만 object·authority owner generation을 발급함 |
 | `IS-P03` | Bounded queue | Activation 중 message·byte 상한, FIFO과 request terminal-once를 보존 |
-| `IS-P04` | Barrier | `Ready` CAS 전 application handler count 0, barrier open 뒤 admission sequence 순서를 보존 |
+| `IS-P04` | Barrier | Durable inbox first record는 `Ready` CAS 전에 확정하지만 application handler count는 0이다. Ready payload가 recovery root·cursor를 유지하고 local queue head restore 뒤 barrier를 열어 admission sequence를 보존 |
 | `IS-P05` | Failure code | Stable wire code, payload presence과 unknown code를 네 decoder가 같게 검증 |
 | `IS-P06` | Resource cleanup | Close, lease expiry, activation abort과 host terminal 뒤 pending operation·timer·scope·socket이 남지 않음 |
-| `IS-P07` | Activation crash recovery | Envelope admission 전 source crash는 authority를 남기지 않는다. Target reservation 뒤 crash는 target owner의 bounded recovery scan이 durable first-message reference와 같은 generation·barrier로 수렴시킴 |
+| `IS-P07` | Activation crash recovery | Envelope admission 전 source crash는 authority를 남기지 않는다. Relocation Put 뒤 Reserve 전 crash는 unpublished orphan만 남기며 retention 또는 delete로 정리한다. Target reservation 뒤 crash는 Pending snapshot의 provider-issued reservation과 complete first-message receipt를 exact owner의 bounded recovery scan이 복원해 같은 generation·barrier로 수렴시킴 |
 | `IS-P08` | Activation failure release | Factory·initialize·`Ready` 실패는 current Store version, object generation, authority owner generation과 owner lease를 모두 확인한 delete로만 `Creating` row를 제거한다. 결과가 불명확하면 exact read로 수렴하고 Missing 뒤 다음 caller만 새 generation으로 claim함 |
+| `IS-P09` | Recovery pointer release | Ready Instance의 first handler가 terminal completion을 durable하게 기록하고 replay cursor가 inbox sequence에 도달한 뒤에만 Preserve CAS로 pointer를 제거한다. Queue admission·handler 시작·실행 중 crash에서는 pointer와 root를 유지함 |
 
 ## 5. 회귀 시나리오
 
@@ -205,7 +208,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-E2E-16` | No eligible node | Request와 send가 target-not-found로 종료하고 authority row를 남기지 않음 |
 | `IS-E2E-17` | Activation backpressure | Message·byte 상한 초과가 bounded 결과로 종료하고 accepted order와 serial handler를 유지 |
 | `IS-E2E-18` | Cross-language | 다른 Framework 언어 caller·owner 조합이 authority, queue, failure code와 timeout을 같게 해석 |
-| `IS-E2E-19` | `Ready` ordering | `Ready`를 본 뒤의 message가 cold first message를 추월하지 않음 |
+| `IS-E2E-19` | `Ready` ordering | Durable activation inbox first record가 Ready CAS 전에 확정되지만 handler는 실행되지 않는다. Ready를 본 뒤의 message는 restored local queue head 뒤에 admit되어 cold first message를 추월하지 않음 |
 | `IS-E2E-20` | `Closing` owner crash | Lease 전 takeover를 막고 expiry 뒤 높은 authority owner generation으로 close recovery를 끝낸 뒤 다음 activation이 높은 object generation을 사용하며 A의 늦은 release를 거부 |
 | `IS-E2E-21` | Multi-Mesh initial placement | Missing RID에서만 `InMesh` 선택이 적용되고 Ready authority에 다른 Mesh를 지정한 후속 call이 current owner를 이동시키지 않음 |
 | `IS-E2E-22` | Monotonic owner deadline | Process pause를 authority deadline 뒤 재개해도 target runtime이 신규 message·timer admission을 거부 |
@@ -218,8 +221,11 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-E2E-29` | Cross-Mesh in-flight `Retire` | Mesh B가 수락한 completion·claim release 뒤 Mesh A의 원래 Spot turn이 재개 |
 | `IS-E2E-30` | Multi-Mesh concurrent `Retire` | 새 dependency 없이 shared deadline 안에 완료하거나 각 terminal result를 한 번만 반환 |
 | `IS-E2E-31` | Remote CAS loser | 서로 다른 target의 reservation 경쟁에서 loser가 별도 owner object를 만들지 않고 `Ready` winner route로 한 번만 redirect하며 operation identity·correlation·payload·deadline을 보존 |
-| `IS-E2E-32` | Activation crash boundary | Source가 activation envelope admission 전에 종료되면 authority row와 factory가 0건이다. Target이 reservation을 획득한 뒤 종료되면 exact target owner의 bounded scan이 durable first-message reference로 factory·Ready barrier를 한 번 재개하고 row가 고착되지 않음 |
+| `IS-E2E-32` | Activation crash boundary | Source가 activation envelope admission 전에 종료되면 authority row와 factory가 0건이다. Target이 reservation을 획득한 뒤 종료되면 exact target owner의 bounded scan이 Pending creation projection과 complete recovery envelope로 factory·durable inbox·Ready barrier를 한 번 재개하고 row가 고착되지 않음 |
 | `IS-E2E-33` | Cold activation failure release | Factory·initialize·`Ready` 각 실패에서 current request는 typed terminal 하나, accepted one-way는 drop·event 하나로 끝나고 application handler는 실행되지 않음. Exact fenced delete의 응답 손실은 row read로 재확인하며 Missing 또는 current replacement가 확인될 때까지 registry는 failed·sealed를 유지한다. Missing 뒤의 다음 caller만 새 object·authority owner generation으로 새 factory를 시작하고 이전 registry는 hidden rerun하지 않음 |
+| `IS-E2E-34` | Activation root orphan | Complete recovery root Put 뒤 Reserve 전 process 종료와 Reserve conflict loser가 authority reference를 게시하지 않는다. Orphan은 retention 또는 idempotent delete로 정리되고 다른 activation의 receipt로 사용되지 않음 |
+| `IS-E2E-35` | Ready 후 queue restore crash | Durable inbox first record와 Ready commit 뒤 local queue head restore 전에 owner를 종료한다. Restart의 initial complete scan이 Serving을 열기 전에 recovery root·cursor로 같은 operation을 queue head에 복원하고, follow-up과 timer가 이를 추월하거나 handler가 중복 실행되지 않음 |
+| `IS-E2E-36` | First handler terminal release | Queue head admission 직후와 first handler 실행 중에 각각 owner를 종료해 recovery pointer와 root가 유지되는지 확인한다. Handler terminal result를 durable하게 기록하고 replay cursor를 inbox sequence까지 CAS한 경우에만 다음 Preserve CAS가 pointer를 제거하고 그 뒤 root를 삭제함 |
 
 ## 7. Reference sample gate
 

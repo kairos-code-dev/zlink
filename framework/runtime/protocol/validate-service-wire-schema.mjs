@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -1046,10 +1047,25 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       rules: [
         {
           operationKind: "steady",
-          objectKinds: ["actor", "spot"],
+          objectKind: "actor",
           relocationState: "absent",
-          spotKinds: ["entry", "user", "instance"],
+          activationRecoveryState: "absent",
+        },
+        {
+          operationKind: "steady",
+          objectKind: "spot",
+          spotKinds: ["entry", "user"],
+          relocationState: "absent",
+          activationRecoveryState: "absent",
+        },
+        {
+          operationKind: "steady",
+          objectKind: "spot",
+          spotKind: "instance",
           instanceAuthorityStates: ["ready"],
+          relocationState: "absent",
+          activationRecoveryState:
+            "optional-until-durable-first-handler-terminal-and-replay-cursor-update",
         },
         {
           operationKind: "coldActivation",
@@ -1057,6 +1073,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
           spotKind: "instance",
           relocationState: "absent",
           authorityStates: ["coldActivating"],
+          activationRecoveryState: "absent",
         },
         {
           operationKind: "maintenanceRelocation",
@@ -1072,6 +1089,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
               "activated", "cleaning", "completed", "aborted",
             ],
           },
+          activationRecoveryState: "absent",
         },
         {
           operationKind: "close",
@@ -1079,6 +1097,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
           spotKinds: ["entry", "user", "instance"],
           relocationState: "absent",
           authorityStates: ["closing"],
+          activationRecoveryState: "absent",
         },
       ],
     }],
@@ -1211,11 +1230,14 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         "authority",
       ],
       targetComparison: "exact-current-authority-before-mailbox-admission",
-      sourceOrder: "resolve-select-coldActivating-newObject-cas-before-outbound-transport-admission",
+      sourceOrder: "resolve-select-target-and-submit-complete-first-message-activation-envelope-without-owner-claim-or-reservation",
       newObjectGenerations: "nonzero-object-and-authority-owner-generations-allocated-by-provider-cas",
-      targetClaim: "forbidden-target-only-rechecks-activates-and-ready-cas",
-      durableActivationIntent: "coldActivating-newObject-row-owned-by-exact-target-host",
-      targetRecovery: "serving-gate-initial-authority-scan-and-background-bounded-reconcile-resume-owned-coldActivating-without-original-message",
+      targetClaim: "target-rechecks-current-authority-persists-complete-activation-recovery-root-and-cas-winner-reserves-before-factory",
+      durableActivationIntent: "coldActivating-row-owned-by-exact-target-host-with-provider-issued-pending-creation-projection",
+      targetRecovery: "serving-gate-initial-authority-scan-and-background-bounded-reconcile-resume-owned-coldActivating-with-exact-reservation-and-complete-first-message-envelope",
+      readyOrdering: "durable-activation-inbox-first-record-before-ready-commit-handler-behind-barrier-ready-retains-recovery-root-and-cursor-queue-head-restore-before-barrier-open",
+      recoveryRelease: "durable-first-handler-terminal-completion-then-replay-cursor-equals-inbox-sequence-then-preserve-cas-release-never-queue-admission",
+      orphanRule: "recovery-root-put-before-reserve-or-conflict-loser-is-unpublished-orphan-retention-or-idempotent-delete",
       activationRegistry: "object-key-object-generation-authority-owner-generation-and-owner-token-converge-late-submit-and-scan-to-one-local-barrier",
       staleTargetRecovery: "expected-store-version-newOwner-cas-preserves-object-generation-and-selects-eligible-owner",
       originalOperationAfterLostSubmit: "no-hidden-resubmit-caller-normal-timeout-or-failure",
@@ -1855,8 +1877,9 @@ function validateDurableFormats(formats, types, bounds, fail) {
         || format.formatVersion <= 0 || format.formatVersion > 255) {
       fail(`${location}.formatVersion`, "must be a non-zero u8");
     }
-    if (format.flags !== 0 || format.byteOrder !== "big-endian") {
-      fail(location, "durable header must use zero flags and big-endian byte order");
+    if (format.flags !== 0 || format.flagsType?.$ref !== "u16"
+        || format.byteOrder !== "big-endian") {
+      fail(location, "durable header must use zero u16 flags and big-endian byte order");
     }
     const lengthRef = format.bodyLengthType?.$ref;
     const maximum = resolveInteger(format.maximumEncodedBytes, bounds);
@@ -2484,6 +2507,7 @@ function decodeGoldenBody(formatName, bytes) {
       ownerNodeRidUtf8Fixture: reader.text8(),
       ownerNodeGeneration: reader.u64(),
       relocationState: null,
+      activationRecoveryState: null,
     };
     const hasRelocation = reader.u8();
     const relocationBody = new FixtureReader(reader.bytesOf(reader.u32()));
@@ -2521,6 +2545,88 @@ function decodeGoldenBody(formatName, bytes) {
       throw new Error("authority relocation state has invalid presence flag");
     }
     relocationBody.end();
+    const hasActivationRecovery = reader.u8();
+    const activationBody = new FixtureReader(reader.bytesOf(reader.u32()));
+    if (hasActivationRecovery === 1) {
+      decoded.activationRecoveryState = {
+        referenceUtf8Fixture: activationBody.text8(),
+        sha256Hex: activationBody.bytesOf(32).toString("hex"),
+        encodedSize: activationBody.u32(),
+        inboxSequence: activationBody.u64(),
+        replayCursor: activationBody.u64(),
+      };
+    } else if (hasActivationRecovery !== 0) {
+      throw new Error("authority activation recovery state has invalid presence flag");
+    }
+    activationBody.end();
+  } else if (formatName === "instance-activation-recovery-v1") {
+    const targetSpotRidUtf8Fixture = reader.text8();
+    const stableType = reader.text8();
+    const targetMeshName = reader.text8();
+    const targetNodeRidUtf8Fixture = reader.text8();
+    const targetNodeGeneration = reader.u64();
+    const targetDescriptorVersion = reader.text8();
+    const sourceNodeRidUtf8Fixture = reader.text8();
+    const sourceNodeGeneration = reader.u64();
+    const hasSourceSpot = reader.u8();
+    let sourceSpotRidUtf8Fixture = null;
+    if (hasSourceSpot === 1) {
+      sourceSpotRidUtf8Fixture = reader.text8();
+    } else if (hasSourceSpot !== 0) {
+      throw new Error("Instance activation source Spot presence flag is invalid");
+    }
+    const operationKind = fixtureEnum(
+      FIXTURE_ENUMS.instanceOperation,
+      reader.u8(),
+      "Instance operation kind",
+    );
+    const operationHigh = reader.u64();
+    const operationLow = reader.u64();
+    let replyRouteId = null;
+    if (operationKind === "request") {
+      replyRouteId = reader.u64();
+    }
+    const deadlineUnixMs = reader.u64();
+    const hasMetadata = reader.u8();
+    let metadata = null;
+    if (hasMetadata === 1) {
+      const version = reader.u8();
+      const count = reader.u8();
+      const entries = [];
+      for (let index = 0; index < count; index += 1) {
+        entries.push({ key: reader.text8(), value: reader.text16() });
+      }
+      metadata = { version, entries };
+    } else if (hasMetadata !== 0) {
+      throw new Error("Instance activation metadata presence flag is invalid");
+    }
+    const payloadVersion = reader.u8();
+    const payloadBody = new FixtureReader(reader.bytesOf(reader.u32()));
+    const applicationPayload = {
+      version: payloadVersion,
+      packetName: payloadBody.text8(),
+      contentType: payloadBody.text8(),
+      payloadHex: payloadBody.bytes32().toString("hex"),
+    };
+    payloadBody.end();
+    decoded = {
+      targetSpotRidUtf8Fixture,
+      stableType,
+      targetMeshName,
+      targetNodeRidUtf8Fixture,
+      targetNodeGeneration,
+      targetDescriptorVersion,
+      sourceNodeRidUtf8Fixture,
+      sourceNodeGeneration,
+      sourceSpotRidUtf8Fixture,
+      operationKind,
+      operationHigh,
+      operationLow,
+      replyRouteId,
+      deadlineUnixMs,
+      metadata,
+      applicationPayload,
+    };
   } else if (formatName === "relocation-data-chunk-v1") {
     decoded = {
       order: reader.u32(),
@@ -2841,6 +2947,59 @@ function encodeGoldenBody(formatName, decoded) {
     }
     const bytes = relocation.finish();
     writer.u8(decoded.relocationState === null ? 0 : 1).u32(bytes.length).raw(bytes);
+    const activation = new FixtureWriter();
+    if (decoded.activationRecoveryState !== null) {
+      activation.text8(decoded.activationRecoveryState.referenceUtf8Fixture)
+        .raw(Buffer.from(decoded.activationRecoveryState.sha256Hex, "hex"))
+        .u32(decoded.activationRecoveryState.encodedSize)
+        .u64(decoded.activationRecoveryState.inboxSequence)
+        .u64(decoded.activationRecoveryState.replayCursor);
+    }
+    const activationBytes = activation.finish();
+    writer.u8(decoded.activationRecoveryState === null ? 0 : 1)
+      .u32(activationBytes.length)
+      .raw(activationBytes);
+    return writer.finish();
+  }
+  if (formatName === "instance-activation-recovery-v1") {
+    writer.text8(decoded.targetSpotRidUtf8Fixture)
+      .text8(decoded.stableType)
+      .text8(decoded.targetMeshName)
+      .text8(decoded.targetNodeRidUtf8Fixture)
+      .u64(decoded.targetNodeGeneration)
+      .text8(decoded.targetDescriptorVersion)
+      .text8(decoded.sourceNodeRidUtf8Fixture)
+      .u64(decoded.sourceNodeGeneration);
+    if (decoded.sourceSpotRidUtf8Fixture === null) {
+      writer.u8(0);
+    } else {
+      writer.u8(1).text8(decoded.sourceSpotRidUtf8Fixture);
+    }
+    writer.u8(fixtureEnumValue(
+      FIXTURE_ENUMS.instanceOperation,
+      decoded.operationKind,
+      "Instance operation kind",
+    )).u64(decoded.operationHigh).u64(decoded.operationLow);
+    if (decoded.operationKind === "request") {
+      writer.u64(decoded.replyRouteId);
+    }
+    writer.u64(decoded.deadlineUnixMs);
+    if (decoded.metadata === null) {
+      writer.u8(0);
+    } else {
+      writer.u8(1)
+        .u8(decoded.metadata.version)
+        .u8(decoded.metadata.entries.length);
+      for (const entry of decoded.metadata.entries) {
+        writer.text8(entry.key).text16(entry.value);
+      }
+    }
+    const payload = new FixtureWriter();
+    payload.text8(decoded.applicationPayload.packetName)
+      .text8(decoded.applicationPayload.contentType)
+      .bytes32(Buffer.from(decoded.applicationPayload.payloadHex, "hex"));
+    const payloadBytes = payload.finish();
+    writer.u8(decoded.applicationPayload.version).u32(payloadBytes.length).raw(payloadBytes);
     return writer.finish();
   }
   if (formatName === "relocation-envelope-v1") {
@@ -2880,11 +3039,11 @@ function encodeGoldenBody(formatName, decoded) {
 
 function encodeGoldenEnvelope(format, decoded) {
   const body = encodeGoldenBody(format.name, decoded);
-  const header = Buffer.alloc(10);
+  const header = Buffer.alloc(11);
   Buffer.from(format.magic).copy(header, 0);
   header.writeUInt8(format.formatVersion, 4);
-  header.writeUInt8(format.flags, 5);
-  header.writeUInt32BE(body.length, 6);
+  header.writeUInt16BE(format.flags, 5);
+  header.writeUInt32BE(body.length, 7);
   const withoutChecksum = Buffer.concat([header, body]);
   const checksum = Buffer.alloc(4);
   checksum.writeUInt32BE(crc32c(withoutChecksum));
@@ -2917,21 +3076,38 @@ function validateGoldenOrder(entries, key, location, fail) {
 
 function validateGoldenFixtureSemantics(formatName, decoded, location, fail) {
   if (formatName === "authority-payload-v1") {
-    if (decoded.operationKind !== "maintenanceRelocation"
+    if (decoded.operationKind !== "steady"
         || decoded.object?.objectKind !== "spot"
         || decoded.object?.spotKind !== "instance"
-        || decoded.object?.authorityState !== "relocating"
-        || decoded.relocationState === null
-        || decoded.relocationState.relocationRoot === null
-        || decoded.relocationState.participantProgress.length === 0
-        || decoded.relocationState.terminalCompletionCount === 0) {
-      fail(location, "authority golden must exercise compact relocating Instance authority");
+        || decoded.object?.authorityState !== "ready"
+        || decoded.relocationState !== null
+        || decoded.activationRecoveryState === null
+        || !/^[0-9a-f]{64}$/.test(decoded.activationRecoveryState.sha256Hex)
+        || decoded.activationRecoveryState.encodedSize <= 0
+        || BigInt(decoded.activationRecoveryState.inboxSequence) === 0n
+        || BigInt(decoded.activationRecoveryState.replayCursor)
+          > BigInt(decoded.activationRecoveryState.inboxSequence)) {
+      fail(location, "authority golden must exercise Ready Instance cold activation recovery state");
       return;
     }
-    const progress = decoded.relocationState.participantProgress;
-    validateGoldenOrder(progress, (entry) => [entry.participantId], `${location}.participantProgress`, fail);
-    if (decoded.relocationState.pendingRelayCount > decoded.relocationState.terminalCompletionCount) {
-      fail(location, "authority pending relay count cannot exceed terminal completion count");
+    return;
+  }
+  if (formatName === "instance-activation-recovery-v1") {
+    const metadataKeys = decoded.metadata?.entries?.map((entry) => entry.key) ?? [];
+    if (
+      decoded.operationKind !== "request"
+      || BigInt(decoded.operationHigh) === 0n && BigInt(decoded.operationLow) === 0n
+      || BigInt(decoded.replyRouteId) === 0n
+      || BigInt(decoded.deadlineUnixMs) === 0n
+      || decoded.metadata?.version !== 1
+      || decoded.metadata.entries.length === 0
+      || metadataKeys.some((key) => key.length === 0)
+      || new Set(metadataKeys).size !== metadataKeys.length
+      || decoded.applicationPayload.version !== 1
+      || decoded.applicationPayload.packetName.length === 0
+      || decoded.applicationPayload.contentType.length === 0
+    ) {
+      fail(location, "Instance activation golden must exercise a complete recoverable request envelope");
     }
     return;
   }
@@ -3111,18 +3287,18 @@ function validateGoldenFixtureData(format, fixture, location, fail) {
     fail(`${location}.decoded`, "must provide the language-neutral semantic value");
   }
   const bytes = Buffer.from(fixture.encodedHex, "hex");
-  if (bytes.length < 14) {
+  if (bytes.length < 15) {
     fail(`${location}.encodedHex`, "durable envelope is shorter than its fixed header and checksum");
     return;
   }
   if (!Buffer.from(format.magic).equals(bytes.subarray(0, 4))) {
     fail(`${location}.encodedHex`, "magic does not match the durable format");
   }
-  if (bytes[4] !== format.formatVersion || bytes[5] !== format.flags) {
+  if (bytes[4] !== format.formatVersion || bytes.readUInt16BE(5) !== format.flags) {
     fail(`${location}.encodedHex`, "version or flags do not match the durable format");
   }
-  const bodyLength = bytes.readUInt32BE(6);
-  if (bytes.length !== 10 + bodyLength + 4) {
+  const bodyLength = bytes.readUInt32BE(7);
+  if (bytes.length !== 11 + bodyLength + 4) {
     fail(`${location}.encodedHex`, "body length does not cover the exact body");
     return;
   }
@@ -3132,7 +3308,7 @@ function validateGoldenFixtureData(format, fixture, location, fail) {
     fail(`${location}.encodedHex`, "trailing CRC32C does not cover magic through body");
   }
   try {
-    const encodedBody = bytes.subarray(10, bytes.length - 4);
+    const encodedBody = bytes.subarray(11, bytes.length - 4);
     const decoded = decodeGoldenBody(format.name, encodedBody);
     if (JSON.stringify(decoded) !== JSON.stringify(fixture.decoded)) {
       fail(`${location}.decoded`, "does not match the canonical bytes");
@@ -3151,6 +3327,7 @@ function validateGoldenFixtures(schema, schemaPath) {
   const errors = [];
   const fail = (location, message) => errors.push(`${location}: ${message}`);
   const directory = path.dirname(schemaPath);
+  const fixtures = new Map();
   for (const [index, format] of schema.durableFormats.entries()) {
     const fixturePath = path.resolve(directory, format.goldenFixture);
     let fixture;
@@ -3161,6 +3338,18 @@ function validateGoldenFixtures(schema, schemaPath) {
       continue;
     }
     validateGoldenFixtureData(format, fixture, `fixture:${format.name}`, fail);
+    fixtures.set(format.name, fixture);
+  }
+  const authorityFixture = fixtures.get("authority-payload-v1");
+  const activationFixture = fixtures.get("instance-activation-recovery-v1");
+  if (authorityFixture && activationFixture) {
+    const activationBytes = Buffer.from(activationFixture.encodedHex, "hex");
+    const activationSha256 = crypto.createHash("sha256").update(activationBytes).digest("hex");
+    if (authorityFixture.decoded.activationRecoveryState?.encodedSize !== activationBytes.length
+        || authorityFixture.decoded.activationRecoveryState?.sha256Hex !== activationSha256) {
+      fail("fixture:authority-payload-v1",
+        "Ready Instance activation pointer must reference the exact ZLIA golden bytes");
+    }
   }
   if (errors.length > 0) {
     throw new SchemaValidationError(errors);
@@ -4004,7 +4193,6 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "requestContentReference", $ref: "creation-content-reference" },
     { name: "requestSha256", $ref: "sha256-bytes" },
     { name: "requestEncodedSize", $ref: "creation-request-size" },
-    { name: "creationAttempt", $ref: "nonzero-u64" },
   ], "$.types", "creation intent must preserve immutable type, placement, content reference and hash");
   if (creationIntent?.maximumEncodedBytes?.$bound !== "creationIntentBytes") {
     fail("$.types", "creation intent must use the 1 MiB amendment bound");
@@ -4033,6 +4221,47 @@ function validateServiceInvariants(schema, types, fail) {
         { operationKind: "abort" },
       ])) {
     fail("$.types", "generic reservation must be the closed Reserve, Commit or Abort operation");
+  }
+  const reserveCase = reservation?.cases?.find((entry) => entry.when?.operationKind === "reserve");
+  requireFields(reserveCase?.fields, [
+    { name: "intent", $ref: "object-creation-intent-v1" },
+    { name: "target", $ref: "object-creation-target-v1" },
+    { name: "creatingPayload", $ref: "durable-blob" },
+    { name: "pendingCapacityDelta", $ref: "nonzero-u32" },
+  ], "$.types", "Reserve input cannot require the provider-issued reservation fence");
+  requireFields(types.get("pending-object-creation-v1")?.fields, [
+    { name: "reservationId", $ref: "text8" },
+    { name: "requestContentReference", $ref: "creation-content-reference" },
+    { name: "requestSha256", $ref: "sha256-bytes" },
+    { name: "requestEncodedSize", $ref: "creation-request-size" },
+  ], "$.types", "Pending authority must expose exact creation recovery projection");
+  requireFields(types.get("instance-activation-recovery-v1")?.fields, [
+    { name: "targetSpotRid", $ref: "rid" },
+    { name: "stableType", $ref: "text8" },
+    { name: "targetMeshName", $ref: "text8" },
+    { name: "targetNodeRid", $ref: "rid" },
+    { name: "targetNodeGeneration", $ref: "nonzero-u64" },
+    { name: "targetDescriptorVersion", $ref: "text8" },
+    { name: "sourceNodeRid", $ref: "rid" },
+    { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
+    { name: "sourceSpotRid", $ref: "optional-rid" },
+    { name: "operationKind", $ref: "instance-operation-kind" },
+    { name: "operation", $ref: "operation-id" },
+    { name: "replyRoute", $ref: "instance-reply-route" },
+    { name: "deadlineUnixMs", $ref: "nonzero-u64" },
+    { name: "hasMetadata", $ref: "bool8" },
+    { name: "metadata", $ref: "metadata-frame" },
+    { name: "applicationPayload", $ref: "application-payload-envelope-v1" },
+  ], "$.types", "Instance activation recovery must preserve the complete first-message envelope");
+  const activationRecoveryEnvelope = types.get("instance-activation-recovery-v1");
+  if (activationRecoveryEnvelope?.scope !== "target-owned-instance-spot-cold-activation-only"
+      || activationRecoveryEnvelope?.metadataMeaning
+        !== "exact-command-39-metadata-flag-presence-and-immutable-frame-bytes"
+      || activationRecoveryEnvelope?.fields?.find((field) => field.name === "metadata")?.when
+        ?.fieldEquals?.name !== "hasMetadata"
+      || activationRecoveryEnvelope?.fields?.find((field) => field.name === "metadata")
+        ?.otherwise !== "forbidden") {
+    fail("$.types", "ZLIA must preserve command 39 metadata presence and frame only for target-owned Instance cold activation");
   }
   const aggregate = types.get("maintenance-aggregate-v1");
   if (aggregate?.maximumEncodedBytes?.$bound !== "maintenanceAggregateBytes"
@@ -4491,6 +4720,7 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "ownerNodeRid", $ref: "rid" },
     { name: "ownerNodeGeneration", $ref: "nonzero-u64" },
     { name: "relocationState", $ref: "authority-relocation-state" },
+    { name: "activationRecoveryState", $ref: "authority-activation-recovery-state" },
   ], "$.types", "authority payload must keep generations in provider metadata and use one closed object identity");
   const authorityRelocation = types.get("authority-relocation-state");
   if (authorityRelocation?.maximumEncodedBytes?.$bound !== "authorityEnvelopeBytes"
@@ -4522,6 +4752,25 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "pendingRelayCount", $ref: "u32" },
     { name: "sourceCleanupState", $ref: "source-cleanup-state" },
   ], "$.types", "early relocation phases must allow an absent target fence until Prepared");
+  const activationRecovery = types.get("authority-activation-recovery-state");
+  const activationPresent = activationRecovery?.cases?.find(
+    (entry) => entry.when?.hasActivationRecovery === "true",
+  );
+  requireFields(activationPresent?.fields, [
+    { name: "reference", $ref: "creation-content-reference" },
+    { name: "sha256", $ref: "sha256-bytes" },
+    { name: "encodedSize", $ref: "creation-request-size" },
+    { name: "inboxSequence", $ref: "nonzero-u64" },
+    { name: "replayCursor", $ref: "ordinal-or-zero" },
+  ], "$.types", "Ready Instance activation recovery must preserve exact root and cursor");
+  if (activationRecovery?.presence
+        !== "ready-instance-spot-cold-activation-only-and-forbidden-for-actor-entry-user-closing-relocating-or-coldActivating-authority"
+      || activationRecovery?.release
+        !== "expected-store-version-preserve-cas-only-after-durable-first-handler-terminal-completion-and-replay-cursor-equals-inbox-sequence-before-relocation-store-delete"
+      || activationRecovery?.constraints?.[0]?.rule
+        !== "replayCursor-less-than-or-equal-to-inboxSequence") {
+    fail("$.types", "activation recovery pointer must be Ready Instance-only and release only after durable terminal completion and cursor update");
+  }
 
   const authorityOperation = types.get("authority-operation-kind");
   if (JSON.stringify(authorityOperation?.values) !== JSON.stringify([
@@ -5790,6 +6039,39 @@ function runSelfTests(schema) {
       constraint.rules.find((rule) => rule.operationKind === "coldActivation")
         .authorityStates.push("closing");
     }],
+    ["Actor authority activation recovery allowed", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "authority-operation-state-integrity",
+      );
+      constraint.rules.find(
+        (rule) => rule.operationKind === "steady" && rule.objectKind === "actor",
+      ).activationRecoveryState = "optional";
+    }],
+    ["relocating authority activation recovery allowed", (candidate) => {
+      const constraint = candidate.semanticConstraints.find(
+        (entry) => entry.kind === "authority-operation-state-integrity",
+      );
+      constraint.rules.find((rule) => rule.operationKind === "maintenanceRelocation")
+        .activationRecoveryState = "optional";
+    }],
+    ["activation recovery release on admission", (candidate) => {
+      const recovery = candidate.types.find(
+        (type) => type.name === "authority-activation-recovery-state",
+      );
+      recovery.release = "after-admission";
+    }],
+    ["activation recovery presence widened", (candidate) => {
+      const recovery = candidate.types.find(
+        (type) => type.name === "authority-activation-recovery-state",
+      );
+      recovery.presence = "all-ready-authorities";
+    }],
+    ["ZLIA metadata frame omitted", (candidate) => {
+      const recovery = candidate.types.find(
+        (type) => type.name === "instance-activation-recovery-v1",
+      );
+      recovery.fields = recovery.fields.filter((field) => field.name !== "metadata");
+    }],
     ["creation intent bound widened", (candidate) => {
       const bound = candidate.bounds.find((entry) => entry.name === "creationIntentBytes");
       bound.value += 1;
@@ -6224,18 +6506,36 @@ function runGoldenFixtureSelfTests(schema, schemaPath) {
     ];
     if (format.name === "authority-payload-v1") {
       tests.push(
-        ["semantic relation", (candidate) => {
+        ["activation pointer on non-steady operation", (candidate) => {
           candidate.decoded.operationKind = "coldActivation";
           reencode(format, candidate);
         }],
-        ["canonical order", (candidate) => {
-          candidate.decoded.relocationState.participantProgress.unshift({
-            participantId: "2", acceptedBoundary: "1", replayCursor: "0",
-          });
+        ["activation pointer missing from Ready golden", (candidate) => {
+          candidate.decoded.activationRecoveryState = null;
           reencode(format, candidate);
         }],
-        ["relay count range", (candidate) => {
-          candidate.decoded.relocationState.pendingRelayCount = 2;
+        ["activation replay cursor beyond inbox sequence", (candidate) => {
+          candidate.decoded.activationRecoveryState.replayCursor = "2";
+          candidate.decoded.activationRecoveryState.inboxSequence = "1";
+          reencode(format, candidate);
+        }],
+      );
+    } else if (format.name === "instance-activation-recovery-v1") {
+      tests.push(
+        ["metadata presence removed", (candidate) => {
+          candidate.decoded.metadata = null;
+          reencode(format, candidate);
+        }],
+        ["metadata version changed", (candidate) => {
+          candidate.decoded.metadata.version = 2;
+          reencode(format, candidate);
+        }],
+        ["metadata entries removed", (candidate) => {
+          candidate.decoded.metadata.entries = [];
+          reencode(format, candidate);
+        }],
+        ["metadata key duplicated", (candidate) => {
+          candidate.decoded.metadata.entries.push({ ...candidate.decoded.metadata.entries[0] });
           reencode(format, candidate);
         }],
       );
@@ -6340,13 +6640,19 @@ function validateContractAmendmentFixtureData(fixture, location, fail) {
       initialMeshName: "main", placementProfile: "default", affinityKey: "tenant-42",
       requestContentReference: "create/1",
       requestSha256Hex: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-      requestEncodedSize: 1048576, creationAttempt: "1",
+      requestEncodedSize: 1048576,
     },
     reservation: {
       operationOrder: ["reserve", "commit", "abort"], pendingCapacityDelta: 1,
       objectGeneration: "2", authorityOwnerGeneration: "3",
       targetNodeRidUtf8Fixture: "node-a", targetNodeGeneration: "4",
       targetOwnerLeaseGeneration: "5",
+      pendingCreation: {
+        reservationId: "reservation-1",
+        requestContentReference: "create/1",
+        requestSha256Hex: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        requestEncodedSize: 1048576,
+      },
     },
     aggregate: {
       aggregateHigh: "0", aggregateLow: "1", aggregateGeneration: "6",

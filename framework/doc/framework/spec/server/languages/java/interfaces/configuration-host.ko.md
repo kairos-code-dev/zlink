@@ -164,8 +164,9 @@ Type별 limit은 `null`이면 node limit을 공유하고 명시하면 1..`Intege
 
 Location provider는 `ZLinkLocationStore`를 통해 descriptor·location 기능과 authority CAS capability를 함께
 제공한다. 별도 `ZLinkAuthorityStore` instance를 host에 등록하지 않는다. `Recreate` 또는 `Snapshot` policy를
-하나라도 등록한 host는 `ZLinkRelocationStore`를 정확히 하나 등록한다. `Disabled` factory와 same-node join만 사용하는
-host는 Relocation Store가 없어도 된다. Missing 또는 duplicate Store registration은 socket bind 전에 startup
+하나라도 등록했거나 Instance Spot factory를 하나라도 등록한 host는 `ZLinkRelocationStore`를 정확히 하나 등록한다.
+Instance Spot factory가 없고 `Disabled` factory와 same-node join만 사용하는 host는 Relocation Store가 없어도 된다.
+Missing 또는 duplicate Store registration은 socket bind 전에 startup
 configuration error다. Location과 Relocation capability를 함께 등록하는 API와 Redis 전용 registration helper는
 제공하지 않는다.
 

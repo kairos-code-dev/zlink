@@ -256,8 +256,9 @@ immutable relocation root와 replay cursor로 처리를 이어 가도록 요구�
 목표 exact interface는 Actor·Instance phase별 Store를 공개하지 않는다. Root에 등록한 Location provider가
 opaque payload의 read와 expected Store version 기반 compare-exchange를 제공한다. Framework coordinator만
 relocation phase, source·target identity, object fence와 recovery lease를 해석한다. `Recreate` 또는 `Snapshot`
-`Recreate` 또는 `Snapshot` policy를 사용하는 host는 accepted journal, application state와 recovery payload를 보존할
-Relocation Store도 정확히 하나 등록한다.
+policy가 하나라도 있거나 Instance Spot factory가 하나라도 있는 host는 accepted journal, application state와
+recovery payload를 보존할 Relocation Store도 정확히 하나 등록한다. Instance Spot factory가 없고 모든 factory가
+`Disabled`인 same-node 구성에서만 Relocation Store를 생략할 수 있다.
 
 현재 언어별 source에는 phase별 Actor relocation Store, Instance owner Store, in-memory pending map과 별도 relocation
 adapter가 섞여 있다. 이 구조는 provider에 Framework 상태 기계를 누출하고 Actor·Instance가 서로 다른 recovery

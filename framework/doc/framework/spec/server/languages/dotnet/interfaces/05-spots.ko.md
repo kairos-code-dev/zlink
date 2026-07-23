@@ -566,11 +566,12 @@ MeshNode의 send deadline에 resolve, cold activation과 outbound admission을 �
 
 `IZLinkInstanceSpot`은 `IZLinkSpot`을 상속하지 않는 actor-free lifecycle interface다. Direct packet과 timer
 handler만 등록할 수 있고 Actor handler나 Logical Multicast subscription을 등록하면 Framework가
-`Ready` commit 전에 activation을 거부한다. Target runtime은 activation envelope를 받은 뒤 local exact
-instance를 확인하고, 없으면 자신을 owner로 generic placement를 Reserve한다. Lifecycle은 target scope와 Spot을
-만든 뒤 Configure, `OnInitializeAsync`, Location `Ready` commit 순서로 실행한다. `OnCreateAsync` 또는 empty
-`ZLinkMessage`를 사용하지 않으며 envelope의 첫 업무 message는 commit barrier 뒤 direct handler에 exactly once
-전달한다.
+`Ready` commit 전에 activation을 거부한다. Target runtime은 complete activation envelope를 Relocation Store에
+immutable recovery root로 저장한 뒤 local exact instance를 확인하고, 없으면 자신을 owner로 generic placement를
+Reserve한다. Lifecycle은 target scope와 Spot을 만든 뒤 Configure와 `OnInitializeAsync`를 실행한다.
+`OnCreateAsync` 또는 empty `ZLinkMessage`를 사용하지 않는다. Envelope의 첫 업무 message는 durable activation
+inbox의 첫 record로 확정하며 handler barrier를 유지한 상태에서 recovery root·cursor를 포함한 Location `Ready`를
+commit한다. Runtime은 첫 record를 local queue head로 복원한 뒤 barrier를 연다.
 
 Store-backed User Spot은 manager create operation이 reservation을 시작한다. Instance Spot은 다른 순서를
 사용한다. Source는 `Ready` authority가 있으면 current owner에게 일반 message를 보내고, Missing authority와
@@ -578,13 +579,18 @@ Store-backed User Spot은 manager create operation이 reservation을 시작한�
 envelope를 보낸다. 이 envelope는 `Ready` 전 application dispatch가 아니라 target activation을 요청하는
 Framework infrastructure message다. Source는 placement reservation을 만들지 않는다.
 
-Target runtime은 local exact instance가 없을 때만 자신을 owner로 `Creating` row와 pending capacity를
-Reserve하고 factory, `Configure`, `OnInitializeAsync`를 수행한다. CAS loser는 factory를 시작하지 않고 current
-authority를 읽어 owner에게 reroute하거나 진행 중인 attempt에 합류한다. Commit이 `Ready`와 active capacity를
-게시한 뒤에만 envelope의 first message를 local application queue에 exactly once 제출한다. Authority와
-일치하지 않는 local-only instance는 message를 처리하지 못하도록 fence한다. Activation envelope transport는
-CAS 전에 허용하지만 일반 Spot transport와 application dispatch는 current `Ready` authority만 사용한다. 이
-barrier를 제어하는 별도 application API는 없다.
+Target runtime은 metadata presence·frame을 포함한 complete envelope를 Relocation Store에 먼저 저장한다. Local exact instance가 없을 때만 자신을
+owner로 `Creating` row와 pending capacity를 Reserve하며, Pending snapshot은 provider가 발급한 reservation
+fence와 recovery root receipt를 반환한다. CAS winner가 factory, `Configure`, `OnInitializeAsync`와 durable inbox
+first record 확정을 수행한다. CAS loser는 factory를 시작하지 않고 current authority를 읽어 owner에게
+reroute하거나 진행 중인 attempt에 합류한다. Commit은 handler barrier를 유지한 채 recovery root·cursor와
+`Ready`, active capacity를 게시한다. Runtime은 first record를 local queue head로 복원한 뒤 barrier를 열며,
+source는 `Ready` 뒤 같은 message를 다시 전송하지 않는다. Authority와 일치하지 않는 local-only instance는
+message를 처리하지 못하도록 fence한다. Activation envelope transport는 CAS 전에 허용하지만 일반 Spot
+transport와 application dispatch는 current `Ready` authority만 사용한다. 이 barrier를 제어하는 별도
+application API는 없다.
+Recovery pointer는 첫 handler terminal completion을 durable하게 기록하고 replay cursor를 inbox sequence까지
+갱신한 뒤에만 Preserve CAS로 제거한다. Queue admission만으로 제거하지 않는다.
 
 `CloseAsync(spotRef)`는 exact incarnation만 닫는다. 해당 incarnation이 없으면 `false`, generation이 다르면
 `SpotGenerationStale`, pre-commit seal 중이면 `SpotMoving`이다. User Spot에 Actor membership이 남아 있으면

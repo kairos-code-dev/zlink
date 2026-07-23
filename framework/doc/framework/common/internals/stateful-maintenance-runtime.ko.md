@@ -21,10 +21,12 @@ replay·completion count를 한 expected-version transaction domain에서 관리
 accepted journal, participant별 state·journal과 replay payload를 immutable root로 관리한다. 두 provider 사이에는
 distributed transaction과 2PC가 없고 같은 Redis deployment 또는 서로 다른 Redis를 사용할 수 있다.
 
-Object Server factory에 `Recreate` 또는 `Snapshot`이 하나라도 있으면 startup snapshot은 Relocation Store가 정확히
-하나인지 socket bind 전에 검증한다. `Disabled` cross-node 이동은 capture 전에 거부한다. Same-node Actor join은
-Location membership transaction만 사용하고 Relocation Store를 호출하지 않는다. Creation intent는 logical create의
-Location reservation domain에 남으며 Relocation Store 등록 조건을 만들지 않는다.
+Object Server factory에 `Recreate` 또는 `Snapshot`이 하나라도 있거나 Instance Spot factory가 하나라도 있으면
+startup snapshot은 Relocation Store가 정확히 하나인지 socket bind 전에 검증한다. `Disabled` cross-node 이동은
+capture 전에 거부한다. Same-node Actor join은 Location membership transaction만 사용하고 Relocation Store를
+호출하지 않는다. Actor·User Spot의 generic create는 creation intent를 Location reservation domain에 두며
+ZLIA root나 durable activation inbox를 만들지 않는다. Target-owned Instance cold activation만 complete first-message
+envelope를 Relocation Store에 저장하므로 relocation policy가 `Disabled`여도 Store 등록 조건을 만든다.
 
 ## 2. Host maintenance barrier
 
@@ -92,21 +94,27 @@ cold activation intent를 만든다. Marker가 없는 일반 send·request와 ma
 authority만 사용하며, `Missing`이면 factory나 creation reservation을 시작하지 않는다.
 
 두 creation 진입점은 같은 generic `Reserve`를 사용한다. `Reserve`는 object kind, global ActorId, global
-SpotRid, stable type, target descriptor, capacity delta와 fence를 원자적으로 기록한다. `NewObject` CAS는 final
+SpotRid, stable type, target descriptor, capacity delta와 provider-issued fence를 원자적으로 기록한다. Pending
+snapshot은 fence와 complete request envelope의 reference·hash·encoded size를 반환한다. `Reserve`는 final
 `ObjectGeneration`, `AuthorityOwnerGeneration`과 `Creating` row를 만든다. Factory·initialize와 initial
-membership이 끝난 뒤 같은 fence로 reservation을 commit하고 `Ready`를 publish한다. Entry Spot은 host startup
-중 initialize하며 caller가 생성하지 않는다.
+membership이 끝나면 같은 fence로 reservation을 commit하고 `Ready`를 publish한다. Target-owned Instance cold
+activation만 commit 전에 durable activation inbox first record를 확정하고 Ready에 recovery root·cursor를
+유지한다. Entry Spot은 host startup 중 initialize하며 caller가 생성하지 않는다.
 
 Factory failure는 local barrier를 failed 상태로 seal한다. Waiting request는 한 번만 terminal 처리하고 one-way
 operation은 drop event를 남긴다. Coordinator는 exact Store version, object·owner generation과 owner lease로 row를
 삭제한다. Delete 결과가 불명확하면 read로 reconcile하며 `Missing`을 확인할 때까지 local registry를 failed로
 유지한다. 그 다음 caller만 새 `NewObject`를 시작한다.
 
-Creation intent는 최대 1 MiB request의 content reference와 hash, placement input을 durable하게 보존한다. Target
-host의 initial scan과 bounded background scan은 자신이 소유한 `Creating` intent를 재개한다. Direct fluent
-marker로 시작한 Instance activation의 runtime이 사라져도 같은 stored intent로 reactivation하며 normal
-message에서 type, Mesh와 placement를 재구성하지 않는다. Reservation은 TTL을 사용하지 않고 Creating authority와
-owner lease로 복구한다. 실패하면 exact `Abort`로 pending capacity를 회수한다.
+Creation intent는 최대 1 MiB complete request envelope의 content reference와 hash, placement input을 durable하게
+보존한다. Instance activation envelope에는 source·target lifecycle, operation identity, reply correlation,
+deadline, optional metadata presence·frame과 application payload가 들어간다. Target host의 initial scan과 bounded
+background scan은 자신이 소유한 `Creating` intent와 Ready activation recovery root를 재개한다. 이 ZLIA root와
+durable inbox 절차는 target-owned Instance cold activation에만 적용한다. Runtime은 durable inbox first record를
+local queue head로 복원한 뒤 barrier와 Serving을 연다. 첫 handler의 terminal completion을 durable하게 기록하고
+replay cursor를 해당 inbox sequence까지 갱신한 뒤에만 Preserve CAS로 pointer를 release한다. Queue admission만으로
+release하지 않는다. Reservation은 TTL을 사용하지 않고 Creating authority와 owner lease로 복구한다. 실패하면
+exact `Abort`로 pending capacity를 회수하며 Reserve 전 root는 orphan retention 또는 idempotent delete로 정리한다.
 
 Object `Client`와 `Server` role은 Location Store를 요구한다. Object `None` role은 manager, factory와 hidden local
 object runtime을 만들지 않는다.

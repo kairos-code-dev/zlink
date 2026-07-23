@@ -541,8 +541,9 @@ public:
 ```
 
 Location runtime을 사용하는 application은 `add_location_store(...)`로 Location Store를 정확히 하나 등록한다.
-`Recreate` 또는 `Snapshot` factory가 하나라도 있으면 `add_relocation_store(...)`로 Relocation Store도 정확히 하나
-등록한다. `Disabled` factory만 있는 same-node 구성에는 Relocation Store가 필요하지 않다. 필요한 Store가 없거나
+`Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있으면
+`add_relocation_store(...)`로 Relocation Store도 정확히 하나 등록한다. Instance Spot factory가 없고
+`Disabled` factory만 있는 same-node 구성에는 Relocation Store가 필요하지 않다. 필요한 Store가 없거나
 같은 capability가 중복 등록되면 Framework는 socket bind 전에 configuration error로 종료한다.
 
 `configure_network()`는 process 전체의 BindHost와 AdvertiseHost 기본값을 반환하며 listener별 설정이 이 값을

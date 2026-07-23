@@ -20,8 +20,7 @@
     "affinityKey": "tenant-42",
     "requestContentReference": "create/1",
     "requestSha256Hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-    "requestEncodedSize": 1048576,
-    "creationAttempt": "1"
+    "requestEncodedSize": 1048576
   },
   "reservation": {
     "operationOrder": ["reserve", "commit", "abort"],
@@ -30,7 +29,13 @@
     "authorityOwnerGeneration": "3",
     "targetNodeRidUtf8Fixture": "node-a",
     "targetNodeGeneration": "4",
-    "targetOwnerLeaseGeneration": "5"
+    "targetOwnerLeaseGeneration": "5",
+    "pendingCreation": {
+      "reservationId": "reservation-1",
+      "requestContentReference": "create/1",
+      "requestSha256Hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "requestEncodedSize": 1048576
+    }
   },
   "aggregate": {
     "aggregateHigh": "0",

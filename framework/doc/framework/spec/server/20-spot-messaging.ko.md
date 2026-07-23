@@ -57,9 +57,10 @@ local outbound admission만 나타내고 target Spot handler 실행은 기다리
 오류 경계는 [04 비동기 실행 정책 §1.3](../04-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
 Cold activation을 포함하는 submit도 source가 activation envelope를 선택한 target transport에 수락시킨 시점에
 같은 결과를 완료하며 target의 reservation, factory, Ready commit과 application handler 실행을 기다리지 않는다.
-Activation envelope는 최초 application message와 operation identity·reply correlation·deadline, global Spot RID,
-선택한 Mesh·stable type과 target descriptor fence를 함께 보존한다. Target runtime은 local exact instance가 없으면
-자신을 owner로 generic placement reservation을 획득한 뒤에만 factory를 실행한다.
+Activation envelope는 최초 application message와 operation identity·reply correlation·deadline, source
+node RID·lifecycle generation·optional source Spot RID, global Spot RID, 선택한 Mesh·stable type과 target
+descriptor fence를 함께 보존한다. Target은 이 전체 envelope를 Relocation Store에 immutable activation recovery
+root로 먼저 저장하고 reference·hash·encoded size를 generic placement reservation에 연결한 뒤에만 factory를 실행한다.
 
 - local Spot과 remote Spot은 같은 handler 및 실행 의미를 가진다.
 - 호출자는 owner RID, endpoint 또는 내부 route frame을 조립하지 않는다.
@@ -67,8 +68,12 @@ Activation envelope는 최초 application message와 operation identity·reply c
 - owner 변경, route cache와 stale route 처리 규칙은
   [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 정한다.
 - Instance Spot의 별도 create request는 없다. Fluent call의 최초 application message는 activation envelope에
-  포함되며 actor-free lifecycle의 Configure와 initialize, location `Ready` commit과 activation barrier가 끝난
-  뒤 같은 target의 application queue에 한 번 제출된다. Ready 뒤 source가 두 번째 direct message를 만들지 않는다.
+  command 39의 optional metadata presence·frame과 함께 포함된다. Target은 Configure와 initialize 뒤 이 envelope를
+  durable activation inbox의 첫 record로 확정하되
+  handler는 barrier로 계속 막는다. `Ready` commit은 recovery root와 replay cursor를 유지하며, runtime은 그
+  첫 record를 local queue head로 복원한 뒤 barrier를 연다. Ready 뒤 source가 두 번째 direct message를 만들지 않는다.
+  첫 handler terminal completion을 durable하게 기록하고 cursor를 inbox sequence까지 갱신한 뒤에만 recovery
+  pointer를 Preserve CAS로 제거하며 queue admission만으로 제거하지 않는다.
 
 ### 3.1 Spot에서 Channel 호출
 
@@ -197,6 +202,10 @@ drop과 Spot dispatch 결과를 구분해야 한다. topic과 Spot RID는 metric
 - Instance intent를 가진 call만 Missing Spot의 type을 명시하거나 유일한 type을 자동 선택해 cold activation한다.
 - Missing Instance activation에서는 source가 owner claim을 선점하지 않고 최초 message를 포함한 activation
   envelope를 target에 제출하며, target의 CAS winner만 owner claim과 factory를 만든다.
+- Pending authority exact read가 provider-issued reservation fence와 activation recovery receipt를 반환하고,
+  process restart가 complete snapshot scan 뒤 같은 reservation과 durable inbox head를 재개한다.
+- Ready authority를 공개하기 전에 durable activation inbox의 first record가 확정되고, Ready payload가 recovery
+  root·cursor를 유지하는 동안 startup Serving gate가 queue head 복원보다 먼저 열리지 않는다.
 - Spot Channel 호출이 ChannelName에 등록된 다른 RouteMesh 또는 ClientServer 송신 경로를 사용하고 원래
   Spot의 `Async`·`Yield`와 generation completion을 보존한다.
 - Logical Multicast가 remote MeshNode마다 한 번만 전송되고 수신 node가 local subscription만 검사한다.

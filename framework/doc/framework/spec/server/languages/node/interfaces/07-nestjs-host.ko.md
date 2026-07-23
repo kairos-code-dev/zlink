@@ -388,3 +388,8 @@ export declare class ZLinkHttpClientModule {
     static forRoot(options: ZLinkHttpClientModuleOptions): DynamicModule;
 }
 ```
+
+`Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot factory가 하나라도 등록된 Object Server는
+`addRelocationStore(...)`를 정확히 한 번 호출해야 한다. Instance Spot factory가 없고 모든 factory가
+`Disabled`인 same-node 구성만 Relocation Store를 생략할 수 있다. 누락과 중복은 socket bind 전에 configuration
+error다.

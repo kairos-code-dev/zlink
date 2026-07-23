@@ -464,6 +464,62 @@ void test_dealer_to_router_request_reply_basic ()
     test_context_socket_close_zero_linger (router);
 }
 
+void test_dealer_receives_unsolicited_message_after_request_reply ()
+{
+    void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
+    void *dealer = test_context_socket (ZLINK_SOCKET_DEALER);
+    TEST_ASSERT_NOT_NULL (router);
+    TEST_ASSERT_NOT_NULL (dealer);
+
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_set_routing_id (dealer, "dealer-unsolicited", 18));
+
+    request_handler_probe_t handler_probe;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_bind (router, "inproc://zmp-dealer-unsolicited-after-request"));
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_connect (dealer, "inproc://zmp-dealer-unsolicited-after-request"));
+    msleep (SETTLE_TIME);
+
+    zlink_msg_t request_part;
+    zlink_msg_init (&request_part);
+    init_string_part (&request_part, "request");
+
+    reply_probe_t reply_probe;
+    reply_probe.progress_handle = dealer;
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_dealer_request (dealer, &request_part, 1, &capture_reply, &reply_probe, 0, 3000));
+
+    recv_router_request_into_probe (router, &handler_probe);
+    send_captured_reply (router, &handler_probe, "reply");
+    TEST_ASSERT_TRUE (wait_for_reply (&reply_probe));
+    msleep (SETTLE_TIME);
+
+    zlink_msg_t unsolicited_part;
+    zlink_msg_init (&unsolicited_part);
+    init_string_part (&unsolicited_part, "unsolicited");
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_SUBMIT_OK,
+      zlink_send_part_rid (router, &handler_probe.peer_rid_value, &unsolicited_part,
+                           ZLINK_SEND_FLAGS_NONE, ZLINK_PART_FINAL));
+
+    uint8_t message_type = 0;
+    uint64_t request_seq = 0;
+    zlink_part_flag_t has_more = ZLINK_PART_MORE;
+    zlink_msg_t received_part;
+    zlink_msg_init (&received_part);
+    TEST_ASSERT_EQUAL_INT (
+      ZLINK_RECV_OK,
+      recv_dealer_part_with_retry (dealer, &message_type, &request_seq, &received_part,
+                                   &has_more));
+    TEST_ASSERT_EQUAL_UINT8 (ZLINK_DEALER_MESSAGE_RAW, message_type);
+    TEST_ASSERT_EQUAL_UINT64 (0, request_seq);
+    TEST_ASSERT_EQUAL_INT (ZLINK_PART_FINAL, has_more);
+    TEST_ASSERT_EQUAL_STRING ("unsolicited", part_to_string_and_close (&received_part).c_str ());
+
+    test_context_socket_close_zero_linger (dealer);
+    test_context_socket_close_zero_linger (router);
+}
+
 void test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id ()
 {
     void *router = test_context_socket (ZLINK_SOCKET_ROUTER);
@@ -1158,6 +1214,7 @@ int main ()
 
     UNITY_BEGIN ();
     RUN_TEST (test_dealer_to_router_request_reply_basic);
+    RUN_TEST (test_dealer_receives_unsolicited_message_after_request_reply);
     RUN_TEST (test_dealer_to_router_request_reply_over_tcp_with_explicit_routing_id);
     RUN_TEST (test_router_to_router_request_reply_basic);
     RUN_TEST (test_connect_only_router_requester_receives_reply);

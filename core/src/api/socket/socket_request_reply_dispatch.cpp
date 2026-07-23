@@ -112,6 +112,8 @@ int ensure_internal_dispatch_installed (const std::shared_ptr<socket_request_rep
         errno = EFAULT;
         return -1;
     }
+    if (ensure_recv_queue_ready (state_) != 0)
+        return -1;
 
     std::lock_guard<std::mutex> lock (state_->mutex);
     if (state_->internal_dispatch_installed)

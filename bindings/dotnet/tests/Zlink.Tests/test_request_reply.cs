@@ -66,6 +66,49 @@ namespace Systems.Zlink.Tests;
     }
 
     [Fact]
+    public async Task dealer_receives_unsolicited_message_after_request_reply()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
+        using var dealer = ctx.CreateDealerSocket();
+        dealer.SetRoutingId(CoreTestSupport.RoutingIdUtf8("request-client"));
+        string endpoint = CoreTestSupport.NewEndpoint(
+            "tcp",
+            "request-then-unsolicited");
+        router.Bind(endpoint);
+        dealer.Connect(endpoint);
+
+        using Message request = Message.From("hello");
+        Task<IReadOnlyList<Message>> replyTask = dealer.Request()
+            .Message(request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async();
+        using Received inbound = Received.Create();
+        Assert.True(router.Recv(inbound));
+        RoutingId sourceRid = inbound.RoutingId
+            ?? throw new InvalidOperationException("missing routing id");
+        ulong requestSeq = inbound.RequestSeq
+            ?? throw new InvalidOperationException("missing request sequence");
+        using Message admitted = Message.From("admitted");
+        router.Reply(sourceRid, requestSeq)
+            .Message(admitted)
+            .Submit();
+        IReadOnlyList<Message> reply = await replyTask;
+        foreach (Message part in reply)
+            part.Dispose();
+
+        using Message update = Message.From("unsolicited");
+        Assert.True(router.Send(sourceRid).Message(update).Submit());
+        string unsolicited =
+            CoreTestSupport.ReceiveUtf8WithTimeout(dealer, 2000);
+        Assert.Equal("unsolicited", unsolicited);
+        dealer.Disconnect(endpoint);
+    }
+
+    [Fact]
     public async Task dealer_received_reply_routes_same_sequence_to_source_peer()
     {
         if (!CoreTestSupport.IsNativeAvailable())

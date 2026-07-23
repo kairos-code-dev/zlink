@@ -335,6 +335,11 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
 
     std::shared_ptr<reqrep::socket_request_reply_state_t> state =
       reqrep::find_or_create_request_reply_state (handle);
+    bool use_helper_queue = false;
+    if (state) {
+        std::lock_guard<std::mutex> lock (state->mutex);
+        use_helper_queue = state->internal_dispatch_installed;
+    }
     std::shared_ptr<zlink::part_helper_internal::handle_state_t> helper_state =
       zlink::part_helper_internal::find_handle_state (dealer_);
     const bool recv_sequence_active =
@@ -343,6 +348,16 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
     auto recv_dealer_parts_once = [&] (uint8_t *message_type_out, uint64_t *request_seq_out,
                                        zlink_msg_t **parts_out,
                                        size_t *part_count_out) -> zlink_recv_result_t {
+        if (use_helper_queue) {
+            const int timeout_ms = (flags_ & ZLINK_DONTWAIT) ? 0 : -1;
+            return reqrep::recv_internal_dealer_queue (
+                     &state->recv_queue, message_type_out, request_seq_out, parts_out,
+                     part_count_out, static_cast<int> (flags_), timeout_ms)
+                     == 0
+                   ? ZLINK_RECV_OK
+                   : zlink::recv_result_internal::from_errno (errno);
+        }
+
         zlink::msg_t current;
         const int current_init_rc = current.init ();
         errno_assert (current_init_rc == 0);
@@ -489,8 +504,9 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
         }
 
         const int stage_rc = zlink::part_helper_internal::stage_recv_sequence (
-          helper_state, zlink::part_helper_internal::recv_family_dealer, handle.socket, NULL,
-          request_seq, parts, part_count, std::this_thread::get_id ());
+          helper_state, zlink::part_helper_internal::recv_family_dealer,
+          use_helper_queue ? state->recv_queue.rx_socket () : handle.socket, NULL, request_seq,
+          parts, part_count, std::this_thread::get_id ());
         zlink_multipart_close (parts, part_count);
         if (stage_rc != 0) {
             zlink::part_helper_internal::abort_recv_step (helper_state);
@@ -512,7 +528,8 @@ zlink_recv_result_t zlink_dealer_recv_part (void *dealer_,
     }
 
     bool first_part = false;
-    zlink::socket_base_t *source_socket = handle.socket;
+    zlink::socket_base_t *source_socket =
+      use_helper_queue ? state->recv_queue.rx_socket () : handle.socket;
     if (zlink::part_helper_internal::prepare_recv_step (
           dealer_, zlink::part_helper_internal::recv_family_dealer, source_socket, &helper_state,
           &first_part, &source_socket)

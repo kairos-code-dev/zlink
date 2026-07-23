@@ -4,13 +4,18 @@
 package systems.zlink.framework.kotlin
 
 import java.time.Duration
+import java.util.Optional
 import java.util.concurrent.CompletionStage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.future.future
-import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.locations.ZLinkAggregateAbortResult
+import systems.zlink.framework.locations.ZLinkAggregateCommitResult
+import systems.zlink.framework.locations.ZLinkAggregateFence
+import systems.zlink.framework.locations.ZLinkAggregatePrepareRequest
+import systems.zlink.framework.locations.ZLinkAggregatePrepareResult
 import systems.zlink.framework.locations.ZLinkActorLocation
 import systems.zlink.framework.locations.ZLinkActorLocationFilter
 import systems.zlink.framework.locations.ZLinkActorLocationKey
@@ -19,8 +24,21 @@ import systems.zlink.framework.locations.ZLinkLocationPage
 import systems.zlink.framework.locations.ZLinkLocationStore
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent
 import systems.zlink.framework.locations.ZLinkLocationWriteResult
-import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal
-import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot
+import systems.zlink.framework.locations.ZLinkAuthorityExpectation
+import systems.zlink.framework.locations.ZLinkAuthorityMutation
+import systems.zlink.framework.locations.ZLinkAuthorityReadResult
+import systems.zlink.framework.locations.ZLinkAuthorityScanCursor
+import systems.zlink.framework.locations.ZLinkAuthorityScanResult
+import systems.zlink.framework.locations.ZLinkAuthorityWriteResult
+import systems.zlink.framework.locations.ZLinkObjectAbortResult
+import systems.zlink.framework.locations.ZLinkObjectCommitResult
+import systems.zlink.framework.locations.ZLinkObjectReservation
+import systems.zlink.framework.locations.ZLinkObjectReservationRequest
+import systems.zlink.framework.locations.ZLinkObjectReserveResult
+import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult
+import systems.zlink.framework.locations.ZLinkOwnerLeaseReadResult
+import systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult
 import systems.zlink.framework.locations.ZLinkPageRequest
 import systems.zlink.framework.locations.ZLinkPeerLocation
 import systems.zlink.framework.locations.ZLinkPeerLocationFilter
@@ -28,9 +46,14 @@ import systems.zlink.framework.locations.ZLinkPeerLocationKey
 import systems.zlink.framework.locations.ZLinkRouteLocation
 import systems.zlink.framework.locations.ZLinkRouteLocationFilter
 import systems.zlink.framework.locations.ZLinkRouteLocationKey
+import systems.zlink.framework.locations.ZLinkRelocationCapacityAbortResult
+import systems.zlink.framework.locations.ZLinkRelocationCapacityFence
+import systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest
+import systems.zlink.framework.locations.ZLinkRelocationCapacityReserveResult
 import systems.zlink.framework.locations.ZLinkSpotLocation
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter
 import systems.zlink.framework.locations.ZLinkSpotLocationKey
+import systems.zlink.framework.locations.ZLinkStoreCancellation
 
 abstract class ZLinkSuspendingLocationStore(
     private val scope: CoroutineScope = dispatcherScope(Dispatchers.IO),
@@ -38,6 +61,77 @@ abstract class ZLinkSuspendingLocationStore(
 ) : ZLinkLocationStore {
     protected fun <T> async(block: suspend () -> T): CompletionStage<T> =
         scope.future(dispatcher) { block() }
+
+    final override fun read(
+        key: String,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkAuthorityReadResult> =
+        async { readAuthoritySuspending(key, cancellation) }
+
+    final override fun compareExchange(
+        key: String,
+        expectation: ZLinkAuthorityExpectation,
+        mutation: ZLinkAuthorityMutation,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkAuthorityWriteResult> =
+        async { compareExchangeAuthoritySuspending(key, expectation, mutation, cancellation) }
+
+    final override fun list(
+        prefix: String,
+        cursor: Optional<ZLinkAuthorityScanCursor>,
+        limit: Int,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkAuthorityScanResult> =
+        async { listAuthoritiesSuspending(prefix, cursor, limit, cancellation) }
+
+    final override fun reserve(
+        request: ZLinkObjectReservationRequest,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkObjectReserveResult> =
+        async { reserveSuspending(request, cancellation) }
+
+    final override fun commit(
+        reservation: ZLinkObjectReservation,
+        readyPayload: ByteArray,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkObjectCommitResult> =
+        async { commitSuspending(reservation, readyPayload, cancellation) }
+
+    final override fun abort(
+        reservation: ZLinkObjectReservation,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkObjectAbortResult> =
+        async { abortSuspending(reservation, cancellation) }
+
+    final override fun reserveRelocationCapacity(
+        request: ZLinkRelocationCapacityReservationRequest,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkRelocationCapacityReserveResult> =
+        async { reserveRelocationCapacitySuspending(request, cancellation) }
+
+    final override fun abortRelocationCapacity(
+        fence: ZLinkRelocationCapacityFence,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkRelocationCapacityAbortResult> =
+        async { abortRelocationCapacitySuspending(fence, cancellation) }
+
+    final override fun prepareAggregate(
+        request: ZLinkAggregatePrepareRequest,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkAggregatePrepareResult> =
+        async { prepareAggregateSuspending(request, cancellation) }
+
+    final override fun commitAggregate(
+        fence: ZLinkAggregateFence,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkAggregateCommitResult> =
+        async { commitAggregateSuspending(fence, cancellation) }
+
+    final override fun abortAggregate(
+        fence: ZLinkAggregateFence,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkAggregateAbortResult> =
+        async { abortAggregateSuspending(fence, cancellation) }
 
     final override fun updatePeer(
         peer: ZLinkPeerLocation,
@@ -117,21 +211,90 @@ abstract class ZLinkSuspendingLocationStore(
     ): CompletionStage<ZLinkLocationPage<ZLinkRouteLocation>> =
         async { listRouteLocationsSuspending(filter, page) }
 
-    final override fun renewOwnerLease(
+    final override fun claimOwnerLease(
         ownerId: String,
-        nodeRid: RoutingId,
         leaseTtl: Duration,
-    ): CompletionStage<ZLinkOwnerLeaseRenewal> =
-        async { renewOwnerLeaseSuspending(ownerId, nodeRid, leaseTtl) }
+    ): CompletionStage<ZLinkOwnerLeaseClaimResult> =
+        async { claimOwnerLeaseSuspending(ownerId, leaseTtl) }
 
-    final override fun removeOwnerLease(ownerId: String): CompletionStage<Boolean> =
-        async { removeOwnerLeaseSuspending(ownerId) }
+    final override fun readOwnerLease(
+        ownerId: String,
+    ): CompletionStage<ZLinkOwnerLeaseReadResult> =
+        async { readOwnerLeaseSuspending(ownerId) }
+
+    final override fun renewOwnerLease(
+        token: ZLinkLocationOwnerToken,
+        leaseTtl: Duration,
+    ): CompletionStage<ZLinkOwnerLeaseRenewResult> =
+        async { renewOwnerLeaseSuspending(token, leaseTtl) }
+
+    final override fun releaseOwnerLease(
+        token: ZLinkLocationOwnerToken,
+    ): CompletionStage<ZLinkOwnerLeaseReleaseResult> =
+        async { releaseOwnerLeaseSuspending(token) }
 
     final override fun removeAllByOwner(ownerId: String): CompletionStage<Long> =
         async { removeAllByOwnerSuspending(ownerId) }
 
-    final override fun listOwnerLeases(): CompletionStage<ZLinkOwnerLeaseSnapshot> =
-        async { listOwnerLeasesSuspending() }
+    protected abstract suspend fun readAuthoritySuspending(
+        key: String,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkAuthorityReadResult
+
+    protected abstract suspend fun compareExchangeAuthoritySuspending(
+        key: String,
+        expectation: ZLinkAuthorityExpectation,
+        mutation: ZLinkAuthorityMutation,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkAuthorityWriteResult
+
+    protected abstract suspend fun listAuthoritiesSuspending(
+        prefix: String,
+        cursor: Optional<ZLinkAuthorityScanCursor>,
+        limit: Int,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkAuthorityScanResult
+
+    protected abstract suspend fun reserveSuspending(
+        request: ZLinkObjectReservationRequest,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkObjectReserveResult
+
+    protected abstract suspend fun commitSuspending(
+        reservation: ZLinkObjectReservation,
+        readyPayload: ByteArray,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkObjectCommitResult
+
+    protected abstract suspend fun abortSuspending(
+        reservation: ZLinkObjectReservation,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkObjectAbortResult
+
+    protected abstract suspend fun reserveRelocationCapacitySuspending(
+        request: ZLinkRelocationCapacityReservationRequest,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkRelocationCapacityReserveResult
+
+    protected abstract suspend fun abortRelocationCapacitySuspending(
+        fence: ZLinkRelocationCapacityFence,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkRelocationCapacityAbortResult
+
+    protected abstract suspend fun prepareAggregateSuspending(
+        request: ZLinkAggregatePrepareRequest,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkAggregatePrepareResult
+
+    protected abstract suspend fun commitAggregateSuspending(
+        fence: ZLinkAggregateFence,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkAggregateCommitResult
+
+    protected abstract suspend fun abortAggregateSuspending(
+        fence: ZLinkAggregateFence,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkAggregateAbortResult
 
     protected abstract suspend fun updatePeerSuspending(
         peer: ZLinkPeerLocation,
@@ -196,17 +359,25 @@ abstract class ZLinkSuspendingLocationStore(
         page: ZLinkPageRequest,
     ): ZLinkLocationPage<ZLinkRouteLocation>
 
-    protected abstract suspend fun renewOwnerLeaseSuspending(
+    protected abstract suspend fun claimOwnerLeaseSuspending(
         ownerId: String,
-        nodeRid: RoutingId,
         leaseTtl: Duration,
-    ): ZLinkOwnerLeaseRenewal
+    ): ZLinkOwnerLeaseClaimResult
 
-    protected abstract suspend fun removeOwnerLeaseSuspending(ownerId: String): Boolean
+    protected abstract suspend fun readOwnerLeaseSuspending(
+        ownerId: String,
+    ): ZLinkOwnerLeaseReadResult
+
+    protected abstract suspend fun renewOwnerLeaseSuspending(
+        token: ZLinkLocationOwnerToken,
+        leaseTtl: Duration,
+    ): ZLinkOwnerLeaseRenewResult
+
+    protected abstract suspend fun releaseOwnerLeaseSuspending(
+        token: ZLinkLocationOwnerToken,
+    ): ZLinkOwnerLeaseReleaseResult
 
     protected abstract suspend fun removeAllByOwnerSuspending(ownerId: String): Long
-
-    protected abstract suspend fun listOwnerLeasesSuspending(): ZLinkOwnerLeaseSnapshot
 }
 
 private fun dispatcherScope(dispatcher: CoroutineDispatcher): CoroutineScope =

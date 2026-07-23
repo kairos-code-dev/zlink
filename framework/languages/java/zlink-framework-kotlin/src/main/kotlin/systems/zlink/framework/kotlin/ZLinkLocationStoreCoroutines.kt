@@ -20,8 +20,10 @@ import systems.zlink.framework.locations.ZLinkLocationTopologyEntry
 import systems.zlink.framework.locations.ZLinkLocationTopologyFilter
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent
 import systems.zlink.framework.locations.ZLinkLocationWriteResult
-import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal
-import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot
+import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult
+import systems.zlink.framework.locations.ZLinkOwnerLeaseReadResult
+import systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult
 import systems.zlink.framework.locations.ZLinkPageRequest
 import systems.zlink.framework.locations.ZLinkPeerLocation
 import systems.zlink.framework.locations.ZLinkPeerLocationFilter
@@ -118,21 +120,30 @@ suspend fun ZLinkRouteLocationStore.listRouteLocations(
 ): ZLinkLocationPage<ZLinkRouteLocation> =
     awaitFrameworkStage(this.listRouteLocations(filter, page))
 
-suspend fun ZLinkLocationStore.renewOwnerLease(
+suspend fun ZLinkLocationStore.claimOwnerLease(
     ownerId: String,
-    nodeRid: RoutingId,
     leaseTtl: Duration,
-): ZLinkOwnerLeaseRenewal =
-    awaitFrameworkStage(this.renewOwnerLease(ownerId, nodeRid, leaseTtl))
+): ZLinkOwnerLeaseClaimResult =
+    awaitFrameworkStage(this.claimOwnerLease(ownerId, leaseTtl))
 
-suspend fun ZLinkLocationStore.removeOwnerLease(ownerId: String): Boolean =
-    awaitFrameworkStage(this.removeOwnerLease(ownerId))
+suspend fun ZLinkLocationStore.readOwnerLease(
+    ownerId: String,
+): ZLinkOwnerLeaseReadResult =
+    awaitFrameworkStage(this.readOwnerLease(ownerId))
+
+suspend fun ZLinkLocationStore.renewOwnerLease(
+    token: ZLinkLocationOwnerToken,
+    leaseTtl: Duration,
+): ZLinkOwnerLeaseRenewResult =
+    awaitFrameworkStage(this.renewOwnerLease(token, leaseTtl))
+
+suspend fun ZLinkLocationStore.releaseOwnerLease(
+    token: ZLinkLocationOwnerToken,
+): ZLinkOwnerLeaseReleaseResult =
+    awaitFrameworkStage(this.releaseOwnerLease(token))
 
 suspend fun ZLinkLocationStore.removeAllByOwner(ownerId: String): Long =
     awaitFrameworkStage(this.removeAllByOwner(ownerId))
-
-suspend fun ZLinkLocationStore.awaitOwnerLeases(): ZLinkOwnerLeaseSnapshot =
-    awaitFrameworkStage(this.listOwnerLeases())
 
 suspend fun ZLinkPeerLocationResolver.listLivePeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
     awaitFrameworkStage(this.listLivePeers(filter))

@@ -43,6 +43,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
     private volatile boolean ownerLeaseHealthy;
     private volatile String lastError;
     private volatile java.time.Instant ownerLeaseRenewedAt;
+    private volatile ZLinkLocationOwnerToken ownerToken;
     private volatile long nextOwnerLeaseRenewalNanos;
 
     ZLinkLocationRuntime(
@@ -109,7 +110,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             this.nodeRid = nodeRid;
         }
 
-        return renewOwnerLeaseOnce().thenAccept(ignored -> {
+        return claimOwnerLease().thenAccept(ignored -> {
             synchronized (stateGate) {
                 if (heartbeatTask == null || heartbeatTask.isCancelled()) {
                     heartbeatTask = heartbeatExecutor.scheduleWithFixedDelay(
@@ -136,9 +137,13 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             return CompletableFuture.completedFuture(null);
         }
 
+        ZLinkLocationOwnerToken token = ownerToken;
         return stores.unifiedStore().removeAllByOwner(ownerId)
-            .thenCompose(ignored -> stores.ownerLeaseStore().removeOwnerLease(ownerId))
-            .thenApply(ignored -> null);
+            .thenCompose(ignored -> token == null
+                ? CompletableFuture.completedFuture(null)
+                : stores.ownerLeaseStore().releaseOwnerLease(token)
+                    .thenApply(released -> null))
+            .thenRun(() -> ownerToken = null);
     }
 
     public CompletionStage<Boolean> renewOwnerLeaseOnce() {
@@ -149,15 +154,45 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
             return failed;
         }
 
-        return stores.ownerLeaseStore().renewOwnerLease(ownerId, currentNodeRid, ownerLeaseTtl)
+        ZLinkLocationOwnerToken token = ownerToken;
+        if (token == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        return stores.ownerLeaseStore().renewOwnerLease(token, ownerLeaseTtl)
             .handle((result, failure) -> {
                 if (failure != null) {
                     recordFailure(failure.getMessage());
                     return false;
                 }
-                recordSuccessfulRenewal(result.storeNow());
+                if (!(result instanceof systems.zlink.framework.locations
+                    .ZLinkOwnerLeaseRenewed renewed)) {
+                    recordFailure("owner lease renewal was stale");
+                    return false;
+                }
+                recordSuccessfulRenewal(renewed.storeNow());
                 nextOwnerLeaseRenewalNanos = System.nanoTime() + heartbeatInterval.toNanos();
                 return true;
+            });
+    }
+
+    private CompletionStage<Void> claimOwnerLease() {
+        return stores.ownerLeaseStore()
+            .claimOwnerLease(ownerId, ownerLeaseTtl)
+            .thenCompose(result -> {
+                if (result instanceof systems.zlink.framework.locations
+                    .ZLinkOwnerLeaseClaimed claimed) {
+                    ownerToken = claimed.token();
+                    recordSuccessfulRenewal(claimed.storeNow());
+                    nextOwnerLeaseRenewalNanos =
+                        System.nanoTime() + heartbeatInterval.toNanos();
+                    return CompletableFuture.completedFuture(null);
+                }
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        result instanceof systems.zlink.framework.locations
+                            .ZLinkOwnerLeaseGenerationExhausted
+                            ? "owner lease generation is exhausted"
+                            : "owner lease is already claimed"));
             });
     }
 

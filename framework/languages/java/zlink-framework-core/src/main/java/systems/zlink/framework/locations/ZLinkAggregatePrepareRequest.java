@@ -9,7 +9,7 @@ public record ZLinkAggregatePrepareRequest(
     long aggregateGeneration,
     List<ZLinkAggregateParticipant> participants,
     byte[] inventoryDigest,
-    List<ZLinkObjectReservation> targetReservations,
+    List<ZLinkRelocationCapacityFence> targetReservations,
     ZLinkLocationOwnerToken targetOwner) {
     public ZLinkAggregatePrepareRequest {
         Objects.requireNonNull(aggregateId, "aggregateId");

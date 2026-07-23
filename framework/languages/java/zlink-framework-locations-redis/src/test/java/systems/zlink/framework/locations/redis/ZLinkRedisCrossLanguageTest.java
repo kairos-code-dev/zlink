@@ -18,6 +18,7 @@ import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimed;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
 import systems.zlink.framework.locations.ZLinkRouteKind;
@@ -34,9 +35,10 @@ final class ZLinkRedisCrossLanguageTest {
     @Test
     void javaWritesRowsForDotnetToRead() throws Exception {
         try (ZLinkRedisLocationStore store = crossLanguageStore("java")) {
-            store.renewOwnerLease("java-owner", RoutingId.from("java-node"), LEASE_TTL)
-                .toCompletableFuture()
-                .get();
+            assertNotNull(((ZLinkOwnerLeaseClaimed)
+                store.claimOwnerLease("java-owner", LEASE_TTL)
+                    .toCompletableFuture()
+                    .get()).token());
 
             assertEquals(ZLinkLocationWriteStatus.STORED,
                 store.updatePeer(javaPeer(), ZLinkLocationWriteIntent.NEW_CLAIM)

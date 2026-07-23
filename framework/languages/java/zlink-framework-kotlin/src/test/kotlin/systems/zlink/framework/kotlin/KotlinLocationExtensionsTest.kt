@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import systems.zlink.contracts.core.RoutingId
+import systems.zlink.framework.locations.*
 import systems.zlink.framework.locations.ZLinkActorLocation
 import systems.zlink.framework.locations.ZLinkActorLocationFilter
 import systems.zlink.framework.locations.ZLinkActorLocationKey
@@ -161,7 +162,7 @@ class KotlinLocationExtensionsTest {
         override suspend fun removePeerSuspending(
             key: ZLinkPeerLocationKey,
             owner: ZLinkLocationOwnerToken,
-        ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
+        ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.leaseGeneration(), NOW)
 
         override suspend fun listPeerLocationsSuspending(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> = peers.toList()
 
@@ -173,7 +174,7 @@ class KotlinLocationExtensionsTest {
         override suspend fun removeSpotSuspending(
             key: ZLinkSpotLocationKey,
             owner: ZLinkLocationOwnerToken,
-        ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
+        ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.leaseGeneration(), NOW)
 
         override suspend fun resolveSpotSuspending(key: ZLinkSpotLocationKey): ZLinkSpotLocation? = null
 
@@ -190,7 +191,7 @@ class KotlinLocationExtensionsTest {
         override suspend fun removeActorSuspending(
             key: ZLinkActorLocationKey,
             owner: ZLinkLocationOwnerToken,
-        ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
+        ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.leaseGeneration(), NOW)
 
         override suspend fun resolveActorSuspending(key: ZLinkActorLocationKey): ZLinkActorLocation? = null
 
@@ -207,7 +208,7 @@ class KotlinLocationExtensionsTest {
         override suspend fun removeRouteSuspending(
             key: ZLinkRouteLocationKey,
             owner: ZLinkLocationOwnerToken,
-        ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.generation(), NOW)
+        ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(owner.leaseGeneration(), NOW)
 
         override suspend fun resolveRouteSuspending(key: ZLinkRouteLocationKey): ZLinkRouteLocation? = null
 
@@ -216,18 +217,90 @@ class KotlinLocationExtensionsTest {
             page: ZLinkPageRequest,
         ): ZLinkLocationPage<ZLinkRouteLocation> = ZLinkLocationPage(listOf(), null)
 
-        override suspend fun renewOwnerLeaseSuspending(
-            ownerId: String,
-            nodeRid: RoutingId,
-            leaseTtl: Duration,
-        ): ZLinkOwnerLeaseRenewal = ZLinkOwnerLeaseRenewal(NOW.plus(leaseTtl), NOW)
+        override suspend fun readAuthoritySuspending(
+            key: String,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkAuthorityReadResult = ZLinkAuthorityMissing(NOW)
 
-        override suspend fun removeOwnerLeaseSuspending(ownerId: String): Boolean = true
+        override suspend fun compareExchangeAuthoritySuspending(
+            key: String,
+            expectation: ZLinkAuthorityExpectation,
+            mutation: ZLinkAuthorityMutation,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkAuthorityWriteResult =
+            ZLinkAuthorityConflict(ZLinkAuthorityMissing(NOW))
+
+        override suspend fun listAuthoritiesSuspending(
+            prefix: String,
+            cursor: java.util.Optional<ZLinkAuthorityScanCursor>,
+            limit: Int,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkAuthorityScanResult =
+            ZLinkAuthorityPage(listOf(), java.util.Optional.empty())
+
+        override suspend fun reserveSuspending(
+            request: ZLinkObjectReservationRequest,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkObjectReserveResult =
+            ZLinkObjectConflict(ZLinkAuthorityMissing(NOW))
+
+        override suspend fun commitSuspending(
+            reservation: ZLinkObjectReservation,
+            readyPayload: ByteArray,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkObjectCommitResult = ZLinkObjectCommitResult.STALE
+
+        override suspend fun abortSuspending(
+            reservation: ZLinkObjectReservation,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkObjectAbortResult = ZLinkObjectAbortResult.STALE
+
+        override suspend fun reserveRelocationCapacitySuspending(
+            request: ZLinkRelocationCapacityReservationRequest,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkRelocationCapacityReserveResult =
+            ZLinkRelocationCapacityTargetUnavailable()
+
+        override suspend fun abortRelocationCapacitySuspending(
+            fence: ZLinkRelocationCapacityFence,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkRelocationCapacityAbortResult =
+            ZLinkRelocationCapacityAbortResult.STALE
+
+        override suspend fun prepareAggregateSuspending(
+            request: ZLinkAggregatePrepareRequest,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkAggregatePrepareResult = ZLinkAggregateConflict()
+
+        override suspend fun commitAggregateSuspending(
+            fence: ZLinkAggregateFence,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkAggregateCommitResult = ZLinkAggregateCommitResult.STALE
+
+        override suspend fun abortAggregateSuspending(
+            fence: ZLinkAggregateFence,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkAggregateAbortResult = ZLinkAggregateAbortResult.STALE
+
+        override suspend fun claimOwnerLeaseSuspending(
+            ownerId: String,
+            leaseTtl: Duration,
+        ): ZLinkOwnerLeaseClaimResult = ZLinkOwnerLeaseClaimConflict()
+
+        override suspend fun readOwnerLeaseSuspending(
+            ownerId: String,
+        ): ZLinkOwnerLeaseReadResult = ZLinkOwnerLeaseMissing()
+
+        override suspend fun renewOwnerLeaseSuspending(
+            token: ZLinkLocationOwnerToken,
+            leaseTtl: Duration,
+        ): ZLinkOwnerLeaseRenewResult = ZLinkOwnerLeaseRenewStale()
+
+        override suspend fun releaseOwnerLeaseSuspending(
+            token: ZLinkLocationOwnerToken,
+        ): ZLinkOwnerLeaseReleaseResult = ZLinkOwnerLeaseReleaseResult.STALE
 
         override suspend fun removeAllByOwnerSuspending(ownerId: String): Long = 0
-
-        override suspend fun listOwnerLeasesSuspending(): ZLinkOwnerLeaseSnapshot =
-            ZLinkOwnerLeaseSnapshot(listOf(), NOW)
     }
 
     companion object {

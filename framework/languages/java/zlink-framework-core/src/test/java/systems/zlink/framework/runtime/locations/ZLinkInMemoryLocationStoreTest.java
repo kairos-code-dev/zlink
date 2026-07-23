@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.locations;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -9,8 +10,15 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.locations.ZLinkAuthorityConflict;
+import systems.zlink.framework.locations.ZLinkAuthorityExpectFound;
+import systems.zlink.framework.locations.ZLinkAuthorityGenerationTransition;
+import systems.zlink.framework.locations.ZLinkAuthorityPut;
+import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
+import systems.zlink.framework.locations.ZLinkAuthorityStored;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationChangeStampScope;
 import systems.zlink.framework.locations.ZLinkLocationKind;
@@ -18,9 +26,22 @@ import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
+import systems.zlink.framework.locations.ZLinkObjectCommitResult;
+import systems.zlink.framework.locations.ZLinkObjectReservation;
+import systems.zlink.framework.locations.ZLinkObjectReservationRequest;
+import systems.zlink.framework.locations.ZLinkObjectReserved;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimConflict;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimed;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseFound;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewStale;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewed;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
 import systems.zlink.framework.locations.ZLinkPeerLocationKey;
+import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
+import systems.zlink.framework.locations.ZLinkRelocationCapacityFence;
 import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest;
 import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquired;
 import systems.zlink.framework.locations.ZLinkRoutingIdSlotAllocationMember;
@@ -32,9 +53,152 @@ class ZLinkInMemoryLocationStoreTest {
     private static final RoutingId NODE_A = RoutingId.from(new byte[] {0x01});
 
     @Test
+    void ownerLeaseUsesExactTokenForReadRenewAndRelease() throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(
+            Clock.fixed(NOW, ZoneOffset.UTC));
+        var claimed = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
+                .toCompletableFuture().get());
+        assertInstanceOf(
+            ZLinkOwnerLeaseClaimConflict.class,
+            store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
+                .toCompletableFuture().get());
+        assertEquals(
+            claimed.token(),
+            assertInstanceOf(
+                ZLinkOwnerLeaseFound.class,
+                store.readOwnerLease("owner-a")
+                    .toCompletableFuture().get()).token());
+        assertInstanceOf(
+            ZLinkOwnerLeaseRenewStale.class,
+            store.renewOwnerLease(
+                    new ZLinkLocationOwnerToken("owner-a", 99),
+                    Duration.ofSeconds(30))
+                .toCompletableFuture().get());
+        assertInstanceOf(
+            ZLinkOwnerLeaseRenewed.class,
+            store.renewOwnerLease(
+                    claimed.token(),
+                    Duration.ofSeconds(30))
+                .toCompletableFuture().get());
+        assertEquals(
+            ZLinkOwnerLeaseReleaseResult.STALE,
+            store.releaseOwnerLease(
+                    new ZLinkLocationOwnerToken("owner-a", 99))
+                .toCompletableFuture().get());
+        assertEquals(
+            ZLinkOwnerLeaseReleaseResult.RELEASED,
+            store.releaseOwnerLease(claimed.token())
+                .toCompletableFuture().get());
+        var reclaimed = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
+                .toCompletableFuture().get());
+        assertEquals(
+            claimed.token().leaseGeneration() + 1,
+            reclaimed.token().leaseGeneration());
+    }
+
+    @Test
+    void newOwnerRejectsAnUnreservedCapacityFenceWithoutMutation()
+        throws Exception {
+        ZLinkInMemoryAuthorityStore store = newAuthorityStore();
+        var source = new ZLinkLocationOwnerToken("source", 1);
+        var target = new ZLinkLocationOwnerToken("target", 2);
+        String key = "zla1:a:4:mesh:4:test";
+        var created = createActive(store, key, source);
+
+        assertInstanceOf(
+            ZLinkAuthorityConflict.class,
+            store.compareExchange(
+                    key,
+                    new ZLinkAuthorityExpectFound(created.storeVersion()),
+                    new ZLinkAuthorityPut(
+                        new byte[] {2},
+                        ZLinkAuthorityGenerationTransition.NEW_OWNER,
+                        Optional.of(target),
+                        Optional.of(
+                            new ZLinkRelocationCapacityFence("missing"))),
+                    () -> false)
+                .toCompletableFuture().get());
+
+        var current = assertInstanceOf(
+            ZLinkAuthoritySnapshot.class,
+            store.read(key, () -> false).toCompletableFuture().get());
+        assertEquals(created.storeVersion(), current.storeVersion());
+        assertEquals(source.ownerId(), current.ownerId());
+        assertEquals(
+            source.leaseGeneration(),
+            current.ownerLeaseGeneration());
+    }
+
+    @Test
+    void creationReservationFencesTargetDescriptorLifecycleAndOwner()
+        throws Exception {
+        ZLinkInMemoryAuthorityStore store = newAuthorityStore();
+        var owner = new ZLinkLocationOwnerToken("target", 1);
+        var request = new ZLinkObjectReservationRequest(
+            ZLinkPlacementObjectKind.ACTOR,
+            "zla1:a:4:mesh:7:created",
+            "player",
+            Optional.empty(),
+            Optional.empty(),
+            "creation-root",
+            new byte[32],
+            32,
+            new ZLinkMeshNodeDescriptorKey("mesh", NODE_A),
+            7,
+            owner,
+            new byte[] {1},
+            1);
+        var reserved = assertInstanceOf(
+            ZLinkObjectReserved.class,
+            store.reserve(request, () -> false)
+                .toCompletableFuture().get()).reservation();
+        var wrongLifecycle = new ZLinkObjectReservation(
+            reserved.authorityKey(),
+            reserved.storeVersion(),
+            reserved.objectGeneration(),
+            reserved.authorityOwnerGeneration(),
+            reserved.reservationVersion(),
+            reserved.targetDescriptor(),
+            reserved.targetDescriptorLifecycleGeneration() + 1,
+            reserved.targetOwner());
+
+        assertEquals(
+            ZLinkObjectCommitResult.STALE,
+            store.commit(
+                    wrongLifecycle,
+                    new byte[] {2},
+                    () -> false)
+                .toCompletableFuture().get());
+        assertArrayEquals(
+            new byte[] {1},
+            assertInstanceOf(
+                ZLinkAuthoritySnapshot.class,
+                store.read(request.authorityKey(), () -> false)
+                    .toCompletableFuture().get()).payload());
+        assertEquals(
+            ZLinkObjectCommitResult.COMMITTED,
+            store.commit(
+                    reserved,
+                    new byte[] {2},
+                    () -> false)
+                .toCompletableFuture().get());
+        assertArrayEquals(
+            new byte[] {2},
+            assertInstanceOf(
+                ZLinkAuthoritySnapshot.class,
+                store.read(request.authorityKey(), () -> false)
+                    .toCompletableFuture().get()).payload());
+    }
+
+    @Test
     void newClaimRejectsWhenExistingOwnerLeaseIsLive() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
-        store.renewOwnerLease("owner-a", NODE_A, Duration.ofSeconds(30)).toCompletableFuture().get();
+        store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
+            .toCompletableFuture().get();
         var first = store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
@@ -143,10 +307,51 @@ class ZLinkInMemoryLocationStoreTest {
                 "group", members, 2, "owner-c", Duration.ofSeconds(30)))
                 .toCompletableFuture().get());
         assertEquals(1, replacement.allocation().slot());
-        assertEquals(2, replacement.allocation().owner().generation());
+        assertEquals(
+            2,
+            replacement.allocation().owner().leaseGeneration());
         assertEquals(ZLinkRoutingIdSlotReleaseResult.IGNORED_STALE,
             store.releaseRoutingIdSlot("group", 1, first.allocation().owner())
                 .toCompletableFuture().get());
+    }
+
+    private static ZLinkInMemoryAuthorityStore newAuthorityStore() {
+        return new ZLinkInMemoryAuthorityStore(
+            Clock.fixed(NOW, ZoneOffset.UTC),
+            ignored -> true,
+            (descriptor, generation, owner) -> true);
+    }
+
+    private static ZLinkAuthoritySnapshot createActive(
+        ZLinkInMemoryAuthorityStore store,
+        String key,
+        ZLinkLocationOwnerToken owner) throws Exception {
+        var reserved = assertInstanceOf(
+            ZLinkObjectReserved.class,
+            store.reserve(
+                    new ZLinkObjectReservationRequest(
+                        ZLinkPlacementObjectKind.ACTOR,
+                        key,
+                        "player",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "creation-root",
+                        new byte[32],
+                        32,
+                        new ZLinkMeshNodeDescriptorKey("mesh", NODE_A),
+                        7,
+                        owner,
+                        new byte[] {1},
+                        1),
+                    () -> false)
+                .toCompletableFuture().get()).reservation();
+        assertEquals(
+            ZLinkObjectCommitResult.COMMITTED,
+            store.commit(reserved, new byte[] {1}, () -> false)
+                .toCompletableFuture().get());
+        return assertInstanceOf(
+            ZLinkAuthoritySnapshot.class,
+            store.read(key, () -> false).toCompletableFuture().get());
     }
 
     private static ZLinkPeerLocation peer(String ownerId, RoutingId nodeRid, long generation) {

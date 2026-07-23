@@ -36,11 +36,19 @@ final class ZLinkRedisLocationKeys {
     }
 
     String leaseKeyPrefix() {
-        return prefix + ":lease:";
+        return authorityBase() + "lease:";
     }
 
     String leaseIndexKey() {
-        return prefix + ":leases";
+        return authorityBase() + "leases";
+    }
+
+    String leaseStateKey() {
+        return authorityBase() + "lease-state";
+    }
+
+    String leaseGenerationKey() {
+        return authorityBase() + "lease-generation";
     }
 
     String routingIdSlotGroupKey(String groupName) {
@@ -81,6 +89,14 @@ final class ZLinkRedisLocationKeys {
 
     String authorityAggregateKey(java.util.UUID aggregateId) {
         return authorityBase() + "aggregate:" + aggregateId;
+    }
+
+    String relocationCapacityStateKey() {
+        return authorityBase() + "relocation-capacity";
+    }
+
+    String placementCapacityStateKey() {
+        return authorityBase() + "placement-capacity";
     }
 
     String encodedAuthorityKey(String authorityKey) {

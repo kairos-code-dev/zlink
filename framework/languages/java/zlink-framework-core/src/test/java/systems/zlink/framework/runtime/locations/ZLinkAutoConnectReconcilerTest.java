@@ -38,7 +38,7 @@ final class ZLinkAutoConnectReconcilerTest {
     void storeFailureRetriesOnlyPendingTargetsWithinConfiguredGrace() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
-        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+        store.claimOwnerLease("remote-owner", Duration.ofSeconds(30))
             .toCompletableFuture().join();
         store.updatePeer(
             peer(ZLinkLocationRole.ROUTER, RoutingId.from("remote-node"),
@@ -82,7 +82,7 @@ final class ZLinkAutoConnectReconcilerTest {
     void storeFailureDoesNotRetryPendingTargetsAfterConfiguredGrace() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
-        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+        store.claimOwnerLease("remote-owner", Duration.ofSeconds(30))
             .toCompletableFuture().join();
         store.updatePeer(
             peer(ZLinkLocationRole.ROUTER, RoutingId.from("remote-node"),
@@ -213,7 +213,7 @@ final class ZLinkAutoConnectReconcilerTest {
             RoutingId.from("local-node"),
             "inproc://local",
             "local-owner");
-        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+        store.claimOwnerLease("remote-owner", Duration.ofSeconds(30))
             .toCompletableFuture()
             .join();
         var remoteWrite = store.updatePeer(
@@ -274,7 +274,7 @@ final class ZLinkAutoConnectReconcilerTest {
     void dialingCapabilityConnectsLivePeerAndDisconnectsRemovedPeer() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
-        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+        store.claimOwnerLease("remote-owner", Duration.ofSeconds(30))
             .toCompletableFuture()
             .join();
         var remoteWrite = store.updatePeer(
@@ -343,7 +343,7 @@ final class ZLinkAutoConnectReconcilerTest {
         consumer.tick().toCompletableFuture().join();
         assertEquals(List.of(), executor.connected);
 
-        store.renewOwnerLease("provider-owner", RoutingId.from("provider-node"), Duration.ofSeconds(30))
+        store.claimOwnerLease("provider-owner", Duration.ofSeconds(30))
             .toCompletableFuture()
             .join();
         store.updatePeer(
@@ -368,7 +368,7 @@ final class ZLinkAutoConnectReconcilerTest {
     void samePeerIdentityWithNewOwnerReplacesActiveConnection() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
-        store.renewOwnerLease("remote-owner-1", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+        store.claimOwnerLease("remote-owner-1", Duration.ofSeconds(30))
             .toCompletableFuture()
             .join();
         ZLinkPeerLocation first = peer(
@@ -404,7 +404,7 @@ final class ZLinkAutoConnectReconcilerTest {
                 new ZLinkLocationOwnerToken("remote-owner-1", firstWrite.generation()))
             .toCompletableFuture()
             .join();
-        store.renewOwnerLease("remote-owner-2", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+        store.claimOwnerLease("remote-owner-2", Duration.ofSeconds(30))
             .toCompletableFuture()
             .join();
         store.updatePeer(
@@ -429,7 +429,7 @@ final class ZLinkAutoConnectReconcilerTest {
     void manualNonInitiatorTracksOwnerReplacementWithoutOwningInitialConnect() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "play-b");
-        store.renewOwnerLease("remote-owner-1", RoutingId.from("play-a"), Duration.ofSeconds(30))
+        store.claimOwnerLease("remote-owner-1", Duration.ofSeconds(30))
             .toCompletableFuture().join();
         ZLinkPeerLocation first = routePeer("play-a", "inproc://play-a", "remote-owner-1");
         var firstWrite = store.updatePeer(first, ZLinkLocationWriteIntent.NEW_CLAIM)
@@ -463,7 +463,7 @@ final class ZLinkAutoConnectReconcilerTest {
         reconciler.tick().toCompletableFuture().join();
         assertEquals(List.of(), executor.disconnected);
         assertEquals(List.of(), executor.connected);
-        store.renewOwnerLease("remote-owner-2", RoutingId.from("play-a"), Duration.ofSeconds(30))
+        store.claimOwnerLease("remote-owner-2", Duration.ofSeconds(30))
             .toCompletableFuture().join();
         var secondWrite = store.updatePeer(
                 routePeer("play-a", "inproc://play-a", "remote-owner-2"),
@@ -495,7 +495,7 @@ final class ZLinkAutoConnectReconcilerTest {
     void storeFailureKeepsExistingConnectionUntilOwnersCanRepublishAfterRecovery() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         ZLinkLocationRuntime runtime = runtime(store, "local-owner", "local-node");
-        store.renewOwnerLease("remote-owner", RoutingId.from("remote-node"), Duration.ofSeconds(30))
+        store.claimOwnerLease("remote-owner", Duration.ofSeconds(30))
             .toCompletableFuture()
             .join();
         var remoteWrite = store.updatePeer(

@@ -42,7 +42,7 @@ final class ZLinkActorClientRuntimeTest {
     @Test
     void sendAndRequestUseActorRefAndUseBackendNoBindOperations() {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
-        store.renewOwnerLease("owner", RoutingId.from("actor-node"), Duration.ofMinutes(1))
+        store.claimOwnerLease("owner", Duration.ofMinutes(1))
             .toCompletableFuture()
             .join();
         store.updateActor(
@@ -259,7 +259,7 @@ final class ZLinkActorClientRuntimeTest {
 
     private static ZLinkInMemoryLocationStore storeWithActor(String actorId, long generation) {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
-        store.renewOwnerLease("owner", RoutingId.from("actor-node"), Duration.ofMinutes(1))
+        store.claimOwnerLease("owner", Duration.ofMinutes(1))
             .toCompletableFuture()
             .join();
         store.updateActor(

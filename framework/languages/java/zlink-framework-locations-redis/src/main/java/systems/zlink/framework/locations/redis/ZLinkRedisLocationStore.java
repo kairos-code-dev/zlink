@@ -225,11 +225,32 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLease(
+    public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult>
+        claimOwnerLease(
         String ownerId,
-        RoutingId nodeRid,
         Duration leaseTtl) {
-        return scripts.renewOwnerLeaseAsync(ownerId, nodeRid, leaseTtl);
+        return scripts.claimOwnerLeaseAsync(ownerId, leaseTtl);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseReadResult>
+        readOwnerLease(String ownerId) {
+        return scripts.readOwnerLeaseAsync(ownerId);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult>
+        renewOwnerLease(
+            systems.zlink.framework.locations.ZLinkLocationOwnerToken token,
+            Duration leaseTtl) {
+        return scripts.renewOwnerLeaseAsync(token, leaseTtl);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult>
+        releaseOwnerLease(
+            systems.zlink.framework.locations.ZLinkLocationOwnerToken token) {
+        return scripts.releaseOwnerLeaseAsync(token);
     }
 
     @Override
@@ -253,18 +274,8 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
-    public CompletionStage<Boolean> removeOwnerLease(String ownerId) {
-        return scripts.removeOwnerLeaseAsync(ownerId);
-    }
-
-    @Override
     public CompletionStage<Long> removeAllByOwner(String ownerId) {
         return scripts.removeAllByOwnerAsync(ownerId);
-    }
-
-    @Override
-    public CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeases() {
-        return scripts.listOwnerLeasesAsync();
     }
 
     @Override
@@ -317,6 +328,22 @@ public final class ZLinkRedisLocationStore implements
         ZLinkObjectReservation reservation,
         ZLinkStoreCancellation cancellation) {
         return authority.abort(reservation, cancellation);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkRelocationCapacityReserveResult>
+        reserveRelocationCapacity(
+            systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest request,
+            ZLinkStoreCancellation cancellation) {
+        return authority.reserveRelocationCapacity(request, cancellation);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkRelocationCapacityAbortResult>
+        abortRelocationCapacity(
+            systems.zlink.framework.locations.ZLinkRelocationCapacityFence fence,
+            ZLinkStoreCancellation cancellation) {
+        return authority.abortRelocationCapacity(fence, cancellation);
     }
 
     @Override

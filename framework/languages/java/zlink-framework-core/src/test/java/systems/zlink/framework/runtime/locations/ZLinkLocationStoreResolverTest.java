@@ -126,7 +126,9 @@ class ZLinkLocationStoreResolverTest {
     public static class CountingLocationStore implements ZLinkLocationStore {
         static final AtomicInteger created = new AtomicInteger();
         private final ZLinkInMemoryAuthorityStore authority =
-            new ZLinkInMemoryAuthorityStore(java.time.Clock.systemUTC());
+            new ZLinkInMemoryAuthorityStore(
+                java.time.Clock.systemUTC(),
+                ignored -> true);
 
         public CountingLocationStore() {
             created.incrementAndGet();
@@ -178,6 +180,22 @@ class ZLinkLocationStoreResolverTest {
             systems.zlink.framework.locations.ZLinkObjectReservation reservation,
             systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
             return authority.abort(reservation, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkRelocationCapacityReserveResult>
+            reserveRelocationCapacity(
+                systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest request,
+                systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.reserveRelocationCapacity(request, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkRelocationCapacityAbortResult>
+            abortRelocationCapacity(
+                systems.zlink.framework.locations.ZLinkRelocationCapacityFence fence,
+                systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.abortRelocationCapacity(fence, cancellation);
         }
 
         @Override
@@ -302,26 +320,46 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
-        public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLease(
+        public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult>
+            claimOwnerLease(
             String ownerId,
-            RoutingId nodeRid,
             Duration leaseTtl) {
-            return CompletableFuture.failedFuture(new UnsupportedOperationException("write not supported"));
+            return CompletableFuture.completedFuture(
+                new systems.zlink.framework.locations.ZLinkOwnerLeaseClaimed(
+                    new ZLinkLocationOwnerToken(ownerId, 1L),
+                    java.time.Instant.EPOCH.plus(leaseTtl),
+                    java.time.Instant.EPOCH));
         }
 
         @Override
-        public CompletionStage<Boolean> removeOwnerLease(String ownerId) {
-            return CompletableFuture.failedFuture(new UnsupportedOperationException("write not supported"));
+        public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseReadResult>
+            readOwnerLease(String ownerId) {
+            return CompletableFuture.completedFuture(
+                new systems.zlink.framework.locations.ZLinkOwnerLeaseMissing());
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult>
+            renewOwnerLease(
+                ZLinkLocationOwnerToken token,
+                Duration leaseTtl) {
+            return CompletableFuture.completedFuture(
+                new systems.zlink.framework.locations.ZLinkOwnerLeaseRenewed(
+                    java.time.Instant.EPOCH.plus(leaseTtl),
+                    java.time.Instant.EPOCH));
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult>
+            releaseOwnerLease(ZLinkLocationOwnerToken token) {
+            return CompletableFuture.completedFuture(
+                systems.zlink.framework.locations
+                    .ZLinkOwnerLeaseReleaseResult.RELEASED);
         }
 
         @Override
         public CompletionStage<Long> removeAllByOwner(String ownerId) {
             return CompletableFuture.completedFuture(0L);
-        }
-
-        @Override
-        public CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeases() {
-            return CompletableFuture.completedFuture(new ZLinkOwnerLeaseSnapshot(List.of(), java.time.Instant.EPOCH));
         }
 
         private CompletionStage<ZLinkLocationWriteResult> unsupportedWrite() {
@@ -337,13 +375,28 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
-        public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLease(
+        public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult>
+            claimOwnerLease(
             String ownerId,
-            RoutingId nodeRid,
             Duration leaseTtl) {
             Instant storeNow = storeTimes.removeFirst();
             return CompletableFuture.completedFuture(
-                new ZLinkOwnerLeaseRenewal(storeNow.plus(leaseTtl), storeNow));
+                new systems.zlink.framework.locations.ZLinkOwnerLeaseClaimed(
+                    new ZLinkLocationOwnerToken(ownerId, 1L),
+                    storeNow.plus(leaseTtl),
+                    storeNow));
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult>
+            renewOwnerLease(
+                ZLinkLocationOwnerToken token,
+                Duration leaseTtl) {
+            Instant storeNow = storeTimes.removeFirst();
+            return CompletableFuture.completedFuture(
+                new systems.zlink.framework.locations.ZLinkOwnerLeaseRenewed(
+                    storeNow.plus(leaseTtl),
+                    storeNow));
         }
     }
 }

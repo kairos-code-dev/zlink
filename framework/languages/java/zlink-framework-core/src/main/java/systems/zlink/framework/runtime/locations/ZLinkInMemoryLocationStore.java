@@ -14,6 +14,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationFilter;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
@@ -57,7 +58,8 @@ public final class ZLinkInMemoryLocationStore implements
     private final Object gate = new Object();
     private final Clock clock;
     private final ZLinkInMemoryAuthorityStore authority;
-    private final Map<String, ZLinkOwnerLease> leases = new HashMap<>();
+    private final Map<String, LeaseRow> leases = new HashMap<>();
+    private long ownerLeaseGeneration;
     private final RowTable<ZLinkPeerLocation> peers = new RowTable<>();
     private final RowTable<ZLinkSpotLocation> spots = new RowTable<>();
     private final RowTable<ZLinkActorLocation> actors = new RowTable<>();
@@ -71,7 +73,9 @@ public final class ZLinkInMemoryLocationStore implements
 
     public ZLinkInMemoryLocationStore(Clock clock) {
         this.clock = Objects.requireNonNull(clock, "clock");
-        this.authority = new ZLinkInMemoryAuthorityStore(clock);
+        this.authority = new ZLinkInMemoryAuthorityStore(
+            clock,
+            this::isExactOwnerLeaseLive);
     }
 
     @Override
@@ -120,6 +124,22 @@ public final class ZLinkInMemoryLocationStore implements
         systems.zlink.framework.locations.ZLinkObjectReservation reservation,
         systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
         return authority.abort(reservation, cancellation);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkRelocationCapacityReserveResult>
+        reserveRelocationCapacity(
+            systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest request,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+        return authority.reserveRelocationCapacity(request, cancellation);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkRelocationCapacityAbortResult>
+        abortRelocationCapacity(
+            systems.zlink.framework.locations.ZLinkRelocationCapacityFence fence,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+        return authority.abortRelocationCapacity(fence, cancellation);
     }
 
     @Override
@@ -341,22 +361,90 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
-    public CompletionStage<ZLinkOwnerLeaseRenewal> renewOwnerLease(
+    public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult>
+        claimOwnerLease(
         String ownerId,
-        RoutingId nodeRid,
         Duration leaseTtl) {
         synchronized (gate) {
             Instant now = clock.instant();
+            LeaseRow current = leases.get(ownerId);
+            if (current != null && current.expiresAt().isAfter(now)) {
+                return completed(new systems.zlink.framework.locations
+                    .ZLinkOwnerLeaseClaimConflict());
+            }
+            if (ownerLeaseGeneration == Long.MAX_VALUE) {
+                return completed(new systems.zlink.framework.locations
+                    .ZLinkOwnerLeaseGenerationExhausted());
+            }
+            ZLinkLocationOwnerToken token = new ZLinkLocationOwnerToken(
+                ownerId,
+                ++ownerLeaseGeneration);
             Instant expiresAt = now.plus(leaseTtl);
-            leases.put(ownerId, new ZLinkOwnerLease(ownerId, nodeRid, expiresAt, now));
-            return completed(new ZLinkOwnerLeaseRenewal(expiresAt, now));
+            leases.put(ownerId, new LeaseRow(token, expiresAt));
+            return completed(new systems.zlink.framework.locations
+                .ZLinkOwnerLeaseClaimed(token, expiresAt, now));
         }
     }
 
     @Override
-    public CompletionStage<Boolean> removeOwnerLease(String ownerId) {
+    public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseReadResult>
+        readOwnerLease(String ownerId) {
         synchronized (gate) {
-            return completed(leases.remove(ownerId) != null);
+            Instant now = clock.instant();
+            LeaseRow current = leases.get(ownerId);
+            if (current == null || !current.expiresAt().isAfter(now)) {
+                leases.remove(ownerId);
+                return completed(new systems.zlink.framework.locations
+                    .ZLinkOwnerLeaseMissing());
+            }
+            return completed(new systems.zlink.framework.locations
+                .ZLinkOwnerLeaseFound(
+                    current.token(),
+                    current.expiresAt(),
+                    now));
+        }
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult>
+        renewOwnerLease(
+            ZLinkLocationOwnerToken token,
+            Duration leaseTtl) {
+        synchronized (gate) {
+            Instant now = clock.instant();
+            LeaseRow current = leases.get(token.ownerId());
+            if (current == null
+                || !current.expiresAt().isAfter(now)
+                || !current.token().equals(token)) {
+                return completed(new systems.zlink.framework.locations
+                    .ZLinkOwnerLeaseRenewStale());
+            }
+            Instant expiresAt = now.plus(leaseTtl);
+            leases.put(token.ownerId(), new LeaseRow(token, expiresAt));
+            return completed(new systems.zlink.framework.locations
+                .ZLinkOwnerLeaseRenewed(expiresAt, now));
+        }
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult>
+        releaseOwnerLease(ZLinkLocationOwnerToken token) {
+        synchronized (gate) {
+            Instant now = clock.instant();
+            LeaseRow current = leases.get(token.ownerId());
+            if (current == null
+                || !current.expiresAt().isAfter(now)
+                || !current.token().equals(token)) {
+                if (current != null
+                    && !current.expiresAt().isAfter(now)) {
+                    leases.remove(token.ownerId());
+                }
+                return completed(systems.zlink.framework.locations
+                    .ZLinkOwnerLeaseReleaseResult.STALE);
+            }
+            leases.remove(token.ownerId());
+            return completed(systems.zlink.framework.locations
+                .ZLinkOwnerLeaseReleaseResult.RELEASED);
         }
     }
 
@@ -369,13 +457,6 @@ public final class ZLinkInMemoryLocationStore implements
             removed += removeByOwner(actors, ownerId, ZLinkActorLocation::ownerId, ZLinkLocationKind.ACTOR, row -> null);
             removed += removeByOwner(routes, ownerId, ZLinkRouteLocation::ownerId, ZLinkLocationKind.ROUTE, row -> null);
             return completed(removed);
-        }
-    }
-
-    @Override
-    public CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeases() {
-        synchronized (gate) {
-            return completed(new ZLinkOwnerLeaseSnapshot(List.copyOf(leases.values()), clock.instant()));
         }
     }
 
@@ -484,9 +565,23 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     private void renewAllocationOwner(String ownerId, Duration leaseTtl, Instant now) {
-        ZLinkOwnerLease current = leases.get(ownerId);
-        RoutingId nodeRid = current == null ? RoutingId.from(ownerId) : current.nodeRid();
-        leases.put(ownerId, new ZLinkOwnerLease(ownerId, nodeRid, now.plus(leaseTtl), now));
+        LeaseRow current = leases.get(ownerId);
+        if (current == null) {
+            if (ownerLeaseGeneration == Long.MAX_VALUE) {
+                throw new ZLinkConfigurationException(
+                    "owner lease generation is exhausted");
+            }
+            current = new LeaseRow(
+                new ZLinkLocationOwnerToken(
+                    ownerId,
+                    ++ownerLeaseGeneration),
+                now.plus(leaseTtl));
+        }
+        leases.put(
+            ownerId,
+            new LeaseRow(
+                current.token(),
+                now.plus(leaseTtl)));
     }
 
     private static List<ZLinkRoutingIdSlotAllocationMember> normalizeMembers(
@@ -550,13 +645,15 @@ public final class ZLinkInMemoryLocationStore implements
             TRow current = table.rows.get(key);
             if (current == null
                 || !Objects.equals(ownerOf.apply(current), owner.ownerId())
-                || generationOf.apply(current) != owner.generation()) {
+                || generationOf.apply(current) != owner.leaseGeneration()) {
                 return ZLinkLocationWriteResult.ignoredStale();
             }
 
             table.rows.remove(key);
             bump(kind, meshName);
-            return ZLinkLocationWriteResult.stored(owner.generation(), clock.instant());
+            return ZLinkLocationWriteResult.stored(
+                owner.leaseGeneration(),
+                clock.instant());
         }
     }
 
@@ -613,8 +710,18 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     private boolean isOwnerLive(String ownerId, Instant now) {
-        ZLinkOwnerLease lease = leases.get(ownerId);
-        return lease != null && lease.leaseExpiresAt().isAfter(now);
+        LeaseRow lease = leases.get(ownerId);
+        return lease != null && lease.expiresAt().isAfter(now);
+    }
+
+    private boolean isExactOwnerLeaseLive(
+        ZLinkLocationOwnerToken token) {
+        synchronized (gate) {
+            LeaseRow lease = leases.get(token.ownerId());
+            return lease != null
+                && lease.token().equals(token)
+                && lease.expiresAt().isAfter(clock.instant());
+        }
     }
 
     private void bump(ZLinkLocationKind kind, String meshName) {
@@ -684,5 +791,10 @@ public final class ZLinkInMemoryLocationStore implements
             this.members = List.copyOf(members);
             this.slotCount = slotCount;
         }
+    }
+
+    private record LeaseRow(
+        ZLinkLocationOwnerToken token,
+        Instant expiresAt) {
     }
 }

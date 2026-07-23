@@ -22,6 +22,7 @@ import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimed;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
 import systems.zlink.framework.locations.ZLinkPeerLocationKey;
@@ -49,7 +50,8 @@ class ZLinkRedisLocationStoreTest {
             .setConnectionString(endpoint)
             .setKeyPrefix("zlink:test:" + UUID.randomUUID()));
 
-        store.renewOwnerLease("owner-a", NODE_A, Duration.ofSeconds(30)).toCompletableFuture().get();
+        store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
+            .toCompletableFuture().get();
         var first = store.updatePeer(peer("owner-a", NODE_A, 0), ZLinkLocationWriteIntent.NEW_CLAIM)
             .toCompletableFuture()
             .get();
@@ -85,7 +87,8 @@ class ZLinkRedisLocationStoreTest {
             .setConnectionString(endpoint)
             .setKeyPrefix("zlink:test:" + UUID.randomUUID()));
 
-        store.renewOwnerLease("owner-a", NODE_A, Duration.ofSeconds(30)).toCompletableFuture().get();
+        store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
+            .toCompletableFuture().get();
         store.updateSpot(spot("alpha"), ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().get();
         store.updateSpot(spot("beta"), ZLinkLocationWriteIntent.NEW_CLAIM).toCompletableFuture().get();
 
@@ -188,6 +191,10 @@ class ZLinkRedisLocationStoreTest {
             new ZLinkRedisLocationOptions()
                 .setConnectionString(endpoint)
                 .setKeyPrefix("zlink:authority-test:" + UUID.randomUUID()))) {
+            var owner = assertInstanceOf(
+                ZLinkOwnerLeaseClaimed.class,
+                store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
+                    .toCompletableFuture().get()).token();
             var request = new systems.zlink.framework.locations
                 .ZLinkObjectReservationRequest(
                     systems.zlink.framework.locations.ZLinkPlacementObjectKind.ACTOR,
@@ -201,13 +208,32 @@ class ZLinkRedisLocationStoreTest {
                     new systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey(
                         "game",
                         NODE_A),
-                    new systems.zlink.framework.locations.ZLinkLocationOwnerToken(
-                        "owner-a",
-                        7),
+                    1,
+                    owner,
+                    new byte[] {9, 8},
                     1);
             var reserved = assertInstanceOf(
                 systems.zlink.framework.locations.ZLinkObjectReserved.class,
                 store.reserve(request, () -> false).toCompletableFuture().get());
+            var creating = assertInstanceOf(
+                systems.zlink.framework.locations.ZLinkAuthoritySnapshot.class,
+                store.read(request.authorityKey(), () -> false)
+                    .toCompletableFuture().get());
+            assertArrayEquals(new byte[] {9, 8}, creating.payload());
+            assertEquals(owner.ownerId(), creating.ownerId());
+            assertEquals(
+                owner.leaseGeneration(),
+                creating.ownerLeaseGeneration());
+            assertEquals(
+                systems.zlink.framework.locations
+                    .ZLinkPlacementAllocationState.PENDING,
+                creating.allocation().state());
+            assertEquals(
+                request.targetDescriptor(),
+                creating.allocation().descriptor());
+            assertEquals(
+                request.pendingCapacityDelta(),
+                creating.allocation().capacityDelta());
             assertEquals(
                 systems.zlink.framework.locations.ZLinkObjectCommitResult.COMMITTED,
                 store.commit(
@@ -219,6 +245,10 @@ class ZLinkRedisLocationStoreTest {
                 systems.zlink.framework.locations.ZLinkAuthoritySnapshot.class,
                 store.read(request.authorityKey(), () -> false)
                     .toCompletableFuture().get());
+            assertEquals(
+                systems.zlink.framework.locations
+                    .ZLinkPlacementAllocationState.ACTIVE,
+                current.allocation().state());
             var updated = assertInstanceOf(
                 systems.zlink.framework.locations.ZLinkAuthorityStored.class,
                 store.compareExchange(
@@ -228,10 +258,13 @@ class ZLinkRedisLocationStoreTest {
                         new systems.zlink.framework.locations.ZLinkAuthorityPut(
                             new byte[] {3, 4},
                             systems.zlink.framework.locations
-                                .ZLinkAuthorityGenerationTransition.PRESERVE),
+                                .ZLinkAuthorityGenerationTransition.PRESERVE,
+                            Optional.empty(),
+                            Optional.empty()),
                         () -> false)
                     .toCompletableFuture().get());
             assertArrayEquals(new byte[] {3, 4}, updated.payload());
+            assertEquals(current.allocation(), updated.allocation());
             var page = assertInstanceOf(
                 systems.zlink.framework.locations.ZLinkAuthorityPage.class,
                 store.list("zla1:a:", Optional.empty(), 10, () -> false)

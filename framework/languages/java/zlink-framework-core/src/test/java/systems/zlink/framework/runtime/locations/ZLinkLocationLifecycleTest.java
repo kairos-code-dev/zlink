@@ -106,7 +106,10 @@ class ZLinkLocationLifecycleTest {
             assertNull(store.resolveSpot(new systems.zlink.framework.locations.ZLinkSpotLocationKey("mesh", SPOT_RID))
                 .toCompletableFuture()
                 .get());
-            assertTrue(store.listOwnerLeases().toCompletableFuture().get().leases().isEmpty());
+            assertTrue(store.readOwnerLease("owner-a")
+                .toCompletableFuture().get()
+                instanceof systems.zlink.framework.locations
+                    .ZLinkOwnerLeaseMissing);
         }
     }
 

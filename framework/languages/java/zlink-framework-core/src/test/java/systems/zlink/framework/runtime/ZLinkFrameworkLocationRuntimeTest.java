@@ -57,34 +57,8 @@ class ZLinkFrameworkLocationRuntimeTest {
         options.addLocationStore(store);
 
         ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new MinimalBackend());
-        String ownerId = store.listOwnerLeases()
-            .toCompletableFuture()
-            .get()
-            .leases()
-            .get(0)
-            .ownerId();
-        store.updatePeer(
-                new ZLinkPeerLocation(
-                    ZLinkLocationAutoConnectType.ROUTE_MESH,
-                    "mesh",
-                    RoutingId.from("node"),
-                    ZLinkLocationRole.ROUTER,
-                    "tcp://127.0.0.1:6000",
-                    1,
-                    false,
-                    0,
-                    Map.of(),
-                    List.of(),
-                    ownerId,
-                    0,
-                    Instant.EPOCH),
-                ZLinkLocationWriteIntent.NEW_CLAIM)
-            .toCompletableFuture()
-            .get();
-
         runtime.closeAsync().toCompletableFuture().get();
 
-        assertEquals(List.of(), store.listOwnerLeases().toCompletableFuture().get().leases());
         assertEquals(List.of(), store.listPeerLocations(ZLinkPeerLocationFilter.all()).toCompletableFuture().get());
     }
 
@@ -119,8 +93,6 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .get();
             assertEquals(1, rows.items().size());
             assertEquals(spotRid, rows.items().get(0).spotRid());
-            assertEquals(1, store.listOwnerLeases().toCompletableFuture().get().leases().size());
-
             assertTrue(runtime.spotManager().close(spotRid).toCompletableFuture().get());
             assertEquals(
                 List.of(),
@@ -169,13 +141,12 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .toCompletableFuture()
                 .get()
                 .items());
-        assertEquals(List.of(), store.listOwnerLeases().toCompletableFuture().get().leases());
     }
 
     @Test
     void actorCreationConflictThrowsCreateRejectedKind() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
-        store.renewOwnerLease("owner-b", RoutingId.from("other-node"), Duration.ofSeconds(30))
+        store.claimOwnerLease("owner-b", Duration.ofSeconds(30))
             .toCompletableFuture()
             .get();
         store.updateActor(

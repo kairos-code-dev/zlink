@@ -42,7 +42,7 @@ class ZLinkStoreLocationResolversTest {
             .toCompletableFuture()
             .get());
 
-        store.renewOwnerLease("owner-a", NODE, Duration.ofSeconds(30))
+        store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
             .toCompletableFuture()
             .get();
 
@@ -73,7 +73,7 @@ class ZLinkStoreLocationResolversTest {
         ZLinkLocationOptions options = new ZLinkLocationOptions();
         options.setPollingInterval(Duration.ofMillis(1));
         ZLinkLiveLocationRows liveRows = ZLinkLiveLocationRows.create(stores, options);
-        store.renewOwnerLease("owner-a", NODE, Duration.ofSeconds(30))
+        store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
             .toCompletableFuture()
             .get();
         store.updateSpot(spot("owner-a", 0), ZLinkLocationWriteIntent.NEW_CLAIM)
@@ -94,7 +94,7 @@ class ZLinkStoreLocationResolversTest {
     @Test
     void actorResolverTreatsPendingRowWithoutActorRefAsMiss() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(Clock.fixed(NOW, ZoneOffset.UTC));
-        store.renewOwnerLease("owner-a", NODE, Duration.ofSeconds(30))
+        store.claimOwnerLease("owner-a", Duration.ofSeconds(30))
             .toCompletableFuture()
             .get();
         store.updateActor(

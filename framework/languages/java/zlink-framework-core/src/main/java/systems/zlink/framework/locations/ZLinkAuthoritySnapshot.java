@@ -10,12 +10,14 @@ public record ZLinkAuthoritySnapshot(
     long authorityOwnerGeneration,
     String ownerId,
     long ownerLeaseGeneration,
+    ZLinkPlacementAllocation allocation,
     Instant storeNow)
     implements ZLinkAuthorityReadResult {
     public ZLinkAuthoritySnapshot {
         Objects.requireNonNull(storeVersion, "storeVersion");
         payload = Objects.requireNonNull(payload, "payload").clone();
         Objects.requireNonNull(ownerId, "ownerId");
+        Objects.requireNonNull(allocation, "allocation");
         Objects.requireNonNull(storeNow, "storeNow");
     }
 

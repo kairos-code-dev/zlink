@@ -46,6 +46,7 @@ import systems.zlink.framework.locations.ZLinkLocationChangeStampStore;
 import systems.zlink.framework.locations.ZLinkLocationChangeType;
 import systems.zlink.framework.locations.ZLinkLocationChanged;
 import systems.zlink.framework.locations.ZLinkLocationKind;
+import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationKey;
 import systems.zlink.framework.locations.ZLinkLocationOptions;
 import systems.zlink.framework.locations.ZLinkLocationPage;
@@ -59,7 +60,6 @@ import systems.zlink.framework.locations.ZLinkLocationWatchStore;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.locations.ZLinkOwnerLease;
-import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseStore;
 import systems.zlink.framework.locations.ZLinkPageRequest;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
@@ -187,24 +187,31 @@ final class LocationContractTest {
         Method listLivePeers = ZLinkPeerLocationResolver.class.getMethod(
             "listLivePeers",
             ZLinkPeerLocationFilter.class);
+        Method claimOwnerLease = ZLinkOwnerLeaseStore.class.getMethod(
+            "claimOwnerLease",
+            String.class,
+            java.time.Duration.class);
+        Method readOwnerLease = ZLinkOwnerLeaseStore.class.getMethod(
+            "readOwnerLease",
+            String.class);
         Method renewOwnerLease = ZLinkOwnerLeaseStore.class.getMethod(
             "renewOwnerLease",
-            String.class,
-            RoutingId.class,
+            ZLinkLocationOwnerToken.class,
             java.time.Duration.class);
-        Method removeOwnerLease = ZLinkOwnerLeaseStore.class.getMethod(
-            "removeOwnerLease",
-            String.class);
+        Method releaseOwnerLease = ZLinkOwnerLeaseStore.class.getMethod(
+            "releaseOwnerLease",
+            ZLinkLocationOwnerToken.class);
         Method removeAllByOwner = ZLinkLocationStore.class.getMethod(
             "removeAllByOwner",
             String.class);
         assertEquals(CompletionStage.class, updatePeer.getReturnType());
         assertEquals(CompletionStage.class, listPeerLocations.getReturnType());
         assertEquals(CompletionStage.class, listLivePeers.getReturnType());
+        assertEquals(CompletionStage.class, claimOwnerLease.getReturnType());
+        assertEquals(CompletionStage.class, readOwnerLease.getReturnType());
         assertEquals(CompletionStage.class, renewOwnerLease.getReturnType());
-        assertEquals(CompletionStage.class, removeOwnerLease.getReturnType());
+        assertEquals(CompletionStage.class, releaseOwnerLease.getReturnType());
         assertEquals(CompletionStage.class, removeAllByOwner.getReturnType());
-        assertEquals(ZLinkOwnerLeaseRenewal.class, ZLinkOwnerLeaseRenewal.class);
     }
 
     @Test

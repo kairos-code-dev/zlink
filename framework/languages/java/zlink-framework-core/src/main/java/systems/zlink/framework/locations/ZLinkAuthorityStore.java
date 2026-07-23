@@ -33,6 +33,16 @@ public interface ZLinkAuthorityStore {
         ZLinkObjectReservation reservation,
         ZLinkStoreCancellation cancellation);
 
+    CompletionStage<ZLinkRelocationCapacityReserveResult>
+        reserveRelocationCapacity(
+            ZLinkRelocationCapacityReservationRequest request,
+            ZLinkStoreCancellation cancellation);
+
+    CompletionStage<ZLinkRelocationCapacityAbortResult>
+        abortRelocationCapacity(
+            ZLinkRelocationCapacityFence fence,
+            ZLinkStoreCancellation cancellation);
+
     CompletionStage<ZLinkAggregatePrepareResult> prepareAggregate(
         ZLinkAggregatePrepareRequest request,
         ZLinkStoreCancellation cancellation);

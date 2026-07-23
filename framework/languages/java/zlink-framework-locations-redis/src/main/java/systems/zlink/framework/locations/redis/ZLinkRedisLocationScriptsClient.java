@@ -20,6 +20,17 @@ import systems.zlink.framework.locations.ZLinkLocationWriteResult;
 import systems.zlink.framework.locations.ZLinkOwnerLease;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimed;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimConflict;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseGenerationExhausted;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseReadResult;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseFound;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseMissing;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewResult;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewed;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewStale;
+import systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult;
 import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest;
 import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireResult;
 import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquired;
@@ -65,6 +76,105 @@ final class ZLinkRedisLocationScriptsClient {
             .exceptionally(ZLinkRedisLocationScriptsClient::propagateWriteFailure);
     }
 
+    CompletionStage<ZLinkOwnerLeaseClaimResult> claimOwnerLeaseAsync(
+        String ownerId,
+        Duration leaseTtl) {
+        long ttlMs = Math.max(1L, leaseTtl.toMillis());
+        return connection.commands()
+            .thenCompose(redis -> redis.<List<Object>>eval(
+                ZLinkRedisLocationScripts.CLAIM_OWNER_LEASE,
+                ScriptOutputType.MULTI,
+                new String[] {
+                    keys.leaseStateKey(),
+                    keys.leaseGenerationKey(),
+                    keys.leaseKey(ownerId)
+                },
+                ownerId,
+                Long.toString(ttlMs)))
+            .<ZLinkOwnerLeaseClaimResult>thenApply(raw -> {
+                String status = string(raw.getFirst());
+                return switch (status) {
+                    case "claimed" -> new ZLinkOwnerLeaseClaimed(
+                        new ZLinkLocationOwnerToken(
+                            ownerId,
+                            number(raw.get(1))),
+                        fromUnixMs(number(raw.get(2))),
+                        fromUnixMs(number(raw.get(3))));
+                    case "generation-exhausted" ->
+                        new ZLinkOwnerLeaseGenerationExhausted();
+                    default -> new ZLinkOwnerLeaseClaimConflict();
+                };
+            })
+            .exceptionally(
+                ZLinkRedisLocationScriptsClient::propagateWriteFailure);
+    }
+
+    CompletionStage<ZLinkOwnerLeaseReadResult> readOwnerLeaseAsync(
+        String ownerId) {
+        return connection.commands()
+            .thenCompose(redis -> redis.<List<Object>>eval(
+                ZLinkRedisLocationScripts.READ_OWNER_LEASE,
+                ScriptOutputType.MULTI,
+                new String[] {
+                    keys.leaseStateKey(),
+                    keys.leaseKey(ownerId)
+                },
+                ownerId))
+            .<ZLinkOwnerLeaseReadResult>thenApply(raw -> "found".equals(string(raw.getFirst()))
+                ? new ZLinkOwnerLeaseFound(
+                    new ZLinkLocationOwnerToken(
+                        ownerId,
+                        number(raw.get(1))),
+                    fromUnixMs(number(raw.get(2))),
+                    fromUnixMs(number(raw.get(3))))
+                : new ZLinkOwnerLeaseMissing())
+            .exceptionally(
+                ZLinkRedisLocationScriptsClient::propagateWriteFailure);
+    }
+
+    CompletionStage<ZLinkOwnerLeaseRenewResult> renewOwnerLeaseAsync(
+        ZLinkLocationOwnerToken token,
+        Duration leaseTtl) {
+        long ttlMs = Math.max(1L, leaseTtl.toMillis());
+        return connection.commands()
+            .thenCompose(redis -> redis.<List<Object>>eval(
+                ZLinkRedisLocationScripts.RENEW_OWNER_LEASE,
+                ScriptOutputType.MULTI,
+                new String[] {
+                    keys.leaseStateKey(),
+                    keys.leaseKey(token.ownerId())
+                },
+                token.ownerId(),
+                Long.toString(token.leaseGeneration()),
+                Long.toString(ttlMs)))
+            .<ZLinkOwnerLeaseRenewResult>thenApply(raw -> "renewed".equals(string(raw.getFirst()))
+                ? new ZLinkOwnerLeaseRenewed(
+                    fromUnixMs(number(raw.get(1))),
+                    fromUnixMs(number(raw.get(2))))
+                : new ZLinkOwnerLeaseRenewStale())
+            .exceptionally(
+                ZLinkRedisLocationScriptsClient::propagateWriteFailure);
+    }
+
+    CompletionStage<ZLinkOwnerLeaseReleaseResult> releaseOwnerLeaseAsync(
+        ZLinkLocationOwnerToken token) {
+        return connection.commands()
+            .thenCompose(redis -> redis.<List<Object>>eval(
+                ZLinkRedisLocationScripts.RELEASE_OWNER_LEASE,
+                ScriptOutputType.MULTI,
+                new String[] {
+                    keys.leaseStateKey(),
+                    keys.leaseKey(token.ownerId())
+                },
+                token.ownerId(),
+                Long.toString(token.leaseGeneration())))
+            .thenApply(raw -> "released".equals(string(raw.getFirst()))
+                ? ZLinkOwnerLeaseReleaseResult.RELEASED
+                : ZLinkOwnerLeaseReleaseResult.STALE)
+            .exceptionally(
+                ZLinkRedisLocationScriptsClient::propagateWriteFailure);
+    }
+
     CompletionStage<ZLinkRoutingIdSlotAcquireResult> acquireRoutingIdSlotAsync(
         ZLinkRoutingIdSlotAcquireRequest request) {
         List<ZLinkRoutingIdSlotAllocationMember> members = normalizeMembers(request.members());
@@ -99,7 +209,7 @@ final class ZLinkRedisLocationScriptsClient {
                 new String[] {keys.routingIdSlotGroupKey(groupName)},
                 Integer.toString(slot),
                 owner.ownerId(),
-                Long.toString(owner.generation())))
+                Long.toString(owner.leaseGeneration())))
             .thenApply(raw -> "released".equals(string(raw.getFirst()))
                 ? ZLinkRoutingIdSlotReleaseResult.RELEASED
                 : ZLinkRoutingIdSlotReleaseResult.IGNORED_STALE)
@@ -203,7 +313,7 @@ final class ZLinkRedisLocationScriptsClient {
                 ScriptOutputType.MULTI,
                 new String[] {keys.rowHashKey(tag, rowKey), keys.kindIndexKey(tag)},
                 owner.ownerId(),
-                Long.toString(owner.generation()),
+                Long.toString(owner.leaseGeneration()),
                 rowKey,
                 keys.ownerIndexKeyPrefix(tag),
                 keys.stampKey(tag, meshName),

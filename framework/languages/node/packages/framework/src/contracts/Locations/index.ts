@@ -22,3 +22,4 @@ export * from './Readiness';
 export * from './RelocationStore';
 export * from './RoutingIdAllocation';
 export * from './ActorTransfer';
+export * from './Authority';

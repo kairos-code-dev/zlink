@@ -129,7 +129,7 @@ test('auto-connect planner applies role policy pairwise initiator and dial-only 
 test('store peer resolver reads store each time and joins owner liveness', async () => {
   let nowMs = Date.UTC(2026, 6, 3, 0, 0, 0);
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(nowMs));
-  await store.renewOwnerLease('owner-live', rid('node-live'), 1000);
+  await store.claimOwnerLease('owner-live', 1000);
   await store.updatePeer(
     peer('owner-live', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-live', 'tcp://live'),
     framework.ZLinkLocationWriteIntent.NewClaim
@@ -174,7 +174,7 @@ test('store resolver refreshes a cached owner miss when a newly observed row nam
   assert.equal(await tracker.getLiveOwnerSetVersion(), 1);
   assert.deepEqual(await resolver.listLivePeers({ meshName: 'play' }), []);
 
-  await store.renewOwnerLease('owner-new', rid('node-new'), 30_000);
+  await store.claimOwnerLease('owner-new', 30_000);
   await store.updatePeer(
     peer(
       'owner-new',
@@ -196,7 +196,7 @@ test('store resolver refreshes a cached expired lease when the same owner renews
   let nowMs = Date.UTC(2026, 6, 3, 0, 0, 0);
   let monotonicMs = 0;
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(nowMs));
-  await store.renewOwnerLease('owner-renewed', rid('node-renewed'), 100);
+  const ownerRenewed = await store.claimOwnerLease('owner-renewed', 100);
   const tracker = new internal.ZLinkOwnerLeaseTracker({
     store,
     options: { pollingIntervalMs: 10_000 },
@@ -210,7 +210,8 @@ test('store resolver refreshes a cached expired lease when the same owner renews
   assert.equal(await tracker.isOwnerLive('owner-renewed'), true);
   nowMs += 101;
   monotonicMs += 101;
-  await store.renewOwnerLease('owner-renewed', rid('node-renewed'), 30_000);
+  assert.equal(ownerRenewed.kind, 'claimed');
+  await store.renewOwnerLease(ownerRenewed.token, 30_000);
   await store.updatePeer(
     peer(
       'owner-renewed',
@@ -233,7 +234,7 @@ test('auto-connect reconciler publishes local row diffs handover and stays fail-
   const runtime = runtimeFor(store, 'owner-local');
   await runtime.start(rid('node-local'));
 
-  await store.renewOwnerLease('owner-remote', rid('node-remote'), 30000);
+  await store.claimOwnerLease('owner-remote', 30000);
   const remote = await store.updatePeer(
     peer('owner-remote', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-remote', 'tcp://remote'),
     framework.ZLinkLocationWriteIntent.NewClaim
@@ -264,7 +265,7 @@ test('auto-connect reconciler publishes local row diffs handover and stays fail-
   assert.equal((await store.listPeers({ endpoint: 'tcp://dealer' })).length, 1);
   assert.equal(reconciler.knowsPeer(rid('node-remote')), true);
 
-  await store.renewOwnerLease('owner-restarted', rid('node-remote'), 30000);
+  await store.claimOwnerLease('owner-restarted', 30000);
   await store.updatePeer(
     peer('owner-restarted', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-remote', 'tcp://remote'),
     framework.ZLinkLocationWriteIntent.Takeover
@@ -293,7 +294,7 @@ test('auto-connect reconciler does not mark a target active when executor skips 
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const runtime = runtimeFor(store, 'owner-local');
   await runtime.start(rid('node-local'));
-  await store.renewOwnerLease('owner-remote', rid('node-remote'), 30000);
+  await store.claimOwnerLease('owner-remote', 30000);
   await store.updatePeer(
     peer('owner-remote', framework.ZLinkLocationAutoConnectType.RouteMesh, framework.ZLinkLocationRole.Router, 'node-remote', 'tcp://manual'),
     framework.ZLinkLocationWriteIntent.NewClaim
@@ -524,7 +525,7 @@ test('auto-connect reconciler retains an existing draining peer without dialing 
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const runtime = runtimeFor(store, 'owner-local');
   await runtime.start(rid('node-local'));
-  await store.renewOwnerLease('owner-existing', rid('node-existing'), 30000);
+  await store.claimOwnerLease('owner-existing', 30000);
   const existing = await store.updatePeer(
     peer('owner-existing', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-existing', 'tcp://existing'),
     framework.ZLinkLocationWriteIntent.NewClaim
@@ -548,7 +549,7 @@ test('auto-connect reconciler retains an existing draining peer without dialing 
     draining: true,
     generation: existing.generation
   }, framework.ZLinkLocationWriteIntent.Renew);
-  await store.renewOwnerLease('owner-new', rid('node-new'), 30000);
+  await store.claimOwnerLease('owner-new', 30000);
   await store.updatePeer({
     ...peer('owner-new', framework.ZLinkLocationAutoConnectType.ClientServer, framework.ZLinkLocationRole.Router, 'node-new', 'tcp://new'),
     draining: true

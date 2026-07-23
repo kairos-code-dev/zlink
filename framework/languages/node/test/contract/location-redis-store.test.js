@@ -22,7 +22,8 @@ test('redis location store matches core write lease and change-stamp contracts',
   });
 
   try {
-    const renewedOwnerA = await store.renewOwnerLease('owner-a', rid('node-a'), 30000);
+    const renewedOwnerA = await store.claimOwnerLease('owner-a', 30000);
+    assert.equal(renewedOwnerA.kind, 'claimed');
     assert.equal(renewedOwnerA.leaseExpiresAt.getTime() > renewedOwnerA.storeNow.getTime(), true);
     const first = await store.updateSpot(
       spot('owner-a', 0n, 'spot-1', 'node-a'),
@@ -70,15 +71,15 @@ test('redis location store matches core write lease and change-stamp contracts',
       [1, 2, 3]
     );
 
-    const leases = await store.listOwnerLeases();
-    assert.equal(leases.leases.length, 1);
-    assert.equal(leases.leases[0].ownerId, 'owner-a');
-    assert.equal(leases.leases[0].nodeRid.toHex(), rid('node-a').toHex());
+    const ownerA = await store.readOwnerLease('owner-a');
+    assert.equal(ownerA.kind, 'found');
+    assert.deepEqual(ownerA.token, renewedOwnerA.token);
 
-    assert.equal(await store.removeAllByOwner('owner-a'), 4n);
+    assert.equal(await store.removeAllByOwner(renewedOwnerA.token), 4n);
     assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
 
-    const renewedOwnerB = await store.renewOwnerLease('owner-b', rid('node-b'), 30000);
+    const renewedOwnerB = await store.claimOwnerLease('owner-b', 30000);
+    assert.equal(renewedOwnerB.kind, 'claimed');
     assert.equal(renewedOwnerB.leaseExpiresAt.getTime() > renewedOwnerB.storeNow.getTime(), true);
     const claimedAfterRemove = await store.updateSpot(
       spot('owner-b', 0n, 'spot-1', 'node-b'),
@@ -108,7 +109,7 @@ test('redis location store row json matches the shared Redis fixture', async (t)
 
   try {
     const expected = redisActorLocationFixture();
-    await store.renewOwnerLease('actor-owner-a', rid('game-a'), 30000);
+    await store.claimOwnerLease('actor-owner-a', 30000);
     await fixture.client.set(`${prefix}:gen:actor:${expected.key}`, '4');
     const result = await store.updateActor(
       exactActorLocation(),
@@ -142,7 +143,7 @@ test('redis exact MeshNode descriptor fixture and Actor transfer authority are a
   const store = new redisLocations.ZLinkRedisLocationStore({ url: fixture.url, keyPrefix: prefix });
   try {
     const meshFixture = redisFixtureRow('mesh-node-descriptor-v1.json');
-    await store.renewOwnerLease('mesh-owner-a', rid('game-a'), 30_000);
+    await store.claimOwnerLease('mesh-owner-a', 30_000);
     await fixture.client.set(`${prefix}:gen:mesh:${meshFixture.key}`, '4');
     const descriptorClaim = await store.updateMeshNode(
       exactMeshNodeDescriptor(),
@@ -308,7 +309,7 @@ test('redis resolver rejects an Actor row after the same SPOT RID is recreated',
   const prefix = `zlink:node-location-stale:${process.pid}:${Date.now()}`;
   const store = new redisLocations.ZLinkRedisLocationStore({ url: fixture.url, keyPrefix: prefix });
   try {
-    await store.renewOwnerLease('actor-owner-a', rid('game-a'), 30_000);
+    await store.claimOwnerLease('actor-owner-a', 30_000);
     await store.updateSpot({
       ...spot('actor-owner-a', 0n, 'spot-1', 'game-a'),
       meshName: 'game',
@@ -331,7 +332,7 @@ test('redis resolver rejects an Actor row after the same SPOT RID is recreated',
 
     assert.notEqual(await resolvers.resolveActorRef('actor-1'), undefined);
 
-    await store.renewOwnerLease('actor-owner-b', rid('game-b'), 30_000);
+    await store.claimOwnerLease('actor-owner-b', 30_000);
     await store.updateSpot({
       ...spot('actor-owner-b', 0n, 'spot-1', 'game-b'),
       meshName: 'game',

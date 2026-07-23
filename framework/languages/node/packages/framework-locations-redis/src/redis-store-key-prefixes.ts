@@ -33,6 +33,10 @@ export class RedisStoreKeys {
     return `${this.keyPrefix}:leases`;
   }
 
+  leaseGenerationCounter(): string {
+    return `${this.keyPrefix}:lease-generation`;
+  }
+
   routingIdAllocationGroup(groupName: string): string {
     return `${this.keyPrefix}:ridalloc:${groupName}`;
   }

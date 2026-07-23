@@ -3,8 +3,8 @@ import {
   type ZLinkLocationOptionOverrides
 } from '../../contracts/Locations/Options';
 import {
-  type ZLinkOwnerLeaseStore,
-  type ZLinkOwnerLease
+  type ZLinkOwnerLeaseReadResult,
+  type ZLinkOwnerLeaseStore
 } from '../../contracts/Locations';
 
 export interface ZLinkOwnerLeaseTrackerOptions {
@@ -14,8 +14,7 @@ export interface ZLinkOwnerLeaseTrackerOptions {
 }
 
 interface OwnerLeaseTrackerSnapshot {
-  readonly leases: ReadonlyMap<string, ZLinkOwnerLease>;
-  readonly storeNow: Date;
+  readonly result: ZLinkOwnerLeaseReadResult;
   readonly fetchedAtMs: number;
 }
 
@@ -23,8 +22,8 @@ export class ZLinkOwnerLeaseTracker {
   private readonly store: ZLinkOwnerLeaseStore;
   private readonly options: Required<ZLinkLocationOptionOverrides>;
   private readonly monotonicNowMs: () => number;
-  private snapshot?: OwnerLeaseTrackerSnapshot;
-  private refresh?: Promise<OwnerLeaseTrackerSnapshot>;
+  private readonly snapshots = new Map<string, OwnerLeaseTrackerSnapshot>();
+  private readonly refreshes = new Map<string, Promise<OwnerLeaseTrackerSnapshot>>();
   private liveOwnerFingerprint?: string;
   private liveOwnerVersion = 0;
 
@@ -35,23 +34,17 @@ export class ZLinkOwnerLeaseTracker {
   }
 
   async isOwnerLive(ownerId: string, signal?: AbortSignal): Promise<boolean> {
-    let snapshot = await this.getSnapshot(signal);
-    let lease = snapshot.leases.get(ownerId);
-    if (lease === undefined || this.remainingLeaseMs(lease, snapshot) <= 0) {
-      snapshot = await this.refreshAfterOwnerMissOrExpiry(snapshot, signal);
-      lease = snapshot.leases.get(ownerId);
-      if (lease === undefined) {
-        return false;
-      }
-    }
-    return this.remainingLeaseMs(lease, snapshot) > 0;
+    const snapshot = await this.getSnapshot(ownerId, signal);
+    return this.isLive(snapshot);
   }
 
   async getLiveOwnerSetVersion(signal?: AbortSignal): Promise<number> {
-    const snapshot = await this.getSnapshot(signal);
-    const live = [...snapshot.leases.values()]
-      .filter((lease) => this.remainingLeaseMs(lease, snapshot) > 0)
-      .map((lease) => lease.ownerId)
+    const owners = [...this.snapshots.keys()];
+    const refreshed = await Promise.all(owners.map(ownerId => this.getSnapshot(ownerId, signal)));
+    const live = refreshed
+      .filter(snapshot => this.isLive(snapshot))
+      .map(snapshot => snapshot.result.kind === 'found' ? snapshot.result.token.ownerId : '')
+      .filter(ownerId => ownerId.length > 0)
       .sort()
       .join('\n');
     if (live !== this.liveOwnerFingerprint) {
@@ -61,58 +54,47 @@ export class ZLinkOwnerLeaseTracker {
     return this.liveOwnerVersion;
   }
 
-  private async getSnapshot(signal?: AbortSignal): Promise<OwnerLeaseTrackerSnapshot> {
-    const current = this.snapshot;
+  private async getSnapshot(
+    ownerId: string,
+    signal?: AbortSignal
+  ): Promise<OwnerLeaseTrackerSnapshot> {
+    const current = this.snapshots.get(ownerId);
     if (current !== undefined && this.monotonicNowMs() - current.fetchedAtMs < this.options.pollingIntervalMs) {
       return current;
     }
 
-    if (this.refresh !== undefined) {
-      return this.refresh;
+    const activeRefresh = this.refreshes.get(ownerId);
+    if (activeRefresh !== undefined) {
+      return activeRefresh;
     }
 
-    this.refresh = this.refreshSnapshot(signal);
+    const refresh = this.refreshSnapshot(ownerId, signal);
+    this.refreshes.set(ownerId, refresh);
     try {
-      return await this.refresh;
+      return await refresh;
     } finally {
-      this.refresh = undefined;
+      this.refreshes.delete(ownerId);
     }
   }
 
-  private async refreshAfterOwnerMissOrExpiry(
-    observed: OwnerLeaseTrackerSnapshot,
+  private async refreshSnapshot(
+    ownerId: string,
     signal?: AbortSignal
   ): Promise<OwnerLeaseTrackerSnapshot> {
-    const current = this.snapshot;
-    if (current !== undefined && current !== observed) {
-      return current;
-    }
-    if (this.refresh !== undefined) {
-      return this.refresh;
-    }
-
-    this.refresh = this.refreshSnapshot(signal);
-    try {
-      return await this.refresh;
-    } finally {
-      this.refresh = undefined;
-    }
-  }
-
-  private async refreshSnapshot(signal?: AbortSignal): Promise<OwnerLeaseTrackerSnapshot> {
-    const listed = await this.store.listOwnerLeases(signal);
     const snapshot = {
-      leases: new Map(listed.leases.map((lease) => [lease.ownerId, lease])),
-      storeNow: listed.storeNow,
+      result: await this.store.readOwnerLease(ownerId, signal),
       fetchedAtMs: this.monotonicNowMs()
     };
-    this.snapshot = snapshot;
+    this.snapshots.set(ownerId, snapshot);
     return snapshot;
   }
 
-  private remainingLeaseMs(lease: ZLinkOwnerLease, snapshot: OwnerLeaseTrackerSnapshot): number {
+  private isLive(snapshot: OwnerLeaseTrackerSnapshot): boolean {
+    if (snapshot.result.kind !== 'found') return false;
     const elapsedMs = this.monotonicNowMs() - snapshot.fetchedAtMs;
-    return lease.leaseExpiresAt.getTime() - snapshot.storeNow.getTime() - elapsedMs;
+    return snapshot.result.leaseExpiresAt.getTime()
+      - snapshot.result.storeNow.getTime()
+      - elapsedMs > 0;
   }
 }
 

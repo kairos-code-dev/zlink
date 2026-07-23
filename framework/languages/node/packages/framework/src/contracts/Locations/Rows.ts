@@ -78,15 +78,3 @@ export interface ZLinkRouteLocation {
   readonly value: Uint8Array;
   readonly updatedAt: Date;
 }
-
-export interface ZLinkOwnerLease {
-  readonly ownerId: string;
-  readonly nodeRid: RoutingId;
-  readonly leaseExpiresAt: Date;
-  readonly updatedAt: Date;
-}
-
-export interface ZLinkOwnerLeaseSnapshot {
-  readonly leases: readonly ZLinkOwnerLease[];
-  readonly storeNow: Date;
-}

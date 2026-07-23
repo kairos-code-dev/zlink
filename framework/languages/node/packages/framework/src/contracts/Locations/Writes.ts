@@ -1,5 +1,3 @@
-import type { RoutingId } from '../Common';
-
 export enum ZLinkLocationWriteIntent {
   NewClaim = 1,
   Renew = 2,
@@ -20,16 +18,39 @@ export interface ZLinkLocationWriteResult {
 
 export interface ZLinkLocationOwnerToken {
   readonly ownerId: string;
-  readonly generation: bigint;
+  readonly leaseGeneration: bigint;
 }
 
-export interface ZLinkOwnerLeaseRenewal {
-  readonly leaseExpiresAt: Date;
-  readonly storeNow: Date;
-}
+export type ZLinkOwnerLeaseClaimResult =
+  | {
+      readonly kind: 'claimed';
+      readonly token: ZLinkLocationOwnerToken;
+      readonly leaseExpiresAt: Date;
+      readonly storeNow: Date;
+    }
+  | { readonly kind: 'conflict' }
+  | { readonly kind: 'generationExhausted' };
 
-export interface ZLinkOwnerLeaseRenewalRequest {
-  readonly ownerId: string;
-  readonly nodeRid: RoutingId;
-  readonly leaseTtlMs: number;
-}
+export type ZLinkOwnerLeaseRenewResult =
+  | {
+      readonly kind: 'renewed';
+      readonly leaseExpiresAt: Date;
+      readonly storeNow: Date;
+    }
+  | { readonly kind: 'stale' };
+
+export type ZLinkOwnerLeaseReleaseResult = 'released' | 'stale';
+
+export type ZLinkOwnerLeaseReadResult =
+  | {
+      readonly kind: 'found';
+      readonly token: ZLinkLocationOwnerToken;
+      readonly leaseExpiresAt: Date;
+      readonly storeNow: Date;
+    }
+  | { readonly kind: 'missing' };
+
+export type ZLinkOwnerLeaseRenewed = Extract<
+  ZLinkOwnerLeaseRenewResult,
+  { readonly kind: 'renewed' }
+>;

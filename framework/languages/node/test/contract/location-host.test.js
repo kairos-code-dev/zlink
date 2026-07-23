@@ -157,7 +157,7 @@ test('framework runtime host starts channel auto-connect loops from location pee
   const calls = [];
   const nodeRid = rid('node-a');
 
-  await store.renewOwnerLease('owner-remote', rid('node-b'), 30000);
+  await store.claimOwnerLease('owner-remote', 30000);
   await store.updatePeer(
     peer('api', 'owner-remote', 'node-b', 'tcp://remote-api'),
     framework.ZLinkLocationWriteIntent.NewClaim
@@ -282,7 +282,7 @@ test('manual Mesh router connection suppresses only the matching store-driven ro
   const calls = [];
   const nodeRid = rid('node-a');
 
-  await store.renewOwnerLease('owner-remote', rid('node-b'), 30000);
+  await store.claimOwnerLease('owner-remote', 30000);
   await store.updatePeer(
     spotPeer('owner-remote', 'node-b', 'tcp://remote-spot', 'tcp://remote-pub'),
     framework.ZLinkLocationWriteIntent.NewClaim

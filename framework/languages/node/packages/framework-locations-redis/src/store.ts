@@ -20,13 +20,14 @@ import {
   ACQUIRE_ROUTING_ID_SLOT_SCRIPT,
   ABORT_ACTOR_TRANSFER_SCRIPT,
   ACTIVATE_ACTOR_TRANSFER_SCRIPT,
+  CLAIM_LEASE_SCRIPT,
   COMMIT_ACTOR_TRANSFER_SCRIPT,
   LIST_ROUTING_ID_SLOTS_SCRIPT,
-  LIST_LEASES_SCRIPT,
+  READ_LEASE_SCRIPT,
+  RELEASE_LEASE_SCRIPT,
   RELEASE_ROUTING_ID_SLOT_SCRIPT,
   PREPARE_ACTOR_TRANSFER_SCRIPT,
   REMOVE_ALL_BY_OWNER_SCRIPT,
-  REMOVE_LEASE_SCRIPT,
   REMOVE_SCRIPT,
   RENEW_LEASE_SCRIPT,
   TAKE_OVER_ACTOR_TRANSFER_SCRIPT,
@@ -50,7 +51,6 @@ import {
   ZLinkLocationWriteIntent,
   type RoutingId,
   type ZLinkLocationChangeStampStore,
-  type ZLinkLocationStore,
   type ZLinkActorLocation,
   type ZLinkActorTransferPrepareRequest,
   type ZLinkActorTransferRecord,
@@ -65,9 +65,11 @@ import {
   type ZLinkLocationWriteStatus,
   type ZLinkMeshNodeDescriptor,
   type ZLinkMeshNodeDescriptorKey,
-  type ZLinkOwnerLease,
-  type ZLinkOwnerLeaseRenewal,
-  type ZLinkOwnerLeaseSnapshot,
+  type ZLinkOwnerLeaseClaimResult,
+  type ZLinkOwnerLeaseReadResult,
+  type ZLinkOwnerLeaseReleaseResult,
+  type ZLinkOwnerLeaseRenewResult,
+  type ZLinkOwnerLeaseStore,
   type ZLinkPageRequest,
   type ZLinkPeerLocation,
   type ZLinkPeerLocationFilter,
@@ -87,8 +89,8 @@ import {
 } from '@zlink-systems/framework';
 
 export class ZLinkRedisLocationStore implements
-  ZLinkLocationStore,
   ZLinkLocationChangeStampStore,
+  ZLinkOwnerLeaseStore,
   ZLinkRoutingIdSlotAllocationStore {
   private readonly keys: RedisStoreKeys;
   private readonly providedClient?: RedisCommandClient;
@@ -355,39 +357,86 @@ export class ZLinkRedisLocationStore implements
     return materializeTransfer(meshName, actorId, transferId, fields);
   }
 
-  async renewOwnerLease(
+  async claimOwnerLease(
     ownerId: string,
-    nodeRid: RoutingId,
     leaseTtlMs: number,
     signal?: AbortSignal
-  ): Promise<ZLinkOwnerLeaseRenewal> {
-    try {
-      const ttlMs = Math.max(1, Math.trunc(leaseTtlMs));
-      const nowMs = toNumber(await this.eval(RENEW_LEASE_SCRIPT, [
-        this.keys.lease(ownerId),
-        this.keys.leaseIndex()
-      ], [ownerId, routingIdHex(nodeRid), String(ttlMs)], signal));
-      const storeNow = fromUnixMs(nowMs);
-      return { leaseExpiresAt: new Date(storeNow.getTime() + ttlMs), storeNow };
-    } catch (error) {
-      throw error;
-    }
+  ): Promise<ZLinkOwnerLeaseClaimResult> {
+    validateOwnerLeaseInput(ownerId, leaseTtlMs);
+    const raw = asArray(await this.eval(CLAIM_LEASE_SCRIPT, [
+      this.keys.lease(ownerId),
+      this.keys.leaseGenerationCounter(),
+      this.keys.leaseIndex()
+    ], [ownerId, String(leaseTtlMs)], signal));
+    const kind = asString(raw[0]);
+    if (kind === 'conflict') return { kind: 'conflict' };
+    if (kind === 'exhausted') return { kind: 'generationExhausted' };
+    if (kind !== 'claimed') throw new Error(`Unknown owner lease claim result '${kind}'.`);
+    return {
+      kind: 'claimed',
+      token: { ownerId, leaseGeneration: BigInt(asString(raw[1])) },
+      leaseExpiresAt: fromUnixMs(toNumber(raw[2])),
+      storeNow: fromUnixMs(toNumber(raw[3]))
+    };
   }
 
-  async removeOwnerLease(ownerId: string, signal?: AbortSignal): Promise<boolean> {
-    try {
-      const removed = toNumber(await this.eval(REMOVE_LEASE_SCRIPT, [
-        this.keys.lease(ownerId),
-        this.keys.leaseIndex()
-      ], [ownerId], signal));
-      return removed !== 0;
-    } catch (error) {
-      throw error;
-    }
+  async readOwnerLease(
+    ownerId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkOwnerLeaseReadResult> {
+    if (ownerId.trim().length === 0) throw new TypeError('ownerId is required.');
+    const raw = asArray(await this.eval(
+      READ_LEASE_SCRIPT,
+      [this.keys.lease(ownerId)],
+      [],
+      signal
+    ));
+    if (asString(raw[0]) === 'missing') return { kind: 'missing' };
+    return {
+      kind: 'found',
+      token: { ownerId, leaseGeneration: BigInt(asString(raw[1])) },
+      leaseExpiresAt: fromUnixMs(toNumber(raw[2])),
+      storeNow: fromUnixMs(toNumber(raw[3]))
+    };
   }
 
-  async removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<bigint> {
-    return BigInt(toNumber(await this.eval(REMOVE_ALL_BY_OWNER_SCRIPT, [
+  async renewOwnerLease(
+    token: ZLinkLocationOwnerToken,
+    leaseTtlMs: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkOwnerLeaseRenewResult> {
+    validateOwnerLeaseInput(token.ownerId, leaseTtlMs);
+    const raw = asArray(await this.eval(
+      RENEW_LEASE_SCRIPT,
+      [this.keys.lease(token.ownerId)],
+      [token.ownerId, String(token.leaseGeneration), String(leaseTtlMs)],
+      signal
+    ));
+    if (asString(raw[0]) === 'stale') return { kind: 'stale' };
+    return {
+      kind: 'renewed',
+      leaseExpiresAt: fromUnixMs(toNumber(raw[1])),
+      storeNow: fromUnixMs(toNumber(raw[2]))
+    };
+  }
+
+  async releaseOwnerLease(
+    token: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkOwnerLeaseReleaseResult> {
+    const raw = asArray(await this.eval(RELEASE_LEASE_SCRIPT, [
+      this.keys.lease(token.ownerId),
+      this.keys.leaseIndex()
+    ], [token.ownerId, String(token.leaseGeneration)], signal));
+    return asString(raw[0]) === 'released' ? 'released' : 'stale';
+  }
+
+  async removeAllByOwner(
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<bigint> {
+    const ownerId = owner.ownerId;
+    const removed = toNumber(await this.eval(REMOVE_ALL_BY_OWNER_SCRIPT, [
       this.keys.ownerIndexPrefix(kindMeshNode.tag) + ownerId,
       this.keys.ownerIndexPrefix(kindPeer.tag) + ownerId,
       this.keys.ownerIndexPrefix(kindSpot.tag) + ownerId,
@@ -397,7 +446,8 @@ export class ZLinkRedisLocationStore implements
       this.keys.kindIndex(kindPeer.tag),
       this.keys.kindIndex(kindSpot.tag),
       this.keys.kindIndex(kindActor.tag),
-      this.keys.kindIndex(kindRoute.tag)
+      this.keys.kindIndex(kindRoute.tag),
+      this.keys.lease(ownerId)
     ], [
       this.keys.rowHashPrefix(kindMeshNode.tag),
       this.keys.rowHashPrefix(kindPeer.tag),
@@ -408,30 +458,13 @@ export class ZLinkRedisLocationStore implements
       this.keys.stamp(kindPeer.tag, undefined),
       this.keys.stamp(kindSpot.tag, undefined),
       this.keys.stamp(kindActor.tag, undefined),
-      this.keys.stamp(kindRoute.tag, undefined)
-    ], signal)));
-  }
-
-  async listOwnerLeases(signal?: AbortSignal): Promise<ZLinkOwnerLeaseSnapshot> {
-    const raw = asArray(await this.eval(LIST_LEASES_SCRIPT, [
-      this.keys.leaseIndex()
-    ], [this.keys.leasePrefix()], signal));
-    const storeNow = fromUnixMs(toNumber(raw[0]));
-    const entries = asArray(raw[1]);
-    const leases: ZLinkOwnerLease[] = [];
-    for (let index = 0; index + 2 < entries.length; index += 3) {
-      const ownerId = asString(entries[index]);
-      const value = asString(entries[index + 1]);
-      const remainingMs = toNumber(entries[index + 2]);
-      const separator = value.indexOf('|');
-      leases.push({
-        ownerId,
-        nodeRid: ridOf(value.slice(0, separator)),
-        leaseExpiresAt: new Date(storeNow.getTime() + remainingMs),
-        updatedAt: fromUnixMs(Number(value.slice(separator + 1)))
-      });
+      this.keys.stamp(kindRoute.tag, undefined),
+      String(owner.leaseGeneration)
+    ], signal));
+    if (removed < 0) {
+      throw new Error('Owner cleanup token is stale.');
     }
-    return { leases, storeNow };
+    return BigInt(removed);
   }
 
   async getChangeStamp(scope: ZLinkLocationChangeStampScope, signal?: AbortSignal): Promise<bigint> {
@@ -478,7 +511,7 @@ export class ZLinkRedisLocationStore implements
       kind: 'acquired',
       allocation: {
         slot: toNumber(raw[1]),
-        owner: { ownerId: request.ownerId, generation: BigInt(asString(raw[2])) },
+        owner: { ownerId: request.ownerId, leaseGeneration: BigInt(asString(raw[2])) },
         leaseExpiresAt: fromUnixMs(toNumber(raw[3])),
         storeNow: fromUnixMs(toNumber(raw[4]))
       }
@@ -494,7 +527,7 @@ export class ZLinkRedisLocationStore implements
     validateRelease(groupName, slot, owner);
     const raw = asArray(await this.eval(RELEASE_ROUTING_ID_SLOT_SCRIPT, [
       this.keys.routingIdAllocationGroup(groupName)
-    ], [String(slot), owner.ownerId, String(owner.generation)], signal));
+    ], [String(slot), owner.ownerId, String(owner.leaseGeneration)], signal));
     return asString(raw[0]) === 'released' ? 'released' : 'ignoredStale';
   }
 
@@ -514,7 +547,7 @@ export class ZLinkRedisLocationStore implements
         slot: toNumber(entries[index]),
         owner: {
           ownerId: asString(entries[index + 1]),
-          generation: BigInt(asString(entries[index + 2]))
+          leaseGeneration: BigInt(asString(entries[index + 2]))
         },
         leaseExpiresAt: fromUnixMs(toNumber(entries[index + 3])),
         storeNow
@@ -604,7 +637,7 @@ export class ZLinkRedisLocationStore implements
         this.keys.kindIndex(kind.tag)
       ], [
         owner.ownerId,
-        String(owner.generation),
+        String(owner.leaseGeneration),
         rowKey,
         this.keys.ownerIndexPrefix(kind.tag),
         this.keys.stamp(kind.tag, meshName),
@@ -854,9 +887,18 @@ function validateAcquire(request: ZLinkRoutingIdSlotAcquireRequest): void {
 function validateRelease(groupName: string, slot: number, owner: ZLinkLocationOwnerToken): void {
   validateGroupName(groupName);
   if (!Number.isInteger(slot) || slot < 1) throw new RangeError('slot must be positive.');
-  if (owner.ownerId.trim().length === 0 || owner.generation < 1n) throw new TypeError('owner token is invalid.');
+  if (owner.ownerId.trim().length === 0 || owner.leaseGeneration < 1n) {
+    throw new TypeError('owner token is invalid.');
+  }
 }
 
 function validateGroupName(groupName: string): void {
   if (groupName.trim().length === 0) throw new TypeError('groupName must not be empty.');
+}
+
+function validateOwnerLeaseInput(ownerId: string, leaseTtlMs: number): void {
+  if (ownerId.trim().length === 0) throw new TypeError('ownerId is required.');
+  if (!Number.isSafeInteger(leaseTtlMs) || leaseTtlMs < 1) {
+    throw new RangeError('leaseTtlMs must be a positive safe integer.');
+  }
 }

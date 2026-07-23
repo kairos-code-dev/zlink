@@ -72,6 +72,9 @@ return {'stored', tonumber(ARGV[2]), nowMs}
 
 export const REMOVE_ALL_BY_OWNER_SCRIPT = `
 if redis.replicate_commands then redis.replicate_commands() end
+local leaseValue = redis.call('GET', KEYS[11])
+local leaseGeneration = leaseValue and string.match(leaseValue, '([^|]*)|') or nil
+if not leaseGeneration or leaseGeneration ~= ARGV[11] then return -1 end
 local removed = 0
 for i = 1, 5 do
     local ownerIndex = KEYS[i]
@@ -96,16 +99,41 @@ end
 return removed
 `;
 
-export const RENEW_LEASE_SCRIPT = PROLOGUE + `
-redis.call('SET', KEYS[1], ARGV[2] .. '|' .. nowMs, 'PX', ARGV[3])
-redis.call('SADD', KEYS[2], ARGV[1])
-return nowMs
+export const CLAIM_LEASE_SCRIPT = PROLOGUE + `
+if redis.call('EXISTS', KEYS[1]) == 1 then return {'conflict', nowMs} end
+local current = redis.call('GET', KEYS[2])
+if current == '9223372036854775807' then return {'exhausted', nowMs} end
+local generation = redis.call('INCR', KEYS[2])
+local expiresAtMs = nowMs + tonumber(ARGV[2])
+redis.call('SET', KEYS[1], generation .. '|' .. nowMs, 'PX', ARGV[2])
+redis.call('SADD', KEYS[3], ARGV[1])
+return {'claimed', generation, expiresAtMs, nowMs}
 `;
 
-export const REMOVE_LEASE_SCRIPT = PROLOGUE + `
-local removed = redis.call('DEL', KEYS[1])
+export const READ_LEASE_SCRIPT = PROLOGUE + `
+local value = redis.call('GET', KEYS[1])
+local pttl = redis.call('PTTL', KEYS[1])
+if not value or pttl < 0 then return {'missing', nowMs} end
+local generation = string.match(value, '([^|]*)|')
+return {'found', generation, nowMs + pttl, nowMs}
+`;
+
+export const RENEW_LEASE_SCRIPT = PROLOGUE + `
+local value = redis.call('GET', KEYS[1])
+local currentGeneration = value and string.match(value, '([^|]*)|') or nil
+if not currentGeneration or currentGeneration ~= ARGV[2] then return {'stale', nowMs} end
+local expiresAtMs = nowMs + tonumber(ARGV[3])
+redis.call('SET', KEYS[1], currentGeneration .. '|' .. nowMs, 'PX', ARGV[3])
+return {'renewed', expiresAtMs, nowMs}
+`;
+
+export const RELEASE_LEASE_SCRIPT = PROLOGUE + `
+local value = redis.call('GET', KEYS[1])
+local currentGeneration = value and string.match(value, '([^|]*)|') or nil
+if not currentGeneration or currentGeneration ~= ARGV[2] then return {'stale'} end
+redis.call('DEL', KEYS[1])
 redis.call('SREM', KEYS[2], ARGV[1])
-return removed
+return {'released'}
 `;
 
 const TRANSFER_PROLOGUE = PROLOGUE + `
@@ -190,23 +218,6 @@ redis.call('HSET', KEYS[1],
 return {'stored', readRecord()}
 `;
 
-export const LIST_LEASES_SCRIPT = PROLOGUE + `
-local owners = redis.call('SMEMBERS', KEYS[1])
-local out = {}
-for _, ownerId in ipairs(owners) do
-    local leaseKey = ARGV[1] .. ownerId
-    local pttl = redis.call('PTTL', leaseKey)
-    if pttl < 0 then
-        redis.call('SREM', KEYS[1], ownerId)
-    else
-        out[#out + 1] = ownerId
-        out[#out + 1] = redis.call('GET', leaseKey)
-        out[#out + 1] = pttl
-    end
-end
-return {nowMs, out}
-`;
-
 export const ACQUIRE_ROUTING_ID_SLOT_SCRIPT = PROLOGUE + `
 local config = redis.call('HGET', KEYS[1], 'config')
 local slotCount = tonumber(ARGV[2])
@@ -228,8 +239,8 @@ if existingSlot then
             redis.call('HSET', KEYS[1], 'slot:' .. existingSlot,
                 currentOwner .. '|' .. generation .. '|' .. renewedExpiry)
             local leaseValue = redis.call('GET', KEYS[2])
-            local nodeRid = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
-            redis.call('SET', KEYS[2], nodeRid .. '|' .. nowMs, 'PX', ARGV[4])
+            local leaseGeneration = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
+            redis.call('SET', KEYS[2], leaseGeneration .. '|' .. nowMs, 'PX', ARGV[4])
             redis.call('SADD', KEYS[3], ARGV[3])
             return {'acquired', existingSlot, tonumber(generation), renewedExpiry, nowMs}
         end
@@ -260,8 +271,8 @@ redis.call('HSET', KEYS[1],
     'slot:' .. selected, ARGV[3] .. '|' .. generation .. '|' .. expiresAt,
     ownerField, selected)
 local leaseValue = redis.call('GET', KEYS[2])
-local nodeRid = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
-redis.call('SET', KEYS[2], nodeRid .. '|' .. nowMs, 'PX', ARGV[4])
+local leaseGeneration = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
+redis.call('SET', KEYS[2], leaseGeneration .. '|' .. nowMs, 'PX', ARGV[4])
 redis.call('SADD', KEYS[3], ARGV[3])
 return {'acquired', selected, generation, expiresAt, nowMs}
 `;

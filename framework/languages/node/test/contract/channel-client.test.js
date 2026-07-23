@@ -2383,7 +2383,7 @@ test('DSC-009 same routing id different endpoint replaces located provider', asy
   const providerV2Endpoint = `tcp://127.0.0.1:${await reservePort()}`;
   const providerRid = 'api-a';
 
-  await locationStore.renewOwnerLease('provider-v1', providerRid, 30000);
+  const providerV1Lease = await locationStore.claimOwnerLease('provider-v1', 30000);
   await locationStore.updatePeer(
     scaleoutPeer('provider-v1', providerRid, providerV1Endpoint),
     framework.ZLinkLocationWriteIntent.NewClaim
@@ -2391,8 +2391,9 @@ test('DSC-009 same routing id different endpoint replaces located provider', asy
   await waitForSingleReadyEndpoint(locationStore, providerRid, providerV1Endpoint);
 
   await locationStore.removeAllByOwner('provider-v1');
-  await locationStore.removeOwnerLease('provider-v1');
-  await locationStore.renewOwnerLease('provider-v2', providerRid, 30000);
+  assert.equal(providerV1Lease.kind, 'claimed');
+  await locationStore.releaseOwnerLease(providerV1Lease.token);
+  await locationStore.claimOwnerLease('provider-v2', 30000);
   await locationStore.updatePeer(
     scaleoutPeer('provider-v2', providerRid, providerV2Endpoint),
     framework.ZLinkLocationWriteIntent.NewClaim

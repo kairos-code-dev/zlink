@@ -1,4 +1,3 @@
-import type { RoutingId } from '../Common';
 import type {
   ZLinkActorLocation,
   ZLinkActorLocationFilter,
@@ -13,8 +12,10 @@ import type {
   ZLinkLocationWriteStatus,
   ZLinkMeshNodeDescriptor,
   ZLinkMeshNodeDescriptorKey,
-  ZLinkOwnerLeaseRenewal,
-  ZLinkOwnerLeaseSnapshot,
+  ZLinkOwnerLeaseClaimResult,
+  ZLinkOwnerLeaseReadResult,
+  ZLinkOwnerLeaseReleaseResult,
+  ZLinkOwnerLeaseRenewResult,
   ZLinkPageRequest,
   ZLinkPeerLocation,
   ZLinkPeerLocationFilter,
@@ -27,14 +28,22 @@ import type {
   ZLinkSpotLocationKey
 } from './Models';
 import type { ZLinkActorTransferStore } from './ActorTransfer';
+import type {
+  ZLinkAuthorityStore,
+  ZLinkObjectCreationStore,
+  ZLinkRelocationCapacityStore
+} from './Authority';
 
 export interface ZLinkLocationStore extends
   ZLinkMeshNodeLocationStore,
   ZLinkSpotLocationStore,
   ZLinkActorLocationStore,
   ZLinkOwnerLeaseStore,
-  ZLinkActorTransferStore {
-  removeAllByOwner(ownerId: string, signal?: AbortSignal): Promise<bigint>;
+  ZLinkActorTransferStore,
+  ZLinkAuthorityStore,
+  ZLinkObjectCreationStore,
+  ZLinkRelocationCapacityStore {
+  removeAllByOwner(owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<bigint>;
 }
 
 export interface ZLinkMeshNodeLocationStore {
@@ -133,14 +142,24 @@ export interface ZLinkRouteLocationStore {
 }
 
 export interface ZLinkOwnerLeaseStore {
-  renewOwnerLease(
+  claimOwnerLease(
     ownerId: string,
-    nodeRid: RoutingId,
     leaseTtlMs: number,
     signal?: AbortSignal
-  ): Promise<ZLinkOwnerLeaseRenewal>;
-  removeOwnerLease(ownerId: string, signal?: AbortSignal): Promise<boolean>;
-  listOwnerLeases(signal?: AbortSignal): Promise<ZLinkOwnerLeaseSnapshot>;
+  ): Promise<ZLinkOwnerLeaseClaimResult>;
+  readOwnerLease(
+    ownerId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkOwnerLeaseReadResult>;
+  renewOwnerLease(
+    token: ZLinkLocationOwnerToken,
+    leaseTtlMs: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkOwnerLeaseRenewResult>;
+  releaseOwnerLease(
+    token: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkOwnerLeaseReleaseResult>;
 }
 
 export interface ZLinkLocationWatchStore {

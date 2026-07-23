@@ -6,6 +6,18 @@ import {
   type ZLinkLocationChangeStampStore,
   type ZLinkLocationStore,
   type ZLinkActorLocation,
+  type ZLinkAggregateAbortResult,
+  type ZLinkAggregateCommitResult,
+  type ZLinkAggregateFence,
+  type ZLinkAggregatePrepareRequest,
+  type ZLinkAggregatePrepareResult,
+  type ZLinkAuthorityCompareExchangeResult,
+  type ZLinkAuthorityKey,
+  type ZLinkAuthorityMutation,
+  type ZLinkAuthorityReadResult,
+  type ZLinkAuthorityScanCursor,
+  type ZLinkAuthorityScanResult,
+  type ZLinkAuthorityStoreVersion,
   type ZLinkActorTransferPrepareRequest,
   type ZLinkActorTransferRecord,
   type ZLinkActorTransferState,
@@ -25,9 +37,16 @@ import {
   type ZLinkRoutingIdSlotAllocationSnapshot,
   type ZLinkRoutingIdSlotAllocationStore,
   type ZLinkRoutingIdSlotReleaseResult,
-  type ZLinkOwnerLease,
-  type ZLinkOwnerLeaseRenewal,
-  type ZLinkOwnerLeaseSnapshot,
+  type ZLinkOwnerLeaseClaimResult,
+  type ZLinkOwnerLeaseReadResult,
+  type ZLinkOwnerLeaseReleaseResult,
+  type ZLinkOwnerLeaseRenewResult,
+  type ZLinkObjectAbortRequest,
+  type ZLinkObjectAbortResult,
+  type ZLinkObjectCommitRequest,
+  type ZLinkObjectCommitResult,
+  type ZLinkObjectReserveRequest,
+  type ZLinkObjectReserveResult,
   type ZLinkPageRequest,
   type ZLinkPeerLocation,
   type ZLinkPeerLocationFilter,
@@ -35,10 +54,15 @@ import {
   type ZLinkRouteLocation,
   type ZLinkRouteLocationFilter,
   type ZLinkRouteLocationKey,
+  type ZLinkRelocationCapacityAbortResult,
+  type ZLinkRelocationCapacityFence,
+  type ZLinkRelocationCapacityReservationRequest,
+  type ZLinkRelocationCapacityReserveResult,
   type ZLinkSpotLocation,
   type ZLinkSpotLocationFilter,
   type ZLinkSpotLocationKey
 } from '../../contracts/Locations';
+import { ZLinkInMemoryAuthorityStore } from './in-memory-authority-store';
 import { ZLinkLocationKeyCodec } from './key-codec';
 import {
   matchesActorLocation,
@@ -51,7 +75,7 @@ export class ZLinkInMemoryLocationStore implements
   ZLinkLocationStore,
   ZLinkLocationChangeStampStore,
   ZLinkRoutingIdSlotAllocationStore {
-  private readonly leases = new Map<string, ZLinkOwnerLease>();
+  private readonly leases = new Map<string, InMemoryOwnerLease>();
   private readonly meshNodes = new RowTable<ZLinkMeshNodeDescriptor>();
   private readonly peers = new RowTable<ZLinkPeerLocation>();
   private readonly spots = new RowTable<ZLinkSpotLocation>();
@@ -60,8 +84,104 @@ export class ZLinkInMemoryLocationStore implements
   private readonly stamps = new Map<string, bigint>();
   private readonly routingIdGroups = new Map<string, InMemoryRoutingIdGroup>();
   private readonly actorTransfers = new Map<string, InMemoryActorTransferSlot>();
+  private ownerLeaseGeneration = 0n;
+  private readonly authority: ZLinkInMemoryAuthorityStore;
 
-  constructor(private readonly now: () => Date = () => new Date()) {}
+  constructor(private readonly now: () => Date = () => new Date()) {
+    this.authority = new ZLinkInMemoryAuthorityStore({
+      isTargetLive: (key, lifecycleGeneration, owner) => {
+        const descriptor = this.meshNodes.rows.get(meshNodeKey(key.meshName, key.rid));
+        const lease = this.leases.get(owner.ownerId);
+        return descriptor !== undefined
+          && descriptor.lifecycleGeneration === lifecycleGeneration
+          && descriptor.ownerId === owner.ownerId
+          && lease !== undefined
+          && lease.token.leaseGeneration === owner.leaseGeneration
+          && lease.leaseExpiresAt.getTime() > this.now().getTime();
+      }
+    }, now);
+  }
+
+  async readAuthority(
+    key: ZLinkAuthorityKey,
+    signal?: AbortSignal
+  ): Promise<ZLinkAuthorityReadResult> {
+    return this.authority.readAuthority(key, signal);
+  }
+
+  async compareExchangeAuthority(
+    key: ZLinkAuthorityKey,
+    expectedStoreVersion: ZLinkAuthorityStoreVersion,
+    mutation: ZLinkAuthorityMutation,
+    signal?: AbortSignal
+  ): Promise<ZLinkAuthorityCompareExchangeResult> {
+    return this.authority.compareExchangeAuthority(key, expectedStoreVersion, mutation, signal);
+  }
+
+  async listAuthorities(
+    prefix: string,
+    cursor: ZLinkAuthorityScanCursor | undefined,
+    limit: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkAuthorityScanResult> {
+    return this.authority.listAuthorities(prefix, cursor, limit, signal);
+  }
+
+  async reserve(
+    request: ZLinkObjectReserveRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkObjectReserveResult> {
+    return this.authority.reserve(request, signal);
+  }
+
+  async commit(
+    request: ZLinkObjectCommitRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkObjectCommitResult> {
+    return this.authority.commit(request, signal);
+  }
+
+  async abort(
+    request: ZLinkObjectAbortRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkObjectAbortResult> {
+    return this.authority.abort(request, signal);
+  }
+
+  async reserveRelocationCapacity(
+    request: ZLinkRelocationCapacityReservationRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkRelocationCapacityReserveResult> {
+    return this.authority.reserveRelocationCapacity(request, signal);
+  }
+
+  async abortRelocationCapacity(
+    fence: ZLinkRelocationCapacityFence,
+    signal?: AbortSignal
+  ): Promise<ZLinkRelocationCapacityAbortResult> {
+    return this.authority.abortRelocationCapacity(fence, signal);
+  }
+
+  async prepareAggregate(
+    request: ZLinkAggregatePrepareRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkAggregatePrepareResult> {
+    return this.authority.prepareAggregate(request, signal);
+  }
+
+  async commitAggregate(
+    fence: ZLinkAggregateFence,
+    signal?: AbortSignal
+  ): Promise<ZLinkAggregateCommitResult> {
+    return this.authority.commitAggregate(fence, signal);
+  }
+
+  async abortAggregate(
+    fence: ZLinkAggregateFence,
+    signal?: AbortSignal
+  ): Promise<ZLinkAggregateAbortResult> {
+    return this.authority.abortAggregate(fence, signal);
+  }
 
   async updateMeshNode(
     descriptor: ZLinkMeshNodeDescriptor,
@@ -91,7 +211,7 @@ export class ZLinkInMemoryLocationStore implements
     if (
       current === undefined
       || current.ownerId !== owner.ownerId
-      || this.meshNodes.generations.get(encoded) !== owner.generation
+      || this.meshNodes.generations.get(encoded) !== owner.leaseGeneration
     ) {
       return ZLinkLocationWriteStatus.IgnoredStale;
     }
@@ -156,7 +276,7 @@ export class ZLinkInMemoryLocationStore implements
       group.generations.set(slot, generation);
       const allocation = routingIdAllocation(
         slot,
-        { ownerId: request.ownerId, generation },
+        { ownerId: request.ownerId, leaseGeneration: generation },
         storeNow,
         request.leaseTtlMs
       );
@@ -178,7 +298,7 @@ export class ZLinkInMemoryLocationStore implements
     const current = group?.allocations.get(slot);
     if (current === undefined
       || current.owner.ownerId !== owner.ownerId
-      || current.owner.generation !== owner.generation) {
+      || current.owner.leaseGeneration !== owner.leaseGeneration) {
       return 'ignoredStale';
     }
     group?.allocations.delete(slot);
@@ -277,7 +397,7 @@ export class ZLinkInMemoryLocationStore implements
     const current = this.spots.rows.get(encoded);
     if (current === undefined
       || current.ownerId !== owner.ownerId
-      || this.spots.generations.get(encoded) !== owner.generation) {
+      || this.spots.generations.get(encoded) !== owner.leaseGeneration) {
       return ZLinkLocationWriteStatus.IgnoredStale;
     }
     this.spots.rows.delete(encoded);
@@ -326,7 +446,7 @@ export class ZLinkInMemoryLocationStore implements
     const current = this.actors.rows.get(encoded);
     if (current === undefined
       || current.ownerId !== owner.ownerId
-      || this.actors.generations.get(encoded) !== owner.generation) {
+      || this.actors.generations.get(encoded) !== owner.leaseGeneration) {
       return ZLinkLocationWriteStatus.IgnoredStale;
     }
     this.actors.rows.delete(encoded);
@@ -505,40 +625,89 @@ export class ZLinkInMemoryLocationStore implements
     return slot?.activeTransferId === undefined ? undefined : slot.records.get(slot.activeTransferId);
   }
 
-  async renewOwnerLease(
+  async claimOwnerLease(
     ownerId: string,
-    nodeRid: RoutingId,
-    leaseTtlMs: number
-  ): Promise<ZLinkOwnerLeaseRenewal> {
-    const updatedAt = this.now();
-    const leaseExpiresAt = new Date(updatedAt.getTime() + leaseTtlMs);
-    this.leases.set(ownerId, {
-      ownerId,
-      nodeRid,
-      leaseExpiresAt,
-      updatedAt
-    });
-    return { leaseExpiresAt, storeNow: updatedAt };
+    leaseTtlMs: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkOwnerLeaseClaimResult> {
+    signal?.throwIfAborted();
+    validateOwnerLeaseInput(ownerId, leaseTtlMs);
+    const storeNow = this.now();
+    const current = this.leases.get(ownerId);
+    if (current !== undefined && current.leaseExpiresAt.getTime() > storeNow.getTime()) {
+      return { kind: 'conflict' };
+    }
+    if (this.ownerLeaseGeneration >= 0x7fff_ffff_ffff_ffffn) {
+      return { kind: 'generationExhausted' };
+    }
+    const token = { ownerId, leaseGeneration: ++this.ownerLeaseGeneration };
+    const leaseExpiresAt = new Date(storeNow.getTime() + leaseTtlMs);
+    this.leases.set(ownerId, { token, leaseExpiresAt });
+    return { kind: 'claimed', token, leaseExpiresAt, storeNow };
   }
 
-  async removeOwnerLease(ownerId: string): Promise<boolean> {
-    return this.leases.delete(ownerId);
+  async readOwnerLease(
+    ownerId: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkOwnerLeaseReadResult> {
+    signal?.throwIfAborted();
+    if (ownerId.trim().length === 0) throw new TypeError('ownerId is required.');
+    const storeNow = this.now();
+    const current = this.leases.get(ownerId);
+    if (current === undefined || current.leaseExpiresAt.getTime() <= storeNow.getTime()) {
+      this.leases.delete(ownerId);
+      return { kind: 'missing' };
+    }
+    return {
+      kind: 'found',
+      token: { ...current.token },
+      leaseExpiresAt: new Date(current.leaseExpiresAt),
+      storeNow
+    };
   }
 
-  async removeAllByOwner(ownerId: string): Promise<bigint> {
+  async renewOwnerLease(
+    token: ZLinkLocationOwnerToken,
+    leaseTtlMs: number,
+    signal?: AbortSignal
+  ): Promise<ZLinkOwnerLeaseRenewResult> {
+    signal?.throwIfAborted();
+    validateOwnerLeaseInput(token.ownerId, leaseTtlMs);
+    const storeNow = this.now();
+    const current = this.leases.get(token.ownerId);
+    if (
+      current === undefined
+      || current.leaseExpiresAt.getTime() <= storeNow.getTime()
+      || current.token.leaseGeneration !== token.leaseGeneration
+    ) {
+      return { kind: 'stale' };
+    }
+    const leaseExpiresAt = new Date(storeNow.getTime() + leaseTtlMs);
+    this.leases.set(token.ownerId, { token: { ...token }, leaseExpiresAt });
+    return { kind: 'renewed', leaseExpiresAt, storeNow };
+  }
+
+  async releaseOwnerLease(
+    token: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkOwnerLeaseReleaseResult> {
+    signal?.throwIfAborted();
+    const current = this.leases.get(token.ownerId);
+    if (current === undefined || current.token.leaseGeneration !== token.leaseGeneration) {
+      return 'stale';
+    }
+    this.leases.delete(token.ownerId);
+    return 'released';
+  }
+
+  async removeAllByOwner(owner: ZLinkLocationOwnerToken): Promise<bigint> {
+    const ownerId = owner.ownerId;
     let removed = 0;
     removed += this.removeByOwner(this.peers, ownerId, (row) => row.ownerId, ZLinkLocationKind.Peer, (row) => row.meshName);
     removed += this.removeByOwner(this.spots, ownerId, (row) => row.ownerId, ZLinkLocationKind.Spot, (row) => row.meshName);
     removed += this.removeByOwner(this.actors, ownerId, (row) => row.ownerId, ZLinkLocationKind.Actor, () => undefined);
     removed += this.removeByOwner(this.routes, ownerId, (row) => row.ownerId, ZLinkLocationKind.Route, () => undefined);
     return BigInt(removed);
-  }
-
-  async listOwnerLeases(): Promise<ZLinkOwnerLeaseSnapshot> {
-    return {
-      leases: [...this.leases.values()],
-      storeNow: this.now()
-    };
   }
 
   async getChangeStamp(scope: ZLinkLocationChangeStampScope): Promise<bigint> {
@@ -623,13 +792,14 @@ export class ZLinkInMemoryLocationStore implements
     meshName: string | undefined
   ): ZLinkLocationWriteResult {
     const current = table.rows.get(key);
-    if (current === undefined || ownerOf(current) !== owner.ownerId || generationOf(current) !== owner.generation) {
+    if (current === undefined || ownerOf(current) !== owner.ownerId
+      || generationOf(current) !== owner.leaseGeneration) {
       return ignoredStale();
     }
 
     table.rows.delete(key);
     this.bump(kind, meshName);
-    return stored(owner.generation, this.now());
+    return stored(owner.leaseGeneration, this.now());
   }
 
   private removeByOwner<TRow>(
@@ -660,8 +830,7 @@ export class ZLinkInMemoryLocationStore implements
     if (lease === undefined) return;
     this.leases.set(ownerId, {
       ...lease,
-      leaseExpiresAt: new Date(now.getTime() + leaseTtlMs),
-      updatedAt: now
+      leaseExpiresAt: new Date(now.getTime() + leaseTtlMs)
     });
   }
 
@@ -693,6 +862,11 @@ interface InMemoryRoutingIdGroup {
 interface InMemoryActorTransferSlot {
   readonly records: Map<string, ZLinkActorTransferRecord>;
   activeTransferId?: string;
+}
+
+interface InMemoryOwnerLease {
+  readonly token: ZLinkLocationOwnerToken;
+  readonly leaseExpiresAt: Date;
 }
 
 const TRANSFER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -777,7 +951,7 @@ function validateRoutingIdSlotRelease(
   if (!Number.isInteger(slot) || slot < 1) {
     throw new RangeError('Routing-id allocation slot must be a positive integer.');
   }
-  if (owner.ownerId.trim().length === 0 || owner.generation < 1n) {
+  if (owner.ownerId.trim().length === 0 || owner.leaseGeneration < 1n) {
     throw new TypeError('Routing-id allocation owner token is invalid.');
   }
 }
@@ -807,7 +981,7 @@ function sameRoutingIdMembers(
 
 function removeExpiredRoutingIdAllocations(
   group: InMemoryRoutingIdGroup,
-  leases: ReadonlyMap<string, ZLinkOwnerLease>,
+  leases: ReadonlyMap<string, InMemoryOwnerLease>,
   storeNow: Date
 ): void {
   for (const [slot, allocation] of group.allocations) {
@@ -816,6 +990,13 @@ function removeExpiredRoutingIdAllocations(
     if (leaseExpiresAt.getTime() <= storeNow.getTime()) {
       group.allocations.delete(slot);
     }
+  }
+}
+
+function validateOwnerLeaseInput(ownerId: string, leaseTtlMs: number): void {
+  if (ownerId.trim().length === 0) throw new TypeError('ownerId is required.');
+  if (!Number.isSafeInteger(leaseTtlMs) || leaseTtlMs < 1) {
+    throw new RangeError('leaseTtlMs must be a positive safe integer.');
   }
 }
 

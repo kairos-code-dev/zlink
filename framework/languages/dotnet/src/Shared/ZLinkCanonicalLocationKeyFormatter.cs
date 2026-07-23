@@ -25,6 +25,10 @@ internal static class ZLinkCanonicalLocationKeyFormatter
     internal static string EncodeActorKey(ZLinkActorLocationKey key) =>
         Encode(key.MeshName, key.ActorId);
 
+    internal static string EncodeClientServerKey(
+        ZLinkClientServerServerDescriptorKey key) =>
+        Encode(key.ChannelName, key.ServerRid.ToHex());
+
     internal static string CanonicalName(ZLinkLocationAutoConnectType type) => type switch
     {
         ZLinkLocationAutoConnectType.RouteMesh => "route-mesh",

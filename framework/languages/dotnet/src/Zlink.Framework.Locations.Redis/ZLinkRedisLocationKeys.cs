@@ -154,6 +154,9 @@ internal sealed class ZLinkRedisLocationKeys
 
     public string OwnerIndexKeyPrefix(string tag) => $"{prefix}:own:{tag}:";
 
+    public RedisKey ClientServerChannelIndexKey(string channelName) =>
+        $"{prefix}:clientserver:channel:{Convert.ToHexString(Encoding.UTF8.GetBytes(channelName)).ToLowerInvariant()}";
+
     public RedisKey LeaseKey(string ownerId) => LeaseKeyPrefix() + ownerId;
 
     public string LeaseKeyPrefix() => $"{prefix}:lease:";

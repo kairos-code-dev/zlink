@@ -147,12 +147,17 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
             {
                 if (!_ownerCleanedForDrain)
                 {
-                    await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
                     if (_ownerToken is { } token)
+                    {
+                        await _locationStore.RemoveAllByOwnerAsync(
+                                token,
+                                cancellationToken)
+                            .ConfigureAwait(false);
                         _ = await _ownerLeaseStore.ReleaseOwnerLeaseAsync(
                                 token,
                                 cancellationToken)
                             .ConfigureAwait(false);
+                    }
                     _ownerToken = null;
                 }
             }
@@ -184,7 +189,9 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
             // Keep the owner lease valid while rows are removed. If row
             // cleanup fails, the heartbeat continues and the next retry sees
             // the same live owner rather than stale state.
-            await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken)
+            await _locationStore.RemoveAllByOwnerAsync(
+                    OwnerToken,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             var heartbeat = _heartbeatCts;
@@ -229,7 +236,10 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
     internal async ValueTask RemoveOwnedRowsBeforeRoutingIdReleaseAsync(
         CancellationToken cancellationToken)
     {
-        _ = await _locationStore.RemoveAllByOwnerAsync(OwnerId, cancellationToken).ConfigureAwait(false);
+        _ = await _locationStore.RemoveAllByOwnerAsync(
+                OwnerToken,
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private void StartHeartbeatAfterCleanupFailure()

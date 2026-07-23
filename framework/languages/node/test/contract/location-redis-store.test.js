@@ -705,6 +705,188 @@ test('redis resolver rejects an Actor row after the same SPOT RID is recreated',
   }
 });
 
+test('redis ClientServer descriptors enforce revision, lifecycle takeover, paging, and owner cleanup', async (t) => {
+  const fixture = await redisFixture();
+  if (fixture === undefined) {
+    t.skip('Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT or run Redis on 127.0.0.1:16379/6379.');
+    return;
+  }
+  const prefix = `zlink:node-location-client-server:${process.pid}:${Date.now()}`;
+  const store = new redisLocations.ZLinkRedisLocationStore({ url: fixture.url, keyPrefix: prefix });
+  try {
+    const ownerA = await store.claimOwnerLease('channel-owner-a', 30_000);
+    assert.equal(ownerA.kind, 'claimed');
+    const initial = clientServerDescriptor(
+      'orders-a',
+      'channel-owner-a',
+      ownerA.token.leaseGeneration
+    );
+    const claimed = await store.updateClientServer(
+      initial,
+      framework.ZLinkLocationWriteIntent.NewClaim
+    );
+    assert.equal(claimed.status, framework.ZLinkLocationWriteStatus.Stored);
+    assert.equal(claimed.generation, 1n);
+
+    const staleRevision = await store.updateClientServer(
+      { ...initial, descriptorRevision: 2n },
+      framework.ZLinkLocationWriteIntent.Renew
+    );
+    assert.equal(staleRevision.status, framework.ZLinkLocationWriteStatus.IgnoredStale);
+    const changedImmutable = await store.updateClientServer(
+      { ...initial, descriptorRevision: 4n, endpoint: 'tcp://10.0.0.2:7499' },
+      framework.ZLinkLocationWriteIntent.Renew
+    );
+    assert.equal(changedImmutable.status, framework.ZLinkLocationWriteStatus.IgnoredStale);
+    const renewed = await store.updateClientServer(
+      { ...initial, descriptorRevision: 4n, weight: 50 },
+      framework.ZLinkLocationWriteIntent.Renew
+    );
+    assert.equal(renewed.status, framework.ZLinkLocationWriteStatus.Stored);
+    assert.equal(renewed.generation, claimed.generation);
+
+    const fixtureContract = redisSemanticFixture('client-server-server-descriptor-v1.json');
+    const canonicalKey = fixtureContract.row.key;
+    const rowDigest = createHash('sha256').update(canonicalKey, 'utf8').digest('hex');
+    const physicalKey = `${prefix}:{zlink-location-v1}:descriptor:client-server:${rowDigest}`;
+    const storedHash = await fixture.client.hGetAll(physicalKey);
+    assert.deepEqual(Object.keys(storedHash).sort(), fixtureContract.hashFields.slice().sort());
+    assert.equal(storedHash.owner, initial.ownerId);
+    assert.equal(storedHash.channel, initial.channelName);
+    const storedJson = JSON.parse(storedHash.json);
+    const expectedJson = JSON.parse(fixtureContract.row.hash.json);
+    for (const field of [
+      'ChannelName',
+      'ServerRid',
+      'LifecycleGeneration',
+      'Endpoint',
+      'SecurityIdentity',
+      'OwnerId',
+      'UpdatedAt'
+    ]) {
+      assert.deepEqual(storedJson[field], expectedJson[field]);
+    }
+    assert.equal(storedJson.OwnerLeaseGeneration, Number(ownerA.token.leaseGeneration));
+    assert.equal(storedJson.DescriptorRevision, 4);
+    assert.equal(storedJson.Weight, 50);
+    assert.equal(storedJson.State, 'Serving');
+    assert.equal('NormalizedEffectiveMaxMessageBytes' in storedJson, false);
+
+    const second = clientServerDescriptor(
+      'orders-b',
+      'channel-owner-a',
+      ownerA.token.leaseGeneration
+    );
+    assert.equal(
+      (await store.updateClientServer(
+        second,
+        framework.ZLinkLocationWriteIntent.NewClaim
+      )).status,
+      framework.ZLinkLocationWriteStatus.Stored
+    );
+    const otherChannel = {
+      ...clientServerDescriptor(
+        'billing-a',
+        'channel-owner-a',
+        ownerA.token.leaseGeneration
+      ),
+      channelName: 'billing'
+    };
+    assert.equal(
+      (await store.updateClientServer(
+        otherChannel,
+        framework.ZLinkLocationWriteIntent.NewClaim
+      )).status,
+      framework.ZLinkLocationWriteStatus.Stored
+    );
+
+    const listed = [];
+    let continuationToken;
+    do {
+      const page = await store.listClientServers('orders', {
+        pageSize: 1,
+        continuationToken
+      });
+      assert.equal(page.items.length <= 1, true);
+      listed.push(...page.items);
+      continuationToken = page.continuationToken;
+    } while (continuationToken !== undefined);
+    assert.deepEqual(
+      listed.map(row => row.serverRid.toHex()).sort(),
+      [rid('orders-a').toHex(), rid('orders-b').toHex()].sort()
+    );
+    await assert.rejects(
+      store.listClientServers('billing', {
+        pageSize: 1,
+        continuationToken: Buffer.from(JSON.stringify({
+          kind: 'client-server-v1',
+          channelName: 'orders',
+          offset: 1
+        })).toString('base64url')
+      }),
+      /continuation token/
+    );
+
+    const ownerB = await store.claimOwnerLease('channel-owner-b', 30_000);
+    assert.equal(ownerB.kind, 'claimed');
+    const replacement = {
+      ...initial,
+      lifecycleGeneration: 8n,
+      descriptorRevision: 1n,
+      endpoint: 'tcp://10.0.0.3:7400',
+      ownerId: ownerB.token.ownerId,
+      leaseGeneration: ownerB.token.leaseGeneration
+    };
+    assert.equal(
+      (await store.updateClientServer(
+        replacement,
+        framework.ZLinkLocationWriteIntent.Takeover
+      )).status,
+      framework.ZLinkLocationWriteStatus.RejectedConflict
+    );
+    assert.equal(await store.releaseOwnerLease(ownerA.token), 'released');
+    const takenOver = await store.updateClientServer(
+      replacement,
+      framework.ZLinkLocationWriteIntent.Takeover
+    );
+    assert.equal(takenOver.status, framework.ZLinkLocationWriteStatus.Stored);
+    assert.equal(takenOver.generation, 4n);
+    assert.equal(
+      (await store.updateClientServer(
+        { ...initial, descriptorRevision: 5n },
+        framework.ZLinkLocationWriteIntent.Renew
+      )).status,
+      framework.ZLinkLocationWriteStatus.RejectedConflict
+    );
+    const ordersA = (await store.listClientServers('orders')).items
+      .find(row => row.serverRid.toHex() === rid('orders-a').toHex());
+    assert.equal(ordersA.lifecycleGeneration, 8n);
+    assert.equal(ordersA.ownerId, ownerB.token.ownerId);
+
+    const ownerBSecond = {
+      ...second,
+      ownerId: ownerB.token.ownerId,
+      leaseGeneration: ownerB.token.leaseGeneration,
+      lifecycleGeneration: 8n,
+      descriptorRevision: 1n
+    };
+    assert.equal(
+      (await store.updateClientServer(
+        ownerBSecond,
+        framework.ZLinkLocationWriteIntent.Takeover
+      )).status,
+      framework.ZLinkLocationWriteStatus.Stored
+    );
+    assert.equal(await store.removeAllByOwner(ownerB.token), 2n);
+    assert.equal((await store.listClientServers('orders')).items.length, 0);
+    assert.equal((await store.listClientServers('billing')).items.length, 1);
+  } finally {
+    await store.dispose();
+    await cleanupPrefix(fixture.client, prefix);
+    await fixture.client.quit();
+  }
+});
+
 test('redis location store validates required connection options', () => {
   assert.throws(
     () => new redisLocations.ZLinkRedisLocationStore({ url: 'redis://127.0.0.1:6379', keyPrefix: '' }),
@@ -890,6 +1072,22 @@ function exactMeshNodeDescriptor(nodeName = 'game-a', ownerId = 'mesh-owner-a', 
       activeLimit: 100,
       pendingLimit: 100
     }],
+    state: framework.ZLinkFrameworkRuntimeState.Serving,
+    securityIdentity: 'cluster-a',
+    ownerId,
+    leaseGeneration,
+    updatedAt: new Date('2024-07-15T00:00:00.000Z')
+  };
+}
+
+function clientServerDescriptor(serverName, ownerId, leaseGeneration) {
+  return {
+    channelName: 'orders',
+    serverRid: rid(serverName),
+    lifecycleGeneration: 7n,
+    descriptorRevision: 3n,
+    endpoint: 'tcp://10.0.0.2:7400',
+    weight: 100,
     state: framework.ZLinkFrameworkRuntimeState.Serving,
     securityIdentity: 'cluster-a',
     ownerId,

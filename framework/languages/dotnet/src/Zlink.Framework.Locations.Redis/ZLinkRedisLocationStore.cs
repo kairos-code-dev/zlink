@@ -11,6 +11,7 @@ namespace Zlink.Framework.Locations.Redis;
 /// </summary>
 public sealed partial class ZLinkRedisLocationStore :
     IZLinkLocationStore,
+    IZLinkClientServerLocationStore,
     IZLinkRoutingIdSlotAllocationStore,
     IZLinkLocationChangeStampStore,
     IAsyncDisposable
@@ -162,6 +163,125 @@ public sealed partial class ZLinkRedisLocationStore :
                     descriptor.Rid)),
             descriptor.LifecycleGeneration);
 
+    // ----- ClientServer server descriptor store ---------------------------
+
+    public ValueTask<ZLinkLocationWriteResult> UpdateClientServerAsync(
+        ZLinkClientServerServerDescriptor descriptor,
+        ZLinkLocationWriteIntent intent,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateClientServerDescriptor(descriptor);
+        return ExecuteAsync(
+            database => _commands.WriteClientServerAsync(
+                database,
+                descriptor,
+                intent),
+            cancellationToken);
+    }
+
+    public ValueTask<ZLinkLocationWriteStatus> RemoveClientServerAsync(
+        ZLinkClientServerServerDescriptorKey key,
+        ZLinkLocationOwnerToken owner,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key.ChannelName);
+        if (key.ServerRid.IsEmpty)
+            throw new ArgumentOutOfRangeException(nameof(key));
+        return ExecuteAsync(
+            async database =>
+            {
+                var result = await _commands.RemoveClientServerAsync(
+                        database,
+                        ZLinkRedisLocationKeyCodec.EncodeClientServerKey(key),
+                        key.ChannelName,
+                        owner)
+                    .ConfigureAwait(false);
+                return result.Status;
+            },
+            cancellationToken);
+    }
+
+    public ValueTask<ZLinkLocationPage<ZLinkClientServerServerDescriptor>>
+        ListClientServersAsync(
+            string channelName,
+            ZLinkPageRequest page,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
+        var pageSize = page.PageSize <= 0 ? 100 : page.PageSize;
+        if (pageSize > 1000)
+            throw new ArgumentOutOfRangeException(nameof(page));
+        var offset = 0L;
+        if (page.ContinuationToken is { } token
+            && (!long.TryParse(
+                    token,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out offset)
+                || offset < 0))
+            throw new ArgumentException(
+                "The ClientServer continuation token is invalid.",
+                nameof(page));
+
+        return ExecuteAsync(
+            async database =>
+            {
+                var members = await database.SortedSetRangeByRankAsync(
+                        _keys.ClientServerChannelIndexKey(channelName),
+                        offset,
+                        checked(offset + pageSize))
+                    .ConfigureAwait(false);
+                var rows = new List<ZLinkClientServerServerDescriptor>(
+                    Math.Min(pageSize, members.Length));
+                var encodedBytes = 0;
+                var consumedMembers = 0;
+                foreach (var member in members)
+                {
+                    if (rows.Count == pageSize)
+                        break;
+
+                    var fields = await database.HashGetAsync(
+                            _keys.RowHashKey(
+                                ZLinkRedisLocationKinds.ClientServer.Tag,
+                                (string)member!),
+                            ZLinkRedisLocationRows.Fields)
+                        .ConfigureAwait(false);
+                    if (fields[0].IsNull)
+                    {
+                        consumedMembers++;
+                        continue;
+                    }
+
+                    var rowBytes = System.Text.Encoding.UTF8.GetByteCount(
+                        (string)fields[0]!);
+                    if (rows.Count != 0
+                        && encodedBytes + rowBytes > 4 * 1024 * 1024)
+                    {
+                        break;
+                    }
+
+                    if (ZLinkRedisLocationRows.Materialize(
+                            ZLinkRedisLocationKinds.ClientServer,
+                            fields) is { } row)
+                    {
+                        rows.Add(row);
+                        encodedBytes += rowBytes;
+                    }
+                    consumedMembers++;
+                }
+
+                var next = consumedMembers < members.Length
+                           || members.Length > pageSize
+                    ? checked(offset + consumedMembers).ToString(
+                        System.Globalization.CultureInfo.InvariantCulture)
+                    : null;
+                return new ZLinkLocationPage<ZLinkClientServerServerDescriptor>(
+                    rows,
+                    next);
+            },
+            cancellationToken);
+    }
+
     // ----- spot store ------------------------------------------------------
 
     public ValueTask<ZLinkLocationWriteResult> UpdateSpotAsync(
@@ -291,11 +411,14 @@ public sealed partial class ZLinkRedisLocationStore :
     }
 
     public async ValueTask<long> RemoveAllByOwnerAsync(
-        string ownerId,
+        ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(owner.OwnerId);
+        if (owner.LeaseGeneration <= 0)
+            throw new ArgumentOutOfRangeException(nameof(owner));
         return await ExecuteAsync(
-                database => _commands.RemoveAllByOwnerAsync(database, ownerId),
+                database => _commands.RemoveAllByOwnerAsync(database, owner),
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -450,6 +573,23 @@ public sealed partial class ZLinkRedisLocationStore :
                 },
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static void ValidateClientServerDescriptor(
+        ZLinkClientServerServerDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentException.ThrowIfNullOrWhiteSpace(descriptor.ChannelName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(descriptor.Endpoint);
+        ArgumentException.ThrowIfNullOrWhiteSpace(descriptor.SecurityIdentity);
+        ArgumentException.ThrowIfNullOrWhiteSpace(descriptor.OwnerId);
+        if (descriptor.ServerRid.IsEmpty
+            || descriptor.LifecycleGeneration == 0
+            || descriptor.DescriptorRevision == 0
+            || descriptor.LeaseGeneration <= 0
+            || descriptor.Weight is < 0 or > 100
+            || !Enum.IsDefined(descriptor.State))
+            throw new ArgumentOutOfRangeException(nameof(descriptor));
     }
 
     private async ValueTask<TResult> ExecuteAsync<TResult>(

@@ -500,11 +500,11 @@ public sealed class LocationRuntimeTests
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public ValueTask<long> RemoveAllByOwnerAsync(
-            string ownerId,
+            ZLinkLocationOwnerToken owner,
             CancellationToken cancellationToken = default) =>
             Interlocked.Exchange(ref _fail, 0) != 0
                 ? throw new InvalidOperationException("owner cleanup unavailable")
-                : inner.RemoveAllByOwnerAsync(ownerId, cancellationToken);
+                : inner.RemoveAllByOwnerAsync(owner, cancellationToken);
 
         public ValueTask<ZLinkActorTransferWriteResult> PrepareActorTransferAsync(
             ZLinkActorTransferPrepareRequest request,

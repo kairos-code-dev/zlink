@@ -137,7 +137,7 @@ public sealed class RedisLocationStoreTests
     [Fact]
     public void RemoveAllByOwner_Uses_One_Lua_Script_For_All_Kinds()
     {
-        Assert.Contains("for i = 1, 3 do", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.Ordinal);
+        Assert.Contains("for i = 1, 4 do", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.Ordinal);
         Assert.Contains("local ownerIndex = KEYS[i]", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.Ordinal);
         Assert.Contains("redis.call('DEL', ownerIndex)", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.Ordinal);
         Assert.DoesNotContain("MULTI", ZLinkRedisLocationScripts.RemoveAllByOwner, StringComparison.OrdinalIgnoreCase);
@@ -312,7 +312,9 @@ public sealed class RedisLocationStoreTests
         await actors.UpdateActorAsync(TestRows.Actor(OwnerA, "actor-2"), ZLinkLocationWriteIntent.NewClaim);
         await actors.UpdateActorAsync(TestRows.Actor(OwnerB, "actor-3"), ZLinkLocationWriteIntent.NewClaim);
 
-        var removed = await store.RemoveAllByOwnerAsync(OwnerA);
+        var ownerAToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(OwnerA)).Token;
+        var removed = await store.RemoveAllByOwnerAsync(ownerAToken);
 
         Assert.Equal(2, removed);
         Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-1")));
@@ -349,7 +351,7 @@ public sealed class RedisLocationStoreTests
         await store.UpdateActorAsync(TestRows.Actor(OwnerA, "actor-a"), ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateActorAsync(TestRows.Actor(OwnerB, "actor-b"), ZLinkLocationWriteIntent.NewClaim);
 
-        var removed = await store.RemoveAllByOwnerAsync(OwnerA);
+        var removed = await store.RemoveAllByOwnerAsync(ownerAToken);
 
         Assert.Equal(3, removed);
         Assert.DoesNotContain(await store.ListMeshNodesAsync("play"), row => row.OwnerId == OwnerA);

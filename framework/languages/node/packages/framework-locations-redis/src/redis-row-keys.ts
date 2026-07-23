@@ -16,6 +16,11 @@ export interface MeshNodeKey {
   readonly rid: RoutingId;
 }
 
+export interface ClientServerServerKey {
+  readonly channelName: string;
+  readonly serverRid: RoutingId;
+}
+
 export interface ActorKey {
   readonly meshName?: string;
   readonly actorId: string;
@@ -43,6 +48,10 @@ export function encodeSpotKey(key: SpotKey): string {
 
 export function encodeMeshNodeKey(key: MeshNodeKey): string {
   return encodeKeySegments(key.meshName, routingIdHex(key.rid));
+}
+
+export function encodeClientServerServerKey(key: ClientServerServerKey): string {
+  return encodeKeySegments(key.channelName, routingIdHex(key.serverRid));
 }
 
 export function encodeActorKey(key: ActorKey): string {

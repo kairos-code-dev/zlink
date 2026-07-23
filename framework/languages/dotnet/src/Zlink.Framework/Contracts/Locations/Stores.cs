@@ -27,7 +27,7 @@ public interface IZLinkLocationStore :
     /// should make it one atomic operation when their backend allows it.
     /// </summary>
     ValueTask<long> RemoveAllByOwnerAsync(
-        string ownerId,
+        ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default);
 }
 

@@ -1,10 +1,12 @@
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import {
   ZLinkLocationKind,
+  ZLinkFrameworkRuntimeState,
   zlinkSpotKindFromWire,
   zlinkSpotKindToWire,
   type RoutingId,
   type ZLinkActorLocation,
+  type ZLinkClientServerServerDescriptor,
   type ZLinkMeshNodeDescriptor,
   type ZLinkPeerLocation,
   type ZLinkRouteLocation,
@@ -12,6 +14,7 @@ import {
 } from '@zlink-systems/framework';
 import {
   encodeActorKey,
+  encodeClientServerServerKey,
   encodeMeshNodeKey,
   encodePeerKey,
   encodeRouteKey,
@@ -61,6 +64,28 @@ export const kindMeshNode: LocationKind<ZLinkMeshNodeDescriptor> = {
   fromJsonText: (json, generation, updatedAt) => meshNodeFromJson(
     JSON.parse(json.replace(
       /("(?:LifecycleGeneration|DescriptorRevision|ApplicationVersion|LeaseGeneration)":)([0-9]+)/g,
+      '$1"$2"'
+    )),
+    generation,
+    updatedAt
+  )
+};
+
+export const kindClientServer: LocationKind<ZLinkClientServerServerDescriptor> = {
+  tag: 'channel-server',
+  encodeKey: (row) => encodeClientServerServerKey({
+    channelName: row.channelName,
+    serverRid: row.serverRid
+  }),
+  meshOf: (row) => row.channelName,
+  ownerOf: (row) => row.ownerId,
+  generationOf: () => 0n,
+  toJson: clientServerToJson,
+  toJsonText: clientServerToJsonText,
+  fromJson: clientServerFromJson,
+  fromJsonText: (json, generation, updatedAt) => clientServerFromJson(
+    JSON.parse(json.replace(
+      /("(?:LifecycleGeneration|DescriptorRevision|OwnerLeaseGeneration)":)([0-9]+)/g,
       '$1"$2"'
     )),
     generation,
@@ -211,14 +236,106 @@ function meshNodeFromJson(
   };
 }
 
+function clientServerToJson(row: ZLinkClientServerServerDescriptor): unknown {
+  return {
+    ChannelName: row.channelName,
+    ServerRid: routingIdHex(row.serverRid),
+    LifecycleGeneration: requiredUnsignedNumber(
+      row.lifecycleGeneration,
+      'LifecycleGeneration'
+    ),
+    DescriptorRevision: requiredUnsignedNumber(
+      row.descriptorRevision,
+      'DescriptorRevision'
+    ),
+    Endpoint: row.endpoint,
+    Weight: row.weight,
+    State: runtimeStateToName(row.state),
+    SecurityIdentity: row.securityIdentity,
+    OwnerId: row.ownerId,
+    OwnerLeaseGeneration: requiredUnsignedNumber(
+      row.leaseGeneration,
+      'OwnerLeaseGeneration'
+    ),
+    UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
+  };
+}
+
+function clientServerToJsonText(row: ZLinkClientServerServerDescriptor): string {
+  return [
+    '{',
+    `"ChannelName":${JSON.stringify(row.channelName)}`,
+    `,"ServerRid":${JSON.stringify(routingIdHex(row.serverRid))}`,
+    `,"LifecycleGeneration":${requiredUnsigned(row.lifecycleGeneration, 'LifecycleGeneration')}`,
+    `,"DescriptorRevision":${requiredUnsigned(row.descriptorRevision, 'DescriptorRevision')}`,
+    `,"Endpoint":${JSON.stringify(row.endpoint)}`,
+    `,"Weight":${JSON.stringify(row.weight)}`,
+    `,"State":${JSON.stringify(runtimeStateToName(row.state))}`,
+    `,"SecurityIdentity":${JSON.stringify(row.securityIdentity)}`,
+    `,"OwnerId":${JSON.stringify(row.ownerId)}`,
+    `,"OwnerLeaseGeneration":${requiredUnsigned(row.leaseGeneration, 'OwnerLeaseGeneration')}`,
+    `,"UpdatedAt":${JSON.stringify(formatDotNetDateTimeOffset(row.updatedAt))}`,
+    '}'
+  ].join('');
+}
+
+function clientServerFromJson(
+  json: unknown,
+  _generation: bigint,
+  updatedAt: Date
+): ZLinkClientServerServerDescriptor {
+  const row = objectOf(json);
+  return {
+    channelName: stringOf(row.ChannelName),
+    serverRid: ridOf(row.ServerRid),
+    lifecycleGeneration: unsignedBigIntOf(row.LifecycleGeneration),
+    descriptorRevision: unsignedBigIntOf(row.DescriptorRevision),
+    endpoint: stringOf(row.Endpoint),
+    weight: numberOf(row.Weight),
+    state: runtimeStateFromName(row.State),
+    securityIdentity: stringOf(row.SecurityIdentity),
+    ownerId: stringOf(row.OwnerId),
+    leaseGeneration: unsignedBigIntOf(
+      row.OwnerLeaseGeneration ?? row.LeaseGeneration
+    ),
+    updatedAt
+  };
+}
+
+function runtimeStateToName(value: ZLinkFrameworkRuntimeState): string {
+  switch (value) {
+    case ZLinkFrameworkRuntimeState.Preparing: return 'Preparing';
+    case ZLinkFrameworkRuntimeState.Serving: return 'Serving';
+    case ZLinkFrameworkRuntimeState.Retiring: return 'Retiring';
+    case ZLinkFrameworkRuntimeState.Draining: return 'Draining';
+    case ZLinkFrameworkRuntimeState.Stopped: return 'Stopped';
+    case ZLinkFrameworkRuntimeState.Error: return 'Error';
+    default: throw new RangeError('Unknown Framework runtime state.');
+  }
+}
+
+function runtimeStateFromName(value: unknown): ZLinkFrameworkRuntimeState {
+  if (typeof value === 'number') return value as ZLinkFrameworkRuntimeState;
+  switch (stringOf(value)) {
+    case 'Preparing': return ZLinkFrameworkRuntimeState.Preparing;
+    case 'Serving': return ZLinkFrameworkRuntimeState.Serving;
+    case 'Retiring': return ZLinkFrameworkRuntimeState.Retiring;
+    case 'Draining': return ZLinkFrameworkRuntimeState.Draining;
+    case 'Stopped': return ZLinkFrameworkRuntimeState.Stopped;
+    case 'Error': return ZLinkFrameworkRuntimeState.Error;
+    default: throw new RangeError('Unknown Framework runtime state.');
+  }
+}
+
 function canonicalCapabilities(
   values: ZLinkMeshNodeDescriptor['objectCapabilities']
 ): ZLinkMeshNodeDescriptor['objectCapabilities'] {
   return [...values]
     .map(value => ({ ...value, placementProfiles: [...value.placementProfiles].sort() }))
-    .sort((left, right) =>
-      left.objectKind.localeCompare(right.objectKind)
-      || left.stableType.localeCompare(right.stableType));
+    .sort((left, right) => {
+      const byKind = left.objectKind.localeCompare(right.objectKind);
+      return byKind !== 0 ? byKind : left.stableType.localeCompare(right.stableType);
+    });
 }
 
 function capabilitiesToJson(
@@ -629,6 +746,8 @@ export function kindTagOf(kind: ZLinkLocationKind): string {
       return kindActor.tag;
     case ZLinkLocationKind.Route:
       return kindRoute.tag;
+    case ZLinkLocationKind.ClientServer:
+      return kindClientServer.tag;
     default:
       throw new RangeError(`Unknown location kind: ${kind}`);
   }

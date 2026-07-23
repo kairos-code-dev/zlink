@@ -58,6 +58,8 @@ public sealed class RedisInMemoryParityTests
         var leaseTtl = TimeSpan.FromSeconds(30);
         RecordLease("lease-a", await leases.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), leaseTtl));
         RecordLease("lease-b", await leases.RenewOwnerLeaseAsync(OwnerB, RoutingId.From("node-2"), leaseTtl));
+        var ownerAToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await leases.ReadOwnerLeaseAsync(OwnerA)).Token;
 
         // Actor lifecycle: claim, conflict, owner-guarded renew, takeover
         // fencing, owner-guarded remove, re-claim after removal.
@@ -88,7 +90,8 @@ public sealed class RedisInMemoryParityTests
         RecordStatus("spot-remove-wrong-owner", await spots.RemoveSpotAsync(
             new ZLinkSpotLocationKey("play", RoutingId.From("spot-1")),
             new ZLinkLocationOwnerToken(OwnerB, 1)));
-        trace.Add($"remove-all-by-owner={await store.RemoveAllByOwnerAsync(OwnerA)}");
+        trace.Add(
+            $"remove-all-by-owner={await store.RemoveAllByOwnerAsync(ownerAToken)}");
 
         // A removed owner lease makes that owner's remaining rows claimable.
         var descriptorClaim = await meshNodes.UpdateMeshNodeAsync(

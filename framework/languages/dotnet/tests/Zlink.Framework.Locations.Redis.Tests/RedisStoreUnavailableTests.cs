@@ -30,7 +30,8 @@ public sealed class RedisStoreFailureTests
                 new ZLinkActorLocationKey("play", "actor-1"),
                 new ZLinkLocationOwnerToken("owner-a", 1)));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
-            await store.RemoveAllByOwnerAsync("owner-a"));
+            await store.RemoveAllByOwnerAsync(
+                new ZLinkLocationOwnerToken("owner-a", 1)));
         await Assert.ThrowsAsync<RedisConnectionException>(async () =>
             await store.RenewOwnerLeaseAsync(
                 "owner-a", RoutingId.From("node-1"), TimeSpan.FromSeconds(15)));

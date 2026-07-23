@@ -213,7 +213,16 @@ public sealed class InMemoryLocationStoreTests
         await actors.UpdateActorAsync(Actor(OwnerA, "actor-2"), ZLinkLocationWriteIntent.NewClaim);
         await actors.UpdateActorAsync(Actor(OwnerB, "actor-3"), ZLinkLocationWriteIntent.NewClaim);
 
-        var removed = await store.RemoveAllByOwnerAsync(OwnerA);
+        var ownerAToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(OwnerA)).Token;
+        Assert.Equal(
+            0,
+            await store.RemoveAllByOwnerAsync(
+                ownerAToken with
+                {
+                    LeaseGeneration = ownerAToken.LeaseGeneration + 1
+                }));
+        var removed = await store.RemoveAllByOwnerAsync(ownerAToken);
 
         Assert.Equal(2, removed);
         Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-1")));
@@ -238,7 +247,9 @@ public sealed class InMemoryLocationStoreTests
         await store.UpdateActorAsync(Actor(OwnerA, "actor-a"), ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateActorAsync(Actor(OwnerB, "actor-b"), ZLinkLocationWriteIntent.NewClaim);
 
-        var removed = await store.RemoveAllByOwnerAsync(OwnerA);
+        var ownerAToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(OwnerA)).Token;
+        var removed = await store.RemoveAllByOwnerAsync(ownerAToken);
 
         Assert.Equal(3, removed);
         Assert.DoesNotContain(await store.ListMeshNodesAsync("play"), row => row.OwnerId == OwnerA);

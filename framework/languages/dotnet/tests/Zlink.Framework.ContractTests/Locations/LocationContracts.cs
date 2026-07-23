@@ -92,7 +92,8 @@ public sealed class LocationContracts
         Assert.Equal(StoreNow, snapshot.StoreNow);
         Assert.Single(snapshot.Leases);
 
-        var removedCount = await store.RemoveAllByOwnerAsync(ownerB);
+        var removedCount = await store.RemoveAllByOwnerAsync(
+            new ZLinkLocationOwnerToken(ownerB, takeover.Generation));
         Assert.Equal(1, removedCount);
     }
 
@@ -282,9 +283,13 @@ public sealed class LocationContracts
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult(_row);
 
-        public ValueTask<long> RemoveAllByOwnerAsync(string ownerId)
+        public ValueTask<long> RemoveAllByOwnerAsync(
+            ZLinkLocationOwnerToken owner,
+            CancellationToken cancellationToken = default)
         {
-            if (_row is null || _row.OwnerId != ownerId)
+            if (_row is null
+                || _row.OwnerId != owner.OwnerId
+                || _rowGeneration != owner.Generation)
             {
                 return ValueTask.FromResult(0L);
             }

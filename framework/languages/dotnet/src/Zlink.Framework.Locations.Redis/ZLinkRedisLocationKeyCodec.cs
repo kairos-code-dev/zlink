@@ -17,4 +17,8 @@ internal static class ZLinkRedisLocationKeyCodec
 
     internal static string EncodeActorKey(ZLinkActorLocationKey key) =>
         ZLinkCanonicalLocationKeyFormatter.EncodeActorKey(key);
+
+    internal static string EncodeClientServerKey(
+        ZLinkClientServerServerDescriptorKey key) =>
+        ZLinkCanonicalLocationKeyFormatter.EncodeClientServerKey(key);
 }

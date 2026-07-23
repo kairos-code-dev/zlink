@@ -1184,6 +1184,25 @@ Redis provider operation과 handshake·security admission 뒤 ready 승격, desc
 연결은 계속 진행한다. Sample·E2E와 Core·bindings는 변경하거나 실행하지 않았다. 이 checkpoint는
 `V11-M6A-DN`·`V11-M6A-NODE`를 완료로 판정하지 않는다.
 
+ClientServer Redis provider checkpoint(2026-07-23)에서 .NET과 Node 공식 Location provider에
+`ChannelName`과 Server RID로 만든 key, owner lease·lifecycle·revision·immutable field CAS, 만료된 owner의
+takeover, exact owner token cleanup을 구현했다. Descriptor page는 channel별 정렬 index에서 필요한 candidate만
+읽으며 기본 100개, 요청 최대 1000개와 encoded 4 MiB 제한을 함께 적용한다. Node의 전체 index
+`SMEMBERS`와 page 생략 시 전체 반환은 제거했다. .NET은 `RemoveAllByOwnerAsync`를 owner ID 문자열이 아닌
+`ZLinkLocationOwnerToken`으로 바꾸고 runtime, in-memory와 Redis provider가 같은 lease generation을
+검증하도록 맞췄다. .NET provider build는 warning·error 0, 실제 Redis focused 3/3과 전체 50/50이
+통과했으며 외부 cross-language harness 2건만 skip했다. Node build·workspace typecheck와 실제 Redis를
+포함한 ClientServer runtime/provider 17/17이 통과했다.
+
+아직 두 계약 공백이 남아 있다. 공통 Redis fixture의
+`NormalizedEffectiveMaxMessageBytes`는 공통 spec이 immutable descriptor field로 요구하지만 다섯 언어
+exact ClientServer descriptor에는 선언되어 있지 않다. Provider가 임의 상수를 만들지 않으며 계약 review로
+공통 field 추가 또는 fixture 수정을 확정한다. 또한 transport `ConnectionReady`만으로는 ChannelName,
+lifecycle과 security identity의 service admission을 증명할 수 없다. Framework service hello와 exact
+admit/reject 뒤에만 ready target으로 승격하고 descriptor weight selector를 실제 outbound submit에 연결하는
+작업이 남아 있다. 따라서 이 checkpoint도 `V11-M6A-DN`·`V11-M6A-NODE`를 완료로 판정하지 않는다.
+Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
+
 Documentation verifier checkpoint(2026-07-23)에서 service wire schema 37 commands·157 types와 186개
 negative self-test는 통과했다. 최초 v11-first candidate는 Codex 5.6 sol xhigh review에서 C# semicolon-only
 record span, non-export TypeScript brand, computed symbol property와 C++ default argument `{}`의 false

@@ -10,6 +10,7 @@ import {
 } from './redis-options';
 import {
   encodeActorKey,
+  encodeClientServerServerKey,
   encodeKeySegments,
   encodeMeshNodeKey,
   encodePeerKey,
@@ -21,6 +22,8 @@ import {
   ACQUIRE_ROUTING_ID_SLOT_SCRIPT,
   ABORT_ACTOR_TRANSFER_SCRIPT,
   ACTIVATE_ACTOR_TRANSFER_SCRIPT,
+  CLIENT_SERVER_DESCRIPTOR_REMOVE_SCRIPT,
+  CLIENT_SERVER_DESCRIPTOR_WRITE_SCRIPT,
   CLAIM_LEASE_SCRIPT,
   COMMIT_ACTOR_TRANSFER_SCRIPT,
   LIST_ROUTING_ID_SLOTS_SCRIPT,
@@ -39,6 +42,7 @@ import {
 import { AUTHORITY_HYBRID_SCRIPT } from './redis-authority-scripts';
 import {
   kindActor,
+  kindClientServer,
   kindMeshNode,
   kindPeer,
   kindRoute,
@@ -53,9 +57,14 @@ import { asArray, asString, toNumber } from './redis-values';
 import { fromUnixMs, intentName, toWriteResult } from './redis-write-result';
 import {
   ZLinkLocationWriteIntent,
+  ZLinkLocationWriteStatus,
+  ZLinkFrameworkRuntimeState,
   type RoutingId,
   type ZLinkLocationChangeStampStore,
   type ZLinkActorLocation,
+  type ZLinkClientServerLocationStore,
+  type ZLinkClientServerServerDescriptor,
+  type ZLinkClientServerServerDescriptorKey,
   type ZLinkActorTransferPrepareRequest,
   type ZLinkActorTransferRecord,
   type ZLinkActorTransferState,
@@ -66,7 +75,6 @@ import {
   type ZLinkLocationOwnerToken,
   type ZLinkLocationPage,
   type ZLinkLocationWriteResult,
-  type ZLinkLocationWriteStatus,
   type ZLinkAggregateAbortResult,
   type ZLinkAggregateCommitResult,
   type ZLinkAggregateFence,
@@ -115,7 +123,10 @@ import {
   type ZLinkRoutingIdSlotReleaseResult
 } from '@zlink-systems/framework';
 
+const CLIENT_SERVER_PAGE_MAX_BYTES = 4 * 1024 * 1024;
+
 export class ZLinkRedisLocationStore implements
+  ZLinkClientServerLocationStore,
   ZLinkLocationChangeStampStore,
   ZLinkOwnerLeaseStore,
   ZLinkRoutingIdSlotAllocationStore {
@@ -231,6 +242,122 @@ export class ZLinkRedisLocationStore implements
           }
         };
       });
+  }
+
+  async updateClientServer(
+    descriptor: ZLinkClientServerServerDescriptor,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult> {
+    validateClientServerDescriptor(descriptor);
+    const rowKey = encodeClientServerServerKey(descriptor);
+    const admissionKey = this.keys.descriptorAdmissionClientServer(rowKey);
+    const current = asArray(await this.command([
+      'HMGET', admissionKey, 'ownerId', 'ownerLeaseGeneration'
+    ], signal));
+    const currentOwner = current[0] === null ? '' : asString(current[0]);
+    const currentLeaseGeneration = current[1] === null ? '' : asString(current[1]);
+    const placeholder = this.keys.schema();
+    const raw = asArray(await this.eval(CLIENT_SERVER_DESCRIPTOR_WRITE_SCRIPT, [
+      this.keys.descriptorClientServer(rowKey),
+      admissionKey,
+      this.keys.descriptorClientServerIndex(),
+      this.keys.lease(descriptor.ownerId),
+      this.keys.counter(),
+      this.keys.descriptorClientServerOwnerIndex(
+        descriptor.ownerId,
+        descriptor.leaseGeneration.toString()
+      ),
+      currentOwner.length === 0 ? placeholder : this.keys.lease(currentOwner),
+      currentOwner.length === 0
+        ? placeholder
+        : this.keys.descriptorClientServerOwnerIndex(
+          currentOwner,
+          currentLeaseGeneration
+        ),
+      this.keys.stamp(kindClientServer.tag, undefined),
+      this.keys.stamp(kindClientServer.tag, descriptor.channelName),
+      this.keys.descriptorClientServerChannelIndex(descriptor.channelName)
+    ], [
+      intentName(intent),
+      descriptor.ownerId,
+      descriptor.leaseGeneration.toString(),
+      descriptor.lifecycleGeneration.toString(),
+      descriptor.descriptorRevision.toString(),
+      clientServerImmutableFingerprint(descriptor),
+      kindClientServer.toJsonText?.(descriptor)
+        ?? JSON.stringify(kindClientServer.toJson(descriptor)),
+      String(descriptor.state),
+      String(descriptor.weight),
+      descriptor.channelName,
+      rowKey,
+      currentOwner,
+      currentLeaseGeneration
+    ], signal));
+    return toWriteResult(raw);
+  }
+
+  async removeClientServer(
+    key: ZLinkClientServerServerDescriptorKey,
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteStatus> {
+    const rowKey = encodeClientServerServerKey(key);
+    return await this.removeClientServerByRowKey(rowKey, key.channelName, owner, signal);
+  }
+
+  async listClientServers(
+    channelName: string,
+    page?: ZLinkPageRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationPage<ZLinkClientServerServerDescriptor>> {
+    requireDescriptorText(channelName, 'ClientServer channel name');
+    const pageSize = page?.pageSize ?? 100;
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 1000) {
+      throw new RangeError('ClientServer descriptor pageSize must be between 1 and 1000.');
+    }
+    const offset = decodeClientServerPageToken(page?.continuationToken, channelName);
+    const members = asArray(await this.command([
+      'ZRANGE',
+      this.keys.descriptorClientServerChannelIndex(channelName),
+      String(offset),
+      String(offset + pageSize)
+    ], signal)).map(asString);
+    const items: ZLinkClientServerServerDescriptor[] = [];
+    let encodedBytes = 0;
+    let consumedMembers = 0;
+    for (const rowKey of members) {
+      if (items.length === pageSize) break;
+      const fields = asArray(await this.command([
+        'HMGET',
+        this.keys.descriptorClientServer(rowKey),
+        'json',
+        'gen',
+        'updatedAtMs'
+      ], signal));
+      const row = materialize(kindClientServer, fields);
+      if (row === undefined) {
+        consumedMembers++;
+        continue;
+      }
+      const rowBytes = fields[0] === null
+        ? 0
+        : Buffer.byteLength(asString(fields[0]), 'utf8');
+      if (items.length > 0
+        && encodedBytes + rowBytes > CLIENT_SERVER_PAGE_MAX_BYTES) {
+        break;
+      }
+      items.push(row);
+      encodedBytes += rowBytes;
+      consumedMembers++;
+    }
+    const nextOffset = offset + consumedMembers;
+    return {
+      items,
+      continuationToken: consumedMembers < members.length || members.length > pageSize
+        ? encodeClientServerPageToken(channelName, nextOffset)
+        : undefined
+    };
   }
 
   async updatePeer(
@@ -547,7 +674,33 @@ export class ZLinkRedisLocationStore implements
     if (removed < 0) {
       throw new Error('Owner cleanup token is stale.');
     }
-    return BigInt(removed);
+    const descriptorOwnerIndex = this.keys.descriptorClientServerOwnerIndex(
+      ownerId,
+      owner.leaseGeneration.toString()
+    );
+    const descriptorKeys = asArray(await this.command([
+      'SMEMBERS', descriptorOwnerIndex
+    ], signal)).map(asString);
+    let descriptorRemoved = 0;
+    for (const rowKey of descriptorKeys) {
+      const fields = asArray(await this.command([
+        'HMGET',
+        this.keys.descriptorClientServer(rowKey),
+        'json',
+        'gen',
+        'updatedAtMs'
+      ], signal));
+      const descriptor = materialize(kindClientServer, fields);
+      if (descriptor === undefined) continue;
+      const status = await this.removeClientServerByRowKey(
+        rowKey,
+        descriptor.channelName,
+        owner,
+        signal
+      );
+      if (status === ZLinkLocationWriteStatus.Stored) descriptorRemoved++;
+    }
+    return BigInt(removed + descriptorRemoved);
   }
 
   async getChangeStamp(scope: ZLinkLocationChangeStampScope, signal?: AbortSignal): Promise<bigint> {
@@ -772,7 +925,7 @@ export class ZLinkRedisLocationStore implements
         key: { value: item.key } as ZLinkAuthorityKey,
         snapshot: authoritySnapshot(item.row, raw.storeNowMs ?? 0)
       })),
-      nextCursor: raw.hasMore
+      nextCursor: raw.hasMore === true
         ? ZLinkAuthorityScanCursor.from(encodeAuthorityCursor(
             decoded.scanId,
             raw.lastHex ?? decoded.lastHex,
@@ -1069,6 +1222,31 @@ export class ZLinkRedisLocationStore implements
       if (row !== undefined) rows.push(row);
     }
     return rows;
+  }
+
+  private async removeClientServerByRowKey(
+    rowKey: string,
+    channelName: string,
+    owner: ZLinkLocationOwnerToken,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteStatus> {
+    const raw = asArray(await this.eval(CLIENT_SERVER_DESCRIPTOR_REMOVE_SCRIPT, [
+      this.keys.descriptorClientServer(rowKey),
+      this.keys.descriptorAdmissionClientServer(rowKey),
+      this.keys.descriptorClientServerIndex(),
+      this.keys.descriptorClientServerOwnerIndex(
+        owner.ownerId,
+        owner.leaseGeneration.toString()
+      ),
+      this.keys.stamp(kindClientServer.tag, undefined),
+      this.keys.stamp(kindClientServer.tag, channelName),
+      this.keys.descriptorClientServerChannelIndex(channelName)
+    ], [
+      owner.ownerId,
+      owner.leaseGeneration.toString(),
+      rowKey
+    ], signal));
+    return toWriteResult(raw).status;
   }
 
   private async routingSlotLeaseKeys(
@@ -1604,9 +1782,10 @@ function canonicalObjectCapabilities(
       ...value,
       placementProfiles: [...value.placementProfiles].sort(compareUtf8)
     }))
-    .sort((left, right) =>
-      compareUtf8(left.objectKind, right.objectKind)
-      || compareUtf8(left.stableType, right.stableType));
+    .sort((left, right) => {
+      const byKind = compareUtf8(left.objectKind, right.objectKind);
+      return byKind !== 0 ? byKind : compareUtf8(left.stableType, right.stableType);
+    });
 }
 
 function meshDescriptorImmutableFingerprint(descriptor: ZLinkMeshNodeDescriptor): string {
@@ -1646,8 +1825,59 @@ function meshDescriptorImmutableFingerprint(descriptor: ZLinkMeshNodeDescriptor)
   return createHash('sha256').update(preimage, 'utf8').digest('hex');
 }
 
+function clientServerImmutableFingerprint(
+  descriptor: ZLinkClientServerServerDescriptor
+): string {
+  const segments = [
+    'zlink-client-server-immutable-v1',
+    descriptor.channelName,
+    routingIdHex(descriptor.serverRid).toLowerCase(),
+    descriptor.lifecycleGeneration.toString(),
+    descriptor.endpoint,
+    descriptor.securityIdentity
+  ];
+  const preimage = segments
+    .map(value => `${Buffer.byteLength(value, 'utf8')}:${value}`)
+    .join('');
+  return createHash('sha256').update(preimage, 'utf8').digest('hex');
+}
+
 function compareUtf8(left: string, right: string): number {
   return Buffer.compare(Buffer.from(left, 'utf8'), Buffer.from(right, 'utf8'));
+}
+
+function encodeClientServerPageToken(channelName: string, offset: number): string {
+  return Buffer.from(JSON.stringify({
+    kind: 'client-server-v1',
+    channelName,
+    offset
+  }), 'utf8').toString('base64url');
+}
+
+function decodeClientServerPageToken(
+  token: string | undefined,
+  channelName: string
+): number {
+  if (token === undefined) return 0;
+  if (Buffer.byteLength(token, 'utf8') > 4096) {
+    throw new TypeError('ClientServer descriptor continuation token is invalid.');
+  }
+  try {
+    const value = JSON.parse(Buffer.from(token, 'base64url').toString('utf8')) as {
+      readonly kind?: unknown;
+      readonly channelName?: unknown;
+      readonly offset?: unknown;
+    };
+    if (value.kind !== 'client-server-v1'
+      || value.channelName !== channelName
+      || !Number.isSafeInteger(value.offset)
+      || Number(value.offset) < 0) {
+      throw new Error();
+    }
+    return Number(value.offset);
+  } catch {
+    throw new TypeError('ClientServer descriptor continuation token is invalid.');
+  }
 }
 
 function validateMeshDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
@@ -1707,6 +1937,38 @@ function validateMeshDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
       })) {
       throw new TypeError('MeshNode placement profiles must be unique non-empty values.');
     }
+  }
+}
+
+function validateClientServerDescriptor(
+  descriptor: ZLinkClientServerServerDescriptor
+): void {
+  requireDescriptorText(descriptor.channelName, 'ClientServer channel name');
+  requireDescriptorText(descriptor.endpoint, 'ClientServer endpoint');
+  requireDescriptorText(descriptor.securityIdentity, 'ClientServer security identity');
+  requireDescriptorText(descriptor.ownerId, 'ClientServer owner ID');
+  routingIdHex(descriptor.serverRid);
+  const maxGeneration = 0x7fff_ffff_ffff_ffffn;
+  if (descriptor.lifecycleGeneration < 1n
+    || descriptor.lifecycleGeneration > maxGeneration
+    || descriptor.descriptorRevision < 1n
+    || descriptor.descriptorRevision > maxGeneration
+    || descriptor.leaseGeneration < 1n
+    || descriptor.leaseGeneration > maxGeneration) {
+    throw new RangeError('ClientServer descriptor generations are invalid.');
+  }
+  if (!Number.isInteger(descriptor.weight)
+    || descriptor.weight < 0
+    || descriptor.weight > 100) {
+    throw new RangeError('ClientServer descriptor weight must be between 0 and 100.');
+  }
+  if (!Object.values(ZLinkFrameworkRuntimeState).includes(descriptor.state)) {
+    throw new RangeError('ClientServer descriptor runtime state is invalid.');
+  }
+  const encoded = kindClientServer.toJsonText?.(descriptor)
+    ?? JSON.stringify(kindClientServer.toJson(descriptor));
+  if (Buffer.byteLength(encoded, 'utf8') > 1024 * 1024) {
+    throw new RangeError('ClientServer descriptor exceeds the 1 MiB encoded limit.');
   }
 }
 

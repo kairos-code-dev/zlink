@@ -800,17 +800,23 @@ internal sealed partial class ZLinkInMemoryLocationStore :
     }
 
     public ValueTask<long> RemoveAllByOwnerAsync(
-        string ownerId,
+        ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(owner.OwnerId);
+        if (owner.LeaseGeneration <= 0)
+            throw new ArgumentOutOfRangeException(nameof(owner));
+        cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
+            if (!MatchesLiveOwnerLease(owner, _time.GetUtcNow()))
+                return ValueTask.FromResult(0L);
             var removed = 0L;
             removed += RemoveByOwnerNoLock(
-                _meshNodes, ownerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.MeshNode,
+                _meshNodes, owner.OwnerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.MeshNode,
                 static row => row.MeshName);
             var clientServerKeys = _clientServers.Rows
-                .Where(pair => pair.Value.OwnerId == ownerId)
+                .Where(pair => pair.Value.OwnerId == owner.OwnerId)
                 .Select(static pair => pair.Key)
                 .ToArray();
             foreach (var key in clientServerKeys)
@@ -819,13 +825,13 @@ internal sealed partial class ZLinkInMemoryLocationStore :
                 removed++;
             }
             removed += RemoveByOwnerNoLock(
-                _spots, ownerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.Spot,
+                _spots, owner.OwnerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.Spot,
                 static row => row.MeshName);
             removed += RemoveByOwnerNoLock(
-                _instanceSpots, ownerId, static row => row.OwnerId,
+                _instanceSpots, owner.OwnerId, static row => row.OwnerId,
                 ZLinkLocationChangeScopeKind.Spot, static row => row.MeshName);
             removed += RemoveByOwnerNoLock(
-                _actors, ownerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.Actor,
+                _actors, owner.OwnerId, static row => row.OwnerId, ZLinkLocationChangeScopeKind.Actor,
                 static row => row.MeshName);
             return ValueTask.FromResult(removed);
         }

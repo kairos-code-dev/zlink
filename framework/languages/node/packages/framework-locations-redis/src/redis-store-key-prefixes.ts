@@ -70,6 +70,26 @@ export class RedisStoreKeys {
     return `${this.authorityDomain}:descriptor:mesh:owner:${digest(`${ownerId}\0${leaseGeneration}`)}`;
   }
 
+  descriptorClientServer(canonicalKey: string): string {
+    return `${this.authorityDomain}:descriptor:client-server:${digest(canonicalKey)}`;
+  }
+
+  descriptorAdmissionClientServer(canonicalKey: string): string {
+    return `${this.authorityDomain}:descriptor-admission:client-server:${digest(canonicalKey)}`;
+  }
+
+  descriptorClientServerIndex(): string {
+    return `${this.authorityDomain}:descriptor:client-server:index`;
+  }
+
+  descriptorClientServerChannelIndex(channelName: string): string {
+    return `${this.authorityDomain}:descriptor:client-server:channel:${digest(channelName)}`;
+  }
+
+  descriptorClientServerOwnerIndex(ownerId: string, leaseGeneration: string): string {
+    return `${this.authorityDomain}:descriptor:client-server:owner:${digest(`${ownerId}\0${leaseGeneration}`)}`;
+  }
+
   authorityCurrent(authorityKey: string): string {
     return `${this.authorityDomain}:authority:current:${digest(authorityKey)}`;
   }

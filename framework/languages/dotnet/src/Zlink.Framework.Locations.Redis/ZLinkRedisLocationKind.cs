@@ -74,4 +74,22 @@ internal static class ZLinkRedisLocationKinds
             AuthorityOwnerGeneration = generation
         }
     };
+
+    internal static readonly ZLinkRedisLocationKind<ZLinkClientServerServerDescriptor>
+        ClientServer = new()
+        {
+            Tag = "clientserver",
+            EncodeKey = static row =>
+                ZLinkRedisLocationKeyCodec.EncodeClientServerKey(
+                    new ZLinkClientServerServerDescriptorKey(
+                        row.ChannelName,
+                        row.ServerRid)),
+            MeshOf = static _ => null,
+            OwnerOf = static row => row.OwnerId,
+            GenerationOf = static _ => 0,
+            Finalize = static (row, updatedAt, _) => row with
+            {
+                UpdatedAt = updatedAt
+            }
+        };
 }

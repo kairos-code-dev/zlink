@@ -13,16 +13,11 @@
 #include "perf_zlink_part_helpers.hpp"
 
 #if !defined(_WIN32)
-#include <arpa/inet.h>
-#include <ifaddrs.h>
-#include <net/if.h>
 #include <dlfcn.h>
 #else
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <windows.h>
 #endif
 
@@ -125,46 +120,6 @@ set_pub_opt_int (void *socket_, zlink_pub_option_t option_, int value_, const ch
 // ---------------------------------------------------------------------------
 inline std::string make_endpoint (const std::string &transport, const std::string &id)
 {
-    if (transport == "pgm" || transport == "epgm") {
-        if (transport == "pgm") {
-            if (const char *env = std::getenv ("PERF_PGM_ENDPOINT")) {
-                if (*env)
-                    return std::string (env);
-            }
-        } else {
-            if (const char *env = std::getenv ("PERF_EPGM_ENDPOINT")) {
-                if (*env)
-                    return std::string (env);
-            }
-        }
-#if !defined(_WIN32)
-        struct ifaddrs *ifaddr = nullptr;
-        if (getifaddrs (&ifaddr) == 0) {
-            for (struct ifaddrs *ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
-                if (!ifa->ifa_addr)
-                    continue;
-                if (!(ifa->ifa_flags & IFF_UP))
-                    continue;
-                if (!(ifa->ifa_flags & IFF_MULTICAST))
-                    continue;
-                if (ifa->ifa_flags & IFF_LOOPBACK)
-                    continue;
-                if (ifa->ifa_addr->sa_family != AF_INET)
-                    continue;
-                char addr[INET_ADDRSTRLEN];
-                const struct sockaddr_in *sa =
-                  reinterpret_cast<const struct sockaddr_in *> (ifa->ifa_addr);
-                if (inet_ntop (AF_INET, &sa->sin_addr, addr, sizeof (addr))) {
-                    std::string endpoint = transport + "://" + addr + ";239.192.1.1:5555";
-                    freeifaddrs (ifaddr);
-                    return endpoint;
-                }
-            }
-            freeifaddrs (ifaddr);
-        }
-#endif
-        return std::string ();
-    }
     if (transport == "inproc")
         return "inproc://" + id;
     if (transport == "ipc")

@@ -60,11 +60,14 @@ struct test_events_t : zlink::i_poll_events
 
 void wait_in_events (test_events_t &events_)
 {
-    const unsigned int event_timeout_ms = SETTLE_TIME * 40;
+    // zlink_stopwatch_intermediate reports microseconds. Keep the bound in
+    // the same unit so the intended SETTLE_TIME * 40 timeout is preserved.
+    const unsigned long event_timeout_us =
+      static_cast<unsigned long> (SETTLE_TIME) * 40UL * 1000UL;
     void *watch = zlink_stopwatch_start ();
     while (events_.in_events.get () < 1) {
         msleep (1);
-        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (event_timeout_ms, zlink_stopwatch_intermediate (watch),
+        TEST_ASSERT_LESS_OR_EQUAL_MESSAGE (event_timeout_us, zlink_stopwatch_intermediate (watch),
                                            "Timeout waiting for in event");
     }
     zlink_stopwatch_stop (watch);

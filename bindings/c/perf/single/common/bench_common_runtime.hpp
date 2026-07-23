@@ -455,13 +455,10 @@ inline void emit_single_socket_hwm_detail (void *socket_,
               << ",socket_message_slots=" << snapshot.auto_hwm_socket_message_slots << std::endl;
 }
 
-inline void apply_single_benchmark_socket_options (void *socket_, const std::string &transport_)
+inline void apply_single_benchmark_socket_options (void *socket_, const std::string &)
 {
     if (!socket_)
         return;
-    if (transport_ == "pgm" || transport_ == "epgm")
-        return;
-
     const int linger_ms = 0;
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
@@ -513,8 +510,8 @@ bind_and_resolve_endpoint (void *socket_, const std::string &transport, const st
 
 inline bool transport_available (const std::string &transport)
 {
-    if (transport == "pgm" || transport == "epgm")
-        return false;
+    if (transport == "tcp" || transport == "inproc")
+        return true;
     if (transport == "ipc")
         return zlink_has ("ipc") != 0;
     if (transport == "tls")
@@ -523,7 +520,7 @@ inline bool transport_available (const std::string &transport)
         return zlink_has ("ws") != 0;
     if (transport == "wss")
         return zlink_has ("wss") != 0;
-    return true;
+    return false;
 }
 
 inline bool connect_checked (void *socket_, const std::string &endpoint)

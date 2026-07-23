@@ -808,6 +808,16 @@ runner가 sample이나 Framework E2E를 함께 실행하면 raw-only subset을 �
 | `V11-M4-PKG-NODE` | Node binding 11 local/internal package | Node package lane, `P-DELIVERY` | `V11-R3` | 완료 | review revision tgz·ESM·CJS·`.d.ts` clean consumer 통과, 외부 배포 0 | `zlink-systems-zlink-11.0.0.tgz` SHA-256 `81e1ce89…`를 clean npm consumer에 설치해 CJS·ESM import와 type export를 확인했다. 외부 배포 0, `ROW-GATE` 1 file·6 commands가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-PKG-NODE/result.json` |
 | `V11-M4-CONSUMER-JOIN` | 새 bindings package 합류 | package coordinator, `P-SCAN` | `V11-M4-PKG-CPP`, `V11-M4-PKG-DN`, `V11-M4-PKG-JVM`, `V11-M4-PKG-NODE` | 완료 | 중앙 Framework 참조 version 고정, clean consumer provenance와 Core payload 일치 | C++·.NET·JVM·Node 중앙 binding version을 11.0.0으로 고정했고 Node workspace manifest와 lockfile도 같은 tgz를 해석한다. CMake tree `a37a40c7…`, NuGet `727ba451…`, Maven JAR `7c2b21cc…`, npm tgz `81e1ce89…`와 Core payload provenance를 resolution manifest에서 확인했다. Candidate `02b85a71…`의 `ROW-GATE` 8 files·8 commands가 통과했다. 증거: `.artifacts/v11/evidence/V11-M4-CONSUMER-JOIN/result.json` |
 
+2026-07-23 Core cleanup 이후 package refresh는 기존 11.0.0 version을 유지한 채 다시 실행했다. Core raw suite와
+ASAN은 각각 80/80을 통과했고 Core provenance SHA-256은 `c0feeac0…`, runtime SHA-256은 `871e5306…`이다.
+이 Core를 사용해 C++·.NET·JVM·Node local package와 isolated consumer를 다시 검증했다. 중앙 Framework version
+지점은 변경하지 않았다. 증거:
+`.artifacts/v11/evidence/V11-M3-CORE-PKG/refresh-20260723.json`,
+`.artifacts/v11/evidence/V11-M4-BIND-CPP/refresh-20260723.json`,
+`.artifacts/v11/evidence/V11-M4-BIND-DN/refresh-20260723.json`,
+`.artifacts/v11/evidence/V11-M4-PKG-JVM/refresh-20260723.json`,
+`.artifacts/v11/evidence/V11-M4-PKG-NODE/refresh-20260723.json`.
+
 ## 9. M5 — Private binding-facing port와 runtime foundation
 
 M5는 Framework가 사용하던 Core service adapter를 제거하고, 각 언어 Framework 내부에 private
@@ -971,8 +981,8 @@ Source와 registration을 삭제하거나 runtime 통과용 compatibility helper
 
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
-| `V11-M6A-CPP` | C++ topology·dispatch·Location·liveness runtime | C++ lane, `P-DEEP` | `V11-R4B` | 대기 | node·Channel·ClientServer·manual·automatic classic fanout, remote placement, mailbox·CAS·reconnect·liveness internal contract 통과 | — |
-| `V11-M6A-DN` | .NET topology·dispatch·Location·liveness runtime | .NET lane, `P-DEEP` | `V11-R4B` | 대기 | topology·remote placement·mailbox·CAS·Task terminal winner·liveness internal contract 통과 | — |
+| `V11-M6A-CPP` | C++ topology·dispatch·Location·liveness runtime | C++ lane, `P-DEEP` | `V11-R4B` | 진행 | node·Channel·ClientServer·manual·automatic classic fanout, remote placement, mailbox·CAS·reconnect·liveness internal contract 통과 | Runtime owner·mailbox·topology·liveness 구현과 deterministic internal regression을 병렬 진행한다. Sample·E2E source 변경·실행은 0으로 유지한다. |
+| `V11-M6A-DN` | .NET topology·dispatch·Location·liveness runtime | .NET lane, `P-DEEP` | `V11-R4B` | 진행 | topology·remote placement·mailbox·CAS·Task terminal winner·liveness internal contract 통과 | 최신 `Systems.Zlink` 11.0.0 local package를 입력으로 runtime과 deterministic internal regression을 병렬 진행한다. Sample·E2E source 변경·실행은 0으로 유지한다. |
 | `V11-M6A-JVM` | JVM topology·dispatch·Location·liveness runtime | JVM lane, `P-DEEP` | `V11-R4B` | 대기 | Java·Kotlin API, remote placement, CAS·executor·coroutine·reconnect internal contract 통과 | — |
 | `V11-M6A-NODE` | Node topology·dispatch·Location·liveness runtime | Node lane, `P-DEEP` | `V11-R4B` | 대기 | topology·remote placement·CAS·Promise·event-loop·reconnect internal contract 통과 | — |
 | `V11-R5A` | Topology runtime slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | 대기 | topology·dispatch·placement·authority·liveness와 실행 격리의 I1·I2·I3 review clean | — |

@@ -455,11 +455,8 @@ func ApplyMultiSpotNodeAdmission(node spotNodeAdmission, pattern string) {
 	}
 }
 
-func ApplySingleBenchmarkSocketOptions(socket benchmarkSocket, transport string) {
+func ApplySingleBenchmarkSocketOptions(socket benchmarkSocket, _ string) {
 	if socket == nil {
-		return
-	}
-	if transport == "pgm" || transport == "epgm" {
 		return
 	}
 	Must(socket.SetLinger(0))
@@ -467,11 +464,8 @@ func ApplySingleBenchmarkSocketOptions(socket benchmarkSocket, transport string)
 	Must(socket.SetReceiveTimeout(singleSocketTimeout(false)))
 }
 
-func ApplyMultiBenchmarkSocketOptions(socket benchmarkSocket, transport string) {
+func ApplyMultiBenchmarkSocketOptions(socket benchmarkSocket, _ string) {
 	if socket == nil {
-		return
-	}
-	if transport == "pgm" || transport == "epgm" {
 		return
 	}
 	Must(socket.SetLinger(0))

@@ -136,11 +136,8 @@ template <typename SocketLike> void apply_single_hwm (SocketLike &socket_)
 // Applies linger/send/recv timeout defaults for benchmark sockets.
 void apply_single_benchmark_socket_options (perf_socket_t &socket_, const std::string &transport_);
 template <typename SocketLike>
-void apply_single_benchmark_socket_options (SocketLike &socket_, const std::string &transport_)
+void apply_single_benchmark_socket_options (SocketLike &socket_, const std::string &)
 {
-    if (transport_ == "pgm" || transport_ == "epgm")
-        return;
-
     const int linger_ms = 0;
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();

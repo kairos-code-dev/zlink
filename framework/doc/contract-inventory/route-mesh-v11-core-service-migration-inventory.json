@@ -1251,7 +1251,7 @@
     }
   },
   "summary": {
-    "totalRecords": 1913,
+    "totalRecords": 1912,
     "corePublicSymbols": 523,
     "corePublicSymbolsByKind": {
       "callback": 2,
@@ -1277,14 +1277,14 @@
     "bindingCoreSymbolReferencesByLanguage": {
       "node": 6
     },
-    "files": 1286,
+    "files": 1285,
     "filesByScope": {
       "binding": 137,
       "ci": 5,
       "core": 176,
       "framework-adjacent-component": 18,
       "framework-consumer": 607,
-      "framework-shared-runtime": 10,
+      "framework-shared-runtime": 9,
       "historical-core-service-document": 14,
       "legacy-binding": 262,
       "package-tooling": 39,
@@ -1296,7 +1296,7 @@
       "remove": 24,
       "retain-10x-only": 289,
       "superseded": 135,
-      "target-contract": 721
+      "target-contract": 720
     },
     "coreServiceDocumentationReviews": 75,
     "coreServiceDocumentationReviewsByDecision": {
@@ -29873,20 +29873,6 @@
     {
       "id": "file:framework/runtime/protocol/golden/durable-authority-v1.json",
       "file": "framework/runtime/protocol/golden/durable-authority-v1.json",
-      "scope": "framework-shared-runtime",
-      "category": "framework-service-wire-runtime-input",
-      "disposition": "target-contract",
-      "action": "retain-framework-owned-service-wire-input",
-      "targetOwners": [
-        "framework/doc/framework/common/internals/service-wire-protocol.ko.md",
-        "framework/doc/framework/common/internals/service-wire-protocol.ko.md"
-      ],
-      "removalGate": "V11-M5-PROTOCOL",
-      "finalGate": "V11-R7"
-    },
-    {
-      "id": "file:framework/runtime/protocol/golden/transfer-envelope-v1.json",
-      "file": "framework/runtime/protocol/golden/transfer-envelope-v1.json",
       "scope": "framework-shared-runtime",
       "category": "framework-service-wire-runtime-input",
       "disposition": "target-contract",

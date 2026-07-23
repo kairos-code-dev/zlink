@@ -1,9 +1,6 @@
 #include "perf_single_common.hpp"
 
 #include <cerrno>
-#include <arpa/inet.h>
-#include <ifaddrs.h>
-#include <net/if.h>
 
 namespace perf
 {
@@ -200,11 +197,8 @@ bool recalculate_single_auto_hwm (ctx_guard_t &ctx_)
     }
 }
 
-void apply_single_benchmark_socket_options (perf_socket_t &socket_, const std::string &transport_)
+void apply_single_benchmark_socket_options (perf_socket_t &socket_, const std::string &)
 {
-    if (transport_ == "pgm" || transport_ == "epgm")
-        return;
-
     const int linger_ms = 0;
     const int sndtimeo_ms = resolve_single_send_timeout_ms ();
     const int rcvtimeo_ms = resolve_single_recv_timeout_ms ();
@@ -217,37 +211,6 @@ void apply_single_benchmark_socket_options (perf_socket_t &socket_, const std::s
 
 std::string make_endpoint (const std::string &transport, const std::string &id)
 {
-    if (transport == "pgm" || transport == "epgm") {
-#if !defined(_WIN32)
-        struct ifaddrs *ifaddr = NULL;
-        if (getifaddrs (&ifaddr) == 0) {
-            for (struct ifaddrs *ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-                if (!ifa->ifa_addr)
-                    continue;
-                if (!(ifa->ifa_flags & IFF_UP))
-                    continue;
-                if (!(ifa->ifa_flags & IFF_MULTICAST))
-                    continue;
-                if (ifa->ifa_flags & IFF_LOOPBACK)
-                    continue;
-                if (ifa->ifa_addr->sa_family != AF_INET)
-                    continue;
-
-                char addr[INET_ADDRSTRLEN];
-                const struct sockaddr_in *sa =
-                  reinterpret_cast<const struct sockaddr_in *> (ifa->ifa_addr);
-                if (inet_ntop (AF_INET, &sa->sin_addr, addr, sizeof (addr))) {
-                    std::string endpoint = transport + "://" + addr + ";239.192.1.1:5555";
-                    freeifaddrs (ifaddr);
-                    return endpoint;
-                }
-            }
-            freeifaddrs (ifaddr);
-        }
-#endif
-        return std::string ();
-    }
-
     if (transport == "inproc")
         return std::string ("inproc://") + id;
     if (transport == "ipc")
@@ -311,8 +274,8 @@ std::string bind_and_resolve_endpoint (perf_socket_t &socket_,
 
 bool transport_available (const std::string &transport)
 {
-    if (transport == "pgm" || transport == "epgm")
-        return false;
+    if (transport == "tcp" || transport == "inproc")
+        return true;
     if (transport == "ipc")
         return zlink::has ("ipc");
     if (transport == "tls")
@@ -321,7 +284,7 @@ bool transport_available (const std::string &transport)
         return zlink::has ("ws");
     if (transport == "wss")
         return zlink::has ("wss");
-    return true;
+    return false;
 }
 
 bool setup_connected_pair (perf_socket_t &bind_socket_,

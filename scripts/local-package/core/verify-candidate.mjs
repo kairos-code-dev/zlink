@@ -161,7 +161,8 @@ function main() {
   }
 
   const changedCore = new Set(git(repoRoot,
-    ["diff", "--name-only", candidate.baseRevision, "--", "core"]).trim().split("\n").filter(Boolean));
+    ["diff", "--no-renames", "--name-only", candidate.baseRevision, "--", "core"])
+    .trim().split("\n").filter(Boolean));
   for (const path of git(repoRoot,
     ["ls-files", "--others", "--exclude-standard", "--", "core"]).trim().split("\n").filter(Boolean))
     changedCore.add(path);

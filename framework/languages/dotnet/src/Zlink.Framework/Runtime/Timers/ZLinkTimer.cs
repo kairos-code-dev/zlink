@@ -1,12 +1,30 @@
-using System.Diagnostics;
-
 namespace Zlink.Framework.Runtime.Timers;
+
+internal sealed record ZLinkTimerLogicalSnapshot(
+    string Name,
+    TimeSpan Period,
+    ZLinkTimerOptions Options,
+    DateTimeOffset StartedAt,
+    ulong DeliveryIndex,
+    ulong LastScheduledIndex,
+    DateTimeOffset? NextScheduledAt,
+    ZLinkTimerTick? PendingTick);
 
 internal sealed class ZLinkTimer : IZLinkTimer
 {
+    private readonly ZLinkTimerCallbacks _callbacks;
+    private readonly object _lifecycleGate = new();
+    private readonly object _scheduleGate = new();
+    private readonly string _name;
+    private readonly TimeSpan _period;
     private readonly Task _pump;
     private readonly CancellationTokenSource _stopSource;
-    private readonly object _lifecycleGate = new();
+    private DateTimeOffset _startedAt;
+    private ulong _deliveryIndex;
+    private ulong _lastScheduledIndex;
+    private DateTimeOffset? _nextScheduledAt;
+    private ZLinkTimerTick? _pendingTick;
+    private TaskCompletionSource? _resume;
     private Task? _finalization;
     private int _disposed;
 
@@ -18,20 +36,84 @@ internal sealed class ZLinkTimer : IZLinkTimer
         Func<ZLinkTimerTick, CancellationToken, ValueTask> onTickAsync,
         Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
         Func<IDisposable>? enterTickScope = null)
-    {
-        _stopSource = CancellationTokenSource.CreateLinkedTokenSource(spotStopToken);
-        _pump = RunAsync(
-            name,
-            period,
-            new ZLinkTimerCallbacks(
+        : this(
+            new ZLinkTimerLogicalSnapshot(
+                name,
+                period,
                 options,
-                onTickAsync,
-                onUnhandledExceptionAsync,
-                enterTickScope),
-            _stopSource.Token);
+                DateTimeOffset.UtcNow,
+                0,
+                0,
+                null,
+                null),
+            spotStopToken,
+            async (tick, cancellationToken) =>
+            {
+                await onTickAsync(tick, cancellationToken).ConfigureAwait(false);
+                return true;
+            },
+            onUnhandledExceptionAsync,
+            enterTickScope)
+    {
+    }
+
+    internal ZLinkTimer(
+        ZLinkTimerLogicalSnapshot snapshot,
+        CancellationToken spotStopToken,
+        Func<ZLinkTimerTick, CancellationToken, ValueTask<bool>> onTickAsync,
+        Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
+        Func<IDisposable>? enterTickScope = null,
+        bool startFrozen = false)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        _name = snapshot.Name;
+        _period = snapshot.Period;
+        _callbacks = new ZLinkTimerCallbacks(
+            snapshot.Options,
+            onTickAsync,
+            onUnhandledExceptionAsync,
+            enterTickScope);
+        _startedAt = snapshot.StartedAt;
+        _deliveryIndex = snapshot.DeliveryIndex;
+        _lastScheduledIndex = snapshot.LastScheduledIndex;
+        _nextScheduledAt = snapshot.NextScheduledAt;
+        _pendingTick = snapshot.PendingTick;
+        if (startFrozen)
+            _resume = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+        _stopSource = CancellationTokenSource.CreateLinkedTokenSource(spotStopToken);
+        _pump = RunAsync(_stopSource.Token);
     }
 
     public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+    internal ZLinkTimerLogicalSnapshot Freeze()
+    {
+        lock (_scheduleGate)
+        {
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
+            _resume ??= new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            return SnapshotUnderLock();
+        }
+    }
+
+    internal ZLinkTimerLogicalSnapshot Snapshot()
+    {
+        lock (_scheduleGate)
+            return SnapshotUnderLock();
+    }
+
+    internal void Resume()
+    {
+        TaskCompletionSource? resume;
+        lock (_scheduleGate)
+        {
+            resume = _resume;
+            _resume = null;
+        }
+        resume?.TrySetResult();
+    }
 
     public ValueTask CancelAsync()
     {
@@ -43,6 +125,19 @@ internal sealed class ZLinkTimer : IZLinkTimer
         return CancelAsync();
     }
 
+    private ZLinkTimerLogicalSnapshot SnapshotUnderLock()
+    {
+        return new ZLinkTimerLogicalSnapshot(
+            _name,
+            _period,
+            _callbacks.Options,
+            _startedAt,
+            _deliveryIndex,
+            _lastScheduledIndex,
+            _nextScheduledAt,
+            _pendingTick);
+    }
+
     private Task GetOrStartFinalization()
     {
         TaskCompletionSource completion;
@@ -51,7 +146,8 @@ internal sealed class ZLinkTimer : IZLinkTimer
             if (_finalization is not null) return _finalization;
 
             Volatile.Write(ref _disposed, 1);
-            completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            completion = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             _finalization = completion.Task;
         }
 
@@ -78,6 +174,7 @@ internal sealed class ZLinkTimer : IZLinkTimer
         try
         {
             _stopSource.Cancel();
+            Resume();
         }
         catch (Exception exception)
         {
@@ -110,102 +207,142 @@ internal sealed class ZLinkTimer : IZLinkTimer
         if (failures is { Count: > 1 }) throw new AggregateException(failures);
     }
 
-    private static Task RunAsync(
-        string name,
-        TimeSpan period,
-        ZLinkTimerCallbacks callbacks,
-        CancellationToken cancellationToken)
+    private async Task RunAsync(CancellationToken cancellationToken)
     {
-        return callbacks.Options.OverrunPolicy == ZLinkTimerOverrunPolicy.DelayNextTick
-            ? RunDelayNextTickAsync(
-                name,
-                period,
-                callbacks,
-                cancellationToken)
-            : RunFixedRateAsync(
-                name,
-                period,
-                callbacks,
-                cancellationToken);
-    }
-
-    private static async Task RunDelayNextTickAsync(
-        string name,
-        TimeSpan period,
-        ZLinkTimerCallbacks callbacks,
-        CancellationToken cancellationToken)
-    {
-        var clock = ZLinkTimerClock.Start();
-        ulong deliveryIndex = 0;
-
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await Task.Delay(period, cancellationToken).ConfigureAwait(false);
+            await WaitUntilResumedAsync(cancellationToken).ConfigureAwait(false);
 
-            deliveryIndex++;
-            var started = clock.Elapsed();
-            var tick = clock.CreateTick(
-                name,
-                deliveryIndex,
-                deliveryIndex,
-                period,
-                started,
-                started,
-                0);
+            ZLinkTimerTick tick;
+            if (TryGetPendingTick(out tick))
+            {
+                if (!await DispatchAsync(tick, cancellationToken).ConfigureAwait(false))
+                    return;
+                continue;
+            }
 
-            if (!await callbacks.DispatchTickAsync(tick, cancellationToken).ConfigureAwait(false)) return;
+            DateTimeOffset due;
+            lock (_scheduleGate)
+            {
+                due = _nextScheduledAt ?? ComputeNextScheduledAtUnderLock();
+                _nextScheduledAt = due;
+            }
+            var delay = due - DateTimeOffset.UtcNow;
+            if (delay > TimeSpan.Zero)
+                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+
+            await WaitUntilResumedAsync(cancellationToken).ConfigureAwait(false);
+            lock (_scheduleGate)
+            {
+                if (_pendingTick is { } existing)
+                {
+                    tick = existing;
+                }
+                else
+                {
+                    tick = CreateNextTickUnderLock(DateTimeOffset.UtcNow);
+                    _pendingTick = tick;
+                    _nextScheduledAt = null;
+                }
+            }
+            if (!await DispatchAsync(tick, cancellationToken).ConfigureAwait(false))
+                return;
         }
     }
 
-    private static async Task RunFixedRateAsync(
-        string name,
-        TimeSpan period,
-        ZLinkTimerCallbacks callbacks,
+    private bool TryGetPendingTick(out ZLinkTimerTick tick)
+    {
+        lock (_scheduleGate)
+        {
+            if (_pendingTick is { } pending)
+            {
+                tick = pending;
+                return true;
+            }
+        }
+        tick = default;
+        return false;
+    }
+
+    private async ValueTask<bool> DispatchAsync(
+        ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
-        var clock = ZLinkTimerClock.Start();
-        var periodStopwatchTicks = StopwatchTicksFromTimeSpan(period);
-        ulong lastScheduledIndex = 0;
-        ulong deliveryIndex = 0;
+        var outcome = await _callbacks
+            .DispatchTickAsync(tick, cancellationToken)
+            .ConfigureAwait(false);
+        lock (_scheduleGate)
+        {
+            if (_pendingTick != tick) return outcome.KeepRunning;
+            if (!outcome.Delivered) return outcome.KeepRunning;
+            if (outcome.KeepRunning)
+            {
+                _deliveryIndex = tick.DeliveryIndex;
+                _lastScheduledIndex = tick.ScheduledIndex;
+            }
+            _pendingTick = null;
+        }
+        return outcome.KeepRunning;
+    }
 
+    private async ValueTask WaitUntilResumedAsync(
+        CancellationToken cancellationToken)
+    {
         while (true)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var nextScheduledIndex = lastScheduledIndex + 1;
-            await clock.DelayUntilAsync(nextScheduledIndex, periodStopwatchTicks, cancellationToken)
-                .ConfigureAwait(false);
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var startedStopwatchTicks = clock.ElapsedStopwatchTicks();
-            var dueScheduledIndex = Math.Max(
-                nextScheduledIndex,
-                ScheduledIndexAt(startedStopwatchTicks, periodStopwatchTicks));
-
-            var scheduledIndex = SelectScheduledIndex(
-                callbacks.Options,
-                lastScheduledIndex,
-                dueScheduledIndex);
-            var skippedTicks = scheduledIndex - lastScheduledIndex - 1;
-            deliveryIndex++;
-
-            var scheduledElapsed = clock.ElapsedForScheduledIndex(
-                scheduledIndex,
-                periodStopwatchTicks);
-            var startedElapsed = ZLinkTimerClock.ToElapsed(startedStopwatchTicks);
-            var tick = clock.CreateTick(
-                name,
-                deliveryIndex,
-                scheduledIndex,
-                period,
-                scheduledElapsed,
-                startedElapsed,
-                skippedTicks);
-
-            if (!await callbacks.DispatchTickAsync(tick, cancellationToken).ConfigureAwait(false)) return;
-
-            lastScheduledIndex = scheduledIndex;
+            Task? wait;
+            lock (_scheduleGate)
+                wait = _resume?.Task;
+            if (wait is null) return;
+            await wait.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    private DateTimeOffset ComputeNextScheduledAtUnderLock()
+    {
+        if (_callbacks.Options.OverrunPolicy
+            == ZLinkTimerOverrunPolicy.DelayNextTick)
+            return DateTimeOffset.UtcNow + _period;
+
+        return AddPeriods(_startedAt, _lastScheduledIndex + 1, _period);
+    }
+
+    private ZLinkTimerTick CreateNextTickUnderLock(DateTimeOffset startedAt)
+    {
+        ulong scheduledIndex;
+        if (_callbacks.Options.OverrunPolicy
+            == ZLinkTimerOverrunPolicy.DelayNextTick)
+        {
+            scheduledIndex = _lastScheduledIndex + 1;
+        }
+        else
+        {
+            var elapsedTicks = Math.Max(0, (startedAt - _startedAt).Ticks);
+            var dueIndex = Math.Max(
+                _lastScheduledIndex + 1,
+                (ulong)Math.Max(1, elapsedTicks / _period.Ticks));
+            scheduledIndex = SelectScheduledIndex(
+                _callbacks.Options,
+                _lastScheduledIndex,
+                dueIndex);
+        }
+
+        var deliveryIndex = _deliveryIndex + 1;
+        var scheduledAt = AddPeriods(_startedAt, scheduledIndex, _period);
+        var scheduledElapsed = scheduledAt - _startedAt;
+        var startedElapsed = startedAt - _startedAt;
+        return new ZLinkTimerTick(
+            _name,
+            deliveryIndex,
+            scheduledIndex,
+            _period,
+            scheduledAt,
+            startedAt,
+            scheduledElapsed,
+            startedElapsed,
+            startedElapsed - scheduledElapsed,
+            scheduledIndex - _lastScheduledIndex - 1);
     }
 
     private static ulong SelectScheduledIndex(
@@ -213,38 +350,36 @@ internal sealed class ZLinkTimer : IZLinkTimer
         ulong lastScheduledIndex,
         ulong dueScheduledIndex)
     {
-        if (options.OverrunPolicy == ZLinkTimerOverrunPolicy.SkipLateTicks) return dueScheduledIndex;
+        if (options.OverrunPolicy == ZLinkTimerOverrunPolicy.SkipLateTicks)
+            return dueScheduledIndex;
 
         var availableTicks = dueScheduledIndex - lastScheduledIndex;
         var maxCatchUpTicks = (ulong)options.MaxCatchUpTicks;
-        if (availableTicks > maxCatchUpTicks) return dueScheduledIndex - maxCatchUpTicks + 1;
-
+        if (availableTicks > maxCatchUpTicks)
+            return dueScheduledIndex - maxCatchUpTicks + 1;
         return lastScheduledIndex + 1;
     }
 
-    private static ulong ScheduledIndexAt(
-        long elapsedStopwatchTicks,
-        long periodStopwatchTicks)
+    private static DateTimeOffset AddPeriods(
+        DateTimeOffset startedAt,
+        ulong index,
+        TimeSpan period)
     {
-        if (elapsedStopwatchTicks <= 0) return 1;
-
-        return Math.Max(1, (ulong)(elapsedStopwatchTicks / periodStopwatchTicks));
-    }
-
-    private static long StopwatchTicksFromTimeSpan(TimeSpan period)
-    {
-        return Math.Max(1, (long)Math.Round(period.TotalSeconds * Stopwatch.Frequency));
+        var ticks = Math.Min(
+            DateTimeOffset.MaxValue.Ticks - startedAt.Ticks,
+            index * (double)period.Ticks);
+        return startedAt.AddTicks((long)ticks);
     }
 
     private readonly struct ZLinkTimerCallbacks(
         ZLinkTimerOptions options,
-        Func<ZLinkTimerTick, CancellationToken, ValueTask> onTickAsync,
+        Func<ZLinkTimerTick, CancellationToken, ValueTask<bool>> onTickAsync,
         Func<ZLinkTimerTick, Exception, bool, CancellationToken, ValueTask> onUnhandledExceptionAsync,
         Func<IDisposable>? enterTickScope)
     {
         public ZLinkTimerOptions Options => options;
 
-        public async ValueTask<bool> DispatchTickAsync(
+        public async ValueTask<ZLinkTimerDispatchOutcome> DispatchTickAsync(
             ZLinkTimerTick tick,
             CancellationToken cancellationToken)
         {
@@ -252,8 +387,9 @@ internal sealed class ZLinkTimer : IZLinkTimer
             using var tickScope = enterTickScope?.Invoke();
             try
             {
-                await onTickAsync(tick, cancellationToken).ConfigureAwait(false);
-                return true;
+                var delivered = await onTickAsync(tick, cancellationToken)
+                    .ConfigureAwait(false);
+                return new ZLinkTimerDispatchOutcome(true, delivered);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -272,94 +408,12 @@ internal sealed class ZLinkTimer : IZLinkTimer
                     // Monitoring failures must not change the timer exception policy.
                 }
 
-                return !stopped;
+                return new ZLinkTimerDispatchOutcome(!stopped, true);
             }
         }
     }
 
-    private readonly struct ZLinkTimerClock
-    {
-        private readonly long _startedTimestamp;
-        private readonly DateTimeOffset _startedAt;
-
-        private ZLinkTimerClock(long startedTimestamp, DateTimeOffset startedAt)
-        {
-            _startedTimestamp = startedTimestamp;
-            _startedAt = startedAt;
-        }
-
-        public static ZLinkTimerClock Start()
-        {
-            return new ZLinkTimerClock(Stopwatch.GetTimestamp(), DateTimeOffset.UtcNow);
-        }
-
-        public long ElapsedStopwatchTicks()
-        {
-            return Stopwatch.GetTimestamp() - _startedTimestamp;
-        }
-
-        public TimeSpan Elapsed()
-        {
-            return ToElapsed(ElapsedStopwatchTicks());
-        }
-
-        public TimeSpan ElapsedForScheduledIndex(
-            ulong scheduledIndex,
-            long periodStopwatchTicks)
-        {
-            var scheduledStopwatchTicks = (long)Math.Min(
-                long.MaxValue,
-                scheduledIndex * (double)periodStopwatchTicks);
-            return ToElapsed(scheduledStopwatchTicks);
-        }
-
-        public async ValueTask DelayUntilAsync(
-            ulong scheduledIndex,
-            long periodStopwatchTicks,
-            CancellationToken cancellationToken)
-        {
-            var scheduledStopwatchTicks = (long)Math.Min(
-                long.MaxValue,
-                scheduledIndex * (double)periodStopwatchTicks);
-            while (true)
-            {
-                var remainingStopwatchTicks = scheduledStopwatchTicks - ElapsedStopwatchTicks();
-                if (remainingStopwatchTicks <= 0)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    return;
-                }
-
-                await Task.Delay(ToElapsed(remainingStopwatchTicks), cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-
-        public ZLinkTimerTick CreateTick(
-            string name,
-            ulong deliveryIndex,
-            ulong scheduledIndex,
-            TimeSpan period,
-            TimeSpan scheduledElapsed,
-            TimeSpan startedElapsed,
-            ulong skippedTicks)
-        {
-            return new ZLinkTimerTick(
-                name,
-                deliveryIndex,
-                scheduledIndex,
-                period,
-                _startedAt + scheduledElapsed,
-                _startedAt + startedElapsed,
-                scheduledElapsed,
-                startedElapsed,
-                startedElapsed - scheduledElapsed,
-                skippedTicks);
-        }
-
-        public static TimeSpan ToElapsed(long stopwatchTicks)
-        {
-            return TimeSpan.FromSeconds(stopwatchTicks / (double)Stopwatch.Frequency);
-        }
-    }
+    private readonly record struct ZLinkTimerDispatchOutcome(
+        bool KeepRunning,
+        bool Delivered);
 }

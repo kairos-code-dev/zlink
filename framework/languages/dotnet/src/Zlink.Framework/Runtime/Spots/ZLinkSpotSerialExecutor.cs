@@ -93,6 +93,48 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         return _queue.TryPost(ct => ExecuteOperationAsync(operation, onSkipped, ct), out _);
     }
 
+    public bool QueueAccepted(
+        ReadOnlyMemory<byte> acceptedJournalRecord,
+        Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
+        Action relocationRelease,
+        out Task completion)
+    {
+        if (_queue.TryPostAccepted(
+            acceptedJournalRecord,
+            ct => ExecuteOperationAsync(operation, relocationRelease, ct),
+            relocationRelease,
+            out var item))
+        {
+            completion = item.Completion;
+            return true;
+        }
+        completion = Task.CompletedTask;
+        return false;
+    }
+
+    internal bool TrySealRelocation(out ZLinkSerialRelocationSeal seal)
+    {
+        return _queue.TrySealRelocation(out seal);
+    }
+
+    internal ValueTask<ZLinkSerialRelocationSeal> SealRelocationAsync(
+        CancellationToken cancellationToken)
+    {
+        return _queue.SealRelocationAsync(cancellationToken);
+    }
+
+    internal bool TryAbortRelocation(ZLinkSerialRelocationSeal seal)
+    {
+        return _queue.TryAbortRelocation(seal);
+    }
+
+    internal bool TryCommitRelocation(
+        ZLinkSerialRelocationSeal seal,
+        out IReadOnlyList<ZLinkAcceptedWorkRecord> held)
+    {
+        return _queue.TryCommitRelocation(seal, out held);
+    }
+
     private async ValueTask ExecuteOperationAsync(
         Func<ZLinkSpotActivation, CancellationToken, ValueTask> operation,
         Action? onSkipped,

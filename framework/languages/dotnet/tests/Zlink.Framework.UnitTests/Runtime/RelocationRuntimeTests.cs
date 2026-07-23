@@ -1,7 +1,9 @@
 using System.Diagnostics;
+using Zlink.Framework.Runtime.Backend.Contracts;
 using Zlink.Framework.Runtime.Configuration;
 using Zlink.Framework.Runtime.Configuration.Builders;
 using Zlink.Framework.Runtime.Locations;
+using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -29,6 +31,13 @@ public sealed class RelocationRuntimeTests
             typeof(IZLinkSpotRelocationAdapter<>)
                 .GetMethod("RestoreAsync")!
                 .ReturnType);
+        Assert.Contains(
+            typeof(IZLinkMeshObjectServerBuilder).GetMethods(),
+            static method => method.Name == "AddSpotFactory"
+                             && method.GetParameters().Length == 3);
+        Assert.True(
+            typeof(IZLinkActorFactory).IsAssignableFrom(
+                typeof(IZLinkActorFactory<TestRelocatableActor>)));
     }
 
     [Fact]
@@ -44,6 +53,33 @@ public sealed class RelocationRuntimeTests
         Assert.Null(registration.Locations.StoreInstance);
         Assert.Throws<ZLinkConfigurationException>(
             () => options.AddRelocationStore(new RecordingRelocationStore()));
+    }
+
+    [Fact]
+    public void ObjectServerRegistrationKeepsPlacementPolicyAndAdapterTogether()
+    {
+        var registration = new ZLinkSpotNodeRegistration
+        {
+            SpotNodeName = "objects"
+        };
+        IZLinkMeshObjectServerBuilder builder = new ZLinkMeshNodeBuilder(registration);
+
+        builder.AddSpotFactory<TestRelocatableSpot>(
+            "room",
+            new ZLinkObjectPlacementOptions
+            {
+                PlacementProfiles = ["ssd"],
+                MaxActiveObjects = 100,
+                MaxPendingActivations = 10
+            },
+            ZLinkRelocationPolicy<TestRelocatableSpot>
+                .Snapshot<TestSpotRelocationAdapter>());
+
+        var relocation = registration.SpotRelocations["room"];
+        Assert.Equal(typeof(TestRelocatableSpot), relocation.InstanceType);
+        Assert.Equal((byte)2, relocation.PolicyKind);
+        Assert.Equal(typeof(TestSpotRelocationAdapter), relocation.AdapterType);
+        Assert.Equal(["ssd"], relocation.Placement.PlacementProfiles);
     }
 
     [Fact]
@@ -70,6 +106,35 @@ public sealed class RelocationRuntimeTests
         Assert.Equal(
             new byte[] { 7, 7 },
             restored.Participants[1].ApplicationState.ToArray());
+    }
+
+    [Fact]
+    public void SpotAcceptedJournalPreservesRouteIdentityMetadataAndParts()
+    {
+        using var received = new ZLinkBackendRouteReceived(
+            [
+                new Message((ReadOnlySpan<byte>)new byte[] { 1, 2 }),
+                new Message((ReadOnlySpan<byte>)new byte[] { 3 })
+            ],
+            RoutingId.From("source-node"),
+            RoutingId.From("spot-7"),
+            44,
+            reply: null,
+            metadata: new ZLinkMessageMetadata(
+                new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["trace"] = "abc"
+                }));
+
+        var restored = ZLinkSpotAcceptedJournal.Decode(
+            ZLinkSpotAcceptedJournal.Encode(received));
+
+        Assert.Equal(RoutingId.From("source-node"), restored.SourceNodeRid);
+        Assert.Equal(RoutingId.From("spot-7"), restored.SpotRid);
+        Assert.Equal<ulong?>(44, restored.RequestSequence);
+        Assert.Equal("abc", restored.Metadata.Find("trace"));
+        Assert.Equal(new byte[] { 1, 2 }, restored.Parts[0].ToArray());
+        Assert.Equal(new byte[] { 3 }, restored.Parts[1].ToArray());
     }
 
     [Fact]
@@ -550,5 +615,34 @@ public sealed class RelocationRuntimeTests
         private static long _sequence;
 
         internal static long Next() => Interlocked.Increment(ref _sequence);
+    }
+
+    private sealed class TestRelocatableSpot(IZLinkSpotContext context) : IZLinkSpot
+    {
+        public IZLinkSpotContext Context { get; } = context;
+    }
+
+    private sealed class TestSpotRelocationAdapter
+        : IZLinkSpotRelocationAdapter<TestRelocatableSpot>
+    {
+        public ValueTask<byte[]> CaptureAsync(
+            TestRelocatableSpot spot,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(Array.Empty<byte>());
+
+        public ValueTask RestoreAsync(
+            TestRelocatableSpot spot,
+            ReadOnlyMemory<byte> payload,
+            CancellationToken cancellationToken) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class TestRelocatableActor(
+        string actorId,
+        IZLinkActorContext context) : IZLinkActor
+    {
+        public string ActorId { get; } = actorId;
+
+        public IZLinkActorContext Context { get; } = context;
     }
 }

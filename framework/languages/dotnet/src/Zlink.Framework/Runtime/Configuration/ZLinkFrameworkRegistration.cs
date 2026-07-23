@@ -303,6 +303,15 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public Dictionary<string, ZLinkActorTransferRegistration> ActorTransfers { get; } = new(StringComparer.Ordinal);
 
+    public Dictionary<string, ZLinkObjectRelocationRegistration>
+        SpotRelocations { get; } = new(StringComparer.Ordinal);
+
+    public Dictionary<string, ZLinkObjectRelocationRegistration>
+        InstanceSpotRelocations { get; } = new(StringComparer.Ordinal);
+
+    public Dictionary<string, ZLinkObjectRelocationRegistration>
+        ActorRelocations { get; } = new(StringComparer.Ordinal);
+
     public RoutingId RoutingId { get; set; }
 
     public bool HasExplicitRoutingId { get; set; }
@@ -333,6 +342,13 @@ internal sealed record ZLinkActorTransferRegistration(
 internal sealed record ZLinkInstanceSpotFactoryRegistration(
     Type SpotType,
     ZLinkInstanceSpotFactoryOptions Options);
+
+internal sealed record ZLinkObjectRelocationRegistration(
+    Type InstanceType,
+    ZLinkObjectPlacementOptions Placement,
+    byte PolicyKind,
+    Type? AdapterType,
+    IZLinkRelocationAdapterInvoker? AdapterInvoker);
 
 internal sealed class ZLinkActorCatalog
 {

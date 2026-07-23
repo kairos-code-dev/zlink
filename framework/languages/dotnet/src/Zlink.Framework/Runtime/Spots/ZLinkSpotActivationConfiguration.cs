@@ -127,13 +127,7 @@ internal sealed partial class ZLinkSpotActivation
                     handler.HandlerType,
                     Spot.GetType(),
                     StopToken,
-                    (descriptor, tick, ct) => ExecuteSerializedAsync(
-                        async static (activation, state, innerCt) =>
-                        {
-                            await activation.InvokeTimerAsync(state.Descriptor, state.Tick, innerCt);
-                        },
-                        (Descriptor: descriptor, Tick: tick),
-                        ct),
+                    DispatchTimerAsync,
                     PublishTimerFailureAsync,
                     cancellationToken).ConfigureAwait(false);
                 return;

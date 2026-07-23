@@ -137,7 +137,7 @@ public sealed class FlowCorrelationTests
             (_, _, _) =>
             {
                 observed.TrySetResult(Assert.IsType<ZLinkFlowValue>(ZLinkFlowContext.Current));
-                return ValueTask.CompletedTask;
+                return ValueTask.FromResult(true);
             },
             static (_, _, _, _, _) => ValueTask.CompletedTask,
             CancellationToken.None);

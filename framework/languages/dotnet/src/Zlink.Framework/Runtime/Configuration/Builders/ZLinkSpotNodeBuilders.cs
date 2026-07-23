@@ -148,6 +148,29 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
+    public IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
+        string spotType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkRelocationPolicy<TSpot> relocation)
+        where TSpot : class, IZLinkSpot
+    {
+        ValidateObjectType(spotType, "Spot");
+        if (!registration.SpotFactories.Add(typeof(TSpot)))
+            throw new ZLinkConfigurationException(
+                $"Duplicate SPOT factory '{typeof(TSpot)}' on MeshNode '{registration.SpotNodeName}'.");
+        AddRelocation(
+            registration.SpotRelocations,
+            spotType,
+            typeof(TSpot),
+            placement,
+            relocation,
+            typeof(IZLinkSpotRelocationAdapter<>).MakeGenericType(typeof(TSpot)),
+            relocation.AdapterType is { } spotAdapter
+                ? new ZLinkSpotRelocationAdapterInvoker<TSpot>(spotAdapter)
+                : null);
+        return this;
+    }
+
     public IZLinkMeshNodeBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,
         ZLinkInstanceSpotFactoryOptions? options = null)
@@ -180,6 +203,34 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
+    public IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
+        string instanceSpotType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkRelocationPolicy<TSpot> relocation)
+        where TSpot : class, IZLinkInstanceSpot
+    {
+        ValidateObjectType(instanceSpotType, "Instance Spot");
+        if (!registration.InstanceSpotFactories.TryAdd(
+                instanceSpotType,
+                new ZLinkInstanceSpotFactoryRegistration(
+                    typeof(TSpot),
+                    new ZLinkInstanceSpotFactoryOptions())))
+            throw new ZLinkConfigurationException(
+                $"Duplicate Instance Spot factory '{instanceSpotType}' on "
+                + $"MeshNode '{registration.SpotNodeName}'.");
+        AddRelocation(
+            registration.InstanceSpotRelocations,
+            instanceSpotType,
+            typeof(TSpot),
+            placement,
+            relocation,
+            typeof(IZLinkSpotRelocationAdapter<>).MakeGenericType(typeof(TSpot)),
+            relocation.AdapterType is { } spotAdapter
+                ? new ZLinkSpotRelocationAdapterInvoker<TSpot>(spotAdapter)
+                : null);
+        return this;
+    }
+
     public IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot
     {
@@ -188,6 +239,12 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
                 $"Duplicate Entry Spot registry on MeshNode '{registration.SpotNodeName}'.");
 
         registration.EntrySpotType = typeof(TEntrySpot);
+        return this;
+    }
+
+    IZLinkMeshObjectServerBuilder IZLinkMeshObjectServerBuilder.AddEntrySpot<TEntrySpot>()
+    {
+        AddEntrySpot<TEntrySpot>();
         return this;
     }
 
@@ -200,6 +257,32 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
             typeof(TFactory),
             "Actor factory name must not be empty.",
             $"Duplicate actor factory '{actorType}'.");
+        return this;
+    }
+
+    public IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
+        string actorType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkRelocationPolicy<TActor> relocation)
+        where TActor : class, IZLinkActor
+        where TFactory : class, IZLinkActorFactory<TActor>
+    {
+        ZLinkRegistrationBuilderGuard.AddUnique(
+            registration.ActorFactories,
+            actorType,
+            typeof(TFactory),
+            "Actor factory name must not be empty.",
+            $"Duplicate actor factory '{actorType}'.");
+        AddRelocation(
+            registration.ActorRelocations,
+            actorType,
+            typeof(TActor),
+            placement,
+            relocation,
+            typeof(IZLinkActorRelocationAdapter<>).MakeGenericType(typeof(TActor)),
+            relocation.AdapterType is { } actorAdapter
+                ? new ZLinkActorRelocationAdapterInvoker<TActor>(actorAdapter)
+                : null);
         return this;
     }
 
@@ -220,6 +303,60 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
     {
         registration.Router ??= new ZLinkSpotRouterCapabilityRegistration();
         return registration.Router;
+    }
+
+    private static void AddRelocation<TInstance>(
+        IDictionary<string, ZLinkObjectRelocationRegistration> target,
+        string stableType,
+        Type instanceType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkRelocationPolicy<TInstance> relocation,
+        Type adapterContract,
+        IZLinkRelocationAdapterInvoker? adapterInvoker)
+        where TInstance : class
+    {
+        ArgumentNullException.ThrowIfNull(relocation);
+        var effectivePlacement = placement ?? new ZLinkObjectPlacementOptions();
+        ValidatePlacement(effectivePlacement);
+        var adapterType = relocation.AdapterType;
+        if (relocation.Kind == 2
+            && (adapterType is null || !adapterContract.IsAssignableFrom(adapterType)))
+            throw new ZLinkConfigurationException(
+                $"Relocation adapter '{adapterType}' must implement '{adapterContract}'.");
+        if (!target.TryAdd(
+                stableType,
+                new ZLinkObjectRelocationRegistration(
+                    instanceType,
+                    effectivePlacement,
+                    relocation.Kind,
+                    adapterType,
+                    adapterInvoker)))
+            throw new ZLinkConfigurationException(
+                $"Duplicate relocation registration '{stableType}'.");
+    }
+
+    private static void ValidateObjectType(string stableType, string kind)
+    {
+        if (string.IsNullOrWhiteSpace(stableType))
+            throw new ZLinkConfigurationException(
+                $"{kind} type must not be empty.");
+        if (System.Text.Encoding.UTF8.GetByteCount(stableType) > 255
+            || stableType.Contains('\0'))
+            throw new ZLinkConfigurationException(
+                $"{kind} type must be 1 to 255 UTF-8 bytes without NUL.");
+    }
+
+    private static void ValidatePlacement(ZLinkObjectPlacementOptions placement)
+    {
+        if (placement.MaxActiveObjects is <= 0)
+            throw new ZLinkConfigurationException(
+                "MaxActiveObjects must be greater than zero.");
+        if (placement.MaxPendingActivations is <= 0)
+            throw new ZLinkConfigurationException(
+                "MaxPendingActivations must be greater than zero.");
+        if (placement.PlacementProfiles.Any(string.IsNullOrWhiteSpace))
+            throw new ZLinkConfigurationException(
+                "Placement profile names must not be empty.");
     }
 }
 

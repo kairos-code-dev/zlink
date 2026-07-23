@@ -6,6 +6,121 @@ namespace Zlink.Framework.UnitTests;
 public sealed class SerialExecutorTests
 {
     [Fact]
+    public async Task SerialExecutionQueue_RelocationSeal_CapturesPendingAndHoldsNewAcceptedWork()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var activeStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseActive = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var executionOrder = new ConcurrentQueue<int>();
+        var relocated = new ConcurrentQueue<int>();
+
+        Assert.True(queue.TryPostAccepted(
+            new byte[] { 1 },
+            async _ =>
+            {
+                activeStarted.TrySetResult();
+                await releaseActive.Task.ConfigureAwait(false);
+                executionOrder.Enqueue(1);
+            },
+            () => relocated.Enqueue(1),
+            out _));
+        await activeStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(queue.TryPostAccepted(
+            new byte[] { 2 },
+            _ =>
+            {
+                executionOrder.Enqueue(2);
+                return ValueTask.CompletedTask;
+            },
+            () => relocated.Enqueue(2),
+            out _));
+        var sealTask = queue.SealRelocationAsync(CancellationToken.None).AsTask();
+        Assert.False(sealTask.IsCompleted);
+
+        releaseActive.TrySetResult();
+        var seal = await sealTask.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Collection(
+            seal.Captured,
+            record =>
+            {
+                Assert.Equal<ulong>(2, record.AcceptedSequence);
+                Assert.Equal(new byte[] { 2 }, record.Payload.ToArray());
+            });
+
+        Assert.True(queue.TryPostAccepted(
+            new byte[] { 3 },
+            _ =>
+            {
+                executionOrder.Enqueue(3);
+                return ValueTask.CompletedTask;
+            },
+            () => relocated.Enqueue(3),
+            out _));
+        Assert.True(queue.TryAbortRelocation(seal));
+
+        await WaitUntilAsync(
+            () => executionOrder.Count == 3,
+            TimeSpan.FromSeconds(5));
+        Assert.Equal(new[] { 1, 2, 3 }, executionOrder);
+        Assert.Empty(relocated);
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_RelocationCommit_ReleasesCapturedAndReturnsHeldRecords()
+    {
+        await using var queue = CreateQueue(CancellationToken.None);
+        var seal = await queue.SealRelocationAsync(CancellationToken.None);
+        var released = new ConcurrentQueue<int>();
+
+        Assert.True(queue.TryPostAccepted(
+            new byte[] { 7 },
+            static _ => throw new InvalidOperationException("held work must not execute"),
+            () => released.Enqueue(7),
+            out var heldItem));
+
+        Assert.True(queue.TryCommitRelocation(seal, out var held));
+        await heldItem.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Collection(
+            held,
+            record =>
+            {
+                Assert.Equal<ulong>(1, record.AcceptedSequence);
+                Assert.Equal(new byte[] { 7 }, record.Payload.ToArray());
+            });
+        Assert.Equal(new[] { 7 }, released);
+        Assert.False(queue.TryPostAccepted(
+            new byte[] { 8 },
+            static _ => ValueTask.CompletedTask,
+            static () => { },
+            out _));
+    }
+
+    [Fact]
+    public async Task SerialExecutionQueue_Dispose_AbortsUnfinishedRelocationWithoutHanging()
+    {
+        var queue = CreateQueue(CancellationToken.None);
+        var seal = await queue.SealRelocationAsync(CancellationToken.None);
+        var executed = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.True(queue.TryPostAccepted(
+            new byte[] { 9 },
+            _ =>
+            {
+                executed.TrySetResult();
+                return ValueTask.CompletedTask;
+            },
+            static () => { },
+            out _));
+
+        await queue.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await executed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(queue.TryAbortRelocation(seal));
+    }
+
+    [Fact]
     public async Task SerialExecutionQueue_Dispose_Joins_The_Drain_Epilogue_Before_Disposing_Its_Gate()
     {
         var exceptions = new ConcurrentQueue<Exception>();
@@ -739,6 +854,15 @@ public sealed class SerialExecutorTests
             null,
             name,
             ZlinkStreamMetadata.Empty);
+    }
+
+    private static async Task WaitUntilAsync(
+        Func<bool> condition,
+        TimeSpan timeout)
+    {
+        using var cancellation = new CancellationTokenSource(timeout);
+        while (!condition())
+            await Task.Delay(10, cancellation.Token);
     }
 
     private static ZLinkSerialExecutionQueue CreateQueue(

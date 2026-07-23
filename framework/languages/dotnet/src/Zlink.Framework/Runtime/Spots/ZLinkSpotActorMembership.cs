@@ -46,4 +46,12 @@ internal sealed class ZLinkSpotActorMembership
                 _actorsById.Remove(actor.ActorId);
         }
     }
+
+    public IReadOnlyList<IZLinkActor> Snapshot()
+    {
+        lock (_gate)
+            return _actorsById.Values
+                .OrderBy(static actor => actor.ActorId, StringComparer.Ordinal)
+                .ToArray();
+    }
 }

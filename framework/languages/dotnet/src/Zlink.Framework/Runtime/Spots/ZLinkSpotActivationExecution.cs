@@ -1,5 +1,13 @@
 namespace Zlink.Framework.Runtime.Spots;
 
+internal sealed record ZLinkSpotRelocationSeal(
+    ZLinkSerialRelocationSeal QueueSeal,
+    IReadOnlyList<ZLinkRelocationLogicalTimer> LogicalTimers);
+
+internal sealed record ZLinkSpotRelocationApplicationState(
+    ReadOnlyMemory<byte> SpotState,
+    IReadOnlyDictionary<string, ReadOnlyMemory<byte>> ActorStates);
+
 internal sealed partial class ZLinkSpotActivation
 {
     internal object RuntimeExecutionOwner => _runtime.ExecutionOwner;
@@ -105,13 +113,7 @@ internal sealed partial class ZLinkSpotActivation
             typeof(THandler),
             Spot.GetType(),
             StopToken,
-            (descriptor, tick, ct) => ExecuteApplicationSerializedAsync(
-                async static (activation, state, innerCt) =>
-                {
-                    await activation.InvokeTimerAsync(state.Descriptor, state.Tick, innerCt);
-                },
-                (Descriptor: descriptor, Tick: tick),
-                ct),
+            DispatchTimerAsync,
             PublishTimerFailureAsync,
             cancellationToken);
     }
@@ -168,13 +170,7 @@ internal sealed partial class ZLinkSpotActivation
                             continue;
                         }
 
-                        QueueApplicationSerialized(
-                            static (activation, state, ct) => activation._dispatcher.DispatchRouteAsync(state, ct),
-                            received,
-                            received.CanReply,
-                            () => ZLinkSpotActivationDispatcher.RejectApplicationRouteForDrain(
-                                received,
-                                ChannelName));
+                        QueueApplicationRouteSerialized(received);
                     }
                 },
                 drain => drain?.Invoke(),
@@ -372,6 +368,72 @@ internal sealed partial class ZLinkSpotActivation
         return queued;
     }
 
+    private bool QueueApplicationSerialized<TState>(
+        Func<ZLinkSpotActivation, TState, CancellationToken, ValueTask> operation,
+        TState state,
+        ReadOnlyMemory<byte> acceptedJournalRecord,
+        bool countAsRequest,
+        Action onRejected,
+        Action relocationRelease)
+    {
+        if (!_runtime.TryEnterInboundOperation(countAsRequest, out var lease))
+        {
+            onRejected();
+            return false;
+        }
+
+        var capturedOperation = operation;
+        var capturedState = state;
+        var released = 0;
+        void ReleaseForRelocation()
+        {
+            if (Interlocked.Exchange(ref released, 1) != 0) return;
+            lease.Dispose();
+            relocationRelease();
+        }
+
+        var queued = _serial.QueueAccepted(
+            acceptedJournalRecord,
+            async (activation, ct) =>
+            {
+                using (lease)
+                    await capturedOperation(activation, capturedState, ct).ConfigureAwait(false);
+            },
+            ReleaseForRelocation,
+            out _);
+        if (queued) return true;
+
+        lease.Dispose();
+        onRejected();
+        return false;
+    }
+
+    private bool QueueApplicationRouteSerialized(
+        ZLinkBackendRouteReceived received)
+    {
+        byte[] acceptedJournalRecord;
+        try
+        {
+            acceptedJournalRecord = ZLinkSpotAcceptedJournal.Encode(received);
+        }
+        catch
+        {
+            received.Dispose();
+            throw;
+        }
+
+        return QueueApplicationSerialized(
+            static (activation, state, ct) =>
+                activation._dispatcher.DispatchRouteAsync(state, ct),
+            received,
+            acceptedJournalRecord,
+            received.CanReply,
+            () => ZLinkSpotActivationDispatcher.RejectApplicationRouteForDrain(
+                received,
+                ChannelName),
+            received.Dispose);
+    }
+
 
     private async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)
     {
@@ -409,7 +471,244 @@ internal sealed partial class ZLinkSpotActivation
         ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
+        if (_timers.IsFrozen) return;
         await HandlerInvoker.InvokeTimerAsync(descriptor, tick, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal async ValueTask<ZLinkSpotRelocationSeal> SealRelocationAsync(
+        CancellationToken cancellationToken)
+    {
+        var logicalTimers = _timers.FreezeRelocation();
+        try
+        {
+            var queueSeal = await _serial
+                .SealRelocationAsync(cancellationToken)
+                .ConfigureAwait(false);
+            return new ZLinkSpotRelocationSeal(queueSeal, logicalTimers);
+        }
+        catch
+        {
+            _timers.Resume();
+            throw;
+        }
+    }
+
+    internal bool AbortRelocation(ZLinkSpotRelocationSeal seal)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        if (!_serial.TryAbortRelocation(seal.QueueSeal))
+            return false;
+        _timers.Resume();
+        return true;
+    }
+
+    internal bool CommitRelocation(
+        ZLinkSpotRelocationSeal seal,
+        out IReadOnlyList<ZLinkAcceptedWorkRecord> held)
+    {
+        ArgumentNullException.ThrowIfNull(seal);
+        return _serial.TryCommitRelocation(seal.QueueSeal, out held);
+    }
+
+    internal void RestoreLogicalTimers(
+        IReadOnlyList<ZLinkRelocationLogicalTimer> logicalTimers)
+    {
+        _timers.RestoreRelocation(
+            logicalTimers,
+            StopToken,
+            DispatchTimerAsync,
+            PublishTimerFailureAsync);
+    }
+
+    internal void ResumeRestoredLogicalTimers()
+    {
+        _timers.Resume();
+    }
+
+    private async ValueTask<bool> DispatchTimerAsync(
+        ZLinkSpotTimerDescriptor descriptor,
+        ZLinkTimerTick tick,
+        CancellationToken cancellationToken)
+    {
+        var state = new TimerDispatchState(descriptor, tick);
+        await ExecuteApplicationSerializedAsync(
+                async static (activation, state, innerCt) =>
+                {
+                    if (activation._timers.IsFrozen) return;
+                    state.Delivered = true;
+                    await activation.InvokeTimerAsync(
+                        state.Descriptor,
+                        state.Tick,
+                        innerCt);
+                },
+                state,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return state.Delivered;
+    }
+
+    internal async ValueTask<ZLinkSpotRelocationApplicationState>
+        CaptureRelocationApplicationStateAsync(CancellationToken cancellationToken)
+    {
+        ZLinkSpotRelocationApplicationState? captured = null;
+        await _serial.ExecuteLifecycleAsync(
+                async (activation, ct) =>
+                {
+                    var spotRegistration = activation.ResolveSpotRelocationRegistration();
+                    var spotState = await activation.CaptureInstanceAsync(
+                            spotRegistration,
+                            activation.Spot,
+                            ct)
+                        .ConfigureAwait(false);
+                    var actorStates =
+                        new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
+                    foreach (var actor in activation._actors.Snapshot())
+                    {
+                        var actorRegistration =
+                            activation.ResolveActorRelocationRegistration(actor);
+                        actorStates.Add(
+                            actor.ActorId,
+                            await activation.CaptureInstanceAsync(
+                                    actorRegistration,
+                                    actor,
+                                    ct)
+                                .ConfigureAwait(false));
+                    }
+                    captured = new ZLinkSpotRelocationApplicationState(
+                        spotState,
+                        actorStates);
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+        return captured
+               ?? throw new InvalidOperationException(
+                   "SPOT relocation capture did not complete.");
+    }
+
+    internal async ValueTask RestoreRelocationApplicationStateAsync(
+        ZLinkSpotRelocationApplicationState state,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        await _serial.ExecuteLifecycleAsync(
+                async (activation, ct) =>
+                {
+                    await activation.RestoreInstanceAsync(
+                            activation.ResolveSpotRelocationRegistration(),
+                            activation.Spot,
+                            state.SpotState,
+                            ct)
+                        .ConfigureAwait(false);
+                    foreach (var actor in activation._actors.Snapshot())
+                    {
+                        if (!state.ActorStates.TryGetValue(
+                                actor.ActorId,
+                                out var actorState))
+                            throw new InvalidDataException(
+                                $"Relocation state for Actor '{actor.ActorId}' is missing.");
+                        await activation.RestoreInstanceAsync(
+                                activation.ResolveActorRelocationRegistration(actor),
+                                actor,
+                                actorState,
+                                ct)
+                            .ConfigureAwait(false);
+                    }
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private ZLinkObjectRelocationRegistration ResolveSpotRelocationRegistration()
+    {
+        var node = _runtime.Registration.SpotNodes[SpotNodeName];
+        var matches = node.SpotRelocations.Values
+            .Concat(node.InstanceSpotRelocations.Values)
+            .Where(registration => registration.InstanceType == Spot.GetType())
+            .Distinct()
+            .ToArray();
+        return matches.Length switch
+        {
+            1 => matches[0],
+            0 => throw new ZLinkConfigurationException(
+                $"Relocation policy for SPOT '{Spot.GetType()}' is not registered."),
+            _ => throw new ZLinkConfigurationException(
+                $"Relocation policy for SPOT '{Spot.GetType()}' is ambiguous.")
+        };
+    }
+
+    private ZLinkObjectRelocationRegistration ResolveActorRelocationRegistration(
+        IZLinkActor actor)
+    {
+        var node = _runtime.Registration.SpotNodes[SpotNodeName];
+        var actorType = _runtime.GetOrCreateActorState(actor.ActorId).ActorType;
+        if (actorType is not null
+            && node.ActorRelocations.TryGetValue(actorType, out var registered))
+            return registered;
+        var matches = node.ActorRelocations.Values
+            .Where(registration => registration.InstanceType == actor.GetType())
+            .Distinct()
+            .ToArray();
+        return matches.Length switch
+        {
+            1 => matches[0],
+            0 => throw new ZLinkConfigurationException(
+                $"Relocation policy for Actor '{actor.GetType()}' is not registered."),
+            _ => throw new ZLinkConfigurationException(
+                $"Relocation policy for Actor '{actor.GetType()}' is ambiguous.")
+        };
+    }
+
+    private async ValueTask<byte[]> CaptureInstanceAsync(
+        ZLinkObjectRelocationRegistration registration,
+        object instance,
+        CancellationToken cancellationToken)
+    {
+        return registration.PolicyKind switch
+        {
+            0 => throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestRejected,
+                $"Relocation is disabled for '{registration.InstanceType}'."),
+            1 => [],
+            2 when registration.AdapterInvoker is { } invoker =>
+                await invoker.CaptureAsync(
+                        _scope.ServiceProvider,
+                        instance,
+                        cancellationToken)
+                    .ConfigureAwait(false),
+            _ => throw new ZLinkConfigurationException(
+                $"Relocation adapter for '{registration.InstanceType}' is not registered.")
+        };
+    }
+
+    private async ValueTask RestoreInstanceAsync(
+        ZLinkObjectRelocationRegistration registration,
+        object instance,
+        ReadOnlyMemory<byte> payload,
+        CancellationToken cancellationToken)
+    {
+        switch (registration.PolicyKind)
+        {
+            case 1:
+                if (!payload.IsEmpty)
+                    throw new InvalidDataException(
+                        $"Recreate relocation state for '{registration.InstanceType}' must be empty.");
+                return;
+            case 2 when registration.AdapterInvoker is { } invoker:
+                await invoker.RestoreAsync(
+                        _scope.ServiceProvider,
+                        instance,
+                        payload,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            case 0:
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RequestRejected,
+                    $"Relocation is disabled for '{registration.InstanceType}'.");
+            default:
+                throw new ZLinkConfigurationException(
+                    $"Relocation adapter for '{registration.InstanceType}' is not registered.");
+        }
     }
 
     private ValueTask PublishTimerFailureAsync(
@@ -450,5 +749,16 @@ internal sealed partial class ZLinkSpotActivation
         public ZLinkMessage Request { get; } = request;
 
         public ZLinkSpotCreateResponse Response { get; set; }
+    }
+
+    private sealed class TimerDispatchState(
+        ZLinkSpotTimerDescriptor descriptor,
+        ZLinkTimerTick tick)
+    {
+        public ZLinkSpotTimerDescriptor Descriptor { get; } = descriptor;
+
+        public ZLinkTimerTick Tick { get; } = tick;
+
+        public bool Delivered { get; set; }
     }
 }

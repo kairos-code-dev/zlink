@@ -16,13 +16,18 @@ internal sealed partial class ZLinkEntrySpotActivation
             typeof(THandler),
             EntrySpot.GetType(),
             _stopSource.Token,
-            (descriptor, tick, ct) => ExecuteQueuedAsync(
-                static (activation, state, innerCt) => activation._invoker.InvokeTimerAsync(
-                    state.Descriptor,
-                    state.Tick,
-                    innerCt),
-                (Descriptor: descriptor, Tick: tick),
-                ct),
+            async (descriptor, tick, ct) =>
+            {
+                await ExecuteQueuedAsync(
+                        static (activation, state, innerCt) => activation._invoker.InvokeTimerAsync(
+                            state.Descriptor,
+                            state.Tick,
+                            innerCt),
+                        (Descriptor: descriptor, Tick: tick),
+                        ct)
+                    .ConfigureAwait(false);
+                return true;
+            },
             PublishTimerFailureAsync,
             cancellationToken);
     }

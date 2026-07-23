@@ -3,21 +3,43 @@ namespace Zlink.Framework.Runtime.Execution;
 internal sealed class ZLinkSerialWorkItem
 {
     private readonly Func<CancellationToken, ValueTask> _callback;
+    private readonly Action? _relocationRelease;
 
     private readonly TaskCompletionSource _completion =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public ZLinkSerialWorkItem(
         Func<CancellationToken, ValueTask> callback,
-        long metricEnqueuedTimestamp = 0)
+        long metricEnqueuedTimestamp = 0,
+        ZLinkAcceptedWorkRecord? acceptedRecord = null,
+        Action? relocationRelease = null)
     {
         _callback = callback;
         MetricEnqueuedTimestamp = metricEnqueuedTimestamp;
+        AcceptedRecord = acceptedRecord;
+        _relocationRelease = relocationRelease;
     }
 
     public Task Completion => _completion.Task;
 
     public long MetricEnqueuedTimestamp { get; }
+
+    public ZLinkAcceptedWorkRecord? AcceptedRecord { get; }
+
+    public void ReleaseForRelocation(Action<Exception> onUnhandledException)
+    {
+        try
+        {
+            _relocationRelease?.Invoke();
+            _completion.TrySetResult();
+        }
+        catch (Exception exception)
+        {
+            _completion.TrySetException(exception);
+            _ = _completion.Task.Exception;
+            onUnhandledException(exception);
+        }
+    }
 
     public async ValueTask<ZLinkSerialWorkItemResult> InvokeAsync(
         Action<Exception> onUnhandledException,
@@ -126,4 +148,16 @@ internal enum ZLinkSerialWorkItemResult
 {
     Completed,
     Suspended
+}
+
+internal sealed record ZLinkAcceptedWorkRecord(
+    ulong AcceptedSequence,
+    ReadOnlyMemory<byte> Payload)
+{
+    public ZLinkAcceptedWorkRecord Snapshot()
+    {
+        return new ZLinkAcceptedWorkRecord(
+            AcceptedSequence,
+            Payload.ToArray());
+    }
 }

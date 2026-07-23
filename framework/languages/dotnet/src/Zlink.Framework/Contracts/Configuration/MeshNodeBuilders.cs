@@ -59,7 +59,41 @@ public interface IZLinkMeshChannelBuilder
         where THandler : class;
 }
 
-public interface IZLinkMeshNodeBuilder
+public interface IZLinkMeshObjectServerBuilder
+{
+    IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
+        where TEntrySpot : class, IZLinkEntrySpot;
+
+    IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
+        string spotType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkRelocationPolicy<TSpot> relocation)
+        where TSpot : class, IZLinkSpot;
+
+    IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
+        string instanceSpotType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkRelocationPolicy<TSpot> relocation)
+        where TSpot : class, IZLinkInstanceSpot;
+
+    IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
+        string actorType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkRelocationPolicy<TActor> relocation)
+        where TActor : class, IZLinkActor
+        where TFactory : class, IZLinkActorFactory<TActor>;
+}
+
+public sealed record ZLinkObjectPlacementOptions
+{
+    public IReadOnlyCollection<string> PlacementProfiles { get; init; } = [];
+
+    public int? MaxActiveObjects { get; init; }
+
+    public int? MaxPendingActivations { get; init; }
+}
+
+public interface IZLinkMeshNodeBuilder : IZLinkMeshObjectServerBuilder
 {
     IZLinkMeshChannelBuilder ChannelName(string channelName);
 
@@ -105,7 +139,7 @@ public interface IZLinkMeshNodeBuilder
         ZLinkInstanceSpotFactoryOptions? options = null)
         where TSpot : class, IZLinkInstanceSpot;
 
-    IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
+    new IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot;
 
     IZLinkMeshNodeBuilder AddActorFactory<TFactory>(string actorType)

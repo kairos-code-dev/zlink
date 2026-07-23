@@ -8,8 +8,14 @@ import {
   ServiceMailbox
 } from '../../packages/framework/src/runtime/foundation/service-mailbox';
 import {
-  InMemoryServiceLocationAuthority
-} from '../../packages/framework/src/runtime/foundation/service-location-authority';
+  ZLinkInMemoryAuthorityStore
+} from '../../packages/framework/src/runtime/locations/in-memory-authority-store';
+import type {
+  ZLinkAuthorityKey,
+  ZLinkAuthoritySnapshot,
+  ZLinkLocationOwnerToken,
+  ZLinkObjectCreationTarget
+} from '../../packages/framework/src/contracts';
 import {
   ServiceDurableRelocationRuntime,
   ServiceRelocationDataLostError,
@@ -191,24 +197,22 @@ test('managed timer pauses and restores its logical schedule without native hand
 
 test('durable relocation stores payload before Location CAS and clears authority before delete', async () => {
   const events: string[] = [];
-  const authority = new InMemoryServiceLocationAuthority(() => 100);
-  const initial = authority.compareExchange(
-    'spot:room',
-    { kind: 'missing' },
-    { kind: 'newObject', payload: Buffer.from('owner-state') }
-  );
-  assert.equal(initial.kind, 'stored');
-  if (initial.kind !== 'stored') return;
+  const authority = authorityStore();
+  const key = authorityKey('spot:room');
+  const initial = await createAuthority(authority, key);
   const authorityPort = {
-    read: (key: string) => authority.read(key),
-    compareExchange: (...args: Parameters<InMemoryServiceLocationAuthority['compareExchange']>) => {
+    readAuthority: (...args: Parameters<ZLinkInMemoryAuthorityStore['readAuthority']>) =>
+      authority.readAuthority(...args),
+    compareExchangeAuthority: (
+      ...args: Parameters<ZLinkInMemoryAuthorityStore['compareExchangeAuthority']>
+    ) => {
       events.push('authority-cas');
-      return authority.compareExchange(...args);
+      return authority.compareExchangeAuthority(...args);
     }
   };
   const store = new MemoryRelocationStore(events);
   const runtime = new ServiceDurableRelocationRuntime(authorityPort, store, authorityCodec);
-  const published = await runtime.captureAndPublish('spot:room', initial, relocationEnvelope());
+  const published = await runtime.captureAndPublish(key, initial, relocationEnvelope());
   assert.deepEqual(events.slice(0, 2), ['payload-put', 'authority-cas']);
   assert.equal(published.authority.objectGeneration, initial.objectGeneration);
   assert.equal(
@@ -223,44 +227,43 @@ test('durable relocation stores payload before Location CAS and clears authority
   assert.equal(restored.timers[0]?.pendingTicks, 1);
 
   events.length = 0;
-  const released = await runtime.release('spot:room', published.authority);
+  const released = await runtime.release(key, published.authority);
   assert.deepEqual(events, ['authority-cas', 'payload-delete']);
   assert.equal(authorityCodec.read(released.payload), undefined);
 });
 
 test('failed publication removes only the orphan and published data loss never rolls back', async () => {
   const events: string[] = [];
-  const authority = new InMemoryServiceLocationAuthority(() => 100);
-  const initial = authority.compareExchange(
-    'actor:a',
-    { kind: 'missing' },
-    { kind: 'newObject', payload: Buffer.from('owner-state') }
-  );
-  assert.equal(initial.kind, 'stored');
-  if (initial.kind !== 'stored') return;
-  authority.compareExchange(
-    'actor:a',
-    { kind: 'snapshot', storeVersion: initial.storeVersion },
-    { kind: 'preserve', payload: Buffer.from('concurrent-update') }
+  const authority = authorityStore();
+  const key = authorityKey('actor:a');
+  const initial = await createAuthority(authority, key);
+  await authority.compareExchangeAuthority(
+    key,
+    initial.storeVersion,
+    {
+      kind: 'put',
+      generationTransition: 'preserve',
+      payload: Buffer.from('concurrent-update')
+    }
   );
   const store = new MemoryRelocationStore(events);
   const runtime = new ServiceDurableRelocationRuntime(authority, store, authorityCodec);
   await assert.rejects(
-    runtime.captureAndPublish('actor:a', initial, relocationEnvelope()),
+    runtime.captureAndPublish(key, initial, relocationEnvelope()),
     /rejected relocation publication/
   );
   assert.deepEqual(events, ['payload-put', 'payload-delete']);
 
-  const current = authority.read('actor:a');
+  const current = await authority.readAuthority(key);
   assert.equal(current.kind, 'snapshot');
   if (current.kind !== 'snapshot') return;
-  const published = await runtime.captureAndPublish('actor:a', current, relocationEnvelope());
+  const published = await runtime.captureAndPublish(key, current, relocationEnvelope());
   await store.delete(published.publication.reference);
   await assert.rejects(
     runtime.restore(published.authority),
     ServiceRelocationDataLostError
   );
-  const afterLoss = authority.read('actor:a');
+  const afterLoss = await authority.readAuthority(key);
   assert.equal(afterLoss.kind, 'snapshot');
   if (afterLoss.kind === 'snapshot') {
     assert.equal(
@@ -272,19 +275,17 @@ test('failed publication removes only the orphan and published data loss never r
 
 test('authority response loss reconciles a committed publication without deleting its root', async () => {
   const events: string[] = [];
-  const authority = new InMemoryServiceLocationAuthority(() => 100);
-  const initial = authority.compareExchange(
-    'spot:response-loss',
-    { kind: 'missing' },
-    { kind: 'newObject', payload: Buffer.from('owner-state') }
-  );
-  assert.equal(initial.kind, 'stored');
-  if (initial.kind !== 'stored') return;
+  const authority = authorityStore();
+  const key = authorityKey('spot:response-loss');
+  const initial = await createAuthority(authority, key);
   const authorityPort = {
-    read: (key: string) => authority.read(key),
-    compareExchange: (...args: Parameters<InMemoryServiceLocationAuthority['compareExchange']>) => {
+    readAuthority: (...args: Parameters<ZLinkInMemoryAuthorityStore['readAuthority']>) =>
+      authority.readAuthority(...args),
+    compareExchangeAuthority: async (
+      ...args: Parameters<ZLinkInMemoryAuthorityStore['compareExchangeAuthority']>
+    ) => {
       events.push('authority-cas');
-      const committed = authority.compareExchange(...args);
+      const committed = await authority.compareExchangeAuthority(...args);
       assert.equal(committed.kind, 'stored');
       throw new Error('authority response lost');
     }
@@ -293,7 +294,7 @@ test('authority response loss reconciles a committed publication without deletin
   const runtime = new ServiceDurableRelocationRuntime(authorityPort, store, authorityCodec);
 
   const published = await runtime.captureAndPublish(
-    'spot:response-loss',
+    key,
     initial,
     relocationEnvelope()
   );
@@ -305,6 +306,57 @@ test('authority response loss reconciles a committed publication without deletin
   );
   assert.equal((await store.get(published.publication.reference)).kind, 'found');
 });
+
+function authorityStore(): ZLinkInMemoryAuthorityStore {
+  return new ZLinkInMemoryAuthorityStore({
+    isTargetLive: () => true
+  }, () => new Date(100));
+}
+
+async function createAuthority(
+  authority: ZLinkInMemoryAuthorityStore,
+  key: ZLinkAuthorityKey
+): Promise<ZLinkAuthoritySnapshot> {
+  const target: ZLinkObjectCreationTarget = {
+    meshName: 'mesh',
+    nodeRid: 'node-a',
+    nodeLifecycleGeneration: 1n,
+    owner: owner('owner-a', 1n)
+  };
+  const globalId = key.value.slice('user_spot:'.length);
+  const reserved = await authority.reserve({
+    key: { kind: 'user_spot', globalId },
+    intent: {
+      stableType: 'room',
+      requestContentReference: `request:${globalId}`,
+      requestSha256: Buffer.alloc(32, 1),
+      requestEncodedSize: 10n
+    },
+    target,
+    creatingPayload: Buffer.from('creating'),
+    pendingCapacityDelta: 1
+  });
+  assert.equal(reserved.kind, 'reserved');
+  if (reserved.kind !== 'reserved') throw new Error('Authority reservation failed.');
+  const committed = await authority.commit({
+    key: { kind: 'user_spot', globalId },
+    reservationId: reserved.reservationId,
+    expectedStoreVersion: reserved.creating.storeVersion.value,
+    target,
+    readyPayload: Buffer.from('owner-state')
+  });
+  assert.equal(committed.kind, 'committed');
+  if (committed.kind !== 'committed') throw new Error('Authority commit failed.');
+  return committed.ready;
+}
+
+function authorityKey(value: string): ZLinkAuthorityKey {
+  return { value: `user_spot:${value}` } as ZLinkAuthorityKey;
+}
+
+function owner(ownerId: string, leaseGeneration: bigint): ZLinkLocationOwnerToken {
+  return { ownerId, leaseGeneration };
+}
 
 function relocationEnvelope(): ServiceRelocationEnvelope {
   return {

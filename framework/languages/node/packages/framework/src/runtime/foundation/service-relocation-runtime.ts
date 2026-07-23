@@ -1,22 +1,31 @@
 import { createHash } from 'node:crypto';
 import type {
-  ServiceAuthorityCasResult,
-  ServiceAuthorityRead,
-  ServiceAuthoritySnapshot
-} from './service-location-authority';
+  ZLinkAuthorityCompareExchangeResult,
+  ZLinkAuthorityKey,
+  ZLinkAuthorityReadResult,
+  ZLinkAuthoritySnapshot,
+  ZLinkAuthorityStoreVersion
+} from '../../contracts/Locations';
 
 const RELOCATION_RETENTION_MS = 24 * 60 * 60 * 1_000;
 
 type Awaitable<T> = T | Promise<T>;
 
 export interface ServiceAuthorityProvider {
-  read(key: string, signal?: AbortSignal): Awaitable<ServiceAuthorityRead>;
-  compareExchange(
-    key: string,
-    expectation: { readonly kind: 'snapshot'; readonly storeVersion: bigint },
-    mutation: { readonly kind: 'preserve'; readonly payload: Uint8Array },
+  readAuthority(
+    key: ZLinkAuthorityKey,
     signal?: AbortSignal
-  ): Awaitable<ServiceAuthorityCasResult>;
+  ): Awaitable<ZLinkAuthorityReadResult>;
+  compareExchangeAuthority(
+    key: ZLinkAuthorityKey,
+    expectedStoreVersion: ZLinkAuthorityStoreVersion,
+    mutation: {
+      readonly kind: 'put';
+      readonly payload: Uint8Array;
+      readonly generationTransition: 'preserve';
+    },
+    signal?: AbortSignal
+  ): Awaitable<ZLinkAuthorityCompareExchangeResult>;
 }
 
 export interface ServiceRelocationStored {
@@ -85,7 +94,7 @@ export interface ServiceRelocationAuthorityCodec {
 }
 
 export interface ServicePublishedRelocation {
-  readonly authority: ServiceAuthoritySnapshot;
+  readonly authority: ZLinkAuthoritySnapshot;
   readonly publication: ServiceRelocationPublication;
 }
 
@@ -108,8 +117,8 @@ export class ServiceDurableRelocationRuntime {
   ) {}
 
   async captureAndPublish(
-    key: string,
-    expected: ServiceAuthoritySnapshot,
+    key: ZLinkAuthorityKey,
+    expected: ZLinkAuthoritySnapshot,
     envelope: ServiceRelocationEnvelope,
     signal?: AbortSignal
   ): Promise<ServicePublishedRelocation> {
@@ -130,12 +139,16 @@ export class ServiceDurableRelocationRuntime {
       checksumCrc32c,
       inventoryDigest: inventoryDigest(envelope.participants)
     };
-    let result: ServiceAuthorityCasResult;
+    let result: ZLinkAuthorityCompareExchangeResult;
     try {
-      result = await this.authority.compareExchange(
+      result = await this.authority.compareExchangeAuthority(
         key,
-        { kind: 'snapshot', storeVersion: expected.storeVersion },
-        { kind: 'preserve', payload: this.codec.publish(expected.payload, publication) },
+        expected.storeVersion,
+        {
+          kind: 'put',
+          generationTransition: 'preserve',
+          payload: this.codec.publish(expected.payload, publication)
+        },
         signal
       );
     } catch (error) {
@@ -161,22 +174,22 @@ export class ServiceDurableRelocationRuntime {
       await this.store.delete(stored.reference, signal);
       throw new Error('Location authority rejected relocation publication.');
     }
-    return { authority: result, publication };
+    return { authority: storedSnapshot(result), publication };
   }
 
   private async reconcilePublication(
-    key: string,
-    expected: ServiceAuthoritySnapshot,
+    key: ZLinkAuthorityKey,
+    expected: ZLinkAuthoritySnapshot,
     publication: ServiceRelocationPublication,
     signal?: AbortSignal
   ): Promise<
-    | { readonly kind: 'published'; readonly authority: ServiceAuthoritySnapshot }
+    | { readonly kind: 'published'; readonly authority: ZLinkAuthoritySnapshot }
     | { readonly kind: 'notCommitted' }
     | { readonly kind: 'unknown' }
   > {
-    let current: ServiceAuthorityRead;
+    let current: ZLinkAuthorityReadResult;
     try {
-      current = await this.authority.read(key, signal);
+      current = await this.authority.readAuthority(key, signal);
     } catch {
       return { kind: 'unknown' };
     }
@@ -187,13 +200,13 @@ export class ServiceDurableRelocationRuntime {
     if (samePublication(observed, publication)) {
       return { kind: 'published', authority: current };
     }
-    return current.storeVersion === expected.storeVersion
+    return current.storeVersion.value === expected.storeVersion.value
       ? { kind: 'notCommitted' }
       : { kind: 'unknown' };
   }
 
   async restore(
-    authority: ServiceAuthoritySnapshot,
+    authority: ZLinkAuthoritySnapshot,
     signal?: AbortSignal
   ): Promise<ServiceRelocationEnvelope> {
     signal?.throwIfAborted();
@@ -225,18 +238,19 @@ export class ServiceDurableRelocationRuntime {
   }
 
   async release(
-    key: string,
-    expected: ServiceAuthoritySnapshot,
+    key: ZLinkAuthorityKey,
+    expected: ZLinkAuthoritySnapshot,
     signal?: AbortSignal
-  ): Promise<ServiceAuthoritySnapshot> {
+  ): Promise<ZLinkAuthoritySnapshot> {
     signal?.throwIfAborted();
     const publication = this.codec.read(expected.payload);
     if (publication === undefined) return expected;
-    const result = await this.authority.compareExchange(
+    const result = await this.authority.compareExchangeAuthority(
       key,
-      { kind: 'snapshot', storeVersion: expected.storeVersion },
+      expected.storeVersion,
       {
-        kind: 'preserve',
+        kind: 'put',
+        generationTransition: 'preserve',
         payload: this.codec.clear(expected.payload, publication.reference)
       },
       signal
@@ -245,8 +259,15 @@ export class ServiceDurableRelocationRuntime {
       throw new Error('Location authority rejected relocation release.');
     }
     await this.store.delete(publication.reference, signal);
-    return result;
+    return storedSnapshot(result);
   }
+}
+
+function storedSnapshot(
+  result: Extract<ZLinkAuthorityCompareExchangeResult, { readonly kind: 'stored' }>
+): ZLinkAuthoritySnapshot {
+  const { kind: _kind, ...snapshot } = result;
+  return { kind: 'snapshot', ...snapshot };
 }
 
 export function encodeServiceRelocationEnvelope(envelope: ServiceRelocationEnvelope): Buffer {

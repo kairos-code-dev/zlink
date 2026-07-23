@@ -21,9 +21,6 @@ import {
   ServiceLivenessRegistry
 } from '../../packages/framework/src/runtime/foundation/service-liveness-registry';
 import {
-  InMemoryServiceLocationAuthority
-} from '../../packages/framework/src/runtime/foundation/service-location-authority';
-import {
   ServiceMailbox
 } from '../../packages/framework/src/runtime/foundation/service-mailbox';
 import {
@@ -144,54 +141,6 @@ test('liveness uses 5s/15s defaults, reuses outstanding probes, and fences old c
   assert.equal(liveness.disconnect('peer', 'connection-a'), false);
   assert.equal(liveness.acknowledge('peer', 'connection-a', probeId, 10_003), false);
   assert.deepEqual(liveness.tick(25_002).timedOutNodes, ['peer']);
-});
-
-test('opaque Location authority performs one CAS publication and emits ordered changes', async () => {
-  let now = 1_000;
-  const store = new InMemoryServiceLocationAuthority(() => now);
-  const changes: Array<{ sequence: bigint; kind: string }> = [];
-  const unsubscribe = store.subscribe(change => changes.push(change));
-  assert.equal(store.compareExchange(
-    'actor/global-a',
-    { kind: 'missing' },
-    { kind: 'preserve', payload: Buffer.from('invalid') }
-  ).kind, 'conflict');
-  const first = store.compareExchange(
-    'actor/global-a',
-    { kind: 'missing' },
-    { kind: 'newObject', payload: Buffer.from('owner-a') }
-  );
-  assert.equal(first.kind, 'stored');
-  if (first.kind !== 'stored') return;
-  assert.equal(first.objectGeneration, 1n);
-  assert.equal(first.authorityOwnerGeneration, 1n);
-
-  const conflict = store.compareExchange(
-    'actor/global-a',
-    { kind: 'missing' },
-    { kind: 'newObject', payload: Buffer.from('loser') }
-  );
-  assert.equal(conflict.kind, 'conflict');
-  now++;
-  const moved = store.compareExchange(
-    'actor/global-a',
-    { kind: 'snapshot', storeVersion: first.storeVersion },
-    { kind: 'newOwner', payload: Buffer.from('owner-b') }
-  );
-  assert.equal(moved.kind, 'stored');
-  if (moved.kind !== 'stored') return;
-  assert.equal(moved.objectGeneration, first.objectGeneration);
-  assert.equal(moved.authorityOwnerGeneration, 2n);
-  assert.equal(Buffer.from(moved.payload).toString(), 'owner-b');
-  await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(changes.map(change => ({
-    sequence: change.sequence,
-    kind: change.kind
-  })), [
-    { sequence: 1n, kind: 'stored' },
-    { sequence: 2n, kind: 'stored' }
-  ]);
-  unsubscribe();
 });
 
 test('ClientServer selection and classic fanout discovery use dedicated descriptor sets', () => {

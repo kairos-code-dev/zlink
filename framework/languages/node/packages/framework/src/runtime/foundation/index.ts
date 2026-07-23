@@ -3,7 +3,6 @@ export * from './operation-registry';
 export * from './raw-service-mesh-runtime';
 export * from './service-discovery-registry';
 export * from './service-liveness-registry';
-export * from './service-location-authority';
 export * from './service-mailbox';
 export * from './service-maintenance-runtime';
 export * from './service-relocation-runtime';

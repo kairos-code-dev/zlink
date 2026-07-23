@@ -17,6 +17,12 @@ export interface ServiceMailboxClaim {
   readonly records: readonly ServiceMailboxRecord[];
 }
 
+export interface ServiceMailboxRelocationSeal {
+  readonly owner: string;
+  readonly serial: bigint;
+  readonly captured: readonly ServiceMailboxRecord[];
+}
+
 interface OwnerQueue {
   readonly records: ServiceMailboxRecord[];
   bytes: number;
@@ -45,7 +51,14 @@ export interface ServiceMailboxLimits {
 export class ServiceMailbox {
   private readonly application: DomainState;
   private readonly infrastructure: DomainState;
+  private readonly relocationSeals = new Map<string, {
+    readonly serial: bigint;
+    readonly captured: ServiceMailboxRecord[];
+    readonly held: ServiceMailboxRecord[];
+  }>();
+  private readonly relocatedOwners = new Set<string>();
   private nextClaimSerial = 1n;
+  private nextRelocationSerial = 1n;
   private closed = false;
 
   constructor(limits: ServiceMailboxLimits) {
@@ -65,6 +78,16 @@ export class ServiceMailbox {
       || bytes > target.byteBudget - target.bytes
     ) {
       return false;
+    }
+    if (record.domain === 'application') {
+      if (this.relocatedOwners.has(record.owner)) return false;
+      const relocation = this.relocationSeals.get(record.owner);
+      if (relocation !== undefined) {
+        relocation.held.push(retainRecord(record));
+        target.messages++;
+        target.bytes += bytes;
+        return true;
+      }
     }
     let queue = target.owners.get(record.owner);
     if (queue === undefined) {
@@ -133,8 +156,60 @@ export class ServiceMailbox {
     return true;
   }
 
+  trySealApplicationOwner(owner: string): ServiceMailboxRelocationSeal | undefined {
+    if (owner.length === 0 || this.closed || this.relocatedOwners.has(owner)) return undefined;
+    if (this.relocationSeals.has(owner)) return undefined;
+    const queue = this.application.owners.get(owner);
+    if (queue?.claimed === true) return undefined;
+    const captured = queue?.records.splice(0) ?? [];
+    if (queue !== undefined) {
+      queue.bytes = 0;
+      this.application.owners.delete(owner);
+      this.application.indexed.delete(owner);
+    }
+    const serial = this.nextRelocationSerial++;
+    this.relocationSeals.set(owner, { serial, captured, held: [] });
+    return { owner, serial, captured };
+  }
+
+  abortRelocation(seal: ServiceMailboxRelocationSeal): boolean {
+    const current = this.relocationSeals.get(seal.owner);
+    if (current === undefined || current.serial !== seal.serial) return false;
+    this.relocationSeals.delete(seal.owner);
+    const records = [...current.captured, ...current.held];
+    if (records.length === 0) return true;
+    const bytes = records.reduce((sum, record) => sum + retainedBytes(record), 0);
+    this.application.owners.set(seal.owner, {
+      records,
+      bytes,
+      claimed: false,
+      claimSerial: 0n
+    });
+    if (!this.application.indexed.has(seal.owner)) {
+      this.application.indexed.add(seal.owner);
+      this.application.ready.push(seal.owner);
+    }
+    return true;
+  }
+
+  commitRelocation(seal: ServiceMailboxRelocationSeal): readonly ServiceMailboxRecord[] | undefined {
+    const current = this.relocationSeals.get(seal.owner);
+    if (current === undefined || current.serial !== seal.serial) return undefined;
+    this.relocationSeals.delete(seal.owner);
+    this.relocatedOwners.add(seal.owner);
+    const released = [...current.captured, ...current.held];
+    this.application.messages -= released.length;
+    this.application.bytes -= released.reduce((sum, record) => sum + retainedBytes(record), 0);
+    return current.held;
+  }
+
   close(): void {
+    if (this.closed) return;
     this.closed = true;
+    clearDomain(this.application);
+    clearDomain(this.infrastructure);
+    this.relocationSeals.clear();
+    this.relocatedOwners.clear();
   }
 
   pendingMessages(domain: ServiceMailboxDomain): number {
@@ -162,6 +237,14 @@ function createDomain(messageBudget: number, byteBudget: number): DomainState {
     messageBudget,
     byteBudget
   };
+}
+
+function clearDomain(domain: DomainState): void {
+  domain.owners.clear();
+  domain.ready.length = 0;
+  domain.indexed.clear();
+  domain.messages = 0;
+  domain.bytes = 0;
 }
 
 function retainRecord(record: ServiceMailboxRecord): ServiceMailboxRecord {

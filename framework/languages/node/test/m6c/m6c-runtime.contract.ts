@@ -5,6 +5,9 @@ import {
   classifyRelocationRecovery
 } from '../../packages/framework/src/runtime/foundation/service-maintenance-runtime';
 import {
+  ServiceMailbox
+} from '../../packages/framework/src/runtime/foundation/service-mailbox';
+import {
   InMemoryServiceLocationAuthority
 } from '../../packages/framework/src/runtime/foundation/service-location-authority';
 import {
@@ -121,6 +124,43 @@ test('relocation envelope preserves queued work and logical timers deterministic
     encodeServiceRelocationEnvelope(decoded),
     encoded
   );
+});
+
+test('mailbox seal captures queued work, holds new ingress, and restores or relays in order', () => {
+  const mailbox = new ServiceMailbox({
+    applicationMessages: 16,
+    applicationBytes: 1_024,
+    infrastructureMessages: 4,
+    infrastructureBytes: 256
+  });
+  assert.equal(mailbox.tryEnqueue(mailboxRecord('spot:room', 'application', 'one')), true);
+  assert.equal(mailbox.tryEnqueue(mailboxRecord('spot:room', 'application', 'two')), true);
+  assert.equal(mailbox.tryEnqueue(mailboxRecord('node', 'infrastructure', 'probe')), true);
+  const first = mailbox.trySealApplicationOwner('spot:room');
+  assert.ok(first);
+  assert.deepEqual(first.captured.map(firstPart), ['one', 'two']);
+  assert.equal(mailbox.tryEnqueue(mailboxRecord('spot:room', 'application', 'three')), true);
+  assert.equal(mailbox.tryClaim('application', 16, 1_024), undefined);
+  const infrastructure = mailbox.tryClaim('infrastructure', 4, 256);
+  assert.ok(infrastructure);
+  assert.equal(firstPart(infrastructure.records[0]!), 'probe');
+  assert.equal(mailbox.release(infrastructure), true);
+
+  assert.equal(mailbox.abortRelocation(first), true);
+  const restored = mailbox.tryClaim('application', 16, 1_024);
+  assert.ok(restored);
+  assert.deepEqual(restored.records.map(firstPart), ['one', 'two', 'three']);
+  assert.equal(mailbox.release(restored), true);
+
+  assert.equal(mailbox.tryEnqueue(mailboxRecord('spot:room', 'application', 'four')), true);
+  const second = mailbox.trySealApplicationOwner('spot:room');
+  assert.ok(second);
+  assert.equal(mailbox.tryEnqueue(mailboxRecord('spot:room', 'application', 'five')), true);
+  const relay = mailbox.commitRelocation(second);
+  assert.deepEqual(relay?.map(firstPart), ['five']);
+  assert.equal(mailbox.pendingMessages('application'), 0);
+  assert.equal(mailbox.tryEnqueue(mailboxRecord('spot:room', 'application', 'six')), false);
+  mailbox.close();
 });
 
 test('durable relocation stores payload before Location CAS and clears authority before delete', async () => {
@@ -287,4 +327,16 @@ class MemoryRelocationStore implements ServiceRelocationStorePort {
     this.events.push('payload-delete');
     return this.values.delete(reference) ? 'deleted' as const : 'missing' as const;
   }
+}
+
+function mailboxRecord(
+  owner: string,
+  domain: 'application' | 'infrastructure',
+  value: string
+) {
+  return { owner, domain, parts: [Buffer.from(value)] } as const;
+}
+
+function firstPart(record: { readonly parts: readonly Uint8Array[] }): string {
+  return Buffer.from(record.parts[0]!).toString();
 }

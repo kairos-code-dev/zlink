@@ -7,7 +7,7 @@ import {
   ZLinkMeshMonitoringSource,
   ZLinkSocketMonitoringSource,
 } from '../diagnostics';
-import type { ZLinkFrameworkRuntimeState } from '../execution';
+import type { ZLinkFrameworkExecutionState } from '../execution';
 import type { ZLinkLocationRuntime } from '../locations';
 
 export interface ZLinkMonitoringRuntimeOptions {
@@ -24,7 +24,7 @@ export class ZLinkMonitoringRuntime {
 
   constructor(private readonly options: ZLinkMonitoringRuntimeOptions) {}
 
-  start(state: ZLinkFrameworkRuntimeState): void {
+  start(state: ZLinkFrameworkExecutionState): void {
     const monitoring = this.options.registration.monitoring;
     if (monitoring === undefined) {
       return;

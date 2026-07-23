@@ -1,3 +1,5 @@
+using Zlink.Framework.Contracts.Configuration;
+
 namespace Zlink.Framework.Contracts.Locations;
 
 /// <summary>
@@ -13,42 +15,60 @@ public sealed record ZLinkMeshNodeDescriptor(
     ulong DescriptorRevision,
     string Endpoint,
     IReadOnlyDictionary<string, int> ChannelWeights,
-    IReadOnlySet<string> InstanceSpotTypes,
-    bool Draining,
     string SecurityIdentity,
     string OwnerId,
+    long LeaseGeneration,
     DateTimeOffset UpdatedAt)
 {
-    internal ZLinkMeshNodeDescriptor(
-        string MeshName,
-        RoutingId Rid,
-        ulong LifecycleGeneration,
-        ulong DescriptorRevision,
-        string Endpoint,
-        IReadOnlyDictionary<string, int> ChannelWeights,
-        bool Draining,
-        string SecurityIdentity,
-        string OwnerId,
-        DateTimeOffset UpdatedAt)
-        : this(
-            MeshName,
-            Rid,
-            LifecycleGeneration,
-            DescriptorRevision,
-            Endpoint,
-            ChannelWeights,
-            new HashSet<string>(StringComparer.Ordinal),
-            Draining,
-            SecurityIdentity,
-            OwnerId,
-            UpdatedAt)
-    {
-    }
+    public long ApplicationVersion { get; init; }
+
+    public IReadOnlyList<ZLinkObjectCapability> ObjectCapabilities { get; init; }
+        = Array.Empty<ZLinkObjectCapability>();
+
+    public string? MaintenanceWave { get; init; }
+
+    public ZLinkFrameworkRuntimeState State { get; init; }
+
+    public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
+
+    public int PlacementWeight { get; init; } = 100;
+
+    public ZLinkPlacementCapacity Capacity { get; init; }
+        = new(0, 0, 10_000, 128);
 }
 
 public readonly record struct ZLinkMeshNodeDescriptorKey(
     string MeshName,
     RoutingId Rid);
+
+public enum ZLinkMeshNodeObjectRole
+{
+    None = 0,
+    Client = 1,
+    Server = 2
+}
+
+public enum ZLinkObjectMaintenancePolicyKind
+{
+    Disabled = 1,
+    Recreate = 2,
+    Snapshot = 3
+}
+
+public sealed record ZLinkObjectCapability(
+    ZLinkPlacementObjectKind ObjectKind,
+    string StableType,
+    ZLinkObjectMaintenancePolicyKind Policy,
+    bool HasSnapshotAdapter,
+    IReadOnlySet<string> PlacementProfiles,
+    int? ActiveLimit,
+    int? PendingLimit);
+
+public sealed record ZLinkPlacementCapacity(
+    int Active,
+    int Pending,
+    int ActiveLimit,
+    int PendingLimit);
 
 /// <summary>
 ///     Current location of one logical Spot. The owner MeshNode's RID and

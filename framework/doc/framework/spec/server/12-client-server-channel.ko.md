@@ -41,6 +41,12 @@ descriptor와 owner lease를 게시한다. Client는 같은 ChannelName의 유�
 연결한 뒤 transport identity와 lifecycle generation을 확인해야 ready target으로 사용한다. Descriptor가
 보인다는 사실만으로 ready로 간주하지 않는다.
 
+Automatic mode에서는 Client만 발견한 server endpoint로 연결을 시작하며 Server는 client endpoint를
+찾거나 outbound connect를 시작하지 않는다. Client는 같은 ChannelName의 유효한 server descriptor마다
+identity·lifecycle generation으로 구분한 connection intent 하나를 만든다. 여러 server가 발견되면 각
+server와의 ready connection을 독립적으로 유지하고, 업무 호출 때 §4의 weight 규칙으로 그중 하나를
+선택한다. 이는 RouteMesh의 RID pairwise initiator 규칙을 사용하지 않는 비대칭 topology다.
+
 ClientServer server descriptor는 MeshName, RouteMesh membership, Spot 또는 Actor location을 포함하지
 않는다. MeshNode descriptor를 ClientServer discovery에 재사용하지 않으며, ClientServer descriptor를
 RouteMesh peer admission에 사용하지 않는다.
@@ -48,7 +54,8 @@ RouteMesh peer admission에 사용하지 않는다.
 Manual endpoint만 사용하면 location store가 필요하지 않다. Automatic discovery를 활성화했는데 location
 store가 없으면 listener bind 전에 startup이 실패한다.
 
-Manual connection도 transport admission에서 ChannelName, Server RID, lifecycle generation, weight,
+Manual connection도 Client가 application에 등록된 endpoint로 연결을 시작한다. Transport admission에서
+ChannelName, Server RID, lifecycle generation, weight,
 drain state와 security identity를 확인한다. 이 값은 ClientServer 연결 control이며 MeshNode descriptor나
 RouteMesh peer admission으로 변환하지 않는다. Manual과 automatic source가 같은 Server RID와 generation을
 가리키면 ready target 하나로 합친다.
@@ -109,6 +116,8 @@ lease를 갱신하지 못해 fencing deadline에 도달하면 새 업무 admissi
   handler에 전달하지 않는다.
 - 같은 ChannelName의 여러 server가 weight, weight `0`과 drain state를 반영해 선택된다.
 - Automatic discovery가 전용 ClientServer server descriptor를 사용하며 MeshNode descriptor와 섞이지 않는다.
+- Automatic과 manual ClientServer 모두 Client만 server endpoint로 connect하고, automatic Client는 같은
+  ChannelName의 descriptor마다 connection intent 하나를 유지한다.
 - 같은 identity의 재시작에서 새 lifecycle generation만 ready target이 되고 늦은 reply가 새 request를
   완료하지 않는다.
 - ClientServer handler가 다른 송신 경로를 호출해도 원래 request completion은 한 번만 발생한다.

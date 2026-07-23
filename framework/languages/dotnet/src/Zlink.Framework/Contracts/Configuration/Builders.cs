@@ -62,6 +62,10 @@ public interface IZLinkFrameworkOptions
 
     TimeSpan DefaultSocketSendTimeout { get; set; }
 
+    long ApplicationVersion { get; set; }
+
+    string? MaintenanceWave { get; set; }
+
     IZLinkCodecRegistryBuilder Codecs { get; }
 
     IZLinkWorkerOptions Worker { get; }

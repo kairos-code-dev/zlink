@@ -157,7 +157,11 @@ public sealed class LocationResolverTests
             InMemoryLocationStoreTests.MeshNode(OwnerA), ZLinkLocationWriteIntent.NewClaim);
         await fixture.Store.RenewOwnerLeaseAsync(OwnerB, RoutingId.From("node-2"), TimeSpan.FromMinutes(5));
         await fixture.Store.UpdateMeshNodeAsync(
-            InMemoryLocationStoreTests.MeshNode(OwnerB, "tcp://127.0.0.1:5002", "node-2"),
+            InMemoryLocationStoreTests.MeshNode(
+                OwnerB,
+                "tcp://127.0.0.1:5002",
+                "node-2",
+                leaseGeneration: 2),
             ZLinkLocationWriteIntent.NewClaim);
 
         var both = await fixture.Resolvers.ListLiveMeshNodesAsync("play");
@@ -196,7 +200,10 @@ public sealed class LocationResolverTests
         await fixture.Store.RenewOwnerLeaseAsync(
             OwnerB, RoutingId.From("node-2"), TimeSpan.FromMinutes(5));
         var successor = InMemoryLocationStoreTests.MeshNode(
-            OwnerB, "tcp://127.0.0.1:5002", "node-1") with
+            OwnerB,
+            "tcp://127.0.0.1:5002",
+            "node-1",
+            leaseGeneration: 2) with
         {
             LifecycleGeneration = 10,
             DescriptorRevision = 1

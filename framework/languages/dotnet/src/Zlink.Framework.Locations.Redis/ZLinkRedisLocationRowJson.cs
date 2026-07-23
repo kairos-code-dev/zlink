@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Zlink.Framework.Contracts.Configuration;
 
 namespace Zlink.Framework.Locations.Redis;
 
@@ -18,31 +19,147 @@ internal static class ZLinkRedisLocationRowJson
             new RoutingIdJsonConverter(),
             new ActorRefJsonConverter(),
             new ChannelWeightsJsonConverter(),
-            new StringSetJsonConverter()
+            new StringSetJsonConverter(),
+            new ObjectCapabilitiesJsonConverter()
         }
     };
 
-    internal static string Serialize<TRow>(TRow row) =>
-        JsonSerializer.Serialize(row, Options);
+    internal static string Serialize<TRow>(TRow row)
+    {
+        if (row is ZLinkMeshNodeDescriptor descriptor)
+            ValidateDescriptor(descriptor);
+        var json = JsonSerializer.Serialize(row, Options);
+        if (System.Text.Encoding.UTF8.GetByteCount(json) > 1024 * 1024)
+            throw new JsonException(
+                "Location row JSON must not exceed 1 MiB.");
+        return json;
+    }
 
     internal static TRow Deserialize<TRow>(string json)
     {
         if (typeof(TRow) == typeof(ZLinkMeshNodeDescriptor))
-            RequireDescriptorDrainingField(json);
+            RequireCompleteDescriptor(json);
 
-        return JsonSerializer.Deserialize<TRow>(json, Options)
-               ?? throw new InvalidOperationException("Location row payload deserialized to null.");
+        var row = JsonSerializer.Deserialize<TRow>(json, Options)
+                  ?? throw new InvalidOperationException(
+                      "Location row payload deserialized to null.");
+        if (row is ZLinkMeshNodeDescriptor descriptor)
+            ValidateDescriptor(descriptor);
+        return row;
     }
 
-    private static void RequireDescriptorDrainingField(string json)
+    private static void RequireCompleteDescriptor(string json)
     {
         using var document = JsonDocument.Parse(json);
-        if (document.RootElement.ValueKind != JsonValueKind.Object
-            || !document.RootElement.EnumerateObject().Any(
-                property => property.Name.Equals("Draining", StringComparison.OrdinalIgnoreCase)))
+        if (document.RootElement.ValueKind != JsonValueKind.Object)
+            throw new JsonException(
+                "MeshNode descriptor row must be a JSON object.");
+        var fields = document.RootElement.EnumerateObject()
+            .Select(static property => property.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        string[] required =
+        [
+            "MeshName",
+            "Rid",
+            "LifecycleGeneration",
+            "DescriptorRevision",
+            "Endpoint",
+            "ChannelWeights",
+            "SecurityIdentity",
+            "OwnerId",
+            "LeaseGeneration",
+            "UpdatedAt",
+            "ApplicationVersion",
+            "ObjectCapabilities",
+            "MaintenanceWave",
+            "State",
+            "ObjectRole",
+            "PlacementWeight",
+            "Capacity"
+        ];
+        var missing = required.Where(field => !fields.Contains(field)).ToArray();
+        if (missing.Length != 0)
         {
-            throw new JsonException("MeshNode descriptor row must contain the typed Draining field.");
+            throw new JsonException(
+                "MeshNode descriptor row is missing required fields: "
+                + string.Join(", ", missing));
         }
+    }
+
+    private static void ValidateDescriptor(ZLinkMeshNodeDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        RequireUtf8Value(descriptor.MeshName, nameof(descriptor.MeshName));
+        if (descriptor.Rid.IsEmpty
+            || descriptor.LifecycleGeneration == 0
+            || descriptor.DescriptorRevision == 0
+            || descriptor.ApplicationVersion < 0
+            || descriptor.ChannelWeights is null
+            || string.IsNullOrWhiteSpace(descriptor.OwnerId)
+            || descriptor.LeaseGeneration <= 0
+            || !Enum.IsDefined(descriptor.State)
+            || !Enum.IsDefined(descriptor.ObjectRole)
+            || descriptor.PlacementWeight is < 0 or > 100)
+            throw new JsonException("MeshNode descriptor identity or placement fields are invalid.");
+        if (descriptor.MaintenanceWave is { } maintenanceWave)
+            RequireUtf8Value(
+                maintenanceWave,
+                nameof(descriptor.MaintenanceWave));
+        if (descriptor.Capacity is not
+            {
+                Active: >= 0,
+                Pending: >= 0,
+                ActiveLimit: > 0,
+                PendingLimit: > 0
+            }
+            || descriptor.Capacity.Active > descriptor.Capacity.ActiveLimit
+            || descriptor.Capacity.Pending > descriptor.Capacity.PendingLimit)
+            throw new JsonException("MeshNode descriptor capacity is invalid.");
+        if (descriptor.ObjectCapabilities is null
+            || descriptor.ObjectCapabilities.Count > 1024)
+            throw new JsonException(
+                "MeshNode descriptor has more than 1024 object capabilities.");
+        if (descriptor.ObjectRole != ZLinkMeshNodeObjectRole.Server
+            && descriptor.ObjectCapabilities.Count != 0)
+            throw new JsonException(
+                "Only an Object Server descriptor can publish object capabilities.");
+
+        var identities = new HashSet<(ZLinkPlacementObjectKind, string)>();
+        foreach (var capability in descriptor.ObjectCapabilities)
+        {
+            if (capability is null
+                || capability.PlacementProfiles is null
+                || !Enum.IsDefined(capability.ObjectKind)
+                || !Enum.IsDefined(capability.Policy)
+                || !identities.Add((
+                    capability.ObjectKind,
+                    capability.StableType)))
+                throw new JsonException(
+                    "MeshNode descriptor object capabilities are invalid or duplicated.");
+            RequireUtf8Value(
+                capability.StableType,
+                nameof(capability.StableType));
+            if ((capability.Policy
+                 == ZLinkObjectMaintenancePolicyKind.Snapshot)
+                != capability.HasSnapshotAdapter)
+                throw new JsonException(
+                    "Snapshot capability and adapter presence are inconsistent.");
+            if (capability.ActiveLimit is <= 0
+                || capability.PendingLimit is <= 0
+                || capability.PlacementProfiles.Count > 1024)
+                throw new JsonException(
+                    "Object capability limits or placement profiles are invalid.");
+            foreach (var profile in capability.PlacementProfiles)
+                RequireUtf8Value(profile, "PlacementProfile");
+        }
+    }
+
+    private static void RequireUtf8Value(string value, string name)
+    {
+        var size = System.Text.Encoding.UTF8.GetByteCount(value);
+        if (size is < 1 or > 255 || value.Contains('\0'))
+            throw new JsonException(
+                $"{name} must be 1 to 255 UTF-8 bytes without NUL.");
     }
 
     /// <summary>Canonical descriptor JSON orders ChannelWeights properties
@@ -73,7 +190,7 @@ internal static class ZLinkRedisLocationRowJson
         {
             writer.WriteStartObject();
             foreach (var (name, weight) in value.OrderBy(
-                         static pair => pair.Key, StringComparer.Ordinal))
+                         static pair => pair.Key, Utf8StringComparer.Instance))
                 writer.WriteNumber(name, weight);
             writer.WriteEndObject();
         }
@@ -111,9 +228,68 @@ internal static class ZLinkRedisLocationRowJson
             JsonSerializerOptions options)
         {
             writer.WriteStartArray();
-            foreach (var entry in value.Order(StringComparer.Ordinal))
+            foreach (var entry in value.Order(Utf8StringComparer.Instance))
                 writer.WriteStringValue(entry);
             writer.WriteEndArray();
+        }
+    }
+
+    private sealed class ObjectCapabilitiesJsonConverter
+        : JsonConverter<IReadOnlyList<ZLinkObjectCapability>>
+    {
+        public override IReadOnlyList<ZLinkObjectCapability> Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.StartArray)
+                throw new JsonException(
+                    "ObjectCapabilities must be a JSON array.");
+            var values = new List<ZLinkObjectCapability>();
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndArray)
+                    return values;
+                var value = JsonSerializer.Deserialize<ZLinkObjectCapability>(
+                                ref reader,
+                                options)
+                            ?? throw new JsonException(
+                                "Object capability must not be null.");
+                values.Add(value);
+            }
+            throw new JsonException(
+                "ObjectCapabilities array was not closed.");
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            IReadOnlyList<ZLinkObjectCapability> value,
+            JsonSerializerOptions options)
+        {
+            writer.WriteStartArray();
+            foreach (var capability in value
+                         .OrderBy(static item => item.ObjectKind)
+                         .ThenBy(
+                             static item => item.StableType,
+                             Utf8StringComparer.Instance))
+                JsonSerializer.Serialize(writer, capability, options);
+            writer.WriteEndArray();
+        }
+    }
+
+    private sealed class Utf8StringComparer : IComparer<string>
+    {
+        internal static Utf8StringComparer Instance { get; } = new();
+
+        public int Compare(string? left, string? right)
+        {
+            if (ReferenceEquals(left, right)) return 0;
+            if (left is null) return -1;
+            if (right is null) return 1;
+            return System.Text.Encoding.UTF8.GetBytes(left)
+                .AsSpan()
+                .SequenceCompareTo(
+                    System.Text.Encoding.UTF8.GetBytes(right));
         }
     }
 

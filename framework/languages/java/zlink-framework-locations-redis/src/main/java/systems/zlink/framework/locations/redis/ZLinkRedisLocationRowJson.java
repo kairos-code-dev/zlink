@@ -5,6 +5,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -13,18 +16,28 @@ import java.time.temporal.ChronoField;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
+import systems.zlink.framework.locations.ZLinkObjectCapability;
+import systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind;
+import systems.zlink.framework.locations.ZLinkPlacementCapacity;
+import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkRouteKind;
 import systems.zlink.framework.locations.ZLinkRouteLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
 final class ZLinkRedisLocationRowJson {
@@ -38,6 +51,325 @@ final class ZLinkRedisLocationRowJson {
             .withZone(ZoneOffset.UTC);
 
     private ZLinkRedisLocationRowJson() {
+    }
+
+    static String serializeMeshNode(ZLinkMeshNodeDescriptor row) {
+        ObjectNode node = JSON.createObjectNode();
+        node.put("MeshName", row.meshName());
+        putRid(node, "Rid", row.rid());
+        node.put("LifecycleGeneration", row.lifecycleGeneration());
+        node.put("DescriptorRevision", row.descriptorRevision());
+        node.put("Endpoint", row.endpoint());
+        ObjectNode channels = JSON.createObjectNode();
+        row.channelWeights().entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .forEach(entry -> channels.put(
+                entry.getKey(),
+                entry.getValue()));
+        node.set("ChannelWeights", channels);
+        node.put("SecurityIdentity", row.securityIdentity());
+        node.put("OwnerId", row.ownerId());
+        node.put("LeaseGeneration", row.leaseGeneration());
+        putInstant(node, "UpdatedAt", row.updatedAt());
+        node.put("ApplicationVersion", row.applicationVersion());
+        ArrayNode capabilities = JSON.createArrayNode();
+        row.objectCapabilities().stream()
+            .sorted(java.util.Comparator
+                .<ZLinkObjectCapability>comparingInt(
+                    capability -> capability.objectKind().value())
+                .thenComparing(ZLinkObjectCapability::stableType))
+            .forEach(capability -> {
+                ObjectNode encoded = JSON.createObjectNode();
+                encoded.put(
+                    "ObjectKind",
+                    capability.objectKind().value());
+                encoded.put("StableType", capability.stableType());
+                encoded.put("Policy", capability.policy().value());
+                encoded.put(
+                    "HasSnapshotAdapter",
+                    capability.hasSnapshotAdapter());
+                ArrayNode profiles = JSON.createArrayNode();
+                capability.placementProfiles().stream()
+                    .sorted()
+                    .forEach(profiles::add);
+                encoded.set("PlacementProfiles", profiles);
+                if (capability.activeLimit() == null) {
+                    encoded.putNull("ActiveLimit");
+                } else {
+                    encoded.put(
+                        "ActiveLimit",
+                        capability.activeLimit());
+                }
+                if (capability.pendingLimit() == null) {
+                    encoded.putNull("PendingLimit");
+                } else {
+                    encoded.put(
+                        "PendingLimit",
+                        capability.pendingLimit());
+                }
+                capabilities.add(encoded);
+            });
+        node.set("ObjectCapabilities", capabilities);
+        if (row.maintenanceWave().isPresent()) {
+            node.put(
+                "MaintenanceWave",
+                row.maintenanceWave().orElseThrow());
+        } else {
+            node.putNull("MaintenanceWave");
+        }
+        node.put("State", row.state().wireValue());
+        node.put("ObjectRole", row.objectRole().value());
+        node.put("PlacementWeight", row.placementWeight());
+        ObjectNode capacity = JSON.createObjectNode();
+        capacity.put("Active", row.capacity().active());
+        capacity.put("Pending", row.capacity().pending());
+        capacity.put("ActiveLimit", row.capacity().activeLimit());
+        capacity.put("PendingLimit", row.capacity().pendingLimit());
+        node.set("Capacity", capacity);
+        return write(node);
+    }
+
+    static String meshNodeImmutableFingerprint(
+        ZLinkMeshNodeDescriptor row) {
+        try {
+            return HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(
+                    meshNodeImmutablePreimage(row).getBytes(
+                        StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(
+                "SHA-256 is unavailable",
+                impossible);
+        }
+    }
+
+    static String meshNodeImmutablePreimage(
+        ZLinkMeshNodeDescriptor row) {
+        StringBuilder preimage = new StringBuilder();
+        appendImmutableSegment(
+            preimage,
+            "zlink-mesh-node-immutable-v1");
+        appendImmutableSegment(preimage, row.meshName());
+        appendImmutableSegment(
+            preimage,
+            row.rid().toHex().toLowerCase(java.util.Locale.ROOT));
+        appendImmutableSegment(
+            preimage,
+            Long.toString(row.lifecycleGeneration()));
+        appendImmutableSegment(preimage, row.endpoint());
+
+        List<String> channelNames = new ArrayList<>(
+            row.channelWeights().keySet());
+        channelNames.sort(
+            ZLinkRedisLocationRowJson::compareUtf8);
+        appendImmutableSegment(
+            preimage,
+            Integer.toString(channelNames.size()));
+        channelNames.forEach(
+            value -> appendImmutableSegment(preimage, value));
+
+        appendImmutableSegment(preimage, row.securityIdentity());
+        appendImmutableSegment(
+            preimage,
+            Long.toString(row.applicationVersion()));
+        appendImmutableSegment(
+            preimage,
+            row.objectRole().name().toLowerCase(
+                java.util.Locale.ROOT));
+        appendImmutableSegment(
+            preimage,
+            Integer.toString(row.capacity().activeLimit()));
+        appendImmutableSegment(
+            preimage,
+            Integer.toString(row.capacity().pendingLimit()));
+
+        List<ZLinkObjectCapability> capabilities = new ArrayList<>(
+            row.objectCapabilities());
+        capabilities.sort((left, right) -> {
+            int kind = compareUtf8(
+                objectKindToken(left.objectKind()),
+                objectKindToken(right.objectKind()));
+            return kind != 0
+                ? kind
+                : compareUtf8(left.stableType(), right.stableType());
+        });
+        appendImmutableSegment(
+            preimage,
+            Integer.toString(capabilities.size()));
+        for (ZLinkObjectCapability capability : capabilities) {
+            appendImmutableSegment(
+                preimage,
+                objectKindToken(capability.objectKind()));
+            appendImmutableSegment(preimage, capability.stableType());
+            appendImmutableSegment(
+                preimage,
+                capability.policy().name().toLowerCase(
+                    java.util.Locale.ROOT));
+            appendImmutableSegment(
+                preimage,
+                capability.hasSnapshotAdapter() ? "1" : "0");
+            List<String> profiles = new ArrayList<>(
+                capability.placementProfiles());
+            profiles.sort(ZLinkRedisLocationRowJson::compareUtf8);
+            appendImmutableSegment(
+                preimage,
+                Integer.toString(profiles.size()));
+            profiles.forEach(
+                value -> appendImmutableSegment(preimage, value));
+            appendImmutableSegment(
+                preimage,
+                capability.activeLimit() == null
+                    ? ""
+                    : Integer.toString(capability.activeLimit()));
+            appendImmutableSegment(
+                preimage,
+                capability.pendingLimit() == null
+                    ? ""
+                    : Integer.toString(capability.pendingLimit()));
+        }
+        return preimage.toString();
+    }
+
+    private static void appendImmutableSegment(
+        StringBuilder target,
+        String value) {
+        target.append(value.getBytes(StandardCharsets.UTF_8).length)
+            .append(':')
+            .append(value);
+    }
+
+    private static int compareUtf8(String left, String right) {
+        byte[] leftBytes = left.getBytes(StandardCharsets.UTF_8);
+        byte[] rightBytes = right.getBytes(StandardCharsets.UTF_8);
+        int size = Math.min(leftBytes.length, rightBytes.length);
+        for (int index = 0; index < size; index++) {
+            int compared = Integer.compare(
+                Byte.toUnsignedInt(leftBytes[index]),
+                Byte.toUnsignedInt(rightBytes[index]));
+            if (compared != 0) {
+                return compared;
+            }
+        }
+        return Integer.compare(leftBytes.length, rightBytes.length);
+    }
+
+    static String serializeMeshNodeAdmissionCapabilities(
+        List<ZLinkObjectCapability> values) {
+        ArrayNode capabilities = JSON.createArrayNode();
+        values.stream()
+            .sorted(java.util.Comparator
+                .<ZLinkObjectCapability, String>comparing(
+                    capability -> objectKindToken(
+                        capability.objectKind()))
+                .thenComparing(ZLinkObjectCapability::stableType))
+            .forEach(capability -> {
+                ObjectNode encoded = JSON.createObjectNode();
+                encoded.put(
+                    "objectKind",
+                    objectKindToken(capability.objectKind()));
+                encoded.put("stableType", capability.stableType());
+                encoded.put(
+                    "policy",
+                    capability.policy().name()
+                        .toLowerCase(java.util.Locale.ROOT));
+                encoded.put(
+                    "hasSnapshotAdapter",
+                    capability.hasSnapshotAdapter());
+                ArrayNode profiles = JSON.createArrayNode();
+                capability.placementProfiles().stream()
+                    .sorted()
+                    .forEach(profiles::add);
+                encoded.set("placementProfiles", profiles);
+                if (capability.activeLimit() == null) {
+                    encoded.putNull("activeLimit");
+                } else {
+                    encoded.put(
+                        "activeLimit",
+                        capability.activeLimit());
+                }
+                if (capability.pendingLimit() == null) {
+                    encoded.putNull("pendingLimit");
+                } else {
+                    encoded.put(
+                        "pendingLimit",
+                        capability.pendingLimit());
+                }
+                capabilities.add(encoded);
+            });
+        return write(capabilities);
+    }
+
+    private static String objectKindToken(
+        ZLinkPlacementObjectKind kind) {
+        return switch (kind) {
+            case ACTOR -> "actor";
+            case USER_SPOT -> "user_spot";
+            case INSTANCE_SPOT -> "instance_spot";
+        };
+    }
+
+    static ZLinkMeshNodeDescriptor deserializeMeshNode(
+        String json,
+        long lifecycleGeneration,
+        Instant updatedAt) {
+        JsonNode node = read(json);
+        long encodedLifecycle =
+            node.path("LifecycleGeneration").asLong();
+        if (encodedLifecycle != lifecycleGeneration) {
+            throw new IllegalArgumentException(
+                "stored MeshNode lifecycle metadata does not match JSON");
+        }
+        Map<String, Integer> channels = new HashMap<>();
+        node.path("ChannelWeights").fields().forEachRemaining(
+            entry -> channels.put(
+                entry.getKey(),
+                entry.getValue().asInt()));
+        List<ZLinkObjectCapability> capabilities = new ArrayList<>();
+        node.path("ObjectCapabilities").forEach(capability -> {
+            Set<String> profiles = new java.util.HashSet<>();
+            capability.path("PlacementProfiles").forEach(
+                profile -> profiles.add(profile.asText()));
+            JsonNode activeLimit = capability.get("ActiveLimit");
+            JsonNode pendingLimit = capability.get("PendingLimit");
+            capabilities.add(new ZLinkObjectCapability(
+                placementObjectKind(
+                    capability.path("ObjectKind").asInt()),
+                text(capability, "StableType"),
+                maintenancePolicy(
+                    capability.path("Policy").asInt()),
+                capability.path("HasSnapshotAdapter").asBoolean(),
+                profiles,
+                activeLimit == null || activeLimit.isNull()
+                    ? null
+                    : activeLimit.asInt(),
+                pendingLimit == null || pendingLimit.isNull()
+                    ? null
+                    : pendingLimit.asInt()));
+        });
+        JsonNode encodedCapacity = node.path("Capacity");
+        return new ZLinkMeshNodeDescriptor(
+            text(node, "MeshName"),
+            rid(node, "Rid"),
+            encodedLifecycle,
+            node.path("DescriptorRevision").asLong(),
+            text(node, "Endpoint"),
+            channels,
+            node.path("ApplicationVersion").asLong(),
+            capabilities,
+            objectRole(node.path("ObjectRole").asInt()),
+            node.path("PlacementWeight").asInt(),
+            new ZLinkPlacementCapacity(
+                encodedCapacity.path("Active").asInt(),
+                encodedCapacity.path("Pending").asInt(),
+                encodedCapacity.path("ActiveLimit").asInt(),
+                encodedCapacity.path("PendingLimit").asInt()),
+            Optional.ofNullable(
+                nullableText(node, "MaintenanceWave")),
+            runtimeState(node.path("State").asInt()),
+            text(node, "SecurityIdentity"),
+            text(node, "OwnerId"),
+            node.path("LeaseGeneration").asLong(),
+            updatedAt);
     }
 
     static String serializePeer(ZLinkPeerLocation row) {
@@ -169,7 +501,7 @@ final class ZLinkRedisLocationRowJson {
         }
     }
 
-    private static String write(ObjectNode node) {
+    private static String write(JsonNode node) {
         try {
             return JSON.writeValueAsString(node);
         } catch (JsonProcessingException ex) {
@@ -276,6 +608,52 @@ final class ZLinkRedisLocationRowJson {
 
     private static ZLinkRouteKind routeKind(int value) {
         return ZLinkRouteKind.fromValue(value);
+    }
+
+    private static ZLinkPlacementObjectKind placementObjectKind(
+        int value) {
+        for (ZLinkPlacementObjectKind kind :
+            ZLinkPlacementObjectKind.values()) {
+            if (kind.value() == value) {
+                return kind;
+            }
+        }
+        throw new IllegalArgumentException(
+            "invalid placement object kind");
+    }
+
+    private static ZLinkObjectMaintenancePolicyKind maintenancePolicy(
+        int value) {
+        for (ZLinkObjectMaintenancePolicyKind policy :
+            ZLinkObjectMaintenancePolicyKind.values()) {
+            if (policy.value() == value) {
+                return policy;
+            }
+        }
+        throw new IllegalArgumentException(
+            "invalid object maintenance policy");
+    }
+
+    private static ZLinkMeshNodeObjectRole objectRole(int value) {
+        for (ZLinkMeshNodeObjectRole role :
+            ZLinkMeshNodeObjectRole.values()) {
+            if (role.value() == value) {
+                return role;
+            }
+        }
+        throw new IllegalArgumentException(
+            "invalid MeshNode object role");
+    }
+
+    private static ZLinkFrameworkRuntimeState runtimeState(int value) {
+        for (ZLinkFrameworkRuntimeState state :
+            ZLinkFrameworkRuntimeState.values()) {
+            if (state.wireValue() == value) {
+                return state;
+            }
+        }
+        throw new IllegalArgumentException(
+            "invalid Framework runtime state");
     }
 
     private static int autoConnectTypeNumber(ZLinkLocationAutoConnectType value) {

@@ -232,12 +232,20 @@ public interface IZLinkMetadataPolicyBuilder
 `Client()` 또는 `Server()`를 정확히 한 번 호출한다. `Client()`는 송신 경로만 만들고, `Server()`만
 weight와 handler 등록을 제공한다. Server membership이 없는 MeshNode도 시작할 수 있다.
 
+Automatic RouteMesh는 RID를 canonical byte order로 비교하고 더 작은 RID의 MeshNode만 상대 endpoint로
+connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있다.
+양쪽 연결이나 automatic discovery 경합·오래된 snapshot으로 중복 후보가 생기면 handshake와 admission이
+같은 RID와 lifecycle generation을 확인해 하나만 ready 상태로 유지한다.
+
 `Listen(string endpoint)`, `Bind(string endpoint)`와 `EnablePublisher(string endpoint)`를 제공하며,
 host·port 조합 overload도 같은 listener 설정을 표현한다.
 
-`AddClientServerChannel(channelName)`도 역할을 정확히 한 번 고른다. Client는 수동 `Connect(...)`가 없으면
-location store에서 같은 ChannelName의 server를 자동 발견한다. Server는 받은 send/request handler와 request
-reply만 제공하며 연결된 client로 새 업무 호출을 시작하지 않는다.
+`AddClientServerChannel(channelName)`도 역할을 정확히 한 번 고른다. Client는 등록한 manual endpoint와
+location store에서 자동 발견한 같은 ChannelName의 server endpoint를 모두 연결 대상으로 사용할 수 있다.
+두 source가 같은 Server RID와 lifecycle generation을 가리키면 connection intent와 ready target을 하나로
+합친다. Automatic과 manual 모두 Client만 server로 connect하며 Server는 client endpoint를 찾거나 outbound
+connect를 시작하지 않는다. Server는 받은 send/request handler와 request reply만 제공하며 연결된 client로
+새 업무 호출을 시작하지 않는다.
 
 `ConfigureNetwork()`의 기본 BindHost는 `127.0.0.1`이고 AdvertiseHost를 생략하면 non-wildcard BindHost를
 사용한다. Automatic discovery listener는 `Listen()`·`Bind()`·`EnablePublisher()`의 port를 생략하거나
@@ -252,6 +260,9 @@ Endpoint를
 channel에서 automatic subscriber와 manual subscriber를 함께 설정하면 startup이 실패한다. Automatic
 subscriber는 location store가 필요하지만 manual publisher와 manual subscriber만 사용하는 host에는
 필요하지 않다.
+Publisher는 descriptor만 게시하고 subscriber endpoint로 outbound connect를 시작하지 않는다. Subscriber만
+publisher endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle generation마다 connection
+intent 하나를 만든다.
 
 Automatic RID는 `prefix-<32 lowercase hex>` 형식이다. Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자이고 full
 RID는 UTF-8 255 bytes 이하다. Active owner 충돌은 새 suffix로 최대 8회 재시도하며 모두 충돌하면

@@ -589,11 +589,7 @@ class fanout_channel_builder_t
     fanout_channel_builder_t &enable_subscriber ()
     {
         _subscriber_enabled = true;
-        _subscriber_uses_discovery = true;
-        auto connections = subscriber_connections ();
-        for (const auto &endpoint : connections.list_connections ()) {
-            connections.disconnect (endpoint);
-        }
+        _options->fanout_channels_with_automatic_subscriber.insert (_channel_name);
         apply ();
         return *this;
     }
@@ -602,8 +598,8 @@ class fanout_channel_builder_t
     {
         detail::require_non_blank (endpoint, "fanout subscriber endpoint is required");
         _subscriber_enabled = true;
-        _subscriber_uses_discovery = false;
         subscriber_connections ().connect (std::move (endpoint));
+        _options->fanout_channels_with_manual_subscriber.insert (_channel_name);
         apply ();
         return *this;
     }
@@ -630,7 +626,8 @@ class fanout_channel_builder_t
         const auto subscriber_enabled = _subscriber_enabled;
         const auto subscriber_endpoints =
           _options->subscriber_endpoint_connections[_channel_name].list_connections ();
-        const auto subscriber_uses_discovery = _subscriber_uses_discovery;
+        const auto subscriber_uses_discovery =
+          _options->fanout_channels_with_automatic_subscriber.contains (channel_name);
         if (subscriber_enabled) {
             _options->fanout_channels_with_subscriber.insert (channel_name);
         } else {
@@ -670,7 +667,6 @@ class fanout_channel_builder_t
     std::string _publisher_endpoint;
     std::optional<zlink::routing_id_t> _routing_id;
     bool _subscriber_enabled = false;
-    bool _subscriber_uses_discovery = false;
 };
 
 class route_mesh_channel_builder_t

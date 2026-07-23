@@ -186,7 +186,7 @@ export class ZLinkRuntimeTaskRunner {
   }
 }
 
-export class ZLinkFrameworkRuntimeState {
+export class ZLinkFrameworkExecutionState {
   readonly abortController = new AbortController();
   readonly errorSink = new ZLinkRuntimeTaskErrorSink();
   readonly taskRunner = new ZLinkRuntimeTaskRunner(this.errorSink, this.abortController.signal);

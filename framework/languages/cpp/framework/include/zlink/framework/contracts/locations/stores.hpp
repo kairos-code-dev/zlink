@@ -10,6 +10,21 @@
 namespace zlink::framework
 {
 
+class mesh_node_location_store_t
+{
+  public:
+    virtual ~mesh_node_location_store_t () = default;
+    virtual task_t<location_write_result_t> update_mesh_node (
+      mesh_node_descriptor_t descriptor,
+      location_write_intent_t intent) = 0;
+    virtual task_t<location_write_status_t> remove_mesh_node (
+      mesh_node_descriptor_key_t key,
+      location_owner_token_t owner) = 0;
+    virtual task_t<location_page_t<mesh_node_descriptor_t>>
+    list_mesh_nodes (std::string mesh_name,
+                     location_page_request_t page = {}) = 0;
+};
+
 class peer_location_store_t
 {
   public:
@@ -64,13 +79,25 @@ class owner_lease_store_t
 {
   public:
     virtual ~owner_lease_store_t () = default;
+    virtual task_t<owner_lease_claim_result_t> claim_owner_lease (
+      std::string owner_id,
+      std::chrono::milliseconds lease_ttl) = 0;
+    virtual task_t<owner_lease_read_result_t> read_owner_lease (
+      std::string owner_id) = 0;
+    virtual task_t<owner_lease_renew_result_t> renew_owner_lease (
+      location_owner_token_t token,
+      std::chrono::milliseconds lease_ttl) = 0;
+    virtual task_t<owner_lease_release_result_t> release_owner_lease (
+      location_owner_token_t token) = 0;
+
     virtual task_t<owner_lease_renewal_t> renew_owner_lease (
       std::string owner_id, zlink::routing_id_t node_rid, std::chrono::milliseconds lease_ttl) = 0;
     virtual task_t<bool> remove_owner_lease (std::string owner_id) = 0;
     virtual task_t<owner_lease_snapshot_t> list_owner_leases () = 0;
 };
 
-class location_store_t : public peer_location_store_t,
+class location_store_t : public mesh_node_location_store_t,
+                         public peer_location_store_t,
                          public spot_location_store_t,
                          public actor_location_store_t,
                          public route_location_store_t,

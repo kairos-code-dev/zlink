@@ -6,7 +6,9 @@ public sealed class RedisCrossLanguageTests
     public async Task Dotnet_Reads_Node_Rows()
     {
         Skip.If(
-            Environment.GetEnvironmentVariable("ZLINK_REDIS_TEST_ENDPOINT") is null,
+            Environment.GetEnvironmentVariable("ZLINK_REDIS_TEST_ENDPOINT") is null
+            || Environment.GetEnvironmentVariable(
+                "ZLINK_REDIS_CROSS_LANGUAGE_PREFIX") is null,
             "Cross-language Redis harness environment is not configured.");
         await using var store = CreateStore("node");
 
@@ -25,7 +27,7 @@ public sealed class RedisCrossLanguageTests
         var descriptor = Assert.Single(
             descriptors, row => row.Rid.Equals(RoutingId.From("node-node")));
         Assert.Equal("tcp://127.0.0.1:5320", descriptor.Endpoint);
-        Assert.True(descriptor.Draining);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Draining, descriptor.State);
         Assert.Equal(100, descriptor.ChannelWeights["cross"]);
     }
 
@@ -33,7 +35,9 @@ public sealed class RedisCrossLanguageTests
     public async Task Dotnet_Writes_Rows_For_Node_To_Read()
     {
         Skip.If(
-            Environment.GetEnvironmentVariable("ZLINK_REDIS_TEST_ENDPOINT") is null,
+            Environment.GetEnvironmentVariable("ZLINK_REDIS_TEST_ENDPOINT") is null
+            || Environment.GetEnvironmentVariable(
+                "ZLINK_REDIS_CROSS_LANGUAGE_PREFIX") is null,
             "Cross-language Redis harness environment is not configured.");
         const string ownerId = "dotnet-owner";
         var nodeRid = RoutingId.From("dotnet-node");
@@ -72,10 +76,13 @@ public sealed class RedisCrossLanguageTests
             DescriptorRevision: 1,
             "tcp://127.0.0.1:5310",
             new Dictionary<string, int>(StringComparer.Ordinal) { ["cross"] = 100 },
-            Draining: true,
             SecurityIdentity: "cluster-a",
             OwnerId: ownerId,
-            UpdatedAt: default), ZLinkLocationWriteIntent.NewClaim)).Status);
+            LeaseGeneration: 1,
+            UpdatedAt: default)
+        {
+            State = ZLinkFrameworkRuntimeState.Draining
+        }, ZLinkLocationWriteIntent.NewClaim)).Status);
     }
 
     private static ZLinkRedisLocationStore CreateStore(string suffix)

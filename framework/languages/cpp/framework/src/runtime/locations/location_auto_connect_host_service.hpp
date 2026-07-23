@@ -201,6 +201,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         location_role_t role = location_role_t::invalid;
         std::string endpoint;
         std::string owner_id;
+        std::int64_t lifecycle_generation = 0;
         std::uint32_t weight = 100;
     };
 
@@ -363,6 +364,14 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         auto desired = compute_desired (loop.local, rows);
         loop.last_desired = desired;
         trace_scan (loop.local, rows.size (), desired.size ());
+        for (auto it = loop.active.begin (); it != loop.active.end ();) {
+            if (desired.find (it->first) == desired.end ()) {
+                disconnect (loop, it->second);
+                it = loop.active.erase (it);
+            } else {
+                ++it;
+            }
+        }
         for (const auto &[key, target] : desired) {
             const auto found = loop.active.find (key);
             if (found == loop.active.end ()) {
@@ -371,7 +380,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                 continue;
             }
             if (found->second.endpoint != target.endpoint
-                || found->second.owner_id != target.owner_id) {
+                || found->second.owner_id != target.owner_id
+                || found->second.lifecycle_generation != target.lifecycle_generation) {
                 disconnect (loop, found->second);
                 connect (loop, target);
                 loop.active[key] = target;
@@ -380,14 +390,6 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             if (found->second.weight != target.weight) {
                 connect (loop, target);
                 loop.active[key] = target;
-            }
-        }
-        for (auto it = loop.active.begin (); it != loop.active.end ();) {
-            if (desired.find (it->first) == desired.end ()) {
-                disconnect (loop, it->second);
-                it = loop.active.erase (it);
-            } else {
-                ++it;
             }
         }
     }
@@ -484,6 +486,7 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             }
             auto target = target_t{target_key (peer), peer.node_rid, peer.role,
                                    peer.endpoint,     peer.owner_id,
+                                   peer.generation,
                                    peer.draining ? 0u : peer.weight};
             desired[target.key] = std::move (target);
         }
@@ -557,7 +560,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     static std::string target_key (const peer_location_t &peer)
     {
         const auto identity = peer.node_rid ? peer.node_rid->to_hex () : peer.endpoint;
-        return location_value_codec_t::to_canonical_string (peer.role) + "|" + identity;
+        return location_value_codec_t::to_canonical_string (peer.role) + "|" + identity + "|"
+               + std::to_string (peer.generation);
     }
 
     static peer_location_key_t key_of (const peer_location_t &row)

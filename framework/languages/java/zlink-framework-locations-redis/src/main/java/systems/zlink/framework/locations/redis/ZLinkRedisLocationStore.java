@@ -15,6 +15,9 @@ import systems.zlink.framework.locations.ZLinkLocationPage;
 import systems.zlink.framework.locations.ZLinkLocationStore;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteResult;
+import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot;
 import systems.zlink.framework.locations.ZLinkPageRequest;
@@ -67,11 +70,55 @@ public final class ZLinkRedisLocationStore implements
         ZLinkRedisLocationOptions validated = Objects.requireNonNull(options, "options");
         validated.validate();
         ZLinkRedisLocationKeys keys = new ZLinkRedisLocationKeys(validated.keyPrefix());
-        this.connection = new ZLinkRedisLocationConnection(validated);
+        this.connection = new ZLinkRedisLocationConnection(
+            validated,
+            keys.schemaKey());
         this.scripts = new ZLinkRedisLocationScriptsClient(connection, keys);
         this.rows = new ZLinkRedisLocationRows(connection, keys);
         this.stamps = new ZLinkRedisLocationStampReader(connection, keys);
         this.authority = new ZLinkRedisAuthorityClient(connection, keys);
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationWriteResult> updateMeshNode(
+        ZLinkMeshNodeDescriptor descriptor,
+        ZLinkLocationWriteIntent intent) {
+        return scripts.writeMeshNode(
+            Objects.requireNonNull(descriptor, "descriptor"),
+            Objects.requireNonNull(intent, "intent"));
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationWriteStatus> removeMeshNode(
+        ZLinkMeshNodeDescriptorKey key,
+        systems.zlink.framework.locations.ZLinkLocationOwnerToken owner) {
+        return scripts.removeMeshNode(
+            Objects.requireNonNull(key, "key"),
+            Objects.requireNonNull(owner, "owner"));
+    }
+
+    @Override
+    public CompletionStage<ZLinkLocationPage<ZLinkMeshNodeDescriptor>>
+        listMeshNodes(
+            String meshName,
+            ZLinkPageRequest page) {
+        Objects.requireNonNull(meshName, "meshName");
+        return rows.listPage(
+            "mesh-node",
+            ZLinkRedisLocationRowJson::deserializeMeshNode,
+            row -> row.meshName().equals(meshName),
+            page).thenCompose(authority::projectMeshNodeCapacity);
+    }
+
+    CompletionStage<byte[]> readAuthorityMembershipMutation(
+        String authorityKey) {
+        return authority.readMembershipMutation(authorityKey);
+    }
+
+    CompletionStage<java.util.Map<String, String>>
+        readMeshNodeHashFields(
+            ZLinkMeshNodeDescriptorKey key) {
+        return scripts.readMeshNodeHashFields(key);
     }
 
     @Override

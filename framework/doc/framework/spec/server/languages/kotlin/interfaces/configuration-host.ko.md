@@ -5,6 +5,14 @@
 
 Kotlin application은 Java builder를 직접 사용한다. Kotlin DSL은 receiver와 reified type으로 실제 중복을
 줄이는 경우에만 제공하며 Java contract에 없는 역할, factory default, allocation provider를 만들지 않는다.
+따라서 ClientServer의 Client-only connect와 Server RID·lifecycle generation별 intent 통합, fanout의
+Subscriber-only connect와 automatic·manual subscriber 혼합 금지는
+[Java 구성](../../java/interfaces/configuration-host.ko.md)의 같은 계약을 그대로 적용한다.
+
+Automatic RouteMesh는 RID를 canonical byte order로 비교하고 더 작은 RID의 MeshNode만 상대 endpoint로
+connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있다.
+양쪽 연결이나 automatic discovery 경합·오래된 snapshot으로 중복 후보가 생기면 handshake와 admission이
+같은 RID와 lifecycle generation을 확인해 하나만 ready 상태로 유지한다.
 
 MeshNode의 object role은 `None`, `Client`, `Server` 중 하나다. `objects()`를 호출하지 않으면 `None`,
 `client()`는 outbound manager와 resolve를 제공하고 `server()`는 Client 기능과 factory·Entry registration을

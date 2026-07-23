@@ -8,13 +8,62 @@
     "updatedAtMs",
     "mesh"
   ],
+  "physicalKeys": {
+    "descriptorKeySha256": "d865b668dc208572007a1d65fecd4111be06f76455502ba2939a3661e96c72fa",
+    "ownerTokenSha256": "b1b7c0df46d5b802be976881fb3bd200c0d40a6e365325151c21acabc4f891bc",
+    "descriptor": "P:{zlink-location-v1}:descriptor:mesh:d865b668dc208572007a1d65fecd4111be06f76455502ba2939a3661e96c72fa",
+    "admission": "P:{zlink-location-v1}:descriptor-admission:mesh:d865b668dc208572007a1d65fecd4111be06f76455502ba2939a3661e96c72fa",
+    "descriptorIndex": "P:{zlink-location-v1}:descriptor:mesh:index",
+    "descriptorOwnerIndex": "P:{zlink-location-v1}:descriptor:mesh:owner:b1b7c0df46d5b802be976881fb3bd200c0d40a6e365325151c21acabc4f891bc",
+    "ownerLease": "P:{zlink-location-v1}:owner-lease:d62b91aa54fc7602607015419048bd12e99caf5982ef3af2d6fdeeaa04056089"
+  },
+  "ownerLeaseHashFields": [
+    "ownerId",
+    "generation",
+    "expiresAt"
+  ],
+  "admissionHashFields": [
+    "descriptorKey",
+    "descriptorRevision",
+    "lifecycleGeneration",
+    "ownerId",
+    "ownerLeaseGeneration",
+    "objectRole",
+    "runtimeState",
+    "applicationVersion",
+    "capabilities",
+    "nodeActiveLimit",
+    "nodePendingLimit",
+    "immutableDigest"
+  ],
+  "immutableDigest": {
+    "domain": "zlink-mesh-node-immutable-v1",
+    "segments": [
+      "zlink-mesh-node-immutable-v1",
+      "game",
+      "67616d652d61",
+      "7",
+      "tcp://10.0.0.1:7300",
+      "2",
+      "orders",
+      "world",
+      "cluster-a",
+      "0",
+      "none",
+      "10000",
+      "128",
+      "0"
+    ],
+    "preimage": "28:zlink-mesh-node-immutable-v14:game12:67616d652d611:719:tcp://10.0.0.1:73001:26:orders5:world9:cluster-a1:04:none5:100003:1281:0",
+    "sha256LowerHex": "d259662e0dae8738eb4c086577079a31d4408e794e6df773fc9954ac65b86dce"
+  },
   "row": {
     "kind": "mesh",
     "key": "4:game12:67616d652d61",
     "hash": {
       "owner": "mesh-owner-a",
-      "gen": "5",
-      "json": "{\"MeshName\":\"game\",\"Rid\":\"67616d652d61\",\"LifecycleGeneration\":7,\"DescriptorRevision\":3,\"NormalizedEffectiveMaxMessageBytes\":16777216,\"Endpoint\":\"tcp://10.0.0.1:7300\",\"ChannelWeights\":{\"orders\":100,\"world\":50},\"ApplicationVersion\":11,\"SpotTypes\":[\"Game.Session\",\"Orders.Api\"],\"StatefulCapabilities\":[{\"ObjectKind\":\"actor\",\"StableType\":\"Game.PlayerActor\",\"Policy\":\"snapshot\",\"HasSnapshotAdapter\":true,\"PlacementProfiles\":[],\"ActiveLimit\":64,\"PendingLimit\":64},{\"ObjectKind\":\"actor\",\"StableType\":\"Orders.WorkflowActor\",\"Policy\":\"snapshot\",\"HasSnapshotAdapter\":true,\"PlacementProfiles\":[],\"ActiveLimit\":0,\"PendingLimit\":0},{\"ObjectKind\":\"instanceSpot\",\"StableType\":\"Game.Player\",\"Policy\":\"snapshot\",\"HasSnapshotAdapter\":true,\"PlacementProfiles\":[],\"ActiveLimit\":32,\"PendingLimit\":32},{\"ObjectKind\":\"instanceSpot\",\"StableType\":\"Orders.Workflow\",\"Policy\":\"snapshot\",\"HasSnapshotAdapter\":true,\"PlacementProfiles\":[],\"ActiveLimit\":0,\"PendingLimit\":0}],\"ProtocolCapabilities\":[\"framework-service-v11\"],\"MaintenanceWave\":\"wave-a\",\"State\":\"Serving\",\"SecurityIdentity\":\"cluster-a\",\"OwnerId\":\"mesh-owner-a\",\"OwnerLeaseGeneration\":5,\"UpdatedAt\":\"2024-07-15T00:00:00+00:00\"}",
+      "gen": "7",
+      "json": "{\"MeshName\":\"game\",\"Rid\":\"67616d652d61\",\"LifecycleGeneration\":7,\"DescriptorRevision\":3,\"Endpoint\":\"tcp://10.0.0.1:7300\",\"ChannelWeights\":{\"orders\":100,\"world\":50},\"SecurityIdentity\":\"cluster-a\",\"OwnerId\":\"mesh-owner-a\",\"LeaseGeneration\":9,\"UpdatedAt\":\"2024-07-15T00:00:00+00:00\",\"ApplicationVersion\":0,\"ObjectCapabilities\":[],\"MaintenanceWave\":null,\"State\":1,\"ObjectRole\":0,\"PlacementWeight\":100,\"Capacity\":{\"Active\":0,\"Pending\":0,\"ActiveLimit\":10000,\"PendingLimit\":128}}",
       "updatedAtMs": "1721001600000",
       "mesh": "game"
     }

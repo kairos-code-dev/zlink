@@ -110,8 +110,10 @@ Peer는 MeshName, RID, lifecycle generation, descriptor revision, immutable Chan
 handshake에서 교환한다. MeshName 또는 trust profile이 다르거나 같은 lifecycle identity의 중복 pipe이면
 admission하지 않는다. Lifecycle generation은 non-zero opaque equality token이며 숫자 크기로 비교하지 않는다.
 Manual topology의 fixed RID 재연결은 configured intent, authenticated connection handover와 service liveness가
-이전 pipe 종료를 확정한 뒤 다른 token을 selection 대상에 포함한다. 양쪽에서 동시에 연결해도 하나의 ready
-connection으로 수렴한다.
+이전 pipe 종료를 확정한 뒤 다른 token을 selection 대상에 포함한다. Automatic RouteMesh는 RID가 더 작은
+MeshNode만 connect를 시작한다. Manual 양방향 connect 또는 automatic 경합으로 중복 후보가 생기면
+[RouteMesh topology](10-channel-topology.ko.md)의 duplicate-pipe admission을 적용해 하나의 ready connection으로
+수렴한다.
 
 Handshake는 channel별 weight도 전달한다. Channel weight를 실행 중 바꾸면 lifecycle generation은 유지하고
 descriptor revision만 증가한다. Peer는 더 큰 revision의 complete weight snapshot만 적용한다. Weight 변경은

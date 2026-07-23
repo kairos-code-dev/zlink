@@ -20,6 +20,10 @@ import systems.zlink.framework.locations.ZLinkLocationTopologyEntry
 import systems.zlink.framework.locations.ZLinkLocationTopologyFilter
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent
 import systems.zlink.framework.locations.ZLinkLocationWriteResult
+import systems.zlink.framework.locations.ZLinkLocationWriteStatus
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey
+import systems.zlink.framework.locations.ZLinkMeshNodeLocationStore
 import systems.zlink.framework.locations.ZLinkOwnerLeaseClaimResult
 import systems.zlink.framework.locations.ZLinkOwnerLeaseReadResult
 import systems.zlink.framework.locations.ZLinkOwnerLeaseReleaseResult
@@ -41,6 +45,24 @@ import systems.zlink.framework.locations.ZLinkSpotLocationStore
 import systems.zlink.framework.spots.ActorSpotHandleResolver
 import systems.zlink.framework.spots.SpotHandle
 import systems.zlink.framework.spots.SpotHandleResolver
+
+suspend fun ZLinkMeshNodeLocationStore.updateMeshNode(
+    descriptor: ZLinkMeshNodeDescriptor,
+    intent: ZLinkLocationWriteIntent,
+): ZLinkLocationWriteResult =
+    awaitFrameworkStage(this.updateMeshNode(descriptor, intent))
+
+suspend fun ZLinkMeshNodeLocationStore.removeMeshNode(
+    key: ZLinkMeshNodeDescriptorKey,
+    owner: ZLinkLocationOwnerToken,
+): ZLinkLocationWriteStatus =
+    awaitFrameworkStage(this.removeMeshNode(key, owner))
+
+suspend fun ZLinkMeshNodeLocationStore.listMeshNodes(
+    meshName: String,
+    page: ZLinkPageRequest = ZLinkPageRequest.firstPage(),
+): ZLinkLocationPage<ZLinkMeshNodeDescriptor> =
+    awaitFrameworkStage(this.listMeshNodes(meshName, page))
 
 suspend fun ZLinkPeerLocationStore.updatePeer(
     peer: ZLinkPeerLocation,

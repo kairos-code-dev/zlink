@@ -61,6 +61,33 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         return this;
     }
 
+    public IZLinkMeshNodeBuilder SetPlacementWeight(int weight)
+    {
+        if (weight is < 0 or > 100)
+            throw new ZLinkConfigurationException(
+                "Placement weight must be between 0 and 100.");
+        registration.PlacementWeight = weight;
+        return this;
+    }
+
+    public IZLinkMeshNodeBuilder SetObjectCapacity(
+        int maxActiveObjects,
+        int maxPendingActivations)
+    {
+        if (maxActiveObjects <= 0)
+            throw new ZLinkConfigurationException(
+                "Maximum active object capacity must be greater than zero.");
+        if (maxPendingActivations <= 0)
+            throw new ZLinkConfigurationException(
+                "Maximum pending activation capacity must be greater than zero.");
+        registration.MaxActiveObjects = maxActiveObjects;
+        registration.MaxPendingActivations = maxPendingActivations;
+        return this;
+    }
+
+    public IZLinkMeshObjectRoleBuilder Objects() =>
+        new ZLinkMeshObjectRoleBuilder(registration);
+
     public IZLinkMeshNodeSocketConfig ConfigureRouterSocket() => EnsureRouter().SocketConfig;
 
     public IZLinkSpotPublisherConfig ConfigureSpotPublisher() => registration.SpotPublisherConfig;
@@ -141,6 +168,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
     public IZLinkMeshNodeBuilder AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot
     {
+        EnsureServerRole();
         if (!registration.SpotFactories.Add(typeof(TSpot)))
             throw new ZLinkConfigurationException(
                 $"Duplicate SPOT factory '{typeof(TSpot)}' on MeshNode '{registration.SpotNodeName}'.");
@@ -154,6 +182,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkSpot
     {
+        EnsureServerRole();
         ValidateObjectType(spotType, "Spot");
         if (!registration.SpotFactories.Add(typeof(TSpot)))
             throw new ZLinkConfigurationException(
@@ -176,6 +205,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         ZLinkInstanceSpotFactoryOptions? options = null)
         where TSpot : class, IZLinkInstanceSpot
     {
+        EnsureServerRole();
         if (string.IsNullOrWhiteSpace(instanceSpotType))
             throw new ZLinkConfigurationException(
                 "Instance Spot type must not be empty.");
@@ -209,6 +239,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkInstanceSpot
     {
+        EnsureServerRole();
         ValidateObjectType(instanceSpotType, "Instance Spot");
         if (!registration.InstanceSpotFactories.TryAdd(
                 instanceSpotType,
@@ -234,6 +265,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
     public IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
         where TEntrySpot : IZLinkEntrySpot
     {
+        EnsureServerRole();
         if (registration.EntrySpotType is not null)
             throw new ZLinkConfigurationException(
                 $"Duplicate Entry Spot registry on MeshNode '{registration.SpotNodeName}'.");
@@ -251,6 +283,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
     public IZLinkMeshNodeBuilder AddActorFactory<TFactory>(string actorType)
         where TFactory : class, IZLinkActorFactory
     {
+        EnsureServerRole();
         ZLinkRegistrationBuilderGuard.AddUnique(
             registration.ActorFactories,
             actorType,
@@ -267,6 +300,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>
     {
+        EnsureServerRole();
         ZLinkRegistrationBuilderGuard.AddUnique(
             registration.ActorFactories,
             actorType,
@@ -303,6 +337,15 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
     {
         registration.Router ??= new ZLinkSpotRouterCapabilityRegistration();
         return registration.Router;
+    }
+
+    private void EnsureServerRole()
+    {
+        if (registration.ObjectRole == ZLinkMeshNodeObjectRole.Client)
+            throw new ZLinkConfigurationException(
+                $"MeshNode '{registration.SpotNodeName}' is configured as an Object Client.");
+        registration.ObjectRole = ZLinkMeshNodeObjectRole.Server;
+        registration.ObjectRoleSelected = true;
     }
 
     private static void AddRelocation<TInstance>(
@@ -354,10 +397,86 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         if (placement.MaxPendingActivations is <= 0)
             throw new ZLinkConfigurationException(
                 "MaxPendingActivations must be greater than zero.");
-        if (placement.PlacementProfiles.Any(string.IsNullOrWhiteSpace))
-            throw new ZLinkConfigurationException(
-                "Placement profile names must not be empty.");
+        foreach (var profile in placement.PlacementProfiles)
+        {
+            if (string.IsNullOrWhiteSpace(profile)
+                || System.Text.Encoding.UTF8.GetByteCount(profile) > 255
+                || profile.Contains('\0'))
+                throw new ZLinkConfigurationException(
+                    "Placement profile names must be 1 to 255 UTF-8 bytes without NUL.");
+        }
     }
+}
+
+internal sealed class ZLinkMeshObjectRoleBuilder(
+    ZLinkSpotNodeRegistration registration)
+    : IZLinkMeshObjectRoleBuilder
+{
+    public IZLinkMeshObjectClientBuilder Client()
+    {
+        Select(ZLinkMeshNodeObjectRole.Client);
+        return new ZLinkMeshObjectClientBuilder();
+    }
+
+    public IZLinkMeshObjectServerBuilder Server()
+    {
+        Select(ZLinkMeshNodeObjectRole.Server);
+        return new ZLinkMeshObjectServerBuilder(registration);
+    }
+
+    private void Select(ZLinkMeshNodeObjectRole role)
+    {
+        if (registration.ObjectRoleSelected)
+            throw new ZLinkConfigurationException(
+                $"Object role for MeshNode '{registration.SpotNodeName}' was already selected.");
+        registration.ObjectRole = role;
+        registration.ObjectRoleSelected = true;
+    }
+}
+
+internal sealed class ZLinkMeshObjectClientBuilder
+    : IZLinkMeshObjectClientBuilder;
+
+internal sealed class ZLinkMeshObjectServerBuilder(
+    ZLinkSpotNodeRegistration registration)
+    : IZLinkMeshObjectServerBuilder
+{
+    private readonly ZLinkMeshNodeBuilder _builder = new(registration);
+
+    public IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
+        where TEntrySpot : class, IZLinkEntrySpot
+    {
+        _builder.AddEntrySpot<TEntrySpot>();
+        return this;
+    }
+
+    public IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
+        string spotType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkRelocationPolicy<TSpot> relocation)
+        where TSpot : class, IZLinkSpot =>
+        _builder.AddSpotFactory(spotType, placement, relocation);
+
+    public IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
+        string instanceSpotType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkRelocationPolicy<TSpot> relocation)
+        where TSpot : class, IZLinkInstanceSpot =>
+        _builder.AddInstanceSpotFactory(
+            instanceSpotType,
+            placement,
+            relocation);
+
+    public IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
+        string actorType,
+        ZLinkObjectPlacementOptions? placement,
+        ZLinkRelocationPolicy<TActor> relocation)
+        where TActor : class, IZLinkActor
+        where TFactory : class, IZLinkActorFactory<TActor> =>
+        _builder.AddActorFactory<TActor, TFactory>(
+            actorType,
+            placement,
+            relocation);
 }
 
 // Logical channel membership builder (spec 05-route-mesh §4). Weight and the

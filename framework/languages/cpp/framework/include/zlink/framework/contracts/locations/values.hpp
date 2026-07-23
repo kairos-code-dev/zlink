@@ -53,4 +53,26 @@ enum class placement_object_kind_t
     instance_spot = 3
 };
 
+enum class maintenance_policy_kind_t : std::uint8_t
+{
+    disabled = 1,
+    recreate = 2,
+    snapshot = 3
+};
+
+enum class object_role_t : std::uint8_t
+{
+    none = 0,
+    client = 1,
+    server = 2
+};
+
+struct object_capacity_options_t
+{
+    std::uint32_t active = 0;
+    std::uint32_t pending = 0;
+    std::uint32_t active_limit = 10000;
+    std::uint32_t pending_limit = 128;
+};
+
 } // namespace zlink::framework

@@ -182,7 +182,8 @@ internal sealed class ZLinkActorDrainCoordinator(
             .ConfigureAwait(false);
         var targets = new Dictionary<string, RoutingId>(StringComparer.Ordinal);
         foreach (var descriptor in descriptors)
-            if (!descriptor.Draining && descriptor.Rid is { Size: > 0 })
+            if (descriptor.State != ZLinkFrameworkRuntimeState.Draining
+                && descriptor.Rid is { Size: > 0 })
                 targets[descriptor.Rid.ToHex()] = descriptor.Rid;
         ZLinkFrameworkDebugLog.SpotDiscovery(
             $"drain targets actorType={actorType} mesh={meshName} peers={descriptors.Count} accepting={targets.Count}");

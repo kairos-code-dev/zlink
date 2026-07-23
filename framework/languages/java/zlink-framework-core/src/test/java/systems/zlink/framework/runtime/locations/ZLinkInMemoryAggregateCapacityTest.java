@@ -3,12 +3,15 @@ package systems.zlink.framework.runtime.locations;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
@@ -160,18 +163,15 @@ final class ZLinkInMemoryAggregateCapacityTest {
                 ZLinkAuthorityGenerationTransition.PRESERVE,
                 new byte[] {2},
                 new byte[] {3});
-        var request = new ZLinkAggregatePrepareRequest(
-            UUID.randomUUID(),
-            1,
-            List.of(participant, participant),
-            new byte[32],
-            List.of(),
-            fixture.target);
-
-        assertInstanceOf(
-            ZLinkAggregateConflict.class,
-            fixture.store.prepareAggregate(request, () -> false)
-                .toCompletableFuture().get());
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new ZLinkAggregatePrepareRequest(
+                UUID.randomUUID(),
+                1,
+                List.of(participant, participant),
+                new byte[32],
+                List.of(),
+                fixture.target));
         assertEquals(
             fixture.current.storeVersion(),
             current(fixture).storeVersion());
@@ -235,6 +235,9 @@ final class ZLinkInMemoryAggregateCapacityTest {
                 .targetDescriptorLifecycleGeneration(),
             current.allocation().descriptorLifecycleGeneration());
         assertArrayEquals(new byte[] {2}, current.payload());
+        assertArrayEquals(
+            new byte[] {3},
+            fixture.store.membershipMutation(fixture.key));
         assertEquals(
             0,
             fixture.store.activeCapacity(SOURCE_DESCRIPTOR, 7));
@@ -292,8 +295,13 @@ final class ZLinkInMemoryAggregateCapacityTest {
                 owner -> !owner.equals(source)
                     || sourceLive.get(),
                 (descriptor, generation, owner) ->
-                    !descriptor.equals(TARGET_DESCRIPTOR)
-                        || targetDescriptorLive.get());
+                    descriptor.equals(TARGET_DESCRIPTOR)
+                        && !targetDescriptorLive.get()
+                            ? null
+                            : descriptor(
+                                descriptor,
+                                generation,
+                                owner));
         String key = "zla1:a:4:mesh:7:actor-1";
         ZLinkAuthoritySnapshot current =
             createActive(store, key, source);
@@ -385,6 +393,38 @@ final class ZLinkInMemoryAggregateCapacityTest {
             new byte[32],
             List.of(capacityFence),
             target);
+    }
+
+    private static ZLinkMeshNodeDescriptor descriptor(
+        ZLinkMeshNodeDescriptorKey key,
+        long lifecycleGeneration,
+        ZLinkLocationOwnerToken owner) {
+        return new ZLinkMeshNodeDescriptor(
+            key.meshName(),
+            key.rid(),
+            lifecycleGeneration,
+            1,
+            "tcp://127.0.0.1:7000",
+            Map.of(),
+            1,
+            List.of(new ZLinkObjectCapability(
+                ZLinkPlacementObjectKind.ACTOR,
+                "player",
+                ZLinkObjectMaintenancePolicyKind.SNAPSHOT,
+                true,
+                Set.of(),
+                64,
+                64)),
+            ZLinkMeshNodeObjectRole.SERVER,
+            100,
+            new ZLinkPlacementCapacity(0, 0, 64, 64),
+            Optional.empty(),
+            systems.zlink.framework.runtime.host
+                .ZLinkFrameworkRuntimeState.SERVING,
+            "security",
+            owner.ownerId(),
+            owner.leaseGeneration(),
+            NOW);
     }
 
     private static ZLinkAuthoritySnapshot current(Fixture fixture)

@@ -74,14 +74,18 @@ public sealed class AutoConnectLoopTests
 
         // A peer write bumps the stamp and the next tick reads the list.
         await store.UpdateMeshNodeAsync(
-            InMemoryLocationStoreTests.MeshNode("peer-owner", "tcp://r:1", "r1"),
+            InMemoryLocationStoreTests.MeshNode(
+                "peer-owner",
+                "tcp://r:1",
+                "r1",
+                leaseGeneration: 2),
             ZLinkLocationWriteIntent.NewClaim);
         await loop.TickAsync();
         Assert.Equal(reads + 1, countingResolver.ListCalls);
     }
 
     [Fact]
-    public async Task Live_Owner_Set_Change_Reconciles_Even_When_The_Stamp_Is_Unchanged()
+    public async Task Reclaimed_Owner_Token_Does_Not_Revive_A_Stale_Descriptor()
     {
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
@@ -101,29 +105,30 @@ public sealed class AutoConnectLoopTests
         var loop = new ZLinkAutoConnectLoop(
             reconciler, local, options, stampStore: store, timeProvider: time, leaseTracker: tracker);
 
-        // A router row is written by an owner whose lease this node has not
-        // seen yet: the tick lists the rows but the lease join drops them.
-        // No further row write will ever bump the stamp.
+        await store.RenewOwnerLeaseAsync(
+            "late-owner",
+            RoutingId.From("r1"),
+            TimeSpan.FromSeconds(15));
         await store.UpdateMeshNodeAsync(
-            InMemoryLocationStoreTests.MeshNode("late-owner", "tcp://r:1", "r1"),
+            InMemoryLocationStoreTests.MeshNode(
+                "late-owner",
+                "tcp://r:1",
+                "r1",
+                leaseGeneration: 2),
             ZLinkLocationWriteIntent.NewClaim);
+        Assert.Equal(
+            ZLinkOwnerLeaseReleaseResult.Released,
+            await store.ReleaseOwnerLeaseAsync(
+                new ZLinkLocationOwnerToken("late-owner", 2)));
         await loop.TickAsync();
         Assert.Empty(executor.Connected);
 
-        // The owner's lease appears (its runtime registered right after the
-        // row was read). The stamp is unchanged, but the live owner set
-        // changed, so the tick must reconcile and connect.
+        // A reclaimed owner ID receives a different token. The stale
+        // descriptor cannot become live merely because the owner ID matches.
         await store.RenewOwnerLeaseAsync("late-owner", RoutingId.From("r1"), TimeSpan.FromSeconds(15));
         await loop.TickAsync();
-        Assert.Equal("tcp://r:1", Assert.Single(executor.Connected).Endpoint);
-
-        // The owner crashes: its lease expires without any row write. The
-        // next tick must reconcile again and disconnect within one polling
-        // interval (draft 14.4).
-        time.Advance(TimeSpan.FromSeconds(16));
-        await runtime.RenewOwnerLeaseOnceAsync();
-        await loop.TickAsync();
-        Assert.Equal("tcp://r:1", Assert.Single(executor.Disconnected).Endpoint);
+        Assert.Empty(executor.Connected);
+        Assert.Empty(executor.Disconnected);
     }
 
     [Fact]
@@ -136,7 +141,11 @@ public sealed class AutoConnectLoopTests
         await runtime.RenewOwnerLeaseOnceAsync();
         await store.RenewOwnerLeaseAsync("peer-owner", RoutingId.From("r1"), TimeSpan.FromMinutes(1));
         await store.UpdateMeshNodeAsync(
-            InMemoryLocationStoreTests.MeshNode("peer-owner", "tcp://r:1", "r1"),
+            InMemoryLocationStoreTests.MeshNode(
+                "peer-owner",
+                "tcp://r:1",
+                "r1",
+                leaseGeneration: 2),
             ZLinkLocationWriteIntent.NewClaim);
         var tracker = new ZLinkOwnerLeaseTracker(store, options, time);
         var resolvers = new ZLinkStoreLocationResolvers(

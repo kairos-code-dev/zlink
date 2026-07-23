@@ -265,6 +265,25 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 return ValueTask.FromResult<ZLinkObjectReserveResult>(
                     new ZLinkObjectReserveResult.Conflict(
                         new ZLinkAuthorityReadResult.Missing(now)));
+            if (!TryGetEligibleTarget(
+                    request.TargetDescriptor,
+                    request.TargetNodeLifecycleGeneration,
+                    request.TargetOwner,
+                    request.ObjectKind,
+                    request.StableType,
+                    request.PlacementProfile,
+                    now,
+                    out var targetDescriptor))
+                return ValueTask.FromResult<ZLinkObjectReserveResult>(
+                    new ZLinkObjectReserveResult.Conflict(
+                        new ZLinkAuthorityReadResult.Missing(now)));
+            if (!HasPlacementCapacity(
+                    targetDescriptor,
+                    request.ObjectKind,
+                    request.StableType,
+                    request.PendingCapacityDelta))
+                return ValueTask.FromResult<ZLinkObjectReserveResult>(
+                    new ZLinkObjectReserveResult.PlacementCapacityExhausted());
             if (!CanIncrement(_authorityRevision)
                 || !CanIncrement(_authorityObjectGeneration)
                 || !CanIncrement(_authorityOwnerGeneration))
@@ -534,6 +553,25 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     _time.GetUtcNow()))
                 return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
                     new ZLinkRelocationCapacityReserveResult.TargetUnavailable());
+            if (!TryGetEligibleTarget(
+                    request.TargetDescriptor,
+                    request.TargetNodeLifecycleGeneration,
+                    request.TargetOwner,
+                    request.ObjectKind,
+                    request.StableType,
+                    placementProfile: null,
+                    _time.GetUtcNow(),
+                    out var targetDescriptor))
+                return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
+                    new ZLinkRelocationCapacityReserveResult.TargetUnavailable());
+            if (!HasPlacementCapacity(
+                    targetDescriptor,
+                    request.ObjectKind,
+                    request.StableType,
+                    request.CapacityDelta))
+                return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
+                    new ZLinkRelocationCapacityReserveResult
+                        .PlacementCapacityExhausted());
             _relocationCapacityReservations[fence.Value] =
                 new RelocationCapacityState(
                     request,
@@ -737,8 +775,112 @@ internal sealed partial class ZLinkInMemoryLocationStore
                && string.Equals(
                    descriptor.OwnerId,
                    owner.OwnerId,
-                   StringComparison.Ordinal);
+                   StringComparison.Ordinal)
+               && descriptor.LeaseGeneration == owner.LeaseGeneration;
     }
+
+    private bool TryGetEligibleTarget(
+        ZLinkMeshNodeDescriptorKey descriptorKey,
+        ulong lifecycleGeneration,
+        ZLinkLocationOwnerToken owner,
+        ZLinkPlacementObjectKind objectKind,
+        string stableType,
+        string? placementProfile,
+        DateTimeOffset now,
+        out ZLinkMeshNodeDescriptor descriptor)
+    {
+        descriptor = null!;
+        if (!MatchesLiveTarget(
+                descriptorKey,
+                lifecycleGeneration,
+                owner,
+                now))
+            return false;
+        var encoded = ZLinkLocationKeyCodec.EncodeMeshNodeKey(descriptorKey);
+        descriptor = _meshNodes.Rows[encoded];
+        if (descriptor.ObjectRole != ZLinkMeshNodeObjectRole.Server
+            || descriptor.State != ZLinkFrameworkRuntimeState.Serving
+            || descriptor.PlacementWeight <= 0)
+            return false;
+        var capability = descriptor.ObjectCapabilities.SingleOrDefault(
+            value => value.ObjectKind == objectKind
+                     && string.Equals(
+                         value.StableType,
+                         stableType,
+                         StringComparison.Ordinal));
+        return capability is not null
+               && (placementProfile is null
+                   || capability.PlacementProfiles.Contains(
+                       placementProfile,
+                       StringComparer.Ordinal));
+    }
+
+    private bool HasPlacementCapacity(
+        ZLinkMeshNodeDescriptor descriptor,
+        ZLinkPlacementObjectKind objectKind,
+        string stableType,
+        int delta)
+    {
+        var descriptorKey = new ZLinkMeshNodeDescriptorKey(
+            descriptor.MeshName,
+            descriptor.Rid);
+        var capability = descriptor.ObjectCapabilities.Single(
+            value => value.ObjectKind == objectKind
+                     && string.Equals(
+                         value.StableType,
+                         stableType,
+                         StringComparison.Ordinal));
+        var nodeActive = PlacementCapacityUsage(
+            _activePlacementCapacity,
+            descriptorKey,
+            descriptor.LifecycleGeneration);
+        var nodePending = PlacementCapacityUsage(
+            _pendingPlacementCapacity,
+            descriptorKey,
+            descriptor.LifecycleGeneration);
+        var typeKey = new PlacementCapacityKey(
+            descriptorKey,
+            descriptor.LifecycleGeneration,
+            objectKind,
+            stableType);
+        var typeActive = _activePlacementCapacity.GetValueOrDefault(typeKey);
+        var typePending = _pendingPlacementCapacity.GetValueOrDefault(typeKey);
+        var activeLimit = Math.Min(
+            descriptor.Capacity.ActiveLimit,
+            capability.ActiveLimit ?? descriptor.Capacity.ActiveLimit);
+        var pendingLimit = Math.Min(
+            descriptor.Capacity.PendingLimit,
+            capability.PendingLimit ?? descriptor.Capacity.PendingLimit);
+        return HasCapacity(nodeActive, nodePending, delta,
+                   descriptor.Capacity.ActiveLimit,
+                   descriptor.Capacity.PendingLimit)
+               && HasCapacity(
+                   typeActive,
+                   typePending,
+                   delta,
+                   activeLimit,
+                   pendingLimit);
+    }
+
+    private static long PlacementCapacityUsage(
+        IReadOnlyDictionary<PlacementCapacityKey, long> counters,
+        ZLinkMeshNodeDescriptorKey descriptor,
+        ulong lifecycleGeneration) =>
+        counters
+            .Where(pair =>
+                pair.Key.Descriptor == descriptor
+                && pair.Key.DescriptorLifecycleGeneration
+                == lifecycleGeneration)
+            .Sum(static pair => pair.Value);
+
+    private static bool HasCapacity(
+        long active,
+        long pending,
+        int delta,
+        int activeLimit,
+        int pendingLimit) =>
+        pending <= pendingLimit - (long)delta
+        && active <= activeLimit - pending - (long)delta;
 
     private static bool MatchesSourceAllocation(
         ZLinkPlacementAllocation allocation,
@@ -792,7 +934,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
             request.CapacityDelta);
     }
 
-    private static void AdjustPlacementCapacity(
+    private void AdjustPlacementCapacity(
         Dictionary<PlacementCapacityKey, long> counters,
         PlacementCapacityKey key,
         long delta)
@@ -805,6 +947,13 @@ internal sealed partial class ZLinkInMemoryLocationStore
             counters.Remove(key);
         else
             counters[key] = next;
+
+        var encoded = ZLinkLocationKeyCodec.EncodeMeshNodeKey(key.Descriptor);
+        if (_meshNodes.Rows.TryGetValue(encoded, out var descriptor)
+            && descriptor.LifecycleGeneration
+            == key.DescriptorLifecycleGeneration)
+            _meshNodes.Rows[encoded] =
+                WithCurrentPlacementCapacity(descriptor);
     }
 
     private static bool AggregateRequestsEqual(

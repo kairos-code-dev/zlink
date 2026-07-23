@@ -11,12 +11,17 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkLocationOwnerToken;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteResult;
+import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
 import systems.zlink.framework.locations.ZLinkOwnerLease;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot;
@@ -65,7 +70,10 @@ final class ZLinkRedisLocationScriptsClient {
             .thenCompose(redis -> redis.<Long>eval(
                 ZLinkRedisLocationScripts.RENEW_LEASE,
                 ScriptOutputType.INTEGER,
-                new String[] {keys.leaseKey(ownerId), keys.leaseIndexKey()},
+                new String[] {
+                    keys.legacyLeaseKey(ownerId),
+                    keys.leaseIndexKey()
+                },
                 ownerId,
                 nodeRid.toHex(),
                 Long.toString(ttlMs)))
@@ -85,9 +93,8 @@ final class ZLinkRedisLocationScriptsClient {
                 ZLinkRedisLocationScripts.CLAIM_OWNER_LEASE,
                 ScriptOutputType.MULTI,
                 new String[] {
-                    keys.leaseStateKey(),
-                    keys.leaseGenerationKey(),
-                    keys.leaseKey(ownerId)
+                    keys.leaseKey(ownerId),
+                    keys.leaseGenerationKey()
                 },
                 ownerId,
                 Long.toString(ttlMs)))
@@ -116,7 +123,6 @@ final class ZLinkRedisLocationScriptsClient {
                 ZLinkRedisLocationScripts.READ_OWNER_LEASE,
                 ScriptOutputType.MULTI,
                 new String[] {
-                    keys.leaseStateKey(),
                     keys.leaseKey(ownerId)
                 },
                 ownerId))
@@ -141,7 +147,6 @@ final class ZLinkRedisLocationScriptsClient {
                 ZLinkRedisLocationScripts.RENEW_OWNER_LEASE,
                 ScriptOutputType.MULTI,
                 new String[] {
-                    keys.leaseStateKey(),
                     keys.leaseKey(token.ownerId())
                 },
                 token.ownerId(),
@@ -163,7 +168,6 @@ final class ZLinkRedisLocationScriptsClient {
                 ZLinkRedisLocationScripts.RELEASE_OWNER_LEASE,
                 ScriptOutputType.MULTI,
                 new String[] {
-                    keys.leaseStateKey(),
                     keys.leaseKey(token.ownerId())
                 },
                 token.ownerId(),
@@ -186,14 +190,14 @@ final class ZLinkRedisLocationScriptsClient {
                 ScriptOutputType.MULTI,
                 new String[] {
                     keys.routingIdSlotGroupKey(request.groupName()),
-                    keys.leaseKey(request.ownerId()),
+                    keys.legacyLeaseKey(request.ownerId()),
                     keys.leaseIndexKey()
                 },
                 config,
                 Integer.toString(request.slotCount()),
                 request.ownerId(),
                 Long.toString(ttlMs),
-                keys.leaseKeyPrefix()))
+                keys.legacyLeaseKeyPrefix()))
             .thenApply(raw -> toSlotAcquireResult(request, members, raw))
             .exceptionally(ZLinkRedisLocationScriptsClient::propagateWriteFailure);
     }
@@ -223,7 +227,7 @@ final class ZLinkRedisLocationScriptsClient {
                 ZLinkRedisLocationScripts.LIST_ROUTING_ID_SLOTS,
                 ScriptOutputType.MULTI,
                 new String[] {keys.routingIdSlotGroupKey(groupName)},
-                keys.leaseKeyPrefix()))
+                keys.legacyLeaseKeyPrefix()))
             .thenApply(raw -> toSlotSnapshot(groupName, raw))
             .exceptionally(ZLinkRedisLocationScriptsClient::propagateWriteFailure);
     }
@@ -233,35 +237,258 @@ final class ZLinkRedisLocationScriptsClient {
             .thenCompose(redis -> redis.<Long>eval(
                 ZLinkRedisLocationScripts.REMOVE_LEASE,
                 ScriptOutputType.INTEGER,
-                new String[] {keys.leaseKey(ownerId), keys.leaseIndexKey()},
+                new String[] {
+                    keys.legacyLeaseKey(ownerId),
+                    keys.leaseIndexKey()
+                },
                 ownerId))
             .thenApply(removed -> removed != null && removed > 0)
             .exceptionally(ZLinkRedisLocationScriptsClient::propagateWriteFailure);
     }
 
+    CompletionStage<ZLinkLocationWriteResult> writeMeshNode(
+        ZLinkMeshNodeDescriptor descriptor,
+        ZLinkLocationWriteIntent intent) {
+        ZLinkMeshNodeDescriptorKey key =
+            new ZLinkMeshNodeDescriptorKey(
+                descriptor.meshName(),
+                descriptor.rid());
+        String rowKey =
+            ZLinkRedisLocationKeyCodec.encodeMeshNodeKey(key);
+        String json =
+            ZLinkRedisLocationRowJson.serializeMeshNode(descriptor);
+        if (json.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+            .length > 1024 * 1024) {
+            throw new IllegalArgumentException(
+                "encoded MeshNode descriptor exceeds 1 MiB");
+        }
+        String descriptorRow =
+            keys.rowHashKey("mesh-node", rowKey);
+        return connection.commands()
+            .thenCompose(redis -> redis.hget(
+                    descriptorRow,
+                    "owner")
+                .thenCompose(previousOwner -> {
+                    CompletionStage<String> previousLease =
+                        previousOwner == null
+                            ? CompletableFuture.completedFuture(null)
+                            : redis.hget(
+                                keys.meshNodeDescriptorMetadataKey(
+                                    key),
+                                "ownerLeaseGeneration");
+                    return previousLease.thenCompose(
+                        previousLeaseGeneration ->
+                            redis.<List<Object>>eval(
+                    ZLinkRedisLocationScripts.WRITE_MESH_NODE,
+                    ScriptOutputType.MULTI,
+                    new String[] {
+                        descriptorRow,
+                        keys.kindIndexKey("mesh-node"),
+                        keys.leaseKey(descriptor.ownerId()),
+                        keys.meshNodeDescriptorMetadataKey(key),
+                        keys.meshNodeOwnerTokenIndexKey(
+                            descriptor.ownerId(),
+                            descriptor.leaseGeneration()),
+                        previousOwner == null
+                            || previousLeaseGeneration == null
+                            ? keys.schemaKey()
+                            : keys.meshNodeOwnerTokenIndexKey(
+                                previousOwner,
+                                Long.parseLong(
+                                    previousLeaseGeneration)),
+                        keys.stampKey(
+                            "mesh-node",
+                            descriptor.meshName()),
+                        keys.stampKey("mesh-node", null),
+                        previousOwner == null
+                            ? keys.schemaKey()
+                            : keys.leaseKey(previousOwner)
+                    },
+                intentName(intent),
+                descriptor.ownerId(),
+                Long.toString(descriptor.leaseGeneration()),
+                Long.toString(descriptor.lifecycleGeneration()),
+                Long.toString(descriptor.descriptorRevision()),
+                ZLinkRedisLocationRowJson
+                    .meshNodeImmutableFingerprint(descriptor),
+                json,
+                rowKey,
+                descriptor.meshName(),
+                descriptor.objectRole().name()
+                    .toLowerCase(java.util.Locale.ROOT),
+                Integer.toString(descriptor.state().wireValue()),
+                Long.toString(descriptor.applicationVersion()),
+                rowKey,
+                ZLinkRedisLocationRowJson
+                    .serializeMeshNodeAdmissionCapabilities(
+                        descriptor.objectCapabilities()),
+                Integer.toString(
+                    descriptor.capacity().activeLimit()),
+                Integer.toString(
+                    descriptor.capacity().pendingLimit())));
+                }))
+            .thenApply(ZLinkRedisLocationScriptsClient::toWriteResult)
+            .exceptionally(
+                ZLinkRedisLocationScriptsClient::propagateWriteFailure);
+    }
+
+    CompletionStage<ZLinkLocationWriteStatus> removeMeshNode(
+        ZLinkMeshNodeDescriptorKey key,
+        ZLinkLocationOwnerToken owner) {
+        String rowKey =
+            ZLinkRedisLocationKeyCodec.encodeMeshNodeKey(key);
+        return connection.commands()
+            .thenCompose(redis -> redis.<List<Object>>eval(
+                ZLinkRedisLocationScripts.REMOVE_MESH_NODE,
+                ScriptOutputType.MULTI,
+                new String[] {
+                    keys.rowHashKey("mesh-node", rowKey),
+                    keys.kindIndexKey("mesh-node"),
+                    keys.meshNodeDescriptorMetadataKey(key),
+                    keys.meshNodeOwnerTokenIndexKey(
+                        owner.ownerId(),
+                        owner.leaseGeneration()),
+                    keys.stampKey("mesh-node", key.meshName()),
+                    keys.stampKey("mesh-node", null)
+                },
+                owner.ownerId(),
+                Long.toString(owner.leaseGeneration()),
+                rowKey,
+                keys.ownerIndexKeyPrefix("mesh-node"),
+                keys.stampKey("mesh-node", key.meshName()),
+                keys.stampKey("mesh-node", null),
+                keys.meshNodeDescriptorStorageId(rowKey)))
+            .thenApply(raw ->
+                "stored".equals(string(raw.getFirst()))
+                    ? ZLinkLocationWriteStatus.STORED
+                    : ZLinkLocationWriteStatus.IGNORED_STALE)
+            .exceptionally(
+                ZLinkRedisLocationScriptsClient::propagateWriteFailure);
+    }
+
+    CompletionStage<Map<String, String>> readMeshNodeHashFields(
+        ZLinkMeshNodeDescriptorKey key) {
+        String rowKey =
+            ZLinkRedisLocationKeyCodec.encodeMeshNodeKey(key);
+        return connection.commands()
+            .thenCompose(redis -> redis.hgetall(
+                keys.rowHashKey("mesh-node", rowKey)))
+            .thenApply(Map::copyOf);
+    }
+
     CompletionStage<Long> removeAllByOwnerAsync(String ownerId) {
         return connection.commands()
             .thenCompose(redis -> redis.<Long>eval(
-                ZLinkRedisLocationScripts.REMOVE_ALL_BY_OWNER,
-                ScriptOutputType.INTEGER,
-                new String[] {
-                    keys.ownerIndexKeyPrefix("peer") + ownerId,
-                    keys.ownerIndexKeyPrefix("spot") + ownerId,
-                    keys.ownerIndexKeyPrefix("actor") + ownerId,
-                    keys.ownerIndexKeyPrefix("route") + ownerId,
-                    keys.kindIndexKey("peer"),
-                    keys.kindIndexKey("spot"),
-                    keys.kindIndexKey("actor"),
-                    keys.kindIndexKey("route")
-                },
-                keys.rowHashKeyPrefix("peer"),
-                keys.rowHashKeyPrefix("spot"),
-                keys.rowHashKeyPrefix("actor"),
-                keys.rowHashKeyPrefix("route"),
-                keys.stampKey("peer", null),
-                keys.stampKey("spot", null),
-                keys.stampKey("actor", null),
-                keys.stampKey("route", null)));
+                    ZLinkRedisLocationScripts.REMOVE_ALL_BY_OWNER,
+                    ScriptOutputType.INTEGER,
+                    new String[] {
+                        keys.ownerIndexKeyPrefix("peer") + ownerId,
+                        keys.ownerIndexKeyPrefix("spot") + ownerId,
+                        keys.ownerIndexKeyPrefix("actor") + ownerId,
+                        keys.ownerIndexKeyPrefix("route") + ownerId,
+                        keys.kindIndexKey("peer"),
+                        keys.kindIndexKey("spot"),
+                        keys.kindIndexKey("actor"),
+                        keys.kindIndexKey("route")
+                    },
+                    keys.rowHashKeyPrefix("peer"),
+                    keys.rowHashKeyPrefix("spot"),
+                    keys.rowHashKeyPrefix("actor"),
+                    keys.rowHashKeyPrefix("route"),
+                    keys.stampKey("peer", null),
+                    keys.stampKey("spot", null),
+                    keys.stampKey("actor", null),
+                    keys.stampKey("route", null))
+                .thenCompose(genericRemoved -> {
+                    return redis.hget(
+                            keys.leaseKey(ownerId),
+                            "generation")
+                        .thenCompose(leaseGeneration -> {
+                            if (leaseGeneration == null) {
+                                return CompletableFuture
+                                    .completedFuture(genericRemoved);
+                            }
+                            String ownerIndex =
+                                keys.meshNodeOwnerTokenIndexKey(
+                                    ownerId,
+                                    Long.parseLong(leaseGeneration));
+                            return redis.smembers(ownerIndex)
+                        .thenCompose(indexed -> {
+                            List<String> members =
+                                new ArrayList<>(indexed);
+                            List<CompletableFuture<String>> meshes =
+                                new ArrayList<>(members.size());
+                            for (String member : members) {
+                                String storageId =
+                                    keys.meshNodeDescriptorStorageId(
+                                        member);
+                                meshes.add(redis.hget(
+                                        keys.rowHashKeyPrefix(
+                                            "mesh-node")
+                                            + storageId,
+                                        "mesh")
+                                    .toCompletableFuture());
+                            }
+                            return CompletableFuture.allOf(
+                                    meshes.toArray(
+                                        CompletableFuture[]::new))
+                                .thenCompose(ignored -> {
+                                    List<String> scriptKeys =
+                                        new ArrayList<>();
+                                    scriptKeys.add(ownerIndex);
+                                    scriptKeys.add(
+                                        keys.kindIndexKey(
+                                            "mesh-node"));
+                                    scriptKeys.add(
+                                        keys.stampKey(
+                                            "mesh-node",
+                                            null));
+                                    List<String> arguments =
+                                        new ArrayList<>();
+                                    arguments.add(ownerId);
+                                    for (int index = 0;
+                                        index < members.size();
+                                        index++) {
+                                        String member =
+                                            members.get(index);
+                                        String storageId =
+                                            keys.meshNodeDescriptorStorageId(
+                                                member);
+                                        scriptKeys.add(
+                                            keys.rowHashKeyPrefix(
+                                                "mesh-node")
+                                                + storageId);
+                                        scriptKeys.add(
+                                            keys
+                                                .meshNodeDescriptorMetadataKeyPrefix()
+                                                + storageId);
+                                        scriptKeys.add(
+                                            keys.stampKey(
+                                                "mesh-node",
+                                                meshes.get(index)
+                                                    .join()));
+                                        arguments.add(member);
+                                    }
+                                    if (members.isEmpty()) {
+                                        return CompletableFuture
+                                            .completedFuture(
+                                                genericRemoved);
+                                    }
+                                    return redis.<Long>eval(
+                                            ZLinkRedisLocationScripts
+                                                .REMOVE_ALL_MESH_NODES,
+                                            ScriptOutputType.INTEGER,
+                                            scriptKeys.toArray(
+                                                String[]::new),
+                                            arguments.toArray(
+                                                String[]::new))
+                                        .thenApply(meshRemoved ->
+                                            genericRemoved
+                                                + meshRemoved);
+                                });
+                        });
+                        });
+                }));
     }
 
     CompletionStage<ZLinkOwnerLeaseSnapshot> listOwnerLeasesAsync() {
@@ -270,7 +497,7 @@ final class ZLinkRedisLocationScriptsClient {
                 ZLinkRedisLocationScripts.LIST_LEASES,
                 ScriptOutputType.MULTI,
                 new String[] {keys.leaseIndexKey()},
-                keys.leaseKeyPrefix()))
+                keys.legacyLeaseKeyPrefix()))
             .thenApply(this::toLeaseSnapshot);
     }
 
@@ -283,21 +510,34 @@ final class ZLinkRedisLocationScriptsClient {
         String json,
         ZLinkLocationWriteIntent intent) {
         return connection.commands()
-            .thenCompose(redis -> redis.<List<Object>>eval(
-                ZLinkRedisLocationScripts.WRITE,
-                ScriptOutputType.MULTI,
-                new String[] {keys.rowHashKey(tag, rowKey), keys.generationKey(tag, rowKey), keys.kindIndexKey(tag)},
-                intentName(intent),
-                ownerId,
-                Long.toString(generation),
-                json,
-                rowKey,
-                keys.leaseKeyPrefix(),
-                keys.ownerIndexKeyPrefix(tag),
-                keys.stampKey(tag, meshName),
-                meshName == null ? "" : keys.stampKey(tag, null),
-                meshName == null ? "0" : "1",
-                meshName == null ? "" : meshName))
+            .thenCompose(redis -> redis.hget(
+                    keys.rowHashKey(tag, rowKey),
+                    "owner")
+                .thenCompose(currentOwner ->
+                    redis.<List<Object>>eval(
+                        ZLinkRedisLocationScripts.WRITE,
+                        ScriptOutputType.MULTI,
+                        new String[] {
+                            keys.rowHashKey(tag, rowKey),
+                            keys.generationKey(tag, rowKey),
+                            keys.kindIndexKey(tag),
+                            keys.leaseKey(currentOwner == null
+                                ? ownerId
+                                : currentOwner)
+                        },
+                        intentName(intent),
+                        ownerId,
+                        Long.toString(generation),
+                        json,
+                        rowKey,
+                        "",
+                        keys.ownerIndexKeyPrefix(tag),
+                        keys.stampKey(tag, meshName),
+                        meshName == null
+                            ? ""
+                            : keys.stampKey(tag, null),
+                        meshName == null ? "0" : "1",
+                        meshName == null ? "" : meshName)))
             .thenApply(ZLinkRedisLocationScriptsClient::toWriteResult)
             .exceptionally(ZLinkRedisLocationScriptsClient::propagateWriteFailure);
     }
@@ -420,6 +660,8 @@ final class ZLinkRedisLocationScriptsClient {
         return switch (status) {
             case "stored" -> ZLinkLocationWriteResult.stored(number(result.get(1)), fromUnixMs(number(result.get(2))));
             case "conflict" -> ZLinkLocationWriteResult.rejectedConflict();
+            case "protocol-error" -> throw new IllegalStateException(
+                "same MeshNode descriptor revision has different bytes");
             default -> ZLinkLocationWriteResult.ignoredStale();
         };
     }

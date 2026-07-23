@@ -120,8 +120,7 @@ class public_authority_store_adapter_t final :
           _store
             ->compare_exchange_authority (
               key,
-              authority_expect_found_t{
-                snapshot->store_version},
+              snapshot->store_version,
               authority_put_t{
                 encode (reference),
                 authority_generation_transition_t::new_owner,

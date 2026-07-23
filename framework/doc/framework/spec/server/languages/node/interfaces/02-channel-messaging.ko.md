@@ -115,6 +115,9 @@ Location store를 등록한 fanout publisher는 고정 Publisher RID와 자동 �
 연결한다. Endpoint를 받는 overload는 명시한 endpoint만 사용하는 manual subscriber를 구성한다. 한
 channel에서 두 subscriber mode를 함께 설정하면 startup이 실패한다. Automatic subscriber는 location
 store가 필요하고, manual publisher와 manual subscriber만 사용하는 host에는 필요하지 않다.
+Publisher는 descriptor만 게시하고 subscriber endpoint로 outbound connect를 시작하지 않는다. Subscriber만
+publisher endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle generation마다 connection
+intent 하나를 만든다.
 
 ## 2. Metrics, monitoring과 packet
 

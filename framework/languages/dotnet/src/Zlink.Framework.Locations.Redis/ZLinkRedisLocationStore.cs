@@ -65,21 +65,36 @@ public sealed partial class ZLinkRedisLocationStore :
 
     // ----- mesh node store -------------------------------------------------
 
-    public ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
+    public async ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
         ZLinkMeshNodeDescriptor descriptor,
         ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default) =>
-        WriteAsync(ZLinkRedisLocationKinds.MeshNode, descriptor, intent, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        return await ExecuteAsync(
+                database => _commands.WriteMeshNodeAsync(
+                    database,
+                    descriptor,
+                    intent),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     public ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
         ZLinkMeshNodeDescriptorKey key,
         ZLinkLocationOwnerToken owner,
         CancellationToken cancellationToken = default) =>
-        RemoveAsync(
-            ZLinkRedisLocationKinds.MeshNode.Tag,
-            ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(key),
-            key.MeshName,
-            owner, cancellationToken);
+        ExecuteAsync(
+            async database =>
+            {
+                var result = await _commands.RemoveMeshNodeAsync(
+                        database,
+                        ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(key),
+                        key.MeshName,
+                        owner)
+                    .ConfigureAwait(false);
+                return result.Status;
+            },
+            cancellationToken);
 
     public async ValueTask<IReadOnlyList<ZLinkMeshNodeDescriptor>> ListMeshNodesAsync(
         string meshName,
@@ -97,13 +112,55 @@ public sealed partial class ZLinkRedisLocationStore :
                             ZLinkRedisLocationKinds.MeshNode,
                             members)
                         .ConfigureAwait(false);
-                    return (IReadOnlyList<ZLinkMeshNodeDescriptor>)rows
+                    var selected = rows
                         .Where(row => string.Equals(row.MeshName, meshName, StringComparison.Ordinal))
                         .ToArray();
+                    for (var index = 0; index < selected.Length; index++)
+                    {
+                        var row = selected[index];
+                        var capacity = (RedisResult[])(await database
+                            .ScriptEvaluateAsync(
+                                ZLinkRedisAuthorityScripts
+                                    .ReadCapacityProjection,
+                                [
+                                    _keys.HybridCapacityKey(
+                                        type: false,
+                                        pending: false),
+                                    _keys.HybridCapacityKey(
+                                        type: false,
+                                        pending: true)
+                                ],
+                                [CapacityNodeBucket(row)])
+                            .ConfigureAwait(false))!;
+                        selected[index] = row with
+                        {
+                            Capacity = row.Capacity with
+                            {
+                                Active = int.Parse(
+                                    (string)capacity[0]!,
+                                    System.Globalization.CultureInfo
+                                        .InvariantCulture),
+                                Pending = int.Parse(
+                                    (string)capacity[1]!,
+                                    System.Globalization.CultureInfo
+                                        .InvariantCulture)
+                            }
+                        };
+                    }
+                    return (IReadOnlyList<ZLinkMeshNodeDescriptor>)selected;
                 },
                 cancellationToken)
             .ConfigureAwait(false);
     }
+
+    private static string CapacityNodeBucket(
+        ZLinkMeshNodeDescriptor descriptor) =>
+        ZLinkRedisLocationKeys.HybridCapacityNodeBucket(
+            ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(
+                new ZLinkMeshNodeDescriptorKey(
+                    descriptor.MeshName,
+                    descriptor.Rid)),
+            descriptor.LifecycleGeneration);
 
     // ----- spot store ------------------------------------------------------
 

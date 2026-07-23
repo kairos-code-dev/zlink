@@ -43,7 +43,8 @@ export interface ZLinkInMemoryAuthorityValidation {
     stableType: string,
     requestedDelta: number,
     currentPending: number,
-    currentActive: number
+    currentActive: number,
+    placementProfile?: string
   ): boolean;
 }
 
@@ -250,7 +251,9 @@ export class ZLinkInMemoryAuthorityStore {
       descriptorLifecycleGeneration: target.lifecycleGeneration,
       capacityDelta: request.pendingCapacityDelta
     };
-    if (!this.hasPendingCapacity(allocation)) return { kind: 'placementCapacityExhausted' };
+    if (!this.hasPendingCapacity(allocation, request.intent.placementProfile)) {
+      return { kind: 'placementCapacityExhausted' };
+    }
     if (
       this.storeVersion >= MAX_GENERATION
       || this.objectGeneration >= MAX_GENERATION
@@ -614,7 +617,7 @@ export class ZLinkInMemoryAuthorityStore {
     );
   }
 
-  private hasPendingCapacity(allocation: ZLinkPlacementAllocation): boolean {
+  private hasPendingCapacity(allocation: ZLinkPlacementAllocation, placementProfile?: string): boolean {
     const key = allocationCapacityKey(allocation);
     const currentPending = this.pendingCapacity.get(key) ?? 0;
     const currentActive = this.activeCapacity.get(key) ?? 0;
@@ -624,7 +627,8 @@ export class ZLinkInMemoryAuthorityStore {
       allocation.stableType,
       allocation.capacityDelta,
       currentPending,
-      currentActive
+      currentActive,
+      placementProfile
     ) ?? true;
   }
 

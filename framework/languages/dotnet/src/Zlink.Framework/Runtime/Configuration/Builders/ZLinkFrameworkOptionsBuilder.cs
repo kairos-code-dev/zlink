@@ -52,6 +52,34 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         }
     }
 
+    public long ApplicationVersion
+    {
+        get => _registration.ApplicationVersion;
+        set
+        {
+            if (value < 0)
+                throw new ZLinkConfigurationException(
+                    "ApplicationVersion must not be negative.");
+            _registration.ApplicationVersion = value;
+        }
+    }
+
+    public string? MaintenanceWave
+    {
+        get => _registration.MaintenanceWave;
+        set
+        {
+            if (value is not null)
+            {
+                var size = System.Text.Encoding.UTF8.GetByteCount(value);
+                if (size is < 1 or > 255 || value.Contains('\0'))
+                    throw new ZLinkConfigurationException(
+                        "MaintenanceWave must be 1 to 255 UTF-8 bytes without NUL.");
+            }
+            _registration.MaintenanceWave = value;
+        }
+    }
+
     private static void ValidateOptionalPositiveTimeout(TimeSpan? value, string name)
     {
         if (value is { } timeout && timeout <= TimeSpan.Zero)

@@ -212,7 +212,6 @@ struct mesh_node_descriptor_t {
     std::uint64_t descriptor_revision;
     std::string endpoint;
     std::map<std::string, int> channel_weights;
-    std::set<std::string> spot_types;
     std::int64_t application_version;
     std::vector<object_capability_t> object_capabilities;
     object_role_t object_role = object_role_t::none;
@@ -619,7 +618,8 @@ namespace zlink::framework {
 class location_store_t : public mesh_node_location_store_t,
                          public owner_lease_store_t,
                          public authority_store_t,
-                         public object_creation_store_t {
+                         public object_creation_store_t,
+                         public relocation_capacity_store_t {
 public:
     ~location_store_t() override = default;
     virtual task_t<std::int64_t> remove_all_by_owner(
@@ -696,7 +696,7 @@ Fanout publisher descriptor kind는 `fanout-publisher`이다. Key는 ChannelName
 API를 재사용하지 않는다. Automatic subscriber는 같은 ChannelName의 유효하고 drain 중이 아닌 publisher
 descriptor를 모두 연결한다.
 
-MeshNode descriptor의 `spot_types`와 `object_capabilities`는 startup 전에 등록한 stable ID를 UTF-8 byte
+MeshNode descriptor의 `object_capabilities`는 startup 전에 등록한 stable ID를 UTF-8 byte
 순서로 정렬해 기록한다. Actor와 User·Instance Spot capability는 object kind와 type별 maintenance policy와 현재
 Snapshot adapter 등록 여부, placement profile과 optional active·pending limit을 한 항목에 함께 둔다.
 `application_version`은 0 이상인 signed 64-bit

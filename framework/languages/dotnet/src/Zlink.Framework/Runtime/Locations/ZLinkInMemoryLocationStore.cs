@@ -35,18 +35,64 @@ internal sealed partial class ZLinkInMemoryLocationStore :
     public ValueTask<ZLinkLocationWriteResult> UpdateMeshNodeAsync(
         ZLinkMeshNodeDescriptor descriptor,
         ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(Write(
-            _meshNodes,
-            ZLinkLocationKeyCodec.EncodeMeshNodeKey(
-                new ZLinkMeshNodeDescriptorKey(descriptor.MeshName, descriptor.Rid)),
-            descriptor,
-            intent,
-            descriptor.OwnerId,
-            static row => row.OwnerId,
-            static (row, now, generation) => row with { UpdatedAt = now },
-            ZLinkLocationChangeScopeKind.MeshNode,
-            descriptor.MeshName));
+        CancellationToken cancellationToken = default)
+    {
+        ValidateMeshNodeDescriptor(descriptor);
+        descriptor = CanonicalizeMeshNodeDescriptor(descriptor);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            var owner = new ZLinkLocationOwnerToken(
+                descriptor.OwnerId,
+                descriptor.LeaseGeneration);
+            if (!MatchesLiveOwnerLease(owner, now))
+                return ValueTask.FromResult(
+                    ZLinkLocationWriteResult.IgnoredStale);
+
+            var key = ZLinkLocationKeyCodec.EncodeMeshNodeKey(
+                new ZLinkMeshNodeDescriptorKey(
+                    descriptor.MeshName,
+                    descriptor.Rid));
+            var exists = _meshNodes.Rows.TryGetValue(key, out var current);
+            var currentOwnerLive = exists
+                                   && MatchesLiveOwnerLease(
+                                       new ZLinkLocationOwnerToken(
+                                           current!.OwnerId,
+                                           current.LeaseGeneration),
+                                       now);
+            if (intent == ZLinkLocationWriteIntent.NewClaim && currentOwnerLive)
+                return ValueTask.FromResult(
+                    ZLinkLocationWriteResult.RejectedConflict);
+            if (intent == ZLinkLocationWriteIntent.Takeover && currentOwnerLive)
+                return ValueTask.FromResult(
+                    ZLinkLocationWriteResult.IgnoredStale);
+            if (intent == ZLinkLocationWriteIntent.Renew)
+            {
+                if (!exists
+                    || current!.OwnerId != descriptor.OwnerId
+                    || current.LeaseGeneration != descriptor.LeaseGeneration
+                    || current.LifecycleGeneration
+                    != descriptor.LifecycleGeneration
+                    || !MeshNodeImmutableFieldsEqual(current, descriptor)
+                    || descriptor.DescriptorRevision
+                    <= current.DescriptorRevision)
+                    return ValueTask.FromResult(
+                        ZLinkLocationWriteResult.IgnoredStale);
+            }
+
+            _meshNodes.Generations.TryGetValue(key, out var last);
+            var generation = intent == ZLinkLocationWriteIntent.Renew
+                ? last
+                : checked(last + 1);
+            _meshNodes.Generations[key] = generation;
+            _meshNodes.Rows[key] = WithCurrentPlacementCapacity(
+                descriptor with { UpdatedAt = now });
+            Bump(ZLinkLocationChangeScopeKind.MeshNode, descriptor.MeshName);
+            return ValueTask.FromResult(
+                ZLinkLocationWriteResult.Stored(generation, now));
+        }
+    }
 
     public ValueTask<ZLinkLocationWriteStatus> RemoveMeshNodeAsync(
         ZLinkMeshNodeDescriptorKey key,
@@ -68,8 +114,189 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         {
             IReadOnlyList<ZLinkMeshNodeDescriptor> items = _meshNodes.Rows.Values
                 .Where(row => string.Equals(row.MeshName, meshName, StringComparison.Ordinal))
+                .Select(WithCurrentPlacementCapacity)
                 .ToArray();
             return ValueTask.FromResult(items);
+        }
+    }
+
+    private ZLinkMeshNodeDescriptor WithCurrentPlacementCapacity(
+        ZLinkMeshNodeDescriptor descriptor)
+    {
+        var key = new ZLinkMeshNodeDescriptorKey(
+            descriptor.MeshName,
+            descriptor.Rid);
+        var active = _activePlacementCapacity
+            .Where(pair =>
+                pair.Key.Descriptor == key
+                && pair.Key.DescriptorLifecycleGeneration
+                == descriptor.LifecycleGeneration)
+            .Sum(static pair => pair.Value);
+        var pending = _pendingPlacementCapacity
+            .Where(pair =>
+                pair.Key.Descriptor == key
+                && pair.Key.DescriptorLifecycleGeneration
+                == descriptor.LifecycleGeneration)
+            .Sum(static pair => pair.Value);
+        return descriptor with
+        {
+            Capacity = descriptor.Capacity with
+            {
+                Active = checked((int)active),
+                Pending = checked((int)pending)
+            }
+        };
+    }
+
+    private static bool MeshNodeImmutableFieldsEqual(
+        ZLinkMeshNodeDescriptor current,
+        ZLinkMeshNodeDescriptor incoming) =>
+        current.MeshName == incoming.MeshName
+        && current.Rid == incoming.Rid
+        && current.LifecycleGeneration == incoming.LifecycleGeneration
+        && current.Endpoint == incoming.Endpoint
+        && current.SecurityIdentity == incoming.SecurityIdentity
+        && current.OwnerId == incoming.OwnerId
+        && current.LeaseGeneration == incoming.LeaseGeneration
+        && current.ApplicationVersion == incoming.ApplicationVersion
+        && current.ObjectRole == incoming.ObjectRole
+        && current.ChannelWeights.Keys.ToHashSet(StringComparer.Ordinal)
+            .SetEquals(incoming.ChannelWeights.Keys)
+        && ObjectCapabilitiesEqual(
+            current.ObjectCapabilities,
+            incoming.ObjectCapabilities)
+        && current.Capacity.ActiveLimit == incoming.Capacity.ActiveLimit
+        && current.Capacity.PendingLimit == incoming.Capacity.PendingLimit;
+
+    private static ZLinkMeshNodeDescriptor CanonicalizeMeshNodeDescriptor(
+        ZLinkMeshNodeDescriptor descriptor) =>
+        descriptor with
+        {
+            ChannelWeights = descriptor.ChannelWeights
+                .OrderBy(
+                    static pair => pair.Key,
+                    Utf8StringComparer.Instance)
+                .ToDictionary(
+                    static pair => pair.Key,
+                    static pair => pair.Value,
+                    StringComparer.Ordinal),
+            ObjectCapabilities = descriptor.ObjectCapabilities
+                .OrderBy(static capability => capability.ObjectKind)
+                .ThenBy(
+                    static capability => capability.StableType,
+                    Utf8StringComparer.Instance)
+                .ToArray()
+        };
+
+    private static bool ObjectCapabilitiesEqual(
+        IReadOnlyList<ZLinkObjectCapability> current,
+        IReadOnlyList<ZLinkObjectCapability> incoming)
+    {
+        if (current.Count != incoming.Count)
+            return false;
+        for (var index = 0; index < current.Count; index++)
+        {
+            var left = current[index];
+            var right = incoming[index];
+            if (left.ObjectKind != right.ObjectKind
+                || left.StableType != right.StableType
+                || left.Policy != right.Policy
+                || left.HasSnapshotAdapter != right.HasSnapshotAdapter
+                || left.ActiveLimit != right.ActiveLimit
+                || left.PendingLimit != right.PendingLimit
+                || !left.PlacementProfiles.SetEquals(
+                    right.PlacementProfiles))
+                return false;
+        }
+        return true;
+    }
+
+    private static void ValidateMeshNodeDescriptor(
+        ZLinkMeshNodeDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ValidateUtf8Value(descriptor.MeshName, nameof(descriptor.MeshName));
+        if (descriptor.Rid.IsEmpty
+            || descriptor.LifecycleGeneration == 0
+            || descriptor.DescriptorRevision == 0
+            || descriptor.ApplicationVersion < 0
+            || descriptor.ChannelWeights is null
+            || string.IsNullOrWhiteSpace(descriptor.OwnerId)
+            || descriptor.LeaseGeneration <= 0
+            || !Enum.IsDefined(descriptor.State)
+            || !Enum.IsDefined(descriptor.ObjectRole)
+            || descriptor.PlacementWeight is < 0 or > 100
+            || descriptor.Capacity is not
+            {
+                Active: >= 0,
+                Pending: >= 0,
+                ActiveLimit: > 0,
+                PendingLimit: > 0
+            }
+            || descriptor.Capacity.Active > descriptor.Capacity.ActiveLimit
+            || descriptor.Capacity.Pending > descriptor.Capacity.PendingLimit
+            || descriptor.ObjectCapabilities is null
+            || descriptor.ObjectCapabilities.Count > 1024
+            || descriptor.ObjectRole != ZLinkMeshNodeObjectRole.Server
+            && descriptor.ObjectCapabilities.Count != 0)
+            throw new ArgumentException(
+                "The MeshNode descriptor is invalid.",
+                nameof(descriptor));
+        if (descriptor.MaintenanceWave is { } wave)
+            ValidateUtf8Value(wave, nameof(descriptor.MaintenanceWave));
+        var identities =
+            new HashSet<(ZLinkPlacementObjectKind, string)>();
+        foreach (var capability in descriptor.ObjectCapabilities)
+        {
+            if (capability is null
+                || capability.PlacementProfiles is null
+                || !Enum.IsDefined(capability.ObjectKind)
+                || !Enum.IsDefined(capability.Policy)
+                || !identities.Add((
+                    capability.ObjectKind,
+                    capability.StableType))
+                || capability.Policy
+                == ZLinkObjectMaintenancePolicyKind.Snapshot
+                != capability.HasSnapshotAdapter
+                || capability.ActiveLimit is <= 0
+                || capability.PendingLimit is <= 0
+                || capability.PlacementProfiles.Count > 1024)
+                throw new ArgumentException(
+                    "The MeshNode object capabilities are invalid.",
+                    nameof(descriptor));
+            ValidateUtf8Value(
+                capability.StableType,
+                nameof(capability.StableType));
+            foreach (var profile in capability.PlacementProfiles)
+                ValidateUtf8Value(profile, "PlacementProfile");
+        }
+    }
+
+    private static void ValidateUtf8Value(string value, string name)
+    {
+        var size = System.Text.Encoding.UTF8.GetByteCount(value);
+        if (size is < 1 or > 255 || value.Contains('\0'))
+            throw new ArgumentException(
+                $"{name} must be 1 to 255 UTF-8 bytes without NUL.",
+                name);
+    }
+
+    private sealed class Utf8StringComparer : IComparer<string>
+    {
+        internal static Utf8StringComparer Instance { get; } = new();
+
+        public int Compare(string? left, string? right)
+        {
+            if (ReferenceEquals(left, right))
+                return 0;
+            if (left is null)
+                return -1;
+            if (right is null)
+                return 1;
+            return System.Text.Encoding.UTF8.GetBytes(left)
+                .AsSpan()
+                .SequenceCompareTo(
+                    System.Text.Encoding.UTF8.GetBytes(right));
         }
     }
 

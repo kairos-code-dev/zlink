@@ -24,6 +24,9 @@ import systems.zlink.framework.locations.ZLinkLocationPage
 import systems.zlink.framework.locations.ZLinkLocationStore
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent
 import systems.zlink.framework.locations.ZLinkLocationWriteResult
+import systems.zlink.framework.locations.ZLinkLocationWriteStatus
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey
 import systems.zlink.framework.locations.ZLinkAuthorityExpectation
 import systems.zlink.framework.locations.ZLinkAuthorityMutation
 import systems.zlink.framework.locations.ZLinkAuthorityReadResult
@@ -132,6 +135,24 @@ abstract class ZLinkSuspendingLocationStore(
         cancellation: ZLinkStoreCancellation,
     ): CompletionStage<ZLinkAggregateAbortResult> =
         async { abortAggregateSuspending(fence, cancellation) }
+
+    final override fun updateMeshNode(
+        descriptor: ZLinkMeshNodeDescriptor,
+        intent: ZLinkLocationWriteIntent,
+    ): CompletionStage<ZLinkLocationWriteResult> =
+        async { updateMeshNodeSuspending(descriptor, intent) }
+
+    final override fun removeMeshNode(
+        key: ZLinkMeshNodeDescriptorKey,
+        owner: ZLinkLocationOwnerToken,
+    ): CompletionStage<ZLinkLocationWriteStatus> =
+        async { removeMeshNodeSuspending(key, owner) }
+
+    final override fun listMeshNodes(
+        meshName: String,
+        page: ZLinkPageRequest,
+    ): CompletionStage<ZLinkLocationPage<ZLinkMeshNodeDescriptor>> =
+        async { listMeshNodesSuspending(meshName, page) }
 
     final override fun updatePeer(
         peer: ZLinkPeerLocation,
@@ -295,6 +316,21 @@ abstract class ZLinkSuspendingLocationStore(
         fence: ZLinkAggregateFence,
         cancellation: ZLinkStoreCancellation,
     ): ZLinkAggregateAbortResult
+
+    protected abstract suspend fun updateMeshNodeSuspending(
+        descriptor: ZLinkMeshNodeDescriptor,
+        intent: ZLinkLocationWriteIntent,
+    ): ZLinkLocationWriteResult
+
+    protected abstract suspend fun removeMeshNodeSuspending(
+        key: ZLinkMeshNodeDescriptorKey,
+        owner: ZLinkLocationOwnerToken,
+    ): ZLinkLocationWriteStatus
+
+    protected abstract suspend fun listMeshNodesSuspending(
+        meshName: String,
+        page: ZLinkPageRequest,
+    ): ZLinkLocationPage<ZLinkMeshNodeDescriptor>
 
     protected abstract suspend fun updatePeerSuspending(
         peer: ZLinkPeerLocation,

@@ -34,7 +34,10 @@ public sealed class AutoConnectReconcilerTests
             ZLinkLocationRole.Dealer,
             "local",
             "tcp://l:1");
-        var draining = Descriptor("remote", "tcp://r:1") with { Draining = true };
+        var draining = Descriptor("remote", "tcp://r:1") with
+        {
+            State = ZLinkFrameworkRuntimeState.Draining
+        };
 
         var target = Assert.Single(ZLinkAutoConnectPlanner.ComputeDesired(local, [draining])).Value;
 
@@ -67,7 +70,7 @@ public sealed class AutoConnectReconcilerTests
         var row = Assert.Single(
             await fixture.Store.ListMeshNodesAsync("play"),
             row => row.Rid.Equals(RoutingId.From("local")));
-        Assert.True(row.Draining);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Draining, row.State);
         Assert.True(row.DescriptorRevision > 1);
     }
 
@@ -201,7 +204,22 @@ public sealed class AutoConnectReconcilerTests
         await fixture.PublishPeerAsync("r1", "tcp://r:1");
         await fixture.Reconciler.TickAsync();
 
-        await fixture.PublishPeerAsync("r1", "tcp://r:9", takeover: true);
+        Assert.Equal(
+            ZLinkOwnerLeaseReleaseResult.Released,
+            await fixture.Store.ReleaseOwnerLeaseAsync(
+                new ZLinkLocationOwnerToken("peer-owner", 2)));
+        await fixture.Store.RenewOwnerLeaseAsync(
+            "peer-owner",
+            RoutingId.From("peer-node"),
+            TimeSpan.FromMinutes(10));
+        await fixture.Store.UpdateMeshNodeAsync(
+            Descriptor("r1", "tcp://r:9") with
+            {
+                LifecycleGeneration = 2,
+                DescriptorRevision = 1,
+                LeaseGeneration = 3
+            },
+            ZLinkLocationWriteIntent.Takeover);
         await fixture.Reconciler.TickAsync();
 
         Assert.Equal(["tcp://r:1", "tcp://r:9"], fixture.Executor.Connected.Select(t => t.Endpoint));
@@ -289,9 +307,17 @@ public sealed class AutoConnectReconcilerTests
         // owner. The socket transport has already reconnected the broken
         // endpoint, so the reconciler must not race it with another
         // disconnect/connect pair.
+        Assert.Equal(
+            ZLinkOwnerLeaseReleaseResult.Released,
+            await fixture.Store.ReleaseOwnerLeaseAsync(
+                new ZLinkLocationOwnerToken("peer-owner", 2)));
         await fixture.Store.RenewOwnerLeaseAsync(
             "peer-owner-2", RoutingId.From("peer-node-2"), TimeSpan.FromMinutes(10));
-        var restarted = Descriptor("r1", "tcp://r:1") with { OwnerId = "peer-owner-2" };
+        var restarted = Descriptor("r1", "tcp://r:1") with
+        {
+            OwnerId = "peer-owner-2",
+            LeaseGeneration = 3
+        };
         await fixture.Store.UpdateMeshNodeAsync(restarted, ZLinkLocationWriteIntent.Takeover);
         await fixture.Reconciler.TickAsync();
 
@@ -309,8 +335,16 @@ public sealed class AutoConnectReconcilerTests
             RoutingId.From("old-local-node"),
             LeaseTtl);
         await fixture.Store.UpdateMeshNodeAsync(
-            Descriptor("local", "tcp://l:1") with { OwnerId = "old-local-owner" },
+            Descriptor("local", "tcp://l:1") with
+            {
+                OwnerId = "old-local-owner",
+                LeaseGeneration = 3
+            },
             ZLinkLocationWriteIntent.NewClaim);
+        Assert.Equal(
+            ZLinkOwnerLeaseReleaseResult.Released,
+            await fixture.Store.ReleaseOwnerLeaseAsync(
+                new ZLinkLocationOwnerToken("old-local-owner", 3)));
 
         await fixture.Reconciler.TickAsync();
 
@@ -526,14 +560,17 @@ public sealed class AutoConnectReconcilerTests
         string mesh = "play") => new(
         mesh,
         RoutingId.From(rid),
-        LifecycleGeneration: 0,
+        LifecycleGeneration: 1,
         DescriptorRevision: 1,
         endpoint,
         new Dictionary<string, int>(StringComparer.Ordinal) { [mesh] = 100 },
-        Draining: false,
         SecurityIdentity: string.Empty,
         OwnerId: "peer-owner",
-        UpdatedAt: default);
+        LeaseGeneration: 2,
+        UpdatedAt: default)
+    {
+        State = ZLinkFrameworkRuntimeState.Serving
+    };
 
     private static async Task<ReconcilerFixture> FixtureAsync(
         Action<ZLinkLocationOptions>? configure = null,
@@ -578,7 +615,12 @@ public sealed class AutoConnectReconcilerTests
             bool takeover = false,
             bool draining = false)
         {
-            var row = Descriptor(rid, endpoint) with { Draining = draining };
+            var row = Descriptor(rid, endpoint) with
+            {
+                State = draining
+                    ? ZLinkFrameworkRuntimeState.Draining
+                    : ZLinkFrameworkRuntimeState.Serving
+            };
             var result = await Store.UpdateMeshNodeAsync(
                 row,
                 takeover ? ZLinkLocationWriteIntent.Takeover : ZLinkLocationWriteIntent.NewClaim);

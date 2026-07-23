@@ -56,7 +56,8 @@ internal sealed class ZLinkStoreLocationResolvers :
                 rows,
                 static row => row.OwnerId,
                 _observed.AcceptDescriptor,
-                cancellationToken)
+                cancellationToken,
+                static row => row.LeaseGeneration)
             .ConfigureAwait(false);
     }
 

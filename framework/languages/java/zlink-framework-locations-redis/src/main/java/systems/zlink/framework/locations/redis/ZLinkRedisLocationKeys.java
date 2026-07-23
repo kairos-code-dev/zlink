@@ -1,7 +1,10 @@
 package systems.zlink.framework.locations.redis;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
+import java.util.HexFormat;
 import systems.zlink.framework.locations.ZLinkLocationKind;
 
 final class ZLinkRedisLocationKeys {
@@ -12,10 +15,16 @@ final class ZLinkRedisLocationKeys {
     }
 
     String rowHashKey(String tag, String rowKey) {
+        if ("mesh-node".equals(tag)) {
+            return rowHashKeyPrefix(tag) + sha256Hex(rowKey);
+        }
         return rowHashKeyPrefix(tag) + rowKey;
     }
 
     String rowHashKeyPrefix(String tag) {
+        if ("mesh-node".equals(tag)) {
+            return domainBase() + ":descriptor:mesh:";
+        }
         return prefix + ":row:" + tag + ":";
     }
 
@@ -24,31 +33,55 @@ final class ZLinkRedisLocationKeys {
     }
 
     String kindIndexKey(String tag) {
+        if ("mesh-node".equals(tag)) {
+            return domainBase() + ":descriptor:mesh:index";
+        }
         return prefix + ":keys:" + tag;
     }
 
     String ownerIndexKeyPrefix(String tag) {
+        if ("mesh-node".equals(tag)) {
+            return domainBase() + ":descriptor:mesh:owner:";
+        }
         return prefix + ":own:" + tag + ":";
     }
 
+    String meshNodeOwnerTokenIndexKey(
+        String ownerId,
+        long leaseGeneration) {
+        return ownerIndexKeyPrefix("mesh-node")
+            + sha256Hex(
+                ownerId
+                    + "\0"
+                    + leaseGeneration);
+    }
+
     String leaseKey(String ownerId) {
-        return leaseKeyPrefix() + ownerId;
+        return domainBase() + ":owner-lease:" + sha256Hex(ownerId);
     }
 
     String leaseKeyPrefix() {
-        return authorityBase() + "lease:";
+        return domainBase() + ":owner-lease:";
+    }
+
+    String legacyLeaseKey(String ownerId) {
+        return legacyLeaseKeyPrefix() + ownerId;
+    }
+
+    String legacyLeaseKeyPrefix() {
+        return prefix + ":lease:";
     }
 
     String leaseIndexKey() {
-        return authorityBase() + "leases";
+        return domainBase() + ":owner-lease:index";
     }
 
     String leaseStateKey() {
-        return authorityBase() + "lease-state";
+        return domainBase() + ":owner-lease:legacy-state";
     }
 
     String leaseGenerationKey() {
-        return authorityBase() + "lease-generation";
+        return counterKey();
     }
 
     String routingIdSlotGroupKey(String groupName) {
@@ -56,67 +89,185 @@ final class ZLinkRedisLocationKeys {
     }
 
     String stampKey(String tag, String meshName) {
+        if ("mesh-node".equals(tag)) {
+            return meshName == null
+                ? domainBase() + ":descriptor:mesh:stamp"
+                : domainBase() + ":descriptor:mesh:stamp:"
+                    + encode(meshName);
+        }
         return meshName == null ? prefix + ":stamp:" + tag : prefix + ":stamp:" + tag + ":" + meshName;
     }
 
     String authorityRowKey(String authorityKey) {
-        return authorityRowKeyPrefix() + encode(authorityKey);
+        return domainBase() + ":authority:current:"
+            + sha256Hex(authorityKey);
     }
 
     String authorityRowKeyPrefix() {
-        return authorityBase() + "row:";
+        return domainBase() + ":authority:current:";
     }
 
     String authorityIndexKey() {
-        return authorityBase() + "index";
+        return domainBase() + ":authority:key-index";
     }
 
     String authorityRevisionKey() {
-        return authorityBase() + "revision";
+        return counterKey();
     }
 
     String authorityObjectGenerationKey() {
-        return authorityBase() + "object-generation";
+        return counterKey();
     }
 
     String authorityOwnerGenerationKey() {
-        return authorityBase() + "owner-generation";
+        return counterKey();
     }
 
-    String authorityReservationKey(String authorityKey) {
-        return authorityBase() + "reservation:" + encode(authorityKey);
+    String creationKey(String reservationId) {
+        return domainBase() + ":creation:"
+            + reservationId.toLowerCase(java.util.Locale.ROOT);
     }
 
-    String authorityAggregateKey(java.util.UUID aggregateId) {
-        return authorityBase() + "aggregate:" + aggregateId;
+    String authorityAggregateKey(
+        java.util.UUID aggregateId,
+        long generation) {
+        return domainBase() + ":aggregate:"
+            + uuidHex(aggregateId)
+            + ":"
+            + generation;
     }
 
-    String relocationCapacityStateKey() {
-        return authorityBase() + "relocation-capacity";
+    String relocationCapacityKey(String fence) {
+        return domainBase() + ":relocation:"
+            + fence.replace("-", "").toLowerCase(java.util.Locale.ROOT);
     }
 
     String placementCapacityStateKey() {
-        return authorityBase() + "placement-capacity";
+        return domainBase() + ":capacity:type:active";
+    }
+
+    String authorityMembershipsKey() {
+        return domainBase() + ":membership:current";
+    }
+
+    String meshNodeDescriptorRowKey(
+        systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey key) {
+        return domainBase() + ":descriptor:mesh:"
+            + sha256Hex(
+                ZLinkRedisLocationKeyCodec.encodeMeshNodeKey(key));
+    }
+
+    String meshNodeDescriptorMetadataKey(
+        systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey key) {
+        return meshNodeDescriptorMetadataKeyPrefix()
+            + sha256Hex(
+                ZLinkRedisLocationKeyCodec.encodeMeshNodeKey(key));
+    }
+
+    String meshNodeDescriptorMetadataKeyPrefix() {
+        return domainBase() + ":descriptor-admission:mesh:";
+    }
+
+    String meshNodeDescriptorStorageId(String encodedKey) {
+        return sha256Hex(encodedKey);
     }
 
     String encodedAuthorityKey(String authorityKey) {
-        return encode(authorityKey);
+        return HexFormat.of().formatHex(
+            authorityKey.getBytes(StandardCharsets.UTF_8));
     }
 
     String decodeAuthorityKey(String encoded) {
         return new String(
-            Base64.getUrlDecoder().decode(encoded),
+            HexFormat.of().parseHex(encoded),
             StandardCharsets.UTF_8);
     }
 
-    private String authorityBase() {
-        return prefix + ":{authority}:";
+    String schemaKey() {
+        return domainBase() + ":schema";
+    }
+
+    String counterKey() {
+        return domainBase() + ":counter";
+    }
+
+    String authorityHistoryKey(String authorityKey) {
+        return domainBase() + ":authority:history:"
+            + sha256Hex(authorityKey);
+    }
+
+    String authorityHistoryRevisionsKey(String authorityKey) {
+        return domainBase() + ":authority:history-revisions:"
+            + sha256Hex(authorityKey);
+    }
+
+    String authorityIndexGcKey() {
+        return domainBase() + ":authority:index-gc";
+    }
+
+    String membershipHistoryKey(String authorityKey) {
+        return domainBase() + ":membership:history:"
+            + sha256Hex(authorityKey);
+    }
+
+    String membershipHistoryRevisionsKey(String authorityKey) {
+        return domainBase() + ":membership:history-revisions:"
+            + sha256Hex(authorityKey);
+    }
+
+    String capacityNodeActiveKey() {
+        return domainBase() + ":capacity:node:active";
+    }
+
+    String capacityNodePendingKey() {
+        return domainBase() + ":capacity:node:pending";
+    }
+
+    String capacityTypeActiveKey() {
+        return domainBase() + ":capacity:type:active";
+    }
+
+    String capacityTypePendingKey() {
+        return domainBase() + ":capacity:type:pending";
+    }
+
+    String scanKey(java.util.UUID scanId) {
+        return domainBase() + ":scan:" + uuidHex(scanId);
+    }
+
+    String scansExpiryKey() {
+        return domainBase() + ":scans:expiry";
+    }
+
+    String scansWatermarkKey() {
+        return domainBase() + ":scans:watermark";
+    }
+
+    private String domainBase() {
+        return prefix + ":{zlink-location-v1}";
     }
 
     private static String encode(String value) {
         return Base64.getUrlEncoder()
             .withoutPadding()
             .encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            return HexFormat.of().formatHex(
+                MessageDigest.getInstance("SHA-256").digest(
+                    value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(
+                "SHA-256 is required by the Redis location schema",
+                exception);
+        }
+    }
+
+    private static String uuidHex(java.util.UUID value) {
+        return value.toString().replace("-", "")
+            .toLowerCase(java.util.Locale.ROOT);
     }
 
     static String tagOf(ZLinkLocationKind kind) {

@@ -23,7 +23,7 @@ public final class ZLinkRedisLocationOptions {
     }
 
     public ZLinkRedisLocationOptions setKeyPrefix(String keyPrefix) {
-        this.keyPrefix = requireText(keyPrefix, "keyPrefix");
+        this.keyPrefix = requireKeyPrefix(keyPrefix);
         return this;
     }
 
@@ -42,7 +42,7 @@ public final class ZLinkRedisLocationOptions {
 
     void validate() {
         requireText(connectionString, "connectionString");
-        requireText(keyPrefix, "keyPrefix");
+        requireKeyPrefix(keyPrefix);
     }
 
     RedisURI redisUri() {
@@ -66,5 +66,14 @@ public final class ZLinkRedisLocationOptions {
             throw new IllegalArgumentException(name + " is required.");
         }
         return value;
+    }
+
+    private static String requireKeyPrefix(String value) {
+        String prefix = requireText(value, "keyPrefix");
+        if (prefix.indexOf('{') >= 0 || prefix.indexOf('}') >= 0) {
+            throw new IllegalArgumentException(
+                "keyPrefix must not contain Redis hash-tag braces.");
+        }
+        return prefix;
     }
 }

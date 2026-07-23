@@ -97,7 +97,8 @@ internal sealed class ZLinkLocationRuntimeQueryService : IZLinkLocationRuntimeQu
                 var live = await _leaseTracker.IsOwnerLiveAsync(row.OwnerId, cancellationToken)
                     .ConfigureAwait(false);
                 var entry = new ZLinkLocationTopologyEntry(
-                    row.MeshName, row.Rid, row.Endpoint, row.Draining,
+                    row.MeshName, row.Rid, row.Endpoint,
+                    row.State == ZLinkFrameworkRuntimeState.Draining,
                     live ? ZLinkLocationTopologyState.Ready : ZLinkLocationTopologyState.Lost,
                     row.UpdatedAt);
                 if (Matches(entry, filter)) entries.Add(entry);

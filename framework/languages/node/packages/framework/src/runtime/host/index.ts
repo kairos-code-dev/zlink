@@ -45,7 +45,7 @@ import {
   type ZLinkDispatchErrorSink
 } from '../channels';
 import {
-  ZLinkFrameworkRuntimeState,
+  ZLinkFrameworkExecutionState,
   ZLinkRuntimeTaskErrorSink
 } from '../execution';
 import {
@@ -134,7 +134,7 @@ export class ZLinkFrameworkRuntimeHost implements
   ZLinkAllocatedRoutingIdProvider {
   private readonly backendAdapterFactory: ZLinkBackendAdapterFactory;
   private readonly lifecycleSink?: string[];
-  private state?: ZLinkFrameworkRuntimeState;
+  private state?: ZLinkFrameworkExecutionState;
   private channelRuntime?: ZLinkChannelRuntimeManager;
   private spotNodeRuntime?: ZLinkSpotNodeRuntimeManager;
   private streamRuntime?: ZLinkStreamRuntimeManager;
@@ -399,11 +399,11 @@ export class ZLinkFrameworkRuntimeHost implements
     return this.state?.context as ZLinkBackendContext | undefined;
   }
 
-  get taskRunner(): ZLinkFrameworkRuntimeState['taskRunner'] | undefined {
+  get taskRunner(): ZLinkFrameworkExecutionState['taskRunner'] | undefined {
     return this.state?.taskRunner;
   }
 
-  get errorSink(): ZLinkFrameworkRuntimeState['errorSink'] | undefined {
+  get errorSink(): ZLinkFrameworkExecutionState['errorSink'] | undefined {
     return this.state?.errorSink;
   }
 
@@ -425,7 +425,7 @@ export class ZLinkFrameworkRuntimeHost implements
     let startedLocationRuntime: ZLinkLocationRuntime | undefined;
     let allocatedRoutingIdRuntime: ZLinkAllocatedRoutingIdRuntime | undefined;
     try {
-      this.state = new ZLinkFrameworkRuntimeState(context);
+      this.state = new ZLinkFrameworkExecutionState(context);
       // Seed the shared live-mode cell from the configured mode (default errorsOnly).
       this.messageFlowModeCell.mode =
         this.options.registration.dispatch?.diagnostics.messageFlow ??

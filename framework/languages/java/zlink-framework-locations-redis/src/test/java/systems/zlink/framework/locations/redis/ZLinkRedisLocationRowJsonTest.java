@@ -2,6 +2,8 @@ package systems.zlink.framework.locations.redis;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,21 +13,55 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
+import systems.zlink.framework.locations.ZLinkPlacementCapacity;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkRouteKind;
 import systems.zlink.framework.locations.ZLinkRouteLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.spots.ZLinkSpotKind;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 
 class ZLinkRedisLocationRowJsonTest {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Instant UPDATED_AT = Instant.parse("2026-07-03T00:00:00Z");
+
+    @Test
+    void canonicalHybridSchemaUsesOneFixedProviderHashTag() {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new ZLinkRedisLocationOptions()
+                .setKeyPrefix("bad:{caller-tag}"));
+        var keys = new ZLinkRedisLocationKeys("app");
+        assertEquals(
+            "app:{zlink-location-v1}:schema",
+            keys.schemaKey());
+        assertEquals(
+            "app:{zlink-location-v1}:counter",
+            keys.counterKey());
+        assertEquals(
+            "app:{zlink-location-v1}:authority:key-index",
+            keys.authorityIndexKey());
+        assertEquals(
+            "app:{zlink-location-v1}:membership:current",
+            keys.authorityMembershipsKey());
+        String current = keys.authorityRowKey(
+            "zla1:a:4:game:7:actor-1");
+        assertTrue(current.matches(
+            "app:\\{zlink-location-v1}:authority:current:"
+                + "[0-9a-f]{64}"));
+        assertTrue(keys.leaseKey("owner-a").matches(
+            "app:\\{zlink-location-v1}:owner-lease:"
+                + "[0-9a-f]{64}"));
+    }
 
     @Test
     void peerJsonUsesDotnetNumericEnumValuesAndHexRoutingId() throws Exception {
@@ -159,6 +195,49 @@ class ZLinkRedisLocationRowJsonTest {
         assertEquals("9", hash.path("ownerLeaseGeneration").asText());
     }
 
+    @Test
+    void meshNodeDescriptorFixturePinsCanonicalJsonBytes()
+        throws Exception {
+        JsonNode root = JSON.readTree(Files.readString(
+            descriptorFixturePath()));
+        JsonNode hash = root.path("row").path("hash");
+        ZLinkMeshNodeDescriptor descriptor =
+            new ZLinkMeshNodeDescriptor(
+                "game",
+                RoutingId.fromHex("67616d652d61"),
+                7,
+                3,
+                "tcp://10.0.0.1:7300",
+                Map.of("orders", 100, "world", 50),
+                0,
+                List.of(),
+                ZLinkMeshNodeObjectRole.NONE,
+                100,
+                new ZLinkPlacementCapacity(0, 0, 10_000, 128),
+                Optional.empty(),
+                ZLinkFrameworkRuntimeState.SERVING,
+                "cluster-a",
+                "mesh-owner-a",
+                9,
+                Instant.parse("2024-07-15T00:00:00Z"));
+
+        assertEquals(
+            hash.path("json").asText(),
+            ZLinkRedisLocationRowJson.serializeMeshNode(descriptor));
+        JsonNode immutableDigest = root.path("immutableDigest");
+        assertEquals(
+            immutableDigest.path("preimage").asText(),
+            ZLinkRedisLocationRowJson.meshNodeImmutablePreimage(
+                descriptor));
+        assertEquals(
+            immutableDigest.path("sha256LowerHex").asText(),
+            ZLinkRedisLocationRowJson.meshNodeImmutableFingerprint(
+                descriptor));
+        assertEquals(
+            Long.toString(descriptor.lifecycleGeneration()),
+            hash.path("gen").asText());
+    }
+
     private static Path fixturePath() {
         Path current = Path.of("").toAbsolutePath();
         while (current != null) {
@@ -173,6 +252,26 @@ class ZLinkRedisLocationRowJsonTest {
             current = current.getParent();
         }
         throw new IllegalStateException("Could not find framework/testdata/location/redis/actor-location-v2.json");
+    }
+
+    private static Path descriptorFixturePath() {
+        Path current = Path.of("").toAbsolutePath();
+        while (current != null) {
+            Path candidate = current.resolve(
+                "framework/testdata/location/redis/"
+                    + "mesh-node-descriptor-v1.json");
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+            candidate = current.resolve(
+                "testdata/location/redis/mesh-node-descriptor-v1.json");
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+            current = current.getParent();
+        }
+        throw new IllegalStateException(
+            "Could not find mesh-node-descriptor-v1.json");
     }
 
     private static ZLinkActorLocation fixtureActor() {

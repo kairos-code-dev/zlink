@@ -187,17 +187,37 @@ test('in-memory location store matches the formal operation trace for core write
 test('in-memory exact MeshNode descriptor and Actor transfer stores enforce their fences', async () => {
   let nowMs = Date.UTC(2026, 6, 3, 0, 0, 0);
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(nowMs));
-  await store.claimOwnerLease('mesh-owner-a', 30_000);
+  const meshLease = await store.claimOwnerLease('mesh-owner-a', 30_000);
   const descriptor = {
     meshName: 'game',
     rid: rid('game-a'),
     lifecycleGeneration: 7n,
     descriptorRevision: 3n,
     endpoint: 'tcp://10.0.0.1:7300',
+    objectRole: framework.ZLinkObjectRole.Server,
+    placementWeight: 100,
+    objectCapacity: {
+      activeObjects: 0,
+      pendingActivations: 0,
+      maxActiveObjects: 100,
+      maxPendingActivations: 100
+    },
     channelWeights: { orders: 100, world: 50 },
-    draining: false,
+    applicationVersion: 1n,
+    spotTypes: ['room'],
+    objectCapabilities: [{
+      objectKind: 'instance_spot',
+      stableType: 'room',
+      policy: 'recreate',
+      hasSnapshotAdapter: false,
+      placementProfiles: ['default'],
+      activeLimit: 100,
+      pendingLimit: 100
+    }],
+    state: framework.ZLinkFrameworkRuntimeState.Serving,
     securityIdentity: 'cluster-a',
     ownerId: 'mesh-owner-a',
+    leaseGeneration: meshLease.token.leaseGeneration,
     updatedAt: new Date(0)
   };
   const descriptorClaim = await store.updateMeshNode(

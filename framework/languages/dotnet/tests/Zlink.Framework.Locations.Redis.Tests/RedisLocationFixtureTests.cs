@@ -28,22 +28,120 @@ public sealed class RedisLocationFixtureTests
             DescriptorRevision: 3,
             "tcp://10.0.0.1:7300",
             new Dictionary<string, int>(StringComparer.Ordinal) { ["orders"] = 100, ["world"] = 50 },
-            Draining: false,
             SecurityIdentity: "cluster-a",
             OwnerId: "mesh-owner-a",
-            UpdatedAt: FixtureUpdatedAt);
+            LeaseGeneration: 9,
+            UpdatedAt: FixtureUpdatedAt)
+        {
+            State = ZLinkFrameworkRuntimeState.Serving
+        };
 
         Assert.Equal(
             RequiredString(row, "key"),
             ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(
                 new ZLinkMeshNodeDescriptorKey(descriptor.MeshName, descriptor.Rid)));
 
+        var physicalKeys = root.GetProperty("physicalKeys");
+        var keys = new ZLinkRedisLocationKeys("P");
+        var canonicalKey = RequiredString(row, "key");
+        Assert.Equal(
+            RequiredString(physicalKeys, "descriptor"),
+            keys.HybridDescriptorKey(canonicalKey).ToString());
+        Assert.Equal(
+            RequiredString(physicalKeys, "admission"),
+            keys.HybridDescriptorAdmissionKey(canonicalKey).ToString());
+        Assert.Equal(
+            RequiredString(physicalKeys, "ownerLease"),
+            keys.HybridOwnerLeaseKey(descriptor.OwnerId).ToString());
+
         var hash = row.GetProperty("hash");
         Assert.Equal(descriptor.OwnerId, RequiredString(hash, "owner"));
+        Assert.Equal(
+            descriptor.LifecycleGeneration.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            RequiredString(hash, "gen"));
         Assert.Equal(descriptor.MeshName, RequiredString(hash, "mesh"));
         Assert.Equal(
             RequiredString(hash, "json"),
             ZLinkRedisLocationRowJson.Serialize(descriptor));
+        Assert.Equal(
+            RequiredString(
+                root.GetProperty("immutableDigest"),
+                "sha256LowerHex"),
+            ZLinkRedisLocationCommands.ImmutableDescriptorDigest(
+                descriptor));
+    }
+
+    [Fact]
+    public void Authority_Store_V1_Fixture_Uses_Hybrid_Physical_Schema()
+    {
+        using var document = JsonDocument.Parse(
+            File.ReadAllText(FixturePath("authority-store-v1.json")));
+        var root = document.RootElement;
+
+        Assert.Equal(
+            "location-authority-hybrid-v1",
+            RequiredString(root, "format"));
+        Assert.False(root.TryGetProperty("newObject", out _));
+
+        var keyContract = root.GetProperty("keyContract");
+        var canonicalKey = RequiredString(keyContract, "authorityKey");
+        var keys = new ZLinkRedisLocationKeys("P");
+        Assert.Equal(
+            RequiredString(keyContract, "currentKey"),
+            keys.HybridAuthorityCurrentKey(canonicalKey).ToString());
+        Assert.Equal(
+            RequiredString(keyContract, "historyKey"),
+            keys.HybridAuthorityHistoryKey(canonicalKey).ToString());
+        Assert.Equal(
+            RequiredString(keyContract, "historyRevisionKey"),
+            keys.HybridAuthorityHistoryRevisionsKey(canonicalKey).ToString());
+        Assert.Equal(
+            RequiredString(keyContract, "indexKey"),
+            keys.HybridAuthorityKeyIndexKey().ToString());
+
+        Assert.Equal(
+            new[]
+            {
+                "authorityKey",
+                "payload",
+                "storeVersion",
+                "objectGeneration",
+                "authorityOwnerGeneration",
+                "ownerId",
+                "ownerLeaseGeneration",
+                "allocationState",
+                "objectKind",
+                "stableType",
+                "descriptorKey",
+                "descriptorLifecycleGeneration",
+                "capacityDelta"
+            },
+            ReadStringArray(root.GetProperty("currentHashFields")));
+
+        var capacity = root.GetProperty("capacityBuckets");
+        var descriptorKey = RequiredString(capacity, "descriptorKey");
+        var lifecycle = ulong.Parse(
+            RequiredString(capacity, "descriptorLifecycleGeneration"),
+            System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(
+            RequiredString(capacity, "node"),
+            ZLinkRedisLocationKeys.HybridCapacityNodeBucket(
+                descriptorKey,
+                lifecycle));
+        Assert.Equal(
+            RequiredString(capacity, "type"),
+            ZLinkRedisLocationKeys.HybridCapacityTypeBucket(
+                descriptorKey,
+                lifecycle,
+                ZLinkPlacementObjectKind.UserSpot,
+                RequiredString(capacity, "stableType")));
+        Assert.Equal(
+            RequiredString(capacity, "unicodeType"),
+            ZLinkRedisLocationKeys.HybridCapacityTypeBucket(
+                descriptorKey,
+                lifecycle,
+                ZLinkPlacementObjectKind.UserSpot,
+                RequiredString(capacity, "unicodeStableType")));
     }
 
     [Fact]
@@ -54,44 +152,29 @@ public sealed class RedisLocationFixtureTests
 
         Assert.Equal("actor-location-v2", root.GetProperty("format").GetString());
         Assert.Equal(
-            new[] { "owner", "gen", "json", "updatedAtMs", "mesh" },
+            new[]
+            {
+                "payload",
+                "storeVersion",
+                "objectGeneration",
+                "authorityOwnerGeneration",
+                "ownerId",
+                "ownerLeaseGeneration"
+            },
             ReadStringArray(root.GetProperty("hashFields")));
 
         var row = root.GetProperty("row");
         Assert.Equal("actor", RequiredString(row, "kind"));
-
-        var actor = new ZLinkActorLocation(
-            "game",
-            "actor-1",
-            "player",
-            new ActorRef(RoutingId.From("game-a"), "actor-1", 11),
-            OwnerNodeRid: RoutingId.From("game-a"),
-            OwnerNodeGeneration: 7,
-            SpotRid: RoutingId.From("spot-1"),
-            SpotGeneration: 3,
-            SpotKind: ZLinkSpotKind.User,
-            MembershipEpoch: 4,
-            OwnerId: "actor-owner-a",
-            UpdatedAt: FixtureUpdatedAt);
-
         Assert.Equal(
-            RequiredString(row, "key"),
-            ZLinkRedisLocationKeyCodec.EncodeActorKey(
-                new ZLinkActorLocationKey(actor.MeshName, actor.ActorId)));
-
+            root.GetProperty("keyContract").GetProperty("authorityKey").GetString(),
+            RequiredString(row, "key"));
         var hash = row.GetProperty("hash");
-        Assert.Equal(actor.OwnerId, RequiredString(hash, "owner"));
-        Assert.Equal(actor.MeshName, RequiredString(hash, "mesh"));
-        var json = RequiredString(hash, "json");
-        Assert.Equal(json, ZLinkRedisLocationRowJson.Serialize(actor));
-
-        // The actor ref is the typed camelCase object, never a string format.
-        Assert.Contains(
-            "\"ActorRef\":{\"nodeRid\":\"67616d652d61\",\"actorId\":\"actor-1\",\"generation\":11}",
-            json,
-            StringComparison.Ordinal);
-        Assert.Contains("\"SpotKind\":2", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("LocationKind", json, StringComparison.Ordinal);
+        Assert.Equal("opaque-actor-authority-v1", RequiredString(hash, "payload"));
+        Assert.Equal("101", RequiredString(hash, "storeVersion"));
+        Assert.Equal("11", RequiredString(hash, "objectGeneration"));
+        Assert.Equal("4", RequiredString(hash, "authorityOwnerGeneration"));
+        Assert.Equal("actor-owner-a", RequiredString(hash, "ownerId"));
+        Assert.Equal("9", RequiredString(hash, "ownerLeaseGeneration"));
     }
 
     private static string FixturePath(string fileName)

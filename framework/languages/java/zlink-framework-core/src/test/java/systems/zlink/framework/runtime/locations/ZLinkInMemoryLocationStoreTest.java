@@ -14,6 +14,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.locations.ZLinkAuthorityConflict;
+import systems.zlink.framework.locations.ZLinkAuthorityDelete;
 import systems.zlink.framework.locations.ZLinkAuthorityExpectFound;
 import systems.zlink.framework.locations.ZLinkAuthorityGenerationTransition;
 import systems.zlink.framework.locations.ZLinkAuthorityPut;
@@ -27,7 +28,11 @@ import systems.zlink.framework.locations.ZLinkLocationRole;
 import systems.zlink.framework.locations.ZLinkLocationWriteIntent;
 import systems.zlink.framework.locations.ZLinkLocationWriteStatus;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
+import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
+import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
+import systems.zlink.framework.locations.ZLinkObjectCapability;
 import systems.zlink.framework.locations.ZLinkObjectCommitResult;
+import systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind;
 import systems.zlink.framework.locations.ZLinkObjectReservation;
 import systems.zlink.framework.locations.ZLinkObjectReservationRequest;
 import systems.zlink.framework.locations.ZLinkObjectReserved;
@@ -41,6 +46,7 @@ import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
 import systems.zlink.framework.locations.ZLinkPeerLocationKey;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
+import systems.zlink.framework.locations.ZLinkPlacementCapacity;
 import systems.zlink.framework.locations.ZLinkRelocationCapacityFence;
 import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquireRequest;
 import systems.zlink.framework.locations.ZLinkRoutingIdSlotAcquired;
@@ -98,6 +104,84 @@ class ZLinkInMemoryLocationStoreTest {
         assertEquals(
             claimed.token().leaseGeneration() + 1,
             reclaimed.token().leaseGeneration());
+    }
+
+    @Test
+    void meshNodeRenewFencesImmutableFieldsAndProjectsAuthorityCapacity()
+        throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(
+            Clock.fixed(NOW, ZoneOffset.UTC));
+        var owner = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("mesh-owner", Duration.ofSeconds(30))
+                .toCompletableFuture().get()).token();
+        ZLinkMeshNodeDescriptor initial = meshNodeDescriptor(
+            owner,
+            1,
+            "tcp://127.0.0.1:7000");
+        assertEquals(
+            ZLinkLocationWriteStatus.STORED,
+            store.updateMeshNode(
+                    initial,
+                    ZLinkLocationWriteIntent.NEW_CLAIM)
+                .toCompletableFuture().get().status());
+
+        assertEquals(
+            ZLinkLocationWriteStatus.IGNORED_STALE,
+            store.updateMeshNode(
+                    meshNodeDescriptor(
+                        owner,
+                        2,
+                        "tcp://127.0.0.1:7001"),
+                    ZLinkLocationWriteIntent.RENEW)
+                .toCompletableFuture().get().status());
+
+        String key = "zla1:a:4:mesh:9:projected";
+        var reserved = assertInstanceOf(
+            ZLinkObjectReserved.class,
+            store.reserve(
+                    new ZLinkObjectReservationRequest(
+                        ZLinkPlacementObjectKind.ACTOR,
+                        key,
+                        "player",
+                        Optional.empty(),
+                        Optional.empty(),
+                        "creation-root",
+                        new byte[32],
+                        32,
+                        new ZLinkMeshNodeDescriptorKey("mesh", NODE_A),
+                        7,
+                        owner,
+                        new byte[] {1},
+                        1),
+                    () -> false)
+                .toCompletableFuture().get()).reservation();
+        assertEquals(
+            new ZLinkPlacementCapacity(0, 1, 8, 8),
+            onlyMeshNode(store).capacity());
+
+        assertEquals(
+            ZLinkObjectCommitResult.COMMITTED,
+            store.commit(reserved, new byte[] {2}, () -> false)
+                .toCompletableFuture().get());
+        assertEquals(
+            new ZLinkPlacementCapacity(1, 0, 8, 8),
+            onlyMeshNode(store).capacity());
+
+        var active = assertInstanceOf(
+            ZLinkAuthoritySnapshot.class,
+            store.read(key, () -> false).toCompletableFuture().get());
+        assertInstanceOf(
+            systems.zlink.framework.locations.ZLinkAuthorityDeleted.class,
+            store.compareExchange(
+                    key,
+                    new ZLinkAuthorityExpectFound(active.storeVersion()),
+                    new ZLinkAuthorityDelete(),
+                    () -> false)
+                .toCompletableFuture().get());
+        assertEquals(
+            new ZLinkPlacementCapacity(0, 0, 8, 8),
+            onlyMeshNode(store).capacity());
     }
 
     @Test
@@ -319,7 +403,11 @@ class ZLinkInMemoryLocationStoreTest {
         return new ZLinkInMemoryAuthorityStore(
             Clock.fixed(NOW, ZoneOffset.UTC),
             ignored -> true,
-            (descriptor, generation, owner) -> true);
+            (descriptor, generation, owner) ->
+                meshNodeDescriptor(
+                    owner,
+                    1,
+                    "tcp://127.0.0.1:7000"));
     }
 
     private static ZLinkAuthoritySnapshot createActive(
@@ -352,6 +440,47 @@ class ZLinkInMemoryLocationStoreTest {
         return assertInstanceOf(
             ZLinkAuthoritySnapshot.class,
             store.read(key, () -> false).toCompletableFuture().get());
+    }
+
+    private static ZLinkMeshNodeDescriptor onlyMeshNode(
+        ZLinkInMemoryLocationStore store) throws Exception {
+        return store.listMeshNodes(
+                "mesh",
+                systems.zlink.framework.locations.ZLinkPageRequest
+                    .firstPage())
+            .toCompletableFuture().get().items().getFirst();
+    }
+
+    private static ZLinkMeshNodeDescriptor meshNodeDescriptor(
+        ZLinkLocationOwnerToken owner,
+        long revision,
+        String endpoint) {
+        return new ZLinkMeshNodeDescriptor(
+            "mesh",
+            NODE_A,
+            7,
+            revision,
+            endpoint,
+            Map.of("game", 100),
+            1,
+            List.of(new ZLinkObjectCapability(
+                ZLinkPlacementObjectKind.ACTOR,
+                "player",
+                ZLinkObjectMaintenancePolicyKind.SNAPSHOT,
+                true,
+                java.util.Set.of(),
+                8,
+                8)),
+            ZLinkMeshNodeObjectRole.SERVER,
+            100,
+            new ZLinkPlacementCapacity(0, 0, 8, 8),
+            Optional.empty(),
+            systems.zlink.framework.runtime.host
+                .ZLinkFrameworkRuntimeState.SERVING,
+            "security",
+            owner.ownerId(),
+            owner.leaseGeneration(),
+            NOW);
     }
 
     private static ZLinkPeerLocation peer(String ownerId, RoutingId nodeRid, long generation) {

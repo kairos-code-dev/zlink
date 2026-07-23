@@ -2,6 +2,39 @@ import type { ActorRef, RoutingId } from '../Common';
 import type { ZLinkSpotKind } from '../Spots';
 import type { ZLinkLocationAutoConnectType, ZLinkLocationRole, ZLinkRouteKind } from './Values';
 
+export enum ZLinkObjectRole {
+  None = 'none',
+  Client = 'client',
+  Server = 'server'
+}
+
+export enum ZLinkFrameworkRuntimeState {
+  Preparing = 0,
+  Serving = 1,
+  Retiring = 2,
+  Draining = 3,
+  Stopped = 4,
+  Error = 5
+}
+export type ZLinkObjectMaintenancePolicyKind = 'disabled' | 'recreate' | 'snapshot';
+
+export interface ZLinkObjectCapability {
+  readonly objectKind: 'actor' | 'user_spot' | 'instance_spot';
+  readonly stableType: string;
+  readonly policy: ZLinkObjectMaintenancePolicyKind;
+  readonly hasSnapshotAdapter: boolean;
+  readonly placementProfiles: readonly string[];
+  readonly activeLimit?: number;
+  readonly pendingLimit?: number;
+}
+
+export interface ZLinkObjectCapacity {
+  readonly activeObjects: number;
+  readonly pendingActivations: number;
+  readonly maxActiveObjects: number;
+  readonly maxPendingActivations: number;
+}
+
 export interface ZLinkPeerLocation {
   readonly autoConnectType: ZLinkLocationAutoConnectType;
   readonly meshName: string;
@@ -25,10 +58,18 @@ export interface ZLinkMeshNodeDescriptor {
   readonly lifecycleGeneration: bigint;
   readonly descriptorRevision: bigint;
   readonly endpoint: string;
+  readonly objectRole: ZLinkObjectRole;
+  readonly placementWeight: number;
+  readonly objectCapacity: ZLinkObjectCapacity;
   readonly channelWeights: Readonly<Record<string, number>>;
-  readonly draining: boolean;
+  readonly applicationVersion: bigint;
+  readonly spotTypes: readonly string[];
+  readonly objectCapabilities: readonly ZLinkObjectCapability[];
+  readonly maintenanceWave?: string;
+  readonly state: ZLinkFrameworkRuntimeState;
   readonly securityIdentity: string;
   readonly ownerId: string;
+  readonly leaseGeneration: bigint;
   readonly updatedAt: Date;
 }
 

@@ -36,15 +36,37 @@ internal static class TestRows
         string ownerId,
         string endpoint = "tcp://127.0.0.1:5001",
         string nodeRid = "node-1",
-        string meshName = "play") => new(
+        string meshName = "play",
+        long leaseGeneration = 1) => new(
         meshName,
         RoutingId.From(nodeRid),
-        LifecycleGeneration: 0,
+        LifecycleGeneration: 1,
         DescriptorRevision: 1,
         endpoint,
         new Dictionary<string, int>(StringComparer.Ordinal) { [meshName] = 100, ["world"] = 50 },
-        Draining: false,
         SecurityIdentity: "cluster-a",
         OwnerId: ownerId,
-        UpdatedAt: default);
+        LeaseGeneration: leaseGeneration,
+        UpdatedAt: default)
+    {
+        ApplicationVersion = 7,
+        ObjectRole = ZLinkMeshNodeObjectRole.Server,
+        ObjectCapabilities =
+        [
+            new ZLinkObjectCapability(
+                ZLinkPlacementObjectKind.Actor,
+                "player",
+                ZLinkObjectMaintenancePolicyKind.Recreate,
+                HasSnapshotAdapter: false,
+                new HashSet<string>(
+                    ["zone-b", "zone-a"],
+                    StringComparer.Ordinal),
+                ActiveLimit: 400,
+                PendingLimit: 20)
+        ],
+        MaintenanceWave = "wave-a",
+        State = ZLinkFrameworkRuntimeState.Serving,
+        PlacementWeight = 80,
+        Capacity = new(12, 2, 1_000, 64)
+    };
 }

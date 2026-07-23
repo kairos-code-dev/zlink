@@ -1,6 +1,6 @@
 import type { ZLinkBackendContext } from '../backend';
 import type { ZLinkChannelRuntimeManager } from '../channels';
-import type { ZLinkFrameworkRuntimeState } from '../execution';
+import type { ZLinkFrameworkExecutionState } from '../execution';
 import type { ZLinkLocationRuntime } from '../locations';
 import type { ZLinkAllocatedRoutingIdRuntime } from '../locations';
 import type { ZLinkSpotNodeRuntimeManager } from '../spots';
@@ -19,7 +19,7 @@ export interface ZLinkRuntimeStartRollbackParts {
 }
 
 export interface ZLinkRuntimeStopParts {
-  readonly state: ZLinkFrameworkRuntimeState;
+  readonly state: ZLinkFrameworkExecutionState;
   readonly locationSnapshot: ZLinkLocationRuntimeStopSnapshot;
   readonly monitoringRuntime?: ZLinkMonitoringRuntime;
   readonly streamRuntime?: ZLinkStreamRuntimeManager;

@@ -60,7 +60,11 @@ public sealed class LocationEventEmitterTests
     {
         var fixture = await FixtureAsync();
         await fixture.Store.UpdateMeshNodeAsync(
-            InMemoryLocationStoreTests.MeshNode("peer-owner", "tcp://r:1", "r1"),
+            InMemoryLocationStoreTests.MeshNode(
+                "peer-owner",
+                "tcp://r:1",
+                "r1",
+                leaseGeneration: 3),
             ZLinkLocationWriteIntent.NewClaim);
 
         await fixture.Reconciler.TickAsync();

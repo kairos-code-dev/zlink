@@ -260,6 +260,20 @@ MeshNode도 시작할 수 있다. `addClientServerChannel(channelName)`의
 client는 send/request를 시작하고
 server는 수신한 send/request 처리와 reply만 수행한다.
 
+Automatic RouteMesh는 RID를 canonical byte order로 비교하고 더 작은 RID의 MeshNode만 상대 endpoint로
+connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있다.
+양쪽 연결이나 automatic discovery 경합·오래된 snapshot으로 중복 후보가 생기면 handshake와 admission이
+같은 RID와 lifecycle generation을 확인해 하나만 ready 상태로 유지한다.
+
+Client는 manual endpoint와 location store automatic discovery를 함께 사용할 수 있다. 두 source가 같은
+Server RID와 lifecycle generation을 가리키면 connection intent와 ready target을 하나로 합친다. Automatic과
+manual 모두 Client만 server로 connect하며 Server는 client endpoint를 찾거나 outbound connect를 시작하지
+않는다.
+
+Fanout Publisher는 descriptor만 게시하고 subscriber endpoint로 outbound connect를 시작하지 않는다.
+Subscriber만 publisher endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle
+generation마다 connection intent 하나를 만든다.
+
 Actor와 User·Instance Spot의 relocation policy는 factory 등록과 함께 전달한다. Generic policy type과
 Disabled·Recreate는 유지한다. Snapshot policy는 adapter `Type` 하나만 보유한다. Actor factory에는
 `ZLinkActorRelocationAdapter<TActor>`, User·Instance Spot factory에는 `ZLinkSpotRelocationAdapter<TSpot>`가 필요하며

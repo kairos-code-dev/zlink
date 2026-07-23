@@ -65,10 +65,18 @@ handler는 MeshNode의 MeshName·RID route namespace에 등록하므로 별도 c
 ROUTER가 관리하는 peer 연결은 최대 `N-1`개다. Framework는 별도 channel socket을 만들지 않으므로
 ChannelName 수가 peer 연결 수를 늘리지 않는다.
 
-양쪽에서 동시에 연결을 시도해도 admission은 RID와 lifecycle generation이 같은 peer 연결을 하나만
-ready 상태로 유지한다. 중복 연결을 정리하는 내부 선택 규칙은 application이 관찰하는 메시징 의미를
-바꾸지 않는다. Peer handshake는 다음 descriptor를
-검증한다.
+Automatic RouteMesh에서는 두 MeshNode가 서로를 발견해도 양쪽이 동시에 연결을 시작하지 않는다. 두
+MeshNode는 RID의 canonical byte order를 같은 방식으로 비교하고 RID가 더 작은 MeshNode만 상대 endpoint로
+연결을 시작한다. 따라서 current descriptor를 사용한 정상적인 automatic discovery에서는 MeshNode 쌍마다
+connect initiator가 하나다.
+
+Manual topology에서는 application이 한쪽 또는 양쪽 endpoint를 등록할 수 있다. 양쪽이 동시에 연결을
+시작하면 Framework는 handshake와 admission에서 RID와 lifecycle generation이 같은 중복 연결을 확인하고
+하나만 ready 상태로 유지한다. Automatic에서도 연결 경합이나 오래된 discovery snapshot 때문에 중복
+후보가 생기면 같은 admission 규칙을 적용한다. 이 duplicate-pipe 안전장치는 automatic initiator 선택을
+대신하지 않으며 application이 관찰하는 메시징 의미를 바꾸지 않는다.
+
+Peer handshake는 다음 descriptor를 검증한다.
 
 - MeshName, RID, lifecycle generation과 descriptor revision
 - immutable Server ChannelName set과 channel별 weight. Set은 비어 있을 수 있다
@@ -132,6 +140,17 @@ ChannelName membership에 참여하지 않으며 MeshNode가 필요하지 않다
 전용 descriptor에 게시하고 automatic subscriber는 같은 fanout ChannelName의 publisher만 연결한다.
 RouteMesh 또는 ClientServer descriptor를 fanout 연결 대상으로 해석하지 않는다.
 
+Automatic publisher는 listener를 bind한 뒤 lifecycle별 publisher RID와 endpoint를 전용 descriptor에
+게시하며 subscriber endpoint를 찾거나 outbound connect를 시작하지 않는다. Automatic subscriber는
+location store에서 같은 ChannelName의 유효한 publisher descriptor를 모두 읽고 publisher RID·lifecycle
+generation마다 connection intent 하나를 만든다. Publisher끼리 또는 subscriber끼리 물리 연결을 만들지
+않는다.
+
+Endpoint를 application이 등록한 manual subscriber는 그 endpoint만 사용하고 location store descriptor를
+읽지 않는다. 같은 fanout ChannelName registration에 automatic subscriber와 manual subscriber endpoint를
+함께 구성하면 startup이 실패한다. Automatic과 manual source를 암묵적으로 합치거나 한 source가 실패했을
+때 다른 source로 fallback하지 않는다.
+
 Subscriber는 automatic descriptor의 publisher마다 전용 SUB socket을 하나 만들며, manual mode에서도
 endpoint마다 전용 SUB socket을 사용한다. 여러 publisher endpoint를 한 SUB socket에 연결하지 않는다. PUB/SUB
 message에는 source connection identity가 없으므로 socket을 공유하면 수신 activity와 timeout을 특정 publisher에
@@ -146,8 +165,12 @@ message에는 source connection identity가 없으므로 socket을 공유하면 
 - 한 MeshNode의 복수 ChannelName이 같은 ROUTER peer 연결을 사용한다.
 - Client role은 descriptor에 target membership으로 게시되지 않고 Server role만 weight와 handler를 가진다.
 - Server membership이 0개인 MeshNode가 가짜 membership 없이 Node direct와 Channel outbound를 사용한다.
-- Manual과 Automatic peer가 같은 handshake 및 duplicate-pipe 규칙을 따른다.
+- Automatic RouteMesh에서 RID가 더 작은 MeshNode만 pairwise connect를 시작한다.
+- Manual 양방향 connect와 automatic의 경합·stale 후보가 같은 handshake 및 duplicate-pipe admission을
+  거쳐 하나의 ready 연결만 남긴다.
 - Automatic fanout subscriber가 같은 ChannelName publisher만 연결하고 subscriber끼리 물리 연결을 만들지 않는다.
+- Automatic publisher는 descriptor만 게시하고 outbound connect를 시작하지 않으며, manual subscriber와
+  automatic subscriber를 같은 ChannelName registration에 함께 구성하면 startup이 실패한다.
 - Fanout subscriber가 publisher endpoint마다 전용 SUB socket을 사용하고 한 publisher의 timeout을 다른
   publisher에 적용하지 않는다.
 - weight 0과 drain이 새 ChannelName 선택에만 적용된다.

@@ -3,6 +3,7 @@
 
 #include <zlink/Contracts/Core/routing_id.hpp>
 #include <zlink/framework/contracts/actors/actor.hpp>
+#include <zlink/framework/contracts/configuration/drain.hpp>
 #include <zlink/framework/contracts/locations/spot_kind.hpp>
 #include <zlink/framework/contracts/locations/values.hpp>
 
@@ -10,11 +11,55 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
 namespace zlink::framework
 {
+
+struct object_capability_t
+{
+    placement_object_kind_t object_kind =
+      placement_object_kind_t::actor;
+    std::string stable_type;
+    maintenance_policy_kind_t policy =
+      maintenance_policy_kind_t::disabled;
+    bool has_snapshot_adapter = false;
+    std::set<std::string> placement_profiles;
+    std::optional<std::uint32_t> active_limit;
+    std::optional<std::uint32_t> pending_limit;
+};
+
+struct mesh_node_descriptor_t
+{
+    std::string mesh_name;
+    zlink::routing_id_t rid =
+      zlink::routing_id_t::from (std::uint32_t{0});
+    std::uint64_t lifecycle_generation = 0;
+    std::uint64_t descriptor_revision = 0;
+    std::string endpoint;
+    std::map<std::string, int> channel_weights;
+    std::int64_t application_version = 0;
+    std::vector<object_capability_t> object_capabilities;
+    object_role_t object_role = object_role_t::none;
+    std::uint8_t placement_weight = 100;
+    object_capacity_options_t object_capacity{};
+    std::optional<std::string> maintenance_wave;
+    framework_runtime_state_t state =
+      framework_runtime_state_t::preparing;
+    std::string security_identity;
+    std::string owner_id;
+    std::int64_t lease_generation = 0;
+    std::chrono::system_clock::time_point updated_at{};
+};
+
+struct mesh_node_descriptor_key_t
+{
+    std::string mesh_name;
+    zlink::routing_id_t rid =
+      zlink::routing_id_t::from (std::uint32_t{0});
+};
 
 struct peer_location_t
 {

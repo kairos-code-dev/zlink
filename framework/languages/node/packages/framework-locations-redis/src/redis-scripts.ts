@@ -29,7 +29,7 @@ local function storeRow(gen)
 end
 
 if intent == 'new' then
-    if currentOwner and redis.call('EXISTS', ARGV[6] .. currentOwner) == 1 then
+    if currentOwner and redis.call('EXISTS', KEYS[4]) == 1 then
         return {'conflict', 0, nowMs}
     end
     local gen = redis.call('INCR', KEYS[2])
@@ -70,11 +70,13 @@ if ARGV[6] ~= '' then redis.call('INCR', ARGV[6]) end
 return {'stored', tonumber(ARGV[2]), nowMs}
 `;
 
-export const REMOVE_ALL_BY_OWNER_SCRIPT = `
-if redis.replicate_commands then redis.replicate_commands() end
-local leaseValue = redis.call('GET', KEYS[11])
-local leaseGeneration = leaseValue and string.match(leaseValue, '([^|]*)|') or nil
-if not leaseGeneration or leaseGeneration ~= ARGV[11] then return -1 end
+export const REMOVE_ALL_BY_OWNER_SCRIPT = PROLOGUE + `
+local lease = redis.call(
+    'HMGET', KEYS[11], 'ownerId', 'generation', 'expiresAt')
+if lease[1] ~= ARGV[12] or lease[2] ~= ARGV[11]
+    or tonumber(lease[3] or '0') <= nowMs then
+    return -1
+end
 local removed = 0
 for i = 1, 5 do
     local ownerIndex = KEYS[i]
@@ -101,39 +103,140 @@ return removed
 
 export const CLAIM_LEASE_SCRIPT = PROLOGUE + `
 if redis.call('EXISTS', KEYS[1]) == 1 then return {'conflict', nowMs} end
-local current = redis.call('GET', KEYS[2])
+local current = redis.call('HGET', KEYS[2], 'leaseGeneration')
 if current == '9223372036854775807' then return {'exhausted', nowMs} end
-local generation = redis.call('INCR', KEYS[2])
+local generation = redis.call('HINCRBY', KEYS[2], 'leaseGeneration', 1)
 local expiresAtMs = nowMs + tonumber(ARGV[2])
-redis.call('SET', KEYS[1], generation .. '|' .. nowMs, 'PX', ARGV[2])
-redis.call('SADD', KEYS[3], ARGV[1])
+redis.call('HSET', KEYS[1],
+    'ownerId', ARGV[1],
+    'generation', generation,
+    'expiresAt', expiresAtMs)
+redis.call('PEXPIRE', KEYS[1], ARGV[2])
 return {'claimed', generation, expiresAtMs, nowMs}
 `;
 
 export const READ_LEASE_SCRIPT = PROLOGUE + `
-local value = redis.call('GET', KEYS[1])
-local pttl = redis.call('PTTL', KEYS[1])
-if not value or pttl < 0 then return {'missing', nowMs} end
-local generation = string.match(value, '([^|]*)|')
-return {'found', generation, nowMs + pttl, nowMs}
+local values = redis.call('HMGET', KEYS[1], 'ownerId', 'generation', 'expiresAt')
+if values[1] ~= ARGV[1] or not values[2]
+    or tonumber(values[3] or '0') <= nowMs then
+    return {'missing', nowMs}
+end
+return {'found', values[2], values[3], nowMs}
 `;
 
 export const RENEW_LEASE_SCRIPT = PROLOGUE + `
-local value = redis.call('GET', KEYS[1])
-local currentGeneration = value and string.match(value, '([^|]*)|') or nil
-if not currentGeneration or currentGeneration ~= ARGV[2] then return {'stale', nowMs} end
+local values = redis.call('HMGET', KEYS[1], 'ownerId', 'generation', 'expiresAt')
+local currentGeneration = values[2]
+if values[1] ~= ARGV[1] or not currentGeneration
+    or currentGeneration ~= ARGV[2]
+    or tonumber(values[3] or '0') <= nowMs then
+    return {'stale', nowMs}
+end
 local expiresAtMs = nowMs + tonumber(ARGV[3])
-redis.call('SET', KEYS[1], currentGeneration .. '|' .. nowMs, 'PX', ARGV[3])
+redis.call('HSET', KEYS[1], 'expiresAt', expiresAtMs)
+redis.call('PEXPIRE', KEYS[1], ARGV[3])
 return {'renewed', expiresAtMs, nowMs}
 `;
 
 export const RELEASE_LEASE_SCRIPT = PROLOGUE + `
-local value = redis.call('GET', KEYS[1])
-local currentGeneration = value and string.match(value, '([^|]*)|') or nil
-if not currentGeneration or currentGeneration ~= ARGV[2] then return {'stale'} end
+local values = redis.call('HMGET', KEYS[1], 'ownerId', 'generation')
+if values[1] ~= ARGV[1] or values[2] ~= ARGV[2] then return {'stale'} end
 redis.call('DEL', KEYS[1])
-redis.call('SREM', KEYS[2], ARGV[1])
 return {'released'}
+`;
+
+export const MESH_DESCRIPTOR_WRITE_SCRIPT = PROLOGUE + `
+local intent = ARGV[1]
+local owner = ARGV[2]
+local leaseGeneration = ARGV[3]
+local lifecycle = ARGV[4]
+local revision = tonumber(ARGV[5])
+local immutable = ARGV[6]
+local json = ARGV[7]
+local currentOwner = redis.call('HGET', KEYS[1], 'owner')
+local lease = redis.call('HMGET', KEYS[4], 'ownerId', 'generation', 'expiresAt')
+local liveGeneration = lease[2]
+if not liveGeneration or liveGeneration ~= leaseGeneration then
+    return {'conflict', 0, nowMs}
+end
+if lease[1] ~= owner or tonumber(lease[3] or '0') <= nowMs then
+    return {'conflict', 0, nowMs}
+end
+local function store(gen)
+    redis.call('HSET', KEYS[1],
+        'owner', owner, 'gen', gen, 'json', json,
+        'updatedAtMs', nowMs, 'mesh', ARGV[13])
+    redis.call('HSET', KEYS[2],
+        'descriptorKey', ARGV[14],
+        'lifecycleGeneration', lifecycle,
+        'descriptorRevision', revision,
+        'immutableDigest', immutable,
+        'ownerId', owner,
+        'ownerLeaseGeneration', leaseGeneration,
+        'objectRole', ARGV[8],
+        'runtimeState', ARGV[9],
+        'applicationVersion', ARGV[15],
+        'capabilities', ARGV[10],
+        'nodeActiveLimit', ARGV[11],
+        'nodePendingLimit', ARGV[12])
+    redis.call('SADD', KEYS[3], ARGV[14])
+    redis.call('SADD', KEYS[6], ARGV[14])
+end
+if not currentOwner then
+    if intent ~= 'new' and intent ~= 'takeover' then
+        return {'stale', 0, nowMs}
+    end
+    local current = redis.call('HGET', KEYS[5], 'descriptorGeneration') or '0'
+    if current == '9223372036854775807' then return {'exhausted', 0, nowMs} end
+    redis.call('HINCRBY', KEYS[5], 'descriptorGeneration', 1)
+    local gen = redis.call('HGET', KEYS[5], 'descriptorGeneration')
+    store(gen)
+    return {'stored', gen, nowMs}
+end
+local storedLeaseGeneration = redis.call('HGET', KEYS[2], 'ownerLeaseGeneration')
+local storedOwner = redis.call('HGET', KEYS[2], 'ownerId')
+if (storedOwner ~= owner or storedLeaseGeneration ~= leaseGeneration)
+    and (intent == 'new' or intent == 'takeover') then
+    local current = redis.call('HGET', KEYS[5], 'descriptorGeneration') or '0'
+    if current == '9223372036854775807' then return {'exhausted', 0, nowMs} end
+    redis.call('HINCRBY', KEYS[5], 'descriptorGeneration', 1)
+    local gen = redis.call('HGET', KEYS[5], 'descriptorGeneration')
+    store(gen)
+    return {'stored', gen, nowMs}
+end
+local storedRevision = tonumber(redis.call('HGET', KEYS[2], 'descriptorRevision'))
+if redis.call('HGET', KEYS[2], 'lifecycleGeneration') == lifecycle
+    and redis.call('HGET', KEYS[2], 'immutableDigest') == immutable
+    and currentOwner == owner
+    and storedLeaseGeneration == leaseGeneration
+    and revision == storedRevision
+    and redis.call('HGET', KEYS[1], 'json') == json then
+    return {'stored', tonumber(redis.call('HGET', KEYS[1], 'gen')),
+        tonumber(redis.call('HGET', KEYS[1], 'updatedAtMs'))}
+end
+if redis.call('HGET', KEYS[2], 'lifecycleGeneration') ~= lifecycle
+    or redis.call('HGET', KEYS[2], 'immutableDigest') ~= immutable
+    or currentOwner ~= owner
+    or storedLeaseGeneration ~= leaseGeneration
+    or revision <= storedRevision then
+    return {'stale', tonumber(redis.call('HGET', KEYS[1], 'gen')), nowMs}
+end
+local gen = tonumber(redis.call('HGET', KEYS[1], 'gen'))
+store(gen)
+return {'stored', gen, nowMs}
+`;
+
+export const MESH_DESCRIPTOR_REMOVE_SCRIPT = PROLOGUE + `
+local owner = redis.call('HGET', KEYS[2], 'ownerId')
+local leaseGeneration = redis.call('HGET', KEYS[2], 'ownerLeaseGeneration')
+if not owner or owner ~= ARGV[1] or leaseGeneration ~= ARGV[2] then
+    return {'stale', 0, nowMs}
+end
+local generation = tonumber(redis.call('HGET', KEYS[1], 'gen'))
+redis.call('DEL', KEYS[1], KEYS[2])
+redis.call('SREM', KEYS[3], ARGV[3])
+redis.call('SREM', KEYS[4], ARGV[3])
+return {'stored', generation, nowMs}
 `;
 
 const TRANSFER_PROLOGUE = PROLOGUE + `
@@ -234,14 +337,17 @@ if existingSlot then
     local value = redis.call('HGET', KEYS[1], 'slot:' .. existingSlot)
     if value then
         local currentOwner, generation = string.match(value, '([^|]*)|([^|]*)|')
-        if currentOwner == ARGV[3] and redis.call('EXISTS', KEYS[2]) == 1 then
+        local lease = redis.call(
+            'HMGET', KEYS[2], 'ownerId', 'generation', 'expiresAt')
+        if currentOwner == ARGV[3]
+            and lease[1] == currentOwner
+            and lease[2] == generation
+            and tonumber(lease[3] or '0') > nowMs then
             local renewedExpiry = nowMs + tonumber(ARGV[4])
             redis.call('HSET', KEYS[1], 'slot:' .. existingSlot,
                 currentOwner .. '|' .. generation .. '|' .. renewedExpiry)
-            local leaseValue = redis.call('GET', KEYS[2])
-            local leaseGeneration = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
-            redis.call('SET', KEYS[2], leaseGeneration .. '|' .. nowMs, 'PX', ARGV[4])
-            redis.call('SADD', KEYS[3], ARGV[3])
+            redis.call('HSET', KEYS[2], 'expiresAt', renewedExpiry)
+            redis.call('PEXPIRE', KEYS[2], ARGV[4])
             return {'acquired', existingSlot, tonumber(generation), renewedExpiry, nowMs}
         end
     end
@@ -255,7 +361,7 @@ for slot = 1, slotCount do
         break
     end
     local currentOwner = string.match(value, '([^|]*)|')
-    if redis.call('EXISTS', ARGV[5] .. currentOwner) == 0 then
+    if redis.call('EXISTS', KEYS[2 + slot]) == 0 then
         redis.call('HDEL', KEYS[1], 'owner:' .. currentOwner)
         selected = slot
         break
@@ -270,10 +376,11 @@ local expiresAt = nowMs + tonumber(ARGV[4])
 redis.call('HSET', KEYS[1],
     'slot:' .. selected, ARGV[3] .. '|' .. generation .. '|' .. expiresAt,
     ownerField, selected)
-local leaseValue = redis.call('GET', KEYS[2])
-local leaseGeneration = leaseValue and string.match(leaseValue, '([^|]*)|') or ''
-redis.call('SET', KEYS[2], leaseGeneration .. '|' .. nowMs, 'PX', ARGV[4])
-redis.call('SADD', KEYS[3], ARGV[3])
+redis.call('HSET', KEYS[2],
+    'ownerId', ARGV[3],
+    'generation', generation,
+    'expiresAt', expiresAt)
+redis.call('PEXPIRE', KEYS[2], ARGV[4])
 return {'acquired', selected, generation, expiresAt, nowMs}
 `;
 
@@ -298,7 +405,7 @@ for slot = 1, slotCount do
     local value = redis.call('HGET', KEYS[1], 'slot:' .. slot)
     if value then
         local owner, generation = string.match(value, '([^|]*)|([^|]*)|')
-        local remaining = redis.call('PTTL', ARGV[1] .. owner)
+        local remaining = redis.call('PTTL', KEYS[1 + slot])
         if remaining >= 0 then
             allocations[#allocations + 1] = slot
             allocations[#allocations + 1] = owner

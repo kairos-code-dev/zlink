@@ -15,6 +15,10 @@ internal sealed class ZLinkFrameworkRegistration
 
     public TimeSpan DefaultSocketSendTimeout { get; set; } = TimeSpan.FromMilliseconds(1000);
 
+    public long ApplicationVersion { get; set; }
+
+    public string? MaintenanceWave { get; set; }
+
     public ZLinkCodecRegistryBuilder Codecs { get; } = new();
 
     public IZlinkStreamCompressionCodec? StreamCompressionCodec { get; set; } =
@@ -323,6 +327,16 @@ internal sealed class ZLinkSpotNodeRegistration
     public bool HasExplicitEntrySpotRoutingId { get; set; }
 
     public Type? EntrySpotType { get; set; }
+
+    public ZLinkMeshNodeObjectRole ObjectRole { get; set; }
+
+    public bool ObjectRoleSelected { get; set; }
+
+    public int PlacementWeight { get; set; } = 100;
+
+    public int MaxActiveObjects { get; set; } = 10_000;
+
+    public int MaxPendingActivations { get; set; } = 128;
 }
 
 internal sealed class ZLinkRoutingIdAllocationRegistration

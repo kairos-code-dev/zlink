@@ -73,6 +73,37 @@ using zlink::framework::runtime::store_location_resolvers_t;
 class test_location_store_t : public zlink::framework::location_store_t
 {
   public:
+    zlink::framework::task_t<
+      zlink::framework::location_write_result_t>
+    update_mesh_node (
+      zlink::framework::mesh_node_descriptor_t descriptor,
+      zlink::framework::location_write_intent_t intent) override
+    {
+        return _inner.update_mesh_node (
+          std::move (descriptor), intent);
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::location_write_status_t>
+    remove_mesh_node (
+      zlink::framework::mesh_node_descriptor_key_t key,
+      zlink::framework::location_owner_token_t owner) override
+    {
+        return _inner.remove_mesh_node (
+          std::move (key), std::move (owner));
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::location_page_t<
+        zlink::framework::mesh_node_descriptor_t>>
+    list_mesh_nodes (
+      std::string mesh_name,
+      zlink::framework::location_page_request_t page = {}) override
+    {
+        return _inner.list_mesh_nodes (
+          std::move (mesh_name), std::move (page));
+    }
+
     zlink::framework::task_t<zlink::framework::location_write_result_t>
     update_peer (zlink::framework::peer_location_t peer,
                  zlink::framework::location_write_intent_t intent) override
@@ -182,6 +213,41 @@ class test_location_store_t : public zlink::framework::location_store_t
         return _inner.renew_owner_lease (std::move (owner_id), std::move (node_rid), lease_ttl);
     }
 
+    zlink::framework::task_t<
+      zlink::framework::owner_lease_claim_result_t>
+    claim_owner_lease (
+      std::string owner_id,
+      std::chrono::milliseconds lease_ttl) override
+    {
+        return _inner.claim_owner_lease (
+          std::move (owner_id), lease_ttl);
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::owner_lease_read_result_t>
+    read_owner_lease (std::string owner_id) override
+    {
+        return _inner.read_owner_lease (std::move (owner_id));
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::owner_lease_renew_result_t>
+    renew_owner_lease (
+      zlink::framework::location_owner_token_t token,
+      std::chrono::milliseconds lease_ttl) override
+    {
+        return _inner.renew_owner_lease (
+          std::move (token), lease_ttl);
+    }
+
+    zlink::framework::task_t<
+      zlink::framework::owner_lease_release_result_t>
+    release_owner_lease (
+      zlink::framework::location_owner_token_t token) override
+    {
+        return _inner.release_owner_lease (std::move (token));
+    }
+
     zlink::framework::task_t<bool>
     remove_owner_lease (std::string owner_id) override
     {
@@ -209,12 +275,13 @@ class test_location_store_t : public zlink::framework::location_store_t
     zlink::framework::task_t<zlink::framework::authority_compare_exchange_result_t>
     compare_exchange_authority (
       zlink::framework::authority_key_t key,
-      zlink::framework::authority_expectation_t expectation,
+      std::string expected_store_version,
       zlink::framework::authority_mutation_t mutation,
       std::stop_token cancellation = {}) override
     {
         return _inner.compare_exchange_authority (
-          std::move (key), std::move (expectation), std::move (mutation),
+          std::move (key), std::move (expected_store_version),
+          std::move (mutation),
           cancellation);
     }
 
@@ -982,6 +1049,29 @@ TEST (ZLinkFrameworkStoreLocationResolvers, InMemoryLocationStoresCannotMixWithE
     options.use_in_memory_location_stores ().add_location_store (store);
 
     EXPECT_THROW (options.apply (), zlink::framework::framework_exception_t);
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      FanoutAutomaticAndManualSubscriberSourcesFailConfiguration)
+{
+    options_fixture_t fixture;
+    auto options = fixture.make_options ();
+
+    options.add_fanout_channel ("events")
+      .enable_subscriber ()
+      .enable_subscriber ("tcp://127.0.0.1:7001");
+
+    try {
+        options.apply ();
+        FAIL () << "mixed fanout subscriber sources must fail configuration";
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        EXPECT_EQ (zlink::framework::framework_error_kind_t::request_protocol_error,
+                   error.kind ());
+        EXPECT_NE (std::string::npos,
+                   std::string (error.what ()).find (
+                     "cannot combine automatic discovery with manual subscriber endpoints"));
+    }
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, PendingActorEntrySpotResolvesAsMiss)

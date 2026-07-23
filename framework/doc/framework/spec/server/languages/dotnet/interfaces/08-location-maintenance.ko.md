@@ -443,8 +443,8 @@ Application이 값을 선택하는 option은 없다. 순서를 비교하는 값�
 `MeshName`은 current placement attribute다.
 Maintenance owner 이관은 `NewOwner`로 owner generation만 바꾸고 object generation을 유지한다.
 기존 ref의 object generation은 유지된다. 이전 owner route를 사용하면 runtime이 current authority를 재조회하여
-forwarding 또는 retry한다. Explicit close 후 cold recreate만 `NewObject`로 새 object generation을 발급하며,
-이때 이전 ref snapshot은 영구적으로 stale다.
+forwarding 또는 retry한다. Explicit close 뒤 cold recreate는 이전 row의 fenced delete가 완료된 후 새
+`ReserveAsync`가 새 object generation을 발급한다. 이전 ref snapshot은 영구적으로 stale다.
 
 `ListClientServersAsync`는 같은 ChannelName의 유효한 ClientServer server descriptor를 반환한다. Framework는
 Server RID와 generation을 admission에서 확인하기 전에는 반환된 descriptor를 ready target으로 사용하지

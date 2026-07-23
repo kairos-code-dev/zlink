@@ -225,7 +225,11 @@ public sealed class InMemoryLocationStoreTests
     {
         var (store, _) = await CreateStoreWithLiveOwnersAsync(OwnerA, OwnerB);
         var descriptorA = MeshNode(OwnerA, endpoint: "tcp://127.0.0.1:5001", nodeRid: "node-a");
-        var descriptorB = MeshNode(OwnerB, endpoint: "tcp://127.0.0.1:5002", nodeRid: "node-b");
+        var descriptorB = MeshNode(
+            OwnerB,
+            endpoint: "tcp://127.0.0.1:5002",
+            nodeRid: "node-b",
+            leaseGeneration: 2);
 
         await store.UpdateMeshNodeAsync(descriptorA, ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateMeshNodeAsync(descriptorB, ZLinkLocationWriteIntent.NewClaim);
@@ -337,17 +341,21 @@ public sealed class InMemoryLocationStoreTests
         string ownerId,
         string endpoint = "tcp://127.0.0.1:5001",
         string nodeRid = "node-1",
-        string meshName = "play") => new(
+        string meshName = "play",
+        long leaseGeneration = 1) => new(
         meshName,
         RoutingId.From(nodeRid),
-        LifecycleGeneration: 0,
+        LifecycleGeneration: 1,
         DescriptorRevision: 1,
         endpoint,
         new Dictionary<string, int>(StringComparer.Ordinal) { [meshName] = 100 },
-        Draining: false,
         SecurityIdentity: string.Empty,
         OwnerId: ownerId,
-        UpdatedAt: default);
+        LeaseGeneration: leaseGeneration,
+        UpdatedAt: default)
+    {
+        State = ZLinkFrameworkRuntimeState.Serving
+    };
 }
 
 /// <summary>

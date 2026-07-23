@@ -36,7 +36,11 @@ final class ZLinkRedisLocationScripts {
         end
 
         if intent == 'new' then
-            if currentOwner and redis.call('EXISTS', ARGV[6] .. currentOwner) == 1 then
+            if currentOwner
+                and tonumber(
+                    redis.call(
+                        'HGET', KEYS[4], 'expiresAt') or '0')
+                    > nowMs then
                 return {'conflict', 0, nowMs}
             end
             local gen = redis.call('INCR', KEYS[2])
@@ -58,6 +62,119 @@ final class ZLinkRedisLocationScripts {
             return {'stored', gen, nowMs}
         end
         return {'stale', 0, nowMs}
+        """;
+
+    static final String WRITE_MESH_NODE = PROLOGUE + """
+
+        local function leaseIsLive(leaseKey, ownerId, generation)
+            return redis.call('HGET', leaseKey, 'ownerId')
+                    == ownerId
+                and redis.call('HGET', leaseKey, 'generation')
+                    == generation
+                and tonumber(
+                    redis.call('HGET', leaseKey, 'expiresAt') or '0')
+                    > nowMs
+        end
+
+        if not leaseIsLive(KEYS[3], ARGV[2], ARGV[3]) then
+            return {'stale', 0, nowMs}
+        end
+
+        local currentOwner = redis.call('HGET', KEYS[1], 'owner')
+        local currentLease = redis.call(
+            'HGET', KEYS[4], 'ownerLeaseGeneration')
+        local currentLifecycle =
+            redis.call(
+                'HGET', KEYS[4], 'lifecycleGeneration')
+        local currentRevision = redis.call(
+            'HGET', KEYS[4], 'descriptorRevision')
+        local currentFingerprint =
+            redis.call('HGET', KEYS[4], 'immutableDigest')
+
+        if ARGV[1] == 'new' then
+            if currentOwner
+                and leaseIsLive(
+                    KEYS[9], currentOwner, currentLease) then
+                return {'conflict', 0, nowMs}
+            end
+        elseif ARGV[1] == 'takeover' then
+            if currentOwner
+                and leaseIsLive(
+                    KEYS[9], currentOwner, currentLease) then
+                return {'conflict', 0, nowMs}
+            end
+        else
+            if not currentOwner
+                or currentOwner ~= ARGV[2]
+                or currentLease ~= ARGV[3]
+                or currentLifecycle ~= ARGV[4]
+                or not currentFingerprint
+                or not currentRevision then
+                return {'stale', 0, nowMs}
+            end
+            if tonumber(ARGV[5]) == tonumber(currentRevision) then
+                if currentFingerprint == ARGV[6]
+                    and redis.call('HGET', KEYS[1], 'json') == ARGV[7] then
+                    return {'stored', tonumber(currentLifecycle), nowMs}
+                end
+                return {'protocol-error', 0, nowMs}
+            end
+            if tonumber(ARGV[5]) < tonumber(currentRevision) then
+                return {'stale', 0, nowMs}
+            end
+            if currentFingerprint ~= ARGV[6] then
+                return {'stale', 0, nowMs}
+            end
+        end
+
+        local previousOwner = currentOwner
+        redis.call('HSET', KEYS[1],
+            'owner', ARGV[2],
+            'gen', ARGV[4],
+            'json', ARGV[7],
+            'updatedAtMs', nowMs,
+            'mesh', ARGV[9])
+        redis.call('HSET', KEYS[4],
+            'descriptorKey', ARGV[13],
+            'descriptorRevision', ARGV[5],
+            'lifecycleGeneration', ARGV[4],
+            'ownerId', ARGV[2],
+            'ownerLeaseGeneration', ARGV[3],
+            'objectRole', ARGV[10],
+            'runtimeState', ARGV[11],
+            'applicationVersion', ARGV[12],
+            'capabilities', ARGV[14],
+            'nodeActiveLimit', ARGV[15],
+            'nodePendingLimit', ARGV[16],
+            'immutableDigest', ARGV[6])
+        redis.call('SADD', KEYS[2], ARGV[8])
+        redis.call('SADD', KEYS[5], ARGV[8])
+        if previousOwner and previousOwner ~= ARGV[2] then
+            redis.call('SREM', KEYS[6], ARGV[8])
+        end
+        redis.call('INCR', KEYS[7])
+        redis.call('INCR', KEYS[8])
+        return {'stored', tonumber(ARGV[4]), nowMs}
+        """;
+
+    static final String REMOVE_MESH_NODE = PROLOGUE + """
+
+        local currentOwner = redis.call('HGET', KEYS[1], 'owner')
+        local currentLease =
+            redis.call(
+                'HGET', KEYS[3], 'ownerLeaseGeneration')
+        if not currentOwner
+            or currentOwner ~= ARGV[1]
+            or currentLease ~= ARGV[2] then
+            return {'stale', 0, nowMs}
+        end
+        redis.call('DEL', KEYS[1])
+        redis.call('DEL', KEYS[3])
+        redis.call('SREM', KEYS[2], ARGV[3])
+        redis.call('SREM', KEYS[4], ARGV[3])
+        redis.call('INCR', KEYS[5])
+        redis.call('INCR', KEYS[6])
+        return {'stored', tonumber(ARGV[2]), nowMs}
         """;
 
     static final String REMOVE = PROLOGUE + """
@@ -82,12 +199,13 @@ final class ZLinkRedisLocationScripts {
         local removed = 0
         for i = 1, 4 do
             local ownerIndex = KEYS[i]
-            local kindIndex = KEYS[i + 4]
+            local kindIndex = KEYS[i + 5]
             local rowPrefix = ARGV[i]
-            local stampBase = ARGV[i + 4]
+            local stampBase = ARGV[i + 5]
             local rowKeys = redis.call('SMEMBERS', ownerIndex)
-            for _, rowKey in ipairs(rowKeys) do
-                local rowHash = rowPrefix .. rowKey
+            for _, indexedKey in ipairs(rowKeys) do
+                local rowKey = indexedKey
+                local rowHash = rowPrefix .. indexedKey
                 local mesh = redis.call('HGET', rowHash, 'mesh')
                 if redis.call('DEL', rowHash) == 1 then
                     removed = removed + 1
@@ -103,6 +221,29 @@ final class ZLinkRedisLocationScripts {
         return removed
         """;
 
+    static final String REMOVE_ALL_MESH_NODES = PROLOGUE + """
+
+        local removed = 0
+        for index = 1, #ARGV - 1 do
+            local keyOffset = 4 + (index - 1) * 3
+            local rowKey = ARGV[index + 1]
+            if redis.call('HGET', KEYS[keyOffset], 'owner')
+                    == ARGV[1] then
+                redis.call('DEL', KEYS[keyOffset])
+                redis.call('DEL', KEYS[keyOffset + 1])
+                redis.call('SREM', KEYS[2], rowKey)
+                redis.call('INCR', KEYS[3])
+                redis.call('INCR', KEYS[keyOffset + 2])
+                removed = removed + 1
+            end
+            redis.call('SREM', KEYS[1], rowKey)
+        end
+        if redis.call('SCARD', KEYS[1]) == 0 then
+            redis.call('DEL', KEYS[1])
+        end
+        return removed
+        """;
+
     static final String RENEW_LEASE = PROLOGUE + """
 
         redis.call('SET', KEYS[1], ARGV[2] .. '|' .. nowMs, 'PX', ARGV[3])
@@ -112,36 +253,38 @@ final class ZLinkRedisLocationScripts {
 
     static final String CLAIM_OWNER_LEASE = PROLOGUE + """
 
-        local current = redis.call('HGET', KEYS[1], ARGV[1])
-        if current then
-            local currentGeneration, currentExpiry =
-                string.match(current, '([^|]*)|([^|]*)')
-            if tonumber(currentExpiry) > nowMs then
+        local currentExpiry = tonumber(
+            redis.call('HGET', KEYS[1], 'expiresAt') or '0')
+        if currentExpiry > nowMs then
                 return {'conflict', nowMs}
-            end
-            redis.call('HDEL', KEYS[1], ARGV[1])
         end
-        if redis.call('GET', KEYS[2]) == '9223372036854775807' then
+        if redis.call(
+                'HGET', KEYS[2], 'leaseGeneration')
+                == '9223372036854775807' then
             return {'generation-exhausted', nowMs}
         end
-        local generation = redis.call('INCR', KEYS[2])
+        local generation = redis.call(
+            'HINCRBY', KEYS[2], 'leaseGeneration', 1)
         local expiresAt = nowMs + tonumber(ARGV[2])
-        redis.call('HSET', KEYS[1], ARGV[1],
-            generation .. '|' .. expiresAt)
-        redis.call('SET', KEYS[3], generation .. '|' .. nowMs,
-            'PX', ARGV[2])
+        redis.call('HSET', KEYS[1],
+            'ownerId', ARGV[1],
+            'generation', generation,
+            'expiresAt', expiresAt)
+        redis.call('PEXPIRE', KEYS[1], ARGV[2])
         return {'claimed', generation, expiresAt, nowMs}
         """;
 
     static final String READ_OWNER_LEASE = PROLOGUE + """
 
-        local current = redis.call('HGET', KEYS[1], ARGV[1])
-        if not current then return {'missing', nowMs} end
-        local generation, expiresAt =
-            string.match(current, '([^|]*)|([^|]*)')
+        if redis.call('HGET', KEYS[1], 'ownerId') ~= ARGV[1] then
+            return {'missing', nowMs}
+        end
+        local generation = redis.call(
+            'HGET', KEYS[1], 'generation')
+        local expiresAt = redis.call(
+            'HGET', KEYS[1], 'expiresAt')
         if tonumber(expiresAt) <= nowMs then
-            redis.call('HDEL', KEYS[1], ARGV[1])
-            redis.call('DEL', KEYS[2])
+            redis.call('DEL', KEYS[1])
             return {'missing', nowMs}
         end
         return {'found', generation, expiresAt, nowMs}
@@ -149,40 +292,41 @@ final class ZLinkRedisLocationScripts {
 
     static final String RENEW_OWNER_LEASE = PROLOGUE + """
 
-        local current = redis.call('HGET', KEYS[1], ARGV[1])
-        if not current then return {'stale', nowMs} end
-        local generation, expiresAt =
-            string.match(current, '([^|]*)|([^|]*)')
+        if redis.call('HGET', KEYS[1], 'ownerId') ~= ARGV[1] then
+            return {'stale', nowMs}
+        end
+        local generation = redis.call(
+            'HGET', KEYS[1], 'generation')
+        local expiresAt = redis.call(
+            'HGET', KEYS[1], 'expiresAt')
         if generation ~= ARGV[2] or tonumber(expiresAt) <= nowMs then
             if tonumber(expiresAt) <= nowMs then
-                redis.call('HDEL', KEYS[1], ARGV[1])
-                redis.call('DEL', KEYS[2])
+                redis.call('DEL', KEYS[1])
             end
             return {'stale', nowMs}
         end
         local renewedExpiry = nowMs + tonumber(ARGV[3])
-        redis.call('HSET', KEYS[1], ARGV[1],
-            generation .. '|' .. renewedExpiry)
-        redis.call('SET', KEYS[2], generation .. '|' .. nowMs,
-            'PX', ARGV[3])
+        redis.call('HSET', KEYS[1], 'expiresAt', renewedExpiry)
+        redis.call('PEXPIRE', KEYS[1], ARGV[3])
         return {'renewed', renewedExpiry, nowMs}
         """;
 
     static final String RELEASE_OWNER_LEASE = PROLOGUE + """
 
-        local current = redis.call('HGET', KEYS[1], ARGV[1])
-        if not current then return {'stale', nowMs} end
-        local generation, expiresAt =
-            string.match(current, '([^|]*)|([^|]*)')
+        if redis.call('HGET', KEYS[1], 'ownerId') ~= ARGV[1] then
+            return {'stale', nowMs}
+        end
+        local generation = redis.call(
+            'HGET', KEYS[1], 'generation')
+        local expiresAt = redis.call(
+            'HGET', KEYS[1], 'expiresAt')
         if generation ~= ARGV[2] or tonumber(expiresAt) <= nowMs then
             if tonumber(expiresAt) <= nowMs then
-                redis.call('HDEL', KEYS[1], ARGV[1])
-                redis.call('DEL', KEYS[2])
+                redis.call('DEL', KEYS[1])
             end
             return {'stale', nowMs}
         end
-        redis.call('HDEL', KEYS[1], ARGV[1])
-        redis.call('DEL', KEYS[2])
+        redis.call('DEL', KEYS[1])
         return {'released', nowMs}
         """;
 

@@ -324,7 +324,11 @@ public sealed class LocationRuntimeQueryTests
     private static async Task SeedRowsAsync(ZLinkInMemoryLocationStore store, string owner, string suffix)
     {
         await store.UpdateMeshNodeAsync(
-            InMemoryLocationStoreTests.MeshNode(owner, $"tcp://127.0.0.1:500{suffix}", $"node-{suffix}"),
+            InMemoryLocationStoreTests.MeshNode(
+                owner,
+                $"tcp://127.0.0.1:500{suffix}",
+                $"node-{suffix}",
+                leaseGeneration: owner == LiveOwner ? 1 : 2),
             ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateSpotAsync(
             InMemoryLocationStoreTests.Spot(owner, $"spot-{suffix}"),

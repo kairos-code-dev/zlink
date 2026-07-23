@@ -56,7 +56,9 @@ export function encodeRouteKey(key: RouteKey): string {
 }
 
 export function encodeKeySegments(...segments: readonly string[]): string {
-  return segments.map((segment) => `${segment.length}:${segment}`).join('');
+  return segments.map(
+    (segment) => `${Buffer.byteLength(segment, 'utf8')}:${segment}`
+  ).join('');
 }
 
 function zlinkLocationAutoConnectTypeName(type: ZLinkLocationAutoConnectType): string {

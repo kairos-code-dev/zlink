@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
+
 namespace
 {
 
@@ -87,6 +89,52 @@ location_owner_token_t owner_token (std::string owner_id, std::int64_t generatio
     return location_owner_token_t{std::move (owner_id), generation};
 }
 
+zlink::framework::mesh_node_descriptor_t make_mesh_node (
+  std::string rid,
+  location_owner_token_t owner,
+  std::uint32_t pending_limit = 128)
+{
+    using namespace zlink::framework;
+    return mesh_node_descriptor_t{
+      .mesh_name = "play",
+      .rid = zlink::routing_id_t::from (rid),
+      .lifecycle_generation = 1,
+      .descriptor_revision = 1,
+      .endpoint = "tcp://127.0.0.1:5001",
+      .application_version = 1,
+      .object_capabilities =
+        {{.object_kind = placement_object_kind_t::actor,
+          .stable_type = "player",
+          .policy = maintenance_policy_kind_t::recreate,
+          .placement_profiles = {"standard"}}},
+      .object_role = object_role_t::server,
+      .object_capacity =
+        {.active_limit = 100, .pending_limit = pending_limit},
+      .state = framework_runtime_state_t::serving,
+      .security_identity = "test",
+      .owner_id = std::move (owner.owner_id),
+      .lease_generation = owner.lease_generation};
+}
+
+void publish_mesh_node (
+  in_memory_location_store_t &store,
+  std::string rid,
+  location_owner_token_t owner,
+  std::uint32_t pending_limit = 128)
+{
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_mesh_node (
+          make_mesh_node (
+            std::move (rid), std::move (owner),
+            pending_limit),
+          location_write_intent_t::new_claim)
+        .result ()
+        .value ()
+        .status);
+}
+
 TEST (ZLinkFrameworkInMemoryLocationStore, SharesOneStoreForAllLocationRoles)
 {
     in_memory_location_store_t store;
@@ -154,6 +202,8 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
       .value ();
     const location_owner_token_t owner_a{"owner-a", 1};
     const location_owner_token_t owner_b{"owner-b", 2};
+    publish_mesh_node (store, "node-a", owner_a);
+    publish_mesh_node (store, "node-b", owner_b);
 
     object_reserve_request_t reservation{
       .key = {placement_object_kind_t::actor,
@@ -202,8 +252,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
       store
         .compare_exchange_authority (
           authority_key,
-          authority_expect_found_t{
-            committed_value->ready.store_version},
+          committed_value->ready.store_version,
           authority_put_t{
             {std::byte{0x05}},
             authority_generation_transition_t::preserve,
@@ -254,12 +303,12 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
         relocation_capacity_already_reserved_t> (
         &capacity_again));
 
+    store.release_owner_lease (owner_a).result ().value ();
     const auto moved =
       store
         .compare_exchange_authority (
           authority_key,
-          authority_expect_found_t{
-            preserved_value->snapshot.store_version},
+          preserved_value->snapshot.store_version,
           authority_put_t{
             {std::byte{0x06}},
             authority_generation_transition_t::new_owner,
@@ -286,13 +335,145 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
     EXPECT_THROW (
       store.compare_exchange_authority (
         authority_key,
-        authority_expect_found_t{
-          moved_value->snapshot.store_version},
+        moved_value->snapshot.store_version,
         authority_put_t{
           {},
           authority_generation_transition_t::preserve,
           owner_b}),
       std::invalid_argument);
+}
+
+TEST (ZLinkFrameworkInMemoryLocationStore,
+      DescriptorFencesCapabilityProfileAndPendingCapacity)
+{
+    using namespace zlink::framework;
+    in_memory_location_store_t store;
+    const auto owner =
+      std::get<owner_lease_claimed_t> (
+        store
+          .claim_owner_lease (
+            "owner-target", std::chrono::seconds (15))
+          .result ()
+          .value ())
+        .token;
+
+    object_reserve_request_t request{
+      .key = {placement_object_kind_t::actor, "profiled-a"},
+      .intent =
+        {.stable_type = "player",
+         .placement_profile =
+           placement_profile_t{"standard"}},
+      .target =
+        {.mesh_name = "play",
+         .node_rid = node_rid_t::from_string ("node-target"),
+         .node_lifecycle_generation = 1,
+         .owner = owner}};
+    EXPECT_NE (
+      nullptr,
+      std::get_if<object_reserve_conflict_t> (
+        &store.reserve (request).result ().value ()));
+
+    publish_mesh_node (
+      store, "node-target", owner, 1);
+    auto wrong_profile = request;
+    wrong_profile.key.global_id = "profiled-wrong";
+    wrong_profile.intent.placement_profile =
+      placement_profile_t{"premium"};
+    EXPECT_NE (
+      nullptr,
+      std::get_if<object_reserve_conflict_t> (
+        &store.reserve (wrong_profile).result ().value ()));
+
+    EXPECT_NE (
+      nullptr,
+      std::get_if<object_reserved_t> (
+        &store.reserve (request).result ().value ()));
+    auto over_limit = request;
+    over_limit.key.global_id = "profiled-b";
+    EXPECT_NE (
+      nullptr,
+      std::get_if<object_placement_capacity_exhausted_t> (
+        &store.reserve (over_limit).result ().value ()));
+
+    auto changed =
+      make_mesh_node ("node-target", owner, 2);
+    changed.descriptor_revision = 2;
+    EXPECT_EQ (
+      location_write_status_t::rejected_conflict,
+      store
+        .update_mesh_node (
+          changed, location_write_intent_t::renew)
+        .result ()
+        .value ()
+        .status);
+    const auto listed =
+      store.list_mesh_nodes ("play").result ().value ();
+    ASSERT_EQ (1u, listed.items.size ());
+    EXPECT_EQ (
+      1u, listed.items.front ().object_capacity.pending_limit);
+}
+
+TEST (ZLinkFrameworkInMemoryLocationStore,
+      StoreRevisionExhaustionDoesNotReuseVersionOrMutateAuthority)
+{
+    using namespace zlink::framework;
+    const auto max_revision =
+      static_cast<std::uint64_t> (
+        std::numeric_limits<std::int64_t>::max ());
+    in_memory_location_store_t store{max_revision - 2};
+    const auto owner =
+      std::get<owner_lease_claimed_t> (
+        store
+          .claim_owner_lease (
+            "owner-max", std::chrono::seconds (15))
+          .result ()
+          .value ())
+        .token;
+    publish_mesh_node (store, "node-max", owner);
+    object_reserve_request_t request{
+      .key = {placement_object_kind_t::actor, "max-revision"},
+      .intent = {.stable_type = "player"},
+      .target =
+        {.mesh_name = "play",
+         .node_rid = node_rid_t::from_string ("node-max"),
+         .node_lifecycle_generation = 1,
+         .owner = owner}};
+    const auto reserved =
+      std::get<object_reserved_t> (
+        store.reserve (request).result ().value ());
+    const auto committed =
+      std::get<object_committed_t> (
+        store
+          .commit (
+            {request.key, reserved.fence, {std::byte{0x01}}})
+          .result ()
+          .value ());
+    ASSERT_EQ (std::to_string (max_revision),
+               committed.ready.store_version);
+
+    const auto result =
+      store
+        .compare_exchange_authority (
+          { "1:max-revision" },
+          committed.ready.store_version,
+          authority_put_t{
+            {std::byte{0x02}},
+            authority_generation_transition_t::preserve,
+            std::nullopt})
+        .result ()
+        .value ();
+    EXPECT_NE (
+      nullptr,
+      std::get_if<authority_generation_exhausted_t> (&result));
+    const auto current =
+      std::get<authority_snapshot_t> (
+        store
+          .read_authority ({"1:max-revision"})
+          .result ()
+          .value ());
+    EXPECT_EQ (committed.ready.store_version,
+               current.store_version);
+    EXPECT_EQ (committed.ready.payload, current.payload);
 }
 
 TEST (ZLinkFrameworkInMemoryLocationStore,
@@ -314,6 +495,8 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
       .value ();
     const location_owner_token_t owner_a{"owner-a", 1};
     const location_owner_token_t owner_b{"owner-b", 2};
+    publish_mesh_node (store, "node-a", owner_a);
+    publish_mesh_node (store, "node-b", owner_b);
 
     const auto create =
       [&] (std::string id, std::byte marker)
@@ -430,11 +613,17 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
 
     request.target_reservations = {
       first_fence, second_fence};
+    store.release_owner_lease (owner_a).result ().value ();
     const auto prepared =
       store.prepare_aggregate (request).result ().value ();
     const auto *prepared_value =
       std::get_if<aggregate_prepared_t> (&prepared);
     ASSERT_NE (nullptr, prepared_value);
+    EXPECT_EQ (
+      relocation_capacity_abort_result_t::stale,
+      store.abort_relocation_capacity (first_fence)
+        .result ()
+        .value ());
     EXPECT_EQ (
       aggregate_commit_result_t::committed,
       store.commit_aggregate (prepared_value->fence)

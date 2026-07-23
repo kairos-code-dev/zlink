@@ -148,7 +148,7 @@ internal sealed class ZLinkAutoConnectReconciler
     internal async ValueTask<bool> MarkDrainingAsync(
         CancellationToken cancellationToken = default)
         => await PublishLocalMutationAsync(
-            row => row with { Draining = true },
+            row => row with { State = ZLinkFrameworkRuntimeState.Draining },
             cancellationToken).ConfigureAwait(false);
 
     private async ValueTask<bool> PublishLocalMutationAsync(

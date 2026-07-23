@@ -146,6 +146,25 @@ class KotlinLocationExtensionsTest {
             failNextUpdate = true
         }
 
+        override suspend fun updateMeshNodeSuspending(
+            descriptor: ZLinkMeshNodeDescriptor,
+            intent: ZLinkLocationWriteIntent,
+        ): ZLinkLocationWriteResult = ZLinkLocationWriteResult.stored(
+            descriptor.lifecycleGeneration(),
+            NOW,
+        )
+
+        override suspend fun removeMeshNodeSuspending(
+            key: ZLinkMeshNodeDescriptorKey,
+            owner: ZLinkLocationOwnerToken,
+        ): ZLinkLocationWriteStatus = ZLinkLocationWriteStatus.STORED
+
+        override suspend fun listMeshNodesSuspending(
+            meshName: String,
+            page: ZLinkPageRequest,
+        ): ZLinkLocationPage<ZLinkMeshNodeDescriptor> =
+            ZLinkLocationPage(emptyList(), null)
+
         override suspend fun updatePeerSuspending(
             peer: ZLinkPeerLocation,
             intent: ZLinkLocationWriteIntent,

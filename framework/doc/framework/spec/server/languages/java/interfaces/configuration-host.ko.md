@@ -132,6 +132,21 @@ public interface FanoutChannelBuilder {
 }
 ```
 
+Automatic RouteMesh는 RID를 canonical byte order로 비교하고 더 작은 RID의 MeshNode만 상대 endpoint로
+connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있다.
+양쪽 연결이나 automatic discovery 경합·오래된 snapshot으로 중복 후보가 생기면 handshake와 admission이
+같은 RID와 lifecycle generation을 확인해 하나만 ready 상태로 유지한다.
+
+ClientServer는 manual endpoint와 location store automatic discovery를 함께 사용할 수 있다. 두 source가 같은
+Server RID와 lifecycle generation을 가리키면 connection intent와 ready target을 하나로 합친다. Automatic과
+manual 모두 Client만 server로 connect하며 Server는 client endpoint를 찾거나 outbound connect를 시작하지
+않는다.
+
+Fanout에서는 Publisher가 descriptor만 게시하고 outbound connect를 시작하지 않는다. Subscriber만 publisher
+endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle generation마다 connection intent
+하나를 만든다. 한 ChannelName에 automatic subscriber와 manual subscriber endpoint를 함께 구성하면 startup이
+실패한다.
+
 Object role을 생략하면 `None`이다. `client()`는 global object operation만 제공하고 placement target이 되지
 않으며 `server()`는 Client capability와 Entry Spot·factory registration을 제공한다. Client와 Server는
 Location Store가 필수다. Actor·User Spot·Instance Spot factory는 stable type과 explicit relocation policy를

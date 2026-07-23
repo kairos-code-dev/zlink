@@ -670,7 +670,8 @@ internal sealed class ZLinkActorRemoteJoiner(
                     snapshot.RouterChannelId, cancellationToken)
                 .ConfigureAwait(false);
             if (peers.Any(descriptor =>
-                    descriptor.Rid.Equals(snapshot.NodeRid) && descriptor.Draining))
+                    descriptor.Rid.Equals(snapshot.NodeRid)
+                    && descriptor.State == ZLinkFrameworkRuntimeState.Draining))
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RequestRejected,
                     $"SPOT '{spotRid}' is hosted by a draining node.",

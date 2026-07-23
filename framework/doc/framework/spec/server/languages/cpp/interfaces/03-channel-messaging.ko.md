@@ -93,6 +93,8 @@ enum class object_role_t : std::uint8_t {
 };
 
 struct object_capacity_options_t {
+    std::uint32_t active = 0;
+    std::uint32_t pending = 0;
     std::uint32_t active_limit = 10000;
     std::uint32_t pending_limit = 128;
 };
@@ -557,6 +559,16 @@ queue 상한은 `zlink_framework_options_t::set_max_pending(...)`이 runtime 단
 ClientServer와 Fanout은 서로 다른 물리 topology이므로 같은 process에서 ChannelName을 공유할 수 없다.
 각 topology의 연결 집합과 descriptor는 서로 분리한다.
 
+Automatic RouteMesh는 RID를 canonical byte order로 비교하고 더 작은 RID의 MeshNode만 상대 endpoint로
+connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있다.
+양쪽 연결이나 automatic discovery 경합·오래된 snapshot으로 중복 후보가 생기면 handshake와 admission이
+같은 RID와 lifecycle generation을 확인해 하나만 ready 상태로 유지한다.
+
+ClientServer client는 manual endpoint와 location store automatic discovery를 함께 사용할 수 있다. 두 source가
+같은 Server RID와 lifecycle generation을 가리키면 connection intent와 ready target을 하나로 합친다.
+Automatic과 manual 모두 client만 server로 connect하며 server는 client endpoint를 찾거나 outbound connect를
+시작하지 않는다.
+
 Location store를 등록한 fanout publisher는 fixed Publisher RID와 automatic RID prefix 중 하나를 startup 전에
 선택하고 전용 descriptor를 게시한다. Store가 없는 publisher는 listener endpoint를 수동으로 전달하는
 대상으로 사용할 수 있지만 automatic discovery 등록은 수행하지 않는다. 인자 없는
@@ -564,6 +576,9 @@ Location store를 등록한 fanout publisher는 fixed Publisher RID와 automatic
 연결한다. `connect(endpoint)`는 명시한 endpoint만 사용하는 manual subscriber를 구성한다. 두 subscriber
 mode를 한 channel에 함께 설정하면 startup이 실패한다. Automatic subscriber는 location store가 필요하며,
 manual publisher와 manual subscriber만 사용하는 host는 다른 location 기능이 없으면 store가 필요하지 않다.
+Publisher는 descriptor만 게시하고 subscriber endpoint로 outbound connect를 시작하지 않는다. Subscriber만
+publisher endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle generation마다 connection
+intent 하나를 만든다.
 `subscriber_connections()`는 builder의 `connect(endpoint)`와 같은 manual endpoint 집합을 가리키는
 runtime handle이다. 이 handle은 endpoint 연결, 해제와 현재 목록 조회를 제공하며 automatic discovery
 결과를 변경하지 않는다.

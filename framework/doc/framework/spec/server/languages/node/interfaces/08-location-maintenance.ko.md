@@ -302,18 +302,20 @@ Application이 값을 선택하는 option은 없다. 순서를 비교하는 값�
 lifetime token의 source를 application callback에 노출하지 않는다.
 
 Entry·User·Instance Spot owner state는 global `SpotRid`에서 파생한 하나의 authority key를 공유한다.
-User Spot create와 Instance cold claim은 같은 row에 `"newObject"` compare-exchange를 수행하므로 kind
-conflict와 object generation 증가가 원자적으로 결정된다. `ZLinkSpotLocation`은 Framework가 authority
+User Spot create와 Instance cold claim은 같은 row에 generic `reserve`를 수행하고 `commit` 또는 `abort`로
+끝내므로 kind conflict, object generation과 target capacity가 원자적으로 결정된다. Public authority
+compare-exchange로 Missing row를 만들지 않는다. `ZLinkSpotLocation`은 Framework가 authority
 payload와 page를 decode한 운영 projection이며 provider write·remove·resolve interface가 아니다. Provider는
-Spot kind, type, owner state와 Actor relocation phase를 해석하지 않는다.
+kind·stable type·descriptor allocation을 provider metadata로 처리하지만 application state와 Actor relocation
+payload는 해석하지 않는다.
 `SpotRef.objectGeneration`과 `ActorRef.objectGeneration`은 provider가 반환한
 `objectGeneration`을 그대로 사용한다. Authority `authorityOwnerGeneration`은 per-object owner 이관 fence이고
 descriptor·projection의 `leaseGeneration`은 host lease fence다. 두 generation을 합치거나 Framework 계산값으로
 만들지 않는다.
 Maintenance owner 이관은 `"newOwner"`로 owner generation만 바꾸고 object generation을 유지한다.
 기존 ref의 object generation은 유지되며 이전 owner route를 사용하면 runtime이 current authority를 재조회하여 forwarding
-또는 retry한다. Explicit close 후 cold recreate만 `"newObject"`로 새 object generation을 발급하며,
-이때 이전 handle은 영구적으로 stale다.
+또는 retry한다. Explicit close 뒤 cold recreate는 이전 row의 fenced delete가 완료된 후 새 `reserve`가 새 object
+generation을 발급한다. 이전 handle은 영구적으로 stale다.
 
 ## 3. Owner와 relocation authority
 
@@ -331,6 +333,17 @@ export interface ZLinkAuthorityStoreVersion {
     readonly [zlinkAuthorityVersionBrand]: true;
 }
 
+export type ZLinkPlacementAllocationState = "pending" | "active";
+
+export interface ZLinkPlacementAllocation {
+    readonly state: ZLinkPlacementAllocationState;
+    readonly objectKind: ZLinkPlacementObjectKind;
+    readonly stableType: string;
+    readonly descriptor: ZLinkMeshNodeDescriptorKey;
+    readonly descriptorLifecycleGeneration: bigint;
+    readonly capacityDelta: number;
+}
+
 export type ZLinkAuthorityReadResult =
     | {
         readonly kind: "missing";
@@ -342,6 +355,9 @@ export type ZLinkAuthorityReadResult =
         readonly payload: Uint8Array;
         readonly objectGeneration: bigint;
         readonly authorityOwnerGeneration: bigint;
+        readonly ownerId: string;
+        readonly ownerLeaseGeneration: bigint;
+        readonly allocation: ZLinkPlacementAllocation;
         readonly storeNow: Date;
     };
 
@@ -349,21 +365,23 @@ export type ZLinkAuthoritySnapshot = Extract<
     ZLinkAuthorityReadResult,
     { readonly kind: "snapshot" }>;
 
+declare const zlinkRelocationCapacityFenceBrand: unique symbol;
+
+export interface ZLinkRelocationCapacityFence {
+    readonly value: string;
+    readonly [zlinkRelocationCapacityFenceBrand]: true;
+}
+
 export type ZLinkAuthorityMutation =
     | {
         readonly kind: "put";
         readonly payload: Uint8Array;
         readonly generationTransition:
-            "preserve" | "newOwner" | "newObject";
+            "preserve" | "newOwner";
+        readonly targetOwner?: ZLinkLocationOwnerToken;
+        readonly relocationCapacityFence?: ZLinkRelocationCapacityFence;
     }
     | { readonly kind: "delete" };
-
-export type ZLinkAuthorityExpectation =
-    | { readonly kind: "missing" }
-    | {
-        readonly kind: "found";
-        readonly storeVersion: ZLinkAuthorityStoreVersion;
-    };
 
 export type ZLinkAuthorityCompareExchangeResult =
     | {
@@ -372,6 +390,9 @@ export type ZLinkAuthorityCompareExchangeResult =
         readonly payload: Uint8Array;
         readonly objectGeneration: bigint;
         readonly authorityOwnerGeneration: bigint;
+        readonly ownerId: string;
+        readonly ownerLeaseGeneration: bigint;
+        readonly allocation: ZLinkPlacementAllocation;
         readonly storeNow: Date;
     }
     | {
@@ -389,7 +410,7 @@ export interface ZLinkAuthorityStore {
     readAuthority(key: ZLinkAuthorityKey,
         signal?: AbortSignal): Promise<ZLinkAuthorityReadResult>;
     compareExchangeAuthority(key: ZLinkAuthorityKey,
-        expectation: ZLinkAuthorityExpectation,
+        expectedStoreVersion: ZLinkAuthorityStoreVersion,
         mutation: ZLinkAuthorityMutation,
         signal?: AbortSignal): Promise<ZLinkAuthorityCompareExchangeResult>;
     listAuthorities(prefix: string, cursor: ZLinkAuthorityScanCursor | undefined,
@@ -420,18 +441,27 @@ export type ZLinkAuthorityScanResult =
 ```
 
 Authority key와 Store version은 Framework와 provider가 만든 opaque 값이다. `missing`은 `storeNow`만
-반환하고 fake StoreVersion을 갖지 않는다. `compareExchangeAuthority`는 `ZLinkAuthorityExpectation`을
-받는 overload만 제공한다. `"newObject"`는 `"missing"`을, `"preserve"`·`"newOwner"`·delete는 current
-StoreVersion을 담은 `"found"`를 요구한다. Provider는 payload,
-object kind, relocation phase와 relocation reference를 해석하지 않는다. Framework runtime만 payload를 encode하고
-phase 전이를 검증한다.
+반환하고 fake StoreVersion을 갖지 않는다. `compareExchangeAuthority`는 Active `"snapshot"`의 exact
+StoreVersion을 받는 overload만 제공한다. `"preserve"`·`"newOwner"`·delete는 current StoreVersion을
+`"found"`를 요구하며 `"missing"`과 Pending row에는 적용할 수 없다. Put의 `targetOwner`는 `"preserve"`에서
+없어야 하고 `"newOwner"`에서 반드시 있어야 한다. Provider는 exact target owner lease를 CAS와 같은
+transaction에서 검증하고 성공 결과의 `ownerId`·`ownerLeaseGeneration`으로 기록한다. 정상 create는 generic
+reservation만 사용한다. `"preserve"`와 delete는 stored current owner lease, `"newOwner"`는 `targetOwner`
+lease를 검증한다. Missing·stale lease는 current authority read를 가진 `"conflict"`로 끝나고 mutation은 0이다.
+Invalid `targetOwner` 조합은 provider 호출 전에 `TypeError`로 거부한다. `relocationCapacityFence`는
+`"newOwner"`에서 반드시 있고 `"preserve"`에서 없어야 한다. `"newOwner"` 성공은 fence의 source active
+감소와 target pending-to-active, target Active allocation과 authority owner metadata를 같은 transaction에서
+적용한다. Provider는 allocation의 object kind·stable type을 capability·capacity metadata로 처리하지만
+application·relocation payload는 해석하지 않는다. Framework runtime만 payload를 encode하고 phase 전이를 검증한다.
 
 Provider domain은 영구적인 global object generation, authority owner generation과 Store revision counter를
-각각 하나씩 유지한다. CAS 성공 operation에서 `"newObject"`는 object와 owner generation을 모두
-증가시키고, `"newOwner"`는 owner generation만 증가시키며 `"preserve"`는 둘 다 유지한다. Stored
-mutation과 delete는 global Store revision으로 fence한다. Delete는 row를 완전히 제거하고 per-key counter나
-version tombstone을 유지하지 않는다. Scan lease가 활성화된 동안만 snapshot 유지용 tombstone을 bounded로
-유지할 수 있다. Authority payload에 generation을 중복 encode하지 않는다.
+각각 하나씩 유지한다. Initial object·owner generation은 `reserve`만 발급하고 `"newOwner"`는 owner
+generation만 증가시키며 `"preserve"`는 둘 다 유지한다. Stored mutation과 delete는 global Store revision으로
+fence한다. `reserve`는 Missing→Pending, exact `commit`은 Pending→Active, exact `abort`는
+Pending→Missing만 수행한다. `"preserve"`·`"newOwner"`·delete는 Active에만 적용한다. Delete는 current
+Active allocation의 capacity delta를 감소시킨 뒤 row를 완전히 제거하고 per-key counter나 version tombstone을
+유지하지 않는다. Scan lease가 활성화된 동안만 snapshot 유지용 tombstone을 bounded로 유지할 수 있다.
+Authority payload에 generation과 current allocation을 중복 encode하지 않는다.
 Authority row는 TTL을 갖지 않고 explicit fenced delete가 성공할 때까지 유지된다.
 Owner·coordinator lease는 별도 token row에 저장하며 lease 만료나 reclaim이 authority row를 삭제하거나
 수정하지 않는다.
@@ -584,6 +614,7 @@ export interface ZLinkObjectReserveRequest {
     readonly key: ZLinkObjectCreationKey;
     readonly intent: ZLinkObjectCreationIntent;
     readonly target: ZLinkObjectCreationTarget;
+    readonly creatingPayload: Uint8Array;
     readonly pendingCapacityDelta: number;
 }
 
@@ -600,6 +631,7 @@ export interface ZLinkObjectCommitRequest {
     readonly reservationId: string;
     readonly expectedStoreVersion: string;
     readonly target: ZLinkObjectCreationTarget;
+    readonly readyPayload: Uint8Array;
 }
 
 export type ZLinkObjectCommitResult =
@@ -619,6 +651,41 @@ export type ZLinkObjectAbortResult =
     | { readonly kind: 'aborted' }
     | { readonly kind: 'alreadyAborted' }
     | { readonly kind: 'stale' };
+
+export interface ZLinkRelocationCapacityReservationRequest {
+    readonly reservationId: string;
+    readonly authorityKey: ZLinkAuthorityKey;
+    readonly expectedStoreVersion: ZLinkAuthorityStoreVersion;
+    readonly objectKind: ZLinkPlacementObjectKind;
+    readonly stableType: string;
+    readonly sourceDescriptor: ZLinkMeshNodeDescriptorKey;
+    readonly sourceNodeLifecycleGeneration: bigint;
+    readonly sourceOwner: ZLinkLocationOwnerToken;
+    readonly targetDescriptor: ZLinkMeshNodeDescriptorKey;
+    readonly targetNodeLifecycleGeneration: bigint;
+    readonly targetOwner: ZLinkLocationOwnerToken;
+    readonly capacityDelta: number;
+}
+
+export type ZLinkRelocationCapacityReserveResult =
+    | { readonly kind: 'reserved'; readonly fence: ZLinkRelocationCapacityFence }
+    | { readonly kind: 'alreadyReserved'; readonly fence: ZLinkRelocationCapacityFence }
+    | { readonly kind: 'conflict'; readonly current: ZLinkAuthorityReadResult }
+    | { readonly kind: 'targetUnavailable' }
+    | { readonly kind: 'placementCapacityExhausted' };
+
+export type ZLinkRelocationCapacityAbortResult =
+    | 'aborted'
+    | 'alreadyAborted'
+    | 'alreadyCommitted'
+    | 'stale';
+
+export interface ZLinkRelocationCapacityStore {
+    reserveRelocationCapacity(request: ZLinkRelocationCapacityReservationRequest,
+        signal?: AbortSignal): Promise<ZLinkRelocationCapacityReserveResult>;
+    abortRelocationCapacity(fence: ZLinkRelocationCapacityFence,
+        signal?: AbortSignal): Promise<ZLinkRelocationCapacityAbortResult>;
+}
 
 declare const zlinkAggregateIdBrand: unique symbol;
 
@@ -640,7 +707,7 @@ export interface ZLinkAggregatePrepareRequest {
     readonly aggregateGeneration: bigint;
     readonly participants: readonly ZLinkAggregateParticipant[];
     readonly inventoryDigest: Uint8Array;
-    readonly targetReservations: readonly ZLinkObjectCommitRequest[];
+    readonly targetReservations: readonly ZLinkRelocationCapacityFence[];
     readonly targetOwner: ZLinkLocationOwnerToken;
 }
 
@@ -686,7 +753,8 @@ export interface ZLinkLocationStore extends
     ZLinkMeshNodeLocationStore,
     ZLinkOwnerLeaseStore,
     ZLinkAuthorityStore,
-    ZLinkObjectCreationStore {
+    ZLinkObjectCreationStore,
+    ZLinkRelocationCapacityStore {
     removeAllByOwner(owner: ZLinkLocationOwnerToken, signal?: AbortSignal): Promise<bigint>;
 }
 
@@ -713,23 +781,57 @@ export interface ZLinkLocationChangeStampStore {
 
 Creation intent의 stable type은 UTF-8 1..255 bytes이며 `placementProfile`과 `affinityKey`도 각각 UTF-8
 1..255 bytes다. Encoded creation request는 최대 1 MiB이고 `requestContentReference`, SHA-256 hash와
-`requestEncodedSize`는 같은 immutable content를 가리켜야 한다. `reserve(...)`는 같은 identity의 Ready row를
+`requestEncodedSize`는 같은 immutable content를 가리켜야 한다. `creatingPayload`와 `readyPayload`는 Framework가
+encode한 opaque authority state다. Provider는 이를 해석하거나 합성하지 않고 각각 Reserve와 Commit의 authority
+revision에 그대로 기록한다. `reserve(...)`는 같은 identity의 Ready row를
 `alreadyExists`, 다른 kind·stable type을 `typeMismatch`, target pending limit 초과를
-`placementCapacityExhausted`로 닫는다. 새 generation을 발급할 수 없으면 `generationExhausted`다.
+`placementCapacityExhausted`로 닫는다. `pendingCapacityDelta`는 weighted placement unit이며
+`1..2147483647`이다. 새 generation을 발급할 수 없으면 `generationExhausted`다.
 
-`commit(...)`과 `abort(...)`는 reservation ID와 expected Store version을 exact 비교한다. 같은 terminal
+`commit(...)`은 reservation ID와 expected Store version을 exact 비교하고 target descriptor lifecycle과 owner
+lease를 다시 확인한다. Stale이면 mutation 0으로 reservation을 유지한다. `abort(...)`는 current lifecycle·lease를
+요구하지 않고 reservation에 고정한 이전 descriptor·capacity counter를 exact fence로 정리한다. 같은 terminal
 operation을 반복하면 각각 `alreadyCommitted`와 `alreadyAborted`를 반환한다. 다른 reservation 또는 version은
 `stale`이며, commit에 새 generation이 필요하지만 발급할 수 없으면 `generationExhausted`다. 이 결과들은
 provider exception과 구분되는 닫힌 결과이며 row·capacity를 중복 변경하지 않는다.
+
+Existing object relocation은 creation reservation을 재사용하지 않는다. `reserveRelocationCapacity`는 non-empty
+128-bit `reservationId`, current authority version, kind·stable type, source·target descriptor key·lifecycle
+generation과 exact owner token을
+검증하고 `1..2147483647`인 `capacityDelta`만큼 target pending capacity만 예약한다. Request source owner와
+kind·stable type·descriptor key·lifecycle generation·capacity delta는 current authority owner와 durable
+Active allocation에 정확히 일치해야 한다. Source descriptor row와 source owner lease의 live 상태는 요구하지
+않는다. Target descriptor lifecycle·owner lease·capability·pending limit은 같은 transaction에서
+live/exact로 검증한다. 같은 ID와 exact request는 `alreadyReserved`, 다른 내용은 `conflict`다. Standalone
+Actor의 `"newOwner"` CAS와 aggregate commit만 fence를 소비하며 source active 감소와
+target pending-to-active를 authority mutation과 같은 transaction에서 처리한다. Commit 전
+`abortRelocationCapacity`는 pending을 해제한다. Reservation은 TTL로 만료시키지 않는다.
+Standalone `"newOwner"` fence가 reserved 상태가 아니거나 authority key·expected Store version·source·target
+owner와 일치하지 않으면 current authority read를 담은 `"conflict"`이며 authority·capacity·fence mutation은 0이다.
+이미 committed·aborted된 fence도 같다. CAS transaction은 request source와 durable current Active
+allocation의 exact match를 다시 확인하고 target descriptor lifecycle과
+target owner lease만 live/exact로 재검증한다. Source descriptor row·lease가 stale·missing이어도 allocation
+match가 유지되면 commit할 수 있다.
 
 Aggregate ID는 zero가 아닌 128-bit 값이고 aggregate generation은 `1..9223372036854775807`이다. `participants`는
 authority key의 canonical byte order로 정렬하며 중복이 없는 bounded canonical participant set이다. 한 prepare는
 participant를 1..1024개 포함하며 participant payload와 membership mutation을 합친 encoded request가 1 MiB를
 넘을 수 없다. `inventoryDigest`는 participant set과 mutation 전체를 canonical encode한 bytes의 32-byte SHA-256이다.
-`prepareAggregate(...)`는 모든 participant의 Store version, owner transition과 target
-reservation을 함께 검증한다. `commitAggregate(...)`는 모든 authority·membership·capacity 변경을 한 번에
-공개하며 일부 participant만 보이는 상태를 허용하지 않는다. `abortAggregate(...)`는 준비된 변경을 전부
-폐기한다. 같은 fence의 prepare·commit·abort 반복은 각각 `alreadyPrepared`, `alreadyCommitted`,
+`prepareAggregate(...)`는 모든 participant의 Store version, owner transition과 relocation capacity
+fence를 함께 검증한다. `targetReservations`는 `"newOwner"` participant와 정확히 일대일이어야 한다. Fence
+reservation의 authority key·expected Store version·source owner·target owner는 participant expectation,
+current authority owner와 aggregate `targetOwner`에 정확히 일치해야 한다. Request source는 durable Active
+allocation과 exact match해야 하고 target descriptor lifecycle·owner lease만 live/exact로 다시 확인한다.
+Source descriptor row·lease의 live 상태는
+요구하지 않는다. 누락·중복·추가 fence와 값 불일치는 `"conflict"`와 mutation 0으로 끝난다.
+Prepare 성공은 같은 transaction에서 Reserved fence를 aggregate ID·generation에 bind해 Prepared로 바꾼다.
+Bind된 fence의 direct abort는 `"stale"`이고 다른 aggregate prepare는 `"conflict"`다. Exact duplicate prepare만
+`"alreadyPrepared"`다. `commitAggregate(...)`는 bind된 fence만 소비해 모든 authority·membership·capacity
+변경을 한 번에 공개한다. Commit 직전에 source Active allocation exact match와 target descriptor
+lifecycle·owner lease를 다시 확인한다. Target이 stale이면 mutation 없이 fence를 bind 상태로 유지하며 source
+descriptor row·lease가 stale·missing이어도 allocation match가 유지되면 commit할 수 있다. 일부 participant만
+보이는 상태를 허용하지 않는다. `abortAggregate(...)`는 준비된
+변경을 폐기하고 bind된 fence의 target pending을 해제해 aborted로 닫는다. 같은 fence의 prepare·commit·abort 반복은 각각 `alreadyPrepared`, `alreadyCommitted`,
 `alreadyAborted`로 끝나며 stale fence는 다른 aggregate generation을 변경하지 않는다.
 
 `ZLinkLocationStore`는 MeshNode, owner lease와 generic authority CAS를 하나의 등록 단위로
@@ -855,7 +957,7 @@ export declare class ZLinkRedisLocationStore implements
     readAuthority(key: ZLinkAuthorityKey,
         signal?: AbortSignal): Promise<ZLinkAuthorityReadResult>;
     compareExchangeAuthority(key: ZLinkAuthorityKey,
-        expectation: ZLinkAuthorityExpectation,
+        expectedStoreVersion: ZLinkAuthorityStoreVersion,
         mutation: ZLinkAuthorityMutation,
         signal?: AbortSignal): Promise<ZLinkAuthorityCompareExchangeResult>;
     listAuthorities(prefix: string, cursor: ZLinkAuthorityScanCursor | undefined,
@@ -869,6 +971,10 @@ export declare class ZLinkRedisLocationStore implements
         signal?: AbortSignal): Promise<ZLinkObjectCommitResult>;
     abort(request: ZLinkObjectAbortRequest,
         signal?: AbortSignal): Promise<ZLinkObjectAbortResult>;
+    reserveRelocationCapacity(request: ZLinkRelocationCapacityReservationRequest,
+        signal?: AbortSignal): Promise<ZLinkRelocationCapacityReserveResult>;
+    abortRelocationCapacity(fence: ZLinkRelocationCapacityFence,
+        signal?: AbortSignal): Promise<ZLinkRelocationCapacityAbortResult>;
     prepareAggregate(request: ZLinkAggregatePrepareRequest,
         signal?: AbortSignal): Promise<ZLinkAggregatePrepareResult>;
     commitAggregate(fence: ZLinkAggregateFence,

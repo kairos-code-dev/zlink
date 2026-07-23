@@ -45,6 +45,20 @@ internal sealed class ZLinkOwnerLeaseTracker
         return lease.LeaseExpiresAt - snapshot.StoreNow - elapsedSinceFetch > TimeSpan.Zero;
     }
 
+    internal async ValueTask<bool> IsOwnerTokenLiveAsync(
+        ZLinkLocationOwnerToken token,
+        CancellationToken cancellationToken = default)
+    {
+        var snapshot = await GetSnapshotAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (!snapshot.Leases.TryGetValue(token.OwnerId, out var lease)
+            || lease.LeaseGeneration != token.LeaseGeneration)
+            return false;
+        var elapsedSinceFetch = _time.GetElapsedTime(snapshot.FetchedAt);
+        return lease.LeaseExpiresAt - snapshot.StoreNow - elapsedSinceFetch
+               > TimeSpan.Zero;
+    }
+
     /// <summary>
     /// Version of the set of currently live owners. The desired target set
     /// is a join of rows and leases, so a reconcile tick must not be

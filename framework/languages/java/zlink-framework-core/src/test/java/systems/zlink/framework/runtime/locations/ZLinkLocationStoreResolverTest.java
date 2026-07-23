@@ -223,6 +223,35 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
+        public CompletionStage<ZLinkLocationWriteResult> updateMeshNode(
+            systems.zlink.framework.locations.ZLinkMeshNodeDescriptor
+                descriptor,
+            ZLinkLocationWriteIntent intent) {
+            return unsupportedWrite();
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations
+            .ZLinkLocationWriteStatus> removeMeshNode(
+                systems.zlink.framework.locations
+                    .ZLinkMeshNodeDescriptorKey key,
+                ZLinkLocationOwnerToken owner) {
+            return CompletableFuture.completedFuture(
+                systems.zlink.framework.locations
+                    .ZLinkLocationWriteStatus.IGNORED_STALE);
+        }
+
+        @Override
+        public CompletionStage<ZLinkLocationPage<
+            systems.zlink.framework.locations
+                .ZLinkMeshNodeDescriptor>> listMeshNodes(
+                    String meshName,
+                    ZLinkPageRequest page) {
+            return CompletableFuture.completedFuture(
+                new ZLinkLocationPage<>(List.of(), null));
+        }
+
+        @Override
         public CompletionStage<ZLinkLocationWriteResult> updatePeer(
             ZLinkPeerLocation peer,
             ZLinkLocationWriteIntent intent) {

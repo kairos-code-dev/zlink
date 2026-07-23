@@ -20,7 +20,12 @@ property, relocation limit wrapper와 `$default` member는 생성하지 않는�
 
 Global authority key는 ActorId 또는 SpotRid를 기준으로 정한다. ActorId, SpotRid와 stable type은 UTF-8
 1..255 bytes의 case-sensitive exact value다. Authority snapshot의 object generation과 owner generation은
-provider가 발급하는 `1..Long.MAX_VALUE` 값이다. Descriptor와 operational snapshot은 node-wide placement
+provider가 발급하는 `1..Long.MAX_VALUE` 값이다. Snapshot과 stored result의
+`ZLinkPlacementAllocation`은 Pending 또는 Active 상태, object kind, stable type, descriptor key·lifecycle
+generation과 `1..Integer.MAX_VALUE` capacity delta를 포함한다. Generic reserve만 Missing에서 Pending을
+만들고 commit만 Pending을 Active로 전환한다. Generic abort는 exact reservation을 기준으로 current target
+liveness와 관계없이 Pending을 정리한다. Existing Active authority의 preserve·owner relocation·delete만
+`ZLinkAuthorityExpectFound`를 사용한다. Descriptor와 operational snapshot은 node-wide placement
 weight, active capacity, pending capacity와 현재 사용량을 typed field로 제공한다. Slot과 allocation group
 field는 없다.
 `ZLinkPlacementObjectKind`의 numeric value는 `ACTOR=1`, `USER_SPOT=2`, `INSTANCE_SPOT=3`이다. Kotlin은
@@ -79,6 +84,18 @@ abstract class ZLinkSuspendingLocationStore(
         cancellation: ZLinkStoreCancellation,
     ): CompletionStage<ZLinkObjectAbortResult> =
         async { abortSuspending(reservation, cancellation) }
+
+    final override fun reserveRelocationCapacity(
+        request: ZLinkRelocationCapacityReservationRequest,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkRelocationCapacityReserveResult> =
+        async { reserveRelocationCapacitySuspending(request, cancellation) }
+
+    final override fun abortRelocationCapacity(
+        fence: ZLinkRelocationCapacityFence,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkRelocationCapacityAbortResult> =
+        async { abortRelocationCapacitySuspending(fence, cancellation) }
 
     final override fun prepareAggregate(
         request: ZLinkAggregatePrepareRequest,
@@ -254,6 +271,16 @@ abstract class ZLinkSuspendingLocationStore(
         reservation: ZLinkObjectReservation,
         cancellation: ZLinkStoreCancellation,
     ): ZLinkObjectAbortResult
+
+    protected abstract suspend fun reserveRelocationCapacitySuspending(
+        request: ZLinkRelocationCapacityReservationRequest,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkRelocationCapacityReserveResult
+
+    protected abstract suspend fun abortRelocationCapacitySuspending(
+        fence: ZLinkRelocationCapacityFence,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkRelocationCapacityAbortResult
 
     protected abstract suspend fun prepareAggregateSuspending(
         request: ZLinkAggregatePrepareRequest,
@@ -472,6 +499,8 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingLocationStor
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectReserveResult> reserve(systems.zlink.framework.locations.ZLinkObjectReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectCommitResult> commit(systems.zlink.framework.locations.ZLinkObjectReservation, byte[], systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectAbortResult> abort(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationCapacityReserveResult> reserveRelocationCapacity(systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationCapacityAbortResult> abortRelocationCapacity(systems.zlink.framework.locations.ZLinkRelocationCapacityFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregatePrepareResult> prepareAggregate(systems.zlink.framework.locations.ZLinkAggregatePrepareRequest, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregateCommitResult> commitAggregate(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregateAbortResult> abortAggregate(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
@@ -502,6 +531,8 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingLocationStor
   protected abstract java.lang.Object reserveSuspending(systems.zlink.framework.locations.ZLinkObjectReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectReserveResult>);
   protected abstract java.lang.Object commitSuspending(systems.zlink.framework.locations.ZLinkObjectReservation, byte[], systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectCommitResult>);
   protected abstract java.lang.Object abortSuspending(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectAbortResult>);
+  protected abstract java.lang.Object reserveRelocationCapacitySuspending(systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkRelocationCapacityReserveResult>);
+  protected abstract java.lang.Object abortRelocationCapacitySuspending(systems.zlink.framework.locations.ZLinkRelocationCapacityFence, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkRelocationCapacityAbortResult>);
   protected abstract java.lang.Object prepareAggregateSuspending(systems.zlink.framework.locations.ZLinkAggregatePrepareRequest, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkAggregatePrepareResult>);
   protected abstract java.lang.Object commitAggregateSuspending(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkAggregateCommitResult>);
   protected abstract java.lang.Object abortAggregateSuspending(systems.zlink.framework.locations.ZLinkAggregateFence, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkAggregateAbortResult>);

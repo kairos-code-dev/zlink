@@ -274,7 +274,11 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default)
     {
-        var stamped = descriptor with { OwnerId = OwnerId };
+        var stamped = descriptor with
+        {
+            OwnerId = OwnerToken.OwnerId,
+            LeaseGeneration = OwnerToken.LeaseGeneration
+        };
         return await ExecuteLocationWriteAsync(
                 () => _meshNodeStore.UpdateMeshNodeAsync(stamped, intent, cancellationToken),
                 ZLinkLocationKind.MeshNode,

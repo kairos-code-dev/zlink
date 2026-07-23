@@ -116,6 +116,25 @@ public sealed class RedisTestFixture : IAsyncLifetime
         (long)(await _cleanupConnection!.GetDatabase()
             .HashGetAsync(key, field));
 
+    public async Task<IReadOnlyDictionary<string, string>> HashGetAllAsync(
+        string key) =>
+        (await _cleanupConnection!.GetDatabase().HashGetAllAsync(key))
+        .ToDictionary(
+            entry => (string)entry.Name!,
+            entry => (string)entry.Value!,
+            StringComparer.Ordinal);
+
+    public async Task<IReadOnlyList<string>> SetMembersAsync(string key) =>
+        (await _cleanupConnection!.GetDatabase().SetMembersAsync(key))
+        .Select(static value => value.ToString())
+        .ToArray();
+
+    public Task<bool> KeyExistsAsync(string key) =>
+        _cleanupConnection!.GetDatabase().KeyExistsAsync(key);
+
+    public Task<TimeSpan?> KeyTimeToLiveAsync(string key) =>
+        _cleanupConnection!.GetDatabase().KeyTimeToLiveAsync(key);
+
     public async Task<long> DeletePrefixAsync(string prefix)
     {
         long removed = 0;

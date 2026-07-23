@@ -958,6 +958,13 @@ failure 의미는 같아야 한다.
 | `CA-D45` | Reservation provider가 Creating·Ready authority payload를 합성 / opaque payload와 provider allocation metadata 분리 | `Reserve` request는 Framework가 encode한 Creating authority payload를 받고, `Commit`은 Ready authority payload를 받는다. Provider는 payload body를 해석하거나 합성하지 않고 exact bytes를 저장한다. 별도 current placement allocation은 `Pending`·`Active` state, kind, stable type, descriptor key·lifecycle generation과 `1..2^31-1` capacity delta를 저장한다. Reserve는 Missing→Pending, exact Commit은 Pending→Active, exact Abort는 Pending→Missing만 수행하며 snapshot·stored·scan result가 allocation을 반환한다. Owner metadata는 allocation과 분리한다. | Location runtime·Store, Redis provider, 다섯 provider exact interface |
 | `CA-D46` | Missing create reservation을 relocation에도 재사용 / existing object용 relocation capacity fence 분리 | Existing Actor·Spot relocation은 create reservation을 재사용하지 않는다. 별도 relocation capacity reservation은 current authority StoreVersion·owner와 durable Active allocation의 source descriptor key·lifecycle generation·kind·stable type·capacity delta를 request와 exact-match하고 target descriptor lifecycle·owner lease·capability·pending capacity를 live/exact로 검증해 target pending만 예약한다. Source descriptor row·lease가 stale·missing이어도 durable allocation match로 recovery할 수 있다. Standalone Actor `NewOwner` CAS가 Reserved fence를 직접 소비한다. User Spot aggregate prepare는 `NewOwner` participant와 일대일인 fence를 aggregate ID·generation에 atomic bind하며 commit 또는 aggregate abort만 이를 finalize한다. Direct abort와 다른 aggregate는 bind된 fence를 바꾸지 못한다. Commit은 target live fence를 다시 확인하며 Capacity, owner, allocation과 membership을 같은 transaction에서 전환한다. Delete는 live current owner lease와 Active allocation을 검증하고 active delta를 atomic하게 감소시킨다. Recovery는 exact fence·authority·allocation을 사용하고 TTL에 의존하지 않는다. | Location runtime·Store, maintenance, Redis provider, 다섯 provider exact interface |
 | `CA-D47` | Source가 Instance owner claim 뒤 target에 first message 전송 / target-owned first-message activation envelope | Ready authority는 source가 current owner로 일반 direct call을 보낸다. Missing+Instance intent에서는 source가 target만 선택하고 global Spot RID·stable type·descriptor fence·operation identity·reply correlation·deadline과 first message를 activation envelope로 target transport에 제출하며 owner claim과 reservation을 만들지 않는다. Target은 current authority와 local exact instance를 확인하고 Missing이면 자신을 owner로 generic Reserve를 수행한다. CAS winner만 factory·initialize·Commit을 실행하고 Ready barrier 뒤 envelope message를 local queue에 exactly once 제출한다. CAS loser는 local instance를 만들지 않고 Ready winner로 original operation을 한 번 redirect하거나 Creating completion에 합류한다. Authority와 일치하지 않는 local instance는 fence한다. | Framework API, Spot messaging, Location runtime, 다섯 Spot exact interface, Instance E2E |
+| `CA-D48` | 언어별 Redis authority layout 중 하나를 복사 / 장점을 결합한 공통 hybrid schema | Authority current state와 active-scan history는 authority별 HASH에 두고 global counter·capacity·membership·versioned index만 shared HASH/ZSET에 둔다. Creation reservation·relocation fence·aggregate는 operation별 HASH다. Provider transaction domain 전체가 literal `{zlink-location-v1}` hash tag를 공유하고 모든 Lua key를 `KEYS`로 전달한다. Public descriptor 5-field HASH와 admission metadata HASH를 분리한다. Watermark·immutable history·tombstone·durable cursor로 1000 item·4 MiB snapshot page를 만들며 전체 materialization과 numeric revision score를 금지한다. | Redis Location Store 공통 spec·fixture, C++·.NET·JVM·Node provider와 cross-language Redis test |
+| `CA-D49` | Capacity bucket과 `objectKind`를 언어별 enum 표현에 맡김 / Redis physical encoding을 고정 | Current authority의 `objectKind`는 `actor`, `user_spot`, `instance_spot` token만 사용한다. Capacity node bucket은 canonical descriptor key와 lifecycle generation decimal을 UTF-8 byte length-prefix로 encode하고, type bucket은 같은 값 뒤에 canonical `objectKind` token과 stable type을 같은 방식으로 붙인다. 이 규칙은 Unicode, enum 이름과 숫자값 차이에도 네 provider가 같은 field를 갱신하게 한다. | Redis Location Store 공통 spec·authority fixture, 네 provider physical schema test |
+| `CA-D50` | Owner lease를 언어별 string·HASH·dual-write로 유지 / 하나의 HASH 계약으로 고정 | `owner-lease:D`는 `ownerId`, `generation`, `expiresAt` 세 field와 key TTL만 사용한다. Descriptor·authority·RoutingId allocation은 이 HASH를 직접 검증·갱신하며 별도 legacy lease value나 owner lease index를 쓰지 않는다. | Redis Location Store 공통 spec·MeshNode fixture, 네 provider owner lease test |
+| `CA-D51` | Descriptor owner index를 owner ID raw suffix로 구성 / exact owner token digest로 구성 | Descriptor index는 canonical descriptor key member를 저장하는 `descriptor:mesh:index` SET 하나를 사용한다. Cleanup index는 `ownerId + NUL + LeaseGeneration decimal`의 SHA-256 lower-hex suffix를 사용하고 같은 canonical key를 member로 저장한다. Owner ID만 일치하는 다른 host lifecycle descriptor는 제거하지 않는다. | Redis Location Store 공통 spec·MeshNode fixture, 네 provider descriptor cleanup test |
+| `CA-D52` | Authority history를 language별 JSON·field grouping으로 저장 / revision-prefixed field encoding으로 고정 | Revision hex `R`마다 full snapshot은 `R:deleted=0`과 exact current 13개 `R:<field>`를 저장하고 tombstone은 `R:deleted=1`, `R:authorityKey`만 저장한다. Membership history는 `R` field에 immutable bytes를 저장한다. 어느 언어가 만든 watermark snapshot도 다른 언어가 복원할 수 있어야 한다. | Redis Location Store 공통 spec·authority fixture, 네 provider concurrent scan test |
+| `CA-D53` | Automatic RouteMesh initiator와 duplicate-pipe admission을 한 문장으로 설명 / 시작 규칙과 안전장치를 분리 | Automatic RouteMesh는 canonical RID가 더 작은 MeshNode만 pairwise connect를 시작한다. Manual topology의 양방향 connect와 automatic의 경합·stale discovery 후보만 공통 duplicate-pipe admission에서 RID·lifecycle generation을 확인해 하나의 ready connection으로 수렴한다. ClientServer는 Client가 server별 intent를 만들고 classic fanout은 Subscriber가 publisher별 intent를 만드는 비대칭 topology다. | `10-channel-topology.ko.md`, `12-client-server-channel.ko.md`, `21-mesh-node.ko.md`, topology regression |
+| `CA-D54` | Immutable digest를 언어별 descriptor serialization hash로 계산 / 공통 canonical preimage hash | Admission HASH의 `immutableDigest`는 `zlink-mesh-node-immutable-v1` domain부터 immutable descriptor·capability field를 UTF-8 byte length-prefix segment로 연결한 preimage의 SHA-256 lower-hex다. Channel name, capability와 placement profile은 unsigned UTF-8 byte lexical order로 정렬한다. Descriptor revision, weight 값, maintenance wave, runtime state, owner token, timestamp와 usage count는 제외한다. | Redis Location Store 공통 spec·MeshNode fixture, 네 provider byte-level contract test |
 
 `CA-D16`은 두 값을 공개하지만 invalid 조합을 runtime에 넘기지 않는다. `CA-D23`의 기본 capacity는 deployment가
 별도 설정 없이도 bounded pending admission을 갖게 하며, 더 큰 값을 선택하면 descriptor와 Store reservation이
@@ -999,10 +1006,10 @@ registration을 삭제하거나 runtime 통과용 compatibility helper를 추가
 
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
-| `V11-M6A-CPP` | C++ topology·dispatch·Location·liveness runtime | C++ lane, `P-DEEP` | `V11-R4B` | 구현 완료 | node·Channel·ClientServer·manual·automatic classic fanout, remote placement, mailbox·CAS·reconnect·liveness internal contract 통과 | Public raw ROUTER·DEALER·PUB·SUB API로 node·Channel send/request, ClientServer 독립 admission·send/request, Location descriptor publish/watch/CAS, manual·automatic classic fanout과 publisher별 reconnect, bounded mailbox, terminal-once registry, 5초/15초 liveness를 구현했다. 실제 `mesh_node_runtime` public host가 Framework-owned raw owner를 생성하고 app·host dispatch를 이 경계로 연결한다. 11.0 bindings를 사용하는 전체 `zlink_framework` target compile과 M6A·M6B focused contract·unit 5/5가 통과했다. Compatibility header나 Core·bindings 수정은 없고 Sample·E2E 변경·실행은 0이다. |
-| `V11-M6A-DN` | .NET topology·dispatch·Location·liveness runtime | .NET lane, `P-DEEP` | `V11-R4B` | 구현 완료 | topology·remote placement·mailbox·CAS·Task terminal winner·liveness internal contract 통과 | 최신 `Systems.Zlink` 11.0.0 package의 public raw API로 managed MeshNode를 구현했다. 실제 두 node admission·remote `ToChannel`을 포함한 foundation 11/11과 backend·monitor·dispatch·Location 62/62가 통과했다. R5A 수정에서 descriptor extension의 필수·unknown TLV와 원본 descriptor bytes를 보존하고, 같은 lifecycle의 revision 증가·같은 revision exact-byte idempotence·immutable field 변경 거부를 mutation 전에 검사했다. Foundation focused regression 13/13이 통과했다. .NET source에는 target exact interface의 object role·placement weight·active/pending capacity public builder가 아직 없어 실제 application configuration 연결과 physical connection identity 기반 duplicate-pipe 판정은 후속 public-contract parity가 필요하다. 상수로 완료 처리하지 않았다. Sample·E2E 변경·실행은 0이다. |
-| `V11-M6A-JVM` | JVM topology·dispatch·Location·liveness runtime | JVM lane, `P-DEEP` | `V11-R4B` | 구현 완료 | Java·Kotlin API, remote placement, CAS·executor·coroutine·reconnect internal contract 통과 | 최신 `systems.zlink:zlink:11.0.0` public raw binding만 사용해 Framework ROUTER owner와 exact hello·admit·update, Node·Channel send/request/reply, bounded mailbox, Location CAS/watch, placement selector, reconnect와 5초/15초 liveness를 구현했다. Classic fanout connection fence·beacon·timeout contract를 포함한 service·binding regression과 M5 foundation, Java·Kotlin compile이 통과했다. 전체 core test 383개 중 M6B stateful Spot·Actor 구현을 요구하는 기존 6개만 격리됐다. Sample·E2E 변경·실행은 0이다. |
-| `V11-M6A-NODE` | Node topology·dispatch·Location·liveness runtime | Node lane, `P-DEEP` | `V11-R4B` | 구현 완료 | topology·remote placement·CAS·Promise·event-loop·reconnect internal contract 통과 | Public raw binding만 사용하는 owner에 admission, node·Channel send/request, mailbox, topology·placement, Location CAS, liveness와 전용 ClientServer·fanout registry를 구현하고 public host factory를 연결해 제거된 `createMeshNode` 의존을 없앴다. Framework TypeScript compile, M6A 7/7, M5 4/4와 changed-source ESLint가 통과했다. M6B 기능은 가짜 성공 없이 `NotSupported`로 유지하며 Sample·E2E 변경·실행은 0이다. |
+| `V11-M6A-CPP` | C++ topology·dispatch·Location·liveness runtime | C++ lane, `P-DEEP` | `V11-R4B` | 수정 진행 | node·Channel·ClientServer·manual·automatic classic fanout, remote placement, mailbox·CAS·reconnect·liveness internal contract 통과 | Public raw ROUTER·DEALER·PUB·SUB API로 node·Channel send/request, ClientServer 독립 admission·send/request, Location descriptor publish/watch/CAS, manual·automatic classic fanout과 publisher별 reconnect, bounded mailbox, terminal-once registry, 5초/15초 liveness를 구현했다. 실제 `mesh_node_runtime` public host가 Framework-owned raw owner를 생성하고 app·host dispatch를 이 경계로 연결한다. 11.0 bindings를 사용하는 전체 `zlink_framework` target compile과 M6A·M6B focused contract·unit 5/5가 통과했다. Compatibility header나 Core·bindings 수정은 없고 Sample·E2E 변경·실행은 0이다. |
+| `V11-M6A-DN` | .NET topology·dispatch·Location·liveness runtime | .NET lane, `P-DEEP` | `V11-R4B` | 수정 진행 | topology·remote placement·mailbox·CAS·Task terminal winner·liveness internal contract 통과 | 최신 `Systems.Zlink` 11.0.0 package의 public raw API로 managed MeshNode를 구현했다. 실제 두 node admission·remote `ToChannel`을 포함한 foundation 11/11과 backend·monitor·dispatch·Location 62/62가 통과했다. R5A 수정에서 descriptor extension의 필수·unknown TLV와 원본 descriptor bytes를 보존하고, 같은 lifecycle의 revision 증가·같은 revision exact-byte idempotence·immutable field 변경 거부를 mutation 전에 검사했다. Foundation focused regression 13/13이 통과했다. .NET source에는 target exact interface의 object role·placement weight·active/pending capacity public builder가 아직 없어 실제 application configuration 연결과 physical connection identity 기반 duplicate-pipe 판정은 후속 public-contract parity가 필요하다. 상수로 완료 처리하지 않았다. Sample·E2E 변경·실행은 0이다. |
+| `V11-M6A-JVM` | JVM topology·dispatch·Location·liveness runtime | JVM lane, `P-DEEP` | `V11-R4B` | 수정 진행 | Java·Kotlin API, remote placement, CAS·executor·coroutine·reconnect internal contract 통과 | 최신 `systems.zlink:zlink:11.0.0` public raw binding만 사용해 Framework ROUTER owner와 exact hello·admit·update, Node·Channel send/request/reply, bounded mailbox, Location CAS/watch, placement selector, reconnect와 5초/15초 liveness를 구현했다. Classic fanout connection fence·beacon·timeout contract를 포함한 service·binding regression과 M5 foundation, Java·Kotlin compile이 통과했다. 전체 core test 383개 중 M6B stateful Spot·Actor 구현을 요구하는 기존 6개만 격리됐다. Sample·E2E 변경·실행은 0이다. |
+| `V11-M6A-NODE` | Node topology·dispatch·Location·liveness runtime | Node lane, `P-DEEP` | `V11-R4B` | 수정 진행 | topology·remote placement·CAS·Promise·event-loop·reconnect internal contract 통과 | Public raw binding만 사용하는 owner에 admission, node·Channel send/request, mailbox, topology·placement, Location CAS, liveness와 전용 ClientServer·fanout registry를 구현하고 public host factory를 연결해 제거된 `createMeshNode` 의존을 없앴다. Framework TypeScript compile, M6A 7/7, M5 4/4와 changed-source ESLint가 통과했다. M6B 기능은 가짜 성공 없이 `NotSupported`로 유지하며 Sample·E2E 변경·실행은 0이다. |
 | `V11-R5A` | Topology runtime slice 독립 review | Codex review lane, `P-DEEP` + Claude `claude-sonnet-5` 병렬 reviewer | `V11-M6A-CPP`, `V11-M6A-DN`, `V11-M6A-JVM`, `V11-M6A-NODE` | 수정 진행 | topology·dispatch·placement·authority·liveness와 실행 격리의 I1·I2·I3 review clean | Codex 5.6 sol xhigh review에서 확인한 C++ public host의 삭제된 Core Service header·owner 잔존은 Framework raw owner·stateful runtime을 실제 app·MeshNode·Spot·Actor·STREAM host 경계에 연결해 해소했다. 전체 C++ framework compile과 focused regression 5/5가 통과했다. .NET descriptor의 ObjectRole·security·placement/capacity configuration과 physical connection identity 기반 duplicate-pipe 판정은 public-contract parity 후속 조건으로 남는다. Sample·E2E source 변경은 0이다. |
 
 Framework service runtime은 제거한 Core heartbeat option을 설정하지 않는다. Raw monitor는 orderly disconnect를
@@ -1104,6 +1111,58 @@ target owner와 target descriptor·lease를 mutation 전에 다시 검증한다.
 없으므로 capacity reserve는 `TargetUnavailable`로 끝내며 Redis aggregate도 성공 상태를 합성하지 않는다.
 따라서 실제 Retire relocation은 admission seal 전에 계속 차단하고 `V11-M6C-JVM`은 `진행`,
 `V11-R5C`는 `대기`로 유지한다. Core·bindings와 Sample·E2E source를 변경하거나 실행하지 않았다.
+
+M6C provider parity checkpoint(2026-07-23)에서 public authority CAS의 Missing expectation과
+`NewObject` transition을 제거하고, Missing 생성은 generic reservation만 수행하도록 네 언어 계약과
+provider를 맞췄다. C++은 descriptor·capacity fence·aggregate와 StoreRevision exhaustion 회귀에서
+in-memory 10/10, Redis 16/16이 통과했고 외부 cross-language 환경 2건만 skip했다. .NET은 exact
+MeshNode descriptor CAS, provider-owned capacity projection과 owner generation 전달을 보강해 Redis
+44/44가 통과했고 같은 환경 의존 2건만 skip했다. JVM은 descriptor immutable limit, aggregate membership
+index, reservation terminal idempotency와 fence 순서 독립성을 보강해 core 428/428, Kotlin 43/43,
+실제 Redis 21/21이 통과했고 외부 harness 2건만 skip했다. Node는 exact descriptor, creation·relocation·
+aggregate state machine과 capacity projection을 구현해 workspace typecheck, M6C 15/15와 실제 Redis
+focused scenario 1/1이 통과했다. 네 lane 모두 `git diff --check`가 통과했다.
+
+독립 audit에서 official Redis authority의 물리 schema가 C++·JVM의 per-authority HASH, .NET의
+property별 global HASH, Node의 단일 serialized state로 달라 같은 Redis transaction domain을 공유할 수
+없음을 확인했다. Node 방식은 mutation과 scan 비용이 전체 authority cardinality에 비례하므로 production
+후보에서 제외한다. Per-authority와 global HASH의 장점을 조합한 hybrid schema까지 포함해
+snapshot-consistent bounded scan, Redis Cluster same-slot, 1024-participant aggregate, migration과 hot-key
+비용을 독립 review하고 있다. Schema version gate와 공통 physical fixture를 확정해 네 provider를 통일하기
+전까지 `V11-M6C-*`는 `진행`, `V11-R5C`는 `대기`로 유지한다. Core·bindings와 Sample·E2E source는
+변경하거나 실행하지 않았다.
+
+Hybrid schema implementation checkpoint(2026-07-23)에서 공통 spec과 authority·MeshNode fixture에
+literal hash tag, exact current HASH 13개 field, canonical `objectKind`, UTF-8 byte length-prefix capacity
+bucket, owner lease 3-field HASH, descriptor·owner-token index, revision-prefixed history·tombstone와 durable
+watermark scan을 고정했다. Descriptor immutable digest도 `CA-D54`의 canonical preimage와 fixture vector로
+고정했다. Node는 workspace typecheck와 실제 Redis 9/9가 통과했다. JVM은 실제 Redis 27건 중 25건이
+통과했고 외부 cross-language 환경 2건만 skip했다. C++은 exact descriptor admission과 aggregate
+prepare·commit을 공통 physical schema에 맞췄고 실제 Redis 20건 중 18건이 통과했으며 외부 환경 2건만
+skip했다. .NET은 alias·property-map과 legacy scan을 제거하고 schema `KEYS[19]`, scan `KEYS[20]`,
+candidate row `KEYS[21...]`인 unified authority script를 직접 사용한다. Provider build는 warning·error
+0이고 실제 Redis 49건 중 47건이 통과했으며 외부 harness 2건만 skip했다. 네 provider의 canonical digest
+fixture, explicit Lua `KEYS`, exact field·bucket·index 검증과 `git diff --check`가 통과했다. 실제
+shared-prefix writer→다른 언어 reader 검증이 끝나기 전까지 `V11-M6C-*`는 `진행`, `V11-R5C`는 `대기`로
+유지한다. Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
+
+Topology contract audit checkpoint(2026-07-23)에서 Automatic RouteMesh는 canonical RID가 작은 쪽만
+connect를 시작하고 Manual 양방향 후보와 automatic 경합만 duplicate-pipe admission으로 정리하도록 공통
+spec을 수정했다. ClientServer는 Client만 server별 `(RID, lifecycle generation)` intent를 만들고, classic
+fanout은 Subscriber만 publisher별 intent를 만들며 automatic·manual subscriber 혼합 등록은 startup
+configuration error로 고정했다. .NET planner의 연결 방향과 RouteMesh pairwise ordering은 계약과
+일치했다. 다섯 언어 exact interface에는 RouteMesh initiator와 duplicate admission을 직접 고정했고,
+ClientServer와 fanout의 비대칭 연결 방향도 공통 계약과 일치시켰다. C++·JVM·Node intent key의 lifecycle
+누락, 세 언어 fanout 혼합 설정의 삭제·병합 처리와 .NET·Node ClientServer public/runtime surface 누락은
+production source gap으로 남아 있다. 이 항목은 완료 증거가 아니므로 해당 M6A language row를 다시
+검증하고 구현 gap을 닫기 전까지 `V11-R5C` 이후 review gate를 시작하지 않는다.
+
+Documentation verifier checkpoint(2026-07-23)에서 service wire schema 37 commands·157 types와 186개
+negative self-test는 통과했다. 이후 v11-first C++ public member review가 승인된 baseline
+`4265 / cefe23a9...`와 현재 candidate `4428 / 803e9c88...`의 차이를 감지해 중단됐다. 이 차이는
+Redis physical schema나 topology 문서 오류가 아니라 진행 중인 C++ public contract member set의 review
+gate다. Member diff를 별도 검토해 승인하기 전에는 baseline을 재생성하지 않으며 verifier 전체 통과
+증거로 기록하지 않는다.
 
 ### 10.4 Runtime 완료 후 E2E·sample spec 확정과 단계별 활성화
 

@@ -1,4 +1,6 @@
 using StackExchange.Redis;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Zlink.Framework.Locations.Redis;
 
@@ -6,8 +8,142 @@ namespace Zlink.Framework.Locations.Redis;
 /// Redis key schema for the official location store. Scripts receive prefixes
 /// from this object when they must derive owner-dependent keys atomically.
 /// </summary>
-internal sealed class ZLinkRedisLocationKeys(string prefix)
+internal sealed class ZLinkRedisLocationKeys
 {
+    private const string HybridHashTag = "{zlink-location-v1}";
+    private readonly string prefix;
+
+    public ZLinkRedisLocationKeys(string prefix)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
+        if (prefix.Contains('{', StringComparison.Ordinal)
+            || prefix.Contains('}', StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                "Redis location key prefix must not contain '{' or '}'.",
+                nameof(prefix));
+        }
+        this.prefix = prefix;
+    }
+
+    private string HybridBase => $"{prefix}:{HybridHashTag}";
+
+    public RedisKey HybridSchemaKey() => $"{HybridBase}:schema";
+
+    public RedisKey HybridCounterKey() => $"{HybridBase}:counter";
+
+    public RedisKey HybridOwnerLeaseKey(string ownerId) =>
+        $"{HybridBase}:owner-lease:{Digest(ownerId)}";
+
+    public RedisKey HybridOwnerLeaseIndexKey() =>
+        $"{HybridBase}:owner-leases";
+
+    public RedisKey HybridDescriptorKey(string canonicalDescriptorKey) =>
+        $"{HybridBase}:descriptor:mesh:{Digest(canonicalDescriptorKey)}";
+
+    public RedisKey HybridDescriptorAdmissionKey(
+        string canonicalDescriptorKey) =>
+        $"{HybridBase}:descriptor-admission:mesh:{Digest(canonicalDescriptorKey)}";
+
+    public RedisKey HybridAuthorityCurrentKey(string canonicalAuthorityKey) =>
+        $"{HybridBase}:authority:current:{Digest(canonicalAuthorityKey)}";
+
+    public RedisKey HybridAuthorityHistoryKey(string canonicalAuthorityKey) =>
+        $"{HybridBase}:authority:history:{Digest(canonicalAuthorityKey)}";
+
+    public RedisKey HybridAuthorityHistoryRevisionsKey(
+        string canonicalAuthorityKey) =>
+        $"{HybridBase}:authority:history-revisions:{Digest(canonicalAuthorityKey)}";
+
+    public RedisKey HybridAuthorityKeyIndexKey() =>
+        $"{HybridBase}:authority:key-index";
+
+    public RedisKey HybridAuthorityIndexGcKey() =>
+        $"{HybridBase}:authority:index-gc";
+
+    public RedisKey HybridMembershipCurrentKey() =>
+        $"{HybridBase}:membership:current";
+
+    public RedisKey HybridMembershipHistoryKey(string canonicalAuthorityKey) =>
+        $"{HybridBase}:membership:history:{Digest(canonicalAuthorityKey)}";
+
+    public RedisKey HybridMembershipHistoryRevisionsKey(
+        string canonicalAuthorityKey) =>
+        $"{HybridBase}:membership:history-revisions:{Digest(canonicalAuthorityKey)}";
+
+    public RedisKey HybridCapacityKey(bool type, bool pending) =>
+        $"{HybridBase}:capacity:{(type ? "type" : "node")}:{(pending ? "pending" : "active")}";
+
+    internal static string HybridCapacityNodeBucket(
+        string canonicalDescriptorKey,
+        ulong lifecycleGeneration)
+    {
+        var lifecycle = lifecycleGeneration.ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        return Segment(canonicalDescriptorKey) + Segment(lifecycle);
+    }
+
+    internal static string HybridCapacityTypeBucket(
+        string canonicalDescriptorKey,
+        ulong lifecycleGeneration,
+        ZLinkPlacementObjectKind objectKind,
+        string stableType)
+    {
+        var token = objectKind switch
+        {
+            ZLinkPlacementObjectKind.Actor => "actor",
+            ZLinkPlacementObjectKind.UserSpot => "user_spot",
+            ZLinkPlacementObjectKind.InstanceSpot => "instance_spot",
+            _ => throw new ArgumentOutOfRangeException(nameof(objectKind))
+        };
+        return HybridCapacityNodeBucket(
+                canonicalDescriptorKey,
+                lifecycleGeneration)
+            + Segment(token)
+            + Segment(stableType);
+    }
+
+    public RedisKey HybridCreationKey(string reservationId) =>
+        $"{HybridBase}:creation:{NormalizeId(reservationId)}";
+
+    public RedisKey HybridRelocationKey(string fenceId) =>
+        $"{HybridBase}:relocation:{NormalizeId(fenceId)}";
+
+    public RedisKey HybridAggregateKey(
+        Guid aggregateId,
+        ulong aggregateGeneration) =>
+        $"{HybridBase}:aggregate:{aggregateId:N}:{aggregateGeneration}";
+
+    public RedisKey HybridScanKey(string scanId) =>
+        $"{HybridBase}:scan:{NormalizeId(scanId)}";
+
+    public RedisKey HybridScanExpiryKey() =>
+        $"{HybridBase}:scans:expiry";
+
+    public RedisKey HybridScanWatermarkKey() =>
+        $"{HybridBase}:scans:watermark";
+
+    public static string CanonicalKeyHex(string value) =>
+        Convert.ToHexString(Encoding.UTF8.GetBytes(value)).ToLowerInvariant();
+
+    private static string Digest(string value) =>
+        Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(value)))
+            .ToLowerInvariant();
+
+    private static string Segment(string value) =>
+        Encoding.UTF8.GetByteCount(value).ToString(
+            System.Globalization.CultureInfo.InvariantCulture)
+        + ":"
+        + value;
+
+    private static string NormalizeId(string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        return value.Replace("-", string.Empty, StringComparison.Ordinal)
+            .ToLowerInvariant();
+    }
+
     public RedisKey RowHashKey(string tag, string rowKey) => RowHashKeyPrefix(tag) + rowKey;
 
     public string RowHashKeyPrefix(string tag) => $"{prefix}:row:{tag}:";
@@ -26,52 +162,6 @@ internal sealed class ZLinkRedisLocationKeys(string prefix)
 
     public RedisKey RoutingIdAllocationGroupKey(string groupName) =>
         $"{prefix}:ridalloc:{groupName}";
-
-    public RedisKey AuthorityCountersKey() => $"{prefix}:authority:counters";
-
-    public RedisKey AuthorityVersionsKey() => $"{prefix}:authority:versions";
-
-    public RedisKey AuthorityPayloadsKey() => $"{prefix}:authority:payloads";
-
-    public RedisKey AuthorityObjectGenerationsKey() =>
-        $"{prefix}:authority:object-generations";
-
-    public RedisKey AuthorityOwnerGenerationsKey() =>
-        $"{prefix}:authority:owner-generations";
-
-    public RedisKey AuthorityOwnerIdsKey() => $"{prefix}:authority:owner-ids";
-
-    public RedisKey AuthorityOwnerLeaseGenerationsKey() =>
-        $"{prefix}:authority:owner-lease-generations";
-
-    public RedisKey AuthorityAllocationStatesKey() =>
-        $"{prefix}:authority:allocation-states";
-
-    public RedisKey AuthorityAllocationsKey() =>
-        $"{prefix}:authority:allocations";
-
-    public RedisKey AuthorityActiveCapacityKey() =>
-        $"{prefix}:authority:active-capacity";
-
-    public RedisKey AuthorityPendingCapacityKey() =>
-        $"{prefix}:authority:pending-capacity";
-
-    public RedisKey AuthorityMembershipsKey() =>
-        $"{prefix}:authority:memberships";
-
-    public RedisKey AuthorityIndexKey() => $"{prefix}:authority:index";
-
-    public RedisKey AuthorityScanKey(string scanId) =>
-        $"{prefix}:authority:scan:{scanId}";
-
-    public RedisKey AuthorityReservationKey(string reservationVersion) =>
-        $"{prefix}:authority:reservation:{reservationVersion}";
-
-    public RedisKey AuthorityAggregateKey(ZLinkAggregateFence fence) =>
-        $"{prefix}:authority:aggregate:{fence.AggregateId:N}:{fence.AggregateGeneration}";
-
-    public RedisKey AuthorityRelocationCapacityKey(string fence) =>
-        $"{prefix}:authority:relocation-capacity:{fence}";
 
     // Actor transfer authority keys (spec 41 §2/§3.1). actorRowKey is the
     // length-prefixed MeshName + Actor ID; the transfer HASH is per transfer id

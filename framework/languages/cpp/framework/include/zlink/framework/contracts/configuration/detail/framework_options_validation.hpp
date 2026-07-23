@@ -45,6 +45,13 @@ inline void validate_framework_options (const framework_options_state_t &options
                                          "fanout channel '" + channel_name
                                            + "' must enable publisher or subscriber capability");
         }
+        if (options.fanout_channels_with_automatic_subscriber.contains (channel_name)
+            && options.fanout_channels_with_manual_subscriber.contains (channel_name)) {
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "fanout channel '" + channel_name
+                + "' cannot combine automatic discovery with manual subscriber endpoints");
+        }
     }
     for (const auto &channel_name : options.route_mesh_channels) {
         if (!options.route_mesh_channels_with_bind.contains (channel_name)

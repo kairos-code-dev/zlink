@@ -16,11 +16,30 @@ payload를 만들지 않고, `Disabled` cross-node 이동은 capture 전에 거�
 
 ```cpp
 struct authority_key_t { std::string value; };
+struct object_creation_target_t {
+    std::string mesh_name;
+    node_rid_t node_rid;
+    std::uint64_t node_lifecycle_generation;
+    location_owner_token_t owner;
+};
+enum class placement_allocation_state_t : std::uint8_t {
+    pending = 1,
+    active = 2
+};
+struct placement_allocation_t {
+    placement_allocation_state_t state;
+    placement_object_kind_t object_kind;
+    std::string stable_type;
+    object_creation_target_t target;
+    std::uint32_t capacity_delta;
+};
 struct authority_snapshot_t {
     std::string store_version;
     std::vector<std::byte> payload;
     std::uint64_t object_generation;
     std::uint64_t authority_owner_generation;
+    location_owner_token_t owner;
+    placement_allocation_t allocation;
     std::chrono::system_clock::time_point store_now;
 };
 
@@ -30,15 +49,9 @@ struct authority_missing_t {
 using authority_read_result_t =
   std::variant<authority_missing_t, authority_snapshot_t>;
 
-struct authority_expect_missing_t {};
-struct authority_expect_found_t { std::string store_version; };
-using authority_expectation_t =
-  std::variant<authority_expect_missing_t, authority_expect_found_t>;
-
 enum class authority_generation_transition_t {
     preserve = 1,
-    new_owner = 2,
-    new_object = 3
+    new_owner = 2
 };
 
 struct authority_entry_t {
@@ -61,9 +74,15 @@ struct authority_scan_expired_t {};
 using authority_scan_result_t =
   std::variant<authority_page_t, authority_scan_expired_t>;
 
+struct relocation_capacity_fence_t {
+    std::string value;
+};
+
 struct authority_put_t {
     std::vector<std::byte> payload;
     authority_generation_transition_t generation_transition;
+    std::optional<location_owner_token_t> target_owner;
+    std::optional<relocation_capacity_fence_t> relocation_capacity_fence;
 };
 struct authority_delete_t {};
 using authority_mutation_t = std::variant<authority_put_t, authority_delete_t>;
@@ -87,7 +106,7 @@ public:
       std::stop_token cancellation = {}) = 0;
     virtual task_t<authority_compare_exchange_result_t> compare_exchange_authority(
       authority_key_t key,
-      authority_expectation_t expectation,
+      std::string expected_store_version,
       authority_mutation_t mutation,
       std::stop_token cancellation = {}) = 0;
     virtual task_t<authority_scan_result_t> list_authorities(
@@ -100,13 +119,6 @@ public:
 struct object_creation_key_t {
     placement_object_kind_t kind;
     std::string global_id;
-};
-
-struct object_creation_target_t {
-    std::string mesh_name;
-    node_rid_t node_rid;
-    std::uint64_t node_lifecycle_generation;
-    location_owner_token_t owner;
 };
 
 struct object_creation_intent_t {
@@ -122,6 +134,7 @@ struct object_reserve_request_t {
     object_creation_key_t key;
     object_creation_intent_t intent;
     object_creation_target_t target;
+    std::vector<std::byte> creating_payload;
     std::uint32_t pending_capacity_delta = 1;
 };
 
@@ -153,6 +166,7 @@ using object_reserve_result_t = std::variant<
 struct object_commit_request_t {
     object_creation_key_t key;
     object_reservation_fence_t fence;
+    std::vector<std::byte> ready_payload;
 };
 struct object_committed_t { authority_snapshot_t ready; };
 struct object_already_committed_t { authority_snapshot_t ready; };
@@ -180,6 +194,54 @@ using object_abort_result_t = std::variant<
   object_abort_conflict_t,
   authority_generation_exhausted_t>;
 
+struct relocation_capacity_reserve_request_t {
+    std::array<std::byte, 16> reservation_id;
+    authority_key_t key;
+    std::string expected_store_version;
+    placement_object_kind_t object_kind;
+    std::string stable_type;
+    object_creation_target_t source;
+    object_creation_target_t target;
+    std::uint32_t capacity_delta = 1;
+};
+struct relocation_capacity_reserved_t {
+    relocation_capacity_fence_t fence;
+};
+struct relocation_capacity_already_reserved_t {
+    relocation_capacity_fence_t fence;
+};
+struct relocation_capacity_conflict_t {
+    authority_read_result_t current;
+};
+struct relocation_capacity_target_unavailable_t {};
+struct relocation_capacity_exhausted_t {};
+using relocation_capacity_reserve_result_t = std::variant<
+  relocation_capacity_reserved_t,
+  relocation_capacity_already_reserved_t,
+  relocation_capacity_conflict_t,
+  relocation_capacity_target_unavailable_t,
+  relocation_capacity_exhausted_t>;
+
+enum class relocation_capacity_abort_result_t : std::uint8_t {
+    aborted = 1,
+    already_aborted = 2,
+    already_committed = 3,
+    stale = 4
+};
+
+class relocation_capacity_store_t {
+public:
+    virtual ~relocation_capacity_store_t() = default;
+    virtual task_t<relocation_capacity_reserve_result_t>
+    reserve_relocation_capacity(
+      relocation_capacity_reserve_request_t request,
+      std::stop_token cancellation = {}) = 0;
+    virtual task_t<relocation_capacity_abort_result_t>
+    abort_relocation_capacity(
+      relocation_capacity_fence_t fence,
+      std::stop_token cancellation = {}) = 0;
+};
+
 struct aggregate_id_t {
     std::array<std::byte, 16> value;
 };
@@ -201,7 +263,7 @@ struct aggregate_prepare_request_t {
     std::uint64_t aggregate_generation;
     std::vector<aggregate_participant_t> participants;
     inventory_digest_t inventory_digest;
-    std::vector<object_reservation_fence_t> target_reservations;
+    std::vector<relocation_capacity_fence_t> target_reservations;
     location_owner_token_t target_owner;
 };
 
@@ -300,30 +362,62 @@ public:
 `checksum_crc32c`는 저장된 immutable root bytes의 CRC32C(Castagnoli)를 나타내는 exact unsigned 32-bit 값이다.
 Runtime은 이 값과 Location authority에 publish할 checksum이 정확히 같은지 검증한다.
 
-`reserve(...)`는 Missing authority를 Creating으로 바꾸고 final object·owner generation, durable creation intent와
+`reserve(...)`는 Framework가 encode한 `creating_payload`를 해석하지 않고 Missing authority를 Creating으로
+바꾸며 final object·owner generation, durable creation intent와
 target pending capacity를 하나의 atomic operation에서 확정한다. Request content는 최대 1 MiB이며 reference와
 SHA-256이 일치해야 한다. Reservation에는 TTL을 두지 않는다. `commit(...)`은 exact reservation에서
-Creating→Ready와 pending 감소·active 증가를 함께 처리하고, `abort(...)`는 exact Creating authority와 pending
-capacity만 해제한다. 같은 fence의 Commit과 Abort는 각각 `object_already_committed_t`와
+target descriptor lifecycle과 owner lease를 다시 확인하고 Framework가 encode한 `ready_payload`를 해석하지
+않은 채 Creating→Ready와 pending 감소·active 증가를 함께 처리한다. Stale이면 mutation 0으로 reservation을
+유지한다. `abort(...)`는 current lifecycle·lease를 요구하지 않고 reservation에 고정한 exact Creating authority와
+이전 target pending capacity만 해제한다. 같은 fence의 Commit과 Abort는 각각 `object_already_committed_t`와
 `object_already_aborted_t`를 반환하고 다른 reservation generation은 stale 결과다. Counter가 소진되면 mutation과
 counter 소비 없이 `authority_generation_exhausted_t`를 반환한다. Reserve의 결과는 Reserved, AlreadyExists,
 TypeMismatch, PlacementCapacityExhausted, Conflict와 GenerationExhausted로 닫혀 있다. Provider는 object kind를
 해석하지 않는다.
+
+Existing object relocation은 creation reservation을 재사용하지 않는다. `reserve_relocation_capacity`는
+non-zero 128-bit reservation ID, current authority version, kind·stable type, source·target descriptor와 exact
+owner token을 검증하고 양수인 `capacity_delta`만큼 target pending capacity만 예약한다. 같은 ID와 exact request는
+`relocation_capacity_already_reserved_t`, 다른 내용은 conflict다. Standalone Actor의 `new_owner` CAS와 aggregate
+commit만 fence를 소비하며 source active 감소와 target pending-to-active를 authority mutation과 같은 transaction에서
+처리한다. Commit 전 abort는 pending을 해제하고 reservation은 TTL로 만료시키지 않는다.
+Standalone `new_owner` fence가 reserved 상태가 아니거나 authority key·expected StoreVersion·source·target
+owner와 일치하지 않거나 이미 committed·aborted됐으면 current authority read를 담은
+`authority_conflict_t`다. CAS transaction은 request source를 durable current Active allocation과 다시
+비교하고 target descriptor lifecycle과 target owner lease만 live/exact로 확인한다. Source descriptor row나
+source owner lease가 stale·missing이어도 allocation match가 유지되면 commit할 수 있다. Target이 stale이면
+authority row, capacity와 fence state의 mutation은 0이다.
 
 `aggregate_id_t`는 all-zero가 아닌 128-bit 값이고 aggregate generation은
 `1..9223372036854775807`이다. `participants`는 authority key의 canonical byte order로 정렬하며 중복이 없는
 bounded canonical participant set이다. Participant는 최대 1024개이며 prepare request와 durable aggregate
 record의 encoded 크기는 각각 최대 1 MiB다. `inventory_digest`는 participant set과 mutation 전체를 canonical
 encode한 bytes의 SHA-256이다. Provider는 participant payload와 membership mutation을 해석하지 않는다.
-`prepare_aggregate(...)`는 모든 expected StoreVersion, target reservation과 owner lease를 확인한 뒤 durable
+`target_reservations`는 `new_owner` participant와 정확히 일대일이어야 한다. Fence reservation의 authority
+key·expected StoreVersion·source owner·target owner는 participant expectation, current authority owner와
+aggregate `target_owner`에 정확히 일치해야 한다. Request source는 durable Active allocation과 exact match해야
+하고 target descriptor lifecycle·owner lease만 live/exact로 확인한다. 누락·중복·추가 fence와 값 불일치는
+conflict이며 mutation은 0이다.
+`prepare_aggregate(...)`는 같은 transaction에서 Reserved fence를 aggregate ID·generation에 bind해 Prepared로
+바꾸고 durable
 prepared record를 만든다. `commit_aggregate(...)`는 모든 owner, AuthorityOwnerGeneration과 membership visibility를
-한 transaction에서 전환한다. `abort_aggregate(...)`는 commit 전 prepared record와 reservation만 정리한다. 같은
+한 transaction에서 전환한다. Bind된 fence의 direct abort는 stale이고 다른 aggregate prepare는 conflict다.
+Exact duplicate prepare만 already-prepared다. Commit은 source Active allocation match와 target descriptor
+lifecycle·owner lease를 다시 확인한다. Source descriptor row·lease는 stale·missing이어도 allocation match가
+유지되면 허용하고 target이 stale이면 mutation 없이 fence를 bind 상태로 유지한다.
+`abort_aggregate(...)`는 commit 전 prepared record와 bind된
+fence의 target pending을 정리하고 fence를 aborted로 닫는다. 같은
 fence는 idempotent하고 다른 generation은 stale이며 expectation 하나가 다르면 participant, reservation, index와
 counter를 하나도 변경하지 않는다.
 
-`compare_exchange_authority`는 `authority_expectation_t`를 받는 overload만 제공한다. `new_object`는
-`authority_expect_missing_t`를, `preserve`·`new_owner`·delete는 current StoreVersion을 담은
-`authority_expect_found_t`를 요구한다. Missing result에 fake StoreVersion을 넣지 않는다.
+`compare_exchange_authority`는 Active `Found`의 current StoreVersion 문자열을 직접 받는다. Missing authority를
+만드는 public transition은 없다. `authority_put_t::target_owner`와 `relocation_capacity_fence`는 `preserve`에서
+`std::nullopt`, `new_owner`에서 필수다. Provider는 exact target owner
+lease를 CAS와 같은 transaction에서 검증하고 성공한 snapshot의 `owner`로 기록하며 opaque payload에서 owner
+metadata를 해석하지 않는다. `preserve`는 stored current owner lease, `new_owner`는 `target_owner` lease를
+검증한다. Missing·stale lease는 current authority read를 가진
+`authority_conflict_t`로 끝나고 mutation은 0이다. Invalid `target_owner` 조합은 provider 호출 전에
+`std::invalid_argument`로 거부한다. Missing result에 fake StoreVersion을 넣지 않는다.
 `list_authorities`의 first page는 `cursor=nullopt`로 요청한다. Provider는 한 snapshot을 만들고 이어지는
 page에 필요한 모든 상태를 하나의 `authority_scan_cursor_t`에 담는다. 다음 page는 직전 page의
 `next_cursor` 객체를 해석하거나 다시 조립하지 않고 그대로 넘긴다. Cursor의 UTF-8 encoded 크기는
@@ -342,10 +436,12 @@ reply bytes는 relocation stream에 저장한다.
 Page는 opaque key와 payload를 반환하며 provider는 payload를 해석하지 않는다. Framework operational
 query가 Actor projection을 decode하며 이 목록은 routing authority로 사용하지 않는다. Provider domain은
 영구적인 global object generation, authority owner generation과 Store revision counter를 각각 하나씩 유지한다.
-CAS 성공 operation에서 `new_object`는 object와 owner generation을 모두 증가시키고,
-`new_owner`는 owner generation만 증가시키며 `preserve`는 둘 다 유지한다. Stored mutation과 delete는
-global Store revision으로 fence한다. Delete는 row를 완전히 제거하고 per-key counter나 version tombstone을
-유지하지 않는다. Scan lease가 활성화된 동안만 scan snapshot을 유지하기 위한 tombstone을 bounded로
+Generic Reserve만 object와 initial owner generation, Pending allocation을 발급한다. Commit은 같은 allocation을
+Active로 바꾸고 Abort는 Pending allocation을 제거한다. `new_owner`는 owner generation만 증가시키고 target
+Active allocation으로 바꾸며 `preserve`는 generation과 allocation을 유지한다. Delete는 Active allocation의
+capacity delta를 감소시키고 row를 제거한다. Pending row의 generic CAS는 conflict와 mutation 0이다. Stored
+mutation과 delete는 global Store revision으로 fence하고 per-key counter나 version tombstone을 유지하지 않는다.
+Scan lease가 활성화된 동안만 scan snapshot을 유지하기 위한 tombstone을 bounded로
 유지할 수 있다. Payload에 generation을 중복 encode하지 않는다. Authority row는
 TTL을 갖지 않고 explicit fenced delete가 성공할 때까지 유지된다. Owner·coordinator lease는 별도 token row에
 저장하며 lease 만료나 reclaim이 authority row를 삭제하거나 수정하지 않는다. Framework는

@@ -53,7 +53,7 @@ internal static class ZLinkAutoConnectPlanner
                 descriptor.Rid.ToHex(),
                 descriptor.Rid,
                 descriptor.Endpoint,
-                descriptor.Draining,
+                descriptor.State == ZLinkFrameworkRuntimeState.Draining,
                 descriptor.OwnerId,
                 local.AutoConnectType != ZLinkLocationAutoConnectType.SpotMesh
                 || LocalIsInitiator(local, descriptor),

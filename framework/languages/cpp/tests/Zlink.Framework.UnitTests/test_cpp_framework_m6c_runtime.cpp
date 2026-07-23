@@ -61,20 +61,15 @@ class public_memory_authority_store_t final :
       zlink::framework::authority_compare_exchange_result_t>
     compare_exchange_authority (
       zlink::framework::authority_key_t,
-      zlink::framework::authority_expectation_t expectation,
+      std::string expected_store_version,
       zlink::framework::authority_mutation_t mutation,
       std::stop_token) override
     {
-        const auto *expected =
-          std::get_if<
-            zlink::framework::authority_expect_found_t> (
-            &expectation);
         const auto *put =
           std::get_if<zlink::framework::authority_put_t> (
             &mutation);
-        if (!snapshot || !expected || !put
-            || expected->store_version
-                 != snapshot->store_version
+        if (!snapshot || !put
+            || expected_store_version != snapshot->store_version
             || put->generation_transition
                  != zlink::framework::
                       authority_generation_transition_t::new_owner

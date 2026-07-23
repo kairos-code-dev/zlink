@@ -173,6 +173,26 @@ final class LocationContractTest {
             "generation",
             "value",
             "updatedAt");
+        assertRecordComponents(
+            systems.zlink.framework.locations
+                .ZLinkMeshNodeDescriptor.class,
+            "meshName",
+            "rid",
+            "lifecycleGeneration",
+            "descriptorRevision",
+            "endpoint",
+            "channelWeights",
+            "applicationVersion",
+            "objectCapabilities",
+            "objectRole",
+            "placementWeight",
+            "capacity",
+            "maintenanceWave",
+            "state",
+            "securityIdentity",
+            "ownerId",
+            "leaseGeneration",
+            "updatedAt");
     }
 
     @Test
@@ -204,6 +224,26 @@ final class LocationContractTest {
         Method removeAllByOwner = ZLinkLocationStore.class.getMethod(
             "removeAllByOwner",
             String.class);
+        Method updateMeshNode =
+            systems.zlink.framework.locations
+                .ZLinkMeshNodeLocationStore.class.getMethod(
+                    "updateMeshNode",
+                    systems.zlink.framework.locations
+                        .ZLinkMeshNodeDescriptor.class,
+                    ZLinkLocationWriteIntent.class);
+        Method removeMeshNode =
+            systems.zlink.framework.locations
+                .ZLinkMeshNodeLocationStore.class.getMethod(
+                    "removeMeshNode",
+                    systems.zlink.framework.locations
+                        .ZLinkMeshNodeDescriptorKey.class,
+                    ZLinkLocationOwnerToken.class);
+        Method listMeshNodes =
+            systems.zlink.framework.locations
+                .ZLinkMeshNodeLocationStore.class.getMethod(
+                    "listMeshNodes",
+                    String.class,
+                    ZLinkPageRequest.class);
         assertEquals(CompletionStage.class, updatePeer.getReturnType());
         assertEquals(CompletionStage.class, listPeerLocations.getReturnType());
         assertEquals(CompletionStage.class, listLivePeers.getReturnType());
@@ -212,6 +252,9 @@ final class LocationContractTest {
         assertEquals(CompletionStage.class, renewOwnerLease.getReturnType());
         assertEquals(CompletionStage.class, releaseOwnerLease.getReturnType());
         assertEquals(CompletionStage.class, removeAllByOwner.getReturnType());
+        assertEquals(CompletionStage.class, updateMeshNode.getReturnType());
+        assertEquals(CompletionStage.class, removeMeshNode.getReturnType());
+        assertEquals(CompletionStage.class, listMeshNodes.getReturnType());
     }
 
     @Test

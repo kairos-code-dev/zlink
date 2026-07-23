@@ -84,6 +84,17 @@ public interface IZLinkMeshObjectServerBuilder
         where TFactory : class, IZLinkActorFactory<TActor>;
 }
 
+public interface IZLinkMeshObjectRoleBuilder
+{
+    IZLinkMeshObjectClientBuilder Client();
+
+    IZLinkMeshObjectServerBuilder Server();
+}
+
+public interface IZLinkMeshObjectClientBuilder
+{
+}
+
 public sealed record ZLinkObjectPlacementOptions
 {
     public IReadOnlyCollection<string> PlacementProfiles { get; init; } = [];
@@ -106,6 +117,14 @@ public interface IZLinkMeshNodeBuilder : IZLinkMeshObjectServerBuilder
     IZLinkMeshNodeBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix);
 
     IZLinkMeshNodeBuilder SetRoutingIdAllocationGroup(string groupName);
+
+    IZLinkMeshNodeBuilder SetPlacementWeight(int weight);
+
+    IZLinkMeshNodeBuilder SetObjectCapacity(
+        int maxActiveObjects,
+        int maxPendingActivations);
+
+    IZLinkMeshObjectRoleBuilder Objects();
 
     IZLinkMeshNodeSocketConfig ConfigureRouterSocket();
 

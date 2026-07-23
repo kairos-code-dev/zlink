@@ -124,10 +124,19 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                     spot.Router.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect),
                 retainRemovedMembers:
                     spot.Router.AcquisitionMode == ZLinkPeerAcquisitionMode.Manual,
-                // The row carries the Core node lifecycle generation verbatim
-                // (spec 40 §3): Core allocates it restart-monotonic, and
-                // admission orders same-RID lifecycles by it.
-                lifecycleGeneration: node.Node.MeshStatus().LifecycleGeneration);
+                // The row carries Core's nonzero lifecycle token verbatim.
+                // Admission compares this opaque token for exact equality.
+                lifecycleGeneration: node.Node.MeshStatus().LifecycleGeneration,
+                objectRole: spot.ObjectRole,
+                objectCapabilities: BuildObjectCapabilities(spot),
+                applicationVersion: registration.ApplicationVersion,
+                maintenanceWave: registration.MaintenanceWave,
+                placementWeight: spot.PlacementWeight,
+                capacity: new ZLinkPlacementCapacity(
+                    0,
+                    0,
+                    spot.MaxActiveObjects,
+                    spot.MaxPendingActivations));
         }
 
             try
@@ -271,7 +280,13 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         uint weight,
         IZLinkAutoConnectExecutor executor,
         bool retainRemovedMembers = false,
-        ulong lifecycleGeneration = 0)
+        ulong lifecycleGeneration = 0,
+        ZLinkMeshNodeObjectRole objectRole = ZLinkMeshNodeObjectRole.None,
+        IReadOnlyList<ZLinkObjectCapability>? objectCapabilities = null,
+        long applicationVersion = 0,
+        string? maintenanceWave = null,
+        int placementWeight = 100,
+        ZLinkPlacementCapacity? capacity = null)
     {
         // A descriptor is keyed by (MeshName, Rid), so a capability without
         // an identity cannot be advertised (an endpoint-less member still
@@ -285,17 +300,33 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         if (!advertisable && ReferenceEquals(executor, NullExecutor.Instance)) return;
 
         var local = new ZLinkAutoConnectLocal(type, meshName, role, nodeRid, endpoint);
+        var effectiveLifecycleGeneration = lifecycleGeneration == 0
+            ? CreateLifecycleNonce()
+            : lifecycleGeneration;
         var row = advertisable
             ? new ZLinkMeshNodeDescriptor(
                 meshName, nodeRid!.Value,
-                lifecycleGeneration, DescriptorRevision: 1,
+                effectiveLifecycleGeneration, DescriptorRevision: 1,
                 endpoint,
                 new Dictionary<string, int>(StringComparer.Ordinal) { [meshName] = (int)weight },
-                new HashSet<string>(StringComparer.Ordinal),
-                Draining: false,
                 SecurityIdentity: string.Empty,
                 OwnerId: string.Empty,
+                LeaseGeneration: 0,
                 UpdatedAt: default)
+            {
+                ApplicationVersion = applicationVersion,
+                ObjectRole = objectRole,
+                ObjectCapabilities =
+                    objectCapabilities ?? Array.Empty<ZLinkObjectCapability>(),
+                MaintenanceWave = maintenanceWave,
+                State = ZLinkFrameworkRuntimeState.Serving,
+                PlacementWeight = placementWeight,
+                Capacity = capacity ?? new ZLinkPlacementCapacity(
+                    0,
+                    0,
+                    10_000,
+                    128)
+            }
             : null;
         var reconciler = new ZLinkAutoConnectReconciler(
             local, row, _runtime, _peers, executor, _options, _time, _events,
@@ -341,6 +372,71 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
 
     private static RoutingId? RidOrNull(RoutingId routingId) =>
         routingId.Size > 0 ? routingId : null;
+
+    private static ulong CreateLifecycleNonce()
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(ulong)];
+        ulong value;
+        do
+        {
+            System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+            value = System.Buffers.Binary.BinaryPrimitives
+                .ReadUInt64BigEndian(bytes);
+        } while (value == 0);
+        return value;
+    }
+
+    private static IReadOnlyList<ZLinkObjectCapability> BuildObjectCapabilities(
+        ZLinkSpotNodeRegistration registration)
+    {
+        var capabilities = new List<ZLinkObjectCapability>(
+            registration.SpotRelocations.Count
+            + registration.InstanceSpotRelocations.Count
+            + registration.ActorRelocations.Count);
+        AddCapabilities(
+            capabilities,
+            ZLinkPlacementObjectKind.UserSpot,
+            registration.SpotRelocations);
+        AddCapabilities(
+            capabilities,
+            ZLinkPlacementObjectKind.InstanceSpot,
+            registration.InstanceSpotRelocations);
+        AddCapabilities(
+            capabilities,
+            ZLinkPlacementObjectKind.Actor,
+            registration.ActorRelocations);
+        return capabilities
+            .OrderBy(static capability => capability.ObjectKind)
+            .ThenBy(static capability => capability.StableType, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static void AddCapabilities(
+        ICollection<ZLinkObjectCapability> capabilities,
+        ZLinkPlacementObjectKind objectKind,
+        IReadOnlyDictionary<string, ZLinkObjectRelocationRegistration>
+            registrations)
+    {
+        foreach (var (stableType, registration) in registrations)
+        {
+            capabilities.Add(new ZLinkObjectCapability(
+                objectKind,
+                stableType,
+                registration.PolicyKind switch
+                {
+                    0 => ZLinkObjectMaintenancePolicyKind.Disabled,
+                    1 => ZLinkObjectMaintenancePolicyKind.Recreate,
+                    2 => ZLinkObjectMaintenancePolicyKind.Snapshot,
+                    _ => throw new ZLinkConfigurationException(
+                        $"Unknown relocation policy kind '{registration.PolicyKind}'.")
+                },
+                registration.AdapterType is not null,
+                registration.Placement.PlacementProfiles.ToHashSet(
+                    StringComparer.Ordinal),
+                registration.Placement.MaxActiveObjects,
+                registration.Placement.MaxPendingActivations));
+        }
+    }
 
     private static RoutingId? BundleRid(string? bundleRid, RoutingId fallback) =>
         bundleRid is { Length: > 0 } value ? RoutingId.From(value) : RidOrNull(fallback);

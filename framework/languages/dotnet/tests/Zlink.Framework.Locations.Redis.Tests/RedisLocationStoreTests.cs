@@ -34,17 +34,104 @@ public sealed class RedisLocationStoreTests
     }
 
     [Fact]
-    public void Descriptor_Row_Json_Requires_The_Typed_Draining_Field()
+    public void Descriptor_Row_Json_Requires_The_Complete_Exact_Contract()
     {
-        var row = TestRows.MeshNode(OwnerA) with { Draining = true };
+        var row = TestRows.MeshNode(OwnerA) with
+        {
+            LifecycleGeneration = 1,
+            State = ZLinkFrameworkRuntimeState.Draining
+        };
         var json = ZLinkRedisLocationRowJson.Serialize(row);
 
-        Assert.Contains("\"Draining\":true", json, StringComparison.Ordinal);
-        Assert.True(ZLinkRedisLocationRowJson.Deserialize<ZLinkMeshNodeDescriptor>(json).Draining);
+        Assert.Contains("\"State\":3", json, StringComparison.Ordinal);
+        Assert.Contains("\"LeaseGeneration\":1", json, StringComparison.Ordinal);
+        Assert.Equal(
+            ZLinkFrameworkRuntimeState.Draining,
+            ZLinkRedisLocationRowJson.Deserialize<ZLinkMeshNodeDescriptor>(json).State);
 
-        var legacy = json.Replace("\"Draining\":true,", string.Empty, StringComparison.Ordinal);
+        var legacyObject = System.Text.Json.Nodes.JsonNode.Parse(json)!.AsObject();
+        Assert.True(legacyObject.Remove("ObjectCapabilities"));
+        var legacy = legacyObject.ToJsonString();
         Assert.Throws<System.Text.Json.JsonException>(
             () => ZLinkRedisLocationRowJson.Deserialize<ZLinkMeshNodeDescriptor>(legacy));
+    }
+
+    [SkippableFact]
+    public async Task OwnerLease_And_Descriptor_Use_Only_Canonical_Hybrid_Records()
+    {
+        Skip.If(!_fixture.RedisAvailable, _fixture.SkipReason);
+        await using var store = _fixture.CreateStore(out var prefix);
+        await store.RenewOwnerLeaseAsync(
+            OwnerA,
+            RoutingId.From("node-1"),
+            LeaseTtl);
+        var token = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(OwnerA)).Token;
+
+        var keys = new ZLinkRedisLocationKeys(prefix);
+        var leaseKey = keys.HybridOwnerLeaseKey(OwnerA).ToString();
+        Assert.Equal(
+            new[] { "expiresAt", "generation", "ownerId" },
+            (await _fixture.HashGetAllAsync(leaseKey)).Keys
+            .Order(StringComparer.Ordinal));
+        Assert.True((await _fixture.KeyTimeToLiveAsync(leaseKey)) > TimeSpan.Zero);
+        Assert.False(await _fixture.KeyExistsAsync($"{prefix}:lease:{OwnerA}"));
+
+        var descriptor = TestRows.MeshNode(
+            OwnerA,
+            leaseGeneration: token.LeaseGeneration);
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await store.UpdateMeshNodeAsync(
+                descriptor,
+                ZLinkLocationWriteIntent.NewClaim)).Status);
+
+        var canonicalKey = ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(
+            new ZLinkMeshNodeDescriptorKey(
+                descriptor.MeshName,
+                descriptor.Rid));
+        var descriptorKey = keys.HybridDescriptorKey(canonicalKey).ToString();
+        Assert.Equal(
+            new[] { "gen", "json", "mesh", "owner", "updatedAtMs" },
+            (await _fixture.HashGetAllAsync(descriptorKey)).Keys
+            .Order(StringComparer.Ordinal));
+        Assert.Equal(
+            new[]
+            {
+                "applicationVersion",
+                "capabilities",
+                "descriptorKey",
+                "descriptorRevision",
+                "immutableDigest",
+                "lifecycleGeneration",
+                "nodeActiveLimit",
+                "nodePendingLimit",
+                "objectRole",
+                "ownerId",
+                "ownerLeaseGeneration",
+                "runtimeState"
+            },
+            (await _fixture.HashGetAllAsync(
+                keys.HybridDescriptorAdmissionKey(canonicalKey).ToString()))
+            .Keys
+            .Order(StringComparer.Ordinal));
+
+        var descriptorBase = descriptorKey[..(descriptorKey.LastIndexOf(':') + 1)];
+        Assert.Contains(
+            canonicalKey,
+            await _fixture.SetMembersAsync(descriptorBase + "index"));
+        var ownerTokenBytes = System.Text.Encoding.UTF8.GetBytes(
+            OwnerA
+            + "\0"
+            + token.LeaseGeneration.ToString(
+                System.Globalization.CultureInfo.InvariantCulture));
+        var ownerTokenDigest = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(ownerTokenBytes))
+            .ToLowerInvariant();
+        Assert.Contains(
+            canonicalKey,
+            await _fixture.SetMembersAsync(
+                descriptorBase + "owner:" + ownerTokenDigest));
     }
 
     [Fact]
@@ -98,7 +185,19 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(100, descriptor.ChannelWeights["play"]);
         Assert.Equal(50, descriptor.ChannelWeights["world"]);
         Assert.Equal("cluster-a", descriptor.SecurityIdentity);
-        Assert.False(descriptor.Draining);
+        Assert.Equal(ZLinkFrameworkRuntimeState.Serving, descriptor.State);
+        Assert.Equal(1, descriptor.LeaseGeneration);
+        Assert.Equal(7, descriptor.ApplicationVersion);
+        Assert.Equal(ZLinkMeshNodeObjectRole.Server, descriptor.ObjectRole);
+        Assert.Equal(80, descriptor.PlacementWeight);
+        Assert.Equal(new ZLinkPlacementCapacity(0, 0, 1_000, 64), descriptor.Capacity);
+        Assert.Equal("wave-a", descriptor.MaintenanceWave);
+        var capability = Assert.Single(descriptor.ObjectCapabilities);
+        Assert.Equal(ZLinkPlacementObjectKind.Actor, capability.ObjectKind);
+        Assert.Equal("player", capability.StableType);
+        Assert.Equal(
+            ["zone-a", "zone-b"],
+            capability.PlacementProfiles.Order(StringComparer.Ordinal));
     }
 
     [SkippableFact]
@@ -226,12 +325,24 @@ public sealed class RedisLocationStoreTests
     {
         await using var store = CreateStoreWithLiveOwnersAsync(OwnerA, out var setup, OwnerB);
         await setup;
+        var ownerAToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(OwnerA)).Token;
+        var ownerBToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await store.ReadOwnerLeaseAsync(OwnerB)).Token;
 
         await store.UpdateMeshNodeAsync(
-            TestRows.MeshNode(OwnerA, endpoint: "tcp://127.0.0.1:5001", nodeRid: "node-a"),
+            TestRows.MeshNode(
+                OwnerA,
+                endpoint: "tcp://127.0.0.1:5001",
+                nodeRid: "node-a",
+                leaseGeneration: ownerAToken.LeaseGeneration),
             ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateMeshNodeAsync(
-            TestRows.MeshNode(OwnerB, endpoint: "tcp://127.0.0.1:5002", nodeRid: "node-b"),
+            TestRows.MeshNode(
+                OwnerB,
+                endpoint: "tcp://127.0.0.1:5002",
+                nodeRid: "node-b",
+                leaseGeneration: ownerBToken.LeaseGeneration),
             ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-a"), ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateSpotAsync(TestRows.Spot(OwnerB, "spot-b"), ZLinkLocationWriteIntent.NewClaim);
@@ -371,21 +482,34 @@ public sealed class RedisLocationStoreTests
     }
 
     [Fact]
-    public void Hash_Tagged_Prefix_Keeps_Every_Derived_Key_In_The_Same_Cluster_Slot()
+    public void Hybrid_Authority_Keys_Use_One_Literal_Cluster_Hash_Tag()
     {
-        var keys = new ZLinkRedisLocationKeys("zlink:{app-a}");
+        var keys = new ZLinkRedisLocationKeys("zlink-app-a");
 
         Assert.All(
             new[]
             {
-                keys.RowHashKey("mesh", "row").ToString(),
-                keys.GenerationKey("mesh", "row").ToString(),
-                keys.KindIndexKey("mesh").ToString(),
-                keys.LeaseKey("owner").ToString(),
-                keys.LeaseIndexKey().ToString(),
-                keys.StampKey("mesh", "play")
+                keys.HybridSchemaKey().ToString(),
+                keys.HybridCounterKey().ToString(),
+                keys.HybridOwnerLeaseKey("owner").ToString(),
+                keys.HybridDescriptorKey("descriptor").ToString(),
+                keys.HybridDescriptorAdmissionKey("descriptor").ToString(),
+                keys.HybridAuthorityCurrentKey("authority").ToString(),
+                keys.HybridAuthorityHistoryKey("authority").ToString(),
+                keys.HybridAuthorityHistoryRevisionsKey("authority").ToString(),
+                keys.HybridAuthorityKeyIndexKey().ToString(),
+                keys.HybridCreationKey(Guid.Empty.ToString("N")).ToString(),
+                keys.HybridRelocationKey(Guid.Empty.ToString("N")).ToString(),
+                keys.HybridAggregateKey(Guid.Empty, 1).ToString(),
+                keys.HybridScanKey(Guid.Empty.ToString("N")).ToString()
             },
-            key => Assert.Contains("{app-a}", key, StringComparison.Ordinal));
+            key => Assert.Contains(
+                "{zlink-location-v1}",
+                key,
+                StringComparison.Ordinal));
+
+        Assert.Throws<ArgumentException>(
+            () => new ZLinkRedisLocationKeys("zlink:{app-a}"));
     }
 
     [SkippableFact]

@@ -23,10 +23,10 @@ public sealed class RelocationRuntimeTests
                 "target-owner",
                 TimeSpan.FromMinutes(1)));
         await store.UpdateMeshNodeAsync(
-            AuthorityDescriptor("source", source.Token.OwnerId),
+            AuthorityDescriptor("source", source.Token),
             ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateMeshNodeAsync(
-            AuthorityDescriptor("target", target.Token.OwnerId),
+            AuthorityDescriptor("target", target.Token),
             ZLinkLocationWriteIntent.NewClaim);
         var key = new ZLinkAuthorityKey("actor:mesh:actor-1");
         var creating = new byte[] { 0x11, 0x00, 0xff };
@@ -142,7 +142,7 @@ public sealed class RelocationRuntimeTests
             "mesh",
             RoutingId.From("capacity-node"));
         await store.UpdateMeshNodeAsync(
-            AuthorityDescriptor("capacity-node", owner.Token.OwnerId),
+            AuthorityDescriptor("capacity-node", owner.Token),
             ZLinkLocationWriteIntent.NewClaim);
 
         var abortedReservation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
@@ -202,6 +202,195 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
+    public async Task Creation_admission_checks_profile_and_node_and_type_limits()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "bounded-owner",
+                TimeSpan.FromMinutes(1)));
+        var descriptorKey = new ZLinkMeshNodeDescriptorKey(
+            "mesh",
+            RoutingId.From("bounded-node"));
+        await store.UpdateMeshNodeAsync(
+            AuthorityDescriptor(
+                "bounded-node",
+                owner.Token,
+                activeLimit: 1,
+                pendingLimit: 1,
+                placementProfiles: new HashSet<string>(
+                    ["premium"],
+                    StringComparer.Ordinal)),
+            ZLinkLocationWriteIntent.NewClaim);
+
+        Assert.IsType<ZLinkObjectReserveResult.Conflict>(
+            await store.ReserveAsync(
+                ObjectReservation(
+                    "actor:mesh:wrong-profile",
+                    descriptorKey,
+                    owner.Token,
+                    placementProfile: "standard")));
+
+        var first = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                ObjectReservation(
+                    "actor:mesh:first",
+                    descriptorKey,
+                    owner.Token,
+                    placementProfile: "premium")));
+        var pendingDescriptor = Assert.Single(
+            await store.ListMeshNodesAsync("mesh"),
+            value => value.Rid == RoutingId.From("bounded-node"));
+        Assert.Equal(0, pendingDescriptor.Capacity.Active);
+        Assert.Equal(1, pendingDescriptor.Capacity.Pending);
+        Assert.IsType<ZLinkObjectReserveResult.PlacementCapacityExhausted>(
+            await store.ReserveAsync(
+                ObjectReservation(
+                    "actor:mesh:pending-overflow",
+                    descriptorKey,
+                    owner.Token,
+                    placementProfile: "premium")));
+        Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(first.Reservation, new byte[] { 0x01 }));
+        var activeDescriptor = Assert.Single(
+            await store.ListMeshNodesAsync("mesh"),
+            value => value.Rid == RoutingId.From("bounded-node"));
+        Assert.Equal(1, activeDescriptor.Capacity.Active);
+        Assert.Equal(0, activeDescriptor.Capacity.Pending);
+        Assert.IsType<ZLinkObjectReserveResult.PlacementCapacityExhausted>(
+            await store.ReserveAsync(
+                ObjectReservation(
+                    "actor:mesh:active-overflow",
+                    descriptorKey,
+                    owner.Token,
+                    placementProfile: "premium")));
+    }
+
+    [Fact]
+    public async Task Descriptor_renew_requires_exact_fence_revision_and_immutable_fields()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "descriptor-owner",
+                TimeSpan.FromMinutes(1)));
+        var descriptor = AuthorityDescriptor(
+            "descriptor-node",
+            owner.Token);
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await store.UpdateMeshNodeAsync(
+                descriptor,
+                ZLinkLocationWriteIntent.NewClaim)).Status);
+
+        Assert.Equal(
+            ZLinkLocationWriteStatus.IgnoredStale,
+            (await store.UpdateMeshNodeAsync(
+                descriptor with { PlacementWeight = 75 },
+                ZLinkLocationWriteIntent.Renew)).Status);
+        Assert.Equal(
+            ZLinkLocationWriteStatus.IgnoredStale,
+            (await store.UpdateMeshNodeAsync(
+                descriptor with
+                {
+                    DescriptorRevision = 2,
+                    ApplicationVersion = 2
+                },
+                ZLinkLocationWriteIntent.Renew)).Status);
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await store.UpdateMeshNodeAsync(
+                descriptor with
+                {
+                    DescriptorRevision = 2,
+                    PlacementWeight = 75
+                },
+                ZLinkLocationWriteIntent.Renew)).Status);
+        var current = Assert.Single(
+            await store.ListMeshNodesAsync("mesh"),
+            value => value.Rid == RoutingId.From("descriptor-node"));
+        Assert.Equal(2UL, current.DescriptorRevision);
+        Assert.Equal(75, current.PlacementWeight);
+    }
+
+    [Fact]
+    public async Task Relocation_admission_checks_target_capability_and_capacity()
+    {
+        var store = new ZLinkInMemoryLocationStore();
+        var source = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "relocation-source-owner",
+                TimeSpan.FromMinutes(1)));
+        var target = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "relocation-target-owner",
+                TimeSpan.FromMinutes(1)));
+        var sourceDescriptor = new ZLinkMeshNodeDescriptorKey(
+            "mesh",
+            RoutingId.From("relocation-source"));
+        var targetDescriptor = new ZLinkMeshNodeDescriptorKey(
+            "mesh",
+            RoutingId.From("relocation-target"));
+        await store.UpdateMeshNodeAsync(
+            AuthorityDescriptor("relocation-source", source.Token),
+            ZLinkLocationWriteIntent.NewClaim);
+        var unavailableTarget = AuthorityDescriptor(
+                "relocation-target",
+                target.Token,
+                activeLimit: 1,
+                pendingLimit: 1) with
+        {
+            PlacementWeight = 0
+        };
+        await store.UpdateMeshNodeAsync(
+            unavailableTarget,
+            ZLinkLocationWriteIntent.NewClaim);
+
+        var sourceReservation = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                ObjectReservation(
+                    "actor:mesh:relocate",
+                    sourceDescriptor,
+                    source.Token)));
+        var sourceReady = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                sourceReservation.Reservation,
+                new byte[] { 0x01 }));
+        var relocation = RelocationReservation(
+            sourceReady.Snapshot,
+            sourceDescriptor,
+            source.Token,
+            targetDescriptor,
+            target.Token);
+        Assert.IsType<ZLinkRelocationCapacityReserveResult.TargetUnavailable>(
+            await store.ReserveRelocationCapacityAsync(relocation));
+
+        await store.UpdateMeshNodeAsync(
+            unavailableTarget with
+            {
+                DescriptorRevision = 2,
+                PlacementWeight = 100
+            },
+            ZLinkLocationWriteIntent.Renew);
+        var occupyingReservation =
+            Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+                await store.ReserveAsync(
+                    ObjectReservation(
+                        "actor:mesh:target-occupied",
+                        targetDescriptor,
+                        target.Token)));
+        Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(
+                occupyingReservation.Reservation,
+                new byte[] { 0x02 }));
+
+        Assert.IsType<
+            ZLinkRelocationCapacityReserveResult.PlacementCapacityExhausted>(
+            await store.ReserveRelocationCapacityAsync(
+                relocation with { ReservationId = Guid.NewGuid() }));
+    }
+
+    [Fact]
     public async Task Aggregate_prepare_is_idempotent_only_for_exact_canonical_request()
     {
         var store = new ZLinkInMemoryLocationStore();
@@ -220,10 +409,10 @@ public sealed class RelocationRuntimeTests
             "mesh",
             RoutingId.From("aggregate-target"));
         await store.UpdateMeshNodeAsync(
-            AuthorityDescriptor("aggregate-source", source.Token.OwnerId),
+            AuthorityDescriptor("aggregate-source", source.Token),
             ZLinkLocationWriteIntent.NewClaim);
         await store.UpdateMeshNodeAsync(
-            AuthorityDescriptor("aggregate-target", target.Token.OwnerId),
+            AuthorityDescriptor("aggregate-target", target.Token),
             ZLinkLocationWriteIntent.NewClaim);
 
         var key = new ZLinkAuthorityKey("actor:mesh:aggregate-1");
@@ -390,6 +579,70 @@ public sealed class RelocationRuntimeTests
         Assert.Equal((byte)2, relocation.PolicyKind);
         Assert.Equal(typeof(TestSpotRelocationAdapter), relocation.AdapterType);
         Assert.Equal(["ssd"], relocation.Placement.PlacementProfiles);
+    }
+
+    [Fact]
+    public void DescriptorConfigurationKeepsHostAndNodePlacementFields()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var options = new ZLinkFrameworkOptionsBuilder(registration)
+        {
+            ApplicationVersion = 42,
+            MaintenanceWave = "wave-blue"
+        };
+        var node = options.AddRouteMesh("objects");
+        node.SetPlacementWeight(75)
+            .SetObjectCapacity(500, 25);
+        node.Objects().Server().AddActorFactory<
+            TestRelocatableActor,
+            TestRelocatableActorFactory>(
+            "Game.Actor",
+            new ZLinkObjectPlacementOptions
+            {
+                PlacementProfiles = ["ssd"],
+                MaxActiveObjects = 100,
+                MaxPendingActivations = 10
+            },
+            ZLinkRelocationPolicy<TestRelocatableActor>.Recreate);
+
+        Assert.Equal(42, registration.ApplicationVersion);
+        Assert.Equal("wave-blue", registration.MaintenanceWave);
+        var configured = registration.SpotNodes["objects"];
+        Assert.Equal(ZLinkMeshNodeObjectRole.Server, configured.ObjectRole);
+        Assert.Equal(75, configured.PlacementWeight);
+        Assert.Equal(500, configured.MaxActiveObjects);
+        Assert.Equal(25, configured.MaxPendingActivations);
+        Assert.Throws<ZLinkConfigurationException>(
+            () => node.Objects().Client());
+    }
+
+    [Fact]
+    public void Placement_profile_rejects_values_outside_utf8_contract()
+    {
+        var registration = new ZLinkFrameworkRegistration();
+        var options = new ZLinkFrameworkOptionsBuilder(registration);
+        var server = options.AddRouteMesh("objects").Objects().Server();
+
+        Assert.Throws<ZLinkConfigurationException>(
+            () => server.AddActorFactory<
+                TestRelocatableActor,
+                TestRelocatableActorFactory>(
+                "Game.Actor",
+                new ZLinkObjectPlacementOptions
+                {
+                    PlacementProfiles = [new string('가', 86)]
+                },
+                ZLinkRelocationPolicy<TestRelocatableActor>.Recreate));
+        Assert.Throws<ZLinkConfigurationException>(
+            () => server.AddActorFactory<
+                TestRelocatableActor,
+                TestRelocatableActorFactory>(
+                "Game.Actor.Nul",
+                new ZLinkObjectPlacementOptions
+                {
+                    PlacementProfiles = ["premium\0hidden"]
+                },
+                ZLinkRelocationPolicy<TestRelocatableActor>.Recreate));
     }
 
     [Fact]
@@ -710,12 +963,13 @@ public sealed class RelocationRuntimeTests
         string authorityKey,
         ZLinkMeshNodeDescriptorKey descriptor,
         ZLinkLocationOwnerToken owner,
-        int capacityDelta) =>
+        int capacityDelta = 1,
+        string? placementProfile = null) =>
         new(
             ZLinkPlacementObjectKind.Actor,
             new ZLinkAuthorityKey(authorityKey),
             "Game.Actor",
-            null,
+            placementProfile,
             null,
             $"intent:{authorityKey}",
             SHA256.HashData(
@@ -729,7 +983,11 @@ public sealed class RelocationRuntimeTests
 
     private static ZLinkMeshNodeDescriptor AuthorityDescriptor(
         string rid,
-        string ownerId) =>
+        ZLinkLocationOwnerToken owner,
+        string stableType = "Game.Actor",
+        int? activeLimit = null,
+        int? pendingLimit = null,
+        IReadOnlySet<string>? placementProfiles = null) =>
         new(
             "mesh",
             RoutingId.From(rid),
@@ -740,10 +998,52 @@ public sealed class RelocationRuntimeTests
             {
                 ["mesh"] = 100
             },
-            Draining: false,
             SecurityIdentity: string.Empty,
-            OwnerId: ownerId,
-            UpdatedAt: DateTimeOffset.UtcNow);
+            OwnerId: owner.OwnerId,
+            LeaseGeneration: owner.LeaseGeneration,
+            UpdatedAt: DateTimeOffset.UtcNow)
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Server,
+            ObjectCapabilities =
+            [
+                new ZLinkObjectCapability(
+                    ZLinkPlacementObjectKind.Actor,
+                    stableType,
+                    ZLinkObjectMaintenancePolicyKind.Recreate,
+                    HasSnapshotAdapter: false,
+                    placementProfiles
+                    ?? new HashSet<string>(StringComparer.Ordinal),
+                    activeLimit,
+                    pendingLimit)
+            ],
+            State = ZLinkFrameworkRuntimeState.Serving,
+            Capacity = new(
+                0,
+                0,
+                activeLimit ?? 10_000,
+                pendingLimit ?? 128)
+        };
+
+    private static ZLinkRelocationCapacityReservationRequest
+        RelocationReservation(
+            ZLinkAuthoritySnapshot source,
+            ZLinkMeshNodeDescriptorKey sourceDescriptor,
+            ZLinkLocationOwnerToken sourceOwner,
+            ZLinkMeshNodeDescriptorKey targetDescriptor,
+            ZLinkLocationOwnerToken targetOwner) =>
+        new(
+            Guid.NewGuid(),
+            new ZLinkAuthorityKey("actor:mesh:relocate"),
+            source.StoreVersion,
+            source.Allocation.ObjectKind,
+            source.Allocation.StableType,
+            sourceDescriptor,
+            source.Allocation.DescriptorLifecycleGeneration,
+            sourceOwner,
+            targetDescriptor,
+            1,
+            targetOwner,
+            source.Allocation.CapacityDelta);
 
     private static ZLinkManagedMeshNode NewNode(
         IContext context,
@@ -1008,5 +1308,16 @@ public sealed class RelocationRuntimeTests
         public string ActorId { get; } = actorId;
 
         public IZLinkActorContext Context { get; } = context;
+    }
+
+    private sealed class TestRelocatableActorFactory
+        : IZLinkActorFactory<TestRelocatableActor>
+    {
+        public ValueTask<TestRelocatableActor> CreateAsync(
+            string actorId,
+            IZLinkActorContext context,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(
+                new TestRelocatableActor(actorId, context));
     }
 }

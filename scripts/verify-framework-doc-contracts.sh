@@ -14,6 +14,7 @@ node - "$repo_root" "$inventory" <<'NODE'
 'use strict';
 
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const root = process.argv[2];
 const inventoryPath = process.argv[3];
@@ -1333,7 +1334,7 @@ if (typeof consolidation.directory !== 'string'
 // hash failure.
 const redisFixtures = [
   ['actor-location-v2.json', 'actor-location-v2'],
-  ['authority-store-v1.json', 'authority-store-v1'],
+  ['authority-store-v1.json', 'location-authority-hybrid-v1'],
   ['client-server-server-descriptor-v1.json', 'client-server-server-descriptor-v1'],
   ['fanout-publisher-descriptor-v1.json', 'fanout-publisher-descriptor-v1'],
   ['mesh-node-descriptor-v1.json', 'mesh-node-descriptor-v1'],
@@ -1382,7 +1383,12 @@ const positiveDecimal = value => typeof value === 'string'
   && /^[1-9]\d*$/u.test(value)
   && BigInt(value) <= 9223372036854775807n;
 const validateAuthorityHash = (fixtureName, fixture, hash) => {
-  validateHashFields(fixtureName, fixture, hash);
+  const fields = fixture.currentHashFields ?? fixture.hashFields;
+  if (!Array.isArray(fields) || new Set(fields).size !== fields.length
+      || !hash || typeof hash !== 'object'
+      || JSON.stringify(Object.keys(hash)) !== JSON.stringify(fields)) {
+    fail(`Redis authority fixture hash field schema differs: ${fixtureName}`);
+  }
   if (typeof hash?.payload !== 'string' || hash.payload.length === 0
       || !positiveDecimal(hash.storeVersion)
       || !positiveDecimal(hash.objectGeneration)
@@ -1391,6 +1397,16 @@ const validateAuthorityHash = (fixtureName, fixture, hash) => {
       || !positiveDecimal(hash.ownerLeaseGeneration)
       || Object.hasOwn(hash, 'leaseExpiresAtMs')) {
     fail(`Redis authority fixture metadata differs: ${fixtureName}`);
+  }
+  if (fixture.currentHashFields
+      && (hash.authorityKey !== fixture.keyContract?.authorityKey
+        || !['pending', 'active'].includes(hash.allocationState)
+        || !['actor', 'user_spot', 'instance_spot'].includes(hash.objectKind)
+        || typeof hash.stableType !== 'string' || hash.stableType.length === 0
+        || typeof hash.descriptorKey !== 'string' || hash.descriptorKey.length === 0
+        || !positiveDecimal(hash.descriptorLifecycleGeneration)
+        || !positiveDecimal(hash.capacityDelta))) {
+    fail(`Redis authority fixture allocation metadata differs: ${fixtureName}`);
   }
 };
 const validateHashRow = (fixtureName, row, expectedKey = undefined) => {
@@ -1426,10 +1442,10 @@ const descriptorFieldOrder = {
   ],
   'mesh-node-descriptor-v1.json': [
     'MeshName', 'Rid', 'LifecycleGeneration', 'DescriptorRevision',
-    'NormalizedEffectiveMaxMessageBytes', 'Endpoint', 'ChannelWeights',
-    'ApplicationVersion', 'SpotTypes', 'StatefulCapabilities',
-    'ProtocolCapabilities', 'MaintenanceWave', 'State', 'SecurityIdentity',
-    'OwnerId', 'OwnerLeaseGeneration', 'UpdatedAt',
+    'Endpoint', 'ChannelWeights', 'SecurityIdentity', 'OwnerId',
+    'LeaseGeneration', 'UpdatedAt', 'ApplicationVersion',
+    'ObjectCapabilities', 'MaintenanceWave', 'State', 'ObjectRole',
+    'PlacementWeight', 'Capacity',
   ],
 };
 const runtimeStates = new Set(['Preparing', 'Serving', 'Draining', 'Stopped', 'Error']);
@@ -1444,10 +1460,16 @@ const validateDescriptorPayload = (name, payload) => {
   if (JSON.stringify(Object.keys(payload)) !== JSON.stringify(expectedFields)) {
     fail(`Redis descriptor canonical field order differs: ${name}`);
   }
-  if (!runtimeStates.has(payload.State)) {
+  const meshNode = name === 'mesh-node-descriptor-v1.json';
+  if (meshNode
+      ? !Number.isInteger(payload.State) || payload.State < 0
+      : !runtimeStates.has(payload.State)) {
     fail(`Redis descriptor FrameworkRuntimeState differs: ${name}`);
   }
-  for (const field of ['LifecycleGeneration', 'DescriptorRevision', 'OwnerLeaseGeneration']) {
+  const generationFields = meshNode
+    ? ['LifecycleGeneration', 'DescriptorRevision', 'LeaseGeneration']
+    : ['LifecycleGeneration', 'DescriptorRevision', 'OwnerLeaseGeneration'];
+  for (const field of generationFields) {
     if (!Number.isSafeInteger(payload[field]) || payload[field] <= 0) {
       fail(`Redis descriptor ${field} must be a positive safe integer: ${name}`);
     }
@@ -1455,7 +1477,7 @@ const validateDescriptorPayload = (name, payload) => {
   if (typeof payload.OwnerId !== 'string' || payload.OwnerId.length === 0) {
     fail(`Redis descriptor OwnerId is missing: ${name}`);
   }
-  if (name !== 'fanout-publisher-descriptor-v1.json'
+  if (name === 'client-server-server-descriptor-v1.json'
       && (!Number.isSafeInteger(payload.NormalizedEffectiveMaxMessageBytes)
         || payload.NormalizedEffectiveMaxMessageBytes <= 0
         || payload.NormalizedEffectiveMaxMessageBytes > 0xffffffff)) {
@@ -1466,44 +1488,45 @@ const validateDescriptorPayload = (name, payload) => {
   if (!isStrictlyUtf8Sorted(channelNames)) {
     fail('MeshNode descriptor ChannelWeights must be UTF-8 sorted and unique');
   }
-  for (const field of ['SpotTypes', 'ProtocolCapabilities']) {
-    if (!isStrictlyUtf8Sorted(payload[field])) {
-      fail(`MeshNode descriptor ${field} must be UTF-8 sorted and unique`);
-    }
-  }
-  if (!payload.ProtocolCapabilities.includes(serviceWireSchema.protocol.requiredCapability)) {
-    fail('MeshNode descriptor is missing the required service protocol capability');
-  }
   if (!Number.isSafeInteger(payload.ApplicationVersion) || payload.ApplicationVersion < 0) {
     fail('MeshNode descriptor ApplicationVersion must be a non-negative JSON integer');
   }
   if (!(payload.MaintenanceWave === null || typeof payload.MaintenanceWave === 'string')) {
     fail('MeshNode descriptor MaintenanceWave must be a string or null');
   }
-  if (!Array.isArray(payload.StatefulCapabilities)
-      || payload.StatefulCapabilities.length > 1024) {
-    fail('MeshNode descriptor StatefulCapabilities count differs');
+  if (!Array.isArray(payload.ObjectCapabilities)
+      || payload.ObjectCapabilities.length > 1024) {
+    fail('MeshNode descriptor ObjectCapabilities count differs');
     return;
   }
-  const kindOrder = { actor: 1, userSpot: 2, instanceSpot: 3 };
+  if (!Number.isInteger(payload.ObjectRole)
+      || !Number.isInteger(payload.PlacementWeight)
+      || payload.PlacementWeight < 0 || payload.PlacementWeight > 100
+      || !payload.Capacity
+      || !['Active', 'Pending', 'ActiveLimit', 'PendingLimit']
+        .every(field => Number.isInteger(payload.Capacity[field])
+          && payload.Capacity[field] >= 0)) {
+    fail('MeshNode descriptor placement metadata differs');
+  }
+  const kindOrder = { 1: 1, 2: 2, 3: 3 };
   let previousCapability;
-  for (const capability of payload.StatefulCapabilities) {
+  for (const capability of payload.ObjectCapabilities) {
     if (JSON.stringify(Object.keys(capability)) !== JSON.stringify([
       'ObjectKind', 'StableType', 'Policy', 'HasSnapshotAdapter', 'PlacementProfiles',
       'ActiveLimit', 'PendingLimit'])) {
-      fail('MeshNode descriptor StatefulCapabilities field order differs');
+      fail('MeshNode descriptor ObjectCapabilities field order differs');
       continue;
     }
     if (kindOrder[capability.ObjectKind] === undefined
         || typeof capability.StableType !== 'string' || capability.StableType.length === 0
-        || !['disabled', 'recreate', 'snapshot'].includes(capability.Policy)
+        || ![1, 2, 3].includes(capability.Policy)
         || typeof capability.HasSnapshotAdapter !== 'boolean'
         || !isStrictlyUtf8Sorted(capability.PlacementProfiles)
         || ![capability.ActiveLimit, capability.PendingLimit].every(limit =>
           limit === null || (Number.isSafeInteger(limit) && limit >= 0))) {
-      fail('MeshNode descriptor StatefulCapabilities value differs');
+      fail('MeshNode descriptor ObjectCapabilities value differs');
     }
-    if ((capability.Policy === 'snapshot') !== capability.HasSnapshotAdapter) {
+    if ((capability.Policy === 3) !== capability.HasSnapshotAdapter) {
       fail('MeshNode descriptor relocation policy and snapshot adapter capability differ');
     }
     const current = `${capability.ObjectKind}\u0000${capability.StableType}`;
@@ -1512,7 +1535,7 @@ const validateDescriptorPayload = (name, payload) => {
       if (kindOrder[previousKind] > kindOrder[capability.ObjectKind]
           || (previousKind === capability.ObjectKind
             && compareUtf8(previousType, capability.StableType) >= 0)) {
-        fail('MeshNode descriptor StatefulCapabilities must be sorted and unique');
+        fail('MeshNode descriptor ObjectCapabilities must be sorted and unique');
       }
     }
     previousCapability = current;
@@ -1539,33 +1562,106 @@ for (const [name, format] of redisFixtures) {
     if (!expectedKey || fixture.keyContract?.authorityKey !== expectedKey) {
       fail('Authority Store fixture key differs from authority-key-v1');
     }
-    for (const transition of ['newObject', 'preserve', 'newOwner']) {
-      validateAuthorityHash(name, fixture, fixture[transition]?.hash);
+    const authorityBytes = Buffer.from(expectedKey || '', 'utf8');
+    const authorityHex = authorityBytes.toString('hex');
+    const authorityDigest = crypto.createHash('sha256')
+      .update(authorityBytes).digest('hex');
+    const physicalBase = 'P:{zlink-location-v1}';
+    if (fixture.prefixRules?.literalHashTag !== '{zlink-location-v1}'
+        || fixture.prefixRules?.schemaKey !== `${physicalBase}:schema`
+        || fixture.prefixRules?.schemaFields?.format
+          !== 'location-authority-hybrid-v1'
+        || fixture.keyContract?.authorityKeyHex !== authorityHex
+        || fixture.keyContract?.authorityKeySha256 !== authorityDigest
+        || fixture.keyContract?.currentKey
+          !== `${physicalBase}:authority:current:${authorityDigest}`
+        || fixture.keyContract?.historyKey
+          !== `${physicalBase}:authority:history:${authorityDigest}`
+        || fixture.keyContract?.historyRevisionKey
+          !== `${physicalBase}:authority:history-revisions:${authorityDigest}`
+        || fixture.keyContract?.indexKey
+          !== `${physicalBase}:authority:key-index`) {
+      fail('Authority Store fixture hybrid physical key schema differs');
     }
-    const newObjectVersion = BigInt(fixture.newObject?.hash?.storeVersion ?? '-1');
-    const preserveVersion = BigInt(fixture.preserve?.hash?.storeVersion ?? '-1');
-    const newOwnerVersion = BigInt(fixture.newOwner?.hash?.storeVersion ?? '-1');
+    if (Object.hasOwn(fixture, 'newObject')) {
+      fail('Authority Store fixture must not expose Missing authority CAS');
+    }
+    const capacity = fixture.capacityBuckets || {};
+    const capacitySegment = value =>
+      `${Buffer.byteLength(String(value), 'utf8')}:${String(value)}`;
+    const expectedNodeBucket =
+      capacitySegment(capacity.descriptorKey)
+      + capacitySegment(capacity.descriptorLifecycleGeneration);
+    const expectedTypeBucket =
+      expectedNodeBucket
+      + capacitySegment(capacity.objectKind)
+      + capacitySegment(capacity.stableType);
+    const expectedUnicodeTypeBucket =
+      expectedNodeBucket
+      + capacitySegment(capacity.objectKind)
+      + capacitySegment(capacity.unicodeStableType);
+    if (capacity.segmentLengthUnit !== 'UTF-8 bytes'
+        || capacity.node !== expectedNodeBucket
+        || capacity.type !== expectedTypeBucket
+        || capacity.unicodeType !== expectedUnicodeTypeBucket
+        || !['actor', 'user_spot', 'instance_spot'].includes(
+          capacity.objectKind)) {
+      fail('Authority Store fixture capacity bucket encoding differs');
+    }
+    const history = fixture.historyEncoding || {};
+    const expectedHistorySuffixes = [
+      'deleted', ...fixture.currentHashFields,
+    ];
+    if (history.revisionFieldSeparator !== ':'
+        || history.fullSnapshotDeletedValue !== '0'
+        || history.tombstoneDeletedValue !== '1'
+        || JSON.stringify(history.fullSnapshotSuffixes)
+          !== JSON.stringify(expectedHistorySuffixes)
+        || JSON.stringify(history.tombstoneSuffixes)
+          !== JSON.stringify(['deleted', 'authorityKey'])) {
+      fail('Authority Store fixture history field encoding differs');
+    }
+    for (const transition of ['reserve', 'commit', 'preserve', 'newOwner']) {
+      validateAuthorityHash(name, fixture, fixture[transition]?.currentHash);
+    }
+    const reserveVersion = BigInt(
+      fixture.reserve?.currentHash?.storeVersion ?? '-1');
+    const commitVersion = BigInt(
+      fixture.commit?.currentHash?.storeVersion ?? '-1');
+    const preserveVersion = BigInt(
+      fixture.preserve?.currentHash?.storeVersion ?? '-1');
+    const newOwnerVersion = BigInt(
+      fixture.newOwner?.currentHash?.storeVersion ?? '-1');
     const deleteVersion = BigInt(fixture.delete?.consumedStoreRevision ?? '-1');
     if (fixture.missing?.kind !== 'Missing'
         || Object.hasOwn(fixture.missing || {}, 'storeVersion')
-        || fixture.newObject?.expectation !== 'Missing'
-        || fixture.newObject?.result !== 'Stored'
+        || fixture.reserve?.expectation !== 'Missing'
+        || fixture.reserve?.result !== 'Reserved'
+        || fixture.reserve?.currentHash?.allocationState !== 'pending'
+        || fixture.commit?.expectation?.storeVersion
+          !== fixture.reserve?.currentHash?.storeVersion
+        || fixture.commit?.result !== 'Committed'
+        || fixture.commit?.currentHash?.allocationState !== 'active'
         || fixture.preserve?.expectation?.kind !== 'Found'
         || fixture.preserve?.expectation?.storeVersion
-          !== fixture.newObject?.hash?.storeVersion
+          !== fixture.commit?.currentHash?.storeVersion
         || fixture.newOwner?.expectation?.kind !== 'Found'
-        || fixture.newOwner?.expectation?.storeVersion !== fixture.preserve?.hash?.storeVersion
+        || fixture.newOwner?.expectation?.storeVersion
+          !== fixture.preserve?.currentHash?.storeVersion
         || fixture.delete?.expectation?.kind !== 'Found'
-        || fixture.delete?.expectation?.storeVersion !== fixture.newOwner?.hash?.storeVersion
+        || fixture.delete?.expectation?.storeVersion
+          !== fixture.newOwner?.currentHash?.storeVersion
         || fixture.delete?.result !== 'Deleted'
-        || Object.hasOwn(fixture.missingAfterDelete || {}, 'storeVersion')
-        || !(newObjectVersion < preserveVersion
-          && preserveVersion < newOwnerVersion && newOwnerVersion < deleteVersion)) {
+        || fixture.delete?.tombstone !== true
+        || !(reserveVersion < commitVersion
+          && commitVersion < preserveVersion
+          && preserveVersion < newOwnerVersion
+          && newOwnerVersion < deleteVersion)) {
       fail('Authority Store fixture CAS version transition differs');
     }
-    const created = fixture.newObject?.hash || {};
-    const preserved = fixture.preserve?.hash || {};
-    const replaced = fixture.newOwner?.hash || {};
+    const created = fixture.commit?.currentHash || {};
+    const preserved = fixture.preserve?.currentHash || {};
+    const replaced = fixture.newOwner?.currentHash || {};
     if (created.objectGeneration !== preserved.objectGeneration
         || created.objectGeneration !== replaced.objectGeneration
         || created.authorityOwnerGeneration !== preserved.authorityOwnerGeneration
@@ -1577,6 +1673,15 @@ for (const [name, format] of redisFixtures) {
         || fixture.generationExhausted?.retriable !== false
         || fixture.generationExhausted?.rowIndexAndCounterMutationCount !== 0) {
       fail('Authority Store fixture generation transition differs');
+    }
+    if (fixture.scan?.indexMember !== authorityHex
+        || fixture.scan?.revisionZsetScore !== 0
+        || fixture.scan?.pageSizeMaximum !== 1000
+        || fixture.scan?.encodedPageBytesMaximum !== 4 * 1024 * 1024
+        || fixture.scan?.cursorBytesMaximum !== 4096
+        || !/^[0-9a-f]{16}$/u.test(
+          fixture.scan?.watermarkRevisionHex || '')) {
+      fail('Authority Store fixture snapshot scan schema differs');
     }
     continue;
   }
@@ -1605,8 +1710,46 @@ for (const [name, format] of redisFixtures) {
     fail(`Redis fixture key differs from embedded identity: ${name}`);
   }
   validateHashFields(name, fixture, fixture.row.hash);
+  if (name === 'mesh-node-descriptor-v1.json') {
+    const descriptorDigest = crypto.createHash('sha256')
+      .update(Buffer.from(fixture.row.key, 'utf8')).digest('hex');
+    const ownerDigest = crypto.createHash('sha256')
+      .update(Buffer.from(payload.OwnerId, 'utf8')).digest('hex');
+    const ownerTokenDigest = crypto.createHash('sha256')
+      .update(Buffer.from(
+        `${payload.OwnerId}\u0000${payload.LeaseGeneration}`, 'utf8'))
+      .digest('hex');
+    const physicalBase = 'P:{zlink-location-v1}';
+    if (fixture.physicalKeys?.descriptorKeySha256 !== descriptorDigest
+        || fixture.physicalKeys?.ownerTokenSha256 !== ownerTokenDigest
+        || fixture.physicalKeys?.descriptor
+          !== `${physicalBase}:descriptor:mesh:${descriptorDigest}`
+        || fixture.physicalKeys?.admission
+          !== `${physicalBase}:descriptor-admission:mesh:${descriptorDigest}`
+        || fixture.physicalKeys?.descriptorIndex
+          !== `${physicalBase}:descriptor:mesh:index`
+        || fixture.physicalKeys?.descriptorOwnerIndex
+          !== `${physicalBase}:descriptor:mesh:owner:${ownerTokenDigest}`
+        || fixture.physicalKeys?.ownerLease
+          !== `${physicalBase}:owner-lease:${ownerDigest}`
+        || JSON.stringify(fixture.ownerLeaseHashFields)
+          !== JSON.stringify(['ownerId', 'generation', 'expiresAt'])
+        || JSON.stringify(fixture.admissionHashFields) !== JSON.stringify([
+          'descriptorKey', 'descriptorRevision', 'lifecycleGeneration',
+          'ownerId', 'ownerLeaseGeneration', 'objectRole', 'runtimeState',
+          'applicationVersion', 'capabilities', 'nodeActiveLimit',
+          'nodePendingLimit', 'immutableDigest',
+        ])) {
+      fail('MeshNode descriptor hybrid physical schema differs');
+    }
+  }
+  const payloadLeaseGeneration = name === 'mesh-node-descriptor-v1.json'
+    ? payload.LeaseGeneration
+    : payload.OwnerLeaseGeneration;
   if (payload.OwnerId !== fixture.row.hash.owner
-      || String(payload.OwnerLeaseGeneration) !== fixture.row.hash.gen) {
+      || String(name === 'mesh-node-descriptor-v1.json'
+        ? payload.LifecycleGeneration
+        : payloadLeaseGeneration) !== fixture.row.hash.gen) {
     fail(`Redis descriptor fixture owner lease token differs: ${name}`);
   }
 }

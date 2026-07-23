@@ -60,7 +60,7 @@ export const kindMeshNode: LocationKind<ZLinkMeshNodeDescriptor> = {
   fromJson: meshNodeFromJson,
   fromJsonText: (json, generation, updatedAt) => meshNodeFromJson(
     JSON.parse(json.replace(
-      /("(?:LifecycleGeneration|DescriptorRevision)":)([0-9]+)/g,
+      /("(?:LifecycleGeneration|DescriptorRevision|ApplicationVersion|LeaseGeneration)":)([0-9]+)/g,
       '$1"$2"'
     )),
     generation,
@@ -137,10 +137,18 @@ function meshNodeToJson(row: ZLinkMeshNodeDescriptor): unknown {
     LifecycleGeneration: requiredUnsignedNumber(row.lifecycleGeneration, 'LifecycleGeneration'),
     DescriptorRevision: requiredUnsignedNumber(row.descriptorRevision, 'DescriptorRevision'),
     Endpoint: row.endpoint,
+    ObjectRole: objectRoleToWire(row.objectRole),
+    PlacementWeight: row.placementWeight,
+    Capacity: capacityToJson(row.objectCapacity),
     ChannelWeights: sortedWeights(row.channelWeights),
-    Draining: row.draining,
+    ApplicationVersion: requiredUnsignedNumber(row.applicationVersion, 'ApplicationVersion'),
+    SpotTypes: [...row.spotTypes].sort(),
+    ObjectCapabilities: capabilitiesToJson(row.objectCapabilities),
+    MaintenanceWave: row.maintenanceWave ?? null,
+    State: row.state,
     SecurityIdentity: row.securityIdentity,
     OwnerId: row.ownerId,
+    LeaseGeneration: requiredUnsignedNumber(row.leaseGeneration, 'LeaseGeneration'),
     UpdatedAt: formatDotNetDateTimeOffset(row.updatedAt)
   };
 }
@@ -153,10 +161,18 @@ function meshNodeToJsonText(row: ZLinkMeshNodeDescriptor): string {
     `,"LifecycleGeneration":${requiredUnsigned(row.lifecycleGeneration, 'LifecycleGeneration')}`,
     `,"DescriptorRevision":${requiredUnsigned(row.descriptorRevision, 'DescriptorRevision')}`,
     `,"Endpoint":${JSON.stringify(row.endpoint)}`,
+    `,"ObjectRole":${objectRoleToWire(row.objectRole)}`,
+    `,"PlacementWeight":${JSON.stringify(row.placementWeight)}`,
+    `,"Capacity":${JSON.stringify(capacityToJson(row.objectCapacity))}`,
     `,"ChannelWeights":${JSON.stringify(sortedWeights(row.channelWeights))}`,
-    `,"Draining":${row.draining ? 'true' : 'false'}`,
+    `,"ApplicationVersion":${requiredUnsigned(row.applicationVersion, 'ApplicationVersion')}`,
+    `,"SpotTypes":${JSON.stringify([...row.spotTypes].sort())}`,
+    `,"ObjectCapabilities":${JSON.stringify(capabilitiesToJson(row.objectCapabilities))}`,
+    `,"MaintenanceWave":${JSON.stringify(row.maintenanceWave ?? null)}`,
+    `,"State":${JSON.stringify(row.state)}`,
     `,"SecurityIdentity":${JSON.stringify(row.securityIdentity)}`,
     `,"OwnerId":${JSON.stringify(row.ownerId)}`,
+    `,"LeaseGeneration":${requiredUnsigned(row.leaseGeneration, 'LeaseGeneration')}`,
     `,"UpdatedAt":${JSON.stringify(formatDotNetDateTimeOffset(row.updatedAt))}`,
     '}'
   ].join('');
@@ -175,14 +191,140 @@ function meshNodeFromJson(
     lifecycleGeneration: unsignedBigIntOf(row.LifecycleGeneration),
     descriptorRevision: unsignedBigIntOf(row.DescriptorRevision),
     endpoint: stringOf(row.Endpoint),
+    objectRole: objectRoleFromJson(row.ObjectRole),
+    placementWeight: numberOf(row.PlacementWeight),
+    objectCapacity: capacityOf(row.Capacity ?? row.ObjectCapacity),
     channelWeights: Object.fromEntries(
       Object.entries(weights).map(([name, weight]) => [name, numberOf(weight)])
     ),
-    draining: booleanOf(row.Draining),
+    applicationVersion: unsignedBigIntOf(row.ApplicationVersion),
+    spotTypes: stringArrayOf(row.SpotTypes),
+    objectCapabilities: capabilitiesOf(row.ObjectCapabilities),
+    maintenanceWave: row.MaintenanceWave === null || row.MaintenanceWave === undefined
+      ? undefined
+      : stringOf(row.MaintenanceWave),
+    state: numberOf(row.State) as ZLinkMeshNodeDescriptor['state'],
     securityIdentity: stringOf(row.SecurityIdentity),
     ownerId: stringOf(row.OwnerId),
+    leaseGeneration: unsignedBigIntOf(row.LeaseGeneration),
     updatedAt
   };
+}
+
+function canonicalCapabilities(
+  values: ZLinkMeshNodeDescriptor['objectCapabilities']
+): ZLinkMeshNodeDescriptor['objectCapabilities'] {
+  return [...values]
+    .map(value => ({ ...value, placementProfiles: [...value.placementProfiles].sort() }))
+    .sort((left, right) =>
+      left.objectKind.localeCompare(right.objectKind)
+      || left.stableType.localeCompare(right.stableType));
+}
+
+function capabilitiesToJson(
+  values: ZLinkMeshNodeDescriptor['objectCapabilities']
+): readonly unknown[] {
+  return canonicalCapabilities(values).map(value => ({
+    ObjectKind: objectKindToWire(value.objectKind),
+    StableType: value.stableType,
+    Policy: policyToWire(value.policy),
+    HasSnapshotAdapter: value.hasSnapshotAdapter,
+    PlacementProfiles: [...value.placementProfiles],
+    ActiveLimit: value.activeLimit ?? null,
+    PendingLimit: value.pendingLimit ?? null
+  }));
+}
+
+function capacityToJson(value: ZLinkMeshNodeDescriptor['objectCapacity']): unknown {
+  return {
+    Active: value.activeObjects,
+    Pending: value.pendingActivations,
+    ActiveLimit: value.maxActiveObjects,
+    PendingLimit: value.maxPendingActivations
+  };
+}
+
+function capacityOf(value: unknown): ZLinkMeshNodeDescriptor['objectCapacity'] {
+  const row = objectOf(value);
+  return {
+    activeObjects: numberOf(row.activeObjects ?? row.ActiveObjects ?? row.Active),
+    pendingActivations: numberOf(row.pendingActivations ?? row.PendingActivations ?? row.Pending),
+    maxActiveObjects: numberOf(row.maxActiveObjects ?? row.MaxActiveObjects ?? row.ActiveLimit),
+    maxPendingActivations: numberOf(row.maxPendingActivations ?? row.MaxPendingActivations ?? row.PendingLimit)
+  };
+}
+
+function capabilitiesOf(value: unknown): ZLinkMeshNodeDescriptor['objectCapabilities'] {
+  if (!Array.isArray(value)) throw new TypeError('ObjectCapabilities must be an array.');
+  return value.map(item => {
+    const row = objectOf(item);
+    return {
+      objectKind: objectKindFromJson(row.objectKind ?? row.ObjectKind),
+      stableType: stringOf(row.stableType ?? row.StableType),
+      policy: policyFromJson(row.policy ?? row.Policy),
+      hasSnapshotAdapter: booleanOf(row.hasSnapshotAdapter ?? row.HasSnapshotAdapter),
+      placementProfiles: stringArrayOf(row.placementProfiles ?? row.PlacementProfiles),
+      activeLimit: optionalNumber(row.activeLimit ?? row.ActiveLimit),
+      pendingLimit: optionalNumber(row.pendingLimit ?? row.PendingLimit)
+    };
+  });
+}
+
+function objectRoleToWire(value: ZLinkMeshNodeDescriptor['objectRole']): number {
+  switch (value) {
+    case 'none': return 0;
+    case 'client': return 1;
+    case 'server': return 2;
+    default: throw new RangeError('Unknown MeshNode object role.');
+  }
+}
+
+function objectRoleFromJson(value: unknown): ZLinkMeshNodeDescriptor['objectRole'] {
+  if (typeof value === 'string') return value as ZLinkMeshNodeDescriptor['objectRole'];
+  switch (numberOf(value)) {
+    case 0: return 'none' as ZLinkMeshNodeDescriptor['objectRole'];
+    case 1: return 'client' as ZLinkMeshNodeDescriptor['objectRole'];
+    case 2: return 'server' as ZLinkMeshNodeDescriptor['objectRole'];
+    default: throw new RangeError('Unknown MeshNode object role.');
+  }
+}
+
+function objectKindToWire(value: ZLinkMeshNodeDescriptor['objectCapabilities'][number]['objectKind']): number {
+  switch (value) {
+    case 'actor': return 1;
+    case 'user_spot': return 2;
+    case 'instance_spot': return 3;
+    default: throw new RangeError('Unknown placement object kind.');
+  }
+}
+
+function objectKindFromJson(value: unknown): ZLinkMeshNodeDescriptor['objectCapabilities'][number]['objectKind'] {
+  if (typeof value === 'string') return value as ZLinkMeshNodeDescriptor['objectCapabilities'][number]['objectKind'];
+  switch (numberOf(value)) {
+    case 1: return 'actor';
+    case 2: return 'user_spot';
+    case 3: return 'instance_spot';
+    default: throw new RangeError('Unknown placement object kind.');
+  }
+}
+
+function policyToWire(value: ZLinkMeshNodeDescriptor['objectCapabilities'][number]['policy']): number {
+  switch (value) {
+    case 'disabled': return 1;
+    case 'recreate': return 2;
+    case 'snapshot': return 3;
+    default: throw new RangeError('Unknown maintenance policy.');
+  }
+}
+
+function policyFromJson(value: unknown): ZLinkMeshNodeDescriptor['objectCapabilities'][number]['policy'] {
+  if (typeof value === 'string') return value as ZLinkMeshNodeDescriptor['objectCapabilities'][number]['policy'];
+  switch (numberOf(value)) {
+    case 1: return 'disabled';
+    case 2: return 'recreate';
+    case 3: return 'snapshot';
+    default: throw new RangeError('Unknown maintenance policy.');
+  }
 }
 
 function sortedWeights(weights: Readonly<Record<string, number>>): Readonly<Record<string, number>> {
@@ -517,6 +659,10 @@ function numberOf(value: unknown): number {
   return value;
 }
 
+function optionalNumber(value: unknown): number | undefined {
+  return value === null || value === undefined ? undefined : numberOf(value);
+}
+
 function booleanOf(value: unknown): boolean {
   if (typeof value !== 'boolean') throw new TypeError('Expected a boolean value.');
   return value;
@@ -546,4 +692,10 @@ function optionalStringArray(value: unknown): readonly string[] | undefined {
     throw new TypeError('Location row JSON field is not an array.');
   }
   return value.map(stringOf);
+}
+
+function stringArrayOf(value: unknown): readonly string[] {
+  const result = optionalStringArray(value);
+  if (result === undefined) throw new TypeError('Location row JSON array is required.');
+  return result;
 }

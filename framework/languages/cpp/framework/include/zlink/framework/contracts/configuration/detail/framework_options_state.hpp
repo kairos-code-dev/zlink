@@ -320,6 +320,8 @@ struct framework_options_state_t
     std::set<std::string> client_server_channels_with_server;
     std::set<std::string> fanout_channels_with_publisher;
     std::set<std::string> fanout_channels_with_subscriber;
+    std::set<std::string> fanout_channels_with_automatic_subscriber;
+    std::set<std::string> fanout_channels_with_manual_subscriber;
     std::set<std::string> route_mesh_channels;
     std::set<std::string> route_mesh_channels_with_bind;
     std::set<std::string> route_mesh_channels_with_client;

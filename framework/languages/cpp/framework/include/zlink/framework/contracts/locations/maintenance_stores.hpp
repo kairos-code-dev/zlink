@@ -26,6 +26,25 @@ struct authority_key_t
     std::string value;
 };
 
+enum class placement_capacity_state_t : std::uint8_t
+{
+    pending = 1,
+    active = 2
+};
+
+struct placement_allocation_t
+{
+    placement_capacity_state_t capacity_state =
+      placement_capacity_state_t::pending;
+    placement_object_kind_t object_kind =
+      placement_object_kind_t::actor;
+    std::string stable_type;
+    std::string mesh_name;
+    node_rid_t node_rid;
+    std::uint64_t node_lifecycle_generation = 0;
+    std::uint32_t capacity_delta = 0;
+};
+
 struct authority_snapshot_t
 {
     std::string store_version;
@@ -34,6 +53,7 @@ struct authority_snapshot_t
     std::uint64_t authority_owner_generation = 0;
     location_owner_token_t owner;
     std::chrono::system_clock::time_point store_now;
+    placement_allocation_t allocation;
 };
 
 struct authority_missing_t
@@ -44,21 +64,10 @@ struct authority_missing_t
 using authority_read_result_t =
   std::variant<authority_missing_t, authority_snapshot_t>;
 
-struct authority_expect_missing_t
-{
-};
-struct authority_expect_found_t
-{
-    std::string store_version;
-};
-using authority_expectation_t =
-  std::variant<authority_expect_missing_t, authority_expect_found_t>;
-
 enum class authority_generation_transition_t
 {
     preserve = 1,
-    new_owner = 2,
-    new_object = 3
+    new_owner = 2
 };
 
 struct authority_entry_t
@@ -147,7 +156,7 @@ class authority_store_t
     virtual task_t<authority_compare_exchange_result_t>
     compare_exchange_authority (
       authority_key_t key,
-      authority_expectation_t expectation,
+      std::string expected_store_version,
       authority_mutation_t mutation,
       std::stop_token cancellation = {}) = 0;
     virtual task_t<authority_scan_result_t> list_authorities (

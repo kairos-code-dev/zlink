@@ -291,7 +291,10 @@ export class ZLinkChannelRuntimeLifecycle {
 
   private openOutboundSockets(): void {
     for (const channelName of this.options.registration.channelClients) {
-      this.options.sockets.clientDealer(channelName);
+      const client = this.options.registration.channels.get(channelName)?.client;
+      if ((client?.manualConnections?.length ?? 0) > 0) {
+        this.options.sockets.clientDealer(channelName);
+      }
     }
     for (const channelName of this.options.registration.fanoutPublishers) {
       this.options.sockets.publisher(channelName);
@@ -334,7 +337,14 @@ export class ZLinkChannelRuntimeLifecycle {
         replySubmitter: this.options.sockets.requireSubmitter(router)
       });
       const spotRouteBridge = this.createSpotRouteBridgeForRouter(channelName, router);
-      const loop = new ZLinkChannelReceiveLoop(channelName, router, dispatcher, spotRouteBridge);
+      const loop = new ZLinkChannelReceiveLoop(
+        channelName,
+        router,
+        dispatcher,
+        spotRouteBridge,
+        (received, socket) =>
+          this.options.sockets.tryHandleClientServerControl(channelName, received, socket)
+      );
       this.channelReceiveLoops.push(loop);
       tasks.push(taskRunner.run(`channel:${channelName}`, (signal) => loop.run(signal)));
     }

@@ -24,6 +24,11 @@ interface Current<T> {
   readonly connectionId: string;
 }
 
+export interface SelectedClientServer {
+  readonly descriptor: ClientServerDescriptor;
+  readonly connectionId: string;
+}
+
 /** Dedicated discovery state; fanout publishers never reuse RouteMesh peer rows. */
 export class ServiceDiscoveryRegistry {
   private readonly clientServers = new Map<string, Current<ClientServerDescriptor>>();
@@ -49,21 +54,47 @@ export class ServiceDiscoveryRegistry {
   }
 
   selectClientServer(channelName: string): ClientServerDescriptor | undefined {
+    return this.selectClientServerConnection(channelName)?.descriptor;
+  }
+
+  selectClientServerConnection(channelName: string): SelectedClientServer | undefined {
     const eligible = [...this.clientServers.values()]
-      .map(value => value.descriptor)
-      .filter(value => value.channelName === channelName && value.state === 'serving' && value.weight > 0)
-      .sort((left, right) => left.serverRoutingId.localeCompare(right.serverRoutingId));
-    const total = eligible.reduce((sum, value) => sum + BigInt(value.weight), 0n);
+      .filter(value =>
+        value.descriptor.channelName === channelName
+        && value.descriptor.state === 'serving'
+        && value.descriptor.weight > 0)
+      .sort((left, right) =>
+        left.descriptor.serverRoutingId.localeCompare(right.descriptor.serverRoutingId));
+    const total = eligible.reduce((sum, value) => sum + BigInt(value.descriptor.weight), 0n);
     if (total === 0n) return undefined;
     const cursor = this.cursors.get(channelName) ?? 0n;
     this.cursors.set(channelName, cursor + 1n);
     const selected = cursor % total;
     let offset = 0n;
-    for (const descriptor of eligible) {
-      offset += BigInt(descriptor.weight);
-      if (selected < offset) return { ...descriptor };
+    for (const current of eligible) {
+      offset += BigInt(current.descriptor.weight);
+      if (selected < offset) {
+        return {
+          descriptor: { ...current.descriptor },
+          connectionId: current.connectionId
+        };
+      }
     }
-    return eligible.at(-1);
+    const fallback = eligible.at(-1);
+    return fallback === undefined
+      ? undefined
+      : {
+          descriptor: { ...fallback.descriptor },
+          connectionId: fallback.connectionId
+        };
+  }
+
+  clientServerDescriptors(channelName: string): readonly ClientServerDescriptor[] {
+    return [...this.clientServers.values()]
+      .map(value => value.descriptor)
+      .filter(value => value.channelName === channelName)
+      .sort((left, right) => left.serverRoutingId.localeCompare(right.serverRoutingId))
+      .map(value => ({ ...value }));
   }
 
   admitFanoutPublisher(descriptor: FanoutPublisherDescriptor, connectionId: string): boolean {

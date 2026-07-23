@@ -40,7 +40,10 @@ export class ZLinkChannelOutboundOperations {
     message: unknown,
     metadata: ReadonlyMap<string, string> = new Map()
   ): ZLinkSubmitResult {
-    const dealer = this.sockets.clientDealer(channelName);
+    const dealer = this.sockets.clientDealerForOutbound(channelName);
+    if (dealer === undefined) {
+      return { status: ZLinkSubmitStatus.RouteNotConnected };
+    }
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Command,
@@ -73,7 +76,10 @@ export class ZLinkChannelOutboundOperations {
     metadata: ReadonlyMap<string, string> = new Map()
   ): Promise<ZLinkSubmitResult> {
     throwIfAborted(signal);
-    const dealer = this.sockets.clientDealer(channelName);
+    const dealer = this.sockets.clientDealerForOutbound(channelName);
+    if (dealer === undefined) {
+      return { status: ZLinkSubmitStatus.RouteNotConnected };
+    }
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Command,
@@ -126,7 +132,14 @@ export class ZLinkChannelOutboundOperations {
     metadata?: ReadonlyMap<string, string>
   ): Promise<TReply> {
     throwIfAborted(signal);
-    const dealer = this.sockets.clientDealer(channelName);
+    const dealer = this.sockets.clientDealerForOutbound(channelName);
+    if (dealer === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RouteNotConnected,
+        `Channel '${channelName}' has no admitted ClientServer target.`,
+        true
+      );
+    }
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
       ZLinkChannelMessageKind.Request,

@@ -58,6 +58,17 @@ interface ZLinkRoutePacketDispatchLoop {
   ): Promise<boolean | void>;
 }
 
+interface ZLinkChannelInfrastructureHandler {
+  (
+    received: {
+      readonly parts: readonly Message[];
+      readonly routingId: unknown;
+      readonly requestSeq: bigint | null;
+    },
+    router: ZLinkBackendRouterSocket
+  ): boolean;
+}
+
 export class ZLinkChannelReceiveLoop {
   private stopped = false;
   private running?: Promise<void>;
@@ -69,7 +80,8 @@ export class ZLinkChannelReceiveLoop {
       reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
     },
     private readonly dispatcher: ZLinkChannelRequestDispatchLoop,
-    private readonly spotRouteBridge?: ZLinkBackendSpotRouteBridge
+    private readonly spotRouteBridge?: ZLinkBackendSpotRouteBridge,
+    private readonly infrastructureHandler?: ZLinkChannelInfrastructureHandler
   ) {}
 
   async run(signal?: AbortSignal): Promise<void> {
@@ -116,6 +128,9 @@ export class ZLinkChannelReceiveLoop {
   }, signal?: AbortSignal): Promise<void> {
     let closeReceived = true;
     try {
+      if (this.infrastructureHandler?.(received, this.router) === true) {
+        return;
+      }
       if (
         !isChannelEnvelope(received.parts) &&
         this.spotRouteBridge?.handleRouterReceived(

@@ -1,5 +1,7 @@
 import {
-  ZLinkSocketNativeEventType
+  ZLinkSocketNativeEventType,
+  type RoutingId,
+  type ZLinkClientServerServerDescriptor
 } from '../../contracts';
 import {
   ZLinkConfigurationException,
@@ -20,6 +22,14 @@ import { ZLinkRouteDisconnectedError } from './route-disconnected-error';
 import { attachEndpointConnections } from '../../contracts/Configuration/RuntimeEndpointConnections';
 import { ZLinkRouteMemberSnapshot } from './route-member-snapshot';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { Message as BindingMessage, type Message } from '@zlink-systems/zlink';
+import { ServiceDiscoveryRegistry } from '../foundation/service-discovery-registry';
+import {
+  decodeClientServerControl,
+  encodeClientServerAdmit,
+  encodeClientServerReject,
+  isClientServerControlFrame
+} from './client-server-service-wire';
 
 const MAX_LIFECYCLE_GENERATION = 0x7fff_ffff_ffff_ffffn;
 
@@ -27,6 +37,11 @@ export interface ZLinkClientServerServerSocketIdentity {
   readonly serverRid: string;
   readonly lifecycleGeneration: bigint;
   readonly endpoint: string;
+}
+
+export interface ZLinkClientServerConnectionCallbacks {
+  readonly onTransportReady: (routingId: string, endpoint: string) => void;
+  readonly onTerminated: (routingId: string | undefined, endpoint: string) => void;
 }
 
 export class ZLinkChannelSocketRegistry {
@@ -40,6 +55,19 @@ export class ZLinkChannelSocketRegistry {
     readonly serverRid: string;
     readonly lifecycleGeneration: bigint;
   }>();
+  private readonly clientServerConnections = new Map<string, {
+    readonly channelName: string;
+    readonly endpoint: string;
+    readonly dealer: ZLinkBackendDealerSocket;
+    readonly monitor: ZLinkBackendSocketMonitor;
+  }>();
+  private readonly clientServerDiscovery = new ServiceDiscoveryRegistry();
+  private readonly clientServerReadyIdentities = new Map<string, {
+    readonly channelName: string;
+    readonly serverRoutingId: string;
+  }>();
+  private readonly clientServerServerDescriptors =
+    new Map<string, ZLinkClientServerServerDescriptor>();
   private readonly submitters = new WeakMap<object, ZLinkAsyncSubmitter>();
   private readonly ownedSubmitters = new Set<ZLinkAsyncSubmitter>();
   private readonly ownedMonitors = new Set<ZLinkBackendSocketMonitor>();
@@ -55,12 +83,16 @@ export class ZLinkChannelSocketRegistry {
   async dispose(): Promise<void> {
     const sockets = [
       ...this.clientDealers.values(),
+      ...[...this.clientServerConnections.values()].map(value => value.dealer),
       ...this.channelRouters.values(),
       ...this.publishers.values(),
       ...this.subscribers.values(),
       ...this.routeRouters.values()
     ];
     this.clientDealers.clear();
+    this.clientServerConnections.clear();
+    this.clientServerReadyIdentities.clear();
+    this.clientServerServerDescriptors.clear();
     this.channelRouters.clear();
     this.publishers.clear();
     this.subscribers.clear();
@@ -169,6 +201,222 @@ export class ZLinkChannelSocketRegistry {
 
   clientServerServerSocket(channelName: string): ZLinkBackendRouterSocket {
     return this.channelRouter(channelName);
+  }
+
+  openClientServerConnection(
+    channelName: string,
+    connectionId: string,
+    endpoint: string,
+    callbacks: ZLinkClientServerConnectionCallbacks
+  ): ZLinkBackendDealerSocket {
+    if (this.clientServerConnections.has(connectionId)) {
+      throw new ZLinkConfigurationException(
+        `ClientServer connection '${connectionId}' is already open.`
+      );
+    }
+    if (this.monitoringAdapter === undefined) {
+      throw new ZLinkConfigurationException(
+        'Automatic ClientServer admission requires socket monitoring.'
+      );
+    }
+    const channel = this.registration.channels.get(channelName);
+    const client = channel?.client;
+    if (client === undefined) {
+      throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
+    }
+    const dealer = this.adapter.createDealerSocket(this.context);
+    dealer.setChannelName(channelName);
+    dealer.setRoutingId(`cs-client-${randomUUID()}`);
+    applySocketConfig(dealer, client);
+    this.trackSubmitter(dealer);
+    const monitor = this.monitoringAdapter.openSocketMonitor(dealer);
+    this.ownedMonitors.add(monitor);
+    this.clientServerConnections.set(connectionId, {
+      channelName,
+      endpoint,
+      dealer,
+      monitor
+    });
+    try {
+      monitor.onEvent((event) => {
+        if (!this.clientServerConnections.has(connectionId)) return;
+        const routingId = event.routingId === undefined ? undefined : String(event.routingId);
+        if (event.nativeEvent === ZLinkSocketNativeEventType.ConnectionReady
+          && routingId !== undefined) {
+          callbacks.onTransportReady(routingId, event.remoteAddr);
+          return;
+        }
+        if (event.nativeEvent === ZLinkSocketNativeEventType.Disconnected
+          || event.nativeEvent === ZLinkSocketNativeEventType.Closed
+          || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedNoDetail
+          || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedProtocol
+          || event.nativeEvent === ZLinkSocketNativeEventType.HandshakeFailedAuth) {
+          callbacks.onTerminated(routingId, event.remoteAddr);
+        }
+      });
+      dealer.connect(endpoint);
+    } catch (error) {
+      this.clientServerConnections.delete(connectionId);
+      this.ownedMonitors.delete(monitor);
+      const submitter = this.submitters.get(dealer);
+      if (submitter !== undefined) {
+        submitter.dispose();
+        this.ownedSubmitters.delete(submitter);
+        this.submitters.delete(dealer);
+      }
+      void Promise.allSettled([monitor.dispose(), dealer.dispose()]);
+      throw error;
+    }
+    return dealer;
+  }
+
+  async closeClientServerConnection(connectionId: string): Promise<void> {
+    const current = this.clientServerConnections.get(connectionId);
+    if (current === undefined) return;
+    this.clientServerConnections.delete(connectionId);
+    const ready = this.clientServerReadyIdentities.get(connectionId);
+    if (ready !== undefined) {
+      this.clientServerDiscovery.removeClientServer(
+        ready.channelName,
+        ready.serverRoutingId,
+        connectionId
+      );
+      this.clientServerReadyIdentities.delete(connectionId);
+    }
+    try {
+      current.dealer.disconnect(current.endpoint);
+    } catch {
+      // Disposal below is the terminal cleanup if the transport already closed.
+    }
+    const submitter = this.submitters.get(current.dealer);
+    submitter?.rejectActive(new ZLinkRouteDisconnectedError(
+      `ClientServer connection '${connectionId}' closed.`
+    ));
+    if (submitter !== undefined) {
+      submitter.dispose();
+      this.ownedSubmitters.delete(submitter);
+      this.submitters.delete(current.dealer);
+    }
+    this.ownedMonitors.delete(current.monitor);
+    const results = await Promise.allSettled([
+      current.monitor.dispose(),
+      current.dealer.dispose()
+    ]);
+    const errors = results
+      .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      .map(result => result.reason);
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, `ClientServer connection '${connectionId}' cleanup failed.`);
+    }
+  }
+
+  admitClientServerConnection(
+    descriptor: Parameters<ServiceDiscoveryRegistry['admitClientServer']>[0],
+    connectionId: string
+  ): boolean {
+    if (!this.clientServerConnections.has(connectionId)) return false;
+    const admitted = this.clientServerDiscovery.admitClientServer(descriptor, connectionId);
+    if (admitted) {
+      this.clientServerReadyIdentities.set(connectionId, {
+        channelName: descriptor.channelName,
+        serverRoutingId: descriptor.serverRoutingId
+      });
+    }
+    return admitted;
+  }
+
+  removeClientServerReady(
+    channelName: string,
+    serverRoutingId: string,
+    connectionId: string
+  ): boolean {
+    const removed = this.clientServerDiscovery.removeClientServer(
+      channelName,
+      serverRoutingId,
+      connectionId
+    );
+    if (removed) this.clientServerReadyIdentities.delete(connectionId);
+    return removed;
+  }
+
+  selectClientServerDealer(channelName: string): ZLinkBackendDealerSocket | undefined {
+    const selected = this.clientServerDiscovery.selectClientServerConnection(channelName);
+    if (selected === undefined) return undefined;
+    return this.clientServerConnections.get(selected.connectionId)?.dealer;
+  }
+
+  clientDealerForOutbound(channelName: string): ZLinkBackendDealerSocket | undefined {
+    const channel = this.registration.channels.get(channelName);
+    if (channel?.client === undefined) {
+      throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
+    }
+    return (channel.client.manualConnections?.length ?? 0) > 0
+      ? this.clientDealer(channelName)
+      : this.selectClientServerDealer(channelName);
+  }
+
+  clientServerActiveTargets(
+    channelName: string
+  ): readonly Parameters<ServiceDiscoveryRegistry['admitClientServer']>[0][] {
+    return this.clientServerDiscovery.clientServerDescriptors(channelName);
+  }
+
+  setClientServerServerDescriptor(
+    descriptor: ZLinkClientServerServerDescriptor | undefined,
+    channelName: string
+  ): void {
+    if (descriptor === undefined) {
+      this.clientServerServerDescriptors.delete(channelName);
+    } else {
+      this.clientServerServerDescriptors.set(channelName, descriptor);
+    }
+  }
+
+  tryHandleClientServerControl(
+    channelName: string,
+    received: {
+      readonly parts: readonly Message[];
+      readonly requestSeq: bigint | null;
+      readonly routingId: unknown;
+    },
+    router: ZLinkBackendRouterSocket
+  ): boolean {
+    if (received.parts.length === 0) return false;
+    const first = received.parts[0];
+    if (!isClientServerControlFrame(first.data())) return false;
+    let reply: Buffer;
+    try {
+      const record = decodeClientServerControl(first.data());
+      if (record.kind !== 'hello'
+        || received.parts.length !== 1
+        || received.requestSeq === null) {
+        reply = encodeClientServerReject(1);
+      } else {
+        const descriptor = this.clientServerServerDescriptors.get(channelName);
+        if (descriptor === undefined
+          || record.hello.channelName !== channelName
+          || record.hello.securityIdentity !== descriptor.securityIdentity) {
+          reply = encodeClientServerReject(3);
+        } else {
+          reply = encodeClientServerAdmit(
+            descriptor,
+            normalizedMessageLimit(router.maxMessageSize)
+          );
+        }
+      }
+    } catch {
+      reply = encodeClientServerReject(1);
+    }
+    if (received.requestSeq !== null) {
+      const message = BindingMessage.from(reply);
+      try {
+        router.reply(received.routingId as RoutingId, received.requestSeq, message);
+      } finally {
+        message.close();
+      }
+    }
+    return true;
   }
 
   publisher(channelName: string): ZLinkBackendPublisherSocket {
@@ -357,6 +605,12 @@ function advertisedEndpoint(boundEndpoint: string, advertiseHost: string | undef
     ? `[${advertiseHost}]`
     : advertiseHost;
   return `tcp://${host}:${match[1]}`;
+}
+
+function normalizedMessageLimit(value: number): number {
+  return Number.isSafeInteger(value) && value > 0
+    ? Math.min(value, 0xffff_ffff)
+    : 0x7fff_ffff;
 }
 
 function applySocketConfig(

@@ -1203,6 +1203,17 @@ admit/reject 뒤에만 ready target으로 승격하고 descriptor weight selecto
 작업이 남아 있다. 따라서 이 checkpoint도 `V11-M6A-DN`·`V11-M6A-NODE`를 완료로 판정하지 않는다.
 Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
 
+Node ClientServer service admission checkpoint(2026-07-24)에서 automatic descriptor lifecycle마다
+전용 DEALER와 monitor를 만들고 transport identity 확인 뒤 Framework `hello`와 exact `admit`·`reject`를
+교환하도록 연결했다. Admission 전 connection은 outbound target에 포함하지 않으며, admitted
+positive-weight target만 기존 weighted selector가 실제 send·request마다 선택한다. 같은 Server RID의 새
+lifecycle이 ready가 되면 이전 lifecycle connection을 제거하고, 종료되었거나 오래된 connection의 event와
+reply는 connection ID fence를 통과하지 못한다. Server의 reserved service control frame은 application
+handler에 전달하지 않는다. Framework build·workspace typecheck, M6A runtime 6/6, ClientServer와 Redis
+focused 20/20, changed-source ESLint와 `git diff --check`가 통과했다. Manual endpoint-only connection의
+동일 service admission, liveness probe·ACK와 server-pushed descriptor update는 남아 있으므로
+`V11-M6A-NODE`를 완료로 판정하지 않는다. Core·bindings와 Sample·E2E source는 변경하거나 실행하지 않았다.
+
 JVM ClientServer provider checkpoint(2026-07-24)에서 Java public source에 exact
 `ZLinkClientServerServerDescriptor`, key와 선택 capability인 `ZLinkClientServerLocationStore`를 추가하고
 공식 Redis provider가 이를 직접 구현하도록 연결했다. Redis row는 fixture와 같은 field 순서·상태 이름을

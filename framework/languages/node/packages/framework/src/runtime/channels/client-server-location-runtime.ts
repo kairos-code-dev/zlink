@@ -13,12 +13,21 @@ import {
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import { ZLinkConfigurationException } from '../configuration';
 import type { ZLinkLocationRuntime, ZLinkLocationRuntimeStores } from '../locations';
-import { ServiceDiscoveryRegistry } from '../foundation/service-discovery-registry';
 import { ZLinkChannelSocketRegistry } from './channel-socket-registry';
+import type { ZLinkBackendDealerSocket } from '../backend/contracts';
+import { Message as BindingMessage, type Message } from '@zlink-systems/zlink';
+import {
+  decodeClientServerControl,
+  encodeClientServerHello,
+  type ZLinkClientServerAdmission
+} from './client-server-service-wire';
 
 interface ActiveClientServerTarget {
-  readonly descriptor: ZLinkClientServerServerDescriptor;
+  descriptor: ZLinkClientServerServerDescriptor;
   readonly connectionId: string;
+  dealer?: ZLinkBackendDealerSocket;
+  state: 'pending' | 'ready';
+  handshakeInFlight: boolean;
 }
 
 /**
@@ -28,9 +37,8 @@ interface ActiveClientServerTarget {
 export class ZLinkClientServerLocationRuntime {
   private readonly options: Required<ZLinkLocationOptionOverrides>;
   private readonly store: ZLinkClientServerLocationStore;
-  private readonly discovery = new ServiceDiscoveryRegistry();
   private readonly localDescriptors = new Map<string, ZLinkClientServerServerDescriptor>();
-  private readonly active = new Map<string, ActiveClientServerTarget>();
+  private readonly connections = new Map<string, ActiveClientServerTarget>();
   private controller?: AbortController;
   private timer?: NodeJS.Timeout;
 
@@ -70,12 +78,13 @@ export class ZLinkClientServerLocationRuntime {
       clearTimeout(this.timer);
       this.timer = undefined;
     }
-    this.disconnectClients();
+    await this.disconnectClients();
     await this.drainAndRemoveServers(signal);
   }
 
   activeTargets(channelName: string): readonly ZLinkClientServerServerDescriptor[] {
-    return [...this.active.values()]
+    return [...this.connections.values()]
+      .filter(target => target.state === 'ready')
       .map((target) => target.descriptor)
       .filter((descriptor) => descriptor.channelName === channelName);
   }
@@ -86,8 +95,16 @@ export class ZLinkClientServerLocationRuntime {
       if (channel.server === undefined) continue;
       const current = this.localDescriptors.get(channelName);
       if (current !== undefined) {
+        const runtimeWeight = this.sockets.clientServerServerSocket(channelName).peerWeight;
+        const candidate = runtimeWeight === current.weight
+          ? current
+          : {
+              ...current,
+              descriptorRevision: current.descriptorRevision + 1n,
+              weight: runtimeWeight
+            };
         const result = await this.store.updateClientServer(
-          current,
+          candidate,
           ZLinkLocationWriteIntent.Renew,
           signal
         );
@@ -96,6 +113,9 @@ export class ZLinkClientServerLocationRuntime {
             `ClientServer server '${channelName}' descriptor renewal was fenced.`
           );
         }
+        const published = { ...candidate, updatedAt: result.updatedAt };
+        this.localDescriptors.set(channelName, published);
+        this.sockets.setClientServerServerDescriptor(published, channelName);
         continue;
       }
       const identity = this.sockets.clientServerServerIdentity(channelName);
@@ -122,7 +142,9 @@ export class ZLinkClientServerLocationRuntime {
           `ClientServer server '${channelName}' descriptor claim failed with '${result.status}'.`
         );
       }
-      this.localDescriptors.set(channelName, { ...descriptor, updatedAt: result.updatedAt });
+      const published = { ...descriptor, updatedAt: result.updatedAt };
+      this.localDescriptors.set(channelName, published);
+      this.sockets.setClientServerServerDescriptor(published, channelName);
     }
   }
 
@@ -133,47 +155,35 @@ export class ZLinkClientServerLocationRuntime {
       }
       const rows = await this.listLiveServers(channelName, signal);
       const desired = new Map(rows.map((descriptor) => [
-        clientServerStableKey(descriptor),
+        clientServerConnectionId(descriptor),
         descriptor
       ]));
-      const dealer = this.sockets.clientDealer(channelName);
-      for (const [key, descriptor] of desired) {
-        const current = this.active.get(key);
-        const connectionId = clientServerConnectionId(descriptor);
+      const desiredStableKeys = new Set(rows.map(clientServerStableKey));
+      for (const [connectionId, descriptor] of desired) {
+        const current = this.connections.get(connectionId);
         if (current === undefined) {
-          dealer.connect(descriptor.endpoint);
-          this.discovery.admitClientServer(toDiscoveryDescriptor(descriptor), connectionId);
-          this.active.set(key, { descriptor, connectionId });
+          this.openConnection(descriptor, connectionId);
           continue;
         }
-        if (sameDescriptor(current.descriptor, descriptor)) continue;
-        if (current.descriptor.lifecycleGeneration !== descriptor.lifecycleGeneration
-          || current.descriptor.endpoint !== descriptor.endpoint) {
-          // One channel DEALER owns all ClientServer pipes. If a server reuses
-          // its endpoint with a new lifecycle, reset that endpoint explicitly
-          // so transport readiness from the old lifecycle cannot carry over.
-          dealer.disconnect(current.descriptor.endpoint);
-          this.discovery.removeClientServer(
-            channelName,
-            String(current.descriptor.serverRid),
-            current.connectionId
-          );
-          dealer.connect(descriptor.endpoint);
-          this.discovery.admitClientServer(toDiscoveryDescriptor(descriptor), connectionId);
-        } else {
-          this.discovery.admitClientServer(toDiscoveryDescriptor(descriptor), connectionId);
+        if (!sameDescriptor(current.descriptor, descriptor)) {
+          if (current.state === 'ready') {
+            const updated = this.sockets.admitClientServerConnection(
+              toDiscoveryDescriptor(descriptor),
+              connectionId
+            );
+            if (updated) current.descriptor = descriptor;
+          } else {
+            current.descriptor = descriptor;
+          }
         }
-        this.active.set(key, { descriptor, connectionId });
       }
-      for (const [key, current] of [...this.active]) {
-        if (current.descriptor.channelName !== channelName || desired.has(key)) continue;
-        dealer.disconnect(current.descriptor.endpoint);
-        this.discovery.removeClientServer(
-          channelName,
-          String(current.descriptor.serverRid),
-          current.connectionId
-        );
-        this.active.delete(key);
+      for (const [connectionId, current] of [...this.connections]) {
+        if (current.descriptor.channelName !== channelName || desired.has(connectionId)) continue;
+        if (desiredStableKeys.has(clientServerStableKey(current.descriptor))
+          && current.state === 'ready') {
+          continue;
+        }
+        await this.closeConnection(connectionId);
       }
     }
   }
@@ -196,7 +206,8 @@ export class ZLinkClientServerLocationRuntime {
 
     const live: ZLinkClientServerServerDescriptor[] = [];
     for (const descriptor of rows) {
-      if (descriptor.state !== ZLinkFrameworkRuntimeState.Serving || descriptor.weight === 0) {
+      if (descriptor.state === ZLinkFrameworkRuntimeState.Stopped
+        || descriptor.state === ZLinkFrameworkRuntimeState.Error) {
         continue;
       }
       const lease = await this.stores.ownerLeaseStore.readOwnerLease(
@@ -212,17 +223,129 @@ export class ZLinkClientServerLocationRuntime {
     return live;
   }
 
-  private disconnectClients(): void {
-    for (const current of this.active.values()) {
-      this.sockets.clientDealer(current.descriptor.channelName)
-        .disconnect(current.descriptor.endpoint);
-      this.discovery.removeClientServer(
-        current.descriptor.channelName,
-        String(current.descriptor.serverRid),
-        current.connectionId
+  private async disconnectClients(): Promise<void> {
+    await Promise.allSettled(
+      [...this.connections.keys()].map(connectionId => this.closeConnection(connectionId))
+    );
+  }
+
+  private openConnection(
+    descriptor: ZLinkClientServerServerDescriptor,
+    connectionId: string
+  ): void {
+    const target: ActiveClientServerTarget = {
+      descriptor,
+      connectionId,
+      state: 'pending',
+      handshakeInFlight: false
+    };
+    this.connections.set(connectionId, target);
+    try {
+      target.dealer = this.sockets.openClientServerConnection(
+        descriptor.channelName,
+        connectionId,
+        descriptor.endpoint,
+        {
+          onTransportReady: (routingId, endpoint) => {
+            void this.handleTransportReady(connectionId, routingId, endpoint)
+              .catch(error => {
+                this.locationRuntime.reportDiscoveryFailure(error);
+                void this.closeConnection(connectionId);
+              });
+          },
+          onTerminated: () => {
+            void this.handleConnectionTerminated(connectionId);
+          }
+        }
+      );
+    } catch (error) {
+      this.connections.delete(connectionId);
+      throw error;
+    }
+  }
+
+  private async handleTransportReady(
+    connectionId: string,
+    routingId: string,
+    endpoint: string
+  ): Promise<void> {
+    const current = this.connections.get(connectionId);
+    if (current === undefined
+      || current.state === 'ready'
+      || current.handshakeInFlight) {
+      return;
+    }
+    if (routingId !== String(current.descriptor.serverRid)
+      || endpoint !== current.descriptor.endpoint) {
+      throw new ZLinkConfigurationException(
+        `ClientServer '${current.descriptor.channelName}' transport identity does not match its descriptor.`
       );
     }
-    this.active.clear();
+    const dealer = current.dealer;
+    if (dealer === undefined) return;
+    current.handshakeInFlight = true;
+    try {
+      const admission = await requestAdmission(
+        dealer,
+        current.descriptor,
+        this.options.ownerLeaseRenewTimeoutMs
+      );
+      const latest = this.connections.get(connectionId);
+      if (latest !== current) return;
+      requireMatchingAdmission(current.descriptor, admission);
+      const admittedDescriptor = {
+        ...current.descriptor,
+        descriptorRevision: admission.descriptorRevision,
+        weight: admission.weight,
+        state: admission.state
+      };
+      current.descriptor = admittedDescriptor;
+      if (!this.sockets.admitClientServerConnection(
+        toDiscoveryDescriptor(admittedDescriptor, admission.normalizedEffectiveMaxMessageBytes),
+        connectionId
+      )) {
+        throw new ZLinkConfigurationException(
+          `ClientServer '${current.descriptor.channelName}' admission was stale.`
+        );
+      }
+      current.state = 'ready';
+      await this.removeSupersededConnections(current);
+    } finally {
+      current.handshakeInFlight = false;
+    }
+  }
+
+  private async removeSupersededConnections(
+    admitted: ActiveClientServerTarget
+  ): Promise<void> {
+    const stableKey = clientServerStableKey(admitted.descriptor);
+    const superseded = [...this.connections.values()]
+      .filter(current =>
+        current.connectionId !== admitted.connectionId
+        && clientServerStableKey(current.descriptor) === stableKey)
+      .map(current => current.connectionId);
+    for (const connectionId of superseded) {
+      await this.closeConnection(connectionId);
+    }
+  }
+
+  private async handleConnectionTerminated(connectionId: string): Promise<void> {
+    if (!this.connections.has(connectionId)) return;
+    await this.closeConnection(connectionId);
+  }
+
+  private async closeConnection(connectionId: string): Promise<void> {
+    const current = this.connections.get(connectionId);
+    if (current === undefined) return;
+    this.connections.delete(connectionId);
+    if (current.state === 'ready') {
+      this.sockets.removeClientServerReady(
+        current.descriptor.channelName,
+        String(current.descriptor.serverRid),
+        connectionId
+      );
+    }
+    await this.sockets.closeClientServerConnection(connectionId);
   }
 
   private async drainAndRemoveServers(signal?: AbortSignal): Promise<void> {
@@ -240,11 +363,13 @@ export class ZLinkClientServerLocationRuntime {
         signal
       );
       if (result.status === ZLinkLocationWriteStatus.Stored) {
+        this.sockets.setClientServerServerDescriptor(draining, channelName);
         await this.store.removeClientServer({
           channelName,
           serverRid: descriptor.serverRid
         }, owner, signal);
       }
+      this.sockets.setClientServerServerDescriptor(undefined, channelName);
     }
     this.localDescriptors.clear();
   }
@@ -295,7 +420,10 @@ function sameDescriptor(
     && left.leaseGeneration === right.leaseGeneration;
 }
 
-function toDiscoveryDescriptor(descriptor: ZLinkClientServerServerDescriptor) {
+function toDiscoveryDescriptor(
+  descriptor: ZLinkClientServerServerDescriptor,
+  effectiveMaxMessageBytes = 0x7fff_ffff
+) {
   return {
     channelName: descriptor.channelName,
     serverRoutingId: String(descriptor.serverRid),
@@ -304,9 +432,99 @@ function toDiscoveryDescriptor(descriptor: ZLinkClientServerServerDescriptor) {
     weight: descriptor.weight,
     state: runtimeStateName(descriptor.state),
     securityIdentity: descriptor.securityIdentity,
-    effectiveMaxMessageBytes: 0x7fff_ffff,
+    effectiveMaxMessageBytes,
     advertisedEndpoint: descriptor.endpoint
   };
+}
+
+function requestAdmission(
+  dealer: ZLinkBackendDealerSocket,
+  descriptor: ZLinkClientServerServerDescriptor,
+  timeoutMs: number
+): Promise<ZLinkClientServerAdmission> {
+  const message = BindingMessage.from(encodeClientServerHello({
+    channelName: descriptor.channelName,
+    securityIdentity: descriptor.securityIdentity,
+    normalizedEffectiveMaxMessageBytes: normalizedMessageLimit(dealer.maxMessageSize)
+  }));
+  return new Promise((resolve, reject) => {
+    let submitted = false;
+    try {
+      submitted = dealer.request(
+        message,
+        (result, parts) => {
+          try {
+            if (result !== 0 || parts.length !== 1) {
+              reject(new ZLinkConfigurationException(
+                `ClientServer '${descriptor.channelName}' admission request failed with result ${result}.`
+              ));
+              return;
+            }
+            const first = parts[0]!;
+            const record = decodeClientServerControl(first.data());
+            if (record.kind === 'reject') {
+              reject(new ZLinkConfigurationException(
+                `ClientServer '${descriptor.channelName}' admission was rejected (${record.reason}).`
+              ));
+              return;
+            }
+            if (record.kind !== 'admit') {
+              reject(new ZLinkConfigurationException(
+                `ClientServer '${descriptor.channelName}' admission reply has an invalid command.`
+              ));
+              return;
+            }
+            resolve(record.admission);
+          } catch (error) {
+            reject(error);
+          } finally {
+            message.close();
+            closeMessages(parts);
+          }
+        },
+        0,
+        timeoutMs
+      );
+    } catch (error) {
+      message.close();
+      reject(error);
+      return;
+    }
+    if (!submitted) {
+      message.close();
+      reject(new ZLinkConfigurationException(
+        `ClientServer '${descriptor.channelName}' admission request was not submitted.`
+      ));
+    }
+  });
+}
+
+function requireMatchingAdmission(
+  expected: ZLinkClientServerServerDescriptor,
+  actual: ZLinkClientServerAdmission
+): void {
+  if (actual.channelName !== expected.channelName
+    || actual.serverRid !== String(expected.serverRid)
+    || actual.lifecycleGeneration !== expected.lifecycleGeneration
+    || actual.descriptorRevision !== expected.descriptorRevision
+    || actual.weight !== expected.weight
+    || actual.state !== expected.state
+    || actual.securityIdentity !== expected.securityIdentity
+    || actual.advertisedEndpoint !== expected.endpoint) {
+    throw new ZLinkConfigurationException(
+      `ClientServer '${expected.channelName}' admission does not match its descriptor.`
+    );
+  }
+}
+
+function closeMessages(parts: readonly Message[]): void {
+  for (const part of parts) part.close();
+}
+
+function normalizedMessageLimit(value: number): number {
+  return Number.isSafeInteger(value) && value > 0
+    ? Math.min(value, 0xffff_ffff)
+    : 0x7fff_ffff;
 }
 
 function runtimeStateName(

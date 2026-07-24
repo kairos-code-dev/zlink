@@ -17,7 +17,11 @@ public sealed class ZLinkFrameworkException(
         // kind so callers do not need per-surface tables. Only connection
         // readiness and stale location races are useful bounded-retry cases.
         return kind is ZLinkFrameworkErrorKind.RouteNotConnected
-            or ZLinkFrameworkErrorKind.ActorLocationStale;
+            or ZLinkFrameworkErrorKind.ActorLocationStale
+            or ZLinkFrameworkErrorKind.ActorMoving
+            or ZLinkFrameworkErrorKind.DeadlineExceeded
+            or ZLinkFrameworkErrorKind.PlacementCapacityExhausted
+            or ZLinkFrameworkErrorKind.SpotMoving;
     }
 }
 
@@ -44,5 +48,18 @@ public enum ZLinkFrameworkErrorKind
     WorkerTimedOut = 18,
     WorkerFailed = 19,
     ActorLocationStale = 20,
-    ActorCreateRejected = 21
+    ActorCreateRejected = 21,
+    ObjectClientNotConfigured = 22,
+    MeshSelectionRequired = 23,
+    MeshNotFound = 24,
+    InvalidConfiguration = 25,
+    AlreadySubmitted = 26,
+    ActorGenerationStale = 27,
+    ActorMoving = 28,
+    DeadlineExceeded = 29,
+    PlacementCapacityExhausted = 30,
+    RoutingIdConflict = 31,
+    SpotGenerationStale = 32,
+    SpotMoving = 33,
+    RelocationDataLost = 34
 }

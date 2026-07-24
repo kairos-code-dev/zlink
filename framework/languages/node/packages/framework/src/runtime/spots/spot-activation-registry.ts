@@ -35,6 +35,7 @@ export interface ZLinkSpotCloseOperation {
 export class ZLinkSpotActivationRegistry {
   private nextId = 1;
   private readonly activations = new Map<string, ZLinkSpotActivation>();
+  private readonly staged = new Set<string>();
   private readonly pending = new Map<string, PendingSpotActivation>();
   private readonly closing = new Map<string, ZLinkSpotCloseOperation>();
   private readonly failedClose = new Set<string>();
@@ -57,13 +58,16 @@ export class ZLinkSpotActivationRegistry {
 
   resolve(meshName: string, spotRid: RoutingId): ZLinkSpotActivation | undefined {
     const key = spotActivationKey(meshName, spotRid);
-    return this.closing.has(key) || this.failedClose.has(key) ? undefined : this.activations.get(key);
+    return this.closing.has(key) || this.failedClose.has(key) || this.staged.has(key)
+      ? undefined
+      : this.activations.get(key);
   }
 
   resolveUnique(spotRid: RoutingId): ZLinkSpotActivation | undefined {
     const matches = [...this.activations.values()]
       .filter((activation) =>
         String(activation.spotRid) === String(spotRid)
+        && !this.staged.has(spotActivationKey(activation.meshName, activation.spotRid))
         && !this.closing.has(spotActivationKey(activation.meshName, activation.spotRid))
         && !this.failedClose.has(spotActivationKey(activation.meshName, activation.spotRid)));
     return matches.length === 1 ? matches[0] : undefined;
@@ -71,7 +75,18 @@ export class ZLinkSpotActivationRegistry {
 
   has(meshName: string, spotRid: RoutingId): boolean {
     const key = spotActivationKey(meshName, spotRid);
-    return !this.closing.has(key) && !this.failedClose.has(key) && this.activations.has(key);
+    return !this.staged.has(key)
+      && !this.closing.has(key)
+      && !this.failedClose.has(key)
+      && this.activations.has(key);
+  }
+
+  canClose(meshName: string, spotRid: RoutingId): boolean {
+    const key = spotActivationKey(meshName, spotRid);
+    return !this.staged.has(key)
+      && !this.closing.has(key)
+      && !this.failedClose.has(key)
+      && this.activations.get(key)?.canClose() === true;
   }
 
   list(meshName: string): readonly ZLinkSpotInfo[] {
@@ -79,7 +94,7 @@ export class ZLinkSpotActivationRegistry {
       .filter((activation) => {
         if (activation.meshName !== meshName) return false;
         const key = spotActivationKey(activation.meshName, activation.spotRid);
-        return !this.closing.has(key) && !this.failedClose.has(key);
+        return !this.staged.has(key) && !this.closing.has(key) && !this.failedClose.has(key);
       })
       .map((activation) => String(activation.spotRid))
       .sort((left, right) => left.localeCompare(right))
@@ -142,6 +157,23 @@ export class ZLinkSpotActivationRegistry {
     this.lifecycleMetrics.opened('user');
   }
 
+  stage(meshName: string, spotRid: RoutingId): void {
+    this.staged.add(spotActivationKey(meshName, spotRid));
+  }
+
+  publish(meshName: string, spotRid: RoutingId): void {
+    this.staged.delete(spotActivationKey(meshName, spotRid));
+  }
+
+  abandonStage(meshName: string, spotRid: RoutingId): void {
+    const key = spotActivationKey(meshName, spotRid);
+    // A materialized Spot must remain hidden until close cleanup removes it.
+    // If materialization failed before registration there is nothing to hide.
+    if (!this.activations.has(key)) {
+      this.staged.delete(key);
+    }
+  }
+
   startClose(
     meshName: string,
     spotRid: RoutingId,
@@ -167,6 +199,7 @@ export class ZLinkSpotActivationRegistry {
           this.closing.delete(key);
           if (completed || resourcesReleased(activation)) {
             this.activations.delete(key);
+            this.staged.delete(key);
             this.lifecycleMetrics.closed('user');
             this.failedClose.delete(key);
           } else {

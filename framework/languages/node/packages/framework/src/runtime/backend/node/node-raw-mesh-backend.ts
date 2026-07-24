@@ -36,6 +36,8 @@ import {
   type ServiceAsyncInstanceActivationAuthority,
   type ServiceInstanceApplicationLifecycle,
   type ServicePendingInstanceActivation,
+  type ServiceUserSpotOperationHandler,
+  type ServiceUserSpotOperationResult,
   type ServiceStatefulMailboxData,
   type ServiceStatefulPendingOperation,
   type ServiceStatefulResult
@@ -47,7 +49,9 @@ import type {
 import type {
   ServiceInstanceActivationTarget,
   ServiceInstanceRouteFence,
-  ServiceSpotRouteFence
+  ServiceSpotRouteFence,
+  ServiceUserSpotCloseRecord,
+  ServiceUserSpotCreateRecord
 } from '../../foundation/service-stateful-wire-codec';
 import { encodeServiceMetadataFrame } from '../../foundation/service-metadata-codec';
 import type {
@@ -481,6 +485,26 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     lifecycle: ServiceInstanceApplicationLifecycle
   ): void {
     this.requireStateful().registerInstanceApplicationLifecycle(lifecycle);
+  }
+
+  registerUserSpotOperationHandler(handler: ServiceUserSpotOperationHandler): void {
+    this.requireStateful().registerUserSpotOperationHandler(handler);
+  }
+
+  requestUserSpotCreate(
+    targetNodeRid: string,
+    request: Omit<ServiceUserSpotCreateRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ): Promise<ServiceUserSpotOperationResult> {
+    return this.requireStateful().requestUserSpotCreate(targetNodeRid, request, timeoutMs);
+  }
+
+  requestUserSpotClose(
+    targetNodeRid: string,
+    request: Omit<ServiceUserSpotCloseRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ): Promise<ServiceUserSpotOperationResult> {
+    return this.requireStateful().requestUserSpotClose(targetNodeRid, request, timeoutMs);
   }
 
   recoverInstanceActivation(

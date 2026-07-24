@@ -11,16 +11,21 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 {
     private const int ReceiveBatchSize = 64;
     private const int DefaultMaxPendingOperations = 65_536;
+    private const int MaxRemoteUserSpotOperations = 4_096;
+    private static readonly TimeSpan DefaultRemoteUserSpotTerminalRetention =
+        TimeSpan.FromMinutes(5);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan AdmissionRetryInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly IContext _context;
     private readonly string _meshName;
     private readonly int _maxPendingOperations;
+    private readonly TimeSpan _remoteUserSpotTerminalRetention;
     private readonly object _gate = new();
     private readonly object _socketGate = new();
     private readonly object _readyGate = new();
     private readonly object _operationGate = new();
+    private readonly object _remoteUserSpotGate = new();
     private readonly Dictionary<string, uint> _channels = new(StringComparer.Ordinal);
     private readonly Dictionary<ulong, Peer> _peersByIntent = new();
     private readonly Dictionary<RoutingId, Peer> _peersByRid = new();
@@ -30,6 +35,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private readonly ConcurrentDictionary<string, ManagedActor> _actors =
         new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<ActorTransferToken, ManagedTransfer> _transfers = new();
+    private readonly ConcurrentDictionary<RemoteUserSpotOperationKey, RemoteUserSpotInvocation>
+        _remoteUserSpotOperations = new();
     private readonly ConcurrentDictionary<ObservedSpotAuthorityKey, ulong>
         _observedSpotAuthorities = new();
     private readonly ConcurrentDictionary<ObservedActorAuthorityKey, ulong>
@@ -42,6 +49,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private CancellationTokenSource? _stop;
     private Task? _receiveLoop;
     private Func<MeshReadyDomains, MeshReadyDomains>? _readyHandler;
+    private IUserSpotOperationTarget? _userSpotOperationTarget;
     private RoutingId _routingId;
     private string _bindEndpoint = string.Empty;
     private MeshNodeState _state = MeshNodeState.Created;
@@ -60,14 +68,22 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     internal ZLinkManagedMeshNode(
         IContext context,
         string meshName,
-        int maxPendingOperations = DefaultMaxPendingOperations)
+        int maxPendingOperations = DefaultMaxPendingOperations,
+        TimeSpan? remoteUserSpotTerminalRetention = null)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
         if (maxPendingOperations <= 0)
             throw new ArgumentOutOfRangeException(nameof(maxPendingOperations));
+        if (remoteUserSpotTerminalRetention is { } retention
+            && retention < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(
+                nameof(remoteUserSpotTerminalRetention));
         _meshName = meshName;
         _maxPendingOperations = maxPendingOperations;
+        _remoteUserSpotTerminalRetention =
+            remoteUserSpotTerminalRetention
+            ?? DefaultRemoteUserSpotTerminalRetention;
     }
 
     public RoutingId RoutingId => _routingId;
@@ -226,6 +242,120 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         Publish(MeshMonitorEventKind.ChannelChanged, channelName: channelName);
     }
 
+    public void SetUserSpotOperationTarget(IUserSpotOperationTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_userSpotOperationTarget is not null
+                && !ReferenceEquals(_userSpotOperationTarget, target))
+                throw new InvalidOperationException(
+                    "A User Spot operation target is already registered.");
+            _userSpotOperationTarget = target;
+        }
+    }
+
+    public SubmitResult CreateUserSpot(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        string stableType,
+        UserSpotReservationFence reservation,
+        ulong deadlineUnixMs,
+        out MeshOperationId operationId,
+        TimeSpan timeout = default)
+    {
+        if (targetNodeRid == _routingId)
+            throw new ArgumentException(
+                "Command 47 is reserved for a remote User Spot target.",
+                nameof(targetNodeRid));
+        if (reservation.TargetNodeRid != targetNodeRid)
+            throw new ArgumentException(
+                "The reservation target must match the command target.",
+                nameof(reservation));
+        return SubmitUserSpotOperation(
+            targetNodeRid,
+            reservation.TargetNodeGeneration,
+            MeshOperationKind.UserSpotCreate,
+            (correlation, operation) => ZLinkServiceWireCodec.EncodeUserSpotCreate(
+                new UserSpotCreateOperation(
+                    correlation,
+                    operation,
+                    _routingId,
+                    _lifecycleGeneration,
+                    spotRid,
+                    stableType,
+                    reservation,
+                    deadlineUnixMs)),
+            out operationId,
+            timeout);
+    }
+
+    public SubmitResult CloseUserSpot(
+        RoutingId targetNodeRid,
+        UserSpotCloseFence target,
+        ulong deadlineUnixMs,
+        out MeshOperationId operationId,
+        TimeSpan timeout = default)
+    {
+        if (targetNodeRid == _routingId)
+            throw new ArgumentException(
+                "Command 48 is reserved for a remote User Spot owner.",
+                nameof(targetNodeRid));
+        if (target.TargetNodeRid != targetNodeRid)
+            throw new ArgumentException(
+                "The close fence target must match the command target.",
+                nameof(target));
+        return SubmitUserSpotOperation(
+            targetNodeRid,
+            target.TargetNodeGeneration,
+            MeshOperationKind.UserSpotClose,
+            (correlation, operation) => ZLinkServiceWireCodec.EncodeUserSpotClose(
+                new UserSpotCloseOperation(
+                    correlation,
+                    operation,
+                    _routingId,
+                    _lifecycleGeneration,
+                    target,
+                    deadlineUnixMs)),
+            out operationId,
+            timeout);
+    }
+
+    internal SubmitResult ResubmitUserSpotOperation(
+        RoutingId targetNodeRid,
+        ZLinkServiceWireCodec.UserSpotOperationRecord operation)
+    {
+        var sourceNodeRid = operation.Command
+            == ServiceWireConstants.Command.UserSpotCreate
+                ? operation.Create.SourceNodeRid
+                : operation.Close.SourceNodeRid;
+        var sourceNodeGeneration = operation.Command
+            == ServiceWireConstants.Command.UserSpotCreate
+                ? operation.Create.SourceNodeGeneration
+                : operation.Close.SourceNodeGeneration;
+        if (sourceNodeRid != _routingId
+            || sourceNodeGeneration != _lifecycleGeneration)
+            throw new ArgumentException(
+                "The operation source must match this MeshNode.",
+                nameof(operation));
+        Peer? peer;
+        lock (_gate)
+            _peersByRid.TryGetValue(targetNodeRid, out peer);
+        if (peer is null || !peer.Admitted)
+            return SubmitResult.NotConnected;
+        var head = operation.Command
+            == ServiceWireConstants.Command.UserSpotCreate
+                ? ZLinkServiceWireCodec.EncodeUserSpotCreate(operation.Create)
+                : ZLinkServiceWireCodec.EncodeUserSpotClose(operation.Close);
+        return TrySend(peer.PhysicalRoutingId, [head], SendFlags.None)
+            ? SubmitResult.Ok
+            : SubmitResult.Backpressured;
+    }
+
+    internal int RetainedUserSpotOperationCount =>
+        _remoteUserSpotOperations.Count;
+
     public MeshNodeStatus Status()
     {
         lock (_gate)
@@ -297,6 +427,12 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     public void SetReadyHandler(Func<MeshReadyDomains, MeshReadyDomains> handler)
     {
         _readyHandler = handler ?? throw new ArgumentNullException(nameof(handler));
+        // Records may be queued while the node starts, before the framework
+        // installs its pull-dispatch pump. Such an enqueue marks ready as
+        // posted even though no callback existed. Re-arm the edge when the
+        // handler is installed so those records and all later completions can
+        // be drained.
+        Volatile.Write(ref _readyPosted, 0);
         SignalReadyIfNeeded();
     }
 
@@ -860,6 +996,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
         foreach (var pending in pendingOperations)
             pending.Cancel();
+        _remoteUserSpotOperations.Clear();
         foreach (var mailbox in _ownedMailboxes.Values)
             mailbox.Dispose();
         _ownedMailboxes.Clear();
@@ -1676,6 +1813,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             ProcessStateful(sourceRid, stateful, received);
             return;
         }
+        if (ZLinkServiceWireCodec.TryDecodeUserSpotOperation(
+                head,
+                out var userSpotOperation,
+                out _))
+        {
+            ProcessUserSpotOperation(sourceRid, userSpotOperation);
+            return;
+        }
         if (!ZLinkServiceWireCodec.TryDecodeApplication(
                 head,
                 out var application,
@@ -1869,6 +2014,377 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             parts);
     }
 
+    private void ProcessUserSpotOperation(
+        RoutingId sourceRid,
+        ZLinkServiceWireCodec.UserSpotOperationRecord record)
+    {
+        Peer? peer;
+        IUserSpotOperationTarget? target;
+        lock (_gate)
+        {
+            _peersByRid.TryGetValue(sourceRid, out peer);
+            target = _userSpotOperationTarget;
+        }
+
+        var operation = record.Command == ServiceWireConstants.Command.UserSpotCreate
+            ? record.Create.OperationId
+            : record.Close.OperationId;
+        var correlation = record.Command == ServiceWireConstants.Command.UserSpotCreate
+            ? record.Create.Correlation
+            : record.Close.Correlation;
+        var sourceNodeRid = record.Command == ServiceWireConstants.Command.UserSpotCreate
+            ? record.Create.SourceNodeRid
+            : record.Close.SourceNodeRid;
+        var sourceNodeGeneration =
+            record.Command == ServiceWireConstants.Command.UserSpotCreate
+                ? record.Create.SourceNodeGeneration
+                : record.Close.SourceNodeGeneration;
+        var deadlineUnixMs = record.Command == ServiceWireConstants.Command.UserSpotCreate
+            ? record.Create.DeadlineUnixMs
+            : record.Close.DeadlineUnixMs;
+        var targetNodeRid = record.Command == ServiceWireConstants.Command.UserSpotCreate
+            ? record.Create.Reservation.TargetNodeRid
+            : record.Close.Target.TargetNodeRid;
+        var targetNodeGeneration =
+            record.Command == ServiceWireConstants.Command.UserSpotCreate
+                ? record.Create.Reservation.TargetNodeGeneration
+                : record.Close.Target.TargetNodeGeneration;
+
+        if (peer is null
+            || !peer.Admitted
+            || sourceNodeRid != sourceRid
+            || sourceNodeGeneration != peer.LifecycleGeneration)
+        {
+            SendUserSpotFailure(
+                sourceRid,
+                correlation,
+                record.Command,
+                RequestResult.Conflict,
+                ServiceWireConstants.FrameworkErrorCode.RequestProtocolError);
+            return;
+        }
+        if (targetNodeRid != _routingId
+            || targetNodeGeneration != _lifecycleGeneration)
+        {
+            SendUserSpotFailure(
+                sourceRid,
+                correlation,
+                record.Command,
+                RequestResult.Conflict,
+                ServiceWireConstants.FrameworkErrorCode.SpotGenerationStale);
+            return;
+        }
+        var key = new RemoteUserSpotOperationKey(
+            sourceRid,
+            sourceNodeGeneration,
+            operation);
+        if (_remoteUserSpotOperations.TryGetValue(key, out var retained))
+        {
+            if (!SameUserSpotOperation(retained.Record, record))
+            {
+                SendUserSpotFailure(
+                    sourceRid,
+                    correlation,
+                    record.Command,
+                    RequestResult.ProtocolError,
+                    ServiceWireConstants.FrameworkErrorCode.RequestProtocolError);
+                return;
+            }
+            _ = ReplyUserSpotOperationAsync(
+                sourceNodeRid,
+                correlation,
+                record.Command,
+                key,
+                retained);
+            return;
+        }
+        if (deadlineUnixMs <= checked((ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()))
+        {
+            SendUserSpotFailure(
+                sourceRid,
+                correlation,
+                record.Command,
+                RequestResult.TimedOut,
+                ServiceWireConstants.FrameworkErrorCode.WorkerTimedOut);
+            return;
+        }
+        if (target is null)
+        {
+            SendUserSpotFailure(
+                sourceRid,
+                correlation,
+                record.Command,
+                RequestResult.InvalidState,
+                ServiceWireConstants.FrameworkErrorCode.RequestFailed);
+            return;
+        }
+
+        RemoteUserSpotInvocation invocation;
+        var candidate = new RemoteUserSpotInvocation(
+            record,
+            () => ExecuteUserSpotOperationAsync(target, record, deadlineUnixMs));
+        lock (_remoteUserSpotGate)
+        {
+            if (!_remoteUserSpotOperations.TryGetValue(key, out invocation!))
+            {
+                if (_remoteUserSpotOperations.Count
+                    >= MaxRemoteUserSpotOperations)
+                {
+                    SendUserSpotFailure(
+                        sourceRid,
+                        correlation,
+                        record.Command,
+                        RequestResult.Busy,
+                        ServiceWireConstants.FrameworkErrorCode.WorkerQueueFull);
+                    return;
+                }
+                _remoteUserSpotOperations[key] = candidate;
+                invocation = candidate;
+            }
+        }
+        if (!ReferenceEquals(invocation, candidate))
+        {
+            if (!SameUserSpotOperation(invocation.Record, record))
+            {
+                SendUserSpotFailure(
+                    sourceRid,
+                    correlation,
+                    record.Command,
+                    RequestResult.ProtocolError,
+                    ServiceWireConstants.FrameworkErrorCode.RequestProtocolError);
+                return;
+            }
+        }
+
+        _ = ReplyUserSpotOperationAsync(
+            sourceNodeRid, correlation, record.Command, key, invocation);
+    }
+
+    private async Task<UserSpotOperationTerminal> ExecuteUserSpotOperationAsync(
+        IUserSpotOperationTarget target,
+        ZLinkServiceWireCodec.UserSpotOperationRecord record,
+        ulong deadlineUnixMs)
+    {
+        var remaining = checked((long)deadlineUnixMs)
+                        - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (remaining <= 0)
+            return new UserSpotOperationTerminal(
+                RequestResult.TimedOut,
+                ServiceWireConstants.FrameworkErrorCode.WorkerTimedOut);
+
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
+            _stop?.Token ?? CancellationToken.None);
+        deadline.CancelAfter(TimeSpan.FromMilliseconds(remaining));
+        try
+        {
+            var terminal = record.Command == ServiceWireConstants.Command.UserSpotCreate
+                ? await target.CreateAsync(record.Create, deadline.Token).ConfigureAwait(false)
+                : await target.CloseAsync(record.Close, deadline.Token).ConfigureAwait(false);
+            return ValidateUserSpotTerminal(record, terminal);
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        {
+            return new UserSpotOperationTerminal(
+                RequestResult.TimedOut,
+                ServiceWireConstants.FrameworkErrorCode.WorkerTimedOut);
+        }
+        catch (ZLinkFrameworkException exception)
+        {
+            return MapUserSpotException(exception);
+        }
+        catch
+        {
+            return new UserSpotOperationTerminal(
+                RequestResult.InternalError,
+                ServiceWireConstants.FrameworkErrorCode.RequestFailed);
+        }
+    }
+
+    private static bool SameUserSpotOperation(
+        ZLinkServiceWireCodec.UserSpotOperationRecord left,
+        ZLinkServiceWireCodec.UserSpotOperationRecord right)
+    {
+        if (left.Command != right.Command) return false;
+        return left.Command == ServiceWireConstants.Command.UserSpotCreate
+            ? left.Create with { Correlation = 0 }
+                == right.Create with { Correlation = 0 }
+            : left.Close with { Correlation = 0 }
+                == right.Close with { Correlation = 0 };
+    }
+
+    private static UserSpotOperationTerminal ValidateUserSpotTerminal(
+        ZLinkServiceWireCodec.UserSpotOperationRecord operation,
+        UserSpotOperationTerminal terminal)
+    {
+        if (terminal.Result != RequestResult.Ok)
+        {
+            if (terminal.Completion is not null
+                || terminal.FailureCode == ServiceWireConstants.FrameworkErrorCode.None)
+                throw new InvalidOperationException(
+                    "A failed User Spot operation requires one failure code and no success completion.");
+            if (terminal.FailureCode is ServiceWireConstants.FrameworkErrorCode.SpotGenerationStale
+                or ServiceWireConstants.FrameworkErrorCode.SpotMoving
+                && terminal.Result != RequestResult.Conflict)
+                throw new InvalidOperationException(
+                    "Stale-generation and moving failures map to conflict.");
+            return terminal;
+        }
+        if (terminal.FailureCode != ServiceWireConstants.FrameworkErrorCode.None)
+            throw new InvalidOperationException(
+                "A successful User Spot operation cannot carry a failure code.");
+
+        if (operation.Command == ServiceWireConstants.Command.UserSpotCreate)
+        {
+            if (terminal.Completion is not UserSpotCreateCompletion create
+                || create.SpotRid != operation.Create.SpotRid
+                || create.ObjectGeneration != operation.Create.Reservation.ObjectGeneration)
+                throw new InvalidOperationException(
+                    "The User Spot create completion does not match its reservation.");
+        }
+        else if (terminal.Completion is not UserSpotCloseCompletion)
+        {
+            throw new InvalidOperationException(
+                "The User Spot close completion is missing.");
+        }
+        return terminal;
+    }
+
+    private async Task ReplyUserSpotOperationAsync(
+        RoutingId sourceRid,
+        ulong correlation,
+        ServiceWireConstants.Command command,
+        RemoteUserSpotOperationKey key,
+        RemoteUserSpotInvocation invocation)
+    {
+        var terminal = await invocation.Task.ConfigureAwait(false);
+        var head = command == ServiceWireConstants.Command.UserSpotCreate
+            ? ZLinkServiceWireCodec.EncodeUserSpotCreateReply(
+                correlation,
+                terminal.Result,
+                terminal.FailureCode,
+                terminal.Completion as UserSpotCreateCompletion)
+            : ZLinkServiceWireCodec.EncodeUserSpotCloseReply(
+                correlation,
+                terminal.Result,
+                terminal.FailureCode,
+                terminal.Completion as UserSpotCloseCompletion);
+        var replyParts = terminal.ReplyParts ?? Array.Empty<ReadOnlyMemory<byte>>();
+        var wire = new List<ReadOnlyMemory<byte>>(replyParts.Count + 1) { head };
+        wire.AddRange(replyParts);
+        await SendUserSpotTerminalAsync(sourceRid, wire).ConfigureAwait(false);
+        _ = ExpireRemoteUserSpotOperationAsync(key, invocation);
+    }
+
+    private async Task SendUserSpotTerminalAsync(
+        RoutingId sourceRid,
+        IReadOnlyList<ReadOnlyMemory<byte>> wire)
+    {
+        var stopToken = _stop?.Token ?? CancellationToken.None;
+        for (var attempt = 0;
+             attempt < 5000 && !stopToken.IsCancellationRequested;
+             attempt++)
+        {
+            RoutingId target;
+            lock (_gate)
+                target = _peersByRid.TryGetValue(sourceRid, out var peer)
+                    && peer.Admitted
+                    ? peer.PhysicalRoutingId
+                    : sourceRid;
+            if (TrySend(target, wire, SendFlags.DontWait)) return;
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(1), stopToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+    }
+
+    private async Task ExpireRemoteUserSpotOperationAsync(
+        RemoteUserSpotOperationKey key,
+        RemoteUserSpotInvocation invocation)
+    {
+        try
+        {
+            var deadline = invocation.Record.Command
+                == ServiceWireConstants.Command.UserSpotCreate
+                    ? invocation.Record.Create.DeadlineUnixMs
+                    : invocation.Record.Close.DeadlineUnixMs;
+            var retentionDeadline = checked(
+                (long)deadline
+                + (long)_remoteUserSpotTerminalRetention.TotalMilliseconds);
+            var remaining = Math.Max(
+                0,
+                retentionDeadline - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            await Task.Delay(
+                    TimeSpan.FromMilliseconds(remaining),
+                    _stop?.Token ?? CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        _remoteUserSpotOperations.TryRemove(
+            new KeyValuePair<RemoteUserSpotOperationKey, RemoteUserSpotInvocation>(
+                key, invocation));
+    }
+
+    private void SendUserSpotFailure(
+        RoutingId sourceRid,
+        ulong correlation,
+        ServiceWireConstants.Command command,
+        RequestResult result,
+        ServiceWireConstants.FrameworkErrorCode failureCode)
+    {
+        var head = command == ServiceWireConstants.Command.UserSpotCreate
+            ? ZLinkServiceWireCodec.EncodeUserSpotCreateReply(
+                correlation,
+                result,
+                failureCode,
+                null)
+            : ZLinkServiceWireCodec.EncodeUserSpotCloseReply(
+                correlation,
+                result,
+                failureCode,
+                null);
+        _ = TrySend(sourceRid, [head], SendFlags.DontWait);
+    }
+
+    private static UserSpotOperationTerminal MapUserSpotException(
+        ZLinkFrameworkException exception)
+    {
+        return exception.Kind switch
+        {
+            ZLinkFrameworkErrorKind.SpotGenerationStale =>
+                new UserSpotOperationTerminal(
+                    RequestResult.Conflict,
+                    ServiceWireConstants.FrameworkErrorCode.SpotGenerationStale),
+            ZLinkFrameworkErrorKind.SpotMoving =>
+                new UserSpotOperationTerminal(
+                    RequestResult.Conflict,
+                    ServiceWireConstants.FrameworkErrorCode.SpotMoving),
+            ZLinkFrameworkErrorKind.SpotTypeMismatch =>
+                new UserSpotOperationTerminal(
+                    RequestResult.Conflict,
+                    ServiceWireConstants.FrameworkErrorCode.SpotTypeMismatch),
+            ZLinkFrameworkErrorKind.PlacementCapacityExhausted =>
+                new UserSpotOperationTerminal(
+                    RequestResult.Busy,
+                    ServiceWireConstants.FrameworkErrorCode.WorkerQueueFull),
+            ZLinkFrameworkErrorKind.RequestProtocolError =>
+                new UserSpotOperationTerminal(
+                    RequestResult.ProtocolError,
+                    ServiceWireConstants.FrameworkErrorCode.RequestProtocolError),
+            _ => new UserSpotOperationTerminal(
+                exception.IsRetriable ? RequestResult.Busy : RequestResult.InternalError,
+                ServiceWireConstants.FrameworkErrorCode.RequestFailed)
+        };
+    }
+
     private void ProcessAdmission(
         RoutingId sourceRid,
         ServiceWireConstants.Command command,
@@ -2045,6 +2561,66 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return SubmitResult.Ok;
     }
 
+    private SubmitResult SubmitUserSpotOperation(
+        RoutingId targetRid,
+        ulong targetNodeGeneration,
+        MeshOperationKind kind,
+        Func<ulong, MeshOperationId, byte[]> encode,
+        out MeshOperationId operationId,
+        TimeSpan timeout)
+    {
+        if (kind is not (MeshOperationKind.UserSpotCreate
+            or MeshOperationKind.UserSpotClose))
+            throw new ArgumentOutOfRangeException(nameof(kind));
+
+        Peer? peer;
+        lock (_gate)
+            _peersByRid.TryGetValue(targetRid, out peer);
+        if (peer is null
+            || !peer.Admitted
+            || peer.LifecycleGeneration != targetNodeGeneration)
+        {
+            operationId = default;
+            return SubmitResult.NotConnected;
+        }
+
+        if (!TryCreateOperation(kind, out var correlation, out var pending))
+        {
+            operationId = default;
+            Publish(MeshMonitorEventKind.Backpressured, peerRid: targetRid);
+            return SubmitResult.Backpressured;
+        }
+        operationId = pending.OperationId;
+
+        byte[] head;
+        try
+        {
+            head = encode(correlation, operationId);
+        }
+        catch
+        {
+            TryRemoveOperation(correlation, out _);
+            pending.Cancel();
+            operationId = default;
+            throw;
+        }
+
+        if (!TrySend(peer.PhysicalRoutingId, [head], SendFlags.None))
+        {
+            TryRemoveOperation(correlation, out _);
+            pending.Cancel();
+            operationId = default;
+            return SubmitResult.Backpressured;
+        }
+
+        _ = ExpireOperationAsync(
+            correlation,
+            pending,
+            timeout <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : timeout);
+        Publish(MeshMonitorEventKind.MessageSubmitted, peerRid: targetRid);
+        return SubmitResult.Ok;
+    }
+
     private SubmitResult SubmitApplication(
         RoutingId targetRid,
         ServiceWireConstants.Command command,
@@ -2172,13 +2748,28 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         if (!TryRemoveOperation(reply.Correlation, out var pending)
             || !pending.TryComplete())
             return;
+        if (!ZLinkServiceWireCodec.TryDecodeUserSpotReply(
+                reply,
+                pending.Kind,
+                out var completion,
+                out _))
+        {
+            EnqueueCompletion(
+                pending.OperationId,
+                pending.Kind,
+                (int)RequestResult.ProtocolError,
+                (int)ServiceWireConstants.FrameworkErrorCode.RequestProtocolError,
+                Array.Empty<Message>());
+            return;
+        }
         var parts = received.Parts.Skip(1).Select(Message.From).ToArray();
         EnqueueCompletion(
             pending.OperationId,
             pending.Kind,
             reply.TerminalResult,
             checked((int)reply.FailureCode),
-            parts);
+            parts,
+            completion);
     }
 
     private void CompleteLocalOperation(
@@ -2225,7 +2816,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         MeshOperationKind operationKind,
         int result,
         int failure,
-        IReadOnlyList<Message> parts)
+        IReadOnlyList<Message> parts,
+        MeshRecordPayload? kindData = null)
     {
         EnqueueOwned(
             MailboxKey.ForNode(MeshReadyDomains.Infrastructure),
@@ -2245,7 +2837,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 parts.Count,
                 result,
                 failure,
-                null),
+                kindData),
             parts);
         Publish(
             MeshMonitorEventKind.OperationCompleted,
@@ -2958,6 +3550,29 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 _timeout.Cancel();
             _timeout.Dispose();
         }
+    }
+
+    private readonly record struct RemoteUserSpotOperationKey(
+        RoutingId SourceNodeRid,
+        ulong SourceNodeGeneration,
+        MeshOperationId OperationId);
+
+    private sealed class RemoteUserSpotInvocation
+    {
+        private readonly Lazy<Task<UserSpotOperationTerminal>> _task;
+
+        internal RemoteUserSpotInvocation(
+            ZLinkServiceWireCodec.UserSpotOperationRecord record,
+            Func<Task<UserSpotOperationTerminal>> execute)
+        {
+            Record = record;
+            _task = new Lazy<Task<UserSpotOperationTerminal>>(
+                execute,
+                LazyThreadSafetyMode.ExecutionAndPublication);
+        }
+
+        internal ZLinkServiceWireCodec.UserSpotOperationRecord Record { get; }
+        internal Task<UserSpotOperationTerminal> Task => _task.Value;
     }
 
     private sealed class QueuedRecord(

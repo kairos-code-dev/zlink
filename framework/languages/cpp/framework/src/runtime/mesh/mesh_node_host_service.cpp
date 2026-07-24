@@ -88,6 +88,55 @@ void mesh_node_host_service_t::start (service_provider_t &services)
     _accept_application_dispatch.store (true, std::memory_order_release);
     for (const auto &node : _nodes)
         node->start ();
+    auto store = std::shared_ptr<location_store_t> (
+      &services.get_required<location_store_t> (),
+      [] (location_store_t *) noexcept {});
+    for (std::size_t index = 0; index < _nodes.size (); ++index) {
+        const auto registration = _registrations[index];
+        _nodes[index]->native_node ().configure_user_spot_operations (
+          store,
+          [this, registration] (
+            const stateful::object_ref_t &object,
+            const std::string &stable_type,
+            const std::vector<std::byte> &payload) {
+              std::vector<std::uint8_t> rid_bytes;
+              rid_bytes.reserve (object.key.size ());
+              for (const auto value : object.key)
+                  rid_bytes.push_back (
+                    static_cast<std::uint8_t> (
+                      static_cast<unsigned char> (value)));
+              std::vector<std::uint8_t> request_bytes;
+              request_bytes.reserve (payload.size ());
+              for (const auto value : payload)
+                  request_bytes.push_back (
+                    std::to_integer<std::uint8_t> (value));
+              detail::spot_node_runtime_t spots (
+                registration->spot_state);
+              auto created = spots.get_or_create_spot (
+                stable_type,
+                spot_rid_t::from_string (
+                  zlink::routing_id_t::from (rid_bytes)
+                    .to_string ()),
+                zlink::message_t::from (request_bytes));
+              std::optional<protocol::application_payload_t>
+                application_reply;
+              if (created.reply) {
+                  application_reply =
+                    protocol::application_payload_t{
+                      {},
+                      "application/octet-stream",
+                      detail::message_to_raw (
+                        *created.reply, *_serializers)
+                        .to_bytes ()};
+              }
+              return host::user_spot_materialize_result_t{
+                created.state
+                  == spot_create_state_t::created
+                  || created.state
+                       == spot_create_state_t::existing,
+                std::move (application_reply)};
+          });
+    }
     for (std::size_t index = 0; index < _nodes.size (); ++index) {
         const auto node = _nodes[index];
         const auto registration = _registrations[index];

@@ -66,6 +66,17 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             node,
             spotChannelName,
             locationLifecycle);
+        if (registration.SpotRelocations.Count > 0
+            && frameworkRegistration.Locations.ResolveStore() is { } authorityStore)
+        {
+            node.SetUserSpotOperationTarget(
+                new ZLinkUserSpotOperationTarget(
+                    authorityStore,
+                    _spots,
+                    node,
+                    registration,
+                    frameworkRegistration.Codecs));
+        }
     }
 
     public string Name => Registration.SpotNodeName;

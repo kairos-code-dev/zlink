@@ -159,6 +159,71 @@ create_result_t stateful_object_runtime_t::begin_create (
             true};
 }
 
+create_result_t stateful_object_runtime_t::begin_reserved_user_spot (
+  const object_ref_t &reserved,
+  const std::string &stable_type,
+  std::vector<std::uint8_t> creation_request)
+{
+    std::lock_guard lock (_mutex);
+    if (reserved.kind != object_kind_t::user_spot
+        || !valid_text (reserved.key) || !valid_text (stable_type)
+        || reserved.object_generation == 0
+        || reserved.authority_owner_generation == 0
+        || !valid_text (reserved.mesh_name)
+        || !valid_text (reserved.node_id)
+        || creation_request.size () > max_creation_request_bytes) {
+        return {
+          create_status_t::failed, stateful_error_t::invalid, 0, {}, false};
+    }
+    if (_maintenance_inventory_active) {
+        return {
+          create_status_t::failed, stateful_error_t::moving, 0, {}, false};
+    }
+    const object_key_t key{reserved.kind, reserved.key};
+    const auto existing = _objects.find (key);
+    if (existing != _objects.end ()) {
+        if (existing->second.stable_type != stable_type) {
+            return {create_status_t::failed,
+                    stateful_error_t::type_mismatch, 0, {}, false};
+        }
+        if (existing->second.reference.object_generation
+              != reserved.object_generation
+            || existing->second.reference.authority_owner_generation
+                 != reserved.authority_owner_generation) {
+            return {create_status_t::failed,
+                    stateful_error_t::generation_stale, 0, {}, false};
+        }
+        if (existing->second.state == object_state_t::creating) {
+            return {create_status_t::joined, stateful_error_t::none,
+                    existing->second.attempt,
+                    existing->second.reference, false};
+        }
+        if (existing->second.state == object_state_t::moving
+            || existing->second.state == object_state_t::recovering
+            || existing->second.state == object_state_t::closing) {
+            return {create_status_t::failed,
+                    stateful_error_t::moving, 0, {}, false};
+        }
+        return {create_status_t::existing, stateful_error_t::none,
+                0, existing->second.reference, false};
+    }
+    const auto attempt = _next_attempt++;
+    if (attempt == 0) {
+        return {
+          create_status_t::failed, stateful_error_t::invalid, 0, {}, false};
+    }
+    object_record_t record;
+    record.reference = reserved;
+    record.stable_type = stable_type;
+    record.attempt = attempt;
+    _last_generation[key] =
+      std::max (_last_generation[key], reserved.object_generation);
+    _objects.emplace (key, record);
+    _attempts.emplace (attempt, key);
+    return {create_status_t::reserved, stateful_error_t::none,
+            attempt, reserved, true};
+}
+
 stateful_error_t stateful_object_runtime_t::commit_create (
   std::uint64_t attempt)
 {
@@ -410,32 +475,83 @@ stateful_error_t stateful_object_runtime_t::destroy_actor (
 std::pair<stateful_error_t, bool>
 stateful_object_runtime_t::close_spot (const object_ref_t &spot)
 {
+    const auto [error, token] = begin_close_spot (spot);
+    if (error != stateful_error_t::none || !token)
+        return {error, false};
+    const auto committed = commit_close_spot (*token);
+    return {committed, committed == stateful_error_t::none};
+}
+
+std::pair<stateful_error_t, std::optional<spot_close_token_t>>
+stateful_object_runtime_t::begin_close_spot (const object_ref_t &spot)
+{
     std::lock_guard lock (_mutex);
     if (_maintenance_inventory_active)
-        return {stateful_error_t::moving, false};
+        return {stateful_error_t::moving, std::nullopt};
     stateful_error_t error = stateful_error_t::none;
     auto *record = find_record_locked (spot, error);
-    if (record == nullptr) {
-        return {error, false};
-    }
-    if (spot.kind == object_kind_t::actor) {
-        return {stateful_error_t::invalid, false};
-    }
+    if (record == nullptr)
+        return {error, std::nullopt};
+    if (spot.kind == object_kind_t::actor)
+        return {stateful_error_t::invalid, std::nullopt};
     if (record->state == object_state_t::moving
-        || record->state == object_state_t::recovering) {
-        return {stateful_error_t::moving, false};
-    }
+        || record->state == object_state_t::recovering
+        || record->state == object_state_t::closing)
+        return {stateful_error_t::moving, std::nullopt};
     if (spot.kind == object_kind_t::user_spot) {
         for (const auto &[key, candidate] : _objects) {
             (void) key;
             if (candidate.reference.kind == object_kind_t::actor
-                && candidate.membership == spot.key) {
-                return {stateful_error_t::none, false};
-            }
+                && candidate.membership == spot.key)
+                return {stateful_error_t::none, std::nullopt};
         }
     }
-    _objects.erase (key_for (spot));
-    return {stateful_error_t::none, true};
+    if (_next_spot_close_token == 0)
+        return {stateful_error_t::invalid, std::nullopt};
+    spot_close_token_t token{_next_spot_close_token++, spot};
+    record->state = object_state_t::closing;
+    _spot_closes.emplace (token.value, token);
+    return {stateful_error_t::none, token};
+}
+
+stateful_error_t stateful_object_runtime_t::commit_close_spot (
+  const spot_close_token_t &token)
+{
+    std::lock_guard lock (_mutex);
+    const auto closing = _spot_closes.find (token.value);
+    const auto record = _objects.find (key_for (token.spot));
+    if (closing == _spot_closes.end () || closing->second != token
+        || record == _objects.end ()
+        || !same_exact_ref (record->second.reference, token.spot)
+        || record->second.state != object_state_t::closing)
+        return stateful_error_t::generation_stale;
+    for (auto &candidate : _candidates) {
+        if (candidate.mesh_name == record->second.reference.mesh_name
+            && candidate.node_id == record->second.reference.node_id
+            && candidate.active_count != 0) {
+            --candidate.active_count;
+            break;
+        }
+    }
+    _objects.erase (record);
+    _spot_closes.erase (closing);
+    return stateful_error_t::none;
+}
+
+stateful_error_t stateful_object_runtime_t::abort_close_spot (
+  const spot_close_token_t &token)
+{
+    std::lock_guard lock (_mutex);
+    const auto closing = _spot_closes.find (token.value);
+    const auto record = _objects.find (key_for (token.spot));
+    if (closing == _spot_closes.end () || closing->second != token
+        || record == _objects.end ()
+        || !same_exact_ref (record->second.reference, token.spot)
+        || record->second.state != object_state_t::closing)
+        return stateful_error_t::generation_stale;
+    record->second.state = object_state_t::ready;
+    _spot_closes.erase (closing);
+    return stateful_error_t::none;
 }
 
 stateful_error_t stateful_object_runtime_t::enqueue (

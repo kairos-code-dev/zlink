@@ -143,7 +143,9 @@ public final class ZLinkServiceWireCodec {
                  ServiceWireConstants.COMMAND_SESSION_RELOCATION_SEALED,
                  ServiceWireConstants.COMMAND_SESSION_RELOCATION_ROUTE,
                  ServiceWireConstants.COMMAND_SESSION_RELOCATION_ROUTED,
-                 ServiceWireConstants.COMMAND_REPLY_RELAY_ACK -> true;
+                 ServiceWireConstants.COMMAND_REPLY_RELAY_ACK,
+                 ServiceWireConstants.COMMAND_USER_SPOT_CREATE,
+                 ServiceWireConstants.COMMAND_USER_SPOT_CLOSE -> true;
             default -> false;
         };
     }

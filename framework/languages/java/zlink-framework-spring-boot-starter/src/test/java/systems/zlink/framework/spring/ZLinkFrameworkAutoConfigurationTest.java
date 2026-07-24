@@ -70,6 +70,8 @@ import systems.zlink.framework.runtime.monitoring.DefaultZLinkMonitoringOptions;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
+import systems.zlink.framework.spots.ZLinkSpotCreateCall;
+import systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 import systems.zlink.framework.spots.ZLinkSpotOutbound;
 import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
@@ -220,9 +222,23 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 ZLinkFrameworkAutoConfiguration.class);
             context.refresh();
 
+            ZLinkSpotManager manager =
+                context.getBean(ZLinkSpotManager.class);
+            assertInstanceOf(ZLinkSpotManager.class, manager);
             assertInstanceOf(
-                ZLinkSpotManager.class,
-                context.getBean(ZLinkSpotManager.class));
+                ZLinkSpotCreateCall.class,
+                manager.create("room-v1")
+                    .inMesh("game")
+                    .placementProfile("default")
+                    .affinityKey("tenant-a")
+                    .timeout(Duration.ofSeconds(1)));
+            assertInstanceOf(
+                ZLinkSpotGetOrCreateCall.class,
+                manager.getOrCreate(
+                        RoutingId.from("spring-room"),
+                        "room-v1")
+                    .inMesh("game")
+                    .request(ZLinkMessage.empty()));
             assertInstanceOf(
                 ZLinkSpotOutbound.class,
                 context.getBean(ZLinkSpotOutbound.class));
@@ -287,55 +303,6 @@ final class ZLinkFrameworkAutoConfigurationTest {
             assertInstanceOf(
                 ZLinkActorDirectory.class,
                 context.getBean(ZLinkActorDirectory.class));
-        }
-    }
-
-    @Test
-    void springLifecycleCreatesSpotAndActorFactoryWithSpringDependencyInjection() {
-        try (AnnotationConfigApplicationContext context =
-                 new AnnotationConfigApplicationContext()) {
-            context.registerBean(
-                ZLinkBackendAdapterProvider.class,
-                FakeZLinkBackendAdapterFactory::new);
-            context.register(
-                InjectedSpotAndActorConfig.class,
-                ZLinkFrameworkAutoConfiguration.class);
-            context.refresh();
-
-            context.getBean(ZLinkSpotManager.class)
-                .create(InjectedGameSpot.class)
-                .toCompletableFuture()
-                .join();
-            ActorRef actor = context.getBean(ZLinkActorManager.class)
-                .create("player-1", "player")
-                .toCompletableFuture()
-                .join();
-
-            assertEquals("spring:spot", InjectedGameSpot.dependencyValue());
-            assertEquals("player-1", actor.actorId());
-        }
-    }
-
-    @Test
-    void springLifecycleFailsWhenSpotCannotBeConstructed() {
-        try (AnnotationConfigApplicationContext context =
-                 new AnnotationConfigApplicationContext()) {
-            context.registerBean(
-                ZLinkBackendAdapterProvider.class,
-                FakeZLinkBackendAdapterFactory::new);
-            context.register(
-                PrivateConstructorSpotConfig.class,
-                ZLinkFrameworkAutoConfiguration.class);
-            context.refresh();
-
-            CompletionException error = assertThrows(CompletionException.class, () ->
-                context.getBean(ZLinkSpotManager.class)
-                    .create(PrivateConstructorSpot.class)
-                    .toCompletableFuture()
-                    .join());
-
-            assertInstanceOf(ZLinkConfigurationException.class, error.getCause());
-            assertTrue(error.getCause().getMessage().contains("failed to create spot"));
         }
     }
 

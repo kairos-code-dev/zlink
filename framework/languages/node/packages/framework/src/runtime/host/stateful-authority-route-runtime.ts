@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 import type {
   ZLinkAuthorityKey,
   ZLinkAuthoritySnapshot,
-  ZLinkAuthorityStore
+  ZLinkAuthorityStore,
+  ZLinkObjectCreationStore
 } from '../../contracts/Locations/Authority';
 import type {
   ZLinkRelocationReference,
@@ -80,6 +81,7 @@ interface CompleteAuthoritySnapshot {
 
 export interface ZLinkStatefulAuthorityRouteRuntimeOptions {
   readonly store: ZLinkAuthorityStore;
+  readonly creationStore?: ZLinkObjectCreationStore;
   readonly relocationStore?: ZLinkRelocationStore;
   readonly meshNodes: ReadonlyMap<string, ZLinkBackendMeshNode>;
   readonly pollingIntervalMs: number;
@@ -173,7 +175,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
                     stableType: route.stableType,
                     targetNodeRid: route.instanceRoute.targetNodeRid,
                     targetNodeGeneration: route.instanceRoute.targetNodeGeneration,
-                    descriptorVersion: ''
+                    descriptorVersion: status.descriptorRevision.toString()
                   },
                   route.instanceRoute
                 );
@@ -187,12 +189,20 @@ export class ZLinkStatefulAuthorityRouteRuntime {
                 sink.registerInstanceIntent(route.stableType, released);
                 continue;
               } else {
-                await this.recoverInstanceActivation(
+                const recovered = await this.recoverInstanceActivation(
                   sink,
                   route,
                   route.activationRecovery,
                   signal
                 );
+                if (!recovered) {
+                  sink.forgetSpotRoute(
+                    route.spotRoute.spot,
+                    route.instanceRoute.authorityOwnerGeneration,
+                    route.instanceRoute.storeVersion
+                  );
+                  continue;
+                }
               }
             }
             sink.registerInstanceIntent(route.stableType, route.instanceRoute);
@@ -234,18 +244,24 @@ export class ZLinkStatefulAuthorityRouteRuntime {
     route: AppliedAuthorityRoute,
     recovery: ServiceActivationRecoveryState,
     signal?: AbortSignal
-  ): Promise<void> {
+  ): Promise<boolean> {
     const envelope = await this.readRecoveryEnvelope(recovery, signal);
+    const status = sink.status();
     if (
       envelope.targetMeshName !== route.meshName
       || envelope.target.stableType !== route.stableType
       || envelope.target.targetSpotRid !== route.instanceRoute.targetSpotRid
       || envelope.target.targetNodeRid !== route.instanceRoute.targetNodeRid
       || envelope.target.targetNodeGeneration !== route.instanceRoute.targetNodeGeneration
+      || envelope.target.descriptorVersion !== status.descriptorRevision.toString()
     ) {
-      throw new Error('Instance activation recovery envelope does not match Ready authority.');
+      this.options.reportError(
+        new Error('Instance activation recovery envelope does not match Ready authority.')
+      );
+      return false;
     }
     await sink.recoverInstanceActivation(envelope, route.instanceRoute);
+    return true;
   }
 
   private async recoverPendingInstanceActivation(
@@ -260,14 +276,47 @@ export class ZLinkStatefulAuthorityRouteRuntime {
       inboxSequence: 1n,
       replayCursor: 0n
     }, signal);
+    const status = sink.status();
     if (
       envelope.targetMeshName !== recovery.targetMeshName
       || envelope.target.stableType !== recovery.stableType
       || envelope.target.targetSpotRid !== recovery.spotRid
       || envelope.target.targetNodeRid !== recovery.targetNodeRid
       || envelope.target.targetNodeGeneration !== recovery.targetNodeGeneration
+      || envelope.target.descriptorVersion !== status.descriptorRevision.toString()
     ) {
-      throw new Error('Pending Instance activation envelope does not match its authority.');
+      const creationStore = this.options.creationStore;
+      if (creationStore === undefined) {
+        this.options.reportError(
+          new Error('Pending Instance activation mismatch requires an object creation store.')
+        );
+        return;
+      }
+      const aborted = await creationStore.abort({
+        key: { kind: 'instance_spot', globalId: recovery.spotRid },
+        reservationId: recovery.pending.reservationId,
+        expectedStoreVersion: recovery.pending.storeVersion,
+        target: {
+          meshName: recovery.pending.meshName,
+          nodeRid: recovery.pending.nodeRid as never,
+          nodeLifecycleGeneration: recovery.pending.nodeGeneration,
+          owner: {
+            ownerId: recovery.pending.ownerId,
+            leaseGeneration: recovery.pending.ownerLeaseGeneration
+          }
+        }
+      }, signal);
+      if (aborted.kind === 'aborted' || aborted.kind === 'alreadyAborted') {
+        try {
+          await this.options.relocationStore?.deleteRelocation({
+            value: recovery.pending.requestReference
+          } as ZLinkRelocationReference);
+        } catch {
+          // The authority no longer publishes this root. Retention owns a
+          // failed best-effort orphan cleanup.
+        }
+      }
+      return;
     }
     await sink.recoverPendingInstanceActivation(envelope, recovery.pending);
   }

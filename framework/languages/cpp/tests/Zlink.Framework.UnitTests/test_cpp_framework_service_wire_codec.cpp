@@ -99,6 +99,79 @@ int main ()
     assert (!actor_send.correlation);
     assert (actor_send.source_actor == source_actor);
     assert (actor_send.target == actor_fence);
+    const protocol::user_spot_create_header_t user_spot_create{
+      correlation,
+      {4, 5},
+      {'s', 'o', 'u', 'r', 'c', 'e'},
+      7,
+      {'s', 'p', 'o', 't'},
+      "room",
+      {"reservation-1",
+       "store-1",
+       9,
+       11,
+       {'t', 'a', 'r', 'g', 'e', 't'},
+       13,
+       "owner-1",
+       15,
+       1},
+      1700000000000ULL};
+    assert (protocol::decode_user_spot_create_header (
+              protocol::encode_user_spot_create_header (
+                user_spot_create))
+            == user_spot_create);
+    const protocol::user_spot_close_header_t user_spot_close{
+      correlation,
+      {6, 7},
+      {'s', 'o', 'u', 'r', 'c', 'e'},
+      7,
+      {{'s', 'p', 'o', 't'},
+       9,
+       {'t', 'a', 'r', 'g', 'e', 't'},
+       13,
+       11,
+       "store-2"},
+      1700000001000ULL};
+    assert (protocol::decode_user_spot_close_header (
+              protocol::encode_user_spot_close_header (
+                user_spot_close))
+            == user_spot_close);
+    const auto create_reply =
+      protocol::decode_user_spot_create_reply (
+        protocol::encode_user_spot_create_reply (
+          correlation, 0, 0,
+          protocol::user_spot_create_result_t::created,
+          {'s', 'p', 'o', 't'}, 9));
+    assert (create_reply.header.correlation == correlation);
+    assert (create_reply.result
+            == protocol::user_spot_create_result_t::created);
+    assert (create_reply.object_generation == 9);
+    const auto close_reply =
+      protocol::decode_user_spot_close_reply (
+        protocol::encode_user_spot_close_reply (
+          correlation, 0, 0, true));
+    assert (close_reply.closed);
+    const auto stale_create_reply =
+      protocol::decode_user_spot_create_reply (
+        protocol::encode_user_spot_create_reply (
+          correlation, 107,
+          static_cast<std::uint32_t> (
+            protocol::framework_error_code::spotGenerationStale),
+          protocol::user_spot_create_result_t::rejected, {}, 0));
+    assert (stale_create_reply.header.failure_code == 33);
+    auto trailing_user_spot_create =
+      protocol::encode_user_spot_create_header (
+        user_spot_create);
+    trailing_user_spot_create.push_back (0);
+    bool rejected_user_spot_create = false;
+    try {
+        (void) protocol::decode_user_spot_create_header (
+          trailing_user_spot_create);
+    }
+    catch (const protocol::service_wire_error_t &) {
+        rejected_user_spot_create = true;
+    }
+    assert (rejected_user_spot_create);
     for (auto malformed_payload : std::vector<std::vector<std::uint8_t>>{
            [&] { auto value = application_wire; value[0] = 2; return value; } (),
            [&] { auto value = application_wire; value[4] += 1; return value; } (),

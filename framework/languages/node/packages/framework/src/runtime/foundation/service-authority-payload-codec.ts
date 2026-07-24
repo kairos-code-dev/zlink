@@ -44,7 +44,7 @@ export interface ServiceInstanceAuthorityPayload {
 }
 
 export interface ServiceUserSpotAuthorityPayload {
-  readonly state: 'creating' | 'ready';
+  readonly state: 'creating' | 'ready' | 'closing';
   readonly stableType: string;
   readonly spotRid: string;
   readonly ownerId: string;
@@ -64,7 +64,7 @@ export function encodeServiceUserSpotAuthorityPayload(
   ));
   const object = conditional(2, spot);
   const body = concat(
-    Buffer.of(value.state === 'creating' ? 1 : 0),
+    Buffer.of(value.state === 'creating' ? 1 : value.state === 'closing' ? 3 : 0),
     object,
     text8(value.ownerId, 'ownerId'),
     u64(value.ownerLeaseGeneration, 'ownerLeaseGeneration'),

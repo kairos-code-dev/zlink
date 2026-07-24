@@ -16,6 +16,7 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -125,6 +126,24 @@ class raw_mesh_node_owner_t
       const protocol::application_payload_t &application_payload,
       std::chrono::milliseconds timeout,
       foundation::operation_registry_t::callback_t callback);
+    bool request_user_spot_create (
+      const std::vector<std::uint8_t> &target_routing_id,
+      protocol::user_spot_create_header_t request,
+      std::chrono::milliseconds timeout,
+      foundation::operation_registry_t::callback_t callback);
+    bool request_user_spot_close (
+      const std::vector<std::uint8_t> &target_routing_id,
+      protocol::user_spot_close_header_t request,
+      std::chrono::milliseconds timeout,
+      foundation::operation_registry_t::callback_t callback);
+    bool reply_user_spot_create (
+      const service_mailbox_record_t &request,
+      const protocol::user_spot_create_reply_t &reply,
+      std::optional<protocol::application_payload_t>
+        application_reply = std::nullopt);
+    bool reply_user_spot_close (
+      const service_mailbox_record_t &request,
+      const protocol::user_spot_close_reply_t &reply);
     raw_mesh_pump_result_t
     pump_one (service_liveness_registry_t::clock_t::time_point now);
     std::size_t drain_monitor_events (
@@ -153,6 +172,16 @@ class raw_mesh_node_owner_t
       const protocol::application_payload_t &application_payload,
       std::chrono::milliseconds timeout,
       foundation::operation_registry_t::callback_t callback);
+    bool request_infrastructure (
+      const std::vector<std::uint8_t> &target_routing_id,
+      const std::function<std::vector<std::uint8_t> (std::uint64_t)> &header,
+      const std::function<std::vector<std::uint8_t> (
+        const detail::backend::raw_message_t &)> &decode_reply,
+      std::chrono::milliseconds timeout,
+      foundation::operation_registry_t::callback_t callback);
+    bool reply_infrastructure (
+      const service_mailbox_record_t &request,
+      std::vector<std::uint8_t> header);
 
     raw_mesh_node_options_t _options;
     mutable std::mutex _lifecycle_mutex;

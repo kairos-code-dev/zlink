@@ -23,7 +23,9 @@ export const M6bServiceWireCommand = Object.freeze({
   boundSessionSend: 36,
   actorJoined: 37,
   boundSessionBind: 38,
-  instanceSpot: 39
+  instanceSpot: 39,
+  userSpotCreate: 47,
+  userSpotClose: 48
 });
 
 export const M6bServiceWireFlag = Object.freeze({
@@ -68,6 +70,47 @@ export interface ServiceInstanceActivationTarget {
   readonly targetSpotRid: string;
   readonly stableType: string;
   readonly descriptorVersion: string;
+}
+
+export interface ServiceUserSpotReservationFence {
+  readonly reservationId: string;
+  readonly expectedStoreVersion: string;
+  readonly objectGeneration: bigint;
+  readonly authorityOwnerGeneration: bigint;
+  readonly targetNodeRid: string;
+  readonly targetNodeGeneration: bigint;
+  readonly targetOwnerId: string;
+  readonly targetOwnerLeaseGeneration: bigint;
+  readonly pendingCapacityDelta: number;
+}
+
+export interface ServiceUserSpotCreateRecord {
+  readonly kind: 'userSpotCreate';
+  readonly correlation: bigint;
+  readonly operation: { readonly high: bigint; readonly low: bigint };
+  readonly sourceNodeRid: string;
+  readonly sourceNodeGeneration: bigint;
+  readonly spotRid: string;
+  readonly stableType: string;
+  readonly reservation: ServiceUserSpotReservationFence;
+  readonly deadlineUnixMs: bigint;
+}
+
+export interface ServiceUserSpotCloseRecord {
+  readonly kind: 'userSpotClose';
+  readonly correlation: bigint;
+  readonly operation: { readonly high: bigint; readonly low: bigint };
+  readonly sourceNodeRid: string;
+  readonly sourceNodeGeneration: bigint;
+  readonly target: {
+    readonly spotRid: string;
+    readonly objectGeneration: bigint;
+    readonly targetNodeRid: string;
+    readonly targetNodeGeneration: bigint;
+    readonly authorityOwnerGeneration: bigint;
+    readonly expectedStoreVersion: string;
+  };
+  readonly deadlineUnixMs: bigint;
 }
 
 export type ServiceBoundSessionTransition =
@@ -145,7 +188,9 @@ export type ServiceStatefulWireRecord =
       readonly operation: { readonly high: bigint; readonly low: bigint };
       readonly deadlineUnixMs: bigint;
       readonly replyRouteId?: bigint;
-    };
+    }
+  | ServiceUserSpotCreateRecord
+  | ServiceUserSpotCloseRecord;
 
 export type ServiceStatefulReplyTail =
   | {
@@ -165,6 +210,16 @@ export type ServiceStatefulReplyTail =
       readonly kind: 'streamBind';
       readonly bindingGeneration: bigint;
       readonly authorityOwnerGeneration: bigint;
+    }
+  | {
+      readonly kind: 'userSpotCreate';
+      readonly createResult: 'existing' | 'created' | 'rejected';
+      readonly spotRid: string;
+      readonly objectGeneration: bigint;
+    }
+  | {
+      readonly kind: 'userSpotClose';
+      readonly closed: boolean;
     };
 
 export interface ServiceStatefulReply {
@@ -391,6 +446,62 @@ export function encodeInstanceSpotActivationHeader(
   );
 }
 
+export function encodeUserSpotCreateHeader(record: Omit<ServiceUserSpotCreateRecord, 'kind'>): Buffer {
+  if (record.operation.high === 0n && record.operation.low === 0n) {
+    throw new RangeError('User Spot create requires a non-zero operation identity.');
+  }
+  const fence = record.reservation;
+  if (fence.pendingCapacityDelta < 1) {
+    throw new RangeError('User Spot create requires a positive pending capacity delta.');
+  }
+  return concat(
+    prefix(M6bServiceWireCommand.userSpotCreate),
+    u64(record.correlation),
+    u64Any(record.operation.high),
+    u64Any(record.operation.low),
+    rid(record.sourceNodeRid, 'sourceNodeRid'),
+    u64(record.sourceNodeGeneration),
+    rid(record.spotRid, 'spotRid'),
+    text8(record.stableType, 'stableType'),
+    text8(fence.reservationId, 'reservationId'),
+    text16(fence.expectedStoreVersion, 'expectedStoreVersion'),
+    u64(fence.objectGeneration),
+    u64(fence.authorityOwnerGeneration),
+    rid(fence.targetNodeRid, 'targetNodeRid'),
+    u64(fence.targetNodeGeneration),
+    text8(fence.targetOwnerId, 'targetOwnerId'),
+    u64(fence.targetOwnerLeaseGeneration),
+    u32(fence.pendingCapacityDelta, 'pendingCapacityDelta'),
+    u64(record.deadlineUnixMs)
+  );
+}
+
+export function encodeUserSpotCloseHeader(record: Omit<ServiceUserSpotCloseRecord, 'kind'>): Buffer {
+  if (record.operation.high === 0n && record.operation.low === 0n) {
+    throw new RangeError('User Spot close requires a non-zero operation identity.');
+  }
+  const fence = concat(
+    rid(record.target.spotRid, 'spotRid'),
+    u64(record.target.objectGeneration),
+    rid(record.target.targetNodeRid, 'targetNodeRid'),
+    u64(record.target.targetNodeGeneration),
+    u64(record.target.authorityOwnerGeneration),
+    text16(record.target.expectedStoreVersion, 'expectedStoreVersion')
+  );
+  return concat(
+    prefix(M6bServiceWireCommand.userSpotClose),
+    u64(record.correlation),
+    u64Any(record.operation.high),
+    u64Any(record.operation.low),
+    rid(record.sourceNodeRid, 'sourceNodeRid'),
+    u64(record.sourceNodeGeneration),
+    Buffer.of(1),
+    u16(fence.byteLength),
+    fence,
+    u64(record.deadlineUnixMs)
+  );
+}
+
 export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireRecord {
   const reader = new Reader(frame);
   const command = reader.prefix();
@@ -582,6 +693,80 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
             deadlineUnixMs: deadlineUnixMs!
           };
     }
+    case M6bServiceWireCommand.userSpotCreate: {
+      requireFlags(command.flags, 0);
+      const correlation = reader.nonZeroU64('correlation');
+      const operation = {
+        high: reader.u64('operation.high'),
+        low: reader.u64('operation.low')
+      };
+      if (operation.high === 0n && operation.low === 0n) {
+        fail('User Spot create requires a non-zero operation identity.');
+      }
+      const record: ServiceUserSpotCreateRecord = {
+        kind: 'userSpotCreate',
+        correlation,
+        operation,
+        sourceNodeRid: reader.rid('sourceNodeRid'),
+        sourceNodeGeneration: reader.nonZeroU64('sourceNodeGeneration'),
+        spotRid: reader.rid('spotRid'),
+        stableType: reader.text8('stableType'),
+        reservation: {
+          reservationId: reader.text8('reservationId'),
+          expectedStoreVersion: reader.text16('expectedStoreVersion'),
+          objectGeneration: reader.nonZeroU64('objectGeneration'),
+          authorityOwnerGeneration: reader.nonZeroU64('authorityOwnerGeneration'),
+          targetNodeRid: reader.rid('targetNodeRid'),
+          targetNodeGeneration: reader.nonZeroU64('targetNodeGeneration'),
+          targetOwnerId: reader.text8('targetOwnerId'),
+          targetOwnerLeaseGeneration: reader.nonZeroU64('targetOwnerLeaseGeneration'),
+          pendingCapacityDelta: reader.u32('pendingCapacityDelta')
+        },
+        deadlineUnixMs: reader.nonZeroU64('deadlineUnixMs')
+      };
+      if (record.reservation.pendingCapacityDelta === 0) {
+        fail('User Spot create requires a positive pending capacity delta.');
+      }
+      reader.end();
+      return record;
+    }
+    case M6bServiceWireCommand.userSpotClose: {
+      requireFlags(command.flags, 0);
+      const correlation = reader.nonZeroU64('correlation');
+      const operation = {
+        high: reader.u64('operation.high'),
+        low: reader.u64('operation.low')
+      };
+      if (operation.high === 0n && operation.low === 0n) {
+        fail('User Spot close requires a non-zero operation identity.');
+      }
+      const sourceNodeRid = reader.rid('sourceNodeRid');
+      const sourceNodeGeneration = reader.nonZeroU64('sourceNodeGeneration');
+      if (reader.u8('closeFence.version') !== 1) fail('Unsupported User Spot close fence version.');
+      const fenceLength = reader.u16('closeFence.length');
+      const fenceEnd = reader.offset + fenceLength;
+      if (fenceEnd > reader.bytes.byteLength) fail('Truncated User Spot close fence.');
+      const target = {
+        spotRid: reader.rid('spotRid'),
+        objectGeneration: reader.nonZeroU64('objectGeneration'),
+        targetNodeRid: reader.rid('targetNodeRid'),
+        targetNodeGeneration: reader.nonZeroU64('targetNodeGeneration'),
+        authorityOwnerGeneration: reader.nonZeroU64('authorityOwnerGeneration'),
+        expectedStoreVersion: reader.text16('expectedStoreVersion')
+      };
+      if (reader.offset !== fenceEnd) fail('Invalid User Spot close fence length.');
+      const deadlineUnixMs = reader.nonZeroU64('deadlineUnixMs');
+      reader.end();
+      return {
+        kind: 'userSpotClose',
+        correlation,
+        operation,
+        sourceNodeRid,
+        sourceNodeGeneration,
+        target,
+        deadlineUnixMs
+      };
+    }
     default:
       fail(`Command '${command.command}' is not owned by the M6B codec.`);
   }
@@ -607,7 +792,7 @@ export function decodeStatefulReply(
   frame: Uint8Array,
   expectedCorrelation: bigint,
   operationKind: 'spotRequest' | 'actorRequest' | 'actorLookup' | 'actorDestroy' | 'actorJoin' | 'streamBind'
-    | 'instanceSpotRequest'
+    | 'instanceSpotRequest' | 'userSpotCreate' | 'userSpotClose'
 ): ServiceStatefulReply {
   const reader = new Reader(frame);
   const command = reader.prefix();
@@ -654,6 +839,20 @@ export function decodeStatefulReply(
         kind: 'streamBind',
         bindingGeneration: reader.nonZeroU64('bindingGeneration'),
         authorityOwnerGeneration: reader.nonZeroU64('authorityOwnerGeneration')
+      };
+    } else if (operationKind === 'userSpotCreate') {
+      const createResult = reader.u8('createResult');
+      if (createResult < 1 || createResult > 3) fail('Invalid User Spot create result.');
+      tail = {
+        kind: 'userSpotCreate',
+        createResult: (['existing', 'created', 'rejected'] as const)[createResult - 1]!,
+        spotRid: reader.rid('spotRid'),
+        objectGeneration: reader.nonZeroU64('objectGeneration')
+      };
+    } else if (operationKind === 'userSpotClose') {
+      tail = {
+        kind: 'userSpotClose',
+        closed: reader.bool8('closed')
       };
     }
   }
@@ -711,6 +910,14 @@ function encodeReplyTail(tail: ServiceStatefulReplyTail): Buffer {
     }
     case 'streamBind':
       return concat(u64(tail.bindingGeneration), u64(tail.authorityOwnerGeneration));
+    case 'userSpotCreate':
+      return concat(
+        Buffer.of((['existing', 'created', 'rejected'] as const).indexOf(tail.createResult) + 1),
+        rid(tail.spotRid, 'spotRid'),
+        u64(tail.objectGeneration)
+      );
+    case 'userSpotClose':
+      return Buffer.of(tail.closed ? 1 : 0);
   }
 }
 

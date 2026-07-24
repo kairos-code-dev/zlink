@@ -26,6 +26,12 @@ import {
 import type { ZLinkSpotRouteResolver } from './spot-routing-internal';
 import type { DefaultZLinkSpotManager } from './index';
 import { encodeFrameworkPayloadMessage } from '../messaging/payload-codec';
+import type {
+  ServiceUserSpotCloseRecord
+} from '../foundation/service-stateful-wire-codec';
+import type {
+  ServiceUserSpotOperationResult
+} from '../foundation/service-stateful-runtime';
 
 export interface ZLinkPublicSpotManagerOptions {
   readonly local: DefaultZLinkSpotManager;
@@ -39,6 +45,12 @@ export interface ZLinkPublicSpotManagerOptions {
   readonly defaultTimeoutMs: number;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
   readonly ridFactory?: () => RoutingId;
+  readonly remoteClose?: (
+    meshName: string,
+    targetNodeRid: string,
+    request: Omit<ServiceUserSpotCloseRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ) => Promise<ServiceUserSpotOperationResult>;
 }
 
 export class ZLinkPublicSpotManager implements ZLinkSpotManager {
@@ -86,16 +98,60 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
   async close(spot: SpotRef, signal?: AbortSignal): Promise<boolean> {
     return await this.options.coordinator.close(
       spot,
-      current => {
+      async (current, snapshot) => {
         if (!this.options.isLocalNode(current.meshName, current.nodeRid)) {
-          throw new ZLinkFrameworkException(
-            ZLinkFrameworkErrorKind.RequestFailed,
-            'Remote User Spot close requires the generation-fenced internal close operation.'
+          if (this.options.remoteClose === undefined) {
+            throw new ZLinkFrameworkException(
+              ZLinkFrameworkErrorKind.RequestFailed,
+              'Remote User Spot close transport is not configured.'
+            );
+          }
+          const timeoutMs = this.options.defaultTimeoutMs;
+          const result = await this.options.remoteClose(
+            current.meshName,
+            String(current.nodeRid),
+            {
+              sourceNodeRid: '',
+              sourceNodeGeneration: 1n,
+              target: {
+                spotRid: String(current.spotRid),
+                objectGeneration: current.objectGeneration,
+                targetNodeRid: String(current.nodeRid),
+                targetNodeGeneration: snapshot.allocation.descriptorLifecycleGeneration,
+                authorityOwnerGeneration: snapshot.authorityOwnerGeneration,
+                expectedStoreVersion: snapshot.storeVersion.value
+              },
+              deadlineUnixMs: BigInt(Date.now() + timeoutMs)
+            },
+            timeoutMs
           );
+          if (
+            result.terminalResult !== 0
+            || result.tail?.kind !== 'userSpotClose'
+          ) {
+            const kind = result.failureCode === 33
+              ? ZLinkFrameworkErrorKind.SpotGenerationStale
+              : result.failureCode === 34
+                ? ZLinkFrameworkErrorKind.SpotMoving
+                : result.terminalResult === 101
+                  ? ZLinkFrameworkErrorKind.DeadlineExceeded
+                  : ZLinkFrameworkErrorKind.RequestFailed;
+            throw new ZLinkFrameworkException(
+              kind,
+              'Remote User Spot close failed.',
+              kind === ZLinkFrameworkErrorKind.SpotMoving
+                || kind === ZLinkFrameworkErrorKind.DeadlineExceeded
+            );
+          }
+          return result.tail.closed;
         }
         return this.options.local.close(current.meshName, current.spotRid, signal);
       },
-      signal
+      signal,
+      (current) => !this.options.isLocalNode(current.meshName, current.nodeRid)
+        || this.options.local.hasActiveSpot(current.spotRid),
+      (current) => !this.options.isLocalNode(current.meshName, current.nodeRid)
+        || (this.options.local.canCloseUserSpot?.(current.meshName, current.spotRid) ?? true)
     );
   }
 
@@ -193,15 +249,34 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
           timeoutMs: remainingMs,
           signal,
           retryRidCollision
-        }, (target, deadlineSignal) => {
+        }, async (target, deadlineSignal) => {
           const selected = selectFactory(this.options.factories, stableType, target.meshName);
-          return this.options.local.getOrCreate(
-            target.meshName,
-            selected.registration.implementation as Type<ZLinkSpot>,
-            candidateRid,
-            state.request,
-            deadlineSignal
-          );
+          this.options.local.beginUserSpotPublication?.(target.meshName, candidateRid);
+          try {
+            const result = await this.options.local.getOrCreate(
+              target.meshName,
+              selected.registration.implementation as Type<ZLinkSpot>,
+              candidateRid,
+              state.request,
+              deadlineSignal
+            );
+            return {
+              ...result,
+              publication: {
+                publish: () => this.options.local.publishUserSpot?.(
+                  target.meshName,
+                  candidateRid
+                ),
+                abort: () => this.options.local.abortUserSpotPublication?.(
+                  target.meshName,
+                  candidateRid
+                )
+              }
+            };
+          } catch (error) {
+            this.options.local.abortUserSpotPublication?.(target.meshName, candidateRid);
+            throw error;
+          }
         }, async (cleanupSignal) => {
           const meshName = state.meshName ?? [...this.options.factories]
             .find(([, byType]) => byType.has(stableType))?.[0];

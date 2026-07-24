@@ -1272,6 +1272,7 @@ public sealed class RelocationRuntimeTests
                 targetOwner.OwnerId,
                 targetOwner.LeaseGeneration,
                 TestAllocation(),
+                null,
                 DateTimeOffset.UtcNow);
             _snapshots[key.Value] = snapshot;
             if (ThrowAfterCommit)
@@ -1337,6 +1338,7 @@ public sealed class RelocationRuntimeTests
                     publication.TargetOwnerId,
                     publication.TargetOwnerLeaseGeneration,
                     TestAllocation(),
+                    null,
                     DateTimeOffset.UtcNow);
             }
             return ValueTask.FromResult(ZLinkAggregateCommitResult.Committed);

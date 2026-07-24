@@ -1007,6 +1007,17 @@ public sealed partial class ZLinkRedisLocationStore
     {
         var allocation = value.GetProperty("allocation");
         var descriptor = allocation.GetProperty("descriptor");
+        ZLinkPendingObjectCreation? pendingCreation = null;
+        if (value.TryGetProperty("pendingCreation", out var pending)
+            && pending.ValueKind == JsonValueKind.Object)
+        {
+            pendingCreation = new ZLinkPendingObjectCreation(
+                pending.GetProperty("reservationId").GetString()!,
+                pending.GetProperty("requestContentReference").GetString()!,
+                Convert.FromBase64String(
+                    pending.GetProperty("requestSha256").GetString()!),
+                pending.GetProperty("requestEncodedSize").GetInt32());
+        }
         return new ZLinkAuthoritySnapshot(
             value.GetProperty("storeVersion").GetString()!,
             Convert.FromBase64String(value.GetProperty("payload").GetString()!),
@@ -1047,6 +1058,7 @@ public sealed partial class ZLinkRedisLocationStore
                         .GetString()!,
                     System.Globalization.CultureInfo.InvariantCulture),
                 allocation.GetProperty("capacityDelta").GetInt32()),
+            pendingCreation,
             storeNow);
     }
 

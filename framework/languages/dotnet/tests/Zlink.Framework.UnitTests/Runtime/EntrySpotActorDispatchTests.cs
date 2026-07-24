@@ -1298,7 +1298,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var created = await runtime.CreateAsync<EmptyUserSpot>();
 
             Assert.Equal(1, deltas.Sum());
-            Assert.True(await runtime.CloseAsync(created.SpotRid));
+            Assert.True(await runtime.CloseAsync(created.Spot.SpotRid));
             Assert.Equal(0, deltas.Sum());
         }
         finally
@@ -1324,7 +1324,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var state = GetPrivateField<ZLinkFrameworkComponentState>(runtime, "_state");
             var catalog = GetPrivateField<ZLinkSpotNodeCatalog>(state.SpotNodes["entry"], "_spots");
             var activations = GetPrivateField<Dictionary<RoutingId, ZLinkSpotActivation>>(catalog, "_spots");
-            var activation = activations[created.SpotRid];
+            var activation = activations[created.Spot.SpotRid];
 
             var join = activation.JoinActorAsync(
                     actor,
@@ -1333,13 +1333,13 @@ public sealed partial class EntrySpotActorDispatchTests
                 .AsTask();
             await probe.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            var close = runtime.CloseAsync(created.SpotRid).AsTask();
+            var close = runtime.CloseAsync(created.Spot.SpotRid).AsTask();
             Assert.False(close.IsCompleted);
 
             probe.Release.TrySetResult();
             Assert.True((await join.WaitAsync(TimeSpan.FromSeconds(5))).Accepted);
             Assert.False(await close.WaitAsync(TimeSpan.FromSeconds(5)));
-            Assert.NotNull(await catalog.GetAsync(created.SpotRid, CancellationToken.None));
+            Assert.NotNull(await catalog.GetAsync(created.Spot.SpotRid, CancellationToken.None));
         }
         finally
         {
@@ -1424,7 +1424,7 @@ public sealed partial class EntrySpotActorDispatchTests
 
             probe.Release.TrySetResult();
             var result = await waiter.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.Equal(spotRid, result.SpotRid);
+            Assert.Equal(spotRid, result.Spot.SpotRid);
             Assert.Equal(ZLinkSpotCreateState.Existing, result.State);
             Assert.Single(node.CreatedSpots);
         }
@@ -2365,7 +2365,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 actorSessions);
             var join = joiner.JoinAsync(
                     state,
-                    target.SpotRid,
+                    target.Spot.SpotRid,
                     actor,
                     actorRef,
                     node,
@@ -2385,7 +2385,7 @@ public sealed partial class EntrySpotActorDispatchTests
                     RequestResult.Ok,
                     0,
                     actorRef,
-                    target.SpotRid,
+                    target.Spot.SpotRid,
                     0,
                     0),
                 [lateReply]);
@@ -2434,7 +2434,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var thrown = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
                 await joiner.JoinAsync(
                     state,
-                    target.SpotRid,
+                    target.Spot.SpotRid,
                     actor,
                     actorRef,
                     node,
@@ -2480,7 +2480,7 @@ public sealed partial class EntrySpotActorDispatchTests
                     RequestResult.Ok,
                     0,
                     targetActor,
-                    created.SpotRid,
+                    created.Spot.SpotRid,
                     1,
                     0);
                 var reply = ZLinkSpotReplyEnvelope.EncodeActorJoinReplyParts(
@@ -2505,7 +2505,7 @@ public sealed partial class EntrySpotActorDispatchTests
             Assert.Null(ZLinkFlowContext.Current);
             var result = await joiner.JoinAsync(
                 state,
-                created.SpotRid,
+                created.Spot.SpotRid,
                 actor,
                 actorRef,
                 node,
@@ -2541,7 +2541,7 @@ public sealed partial class EntrySpotActorDispatchTests
             {
                 Assert.Equal(node.LastActorJoinTargetNodeRid.ToString(), flow.SourceRid);
                 Assert.Null(flow.PeerRid);
-                Assert.Equal(created.SpotRid.ToString(), flow.SpotRid);
+                Assert.Equal(created.Spot.SpotRid.ToString(), flow.SpotRid);
                 Assert.Equal(actor.ActorId, flow.ActorId);
                 Assert.Equal(capturedRequestHeader.FlowId, flow.FlowId);
                 Assert.Equal(ZLinkFlowOrigin.Application, flow.FlowOrigin);

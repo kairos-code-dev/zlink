@@ -23,6 +23,12 @@ public sealed record ZLinkPlacementAllocation(
     ulong DescriptorLifecycleGeneration,
     int CapacityDelta);
 
+public sealed record ZLinkPendingObjectCreation(
+    string ReservationId,
+    string RequestContentReference,
+    ReadOnlyMemory<byte> RequestSha256,
+    int RequestEncodedSize);
+
 public sealed record ZLinkAuthoritySnapshot(
     string StoreVersion,
     ReadOnlyMemory<byte> Payload,
@@ -31,6 +37,7 @@ public sealed record ZLinkAuthoritySnapshot(
     string OwnerId,
     long OwnerLeaseGeneration,
     ZLinkPlacementAllocation Allocation,
+    ZLinkPendingObjectCreation? PendingCreation,
     DateTimeOffset StoreNow);
 
 public abstract record ZLinkAuthorityReadResult

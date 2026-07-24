@@ -69,6 +69,13 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
         return spot;
     }
 
+    default ZLinkBackendSpot createSpot(
+        RoutingId spotRid,
+        long objectGeneration) {
+        throw new UnsupportedOperationException(
+            "Exact-generation Spot creation is unavailable");
+    }
+
     ZLinkBackendSpot entrySpot();
 
     default boolean sendToNode(

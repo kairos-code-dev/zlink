@@ -169,30 +169,6 @@ suspend inline fun <reified TReply> ZLinkRouteClient.request(
 ): TReply =
     requestToSpot(target, message).awaitReply()
 
-suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(): ZLinkSpotCreateResult =
-    awaitFrameworkStage(create(TSpot::class.java))
-
-suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(
-    request: ZLinkMessage,
-): ZLinkSpotCreateResult =
-    awaitFrameworkStage(create(TSpot::class.java, request))
-
-suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.create(
-    spotRid: RoutingId,
-): ZLinkSpotCreateResult =
-    awaitFrameworkStage(create(TSpot::class.java, spotRid))
-
-suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.getOrCreate(
-    spotRid: RoutingId,
-): ZLinkSpotCreateResult =
-    awaitFrameworkStage(getOrCreate(TSpot::class.java, spotRid))
-
-suspend inline fun <reified TSpot : ZLinkSpot<*>> ZLinkSpotManager.getOrCreate(
-    spotRid: RoutingId,
-    request: ZLinkMessage,
-): ZLinkSpotCreateResult =
-    awaitFrameworkStage(getOrCreate(TSpot::class.java, spotRid, request))
-
 fun ZLinkFrameworkOptions.configureStreamCompression(
     configure: ZLinkStreamCompressionBuilder.() -> Unit,
 ): ZLinkFrameworkOptions {

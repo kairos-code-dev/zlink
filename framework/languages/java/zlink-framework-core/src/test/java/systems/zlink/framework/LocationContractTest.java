@@ -36,6 +36,7 @@ import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.spots.SpotHandle;
+import systems.zlink.framework.spots.SpotRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationFilter;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
@@ -80,6 +81,8 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeEventKind;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntime;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
+import systems.zlink.framework.spots.ZLinkSpotCreateCall;
+import systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall;
 import systems.zlink.framework.spots.ZLinkSpotInfo;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 import systems.zlink.framework.spots.ZLinkSpotManager;
@@ -522,30 +525,18 @@ final class LocationContractTest {
     }
 
     @Test
-    void spotManagerPinsMessageOverloadsAndRejectsObjectOverloads() throws Exception {
-        assertEquals(CompletionStage.class, ZLinkSpotManager.class
-            .getMethod("create", Class.class)
+    void spotManagerPinsRelocatableSpotContract() throws Exception {
+        assertEquals(ZLinkSpotCreateCall.class, ZLinkSpotManager.class
+            .getMethod("create", String.class)
             .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkSpotManager.class
-            .getMethod("create", Class.class, ZLinkMessage.class)
-            .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkSpotManager.class
-            .getMethod("create", Class.class, RoutingId.class)
-            .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkSpotManager.class
-            .getMethod("getOrCreate", Class.class, RoutingId.class)
-            .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkSpotManager.class
-            .getMethod("getOrCreate", Class.class, RoutingId.class, ZLinkMessage.class)
+        assertEquals(ZLinkSpotGetOrCreateCall.class, ZLinkSpotManager.class
+            .getMethod("getOrCreate", RoutingId.class, String.class)
             .getReturnType());
         assertEquals(CompletionStage.class, ZLinkSpotManager.class
             .getMethod("find", RoutingId.class)
             .getReturnType());
         assertEquals(CompletionStage.class, ZLinkSpotManager.class
-            .getMethod("list")
-            .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkSpotManager.class
-            .getMethod("close", RoutingId.class)
+            .getMethod("close", SpotRef.class)
             .getReturnType());
         assertEquals(ZLinkSpotCreateResult.class, ZLinkSpotCreateResult.class);
         assertEquals(ZLinkSpotInfo.class, ZLinkSpotInfo.class);

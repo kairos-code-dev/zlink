@@ -19,6 +19,13 @@ import {
 } from '../foundation/service-authority-payload-codec';
 import { encodeAuthorityKey } from '../locations/authority-key-codec';
 import type { ZLinkLocalSpotCreateResult } from '../spots/spot-manager-internal-contracts';
+import type {
+  ServiceUserSpotOperationResult
+} from '../foundation/service-stateful-runtime';
+import type {
+  ServiceUserSpotCloseRecord,
+  ServiceUserSpotCreateRecord
+} from '../foundation/service-stateful-wire-codec';
 
 export interface ZLinkUserSpotCreationCoordinatorOptions {
   readonly store: ZLinkObjectCreationStore & ZLinkAuthorityStore;
@@ -34,6 +41,13 @@ export interface ZLinkUserSpotCreationCoordinatorOptions {
   } | undefined>;
   readonly pollIntervalMs?: number;
   readonly cleanupTimeoutMs?: number;
+  readonly remoteCreate?: (
+    meshName: string,
+    targetNodeRid: string,
+    request: Omit<ServiceUserSpotCreateRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ) => Promise<ServiceUserSpotOperationResult>;
+  readonly decodeRemoteReply?: (payload: Uint8Array) => unknown;
 }
 
 export interface ZLinkUserSpotCreationRequest {
@@ -68,6 +82,12 @@ export class ZLinkUserSpotRidCollisionError extends Error {
  * User Spot. Only the reservation winner invokes application lifecycle code.
  */
 export class ZLinkUserSpotCreationCoordinator {
+  private readonly localCreations = new Map<string, Promise<ZLinkUserSpotCreationResult>>();
+  private readonly remoteCreations = new Map<string, {
+    readonly fingerprint: string;
+    readonly result: Promise<ZLinkUserSpotCreationResult>;
+  }>();
+
   constructor(private readonly options: ZLinkUserSpotCreationCoordinatorOptions) {}
 
   async getOrCreate(
@@ -80,6 +100,7 @@ export class ZLinkUserSpotCreationCoordinator {
     discard?: (signal?: AbortSignal) => Promise<void>
   ): Promise<ZLinkUserSpotCreationResult> {
     const deadline = createDeadline(request.timeoutMs, request.signal);
+    const deadlineUnixMs = Date.now() + request.timeoutMs;
     const signal = deadline.signal;
     signal.throwIfAborted();
     let target;
@@ -101,13 +122,6 @@ export class ZLinkUserSpotCreationCoordinator {
         ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
         'No eligible User Spot placement target is ready.',
         true
-      );
-    }
-    if (!target.isLocal) {
-      deadline.close();
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
-        'Remote User Spot creation requires the generation-fenced internal create operation.'
       );
     }
     const owner = target.owner;
@@ -168,6 +182,21 @@ export class ZLinkUserSpotCreationCoordinator {
         ? reserved.current
         : reserved.current;
       if (
+        current.kind === 'snapshot'
+        && current.allocation.state === 'active'
+      ) {
+        if (request.retryRidCollision === true) {
+          deadline.close();
+          throw new ZLinkUserSpotRidCollisionError(request.spotRid);
+        }
+        const spot = spotRef(current, request);
+        deadline.close();
+        return {
+          result: { spot, state: ZLinkSpotCreateState.Existing },
+          spot
+        };
+      }
+      if (
         current.kind !== 'snapshot'
         || !sameCreationTarget(current, authorityTarget)
       ) {
@@ -179,6 +208,27 @@ export class ZLinkUserSpotCreationCoordinator {
           ZLinkFrameworkErrorKind.RequestFailed,
           'User Spot creation requires a remote generation-fenced create operation.'
         );
+      }
+      if (current.allocation.state === 'pending' && !target.isLocal) {
+        const result = await this.remoteCreate(
+          request,
+          current,
+          target.nodeRid,
+          target.nodeGeneration,
+          deadlineUnixMs
+        );
+        deadline.close();
+        return result;
+      }
+      if (current.allocation.state === 'pending' && target.isLocal) {
+        const result = await this.handleLocalCreate(
+          localCreationRecord(request, current, target.nodeRid, target.nodeGeneration, deadlineUnixMs),
+          (_payload, localSignal) => materialize(target, localSignal),
+          discard,
+          signal
+        );
+        deadline.close();
+        return result;
       }
       const spot = await this.awaitReady(request, signal);
       deadline.close();
@@ -212,114 +262,36 @@ export class ZLinkUserSpotCreationCoordinator {
       );
     }
 
-    let result: ZLinkLocalSpotCreateResult;
-    try {
-      result = await materialize(target, signal);
-      if (result.state === ZLinkSpotCreateState.Rejected) {
-        const spot = spotRef(reserved.creating, request, true);
-        await this.abort(
-          request,
-          reserved.reservationId,
-          reserved.creating.storeVersion.value,
-          authorityTarget,
+    const result = target.isLocal
+      ? await this.handleLocalCreate(
+          localCreationRecord(
+            request,
+            reserved.creating,
+            target.nodeRid,
+            target.nodeGeneration,
+            deadlineUnixMs
+          ),
+          (_payload, localSignal) => materialize(target, localSignal),
+          discard,
           signal
-        );
-        await discard?.(signal);
-        deadline.close();
-        return { result: { spot, state: result.state, reply: result.reply }, spot };
-      }
-      let committed;
-      try {
-        committed = await this.options.store.commit({
-          key: { kind: 'user_spot', globalId: String(request.spotRid) },
-          reservationId: reserved.reservationId,
-          expectedStoreVersion: reserved.creating.storeVersion.value,
-          target: authorityTarget,
-          readyPayload: encodeServiceUserSpotAuthorityPayload({
-            state: 'ready',
-            stableType: request.stableType,
-            spotRid: String(request.spotRid),
-            ownerId: owner.ownerId,
-            ownerLeaseGeneration: owner.leaseGeneration,
-            ownerMeshName: target.meshName,
-            ownerNodeRid: String(target.nodeRid),
-            ownerNodeGeneration: target.nodeGeneration
-          })
-        }, signal);
-      } catch (error) {
-        if (error instanceof ZLinkFrameworkException) throw error;
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestFailed,
-          'User Spot Ready commit Store operation failed.',
-          false,
-          error
-        );
-      }
-      if (committed.kind !== 'committed' && committed.kind !== 'alreadyCommitted') {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestFailed,
-          `User Spot Ready commit failed: ${committed.kind}.`
-        );
-      }
-      const spot = spotRef(committed.ready, request);
-      deadline.close();
-      return {
-        result: { spot, state: result.state, reply: result.reply },
-        spot
-      };
-    } catch (error) {
-      const cleanupDeadline = createDeadline(this.options.cleanupTimeoutMs ?? 5_000);
-      const cleanupSignal = cleanupDeadline.signal;
-      let current;
-      try {
-        current = await this.options.store.readAuthority(
-          encodeAuthorityKey('user_spot', String(request.spotRid)),
-          cleanupSignal
-        );
-      } catch (reconcileError) {
-        cleanupDeadline.close();
-        deadline.close();
-        throw new AggregateError(
-          [error, reconcileError],
-          'User Spot creation reconciliation failed.'
-        );
-      }
-      if (current.kind === 'snapshot' && current.allocation.state === 'active') {
-        const spot = spotRef(current, request);
-        cleanupDeadline.close();
-        deadline.close();
-        return {
-          result: { spot, state: ZLinkSpotCreateState.Existing },
-          spot
-        };
-      }
-      const cleanup = await settleCleanup([
-        this.abort(
+        )
+      : await this.remoteCreate(
           request,
-          reserved.reservationId,
-          reserved.creating.storeVersion.value,
-          authorityTarget,
-          cleanupSignal
-        ),
-        discard?.(cleanupSignal) ?? Promise.resolve()
-      ], cleanupSignal);
-      cleanupDeadline.close();
-      const cleanupErrors = cleanup
-        .filter((item): item is PromiseRejectedResult => item.status === 'rejected')
-        .map(item => item.reason);
-      if (cleanupErrors.length > 0) {
-        deadline.close();
-        throw new AggregateError([error, ...cleanupErrors], 'User Spot creation rollback failed.');
-      }
-      deadline.close();
-      throw error;
-    }
+          reserved.creating,
+          target.nodeRid,
+          target.nodeGeneration,
+          deadlineUnixMs
+        );
+    deadline.close();
+    return result;
   }
 
   async close(
     spot: SpotRef,
-    closeOwner: (current: SpotRef) => Promise<boolean>,
-    signal?: AbortSignal
+    closeOwner: (current: SpotRef, snapshot: ZLinkAuthoritySnapshot) => Promise<boolean>,
+    signal?: AbortSignal,
+    ownerPresent?: (current: SpotRef) => boolean,
+    ownerCanClose?: (current: SpotRef) => boolean
   ): Promise<boolean> {
     const key = encodeAuthorityKey('user_spot', String(spot.spotRid));
     const current = await this.options.store.readAuthority(key, signal);
@@ -337,10 +309,38 @@ export class ZLinkUserSpotCreationCoordinator {
       requestPayload: Buffer.alloc(0),
       timeoutMs: 1
     });
-    if (!await closeOwner(currentRef)) return false;
+    if (
+      String(current.allocation.descriptor.rid) !== String(spot.nodeRid)
+      || current.allocation.descriptor.meshName !== spot.meshName
+    ) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotGenerationStale,
+        `User Spot '${String(spot.spotRid)}' owner route is stale.`
+      );
+    }
+    if (ownerPresent?.(currentRef) === false) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotMoving,
+        `User Spot '${String(spot.spotRid)}' is missing from its authority owner.`,
+        true
+      );
+    }
+    if (ownerCanClose?.(currentRef) === false) return false;
+    const closing = await this.beginClosing(key, current, String(spot.spotRid), signal);
+    let closed: boolean;
+    try {
+      closed = await closeOwner(currentRef, closing);
+    } catch (error) {
+      await this.restoreReady(key, closing, String(spot.spotRid), signal);
+      throw error;
+    }
+    if (!closed) {
+      await this.restoreReady(key, closing, String(spot.spotRid), signal);
+      return false;
+    }
     const deleted = await this.options.store.compareExchangeAuthority(
       key,
-      current.storeVersion,
+      closing.storeVersion,
       { kind: 'delete' },
       signal
     );
@@ -358,6 +358,358 @@ export class ZLinkUserSpotCreationCoordinator {
     );
   }
 
+  async handleRemoteCreate(
+    record: ServiceUserSpotCreateRecord,
+    materialize: (
+      requestPayload: Uint8Array,
+      signal: AbortSignal
+    ) => Promise<ZLinkLocalSpotCreateResult>,
+    discard?: (signal?: AbortSignal) => Promise<void>,
+    signal?: AbortSignal
+  ): Promise<ZLinkUserSpotCreationResult> {
+    const key = `${record.spotRid}\0${record.reservation.reservationId}`;
+    const fingerprint = remoteCreationFingerprint(record);
+    let admitted = this.remoteCreations.get(key);
+    if (admitted !== undefined && admitted.fingerprint !== fingerprint) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RequestFailed,
+        'Remote User Spot reservation was reused with different immutable content.'
+      );
+    }
+    if (admitted === undefined) {
+      const result = this.materializeRemoteCreate(record, materialize, discard, signal);
+      admitted = { fingerprint, result };
+      this.remoteCreations.set(key, admitted);
+      void result.finally(() => {
+        if (this.remoteCreations.get(key)?.result === result) {
+          this.remoteCreations.delete(key);
+        }
+      }).catch(() => undefined);
+    }
+    return await admitted.result;
+  }
+
+  private async handleLocalCreate(
+    record: ServiceUserSpotCreateRecord,
+    materialize: (
+      requestPayload: Uint8Array,
+      signal: AbortSignal
+    ) => Promise<ZLinkLocalSpotCreateResult>,
+    discard?: (signal?: AbortSignal) => Promise<void>,
+    signal?: AbortSignal
+  ): Promise<ZLinkUserSpotCreationResult> {
+    const key = record.reservation.reservationId;
+    let admitted = this.localCreations.get(key);
+    if (admitted === undefined) {
+      admitted = this.materializeRemoteCreate(record, materialize, discard, signal);
+      this.localCreations.set(key, admitted);
+      void admitted.finally(() => {
+        if (this.localCreations.get(key) === admitted) {
+          this.localCreations.delete(key);
+        }
+      }).catch(() => undefined);
+    }
+    return await admitted;
+  }
+
+  private async materializeRemoteCreate(
+    record: ServiceUserSpotCreateRecord,
+    materialize: (
+      requestPayload: Uint8Array,
+      signal: AbortSignal
+    ) => Promise<ZLinkLocalSpotCreateResult>,
+    discard?: (signal?: AbortSignal) => Promise<void>,
+    signal?: AbortSignal
+  ): Promise<ZLinkUserSpotCreationResult> {
+    const key = encodeAuthorityKey('user_spot', record.spotRid);
+    const current = await this.options.store.readAuthority(key, signal);
+    const exactIdentity =
+      current.kind !== 'snapshot'
+        ? false
+        : current.allocation.objectKind === 'user_spot'
+          && current.allocation.stableType === record.stableType
+          && current.objectGeneration === record.reservation.objectGeneration
+          && current.authorityOwnerGeneration === record.reservation.authorityOwnerGeneration
+          && String(current.allocation.descriptor.rid) === record.reservation.targetNodeRid
+          && current.allocation.descriptorLifecycleGeneration
+            === record.reservation.targetNodeGeneration
+          && current.ownerId === record.reservation.targetOwnerId
+          && current.ownerLeaseGeneration === record.reservation.targetOwnerLeaseGeneration
+          && current.allocation.capacityDelta === record.reservation.pendingCapacityDelta;
+    if (!exactIdentity || current.kind !== 'snapshot') {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotMoving,
+        'Remote User Spot reservation fence is stale.'
+      );
+    }
+    const spot: SpotRef = {
+      spotRid: record.spotRid as RoutingId,
+      objectGeneration: current.objectGeneration,
+      meshName: current.allocation.descriptor.meshName,
+      nodeRid: current.allocation.descriptor.rid
+    };
+    if (current.allocation.state === 'active') {
+      // A target restart loses the process-local command terminal, but Ready
+      // authority proves the exact reservation generation committed. Return
+      // Existing without re-running application lifecycle. Created/Rejected
+      // application replies require a future durable operation-terminal store.
+      return {
+        result: { spot, state: ZLinkSpotCreateState.Existing },
+        spot
+      };
+    }
+    if (current.storeVersion.value !== record.reservation.expectedStoreVersion) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotMoving,
+        'Remote User Spot Pending StoreVersion is stale.'
+      );
+    }
+    const pending = current.pendingCreation;
+    if (
+      pending === undefined
+      || pending.reservationId !== record.reservation.reservationId
+    ) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RequestFailed,
+        'Remote User Spot Pending creation projection is missing.'
+      );
+    }
+    const requestPayload = decodeLocationCreationContent(
+      pending.requestContentReference
+    );
+    if (
+      BigInt(requestPayload.byteLength) !== pending.requestEncodedSize
+      || !createHash('sha256').update(requestPayload).digest()
+        .equals(Buffer.from(pending.requestSha256))
+    ) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RequestFailed,
+        'Remote User Spot Pending creation content failed integrity validation.'
+      );
+    }
+    let local: ZLinkLocalSpotCreateResult | undefined;
+    try {
+      local = await materialize(requestPayload, signal ?? new AbortController().signal);
+      if (local.state === ZLinkSpotCreateState.Rejected) {
+        local.publication?.abort();
+        await this.options.store.abort({
+          key: { kind: 'user_spot', globalId: record.spotRid },
+          reservationId: pending.reservationId,
+          expectedStoreVersion: current.storeVersion.value,
+          target: {
+            meshName: current.allocation.descriptor.meshName,
+            nodeRid: current.allocation.descriptor.rid,
+            nodeLifecycleGeneration: current.allocation.descriptorLifecycleGeneration,
+            owner: {
+              ownerId: current.ownerId,
+              leaseGeneration: current.ownerLeaseGeneration
+            }
+          }
+        }, signal);
+        await discard?.(signal);
+        return {
+          result: { spot, state: local.state, reply: local.reply },
+          spot
+        };
+      }
+      const committed = await this.options.store.commit({
+        key: { kind: 'user_spot', globalId: record.spotRid },
+        reservationId: pending.reservationId,
+        expectedStoreVersion: current.storeVersion.value,
+        target: {
+          meshName: current.allocation.descriptor.meshName,
+          nodeRid: current.allocation.descriptor.rid,
+          nodeLifecycleGeneration: current.allocation.descriptorLifecycleGeneration,
+          owner: {
+            ownerId: current.ownerId,
+            leaseGeneration: current.ownerLeaseGeneration
+          }
+        },
+        readyPayload: encodeServiceUserSpotAuthorityPayload({
+          state: 'ready',
+          stableType: record.stableType,
+          spotRid: record.spotRid,
+          ownerId: current.ownerId,
+          ownerLeaseGeneration: current.ownerLeaseGeneration,
+          ownerMeshName: current.allocation.descriptor.meshName,
+          ownerNodeRid: String(current.allocation.descriptor.rid),
+          ownerNodeGeneration: current.allocation.descriptorLifecycleGeneration
+        })
+      }, signal);
+      if (committed.kind !== 'committed' && committed.kind !== 'alreadyCommitted') {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.RequestFailed,
+          `Remote User Spot Ready commit failed: ${committed.kind}.`
+        );
+      }
+      const readySpot: SpotRef = {
+        ...spot,
+        objectGeneration: committed.ready.objectGeneration
+      };
+      local.publication?.publish();
+      return {
+        result: { spot: readySpot, state: local.state, reply: local.reply },
+        spot: readySpot
+      };
+    } catch (error) {
+      local?.publication?.abort();
+      const cleanup = await Promise.allSettled([
+        this.options.store.abort({
+          key: { kind: 'user_spot', globalId: record.spotRid },
+          reservationId: pending.reservationId,
+          expectedStoreVersion: current.storeVersion.value,
+          target: {
+            meshName: current.allocation.descriptor.meshName,
+            nodeRid: current.allocation.descriptor.rid,
+            nodeLifecycleGeneration: current.allocation.descriptorLifecycleGeneration,
+            owner: {
+              ownerId: current.ownerId,
+              leaseGeneration: current.ownerLeaseGeneration
+            }
+          }
+        }, signal),
+        discard?.(signal) ?? Promise.resolve()
+      ]);
+      const cleanupErrors = cleanup
+        .filter((item): item is PromiseRejectedResult => item.status === 'rejected')
+        .map(item => item.reason);
+      if (cleanupErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          'Remote User Spot creation rollback failed.'
+        );
+      }
+      throw error;
+    }
+  }
+
+  async handleRemoteClose(
+    record: ServiceUserSpotCloseRecord,
+    closeOwner: (spot: SpotRef, signal?: AbortSignal) => Promise<boolean>,
+    signal?: AbortSignal
+  ): Promise<boolean> {
+    const key = encodeAuthorityKey('user_spot', record.target.spotRid);
+    const current = await this.options.store.readAuthority(key, signal);
+    if (current.kind === 'missing') return false;
+    if (
+      current.objectGeneration !== record.target.objectGeneration
+    ) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotGenerationStale,
+        `User Spot '${record.target.spotRid}' generation is stale.`
+      );
+    }
+    if (
+      current.authorityOwnerGeneration !== record.target.authorityOwnerGeneration
+      || current.storeVersion.value !== record.target.expectedStoreVersion
+      || String(current.allocation.descriptor.rid) !== record.target.targetNodeRid
+      || current.allocation.descriptorLifecycleGeneration
+        !== record.target.targetNodeGeneration
+      || current.allocation.objectKind !== 'user_spot'
+      || current.allocation.state !== 'active'
+    ) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotMoving,
+        `User Spot '${record.target.spotRid}' close authority is moving.`,
+        true
+      );
+    }
+    const spot: SpotRef = {
+      spotRid: record.target.spotRid as RoutingId,
+      objectGeneration: current.objectGeneration,
+      meshName: current.allocation.descriptor.meshName,
+      nodeRid: current.allocation.descriptor.rid
+    };
+    const closing = await this.beginClosing(key, current, record.target.spotRid, signal);
+    let closed: boolean;
+    try {
+      closed = await closeOwner(spot, signal);
+    } catch (error) {
+      await this.restoreReady(key, closing, record.target.spotRid, signal);
+      throw error;
+    }
+    if (!closed) {
+      await this.restoreReady(key, closing, record.target.spotRid, signal);
+      return false;
+    }
+    const deleted = await this.options.store.compareExchangeAuthority(
+      key,
+      closing.storeVersion,
+      { kind: 'delete' },
+      signal
+    );
+    if (deleted.kind === 'deleted') return true;
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.SpotMoving,
+      `User Spot '${record.target.spotRid}' authority changed while closing.`,
+      true
+    );
+  }
+
+  private async beginClosing(
+    key: ReturnType<typeof encodeAuthorityKey>,
+    current: ZLinkAuthoritySnapshot,
+    spotRid: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkAuthoritySnapshot> {
+    const ready = decodeServiceReadySpotAuthority(current.payload);
+    if (
+      ready?.kind !== 'user_spot'
+      || ready.spotRid !== spotRid
+      || ready.stableType !== current.allocation.stableType
+    ) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotMoving,
+        `User Spot '${spotRid}' is not in Framework-owned Ready state.`,
+        true
+      );
+    }
+    const closing = await this.options.store.compareExchangeAuthority(
+      key,
+      current.storeVersion,
+      {
+        kind: 'put',
+        payload: userSpotAuthorityPayload(current, spotRid, 'closing'),
+        generationTransition: 'preserve'
+      },
+      signal
+    );
+    if (closing.kind === 'stored') {
+      const { kind: _kind, ...snapshot } = closing;
+      return { kind: 'snapshot', ...snapshot };
+    }
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.SpotMoving,
+      `User Spot authority changed while entering Closing.`,
+      true
+    );
+  }
+
+  private async restoreReady(
+    key: ReturnType<typeof encodeAuthorityKey>,
+    closing: ZLinkAuthoritySnapshot,
+    spotRid: string,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const restored = await this.options.store.compareExchangeAuthority(
+      key,
+      closing.storeVersion,
+      {
+        kind: 'put',
+        payload: userSpotAuthorityPayload(closing, spotRid, 'ready'),
+        generationTransition: 'preserve'
+      },
+      signal
+    );
+    if (restored.kind !== 'stored') {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotMoving,
+        'User Spot Ready authority could not be restored after close was declined.',
+        true
+      );
+    }
+  }
+
   private async awaitReady(
     request: ZLinkUserSpotCreationRequest,
     signal: AbortSignal
@@ -373,20 +725,88 @@ export class ZLinkUserSpotCreationCoordinator {
     }
   }
 
-  private async abort(
+  private async remoteCreate(
     request: ZLinkUserSpotCreationRequest,
-    reservationId: string,
-    expectedStoreVersion: string,
-    target: Parameters<ZLinkObjectCreationStore['abort']>[0]['target'],
-    signal?: AbortSignal
-  ): Promise<void> {
-    await this.options.store.abort({
-      key: { kind: 'user_spot', globalId: String(request.spotRid) },
-      reservationId,
-      expectedStoreVersion,
-      target
-    }, signal);
+    snapshot: ZLinkAuthoritySnapshot,
+    targetNodeRid: RoutingId,
+    targetNodeGeneration: bigint,
+    deadlineUnixMs: number
+  ): Promise<ZLinkUserSpotCreationResult> {
+    const remote = this.options.remoteCreate;
+    const pending = snapshot.pendingCreation;
+    if (remote === undefined || pending === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RequestFailed,
+        'Remote User Spot creation transport is not configured.'
+      );
+    }
+    const timeoutMs = deadlineUnixMs - Date.now();
+    if (timeoutMs <= 0) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.DeadlineExceeded,
+        'Remote User Spot creation exhausted its end-to-end deadline.',
+        true
+      );
+    }
+    const result = await remote(
+      snapshot.allocation.descriptor.meshName,
+      String(targetNodeRid),
+      {
+        sourceNodeRid: '',
+        sourceNodeGeneration: 1n,
+        spotRid: String(request.spotRid),
+        stableType: request.stableType,
+        reservation: {
+          reservationId: pending.reservationId,
+          expectedStoreVersion: snapshot.storeVersion.value,
+          objectGeneration: snapshot.objectGeneration,
+          authorityOwnerGeneration: snapshot.authorityOwnerGeneration,
+          targetNodeRid: String(targetNodeRid),
+          targetNodeGeneration,
+          targetOwnerId: snapshot.ownerId,
+          targetOwnerLeaseGeneration: snapshot.ownerLeaseGeneration,
+          pendingCapacityDelta: snapshot.allocation.capacityDelta
+        },
+        deadlineUnixMs: BigInt(deadlineUnixMs)
+      },
+      timeoutMs
+    );
+    if (
+      result.terminalResult !== 0
+      || result.tail?.kind !== 'userSpotCreate'
+    ) {
+      throw remoteUserSpotFailure(
+        result.terminalResult,
+        result.failureCode,
+        'Remote User Spot creation failed.'
+      );
+    }
+    const spot: SpotRef = {
+      spotRid: request.spotRid,
+      objectGeneration: result.tail.objectGeneration,
+      meshName: snapshot.allocation.descriptor.meshName,
+      nodeRid: targetNodeRid
+    };
+    const state = result.tail.createResult === 'existing'
+      ? ZLinkSpotCreateState.Existing
+      : result.tail.createResult === 'created'
+        ? ZLinkSpotCreateState.Created
+        : ZLinkSpotCreateState.Rejected;
+    return {
+      result: {
+        spot,
+        state,
+        ...(result.payload === undefined
+          ? {}
+          : {
+              reply: this.options.decodeRemoteReply?.(result.payload.payload)
+                ?? Buffer.from(result.payload.payload)
+            })
+      },
+      spot
+    };
   }
+
 }
 
 function spotRef(
@@ -419,8 +839,66 @@ function spotRef(
   };
 }
 
+function localCreationRecord(
+  request: ZLinkUserSpotCreationRequest,
+  snapshot: ZLinkAuthoritySnapshot,
+  targetNodeRid: RoutingId,
+  targetNodeGeneration: bigint,
+  deadlineUnixMs: number
+): ServiceUserSpotCreateRecord {
+  const pending = snapshot.pendingCreation;
+  if (pending === undefined) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.RequestFailed,
+      'Local User Spot Pending creation projection is missing.'
+    );
+  }
+  return {
+    kind: 'userSpotCreate',
+    correlation: 1n,
+    operation: {
+      high: snapshot.objectGeneration,
+      low: snapshot.authorityOwnerGeneration
+    },
+    sourceNodeRid: String(targetNodeRid),
+    sourceNodeGeneration: targetNodeGeneration,
+    spotRid: String(request.spotRid),
+    stableType: request.stableType,
+    reservation: {
+      reservationId: pending.reservationId,
+      expectedStoreVersion: snapshot.storeVersion.value,
+      objectGeneration: snapshot.objectGeneration,
+      authorityOwnerGeneration: snapshot.authorityOwnerGeneration,
+      targetNodeRid: String(targetNodeRid),
+      targetNodeGeneration,
+      targetOwnerId: snapshot.ownerId,
+      targetOwnerLeaseGeneration: snapshot.ownerLeaseGeneration,
+      pendingCapacityDelta: snapshot.allocation.capacityDelta
+    },
+    deadlineUnixMs: BigInt(deadlineUnixMs)
+  };
+}
+
 function encodeLocationCreationContent(payload: Uint8Array, checksum: number): string {
   return `inline-v1:${checksum.toString(16).padStart(8, '0')}:${Buffer.from(payload).toString('base64url')}`;
+}
+
+function decodeLocationCreationContent(reference: string): Buffer {
+  const match = /^inline-v1:([0-9a-f]{8}):([A-Za-z0-9_-]+)$/.exec(reference);
+  if (match === null) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.RequestFailed,
+      'User Spot creation content reference is invalid.'
+    );
+  }
+  const payload = Buffer.from(match[2]!, 'base64url');
+  if (crc32c(payload) !== Number.parseInt(match[1]!, 16)) {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.RequestFailed,
+      'User Spot creation content checksum does not match.'
+    );
+  }
+  return payload;
 }
 
 function sameCreationTarget(
@@ -434,6 +912,34 @@ function sameCreationTarget(
     && snapshot.ownerLeaseGeneration === target.owner.leaseGeneration;
 }
 
+function remoteCreationFingerprint(record: ServiceUserSpotCreateRecord): string {
+  return JSON.stringify(
+    {
+      spotRid: record.spotRid,
+      stableType: record.stableType,
+      reservation: record.reservation
+    },
+    (_key, value: unknown) => typeof value === 'bigint' ? `${value}n` : value
+  );
+}
+
+function userSpotAuthorityPayload(
+  snapshot: ZLinkAuthoritySnapshot,
+  spotRid: string,
+  state: 'ready' | 'closing'
+): Buffer {
+  return encodeServiceUserSpotAuthorityPayload({
+    state,
+    stableType: snapshot.allocation.stableType,
+    spotRid,
+    ownerId: snapshot.ownerId,
+    ownerLeaseGeneration: snapshot.ownerLeaseGeneration,
+    ownerMeshName: snapshot.allocation.descriptor.meshName,
+    ownerNodeRid: String(snapshot.allocation.descriptor.rid),
+    ownerNodeGeneration: snapshot.allocation.descriptorLifecycleGeneration
+  });
+}
+
 function crc32c(payload: Uint8Array): number {
   let crc = 0xffff_ffff;
   for (const value of payload) {
@@ -443,6 +949,37 @@ function crc32c(payload: Uint8Array): number {
     }
   }
   return (~crc) >>> 0;
+}
+
+function remoteUserSpotFailure(
+  terminalResult: number,
+  failureCode: number,
+  message: string
+): ZLinkFrameworkException {
+  if (failureCode === 33) {
+    return new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.SpotGenerationStale,
+      message
+    );
+  }
+  if (failureCode === 34) {
+    return new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.SpotMoving,
+      message,
+      true
+    );
+  }
+  if (terminalResult === 101) {
+    return new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.DeadlineExceeded,
+      message,
+      true
+    );
+  }
+  return new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.RequestFailed,
+    message
+  );
 }
 
 function createDeadline(timeoutMs: number, parent?: AbortSignal): {
@@ -467,24 +1004,6 @@ function createDeadline(timeoutMs: number, parent?: AbortSignal): {
       parent?.removeEventListener('abort', abort);
     }
   };
-}
-
-async function settleCleanup(
-  operations: readonly Promise<unknown>[],
-  signal: AbortSignal
-): Promise<PromiseSettledResult<unknown>[]> {
-  const settled = Promise.allSettled(operations);
-  const aborted = new Promise<PromiseSettledResult<unknown>[]>(resolve => {
-    const finish = () => resolve([{
-      status: 'rejected',
-      reason: signal.reason ?? new Error('User Spot cleanup deadline exceeded.')
-    }]);
-    if (signal.aborted) finish();
-    else signal.addEventListener('abort', finish, { once: true });
-  });
-  const result = await Promise.race([settled, aborted]);
-  void settled.catch(() => undefined);
-  return result;
 }
 
 function wait(delayMs: number, signal?: AbortSignal): Promise<void> {

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { RequestResult } from '@zlink-systems/zlink';
 import type {
   ZLinkAggregateId,
   ZLinkAuthorityKey,
@@ -26,6 +27,9 @@ import {
 import {
   invokeSpotClosing
 } from '../../packages/framework/src/runtime/spots/spot-closing';
+import {
+  encodeServiceUserSpotAuthorityPayload
+} from '../../packages/framework/src/runtime/foundation/service-authority-payload-codec';
 
 test('owner lease uses exact claim read renew and release fencing', async () => {
   let now = 100;
@@ -375,8 +379,18 @@ test('User Spot production placement maps no target to retriable capacity exhaus
   );
 });
 
-test('User Spot creation fails closed before reservation when placement selects a remote owner', async () => {
+test('User Spot creation reserves at the source and materializes exact Pending content at the remote target', async () => {
   const store = authority(new Set(['mesh:node-b:2:owner-b:2']));
+  let materializations = 0;
+  let published = false;
+  let release!: () => void;
+  const initialized = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  const targetCoordinator = new ZLinkUserSpotCreationCoordinator({
+    store,
+    target: async () => undefined
+  });
   const coordinator = new ZLinkUserSpotCreationCoordinator({
     store,
     target: async () => ({
@@ -385,25 +399,103 @@ test('User Spot creation fails closed before reservation when placement selects 
       nodeGeneration: 2n,
       owner: owner('owner-b', 2n),
       isLocal: false
-    })
+    }),
+    remoteCreate: async (_meshName, _targetNodeRid, record) => {
+      const coordinated = await targetCoordinator.handleRemoteCreate(
+        { kind: 'userSpotCreate', correlation: 1n, operation: { high: 1n, low: 1n }, ...record },
+        async requestPayload => {
+          materializations++;
+          assert.deepEqual(requestPayload, Buffer.from('create'));
+          await initialized;
+          return {
+            spotRid: record.spotRid,
+            state: ZLinkSpotCreateState.Created,
+            publication: {
+              publish: () => { published = true; },
+              abort: () => { published = false; }
+            }
+          };
+        }
+      );
+      return {
+        terminalResult: RequestResult.Ok,
+        failureCode: 0,
+        tail: {
+          kind: 'userSpotCreate',
+          createResult: 'created',
+          spotRid: String(coordinated.spot.spotRid),
+          objectGeneration: coordinated.spot.objectGeneration
+        }
+      };
+    }
+  });
+  const create = () => coordinator.getOrCreate({
+    meshName: 'mesh',
+    spotRid: 'remote-selected-room',
+    stableType: 'room',
+    requestPayload: Buffer.from('create'),
+    timeoutMs: 100
+  }, async () => {
+      throw new Error('remote owner must not start local factory');
+  });
+  const first = create();
+  await new Promise(resolve => setImmediate(resolve));
+  const second = create();
+  assert.equal(published, false);
+  release();
+  const [created, joined] = await Promise.all([first, second]);
+  assert.equal(materializations, 1);
+  assert.equal(created.result.state, ZLinkSpotCreateState.Created);
+  assert.equal(joined.spot.objectGeneration, created.spot.objectGeneration);
+  assert.equal(published, true);
+  const ready = await store.readAuthority(authorityKey('remote-selected-room'));
+  assert.equal(ready.kind, 'snapshot');
+  if (ready.kind === 'snapshot') assert.equal(ready.allocation.state, 'active');
+});
+
+test('remote User Spot target aborts the exact reservation when materialization fails', async () => {
+  const store = authority(new Set(['mesh:node-b:2:owner-b:2']));
+  const targetCoordinator = new ZLinkUserSpotCreationCoordinator({
+    store,
+    target: async () => undefined
+  });
+  const coordinator = new ZLinkUserSpotCreationCoordinator({
+    store,
+    target: async () => ({
+      meshName: 'mesh',
+      nodeRid: 'node-b',
+      nodeGeneration: 2n,
+      owner: owner('owner-b', 2n),
+      isLocal: false
+    }),
+    remoteCreate: async (_meshName, _targetNodeRid, record) => {
+      await assert.rejects(
+        () => targetCoordinator.handleRemoteCreate(
+          { kind: 'userSpotCreate', correlation: 1n, operation: { high: 1n, low: 1n }, ...record },
+          async () => {
+            throw new Error('factory failed');
+          }
+        ),
+        /factory failed/
+      );
+      assert.equal(
+        (await store.readAuthority(authorityKey(record.spotRid))).kind,
+        'missing'
+      );
+      throw new Error('remote target rejected creation');
+    }
   });
   await assert.rejects(
     () => coordinator.getOrCreate({
       meshName: 'mesh',
-      spotRid: 'remote-selected-room',
+      spotRid: 'remote-failed-room',
       stableType: 'room',
       requestPayload: Buffer.from('create'),
-      timeoutMs: 100
+      timeoutMs: 1_000
     }, async () => {
       throw new Error('remote owner must not start local factory');
     }),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'requestFailed'
-  );
-  assert.equal(
-    (await store.readAuthority(authorityKey('remote-selected-room'))).kind,
-    'missing'
+    /remote target rejected creation/
   );
 });
 
@@ -445,7 +537,7 @@ test('User Spot Ready commit Store rejection is exposed as RequestFailed with th
   );
 });
 
-test('User Spot CAS loser fails immediately when the existing owner is remote', async () => {
+test('User Spot get-or-create returns an existing Ready remote incarnation without local factory work', async () => {
   const store = authority(new Set([
     'mesh:node-a:1:owner-a:1',
     'mesh:node-b:2:owner-b:2'
@@ -462,9 +554,7 @@ test('User Spot CAS loser fails immediately when the existing owner is remote', 
     }),
     pollIntervalMs: 1
   });
-  const started = Date.now();
-  await assert.rejects(
-    () => coordinator.getOrCreate({
+  const existing = await coordinator.getOrCreate({
       meshName: 'mesh',
       spotRid: 'remote-room',
       stableType: 'room',
@@ -472,16 +562,19 @@ test('User Spot CAS loser fails immediately when the existing owner is remote', 
       timeoutMs: 1_000
     }, async () => {
       throw new Error('remote CAS loser must not start factory');
-    }),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'requestFailed'
-  );
-  assert.ok(Date.now() - started < 100);
+    });
+  assert.equal(existing.result.state, ZLinkSpotCreateState.Existing);
+  assert.equal(existing.spot.nodeRid, 'node-b');
 });
 
 test('User Spot close fences the exact generation and deletes authority only after owner close', async () => {
   const store = authority(new Set(['mesh:node-a:1:owner-a:1']));
+  const closeMutations: string[] = [];
+  const compareExchange = store.compareExchangeAuthority.bind(store);
+  store.compareExchangeAuthority = async (key, version, mutation, signal) => {
+    closeMutations.push(mutation.kind);
+    return await compareExchange(key, version, mutation, signal);
+  };
   const coordinator = new ZLinkUserSpotCreationCoordinator({
     store,
     target: async () => ({
@@ -508,6 +601,7 @@ test('User Spot close fences the exact generation and deletes authority only aft
     return true;
   }), true);
   assert.equal(ownerClosed, true);
+  assert.deepEqual(closeMutations, ['put', 'delete']);
   assert.equal(
     (await store.readAuthority(authorityKey('close-room'))).kind,
     'missing'
@@ -552,11 +646,25 @@ test('exact User Spot manager call is single-use and returns the committed SpotR
     })
   });
   let created = 0;
+  let staged = false;
+  let published = false;
   const manager = new ZLinkPublicSpotManager({
     local: {
       async getOrCreate(_mesh: string, _type: typeof RoomSpot, spotRid: string) {
+        assert.equal(staged, true);
+        assert.equal(published, false);
         created++;
         return { spotRid, state: ZLinkSpotCreateState.Created };
+      },
+      beginUserSpotPublication() {
+        staged = true;
+      },
+      publishUserSpot() {
+        published = true;
+        staged = false;
+      },
+      abortUserSpotPublication() {
+        staged = false;
       },
       async close() {
         return true;
@@ -587,6 +695,8 @@ test('exact User Spot manager call is single-use and returns the committed SpotR
   assert.equal(created, 1);
   assert.equal(result.state, ZLinkSpotCreateState.Created);
   assert.equal(result.spot.spotRid, 'room-7');
+  assert.equal(staged, false);
+  assert.equal(published, true);
   assert.ok(result.spot.objectGeneration > 0n);
   await assert.rejects(() => call.submit(), /already been submitted/);
 });
@@ -651,7 +761,7 @@ test('User Spot create retries a generated RID collision with another stable typ
   assert.equal(result.spot.spotRid, 'spot-fresh');
 });
 
-test('User Spot create retries a generated same-type RID owned by a remote node while getOrCreate stays fail-closed', async () => {
+test('User Spot create retries a generated remote RID while getOrCreate returns that Ready incarnation', async () => {
   class RoomSpot {}
   const store = authority(new Set([
     'mesh:node-a:1:owner-a:1',
@@ -698,17 +808,14 @@ test('User Spot create retries a generated same-type RID owned by a remote node 
   assert.equal(created.spot.spotRid, 'spot-local-fresh');
   assert.deepEqual(materialized, ['spot-local-fresh']);
 
-  await assert.rejects(
-    () => manager.getOrCreate('spot-remote-collision', 'room')
-      .inMesh('mesh')
-      .submit(),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'requestFailed'
-  );
+  const existing = await manager.getOrCreate('spot-remote-collision', 'room')
+    .inMesh('mesh')
+    .submit();
+  assert.equal(existing.state, ZLinkSpotCreateState.Existing);
+  assert.equal(existing.spot.nodeRid, 'node-b');
 });
 
-test('User Spot manager close fails closed when authority resolves to a remote owner', async () => {
+test('User Spot manager close sends the exact authority fence to the remote owner', async () => {
   const current = {
     spotRid: 'remote-close',
     objectGeneration: 1n,
@@ -716,6 +823,12 @@ test('User Spot manager close fails closed when authority resolves to a remote o
     nodeRid: 'node-b'
   } as const;
   let localCloseCalled = false;
+  let remoteCloseCalled = false;
+  const snapshot = {
+    allocation: { descriptorLifecycleGeneration: 2n },
+    authorityOwnerGeneration: 3n,
+    storeVersion: { value: 'version-1' }
+  };
   const manager = new ZLinkPublicSpotManager({
     local: {
       async close() {
@@ -726,23 +839,36 @@ test('User Spot manager close fails closed when authority resolves to a remote o
     coordinator: {
       async close(
         spot: typeof current,
-        closeOwner: (resolved: typeof current) => Promise<boolean>
+        closeOwner: (resolved: typeof current, snapshot: unknown) => Promise<boolean>
       ) {
-        return await closeOwner(spot);
+        return await closeOwner(spot, snapshot);
       }
     } as never,
     factories: new Map(),
     resolver: () => undefined,
     isLocalNode: () => false,
-    defaultTimeoutMs: 1_000
+    defaultTimeoutMs: 1_000,
+    remoteClose: async (_meshName, targetNodeRid, request) => {
+      remoteCloseCalled = true;
+      assert.equal(targetNodeRid, 'node-b');
+      assert.deepEqual(request.target, {
+        spotRid: 'remote-close',
+        objectGeneration: 1n,
+        targetNodeRid: 'node-b',
+        targetNodeGeneration: 2n,
+        authorityOwnerGeneration: 3n,
+        expectedStoreVersion: 'version-1'
+      });
+      return {
+        terminalResult: RequestResult.Ok,
+        failureCode: 0,
+        tail: { kind: 'userSpotClose', closed: true }
+      };
+    }
   });
-  await assert.rejects(
-    () => manager.close(current),
-    (error: unknown) => error instanceof Error
-      && 'kind' in error
-      && error.kind === 'requestFailed'
-  );
+  assert.equal(await manager.close(current), true);
   assert.equal(localCloseCalled, false);
+  assert.equal(remoteCloseCalled, true);
 });
 
 test('relocation matches durable source allocation and only requires the target to be live', async () => {
@@ -882,7 +1008,16 @@ async function createActive(
     reservationId: reserved.reservationId,
     expectedStoreVersion: reserved.creating.storeVersion.value,
     target: placement,
-    readyPayload: Buffer.from('ready')
+    readyPayload: encodeServiceUserSpotAuthorityPayload({
+      state: 'ready',
+      stableType: 'room',
+      spotRid: globalId,
+      ownerId: placement.owner.ownerId,
+      ownerLeaseGeneration: placement.owner.leaseGeneration,
+      ownerMeshName: placement.meshName,
+      ownerNodeRid: String(placement.nodeRid),
+      ownerNodeGeneration: placement.nodeLifecycleGeneration
+    })
   });
   assert.equal(committed.kind, 'committed');
   if (committed.kind !== 'committed') throw new Error('commit failed');

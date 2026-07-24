@@ -36,14 +36,43 @@ import systems.zlink.framework.errors.ZLinkConfigurationException
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions
 import systems.zlink.framework.runtime.locations.ZLinkInMemoryLocationStore
-import systems.zlink.framework.spots.ZLinkSpot
-import systems.zlink.framework.spots.ZLinkSpotContext
+import systems.zlink.framework.spots.SpotRef
+import systems.zlink.framework.spots.ZLinkSpotCreateCall
 import systems.zlink.framework.spots.ZLinkSpotCreateResult
 import systems.zlink.framework.spots.ZLinkSpotCreateState
-import systems.zlink.framework.spots.ZLinkSpotInfo
+import systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall
 import systems.zlink.framework.spots.ZLinkSpotManager
 
 class KotlinFrameworkExtensionsContractTest {
+    @Test
+    fun `stable type spot call builders preserve options and are single use`() {
+        val manager = RecordingStableSpotManager()
+
+        val created = manager.create("room-v1")
+            .inMesh("mesh-a")
+            .request(ZLinkMessage.of(CreateActor("create")))
+            .placementProfile("ssd")
+            .affinityKey("tenant-a")
+            .timeout(Duration.ofSeconds(3))
+            .submit()
+            .toCompletableFuture()
+            .join()
+        val existing = manager.getOrCreate(SPOT_RID, "room-v1")
+            .request(CreateActor("get-or-create"))
+            .submit()
+            .toCompletableFuture()
+            .join()
+
+        assertEquals(SPOT_REF, created.spot())
+        assertEquals(SPOT_REF, existing.spot())
+        assertEquals(
+            listOf("mesh-a", "ssd", "tenant-a", "PT3S"),
+            manager.createOptions,
+        )
+        assertThrows<IllegalStateException> { manager.lastCreateCall.submit() }
+        assertThrows<IllegalStateException> { manager.lastGetOrCreateCall.submit() }
+    }
+
     @Test
     fun `fanout automatic and manual subscriber configuration is rejected`() {
         val options = DefaultZLinkFrameworkOptions()
@@ -125,35 +154,6 @@ class KotlinFrameworkExtensionsContractTest {
         assertEquals(ActorReply("reply"), reply)
         assertEquals(ACTOR_REF, actorClient.requestedActorRef)
         assertEquals(ActorMessage("request"), actorClient.requestedMessage)
-    }
-
-    @Test
-    fun `typed spot manager extensions delegate to Java class based surface`() = runBlocking {
-        val manager = RecordingSpotManager()
-
-        val created = manager.create<TestSpot>()
-        val createdWithRequest = manager.create<TestSpot>(ZLinkMessage.of(CreateActor("request")))
-        val createdWithRid = manager.create<TestSpot>(SPOT_RID)
-        val existing = manager.getOrCreate<TestSpot>(SPOT_RID)
-        val existingWithRequest = manager.getOrCreate<TestSpot>(
-            SPOT_RID,
-            ZLinkMessage.of(CreateActor("get-or-create")),
-        )
-
-        assertTrue(
-            listOf(created, createdWithRequest, createdWithRid, existing, existingWithRequest)
-                .all { it.spotRid() == SPOT_RID },
-        )
-        assertEquals(
-            listOf(
-                "create:TestSpot",
-                "create-request:TestSpot",
-                "create-rid:TestSpot",
-                "get-or-create:TestSpot",
-                "get-or-create-request:TestSpot",
-            ),
-            manager.calls,
-        )
     }
 
     @Test
@@ -298,62 +298,6 @@ class KotlinFrameworkExtensionsContractTest {
         }
     }
 
-    private class RecordingSpotManager : ZLinkSpotManager {
-        val calls = mutableListOf<String>()
-
-        override fun create(spotType: Class<out ZLinkSpot<*>>): CompletionStage<ZLinkSpotCreateResult> {
-            calls += "create:${spotType.simpleName}"
-            return result()
-        }
-
-        override fun create(
-            spotType: Class<out ZLinkSpot<*>>,
-            request: ZLinkMessage,
-        ): CompletionStage<ZLinkSpotCreateResult> {
-            calls += "create-request:${spotType.simpleName}"
-            return result()
-        }
-
-        override fun create(
-            spotType: Class<out ZLinkSpot<*>>,
-            spotRid: RoutingId,
-        ): CompletionStage<ZLinkSpotCreateResult> {
-            calls += "create-rid:${spotType.simpleName}"
-            return result()
-        }
-
-        override fun getOrCreate(
-            spotType: Class<out ZLinkSpot<*>>,
-            spotRid: RoutingId,
-        ): CompletionStage<ZLinkSpotCreateResult> {
-            calls += "get-or-create:${spotType.simpleName}"
-            return result()
-        }
-
-        override fun getOrCreate(
-            spotType: Class<out ZLinkSpot<*>>,
-            spotRid: RoutingId,
-            request: ZLinkMessage,
-        ): CompletionStage<ZLinkSpotCreateResult> {
-            calls += "get-or-create-request:${spotType.simpleName}"
-            return result()
-        }
-
-        override fun find(spotRid: RoutingId): CompletionStage<Optional<ZLinkSpotInfo>> =
-            CompletableFuture.completedFuture(Optional.empty())
-
-        override fun list(): CompletionStage<List<ZLinkSpotInfo>> =
-            CompletableFuture.completedFuture(listOf())
-
-        override fun close(spotRid: RoutingId): CompletionStage<Boolean> =
-            CompletableFuture.completedFuture(true)
-
-        private fun result(): CompletionStage<ZLinkSpotCreateResult> =
-            CompletableFuture.completedFuture(
-                ZLinkSpotCreateResult(SPOT_RID, ZLinkSpotCreateState.CREATED, ZLinkMessage.empty()),
-            )
-    }
-
     private class TestActor : ZLinkActor {
         override fun actorId(): String = "actor-a"
 
@@ -361,20 +305,73 @@ class KotlinFrameworkExtensionsContractTest {
             throw UnsupportedOperationException("test actor has no runtime context")
     }
 
-    private class TestSpot : ZLinkSpot<TestActor> {
-        override fun context(): ZLinkSpotContext =
-            throw UnsupportedOperationException("test spot has no runtime context")
+    private class RecordingStableSpotManager : ZLinkSpotManager {
+        val createOptions = mutableListOf<String>()
+        lateinit var lastCreateCall: RecordingCreateCall
+        lateinit var lastGetOrCreateCall: RecordingGetOrCreateCall
 
-        override fun onJoinedActor(actor: TestActor): CompletionStage<Void> =
-            CompletableFuture.completedFuture(null)
+        override fun create(spotType: String): ZLinkSpotCreateCall =
+            RecordingCreateCall(createOptions).also { lastCreateCall = it }
 
-        override fun onLeaveActor(actor: TestActor): CompletionStage<Void> =
-            CompletableFuture.completedFuture(null)
+        override fun getOrCreate(
+            spotRid: RoutingId,
+            spotType: String,
+        ): ZLinkSpotGetOrCreateCall =
+            RecordingGetOrCreateCall().also { lastGetOrCreateCall = it }
+
+        override fun find(spotRid: RoutingId): CompletionStage<Optional<SpotRef>> =
+            CompletableFuture.completedFuture(Optional.of(SPOT_REF))
+
+        override fun close(spot: SpotRef): CompletionStage<Boolean> =
+            CompletableFuture.completedFuture(true)
+    }
+
+    private class RecordingCreateCall(
+        private val options: MutableList<String>,
+    ) : ZLinkSpotCreateCall {
+        private var submitted = false
+
+        override fun inMesh(meshName: String) = apply { options += meshName }
+        override fun request(request: Any) = apply {}
+        override fun request(request: ZLinkMessage) = apply {}
+        override fun placementProfile(placementProfile: String) =
+            apply { options += placementProfile }
+        override fun affinityKey(affinityKey: String) =
+            apply { options += affinityKey }
+        override fun timeout(timeout: Duration) =
+            apply { options += timeout.toString() }
+        override fun submit(): CompletionStage<ZLinkSpotCreateResult> {
+            check(!submitted)
+            submitted = true
+            return CompletableFuture.completedFuture(RESULT)
+        }
+    }
+
+    private class RecordingGetOrCreateCall : ZLinkSpotGetOrCreateCall {
+        private var submitted = false
+
+        override fun inMesh(meshName: String) = this
+        override fun request(request: Any) = this
+        override fun request(request: ZLinkMessage) = this
+        override fun placementProfile(placementProfile: String) = this
+        override fun affinityKey(affinityKey: String) = this
+        override fun timeout(timeout: Duration) = this
+        override fun submit(): CompletionStage<ZLinkSpotCreateResult> {
+            check(!submitted)
+            submitted = true
+            return CompletableFuture.completedFuture(RESULT)
+        }
     }
 
     companion object {
         private val NODE_RID: RoutingId = RoutingId.from(byteArrayOf(0x01))
         private val SPOT_RID: RoutingId = RoutingId.from(byteArrayOf(0x02))
+        private val SPOT_REF = SpotRef(SPOT_RID, 7, "mesh-a", NODE_RID)
+        private val RESULT = ZLinkSpotCreateResult(
+            SPOT_REF,
+            ZLinkSpotCreateState.CREATED,
+            ZLinkMessage.empty(),
+        )
         private val ACTOR_REF = ActorRef(NODE_RID, "actor-a", 7)
     }
 }

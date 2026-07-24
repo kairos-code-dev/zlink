@@ -97,7 +97,7 @@ implements ServiceAsyncInstanceActivationAuthority {
       || stored.checksumCrc32c !== crc32c(requestBytes)
       || stored.expiresAt.getTime() <= stored.storeNow.getTime()
     ) {
-      await relocationStore.deleteRelocation(stored.reference);
+      await this.deleteOrphan(stored.reference);
       throw new Error('Relocation Store returned an invalid creation request receipt.');
     }
     let reserved: Awaited<ReturnType<ZLinkObjectCreationStore['reserve']>>;
@@ -129,11 +129,11 @@ implements ServiceAsyncInstanceActivationAuthority {
         pendingCapacityDelta: 1
       });
     } catch (error) {
-      await relocationStore.deleteRelocation(stored.reference);
+      await this.deleteOrphan(stored.reference);
       throw error;
     }
     if (reserved.kind === 'alreadyExists') {
-      await relocationStore.deleteRelocation(stored.reference);
+      await this.deleteOrphan(stored.reference);
       return readyExisting(reserved.current, target);
     }
     if (
@@ -143,11 +143,11 @@ implements ServiceAsyncInstanceActivationAuthority {
       && reserved.current.allocation.stableType === target.stableType
       && reserved.current.allocation.state === 'pending'
     ) {
-      await relocationStore.deleteRelocation(stored.reference);
+      await this.deleteOrphan(stored.reference);
       return await this.awaitConcurrentActivation(target, activation.deadlineUnixMs);
     }
     if (reserved.kind !== 'reserved') {
-      await relocationStore.deleteRelocation(stored.reference);
+      await this.deleteOrphan(stored.reference);
       throw new Error(`Instance activation reservation failed: ${reserved.kind}.`);
     }
     const reservation: ServiceInstanceActivationReservation = {
@@ -366,7 +366,7 @@ implements ServiceAsyncInstanceActivationAuthority {
     if (stored.kind !== 'stored') {
       throw new Error(`Instance activation inbox release failed: ${stored.kind}.`);
     }
-    await this.options.relocationStore?.deleteRelocation({
+    await this.deleteOrphan({
       value: recovery.reference
     } as ZLinkRelocationReference);
     const { kind: _, ...snapshot } = stored;
@@ -392,7 +392,7 @@ implements ServiceAsyncInstanceActivationAuthority {
     });
     if (result.kind === 'aborted' || result.kind === 'alreadyAborted') {
       this.pending.delete(reservation.token);
-      await this.options.relocationStore?.deleteRelocation(pending.requestReference);
+      await this.deleteOrphan(pending.requestReference);
     } else {
       throw new Error(`Instance activation abort failed: ${result.kind}.`);
     }
@@ -402,6 +402,15 @@ implements ServiceAsyncInstanceActivationAuthority {
     const owner = this.options.owner();
     if (owner === undefined) throw new Error('Location owner lease is not ready.');
     return owner;
+  }
+
+  private async deleteOrphan(reference: ZLinkRelocationReference): Promise<void> {
+    try {
+      await this.options.relocationStore?.deleteRelocation(reference);
+    } catch {
+      // No authority publishes this root. Retention owns cleanup when
+      // best-effort deletion fails.
+    }
   }
 
   private async awaitConcurrentActivation(

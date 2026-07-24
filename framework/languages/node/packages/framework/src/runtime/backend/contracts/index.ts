@@ -25,6 +25,14 @@ import type {
   ZLinkSubmitResult
 } from '../../../contracts';
 import type { Message } from '../../../contracts/Common/Message';
+import type {
+  ServiceUserSpotOperationHandler,
+  ServiceUserSpotOperationResult
+} from '../../foundation/service-stateful-runtime';
+import type {
+  ServiceUserSpotCloseRecord,
+  ServiceUserSpotCreateRecord
+} from '../../foundation/service-stateful-wire-codec';
 
 export type ZLinkBackendSendFlags = SendFlagsValue;
 export type ZLinkBackendRecvFlags = RecvFlagsValue;
@@ -90,6 +98,17 @@ export interface ZLinkBackendMeshNode {
     sourceSpotRid?: string,
     metadata?: ReadonlyMap<string, string>
   ): MeshOperationId;
+  registerUserSpotOperationHandler(handler: ServiceUserSpotOperationHandler): void;
+  requestUserSpotCreate(
+    targetNodeRid: string,
+    request: Omit<ServiceUserSpotCreateRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ): Promise<ServiceUserSpotOperationResult>;
+  requestUserSpotClose(
+    targetNodeRid: string,
+    request: Omit<ServiceUserSpotCloseRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ): Promise<ServiceUserSpotOperationResult>;
   connectPeer(options: { readonly endpoint: string; readonly expectedRid?: unknown }): bigint;
   removePeerConnection(intentId: bigint): void;
   disconnectPeer(peerRid: unknown, lifecycleGeneration: bigint): void;

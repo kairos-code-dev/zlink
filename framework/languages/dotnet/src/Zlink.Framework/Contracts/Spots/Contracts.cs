@@ -57,61 +57,51 @@ public readonly record struct ZLinkSpotCreateResponse(bool Accepted, ZLinkMessag
     }
 }
 
-public readonly record struct ZLinkSpotCreateResult(
+public readonly record struct SpotRef(
     RoutingId SpotRid,
+    ulong ObjectGeneration,
+    string MeshName,
+    RoutingId NodeRid);
+
+public readonly record struct ZLinkSpotCreateResult(
+    SpotRef Spot,
     ZLinkSpotCreateState State,
     ZLinkMessage? Reply);
 
-public readonly record struct ZLinkSpotInfo(
-    RoutingId SpotRid);
+internal readonly record struct ZLinkSpotInfo(RoutingId SpotRid);
 
 public interface IZLinkSpotManager
 {
-    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot;
-
-    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot>(
-        ZLinkMessage request,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot;
-
-    ValueTask<ZLinkSpotCreateResult> CreateAsync<TSpot, TRequest>(
-        TRequest request,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot
-    {
-        return CreateAsync<TSpot>(ZLinkMessage.From(request), cancellationToken);
-    }
-
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
-        RoutingId spotRid,
-        ZLinkMessage request,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot;
-
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot, TRequest>(
-        RoutingId spotRid,
-        TRequest request,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot
-    {
-        return GetOrCreateAsync<TSpot>(spotRid, ZLinkMessage.From(request), cancellationToken);
-    }
-
-    ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
-        RoutingId spotRid,
-        CancellationToken cancellationToken = default)
-        where TSpot : IZLinkSpot;
-
-    ValueTask<ZLinkSpotInfo?> FindAsync(RoutingId spotRid,
+    IZLinkSpotCreateCall Create(string spotType);
+    IZLinkSpotGetOrCreateCall GetOrCreate(RoutingId spotRid, string spotType);
+    ValueTask<SpotRef?> FindAsync(RoutingId spotRid,
         CancellationToken cancellationToken = default);
-
-    ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
-        CancellationToken cancellationToken = default);
-
     ValueTask<bool> CloseAsync(
-        RoutingId spotRid,
+        SpotRef spot,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSpotCreateCall
+{
+    IZLinkSpotCreateCall InMesh(string meshName);
+    IZLinkSpotCreateCall Request(ZLinkMessage request);
+    IZLinkSpotCreateCall Request<TRequest>(TRequest request);
+    IZLinkSpotCreateCall PlacementProfile(string placementProfile);
+    IZLinkSpotCreateCall AffinityKey(string affinityKey);
+    IZLinkSpotCreateCall Timeout(TimeSpan timeout);
+    ValueTask<ZLinkSpotCreateResult> Async(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSpotGetOrCreateCall
+{
+    IZLinkSpotGetOrCreateCall InMesh(string meshName);
+    IZLinkSpotGetOrCreateCall Request(ZLinkMessage request);
+    IZLinkSpotGetOrCreateCall Request<TRequest>(TRequest request);
+    IZLinkSpotGetOrCreateCall PlacementProfile(string placementProfile);
+    IZLinkSpotGetOrCreateCall AffinityKey(string affinityKey);
+    IZLinkSpotGetOrCreateCall Timeout(TimeSpan timeout);
+    ValueTask<ZLinkSpotCreateResult> Async(
         CancellationToken cancellationToken = default);
 }
 

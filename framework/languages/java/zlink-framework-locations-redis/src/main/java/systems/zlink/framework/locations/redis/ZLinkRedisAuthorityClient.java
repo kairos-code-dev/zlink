@@ -413,7 +413,11 @@ final class ZLinkRedisAuthorityClient {
             redis.call('HGET', KEYS[1], 'stableType'),
             redis.call('HGET', KEYS[1], 'descriptorKey'),
             redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration'),
-            redis.call('HGET', KEYS[1], 'capacityDelta')}
+            redis.call('HGET', KEYS[1], 'capacityDelta'),
+            redis.call('HGET', KEYS[1], 'creationReservationId'),
+            redis.call('HGET', KEYS[1], 'creationIntentReference'),
+            redis.call('HGET', KEYS[1], 'creationIntentSha256'),
+            redis.call('HGET', KEYS[1], 'creationIntentEncodedSize')}
         """;
     private static final String CAS = PROLOGUE + """
         local capacityKeys = {
@@ -664,7 +668,11 @@ final class ZLinkRedisAuthorityClient {
                 redis.call('HGET', KEYS[1], 'stableType'),
                 redis.call('HGET', KEYS[1], 'descriptorKey'),
                 redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration'),
-                redis.call('HGET', KEYS[1], 'capacityDelta')}
+                redis.call('HGET', KEYS[1], 'capacityDelta'),
+                redis.call('HGET', KEYS[1], 'creationReservationId'),
+                redis.call('HGET', KEYS[1], 'creationIntentReference'),
+                redis.call('HGET', KEYS[1], 'creationIntentSha256'),
+                redis.call('HGET', KEYS[1], 'creationIntentEncodedSize')}
         end
         if not leaseIsLive(KEYS[6], ARGV[3], ARGV[4]) then
             return {'owner-stale', nowMs}
@@ -712,7 +720,11 @@ final class ZLinkRedisAuthorityClient {
             'descriptorLifecycleGeneration', ARGV[10],
             'allocationState', 'pending',
             'objectKind', ARGV[11],
-            'capacityDelta', ARGV[12])
+            'capacityDelta', ARGV[12],
+            'creationReservationId', reservationVersion,
+            'creationIntentReference', ARGV[5],
+            'creationIntentSha256', ARGV[6],
+            'creationIntentEncodedSize', ARGV[15])
         redis.call('HSET', KEYS[15],
             'state', 'reserved',
             'reservationId', reservationVersion,
@@ -819,6 +831,11 @@ final class ZLinkRedisAuthorityClient {
             'storeVersion', revision,
             'payload', ARGV[8],
             'allocationState', 'active')
+        redis.call('HDEL', KEYS[1],
+            'creationReservationId',
+            'creationIntentReference',
+            'creationIntentSha256',
+            'creationIntentEncodedSize')
         recordHistory(
             KEYS[1], KEYS[7], KEYS[8],
             KEYS[13], KEYS[15])
@@ -1907,7 +1924,8 @@ final class ZLinkRedisAuthorityClient {
                 objectKindToken(request.objectKind()),
                 Integer.toString(request.pendingCapacityDelta()),
                 request.placementProfile().orElse(""),
-                reservationId))
+                reservationId,
+                Integer.toString(request.creationIntentEncodedSize())))
             .thenApply(raw -> reserveResult(request, raw));
     }
 
@@ -2395,6 +2413,19 @@ final class ZLinkRedisAuthorityClient {
         List<Object> raw,
         int offset,
         Instant now) {
+        java.util.Optional<ZLinkPendingObjectCreation> pending =
+            java.util.Optional.empty();
+        if (raw.size() >= offset + 17) {
+            String reservationId = string(raw.get(offset + 13));
+            if (!reservationId.isEmpty()) {
+                pending = java.util.Optional.of(
+                    new ZLinkPendingObjectCreation(
+                        reservationId,
+                        string(raw.get(offset + 14)),
+                        decode(string(raw.get(offset + 15))),
+                        Math.toIntExact(number(raw.get(offset + 16)))));
+            }
+        }
         return new ZLinkAuthoritySnapshot(
             string(raw.get(offset)),
             decode(string(raw.get(offset + 1))),
@@ -2403,6 +2434,7 @@ final class ZLinkRedisAuthorityClient {
             string(raw.get(offset + 4)),
             number(raw.get(offset + 5)),
             allocation(raw, offset + 6),
+            pending,
             now);
     }
 

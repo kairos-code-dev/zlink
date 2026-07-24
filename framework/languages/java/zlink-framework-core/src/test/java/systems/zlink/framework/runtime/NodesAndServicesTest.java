@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -24,6 +25,9 @@ import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
+import systems.zlink.framework.actors.ZLinkRelocationPolicy;
+import systems.zlink.framework.configuration.ZLinkObjectPlacementOptions;
+import systems.zlink.framework.runtime.InMemoryRelocationStore;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMessageFlowObserver;
@@ -118,22 +122,34 @@ final class NodesAndServicesTest {
         DefaultZLinkFrameworkOptions options = routeMeshOptions();
         ZLinkInMemoryLocationStore sharedLocations = new ZLinkInMemoryLocationStore();
         options.addLocationStore(sharedLocations);
+        options.addRelocationStore(new InMemoryRelocationStore());
         var mesh = options.addRouteMesh("game-" + suffix)
             .setRoutingId(nodeRid)
             .listen("inproc://route-mesh-request-" + suffix);
         mesh.channelName("game");
-        mesh.addSpotFactory(RoomSpot.class);
-        mesh.addSpotFactory(ClientSpot.class);
+        mesh.objects().server()
+            .addSpotFactory(
+                "room",
+                RoomSpot.class,
+                new ZLinkObjectPlacementOptions(Set.of(), null, null),
+                ZLinkRelocationPolicy.disabled())
+            .addSpotFactory(
+                "client",
+                ClientSpot.class,
+                new ZLinkObjectPlacementOptions(Set.of(), null, null),
+                ZLinkRelocationPolicy.disabled());
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
             runtime.spotManager()
-                .getOrCreate(RoomSpot.class, roomRid)
+                .getOrCreate(roomRid, "room")
+                .submit()
                 .toCompletableFuture()
                 .get(2, TimeUnit.SECONDS);
 
             runtime.spotManager()
-                .create(ClientSpot.class)
+                .create("client")
+                .submit()
                 .toCompletableFuture()
                 .get(2, TimeUnit.SECONDS);
 

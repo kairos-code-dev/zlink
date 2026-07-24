@@ -538,6 +538,210 @@ actor_message_header_t decode_actor_message_header (
     return result;
 }
 
+std::vector<std::uint8_t> encode_user_spot_create_header (
+  const user_spot_create_header_t &record)
+{
+    if (record.correlation == 0
+        || (record.operation.high == 0 && record.operation.low == 0)
+        || record.source_node_generation == 0
+        || record.reservation.object_generation == 0
+        || record.reservation.authority_owner_generation == 0
+        || record.reservation.target_node_generation == 0
+        || record.reservation.target_owner_lease_generation == 0
+        || record.reservation.pending_capacity_delta == 0
+        || record.deadline_unix_ms == 0) {
+        throw service_wire_error_t (
+          "user Spot create contains a zero required fence");
+    }
+    std::vector<std::uint8_t> bytes{
+      magic[0], magic[1], wire_major,
+      static_cast<std::uint8_t> (command::userSpotCreate), 0};
+    append_u64 (bytes, record.correlation);
+    append_u64 (bytes, record.operation.high);
+    append_u64 (bytes, record.operation.low);
+    append_bytes8 (
+      bytes, record.source_node_routing_id, "source node RID");
+    append_u64 (bytes, record.source_node_generation);
+    append_bytes8 (bytes, record.spot_routing_id, "spot RID");
+    append_text8 (bytes, record.stable_type, "stable type");
+    append_text8 (
+      bytes, record.reservation.reservation_id, "reservation ID");
+    append_text16 (
+      bytes, record.reservation.expected_store_version,
+      "expected StoreVersion");
+    append_u64 (bytes, record.reservation.object_generation);
+    append_u64 (
+      bytes, record.reservation.authority_owner_generation);
+    append_bytes8 (
+      bytes, record.reservation.target_node_routing_id,
+      "target node RID");
+    append_u64 (bytes, record.reservation.target_node_generation);
+    append_text8 (
+      bytes, record.reservation.target_owner_id, "target owner ID");
+    append_u64 (
+      bytes, record.reservation.target_owner_lease_generation);
+    append_u32 (bytes, record.reservation.pending_capacity_delta);
+    append_u64 (bytes, record.deadline_unix_ms);
+    return bytes;
+}
+
+user_spot_create_header_t decode_user_spot_create_header (
+  std::span<const std::uint8_t> bytes)
+{
+    const auto header = decode_header (bytes);
+    if (header.kind != command::userSpotCreate || header.flags != 0) {
+        throw service_wire_error_t (
+          "record is not a User Spot create command");
+    }
+    std::size_t offset = prefix_size;
+    user_spot_create_header_t record;
+    record.correlation = read_u64 (bytes, offset);
+    record.operation.high = read_u64 (bytes, offset);
+    record.operation.low = read_u64 (bytes, offset);
+    record.source_node_routing_id =
+      read_bytes8 (bytes, offset, "source node RID");
+    record.source_node_generation = read_u64 (bytes, offset);
+    record.spot_routing_id = read_bytes8 (bytes, offset, "spot RID");
+    record.stable_type = read_text8 (bytes, offset, "stable type");
+    record.reservation.reservation_id =
+      read_text8 (bytes, offset, "reservation ID");
+    record.reservation.expected_store_version =
+      read_text16 (bytes, offset, "expected StoreVersion");
+    record.reservation.object_generation = read_u64 (bytes, offset);
+    record.reservation.authority_owner_generation =
+      read_u64 (bytes, offset);
+    record.reservation.target_node_routing_id =
+      read_bytes8 (bytes, offset, "target node RID");
+    record.reservation.target_node_generation =
+      read_u64 (bytes, offset);
+    record.reservation.target_owner_id =
+      read_text8 (bytes, offset, "target owner ID");
+    record.reservation.target_owner_lease_generation =
+      read_u64 (bytes, offset);
+    record.reservation.pending_capacity_delta =
+      read_u32 (bytes, offset);
+    record.deadline_unix_ms = read_u64 (bytes, offset);
+    if (offset != bytes.size ()) {
+        throw service_wire_error_t (
+          "User Spot create command has trailing bytes");
+    }
+    if (record.correlation == 0
+        || (record.operation.high == 0 && record.operation.low == 0)
+        || record.source_node_generation == 0
+        || record.reservation.object_generation == 0
+        || record.reservation.authority_owner_generation == 0
+        || record.reservation.target_node_generation == 0
+        || record.reservation.target_owner_lease_generation == 0
+        || record.reservation.pending_capacity_delta == 0
+        || record.deadline_unix_ms == 0) {
+        throw service_wire_error_t (
+          "user Spot create contains a zero required fence");
+    }
+    return record;
+}
+
+std::vector<std::uint8_t> encode_user_spot_close_header (
+  const user_spot_close_header_t &record)
+{
+    if (record.correlation == 0
+        || (record.operation.high == 0 && record.operation.low == 0)
+        || record.source_node_generation == 0
+        || record.target.object_generation == 0
+        || record.target.target_node_generation == 0
+        || record.target.authority_owner_generation == 0
+        || record.deadline_unix_ms == 0) {
+        throw service_wire_error_t (
+          "user Spot close contains a zero required fence");
+    }
+    std::vector<std::uint8_t> bytes{
+      magic[0], magic[1], wire_major,
+      static_cast<std::uint8_t> (command::userSpotClose), 0};
+    append_u64 (bytes, record.correlation);
+    append_u64 (bytes, record.operation.high);
+    append_u64 (bytes, record.operation.low);
+    append_bytes8 (
+      bytes, record.source_node_routing_id, "source node RID");
+    append_u64 (bytes, record.source_node_generation);
+    std::vector<std::uint8_t> fence;
+    append_bytes8 (fence, record.target.spot_routing_id, "spot RID");
+    append_u64 (fence, record.target.object_generation);
+    append_bytes8 (
+      fence, record.target.target_node_routing_id, "target node RID");
+    append_u64 (fence, record.target.target_node_generation);
+    append_u64 (fence, record.target.authority_owner_generation);
+    append_text16 (
+      fence, record.target.expected_store_version,
+      "expected StoreVersion");
+    if (fence.size () > std::numeric_limits<std::uint16_t>::max ()) {
+        throw service_wire_error_t ("User Spot close fence is too large");
+    }
+    bytes.push_back (1);
+    append_u16 (bytes, static_cast<std::uint16_t> (fence.size ()));
+    bytes.insert (bytes.end (), fence.begin (), fence.end ());
+    append_u64 (bytes, record.deadline_unix_ms);
+    return bytes;
+}
+
+user_spot_close_header_t decode_user_spot_close_header (
+  std::span<const std::uint8_t> bytes)
+{
+    const auto header = decode_header (bytes);
+    if (header.kind != command::userSpotClose || header.flags != 0) {
+        throw service_wire_error_t (
+          "record is not a User Spot close command");
+    }
+    std::size_t offset = prefix_size;
+    user_spot_close_header_t record;
+    record.correlation = read_u64 (bytes, offset);
+    record.operation.high = read_u64 (bytes, offset);
+    record.operation.low = read_u64 (bytes, offset);
+    record.source_node_routing_id =
+      read_bytes8 (bytes, offset, "source node RID");
+    record.source_node_generation = read_u64 (bytes, offset);
+    if (offset >= bytes.size () || bytes[offset++] != 1) {
+        throw service_wire_error_t (
+          "unsupported User Spot close fence version");
+    }
+    const auto fence_size = read_u16 (bytes, offset);
+    if (bytes.size () - offset < fence_size) {
+        throw service_wire_error_t (
+          "truncated User Spot close fence");
+    }
+    const auto fence_end = offset + fence_size;
+    const auto fence_bytes = bytes.first (fence_end);
+    record.target.spot_routing_id =
+      read_bytes8 (fence_bytes, offset, "spot RID");
+    record.target.object_generation = read_u64 (fence_bytes, offset);
+    record.target.target_node_routing_id =
+      read_bytes8 (fence_bytes, offset, "target node RID");
+    record.target.target_node_generation =
+      read_u64 (fence_bytes, offset);
+    record.target.authority_owner_generation =
+      read_u64 (fence_bytes, offset);
+    record.target.expected_store_version =
+      read_text16 (fence_bytes, offset, "expected StoreVersion");
+    if (offset != fence_end) {
+        throw service_wire_error_t (
+          "User Spot close fence has trailing bytes");
+    }
+    record.deadline_unix_ms = read_u64 (bytes, offset);
+    if (offset != bytes.size ()) {
+        throw service_wire_error_t (
+          "User Spot close command has trailing bytes");
+    }
+    if (record.correlation == 0
+        || (record.operation.high == 0 && record.operation.low == 0)
+        || record.source_node_generation == 0
+        || record.target.object_generation == 0
+        || record.target.target_node_generation == 0
+        || record.target.authority_owner_generation == 0
+        || record.deadline_unix_ms == 0) {
+        throw service_wire_error_t (
+          "user Spot close contains a zero required fence");
+    }
+    return record;
+}
+
 service_wire_header_t decode_header (std::span<const std::uint8_t> bytes)
 {
     if (bytes.size () < prefix_size) {
@@ -1034,7 +1238,8 @@ std::vector<std::uint8_t> encode_reply_header (
       terminal_result == 102 || (terminal_result >= 104
                                  && terminal_result <= 107);
     const auto valid_failure =
-      failure_code <= 22 || failure_code == 35;
+      failure_code <= 22
+      || (failure_code >= 33 && failure_code <= 35);
     if ((terminal_result != 0
          && (terminal_result < 101 || terminal_result > 113))
         || !valid_failure || (terminal_result == 0 && failure_code != 0)
@@ -1064,7 +1269,8 @@ reply_header_t decode_reply_header (std::span<const std::uint8_t> bytes)
     const auto failure = read_u32 (bytes, offset);
     const auto typed_failure =
       terminal == 102 || (terminal >= 104 && terminal <= 107);
-    const auto valid_failure = failure <= 22 || failure == 35;
+    const auto valid_failure =
+      failure <= 22 || (failure >= 33 && failure <= 35);
     if (correlation == 0
         || (terminal != 0 && (terminal < 101 || terminal > 113))
         || !valid_failure || (terminal == 0 && failure != 0)
@@ -1073,6 +1279,108 @@ reply_header_t decode_reply_header (std::span<const std::uint8_t> bytes)
         throw service_wire_error_t ("invalid reply terminal fields");
     }
     return {correlation, terminal, failure};
+}
+
+std::vector<std::uint8_t> encode_user_spot_create_reply (
+  std::uint64_t correlation,
+  std::uint32_t terminal_result,
+  std::uint32_t failure_code,
+  user_spot_create_result_t result,
+  const std::vector<std::uint8_t> &spot_routing_id,
+  std::uint64_t object_generation)
+{
+    auto bytes =
+      encode_reply_header (correlation, terminal_result, failure_code);
+    if (terminal_result != 0) {
+        return bytes;
+    }
+    const auto result_value = static_cast<std::uint8_t> (result);
+    if (result_value < 1 || result_value > 3
+        || object_generation == 0) {
+        throw service_wire_error_t (
+          "invalid User Spot create success reply");
+    }
+    bytes.push_back (result_value);
+    append_bytes8 (bytes, spot_routing_id, "spot RID");
+    append_u64 (bytes, object_generation);
+    return bytes;
+}
+
+user_spot_create_reply_t decode_user_spot_create_reply (
+  std::span<const std::uint8_t> bytes)
+{
+    if (bytes.size () < prefix_size + 16) {
+        throw service_wire_error_t (
+          "truncated User Spot create reply");
+    }
+    const auto header =
+      decode_reply_header (bytes.first (prefix_size + 16));
+    user_spot_create_reply_t reply;
+    reply.header = header;
+    if (header.terminal_result != 0) {
+        if (bytes.size () != prefix_size + 16) {
+            throw service_wire_error_t (
+              "failed User Spot create reply has a tail");
+        }
+        return reply;
+    }
+    std::size_t offset = prefix_size + 16;
+    if (offset >= bytes.size () || bytes[offset] < 1
+        || bytes[offset] > 3) {
+        throw service_wire_error_t (
+          "invalid User Spot create result");
+    }
+    reply.result =
+      static_cast<user_spot_create_result_t> (bytes[offset++]);
+    reply.spot_routing_id =
+      read_bytes8 (bytes, offset, "spot RID");
+    reply.object_generation = read_u64 (bytes, offset);
+    if (reply.object_generation == 0 || offset != bytes.size ()) {
+        throw service_wire_error_t (
+          "invalid User Spot create success reply");
+    }
+    return reply;
+}
+
+std::vector<std::uint8_t> encode_user_spot_close_reply (
+  std::uint64_t correlation,
+  std::uint32_t terminal_result,
+  std::uint32_t failure_code,
+  bool closed)
+{
+    auto bytes =
+      encode_reply_header (correlation, terminal_result, failure_code);
+    if (terminal_result == 0) {
+        bytes.push_back (closed ? 1 : 0);
+    }
+    return bytes;
+}
+
+user_spot_close_reply_t decode_user_spot_close_reply (
+  std::span<const std::uint8_t> bytes)
+{
+    if (bytes.size () < prefix_size + 16) {
+        throw service_wire_error_t (
+          "truncated User Spot close reply");
+    }
+    const auto header =
+      decode_reply_header (bytes.first (prefix_size + 16));
+    user_spot_close_reply_t reply;
+    reply.header = header;
+    if (header.terminal_result != 0) {
+        if (bytes.size () != prefix_size + 16) {
+            throw service_wire_error_t (
+              "failed User Spot close reply has a tail");
+        }
+        return reply;
+    }
+    if (bytes.size () != prefix_size + 17
+        || (bytes.back () != 0 && bytes.back () != 1)) {
+        throw service_wire_error_t (
+          "invalid User Spot close success reply");
+    }
+    reply.closed = bytes.back () == 1;
+    return reply;
 }
 
 std::vector<std::uint8_t> encode_liveness (command kind, std::uint64_t probe_id)

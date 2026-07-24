@@ -103,7 +103,9 @@ final class ZLinkFrameworkLocationSubsystem {
                 registration.locations().options().spotRouterChannels(),
                 storeLocationResolvers);
         ZLinkStoreSpotHandleResolver locationSpotHandleResolver =
-            new ZLinkStoreSpotHandleResolver(locationAddressResolvers);
+            new ZLinkStoreSpotHandleResolver(
+                locationAddressResolvers,
+                locationStores.authorityStore());
 
         runtimeHandlers.add(ZLinkLocationRuntime.class, locationRuntime);
         runtimeHandlers.add(ZLinkLocationRuntimeQuery.class, locationRuntimeQuery);

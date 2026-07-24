@@ -2,6 +2,7 @@ package systems.zlink.framework.runtime.binding;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -46,6 +47,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
+import systems.zlink.framework.runtime.internal.backend.ZLinkUserSpotOperationException;
 import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestCallback;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
@@ -66,6 +68,9 @@ import systems.zlink.framework.runtime.service.ZLinkServiceWireFrame;
  */
 final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     private static final int PREFIX_BYTES = 5;
+    private static final int USER_SPOT_TERMINAL_CAPACITY = 4096;
+    private static final long USER_SPOT_TERMINAL_RETENTION_MS =
+        Duration.ofMinutes(5).toMillis();
 
     private final String meshName;
     private final ZLinkJavaRawServicePort port;
@@ -114,6 +119,10 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
     private volatile ZLinkServiceMailbox mailbox;
     private volatile ZLinkServiceTopologyRegistry topology;
     private volatile ZLinkServiceNodeDescriptor localDescriptor;
+    private volatile ZLinkInternalMeshNode.UserSpotOperationHandler
+        userSpotOperationHandler;
+    private final Map<UserSpotOperationKey, UserSpotTerminalSlot>
+        userSpotTerminals = new ConcurrentHashMap<>();
 
     ZLinkJavaRawMeshNode(Context context, String meshName) {
         if (meshName == null || meshName.isBlank()) {
@@ -269,13 +278,14 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
 
     @Override
     public MeshNodeStatus status() {
+        ZLinkServiceNodeDescriptor descriptor = localDescriptor;
         return new MeshNodeStatus(
             state,
             routingId,
             meshName,
             bindEndpoint,
-            1,
-            1,
+            descriptor == null ? 0 : descriptor.lifecycleGeneration(),
+            descriptor == null ? 0 : descriptor.descriptorRevision(),
             channelWeights.size(),
             peerIntents.size(),
             admittedPeerChannels.size(),
@@ -953,6 +963,318 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         return completion;
     }
 
+    @Override
+    public void setUserSpotOperationHandler(
+        ZLinkInternalMeshNode.UserSpotOperationHandler handler) {
+        userSpotOperationHandler =
+            java.util.Objects.requireNonNull(handler, "handler");
+    }
+
+    @Override
+    public CompletionStage<ZLinkInternalMeshNode.UserSpotCreateResponse>
+        requestUserSpotCreate(
+            RoutingId targetNodeRid,
+            ZLinkInternalMeshNode.UserSpotCreateIntent intent,
+            Duration timeout) {
+        return requestUserSpotCreate(
+            targetNodeRid, intent, timeout, 0, allocateCorrelation());
+    }
+
+    CompletionStage<ZLinkInternalMeshNode.UserSpotCreateResponse>
+        requestUserSpotCreate(
+            RoutingId targetNodeRid,
+            ZLinkInternalMeshNode.UserSpotCreateIntent intent,
+            Duration timeout,
+            long operationHigh,
+            long operationLow) {
+        java.util.Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+        java.util.Objects.requireNonNull(intent, "intent");
+        if (targetNodeRid.equals(routingId)) {
+            long localGeneration = lifecycleGeneration();
+            if (intent.reservation().targetNodeGeneration()
+                    != localGeneration
+                || userSpotOperationHandler == null) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "local User Spot create handler or lifecycle is unavailable"
+                            + " [expectedGeneration="
+                            + intent.reservation().targetNodeGeneration()
+                            + ", localGeneration=" + localGeneration
+                            + ", handler="
+                            + (userSpotOperationHandler != null) + "]"));
+            }
+            return userSpotOperationHandler.create(
+                new ZLinkInternalMeshNode.UserSpotCreateRequest(
+                    routingId,
+                    localGeneration,
+                    operationHigh,
+                    operationLow,
+                    intent));
+        }
+        Optional<ZLinkServiceTopologyRegistry.Peer> peer =
+            topology == null
+                ? Optional.empty()
+                : topology.peer(targetNodeRid);
+        if (peer.isEmpty() || localDescriptor == null
+            || !intent.reservation().targetNodeRid()
+                .equals(targetNodeRid)
+            || intent.reservation().targetNodeGeneration()
+                != peer.orElseThrow().descriptor()
+                    .lifecycleGeneration()) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "remote User Spot create target is not connected"));
+        }
+        long correlation = allocateCorrelation();
+        ZLinkServiceOperationRegistry.Operation<
+            ZLinkInternalMeshNode.UserSpotCreateResponse> operation =
+                operations.register(timeout);
+        ZLinkServiceM6BWireCodec.UserSpotCreate command =
+            new ZLinkServiceM6BWireCodec.UserSpotCreate(
+                correlation,
+                operationHigh,
+                operationLow,
+                routingId,
+                localDescriptor.lifecycleGeneration(),
+                intent.spotRid(),
+                intent.stableType(),
+                intent.reservation(),
+                intent.deadlineUnixMs());
+        AtomicBoolean terminal = new AtomicBoolean();
+        boolean submitted = port.request(
+            requireStarted(),
+            targetNodeRid,
+            List.of(statefulWire.encodeUserSpotCreateHeader(command)),
+            timeout,
+            (result, replyFrames) -> {
+                if (!terminal.compareAndSet(false, true)) {
+                    return;
+                }
+                completeUserSpotCreate(
+                    operation.id(),
+                    correlation,
+                    result,
+                    replyFrames);
+            });
+        if (!submitted && terminal.compareAndSet(false, true)) {
+            operations.completeExceptionally(
+                operation.id(),
+                new IllegalStateException(
+                    "remote User Spot create was not submitted"));
+        }
+        return operation.completion();
+    }
+
+    @Override
+    public CompletionStage<ZLinkInternalMeshNode.UserSpotCloseResponse>
+        requestUserSpotClose(
+            RoutingId targetNodeRid,
+            ZLinkInternalMeshNode.UserSpotCloseIntent intent,
+            Duration timeout) {
+        java.util.Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+        java.util.Objects.requireNonNull(intent, "intent");
+        if (targetNodeRid.equals(routingId)) {
+            long localGeneration = lifecycleGeneration();
+            if (intent.target().targetNodeGeneration()
+                    != localGeneration
+                || userSpotOperationHandler == null) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "local User Spot close handler or lifecycle is unavailable"
+                            + " [expectedGeneration="
+                            + intent.target().targetNodeGeneration()
+                            + ", localGeneration=" + localGeneration
+                            + ", handler="
+                            + (userSpotOperationHandler != null) + "]"));
+            }
+            long operation = allocateCorrelation();
+            return userSpotOperationHandler.close(
+                new ZLinkInternalMeshNode.UserSpotCloseRequest(
+                    routingId,
+                    localGeneration,
+                    0,
+                    operation,
+                    intent));
+        }
+        Optional<ZLinkServiceTopologyRegistry.Peer> peer =
+            topology == null
+                ? Optional.empty()
+                : topology.peer(targetNodeRid);
+        if (peer.isEmpty() || localDescriptor == null
+            || !intent.target().targetNodeRid().equals(targetNodeRid)
+            || intent.target().targetNodeGeneration()
+                != peer.orElseThrow().descriptor()
+                    .lifecycleGeneration()) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "remote User Spot close target is not connected"));
+        }
+        long correlation = allocateCorrelation();
+        ZLinkServiceOperationRegistry.Operation<
+            ZLinkInternalMeshNode.UserSpotCloseResponse> operation =
+                operations.register(timeout);
+        ZLinkServiceM6BWireCodec.UserSpotClose command =
+            new ZLinkServiceM6BWireCodec.UserSpotClose(
+                correlation,
+                0,
+                correlation,
+                routingId,
+                localDescriptor.lifecycleGeneration(),
+                intent.target(),
+                intent.deadlineUnixMs());
+        AtomicBoolean terminal = new AtomicBoolean();
+        boolean submitted = port.request(
+            requireStarted(),
+            targetNodeRid,
+            List.of(statefulWire.encodeUserSpotCloseHeader(command)),
+            timeout,
+            (result, replyFrames) -> {
+                if (!terminal.compareAndSet(false, true)) {
+                    return;
+                }
+                completeUserSpotClose(
+                    operation.id(),
+                    correlation,
+                    result,
+                    replyFrames);
+            });
+        if (!submitted && terminal.compareAndSet(false, true)) {
+            operations.completeExceptionally(
+                operation.id(),
+                new IllegalStateException(
+                    "remote User Spot close was not submitted"));
+        }
+        return operation.completion();
+    }
+
+    @Override
+    public void rememberSpotAuthority(
+        ZLinkInternalMeshNode.SpotAuthorityRoute route) {
+        ((ZLinkJavaRawSpotNode) spotNode()).rememberSpotAuthority(
+            route.targetNodeRid(),
+            route.spotRid(),
+            route.objectGeneration(),
+            route.authorityOwnerGeneration());
+    }
+
+    @Override
+    public void forgetSpotAuthority(
+        ZLinkInternalMeshNode.SpotAuthorityRoute route) {
+        ((ZLinkJavaRawSpotNode) spotNode()).forgetSpotAuthority(
+            route.targetNodeRid(),
+            route.spotRid(),
+            route.objectGeneration(),
+            route.authorityOwnerGeneration());
+    }
+
+    @Override
+    public void registerInstanceIntent(
+        String stableType,
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
+        ((ZLinkJavaRawSpotNode) spotNode())
+            .reconcileInstanceSpotAuthority(stableType, route);
+    }
+
+    @Override
+    public void forgetInstanceIntent(
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
+        ((ZLinkJavaRawSpotNode) spotNode())
+            .forgetInstanceSpotAuthority(route);
+    }
+
+    private void completeUserSpotCreate(
+        UUID operationId,
+        long correlation,
+        systems.zlink.contracts.sockets.RequestResult result,
+        List<byte[]> frames) {
+        if (result != systems.zlink.contracts.sockets.RequestResult.OK) {
+            operations.completeExceptionally(
+                operationId,
+                new IllegalStateException(
+                    "remote User Spot create transport failed: "
+                        + result));
+            return;
+        }
+        try {
+            if (frames.isEmpty() || frames.size() > 2) {
+                throw new IllegalArgumentException(
+                    "invalid User Spot create reply frame count");
+            }
+            ZLinkServiceM6BWireCodec.UserSpotCreateReply reply =
+                statefulWire.decodeUserSpotCreateReply(
+                    frames.getFirst());
+            if (reply.correlation() != correlation
+                || reply.terminalResult() != 0
+                || reply.failureCode() != 0
+                || reply.success() == null
+                || (reply.success().result()
+                        == ZLinkServiceM6BWireCodec
+                            .UserSpotCreateResult.EXISTING
+                    && frames.size() != 1)) {
+                throw new IllegalStateException(
+                    "remote User Spot create was rejected");
+            }
+            List<Message> applicationReply;
+            if (frames.size() == 2) {
+                ZLinkServiceM6AWireCodec.ApplicationPayload payload =
+                    wire.decodeApplicationPayload(frames.get(1));
+                applicationReply = List.of(
+                    Message.from(
+                        payload.packetName().getBytes(
+                            StandardCharsets.UTF_8)),
+                    Message.from(payload.payload()));
+            } else {
+                applicationReply = List.of();
+            }
+            operations.complete(
+                operationId,
+                new ZLinkInternalMeshNode.UserSpotCreateResponse(
+                    reply.success().result(),
+                    reply.success().spotRid(),
+                    reply.success().objectGeneration(),
+                    applicationReply));
+        } catch (RuntimeException failure) {
+            operations.completeExceptionally(operationId, failure);
+        }
+    }
+
+    private void completeUserSpotClose(
+        UUID operationId,
+        long correlation,
+        systems.zlink.contracts.sockets.RequestResult result,
+        List<byte[]> frames) {
+        if (result != systems.zlink.contracts.sockets.RequestResult.OK) {
+            operations.completeExceptionally(
+                operationId,
+                new IllegalStateException(
+                    "remote User Spot close transport failed: "
+                        + result));
+            return;
+        }
+        try {
+            if (frames.size() != 1) {
+                throw new IllegalArgumentException(
+                    "invalid User Spot close reply frame count");
+            }
+            ZLinkServiceM6BWireCodec.UserSpotCloseReply reply =
+                statefulWire.decodeUserSpotCloseReply(
+                    frames.getFirst());
+            if (reply.correlation() != correlation
+                || reply.terminalResult() != 0
+                || reply.failureCode() != 0
+                || reply.closed() == null) {
+                throw new IllegalStateException(
+                    "remote User Spot close was rejected");
+            }
+            operations.complete(
+                operationId,
+                new ZLinkInternalMeshNode.UserSpotCloseResponse(
+                    reply.closed()));
+        } catch (RuntimeException failure) {
+            operations.completeExceptionally(operationId, failure);
+        }
+    }
+
     boolean sendBoundSession(
         ZLinkJavaRawSpotNode.RemoteStreamBinding binding,
         List<Message> parts) {
@@ -1278,6 +1600,16 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             return;
         }
         if (command
+            == ServiceWireConstants.COMMAND_USER_SPOT_CREATE) {
+            dispatchUserSpotCreate(inbound);
+            return;
+        }
+        if (command
+            == ServiceWireConstants.COMMAND_USER_SPOT_CLOSE) {
+            dispatchUserSpotClose(inbound);
+            return;
+        }
+        if (command
             == ServiceWireConstants.COMMAND_BOUND_SESSION_BIND) {
             dispatchBoundSessionBind(inbound);
             return;
@@ -1576,6 +1908,355 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         if (!accepted) {
             messages.forEach(Message::close);
             replyInstanceFailure(inbound, header, 102, 1);
+        }
+    }
+
+    private void dispatchUserSpotCreate(
+        ZLinkJavaRawServicePort.Inbound inbound) {
+        if (inbound.frames().size() != 1
+            || inbound.requestSequence() == null) {
+            return;
+        }
+        ZLinkServiceM6BWireCodec.UserSpotCreate command;
+        try {
+            command = statefulWire.decodeUserSpotCreateHeader(
+                inbound.frames().getFirst());
+        } catch (RuntimeException invalid) {
+            return;
+        }
+        Optional<ZLinkServiceTopologyRegistry.Peer> source =
+            topology == null
+                ? Optional.empty()
+                : topology.peer(inbound.source());
+        ZLinkInternalMeshNode.UserSpotOperationHandler handler =
+            userSpotOperationHandler;
+        if (source.isEmpty()
+            || handler == null
+            || !command.sourceNodeRid().equals(inbound.source())
+            || command.sourceNodeGeneration()
+                != source.orElseThrow().descriptor()
+                    .lifecycleGeneration()
+            || localDescriptor == null
+            || !command.reservation().targetNodeRid()
+                .equals(routingId)
+            || command.reservation().targetNodeGeneration()
+                != localDescriptor.lifecycleGeneration()) {
+            replyUserSpotCreateFailure(inbound, command, 107, 33);
+            return;
+        }
+        UserSpotOperationKey operationKey = new UserSpotOperationKey(
+            command.sourceNodeRid(),
+            command.sourceNodeGeneration(),
+            command.operationHigh(),
+            command.operationLow());
+        UserSpotTerminalAdmission admission = admitUserSpotOperation(
+            operationKey,
+            fingerprint(statefulWire.encodeUserSpotCreateHeader(
+                new ZLinkServiceM6BWireCodec.UserSpotCreate(
+                    1,
+                    command.operationHigh(),
+                    command.operationLow(),
+                    command.sourceNodeRid(),
+                    command.sourceNodeGeneration(),
+                    command.spotRid(),
+                    command.stableType(),
+                    command.reservation(),
+                    command.deadlineUnixMs()))),
+            command.deadlineUnixMs());
+        if (admission.fingerprintMismatch()) {
+            replyUserSpotCreateFailure(inbound, command, 110, 0);
+            return;
+        }
+        if (admission.expiredNew()) {
+            replyUserSpotCreateFailure(inbound, command, 101, 0);
+            return;
+        }
+        if (admission.slot() == null) {
+            replyUserSpotCreateFailure(inbound, command, 108, 0);
+            return;
+        }
+        if (!admission.owner()) {
+            admission.slot().terminal.whenComplete(
+                (reply, failure) -> sendUserSpotCreateTerminal(
+                    inbound, command, reply));
+            return;
+        }
+        AtomicBoolean terminal = new AtomicBoolean();
+        CompletionStage<ZLinkInternalMeshNode.UserSpotCreateResponse>
+            completion;
+        try {
+            completion = handler.create(
+                new ZLinkInternalMeshNode.UserSpotCreateRequest(
+                    command.sourceNodeRid(),
+                    command.sourceNodeGeneration(),
+                    command.operationHigh(),
+                    command.operationLow(),
+                    new ZLinkInternalMeshNode.UserSpotCreateIntent(
+                        command.spotRid(),
+                        command.stableType(),
+                        command.reservation(),
+                        command.deadlineUnixMs())));
+        } catch (RuntimeException failure) {
+            completeUserSpotCreateTerminal(
+                admission.slot(), inbound, command, null, failure);
+            return;
+        }
+        completion.whenComplete((result, failure) -> {
+            if (!terminal.compareAndSet(false, true)) {
+                closeUserSpotApplicationReply(result);
+                return;
+            }
+            if (failure != null || result == null
+                || !result.spotRid().equals(command.spotRid())
+                || result.objectGeneration()
+                    != command.reservation().objectGeneration()
+                || (result.result()
+                        == ZLinkServiceM6BWireCodec
+                            .UserSpotCreateResult.EXISTING
+                    && !result.applicationReply().isEmpty())) {
+                completeUserSpotCreateTerminal(
+                    admission.slot(), inbound, command, result, failure);
+                return;
+            }
+            try {
+                byte[] applicationFrame = null;
+                if (!result.applicationReply().isEmpty()) {
+                    applicationFrame = wire.encodeApplicationPayload(
+                        applicationPayload(
+                            result.applicationReply()));
+                }
+                UserSpotTerminalReply reply = new UserSpotTerminalReply(
+                    0,
+                    0,
+                    new ZLinkServiceM6BWireCodec.UserSpotCreateTerminal(
+                        result.result(),
+                        result.spotRid(),
+                        result.objectGeneration()),
+                    null,
+                    applicationFrame);
+                admission.slot().terminal.complete(reply);
+                sendUserSpotCreateTerminal(inbound, command, reply);
+            } finally {
+                closeUserSpotApplicationReply(result);
+            }
+        });
+    }
+
+    private void dispatchUserSpotClose(
+        ZLinkJavaRawServicePort.Inbound inbound) {
+        if (inbound.frames().size() != 1
+            || inbound.requestSequence() == null) {
+            return;
+        }
+        ZLinkServiceM6BWireCodec.UserSpotClose command;
+        try {
+            command = statefulWire.decodeUserSpotCloseHeader(
+                inbound.frames().getFirst());
+        } catch (RuntimeException invalid) {
+            return;
+        }
+        Optional<ZLinkServiceTopologyRegistry.Peer> source =
+            topology == null
+                ? Optional.empty()
+                : topology.peer(inbound.source());
+        ZLinkInternalMeshNode.UserSpotOperationHandler handler =
+            userSpotOperationHandler;
+        if (source.isEmpty()
+            || handler == null
+            || !command.sourceNodeRid().equals(inbound.source())
+            || command.sourceNodeGeneration()
+                != source.orElseThrow().descriptor()
+                    .lifecycleGeneration()
+            || localDescriptor == null
+            || !command.target().targetNodeRid().equals(routingId)
+            || command.target().targetNodeGeneration()
+                != localDescriptor.lifecycleGeneration()) {
+            replyUserSpotCloseFailure(inbound, command, 107, 33);
+            return;
+        }
+        UserSpotOperationKey operationKey = new UserSpotOperationKey(
+            command.sourceNodeRid(),
+            command.sourceNodeGeneration(),
+            command.operationHigh(),
+            command.operationLow());
+        UserSpotTerminalAdmission admission = admitUserSpotOperation(
+            operationKey,
+            fingerprint(statefulWire.encodeUserSpotCloseHeader(
+                new ZLinkServiceM6BWireCodec.UserSpotClose(
+                    1,
+                    command.operationHigh(),
+                    command.operationLow(),
+                    command.sourceNodeRid(),
+                    command.sourceNodeGeneration(),
+                    command.target(),
+                    command.deadlineUnixMs()))),
+            command.deadlineUnixMs());
+        if (admission.fingerprintMismatch()) {
+            replyUserSpotCloseFailure(inbound, command, 110, 0);
+            return;
+        }
+        if (admission.expiredNew()) {
+            replyUserSpotCloseFailure(inbound, command, 101, 0);
+            return;
+        }
+        if (admission.slot() == null) {
+            replyUserSpotCloseFailure(inbound, command, 108, 0);
+            return;
+        }
+        if (!admission.owner()) {
+            admission.slot().terminal.whenComplete(
+                (reply, failure) -> sendUserSpotCloseTerminal(
+                    inbound, command, reply));
+            return;
+        }
+        AtomicBoolean terminal = new AtomicBoolean();
+        CompletionStage<ZLinkInternalMeshNode.UserSpotCloseResponse>
+            completion;
+        try {
+            completion = handler.close(
+                new ZLinkInternalMeshNode.UserSpotCloseRequest(
+                    command.sourceNodeRid(),
+                    command.sourceNodeGeneration(),
+                    command.operationHigh(),
+                    command.operationLow(),
+                    new ZLinkInternalMeshNode.UserSpotCloseIntent(
+                        command.target(),
+                        command.deadlineUnixMs())));
+        } catch (RuntimeException failure) {
+            UserSpotTerminalReply reply = terminalFailure(failure);
+            admission.slot().terminal.complete(reply);
+            sendUserSpotCloseTerminal(inbound, command, reply);
+            return;
+        }
+        completion.whenComplete((result, failure) -> {
+            if (!terminal.compareAndSet(false, true)) {
+                return;
+            }
+            if (failure != null || result == null) {
+                UserSpotTerminalReply reply = terminalFailure(failure);
+                admission.slot().terminal.complete(reply);
+                sendUserSpotCloseTerminal(inbound, command, reply);
+                return;
+            }
+            UserSpotTerminalReply reply = new UserSpotTerminalReply(
+                0, 0, null, result.closed(), null);
+            admission.slot().terminal.complete(reply);
+            sendUserSpotCloseTerminal(inbound, command, reply);
+        });
+    }
+
+    private void replyUserSpotCreateFailure(
+        ZLinkJavaRawServicePort.Inbound inbound,
+        ZLinkServiceM6BWireCodec.UserSpotCreate command,
+        int terminalResult,
+        int failureCode) {
+        if (inbound.requestSequence() == null) {
+            return;
+        }
+        port.reply(
+            requireStarted(),
+            inbound.source(),
+            inbound.requestSequence(),
+            List.of(statefulWire.encodeUserSpotCreateReply(
+                command.correlation(),
+                terminalResult,
+                failureCode,
+                null)));
+    }
+
+    private void completeUserSpotCreateTerminal(
+        UserSpotTerminalSlot slot,
+        ZLinkJavaRawServicePort.Inbound inbound,
+        ZLinkServiceM6BWireCodec.UserSpotCreate command,
+        ZLinkInternalMeshNode.UserSpotCreateResponse result,
+        Throwable failure) {
+        closeUserSpotApplicationReply(result);
+        UserSpotTerminalReply reply = terminalFailure(failure);
+        slot.terminal.complete(reply);
+        sendUserSpotCreateTerminal(inbound, command, reply);
+    }
+
+    private static UserSpotTerminalReply terminalFailure(
+        Throwable failure) {
+        Throwable current = failure == null
+            ? null : unwrap(failure);
+        if (current instanceof ZLinkUserSpotOperationException typed) {
+            return new UserSpotTerminalReply(
+                typed.terminalResult(),
+                typed.failureCode(),
+                null,
+                null,
+                null);
+        }
+        return new UserSpotTerminalReply(
+            105, 17, null, null, null);
+    }
+
+    private void sendUserSpotCreateTerminal(
+        ZLinkJavaRawServicePort.Inbound inbound,
+        ZLinkServiceM6BWireCodec.UserSpotCreate command,
+        UserSpotTerminalReply reply) {
+        if (reply == null || inbound.requestSequence() == null) {
+            return;
+        }
+        List<byte[]> frames = new ArrayList<>();
+        frames.add(statefulWire.encodeUserSpotCreateReply(
+            command.correlation(),
+            reply.terminalResult(),
+            reply.failureCode(),
+            reply.create()));
+        byte[] applicationFrame = reply.applicationFrame();
+        if (applicationFrame != null) {
+            frames.add(applicationFrame);
+        }
+        port.reply(
+            requireStarted(),
+            inbound.source(),
+            inbound.requestSequence(),
+            frames);
+    }
+
+    private void sendUserSpotCloseTerminal(
+        ZLinkJavaRawServicePort.Inbound inbound,
+        ZLinkServiceM6BWireCodec.UserSpotClose command,
+        UserSpotTerminalReply reply) {
+        if (reply == null || inbound.requestSequence() == null) {
+            return;
+        }
+        port.reply(
+            requireStarted(),
+            inbound.source(),
+            inbound.requestSequence(),
+            List.of(statefulWire.encodeUserSpotCloseReply(
+                command.correlation(),
+                reply.terminalResult(),
+                reply.failureCode(),
+                reply.closed())));
+    }
+
+    private void replyUserSpotCloseFailure(
+        ZLinkJavaRawServicePort.Inbound inbound,
+        ZLinkServiceM6BWireCodec.UserSpotClose command,
+        int terminalResult,
+        int failureCode) {
+        if (inbound.requestSequence() == null) {
+            return;
+        }
+        port.reply(
+            requireStarted(),
+            inbound.source(),
+            inbound.requestSequence(),
+            List.of(statefulWire.encodeUserSpotCloseReply(
+                command.correlation(),
+                terminalResult,
+                failureCode,
+                null)));
+    }
+
+    private static void closeUserSpotApplicationReply(
+        ZLinkInternalMeshNode.UserSpotCreateResponse response) {
+        if (response != null) {
+            response.applicationReply().forEach(Message::close);
         }
     }
 
@@ -2036,6 +2717,109 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             }
         }
         return ZLinkBackendRequestResult.PROTOCOL_ERROR;
+    }
+
+    private UserSpotTerminalAdmission admitUserSpotOperation(
+        UserSpotOperationKey key,
+        byte[] fingerprint,
+        long deadlineUnixMs) {
+        long now = System.currentTimeMillis();
+        synchronized (userSpotTerminals) {
+            userSpotTerminals.entrySet().removeIf(
+                entry -> entry.getValue().terminal.isDone()
+                    && entry.getValue().retentionDeadlineUnixMs < now);
+            UserSpotTerminalSlot existing = userSpotTerminals.get(key);
+            if (existing != null) {
+                return MessageDigest.isEqual(
+                        existing.fingerprint, fingerprint)
+                    ? new UserSpotTerminalAdmission(
+                        existing, false, false, false)
+                    : new UserSpotTerminalAdmission(
+                        null, false, true, false);
+            }
+            if (deadlineUnixMs < now) {
+                return new UserSpotTerminalAdmission(
+                    null, false, false, true);
+            }
+            if (userSpotTerminals.size() >= USER_SPOT_TERMINAL_CAPACITY) {
+                return new UserSpotTerminalAdmission(
+                    null, false, false, false);
+            }
+            UserSpotTerminalSlot created = new UserSpotTerminalSlot(
+                fingerprint.clone(), deadlineUnixMs);
+            userSpotTerminals.put(key, created);
+            return new UserSpotTerminalAdmission(
+                created, true, false, false);
+        }
+    }
+
+    private static byte[] fingerprint(byte[] canonicalCommand) {
+        try {
+            return MessageDigest.getInstance("SHA-256")
+                .digest(canonicalCommand);
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new AssertionError(impossible);
+        }
+    }
+
+    private static Throwable unwrap(Throwable failure) {
+        Throwable current = failure;
+        while ((current instanceof java.util.concurrent.CompletionException
+            || current instanceof java.util.concurrent.ExecutionException)
+            && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private record UserSpotOperationKey(
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        long operationHigh,
+        long operationLow) {
+    }
+
+    private static final class UserSpotTerminalSlot {
+        private final byte[] fingerprint;
+        private final long retentionDeadlineUnixMs;
+        private final CompletableFuture<UserSpotTerminalReply> terminal =
+            new CompletableFuture<>();
+
+        private UserSpotTerminalSlot(
+            byte[] fingerprint,
+            long deadlineUnixMs) {
+            this.fingerprint = fingerprint;
+            this.retentionDeadlineUnixMs =
+                deadlineUnixMs > Long.MAX_VALUE
+                    - USER_SPOT_TERMINAL_RETENTION_MS
+                ? Long.MAX_VALUE
+                : deadlineUnixMs + USER_SPOT_TERMINAL_RETENTION_MS;
+        }
+    }
+
+    private record UserSpotTerminalAdmission(
+        UserSpotTerminalSlot slot,
+        boolean owner,
+        boolean fingerprintMismatch,
+        boolean expiredNew) {
+    }
+
+    private record UserSpotTerminalReply(
+        int terminalResult,
+        int failureCode,
+        ZLinkServiceM6BWireCodec.UserSpotCreateTerminal create,
+        Boolean closed,
+        byte[] applicationFrame) {
+        private UserSpotTerminalReply {
+            applicationFrame = applicationFrame == null
+                ? null : applicationFrame.clone();
+        }
+
+        @Override
+        public byte[] applicationFrame() {
+            return applicationFrame == null
+                ? null : applicationFrame.clone();
+        }
     }
 
     private record PeerIntent(

@@ -15,6 +15,37 @@
 
 namespace zlink::framework::runtime::mesh
 {
+namespace
+{
+
+std::vector<std::uint8_t> pack_infrastructure_reply (
+  const detail::backend::raw_message_t &parts)
+{
+    std::size_t size = 1;
+    for (const auto &part : parts) {
+        if (part.size () > std::numeric_limits<std::uint32_t>::max ())
+            throw protocol::service_wire_error_t (
+              "infrastructure reply part is too large");
+        size += 4 + part.size ();
+    }
+    std::vector<std::uint8_t> packed;
+    packed.reserve (size);
+    packed.push_back (static_cast<std::uint8_t> (parts.size ()));
+    for (const auto &part : parts) {
+        const auto length = static_cast<std::uint32_t> (part.size ());
+        packed.push_back (
+          static_cast<std::uint8_t> ((length >> 24u) & 0xffu));
+        packed.push_back (
+          static_cast<std::uint8_t> ((length >> 16u) & 0xffu));
+        packed.push_back (
+          static_cast<std::uint8_t> ((length >> 8u) & 0xffu));
+        packed.push_back (static_cast<std::uint8_t> (length & 0xffu));
+        packed.insert (packed.end (), part.begin (), part.end ());
+    }
+    return packed;
+}
+
+} // namespace
 
 bool raw_mesh_byte_vector_less_t::operator() (
   const std::vector<std::uint8_t> &left,
@@ -521,6 +552,231 @@ bool raw_mesh_node_owner_t::request_to_actor (
       application_payload, timeout, std::move (callback));
 }
 
+bool raw_mesh_node_owner_t::request_user_spot_create (
+  const std::vector<std::uint8_t> &target_routing_id,
+  protocol::user_spot_create_header_t request,
+  std::chrono::milliseconds timeout,
+  foundation::operation_registry_t::callback_t callback)
+{
+    const auto local = _topology.local_descriptor ();
+    if (request.source_node_routing_id != local.node_routing_id
+        || request.source_node_generation
+             != local.lifecycle_generation
+        || request.reservation.target_node_routing_id
+             != target_routing_id) {
+        throw std::invalid_argument (
+          "User Spot create source or target fence is inconsistent");
+    }
+    return request_infrastructure (
+      target_routing_id,
+      [request = std::move (request)] (
+        std::uint64_t correlation) mutable {
+          request.correlation = correlation;
+          return protocol::encode_user_spot_create_header (request);
+      },
+      [] (const detail::backend::raw_message_t &parts) {
+          if (parts.empty () || parts.size () > 2)
+              throw protocol::service_wire_error_t (
+                "User Spot create reply has an invalid part count");
+          const auto reply =
+            protocol::decode_user_spot_create_reply (parts.front ());
+          if (reply.header.terminal_result != 0
+              && parts.size () != 1)
+              throw protocol::service_wire_error_t (
+                "failed User Spot create reply carries a payload");
+          if (parts.size () == 2)
+              (void) protocol::decode_application_payload (parts[1]);
+          return pack_infrastructure_reply (parts);
+      },
+      timeout, std::move (callback));
+}
+
+bool raw_mesh_node_owner_t::request_user_spot_close (
+  const std::vector<std::uint8_t> &target_routing_id,
+  protocol::user_spot_close_header_t request,
+  std::chrono::milliseconds timeout,
+  foundation::operation_registry_t::callback_t callback)
+{
+    const auto local = _topology.local_descriptor ();
+    if (request.source_node_routing_id != local.node_routing_id
+        || request.source_node_generation
+             != local.lifecycle_generation
+        || request.target.target_node_routing_id != target_routing_id) {
+        throw std::invalid_argument (
+          "User Spot close source or target fence is inconsistent");
+    }
+    return request_infrastructure (
+      target_routing_id,
+      [request = std::move (request)] (
+        std::uint64_t correlation) mutable {
+          request.correlation = correlation;
+          return protocol::encode_user_spot_close_header (request);
+      },
+      [] (const detail::backend::raw_message_t &parts) {
+          if (parts.size () != 1)
+              throw protocol::service_wire_error_t (
+                "User Spot close reply must contain one header");
+          (void) protocol::decode_user_spot_close_reply (parts.front ());
+          return pack_infrastructure_reply (parts);
+      },
+      timeout, std::move (callback));
+}
+
+bool raw_mesh_node_owner_t::request_infrastructure (
+  const std::vector<std::uint8_t> &target_routing_id,
+  const std::function<std::vector<std::uint8_t> (std::uint64_t)> &header,
+  const std::function<std::vector<std::uint8_t> (
+    const detail::backend::raw_message_t &)> &decode_reply,
+  std::chrono::milliseconds timeout,
+  foundation::operation_registry_t::callback_t callback)
+{
+    if (timeout <= std::chrono::milliseconds::zero ()) {
+        throw std::invalid_argument (
+          "raw mesh infrastructure request timeout must be positive");
+    }
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    std::uint64_t correlation = 0;
+    const auto local = _topology.local_descriptor ();
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+        if (!port) {
+            return false;
+        }
+        correlation = _next_correlation++;
+        if (correlation == 0 || _next_correlation == 0) {
+            _next_correlation = 1;
+            throw std::overflow_error (
+              "raw mesh request correlation is exhausted");
+        }
+    }
+    const auto id =
+      operation_id (local.lifecycle_generation, correlation);
+    if (!_operations->register_operation (
+          id, foundation::operation_registry_t::clock_t::now () + timeout,
+          std::move (callback))) {
+        return false;
+    }
+    const auto operations = _operations;
+    const auto submitted = port->request (
+      target_routing_id, {header (correlation)}, timeout,
+      [operations, id, correlation, decode_reply] (
+        detail::backend::raw_request_result_t result,
+        detail::backend::raw_message_t parts) {
+          if (result != detail::backend::raw_request_result_t::ok) {
+              const auto terminal =
+                result == detail::backend::raw_request_result_t::timed_out
+                  ? foundation::operation_terminal_t::timed_out
+                : result == detail::backend::raw_request_result_t::terminated
+                  ? foundation::operation_terminal_t::shutdown
+                  : foundation::operation_terminal_t::transport_failed;
+              (void) operations->fail (id, terminal);
+              return;
+          }
+          try {
+              if (parts.empty ()) {
+                  throw protocol::service_wire_error_t (
+                    "infrastructure reply has no header");
+              }
+              const auto prefix =
+                protocol::decode_reply_header (
+                  std::span<const std::uint8_t> (
+                    parts.front ().data (),
+                    std::min<std::size_t> (
+                      parts.front ().size (), 21)));
+              if (prefix.correlation != correlation) {
+                  throw protocol::service_wire_error_t (
+                    "infrastructure reply correlation does not match");
+              }
+              auto payload = decode_reply (parts);
+              (void) operations->complete (
+                id, std::move (payload));
+          }
+          catch (const protocol::service_wire_error_t &) {
+              (void) operations->fail (
+                id, foundation::operation_terminal_t::transport_failed);
+          }
+      });
+    if (!submitted) {
+        (void) _operations->fail (
+          id, foundation::operation_terminal_t::transport_failed);
+    }
+    return submitted;
+}
+
+bool raw_mesh_node_owner_t::reply_infrastructure (
+  const service_mailbox_record_t &request,
+  std::vector<std::uint8_t> header)
+{
+    if (request.source_routing_id.empty () || !request.request_sequence
+        || !request.correlation) {
+        throw std::invalid_argument (
+          "raw mesh infrastructure reply requires a request record");
+    }
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+    }
+    return port
+           && port->reply (
+             detail::backend::raw_received_t{
+               request.source_routing_id, request.request_sequence, {}},
+             {std::move (header)});
+}
+
+bool raw_mesh_node_owner_t::reply_user_spot_create (
+  const service_mailbox_record_t &request,
+  const protocol::user_spot_create_reply_t &reply,
+  std::optional<protocol::application_payload_t> application_reply)
+{
+    if (!request.correlation
+        || reply.header.correlation != *request.correlation) {
+        throw std::invalid_argument (
+          "User Spot create reply correlation does not match");
+    }
+    if (reply.header.terminal_result != 0 && application_reply)
+        throw std::invalid_argument (
+          "failed User Spot create reply cannot carry a payload");
+    if (!application_reply)
+        return reply_infrastructure (
+          request,
+          protocol::encode_user_spot_create_reply (
+            reply.header.correlation, reply.header.terminal_result,
+            reply.header.failure_code, reply.result,
+            reply.spot_routing_id, reply.object_generation));
+    std::shared_ptr<detail::backend::raw_route_port_t> port;
+    {
+        std::lock_guard lifecycle_lock (_lifecycle_mutex);
+        port = _port;
+    }
+    return port
+           && port->reply (
+             detail::backend::raw_received_t{
+               request.source_routing_id, request.request_sequence, {}},
+             {protocol::encode_user_spot_create_reply (
+                reply.header.correlation, reply.header.terminal_result,
+                reply.header.failure_code, reply.result,
+                reply.spot_routing_id, reply.object_generation),
+              protocol::encode_application_payload (*application_reply)});
+}
+
+bool raw_mesh_node_owner_t::reply_user_spot_close (
+  const service_mailbox_record_t &request,
+  const protocol::user_spot_close_reply_t &reply)
+{
+    if (!request.correlation
+        || reply.header.correlation != *request.correlation) {
+        throw std::invalid_argument (
+          "User Spot close reply correlation does not match");
+    }
+    return reply_infrastructure (
+      request,
+      protocol::encode_user_spot_close_reply (
+        reply.header.correlation, reply.header.terminal_result,
+        reply.header.failure_code, reply.closed));
+}
+
 raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
   service_liveness_registry_t::clock_t::time_point now)
 {
@@ -635,6 +891,70 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                 (void) _liveness.acknowledge (
                   received->source_routing_id, admitted->connection_id,
                   record.probe_id, now);
+            }
+            return raw_mesh_pump_result_t::infrastructure;
+        }
+        if (header.kind == protocol::command::userSpotCreate
+            || header.kind == protocol::command::userSpotClose) {
+            if (header.flags != 0 || received->parts.size () != 1
+                || !received->request_sequence) {
+                return raw_mesh_pump_result_t::protocol_error;
+            }
+            const auto local = _topology.local_descriptor ();
+            std::vector<std::uint8_t> source_node_routing_id;
+            std::uint64_t source_node_generation = 0;
+            std::vector<std::uint8_t> target_node_routing_id;
+            std::uint64_t target_node_generation = 0;
+            std::uint64_t correlation = 0;
+            if (header.kind
+                == protocol::command::userSpotCreate) {
+                const auto create =
+                  protocol::decode_user_spot_create_header (
+                    received->parts.front ());
+                source_node_routing_id =
+                  create.source_node_routing_id;
+                source_node_generation =
+                  create.source_node_generation;
+                target_node_routing_id =
+                  create.reservation.target_node_routing_id;
+                target_node_generation =
+                  create.reservation.target_node_generation;
+                correlation = create.correlation;
+            } else {
+                const auto close =
+                  protocol::decode_user_spot_close_header (
+                    received->parts.front ());
+                source_node_routing_id =
+                  close.source_node_routing_id;
+                source_node_generation =
+                  close.source_node_generation;
+                target_node_routing_id =
+                  close.target.target_node_routing_id;
+                target_node_generation =
+                  close.target.target_node_generation;
+                correlation = close.correlation;
+            }
+            if (source_node_routing_id
+                  != received->source_routing_id
+                || source_node_routing_id
+                     != admitted->descriptor.node_routing_id
+                || source_node_generation
+                     != admitted->descriptor.lifecycle_generation
+                || target_node_routing_id
+                     != local.node_routing_id
+                || target_node_generation
+                     != local.lifecycle_generation) {
+                return raw_mesh_pump_result_t::protocol_error;
+            }
+            if (!_mailbox.try_enqueue (
+                  service_mailbox_record_t{
+                    owner_key (local.node_routing_id),
+                    service_mailbox_domain_t::infrastructure,
+                    std::move (received->parts),
+                    std::move (received->source_routing_id),
+                    received->request_sequence,
+                    correlation})) {
+                return raw_mesh_pump_result_t::backpressured;
             }
             return raw_mesh_pump_result_t::infrastructure;
         }

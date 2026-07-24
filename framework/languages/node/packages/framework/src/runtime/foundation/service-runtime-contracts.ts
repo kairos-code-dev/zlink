@@ -54,7 +54,9 @@ export const OperationKind = Object.freeze({
   StreamBind: 9,
   StreamUnbind: 10,
   StreamClose: 11,
-  InstanceSpotRequest: 12
+  InstanceSpotRequest: 12,
+  UserSpotCreate: 13,
+  UserSpotClose: 14
 } as const);
 
 export const ActorLifecycleKind = Object.freeze({

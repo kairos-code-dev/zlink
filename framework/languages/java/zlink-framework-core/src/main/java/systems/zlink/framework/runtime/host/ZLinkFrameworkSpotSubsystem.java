@@ -37,6 +37,10 @@ final class ZLinkFrameworkSpotSubsystem {
         ZLinkChannelRuntime channels,
         ZLinkBackendContext backendContext,
         ZLinkLocationLifecycle locationLifecycle,
+        systems.zlink.framework.locations.ZLinkAuthorityStore authorityStore,
+        systems.zlink.framework.locations.ZLinkLocationStore locationStore,
+        systems.zlink.framework.runtime.locations.ZLinkLocationRuntime
+            locationRuntime,
         SpotTransportAddressResolver locationTransportResolver,
         java.util.Map<String, systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode>
             meshNodes) {
@@ -63,6 +67,14 @@ final class ZLinkFrameworkSpotSubsystem {
             eventDispatcher,
             meshNodes);
         spots.setLocationLifecycle(locationLifecycle);
+        if (authorityStore != null
+            && locationStore != null
+            && locationRuntime != null) {
+            spots.installUserSpotOperationHandlers(
+                authorityStore,
+                locationStore,
+                locationRuntime);
+        }
         java.util.concurrent.CompletionStage<Void> startup = spots.claimEntrySpotLocations();
         runtimeHandlers.add(ZLinkSpotManager.class, spots);
         if (!options.registration().spotNodes().isEmpty()) {

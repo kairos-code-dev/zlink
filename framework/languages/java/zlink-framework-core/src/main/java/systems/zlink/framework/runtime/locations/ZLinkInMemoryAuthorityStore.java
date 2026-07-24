@@ -1117,7 +1117,33 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 == fence.aggregateGeneration();
     }
 
-    private static ZLinkAuthoritySnapshot snapshot(Row row, Instant now) {
+    private ZLinkAuthoritySnapshot snapshot(Row row, Instant now) {
+        java.util.Optional<
+            systems.zlink.framework.locations
+                .ZLinkPendingObjectCreation> pending =
+            java.util.Optional.empty();
+        if (row.allocation.state()
+                == ZLinkPlacementAllocationState.PENDING) {
+            ReservationState state = reservations.values().stream()
+                .filter(value ->
+                    value.state == State.PREPARED
+                    && pendingReservationMatches(
+                        row, value.reservation))
+                .findFirst()
+                .orElse(null);
+            if (state != null) {
+                pending = java.util.Optional.of(
+                    new systems.zlink.framework.locations
+                        .ZLinkPendingObjectCreation(
+                            state.reservation
+                                .reservationVersion(),
+                            state.request
+                                .creationIntentReference(),
+                            state.request.creationIntentHash(),
+                            state.request
+                                .creationIntentEncodedSize()));
+            }
+        }
         return new ZLinkAuthoritySnapshot(
             row.storeVersion,
             row.payload,
@@ -1126,6 +1152,7 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             row.owner.ownerId(),
             row.owner.leaseGeneration(),
             row.allocation,
+            pending,
             now);
     }
 

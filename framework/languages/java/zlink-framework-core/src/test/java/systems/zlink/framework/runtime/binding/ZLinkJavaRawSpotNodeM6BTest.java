@@ -25,8 +25,186 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpotDispatchEvent;
 import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
+import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
 
 final class ZLinkJavaRawSpotNodeM6BTest {
+    @Test
+    void remoteUserSpotCreateAndCloseUseExactTerminalOperations()
+        throws Exception {
+        String endpoint =
+            "inproc://jvm-m6b-user-spot-" + System.nanoTime();
+        RoutingId sourceRid =
+            RoutingId.from("jvm-m6b-user-spot-source");
+        RoutingId targetRid =
+            RoutingId.from("jvm-m6b-user-spot-target");
+        RoutingId spotRid =
+            RoutingId.from("jvm-m6b-user-spot-room");
+        try (var context = Zlink.createContext();
+             var target = new ZLinkJavaRawMeshNode(context, "mesh");
+             var source = new ZLinkJavaRawMeshNode(context, "mesh")) {
+            target.setRoutingId(targetRid);
+            target.setBind(endpoint);
+            source.setRoutingId(sourceRid);
+            source.setBind(
+                "inproc://jvm-m6b-user-spot-source-"
+                    + System.nanoTime());
+            target.start();
+            source.start();
+            source.connectPeer(endpoint, targetRid);
+            awaitAdmitted(source);
+
+            AtomicInteger createCalls = new AtomicInteger();
+            AtomicInteger closeCalls = new AtomicInteger();
+            target.setUserSpotOperationHandler(
+                new ZLinkInternalMeshNode.UserSpotOperationHandler() {
+                    @Override
+                    public CompletionStage<
+                        ZLinkInternalMeshNode.UserSpotCreateResponse>
+                        create(
+                            ZLinkInternalMeshNode.UserSpotCreateRequest
+                                request) {
+                        createCalls.incrementAndGet();
+                        assertEquals(sourceRid, request.sourceNodeRid());
+                        assertEquals(
+                            spotRid, request.intent().spotRid());
+                        return CompletableFuture.completedFuture(
+                            new ZLinkInternalMeshNode
+                                .UserSpotCreateResponse(
+                                    ZLinkServiceM6BWireCodec
+                                        .UserSpotCreateResult.CREATED,
+                                    spotRid,
+                                    17,
+                                    List.of(
+                                        Message.from("reply-name"),
+                                        Message.from("created"))));
+                    }
+
+                    @Override
+                    public CompletionStage<
+                        ZLinkInternalMeshNode.UserSpotCloseResponse>
+                        close(
+                            ZLinkInternalMeshNode.UserSpotCloseRequest
+                                request) {
+                        closeCalls.incrementAndGet();
+                        assertEquals(
+                            17,
+                            request.intent().target()
+                                .objectGeneration());
+                        return CompletableFuture.completedFuture(
+                            new ZLinkInternalMeshNode
+                                .UserSpotCloseResponse(true));
+                    }
+                });
+
+            long deadline = System.currentTimeMillis() + 2_000;
+            var reservation =
+                new ZLinkServiceM6BWireCodec.ReservationFence(
+                    "reservation",
+                    "store-1",
+                    17,
+                    19,
+                    targetRid,
+                    target.lifecycleGeneration(),
+                    "owner-target",
+                    23,
+                    1);
+            var intent =
+                new ZLinkInternalMeshNode.UserSpotCreateIntent(
+                    spotRid,
+                    "room-v1",
+                    reservation,
+                    deadline);
+            var firstCreate = source.requestUserSpotCreate(
+                targetRid,
+                intent,
+                Duration.ofSeconds(2),
+                71,
+                73);
+            var created = firstCreate
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+            var duplicateCreate = source.requestUserSpotCreate(
+                targetRid,
+                intent,
+                Duration.ofSeconds(2),
+                71,
+                73);
+            var replayed = duplicateCreate
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+            Thread.sleep(Math.max(
+                0, deadline - System.currentTimeMillis() + 200));
+            var replayedAfterDeadline = source.requestUserSpotCreate(
+                    targetRid,
+                    intent,
+                    Duration.ofSeconds(2),
+                    71,
+                    73)
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+            try {
+                assertEquals(
+                    ZLinkServiceM6BWireCodec
+                        .UserSpotCreateResult.CREATED,
+                    created.result());
+                assertEquals(spotRid, created.spotRid());
+                assertEquals(17, created.objectGeneration());
+                assertEquals(
+                    "created",
+                    created.applicationReply()
+                        .getLast()
+                        .toUtf8String());
+                assertEquals(
+                    "created",
+                    replayed.applicationReply()
+                        .getLast()
+                        .toUtf8String());
+                assertEquals(
+                    "created",
+                    replayedAfterDeadline.applicationReply()
+                        .getLast()
+                        .toUtf8String());
+            } finally {
+                created.applicationReply().forEach(Message::close);
+                replayed.applicationReply().forEach(Message::close);
+                replayedAfterDeadline.applicationReply()
+                    .forEach(Message::close);
+            }
+
+            assertThrows(
+                java.util.concurrent.ExecutionException.class,
+                () -> source.requestUserSpotCreate(
+                        targetRid,
+                        intent,
+                        Duration.ofSeconds(2),
+                        72,
+                        74)
+                    .toCompletableFuture()
+                    .get(2, TimeUnit.SECONDS));
+
+            long closeDeadline =
+                System.currentTimeMillis() + 2_000;
+            var closed = source.requestUserSpotClose(
+                    targetRid,
+                    new ZLinkInternalMeshNode.UserSpotCloseIntent(
+                        new ZLinkServiceM6BWireCodec
+                            .UserSpotCloseFence(
+                                spotRid,
+                                17,
+                                targetRid,
+                                target.lifecycleGeneration(),
+                                19,
+                                "store-2"),
+                        closeDeadline),
+                    Duration.ofSeconds(2))
+                .toCompletableFuture()
+                .get(2, TimeUnit.SECONDS);
+            assertTrue(closed.closed());
+            assertEquals(1, createCalls.get());
+            assertEquals(1, closeCalls.get());
+        }
+    }
+
     @Test
     void spotSendRejectsStaleGenerationBeforeDispatch() {
         try (var context = Zlink.createContext();
@@ -61,6 +239,23 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     received.parts().getFirst().toUtf8String());
             }
         }
+    }
+
+    private static void awaitAdmitted(ZLinkJavaRawMeshNode node)
+        throws InterruptedException {
+        long deadline =
+            System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        while (node.peers().stream().noneMatch(
+                peer -> peer.state()
+                    == systems.zlink.contracts.service.spot
+                        .MeshPeerState.ADMITTED)
+            && System.nanoTime() < deadline) {
+            Thread.sleep(1);
+        }
+        assertTrue(node.peers().stream().anyMatch(
+            peer -> peer.state()
+                == systems.zlink.contracts.service.spot
+                    .MeshPeerState.ADMITTED));
     }
 
     @Test

@@ -46,6 +46,8 @@ import {
   encodeInstanceSpotHeader,
   encodeSpotHeader,
   encodeStatefulReply,
+  encodeUserSpotCloseHeader,
+  encodeUserSpotCreateHeader,
   type ServiceInstanceRouteFence
 } from '../../packages/framework/src/runtime/foundation/service-stateful-wire-codec';
 import {
@@ -121,6 +123,317 @@ test('M6B command and flag constants match the generated service wire schema', (
   for (const name of Object.keys(M6bServiceWireFlag) as Array<keyof typeof M6bServiceWireFlag>) {
     assert.equal(M6bServiceWireFlag[name], ServiceWireFlag[name]);
   }
+});
+
+test('remote User Spot create and close records preserve every generation fence exactly', () => {
+  const create = encodeUserSpotCreateHeader({
+    correlation: 71n,
+    operation: { high: 5n, low: 9n },
+    sourceNodeRid: 'source',
+    sourceNodeGeneration: 11n,
+    spotRid: 'spot-1',
+    stableType: 'Room',
+    reservation: {
+      reservationId: 'reservation-1',
+      expectedStoreVersion: 'version-1',
+      objectGeneration: 13n,
+      authorityOwnerGeneration: 17n,
+      targetNodeRid: 'target',
+      targetNodeGeneration: 19n,
+      targetOwnerId: 'owner-1',
+      targetOwnerLeaseGeneration: 23n,
+      pendingCapacityDelta: 1
+    },
+    deadlineUnixMs: 29n
+  });
+  assert.deepEqual(decodeStatefulHeader(create), {
+    kind: 'userSpotCreate',
+    correlation: 71n,
+    operation: { high: 5n, low: 9n },
+    sourceNodeRid: 'source',
+    sourceNodeGeneration: 11n,
+    spotRid: 'spot-1',
+    stableType: 'Room',
+    reservation: {
+      reservationId: 'reservation-1',
+      expectedStoreVersion: 'version-1',
+      objectGeneration: 13n,
+      authorityOwnerGeneration: 17n,
+      targetNodeRid: 'target',
+      targetNodeGeneration: 19n,
+      targetOwnerId: 'owner-1',
+      targetOwnerLeaseGeneration: 23n,
+      pendingCapacityDelta: 1
+    },
+    deadlineUnixMs: 29n
+  });
+
+  const close = encodeUserSpotCloseHeader({
+    correlation: 73n,
+    operation: { high: 31n, low: 37n },
+    sourceNodeRid: 'source',
+    sourceNodeGeneration: 41n,
+    target: {
+      spotRid: 'spot-1',
+      objectGeneration: 43n,
+      targetNodeRid: 'target',
+      targetNodeGeneration: 47n,
+      authorityOwnerGeneration: 53n,
+      expectedStoreVersion: 'version-2'
+    },
+    deadlineUnixMs: 59n
+  });
+  assert.deepEqual(decodeStatefulHeader(close), {
+    kind: 'userSpotClose',
+    correlation: 73n,
+    operation: { high: 31n, low: 37n },
+    sourceNodeRid: 'source',
+    sourceNodeGeneration: 41n,
+    target: {
+      spotRid: 'spot-1',
+      objectGeneration: 43n,
+      targetNodeRid: 'target',
+      targetNodeGeneration: 47n,
+      authorityOwnerGeneration: 53n,
+      expectedStoreVersion: 'version-2'
+    },
+    deadlineUnixMs: 59n
+  });
+  assert.throws(() => decodeStatefulHeader(Buffer.concat([create, Buffer.of(0)])));
+  assert.throws(() => decodeStatefulHeader(close.subarray(0, -1)));
+});
+
+test('remote User Spot command 20 success tails use operation discriminators 13 and 14', () => {
+  assert.deepEqual(
+    decodeStatefulReply(
+      encodeStatefulReply(79n, RequestResult.Ok, 0, {
+        kind: 'userSpotCreate',
+        createResult: 'created',
+        spotRid: 'spot-2',
+        objectGeneration: 83n
+      }),
+      79n,
+      'userSpotCreate'
+    ).tail,
+    {
+      kind: 'userSpotCreate',
+      createResult: 'created',
+      spotRid: 'spot-2',
+      objectGeneration: 83n
+    }
+  );
+  assert.deepEqual(
+    decodeStatefulReply(
+      encodeStatefulReply(89n, RequestResult.Ok, 0, {
+        kind: 'userSpotClose',
+        closed: true
+      }),
+      89n,
+      'userSpotClose'
+    ).tail,
+    { kind: 'userSpotClose', closed: true }
+  );
+});
+
+test('remote User Spot target executes once and rewrites correlation on terminal replay', async () => {
+  let ingress!: (record: {
+    readonly command: number;
+    readonly flags: number;
+    readonly sourceRoutingId: string;
+    readonly requestSequence: bigint;
+    readonly parts: readonly Buffer[];
+  }) => unknown;
+  const replies: Array<readonly Buffer[]> = [];
+  const raw = {
+    topology: {
+      peer: (nodeRid: string) => nodeRid === 'source'
+        ? { descriptor: { lifecycleGeneration: 5n } }
+        : undefined
+    },
+    setServiceIngress: (handler: typeof ingress) => {
+      ingress = handler;
+    },
+    replyService: (_record: unknown, parts: readonly Buffer[]) => {
+      replies.push(parts);
+    }
+  } as unknown as RawServiceMeshRuntime;
+  const runtime = new ServiceStatefulRuntime(raw, 'target', 7n);
+  let executions = 0;
+  runtime.registerUserSpotOperationHandler({
+    create: async record => {
+      executions++;
+      return {
+        terminalResult: RequestResult.Ok,
+        failureCode: 0,
+        tail: {
+          kind: 'userSpotCreate',
+          createResult: 'created',
+          spotRid: record.spotRid,
+          objectGeneration: record.reservation.objectGeneration
+        }
+      };
+    },
+    close: async () => {
+      throw new Error('not used');
+    }
+  });
+  const request = {
+    operation: { high: 11n, low: 13n },
+    sourceNodeRid: 'source',
+    sourceNodeGeneration: 5n,
+    spotRid: 'spot-replay',
+    stableType: 'Room',
+    reservation: {
+      reservationId: 'reservation',
+      expectedStoreVersion: 'version',
+      objectGeneration: 17n,
+      authorityOwnerGeneration: 19n,
+      targetNodeRid: 'target',
+      targetNodeGeneration: 7n,
+      targetOwnerId: 'owner',
+      targetOwnerLeaseGeneration: 23n,
+      pendingCapacityDelta: 1
+    },
+    deadlineUnixMs: BigInt(Date.now() + 250)
+  };
+  for (const [index, correlation] of [29n, 31n].entries()) {
+    const header = encodeUserSpotCreateHeader({ ...request, correlation });
+    assert.equal(ingress({
+      command: M6bServiceWireCommand.userSpotCreate,
+      flags: 0,
+      sourceRoutingId: 'source',
+      requestSequence: BigInt(index + 1),
+      parts: [header]
+    }), 'infrastructure');
+    await new Promise(resolve => setImmediate(resolve));
+  }
+  assert.equal(executions, 1);
+  assert.equal(replies.length, 2);
+  assert.equal(
+    decodeStatefulReply(replies[0]![0]!, 29n, 'userSpotCreate').tail?.kind,
+    'userSpotCreate'
+  );
+  assert.equal(
+    decodeStatefulReply(replies[1]![0]!, 31n, 'userSpotCreate').tail?.kind,
+    'userSpotCreate'
+  );
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const expiredReplay = encodeUserSpotCreateHeader({
+    ...request,
+    correlation: 33n
+  });
+  assert.equal(ingress({
+    command: M6bServiceWireCommand.userSpotCreate,
+    flags: 0,
+    sourceRoutingId: 'source',
+    requestSequence: 3n,
+    parts: [expiredReplay]
+  }), 'infrastructure');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(executions, 1);
+  assert.equal(
+    decodeStatefulReply(replies[2]![0]!, 33n, 'userSpotCreate').tail?.kind,
+    'userSpotCreate'
+  );
+  const expiredNew = encodeUserSpotCreateHeader({
+    ...request,
+    correlation: 35n,
+    operation: { high: 11n, low: 39n },
+    deadlineUnixMs: BigInt(Date.now() - 1)
+  });
+  assert.equal(ingress({
+    command: M6bServiceWireCommand.userSpotCreate,
+    flags: 0,
+    sourceRoutingId: 'source',
+    requestSequence: 4n,
+    parts: [expiredNew]
+  }), 'infrastructure');
+  assert.equal(executions, 1);
+  assert.equal(
+    decodeStatefulReply(replies[3]![0]!, 35n, 'userSpotCreate').terminalResult,
+    RequestResult.TimedOut
+  );
+  const wrongTargetLifecycle = encodeUserSpotCreateHeader({
+    ...request,
+    correlation: 36n,
+    operation: { high: 11n, low: 40n },
+    reservation: {
+      ...request.reservation,
+      targetNodeGeneration: 8n
+    },
+    deadlineUnixMs: BigInt(Date.now() + 10_000)
+  });
+  assert.equal(ingress({
+    command: M6bServiceWireCommand.userSpotCreate,
+    flags: 0,
+    sourceRoutingId: 'source',
+    requestSequence: 5n,
+    parts: [wrongTargetLifecycle]
+  }), 'infrastructure');
+  assert.equal(executions, 1);
+  assert.equal(
+    decodeStatefulReply(replies[4]![0]!, 36n, 'userSpotCreate').failureCode,
+    34
+  );
+  const terminalTable = (
+    runtime as unknown as {
+      admittedUserSpotOperations: Map<string, {
+        readonly request: string;
+        readonly deadlineUnixMs: bigint;
+        readonly result: Promise<unknown>;
+        settled: boolean;
+      }>;
+    }
+  ).admittedUserSpotOperations;
+  for (let index = terminalTable.size; index < 65_536; index++) {
+    terminalTable.set(`occupied-${index}`, {
+      request: 'occupied',
+      deadlineUnixMs: BigInt(Date.now() + 10_000),
+      result: new Promise(() => undefined),
+      settled: false
+    });
+  }
+  const overflow = encodeUserSpotCreateHeader({
+    ...request,
+    correlation: 37n,
+    operation: { high: 11n, low: 41n },
+    deadlineUnixMs: BigInt(Date.now() + 10_000)
+  });
+  assert.equal(ingress({
+    command: M6bServiceWireCommand.userSpotCreate,
+    flags: 0,
+    sourceRoutingId: 'source',
+    requestSequence: 6n,
+    parts: [overflow]
+  }), 'infrastructure');
+  assert.equal(executions, 1);
+  assert.equal(
+    decodeStatefulReply(replies[5]![0]!, 37n, 'userSpotCreate').terminalResult,
+    RequestResult.Busy
+  );
+  const originalDateNow = Date.now;
+  Date.now = () => originalDateNow() + 5 * 60_000 + 1_000;
+  try {
+    const retiredReplay = encodeUserSpotCreateHeader({
+      ...request,
+      correlation: 43n
+    });
+    assert.equal(ingress({
+      command: M6bServiceWireCommand.userSpotCreate,
+      flags: 0,
+      sourceRoutingId: 'source',
+      requestSequence: 7n,
+      parts: [retiredReplay]
+    }), 'infrastructure');
+    assert.equal(executions, 1);
+    assert.equal(
+      decodeStatefulReply(replies[6]![0]!, 43n, 'userSpotCreate').terminalResult,
+      RequestResult.TimedOut
+    );
+  } finally {
+    Date.now = originalDateNow;
+  }
+  runtime.close();
 });
 
 test('authority keys share the Spot discriminator and preserve colon identities canonically', () => {
@@ -1213,7 +1526,7 @@ test('authority reconciliation restores the durable Instance inbox before startu
       stableType: 'TenantWorker',
       targetNodeRid: 'node-a',
       targetNodeGeneration: 1n,
-      descriptorVersion: 'descriptor-v1'
+      descriptorVersion: '1'
     },
     targetMeshName: 'mesh-a',
     sourceNodeRid: 'source-a',
@@ -1263,6 +1576,31 @@ test('authority reconciliation restores the durable Instance inbox before startu
   assert.equal(node.recovered.length, 1);
   assert.equal(node.recovered[0]!.envelope.target.targetSpotRid, 'tenant:recover');
   assert.equal(node.recovered[0]!.route.storeVersion, 'store-recovery');
+
+  const staleDescriptorNode = new RecordingAuthorityNode(
+    'mesh-a',
+    'node-a',
+    undefined,
+    2n
+  );
+  const staleDescriptorRuntime = new ZLinkStatefulAuthorityRouteRuntime({
+    store: new ReconcileAuthorityStore([['row:tenant:recover', snapshot]]),
+    relocationStore: {
+      putRelocation: async () => assert.fail('Recovery must not write a second root.'),
+      getRelocation: async () => ({ kind: 'found', payload: recoveryEnvelope }),
+      renewRelocation: async () => ({ kind: 'missing' }),
+      deleteRelocation: async () => assert.fail('The authority adapter owns root deletion.')
+    },
+    meshNodes: new Map([
+      ['mesh-a', staleDescriptorNode as unknown as ZLinkBackendMeshNode]
+    ]),
+    pollingIntervalMs: 60_000,
+    pageSize: 10,
+    reportError: () => undefined
+  });
+  await staleDescriptorRuntime.reconcile(undefined, true);
+  assert.equal(staleDescriptorNode.recovered.length, 0);
+  assert.equal(staleDescriptorNode.forgotten.length, 1);
 });
 
 test('authority reconciliation resumes an exact Pending Instance reservation', async () => {
@@ -1272,7 +1610,7 @@ test('authority reconciliation resumes an exact Pending Instance reservation', a
       stableType: 'TenantWorker',
       targetNodeRid: 'node-a',
       targetNodeGeneration: 1n,
-      descriptorVersion: 'descriptor-v1'
+      descriptorVersion: '1'
     },
     targetMeshName: 'mesh-a',
     sourceNodeRid: 'source-a',
@@ -1367,8 +1705,7 @@ test('production Instance authority adapter writes schema ColdActivating then Re
       : { kind: 'found', payload: storedRequest },
     renewRelocation: async () => ({ kind: 'missing' }),
     deleteRelocation: async () => {
-      storedRequest = undefined;
-      return 'deleted';
+      throw new Error('simulated orphan cleanup failure');
     }
   };
   const authority = new ZLinkInstanceActivationAuthority({
@@ -1528,7 +1865,7 @@ test('production Instance authority adapter writes schema ColdActivating then Re
     decodeServiceReadySpotAuthority(releasedSnapshot.payload)?.activationRecovery,
     undefined
   );
-  assert.equal(storedRequest, undefined);
+  assert.ok(storedRequest !== undefined);
 });
 
 test('production Instance Ready commit Store rejection is exposed as RequestFailed with the original cause', async () => {
@@ -1637,8 +1974,9 @@ test('concurrent Instance activation CAS loser joins Ready and returns the winne
         : { kind: 'found', payload };
     },
     renewRelocation: async () => ({ kind: 'missing' }),
-    deleteRelocation: async (reference) =>
-      roots.delete(reference.value) ? 'deleted' : 'missing'
+    deleteRelocation: async () => {
+      throw new Error('simulated CAS-loser orphan cleanup failure');
+    }
   };
   const winnerAuthority = new ZLinkInstanceActivationAuthority({
     store,
@@ -1719,7 +2057,7 @@ test('concurrent Instance activation CAS loser joins Ready and returns the winne
     new ServiceInstanceActivationRedirectError(joined.route)
       instanceof ServiceInstanceActivationRedirectError
   );
-  assert.equal(roots.size, 1);
+  assert.equal(roots.size, 2);
 });
 
 test('raw backend dispatches Spot requests and Actor sends through M6B owners', async () => {
@@ -2352,14 +2690,16 @@ class RecordingAuthorityNode {
       route: Parameters<
         ZLinkNodeRawMeshBackend['completeRecoveredInstanceActivation']
       >[1]
-    ) => Promise<ServiceInstanceRouteFence> = async (_target, route) => route
+    ) => Promise<ServiceInstanceRouteFence> = async (_target, route) => route,
+    private readonly descriptorRevision = 1n
   ) {}
 
   status() {
     return {
       meshName: this.meshName,
       routingId: this.nodeRid,
-      lifecycleGeneration: 1n
+      lifecycleGeneration: 1n,
+      descriptorRevision: this.descriptorRevision
     };
   }
 

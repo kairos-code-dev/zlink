@@ -601,14 +601,21 @@ class ZLinkRedisLocationStoreTest {
                 assertTrue(redis.exists(
                     physicalKeys.authorityRowKey(
                         request.authorityKey())) > 0);
-                assertEquals(
-                    Set.copyOf(JSON.convertValue(
+                Set<String> expectedAuthorityFields =
+                    new java.util.HashSet<>(JSON.convertValue(
                         authorityFixture().path(
                             "currentHashFields"),
                         JSON.getTypeFactory()
                             .constructCollectionType(
                                 List.class,
-                                String.class))),
+                                String.class)));
+                expectedAuthorityFields.addAll(Set.of(
+                    "creationReservationId",
+                    "creationIntentReference",
+                    "creationIntentSha256",
+                    "creationIntentEncodedSize"));
+                assertEquals(
+                    expectedAuthorityFields,
                     Set.copyOf(redis.hkeys(
                         physicalKeys.authorityRowKey(
                             request.authorityKey()))));
@@ -665,6 +672,19 @@ class ZLinkRedisLocationStoreTest {
             assertEquals(
                 request.pendingCapacityDelta(),
                 creating.allocation().capacityDelta());
+            var pendingCreation = creating.pendingCreation().orElseThrow();
+            assertEquals(
+                reserved.reservation().reservationVersion(),
+                pendingCreation.reservationId());
+            assertEquals(
+                request.creationIntentReference(),
+                pendingCreation.requestContentReference());
+            assertArrayEquals(
+                request.creationIntentHash(),
+                pendingCreation.requestSha256());
+            assertEquals(
+                request.creationIntentEncodedSize(),
+                pendingCreation.requestEncodedSize());
             assertEquals(
                 systems.zlink.framework.locations.ZLinkObjectCommitResult.COMMITTED,
                 store.commit(
@@ -728,6 +748,7 @@ class ZLinkRedisLocationStoreTest {
                 systems.zlink.framework.locations
                     .ZLinkPlacementAllocationState.ACTIVE,
                 current.allocation().state());
+            assertTrue(current.pendingCreation().isEmpty());
             var updated = assertInstanceOf(
                 systems.zlink.framework.locations.ZLinkAuthorityStored.class,
                 store.compareExchange(

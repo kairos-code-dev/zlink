@@ -9,6 +9,7 @@
 
 #include <zlink.hpp>
 #include <zlink/framework/contracts/actors/actor.hpp>
+#include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -198,7 +199,31 @@ struct host_options_t
 {
     mesh::raw_mesh_node_options_t mesh;
     std::string entry_spot_name = "entry";
+    std::size_t user_spot_operation_capacity = 65'536;
+    std::chrono::milliseconds user_spot_operation_replay_retention =
+      std::chrono::minutes (5);
 };
+
+struct user_spot_materialize_result_t
+{
+    bool accepted = false;
+    std::optional<protocol::application_payload_t> application_reply;
+};
+
+using user_spot_materializer_t = std::function<
+  user_spot_materialize_result_t (
+    const stateful::object_ref_t &,
+    const std::string &,
+    const std::vector<std::byte> &)>;
+
+using user_spot_create_completion_t = std::function<void (
+  foundation::operation_terminal_t,
+  protocol::user_spot_create_reply_t,
+  std::optional<protocol::application_payload_t>)>;
+
+using user_spot_close_completion_t = std::function<void (
+  foundation::operation_terminal_t,
+  protocol::user_spot_close_reply_t)>;
 
 enum class actor_transfer_role_t
 {
@@ -356,6 +381,19 @@ class public_host_runtime_t :
         termination_observer = {});
     stateful::maintenance_runtime_t *maintenance () noexcept;
     stateful::host_maintenance_runtime_t *termination () noexcept;
+    void configure_user_spot_operations (
+      std::shared_ptr<zlink::framework::location_store_t> store,
+      user_spot_materializer_t materializer);
+    bool create_user_spot_remote (
+      const zlink::routing_id_t &target_node,
+      protocol::user_spot_create_header_t request,
+      std::chrono::milliseconds timeout,
+      user_spot_create_completion_t completion);
+    bool close_user_spot_remote (
+      const zlink::routing_id_t &target_node,
+      protocol::user_spot_close_header_t request,
+      std::chrono::milliseconds timeout,
+      user_spot_close_completion_t completion);
 
     spot_handle_t entry_spot ();
     spot_handle_t get_or_create_spot (const zlink::routing_id_t &routing_id);
@@ -429,6 +467,7 @@ class public_host_runtime_t :
                              operation_kind_t kind,
                              foundation::operation_terminal_t terminal,
                              std::vector<std::uint8_t> payload);
+    std::size_t dispatch_user_spot_operations ();
 
     host_options_t _options;
     std::shared_ptr<mesh::raw_mesh_node_owner_t> _transport;
@@ -436,6 +475,19 @@ class public_host_runtime_t :
     stateful::stream_session_registry_t _sessions;
     std::unique_ptr<stateful::maintenance_runtime_t> _maintenance;
     std::unique_ptr<stateful::host_maintenance_runtime_t> _termination;
+    std::shared_ptr<zlink::framework::location_store_t>
+      _user_spot_store;
+    user_spot_materializer_t _user_spot_materializer;
+    struct user_spot_terminal_record_t
+    {
+        protocol::command kind = protocol::command::userSpotCreate;
+        std::uint64_t deadline_unix_ms = 0;
+        std::vector<std::uint8_t> request_fingerprint;
+        std::vector<std::uint8_t> header;
+        std::optional<protocol::application_payload_t> application_reply;
+    };
+    std::map<std::string, user_spot_terminal_record_t>
+      _user_spot_terminals;
     std::function<void ()> _maintenance_started;
     std::function<void ()> _maintenance_closing;
     mutable std::mutex _mutex;

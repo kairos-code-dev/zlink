@@ -23,6 +23,7 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateState;
 import systems.zlink.framework.spots.ZLinkSpotInfo;
+import systems.zlink.framework.spots.SpotRef;
 import systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics;
 
 final class ZLinkSpotLifecycle {
@@ -40,6 +41,7 @@ final class ZLinkSpotLifecycle {
     }
 
     private final ZLinkInternalSpotNode primaryNode;
+    private final String meshName;
     private final Executor backendExecutor;
     private final ZLinkSpotLocationCoordinator locations;
     private final ActivationFactory activationFactory;
@@ -52,12 +54,14 @@ final class ZLinkSpotLifecycle {
 
     ZLinkSpotLifecycle(
         ZLinkInternalSpotNode primaryNode,
+        String meshName,
         Executor backendExecutor,
         ZLinkSpotLocationCoordinator locations,
         Collection<Class<? extends ZLinkSpot<?>>> registeredSpotTypes,
         ActivationFactory activationFactory,
         ActorOccupancy actorOccupancy) {
         this.primaryNode = primaryNode;
+        this.meshName = meshName;
         this.backendExecutor = backendExecutor;
         this.locations = locations;
         this.registeredSpotTypes = Set.copyOf(registeredSpotTypes);
@@ -147,6 +151,130 @@ final class ZLinkSpotLifecycle {
                 ZLinkRuntimeMetrics.increment("zlink.spot.closed", Map.of("kind", "user"));
             })
             .thenApply(ignored -> true);
+    }
+
+    CompletionStage<PreparedUserSpot> prepareReserved(
+        Class<? extends ZLinkSpot<?>> spotType,
+        RoutingId spotRid,
+        long objectGeneration,
+        ZLinkMessage request) {
+        requireRegistered(spotType);
+        requireRoutingId(spotRid);
+        if (objectGeneration <= 0) {
+            return CompletableFuture.failedFuture(
+                new IllegalArgumentException(
+                    "objectGeneration must be positive"));
+        }
+        SpotActivation existing = spots.get(spotRid);
+        if (existing != null) {
+            if (existing.backendSpot.lifecycleGeneration()
+                    != objectGeneration
+                || existing.spot().getClass() != spotType) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "User Spot reservation is stale"));
+            }
+            return CompletableFuture.completedFuture(
+                PreparedUserSpot.existing(
+                    spotRid, objectGeneration));
+        }
+        return CompletableFuture.supplyAsync(
+                () -> primaryNode.createSpot(
+                    spotRid, objectGeneration),
+                backendExecutor)
+            .thenCompose(backendSpot -> activationFactory
+                .activate(spotType, backendSpot, request)
+                .thenApply(created -> new PreparedUserSpot(
+                    spotRid,
+                    objectGeneration,
+                    created)));
+    }
+
+    void publishReserved(PreparedUserSpot prepared) {
+        if (prepared.existing()) {
+            return;
+        }
+        if (!prepared.created().response().accepted()) {
+            throw new IllegalStateException(
+                "Rejected User Spot cannot cross the Ready barrier");
+        }
+        SpotActivation activation =
+            prepared.created().activation();
+        SpotActivation current = spots.putIfAbsent(
+            prepared.spotRid(), activation);
+        if (current != null && current != activation) {
+            activation.close();
+            throw new IllegalStateException(
+                "User Spot Ready publication lost local admission");
+        }
+        ZLinkRuntimeMetrics.add(
+            "zlink.spot.count", 1, Map.of("kind", "user"));
+        ZLinkRuntimeMetrics.increment(
+            "zlink.spot.created", Map.of("kind", "user"));
+    }
+
+    void discardReserved(PreparedUserSpot prepared) {
+        if (!prepared.existing()) {
+            SpotActivation activation =
+                prepared.created().activation();
+            if (activation != null) {
+                activation.close();
+            }
+        }
+    }
+
+    CompletionStage<Boolean> closeReserved(
+        RoutingId spotRid,
+        long objectGeneration) {
+        requireRoutingId(spotRid);
+        SpotActivation current = spots.get(spotRid);
+        if (current == null) {
+            return CompletableFuture.completedFuture(false);
+        }
+        if (current.backendSpot.lifecycleGeneration()
+                != objectGeneration) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "User Spot generation is stale"));
+        }
+        if (actorOccupancy.hasActorsInSpot(spotRid)) {
+            return CompletableFuture.completedFuture(false);
+        }
+        if (!spots.remove(spotRid, current)) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "User Spot is moving or closing"));
+        }
+        current.close();
+        ZLinkRuntimeMetrics.add(
+            "zlink.spot.count", -1, Map.of("kind", "user"));
+        ZLinkRuntimeMetrics.increment(
+            "zlink.spot.closed", Map.of("kind", "user"));
+        return CompletableFuture.completedFuture(true);
+    }
+
+    CloseReadiness closeReadiness(
+        RoutingId spotRid,
+        long objectGeneration) {
+        requireRoutingId(spotRid);
+        SpotActivation current = spots.get(spotRid);
+        if (current == null) {
+            return CloseReadiness.LOCAL_MISSING;
+        }
+        if (current.backendSpot.lifecycleGeneration() != objectGeneration) {
+            return CloseReadiness.GENERATION_STALE;
+        }
+        if (actorOccupancy.hasActorsInSpot(spotRid)) {
+            return CloseReadiness.HAS_ACTORS;
+        }
+        return CloseReadiness.READY;
+    }
+
+    enum CloseReadiness {
+        READY,
+        HAS_ACTORS,
+        LOCAL_MISSING,
+        GENERATION_STALE
     }
 
     void drainRoutedDispatchQueues() {
@@ -426,7 +554,7 @@ final class ZLinkSpotLifecycle {
         SpotActivationCreateResult result) {
         if (!result.response().accepted()) {
             return CompletableFuture.completedFuture(new ZLinkSpotCreateResult(
-                spotRid,
+                ref(spotRid, spotGeneration),
                 ZLinkSpotCreateState.REJECTED,
                 result.response().reply()));
         }
@@ -445,7 +573,7 @@ final class ZLinkSpotLifecycle {
                 ZLinkRuntimeMetrics.add("zlink.spot.count", 1, Map.of("kind", "user"));
                 ZLinkRuntimeMetrics.increment("zlink.spot.created", Map.of("kind", "user"));
                 return new ZLinkSpotCreateResult(
-                    spotRid,
+                    ref(spotRid, spotGeneration),
                     ZLinkSpotCreateState.CREATED,
                     result.response().reply());
             })
@@ -486,18 +614,43 @@ final class ZLinkSpotLifecycle {
         CompletionStage<ZLinkSpotCreateResult> create) {
         return create.thenApply(result -> result.state() == ZLinkSpotCreateState.CREATED
             ? new ZLinkSpotCreateResult(
-                result.spotRid(),
+                result.spot(),
                 ZLinkSpotCreateState.EXISTING,
                 result.reply())
             : result);
     }
 
-    private static ZLinkSpotCreateResult existingResult(RoutingId spotRid) {
-        return new ZLinkSpotCreateResult(spotRid, ZLinkSpotCreateState.EXISTING, null);
+    private ZLinkSpotCreateResult existingResult(RoutingId spotRid) {
+        SpotActivation activation = spots.get(spotRid);
+        return new ZLinkSpotCreateResult(
+            ref(spotRid, activation.backendSpot.lifecycleGeneration()),
+            ZLinkSpotCreateState.EXISTING,
+            null);
+    }
+
+    private SpotRef ref(RoutingId spotRid, long generation) {
+        return new SpotRef(
+            spotRid, generation, meshName, primaryNode.routingId());
     }
 
     private static ZLinkConfigurationException duplicateSpot(RoutingId spotRid) {
         return new ZLinkConfigurationException("duplicate spot rid: " + spotRid);
+    }
+
+    record PreparedUserSpot(
+        RoutingId spotRid,
+        long objectGeneration,
+        SpotActivationCreateResult created) {
+        static PreparedUserSpot existing(
+            RoutingId spotRid,
+            long objectGeneration) {
+            return new PreparedUserSpot(
+                spotRid, objectGeneration, null);
+        }
+
+        boolean existing() {
+            return created == null;
+        }
     }
 
     private static ZLinkFrameworkException spotCreateLocationFailure(

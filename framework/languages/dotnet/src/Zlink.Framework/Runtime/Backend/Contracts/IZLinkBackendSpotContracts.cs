@@ -207,6 +207,32 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     // are delivered to no consumer instead of being silently dropped.
     void OnTransferControl(Action<ZLinkBackendActorTransferControl> handler);
 
+    // Framework service command 47/48 target. Startup installs the production
+    // Spot catalog + Location Store adapter before the MeshNode begins
+    // receiving traffic.
+    void SetUserSpotOperationTarget(IUserSpotOperationTarget target) =>
+        throw new NotSupportedException(
+            "This MeshNode backend does not support User Spot service operations.");
+
+    ValueTask<(UserSpotCreateCompletion Completion, IReadOnlyList<Message> Reply)>
+        CreateUserSpotAsync(
+            RoutingId targetNodeRid,
+            RoutingId spotRid,
+            string stableType,
+            UserSpotReservationFence reservation,
+            ulong deadlineUnixMs,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    ValueTask<UserSpotCloseCompletion> CloseUserSpotAsync(
+        RoutingId targetNodeRid,
+        UserSpotCloseFence target,
+        ulong deadlineUnixMs,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
     // Registers the handler the node dispatch pump invokes for node-addressed
     // (NodeSend/NodeRequest) and channel-addressed (ChannelSend/ChannelRequest)
     // records, so the MeshNode builder's registered route/channel handlers receive

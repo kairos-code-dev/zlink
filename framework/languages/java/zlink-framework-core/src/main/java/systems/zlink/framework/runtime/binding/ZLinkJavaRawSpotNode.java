@@ -290,7 +290,8 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         return createSpot(spotRid, nextGeneration.getAndIncrement());
     }
 
-    private ZLinkBackendSpot createSpot(
+    @Override
+    public ZLinkBackendSpot createSpot(
         RoutingId spotRid,
         long lifecycleGeneration) {
         java.util.Objects.requireNonNull(spotRid, "spotRid");
@@ -767,6 +768,17 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
             0L);
     }
 
+    void forgetSpotAuthority(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        long objectGeneration,
+        long authorityOwnerGeneration) {
+        spotAuthorities.remove(
+            new SpotAuthorityKey(
+                targetNodeRid, spotRid, objectGeneration),
+            authorityOwnerGeneration);
+    }
+
     long actorAuthorityOwnerGeneration(ZLinkBackendActorRef actor) {
         return actorAuthorities.getOrDefault(
             new ActorAuthorityKey(
@@ -1139,6 +1151,28 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         if (current != null && !current.equals(authority)) {
             throw new IllegalStateException(
                 "Instance Spot authority fence changed without replacement");
+        }
+    }
+
+    void reconcileInstanceSpotAuthority(
+        String stableType,
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
+        java.util.Objects.requireNonNull(route, "route");
+        if (!routingId().equals(route.targetNodeRid())) {
+            return;
+        }
+        instanceAuthorities.put(
+            route.targetSpotRid(),
+            new InstanceAuthority(stableType, route));
+    }
+
+    void forgetInstanceSpotAuthority(
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
+        InstanceAuthority current =
+            instanceAuthorities.get(route.targetSpotRid());
+        if (current != null && current.route().equals(route)) {
+            instanceAuthorities.remove(
+                route.targetSpotRid(), current);
         }
     }
 

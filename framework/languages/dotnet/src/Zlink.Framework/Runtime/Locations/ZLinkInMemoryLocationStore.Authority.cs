@@ -167,6 +167,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                         relocationCapacity.Request.TargetNodeLifecycleGeneration,
                         relocationCapacity.Request.CapacityDelta)
                     : current.Allocation,
+                current.PendingCreation,
                 now);
             _authorities[key.Value] = stored;
             if (put.RelocationCapacityFence is { } capacityFence)
@@ -305,6 +306,11 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     request.TargetDescriptor,
                     request.TargetNodeLifecycleGeneration,
                     request.PendingCapacityDelta),
+                new ZLinkPendingObjectCreation(
+                    reservationVersion,
+                    request.CreationIntentReference,
+                    request.CreationIntentHash.ToArray(),
+                    request.CreationIntentEncodedSize),
                 now);
             _authorities[request.Key.Value] = snapshot;
             AdjustPlacementCapacity(
@@ -375,6 +381,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 {
                     State = ZLinkPlacementAllocationState.Active
                 },
+                PendingCreation = null,
                 StoreNow = now
             };
             AdjustPlacementCapacity(

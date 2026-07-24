@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/stateful/public_host_runtime.hpp"
+#include "runtime/locations/pending_creation_projection.hpp"
+#include "runtime/locations/sha256.hpp"
 
 #include <algorithm>
 #include <array>
@@ -18,6 +20,17 @@ namespace
 
 constexpr std::string_view multipart_content_type =
   "application/x-zlink-framework-multipart";
+bool user_spot_operation_replay_expired (
+  std::uint64_t deadline_unix_ms,
+  std::int64_t now_unix_ms,
+  std::chrono::milliseconds replay_retention)
+{
+    return now_unix_ms >= 0
+      && static_cast<std::uint64_t> (now_unix_ms) > deadline_unix_ms
+      && static_cast<std::uint64_t> (now_unix_ms) - deadline_unix_ms
+           > static_cast<std::uint64_t> (
+             std::max<std::int64_t> (0, replay_retention.count ()));
+}
 
 void append_u32 (std::vector<std::uint8_t> &out, std::uint32_t value)
 {
@@ -128,6 +141,120 @@ bool is_request (record_kind_t kind)
            || kind == record_kind_t::channel_request
            || kind == record_kind_t::spot_request
            || kind == record_kind_t::actor_request;
+}
+
+std::vector<std::vector<std::uint8_t>>
+unpack_infrastructure_reply (const std::vector<std::uint8_t> &packed)
+{
+    if (packed.empty () || packed.front () == 0
+        || packed.front () > 2) {
+        throw protocol::service_wire_error_t (
+          "invalid packed infrastructure reply");
+    }
+    std::size_t offset = 1;
+    std::vector<std::vector<std::uint8_t>> parts;
+    parts.reserve (packed.front ());
+    for (std::uint8_t index = 0; index < packed.front (); ++index) {
+        const auto length = read_u32 (packed, offset);
+        if (packed.size () - offset < length) {
+            throw protocol::service_wire_error_t (
+              "truncated packed infrastructure reply");
+        }
+        parts.emplace_back (
+          packed.begin () + static_cast<std::ptrdiff_t> (offset),
+          packed.begin ()
+            + static_cast<std::ptrdiff_t> (offset + length));
+        offset += length;
+    }
+    if (offset != packed.size ()) {
+        throw protocol::service_wire_error_t (
+          "packed infrastructure reply has trailing bytes");
+    }
+    return parts;
+}
+
+std::string user_spot_operation_key (
+  const std::vector<std::uint8_t> &source,
+  std::uint64_t source_generation,
+  const protocol::wire_operation_id_t &operation)
+{
+    std::ostringstream stream;
+    stream << std::hex << std::setfill ('0');
+    for (const auto value : source)
+        stream << std::setw (2) << static_cast<unsigned> (value);
+    stream << ':' << source_generation << ':' << operation.high
+           << ':' << operation.low;
+    return stream.str ();
+}
+
+std::vector<std::byte> ready_user_spot_authority_payload (
+  const stateful::object_ref_t &object,
+  const std::string &stable_type)
+{
+    // The authority payload is framework-owned. Application creation bytes
+    // remain in the reservation projection and are never published as Ready.
+    const std::string value =
+      "zlink:user-spot:ready:v1\n" + stable_type + "\n"
+      + object.key + "\n" + std::to_string (object.object_generation)
+      + "\n"
+      + std::to_string (object.authority_owner_generation);
+    std::vector<std::byte> result;
+    result.reserve (value.size ());
+    for (const auto character : value)
+        result.push_back (
+          static_cast<std::byte> (
+            static_cast<unsigned char> (character)));
+    return result;
+}
+
+std::vector<std::byte> closing_user_spot_authority_payload (
+  const stateful::object_ref_t &object)
+{
+    const std::string value =
+      "zlink:user-spot:closing:v1\n" + object.key + "\n"
+      + std::to_string (object.object_generation) + "\n"
+      + std::to_string (object.authority_owner_generation);
+    std::vector<std::byte> result;
+    result.reserve (value.size ());
+    for (const auto character : value)
+        result.push_back (
+          static_cast<std::byte> (
+            static_cast<unsigned char> (character)));
+    return result;
+}
+
+std::uint64_t unix_milliseconds_now ()
+{
+    return static_cast<std::uint64_t> (
+      std::chrono::duration_cast<std::chrono::milliseconds> (
+        std::chrono::system_clock::now ().time_since_epoch ())
+        .count ());
+}
+
+zlink::framework::object_reservation_fence_t public_fence (
+  const protocol::user_spot_reservation_fence_t &wire,
+  const std::string &mesh_name)
+{
+    if (wire.target_owner_lease_generation
+        > static_cast<std::uint64_t> (
+          std::numeric_limits<std::int64_t>::max ()))
+        throw protocol::service_wire_error_t (
+          "target owner lease generation exceeds the public Store range");
+    return {
+      wire.reservation_id,
+      wire.expected_store_version,
+      wire.object_generation,
+      wire.authority_owner_generation,
+      {mesh_name,
+       node_rid_t::from_string (
+         zlink::routing_id_t::from (
+           wire.target_node_routing_id)
+           .to_string ()),
+       wire.target_node_generation,
+       {wire.target_owner_id,
+        static_cast<std::int64_t> (
+          wire.target_owner_lease_generation)}},
+      wire.pending_capacity_delta};
 }
 
 } // namespace
@@ -556,6 +683,97 @@ public_host_runtime_t::sessions () noexcept
     return _sessions;
 }
 
+void public_host_runtime_t::configure_user_spot_operations (
+  std::shared_ptr<zlink::framework::location_store_t> store,
+  user_spot_materializer_t materializer)
+{
+    if (!store || !materializer)
+        throw std::invalid_argument (
+          "User Spot operations require a Location Store and materializer");
+    std::lock_guard lock (_mutex);
+    if (_started)
+        throw std::logic_error (
+          "User Spot operations must be configured before start");
+    _user_spot_store = std::move (store);
+    _user_spot_materializer = std::move (materializer);
+}
+
+bool public_host_runtime_t::create_user_spot_remote (
+  const zlink::routing_id_t &target_node,
+  protocol::user_spot_create_header_t request,
+  std::chrono::milliseconds timeout,
+  user_spot_create_completion_t completion)
+{
+    if (!completion)
+        throw std::invalid_argument (
+          "User Spot create completion is required");
+    return _transport->request_user_spot_create (
+      target_node.to_bytes (), std::move (request), timeout,
+      [completion = std::move (completion)] (
+        foundation::operation_terminal_t terminal,
+        std::vector<std::uint8_t> packed) mutable {
+          protocol::user_spot_create_reply_t reply;
+          std::optional<protocol::application_payload_t>
+            application_reply;
+          if (terminal
+              == foundation::operation_terminal_t::completed) {
+              try {
+                  const auto parts =
+                    unpack_infrastructure_reply (packed);
+                  reply =
+                    protocol::decode_user_spot_create_reply (
+                      parts.front ());
+                  if (parts.size () == 2)
+                      application_reply =
+                        protocol::decode_application_payload (parts[1]);
+              }
+              catch (const protocol::service_wire_error_t &) {
+                  terminal =
+                    foundation::operation_terminal_t::transport_failed;
+              }
+          }
+          completion (
+            terminal, std::move (reply),
+            std::move (application_reply));
+      });
+}
+
+bool public_host_runtime_t::close_user_spot_remote (
+  const zlink::routing_id_t &target_node,
+  protocol::user_spot_close_header_t request,
+  std::chrono::milliseconds timeout,
+  user_spot_close_completion_t completion)
+{
+    if (!completion)
+        throw std::invalid_argument (
+          "User Spot close completion is required");
+    return _transport->request_user_spot_close (
+      target_node.to_bytes (), std::move (request), timeout,
+      [completion = std::move (completion)] (
+        foundation::operation_terminal_t terminal,
+        std::vector<std::uint8_t> packed) mutable {
+          protocol::user_spot_close_reply_t reply;
+          if (terminal
+              == foundation::operation_terminal_t::completed) {
+              try {
+                  const auto parts =
+                    unpack_infrastructure_reply (packed);
+                  if (parts.size () != 1)
+                      throw protocol::service_wire_error_t (
+                        "User Spot close reply carries a payload");
+                  reply =
+                    protocol::decode_user_spot_close_reply (
+                      parts.front ());
+              }
+              catch (const protocol::service_wire_error_t &) {
+                  terminal =
+                    foundation::operation_terminal_t::transport_failed;
+              }
+          }
+          completion (terminal, std::move (reply));
+      });
+}
+
 spot_handle_t public_host_runtime_t::entry_spot ()
 {
     return get_or_create_spot (zlink::routing_id_t::from (
@@ -762,6 +980,848 @@ zlink::submit_result_t public_host_runtime_t::request_to_channel (
       }));
 }
 
+std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
+{
+    std::shared_ptr<zlink::framework::location_store_t> store;
+    user_spot_materializer_t materializer;
+    {
+        std::lock_guard lock (_mutex);
+        store = _user_spot_store;
+        materializer = _user_spot_materializer;
+    }
+    std::size_t count = 0;
+    while (auto claim = _transport->mailbox ().try_claim (
+             mesh::service_mailbox_domain_t::infrastructure, 64,
+             4u * 1024u * 1024u)) {
+        for (auto &mailbox_record : claim->records) {
+            ++count;
+            try {
+                const auto wire =
+                  protocol::decode_header (
+                    mailbox_record.parts.front ());
+                if (wire.kind != protocol::command::userSpotCreate
+                    && wire.kind
+                         != protocol::command::userSpotClose)
+                    throw protocol::service_wire_error_t (
+                      "unsupported infrastructure mailbox command");
+
+                if (wire.kind
+                    == protocol::command::userSpotCreate) {
+                    const auto request =
+                      protocol::decode_user_spot_create_header (
+                        mailbox_record.parts.front ());
+                    auto fingerprint_request = request;
+                    fingerprint_request.correlation = 1;
+                    const auto request_fingerprint =
+                      protocol::encode_user_spot_create_header (
+                        fingerprint_request);
+                    const auto operation_key =
+                      user_spot_operation_key (
+                        request.source_node_routing_id,
+                        request.source_node_generation,
+                        request.operation);
+                    std::optional<user_spot_terminal_record_t>
+                      cached;
+                    {
+                        std::lock_guard lock (_mutex);
+                        const auto found =
+                          _user_spot_terminals.find (
+                            operation_key);
+                        if (found != _user_spot_terminals.end ()) {
+                            if (user_spot_operation_replay_expired (
+                                  found->second.deadline_unix_ms,
+                                  unix_milliseconds_now (),
+                                  _options
+                                    .user_spot_operation_replay_retention))
+                                _user_spot_terminals.erase (found);
+                            else
+                                cached = found->second;
+                        }
+                    }
+                    if (cached) {
+                        if (cached->kind
+                              != protocol::command::userSpotCreate
+                            || cached->request_fingerprint
+                                 != request_fingerprint)
+                            throw protocol::service_wire_error_t (
+                              "user spot operation identity was reused with a different request");
+                        auto reply =
+                          protocol::decode_user_spot_create_reply (
+                            cached->header);
+                        reply.header.correlation =
+                          request.correlation;
+                        (void) _transport
+                          ->reply_user_spot_create (
+                            mailbox_record, reply,
+                            cached->application_reply);
+                        continue;
+                    }
+                    {
+                        std::lock_guard lock (_mutex);
+                        if (_user_spot_terminals.size ()
+                            >= _options.user_spot_operation_capacity) {
+                            const auto now = unix_milliseconds_now ();
+                            std::erase_if (
+                              _user_spot_terminals,
+                              [this, now] (const auto &entry) {
+                                  return user_spot_operation_replay_expired (
+                                    entry.second.deadline_unix_ms, now,
+                                    _options
+                                      .user_spot_operation_replay_retention);
+                              });
+                        }
+                        if (_user_spot_terminals.size ()
+                            >= _options.user_spot_operation_capacity) {
+                            protocol::user_spot_create_reply_t reply{
+                              {request.correlation, 103, 0},
+                              protocol::user_spot_create_result_t::rejected,
+                              {},
+                              0};
+                            (void) _transport->reply_user_spot_create (
+                              mailbox_record, reply, std::nullopt);
+                            continue;
+                        }
+                    }
+                    auto terminal =
+                      [&] (std::uint32_t terminal_result,
+                           std::uint32_t failure_code,
+                           protocol::user_spot_create_result_t
+                             result,
+                           const std::vector<std::uint8_t> &spot,
+                           std::uint64_t generation,
+                           std::optional<
+                             protocol::application_payload_t>
+                             application_reply = std::nullopt) {
+                          protocol::user_spot_create_reply_t reply{
+                            {request.correlation,
+                             terminal_result,
+                             failure_code},
+                            result,
+                            spot,
+                            generation};
+                          user_spot_terminal_record_t stored{
+                            protocol::command::userSpotCreate,
+                            request.deadline_unix_ms,
+                            request_fingerprint,
+                            protocol::
+                              encode_user_spot_create_reply (
+                                request.correlation,
+                                terminal_result, failure_code,
+                                result, spot, generation),
+                            application_reply};
+                          {
+                              std::lock_guard lock (_mutex);
+                              _user_spot_terminals
+                                .insert_or_assign (
+                                  operation_key,
+                                  std::move (stored));
+                          }
+                          (void) _transport
+                            ->reply_user_spot_create (
+                              mailbox_record, reply,
+                              std::move (
+                                application_reply));
+                      };
+                    if (!store || !materializer) {
+                        terminal (
+                          105, static_cast<std::uint32_t> (
+                                 protocol::framework_error_code::
+                                   requestFailed),
+                          protocol::user_spot_create_result_t::
+                            rejected,
+                          {}, 0);
+                        continue;
+                    }
+                    if (request.deadline_unix_ms
+                        <= unix_milliseconds_now ()) {
+                        terminal (
+                          101, 0,
+                          protocol::user_spot_create_result_t::
+                            rejected,
+                          {}, 0);
+                        continue;
+                    }
+                    const auto spot_rid =
+                      zlink::routing_id_t::from (
+                        request.spot_routing_id);
+                    const auto global_id =
+                      spot_rid.to_string ();
+                    const auto read =
+                      store
+                        ->read_authority (
+                          {std::to_string (
+                             static_cast<int> (
+                               placement_object_kind_t::
+                                 user_spot))
+                           + ":" + global_id})
+                        .result ()
+                        .value ();
+                    const auto *snapshot =
+                      std::get_if<authority_snapshot_t> (&read);
+                    const auto &reservation =
+                      request.reservation;
+                    const auto exact =
+                      snapshot
+                      && snapshot->store_version
+                           == reservation
+                                .expected_store_version
+                      && snapshot->object_generation
+                           == reservation.object_generation
+                      && snapshot
+                           ->authority_owner_generation
+                           == reservation
+                                .authority_owner_generation
+                      && snapshot->owner.owner_id
+                           == reservation.target_owner_id
+                      && snapshot->owner.lease_generation
+                           == reservation
+                                .target_owner_lease_generation
+                      && snapshot->allocation.object_kind
+                           == placement_object_kind_t::
+                                user_spot
+                      && snapshot->allocation.stable_type
+                           == request.stable_type
+                      && snapshot->allocation.node_rid.value ()
+                           == node_rid_t::from_string (
+                                zlink::routing_id_t::from (
+                                  reservation
+                                    .target_node_routing_id)
+                                  .to_string ())
+                                .value ()
+                      && snapshot->allocation
+                           .node_lifecycle_generation
+                           == reservation
+                                .target_node_generation
+                      && snapshot->allocation.capacity_delta
+                           == reservation
+                                .pending_capacity_delta;
+                    if (!exact) {
+                        const auto stale =
+                          snapshot
+                          && snapshot->object_generation
+                               != reservation
+                                    .object_generation;
+                        terminal (
+                          107,
+                          static_cast<std::uint32_t> (
+                            stale
+                              ? protocol::framework_error_code::
+                                  spotGenerationStale
+                              : protocol::framework_error_code::
+                                  requestFailed),
+                          protocol::user_spot_create_result_t::
+                            rejected,
+                          {}, 0);
+                        continue;
+                    }
+                    const auto fence =
+                      public_fence (
+                        reservation,
+                        snapshot->allocation.mesh_name);
+                    auto *projection_provider =
+                      dynamic_cast<
+                        runtime::
+                          pending_creation_projection_provider_t *> (
+                        store.get ());
+                    const auto pending =
+                      projection_provider
+                        ? projection_provider
+                            ->read_verified_pending_creation (
+                              {placement_object_kind_t::
+                                 user_spot,
+                               global_id},
+                              fence)
+                        : std::nullopt;
+                    if (!pending) {
+                        terminal (
+                          105,
+                          static_cast<std::uint32_t> (
+                            protocol::framework_error_code::
+                              requestFailed),
+                          protocol::user_spot_create_result_t::
+                            rejected,
+                          {}, 0);
+                        continue;
+                    }
+                    const auto creation_payload =
+                      runtime::decode_inline_creation_content (
+                        pending->intent.request_content_reference);
+                    if (!creation_payload
+                        || pending->intent.request_encoded_size
+                             != creation_payload->size ()
+                        || pending->intent.request_sha256
+                             != runtime::sha256 (*creation_payload)) {
+                        terminal (
+                          105,
+                          static_cast<std::uint32_t> (
+                            protocol::framework_error_code::
+                              requestFailed),
+                          protocol::user_spot_create_result_t::
+                            rejected,
+                          {}, 0);
+                        continue;
+                    }
+                    const stateful::object_ref_t exact_ref{
+                      stateful::object_kind_t::user_spot,
+                      std::string (
+                        request.spot_routing_id.begin (),
+                        request.spot_routing_id.end ()),
+                      reservation.object_generation,
+                      reservation.authority_owner_generation,
+                      snapshot->allocation.mesh_name,
+                      std::string (
+                        snapshot->allocation.node_rid.value ())};
+                    if (snapshot->allocation.capacity_state
+                        == placement_capacity_state_t::active) {
+                        const auto existing = _objects.find (
+                          stateful::object_kind_t::user_spot,
+                          exact_ref.key);
+                        if (!existing
+                            || *existing != exact_ref) {
+                            terminal (
+                              105,
+                              static_cast<std::uint32_t> (
+                                protocol::
+                                  framework_error_code::
+                                    requestFailed),
+                              protocol::
+                                user_spot_create_result_t::
+                                  rejected,
+                              {}, 0);
+                            continue;
+                        }
+                        terminal (
+                          0, 0,
+                          protocol::user_spot_create_result_t::
+                            existing,
+                          request.spot_routing_id,
+                          exact_ref.object_generation);
+                        continue;
+                    }
+                    auto local =
+                      _objects.begin_reserved_user_spot (
+                        exact_ref, request.stable_type,
+                        [&] {
+                            std::vector<std::uint8_t> bytes;
+                            bytes.reserve (
+                              creation_payload->size ());
+                            for (const auto value :
+                                 *creation_payload)
+                                bytes.push_back (
+                                  std::to_integer<
+                                    std::uint8_t> (value));
+                            return bytes;
+                        } ());
+                    if (local.status
+                        == stateful::create_status_t::existing) {
+                        terminal (
+                          0, 0,
+                          protocol::user_spot_create_result_t::
+                            existing,
+                          request.spot_routing_id,
+                          exact_ref.object_generation);
+                        continue;
+                    }
+                    if (!local.factory_owner) {
+                        terminal (
+                          local.error
+                                == stateful::stateful_error_t::
+                                     generation_stale
+                            ? 107
+                            : 108,
+                          static_cast<std::uint32_t> (
+                            local.error
+                                  == stateful::
+                                       stateful_error_t::moving
+                              ? protocol::
+                                  framework_error_code::
+                                    spotMoving
+                              : local.error
+                                    == stateful::
+                                         stateful_error_t::
+                                           generation_stale
+                                ? protocol::
+                                    framework_error_code::
+                                      spotGenerationStale
+                                : protocol::
+                                    framework_error_code::
+                                      requestFailed),
+                          protocol::user_spot_create_result_t::
+                            rejected,
+                          {}, 0);
+                        continue;
+                    }
+                    user_spot_materialize_result_t
+                      materialized;
+                    try {
+                        materialized =
+                          materializer (
+                            exact_ref, request.stable_type,
+                            *creation_payload);
+                    }
+                    catch (...) {
+                        (void) _objects.abort_create (
+                          local.attempt);
+                        (void) store
+                          ->abort (
+                            {{placement_object_kind_t::
+                                user_spot,
+                              global_id},
+                             public_fence (
+                               reservation,
+                               snapshot->allocation.mesh_name)})
+                          .result ();
+                        terminal (
+                          105,
+                          static_cast<std::uint32_t> (
+                            protocol::framework_error_code::
+                              spotCreateFailed),
+                          protocol::user_spot_create_result_t::
+                            rejected,
+                          {}, 0);
+                        continue;
+                    }
+                    if (!materialized.accepted) {
+                        (void) store
+                          ->abort (
+                            {{placement_object_kind_t::
+                                user_spot,
+                              global_id},
+                             fence})
+                          .result ()
+                          .value ();
+                        (void) _objects.abort_create (
+                          local.attempt);
+                        terminal (
+                          0, 0,
+                          protocol::user_spot_create_result_t::
+                            rejected,
+                          request.spot_routing_id,
+                          exact_ref.object_generation,
+                          std::move (
+                            materialized.application_reply));
+                        continue;
+                    }
+                    const auto committed =
+                      store
+                        ->commit (
+                          {{placement_object_kind_t::user_spot,
+                           global_id},
+                           fence,
+                           ready_user_spot_authority_payload (
+                             exact_ref,
+                             request.stable_type)})
+                        .result ()
+                        .value ();
+                    const auto *ready =
+                      std::get_if<object_committed_t> (
+                        &committed);
+                    const auto *already =
+                      std::get_if<
+                        object_already_committed_t> (
+                        &committed);
+                    if (!ready && !already) {
+                        (void) _objects.abort_create (
+                          local.attempt);
+                        terminal (
+                          107,
+                          static_cast<std::uint32_t> (
+                            protocol::framework_error_code::
+                              requestFailed),
+                          protocol::user_spot_create_result_t::
+                            rejected,
+                          {}, 0);
+                        continue;
+                    }
+                    auto local_commit =
+                      _objects.commit_create (local.attempt);
+                    if (local_commit
+                        != stateful::stateful_error_t::none) {
+                        std::vector<std::uint8_t> creation_bytes;
+                        creation_bytes.reserve (
+                          creation_payload->size ());
+                        for (const auto value : *creation_payload)
+                            creation_bytes.push_back (
+                              std::to_integer<std::uint8_t> (value));
+                        const auto reconciled =
+                          _objects.begin_reserved_user_spot (
+                            exact_ref, request.stable_type,
+                            std::move (creation_bytes));
+                        if (reconciled.status
+                              == stateful::create_status_t::existing
+                            && reconciled.object == exact_ref)
+                            local_commit =
+                              stateful::stateful_error_t::none;
+                        else if (
+                          (reconciled.status
+                             == stateful::create_status_t::reserved
+                           || reconciled.status
+                                == stateful::create_status_t::joined)
+                          && reconciled.attempt != 0)
+                            local_commit = _objects.commit_create (
+                              reconciled.attempt);
+                    }
+                    if (local_commit
+                        != stateful::stateful_error_t::none) {
+                        terminal (
+                          105,
+                          static_cast<std::uint32_t> (
+                            protocol::framework_error_code::
+                              requestFailed),
+                          protocol::user_spot_create_result_t::
+                            rejected,
+                          {}, 0);
+                        continue;
+                    }
+                    {
+                        std::lock_guard lock (_mutex);
+                        _spots.insert_or_assign (
+                          exact_ref.key, exact_ref);
+                    }
+                    terminal (
+                      0, 0,
+                      protocol::user_spot_create_result_t::
+                        created,
+                      request.spot_routing_id,
+                      exact_ref.object_generation,
+                      std::move (
+                        materialized.application_reply));
+                    continue;
+                }
+
+                const auto request =
+                  protocol::decode_user_spot_close_header (
+                    mailbox_record.parts.front ());
+                auto fingerprint_request = request;
+                fingerprint_request.correlation = 1;
+                const auto request_fingerprint =
+                  protocol::encode_user_spot_close_header (
+                    fingerprint_request);
+                const auto operation_key =
+                  user_spot_operation_key (
+                    request.source_node_routing_id,
+                    request.source_node_generation,
+                    request.operation);
+                std::optional<user_spot_terminal_record_t>
+                  cached;
+                {
+                    std::lock_guard lock (_mutex);
+                    const auto found =
+                      _user_spot_terminals.find (
+                        operation_key);
+                    if (found != _user_spot_terminals.end ()) {
+                        if (user_spot_operation_replay_expired (
+                              found->second.deadline_unix_ms,
+                              unix_milliseconds_now (),
+                              _options
+                                .user_spot_operation_replay_retention))
+                            _user_spot_terminals.erase (found);
+                        else
+                            cached = found->second;
+                    }
+                }
+                if (cached) {
+                    if (cached->kind
+                          != protocol::command::userSpotClose
+                        || cached->request_fingerprint
+                             != request_fingerprint)
+                        throw protocol::service_wire_error_t (
+                          "user spot operation identity was reused with a different request");
+                    auto reply =
+                      protocol::decode_user_spot_close_reply (
+                        cached->header);
+                    reply.header.correlation =
+                      request.correlation;
+                    (void) _transport->reply_user_spot_close (
+                      mailbox_record, reply);
+                    continue;
+                }
+                {
+                    std::lock_guard lock (_mutex);
+                    if (_user_spot_terminals.size ()
+                        >= _options.user_spot_operation_capacity) {
+                        const auto now = unix_milliseconds_now ();
+                        std::erase_if (
+                          _user_spot_terminals,
+                          [this, now] (const auto &entry) {
+                              return user_spot_operation_replay_expired (
+                                entry.second.deadline_unix_ms, now,
+                                _options
+                                  .user_spot_operation_replay_retention);
+                          });
+                    }
+                    if (_user_spot_terminals.size ()
+                        >= _options.user_spot_operation_capacity) {
+                        protocol::user_spot_close_reply_t reply{
+                          {request.correlation, 103, 0}, false};
+                        (void) _transport->reply_user_spot_close (
+                          mailbox_record, reply);
+                        continue;
+                    }
+                }
+                auto terminal =
+                  [&] (std::uint32_t terminal_result,
+                       std::uint32_t failure_code,
+                       bool closed) {
+                      protocol::user_spot_close_reply_t reply{
+                        {request.correlation,
+                         terminal_result,
+                         failure_code},
+                        closed};
+                      user_spot_terminal_record_t stored{
+                        protocol::command::userSpotClose,
+                        request.deadline_unix_ms,
+                        request_fingerprint,
+                        protocol::encode_user_spot_close_reply (
+                          request.correlation,
+                          terminal_result, failure_code,
+                          closed),
+                        std::nullopt};
+                      {
+                          std::lock_guard lock (_mutex);
+                          _user_spot_terminals.insert_or_assign (
+                            operation_key, std::move (stored));
+                      }
+                      (void) _transport
+                        ->reply_user_spot_close (
+                          mailbox_record, reply);
+                  };
+                if (!store) {
+                    terminal (
+                      105, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               requestFailed),
+                      false);
+                    continue;
+                }
+                if (request.deadline_unix_ms
+                    <= unix_milliseconds_now ()) {
+                    terminal (101, 0, false);
+                    continue;
+                }
+                const auto spot_rid =
+                  zlink::routing_id_t::from (
+                    request.target.spot_routing_id);
+                const auto global_id = spot_rid.to_string ();
+                const auto read =
+                  store
+                    ->read_authority (
+                      {std::to_string (
+                         static_cast<int> (
+                           placement_object_kind_t::
+                             user_spot))
+                       + ":" + global_id})
+                    .result ()
+                    .value ();
+                const auto *snapshot =
+                  std::get_if<authority_snapshot_t> (&read);
+                if (!snapshot) {
+                    terminal (0, 0, false);
+                    continue;
+                }
+                const auto &target = request.target;
+                if (snapshot->object_generation
+                      != target.object_generation) {
+                    terminal (
+                      107, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               spotGenerationStale),
+                      false);
+                    continue;
+                }
+                if (snapshot->authority_owner_generation
+                      != target.authority_owner_generation
+                    || snapshot->store_version
+                         != target.expected_store_version
+                    || snapshot->allocation.object_kind
+                         != placement_object_kind_t::user_spot
+                    || snapshot->allocation.capacity_state
+                         != placement_capacity_state_t::active
+                    || snapshot->allocation.node_rid.value ()
+                         != node_rid_t::from_string (
+                              zlink::routing_id_t::from (
+                                target
+                                  .target_node_routing_id)
+                                .to_string ())
+                              .value ()
+                    || snapshot->allocation
+                         .node_lifecycle_generation
+                         != target.target_node_generation) {
+                    terminal (
+                      107, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               spotMoving),
+                      false);
+                    continue;
+                }
+                const stateful::object_ref_t exact_ref{
+                  stateful::object_kind_t::user_spot,
+                  std::string (
+                    target.spot_routing_id.begin (),
+                    target.spot_routing_id.end ()),
+                  target.object_generation,
+                  target.authority_owner_generation,
+                  snapshot->allocation.mesh_name,
+                  std::string (
+                    snapshot->allocation.node_rid.value ())};
+                if (snapshot->payload
+                    != ready_user_spot_authority_payload (
+                      exact_ref, snapshot->allocation.stable_type)) {
+                    terminal (
+                      107, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               spotMoving),
+                      false);
+                    continue;
+                }
+                const auto local = _objects.find (
+                  stateful::object_kind_t::user_spot,
+                  exact_ref.key);
+                if (!local || *local != exact_ref) {
+                    terminal (
+                      107, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               spotMoving),
+                      false);
+                    continue;
+                }
+                const authority_key_t authority_key{
+                  std::to_string (
+                    static_cast<int> (
+                      placement_object_kind_t::user_spot))
+                  + ":" + global_id};
+                const auto sealed =
+                  store
+                    ->compare_exchange_authority (
+                      authority_key,
+                      snapshot->store_version,
+                      authority_put_t{
+                        closing_user_spot_authority_payload (
+                          exact_ref),
+                        authority_generation_transition_t::
+                          preserve,
+                        std::nullopt,
+                        std::nullopt})
+                    .result ()
+                    .value ();
+                const auto *closing =
+                  std::get_if<authority_stored_t> (&sealed);
+                if (!closing) {
+                    terminal (
+                      107, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               spotMoving),
+                      false);
+                    continue;
+                }
+                const auto rollback_closing = [&] {
+                    return std::holds_alternative<
+                      authority_stored_t> (
+                      store
+                        ->compare_exchange_authority (
+                          authority_key,
+                          closing->snapshot.store_version,
+                          authority_put_t{
+                            snapshot->payload,
+                            authority_generation_transition_t::
+                              preserve,
+                            std::nullopt,
+                            std::nullopt})
+                        .result ()
+                        .value ());
+                };
+                const auto [close_error, close_token] =
+                  _objects.begin_close_spot (exact_ref);
+                if (close_error
+                    == stateful::stateful_error_t::
+                         generation_stale) {
+                    (void) rollback_closing ();
+                    terminal (
+                      107, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               spotGenerationStale),
+                      false);
+                    continue;
+                }
+                if (close_error
+                    == stateful::stateful_error_t::moving) {
+                    (void) rollback_closing ();
+                    terminal (
+                      107, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               spotMoving),
+                      false);
+                    continue;
+                }
+                if (close_error
+                      == stateful::stateful_error_t::not_found
+                    || !close_token) {
+                    (void) rollback_closing ();
+                    terminal (
+                      107, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               spotMoving),
+                      false);
+                    continue;
+                }
+                if (_objects.commit_close_spot (
+                      *close_token)
+                    != stateful::stateful_error_t::none) {
+                    (void) rollback_closing ();
+                    terminal (
+                      105, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               requestFailed),
+                      false);
+                    continue;
+                }
+                const auto deleted =
+                  store
+                    ->compare_exchange_authority (
+                      authority_key,
+                      closing->snapshot.store_version,
+                      authority_delete_t{})
+                    .result ()
+                    .value ();
+                if (!std::holds_alternative<
+                      authority_deleted_t> (deleted)) {
+                    terminal (
+                      107, static_cast<std::uint32_t> (
+                             protocol::framework_error_code::
+                               spotMoving),
+                      false);
+                    continue;
+                }
+                {
+                    std::lock_guard lock (_mutex);
+                    _spots.erase (exact_ref.key);
+                }
+                terminal (0, 0, true);
+            }
+            catch (const protocol::service_wire_error_t &) {
+                if (mailbox_record.request_sequence
+                    && mailbox_record.correlation)
+                    (void) _transport->reply_failure (
+                      mailbox_record, 104,
+                      static_cast<std::uint32_t> (
+                        protocol::framework_error_code::
+                          requestProtocolError));
+            }
+            catch (...) {
+                if (mailbox_record.request_sequence
+                    && mailbox_record.correlation)
+                    (void) _transport->reply_failure (
+                      mailbox_record, 105,
+                      static_cast<std::uint32_t> (
+                        protocol::framework_error_code::
+                          requestFailed));
+            }
+        }
+        (void) _transport->mailbox ().release (*claim);
+    }
+    return count;
+}
+
 std::size_t public_host_runtime_t::dispatch_ready (
   const std::function<void (const ready_record_t &,
                             const receive_record_t &,
@@ -782,6 +1842,7 @@ std::size_t public_host_runtime_t::dispatch_ready (
     }
     (void) _transport->expire_requests (
       foundation::operation_registry_t::clock_t::now ());
+    count += dispatch_user_spot_operations ();
 
     std::map<std::pair<std::uint64_t, std::uint64_t>,
              std::pair<receive_record_t, std::vector<zlink::message_t>>>

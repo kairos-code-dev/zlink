@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   Message as BindingMessage,
+  RequestResult,
   SubmitResult,
   type MessageLike
 } from '@zlink-systems/zlink';
@@ -31,6 +32,7 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   ZLinkMessageFlowLogMode,
+  ZLinkSpotCreateState,
   ZLinkSubmitStatus
 } from '../../contracts';
 import {
@@ -126,6 +128,10 @@ import {
   ZLinkHostSpotAddressTransport
 } from './spot-address-transport';
 import { ZLinkUserSpotCreationCoordinator } from './user-spot-creation-coordinator';
+import {
+  decodeFrameworkPayloadMessage,
+  encodeFrameworkPayloadMessage
+} from '../messaging/payload-codec';
 
 export interface ZLinkFrameworkRuntime {
   readonly isStarted: boolean;
@@ -551,6 +557,7 @@ export class ZLinkFrameworkRuntimeHost implements
         }
         statefulAuthorityRoutes = new ZLinkStatefulAuthorityRouteRuntime({
           store: locationStore,
+          creationStore: locationStore,
           relocationStore:
             this.options.registration.locations.relocationStoreInstance,
           meshNodes: spotNodeRuntime.meshNodesByName,
@@ -891,6 +898,27 @@ export class ZLinkFrameworkRuntimeHost implements
     }
     const coordinator = new ZLinkUserSpotCreationCoordinator({
       store: locationStore,
+      remoteCreate: (meshName, targetNodeRid, request, timeoutMs) => {
+        const node = this.spotNodeRuntime?.meshNode(meshName);
+        if (node === undefined) {
+          throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+            `RouteMesh '${meshName}' has no local client node.`
+          );
+        }
+        return node.requestUserSpotCreate(targetNodeRid, request, timeoutMs);
+      },
+      decodeRemoteReply: payload => {
+        const message = BindingMessage.from(payload);
+        try {
+          return decodeFrameworkPayloadMessage(
+            message,
+            this.options.registration.messageSerializers
+          );
+        } finally {
+          message.close();
+        }
+      },
       target: async (request, signal) => {
         const clientMeshes = [...this.options.registration.spotNodes]
           .filter(([, node]) => hasObjectClientCapability(node.objectRole))
@@ -964,6 +992,129 @@ export class ZLinkFrameworkRuntimeHost implements
         new Map(Object.entries(node.spotFactoryRegistrations ?? {}))
       ])
     );
+    for (const [meshName] of this.options.registration.spotNodes) {
+      const node = this.spotNodeRuntime?.meshNode(meshName);
+      if (node === undefined) continue;
+      node.registerUserSpotOperationHandler({
+        create: async (record, signal) => {
+          const coordinated = await coordinator.handleRemoteCreate(
+            record,
+            async requestPayload => {
+              const selected = factories.get(meshName)?.get(record.stableType);
+              if (selected === undefined) {
+                throw new ZLinkConfigurationException(
+                  `User Spot factory '${record.stableType}' is not registered on RouteMesh '${meshName}'.`
+                );
+              }
+              const message = BindingMessage.from(requestPayload);
+              let request: unknown;
+              try {
+                request = decodeFrameworkPayloadMessage(
+                  message,
+                  this.options.registration.messageSerializers
+                );
+              } finally {
+                message.close();
+              }
+              local.beginUserSpotPublication(meshName, record.spotRid as never);
+              try {
+                const result = await local.getOrCreate(
+                  meshName,
+                  selected.implementation as never,
+                  record.spotRid as never,
+                  request,
+                  signal
+                );
+                return {
+                  ...result,
+                  publication: {
+                    publish: () => local.publishUserSpot(meshName, record.spotRid as never),
+                    abort: () => local.abortUserSpotPublication(meshName, record.spotRid as never)
+                  }
+                };
+              } catch (error) {
+                local.abortUserSpotPublication(meshName, record.spotRid as never);
+                throw error;
+              }
+            },
+            async cleanupSignal => {
+              await local.close(meshName, record.spotRid as never, cleanupSignal);
+            },
+            signal
+          );
+          const reply = coordinated.result.reply;
+          let payload;
+          if (
+            reply !== undefined
+            && coordinated.result.state !== ZLinkSpotCreateState.Existing
+          ) {
+            const message = encodeFrameworkPayloadMessage(
+              reply,
+              this.options.registration.messageSerializers
+            );
+            try {
+              payload = {
+                packetName: 'ZLinkFrameworkUserSpotReply',
+                contentType: 'application/octet-stream',
+                payload: Buffer.from(message.data())
+              };
+            } finally {
+              message.close();
+            }
+          }
+          return {
+            terminalResult: RequestResult.Ok,
+            failureCode: 0,
+            tail: {
+              kind: 'userSpotCreate' as const,
+              createResult: coordinated.result.state === ZLinkSpotCreateState.Existing
+                ? 'existing' as const
+                : coordinated.result.state === ZLinkSpotCreateState.Created
+                  ? 'created' as const
+                  : 'rejected' as const,
+              spotRid: String(coordinated.spot.spotRid),
+              objectGeneration: coordinated.spot.objectGeneration
+            },
+            ...(payload === undefined ? {} : { payload })
+          };
+        },
+        close: async (record, signal) => {
+          if (!local.hasActiveSpot(record.target.spotRid as never)) {
+            throw new ZLinkFrameworkException(
+              ZLinkFrameworkErrorKind.SpotMoving,
+              `User Spot '${record.target.spotRid}' is not materialized on its authority owner.`,
+              true
+            );
+          }
+          if (!local.canCloseUserSpot(meshName, record.target.spotRid as never)) {
+            return {
+              terminalResult: RequestResult.Ok,
+              failureCode: 0,
+              tail: {
+                kind: 'userSpotClose' as const,
+                closed: false
+              }
+            };
+          }
+          return {
+            terminalResult: RequestResult.Ok,
+            failureCode: 0,
+            tail: {
+              kind: 'userSpotClose' as const,
+              closed: await coordinator.handleRemoteClose(
+                record,
+                (spot, closeSignal) => local.close(
+                  spot.meshName,
+                  spot.spotRid,
+                  closeSignal
+                ),
+                signal
+              )
+            }
+          };
+        }
+      });
+    }
     return new ZLinkPublicSpotManager({
       local,
       coordinator,
@@ -972,6 +1123,16 @@ export class ZLinkFrameworkRuntimeHost implements
       isLocalNode: (meshName, nodeRid) => {
         const status = this.spotNodeRuntime?.meshNode(meshName)?.status();
         return status !== undefined && String(status.routingId) === String(nodeRid);
+      },
+      remoteClose: (meshName, targetNodeRid, request, timeoutMs) => {
+        const node = this.spotNodeRuntime?.meshNode(meshName);
+        if (node === undefined) {
+          throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+            `RouteMesh '${meshName}' has no local client node.`
+          );
+        }
+        return node.requestUserSpotClose(targetNodeRid, request, timeoutMs);
       },
       defaultTimeoutMs: this.options.registration.requestTimeoutMs ?? 30_000,
       messageSerializers: this.options.registration.messageSerializers

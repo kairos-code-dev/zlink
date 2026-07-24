@@ -2,6 +2,73 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
+    public IZLinkSpotCreateCall Create(string spotType)
+    {
+        var stableType = RequireSpotType(spotType);
+        return new ZLinkSpotCreateCall(
+            Registration.DefaultRequestTimeout,
+            (mesh, request, profile, affinity, timeout, cancellation) =>
+                SubmitUserSpotAsync(
+                    stableType,
+                    RoutingId.From(Guid.NewGuid().ToString("N")),
+                    mesh,
+                    request,
+                    profile,
+                    affinity,
+                    timeout,
+                    false,
+                    cancellation));
+    }
+
+    public IZLinkSpotGetOrCreateCall GetOrCreate(
+        RoutingId spotRid,
+        string spotType)
+    {
+        var stableType = RequireSpotType(spotType);
+        if (spotRid.IsEmpty)
+            throw new ArgumentException("Spot RID is required.", nameof(spotRid));
+        return new ZLinkSpotGetOrCreateCall(
+            Registration.DefaultRequestTimeout,
+            (mesh, request, profile, affinity, timeout, cancellation) =>
+                SubmitUserSpotAsync(
+                    stableType,
+                    spotRid,
+                    mesh,
+                    request,
+                    profile,
+                    affinity,
+                    timeout,
+                    true,
+                    cancellation));
+    }
+
+    private async ValueTask<ZLinkSpotCreateResult> SubmitUserSpotAsync(
+        string stableType,
+        RoutingId spotRid,
+        string? meshName,
+        ZLinkMessage request,
+        string? placementProfile,
+        string? affinityKey,
+        TimeSpan timeout,
+        bool joinExisting,
+        CancellationToken cancellationToken)
+    {
+        using var operation = EnterOperation();
+        _drainAdmission.RequireSpotAdmission();
+        return await _spots.CreateByStableTypeAsync(
+                GetOrStartState(),
+                stableType,
+                spotRid,
+                meshName,
+                request,
+                placementProfile,
+                affinityKey,
+                timeout,
+                joinExisting,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     internal ZLinkSpotPublisherBundle GetSpotPublisherBundle(string meshName)
     {
         return _spots.GetPublisherBundle(GetOrStartState(), meshName);
@@ -46,12 +113,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         return GetOrCreateAsync<TSpot>(spotRid, ZLinkMessage.Empty, cancellationToken);
     }
 
-    public async ValueTask<ZLinkSpotInfo?> FindAsync(
+    public async ValueTask<SpotRef?> FindAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
         using var operation = EnterOperation();
-        return await _spots.GetAsync(GetOrStartState(), spotRid, cancellationToken)
+        return await _spots.ResolveAsync(spotRid, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -73,12 +140,32 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     public async ValueTask<bool> CloseAsync(
+        SpotRef spot,
+        CancellationToken cancellationToken = default)
+    {
+        using var operation = EnterOperation();
+        return await _spots.CloseAsync(GetOrStartState(), spot, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<bool> CloseAsync(
         RoutingId spotRid,
         CancellationToken cancellationToken = default)
     {
         using var operation = EnterOperation();
-        return await _spots.CloseAsync(GetOrStartState(), spotRid, cancellationToken)
+        return await _spots.CloseLegacyAsync(GetOrStartState(), spotRid, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private static string RequireSpotType(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || System.Text.Encoding.UTF8.GetByteCount(value) > byte.MaxValue
+            || value.Contains('\0'))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                "Spot type must be 1..255 UTF-8 bytes without NUL.");
+        return value;
     }
 
     internal IZLinkBackendSpotNode? GetActorSpotNode()

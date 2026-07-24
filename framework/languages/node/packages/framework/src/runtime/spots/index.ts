@@ -523,6 +523,22 @@ export class DefaultZLinkSpotManager {
     return this.activations.resolveUnique(spotRid) !== undefined;
   }
 
+  canCloseUserSpot(meshName: string, spotRid: RoutingId): boolean {
+    return this.activations.canClose(meshName, spotRid);
+  }
+
+  beginUserSpotPublication(meshName: string, spotRid: RoutingId): void {
+    this.activations.stage(meshName, spotRid);
+  }
+
+  publishUserSpot(meshName: string, spotRid: RoutingId): void {
+    this.activations.publish(meshName, spotRid);
+  }
+
+  abortUserSpotPublication(meshName: string, spotRid: RoutingId): void {
+    this.activations.abandonStage(meshName, spotRid);
+  }
+
   resolveLocalSpotRoute(spotRid: RoutingId): ZLinkSpotRouteTarget | undefined {
     const activation = this.activations.resolveUnique(spotRid);
     const generation = activation?.nativeSpot?.lifecycleGeneration;

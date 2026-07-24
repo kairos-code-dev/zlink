@@ -30,6 +30,7 @@ import systems.zlink.framework.runtime.locations.ZLinkLocationReadinessService;
 import systems.zlink.framework.runtime.locations.ZLinkAllocatedRoutingIdRuntime;
 import systems.zlink.framework.runtime.locations.ZLinkRegisteredLocationStores;
 import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
+import systems.zlink.framework.runtime.locations.ZLinkStatefulAuthorityRouteRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.runtime.mesh.ZLinkMeshNodesRuntime;
 import systems.zlink.framework.runtime.spots.ZLinkSpotRuntime;
@@ -66,6 +67,10 @@ public final class ZLinkFrameworkRuntime
     private final ZLinkLocationRuntimeQuery locationRuntimeQuery;
     private final ZLinkLocationLifecycle locationLifecycle;
     private final ZLinkLocationAutoConnectHost locationAutoConnectHost;
+    private final ZLinkStatefulAuthorityRouteRuntime
+        authorityRouteRuntime;
+    private final systems.zlink.framework.runtime.locations
+        .ZLinkObjectServerDescriptorPublisher objectDescriptors;
     private final ZLinkAllocatedRoutingIdRuntime allocatedRoutingIds;
     private final systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolver
         spotTransportAddressResolver;
@@ -243,6 +248,18 @@ public final class ZLinkFrameworkRuntime
                     handlerFactory,
                     this.meshDrains));
         }
+        this.objectDescriptors =
+            this.locationRuntime != null
+                && this.locationStores.unifiedStore()
+                    instanceof systems.zlink.framework.locations
+                        .ZLinkLocationStore store
+                ? new systems.zlink.framework.runtime.locations
+                    .ZLinkObjectServerDescriptorPublisher(
+                        store,
+                        this.locationRuntime,
+                        this.registration,
+                        this.meshNodes.nodesByName())
+                : null;
 
         ZLinkFrameworkSpotSubsystem spotSubsystem = ZLinkFrameworkSpotSubsystem.create(
             options,
@@ -254,9 +271,35 @@ public final class ZLinkFrameworkRuntime
             this.channels,
             this.backendContext,
             this.locationLifecycle,
+            this.locationStores == null
+                ? null : this.locationStores.authorityStore(),
+            this.locationStores != null
+                && this.locationStores.unifiedStore()
+                    instanceof systems.zlink.framework.locations.ZLinkLocationStore
+                        store
+                ? store
+                : null,
+            this.locationRuntime,
             this.spotTransportAddressResolver,
             this.meshNodes.nodesByName());
         this.spots = spotSubsystem.spots();
+
+        this.authorityRouteRuntime =
+            this.locationStores != null
+                && this.locationStores.authorityStore() != null
+                && !this.meshNodes.nodesByName().isEmpty()
+            ? new ZLinkStatefulAuthorityRouteRuntime(
+                this.locationStores.authorityStore(),
+                this.meshNodes.nodesByName(),
+                this.registration.locations().options()
+                    .pollingInterval(),
+                failure -> java.util.logging.Logger.getLogger(
+                    ZLinkStatefulAuthorityRouteRuntime.class
+                        .getName())
+                    .warning(
+                        "Durable authority route reconcile failed: "
+                            + failure.getMessage()))
+            : null;
 
         ZLinkFrameworkActorSubsystem actorSubsystem = ZLinkFrameworkActorSubsystem.create(
             this.registration,
@@ -289,7 +332,18 @@ public final class ZLinkFrameworkRuntime
         this.streams = streamSubsystem.streams();
 
         locationSubsystem.startup()
+            .thenCompose(ignored ->
+                this.objectDescriptors == null
+                    ? java.util.concurrent.CompletableFuture
+                        .completedFuture(null)
+                    : this.objectDescriptors.publish(
+                        ZLinkFrameworkRuntimeState.SERVING))
             .thenCompose(ignored -> spotSubsystem.startup())
+            .thenCompose(ignored ->
+                this.authorityRouteRuntime == null
+                    ? java.util.concurrent.CompletableFuture
+                        .completedFuture(null)
+                    : this.authorityRouteRuntime.start())
             .thenCompose(ignored -> ZLinkFrameworkAutoConnectSubsystem.start(
                 this.locationAutoConnectHost,
                 this.registration,
@@ -741,6 +795,18 @@ public final class ZLinkFrameworkRuntime
     private void publishRuntimeState(
         ZLinkFrameworkRuntimeState state) {
         runtimeState.set(state);
+        if (objectDescriptors != null
+            && (state == ZLinkFrameworkRuntimeState.RETIRING
+                || state == ZLinkFrameworkRuntimeState.DRAINING)) {
+            objectDescriptors.publish(state).exceptionally(failure -> {
+                java.util.logging.Logger.getLogger(
+                    ZLinkFrameworkRuntime.class.getName())
+                    .warning(
+                        "Object Server descriptor state publication failed: "
+                            + failure.getMessage());
+                return null;
+            });
+        }
         long sequence = terminationSequence.incrementAndGet();
         var event = new systems.zlink.framework.monitoring
             .ZLinkFrameworkRuntimeEvent(
@@ -791,11 +857,17 @@ public final class ZLinkFrameworkRuntime
         if (allocatedRoutingIds != null) {
             shutdown.defer(allocatedRoutingIds::close);
         }
+        if (authorityRouteRuntime != null) {
+            shutdown.defer(authorityRouteRuntime::close);
+        }
         shutdown.defer(meshNodes::close);
         if (locationRuntime != null) {
             shutdown.defer(locationRuntime::close);
             shutdown.defer(locationLifecycle::close);
             shutdown.deferStage(locationRuntime::stop);
+            if (objectDescriptors != null) {
+                shutdown.deferStage(objectDescriptors::remove);
+            }
         }
         if (spots != null) {
             shutdown.deferStage(() -> {

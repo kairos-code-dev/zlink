@@ -1,4 +1,5 @@
 using Systems.Zlink;
+using Systems.Zlink.Framework.Runtime.Protocol;
 
 namespace Zlink.Framework.Runtime.Service;
 
@@ -42,7 +43,8 @@ internal enum MeshRecordKind
 internal enum MeshOperationKind
 {
     NodeRequest = 1, ChannelRequest, SpotRequest, ActorRequest, ActorLookup,
-    ActorDestroy, ActorJoin, ActorLeave, StreamBind, StreamUnbind, StreamClose
+    ActorDestroy, ActorJoin, ActorLeave, StreamBind, StreamUnbind, StreamClose,
+    InstanceSpotRequest, UserSpotCreate, UserSpotClose
 }
 
 internal enum ActorLifecycleKind { Created = 1, Joined, Left, Disconnected, Destroyed }
@@ -84,6 +86,74 @@ internal readonly record struct ActorTransferControl(
     ActorRef Actor, ulong MembershipEpoch, ulong FinalSequence,
     int ResultCode, int FailureErrno);
 internal sealed record ActorTransferControlRecord(ActorTransferControl Control) : MeshRecordPayload;
+
+internal readonly record struct UserSpotReservationFence(
+    string ReservationId,
+    string ExpectedStoreVersion,
+    ulong ObjectGeneration,
+    ulong AuthorityOwnerGeneration,
+    RoutingId TargetNodeRid,
+    ulong TargetNodeGeneration,
+    string TargetOwnerId,
+    ulong TargetOwnerLeaseGeneration,
+    uint PendingCapacityDelta);
+
+internal readonly record struct UserSpotCloseFence(
+    RoutingId SpotRid,
+    ulong ObjectGeneration,
+    RoutingId TargetNodeRid,
+    ulong TargetNodeGeneration,
+    ulong AuthorityOwnerGeneration,
+    string ExpectedStoreVersion);
+
+internal readonly record struct UserSpotCreateOperation(
+    ulong Correlation,
+    MeshOperationId OperationId,
+    RoutingId SourceNodeRid,
+    ulong SourceNodeGeneration,
+    RoutingId SpotRid,
+    string StableType,
+    UserSpotReservationFence Reservation,
+    ulong DeadlineUnixMs);
+
+internal readonly record struct UserSpotCloseOperation(
+    ulong Correlation,
+    MeshOperationId OperationId,
+    RoutingId SourceNodeRid,
+    ulong SourceNodeGeneration,
+    UserSpotCloseFence Target,
+    ulong DeadlineUnixMs);
+
+internal enum UserSpotCreateResult : byte
+{
+    Existing = 1,
+    Created = 2,
+    Rejected = 3
+}
+
+internal sealed record UserSpotCreateCompletion(
+    UserSpotCreateResult Result,
+    RoutingId SpotRid,
+    ulong ObjectGeneration) : MeshRecordPayload;
+
+internal sealed record UserSpotCloseCompletion(bool Closed) : MeshRecordPayload;
+
+internal sealed record UserSpotOperationTerminal(
+    RequestResult Result,
+    ServiceWireConstants.FrameworkErrorCode FailureCode,
+    MeshRecordPayload? Completion = null,
+    IReadOnlyList<ReadOnlyMemory<byte>>? ReplyParts = null);
+
+internal interface IUserSpotOperationTarget
+{
+    ValueTask<UserSpotOperationTerminal> CreateAsync(
+        UserSpotCreateOperation operation,
+        CancellationToken cancellationToken);
+
+    ValueTask<UserSpotOperationTerminal> CloseAsync(
+        UserSpotCloseOperation operation,
+        CancellationToken cancellationToken);
+}
 
 [Flags]
 internal enum MeshMonitorEventMask : ulong
@@ -231,6 +301,10 @@ internal readonly struct MeshReceiveRecord
     public MeshRecordPayload? KindData { get; }
     public ActorControlRecord? ActorControl => KindData as ActorControlRecord;
     public ActorJoinCompletion? JoinCompletion => KindData as ActorJoinCompletion;
+    public UserSpotCreateCompletion? UserSpotCreateCompletion =>
+        KindData as UserSpotCreateCompletion;
+    public UserSpotCloseCompletion? UserSpotCloseCompletion =>
+        KindData as UserSpotCloseCompletion;
     public MeshSendReadyData? SendReady => KindData as MeshSendReadyData;
     public ActorTransferControl? TransferControl => (KindData as ActorTransferControlRecord)?.Control;
     public SubmitResult Reply(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None) =>
@@ -317,6 +391,21 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     void CommitActorTransfer(ActorTransferToken token, ulong newMembershipEpoch);
     void ActivateActorTransfer(ActorTransferToken token);
     void AbortActorTransfer(ActorTransferToken token);
+    void SetUserSpotOperationTarget(IUserSpotOperationTarget target);
+    SubmitResult CreateUserSpot(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        string stableType,
+        UserSpotReservationFence reservation,
+        ulong deadlineUnixMs,
+        out MeshOperationId operationId,
+        TimeSpan timeout = default);
+    SubmitResult CloseUserSpot(
+        RoutingId targetNodeRid,
+        UserSpotCloseFence target,
+        ulong deadlineUnixMs,
+        out MeshOperationId operationId,
+        TimeSpan timeout = default);
     IStreamSessionService CreateStreamSessionService(IStreamSocket stream);
 }
 

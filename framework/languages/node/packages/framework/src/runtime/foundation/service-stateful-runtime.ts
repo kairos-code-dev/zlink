@@ -38,6 +38,8 @@ import {
   encodeLogicalMulticastHeader,
   encodeSpotHeader,
   encodeStatefulReply,
+  encodeUserSpotCloseHeader,
+  encodeUserSpotCreateHeader,
   M6bServiceWireCommand,
   M6bServiceWireFlag,
   sessionBindingFromWire,
@@ -46,7 +48,9 @@ import {
   type ServiceInstanceRouteFence,
   type ServiceSpotRouteFence,
   type ServiceStatefulReplyTail,
-  type ServiceStatefulWireRecord
+  type ServiceStatefulWireRecord,
+  type ServiceUserSpotCloseRecord,
+  type ServiceUserSpotCreateRecord
 } from './service-stateful-wire-codec';
 import {
   decodeApplicationPayload,
@@ -58,8 +62,15 @@ import type {
   ServiceInstanceActivationRecoveryEnvelope
 } from './service-instance-activation-recovery-codec';
 import { validateServiceMetadataFrame } from './service-metadata-codec';
+import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException
+} from '../../contracts';
 
 const ACTOR_ROUTE_STALE = 21;
+const SPOT_MOVING = 34;
+const USER_SPOT_OPERATION_CAPACITY = 65_536;
+const USER_SPOT_OPERATION_REPLAY_RETENTION_MS = 5 * 60_000;
 const ACTOR_ROUTE_NOT_FOUND = 1;
 
 export interface ServiceStatefulResult {
@@ -205,6 +216,21 @@ export interface ServiceLogicalMulticastDetail {
   readonly droppedLocalSpotCount: number;
 }
 
+export interface ServiceUserSpotOperationResult {
+  readonly terminalResult: number;
+  readonly failureCode: number;
+  readonly tail?: Extract<
+    ServiceStatefulReplyTail,
+    { readonly kind: 'userSpotCreate' | 'userSpotClose' }
+  >;
+  readonly payload?: ServiceApplicationPayload;
+}
+
+export interface ServiceUserSpotOperationHandler {
+  create(record: ServiceUserSpotCreateRecord, signal: AbortSignal): Promise<ServiceUserSpotOperationResult>;
+  close(record: ServiceUserSpotCloseRecord, signal: AbortSignal): Promise<ServiceUserSpotOperationResult>;
+}
+
 /**
  * Owns M6B routing, identity fences and terminal operations. Application turns
  * remain in the common mailbox, where a claimed Spot or Actor owner is serial.
@@ -223,9 +249,17 @@ export class ServiceStatefulRuntime {
   private nextSpotId = 1n;
   private nextSessionSequence = 1n;
   private nextInstanceOperation = 1n;
+  private nextUserSpotOperation = 1n;
   private instanceAuthority?: ServiceInstanceActivationAuthority;
   private asyncInstanceAuthority?: ServiceAsyncInstanceActivationAuthority;
   private instanceApplicationLifecycle?: ServiceInstanceApplicationLifecycle;
+  private userSpotOperationHandler?: ServiceUserSpotOperationHandler;
+  private readonly admittedUserSpotOperations = new Map<string, {
+    readonly request: string;
+    readonly deadlineUnixMs: bigint;
+    readonly result: Promise<ServiceUserSpotOperationResult>;
+    settled: boolean;
+  }>();
   private readonly pendingInstanceActivations = new Map<string, Promise<{
     readonly spot: ServiceSpotState;
     readonly route: ServiceInstanceRouteFence;
@@ -351,6 +385,67 @@ export class ServiceStatefulRuntime {
       throw new Error('Instance application lifecycle is already registered.');
     }
     this.instanceApplicationLifecycle = lifecycle;
+  }
+
+  registerUserSpotOperationHandler(handler: ServiceUserSpotOperationHandler): void {
+    this.requireOpen();
+    if (
+      this.userSpotOperationHandler !== undefined
+      && this.userSpotOperationHandler !== handler
+    ) {
+      throw new Error('User Spot operation handler is already registered.');
+    }
+    this.userSpotOperationHandler = handler;
+  }
+
+  requestUserSpotCreate(
+    targetNodeRid: string,
+    request: Omit<ServiceUserSpotCreateRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ): Promise<ServiceUserSpotOperationResult> {
+    const correlation = this.nextUserSpotOperation++;
+    const operation = {
+      high: this.nodeGeneration,
+      low: correlation
+    };
+    return this.requestUserSpotOperation(
+      targetNodeRid,
+      encodeUserSpotCreateHeader({
+        ...request,
+        sourceNodeRid: this.nodeRid,
+        sourceNodeGeneration: this.nodeGeneration,
+        correlation,
+        operation
+      }),
+      correlation,
+      'userSpotCreate',
+      timeoutMs
+    );
+  }
+
+  requestUserSpotClose(
+    targetNodeRid: string,
+    request: Omit<ServiceUserSpotCloseRecord, 'kind' | 'correlation' | 'operation'>,
+    timeoutMs: number
+  ): Promise<ServiceUserSpotOperationResult> {
+    const correlation = this.nextUserSpotOperation++;
+    const operation = {
+      high: this.nodeGeneration,
+      low: correlation
+    };
+    return this.requestUserSpotOperation(
+      targetNodeRid,
+      encodeUserSpotCloseHeader({
+        ...request,
+        sourceNodeRid: this.nodeRid,
+        sourceNodeGeneration: this.nodeGeneration,
+        correlation,
+        operation
+      }),
+      correlation,
+      'userSpotClose',
+      timeoutMs
+    );
   }
 
   async recoverInstanceActivation(
@@ -1063,6 +1158,7 @@ export class ServiceStatefulRuntime {
     this.operations.close();
     this.sessionDeliveries.clear();
     this.instanceIntents.clear();
+    this.admittedUserSpotOperations.clear();
     this.actorRoutes.clear();
     this.spotRoutes.clear();
     this.spotRouteStoreVersions.clear();
@@ -1071,7 +1167,11 @@ export class ServiceStatefulRuntime {
   private ingress(record: RawServiceIngressRecord): RawServicePumpResult | undefined {
     if (
       record.command < M6bServiceWireCommand.spotSend
-      || record.command > M6bServiceWireCommand.instanceSpot
+      || (
+        record.command > M6bServiceWireCommand.instanceSpot
+        && record.command !== M6bServiceWireCommand.userSpotCreate
+        && record.command !== M6bServiceWireCommand.userSpotClose
+      )
     ) {
       return undefined;
     }
@@ -1089,6 +1189,8 @@ export class ServiceStatefulRuntime {
       ].includes(decoded.kind);
       const instanceMetadata = decoded.kind === 'instanceSpot'
         && (record.flags & M6bServiceWireFlag.metadata) !== 0;
+      const userSpotInfrastructure = decoded.kind === 'userSpotCreate'
+        || decoded.kind === 'userSpotClose';
       if (
         record.parts.length < 1
         || record.parts.length > (instanceMetadata ? 3 : 2)
@@ -1097,6 +1199,7 @@ export class ServiceStatefulRuntime {
           decoded.kind === 'instanceSpot'
           && record.parts.length !== (instanceMetadata ? 3 : 2)
         )
+        || (userSpotInfrastructure && record.parts.length !== 1)
       ) {
         return 'protocolError';
       }
@@ -1194,6 +1297,9 @@ export class ServiceStatefulRuntime {
         return this.deliverBoundSession(ingress, record, payload!);
       case 'instanceSpot':
         return this.enqueueInstanceSpot(ingress, record, payload!, metadataFrame);
+      case 'userSpotCreate':
+      case 'userSpotClose':
+        return this.handleUserSpotOperation(ingress, record);
     }
   }
 
@@ -1908,6 +2014,190 @@ export class ServiceStatefulRuntime {
     ]);
   }
 
+  private handleUserSpotOperation(
+    ingress: RawServiceIngressRecord,
+    record: ServiceUserSpotCreateRecord | ServiceUserSpotCloseRecord
+  ): RawServicePumpResult {
+    if (
+      ingress.requestSequence === undefined
+      || record.sourceNodeRid !== ingress.sourceRoutingId
+      || record.sourceNodeGeneration !== this.peerGeneration(ingress.sourceRoutingId)
+    ) {
+      return 'protocolError';
+    }
+    const target = record.kind === 'userSpotCreate'
+      ? record.reservation
+      : record.target;
+    if (
+      target.targetNodeRid !== this.nodeRid
+      || target.targetNodeGeneration !== this.nodeGeneration
+    ) {
+      this.replyWire(
+        ingress,
+        record.correlation,
+        RequestResult.Conflict,
+        SPOT_MOVING
+      );
+      return 'infrastructure';
+    }
+    const operationKey = [
+      record.sourceNodeRid,
+      record.sourceNodeGeneration,
+      record.operation.high,
+      record.operation.low
+    ].join('\0');
+    const encodedRequest = userSpotOperationFingerprint(record);
+    let admitted = this.admittedUserSpotOperations.get(operationKey);
+    if (
+      admitted?.settled === true
+      && operationReplayExpired(admitted.deadlineUnixMs)
+    ) {
+      this.admittedUserSpotOperations.delete(operationKey);
+      admitted = undefined;
+    }
+    if (admitted !== undefined && admitted.request !== encodedRequest) {
+      return 'protocolError';
+    }
+    if (admitted === undefined) {
+      if (record.deadlineUnixMs < BigInt(Date.now())) {
+        this.replyWire(
+          ingress,
+          record.correlation,
+          RequestResult.TimedOut,
+          0
+        );
+        return 'infrastructure';
+      }
+      if (this.admittedUserSpotOperations.size >= USER_SPOT_OPERATION_CAPACITY) {
+        this.releaseExpiredUserSpotOperations();
+      }
+      if (this.admittedUserSpotOperations.size >= USER_SPOT_OPERATION_CAPACITY) {
+        this.replyWire(
+          ingress,
+          record.correlation,
+          RequestResult.Busy,
+          0
+        );
+        return 'infrastructure';
+      }
+      const handler = this.userSpotOperationHandler;
+      const result = handler === undefined
+        ? Promise.resolve<ServiceUserSpotOperationResult>({
+            terminalResult: RequestResult.InvalidState,
+            failureCode: 0
+          })
+        : this.executeUserSpotOperation(handler, record);
+      admitted = {
+        request: encodedRequest,
+        deadlineUnixMs: record.deadlineUnixMs,
+        result,
+        settled: false
+      };
+      this.admittedUserSpotOperations.set(operationKey, admitted);
+      void result.finally(() => {
+        const current = this.admittedUserSpotOperations.get(operationKey);
+        if (current?.result === result) current.settled = true;
+      }).catch(() => undefined);
+    }
+    void admitted.result.then(
+      result => {
+        if (this.closed) return;
+        this.raw.replyService(ingress, [
+          encodeStatefulReply(
+            record.correlation,
+            result.terminalResult,
+            result.failureCode,
+            result.tail
+          ),
+          ...(result.payload === undefined
+            ? []
+            : [encodeApplicationPayload(result.payload)])
+        ]);
+      },
+      error => {
+        if (this.closed) return;
+        const failed = failure(error);
+        this.replyWire(
+          ingress,
+          record.correlation,
+          failed.terminalResult,
+          failed.failureCode
+        );
+      }
+    );
+    return 'infrastructure';
+  }
+
+  private releaseExpiredUserSpotOperations(): void {
+    for (const [key, operation] of this.admittedUserSpotOperations) {
+      if (operation.settled && operationReplayExpired(operation.deadlineUnixMs)) {
+        this.admittedUserSpotOperations.delete(key);
+      }
+    }
+  }
+
+  private async executeUserSpotOperation(
+    handler: ServiceUserSpotOperationHandler,
+    record: ServiceUserSpotCreateRecord | ServiceUserSpotCloseRecord
+  ): Promise<ServiceUserSpotOperationResult> {
+    const deadline = userSpotDeadline(record.deadlineUnixMs);
+    try {
+      const result = record.kind === 'userSpotCreate'
+        ? await handler.create(record, deadline.signal)
+        : await handler.close(record, deadline.signal);
+      if (
+        result.terminalResult === RequestResult.Ok
+        && (
+          result.tail === undefined
+          || result.tail.kind !== record.kind
+        )
+      ) {
+        throw new ServiceWireProtocolError('User Spot success result omits its operation tail.');
+      }
+      return result;
+    } catch (error) {
+      const failed = failure(error);
+      return failed;
+    } finally {
+      deadline.close();
+    }
+  }
+
+  private async requestUserSpotOperation(
+    targetNodeRid: string,
+    header: Buffer,
+    correlation: bigint,
+    operationKind: 'userSpotCreate' | 'userSpotClose',
+    timeoutMs: number
+  ): Promise<ServiceUserSpotOperationResult> {
+    this.requireOpen();
+    const parts = await this.raw.requestService(targetNodeRid, [header], timeoutMs);
+    if (parts.length < 1 || parts.length > 2) {
+      throw new ServiceWireProtocolError('Invalid User Spot reply parts.');
+    }
+    const decoded = decodeStatefulReply(parts[0]!, correlation, operationKind);
+    if (
+      decoded.terminalResult !== RequestResult.Ok
+      && parts.length !== 1
+    ) {
+      throw new ServiceWireProtocolError('Failed User Spot reply carries a payload.');
+    }
+    if (
+      operationKind === 'userSpotClose'
+      && parts.length !== 1
+    ) {
+      throw new ServiceWireProtocolError('User Spot close reply carries a payload.');
+    }
+    return {
+      terminalResult: decoded.terminalResult,
+      failureCode: decoded.failureCode,
+      ...(decoded.tail === undefined ? {} : { tail: decoded.tail as never }),
+      ...(parts.length === 2
+        ? { payload: decodeApplicationPayload(parts[1]!) }
+        : {})
+    };
+  }
+
   private submitOneWay(targetNodeRid: string, parts: readonly Buffer[]): number {
     this.requireOpen();
     if (targetNodeRid === this.nodeRid) {
@@ -2298,6 +2588,37 @@ export class ServiceStatefulRuntime {
   }
 }
 
+function userSpotDeadline(deadlineUnixMs: bigint): {
+  readonly signal: AbortSignal;
+  close(): void;
+} {
+  const controller = new AbortController();
+  const delay = Number(deadlineUnixMs - BigInt(Date.now()));
+  const timeout = setTimeout(
+    () => controller.abort(new Error('User Spot operation deadline exceeded.')),
+    Math.max(0, Math.min(delay, 0x7fff_ffff))
+  );
+  return {
+    signal: controller.signal,
+    close: () => clearTimeout(timeout)
+  };
+}
+
+function operationReplayExpired(deadlineUnixMs: bigint): boolean {
+  return BigInt(Date.now()) > deadlineUnixMs
+    + BigInt(USER_SPOT_OPERATION_REPLAY_RETENTION_MS);
+}
+
+function userSpotOperationFingerprint(
+  record: ServiceUserSpotCreateRecord | ServiceUserSpotCloseRecord
+): string {
+  const { correlation: _correlation, ...semantic } = record;
+  return JSON.stringify(
+    semantic,
+    (_key, value: unknown) => typeof value === 'bigint' ? `${value}n` : value
+  );
+}
+
 function lookupKindData(actor: ServiceActorState): ReceiveKindData {
   return {
     kind: 'actorLookupCompletion',
@@ -2315,9 +2636,28 @@ function actorLocation(actor: ServiceActorState): ActorLocation {
 }
 
 function failure(error: unknown): ServiceStatefulResult {
-  return error instanceof ServiceStaleGenerationError
-    ? { terminalResult: RequestResult.NotFound, failureCode: ACTOR_ROUTE_STALE }
-    : { terminalResult: RequestResult.InternalError, failureCode: 0 };
+  if (error instanceof ServiceStaleGenerationError) {
+    return { terminalResult: RequestResult.NotFound, failureCode: ACTOR_ROUTE_STALE };
+  }
+  if (error instanceof ZLinkFrameworkException) {
+    if (error.kind === ZLinkFrameworkErrorKind.DeadlineExceeded) {
+      return { terminalResult: RequestResult.TimedOut, failureCode: 0 };
+    }
+    if (
+      error.kind === ZLinkFrameworkErrorKind.SpotGenerationStale
+      || error.kind === ZLinkFrameworkErrorKind.SpotMoving
+    ) {
+      return {
+        terminalResult: RequestResult.Conflict,
+        failureCode: error.code + 1
+      };
+    }
+    return {
+      terminalResult: RequestResult.InternalError,
+      failureCode: error.code + 1
+    };
+  }
+  return { terminalResult: RequestResult.InternalError, failureCode: 17 };
 }
 
 function actorKey(actor: ServiceActorRef): string {

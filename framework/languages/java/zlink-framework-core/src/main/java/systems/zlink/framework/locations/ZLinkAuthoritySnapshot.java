@@ -2,6 +2,7 @@ package systems.zlink.framework.locations;
 
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 
 public record ZLinkAuthoritySnapshot(
     String storeVersion,
@@ -11,6 +12,7 @@ public record ZLinkAuthoritySnapshot(
     String ownerId,
     long ownerLeaseGeneration,
     ZLinkPlacementAllocation allocation,
+    Optional<ZLinkPendingObjectCreation> pendingCreation,
     Instant storeNow)
     implements ZLinkAuthorityReadResult {
     public ZLinkAuthoritySnapshot {
@@ -18,7 +20,30 @@ public record ZLinkAuthoritySnapshot(
         payload = Objects.requireNonNull(payload, "payload").clone();
         Objects.requireNonNull(ownerId, "ownerId");
         Objects.requireNonNull(allocation, "allocation");
+        pendingCreation = Objects.requireNonNull(
+            pendingCreation, "pendingCreation");
         Objects.requireNonNull(storeNow, "storeNow");
+    }
+
+    public ZLinkAuthoritySnapshot(
+        String storeVersion,
+        byte[] payload,
+        long objectGeneration,
+        long authorityOwnerGeneration,
+        String ownerId,
+        long ownerLeaseGeneration,
+        ZLinkPlacementAllocation allocation,
+        Instant storeNow) {
+        this(
+            storeVersion,
+            payload,
+            objectGeneration,
+            authorityOwnerGeneration,
+            ownerId,
+            ownerLeaseGeneration,
+            allocation,
+            Optional.empty(),
+            storeNow);
     }
 
     @Override

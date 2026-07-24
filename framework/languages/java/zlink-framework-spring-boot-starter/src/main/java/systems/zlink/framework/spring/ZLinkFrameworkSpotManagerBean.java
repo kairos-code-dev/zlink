@@ -2,14 +2,12 @@ package systems.zlink.framework.spring;
 
 import systems.zlink.framework.runtime.host.ZLinkFrameworkLifecycle;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.messaging.ZLinkMessage;
-import systems.zlink.framework.spots.ZLinkSpot;
-import systems.zlink.framework.spots.ZLinkSpotCreateResult;
-import systems.zlink.framework.spots.ZLinkSpotInfo;
+import systems.zlink.framework.spots.SpotRef;
+import systems.zlink.framework.spots.ZLinkSpotCreateCall;
+import systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall;
 import systems.zlink.framework.spots.ZLinkSpotManager;
 
 final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
@@ -20,52 +18,24 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot<?>> spotType) {
+    public ZLinkSpotCreateCall create(String spotType) {
         return lifecycle.spotManager().create(spotType);
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot<?>> spotType,
-        ZLinkMessage request) {
-        return lifecycle.spotManager().create(spotType, request);
-    }
-
-    @Override
-    public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot<?>> spotType,
-        RoutingId spotRid) {
-        return lifecycle.spotManager().create(spotType, spotRid);
-    }
-
-    @Override
-    public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot<?>> spotType,
-        RoutingId spotRid) {
-        return lifecycle.spotManager().getOrCreate(spotType, spotRid);
-    }
-
-    @Override
-    public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot<?>> spotType,
+    public ZLinkSpotGetOrCreateCall getOrCreate(
         RoutingId spotRid,
-        ZLinkMessage request) {
-        return lifecycle.spotManager().getOrCreate(spotType, spotRid, request);
+        String spotType) {
+        return lifecycle.spotManager().getOrCreate(spotRid, spotType);
     }
 
     @Override
-    public CompletionStage<Optional<ZLinkSpotInfo>> find(RoutingId spotRid) {
+    public CompletionStage<Optional<SpotRef>> find(RoutingId spotRid) {
         return lifecycle.spotManager().find(spotRid);
     }
 
     @Override
-    public CompletionStage<List<ZLinkSpotInfo>> list() {
-        return lifecycle.spotManager().list();
-    }
-
-    @Override
-    public CompletionStage<Boolean> close(RoutingId spotRid) {
-        return lifecycle.spotManager().close(spotRid);
+    public CompletionStage<Boolean> close(SpotRef spot) {
+        return lifecycle.spotManager().close(spot);
     }
 }

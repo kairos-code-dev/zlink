@@ -40,12 +40,29 @@ public sealed class RedisAuthorityRelocationTests(
                 "ownerId",
                 "ownerLeaseGeneration",
                 "payload",
+                "requestContentReference",
+                "requestEncodedSize",
+                "requestSha256",
+                "reservationId",
                 "stableType",
                 "storeVersion"
             },
             current.Keys.Order(StringComparer.Ordinal));
         Assert.Equal("actor", current["objectKind"]);
         Assert.Equal(key.Value, current["authorityKey"]);
+        var pending = Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(key)).Snapshot.PendingCreation;
+        Assert.NotNull(pending);
+        Assert.Equal(
+            reserved.Reservation.ReservationVersion,
+            pending.ReservationId);
+        Assert.Equal(
+            InlineReference("physical-schema"u8),
+            pending.RequestContentReference);
+        Assert.Equal("physical-schema".Length, pending.RequestEncodedSize);
+        Assert.Equal(
+            SHA256.HashData("physical-schema"u8.ToArray()),
+            pending.RequestSha256.ToArray());
 
         Assert.IsType<ZLinkObjectReserveResult.Reserved>(
             await store.ReserveAsync(
@@ -61,6 +78,9 @@ public sealed class RedisAuthorityRelocationTests(
             await store.CommitAsync(
                 reserved.Reservation,
                 "physical-ready"u8.ToArray()));
+        var active = Assert.IsType<ZLinkAuthorityReadResult.Found>(
+            await store.ReadAuthorityAsync(key)).Snapshot;
+        Assert.Null(active.PendingCreation);
         const string revision = "0000000000000001";
         var history = await fixture.HashGetAllAsync(
             keys.HybridAuthorityHistoryKey(key.Value).ToString());
@@ -659,7 +679,7 @@ public sealed class RedisAuthorityRelocationTests(
             "Game.Actor",
             placementProfile,
             null,
-            $"intent:{identity}",
+            InlineReference(System.Text.Encoding.UTF8.GetBytes(identity)),
             SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity)),
             identity.Length,
             new ZLinkMeshNodeDescriptorKey(
@@ -669,6 +689,17 @@ public sealed class RedisAuthorityRelocationTests(
             owner,
             System.Text.Encoding.UTF8.GetBytes($"creating:{identity}"),
             1);
+
+    private static string InlineReference(ReadOnlySpan<byte> payload)
+    {
+        var crc = Zlink.Framework.Runtime.Locations.ZLinkCrc32C
+            .Compute(payload);
+        var encoded = Convert.ToBase64String(payload)
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+        return $"inline-v1:{crc:x8}:{encoded}";
+    }
 
     private static async Task PublishDescriptorAsync(
         ZLinkRedisLocationStore store,

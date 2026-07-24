@@ -426,6 +426,225 @@ public final class ZLinkServiceM6BWireCodec {
             replyRouteId);
     }
 
+    public byte[] encodeUserSpotCreateHeader(UserSpotCreate message) {
+        Objects.requireNonNull(message, "message");
+        validateTerminalOperation(
+            message.correlation(),
+            message.operationHigh(),
+            message.operationLow(),
+            message.sourceNodeGeneration(),
+            message.deadlineUnixMs());
+        Writer writer = prefix(
+            ServiceWireConstants.COMMAND_USER_SPOT_CREATE,
+            0);
+        writer.nonzero(message.correlation(), "correlation");
+        writer.u64(message.operationHigh());
+        writer.u64(message.operationLow());
+        writer.rid(message.sourceNodeRid(), "sourceNodeRid");
+        writer.nonzero(
+            message.sourceNodeGeneration(), "sourceNodeGeneration");
+        writer.rid(message.spotRid(), "spotRid");
+        writer.text8(message.stableType(), "stableType");
+        writeReservation(writer, message.reservation());
+        writer.nonzero(message.deadlineUnixMs(), "deadlineUnixMs");
+        return writer.toByteArray();
+    }
+
+    public UserSpotCreate decodeUserSpotCreateHeader(byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command()
+                != ServiceWireConstants.COMMAND_USER_SPOT_CREATE
+            || header.flags() != 0) {
+            throw protocol("command is not userSpotCreate");
+        }
+        long correlation = reader.nonzeroU64("correlation");
+        long operationHigh = reader.u64("operation.high");
+        long operationLow = reader.u64("operation.low");
+        RoutingId sourceNodeRid = reader.rid("sourceNodeRid");
+        long sourceNodeGeneration =
+            reader.nonzeroU64("sourceNodeGeneration");
+        RoutingId spotRid = reader.rid("spotRid");
+        String stableType = reader.text8("stableType");
+        ReservationFence reservation = readReservation(reader);
+        long deadlineUnixMs = reader.nonzeroU64("deadlineUnixMs");
+        reader.end();
+        validateTerminalOperation(
+            correlation,
+            operationHigh,
+            operationLow,
+            sourceNodeGeneration,
+            deadlineUnixMs);
+        return new UserSpotCreate(
+            correlation,
+            operationHigh,
+            operationLow,
+            sourceNodeRid,
+            sourceNodeGeneration,
+            spotRid,
+            stableType,
+            reservation,
+            deadlineUnixMs);
+    }
+
+    public byte[] encodeUserSpotCloseHeader(UserSpotClose message) {
+        Objects.requireNonNull(message, "message");
+        validateTerminalOperation(
+            message.correlation(),
+            message.operationHigh(),
+            message.operationLow(),
+            message.sourceNodeGeneration(),
+            message.deadlineUnixMs());
+        Writer target = new Writer();
+        target.rid(message.target().spotRid(), "spotRid");
+        target.nonzero(
+            message.target().objectGeneration(), "objectGeneration");
+        target.rid(
+            message.target().targetNodeRid(), "targetNodeRid");
+        target.nonzero(
+            message.target().targetNodeGeneration(),
+            "targetNodeGeneration");
+        target.nonzero(
+            message.target().authorityOwnerGeneration(),
+            "expectedAuthorityOwnerGeneration");
+        target.text16(
+            message.target().storeVersion(), "expectedStoreVersion");
+        byte[] targetBody = target.toByteArray();
+
+        Writer writer = prefix(
+            ServiceWireConstants.COMMAND_USER_SPOT_CLOSE,
+            0);
+        writer.nonzero(message.correlation(), "correlation");
+        writer.u64(message.operationHigh());
+        writer.u64(message.operationLow());
+        writer.rid(message.sourceNodeRid(), "sourceNodeRid");
+        writer.nonzero(
+            message.sourceNodeGeneration(), "sourceNodeGeneration");
+        writer.u8(1);
+        writer.u16(targetBody.length);
+        writer.bytes(targetBody);
+        writer.nonzero(message.deadlineUnixMs(), "deadlineUnixMs");
+        return writer.toByteArray();
+    }
+
+    public UserSpotClose decodeUserSpotCloseHeader(byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command()
+                != ServiceWireConstants.COMMAND_USER_SPOT_CLOSE
+            || header.flags() != 0) {
+            throw protocol("command is not userSpotClose");
+        }
+        long correlation = reader.nonzeroU64("correlation");
+        long operationHigh = reader.u64("operation.high");
+        long operationLow = reader.u64("operation.low");
+        RoutingId sourceNodeRid = reader.rid("sourceNodeRid");
+        long sourceNodeGeneration =
+            reader.nonzeroU64("sourceNodeGeneration");
+        if (reader.u8("userSpotCloseFence.version") != 1) {
+            throw protocol("unsupported User Spot close fence version");
+        }
+        int targetLength = reader.u16("userSpotCloseFence.length");
+        int targetEnd = reader.position() + targetLength;
+        UserSpotCloseFence target = new UserSpotCloseFence(
+            reader.rid("spotRid"),
+            reader.nonzeroU64("objectGeneration"),
+            reader.rid("targetNodeRid"),
+            reader.nonzeroU64("targetNodeGeneration"),
+            reader.nonzeroU64("expectedAuthorityOwnerGeneration"),
+            reader.text16("expectedStoreVersion"));
+        if (reader.position() != targetEnd) {
+            throw protocol("invalid User Spot close fence length");
+        }
+        long deadlineUnixMs = reader.nonzeroU64("deadlineUnixMs");
+        reader.end();
+        validateTerminalOperation(
+            correlation,
+            operationHigh,
+            operationLow,
+            sourceNodeGeneration,
+            deadlineUnixMs);
+        return new UserSpotClose(
+            correlation,
+            operationHigh,
+            operationLow,
+            sourceNodeRid,
+            sourceNodeGeneration,
+            target,
+            deadlineUnixMs);
+    }
+
+    public byte[] encodeUserSpotCreateReply(
+        long correlation,
+        int terminalResult,
+        int failureCode,
+        UserSpotCreateTerminal success) {
+        requireReplyTail(terminalResult, failureCode, success != null);
+        Writer writer = replyPrefix(
+            correlation, terminalResult, failureCode);
+        if (success != null) {
+            writer.u8(success.result().wireValue);
+            writer.rid(success.spotRid(), "spotRid");
+            writer.nonzero(
+                success.objectGeneration(), "objectGeneration");
+        }
+        return writer.toByteArray();
+    }
+
+    public UserSpotCreateReply decodeUserSpotCreateReply(byte[] frame) {
+        Reader reader = replyReader(frame);
+        long correlation = reader.nonzeroU64("correlation");
+        int terminalResult = reader.u32("terminalResult");
+        int failureCode = reader.u32("failureCode");
+        UserSpotCreateTerminal success = null;
+        if (terminalResult == 0) {
+            success = new UserSpotCreateTerminal(
+                UserSpotCreateResult.fromWire(
+                    reader.u8("createResult")),
+                reader.rid("spotRid"),
+                reader.nonzeroU64("objectGeneration"));
+        }
+        reader.end();
+        requireReplyTail(
+            terminalResult, failureCode, success != null);
+        return new UserSpotCreateReply(
+            correlation, terminalResult, failureCode, success);
+    }
+
+    public byte[] encodeUserSpotCloseReply(
+        long correlation,
+        int terminalResult,
+        int failureCode,
+        Boolean closed) {
+        requireReplyTail(terminalResult, failureCode, closed != null);
+        Writer writer = replyPrefix(
+            correlation, terminalResult, failureCode);
+        if (closed != null) {
+            writer.u8(closed ? 1 : 0);
+        }
+        return writer.toByteArray();
+    }
+
+    public UserSpotCloseReply decodeUserSpotCloseReply(byte[] frame) {
+        Reader reader = replyReader(frame);
+        long correlation = reader.nonzeroU64("correlation");
+        int terminalResult = reader.u32("terminalResult");
+        int failureCode = reader.u32("failureCode");
+        Boolean closed = null;
+        if (terminalResult == 0) {
+            int value = reader.u8("closed");
+            if (value != 0 && value != 1) {
+                throw protocol("closed must be bool8");
+            }
+            closed = value == 1;
+        }
+        reader.end();
+        requireReplyTail(
+            terminalResult, failureCode, closed != null);
+        return new UserSpotCloseReply(
+            correlation, terminalResult, failureCode, closed);
+    }
+
     public record SpotRouteFence(
         RoutingId spotRid,
         long spotGeneration,
@@ -588,6 +807,136 @@ public final class ZLinkServiceM6BWireCodec {
         }
     }
 
+    public record ReservationFence(
+        String reservationId,
+        String storeVersion,
+        long objectGeneration,
+        long authorityOwnerGeneration,
+        RoutingId targetNodeRid,
+        long targetNodeGeneration,
+        String targetOwnerId,
+        long targetOwnerLeaseGeneration,
+        long pendingCapacityDelta) {
+        public ReservationFence {
+            if (reservationId == null || reservationId.isBlank()
+                || storeVersion == null || storeVersion.isBlank()
+                || targetOwnerId == null || targetOwnerId.isBlank()) {
+                throw protocol("reservation text fields are required");
+            }
+            Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+            if (objectGeneration <= 0
+                || authorityOwnerGeneration <= 0
+                || targetNodeGeneration <= 0
+                || targetOwnerLeaseGeneration <= 0
+                || pendingCapacityDelta <= 0
+                || pendingCapacityDelta > 0xffff_ffffL) {
+                throw protocol("reservation generations must be nonzero");
+            }
+        }
+    }
+
+    public record UserSpotCreate(
+        long correlation,
+        long operationHigh,
+        long operationLow,
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        RoutingId spotRid,
+        String stableType,
+        ReservationFence reservation,
+        long deadlineUnixMs) {
+        public UserSpotCreate {
+            Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
+            Objects.requireNonNull(spotRid, "spotRid");
+            Objects.requireNonNull(reservation, "reservation");
+            if (stableType == null || stableType.isBlank()) {
+                throw protocol("stableType is required");
+            }
+        }
+    }
+
+    public record UserSpotCloseFence(
+        RoutingId spotRid,
+        long objectGeneration,
+        RoutingId targetNodeRid,
+        long targetNodeGeneration,
+        long authorityOwnerGeneration,
+        String storeVersion) {
+        public UserSpotCloseFence {
+            Objects.requireNonNull(spotRid, "spotRid");
+            Objects.requireNonNull(targetNodeRid, "targetNodeRid");
+            if (objectGeneration <= 0
+                || targetNodeGeneration <= 0
+                || authorityOwnerGeneration <= 0
+                || storeVersion == null
+                || storeVersion.isBlank()) {
+                throw protocol("invalid User Spot close fence");
+            }
+        }
+    }
+
+    public record UserSpotClose(
+        long correlation,
+        long operationHigh,
+        long operationLow,
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        UserSpotCloseFence target,
+        long deadlineUnixMs) {
+        public UserSpotClose {
+            Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
+            Objects.requireNonNull(target, "target");
+        }
+    }
+
+    public enum UserSpotCreateResult {
+        EXISTING(1),
+        CREATED(2),
+        REJECTED(3);
+
+        private final int wireValue;
+
+        UserSpotCreateResult(int wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        static UserSpotCreateResult fromWire(int value) {
+            for (UserSpotCreateResult result : values()) {
+                if (result.wireValue == value) {
+                    return result;
+                }
+            }
+            throw protocol("unknown User Spot create result");
+        }
+    }
+
+    public record UserSpotCreateTerminal(
+        UserSpotCreateResult result,
+        RoutingId spotRid,
+        long objectGeneration) {
+        public UserSpotCreateTerminal {
+            Objects.requireNonNull(result, "result");
+            Objects.requireNonNull(spotRid, "spotRid");
+            if (objectGeneration <= 0) {
+                throw protocol("objectGeneration must be nonzero");
+            }
+        }
+    }
+
+    public record UserSpotCreateReply(
+        long correlation,
+        int terminalResult,
+        int failureCode,
+        UserSpotCreateTerminal success) {
+    }
+
+    public record UserSpotCloseReply(
+        long correlation,
+        int terminalResult,
+        int failureCode,
+        Boolean closed) {
+    }
+
     private static Writer prefix(int command, int flags) {
         Writer result = new Writer();
         result.u8(ServiceWireConstants.MAGIC_0);
@@ -596,6 +945,111 @@ public final class ZLinkServiceM6BWireCodec {
         result.u8(command);
         result.u8(flags);
         return result;
+    }
+
+    private static void validateTerminalOperation(
+        long correlation,
+        long operationHigh,
+        long operationLow,
+        long sourceNodeGeneration,
+        long deadlineUnixMs) {
+        if (correlation <= 0
+            || (operationHigh == 0 && operationLow == 0)
+            || operationHigh < 0
+            || operationLow < 0
+            || sourceNodeGeneration <= 0
+            || deadlineUnixMs <= 0) {
+            throw protocol("invalid terminal operation identity");
+        }
+    }
+
+    private static void writeReservation(
+        Writer writer,
+        ReservationFence reservation) {
+        Objects.requireNonNull(reservation, "reservation");
+        writer.text8(reservation.reservationId(), "reservationId");
+        writer.text16(reservation.storeVersion(), "expectedStoreVersion");
+        writer.nonzero(
+            reservation.objectGeneration(), "objectGeneration");
+        writer.nonzero(
+            reservation.authorityOwnerGeneration(),
+            "authorityOwnerGeneration");
+        writer.rid(
+            reservation.targetNodeRid(), "targetNodeRid");
+        writer.nonzero(
+            reservation.targetNodeGeneration(),
+            "targetNodeGeneration");
+        writer.text8(
+            reservation.targetOwnerId(), "targetOwnerId");
+        writer.nonzero(
+            reservation.targetOwnerLeaseGeneration(),
+            "targetOwnerLeaseGeneration");
+        writer.u32(
+            reservation.pendingCapacityDelta(),
+            "pendingCapacityDelta");
+    }
+
+    private static ReservationFence readReservation(Reader reader) {
+        return new ReservationFence(
+            reader.text8("reservationId"),
+            reader.text16("expectedStoreVersion"),
+            reader.nonzeroU64("objectGeneration"),
+            reader.nonzeroU64("authorityOwnerGeneration"),
+            reader.rid("targetNodeRid"),
+            reader.nonzeroU64("targetNodeGeneration"),
+            reader.text8("targetOwnerId"),
+            reader.nonzeroU64("targetOwnerLeaseGeneration"),
+            reader.nonzeroU32("pendingCapacityDelta"));
+    }
+
+    private static Writer replyPrefix(
+        long correlation,
+        int terminalResult,
+        int failureCode) {
+        if (correlation <= 0
+            || terminalResult < 0
+            || failureCode < 0
+            || !validTerminalFailurePair(terminalResult, failureCode)) {
+            throw protocol("invalid terminal reply");
+        }
+        Writer writer = prefix(ServiceWireConstants.COMMAND_REPLY, 0);
+        writer.nonzero(correlation, "correlation");
+        writer.u32(terminalResult, "terminalResult");
+        writer.u32(failureCode, "failureCode");
+        return writer;
+    }
+
+    private static Reader replyReader(byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command() != ServiceWireConstants.COMMAND_REPLY
+            || header.flags() != 0) {
+            throw protocol("command is not reply");
+        }
+        return reader;
+    }
+
+    private static void requireReplyTail(
+        int terminalResult,
+        int failureCode,
+        boolean hasSuccessTail) {
+        if (terminalResult < 0
+            || failureCode < 0
+            || !validTerminalFailurePair(terminalResult, failureCode)
+            || (terminalResult == 0) != hasSuccessTail) {
+            throw protocol("reply tail does not match terminal result");
+        }
+    }
+
+    private static boolean validTerminalFailurePair(
+        int terminalResult,
+        int failureCode) {
+        if (terminalResult == 0) {
+            return failureCode == 0;
+        }
+        boolean typedFailure = terminalResult == 102
+            || terminalResult >= 104 && terminalResult <= 107;
+        return typedFailure ? failureCode != 0 : failureCode == 0;
     }
 
     private static void writeActorRoute(
@@ -656,6 +1110,16 @@ public final class ZLinkServiceM6BWireCodec {
             }
             output.write((value >>> 8) & 0xff);
             output.write(value & 0xff);
+        }
+
+        void u32(long value, String field) {
+            if (value < 0 || value > 0xffff_ffffL) {
+                throw protocol(field + " exceeds u32");
+            }
+            output.writeBytes(ByteBuffer.allocate(Integer.BYTES)
+                .order(ByteOrder.BIG_ENDIAN)
+                .putInt((int) value)
+                .array());
         }
 
         void nonzero(long value, String field) {
@@ -761,6 +1225,24 @@ public final class ZLinkServiceM6BWireCodec {
             return Short.toUnsignedInt(input.getShort());
         }
 
+        int u32(String field) {
+            require(Integer.BYTES, field);
+            int value = input.getInt();
+            if (value < 0) {
+                throw protocol(field + " exceeds supported u32 range");
+            }
+            return value;
+        }
+
+        long nonzeroU32(String field) {
+            require(Integer.BYTES, field);
+            long value = Integer.toUnsignedLong(input.getInt());
+            if (value == 0) {
+                throw protocol(field + " must be nonzero");
+            }
+            return value;
+        }
+
         RoutingId rid(String field) {
             int length = u8(field + ".length");
             if (length == 0) {
@@ -783,6 +1265,10 @@ public final class ZLinkServiceM6BWireCodec {
             return RoutingId.from(bytes);
         }
 
+        int position() {
+            return input.position();
+        }
+
         String optionalText8(String field) {
             int length = u8(field + ".length");
             return length == 0 ? null : text(length, field);
@@ -802,10 +1288,6 @@ public final class ZLinkServiceM6BWireCodec {
                 throw protocol(field + " must not be empty");
             }
             return text(length, field);
-        }
-
-        int position() {
-            return input.position();
         }
 
         void end() {

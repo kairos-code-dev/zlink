@@ -4,12 +4,14 @@ import java.util.List;
 import java.util.Optional;
 import java.time.Duration;
 import java.util.function.Consumer;
+import java.util.concurrent.CompletionStage;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.MeshPeerEntry;
 import systems.zlink.contracts.service.spot.MeshNodeStatus;
 import systems.zlink.contracts.service.spot.MeshNodeMonitor;
 import systems.zlink.contracts.service.spot.PeerChannels;
 import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
+import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
 
 public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     void setBind(String endpoint);
@@ -88,5 +90,135 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
 
     default Optional<RoutingId> selectPlacementTarget() {
         return Optional.empty();
+    }
+
+    default void setUserSpotOperationHandler(
+        UserSpotOperationHandler handler) {
+        // Alternate backends may not yet own Framework service operations.
+    }
+
+    default CompletionStage<UserSpotCreateResponse>
+        requestUserSpotCreate(
+            RoutingId targetNodeRid,
+            UserSpotCreateIntent intent,
+            Duration timeout) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "Remote User Spot create is unavailable"));
+    }
+
+    default CompletionStage<UserSpotCloseResponse>
+        requestUserSpotClose(
+            RoutingId targetNodeRid,
+            UserSpotCloseIntent intent,
+            Duration timeout) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "Remote User Spot close is unavailable"));
+    }
+
+    default void rememberSpotAuthority(
+        SpotAuthorityRoute route) {
+        // Alternate backends may resolve the durable route on each call.
+    }
+
+    default void forgetSpotAuthority(
+        SpotAuthorityRoute route) {
+        // Alternate backends may resolve the durable route on each call.
+    }
+
+    default void registerInstanceIntent(
+        String stableType,
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
+        // Alternate backends may materialize Instance Spot elsewhere.
+    }
+
+    default void forgetInstanceIntent(
+        ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
+        // Alternate backends may materialize Instance Spot elsewhere.
+    }
+
+    interface UserSpotOperationHandler {
+        CompletionStage<UserSpotCreateResponse> create(
+            UserSpotCreateRequest request);
+
+        CompletionStage<UserSpotCloseResponse> close(
+            UserSpotCloseRequest request);
+    }
+
+    record UserSpotCreateIntent(
+        RoutingId spotRid,
+        String stableType,
+        ZLinkServiceM6BWireCodec.ReservationFence reservation,
+        long deadlineUnixMs) {
+        public UserSpotCreateIntent {
+            java.util.Objects.requireNonNull(spotRid, "spotRid");
+            java.util.Objects.requireNonNull(stableType, "stableType");
+            java.util.Objects.requireNonNull(
+                reservation, "reservation");
+        }
+    }
+
+    record UserSpotCloseIntent(
+        ZLinkServiceM6BWireCodec.UserSpotCloseFence target,
+        long deadlineUnixMs) {
+        public UserSpotCloseIntent {
+            java.util.Objects.requireNonNull(target, "target");
+        }
+    }
+
+    record UserSpotCreateRequest(
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        long operationHigh,
+        long operationLow,
+        UserSpotCreateIntent intent) {
+    }
+
+    record UserSpotCloseRequest(
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        long operationHigh,
+        long operationLow,
+        UserSpotCloseIntent intent) {
+    }
+
+    record UserSpotCreateResponse(
+        ZLinkServiceM6BWireCodec.UserSpotCreateResult result,
+        RoutingId spotRid,
+        long objectGeneration,
+        List<systems.zlink.contracts.messaging.Message>
+            applicationReply) {
+        public UserSpotCreateResponse {
+            java.util.Objects.requireNonNull(result, "result");
+            java.util.Objects.requireNonNull(spotRid, "spotRid");
+            applicationReply = List.copyOf(
+                java.util.Objects.requireNonNull(
+                    applicationReply, "applicationReply"));
+        }
+    }
+
+    record UserSpotCloseResponse(boolean closed) {
+    }
+
+    record SpotAuthorityRoute(
+        RoutingId spotRid,
+        long objectGeneration,
+        RoutingId targetNodeRid,
+        long targetNodeGeneration,
+        long authorityOwnerGeneration,
+        long ownerLeaseGeneration,
+        String ownerId,
+        String meshName,
+        String storeVersion) {
+        public SpotAuthorityRoute {
+            java.util.Objects.requireNonNull(spotRid, "spotRid");
+            java.util.Objects.requireNonNull(
+                targetNodeRid, "targetNodeRid");
+            java.util.Objects.requireNonNull(ownerId, "ownerId");
+            java.util.Objects.requireNonNull(meshName, "meshName");
+            java.util.Objects.requireNonNull(
+                storeVersion, "storeVersion");
+        }
     }
 }

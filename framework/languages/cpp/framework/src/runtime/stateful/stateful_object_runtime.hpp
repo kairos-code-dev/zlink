@@ -108,6 +108,15 @@ struct membership_token_t
                             const membership_token_t &) = default;
 };
 
+struct spot_close_token_t
+{
+    std::uint64_t value = 0;
+    object_ref_t spot;
+
+    friend bool operator== (const spot_close_token_t &,
+                            const spot_close_token_t &) = default;
+};
+
 enum class turn_domain_t
 {
     application,
@@ -187,6 +196,10 @@ class stateful_object_runtime_t
     void replace_placement_candidates (
       std::vector<placement_candidate_t> candidates);
     create_result_t begin_create (const create_request_t &request);
+    create_result_t begin_reserved_user_spot (
+      const object_ref_t &reserved,
+      const std::string &stable_type,
+      std::vector<std::uint8_t> creation_request);
     stateful_error_t commit_create (std::uint64_t attempt);
     stateful_error_t abort_create (std::uint64_t attempt);
     create_result_t activate_instance (
@@ -205,6 +218,10 @@ class stateful_object_runtime_t
       const object_ref_t &actor) const;
     stateful_error_t destroy_actor (const object_ref_t &actor);
     std::pair<stateful_error_t, bool> close_spot (const object_ref_t &spot);
+    std::pair<stateful_error_t, std::optional<spot_close_token_t>>
+    begin_close_spot (const object_ref_t &spot);
+    stateful_error_t commit_close_spot (const spot_close_token_t &token);
+    stateful_error_t abort_close_spot (const spot_close_token_t &token);
 
     stateful_error_t enqueue (const object_ref_t &owner,
                               turn_domain_t domain,
@@ -317,10 +334,12 @@ class stateful_object_runtime_t
     std::map<object_key_t, std::uint64_t> _last_generation;
     std::map<std::uint64_t, object_key_t> _attempts;
     std::map<std::uint64_t, membership_move_t> _membership_moves;
+    std::map<std::uint64_t, spot_close_token_t> _spot_closes;
     std::map<std::uint64_t, relocation_seal_state_t> _relocation_seals;
     bool _maintenance_inventory_active = false;
     std::uint64_t _next_attempt = 1;
     std::uint64_t _next_membership_token = 1;
+    std::uint64_t _next_spot_close_token = 1;
     std::uint64_t _next_relocation_token = 1;
 };
 

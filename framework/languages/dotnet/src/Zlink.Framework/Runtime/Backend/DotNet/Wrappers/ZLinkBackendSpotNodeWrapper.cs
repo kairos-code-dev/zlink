@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Zlink.Framework.Runtime.Backend.DotNet.Mappings;
+using Systems.Zlink.Framework.Runtime.Protocol;
 
 namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
@@ -136,8 +137,13 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
 
     public void SetMailboxBudgets(ulong messageBudget, ulong byteBudget)
     {
-        _node.MailboxMessageBudget = messageBudget;
-        _node.MailboxByteBudget = byteBudget;
+        // Zero means "use the backend default". Writing zero into the managed
+        // node would reject every application and infrastructure record,
+        // including command 47/48 terminal completions.
+        if (messageBudget != 0)
+            _node.MailboxMessageBudget = messageBudget;
+        if (byteBudget != 0)
+            _node.MailboxByteBudget = byteBudget;
     }
 
     // Explicit host-startup Start (spec 21 §3): the runtime calls this after
@@ -160,6 +166,94 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     public void OnSendReady(Action handler)
     {
         _pump.SetNodeSendReadyHandler(handler);
+    }
+
+    public void SetUserSpotOperationTarget(IUserSpotOperationTarget target)
+    {
+        _node.SetUserSpotOperationTarget(target);
+    }
+
+    public async ValueTask<(
+        UserSpotCreateCompletion Completion,
+        IReadOnlyList<Message> Reply)> CreateUserSpotAsync(
+        RoutingId targetNodeRid,
+        RoutingId spotRid,
+        string stableType,
+        UserSpotReservationFence reservation,
+        ulong deadlineUnixMs,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        var submit = RequireManagedNode().CreateUserSpot(
+            targetNodeRid, spotRid, stableType, reservation,
+            deadlineUnixMs, out var operationId, timeout);
+        if (submit != SubmitResult.Ok)
+            throw new ZlinkSubmitException(
+                (ZlinkSubmitException.ErrorCode)(int)submit);
+        var terminal = new TaskCompletionSource<(
+            UserSpotCreateCompletion, IReadOnlyList<Message>)>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_completions.Register(operationId, (record, parts) =>
+        {
+            if (record.TerminalResult == (int)RequestResult.Ok
+                && record.UserSpotCreateCompletion is { } completion)
+                terminal.TrySetResult((completion, parts));
+            else
+            {
+                ZLinkMessageParts.DisposeAll(parts);
+                terminal.TrySetException(new ZLinkFrameworkException(
+                    record.FailureErrno
+                    == (int)ServiceWireConstants.FrameworkErrorCode.SpotGenerationStale
+                        ? ZLinkFrameworkErrorKind.SpotGenerationStale
+                        : ZLinkFrameworkErrorKind.SpotMoving,
+                    "Remote User Spot create failed."));
+            }
+        }))
+            throw new InvalidOperationException(
+                "Remote User Spot create did not return an operation id.");
+        await using (cancellationToken.Register(
+                         () => terminal.TrySetCanceled(cancellationToken))
+                     .ConfigureAwait(false))
+            return await terminal.Task.ConfigureAwait(false);
+    }
+
+    public async ValueTask<UserSpotCloseCompletion> CloseUserSpotAsync(
+        RoutingId targetNodeRid,
+        UserSpotCloseFence target,
+        ulong deadlineUnixMs,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        var submit = RequireManagedNode().CloseUserSpot(
+            targetNodeRid, target, deadlineUnixMs,
+            out var operationId, timeout);
+        if (submit != SubmitResult.Ok)
+            throw new ZlinkSubmitException(
+                (ZlinkSubmitException.ErrorCode)(int)submit);
+        var terminal = new TaskCompletionSource<UserSpotCloseCompletion>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_completions.Register(operationId, (record, parts) =>
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+            if (record.TerminalResult == (int)RequestResult.Ok
+                && record.UserSpotCloseCompletion is { } completion)
+                terminal.TrySetResult(completion);
+            else
+                terminal.TrySetException(new ZLinkFrameworkException(
+                    record.FailureErrno
+                    == (int)ServiceWireConstants.FrameworkErrorCode.SpotGenerationStale
+                        ? ZLinkFrameworkErrorKind.SpotGenerationStale
+                        : ZLinkFrameworkErrorKind.SpotMoving,
+                    "Remote User Spot close failed."));
+        }))
+            throw new InvalidOperationException(
+                "Remote User Spot close did not return an operation id.");
+        await using (cancellationToken.Register(
+                         () => terminal.TrySetCanceled(cancellationToken))
+                     .ConfigureAwait(false))
+            return await terminal.Task.ConfigureAwait(false);
     }
 
     public void ConnectPeer(string endpoint)

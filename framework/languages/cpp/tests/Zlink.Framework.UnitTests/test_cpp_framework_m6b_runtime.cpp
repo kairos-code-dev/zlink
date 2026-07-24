@@ -2,7 +2,10 @@
 
 #include "runtime/foundation/operation_registry.hpp"
 #include "runtime/mesh/raw_mesh_node_owner.hpp"
+#include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/locations/sha256.hpp"
 #include "runtime/stateful/raw_stateful_dispatch.hpp"
+#include "runtime/stateful/public_host_runtime.hpp"
 #include "runtime/stateful/stateful_object_runtime.hpp"
 #include "runtime/stateful/stream_session_registry.hpp"
 
@@ -19,6 +22,7 @@ namespace foundation = zlink::framework::runtime::foundation;
 namespace mesh = zlink::framework::runtime::mesh;
 namespace protocol = zlink::framework::runtime::protocol;
 namespace stateful = zlink::framework::runtime::stateful;
+namespace host = zlink::framework::runtime::host;
 
 using namespace std::chrono_literals;
 
@@ -456,6 +460,353 @@ void verify_raw_spot_and_actor_routing ()
     target.close ();
 }
 
+void verify_remote_user_spot_create_close_terminal_once ()
+{
+    using namespace zlink::framework;
+    auto store =
+      std::make_shared<zlink::framework::runtime::
+                         in_memory_location_store_t> ();
+    const auto claimed =
+      store->claim_owner_lease ("target-owner", 30s)
+        .result ()
+        .value ();
+    const auto *owner =
+      std::get_if<owner_lease_claimed_t> (&claimed);
+    assert (owner);
+    mesh_node_descriptor_t target_location{
+      .mesh_name = "m6b-mesh",
+      .rid = zlink::routing_id_t::from ("user-target"),
+      .lifecycle_generation = 1,
+      .descriptor_revision = 1,
+      .endpoint = "tcp://127.0.0.1:1",
+      .application_version = 1,
+      .object_capabilities =
+        {{.object_kind = placement_object_kind_t::user_spot,
+          .stable_type = "room",
+          .policy = maintenance_policy_kind_t::recreate}},
+      .object_role = object_role_t::server,
+      .object_capacity =
+        {.active_limit = 100, .pending_limit = 100},
+      .state = framework_runtime_state_t::serving,
+      .security_identity = "test",
+      .owner_id = owner->token.owner_id,
+      .lease_generation = owner->token.lease_generation};
+    assert (
+      store
+        ->update_mesh_node (
+          target_location, location_write_intent_t::new_claim)
+        .result ()
+        .value ()
+        .status == location_write_status_t::stored);
+
+    const auto spot_rid =
+      zlink::routing_id_t::from ("remote-room");
+    const std::vector<std::byte> creation_payload{
+      std::byte{0x41}, std::byte{0x42}};
+    const object_reserve_request_t reserve{
+      .key = {placement_object_kind_t::user_spot,
+              spot_rid.to_string ()},
+      .intent =
+        {.stable_type = "room",
+         .request_content_reference =
+           "inline-v1:bd9444ea:QUI",
+         .request_sha256 =
+           zlink::framework::runtime::sha256 (creation_payload),
+         .request_encoded_size = 2},
+      .target =
+        {.mesh_name = "m6b-mesh",
+         .node_rid = node_rid_t::from_string ("user-target"),
+         .node_lifecycle_generation = 1,
+         .owner = owner->token},
+      .creating_payload = {std::byte{0x7f}},
+      .pending_capacity_delta = 1};
+    const auto reserved =
+      store->reserve (reserve).result ().value ();
+    const auto *reservation =
+      std::get_if<object_reserved_t> (&reserved);
+    assert (reservation);
+    const auto invalid_spot_rid =
+      zlink::routing_id_t::from ("remote-room-invalid");
+    auto invalid_reserve = reserve;
+    invalid_reserve.key.global_id = invalid_spot_rid.to_string ();
+    invalid_reserve.intent.request_encoded_size = 3;
+    const auto invalid_reserved =
+      store->reserve (invalid_reserve).result ().value ();
+    const auto *invalid_reservation =
+      std::get_if<object_reserved_t> (&invalid_reserved);
+    assert (invalid_reservation);
+
+    auto source = std::make_shared<host::public_host_runtime_t> (
+      host::host_options_t{
+        mesh::raw_mesh_node_options_t{descriptor ("user-source")}});
+    host::host_options_t target_options{
+      mesh::raw_mesh_node_options_t{descriptor ("user-target")}};
+    target_options.user_spot_operation_capacity = 1;
+    target_options.user_spot_operation_replay_retention = 50ms;
+    auto target = std::make_shared<host::public_host_runtime_t> (
+      std::move (target_options));
+    std::size_t materialize_count = 0;
+    target->configure_user_spot_operations (
+      store,
+      [&materialize_count] (
+        const stateful::object_ref_t &object,
+        const std::string &stable_type,
+        const std::vector<std::byte> &creation) {
+          ++materialize_count;
+          assert (object.object_generation != 0);
+          assert (stable_type == "room");
+          assert (creation
+                  == std::vector<std::byte> (
+                    {std::byte{0x41}, std::byte{0x42}}));
+          return host::user_spot_materialize_result_t{
+            true, std::nullopt};
+      });
+    source->start ();
+    target->start ();
+    assert (source->connect_peer (
+      target->status ().local_endpoint (),
+      target->status ().routing_id ()));
+    const auto deadline =
+      std::chrono::steady_clock::now () + 5s;
+    auto dispatch = [] (const host::ready_record_t &,
+                        const host::receive_record_t &,
+                        std::vector<zlink::message_t>) {};
+    while ((!source->transport ().topology ().peer (
+              target->status ().routing_id ().to_bytes ())
+            || !target->transport ().topology ().peer (
+              source->status ().routing_id ().to_bytes ()))
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) source->dispatch_ready (dispatch);
+        (void) target->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (source->transport ().topology ().peer (
+      target->status ().routing_id ().to_bytes ()));
+
+    const auto unix_deadline =
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch ()
+          + 100ms)
+          .count ());
+    protocol::user_spot_create_header_t create{
+      1,
+      {99, 1},
+      source->status ().routing_id ().to_bytes (),
+      source->status ().lifecycle_generation (),
+      spot_rid.to_bytes (),
+      "room",
+      {reservation->fence.reservation_id,
+       reservation->fence.expected_store_version,
+       reservation->fence.object_generation,
+       reservation->fence.authority_owner_generation,
+       target->status ().routing_id ().to_bytes (),
+       target->status ().lifecycle_generation (),
+       reservation->fence.target.owner.owner_id,
+       static_cast<std::uint64_t> (
+         reservation->fence.target.owner.lease_generation),
+       reservation->fence.pending_capacity_delta},
+      unix_deadline};
+    auto invalid_create = create;
+    invalid_create.operation = {98, 1};
+    invalid_create.spot_routing_id = invalid_spot_rid.to_bytes ();
+    invalid_create.deadline_unix_ms =
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch ()
+          + 20ms)
+          .count ());
+    invalid_create.reservation = {
+      invalid_reservation->fence.reservation_id,
+      invalid_reservation->fence.expected_store_version,
+      invalid_reservation->fence.object_generation,
+      invalid_reservation->fence.authority_owner_generation,
+      target->status ().routing_id ().to_bytes (),
+      target->status ().lifecycle_generation (),
+      invalid_reservation->fence.target.owner.owner_id,
+      static_cast<std::uint64_t> (
+        invalid_reservation->fence.target.owner.lease_generation),
+      invalid_reservation->fence.pending_capacity_delta};
+    std::optional<protocol::user_spot_create_reply_t>
+      invalid_reply;
+    assert (source->create_user_spot_remote (
+      target->status ().routing_id (), invalid_create, 5s,
+      [&] (foundation::operation_terminal_t terminal,
+           protocol::user_spot_create_reply_t reply,
+           std::optional<protocol::application_payload_t>) {
+          assert (
+            terminal
+            == foundation::operation_terminal_t::completed);
+          invalid_reply = std::move (reply);
+      }));
+    while (!invalid_reply
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (invalid_reply);
+    assert (invalid_reply->header.terminal_result == 105);
+    assert (materialize_count == 0);
+    std::this_thread::sleep_for (80ms);
+    create.deadline_unix_ms =
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch ()
+          + 100ms)
+          .count ());
+    std::optional<protocol::user_spot_create_reply_t>
+      create_reply;
+    std::size_t create_terminal_count = 0;
+    assert (source->create_user_spot_remote (
+      target->status ().routing_id (), create, 5s,
+      [&] (foundation::operation_terminal_t terminal,
+           protocol::user_spot_create_reply_t reply,
+           std::optional<protocol::application_payload_t>) {
+          assert (
+            terminal
+            == foundation::operation_terminal_t::completed);
+          ++create_terminal_count;
+          create_reply = std::move (reply);
+      }));
+    while (!create_reply
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (create_reply);
+    assert (create_reply->header.terminal_result == 0);
+    assert (
+      create_reply->result
+      == protocol::user_spot_create_result_t::created);
+    assert (create_terminal_count == 1);
+    assert (materialize_count == 1);
+    std::optional<protocol::user_spot_create_reply_t>
+      replayed_create_reply;
+    assert (source->create_user_spot_remote (
+      target->status ().routing_id (), create, 5s,
+      [&] (foundation::operation_terminal_t terminal,
+           protocol::user_spot_create_reply_t reply,
+           std::optional<protocol::application_payload_t>) {
+          assert (
+            terminal
+            == foundation::operation_terminal_t::completed);
+          replayed_create_reply = std::move (reply);
+      }));
+    while (!replayed_create_reply
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (replayed_create_reply);
+    assert (
+      replayed_create_reply->result
+      == protocol::user_spot_create_result_t::created);
+    assert (materialize_count == 1);
+
+    auto capacity_create = create;
+    capacity_create.operation = {99, 3};
+    std::optional<protocol::user_spot_create_reply_t>
+      capacity_reply;
+    assert (source->create_user_spot_remote (
+      target->status ().routing_id (), capacity_create, 5s,
+      [&] (foundation::operation_terminal_t terminal,
+           protocol::user_spot_create_reply_t reply,
+           std::optional<protocol::application_payload_t>) {
+          assert (
+            terminal
+            == foundation::operation_terminal_t::completed);
+          capacity_reply = std::move (reply);
+      }));
+    while (!capacity_reply
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (capacity_reply);
+    assert (capacity_reply->header.terminal_result == 103);
+    assert (materialize_count == 1);
+    std::this_thread::sleep_for (200ms);
+    std::optional<protocol::user_spot_create_reply_t>
+      expired_reply;
+    assert (source->create_user_spot_remote (
+      target->status ().routing_id (), create, 5s,
+      [&] (foundation::operation_terminal_t terminal,
+           protocol::user_spot_create_reply_t reply,
+           std::optional<protocol::application_payload_t>) {
+          assert (
+            terminal
+            == foundation::operation_terminal_t::completed);
+          expired_reply = std::move (reply);
+      }));
+    while (!expired_reply
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (expired_reply);
+    assert (expired_reply->header.terminal_result == 101);
+    assert (materialize_count == 1);
+
+    const auto authority =
+      store
+        ->read_authority (
+          {"2:" + spot_rid.to_string ()})
+        .result ()
+        .value ();
+    const auto *ready =
+      std::get_if<authority_snapshot_t> (&authority);
+    assert (ready);
+    assert (ready->allocation.capacity_state
+            == placement_capacity_state_t::active);
+    protocol::user_spot_close_header_t close{
+      1,
+      {99, 2},
+      source->status ().routing_id ().to_bytes (),
+      source->status ().lifecycle_generation (),
+      {spot_rid.to_bytes (),
+       ready->object_generation,
+       target->status ().routing_id ().to_bytes (),
+       target->status ().lifecycle_generation (),
+       ready->authority_owner_generation,
+       ready->store_version},
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch ()
+          + 5s)
+          .count ())};
+    std::optional<protocol::user_spot_close_reply_t>
+      close_reply;
+    assert (source->close_user_spot_remote (
+      target->status ().routing_id (), close, 5s,
+      [&] (foundation::operation_terminal_t terminal,
+           protocol::user_spot_close_reply_t reply) {
+          assert (
+            terminal
+            == foundation::operation_terminal_t::completed);
+          close_reply = std::move (reply);
+      }));
+    while (!close_reply
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (close_reply && close_reply->closed);
+    assert (std::holds_alternative<authority_missing_t> (
+      store
+        ->read_authority (
+          {"2:" + spot_rid.to_string ()})
+        .result ()
+        .value ()));
+    source->close ();
+    target->close ();
+}
+
 } // namespace
 
 int main ()
@@ -465,5 +816,6 @@ int main ()
     verify_instance_cold_activation_only_from_intent ();
     verify_session_binding_and_terminal_once ();
     verify_raw_spot_and_actor_routing ();
+    verify_remote_user_spot_create_close_terminal_once ();
     return 0;
 }

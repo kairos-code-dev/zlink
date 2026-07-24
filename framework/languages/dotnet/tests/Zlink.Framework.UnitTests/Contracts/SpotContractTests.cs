@@ -3,15 +3,16 @@ namespace Zlink.Framework.UnitTests;
 public sealed class SpotContractTests
 {
     [Fact]
-    public void SpotCreateResult_And_Info_Expose_SpotRid()
+    public void SpotCreateResult_Exposes_Exact_SpotRef()
     {
         var spotRid = RoutingId.From("0a0b0c");
 
-        var created = new ZLinkSpotCreateResult(spotRid, ZLinkSpotCreateState.Created, null);
-        var info = new ZLinkSpotInfo(spotRid);
+        var reference = new SpotRef(
+            spotRid, 7, "game", RoutingId.From("node-a"));
+        var created = new ZLinkSpotCreateResult(
+            reference, ZLinkSpotCreateState.Created, null);
 
-        Assert.Equal(spotRid, created.SpotRid);
+        Assert.Equal(reference, created.Spot);
         Assert.Equal(ZLinkSpotCreateState.Created, created.State);
-        Assert.Equal(spotRid, info.SpotRid);
     }
 }

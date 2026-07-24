@@ -97,6 +97,10 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         return current;
     }
 
+    public ZLinkLocationOwnerToken currentOwnerToken() {
+        return ownerTokenSnapshot();
+    }
+
     public boolean ownerLeaseHealthy() {
         return ownerLeaseHealthy;
     }

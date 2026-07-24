@@ -155,6 +155,21 @@ public final class ZLinkSpotRuntime
     private final Set<RoutingId> manualRouterPeerNodeRids = ConcurrentHashMap.newKeySet();
     private final Set<RoutingId> autoConnectedRouterPeerNodeRids = ConcurrentHashMap.newKeySet();
     private final List<ZLinkInternalMeshNode> routeMeshNodes;
+    private final Map<String, ZLinkInternalMeshNode> routeMeshNodesByName;
+    private volatile systems.zlink.framework.locations.ZLinkAuthorityStore
+        userSpotAuthorityStore;
+    private volatile systems.zlink.framework.locations.ZLinkLocationStore
+        userSpotLocationStore;
+    private volatile systems.zlink.framework.runtime.locations
+        .ZLinkLocationRuntime userSpotLocationRuntime;
+    private final systems.zlink.framework.runtime.locations
+        .ZLinkServiceAuthorityPayloadCodec userSpotAuthorities =
+            new systems.zlink.framework.runtime.locations
+                .ZLinkServiceAuthorityPayloadCodec();
+    private final systems.zlink.framework.runtime.service
+        .ZLinkServiceM6AWireCodec userSpotPayloads =
+            new systems.zlink.framework.runtime.service
+                .ZLinkServiceM6AWireCodec();
     private final Set<String> suppressedActorLifecycleCallbacks = ConcurrentHashMap.newKeySet();
     private final ZLinkSpotOutboundScope outboundScope = new ZLinkSpotOutboundScope();
     private volatile boolean closing;
@@ -298,6 +313,7 @@ public final class ZLinkSpotRuntime
         }
         this.frameworkRegistration = registration;
         this.routeMeshNodes = List.copyOf(meshNodes.values());
+        this.routeMeshNodesByName = Map.copyOf(meshNodes);
         this.channels = channels;
         this.serializer = java.util.Objects.requireNonNull(serializer, "serializer");
         this.routeMessages = new ZLinkSpotRouteMessages(this.serializer);
@@ -486,6 +502,7 @@ public final class ZLinkSpotRuntime
             handlerFactory);
         this.spotLifecycle = new ZLinkSpotLifecycle(
             primaryNode,
+            primaryNodeSourceName,
             handlerExecutor,
             spotLocations,
             initializedSpotTypes,
@@ -499,6 +516,39 @@ public final class ZLinkSpotRuntime
                     initialization.backendSpot(),
                     entrySpotType));
             }
+        }
+    }
+
+    public void installUserSpotOperationHandlers(
+        systems.zlink.framework.locations.ZLinkAuthorityStore authorityStore,
+        systems.zlink.framework.locations.ZLinkLocationStore locationStore,
+        systems.zlink.framework.runtime.locations.ZLinkLocationRuntime
+            locationRuntime) {
+        java.util.Objects.requireNonNull(authorityStore, "authorityStore");
+        java.util.Objects.requireNonNull(locationStore, "locationStore");
+        userSpotAuthorityStore = authorityStore;
+        userSpotLocationStore = locationStore;
+        userSpotLocationRuntime = java.util.Objects.requireNonNull(
+            locationRuntime, "locationRuntime");
+        for (var registration : frameworkRegistration.meshNodes()) {
+            if (registration.relocatableSpotFactories().isEmpty()) {
+                continue;
+            }
+            ZLinkInternalMeshNode meshNode =
+                routeMeshNodesByName.get(registration.meshName());
+            if (meshNode == null) {
+                throw new ZLinkConfigurationException(
+                    "MeshNode runtime is missing: " + registration.meshName());
+            }
+            ZLinkInternalMeshNode.UserSpotOperationHandler handler =
+                new ZLinkUserSpotOperationHandler(
+                    registration.meshName(),
+                    meshNode,
+                    authorityStore,
+                    spotLifecycle,
+                    serializer,
+                    registration.relocatableSpotFactories());
+            meshNode.setUserSpotOperationHandler(handler);
         }
     }
 
@@ -532,58 +582,623 @@ public final class ZLinkSpotRuntime
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot<?>> spotType) {
-        requireAcceptingNewState();
-        return spotLifecycle.create(spotType, ZLinkMessage.empty());
+    public systems.zlink.framework.spots.ZLinkSpotCreateCall create(
+        String spotType) {
+        return new CreateCall(requireStableType(spotType));
     }
 
     @Override
-    public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot<?>> spotType,
-        ZLinkMessage request) {
-        requireAcceptingNewState();
-        return spotLifecycle.create(spotType, request);
-    }
-
-    @Override
-    public CompletionStage<ZLinkSpotCreateResult> create(
-        Class<? extends ZLinkSpot<?>> spotType,
-        RoutingId spotRid) {
-        requireAcceptingNewState();
-        return spotLifecycle.create(spotType, spotRid, ZLinkMessage.empty());
-    }
-
-    @Override
-    public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot<?>> spotType,
-        RoutingId spotRid) {
-        requireAcceptingNewState(spotRid);
-        return spotLifecycle.getOrCreate(spotType, spotRid, ZLinkMessage.empty());
-    }
-
-    @Override
-    public CompletionStage<ZLinkSpotCreateResult> getOrCreate(
-        Class<? extends ZLinkSpot<?>> spotType,
+    public systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall getOrCreate(
         RoutingId spotRid,
-        ZLinkMessage request) {
-        requireAcceptingNewState(spotRid);
-        return spotLifecycle.getOrCreate(spotType, spotRid, request);
+        String spotType) {
+        return new GetOrCreateCall(
+            java.util.Objects.requireNonNull(spotRid, "spotRid"),
+            requireStableType(spotType));
     }
 
     @Override
-    public CompletionStage<Optional<ZLinkSpotInfo>> find(RoutingId spotRid) {
-        return spotLifecycle.find(spotRid);
+    public CompletionStage<Optional<systems.zlink.framework.spots.SpotRef>> find(
+        RoutingId spotRid) {
+        java.util.Objects.requireNonNull(spotRid, "spotRid");
+        systems.zlink.framework.locations.ZLinkAuthorityStore store =
+            requireUserSpotAuthorityStore();
+        return store.read(
+                systems.zlink.framework.runtime.locations
+                    .ZLinkAuthorityKeyCodec.spot(spotRid),
+                () -> false)
+            .thenApply(read -> read
+                instanceof systems.zlink.framework.locations
+                    .ZLinkAuthoritySnapshot snapshot
+                ? readyRef(snapshot, spotRid)
+                : Optional.empty());
     }
 
     @Override
-    public CompletionStage<List<ZLinkSpotInfo>> list() {
-        return spotLifecycle.list();
+    public CompletionStage<Boolean> close(
+        systems.zlink.framework.spots.SpotRef spot) {
+        java.util.Objects.requireNonNull(spot, "spot");
+        systems.zlink.framework.locations.ZLinkAuthorityStore store =
+            requireUserSpotAuthorityStore();
+        String key = systems.zlink.framework.runtime.locations
+            .ZLinkAuthorityKeyCodec.spot(spot.spotRid());
+        return store.read(key, () -> false).thenCompose(read -> {
+            if (!(read instanceof systems.zlink.framework.locations
+                .ZLinkAuthoritySnapshot snapshot)) {
+                return CompletableFuture.completedFuture(false);
+            }
+            var authority = userSpotAuthorities.decode(snapshot.payload())
+                .orElseThrow(() -> new IllegalStateException(
+                    "invalid User Spot authority"));
+            if (authority.kind()
+                    != systems.zlink.framework.runtime.locations
+                        .ZLinkServiceAuthorityPayloadCodec.Kind.USER
+                || snapshot.allocation().objectKind()
+                    != systems.zlink.framework.locations
+                        .ZLinkPlacementObjectKind.USER_SPOT) {
+                return CompletableFuture.failedFuture(
+                    new systems.zlink.framework.runtime.internal.backend
+                        .ZLinkUserSpotOperationException(
+                            107, 33,
+                            "User Spot authority kind is stale"));
+            }
+            if (authority.state()
+                    != systems.zlink.framework.runtime.locations
+                        .ZLinkServiceAuthorityPayloadCodec.State.READY
+                || snapshot.allocation().state()
+                    != systems.zlink.framework.locations
+                        .ZLinkPlacementAllocationState.ACTIVE) {
+                return CompletableFuture.failedFuture(
+                    new systems.zlink.framework.runtime.internal.backend
+                        .ZLinkUserSpotOperationException(
+                            107, 34,
+                            "User Spot is moving"));
+            }
+            if (snapshot.objectGeneration() != spot.objectGeneration()) {
+                return CompletableFuture.failedFuture(
+                    new systems.zlink.framework.runtime.internal.backend
+                        .ZLinkUserSpotOperationException(
+                            107, 33,
+                            "User Spot generation is stale"));
+            }
+            if (!authority.meshName().equals(spot.meshName())
+                || !authority.nodeRid().equals(spot.nodeRid())) {
+                return CompletableFuture.failedFuture(
+                    new systems.zlink.framework.runtime.internal.backend
+                        .ZLinkUserSpotOperationException(
+                            107, 34,
+                            "User Spot is moving"));
+            }
+            ZLinkInternalMeshNode source = routeMeshNodesByName.get(
+                authority.meshName());
+            if (source == null) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "Object client Mesh is not configured: "
+                            + authority.meshName()));
+            }
+            long deadline = System.currentTimeMillis()
+                + defaultRequestTimeout.toMillis();
+            var intent = new ZLinkInternalMeshNode.UserSpotCloseIntent(
+                        new systems.zlink.framework.runtime.service
+                            .ZLinkServiceM6BWireCodec.UserSpotCloseFence(
+                                spot.spotRid(),
+                                spot.objectGeneration(),
+                                authority.nodeRid(),
+                                authority.nodeGeneration(),
+                                snapshot.authorityOwnerGeneration(),
+                                snapshot.storeVersion()),
+                        deadline);
+            CompletionStage<ZLinkInternalMeshNode.UserSpotCloseResponse>
+                targetClose = source.requestUserSpotClose(
+                    authority.nodeRid(), intent, defaultRequestTimeout);
+            return targetClose
+                .thenApply(
+                    ZLinkInternalMeshNode.UserSpotCloseResponse::closed);
+        });
     }
 
-    @Override
-    public CompletionStage<Boolean> close(RoutingId spotRid) {
-        return spotLifecycle.close(spotRid);
+    private CompletionStage<ZLinkSpotCreateResult> submitUserSpot(
+        RoutingId requestedRid,
+        String stableType,
+        String meshName,
+        ZLinkMessage request,
+        String placementProfile,
+        String affinityKey,
+        Duration timeout,
+        boolean getOrCreate) {
+        requireAcceptingNewState();
+        systems.zlink.framework.locations.ZLinkLocationStore locations =
+            requireUserSpotLocationStore();
+        String selectedMesh = resolveObjectMesh(meshName);
+        RoutingId spotRid = requestedRid == null
+            ? RoutingId.from("spot-" + java.util.UUID.randomUUID())
+            : requestedRid;
+        byte[] applicationBytes =
+            request.toEncodedPayload(serializer).bytes();
+        byte[] envelope = userSpotPayloads.encodeApplicationPayload(
+            new systems.zlink.framework.runtime.service
+                .ZLinkServiceM6AWireCodec.ApplicationPayload(
+                    "zlink.user-spot-create",
+                    "application/zlink-framework-json-v1",
+                    applicationBytes));
+        if (envelope.length > 1024 * 1024) {
+            return CompletableFuture.failedFuture(
+                new IllegalArgumentException(
+                    "User Spot creation request exceeds 1 MiB"));
+        }
+        Duration effectiveTimeout = timeout == null
+            ? defaultRequestTimeout : timeout;
+        long deadline = System.currentTimeMillis()
+            + effectiveTimeout.toMillis();
+        return selectUserSpotTarget(
+                locations,
+                selectedMesh,
+                stableType,
+                placementProfile,
+                deadline)
+            .thenCompose(target -> reserveAndCreate(
+                locations,
+                selectedMesh,
+                spotRid,
+                stableType,
+                placementProfile,
+                affinityKey,
+                envelope,
+                target,
+                deadline,
+                effectiveTimeout,
+                getOrCreate));
+    }
+
+    private CompletionStage<ZLinkSpotCreateResult> reserveAndCreate(
+        systems.zlink.framework.locations.ZLinkLocationStore locations,
+        String meshName,
+        RoutingId spotRid,
+        String stableType,
+        String placementProfile,
+        String affinityKey,
+        byte[] envelope,
+        systems.zlink.framework.locations.ZLinkMeshNodeDescriptor target,
+        long deadline,
+        Duration timeout,
+        boolean getOrCreate) {
+        String key = systems.zlink.framework.runtime.locations
+            .ZLinkAuthorityKeyCodec.spot(spotRid);
+        var owner = new systems.zlink.framework.locations
+            .ZLinkLocationOwnerToken(
+                target.ownerId(), target.leaseGeneration());
+        byte[] creating = userSpotAuthorities.encodeUser(
+            systems.zlink.framework.runtime.locations
+                .ZLinkServiceAuthorityPayloadCodec.State.CREATING,
+            stableType,
+            spotRid,
+            target.ownerId(),
+            target.leaseGeneration(),
+            meshName,
+            target.rid(),
+            target.lifecycleGeneration());
+        var reserve = new systems.zlink.framework.locations
+            .ZLinkObjectReservationRequest(
+                systems.zlink.framework.locations
+                    .ZLinkPlacementObjectKind.USER_SPOT,
+                key,
+                stableType,
+                Optional.ofNullable(placementProfile),
+                Optional.ofNullable(affinityKey),
+                inlineCreationIntent(envelope),
+                sha256(envelope),
+                envelope.length,
+                new systems.zlink.framework.locations
+                    .ZLinkMeshNodeDescriptorKey(meshName, target.rid()),
+                target.lifecycleGeneration(),
+                owner,
+                creating,
+                1);
+        return locations.reserve(reserve, () -> false)
+            .thenCompose(result -> {
+                if (result instanceof systems.zlink.framework.locations
+                    .ZLinkObjectAlreadyExists exists) {
+                    if (!getOrCreate) {
+                        return CompletableFuture.failedFuture(
+                            new IllegalStateException(
+                                "User Spot already exists"));
+                    }
+                    return existingResult(
+                        exists.current(), spotRid, stableType);
+                }
+                if (result instanceof systems.zlink.framework.locations
+                    .ZLinkObjectTypeMismatch) {
+                    return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "User Spot type does not match"));
+                }
+                if (!(result instanceof systems.zlink.framework.locations
+                    .ZLinkObjectReserved reserved)) {
+                    return CompletableFuture.failedFuture(
+                        new IllegalStateException(
+                            "User Spot reservation failed: "
+                                + result.getClass().getSimpleName()));
+                }
+                var reservation = reserved.reservation();
+                ZLinkInternalMeshNode source =
+                    routeMeshNodesByName.get(meshName);
+                if (source == null) {
+                    return locations.abort(reservation, () -> false)
+                        .thenCompose(ignored ->
+                            CompletableFuture.failedFuture(
+                                new IllegalStateException(
+                                    "Object client Mesh is not configured: "
+                                        + meshName)));
+                }
+                var fence = new systems.zlink.framework.runtime.service
+                    .ZLinkServiceM6BWireCodec.ReservationFence(
+                        reservation.reservationVersion(),
+                        reservation.storeVersion(),
+                        reservation.objectGeneration(),
+                        reservation.authorityOwnerGeneration(),
+                        target.rid(),
+                        target.lifecycleGeneration(),
+                        target.ownerId(),
+                        target.leaseGeneration(),
+                        1);
+                var intent =
+                    new ZLinkInternalMeshNode.UserSpotCreateIntent(
+                        spotRid, stableType, fence, deadline);
+                CompletionStage<ZLinkInternalMeshNode.UserSpotCreateResponse>
+                    targetCreate = source.requestUserSpotCreate(
+                        target.rid(), intent, timeout);
+                return targetCreate
+                    .thenApply(response -> {
+                        ZLinkMessage reply =
+                            response.applicationReply().isEmpty()
+                                ? null
+                                : ZLinkMessage.fromEncoded(
+                                    systems.zlink.framework.ZLinkEncodedPayload
+                                        .from(response.applicationReply()
+                                            .getLast().toByteArray()),
+                                    serializer);
+                        response.applicationReply().forEach(Message::close);
+                        return new ZLinkSpotCreateResult(
+                            new systems.zlink.framework.spots.SpotRef(
+                                response.spotRid(),
+                                response.objectGeneration(),
+                                meshName,
+                                target.rid()),
+                            switch (response.result()) {
+                                case EXISTING ->
+                                    ZLinkSpotCreateState.EXISTING;
+                                case CREATED ->
+                                    ZLinkSpotCreateState.CREATED;
+                                case REJECTED ->
+                                    ZLinkSpotCreateState.REJECTED;
+                            },
+                            reply);
+                    });
+            });
+    }
+
+    private CompletionStage<ZLinkSpotCreateResult> existingResult(
+        systems.zlink.framework.locations.ZLinkAuthoritySnapshot snapshot,
+        RoutingId spotRid,
+        String stableType) {
+        var authority = userSpotAuthorities.decode(snapshot.payload())
+            .orElseThrow(() -> new IllegalStateException(
+                "invalid User Spot authority"));
+        if (!authority.stableType().equals(stableType)
+            || authority.state()
+                != systems.zlink.framework.runtime.locations
+                    .ZLinkServiceAuthorityPayloadCodec.State.READY) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException(
+                    "User Spot type or state does not match"));
+        }
+        return CompletableFuture.completedFuture(
+            new ZLinkSpotCreateResult(
+                new systems.zlink.framework.spots.SpotRef(
+                    spotRid,
+                    snapshot.objectGeneration(),
+                    authority.meshName(),
+                    authority.nodeRid()),
+                ZLinkSpotCreateState.EXISTING,
+                null));
+    }
+
+    private CompletionStage<
+        systems.zlink.framework.locations.ZLinkMeshNodeDescriptor>
+        selectUserSpotTarget(
+            systems.zlink.framework.locations.ZLinkLocationStore locations,
+            String meshName,
+            String stableType,
+            String placementProfile,
+            long deadlineUnixMs) {
+        return locations.listMeshNodes(
+                meshName,
+                new systems.zlink.framework.locations.ZLinkPageRequest(
+                    1000, null))
+            .thenApply(page -> {
+                List<systems.zlink.framework.locations
+                    .ZLinkMeshNodeDescriptor> candidates =
+                        page.items().stream()
+                            .filter(node ->
+                                node.state()
+                                    == systems.zlink.framework.runtime.host
+                                        .ZLinkFrameworkRuntimeState.SERVING
+                                    && node.objectRole()
+                                        == systems.zlink.framework.locations
+                                            .ZLinkMeshNodeObjectRole.SERVER
+                                    && node.placementWeight() > 0
+                                    && node.capacity().pending()
+                                        < node.capacity().pendingLimit()
+                                    && node.objectCapabilities().stream()
+                                        .anyMatch(capability ->
+                                            capability.objectKind()
+                                                == systems.zlink.framework
+                                                    .locations
+                                                    .ZLinkPlacementObjectKind
+                                                    .USER_SPOT
+                                            && capability.stableType()
+                                                .equals(stableType)
+                                            && (placementProfile == null
+                                                || capability
+                                                    .placementProfiles()
+                                                    .contains(
+                                                        placementProfile))))
+                            .toList();
+                if (candidates.isEmpty()) {
+                    if (System.currentTimeMillis() >= deadlineUnixMs) {
+                        throw new IllegalStateException(
+                            "No Ready User Spot placement target");
+                    }
+                    return null;
+                }
+                int total = candidates.stream()
+                    .mapToInt(systems.zlink.framework.locations
+                        .ZLinkMeshNodeDescriptor::placementWeight)
+                    .sum();
+                int selected = java.util.concurrent.ThreadLocalRandom
+                    .current().nextInt(total);
+                for (var candidate : candidates) {
+                    selected -= candidate.placementWeight();
+                    if (selected < 0) {
+                        return candidate;
+                    }
+                }
+                return candidates.getLast();
+            })
+            .thenCompose(found -> found != null
+                ? CompletableFuture.completedFuture(found)
+                : CompletableFuture.supplyAsync(
+                        () -> null,
+                        CompletableFuture.delayedExecutor(
+                            10, TimeUnit.MILLISECONDS))
+                    .thenCompose(ignored -> selectUserSpotTarget(
+                        locations,
+                        meshName,
+                        stableType,
+                        placementProfile,
+                        deadlineUnixMs)));
+    }
+
+    private Optional<systems.zlink.framework.spots.SpotRef> readyRef(
+        systems.zlink.framework.locations.ZLinkAuthoritySnapshot snapshot,
+        RoutingId spotRid) {
+        return userSpotAuthorities.decode(snapshot.payload())
+            .filter(authority ->
+                authority.state()
+                    == systems.zlink.framework.runtime.locations
+                        .ZLinkServiceAuthorityPayloadCodec.State.READY)
+            .map(authority -> new systems.zlink.framework.spots.SpotRef(
+                spotRid,
+                snapshot.objectGeneration(),
+                authority.meshName(),
+                authority.nodeRid()));
+    }
+
+    private String resolveObjectMesh(String requested) {
+        if (requested != null) {
+            if (!routeMeshNodesByName.containsKey(requested)) {
+                throw new IllegalStateException(
+                    "Mesh is not configured: " + requested);
+            }
+            return requested;
+        }
+        List<String> meshes = frameworkRegistration.meshNodes().stream()
+            .filter(
+                systems.zlink.framework.runtime.mesh
+                    .MeshNodeRegistration::objectRoleEnabled)
+            .map(systems.zlink.framework.runtime.mesh
+                .MeshNodeRegistration::meshName)
+            .distinct()
+            .toList();
+        if (meshes.size() != 1) {
+            throw new IllegalStateException(
+                meshes.isEmpty()
+                    ? "Object client is not configured"
+                    : "Mesh selection is required");
+        }
+        return meshes.getFirst();
+    }
+
+    private systems.zlink.framework.locations.ZLinkAuthorityStore
+        requireUserSpotAuthorityStore() {
+        if (userSpotAuthorityStore == null) {
+            throw new IllegalStateException(
+                "User Spot Location authority is not configured");
+        }
+        return userSpotAuthorityStore;
+    }
+
+    private systems.zlink.framework.locations.ZLinkLocationStore
+        requireUserSpotLocationStore() {
+        if (userSpotLocationStore == null) {
+            throw new IllegalStateException(
+                "User Spot Location Store is not configured");
+        }
+        return userSpotLocationStore;
+    }
+
+    private static String requireStableType(String value) {
+        if (value == null || value.isBlank()
+            || value.getBytes(StandardCharsets.UTF_8).length > 255
+            || value.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException(
+                "spotType must be 1..255 UTF-8 bytes without NUL");
+        }
+        return value;
+    }
+
+    private static byte[] sha256(byte[] value) {
+        try {
+            return java.security.MessageDigest.getInstance("SHA-256")
+                .digest(value);
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new AssertionError(impossible);
+        }
+    }
+
+    private static String inlineCreationIntent(byte[] value) {
+        return "inline-v1:"
+            + java.util.Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(value);
+    }
+
+    private abstract class UserSpotCall {
+        final String stableType;
+        String meshName;
+        ZLinkMessage request = ZLinkMessage.empty();
+        boolean requestSet;
+        String placementProfile;
+        String affinityKey;
+        Duration timeout;
+        final java.util.concurrent.atomic.AtomicBoolean submitted =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+        UserSpotCall(String stableType) {
+            this.stableType = stableType;
+        }
+
+        void setMesh(String value) {
+            if (meshName != null) {
+                throw new IllegalStateException("inMesh was already set");
+            }
+            meshName = requireStableType(value);
+        }
+
+        void setRequest(ZLinkMessage value) {
+            if (requestSet) {
+                throw new IllegalStateException("request was already set");
+            }
+            request = java.util.Objects.requireNonNull(value, "request");
+            requestSet = true;
+        }
+
+        void setPlacementProfile(String value) {
+            if (placementProfile != null) {
+                throw new IllegalStateException(
+                    "placementProfile was already set");
+            }
+            placementProfile = requireStableType(value);
+        }
+
+        void setAffinityKey(String value) {
+            if (affinityKey != null) {
+                throw new IllegalStateException(
+                    "affinityKey was already set");
+            }
+            affinityKey = requireStableType(value);
+        }
+
+        void setTimeout(Duration value) {
+            if (timeout != null) {
+                throw new IllegalStateException("timeout was already set");
+            }
+            if (value == null || value.isZero() || value.isNegative()) {
+                throw new IllegalArgumentException(
+                    "timeout must be positive");
+            }
+            timeout = value;
+        }
+
+        CompletionStage<ZLinkSpotCreateResult> submit(
+            RoutingId spotRid,
+            boolean getOrCreate) {
+            if (!submitted.compareAndSet(false, true)) {
+                return CompletableFuture.failedFuture(
+                    new IllegalStateException(
+                        "User Spot call was already submitted"));
+            }
+            return submitUserSpot(
+                spotRid,
+                stableType,
+                meshName,
+                request,
+                placementProfile,
+                affinityKey,
+                timeout,
+                getOrCreate);
+        }
+    }
+
+    private final class CreateCall extends UserSpotCall
+        implements systems.zlink.framework.spots.ZLinkSpotCreateCall {
+        CreateCall(String stableType) {
+            super(stableType);
+        }
+
+        @Override public CreateCall inMesh(String value) {
+            setMesh(value); return this;
+        }
+        @Override public CreateCall request(Object value) {
+            return request(ZLinkMessage.of(value));
+        }
+        @Override public CreateCall request(ZLinkMessage value) {
+            setRequest(value); return this;
+        }
+        @Override public CreateCall placementProfile(String value) {
+            setPlacementProfile(value); return this;
+        }
+        @Override public CreateCall affinityKey(String value) {
+            setAffinityKey(value); return this;
+        }
+        @Override public CreateCall timeout(Duration value) {
+            setTimeout(value); return this;
+        }
+        @Override public CompletionStage<ZLinkSpotCreateResult> submit() {
+            return submit(null, false);
+        }
+    }
+
+    private final class GetOrCreateCall extends UserSpotCall
+        implements systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall {
+        private final RoutingId spotRid;
+
+        GetOrCreateCall(RoutingId spotRid, String stableType) {
+            super(stableType);
+            this.spotRid = spotRid;
+        }
+
+        @Override public GetOrCreateCall inMesh(String value) {
+            setMesh(value); return this;
+        }
+        @Override public GetOrCreateCall request(Object value) {
+            return request(ZLinkMessage.of(value));
+        }
+        @Override public GetOrCreateCall request(ZLinkMessage value) {
+            setRequest(value); return this;
+        }
+        @Override public GetOrCreateCall placementProfile(String value) {
+            setPlacementProfile(value); return this;
+        }
+        @Override public GetOrCreateCall affinityKey(String value) {
+            setAffinityKey(value); return this;
+        }
+        @Override public GetOrCreateCall timeout(Duration value) {
+            setTimeout(value); return this;
+        }
+        @Override public CompletionStage<ZLinkSpotCreateResult> submit() {
+            return submit(spotRid, true);
+        }
     }
 
     @Override
@@ -1578,7 +2193,7 @@ public final class ZLinkSpotRuntime
 
     @Override
     CompletionStage<Boolean> closeSpot(RoutingId spotRid) {
-        return close(spotRid);
+        return spotLifecycle.close(spotRid);
     }
 
     @Override

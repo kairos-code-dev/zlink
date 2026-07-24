@@ -14,6 +14,25 @@ namespace zlink::framework::runtime::client_server
 namespace
 {
 
+std::string advertised_endpoint (
+  std::string bound_endpoint,
+  const std::optional<std::string> &advertise_host)
+{
+    if (!advertise_host)
+        return bound_endpoint;
+    const auto port = bound_endpoint.rfind (':');
+    if (!bound_endpoint.starts_with ("tcp://")
+        || port == std::string::npos || port < 6) {
+        throw std::invalid_argument (
+          "ClientServer advertise host requires a TCP bind endpoint");
+    }
+    const auto host =
+      advertise_host->find (':') == std::string::npos
+        ? *advertise_host
+        : "[" + *advertise_host + "]";
+    return "tcp://" + host + bound_endpoint.substr (port);
+}
+
 std::vector<std::uint8_t> monitor_connection_id (
   const zlink::monitor_event_t &event)
 {
@@ -79,7 +98,9 @@ void raw_client_server_server_t::start ()
                             | zlink::monitor_event::disconnected));
     router->bind (_options.descriptor.advertised_endpoint);
     _options.descriptor.advertised_endpoint =
-      router->options ().last_endpoint ();
+      advertised_endpoint (
+        router->options ().last_endpoint (),
+        _options.advertise_host);
     if (_options.descriptor.descriptor_revision
         == std::numeric_limits<std::uint64_t>::max ()) {
         throw std::overflow_error (

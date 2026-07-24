@@ -240,6 +240,7 @@ connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 �
 `Listen(string endpoint)`, `Bind(string endpoint)`와 `EnablePublisher(string endpoint)`를 제공하며,
 host·port 조합 overload도 같은 listener 설정을 표현한다.
 
+한 process에는 서로 다른 ClientServer ChannelName을 여러 개 등록할 수 있다.
 `AddClientServerChannel(channelName)`은 `Client()`와 `Server()` 중 하나 또는 둘 다 등록할 수 있으며 각
 역할은 최대 한 번만 등록한다. Registration key는 `(ChannelName, Role)`이며 Client와 Server는 별도
 registration으로 하나의 ClientServer topology를 공유한다. 같은 역할을 두 번 등록하면 startup이 실패한다.

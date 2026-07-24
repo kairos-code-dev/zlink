@@ -40,6 +40,7 @@ enum class client_server_pump_result_t
 struct raw_client_server_server_options_t
 {
     protocol::client_server_server_admission_t descriptor;
+    std::optional<std::string> advertise_host;
     std::size_t mailbox_message_budget = 4096;
     std::size_t mailbox_byte_budget = 16u * 1024u * 1024u;
 };

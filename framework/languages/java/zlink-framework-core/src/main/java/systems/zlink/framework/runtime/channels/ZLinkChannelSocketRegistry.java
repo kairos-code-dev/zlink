@@ -381,7 +381,9 @@ final class ZLinkChannelSocketRegistry {
                 continue;
             }
             String endpoint = advertisedEndpoint(
-                registration.serverBinds().get(0), entry.getValue());
+                registration.serverBinds().get(0),
+                entry.getValue(),
+                registration.clientServerAdvertiseHost());
             clientServerServerDescriptors.put(
                 entry.getKey(),
                 new ZLinkClientServerServerDescriptor(
@@ -868,7 +870,10 @@ final class ZLinkChannelSocketRegistry {
                     channel.name(),
                     ZLinkLocationRole.ROUTER,
                     serverRoutingIds.get(channel.name()),
-                    advertisedEndpoint(endpoint, server),
+                    advertisedEndpoint(
+                        endpoint,
+                        server,
+                        channel.clientServerAdvertiseHost()),
                     server.peerWeight(),
                     null,
                     List.of()));
@@ -950,13 +955,39 @@ final class ZLinkChannelSocketRegistry {
     private static String advertisedEndpoint(
         String configuredEndpoint,
         ZLinkBackendRouterSocket router) {
+        return advertisedEndpoint(configuredEndpoint, router, null);
+    }
+
+    private static String advertisedEndpoint(
+        String configuredEndpoint,
+        ZLinkBackendRouterSocket router,
+        String advertiseHost) {
+        String endpoint = configuredEndpoint;
         if (!configuredEndpoint.endsWith(":0")) {
-            return configuredEndpoint;
+            endpoint = configuredEndpoint;
+        } else {
+            String boundEndpoint = router.lastEndpoint();
+            endpoint = boundEndpoint == null || boundEndpoint.isBlank()
+                ? configuredEndpoint
+                : boundEndpoint;
         }
-        String boundEndpoint = router.lastEndpoint();
-        return boundEndpoint == null || boundEndpoint.isBlank()
-            ? configuredEndpoint
-            : boundEndpoint;
+        if (advertiseHost == null || advertiseHost.isBlank()) {
+            return endpoint;
+        }
+        java.net.URI value = java.net.URI.create(endpoint);
+        try {
+            return new java.net.URI(
+                value.getScheme(),
+                value.getUserInfo(),
+                advertiseHost,
+                value.getPort(),
+                value.getPath(),
+                value.getQuery(),
+                value.getFragment()).toString();
+        } catch (java.net.URISyntaxException invalid) {
+            throw new IllegalArgumentException(
+                "Invalid ClientServer advertise host.", invalid);
+        }
     }
 
     private static String advertisedEndpoint(

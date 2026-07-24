@@ -57,6 +57,20 @@ import systems.zlink.framework.testkit.FakeZLinkBackendAdapterFactory
 
 final class KotlinSuspendAnnotationHandlerTest {
     @Test
+    fun clientServerRoleBuildersAllowSameAndDifferentChannelNames() {
+        val options = DefaultZLinkFrameworkOptions()
+
+        options.addClientServerChannel("orders").client()
+            .connect("inproc://orders")
+        options.addClientServerChannel("orders").server().listen()
+        options.addClientServerChannel("billing").client()
+            .connect("inproc://billing")
+        options.addClientServerChannel("inventory").server().listen()
+
+        assertTrue(true)
+    }
+
+    @Test
     fun scannerTreatsKotlinSuspendChannelAnnotationsLikeJavaMethodHandlers() {
         val catalog = ZLinkHandlerScanner.scan(setOf(KotlinSuspendHandlerMarker::class.java))
 
@@ -404,14 +418,12 @@ final class KotlinSuspendAnnotationHandlerTest {
     fun duplicateValidationRejectsJavaAndKotlinSuspendAnnotationPacketCollision() {
         val options = DefaultZLinkFrameworkOptions()
         options.addHandlersFromPackageOf(KotlinSuspendHandlerMarker::class.java)
-        val channel = options.addClientServerChannel("profile")
-        channel.enableServer("inproc://profile")
+        val channel = options.addClientServerChannel("profile").server().listen()
         channel.addHandlerGroup("kotlin-channel")
         channel.addRequestHandler(
             JavaProfileRequestHandler::class.java,
             ProfileRequest::class.java,
             ProfileReply::class.java,
-            "ProfileRequest",
         )
 
         val lifecycle = ZLinkFrameworkLifecycle(
@@ -462,7 +474,7 @@ final class KotlinSuspendAnnotationHandlerTest {
             context.refresh()
 
             assertTrue(
-                backendFactory.calls().contains("router.bind.inproc://kotlin-suspend"),
+                backendFactory.calls().contains("router.bind.tcp://127.0.0.1:40502"),
                 backendFactory.calls().toString(),
             )
         }
@@ -639,8 +651,9 @@ open class SpringSuspendFrameworkConfig {
     open fun frameworkConfigurer() = ZLinkFrameworkConfigurer { options ->
         options.setDefaultRequestTimeout(Duration.ofSeconds(1))
         options.addHandlersFromPackageOf(KotlinSuspendHandlerMarker::class.java)
-        val channel = options.addClientServerChannel("profile")
-        channel.enableServer("inproc://kotlin-suspend")
+        val channel = options.addClientServerChannel("profile").server()
+            .setBindHost("127.0.0.1")
+            .listen(40502)
         channel.addHandlerGroup("kotlin-channel")
     }
 }

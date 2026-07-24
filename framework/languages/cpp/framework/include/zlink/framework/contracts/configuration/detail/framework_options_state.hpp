@@ -320,6 +320,8 @@ struct framework_options_state_t
     std::set<std::string> client_server_channels_with_server;
     std::map<std::string, std::size_t> client_server_client_registration_counts;
     std::map<std::string, std::size_t> client_server_server_registration_counts;
+    std::map<std::string, std::string>
+      client_server_server_advertise_hosts;
     std::map<std::string, std::optional<std::chrono::milliseconds>>
       client_server_default_request_timeouts;
     std::map<std::string, std::function<void (channel_builder_t &)>>

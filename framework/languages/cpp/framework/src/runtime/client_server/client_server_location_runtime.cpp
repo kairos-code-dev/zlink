@@ -120,7 +120,8 @@ client_server_location_runtime_t::client_server_location_runtime_t (
   owner_lease_store_t &leases,
   service_provider_t &services,
   serializer_registry_t &serializers,
-  const handler_registry_t &handlers) :
+  const handler_registry_t &handlers,
+  std::map<std::string, std::string> advertise_hosts) :
     _bus (std::move (bus)),
     _channel_runtime (detail::channel_runtime_t::from (_bus)),
     _channels (std::move (channels)),
@@ -129,7 +130,8 @@ client_server_location_runtime_t::client_server_location_runtime_t (
     _leases (&leases),
     _services (&services),
     _serializers (&serializers),
-    _handlers (&handlers)
+    _handlers (&handlers),
+    _advertise_hosts (std::move (advertise_hosts))
 {
 }
 
@@ -178,15 +180,14 @@ void client_server_location_runtime_t::start_server (
   const channel_snapshot_t &channel,
   const location_owner_token_t &owner)
 {
-    if (!channel.server.routing_id
-        || channel.server.bind_endpoints.size () != 1) {
+    if (channel.server.bind_endpoints.size () != 1) {
         throw std::invalid_argument (
-          "discovery ClientServer server requires one routing id and one bind endpoint");
+          "discovery ClientServer server requires one bind endpoint");
     }
     protocol::client_server_server_admission_t admission;
     admission.channel_name = channel.name;
     admission.server_routing_id =
-      channel.server.routing_id->to_bytes ();
+      server_routing_id (channel);
     admission.lifecycle_generation = make_lifecycle_generation ();
     admission.weight = channel.server.peer_weight
                          ? channel.server.peer_weight->value ()
@@ -199,8 +200,14 @@ void client_server_location_runtime_t::start_server (
     admission.advertised_endpoint =
       channel.server.bind_endpoints.front ();
 
+    const auto advertise =
+      _advertise_hosts.find (channel.name);
     auto raw = std::make_unique<raw_client_server_server_t> (
-      raw_client_server_server_options_t{admission});
+      raw_client_server_server_options_t{
+        admission,
+        advertise == _advertise_hosts.end ()
+          ? std::nullopt
+          : std::optional<std::string> (advertise->second)});
     raw->start ();
     auto descriptor =
       to_descriptor (raw->descriptor (), owner);
@@ -749,6 +756,18 @@ client_server_location_runtime_t::client_routing_id (
         return channel.client.routing_id->to_bytes ();
     return zlink::routing_id_t::from (
              channel.name + ":client:"
+             + std::to_string (make_lifecycle_generation ()))
+      .to_bytes ();
+}
+
+std::vector<std::uint8_t>
+client_server_location_runtime_t::server_routing_id (
+  const channel_snapshot_t &channel)
+{
+    if (channel.server.routing_id)
+        return channel.server.routing_id->to_bytes ();
+    return zlink::routing_id_t::from (
+             channel.name + ":server:"
              + std::to_string (make_lifecycle_generation ()))
       .to_bytes ();
 }

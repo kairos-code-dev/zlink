@@ -197,11 +197,23 @@ public final class ZLinkFrameworkRegistration {
         for (ChannelRegistration channel : channels) {
             channel.validate(locations.enabled(), handlerCatalog);
         }
+        Set<String> clientServerChannelNames = channels.stream()
+            .filter(channel -> channel.kind()
+                == systems.zlink.framework.runtime.channels.ChannelKind.CLIENT_SERVER)
+            .map(ChannelRegistration::name)
+            .collect(java.util.stream.Collectors.toSet());
         int actorCapableNodes = 0;
         boolean objectRoleConfigured = false;
         boolean relocationStoreRequired = false;
         for (MeshNodeRegistration meshNode : meshNodes) {
             meshNode.validate();
+            for (String channelName : meshNode.channelNames()) {
+                if (clientServerChannelNames.contains(channelName)) {
+                    throw new ZLinkConfigurationException(
+                        "ChannelName '" + channelName
+                            + "' is registered on both RouteMesh and ClientServer physical paths.");
+                }
+            }
             objectRoleConfigured |= meshNode.objectRoleEnabled();
             relocationStoreRequired |= meshNode.requiresRelocationStore();
             if (!meshNode.actorFactories().isEmpty()) {

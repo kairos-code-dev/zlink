@@ -460,7 +460,8 @@ payload byte 수를 제한한다. 두 값은 startup 전에만 설정한다. `0`
 `server()`가 반환한 builder만 weight와 handler를 설정한다. Server membership이 없는
 MeshNode도 시작할 수 있다. `add_client_server_channel(channel_name)`은 단방향
 request 시작 권한을 client에만 두며 server는 수신한 send/request 처리와 reply만 수행한다. ClientServer
-builder에서는 `client()`와 `server()` 중 하나 또는 둘 다 호출할 수 있지만 각 역할은 최대 한 번만
+builder는 서로 다른 ChannelName으로 여러 개 등록할 수 있다. 각 builder에서는 `client()`와 `server()` 중
+하나 또는 둘 다 호출할 수 있지만 각 역할은 최대 한 번만
 등록한다. Registration key는 `(ChannelName, Role)`이고 같은 역할의 중복 등록은 startup 오류다. 서로 다른
 역할은 별도 registration으로 같은 ChannelName의 topology를 공유한다. RouteMesh의 역할 단일 선택과
 ChannelName 충돌 규칙은 바꾸지 않는다. Local-only 구성은 Location Store나 manual `connect(...)` 없이

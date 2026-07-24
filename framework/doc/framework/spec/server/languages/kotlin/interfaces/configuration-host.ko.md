@@ -8,7 +8,8 @@ Kotlin application은 Java builder를 직접 사용한다. Kotlin DSL은 receive
 따라서 ClientServer의 Client-only connect와 Server RID·lifecycle generation별 intent 통합, fanout의
 Subscriber-only connect와 automatic·manual subscriber 혼합 금지는
 [Java 구성](../../java/interfaces/configuration-host.ko.md)의 같은 계약을 그대로 적용한다.
-같은 ClientServer ChannelName에는 Java builder의 `client()`와 `server()`를 각각 한 번 등록할 수 있으며
+한 process에는 서로 다른 ClientServer ChannelName을 여러 개 등록할 수 있다. 같은 ClientServer
+ChannelName에는 Java builder의 `client()`와 `server()`를 각각 한 번 등록할 수 있으며
 별도 Kotlin DSL이나 public API를 추가하지 않는다. 두 역할은 `(ChannelName, Role)` key의 별도
 registration으로 하나의 topology를 공유하고 같은 역할의 중복은 startup 오류다. Local Server도 remote
 Server와 같은 readiness·weight·drain 조건으로 선택하며 local

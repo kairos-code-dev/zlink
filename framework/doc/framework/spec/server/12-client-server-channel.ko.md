@@ -16,8 +16,9 @@ ClientServer Channel은 RouteMesh의 option이 아니다. Node direct, Spot, Act
 
 ## 2. Client와 server 역할
 
-한 process는 같은 ChannelName의 ClientServer Channel에 `Client`, `Server` 또는 두 역할을 함께 등록할 수
-있다. Registration key는 `(ChannelName, Role)`이며 역할별 등록은 최대 한 번만 허용한다.
+한 process에는 서로 다른 ChannelName의 ClientServer Channel을 여러 개 등록할 수 있다. 같은 ChannelName에는
+`Client`, `Server` 또는 두 역할을 함께 등록할 수 있다. Registration key는 `(ChannelName, Role)`이며
+역할별 등록은 최대 한 번만 허용한다.
 
 | 역할 | 허용되는 동작 |
 |---|---|
@@ -135,6 +136,7 @@ lease를 갱신하지 못해 fencing deadline에 도달하면 새 업무 admissi
   handler에 전달하지 않는다.
 - 같은 process의 같은 ChannelName에 Client와 Server를 각각 한 번 등록할 수 있고, 같은 역할의 중복 등록과
   RouteMesh 충돌은 startup 오류다.
+- 서로 다른 ChannelName에는 같은 Client 또는 Server 역할을 각각 등록할 수 있다.
 - 같은 process의 Client와 Server만 등록한 local-only 구성은 location store나 manual endpoint 없이 실제
   transport admission을 거쳐 ready target을 만든다.
 - 같은 ChannelName의 여러 server가 weight, weight `0`과 drain state를 반영해 선택된다.

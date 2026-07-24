@@ -26,6 +26,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <typeindex>
 #include <utility>
@@ -33,6 +34,8 @@
 
 namespace zlink::framework
 {
+
+class client_server_channel_server_builder_t;
 
 class handler_options_builder_t
 {
@@ -86,11 +89,19 @@ class handler_options_builder_t
     }
 
   private:
-    template <typename THandler> void add_to_group (std::string group_name)
+    friend class client_server_channel_server_builder_t;
+
+    template <typename THandler>
+    void add_to_group (
+      std::string group_name,
+      std::optional<std::string> packet_name = std::nullopt)
     {
         using request_type = typename THandler::request_type;
         using reply_type = typename THandler::reply_type;
-        auto topic_name = detail::handler_topic_name<THandler, request_type> ();
+        auto topic_name =
+          packet_name && !packet_name->empty ()
+            ? std::move (*packet_name)
+            : detail::handler_topic_name<THandler, request_type> ();
         _state->add_handler_packet (group_name, detail::handler_group_kind_t::request, topic_name,
                                     detail::message_name<request_type> ());
 
@@ -160,10 +171,16 @@ class handler_options_builder_t
         }
     }
 
-    template <typename THandler> void add_send_to_group (std::string group_name)
+    template <typename THandler>
+    void add_send_to_group (
+      std::string group_name,
+      std::optional<std::string> packet_name = std::nullopt)
     {
         using message_type = typename THandler::message_type;
-        auto topic_name = detail::handler_topic_name<THandler, message_type> ();
+        auto topic_name =
+          packet_name && !packet_name->empty ()
+            ? std::move (*packet_name)
+            : detail::handler_topic_name<THandler, message_type> ();
         _state->add_handler_packet (group_name, detail::handler_group_kind_t::send, topic_name,
                                     detail::message_name<message_type> ());
 
@@ -326,85 +343,96 @@ class codec_options_builder_t
     serializer_registry_t *_serializers;
 };
 
+class client_server_channel_client_builder_t;
+class client_server_channel_server_builder_t;
+
 class client_server_channel_builder_t
 {
   public:
     client_server_channel_builder_t (
       std::string channel_name,
       std::shared_ptr<detail::framework_options_state_t> options,
-      std::shared_ptr<detail::handler_group_options_state_t> handler_groups) :
+      std::shared_ptr<detail::handler_group_options_state_t> handler_groups,
+      service_collection_t &services,
+      handler_registry_t &handlers,
+      serializer_registry_t &serializers) :
         _channel_name (std::move (channel_name)),
         _options (std::move (options)),
-        _handler_groups (std::move (handler_groups))
+        _handler_groups (std::move (handler_groups)),
+        _services (&services),
+        _handlers (&handlers),
+        _serializers (&serializers)
     {
         detail::require_non_blank (_channel_name, "client/server channel name is required");
         _options->client_server_channels.insert (_channel_name);
     }
 
-    client_server_channel_builder_t &enable_server (std::string endpoint)
+    client_server_channel_client_builder_t client ();
+    client_server_channel_server_builder_t server ();
+
+  private:
+    friend class client_server_channel_client_builder_t;
+    friend class client_server_channel_server_builder_t;
+
+    void select_server ()
     {
-        detail::require_non_blank (endpoint, "client/server server endpoint is required");
         ++_options->client_server_server_registration_counts[_channel_name];
         _options->client_server_channels_with_server.insert (_channel_name);
-        _server_endpoint = std::move (endpoint);
-        apply_channel ();
-        return *this;
     }
 
-    client_server_channel_builder_t &set_routing_id (zlink::routing_id_t routing_id)
+    void listen (std::uint16_t port)
     {
-        _routing_id = std::move (routing_id);
+        _server_port = port;
+        _server_endpoint =
+          "tcp://" + _server_bind_host + ":"
+          + (port == 0 ? "*" : std::to_string (port));
         apply_channel ();
-        return *this;
     }
 
-    client_server_channel_builder_t &server_send_high_water_mark (zlink::message_count_t value)
+    void set_server_bind_host (std::string host)
     {
-        _server_send_high_water_mark = value;
-        apply_channel ();
-        return *this;
+        detail::require_non_blank (
+          host, "client/server server bind host is required");
+        _server_bind_host = std::move (host);
+        if (_server_port)
+            listen (*_server_port);
     }
 
-    client_server_channel_builder_t &server_receive_high_water_mark (zlink::message_count_t value)
+    void set_server_advertise_host (std::string host)
     {
-        _server_receive_high_water_mark = value;
-        apply_channel ();
-        return *this;
+        detail::require_non_blank (
+          host, "client/server server advertise host is required");
+        _server_advertise_host = std::move (host);
+        _options->client_server_server_advertise_hosts[
+          _channel_name] = *_server_advertise_host;
     }
 
-    client_server_channel_builder_t &server_max_message_size (zlink::byte_size_t value)
+    void set_server_weight (int weight)
     {
-        _server_max_message_size = value;
+        if (weight < 0 || weight > 100)
+            throw framework_exception_t (
+              framework_error_kind_t::request_protocol_error,
+              "client/server server weight must be between 0 and 100");
+        _server_peer_weight =
+          zlink::peer_weight_t::value (
+            static_cast<std::uint32_t> (weight));
         apply_channel ();
-        return *this;
     }
 
-    client_server_channel_builder_t &server_peer_weight (zlink::peer_weight_t value)
-    {
-        _server_peer_weight = value;
-        apply_channel ();
-        return *this;
-    }
-
-    client_server_channel_builder_t &enable_client ()
+    void select_client ()
     {
         ++_options->client_server_client_registration_counts[_channel_name];
         _options->client_server_channels_with_client.insert (_channel_name);
         _client_enabled = true;
-        _client_uses_discovery = true;
         apply_channel ();
-        return *this;
     }
 
-    client_server_channel_builder_t &enable_client (std::string endpoint)
+    void connect_client (std::string endpoint)
     {
-        detail::require_non_blank (endpoint, "client/server client endpoint is required");
-        ++_options->client_server_client_registration_counts[_channel_name];
-        _options->client_server_channels_with_client.insert (_channel_name);
-        _client_enabled = true;
+        detail::require_non_blank (
+          endpoint, "client/server client endpoint is required");
         client_connections ().connect (std::move (endpoint));
         apply_channel ();
-        return *this;
     }
 
     endpoint_connections_t client_connections ()
@@ -412,96 +440,28 @@ class client_server_channel_builder_t
         return _options->client_endpoint_connections[_channel_name];
     }
 
-    client_server_channel_builder_t &client_send_high_water_mark (zlink::message_count_t value)
-    {
-        _client_send_high_water_mark = value;
-        apply_channel ();
-        return *this;
-    }
-
-    client_server_channel_builder_t &client_receive_high_water_mark (zlink::message_count_t value)
-    {
-        _client_receive_high_water_mark = value;
-        apply_channel ();
-        return *this;
-    }
-
-    client_server_channel_builder_t &client_max_message_size (zlink::byte_size_t value)
-    {
-        _client_max_message_size = value;
-        apply_channel ();
-        return *this;
-    }
-
-    client_server_channel_builder_t &client_peer_weight (zlink::peer_weight_t value)
-    {
-        _client_peer_weight = value;
-        apply_channel ();
-        return *this;
-    }
-
-    client_server_channel_builder_t &set_default_request_timeout (std::chrono::milliseconds timeout)
-    {
-        if (timeout <= std::chrono::milliseconds::zero ()) {
-            throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                         "client/server request timeout must be greater than zero");
-        }
-        _default_request_timeout = timeout;
-        apply_channel ();
-        return *this;
-    }
-
-    client_server_channel_builder_t &use_handler_group (std::string group_name)
+    void add_server_handler_group (std::string group_name)
     {
         detail::require_non_blank (group_name, "handler group name is required");
         _handler_groups->add_channel (
           std::move (group_name), _channel_name,
           {detail::handler_group_kind_t::request, detail::handler_group_kind_t::send},
           "client/server channel");
-        return *this;
     }
 
-  private:
     void apply_channel ()
     {
         const auto channel_name = _channel_name;
         const auto server_endpoint = _server_endpoint;
-        const auto routing_id = _routing_id;
-        const auto server_send_high_water_mark = _server_send_high_water_mark;
-        const auto server_receive_high_water_mark = _server_receive_high_water_mark;
-        const auto server_max_message_size = _server_max_message_size;
         const auto server_peer_weight = _server_peer_weight;
         const auto client_enabled = _client_enabled;
         const auto client_endpoints =
           _options->client_endpoint_connections[_channel_name].list_connections ();
-        const auto client_uses_discovery = _client_uses_discovery;
-        const auto client_send_high_water_mark = _client_send_high_water_mark;
-        const auto client_receive_high_water_mark = _client_receive_high_water_mark;
-        const auto client_max_message_size = _client_max_message_size;
-        const auto client_peer_weight = _client_peer_weight;
-        const auto default_request_timeout = _default_request_timeout;
-        if (default_request_timeout) {
-            _options->client_server_default_request_timeouts[channel_name] =
-              default_request_timeout;
-        }
         if (!server_endpoint.empty ()) {
             _options->client_server_server_actions[channel_name] =
-              [server_endpoint, routing_id, server_send_high_water_mark,
-               server_receive_high_water_mark, server_max_message_size,
+              [server_endpoint,
                server_peer_weight] (channel_builder_t &channel) {
                   auto server = channel.enable_server ();
-                  if (routing_id) {
-                      server.set_routing_id (*routing_id);
-                  }
-                  if (server_send_high_water_mark) {
-                      server.send_high_water_mark (*server_send_high_water_mark);
-                  }
-                  if (server_receive_high_water_mark) {
-                      server.receive_high_water_mark (*server_receive_high_water_mark);
-                  }
-                  if (server_max_message_size) {
-                      server.max_message_size (*server_max_message_size);
-                  }
                   if (server_peer_weight) {
                       server.peer_weight (*server_peer_weight);
                   }
@@ -510,28 +470,11 @@ class client_server_channel_builder_t
         }
         if (client_enabled) {
             _options->client_server_client_actions[channel_name] =
-              [client_endpoints, client_uses_discovery,
-               client_send_high_water_mark, client_receive_high_water_mark,
-               client_max_message_size, client_peer_weight] (
+              [client_endpoints] (
                 channel_builder_t &channel) {
                   auto client = channel.enable_client ();
-                  if (client_send_high_water_mark) {
-                      client.send_high_water_mark (*client_send_high_water_mark);
-                  }
-                  if (client_receive_high_water_mark) {
-                      client.receive_high_water_mark (*client_receive_high_water_mark);
-                  }
-                  if (client_max_message_size) {
-                      client.max_message_size (*client_max_message_size);
-                  }
-                  if (client_peer_weight) {
-                      client.peer_weight (*client_peer_weight);
-                  }
                   for (const auto &endpoint : client_endpoints) {
                       client.connect (endpoint);
-                  }
-                  if (client_uses_discovery) {
-                      (void) channel.enable_client ();
                   }
               };
         }
@@ -565,20 +508,155 @@ class client_server_channel_builder_t
     std::string _channel_name;
     std::shared_ptr<detail::framework_options_state_t> _options;
     std::shared_ptr<detail::handler_group_options_state_t> _handler_groups;
+    service_collection_t *_services;
+    handler_registry_t *_handlers;
+    serializer_registry_t *_serializers;
     std::string _server_endpoint;
-    std::optional<zlink::routing_id_t> _routing_id;
-    std::optional<zlink::message_count_t> _server_send_high_water_mark;
-    std::optional<zlink::message_count_t> _server_receive_high_water_mark;
-    std::optional<zlink::byte_size_t> _server_max_message_size;
+    std::string _server_bind_host = "0.0.0.0";
+    std::optional<std::string> _server_advertise_host;
+    std::optional<std::uint16_t> _server_port;
     std::optional<zlink::peer_weight_t> _server_peer_weight;
-    std::optional<std::chrono::milliseconds> _default_request_timeout;
-    std::optional<zlink::message_count_t> _client_send_high_water_mark;
-    std::optional<zlink::message_count_t> _client_receive_high_water_mark;
-    std::optional<zlink::byte_size_t> _client_max_message_size;
-    std::optional<zlink::peer_weight_t> _client_peer_weight;
     bool _client_enabled = false;
-    bool _client_uses_discovery = false;
+    std::size_t _inline_handler_sequence = 0;
 };
+
+class client_server_channel_client_builder_t
+{
+  public:
+    client_server_channel_client_builder_t &
+    connect (std::string endpoint)
+    {
+        _channel->connect_client (std::move (endpoint));
+        return *this;
+    }
+
+  private:
+    friend class client_server_channel_builder_t;
+    explicit client_server_channel_client_builder_t (
+      std::shared_ptr<client_server_channel_builder_t> channel) :
+        _channel (std::move (channel))
+    {
+    }
+
+    std::shared_ptr<client_server_channel_builder_t> _channel;
+};
+
+class client_server_channel_server_builder_t
+{
+  public:
+    client_server_channel_server_builder_t &
+    listen (std::uint16_t port = 0)
+    {
+        _channel->listen (port);
+        return *this;
+    }
+
+    client_server_channel_server_builder_t &
+    set_bind_host (std::string host)
+    {
+        _channel->set_server_bind_host (std::move (host));
+        return *this;
+    }
+
+    client_server_channel_server_builder_t &
+    set_advertise_host (std::string host)
+    {
+        _channel->set_server_advertise_host (
+          std::move (host));
+        return *this;
+    }
+
+    client_server_channel_server_builder_t &
+    set_weight (int weight)
+    {
+        _channel->set_server_weight (weight);
+        return *this;
+    }
+
+    client_server_channel_server_builder_t &
+    add_handler_group (std::string group_name)
+    {
+        _channel->add_server_handler_group (
+          std::move (group_name));
+        return *this;
+    }
+
+    template <typename THandler, typename TMessage>
+    client_server_channel_server_builder_t &
+    add_send_handler (std::string packet_name = {})
+    {
+        static_assert (
+          std::is_same_v<
+            typename THandler::message_type, TMessage>,
+          "ClientServer send handler message type must match THandler::message_type");
+        const auto group_name = next_inline_group ("send");
+        handler_options_builder_t handlers (
+          *_channel->_services, *_channel->_handlers,
+          *_channel->_serializers, _channel->_handler_groups);
+        handlers.template add_send_to_group<THandler> (
+          group_name, std::move (packet_name));
+        _channel->add_server_handler_group (group_name);
+        return *this;
+    }
+
+    template <typename THandler, typename TRequest, typename TReply>
+    client_server_channel_server_builder_t &
+    add_request_handler (std::string packet_name = {})
+    {
+        static_assert (
+          std::is_same_v<
+              typename THandler::request_type, TRequest>
+            && std::is_same_v<
+              typename THandler::reply_type, TReply>,
+          "ClientServer request/reply types must match THandler");
+        const auto group_name = next_inline_group ("request");
+        handler_options_builder_t handlers (
+          *_channel->_services, *_channel->_handlers,
+          *_channel->_serializers, _channel->_handler_groups);
+        handlers.template add_to_group<THandler> (
+          group_name, std::move (packet_name));
+        _channel->add_server_handler_group (group_name);
+        return *this;
+    }
+
+  private:
+    friend class client_server_channel_builder_t;
+    explicit client_server_channel_server_builder_t (
+      std::shared_ptr<client_server_channel_builder_t> channel) :
+        _channel (std::move (channel))
+    {
+    }
+
+    std::string next_inline_group (std::string_view kind)
+    {
+        return "__client_server:" + _channel->_channel_name
+               + ":" + std::string (kind) + ":"
+               + std::to_string (
+                 _channel->_inline_handler_sequence++);
+    }
+
+    std::shared_ptr<client_server_channel_builder_t> _channel;
+};
+
+inline client_server_channel_client_builder_t
+client_server_channel_builder_t::client ()
+{
+    auto channel =
+      std::make_shared<client_server_channel_builder_t> (*this);
+    channel->select_client ();
+    return client_server_channel_client_builder_t (
+      std::move (channel));
+}
+
+inline client_server_channel_server_builder_t
+client_server_channel_builder_t::server ()
+{
+    auto channel =
+      std::make_shared<client_server_channel_builder_t> (*this);
+    channel->select_server ();
+    return client_server_channel_server_builder_t (
+      std::move (channel));
+}
 
 class fanout_channel_builder_t
 {
@@ -1125,7 +1203,8 @@ class zlink_framework_options_t
     client_server_channel_builder_t add_client_server_channel (std::string channel_name)
     {
         return client_server_channel_builder_t (std::move (channel_name), _options,
-                                                _handler_groups);
+                                                _handler_groups, *_services,
+                                                *_handlers, *_serializers);
     }
 
     fanout_channel_builder_t add_fanout_channel (std::string channel_name)
@@ -1160,6 +1239,12 @@ class zlink_framework_options_t
     std::map<std::string, endpoint_connections_t> &client_endpoint_connections () const noexcept
     {
         return _options->client_endpoint_connections;
+    }
+
+    const std::map<std::string, std::string> &
+    client_server_server_advertise_hosts () const noexcept
+    {
+        return _options->client_server_server_advertise_hosts;
     }
 
     std::map<std::string, endpoint_connections_t> &

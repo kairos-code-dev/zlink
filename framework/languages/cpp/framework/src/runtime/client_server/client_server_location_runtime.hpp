@@ -38,7 +38,8 @@ class client_server_location_runtime_t
       owner_lease_store_t &leases,
       service_provider_t &services,
       serializer_registry_t &serializers,
-      const handler_registry_t &handlers);
+      const handler_registry_t &handlers,
+      std::map<std::string, std::string> advertise_hosts = {});
     ~client_server_location_runtime_t () noexcept;
 
     client_server_location_runtime_t (
@@ -87,6 +88,8 @@ class client_server_location_runtime_t
       const channel_capability_snapshot_t &capability);
     static std::vector<std::uint8_t> client_routing_id (
       const channel_snapshot_t &channel);
+    static std::vector<std::uint8_t> server_routing_id (
+      const channel_snapshot_t &channel);
     static protocol::client_server_server_admission_t to_admission (
       const client_server_server_descriptor_t &descriptor,
       std::uint32_t effective_max_message_bytes);
@@ -105,6 +108,7 @@ class client_server_location_runtime_t
     service_provider_t *_services;
     serializer_registry_t *_serializers;
     const handler_registry_t *_handlers;
+    std::map<std::string, std::string> _advertise_hosts;
     mutable std::mutex _gate;
     std::condition_variable _ready;
     std::map<std::string, std::unique_ptr<server_entry_t>> _servers;

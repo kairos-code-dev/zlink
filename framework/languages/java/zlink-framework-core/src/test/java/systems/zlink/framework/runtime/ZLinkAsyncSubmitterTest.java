@@ -34,7 +34,7 @@ final class ZLinkAsyncSubmitterTest {
     @Test
     void oneWaySendWaitsUntilTheAdmissionDeadline() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addClientServerChannel("profile").enableClient("inproc://profile");
+        options.addClientServerChannel("profile").client().connect("inproc://profile");
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new BackpressuredBackend())) {
@@ -93,7 +93,7 @@ final class ZLinkAsyncSubmitterTest {
     void submit_failsPendingItemWhenSendTimeoutExpires() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(20));
-        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile"); };
+        options.addClientServerChannel("profile").client().connect("inproc://profile");
 
         try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new NoReplyBackend())) {
             CompletionException error = org.junit.jupiter.api.Assertions.assertThrows(
@@ -112,7 +112,7 @@ final class ZLinkAsyncSubmitterTest {
     void close_failsPendingItems() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofSeconds(5));
-        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile"); };
+        options.addClientServerChannel("profile").client().connect("inproc://profile");
 
         ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, new NoReplyBackend());
         var pending = runtime.client()
@@ -129,13 +129,11 @@ final class ZLinkAsyncSubmitterTest {
     }
 
     @Test
-    void requestUsesChannelDefaultRequestTimeoutBeforeGlobalDefault() {
+    void requestUsesGlobalDefaultRequestTimeout() {
         RecordingRequestBackend backend = new RecordingRequestBackend();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.setDefaultRequestTimeout(Duration.ofSeconds(30));
-        { var channel = options.addClientServerChannel("profile");
-            channel.enableClient("inproc://profile");
-            channel.setDefaultRequestTimeout(Duration.ofSeconds(2)); };
+        options.setDefaultRequestTimeout(Duration.ofSeconds(2));
+        options.addClientServerChannel("profile").client().connect("inproc://profile");
 
         try (ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(options, backend)) {
             var pending = runtime.client()
@@ -152,7 +150,7 @@ final class ZLinkAsyncSubmitterTest {
     @Test
     void close_ignoresBackendCloseExceptionDuringRuntimeShutdown() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile"); };
+        options.addClientServerChannel("profile").client().connect("inproc://profile");
 
         ZLinkFrameworkRuntime runtime = ZLinkFrameworkRuntime.start(
             options,

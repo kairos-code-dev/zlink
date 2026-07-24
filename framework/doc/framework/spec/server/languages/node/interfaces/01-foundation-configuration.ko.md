@@ -256,7 +256,8 @@ export interface ZLinkCodecRegistryBuilder {
 `channel(channelName)` 뒤에는 `client()` 또는 `server()`를 정확히 한 번 호출한다. Client builder에는
 역할별 추가 설정이 없고 Server builder만 `setWeight(...)`와 handler 등록을 제공한다. 따라서 잘못된 역할
 설정을 runtime validation까지 미루지 않고 TypeScript type 단계에서 막는다. Server membership이 없는
-MeshNode도 시작할 수 있다. `addClientServerChannel(channelName)`의
+MeshNode도 시작할 수 있다. 한 process에는 서로 다른 ClientServer ChannelName을 여러 개 등록할 수 있다.
+`addClientServerChannel(channelName)`의
 client는 send/request를 시작하고
 server는 수신한 send/request 처리와 reply만 수행한다. ClientServer builder에서는 `client()`와
 `server()` 중 하나 또는 둘 다 호출할 수 있지만 각 역할은 최대 한 번만 등록한다. 같은 ChannelName의

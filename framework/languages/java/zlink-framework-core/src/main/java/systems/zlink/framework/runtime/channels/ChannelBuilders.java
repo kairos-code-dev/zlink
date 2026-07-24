@@ -5,7 +5,11 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.configuration.ClientServerChannelBuilder;
 import systems.zlink.framework.configuration.FanoutChannelBuilder;
 import systems.zlink.framework.configuration.RouteMeshChannelBuilder;
+import systems.zlink.framework.configuration.ZLinkClientServerChannelClientBuilder;
+import systems.zlink.framework.configuration.ZLinkClientServerChannelServerBuilder;
 import systems.zlink.framework.configuration.ZLinkEndpointConnections;
+import systems.zlink.framework.channels.ZLinkRequestHandler;
+import systems.zlink.framework.channels.ZLinkSendHandler;
 import systems.zlink.framework.channels.ZLinkSocketRuntimeOptions;
 
 public final class ChannelBuilders {
@@ -26,92 +30,120 @@ public final class ChannelBuilders {
 
     private record ClientServer(ChannelRegistration registration) implements ClientServerChannelBuilder {
         @Override
-        public ClientServerChannelBuilder enableServer(String endpoint) {
+        public ZLinkClientServerChannelClientBuilder client() {
+            registration.declareClient();
+            return new ClientServerClient(registration);
+        }
+
+        @Override
+        public ZLinkClientServerChannelServerBuilder server() {
             registration.declareServer();
-            registration.addServerBind(endpoint);
-            return this;
+            return new ClientServerServer(registration);
         }
+    }
 
+    private record ClientServerClient(ChannelRegistration registration)
+        implements ZLinkClientServerChannelClientBuilder {
         @Override
-        public ZLinkSocketRuntimeOptions configureServerSocket() {
-            return registration.serverSocketOptions();
-        }
-
-        @Override
-        public ClientServerChannelBuilder setRoutingId(RoutingId routingId) {
-            registration.setRoutingId(routingId);
-            return this;
-        }
-
-        @Override
-        public ClientServerChannelBuilder enableClient() {
-            registration.declareClient();
-            return this;
-        }
-
-        @Override
-        public ClientServerChannelBuilder enableClient(String endpoint) {
-            registration.declareClient();
+        public ZLinkClientServerChannelClientBuilder connect(String endpoint) {
             registration.addClientManualEndpoint(endpoint);
             return this;
         }
+    }
 
-        @Override
-        public ZLinkEndpointConnections clientConnections() {
-            return registration.clientConnections();
+    private static final class ClientServerServer
+        implements ZLinkClientServerChannelServerBuilder {
+        private final ChannelRegistration registration;
+        private String bindHost = "0.0.0.0";
+        private String advertiseHost;
+        private Integer listenPort;
+
+        private ClientServerServer(ChannelRegistration registration) {
+            this.registration = registration;
         }
 
         @Override
-        public ClientServerChannelBuilder setDefaultRequestTimeout(Duration timeout) {
-            registration.setDefaultRequestTimeout(timeout);
+        public ZLinkClientServerChannelServerBuilder listen() {
+            return listen(0);
+        }
+
+        @Override
+        public ZLinkClientServerChannelServerBuilder listen(int port) {
+            if (port < 0 || port > 65_535) {
+                throw new systems.zlink.framework.errors.ZLinkConfigurationException(
+                    "ClientServer listen port must be between 0 and 65535.");
+            }
+            listenPort = port;
+            applyListen();
             return this;
         }
 
         @Override
-        public ClientServerChannelBuilder addHandlerGroup(String groupName) {
+        public ZLinkClientServerChannelServerBuilder setBindHost(String host) {
+            bindHost = requireHost(host, "bind host");
+            applyListen();
+            return this;
+        }
+
+        @Override
+        public ZLinkClientServerChannelServerBuilder setAdvertiseHost(String host) {
+            advertiseHost = requireHost(host, "advertise host");
+            registration.setClientServerAdvertiseHost(advertiseHost);
+            return this;
+        }
+
+        @Override
+        public ZLinkClientServerChannelServerBuilder setWeight(int weight) {
+            registration.serverSocketOptions().weight(weight);
+            return this;
+        }
+
+        @Override
+        public ZLinkClientServerChannelServerBuilder addHandlerGroup(String groupName) {
             registration.addHandlerGroup(groupName);
             return this;
         }
 
         @Override
-        public void addSendHandler(
-            Class<?> handlerType,
-            Class<?> messageType) {
-            addSendHandler(handlerType, messageType, null);
-        }
-
-        @Override
-        public void addSendHandler(
-            Class<?> handlerType,
-            Class<?> messageType,
-            String packetName) {
+        public <THandler extends ZLinkSendHandler<TMessage>, TMessage>
+        ZLinkClientServerChannelServerBuilder addSendHandler(
+            Class<THandler> handlerType,
+            Class<TMessage> messageType) {
             registration.addSendHandler(new ChannelSendHandlerRegistration(
                 handlerType,
                 messageType,
-                packetName));
+                null));
+            return this;
         }
 
         @Override
-        public void addRequestHandler(
-            Class<?> handlerType,
-            Class<?> requestType,
-            Class<?> replyType) {
-            addRequestHandler(handlerType, requestType, replyType, null);
-        }
-
-        @Override
-        public void addRequestHandler(
-            Class<?> handlerType,
-            Class<?> requestType,
-            Class<?> replyType,
-            String packetName) {
+        public <THandler extends ZLinkRequestHandler<TRequest, TReply>, TRequest, TReply>
+        ZLinkClientServerChannelServerBuilder addRequestHandler(
+            Class<THandler> handlerType,
+            Class<TRequest> requestType,
+            Class<TReply> replyType) {
             registration.addRequestHandler(new ChannelRequestHandlerRegistration(
                 handlerType,
                 requestType,
                 replyType,
-                packetName));
+                null));
+            return this;
         }
 
+        private void applyListen() {
+            if (listenPort != null) {
+                registration.replaceClientServerBind(
+                    "tcp://" + bindHost + ":" + listenPort);
+            }
+        }
+
+        private static String requireHost(String host, String label) {
+            if (host == null || host.isBlank()) {
+                throw new systems.zlink.framework.errors.ZLinkConfigurationException(
+                    "ClientServer " + label + " must not be empty.");
+            }
+            return host;
+        }
     }
 
     private record Fanout(ChannelRegistration registration) implements FanoutChannelBuilder {

@@ -316,7 +316,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelClientWithoutPeerAcquisitionPathIsRejected() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addClientServerChannel("profile"); channel.enableClient(); };
+        options.addClientServerChannel("profile").client();
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }
@@ -325,7 +325,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelClientWithManualConnectionIsAccepted() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
+        options.addClientServerChannel("profile").client().connect("inproc://profile-server");
 
         options.validate();
     }
@@ -335,7 +335,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addLocationStore(new ZLinkInMemoryLocationStore());
-        { var channel = options.addClientServerChannel("profile"); channel.enableClient(); };
+        options.addClientServerChannel("profile").client();
 
         assertDoesNotThrow(options::validate);
     }
@@ -345,11 +345,12 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(new ZLinkInMemoryLocationStore());
 
-        options.addClientServerChannel("orders").enableClient();
+        options.addClientServerChannel("orders").client();
         var server = options.addClientServerChannel("orders")
-            .enableServer("inproc://orders");
+            .server()
+            .listen();
         server.addRequestHandler(
-            EchoHandler.class, String.class, String.class, "Echo");
+            EchoHandler.class, String.class, String.class);
 
         assertDoesNotThrow(options::validate);
         assertEquals(1, options.registration().channels().size());
@@ -359,11 +360,12 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelAllowsLocalOnlyRolesWithoutStoreOrManualEndpoint() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        options.addClientServerChannel("orders").enableClient();
+        options.addClientServerChannel("orders").client();
         var server = options.addClientServerChannel("orders")
-            .enableServer("inproc://orders");
+            .server()
+            .listen();
         server.addRequestHandler(
-            EchoHandler.class, String.class, String.class, "Echo");
+            EchoHandler.class, String.class, String.class);
 
         assertDoesNotThrow(options::validate);
         assertEquals(1, options.registration().channels().size());
@@ -373,8 +375,8 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelRejectsDuplicateClientRole() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("orders")
-            .enableClient("inproc://orders");
-        options.addClientServerChannel("orders").enableClient();
+            .client().connect("inproc://orders");
+        options.addClientServerChannel("orders").client();
 
         assertThrows(
             ZLinkConfigurationException.class,
@@ -385,9 +387,9 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelRejectsDuplicateServerRole() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("orders")
-            .enableServer("inproc://orders-a");
+            .server().listen();
         options.addClientServerChannel("orders")
-            .enableServer("inproc://orders-b");
+            .server().listen();
 
         assertThrows(
             ZLinkConfigurationException.class,
@@ -402,6 +404,39 @@ final class DefaultZLinkFrameworkOptionsTest {
         assertThrows(
             ZLinkConfigurationException.class,
             () -> options.addRouteMeshChannel("orders"));
+    }
+
+    @Test
+    void clientServerRolesAllowDifferentChannelNames() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("orders").client()
+            .connect("inproc://orders");
+        options.addClientServerChannel("billing").client()
+            .connect("inproc://billing");
+        options.addClientServerChannel("shipping").server().listen()
+            .addRequestHandler(EchoHandler.class, String.class, String.class);
+        options.addClientServerChannel("inventory").server().listen()
+            .addRequestHandler(EchoHandler.class, String.class, String.class);
+
+        assertDoesNotThrow(options::validate);
+    }
+
+    @Test
+    void routeMeshAndClientServerChannelNameCollisionIsRejectedInEitherOrder() {
+        DefaultZLinkFrameworkOptions routeFirst = new DefaultZLinkFrameworkOptions();
+        routeFirst.addRouteMesh("mesh-a").channelName("orders");
+        routeFirst.addClientServerChannel("orders").client()
+            .connect("inproc://orders");
+        assertThrows(ZLinkConfigurationException.class, routeFirst::validate);
+
+        DefaultZLinkFrameworkOptions clientServerFirst =
+            new DefaultZLinkFrameworkOptions();
+        clientServerFirst.addClientServerChannel("orders").client()
+            .connect("inproc://orders");
+        clientServerFirst.addRouteMesh("mesh-a").channelName("orders");
+        assertThrows(
+            ZLinkConfigurationException.class,
+            clientServerFirst::validate);
     }
 
     @Test
@@ -492,24 +527,25 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelClientManualConnectionsAreAcceptedWithoutLocationAutoConnect() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
+        options.addClientServerChannel("profile").client().connect("inproc://profile-server");
 
         assertDoesNotThrow(options::validate);
     }
 
     @Test
-    void clientServerChannelServerRejectsBlankEndpoint() {
+    void clientServerChannelServerWithoutListenIsRejectedAtStartup() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        assertThrows(ZLinkConfigurationException.class,
-            () -> options.addClientServerChannel("profile").enableServer(" "));
+        options.addClientServerChannel("profile").server();
+
+        assertThrows(ZLinkConfigurationException.class, options::validate);
     }
 
     @Test
     void clientServerChannelServerWithoutRequestHandlerIsRejected() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addClientServerChannel("profile").enableServer("inproc://profile-server"); };
+        { var channel = options.addClientServerChannel("profile").server().listen(); };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }
@@ -518,9 +554,9 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelRejectsDuplicateRequestHandlerPacketName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addClientServerChannel("profile").enableServer("inproc://profile-server");
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo");
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, "Echo"); };
+        { var channel = options.addClientServerChannel("profile").server().listen();
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class);
+            channel.addRequestHandler(EchoHandler.class, String.class, String.class); };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
     }
@@ -530,7 +566,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        { var channel = options.addClientServerChannel("profile").enableServer("inproc://profile-server");
+        { var channel = options.addClientServerChannel("profile").server().listen();
             channel.addHandlerGroup("scanned-request");
             channel.addRequestHandler(EchoHandler.class, String.class, String.class); };
 
@@ -545,7 +581,7 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelRejectsDuplicateSendHandlerPacketName() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addClientServerChannel("profile").enableServer("inproc://profile-server");
+        { var channel = options.addClientServerChannel("profile").server().listen();
             channel.addSendHandler(SendHandler.class, String.class);
             channel.addSendHandler(SendHandler.class, String.class); };
 
@@ -556,24 +592,16 @@ final class DefaultZLinkFrameworkOptionsTest {
     void clientServerChannelServerWithOnlySendHandlerIsAccepted() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
-        { var channel = options.addClientServerChannel("profile").enableServer("inproc://profile-server");
-            channel.addSendHandler(SendHandler.class, String.class, "Notify"); };
+        { var channel = options.addClientServerChannel("profile").server().listen();
+            channel.addSendHandler(SendHandler.class, String.class); };
 
         options.validate();
     }
 
     @Test
-    void clientServerChannelRejectsBlankRequestHandlerPacketName() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-
-        assertThrows(ZLinkConfigurationException.class, () -> { var channel = options.addClientServerChannel("profile").enableServer("inproc://profile-server");
-            channel.addRequestHandler(EchoHandler.class, String.class, String.class, " "); });
-    }
-
-    @Test
     void clientServerChannelServerWithBindIsAccepted() {
         DefaultZLinkFrameworkOptions accepted = new DefaultZLinkFrameworkOptions();
-        { var channel = accepted.addClientServerChannel("profile").enableServer("inproc://profile-server");
+        { var channel = accepted.addClientServerChannel("profile").server().listen();
             channel.addRequestHandler(AnnotatedEchoHandler.class, AnnotatedPacket.class, String.class); };
 
         accepted.validate();
@@ -791,7 +819,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        { var channel = options.addClientServerChannel("profile").enableServer("inproc://profile-server");
+        { var channel = options.addClientServerChannel("profile").server().listen();
             channel.addHandlerGroup("scanned-request");
             channel.addHandlerGroup("scanned-request"); };
 
@@ -806,7 +834,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        { var channel = options.addClientServerChannel("profile").enableServer("inproc://profile-server");
+        { var channel = options.addClientServerChannel("profile").server().listen();
             channel.addHandlerGroup("missing-group"); };
 
         assertThrows(ZLinkConfigurationException.class, options::validate);
@@ -828,7 +856,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        { var channel = options.addClientServerChannel("profile").enableServer("inproc://profile-server");
+        { var channel = options.addClientServerChannel("profile").server().listen();
             channel.addHandlerGroup("scanned-request"); };
 
         options.validate();
@@ -839,7 +867,7 @@ final class DefaultZLinkFrameworkOptionsTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
 
         options.addHandlersFromPackageOf(DefaultZLinkFrameworkOptionsTest.class);
-        { var channel = options.addClientServerChannel("profile").enableServer("inproc://profile-server");
+        { var channel = options.addClientServerChannel("profile").server().listen();
             channel.addHandlerGroup("scanned-secondary"); };
 
         options.validate();

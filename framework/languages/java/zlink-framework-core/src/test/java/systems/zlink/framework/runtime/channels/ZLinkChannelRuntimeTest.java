@@ -93,30 +93,20 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
-    void endpointConnectionsControlTheLiveClientSocketAndRetainRestartState() {
+    void clientBuilderConnectsEveryConfiguredEndpoint() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        var channel = options.addClientServerChannel("work").enableClient();
-        ZLinkEndpointConnections connections = channel.clientConnections();
-        connections.connect("inproc://first");
+        options.addClientServerChannel("work")
+            .client()
+            .connect("inproc://first")
+            .connect("inproc://second");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
 
         try (ZLinkChannelRuntime ignored = new ZLinkChannelRuntime(
             backend,
             options.registration(),
             new ZLinkJsonMessageSerializer(), handlers())) {
-            assertEquals(List.of("inproc://first"), backend.dealer.connected);
-
-            connections.disconnect("inproc://first");
-            connections.connect("inproc://second");
-
-            assertEquals(List.of("inproc://first"), backend.dealer.disconnected);
             assertEquals(List.of("inproc://first", "inproc://second"), backend.dealer.connected);
-            assertEquals(List.of("inproc://second"), connections.listConnections());
         }
-
-        connections.connect("inproc://restart");
-        assertEquals(List.of("inproc://second", "inproc://restart"), connections.listConnections());
-        assertEquals(List.of("inproc://first", "inproc://second"), backend.dealer.connected);
     }
 
     @Test
@@ -253,7 +243,8 @@ final class ZLinkChannelRuntimeTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
         options.addClientServerChannel("profile")
-            .enableClient("inproc://profile");
+            .client()
+            .connect("inproc://profile");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.dealer.requestFailuresRemaining = 1;
         backend.dealer.requestReplyParts = List.of(Message.from("{\"value\":\"reply\"}".getBytes()));
@@ -930,7 +921,8 @@ final class ZLinkChannelRuntimeTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.setDefaultRequestTimeout(Duration.ofMillis(300));
         options.addClientServerChannel("api")
-            .enableClient("inproc://api");
+            .client()
+            .connect("inproc://api");
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.dealer.requestResult = ZLinkBackendRequestResult.TIMED_OUT;
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
@@ -952,7 +944,8 @@ final class ZLinkChannelRuntimeTest {
     void clientServerRuntimeOptionsReadAndWriteServerWeight() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("api")
-            .enableServer("inproc://api");
+            .server()
+            .listen();
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
@@ -970,10 +963,12 @@ final class ZLinkChannelRuntimeTest {
 
     @Test
     void processLocalClientServerUsesManagedAdmissionAndDescriptorUpdates() {
-        String endpoint = "inproc://orders-local";
+        String endpoint = "tcp://127.0.0.1:40501";
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        options.addClientServerChannel("orders").enableClient();
-        options.addClientServerChannel("orders").enableServer(endpoint);
+        options.addClientServerChannel("orders").client();
+        options.addClientServerChannel("orders").server()
+            .setBindHost("127.0.0.1")
+            .listen(40501);
         ManagedLocalBackend backend = new ManagedLocalBackend(endpoint, 100);
         ManagedLocalProvider provider = new ManagedLocalProvider(backend);
 
@@ -1039,7 +1034,8 @@ final class ZLinkChannelRuntimeTest {
     void clientServerRuntimeOptionsReadAndWriteServerMaxMessageSize() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("api")
-            .enableServer("inproc://api");
+            .server()
+            .listen();
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
@@ -1054,28 +1050,11 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
-    void clientServerBuilderAppliesMaxMessageSizeBeforeRuntimeStarts() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        var channel = options.addClientServerChannel("api");
-        channel.configureServerSocket().maxMessageSize(2 * 1024 * 1024L);
-        channel.enableServer("inproc://api");
-        FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
-
-        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
-            backend,
-            options.registration(),
-            new ZLinkJsonMessageSerializer(), handlers())) {
-            assertEquals(
-                2 * 1024 * 1024L,
-                runtime.clientServerChannel("api").configureServerSocket().maxMessageSize());
-        }
-    }
-
-    @Test
     void clientServerRuntimeOptionsRejectNegativeMaxMessageSize() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("api")
-            .enableServer("inproc://api");
+            .server()
+            .listen();
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
@@ -1093,7 +1072,8 @@ final class ZLinkChannelRuntimeTest {
     void clientServerRuntimeOptionsRejectInvalidServerWeight() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("api")
-            .enableServer("inproc://api");
+            .server()
+            .listen();
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,

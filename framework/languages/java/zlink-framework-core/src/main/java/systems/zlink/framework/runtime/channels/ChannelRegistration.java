@@ -56,6 +56,10 @@ public final class ChannelRegistration {
         return clientServer.serverBinds;
     }
 
+    String clientServerAdvertiseHost() {
+        return clientServer.advertiseHost;
+    }
+
     List<String> clientManualEndpoints() {
         return clientConnections.listConnections();
     }
@@ -215,6 +219,15 @@ public final class ChannelRegistration {
 
     void addServerBind(String endpoint) {
         clientServer.serverBinds.add(requireEndpoint(endpoint));
+    }
+
+    void replaceClientServerBind(String endpoint) {
+        clientServer.serverBinds.clear();
+        clientServer.serverBinds.add(requireEndpoint(endpoint));
+    }
+
+    void setClientServerAdvertiseHost(String host) {
+        clientServer.advertiseHost = host;
     }
 
     void setRoutingId(RoutingId routingId) {
@@ -544,6 +557,7 @@ public final class ChannelRegistration {
 
     private static final class ClientServerState {
         private final List<String> serverBinds = new ArrayList<>();
+        private String advertiseHost;
         private final List<String> manualEndpoints = new ArrayList<>();
         private final List<ChannelSendHandlerRegistration> sendHandlers = new ArrayList<>();
         private final List<ChannelRequestHandlerRegistration> requestHandlers = new ArrayList<>();

@@ -762,20 +762,17 @@ template <typename T> concept has_channel_capability_socket_options = requires (
     value.peer_weight (zlink::peer_weight_t::value (75));
 };
 
-template <typename T> concept has_client_server_socket_options = requires (T value)
+template <typename T>
+concept has_legacy_client_server_role_methods = requires (T value)
 {
-    value.server_send_high_water_mark (zlink::message_count_t::value (8));
-    value.server_receive_high_water_mark (zlink::message_count_t::value (8));
-    value.server_max_message_size (zlink::byte_size_t::bytes (4096));
-    value.server_peer_weight (zlink::peer_weight_t::value (75));
-    value.client_send_high_water_mark (zlink::message_count_t::value (8));
-    value.client_receive_high_water_mark (zlink::message_count_t::value (8));
-    value.client_max_message_size (zlink::byte_size_t::bytes (4096));
-    value.client_peer_weight (zlink::peer_weight_t::value (75));
+    value.enable_client ();
+    value.enable_server ("tcp://127.0.0.1:5000");
 };
 
 static_assert (has_channel_capability_socket_options<zlink::framework::capability_builder_t>);
-static_assert (has_client_server_socket_options<zlink::framework::client_server_channel_builder_t>);
+static_assert (
+  !has_legacy_client_server_role_methods<
+    zlink::framework::client_server_channel_builder_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::channel_runtime_options_t &> ()
                              .client_server_channel ("api")
@@ -918,6 +915,13 @@ struct named_send_handler_t
 {
     using message_type = named_request_t;
     void handle (const named_request_t &) {}
+};
+
+struct named_request_handler_t
+{
+    using request_type = named_request_t;
+    using reply_type = named_reply_t;
+    named_reply_t handle (const named_request_t &) { return {}; }
 };
 
 struct named_publish_handler_t
@@ -1154,9 +1158,63 @@ static_assert (
                  zlink::framework::fanout_channel_builder_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::client_server_channel_builder_t &> ()
-                             .set_routing_id (zlink::routing_id_t::from ("api"))),
-                 zlink::framework::client_server_channel_builder_t &>);
+  std::is_same_v<
+    decltype (
+      std::declval<
+        zlink::framework::client_server_channel_builder_t &> ()
+        .client ()),
+    zlink::framework::client_server_channel_client_builder_t>);
+
+static_assert (
+  std::is_same_v<
+    decltype (
+      std::declval<
+        zlink::framework::client_server_channel_builder_t &> ()
+        .server ()),
+    zlink::framework::client_server_channel_server_builder_t>);
+
+static_assert (
+  std::is_same_v<
+    decltype (
+      std::declval<
+        zlink::framework::
+          client_server_channel_client_builder_t &> ()
+        .connect ("tcp://127.0.0.1:5300")),
+    zlink::framework::client_server_channel_client_builder_t &>);
+
+static_assert (
+  std::is_same_v<
+    decltype (
+      std::declval<
+        zlink::framework::
+          client_server_channel_server_builder_t &> ()
+        .listen ()
+        .set_bind_host ("127.0.0.1")
+        .set_advertise_host ("server.example")
+        .set_weight (75)
+        .add_handler_group ("orders")),
+    zlink::framework::client_server_channel_server_builder_t &>);
+
+static_assert (
+  std::is_same_v<
+    decltype (
+      std::declval<
+        zlink::framework::
+          client_server_channel_server_builder_t &> ()
+        .add_send_handler<
+          named_send_handler_t, named_request_t> ("send")),
+    zlink::framework::client_server_channel_server_builder_t &>);
+
+static_assert (
+  std::is_same_v<
+    decltype (
+      std::declval<
+        zlink::framework::
+          client_server_channel_server_builder_t &> ()
+        .add_request_handler<
+          named_request_handler_t, named_request_t,
+          named_reply_t> ("request")),
+    zlink::framework::client_server_channel_server_builder_t &>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::capability_builder_t &> ()
                                           .set_routing_id (zlink::routing_id_t::from ("api"))),

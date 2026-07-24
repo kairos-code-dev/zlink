@@ -39,6 +39,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
                                           std::vector<channel_snapshot_t> channels,
                                           handler_registry_t &handlers,
                                           serializer_registry_t &serializers,
+                                          std::map<std::string, std::string>
+                                            client_server_advertise_hosts = {},
                                           std::set<std::string> route_mesh_client_channels = {},
                                           std::vector<std::shared_ptr<detail::mesh_node_runtime_t>>
                                             mesh_nodes = {}) :
@@ -46,6 +48,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
         _channels (std::move (channels)),
         _handlers (&handlers),
         _serializers (&serializers),
+        _client_server_advertise_hosts (
+          std::move (client_server_advertise_hosts)),
         _route_mesh_client_channels (std::move (route_mesh_client_channels)),
         _mesh_nodes (std::move (mesh_nodes))
     {
@@ -83,7 +87,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             _client_server = std::make_unique<
               client_server::client_server_location_runtime_t> (
               _bus, _channels, *_runtime, *client_server_store,
-              location_store, services, *_serializers, *_handlers);
+              location_store, services, *_serializers, *_handlers,
+              _client_server_advertise_hosts);
             _client_server->start ();
         }
 
@@ -688,6 +693,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
     std::vector<channel_snapshot_t> _channels;
     handler_registry_t *_handlers;
     serializer_registry_t *_serializers;
+    std::map<std::string, std::string>
+      _client_server_advertise_hosts;
     std::set<std::string> _route_mesh_client_channels;
     std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> _mesh_nodes;
     location_runtime_t *_runtime = nullptr;

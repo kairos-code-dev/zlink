@@ -100,7 +100,8 @@ Spot direct operation은 global SpotRid만 address로 받고 Spot 전용 fluent 
 [Java Spot 인터페이스](spots.ko.md)가 소유한다.
 
 `channel(channelName)`이 반환하는 RouteMesh builder에서는 `client()` 또는 `server()`를 정확히 한 번
-선택한다. `addClientServerChannel(channelName)`의 builder에서는 두 역할 중 하나 또는 둘 다 등록할 수
+선택한다. 한 process에는 서로 다른 ClientServer ChannelName을 여러 개 등록할 수 있다.
+`addClientServerChannel(channelName)`의 builder에서는 두 역할 중 하나 또는 둘 다 등록할 수
 있지만 각 역할은 최대 한 번만 등록한다. 같은 ChannelName의 Client와 Server는 하나의 ClientServer
 topology를 공유하지만 `(ChannelName, Role)` key의 별도 registration이다. 같은 역할의 중복 등록은 startup
 오류다. RouteMesh ChannelName 충돌 규칙은 그대로 유지한다. 역할을 선택하기 전에는 weight와 handler를

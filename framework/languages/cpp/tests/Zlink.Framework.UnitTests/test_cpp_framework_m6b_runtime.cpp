@@ -4,6 +4,7 @@
 #include "runtime/mesh/raw_mesh_node_owner.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
 #include "runtime/locations/sha256.hpp"
+#include "runtime/locations/source_creation_cleanup.hpp"
 #include "runtime/stateful/raw_stateful_dispatch.hpp"
 #include "runtime/stateful/public_host_runtime.hpp"
 #include "runtime/stateful/stateful_object_runtime.hpp"
@@ -543,6 +544,46 @@ void verify_remote_user_spot_create_close_terminal_once ()
     const auto *invalid_reservation =
       std::get_if<object_reserved_t> (&invalid_reserved);
     assert (invalid_reservation);
+    const auto cleanup_spot_rid =
+      zlink::routing_id_t::from ("remote-room-cleanup");
+    auto cleanup_reserve = reserve;
+    cleanup_reserve.key.global_id =
+      cleanup_spot_rid.to_string ();
+    const auto cleanup_reserved =
+      store->reserve (cleanup_reserve).result ().value ();
+    const auto *cleanup_reservation =
+      std::get_if<object_reserved_t> (&cleanup_reserved);
+    assert (cleanup_reservation);
+    assert (
+      zlink::framework::runtime::
+        cleanup_source_created_reservation (
+          store, cleanup_reserve.key,
+          cleanup_reservation->fence, false)
+      == zlink::framework::runtime::
+           source_creation_cleanup_t::not_owned);
+    auto wrong_cleanup_fence = cleanup_reservation->fence;
+    wrong_cleanup_fence.reservation_id += "-other";
+    assert (
+      zlink::framework::runtime::
+        cleanup_source_created_reservation (
+          store, cleanup_reserve.key,
+          wrong_cleanup_fence, true)
+      == zlink::framework::runtime::
+           source_creation_cleanup_t::stale);
+    assert (
+      zlink::framework::runtime::
+        cleanup_source_created_reservation (
+          store, cleanup_reserve.key,
+          cleanup_reservation->fence, true)
+      == zlink::framework::runtime::
+           source_creation_cleanup_t::aborted);
+    assert (
+      std::holds_alternative<authority_missing_t> (
+        store
+          ->read_authority (
+            {"2:" + cleanup_spot_rid.to_string ()})
+          .result ()
+          .value ()));
 
     auto source = std::make_shared<host::public_host_runtime_t> (
       host::host_options_t{
@@ -748,6 +789,25 @@ void verify_remote_user_spot_create_close_terminal_once ()
       == protocol::user_spot_create_result_t::created);
     assert (create_terminal_count == 1);
     assert (materialize_count == 1);
+    assert (
+      zlink::framework::runtime::
+        cleanup_source_created_reservation (
+          store, reserve.key, reservation->fence, true)
+      == zlink::framework::runtime::
+           source_creation_cleanup_t::stale);
+    const auto committed_authority =
+      store
+        ->read_authority (
+          {"2:" + spot_rid.to_string ()})
+        .result ()
+        .value ();
+    const auto *committed_snapshot =
+      std::get_if<authority_snapshot_t> (
+        &committed_authority);
+    assert (
+      committed_snapshot
+      && committed_snapshot->allocation.capacity_state
+           == placement_capacity_state_t::active);
     std::optional<protocol::user_spot_create_reply_t>
       replayed_create_reply;
     assert (source->create_user_spot_remote (

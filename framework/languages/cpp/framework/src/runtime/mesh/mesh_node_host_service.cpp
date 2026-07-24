@@ -10,6 +10,7 @@
 #include "runtime/locations/pending_creation_projection.hpp"
 #include "runtime/locations/location_runtime.hpp"
 #include "runtime/locations/sha256.hpp"
+#include "runtime/locations/source_creation_cleanup.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 
 #include <algorithm>
@@ -208,6 +209,7 @@ mesh_node_host_service_t::create_user_spot (
       placement_object_kind_t::user_spot,
       std::string (spot_rid->value ())};
     object_reservation_fence_t fence;
+    bool source_created_reservation = false;
     const auto target_token = location_owner_token_t{
       target.owner_id, target.lease_generation};
     const std::string creating_text =
@@ -294,6 +296,7 @@ mesh_node_host_service_t::create_user_spot (
     if (const auto *created =
           std::get_if<object_reserved_t> (&reserved)) {
         fence = created->fence;
+        source_created_reservation = true;
     } else if (const auto *conflict =
                  std::get_if<object_reserve_conflict_t> (&reserved)) {
         const auto *snapshot =
@@ -358,17 +361,26 @@ mesh_node_host_service_t::create_user_spot (
       std::make_shared<detail::task_completion_source_t<
         spot_create_result_t>> ();
     auto output = completion->task ();
-    const auto accepted =
-      source->native_node ().create_user_spot_remote (
-        target.rid, std::move (command), timeout,
-        [completion, target, serializers = _serializers] (
-          foundation::operation_terminal_t terminal,
-          protocol::user_spot_create_reply_t reply,
-          std::optional<protocol::application_payload_t>
-            application_reply) {
+    bool accepted = false;
+    try {
+        accepted =
+          source->native_node ().create_user_spot_remote (
+            target.rid, std::move (command), timeout,
+            [completion, target, serializers = _serializers,
+             store = _location_store, key, fence,
+             source_created_reservation] (
+              foundation::operation_terminal_t terminal,
+              protocol::user_spot_create_reply_t reply,
+              std::optional<protocol::application_payload_t>
+                application_reply) {
             if (terminal
                   != foundation::operation_terminal_t::completed
                 || reply.header.terminal_result != 0) {
+                if (terminal
+                    == foundation::operation_terminal_t::completed)
+                    (void) cleanup_source_created_reservation (
+                      store, key, fence,
+                      source_created_reservation);
                 completion->complete (
                   result_t<spot_create_result_t>::failure (
                     user_spot_terminal::
@@ -377,6 +389,11 @@ mesh_node_host_service_t::create_user_spot (
                     "Remote User Spot creation failed"));
                 return;
             }
+            if (reply.result
+                == protocol::user_spot_create_result_t::rejected)
+                (void) cleanup_source_created_reservation (
+                  store, key, fence,
+                  source_created_reservation);
             std::optional<message_t> decoded_reply;
             if (application_reply)
                 decoded_reply = message_t::from_raw (
@@ -401,12 +418,27 @@ mesh_node_host_service_t::create_user_spot (
                      ? spot_create_state_t::created
                      : spot_create_state_t::rejected,
                  std::move (decoded_reply)}));
-        });
-    if (!accepted)
+            });
+    }
+    catch (...) {
+        (void) cleanup_source_created_reservation (
+          _location_store, key, fence,
+          source_created_reservation);
+        completion->complete (
+          result_t<spot_create_result_t>::failure (
+            framework_error_kind_t::request_failed,
+            "User Spot create submission failed"));
+        return output;
+    }
+    if (!accepted) {
+        (void) cleanup_source_created_reservation (
+          _location_store, key, fence,
+          source_created_reservation);
         completion->complete (
           result_t<spot_create_result_t>::failure (
             framework_error_kind_t::request_rejected,
             "User Spot create operation was not admitted"));
+    }
     return output;
 }
 

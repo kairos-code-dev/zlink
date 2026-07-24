@@ -313,6 +313,7 @@ class test_location_store_t : public zlink::framework::location_store_t
     abort (zlink::framework::object_abort_request_t request,
            std::stop_token cancellation = {}) override
     {
+        abort_count.fetch_add (1, std::memory_order_relaxed);
         return _inner.abort (std::move (request), cancellation);
     }
 
@@ -357,6 +358,8 @@ class test_location_store_t : public zlink::framework::location_store_t
     {
         return _inner.abort_aggregate (std::move (fence), cancellation);
     }
+
+    std::atomic_size_t abort_count{0};
 
   private:
     in_memory_location_store_t _inner;
@@ -873,6 +876,16 @@ class occupied_user_spot_t final : public zlink::framework::spot_t
 {
 };
 
+class failing_user_spot_t final : public zlink::framework::spot_t
+{
+  public:
+    failing_user_spot_t ()
+    {
+        throw std::runtime_error (
+          "intentional User Spot materialization failure");
+    }
+};
+
 class user_spot_manager_client_t final
     : public zlink::framework::hosted_service_t
 {
@@ -1033,6 +1046,53 @@ class generated_user_spot_collision_client_t final
         catch (const std::exception &error) {
             last_error = error.what ();
         }
+        _app->stop ();
+    }
+
+    void stop () noexcept override {}
+
+    bool observed = false;
+    std::string last_error;
+
+  private:
+    zlink::framework::app_t *_app;
+};
+
+class source_cleanup_client_t final
+    : public zlink::framework::hosted_service_t
+{
+  public:
+    explicit source_cleanup_client_t (
+      zlink::framework::app_t &app) :
+        _app (&app)
+    {
+    }
+
+    void start (
+      zlink::framework::service_provider_t &services) override
+    {
+        auto &manager =
+          services.get_required<
+            zlink::framework::spot_manager_t> ();
+        const auto result =
+          manager
+            .get_or_create (
+              zlink::framework::spot_rid_t::from_string (
+                "source-cleanup"),
+              "failing")
+            .timeout (std::chrono::seconds (2))
+            .submit ()
+            .result ();
+        observed =
+          !result && result.error ()
+          && result.error ()->kind ()
+               == zlink::framework::
+                    framework_error_kind_t::
+                      spot_create_failed;
+        if (!observed)
+            last_error =
+              result.error () ? result.error ()->what ()
+                              : "User Spot failure was not preserved";
         _app->stop ();
     }
 
@@ -1995,6 +2055,50 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     EXPECT_EQ (0, app.run (0, nullptr));
     ASSERT_NE (nullptr, client);
     EXPECT_TRUE (client->observed) << client->last_error;
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      SourceCreatedReservationIsReconciledAfterExactCreateFailure)
+{
+    auto store = std::make_shared<test_location_store_t> ();
+    auto app = zlink::framework::app_t::create ();
+    source_cleanup_client_t *client = nullptr;
+    const auto endpoint =
+      std::string ("tcp://127.0.0.1:")
+      + std::to_string (bindable_loopback_port (29704));
+
+    app.add_zlink_framework ([&] (
+                               zlink::framework::zlink_framework_options_t &options) {
+        options.add_location_store (store);
+        auto node =
+          options.add_route_mesh ("source-cleanup-mesh");
+        node.channel_name ("source-cleanup-route");
+        node.set_routing_id (
+              zlink::routing_id_t::from (
+                "source-cleanup-node"))
+          .listen (endpoint)
+          .add_spot<failing_user_spot_t> ("failing");
+    });
+    auto service =
+      std::make_unique<source_cleanup_client_t> (app);
+    client = service.get ();
+    app.add_hosted_service (std::move (service));
+
+    EXPECT_EQ (0, app.run (0, nullptr));
+    ASSERT_NE (nullptr, client);
+    EXPECT_TRUE (client->observed) << client->last_error;
+    EXPECT_GE (
+      store->abort_count.load (std::memory_order_relaxed),
+      2u);
+    const auto authority =
+      store
+        ->read_authority ({"2:source-cleanup"})
+        .result ()
+        .value ();
+    EXPECT_TRUE (
+      std::holds_alternative<
+        zlink::framework::authority_missing_t> (
+        authority));
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,

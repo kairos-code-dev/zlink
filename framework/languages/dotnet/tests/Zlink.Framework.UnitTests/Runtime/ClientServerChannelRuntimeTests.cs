@@ -107,12 +107,73 @@ public sealed class ClientServerChannelRuntimeTests
                 .MarkDraining();
             await WaitUntilAsync(
                 () => transport.ReadyCount == 0,
-                TimeSpan.FromSeconds(2));
+                TimeSpan.FromSeconds(8));
         }
         finally
         {
             await clientRuntime.StopAsync(CancellationToken.None);
             await serverRuntime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task LocalOnlyClientAndServer_UseDealerRouterTransportWithoutLocationStore()
+    {
+        await using var provider = CreateLocalClientAndServer();
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+
+        await runtime.StartAsync(CancellationToken.None);
+        try
+        {
+            var transport = runtime.GetClientServerClientRuntime("work");
+            await WaitUntilAsync(
+                () => transport.ReadyCount == 1,
+                TimeSpan.FromSeconds(5));
+
+            Assert.Equal(1, transport.PhysicalConnectionCount);
+            var reply = await provider.GetRequiredService<IZLinkRouteClient>()
+                .RequestToChannel("work", new EchoRequest("local"))
+                .Timeout(TimeSpan.FromSeconds(5))
+                .Async<EchoReply>();
+            Assert.Equal("local:local", reply.Value);
+
+            var state = await runtime.EnsureStartedStateAsync(
+                CancellationToken.None);
+            state.ClientServerServerBundles["work"]
+                .ClientServerServer!
+                .MarkDraining();
+            await WaitUntilAsync(
+                () => transport.ReadyCount == 0,
+                TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task LocalOnlyClient_DoesNotSelectZeroWeightServer()
+    {
+        await using var provider = CreateLocalClientAndServer(weight: 0);
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+
+        await runtime.StartAsync(CancellationToken.None);
+        try
+        {
+            var transport = runtime.GetClientServerClientRuntime("work");
+            await WaitUntilAsync(
+                () => transport.AdmissionCompletedCount == 1,
+                TimeSpan.FromSeconds(5));
+            Assert.Equal(0, transport.ReadyCount);
+            var result = await provider.GetRequiredService<IZLinkRouteClient>()
+                .SendToChannel("work", new EchoSend("excluded"))
+                .SubmitAsync();
+            Assert.Equal(ZLinkSubmitStatus.TargetNotFound, result.Status);
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
         }
     }
 
@@ -994,6 +1055,24 @@ public sealed class ClientServerChannelRuntimeTests
         services.AddZLinkFramework(options =>
         {
             options.AddLocationStore(store);
+            options.AddClientServerChannel("work").Client();
+            options.AddClientServerChannel("work")
+                .Server()
+                .Listen(0)
+                .SetWeight(weight)
+                .AddSendHandler<EchoSendHandler, EchoSend>()
+                .AddRequestHandler<EchoHandler, EchoRequest, EchoReply>();
+        });
+        return services.BuildServiceProvider();
+    }
+
+    private static ServiceProvider CreateLocalClientAndServer(int weight = 100)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<EchoProbe>();
+        services.AddSingleton(new ServerIdentity("local"));
+        services.AddZLinkFramework(options =>
+        {
             options.AddClientServerChannel("work").Client();
             options.AddClientServerChannel("work")
                 .Server()

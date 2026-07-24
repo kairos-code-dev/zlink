@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,7 +37,11 @@ import systems.zlink.framework.configuration.ZLinkEndpointConnections;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.backend.*;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
+import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
+import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
+import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
+import systems.zlink.framework.runtime.internal.backend.ZLinkBackendAdapterProvider;
 import systems.zlink.framework.runtime.messaging.ZLinkJsonMessageSerializer;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
@@ -964,6 +969,73 @@ final class ZLinkChannelRuntimeTest {
     }
 
     @Test
+    void processLocalClientServerUsesManagedAdmissionAndDescriptorUpdates() {
+        String endpoint = "inproc://orders-local";
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("orders").enableClient();
+        options.addClientServerChannel("orders").enableServer(endpoint);
+        ManagedLocalBackend backend = new ManagedLocalBackend(endpoint, 100);
+        ManagedLocalProvider provider = new ManagedLocalProvider(backend);
+
+        try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
+            backend,
+            provider,
+            new ZLinkBackendAdapterOptions(Duration.ofSeconds(1)),
+            options.registration(),
+            new ZLinkJsonMessageSerializer(),
+            handlers())) {
+            ManagedAdmissionDealer local = backend.admissionDealer();
+
+            assertEquals(List.of(endpoint), local.connected);
+            assertEquals(1, local.admissionRequests);
+            assertTrue(canSelect(runtime, "orders"));
+
+            local.enqueueUpdate(local.descriptorWith(
+                2, 0, ZLinkFrameworkRuntimeState.SERVING));
+            awaitSelection(runtime, "orders", false);
+
+            local.enqueueUpdate(local.descriptorWith(
+                3, 100, ZLinkFrameworkRuntimeState.SERVING));
+            awaitSelection(runtime, "orders", true);
+
+            local.enqueueUpdate(local.descriptorWith(
+                4, 100, ZLinkFrameworkRuntimeState.DRAINING));
+            awaitSelection(runtime, "orders", false);
+        }
+    }
+
+    private static boolean canSelect(
+        ZLinkChannelRuntime runtime,
+        String channelName) {
+        try {
+            runtime.requestToChannel(channelName, "probe");
+            return true;
+        } catch (ZLinkFrameworkException failure) {
+            assertEquals(ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED, failure.kind());
+            return false;
+        }
+    }
+
+    private static void awaitSelection(
+        ZLinkChannelRuntime runtime,
+        String channelName,
+        boolean expected) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        do {
+            if (canSelect(runtime, channelName) == expected) {
+                return;
+            }
+            try {
+                Thread.sleep(10);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(interrupted);
+            }
+        } while (System.nanoTime() < deadline);
+        assertEquals(expected, canSelect(runtime, channelName));
+    }
+
+    @Test
     void clientServerRuntimeOptionsReadAndWriteServerMaxMessageSize() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("api")
@@ -1064,6 +1136,219 @@ final class ZLinkChannelRuntimeTest {
         @Override
         public java.util.Map<String, String> metadata() {
             return java.util.Map.of();
+        }
+    }
+
+    private static final class ManagedLocalProvider
+        implements ZLinkBackendAdapterProvider {
+        private final ManagedLocalBackend backend;
+
+        private ManagedLocalProvider(ManagedLocalBackend backend) {
+            this.backend = backend;
+        }
+
+        @Override
+        public ZLinkChannelBackendAdapter createChannelAdapter(
+            ZLinkBackendAdapterOptions options) {
+            return backend;
+        }
+
+        @Override
+        public ZLinkMonitoringBackendAdapter createMonitoringAdapter(
+            ZLinkBackendAdapterOptions options) {
+            return socket -> new ZLinkBackendSocketMonitor() {
+                @Override
+                public void onEvent(ZLinkBackendSocketMonitorHandler handler) {
+                    handler.handle(new ZLinkBackendSocketMonitorEvent(
+                        "CONNECTION_READY",
+                        Optional.empty(),
+                        "",
+                        ""));
+                }
+
+                @Override
+                public ZLinkBackendSocketMonitorEvent recv() {
+                    return null;
+                }
+
+                @Override
+                public String name() {
+                    return "managed-local-monitor";
+                }
+
+                @Override
+                public void close() {
+                }
+            };
+        }
+
+        @Override
+        public ZLinkSpotBackendAdapter createSpotAdapter(
+            ZLinkBackendAdapterOptions options) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ZLinkStreamBackendAdapter createStreamAdapter(
+            ZLinkBackendAdapterOptions options) {
+            throw new UnsupportedOperationException();
+        }
+    }
+
+    private static final class ManagedLocalBackend
+        implements ZLinkChannelBackendAdapter {
+        private final FakeContext context = new FakeContext();
+        private final FakeRouterSocket router = new FakeRouterSocket();
+        private final String endpoint;
+        private final List<ManagedAdmissionDealer> dealers = new ArrayList<>();
+
+        private ManagedLocalBackend(String endpoint, int weight) {
+            this.endpoint = endpoint;
+            router.peerWeight = weight;
+        }
+
+        @Override
+        public ZLinkBackendContext createContext() {
+            return context;
+        }
+
+        @Override
+        public ZLinkBackendDealerSocket createDealerSocket(
+            ZLinkBackendContext context) {
+            ManagedAdmissionDealer dealer =
+                new ManagedAdmissionDealer(endpoint, router.peerWeight);
+            dealers.add(dealer);
+            return dealer;
+        }
+
+        @Override
+        public ZLinkBackendRouterSocket createRouterSocket(
+            ZLinkBackendContext context) {
+            return router;
+        }
+
+        @Override
+        public ZLinkBackendPublisherSocket createPublisherSocket(
+            ZLinkBackendContext context) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public ZLinkBackendSubscriberSocket createSubscriberSocket(
+            ZLinkBackendContext context) {
+            throw new UnsupportedOperationException();
+        }
+
+        private ManagedAdmissionDealer admissionDealer() {
+            return dealers.stream()
+                .filter(dealer -> dealer.admissionRequests == 1)
+                .findFirst()
+                .orElseThrow();
+        }
+    }
+
+    private static final class ManagedAdmissionDealer
+        implements ZLinkBackendDealerSocket {
+        private final ArrayDeque<ZLinkBackendReceived> inbound =
+            new ArrayDeque<>();
+        private final String endpoint;
+        private final RoutingId serverRid = RoutingId.from("local-server");
+        private final int initialWeight;
+        private final List<String> connected = new ArrayList<>();
+        private int admissionRequests;
+
+        private ManagedAdmissionDealer(String endpoint, int initialWeight) {
+            this.endpoint = endpoint;
+            this.initialWeight = initialWeight;
+        }
+
+        @Override
+        public void setChannelName(String channelName) {
+        }
+
+        @Override
+        public void bind(String endpoint) {
+        }
+
+        @Override
+        public void connect(String endpoint) {
+            connected.add(endpoint);
+        }
+
+        @Override
+        public void disconnect(String endpoint) {
+        }
+
+        @Override
+        public boolean send(List<Message> parts, SendFlags flags) {
+            return true;
+        }
+
+        @Override
+        public boolean request(
+            List<Message> parts,
+            ZLinkBackendRequestCallback callback,
+            SendFlags flags,
+            Duration timeout) {
+            admissionRequests++;
+            Message response = Message.from(
+                ZLinkClientServerServiceWire.encodeAdmit(
+                    descriptorWith(
+                        1, initialWeight, ZLinkFrameworkRuntimeState.SERVING),
+                    Integer.MAX_VALUE));
+            callback.handle(new ZLinkBackendReceived(
+                ZLinkBackendRequestResult.OK,
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(response)));
+            return true;
+        }
+
+        @Override
+        public ZLinkBackendReceived recv(ZLinkBackendRecvMode mode) {
+            return inbound.pollFirst();
+        }
+
+        private ZLinkClientServerServerDescriptor descriptorWith(
+            long revision,
+            int weight,
+            ZLinkFrameworkRuntimeState state) {
+            return new ZLinkClientServerServerDescriptor(
+                "orders",
+                serverRid,
+                1,
+                revision,
+                endpoint,
+                weight,
+                state,
+                "default",
+                "local",
+                1,
+                Instant.EPOCH);
+        }
+
+        private void enqueueUpdate(
+            ZLinkClientServerServerDescriptor descriptor) {
+            inbound.addLast(new ZLinkBackendReceived(
+                Optional.empty(),
+                Optional.empty(),
+                Optional.empty(),
+                List.of(Message.from(
+                    ZLinkClientServerServiceWire.encodeUpdate(
+                        descriptor, Integer.MAX_VALUE)))));
+        }
+
+        @Override
+        public String name() {
+            return "managed-local-dealer";
+        }
+
+        @Override
+        public void close() {
+            while (!inbound.isEmpty()) {
+                inbound.removeFirst().close();
+            }
         }
     }
 

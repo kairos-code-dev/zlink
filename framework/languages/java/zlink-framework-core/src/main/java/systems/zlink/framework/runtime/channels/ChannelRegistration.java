@@ -335,6 +335,7 @@ public final class ChannelRegistration {
         }
         if (clientServer.clientEnabled
             && !locationAutoConnectEnabled
+            && !clientServer.serverEnabled
             && clientServer.manualEndpoints.isEmpty()) {
             throw new ZLinkConfigurationException(
                 "client/server channel client requires location auto-connect or manual connections: " + name);

@@ -23,6 +23,7 @@ internal sealed class ZLinkClientServerServerIdentity(
     private long _livenessAckCount;
     private long _livenessProbeCount;
     private long _receivedLivenessProbeCount;
+    internal event Action<Snapshot>? SnapshotChanged;
 
     internal string ChannelName { get; } = channelName;
     internal RoutingId ServerRid { get; } = serverRid;
@@ -72,6 +73,7 @@ internal sealed class ZLinkClientServerServerIdentity(
                 _advertisedEndpoint);
         }
         PushUpdate(snapshot);
+        SnapshotChanged?.Invoke(snapshot);
         return snapshot;
     }
 

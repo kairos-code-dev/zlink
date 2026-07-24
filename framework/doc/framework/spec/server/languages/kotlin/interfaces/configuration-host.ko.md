@@ -12,7 +12,8 @@ Subscriber-only connect와 automatic·manual subscriber 혼합 금지는
 별도 Kotlin DSL이나 public API를 추가하지 않는다. 두 역할은 `(ChannelName, Role)` key의 별도
 registration으로 하나의 topology를 공유하고 같은 역할의 중복은 startup 오류다. Local Server도 remote
 Server와 같은 readiness·weight·drain 조건으로 선택하며 local
-우선순위나 handler 직접 호출을 사용하지 않는다.
+우선순위나 handler 직접 호출을 사용하지 않는다. Local-only 구성은 Location Store나 manual endpoint 없이
+bound endpoint를 peer source로 사용한다.
 
 Automatic RouteMesh는 RID를 canonical byte order로 비교하고 더 작은 RID의 MeshNode만 상대 endpoint로
 connect한다. Manual topology는 application endpoint 구성에 따라 한쪽 또는 양쪽에서 connect할 수 있다.

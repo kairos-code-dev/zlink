@@ -291,6 +291,10 @@ export class ZLinkChannelRuntimeLifecycle {
   }
 
   private openOutboundSockets(): void {
+    // The process-local Server is an independent peer source. Location Store
+    // discovery may later alias the same admitted identity, but startup and
+    // fail-static selection must not depend on descriptor publication.
+    this.options.sockets.startLocalClientServerConnections();
     this.options.sockets.startManualClientServerConnections();
     for (const channelName of this.options.registration.fanoutPublishers) {
       this.options.sockets.publisher(channelName);

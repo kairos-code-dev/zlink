@@ -144,7 +144,8 @@ manual 모두 Client만 server로 connect하며 Server는 client endpoint를 찾
 별도 registration으로 하나의 ClientServer topology를 공유한다. 같은 역할을 두 번 등록하면 startup이
 실패하며 RouteMesh ChannelName 충돌 규칙은
 유지한다. Local Server도 listener와 service admission 뒤 remote Server와 같은 readiness·weight·drain
-조건으로 선택하며 local 우선순위나 direct handler 호출을 사용하지 않는다.
+조건으로 선택하며 local 우선순위나 direct handler 호출을 사용하지 않는다. Local-only 구성은 Location
+Store나 manual endpoint 없이 bound endpoint를 peer source로 사용한다.
 
 Fanout에서는 Publisher가 descriptor만 게시하고 outbound connect를 시작하지 않는다. Subscriber만 publisher
 endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle generation마다 connection intent

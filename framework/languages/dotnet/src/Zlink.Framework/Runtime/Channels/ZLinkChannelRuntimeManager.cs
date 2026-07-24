@@ -121,6 +121,19 @@ internal sealed class ZLinkChannelRuntimeManager(
                 channel.Client.ManualConnections.Attach(
                     runtime.AddManual,
                     runtime.RemoveManual);
+                if (!registration.Locations.Enabled
+                    && channel.HasClientServerServer
+                    && state.ClientServerServerBundles.TryGetValue(
+                        entry.Key,
+                        out var localServer))
+                {
+                    runtime.AddLocal(
+                        ((IZLinkBackendRouterSocket)localServer.Socket)
+                        .GetLastEndpoint(),
+                        localServer.ClientServerServer
+                        ?? throw new InvalidOperationException(
+                            "ClientServer server identity is not initialized."));
+                }
             }
 
             if (entry.Value.Publisher is null) continue;

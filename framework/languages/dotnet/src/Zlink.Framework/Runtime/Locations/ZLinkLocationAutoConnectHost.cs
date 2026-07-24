@@ -69,17 +69,16 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             if (registration.Channels.Values.Any(static channel =>
                     channel.ClientServerRole is not null))
             {
-                if (_clientServerStore is null)
-                    throw new ZLinkConfigurationException(
-                        "ClientServer automatic discovery requires a location store "
-                        + "that implements IZLinkClientServerLocationStore.");
-                _clientServerDiscovery = new ZLinkClientServerDiscovery(
-                    _clientServerStore,
-                    _runtime,
-                    _options,
-                    _leaseTracker);
-                await _clientServerDiscovery.StartAsync(state, cancellationToken)
-                    .ConfigureAwait(false);
+                if (_clientServerStore is not null)
+                {
+                    _clientServerDiscovery = new ZLinkClientServerDiscovery(
+                        _clientServerStore,
+                        _runtime,
+                        _options,
+                        _leaseTracker);
+                    await _clientServerDiscovery.StartAsync(state, cancellationToken)
+                        .ConfigureAwait(false);
+                }
             }
 
         foreach (var (name, channel) in registration.Channels)

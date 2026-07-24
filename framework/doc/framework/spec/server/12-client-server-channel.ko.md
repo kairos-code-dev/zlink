@@ -62,6 +62,11 @@ connection에만 적용한다. 아직 연결하지 않은 endpoint의 값을 Fra
 Manual endpoint만 사용하면 location store가 필요하지 않다. Automatic discovery를 활성화했는데 location
 store가 없으면 listener bind 전에 startup이 실패한다.
 
+같은 process에 동일한 ChannelName의 Client와 Server를 함께 등록하면 Framework가 bind를 마친 local
+Server endpoint를 별도 peer source로 사용한다. 이 local-only 경로에는 location store나 application의
+manual endpoint 등록이 필요하지 않다. Location store도 등록한 경우에는 local registration과 discovery
+descriptor가 같은 Server RID와 lifecycle generation을 가리키므로 ready target 하나로 합친다.
+
 Manual connection도 Client가 application에 등록된 endpoint로 연결을 시작한다. Transport admission에서
 ChannelName, Server RID, lifecycle generation, weight,
 drain state와 security identity를 확인한다. 이 값은 ClientServer 연결 control이며 MeshNode descriptor나
@@ -130,6 +135,8 @@ lease를 갱신하지 못해 fencing deadline에 도달하면 새 업무 admissi
   handler에 전달하지 않는다.
 - 같은 process의 같은 ChannelName에 Client와 Server를 각각 한 번 등록할 수 있고, 같은 역할의 중복 등록과
   RouteMesh 충돌은 startup 오류다.
+- 같은 process의 Client와 Server만 등록한 local-only 구성은 location store나 manual endpoint 없이 실제
+  transport admission을 거쳐 ready target을 만든다.
 - 같은 ChannelName의 여러 server가 weight, weight `0`과 drain state를 반영해 선택된다.
 - Local Server도 remote Server와 같은 readiness·weight·drain 규칙으로 선택하며 실제 transport를 거쳐
   handler에 도달한다.

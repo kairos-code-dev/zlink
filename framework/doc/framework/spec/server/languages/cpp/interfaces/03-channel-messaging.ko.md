@@ -463,7 +463,8 @@ request 시작 권한을 client에만 두며 server는 수신한 send/request �
 builder에서는 `client()`와 `server()` 중 하나 또는 둘 다 호출할 수 있지만 각 역할은 최대 한 번만
 등록한다. Registration key는 `(ChannelName, Role)`이고 같은 역할의 중복 등록은 startup 오류다. 서로 다른
 역할은 별도 registration으로 같은 ChannelName의 topology를 공유한다. RouteMesh의 역할 단일 선택과
-ChannelName 충돌 규칙은 바꾸지 않는다.
+ChannelName 충돌 규칙은 바꾸지 않는다. Local-only 구성은 Location Store나 manual `connect(...)` 없이
+bound endpoint를 peer source로 사용하고 실제 client DEALER와 server ROUTER admission을 거친다.
 
 Root BindHost 기본값은 `127.0.0.1`이다. AdvertiseHost를 생략하면 wildcard가 아닌 BindHost를
 사용하고, wildcard BindHost에서는 AdvertiseHost를 반드시 명시한다. Automatic discovery

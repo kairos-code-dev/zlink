@@ -356,6 +356,20 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
+    void clientServerChannelAllowsLocalOnlyRolesWithoutStoreOrManualEndpoint() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        options.addClientServerChannel("orders").enableClient();
+        var server = options.addClientServerChannel("orders")
+            .enableServer("inproc://orders");
+        server.addRequestHandler(
+            EchoHandler.class, String.class, String.class, "Echo");
+
+        assertDoesNotThrow(options::validate);
+        assertEquals(1, options.registration().channels().size());
+    }
+
+    @Test
     void clientServerChannelRejectsDuplicateClientRole() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addClientServerChannel("orders")

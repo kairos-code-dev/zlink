@@ -16,12 +16,16 @@ internal static partial class ZLinkFrameworkRegistrationValidator
 
         if (channel.Client is not null)
         {
+            // A process-local Server is a complete peer source for the Client.
+            // The runtime still uses DEALER -> ROUTER transport; it only obtains
+            // the bound endpoint directly instead of through a Location Store.
+            var hasLocalServer = channel.HasClientServerServer;
             ZLinkPeerAcquisitionPolicy.RequirePeerSource(
                 $"ClientServer channel '{channel.ChannelName}' client",
-                autoConnectConfigured,
+                autoConnectConfigured || hasLocalServer,
                 channel.Client.ManualConnections);
             channel.Client.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(
-                autoConnectConfigured,
+                autoConnectConfigured || hasLocalServer,
                 channel.Client.ManualConnections);
             channel.Client.ManualConnections.Freeze(channel.Client.AcquisitionMode);
         }

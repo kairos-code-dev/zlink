@@ -378,7 +378,11 @@ function validateChannelCapabilities(
       requireEndpoint(`channel '${channelName}' publisher`, channel.publisher.bind);
     }
     if (channel.client !== undefined) {
-      requirePeerSource(`channel '${channelName}' client`, channel.client.manualConnections, peerLocationConfigured);
+      requirePeerSource(
+        `channel '${channelName}' client`,
+        channel.client.manualConnections,
+        peerLocationConfigured || channel.server !== undefined
+      );
       requireSocketOptions(`channel '${channelName}' client`, channel.client);
     }
     if (channel.subscriber !== undefined) {

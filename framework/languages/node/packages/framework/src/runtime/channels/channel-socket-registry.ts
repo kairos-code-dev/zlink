@@ -562,6 +562,18 @@ export class ZLinkChannelSocketRegistry {
     }
   }
 
+  startLocalClientServerConnections(): void {
+    for (const [channelName, channel] of this.registration.channels) {
+      if (channel.client === undefined || channel.server === undefined) continue;
+      const identity = this.clientServerServerIdentity(channelName);
+      this.openConfiguredClientServerConnection(
+        channelName,
+        localClientServerConnectionId(channelName),
+        identity.endpoint
+      );
+    }
+  }
+
   clientServerMonitoringSource(channelName: string): ZLinkBackendSocketMonitor {
     if (this.registration.channels.get(channelName)?.client === undefined) {
       throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
@@ -935,11 +947,22 @@ export class ZLinkChannelSocketRegistry {
   }
 
   private openManualClientServerConnection(channelName: string, endpoint: string): void {
-    const connectionId = manualClientServerConnectionId(channelName, endpoint);
+    this.openConfiguredClientServerConnection(
+      channelName,
+      manualClientServerConnectionId(channelName, endpoint),
+      endpoint
+    );
+  }
+
+  private openConfiguredClientServerConnection(
+    channelName: string,
+    connectionId: string,
+    endpoint: string
+  ): void {
     if (this.clientServerConnections.has(connectionId)) return;
     this.openClientServerConnection(channelName, connectionId, endpoint, {
       onTransportReady: () => {
-        void this.admitManualClientServerConnection(channelName, connectionId)
+        void this.admitConfiguredClientServerConnection(channelName, connectionId)
           .catch(error => {
             this.removeReadyConnection(connectionId);
             this.oneWayFailureSink?.(error);
@@ -950,7 +973,7 @@ export class ZLinkChannelSocketRegistry {
     });
   }
 
-  private async admitManualClientServerConnection(
+  private async admitConfiguredClientServerConnection(
     channelName: string,
     connectionId: string
   ): Promise<void> {
@@ -973,7 +996,7 @@ export class ZLinkChannelSocketRegistry {
       if (admission.channelName !== channelName
         || admission.securityIdentity !== 'default') {
         throw new ZLinkConfigurationException(
-          `Manual ClientServer '${channelName}' admission does not match its configured identity.`
+          `ClientServer '${channelName}' admission does not match its configured identity.`
         );
       }
       if (!this.admitClientServerConnection(
@@ -981,7 +1004,7 @@ export class ZLinkChannelSocketRegistry {
         connectionId
       )) {
         throw new ZLinkConfigurationException(
-          `Manual ClientServer '${channelName}' admission was stale.`
+          `ClientServer '${channelName}' admission was stale.`
         );
       }
     } finally {
@@ -1382,6 +1405,10 @@ export class ZLinkChannelSocketRegistry {
 
 function manualClientServerConnectionId(channelName: string, endpoint: string): string {
   return `manual:${channelName.length}:${channelName}:${endpoint.length}:${endpoint}`;
+}
+
+function localClientServerConnectionId(channelName: string): string {
+  return `local:${channelName.length}:${channelName}`;
 }
 
 function clientServerServerPeerKey(channelName: string, routingId: RoutingId): string {

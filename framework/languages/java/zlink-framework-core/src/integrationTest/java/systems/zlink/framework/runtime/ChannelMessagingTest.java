@@ -131,6 +131,51 @@ final class ChannelMessagingTest {
     }
 
     @Test
+    void processLocalClientServer_requestReplySucceedsWithoutStoreOrManualClientEndpoint() {
+        String endpoint = "inproc://zlink-java-local-profile-" + UUID.randomUUID();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("profile").enableClient();
+        var server = options.addClientServerChannel("profile").enableServer(endpoint);
+        server.addRequestHandler(
+            EchoHandler.class, EchoRequest.class, String.class, "Echo");
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
+            String reply = runtime.client()
+                .requestToChannel("profile", new EchoRequest("hello"))
+                .submit(String.class)
+                .toCompletableFuture()
+                .join();
+
+            assertEquals("hello", reply);
+        }
+    }
+
+    @Test
+    void processLocalClientServer_withZeroWeightIsNotSelected() {
+        String endpoint = "inproc://zlink-java-zero-weight-" + UUID.randomUUID();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        options.addClientServerChannel("profile").enableClient();
+        var server = options.addClientServerChannel("profile");
+        server.configureServerSocket().weight(0);
+        server.enableServer(endpoint);
+        server.addRequestHandler(
+            EchoHandler.class, EchoRequest.class, String.class, "Echo");
+
+        try (ZLinkFrameworkRuntime runtime =
+                 RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
+            ZLinkFrameworkException failure = assertThrows(
+                ZLinkFrameworkException.class,
+                () -> runtime.client()
+                    .requestToChannel("profile", new EchoRequest("hello")));
+
+            assertEquals(
+                systems.zlink.framework.errors.ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                failure.kind());
+        }
+    }
+
+    @Test
     void handlerFiltersWrapChannelRequestDispatch() {
         String endpoint = "inproc://zlink-java-filtered-profile-" + UUID.randomUUID();
         FILTER_REQUEST.set(null);

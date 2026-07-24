@@ -132,6 +132,87 @@ test('ClientServer socket identity advertises the concrete port returned after b
   await sockets.dispose();
 });
 
+test('same-process ClientServer uses local bound endpoint without a Location Store', async () => {
+  const createLocal = (weight) => {
+    const registration = internal.createFrameworkRegistration({
+      channels: {
+        orders: {
+          client: { manualConnections: [] },
+          server: { bind: 'tcp://0.0.0.0:0', advertiseHost: '127.0.0.1', weight },
+          sendHandlers: [{ packetName: 'notice', handler: { handle() {} } }]
+        }
+      }
+    });
+    const router = {
+      ...fakeDealer('local-router'),
+      bind() { this.lastEndpoint = 'tcp://0.0.0.0:49152'; }
+    };
+    const dealer = fakeDealer('local-dealer');
+    const requests = [];
+    let dealerMonitor;
+    dealer.connect = endpoint => { dealer.connected = endpoint; };
+    dealer.request = (message, callback) => {
+      requests.push({ frame: Buffer.from(message.data()), callback });
+      return true;
+    };
+    const sockets = new ZLinkChannelSocketRegistry(
+      registration,
+      {
+        createRouterSocket() { return router; },
+        createDealerSocket() { return dealer; }
+      },
+      {},
+      {
+        openSocketMonitor(socket) {
+          return {
+            nativeInstance: {},
+            onEvent(handler) {
+              if (socket === dealer) dealerMonitor = handler;
+            },
+            async dispose() {}
+          };
+        }
+      }
+    );
+    sockets.startLocalClientServerConnections();
+    return { sockets, dealer, requests, dealerMonitor };
+  };
+
+  for (const [weight, expectedReady] of [[75, true], [0, false]]) {
+    const local = createLocal(weight);
+    const identity = local.sockets.clientServerServerIdentity('orders');
+    assert.equal(local.dealer.connected, identity.endpoint);
+    assert.equal(local.sockets.clientDealerForOutbound('orders'), undefined);
+
+    local.dealerMonitor({
+      nativeEvent: framework.ZLinkSocketNativeEventType.ConnectionReady,
+      routingId: identity.serverRid,
+      remoteAddr: identity.endpoint
+    });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(
+      clientServerWire.decodeClientServerControl(local.requests[0].frame).kind,
+      'hello'
+    );
+    local.requests[0].callback(0, [
+      zlink.Message.from(clientServerWire.encodeClientServerAdmit({
+        ...descriptor({ token: { ownerId: 'local', leaseGeneration: 1n } }),
+        serverRid: identity.serverRid,
+        lifecycleGeneration: identity.lifecycleGeneration,
+        endpoint: identity.endpoint,
+        weight,
+        securityIdentity: 'default'
+      }, 4096))
+    ]);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(
+      local.sockets.clientDealerForOutbound('orders') === local.dealer,
+      expectedReady
+    );
+    await local.sockets.dispose();
+  }
+});
+
 test('production ClientServer outbound socket selection uses admitted descriptor weights', async () => {
   const registration = internal.createFrameworkRegistration({
     channels: { orders: { client: { manualConnections: [] } } },

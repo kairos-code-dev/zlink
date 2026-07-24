@@ -43,6 +43,45 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
     internal void RemoveManual(string endpoint) =>
         Remove($"manual:{endpoint}");
 
+    internal void AddLocal(
+        string endpoint,
+        ZLinkClientServerServerIdentity identity)
+    {
+        var snapshot = identity.Read();
+        var key =
+            $"local:{identity.ServerRid.ToHex()}:{identity.LifecycleGeneration}";
+        AddOrReplace(
+            key,
+            endpoint,
+            LocalDescriptor(identity, endpoint, snapshot));
+        identity.SnapshotChanged += changed =>
+        {
+            lock (_gate)
+                if (_connections.TryGetValue(key, out var connection))
+                    connection.Update(LocalDescriptor(
+                        identity,
+                        endpoint,
+                        changed));
+        };
+    }
+
+    private ZLinkClientServerServerDescriptor LocalDescriptor(
+        ZLinkClientServerServerIdentity identity,
+        string endpoint,
+        ZLinkClientServerServerIdentity.Snapshot snapshot) =>
+        new(
+                _channelName,
+                identity.ServerRid,
+                identity.LifecycleGeneration,
+                snapshot.Revision,
+                endpoint,
+                snapshot.Weight,
+                snapshot.State,
+                identity.SecurityIdentity,
+                "process-local",
+                1,
+                default);
+
     internal void ReplaceAutomatic(
         IReadOnlyList<ZLinkClientServerServerDescriptor> descriptors)
     {

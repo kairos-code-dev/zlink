@@ -399,6 +399,8 @@ public final class ZLinkChannelRuntime
                 "runtime-" + java.util.UUID.randomUUID());
             attachManualClientServerAdmissions(
                 registration.channels());
+            attachProcessLocalClientServerAdmissions(
+                registration.channels());
             timeoutExecutor.scheduleAtFixedRate(
                 () -> sockets.tickClientServerLiveness(
                     System.nanoTime(), defaultRequestTimeout),
@@ -601,6 +603,24 @@ public final class ZLinkChannelRuntime
                     public void close() {
                     }
                 });
+        }
+    }
+
+    private void attachProcessLocalClientServerAdmissions(
+        List<ChannelRegistration> registrations) {
+        for (ChannelRegistration registration : registrations) {
+            if (registration.kind() != ChannelKind.CLIENT_SERVER
+                || !registration.clientEnabled()
+                || registration.serverBinds().isEmpty()) {
+                continue;
+            }
+            ZLinkClientServerServerDescriptor local =
+                sockets.clientServerServerDescriptor(registration.name());
+            if (local != null) {
+                // Local selection still traverses DEALER -> ROUTER admission.
+                openManualClientServerConnection(
+                    registration.name(), local.endpoint());
+            }
         }
     }
 

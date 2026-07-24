@@ -252,8 +252,9 @@ connect를 시작하지 않는다. Server는 받은 send/request handler와 requ
 새 업무 호출을 시작하지 않는다.
 
 같은 process에 Server 역할도 등록되어 있으면 listener와 service admission을 마친 local Server를 remote
-Server와 같은 candidate 집합에 넣는다. Ready, positive weight, non-draining 조건을 동일하게 적용하고
-local 우선순위나 remote 제외 규칙을 두지 않는다. 선택 뒤에는 Client DEALER에서 Server ROUTER로 실제
+Server와 같은 candidate 집합에 넣는다. Ready, positive weight, non-draining 조건을 동일하게 적용하며
+local 우선순위나 remote 제외 규칙을 두지 않는다. Local-only 구성은 Location Store나 manual
+`Connect(...)` 없이 bound endpoint를 peer source로 사용한다. 선택 뒤에는 Client DEALER에서 Server ROUTER로 실제
 transport message를 전달하며 handler를 직접 호출하지 않는다.
 
 `ConfigureNetwork()`의 기본 BindHost는 `127.0.0.1`이고 AdvertiseHost를 생략하면 non-wildcard BindHost를

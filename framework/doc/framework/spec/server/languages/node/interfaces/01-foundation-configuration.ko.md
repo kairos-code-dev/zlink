@@ -275,7 +275,8 @@ manual 모두 Client만 server로 connect하며 Server는 client endpoint를 찾
 
 같은 process에 Client와 Server를 모두 등록하면 listener와 service admission을 마친 local Server도 remote
 Server와 같은 candidate 집합에 포함한다. Ready, positive weight, non-draining 조건을 동일하게 적용하며
-local 우선순위나 remote 제외는 없다. Local Server를 선택해도 Client DEALER에서 Server ROUTER로 실제
+local 우선순위나 remote 제외는 없다. Local-only 구성은 Location Store나 manual `connect(...)` 없이
+bound endpoint를 peer source로 사용한다. Local Server를 선택해도 Client DEALER에서 Server ROUTER로 실제
 transport message를 전달하고 handler 직접 호출로 codec, HWM, timeout, cancellation, correlation 또는
 terminal completion을 우회하지 않는다.
 

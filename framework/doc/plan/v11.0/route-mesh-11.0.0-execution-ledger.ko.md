@@ -1459,6 +1459,23 @@ cycle을 merged action value snapshot capture로 수정하고, contract trace에
 resolver 29/29가 다시 통과했으며 post-fix review는 `APPROVE`로 끝났다. 따라서 네 `V11-M6A-*` 행은
 계속 `수정 진행`으로 유지한다.
 
+ClientServer local-only correction checkpoint(2026-07-24)에서 같은 process의 Client와 Server
+registration을 Location Store와 독립된 peer source로 고정했다. Framework는 bound local endpoint를 직접
+얻지만 handler를 직접 호출하지 않고 기존 DEALER→ROUTER service admission과 transport를 그대로 사용한다.
+Location Store도 있으면 local source와 automatic descriptor를 Server RID·lifecycle generation으로 합쳐
+ready target 하나만 유지한다. 공통 spec과 다섯 언어 exact interface를 같은 의미로 수정했다. .NET은
+local snapshot의 weight·drain revision을 client connection에 즉시 반영하며 local-only request와 weight
+`0` contract 2/2가 통과했다. 전체 ClientServer 15/17이며 나머지 2건은 앞서 분리한 liveness timing
+baseline이다. JVM은 local bound endpoint를 기존 admission 경로에 연결했고 configuration과 admission
+focused suite가 통과했다. Managed production constructor test는 bound endpoint connect, Hello·Admit,
+positive weight 선택, weight `0`·Draining 제외를 검증한다. 기존 manual integration test를 유지하면서
+local-only positive·weight `0` 시나리오도 별도로 추가했다. Integration source set은 공유 worktree의
+선행 SpotManager·Stream relay·Fanout API 전환 23개 compile error 때문에 실행 전에 중단됐다. Node.js는
+local source를 항상 시작하고 automatic alias와 physical connection을
+합치며 focused 31/31, M6A 6/6, build·typecheck·changed-source ESLint가 통과했다. C++ local-only
+contract는 진행 중인 C++ Spot manager checkpoint와 함께 검증·기록한다. Core·bindings와 Sample·E2E
+source는 변경하거나 실행하지 않았다.
+
 Documentation verifier checkpoint(2026-07-23)에서 service wire schema 37 commands·157 types와 186개
 negative self-test는 통과했다. 최초 v11-first candidate는 Codex 5.6 sol xhigh review에서 C# semicolon-only
 record span, non-export TypeScript brand, computed symbol property와 C++ default argument `{}`의 false

@@ -57,7 +57,7 @@ internal sealed class EntryJoinHandler(
         joins.Start(request);
         evidence.Add($"application-join-started|rid={node.Rid}|actor={request.ActorId}|key={request.Key}");
         return ValueTask.FromResult(new JoinRes(
-            spot.Context.SpotRid.ToString(), node.Rid, request.ActorId));
+            spot.Context.SpotId.ToString(), node.Rid, request.ActorId));
     }
 }
 

@@ -108,7 +108,7 @@ internal static class GatewayHostFactory
                     SpotServiceNames.SpotChannel,
                     SpotServiceNames.SpotMsgTopic,
                     new SpotMsg(request.Marker))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             evidence.Add($"spot-publish|rid={options.Rid}|spot={request.SpotRid}|marker={request.Marker}");
             return Results.Ok(new SpotPublishRes(
                 "spot.sm-c4-publish",
@@ -137,7 +137,7 @@ internal static class GatewayHostFactory
                     SpotServiceNames.SpotChannel,
                     SpotServiceNames.SpotMsgTopic,
                     new SpotBackpressureMsg(request.Marker, sequence, payload));
-                var result = await call.SubmitAsync(cancellationToken);
+                var result = await call.Async(cancellationToken);
                 var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
                 var observation =
                     $"status={result.Status},snapshot={result.Detail.SnapshotRemoteNodeCount}"

@@ -6,6 +6,7 @@ using SpotService.Server.Play.Spots;
 using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.AspNetCore;
+using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
 using Zlink.Framework.Contracts.Configuration;
 using Zlink.Framework.Contracts.Dispatch;
@@ -78,12 +79,21 @@ internal static class PlayHostFactory
             }
             var spot = framework.AddRouteMesh(SpotServiceNames.SpotChannel)
                 .Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
-                .SetRoutingId(RoutingId.From(options.Rid))
-                .SetEntrySpotRoutingId(RoutingId.From(options.Rid))
+                .SetRoutingId(RoutingId.From(options.Rid));
+            spot.Objects().Server()
                 .AddEntrySpot<ScenarioEntrySpot>()
-                .AddActorFactory<ScenarioActorFactory>(SpotServiceNames.ActorType)
-                .AddSpotFactory<ScenarioUserSpot>()
-                .AddSpotFactory<ScenarioAlternateSpot>();
+                .AddActorFactory<ScenarioActor, ScenarioActorFactory>(
+                    SpotServiceNames.ActorType,
+                    null,
+                    ZLinkRelocationPolicy<ScenarioActor>.Recreate)
+                .AddSpotFactory<ScenarioUserSpot>(
+                    SpotServiceNames.UserSpotType,
+                    null,
+                    ZLinkRelocationPolicy<ScenarioUserSpot>.Disabled)
+                .AddSpotFactory<ScenarioAlternateSpot>(
+                    SpotServiceNames.AlternateSpotType,
+                    null,
+                    ZLinkRelocationPolicy<ScenarioAlternateSpot>.Disabled);
             spot.ChannelName(SpotServiceNames.SpotChannel);
             if (string.Equals(options.Rid, "play-a", StringComparison.Ordinal))
             {
@@ -166,7 +176,7 @@ internal static class PlayHostFactory
         CancellationToken cancellationToken = default)
         => await routes.SendToSpot(
                 await locator.ResolveRequiredAsync(targetSpotRid, cancellationToken), command)
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
 
     internal static async Task<SpotToSpotRes> RequestSpotToSpotAsync(
         IZLinkSpotClient routes,

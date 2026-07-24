@@ -30,17 +30,17 @@ internal sealed class SpotToSpotHandler(
             .RequestToSpot(target, new StateReq("add", 3))
             .Async<StateRes>(cancellationToken);
         await spot.Context.Outbound.SendToSpot(target, new StateMsg($"sm-c3-send-{request.Marker}"))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         await spot.Context.Outbound.Publish(
                 SpotServiceNames.SpotChannel,
                 SpotServiceNames.SpotMsgTopic,
                 new SpotMsg($"sm-c3-publish-{request.Marker}"))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         evidence.Add(
-            $"spot-to-spot|rid={evidence.Rid}|source={spot.Context.SpotRid}"
+            $"spot-to-spot|rid={evidence.Rid}|source={spot.Context.SpotId}"
             + $"|target={request.TargetSpotRid}|value={reply.Value}");
         return new SpotToSpotRes(
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             request.TargetSpotRid,
             reply.Value);
     }
@@ -77,10 +77,10 @@ internal sealed class SpotToSpotTimeoutHandler(
         }
 
         evidence.Add(
-            $"spot-to-spot-timeout|rid={evidence.Rid}|source={spot.Context.SpotRid}"
+            $"spot-to-spot-timeout|rid={evidence.Rid}|source={spot.Context.SpotId}"
             + $"|target={request.TargetSpotRid}|failed={failed}");
         return new SpotToSpotTimeoutRes(
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             request.TargetSpotRid,
             failed);
     }
@@ -120,13 +120,13 @@ internal sealed class SpotToSpotNegativeHandler(
         }
 
         await spot.Context.Outbound.SendToSpot(target, new MissingSpotMsg($"missing-{request.Marker}"))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
 
         evidence.Add(
-            $"spot-to-spot-negative|rid={evidence.Rid}|source={spot.Context.SpotRid}"
+            $"spot-to-spot-negative|rid={evidence.Rid}|source={spot.Context.SpotId}"
             + $"|target={request.TargetSpotRid}|requestFailed={requestFailed}");
         return new SpotToSpotNegativeRes(
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             request.TargetSpotRid,
             requestFailed);
     }
@@ -150,14 +150,14 @@ internal sealed class SpotOutboundHandler(EvidenceStore evidence)
         await spot.Context.Outbound.SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new ChannelNotify(notifyMarker))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         await spot.Context.Outbound.Publish(
                 SpotServiceNames.SpotChannel,
                 SpotServiceNames.SpotMsgTopic,
                 new SpotMsg("sm-c2-publish"))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         evidence.Add(
-            $"spot-outbound|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"spot-outbound|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|echo={echo.Value}|notify={notifyMarker}");
     }
 }
@@ -189,9 +189,9 @@ internal sealed class SpotOutboundNegativeHandler(EvidenceStore evidence)
         await spot.Context.Outbound.SendToChannel(
                 SpotServiceNames.ExternalClientChannel,
                 new MissingChannelNotify($"missing-{request.Marker}"))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         evidence.Add(
-            $"spot-outbound-negative|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"spot-outbound-negative|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|requestFailed={requestFailed}");
     }
 }

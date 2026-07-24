@@ -350,6 +350,15 @@ export interface MultiBindRes {
   readonly boundCount: number;
 }
 
+export interface LogicalDisconnectReq {
+  readonly actorId: string;
+}
+
+export interface LogicalDisconnectRes {
+  readonly actorId: string;
+  readonly remainingActorIds: readonly string[];
+}
+
 export interface SnapshotReq {
   readonly actorId: string;
 }

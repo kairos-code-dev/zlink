@@ -98,14 +98,14 @@ internal sealed class ScenarioUserSpot(
     public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-initialize|rid={evidence.Rid}|spot={Context.SpotRid}");
+        evidence.Add($"spot-initialize|rid={evidence.Rid}|spot={Context.SpotId}");
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnClosingAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-closing|rid={evidence.Rid}|spot={Context.SpotRid}");
+        evidence.Add($"spot-closing|rid={evidence.Rid}|spot={Context.SpotId}");
         return ValueTask.CompletedTask;
     }
 
@@ -115,28 +115,28 @@ internal sealed class ScenarioUserSpot(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-actor-admitted|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actorId}");
+        evidence.Add($"spot-actor-admitted|rid={evidence.Rid}|spot={Context.SpotId}|actor={actorId}");
         return ValueTask.FromResult(ZLinkSpotActorJoinResult.Accept(request));
     }
 
     public ValueTask OnJoinedActorAsync(ScenarioActor actor, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        evidence.Add($"spot-actor-joined|rid={evidence.Rid}|spot={Context.SpotId}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnLeaveActorAsync(ScenarioActor actor, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-actor-left|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        evidence.Add($"spot-actor-left|rid={evidence.Rid}|spot={Context.SpotId}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
     }
 
     public ValueTask OnDisconnectActorAsync(ScenarioActor actor, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-actor-disconnected|rid={evidence.Rid}|spot={Context.SpotRid}|actor={actor.ActorId}");
+        evidence.Add($"spot-actor-disconnected|rid={evidence.Rid}|spot={Context.SpotId}|actor={actor.ActorId}");
         return ValueTask.CompletedTask;
     }
 
@@ -145,7 +145,7 @@ internal sealed class ScenarioUserSpot(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-created|rid={evidence.Rid}|spot={Context.SpotRid}");
+        evidence.Add($"spot-created|rid={evidence.Rid}|spot={Context.SpotId}");
         return ValueTask.FromResult(ZLinkSpotCreateResponse.Accept());
     }
 

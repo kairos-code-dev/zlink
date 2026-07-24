@@ -3,6 +3,8 @@ import type {
   AuthRes,
   AuthReq,
   EnsureActorRes,
+  LogicalDisconnectRes,
+  LogicalDisconnectReq,
   MultiBindRes,
   MultiBindReq,
   UserSpotAuthReq
@@ -119,6 +121,20 @@ class ScenarioSession implements ZLinkSession {
       this.context.client.reply({
         boundCount: this.context.actors.bound.length
       } satisfies MultiBindRes).submit();
+      return;
+    }
+
+    if (dispatch.packetName === 'LogicalDisconnectReq') {
+      const request = payload.decode<LogicalDisconnectReq>(Object as never);
+      const actor = this.context.actors.find(request.actorId);
+      if (actor === undefined) {
+        throw new Error(`Actor route not found: ${request.actorId}`);
+      }
+      await actor.notifyDisconnected(signal);
+      this.context.client.reply({
+        actorId: request.actorId,
+        remainingActorIds: this.context.actors.bound.map((bound) => bound.actorId)
+      } satisfies LogicalDisconnectRes).submit();
       return;
     }
 

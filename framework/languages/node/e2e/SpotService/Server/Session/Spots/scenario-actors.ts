@@ -57,6 +57,9 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
   async onDisconnectActor(actor: ZLinkActorMembership): Promise<void> {
     const evidence = ScenarioEntrySpot.requireEvidence();
     evidence.add(`entry-disconnected|rid=${evidence.rid}|actor=${actor.actor.actorId}`);
+    if (actor.actor.actorId.startsWith('actor-sm-d5-fail-')) {
+      throw new Error('SM-D5 injected disconnect callback failure.');
+    }
   }
 
   private static requireEvidence(): EvidenceStore {

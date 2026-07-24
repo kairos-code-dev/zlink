@@ -16,7 +16,7 @@ internal sealed class SpotMsgHandler(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-msg|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
+        evidence.Add($"spot-msg|rid={evidence.Rid}|spot={spot.Context.SpotId}|marker={message.Marker}");
         return ValueTask.CompletedTask;
     }
 }
@@ -32,7 +32,7 @@ internal sealed class SpotBackpressureMsgHandler(EvidenceStore evidence)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
-            $"spot-backpressure|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"spot-backpressure|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|marker={message.Marker}|sequence={message.Sequence}");
         return ValueTask.CompletedTask;
     }
@@ -77,7 +77,7 @@ internal sealed class StageTimerHandler(EvidenceStore evidence)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
-            $"stage-timer|rid={evidence.Rid}|spot={spot.Context.SpotRid}|name={tick.Name}"
+            $"stage-timer|rid={evidence.Rid}|spot={spot.Context.SpotId}|name={tick.Name}"
             + $"|delivery={tick.DeliveryIndex}");
         return ValueTask.CompletedTask;
     }
@@ -95,9 +95,9 @@ internal sealed class StateReqHandler(EvidenceStore evidence)
         cancellationToken.ThrowIfCancellationRequested();
         var delta = string.Equals(request.Operation, "add", StringComparison.Ordinal) ? request.Delta : 0;
         var value = spot.Add(delta);
-        evidence.Add($"spot-state-request|rid={evidence.Rid}|spot={spot.Context.SpotRid}|value={value}");
+        evidence.Add($"spot-state-request|rid={evidence.Rid}|spot={spot.Context.SpotId}|value={value}");
         return ValueTask.FromResult(new StateRes(
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             spot.Context.NodeRid.ToString(),
             value));
     }
@@ -116,9 +116,9 @@ internal sealed class MultiNodeStateAHandler(EvidenceStore evidence)
         var delta = string.Equals(request.Operation, "add", StringComparison.Ordinal) ? request.Delta : 0;
         var value = spot.Add(delta);
         evidence.Add(
-            $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spot.Context.SpotRid}|value={value}");
+            $"multi-state-request|node={SpotServiceNames.MultiSpotNodeA}|spot={spot.Context.SpotId}|value={value}");
         return ValueTask.FromResult(new StateRes(
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             spot.Context.NodeRid.ToString(),
             value));
     }
@@ -137,9 +137,9 @@ internal sealed class MultiNodeStateBHandler(EvidenceStore evidence)
         var delta = string.Equals(request.Operation, "add", StringComparison.Ordinal) ? request.Delta : 0;
         var value = spot.Add(delta);
         evidence.Add(
-            $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spot.Context.SpotRid}|value={value}");
+            $"multi-state-request|node={SpotServiceNames.MultiSpotNodeB}|spot={spot.Context.SpotId}|value={value}");
         return ValueTask.FromResult(new StateRes(
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             spot.Context.NodeRid.ToString(),
             value));
     }
@@ -155,7 +155,7 @@ internal sealed class StateCommandHandler(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-state-command|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
+        evidence.Add($"spot-state-command|rid={evidence.Rid}|spot={spot.Context.SpotId}|marker={message.Marker}");
         return ValueTask.CompletedTask;
     }
 }
@@ -170,9 +170,9 @@ internal sealed class SlowSpotHandler(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         await Task.Delay(TimeSpan.FromMilliseconds(request.DelayMs), cancellationToken);
-        evidence.Add($"slow-spot-request|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={request.Marker}");
+        evidence.Add($"slow-spot-request|rid={evidence.Rid}|spot={spot.Context.SpotId}|marker={request.Marker}");
         return new SlowSpotRes(
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             spot.Context.NodeRid.ToString(),
             request.Marker);
     }
@@ -188,7 +188,7 @@ internal sealed class WorkerStartHandler(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"worker-start|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={request.Marker}");
+        evidence.Add($"worker-start|rid={evidence.Rid}|spot={spot.Context.SpotId}|marker={request.Marker}");
         var marker = await spot.Context.RunCpuWorker(ct =>
             {
                 ct.ThrowIfCancellationRequested();
@@ -197,9 +197,9 @@ internal sealed class WorkerStartHandler(EvidenceStore evidence)
             })
             .Yield(cancellationToken);
         spot.Add(100);
-        evidence.Add($"worker-complete|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={marker}");
+        evidence.Add($"worker-complete|rid={evidence.Rid}|spot={spot.Context.SpotId}|marker={marker}");
         return new WorkerStartRes(
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             spot.Context.NodeRid.ToString(),
             request.Marker);
     }
@@ -236,7 +236,7 @@ internal sealed class OverrunTimerHandler(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         evidence.Add(
-            $"timer-overrun|rid={evidence.Rid}|spot={spot.Context.SpotRid}|name={tick.Name}"
+            $"timer-overrun|rid={evidence.Rid}|spot={spot.Context.SpotId}|name={tick.Name}"
             + $"|delivery={tick.DeliveryIndex}|scheduled={tick.ScheduledIndex}|skipped={tick.SkippedTicks}");
         await Task.Delay(TimeSpan.FromMilliseconds(90), cancellationToken);
     }
@@ -268,7 +268,7 @@ internal sealed class BasicTimerHandler(EvidenceStore evidence)
     {
         cancellationToken.ThrowIfCancellationRequested();
         evidence.Add(
-            $"timer-basic|rid={evidence.Rid}|spot={spot.Context.SpotRid}|name={tick.Name}"
+            $"timer-basic|rid={evidence.Rid}|spot={spot.Context.SpotId}|name={tick.Name}"
             + $"|delivery={tick.DeliveryIndex}");
         return ValueTask.CompletedTask;
     }
@@ -302,6 +302,6 @@ internal sealed class IdleCloseTimerHandler(EvidenceStore evidence)
 
         var closed = await spot.Context.CloseAsync(cancellationToken);
         evidence.Add(
-            $"timer-idle-close|rid={evidence.Rid}|spot={spot.Context.SpotRid}|name={tick.Name}|closed={closed}");
+            $"timer-idle-close|rid={evidence.Rid}|spot={spot.Context.SpotId}|name={tick.Name}|closed={closed}");
     }
 }

@@ -21,6 +21,11 @@ public static class SpotServiceNames
     public const string MultiRouteChannelA = "multi-route-a";
     public const string MultiRouteChannelB = "multi-route-b";
     public const string ActorType = "scenario-player";
+    public const string UserSpotType = "scenario-user-spot";
+    public const string AlternateSpotType = "scenario-alternate-spot";
+    public const string SpotOnlyUserSpotType = "spot-only-user-spot";
+    public const string MultiSpotTypeA = "multi-spot-a";
+    public const string MultiSpotTypeB = "multi-spot-b";
     public const string ActorIdMetadata = "actor-id";
 }
 

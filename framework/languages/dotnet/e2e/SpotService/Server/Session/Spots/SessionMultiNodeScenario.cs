@@ -96,7 +96,7 @@ internal sealed class MultiNodeSpotA(IZLinkSpotContext context, EvidenceStore ev
     public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"multi-spot-initialize|node={SpotServiceNames.MultiSpotNodeA}|spot={Context.SpotRid}");
+        evidence.Add($"multi-spot-initialize|node={SpotServiceNames.MultiSpotNodeA}|spot={Context.SpotId}");
         return ValueTask.CompletedTask;
     }
 
@@ -116,7 +116,7 @@ internal sealed class MultiNodeSpotB(IZLinkSpotContext context, EvidenceStore ev
     public ValueTask OnInitializeAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"multi-spot-initialize|node={SpotServiceNames.MultiSpotNodeB}|spot={Context.SpotRid}");
+        evidence.Add($"multi-spot-initialize|node={SpotServiceNames.MultiSpotNodeB}|spot={Context.SpotId}");
         return ValueTask.CompletedTask;
     }
 
@@ -133,10 +133,10 @@ internal sealed class ScenarioStage(ScenarioUserSpot spot)
     {
         var value = spot.Add(request.Delta);
         evidence.Add(
-            $"stage-request|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
+            $"stage-request|rid={evidence.Rid}|spot={spot.Context.SpotId}"
             + $"|marker={request.Marker}|value={value}");
         return new StateRes(
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             spot.Context.NodeRid.ToString(),
             value);
     }

@@ -51,9 +51,9 @@ internal sealed class SpotOnlyStateReqHandler(EvidenceStore evidence)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var value = request.Operation == "add" ? spot.Add(request.Delta) : 0;
-        evidence.Add($"spot-state-request|rid={evidence.Rid}|spot={spot.Context.SpotRid}|value={value}");
+        evidence.Add($"spot-state-request|rid={evidence.Rid}|spot={spot.Context.SpotId}|value={value}");
         return ValueTask.FromResult(new StateRes(
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             spot.Context.NodeRid.ToString(),
             value));
     }
@@ -69,7 +69,7 @@ internal sealed class SpotOnlyStateMsgHandler(EvidenceStore evidence)
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add($"spot-state-command|rid={evidence.Rid}|spot={spot.Context.SpotRid}|marker={message.Marker}");
+        evidence.Add($"spot-state-command|rid={evidence.Rid}|spot={spot.Context.SpotId}|marker={message.Marker}");
         return ValueTask.CompletedTask;
     }
 }

@@ -24,7 +24,10 @@ import { runSmD1 } from './Scenarios/sm-d1-scenario';
 import { runSmD2 } from './Scenarios/sm-d2-scenario';
 import { runSmD3 } from './Scenarios/sm-d3-scenario';
 import { runSmD4 } from './Scenarios/sm-d4-scenario';
+import { runSmD4A } from './Scenarios/sm-d4a-scenario';
+import { runSmD4B } from './Scenarios/sm-d4b-scenario';
 import { runSmD5 } from './Scenarios/sm-d5-scenario';
+import { runSmD5A } from './Scenarios/sm-d5a-scenario';
 import { runSmD6 } from './Scenarios/sm-d6-scenario';
 import { runSmD7 } from './Scenarios/sm-d7-scenario';
 import { runSmD8 } from './Scenarios/sm-d8-scenario';
@@ -82,7 +85,10 @@ async function main(): Promise<void> {
     'SM-D2': () => runSmD2(options),
     'SM-D3': () => runSmD3(options),
     'SM-D4': () => runSmD4(options),
+    'SM-D4A': () => runSmD4A(options),
+    'SM-D4B': () => runSmD4B(options),
     'SM-D5': () => runSmD5(options),
+    'SM-D5A': () => runSmD5A(options),
     'SM-D6': () => runSmD6(options),
     'SM-D7': () => runSmD7(options),
     'SM-D8': () => runSmD8(options),
@@ -119,6 +125,8 @@ async function main(): Promise<void> {
     'sm-d1-d6': ['SM-D1', 'SM-D2', 'SM-D6'],
     'sm-d3': ['SM-D3'],
     'sm-d4': ['SM-D4'],
+    'session-binding-e2e': ['SM-D4A', 'SM-D4B', 'SM-D5', 'SM-D5A'],
+    'session-binding-regression': ['SM-D4A', 'SM-D4B', 'SM-D5A'],
     'sm-d5': ['SM-D5'],
     'sm-d7': ['SM-D7'],
     'sm-d8': ['SM-D8'],

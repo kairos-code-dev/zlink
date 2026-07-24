@@ -56,11 +56,11 @@ internal sealed class EntryActorPingHandler(EvidenceStore evidence)
         actor.Seen++;
         evidence.Add(
             $"actor-ping|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
-            + $"|spot={entrySpot.Context.SpotRid}|value={request.Value}|seen={actor.Seen}");
+            + $"|spot={entrySpot.Context.SpotId}|value={request.Value}|seen={actor.Seen}");
         return ValueTask.FromResult(new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
-            entrySpot.Context.SpotRid.ToString(),
+            entrySpot.Context.SpotId.ToString(),
             request.Value,
             actor.Seen));
     }
@@ -80,16 +80,16 @@ internal sealed class EntrySlowActorPingHandler(EvidenceStore evidence)
         _ = context;
         evidence.Add(
             $"actor-slow-ping-started|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
-            + $"|spot={entrySpot.Context.SpotRid}|value={request.Value}");
+            + $"|spot={entrySpot.Context.SpotId}|value={request.Value}");
         await Task.Delay(TimeSpan.FromMilliseconds(request.DelayMs), cancellationToken);
         actor.Seen++;
         evidence.Add(
             $"actor-slow-ping|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
-            + $"|spot={entrySpot.Context.SpotRid}|value={request.Value}|seen={actor.Seen}");
+            + $"|spot={entrySpot.Context.SpotId}|value={request.Value}|seen={actor.Seen}");
         return new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
-            entrySpot.Context.SpotRid.ToString(),
+            entrySpot.Context.SpotId.ToString(),
             request.Value,
             actor.Seen);
     }
@@ -137,11 +137,11 @@ internal sealed class UserActorPingHandler(EvidenceStore evidence)
         actor.Seen++;
         evidence.Add(
             $"actor-ping|rid={spot.Context.NodeRid}|actor={actor.ActorId}"
-            + $"|spot={spot.Context.SpotRid}|value={request.Value}|seen={actor.Seen}");
+            + $"|spot={spot.Context.SpotId}|value={request.Value}|seen={actor.Seen}");
         return ValueTask.FromResult(new ActorPingRes(
             actor.ActorId,
             spot.Context.NodeRid.ToString(),
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             request.Value,
             actor.Seen));
     }
@@ -151,30 +151,25 @@ internal sealed class UserActorPingHandler(EvidenceStore evidence)
 internal sealed class EntryUserSpotActorJoinHandler
     : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, JoinUserSpotActorReq, JoinUserSpotActorRes>
 {
-    public async ValueTask<JoinUserSpotActorRes> HandleAsync(
+    public ValueTask<JoinUserSpotActorRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
         JoinUserSpotActorReq request,
         CancellationToken cancellationToken)
     {
+        _ = entrySpot;
         _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
         if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
             throw new InvalidOperationException("Join request actor does not match dispatched actor.");
 
-        var joined = await actor.Context.JoinSpot(
-                RoutingId.From(request.SpotRid),
-                ZLinkMessage.Empty)
-            .Async(cancellationToken)
-            .ConfigureAwait(false);
-        if (joined is not ZLinkActorJoinResult.Accepted joinedActorResult)
-            return new JoinUserSpotActorRes(request.SpotRid, request.ActorId, false, 0);
-
-        return new JoinUserSpotActorRes(
+        actor.Context.JoinSpot(request.SpotRid, ZLinkMessage.Empty).Defer();
+        return ValueTask.FromResult(new JoinUserSpotActorRes(
             request.SpotRid,
-            joinedActorResult.Actor.ActorId,
+            actor.ActorId,
             true,
-            joinedActorResult.Actor.Generation);
+            actor.Context.ObjectGeneration));
     }
 }
 
@@ -183,7 +178,7 @@ internal sealed class EntryAdmittedUserSpotActorJoinHandler
     : IZLinkEntrySpotActorRequestHandler<ScenarioEntrySpot, ScenarioActor, JoinAdmittedUserSpotActorReq,
         JoinAdmittedUserSpotActorRes>
 {
-    public async ValueTask<JoinAdmittedUserSpotActorRes> HandleAsync(
+    public ValueTask<JoinAdmittedUserSpotActorRes> HandleAsync(
         ScenarioEntrySpot entrySpot,
         ScenarioActor actor,
         ZLinkSpotActorRequestContext context,
@@ -192,28 +187,17 @@ internal sealed class EntryAdmittedUserSpotActorJoinHandler
     {
         _ = entrySpot;
         _ = context;
+        cancellationToken.ThrowIfCancellationRequested();
         if (!string.Equals(request.ActorId, actor.ActorId, StringComparison.Ordinal))
             throw new InvalidOperationException("Admission join request actor does not match dispatched actor.");
 
-        var joined = await actor.Context.JoinSpot(
-                RoutingId.From(request.SpotRid),
-                ZLinkMessage.From(request))
-            .Async(cancellationToken)
-            .ConfigureAwait(false);
-        if (joined is not ZLinkActorJoinResult.Accepted joinedActorResult)
-            return new JoinAdmittedUserSpotActorRes(
-                request.SpotRid,
-                request.ActorId,
-                false,
-                0,
-                "ActorJoinRejected");
-
-        return new JoinAdmittedUserSpotActorRes(
+        actor.Context.JoinSpot(request.SpotRid, ZLinkMessage.From(request)).Defer();
+        return ValueTask.FromResult(new JoinAdmittedUserSpotActorRes(
             request.SpotRid,
-            joinedActorResult.Actor.ActorId,
-            true,
-            joinedActorResult.Actor.Generation,
-            string.Empty);
+            actor.ActorId,
+            request.Allow,
+            actor.Context.ObjectGeneration,
+            request.Allow ? string.Empty : "ActorJoinRejected"));
     }
 }
 
@@ -323,13 +307,13 @@ internal sealed class ActorPushHandler
         actor.Seen++;
         Evidence.Add(
             $"actor-push|rid={entrySpot.Context.NodeRid}|actor={actor.ActorId}"
-            + $"|spot={entrySpot.Context.SpotRid}|value={request.Value}|seen={actor.Seen}");
+            + $"|spot={entrySpot.Context.SpotId}|value={request.Value}|seen={actor.Seen}");
         await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         return new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
-            entrySpot.Context.SpotRid.ToString(),
+            entrySpot.Context.SpotId.ToString(),
             request.Value,
             actor.Seen);
     }
@@ -350,7 +334,7 @@ internal sealed class EntryUserActorPushHandler
         cancellationToken.ThrowIfCancellationRequested();
         actor.Seen++;
         await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         return new ActorPingRes(
             actor.ActorId,
             entrySpot.Context.NodeRid.ToString(),
@@ -374,11 +358,11 @@ internal sealed class UserActorPushHandler
         _ = context;
         actor.Seen++;
         await actor.Context.BoundSession.Send(new ActorPushNotify(actor.ActorId, request.Value, actor.Seen))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         return new ActorPingRes(
             actor.ActorId,
             spot.Context.NodeRid.ToString(),
-            spot.Context.SpotRid.ToString(),
+            spot.Context.SpotId.ToString(),
             request.Value,
             actor.Seen);
     }

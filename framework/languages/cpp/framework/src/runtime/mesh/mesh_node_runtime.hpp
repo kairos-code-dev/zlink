@@ -74,6 +74,9 @@ class mesh_node_runtime_t
     void start ();
     void stop () noexcept;
     void bind_serializers (serializer_registry_t &serializers) noexcept;
+    void configure_user_spot_operations (
+      std::shared_ptr<location_store_t> store,
+      host::user_spot_materializer_t materializer);
     void connect_peer (const zlink::routing_id_t &expected_routing_id,
                        const std::string &endpoint);
     void disconnect_peer (const std::string &endpoint) noexcept;
@@ -224,6 +227,8 @@ class mesh_node_runtime_t
       std::chrono::milliseconds timeout);
     std::shared_ptr<mesh_node_builder_state_t> _state;
     serializer_registry_t *_serializers = nullptr;
+    std::shared_ptr<location_store_t> _user_spot_store;
+    host::user_spot_materializer_t _user_spot_materializer;
     std::shared_ptr<host::public_host_runtime_t> _node;
     std::map<std::string, host::spot_handle_t> _spots;
     std::map<std::string, host::actor_handle_t> _actors;

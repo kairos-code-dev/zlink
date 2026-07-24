@@ -12,6 +12,7 @@
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
 #include <zlink/framework/contracts/locations/spot_handle.hpp>
+#include <zlink/framework/contracts/placement.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
 #include <zlink/framework/contracts/streams/stream.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
@@ -49,7 +50,7 @@ void cancel_spot_node_dispatch_queues (spot_node_builder_state_t &node);
 class actor_context_t;
 class actor_ref_t;
 class spot_publisher_client_t;
-class spot_node_manager_t;
+class spot_manager_t;
 
 class spot_t
 {
@@ -149,6 +150,38 @@ enum class spot_create_state_t
     existing = 0,
     created = 1,
     rejected = 2
+};
+
+class spot_ref_t final
+{
+  public:
+    spot_ref_t (spot_rid_t spot_rid,
+                std::uint64_t object_generation,
+                std::string mesh_name,
+                node_rid_t node_rid) :
+        _spot_rid (std::move (spot_rid)),
+        _object_generation (object_generation),
+        _mesh_name (std::move (mesh_name)),
+        _node_rid (std::move (node_rid))
+    {
+        if (_object_generation == 0)
+            throw std::invalid_argument (
+              "SpotRef object generation must be positive");
+    }
+
+    const spot_rid_t &spot_rid () const noexcept { return _spot_rid; }
+    std::uint64_t object_generation () const noexcept
+    {
+        return _object_generation;
+    }
+    std::string_view mesh_name () const noexcept { return _mesh_name; }
+    const node_rid_t &node_rid () const noexcept { return _node_rid; }
+
+  private:
+    spot_rid_t _spot_rid;
+    std::uint64_t _object_generation = 0;
+    std::string _mesh_name;
+    node_rid_t _node_rid;
 };
 
 struct spot_create_response_t
@@ -529,7 +562,7 @@ class spot_context_t
     spot_rid_t spot_rid () const;
     std::string spot_name () const;
     spot_handler_registry_t handlers ();
-    spot_node_manager_t manager () const;
+    spot_manager_t manager () const;
     channel_client_t outbound () const;
     task_t<bool> close ();
 
@@ -886,11 +919,23 @@ class entry_spot_context_t : public spot_context_t
 
 struct spot_create_result_t
 {
+    spot_ref_t spot;
+    spot_create_state_t state = spot_create_state_t::created;
+    std::optional<message_t> reply;
+};
+
+namespace detail
+{
+struct local_spot_create_result_t
+{
     spot_rid_t spot_rid;
     spot_create_state_t state = spot_create_state_t::created;
     std::optional<message_t> reply;
     spot_context_t context;
 };
+struct spot_create_call_state_t;
+class spot_route_internal_dispatcher_t;
+} // namespace detail
 
 class spot_handler_registry_t
 {
@@ -1044,6 +1089,7 @@ class spot_handler_registry_t
   private:
     friend class spot_context_t;
     friend class detail::spot_node_runtime_t;
+    friend class detail::spot_route_internal_dispatcher_t;
     explicit spot_handler_registry_t (std::shared_ptr<detail::spot_context_state_t> state);
 
     template <typename TSpot, typename TActor> void register_actor_admission ()
@@ -1209,44 +1255,60 @@ class spot_handler_registry_t
     std::shared_ptr<detail::spot_context_state_t> _state;
 };
 
-class spot_node_manager_t
+class spot_create_call_t
 {
   public:
-    spot_node_manager_t ();
-    ~spot_node_manager_t ();
+    spot_create_call_t (spot_create_call_t &&) noexcept;
+    spot_create_call_t &operator= (spot_create_call_t &&) noexcept;
+    spot_create_call_t (const spot_create_call_t &) = delete;
+    spot_create_call_t &operator= (const spot_create_call_t &) = delete;
+    ~spot_create_call_t ();
 
-    spot_node_manager_t (spot_node_manager_t &&) noexcept;
-    spot_node_manager_t &operator= (spot_node_manager_t &&) noexcept;
-    spot_node_manager_t (const spot_node_manager_t &) = default;
-    spot_node_manager_t &operator= (const spot_node_manager_t &) = default;
-
-    spot_create_result_t create_spot (std::string spot_name);
-    spot_create_result_t create_spot (std::string spot_name, const message_t &request);
+    spot_create_call_t &in_mesh (std::string mesh_name);
+    spot_create_call_t &creation_request (message_t request);
     template <typename TRequest>
     requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>
-              && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>) spot_create_result_t
-      create_spot (std::string spot_name, const TRequest &request)
+              && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>)
+    spot_create_call_t &creation_request (TRequest request)
     {
-        return create_spot (std::move (spot_name), message_t::from (request));
+        return creation_request (message_t::from (std::move (request)));
     }
+    spot_create_call_t &placement_profile (placement_profile_t profile);
+    spot_create_call_t &affinity_key (affinity_key_t key);
+    spot_create_call_t &timeout (std::chrono::milliseconds timeout);
+    task_t<spot_create_result_t> submit ();
 
-    spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
-    spot_create_result_t
-    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const message_t &request);
-    template <typename TRequest>
-    requires (!std::is_same_v<std::remove_cvref_t<TRequest>, zlink::message_t>
-              && !std::is_same_v<std::remove_cvref_t<TRequest>, message_t>) spot_create_result_t
-      get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const TRequest &request)
-    {
-        return get_or_create_spot (std::move (spot_name), std::move (spot_rid),
-                                   message_t::from (request));
-    }
+  private:
+    friend class spot_manager_t;
+    explicit spot_create_call_t (
+      std::shared_ptr<detail::spot_create_call_state_t> state);
+    std::shared_ptr<detail::spot_create_call_state_t> _state;
+};
 
-    task_t<std::optional<spot_info_t>> find_spot (spot_rid_t spot_rid) const;
-    task_t<std::vector<spot_info_t>> list_spots () const;
-    task_t<bool> close_spot (spot_rid_t spot_rid);
-    std::optional<std::string> spot_name_for (spot_rid_t spot_rid) const;
-    std::optional<spot_route_t> resolve_spot (spot_rid_t spot_rid) const;
+class spot_manager_t
+{
+  public:
+    spot_manager_t ();
+    ~spot_manager_t ();
+
+    spot_manager_t (spot_manager_t &&) noexcept;
+    spot_manager_t &operator= (spot_manager_t &&) noexcept;
+    spot_manager_t (const spot_manager_t &) = default;
+    spot_manager_t &operator= (const spot_manager_t &) = default;
+
+    spot_create_call_t create (std::string stable_type);
+    spot_create_call_t get_or_create (spot_rid_t spot_rid,
+                                      std::string stable_type);
+    task_t<std::optional<spot_ref_t>> find (spot_rid_t spot_rid) const;
+    task_t<bool> close (spot_ref_t spot);
+
+  private:
+    friend class spot_context_t;
+    friend class spot_publisher_client_t;
+    friend class detail::spot_node_runtime_t;
+    friend class detail::spot_route_internal_dispatcher_t;
+    explicit spot_manager_t (
+      std::shared_ptr<detail::spot_node_builder_state_t> state);
     std::optional<actor_ref_t> current_actor_ref (const actor_ref_t &actor_ref) const;
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
@@ -1266,23 +1328,13 @@ class spot_node_manager_t
                         serializer_registry_t &serializers,
                         spot_actor_message_metadata_t metadata = {});
 
-  private:
-    friend class spot_context_t;
-    friend class spot_publisher_client_t;
-    friend class detail::spot_node_runtime_t;
-    explicit spot_node_manager_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
-    spot_create_result_t create_spot_raw (std::string spot_name, zlink::message_t request);
-    spot_create_result_t
-    get_or_create_spot_raw (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
-    zlink::message_t serialize_request (std::type_index request_type, const void *request) const;
-
     std::shared_ptr<detail::spot_node_builder_state_t> _state;
 };
 
 class spot_publisher_client_t
 {
   public:
-    spot_publisher_client_t (spot_node_manager_t manager, serializer_registry_t &serializers);
+    spot_publisher_client_t (spot_manager_t manager, serializer_registry_t &serializers);
 
     template <typename TEvent>
     publish_call_t publish (std::string channel_name,
@@ -1312,7 +1364,7 @@ class spot_publisher_client_t
                  std::string packet_name,
                  zlink::message_t payload) const;
 
-    spot_node_manager_t _manager;
+    spot_manager_t _manager;
     serializer_registry_t *_serializers = nullptr;
 };
 
@@ -1584,16 +1636,6 @@ class spot_node_builder_t
                        std::function<std::optional<spot_route_t> (spot_rid_t)> resolver);
 
     spot_node_snapshot_t snapshot () const;
-    spot_create_result_t create_spot (std::string spot_name);
-    spot_create_result_t create_spot (std::string spot_name, const message_t &request);
-    spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
-    spot_create_result_t
-    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const message_t &request);
-    task_t<std::optional<spot_info_t>> find_spot (spot_rid_t spot_rid) const;
-    task_t<std::vector<spot_info_t>> list_spots () const;
-    task_t<bool> close_spot (spot_rid_t spot_rid);
-    std::optional<std::string> spot_name_for (spot_rid_t spot_rid) const;
-    std::optional<spot_route_t> resolve_spot (spot_rid_t spot_rid) const;
 
   private:
     friend class zlink_builder_t;
@@ -1601,8 +1643,19 @@ class spot_node_builder_t
     friend struct detail::mesh_node_builder_state_t;
     friend class detail::spot_node_runtime_t;
     explicit spot_node_builder_t (std::shared_ptr<detail::spot_node_builder_state_t> state);
-    spot_create_result_t create_spot_raw (std::string spot_name, zlink::message_t request);
-    spot_create_result_t
+    detail::local_spot_create_result_t create_spot (std::string spot_name);
+    detail::local_spot_create_result_t create_spot (std::string spot_name, const message_t &request);
+    detail::local_spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
+    detail::local_spot_create_result_t
+    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, const message_t &request);
+    task_t<std::optional<spot_info_t>> find_spot (spot_rid_t spot_rid) const;
+    task_t<std::vector<spot_info_t>> list_spots () const;
+    task_t<bool> close_spot (spot_rid_t spot_rid);
+    std::optional<std::string> spot_name_for (spot_rid_t spot_rid) const;
+    std::optional<spot_route_t> resolve_spot (spot_rid_t spot_rid) const;
+    detail::local_spot_create_result_t create_spot_raw (
+      std::string spot_name, zlink::message_t request);
+    detail::local_spot_create_result_t
     get_or_create_spot_raw (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
 
     spot_node_builder_t &

@@ -198,6 +198,10 @@ void mesh_node_runtime_t::start ()
           1024,
           4u * 1024u * 1024u},
         _state->spot_state->snapshot.entry_spot_name.value_or ("entry")});
+    if (_user_spot_store && _user_spot_materializer) {
+        node->configure_user_spot_operations (
+          _user_spot_store, _user_spot_materializer);
+    }
     node->start ();
     const auto resolved_endpoint = node->status ().local_endpoint ();
     if (!resolved_endpoint.empty ()) {
@@ -221,6 +225,17 @@ void mesh_node_runtime_t::start ()
         (void) spot_runtime.create_spot (
           *_state->spot_state->snapshot.entry_spot_name);
     }
+}
+
+void mesh_node_runtime_t::configure_user_spot_operations (
+  std::shared_ptr<location_store_t> store,
+  host::user_spot_materializer_t materializer)
+{
+    if (_node)
+        throw configuration_error (
+          "User Spot operations must be configured before MeshNode start");
+    _user_spot_store = std::move (store);
+    _user_spot_materializer = std::move (materializer);
 }
 
 void mesh_node_runtime_t::stop () noexcept

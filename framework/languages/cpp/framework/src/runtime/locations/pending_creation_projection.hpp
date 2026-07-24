@@ -10,9 +10,53 @@
 namespace zlink::framework::runtime
 {
 
+inline std::uint32_t inline_creation_crc32c (
+  const std::vector<std::byte> &payload)
+{
+    std::uint32_t crc = 0xffffffffu;
+    for (const auto value : payload) {
+        crc ^= std::to_integer<std::uint8_t> (value);
+        for (int bit = 0; bit < 8; ++bit)
+            crc = (crc >> 1u)
+              ^ (0x82f63b78u & (0u - (crc & 1u)));
+    }
+    return ~crc;
+}
+
+inline std::string encode_inline_creation_content (
+  const std::vector<std::byte> &payload)
+{
+    constexpr std::string_view alphabet =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    std::string encoded;
+    encoded.reserve ((payload.size () * 4u + 2u) / 3u);
+    std::uint32_t accumulator = 0;
+    unsigned bits = 0;
+    for (const auto value : payload) {
+        accumulator =
+          (accumulator << 8u) | std::to_integer<std::uint8_t> (value);
+        bits += 8;
+        while (bits >= 6) {
+            bits -= 6;
+            encoded.push_back (alphabet[(accumulator >> bits) & 0x3fu]);
+        }
+    }
+    if (bits != 0)
+        encoded.push_back (alphabet[(accumulator << (6u - bits)) & 0x3fu]);
+    constexpr char hex[] = "0123456789abcdef";
+    const auto crc = inline_creation_crc32c (payload);
+    std::string result = "inline-v1:";
+    for (int shift = 28; shift >= 0; shift -= 4)
+        result.push_back (hex[(crc >> shift) & 0x0fu]);
+    result.push_back (':');
+    result += encoded;
+    return result;
+}
+
 struct pending_creation_projection_t
 {
     object_creation_intent_t intent;
+    object_reservation_fence_t fence;
 };
 
 inline std::optional<std::vector<std::byte>>
@@ -23,7 +67,7 @@ decode_inline_creation_content (std::string_view reference)
         return std::nullopt;
     reference.remove_prefix (prefix.size ());
     const auto separator = reference.find (':');
-    if (separator != 8 || separator + 1 >= reference.size ())
+    if (separator != 8 || separator + 1 > reference.size ())
         return std::nullopt;
     std::uint32_t expected_crc = 0;
     for (const auto value : reference.substr (0, separator)) {
@@ -67,15 +111,7 @@ decode_inline_creation_content (std::string_view reference)
     if (bits != 0
         && (accumulator & ((std::uint32_t{1} << bits) - 1u)) != 0)
         return std::nullopt;
-    std::uint32_t actual_crc = 0xffffffffu;
-    for (const auto value : payload) {
-        actual_crc ^= std::to_integer<std::uint8_t> (value);
-        for (int bit = 0; bit < 8; ++bit)
-            actual_crc = (actual_crc >> 1u)
-              ^ (0x82f63b78u
-                 & (0u - (actual_crc & 1u)));
-    }
-    actual_crc = ~actual_crc;
+    const auto actual_crc = inline_creation_crc32c (payload);
     if (actual_crc != expected_crc)
         return std::nullopt;
     return payload;
@@ -89,6 +125,9 @@ class pending_creation_projection_provider_t
 {
   public:
     virtual ~pending_creation_projection_provider_t () = default;
+
+    virtual std::optional<pending_creation_projection_t>
+    read_pending_creation (object_creation_key_t key) = 0;
 
     virtual std::optional<pending_creation_projection_t>
     read_verified_pending_creation (

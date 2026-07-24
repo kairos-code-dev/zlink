@@ -6,6 +6,9 @@
 #include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/mesh/mesh_record_dispatcher.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
+#include "runtime/locations/pending_creation_projection.hpp"
+#include "runtime/locations/location_runtime.hpp"
+#include "runtime/locations/sha256.hpp"
 #include "runtime/spots/spot_route_packets.hpp"
 
 #include <algorithm>
@@ -21,6 +24,8 @@ namespace zlink::framework::runtime
 
 namespace
 {
+
+std::atomic_uint64_t next_user_spot_operation{1};
 
 void trace_mesh_host_stop (const char *stage)
 {
@@ -81,19 +86,463 @@ mesh_node_host_service_t::~mesh_node_host_service_t ()
     stop ();
 }
 
+task_t<spot_create_result_t>
+mesh_node_host_service_t::create_user_spot (
+  const std::shared_ptr<detail::mesh_node_runtime_t> &,
+  bool exclusive,
+  std::optional<spot_rid_t> spot_rid,
+  std::string stable_type,
+  std::optional<std::string> mesh_name,
+  std::optional<message_t> request,
+  std::optional<placement_profile_t> profile,
+  std::optional<affinity_key_t> affinity,
+  std::chrono::milliseconds timeout)
+{
+    if (!_location_store || stable_type.empty ())
+        return task_t<spot_create_result_t> (
+          result_t<spot_create_result_t>::failure (
+            framework_error_kind_t::invalid_configuration,
+            "User Spot creation requires a Location Store and stable type"));
+    std::shared_ptr<detail::mesh_node_runtime_t> source;
+    if (mesh_name) {
+        const auto found = std::find_if (
+          _nodes.begin (), _nodes.end (),
+          [&] (const auto &node) {
+              return node && node->mesh_name () == *mesh_name;
+          });
+        if (found == _nodes.end ())
+            return task_t<spot_create_result_t> (
+              result_t<spot_create_result_t>::failure (
+                framework_error_kind_t::mesh_not_found,
+                "The selected Mesh is not registered in this process"));
+        source = *found;
+    } else {
+        if (_nodes.empty ())
+            return task_t<spot_create_result_t> (
+              result_t<spot_create_result_t>::failure (
+                framework_error_kind_t::object_client_not_configured,
+                "No object Client or Server Mesh is registered"));
+        if (_nodes.size () != 1)
+            return task_t<spot_create_result_t> (
+              result_t<spot_create_result_t>::failure (
+                framework_error_kind_t::mesh_selection_required,
+                "More than one object Mesh is registered; select one with in_mesh"));
+        source = _nodes.front ();
+    }
+    if (!spot_rid) {
+        const auto status = source->native_node ().status ();
+        static std::atomic_uint64_t next_generated_spot{1};
+        spot_rid = spot_rid_t::from_string (
+          "user:" + status.routing_id ().to_string () + ":"
+          + std::to_string (
+            next_generated_spot.fetch_add (
+              1, std::memory_order_relaxed)));
+    }
+    const auto selected_mesh = mesh_name.value_or (
+      source->mesh_name ());
+    std::vector<mesh_node_descriptor_t> candidates;
+    location_page_request_t page;
+    do {
+        auto listed =
+          _location_store->list_mesh_nodes (selected_mesh, page)
+            .result ()
+            .value ();
+        for (auto &descriptor : listed.items) {
+            const auto capable = std::any_of (
+              descriptor.object_capabilities.begin (),
+              descriptor.object_capabilities.end (),
+              [&] (const object_capability_t &capability) {
+                  return capability.object_kind
+                           == placement_object_kind_t::user_spot
+                    && capability.stable_type == stable_type
+                    && (!profile
+                        || capability.placement_profiles.contains (
+                          std::string (profile->value ())));
+              });
+            if (descriptor.state == framework_runtime_state_t::serving
+                && descriptor.object_role == object_role_t::server
+                && descriptor.placement_weight > 0 && capable)
+                candidates.push_back (std::move (descriptor));
+        }
+        page.continuation_token = std::move (listed.continuation_token);
+    } while (page.continuation_token);
+    if (candidates.empty ())
+        return task_t<spot_create_result_t> (
+          result_t<spot_create_result_t>::failure (
+            framework_error_kind_t::placement_capacity_exhausted,
+            "No eligible User Spot target is ready"));
+    const auto total_weight = std::accumulate (
+      candidates.begin (), candidates.end (), std::uint64_t{0},
+      [] (std::uint64_t total, const auto &candidate) {
+          return total + candidate.placement_weight;
+      });
+    auto choice = std::hash<std::string>{} (
+      std::string (spot_rid->value ()))
+      % total_weight;
+    auto target = candidates.front ();
+    for (const auto &candidate : candidates) {
+        if (choice < candidate.placement_weight) {
+            target = candidate;
+            break;
+        }
+        choice -= candidate.placement_weight;
+    }
+    std::vector<std::byte> application_bytes;
+    if (request) {
+        const auto raw = detail::message_to_raw (*request, *_serializers);
+        const auto bytes = raw.to_bytes ();
+        if (bytes.size () > 1024u * 1024u)
+            return task_t<spot_create_result_t> (
+              result_t<spot_create_result_t>::failure (
+                framework_error_kind_t::invalid_configuration,
+                "User Spot creation request exceeds 1 MiB"));
+        application_bytes.reserve (bytes.size ());
+        for (const auto value : bytes)
+            application_bytes.push_back (
+              static_cast<std::byte> (value));
+    }
+    const object_creation_key_t key{
+      placement_object_kind_t::user_spot,
+      std::string (spot_rid->value ())};
+    object_reservation_fence_t fence;
+    const auto target_token = location_owner_token_t{
+      target.owner_id, target.lease_generation};
+    const std::string creating_text =
+      "zlink:user-spot:creating:v1\n" + stable_type + "\n"
+      + std::string (spot_rid->value ());
+    std::vector<std::byte> creating_payload;
+    creating_payload.reserve (creating_text.size ());
+    for (const auto value : creating_text)
+        creating_payload.push_back (static_cast<std::byte> (
+          static_cast<unsigned char> (value)));
+    object_reserve_request_t reserve_request;
+    reserve_request.key = key;
+    reserve_request.intent.stable_type = stable_type;
+    reserve_request.intent.placement_profile = std::move (profile);
+    reserve_request.intent.affinity_key = std::move (affinity);
+    reserve_request.intent.request_content_reference =
+      encode_inline_creation_content (application_bytes);
+    reserve_request.intent.request_sha256 = sha256 (application_bytes);
+    reserve_request.intent.request_encoded_size =
+      static_cast<std::uint64_t> (application_bytes.size ());
+    reserve_request.target = {
+      selected_mesh,
+      node_rid_t::from_string (target.rid.to_string ()),
+      target.lifecycle_generation,
+      target_token};
+    reserve_request.creating_payload = std::move (creating_payload);
+    reserve_request.pending_capacity_delta = 1;
+    const auto reserved =
+      _location_store
+        ->reserve (std::move (reserve_request))
+        .result ()
+        .value ();
+    if (const auto *ready =
+          std::get_if<object_already_exists_t> (&reserved)) {
+        if (exclusive)
+            return task_t<spot_create_result_t> (
+              result_t<spot_create_result_t>::failure (
+                framework_error_kind_t::spot_create_failed,
+                "User Spot already exists"));
+        return task_t<spot_create_result_t> (
+          result_t<spot_create_result_t>::success (
+            {spot_ref_t{
+               *spot_rid,
+               ready->current.object_generation,
+               ready->current.allocation.mesh_name,
+               ready->current.allocation.node_rid},
+             spot_create_state_t::existing,
+             std::nullopt}));
+    }
+    if (std::holds_alternative<object_type_mismatch_t> (reserved))
+        return task_t<spot_create_result_t> (
+          result_t<spot_create_result_t>::failure (
+            framework_error_kind_t::spot_type_mismatch,
+            "User Spot stable type does not match"));
+    if (std::holds_alternative<
+          object_placement_capacity_exhausted_t> (reserved))
+        return task_t<spot_create_result_t> (
+          result_t<spot_create_result_t>::failure (
+            framework_error_kind_t::placement_capacity_exhausted,
+            "User Spot placement capacity is exhausted"));
+    if (const auto *created =
+          std::get_if<object_reserved_t> (&reserved)) {
+        fence = created->fence;
+    } else if (const auto *conflict =
+                 std::get_if<object_reserve_conflict_t> (&reserved)) {
+        const auto *snapshot =
+          std::get_if<authority_snapshot_t> (&conflict->current);
+        auto *projection =
+          dynamic_cast<pending_creation_projection_provider_t *> (
+            _location_store.get ());
+        const auto pending = projection
+          ? projection->read_pending_creation (key)
+          : std::nullopt;
+        if (!snapshot || !pending
+            || snapshot->allocation.stable_type != stable_type)
+            return task_t<spot_create_result_t> (
+              result_t<spot_create_result_t>::failure (
+                framework_error_kind_t::request_failed,
+                "User Spot Creating attempt cannot be joined"));
+        fence = pending->fence;
+        target.mesh_name = fence.target.mesh_name;
+        target.rid = zlink::routing_id_t::from (
+          std::string (fence.target.node_rid.value ()));
+        target.lifecycle_generation =
+          fence.target.node_lifecycle_generation;
+        target.owner_id = fence.target.owner.owner_id;
+        target.lease_generation = fence.target.owner.lease_generation;
+    } else {
+        return task_t<spot_create_result_t> (
+          result_t<spot_create_result_t>::failure (
+            framework_error_kind_t::request_failed,
+            "User Spot reservation failed"));
+    }
+    const auto source_status = source->native_node ().status ();
+    protocol::user_spot_create_header_t command{
+      0,
+      {source_status.lifecycle_generation (),
+       next_user_spot_operation.fetch_add (
+         1, std::memory_order_relaxed)},
+      source_status.routing_id ().to_bytes (),
+      source_status.lifecycle_generation (),
+      zlink::routing_id_t::from (
+        std::string (spot_rid->value ()))
+        .to_bytes (),
+      stable_type,
+      {fence.reservation_id,
+       fence.expected_store_version,
+       fence.object_generation,
+       fence.authority_owner_generation,
+       target.rid.to_bytes (),
+       target.lifecycle_generation,
+       fence.target.owner.owner_id,
+       static_cast<std::uint64_t> (
+         fence.target.owner.lease_generation),
+       fence.pending_capacity_delta},
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch ()
+          + timeout)
+          .count ())};
+    auto completion =
+      std::make_shared<detail::task_completion_source_t<
+        spot_create_result_t>> ();
+    auto output = completion->task ();
+    const auto accepted =
+      source->native_node ().create_user_spot_remote (
+        target.rid, std::move (command), timeout,
+        [completion, target, serializers = _serializers] (
+          foundation::operation_terminal_t terminal,
+          protocol::user_spot_create_reply_t reply,
+          std::optional<protocol::application_payload_t>
+            application_reply) {
+            if (terminal
+                  != foundation::operation_terminal_t::completed
+                || reply.header.terminal_result != 0) {
+                completion->complete (
+                  result_t<spot_create_result_t>::failure (
+                    framework_error_kind_t::request_failed,
+                    "Remote User Spot creation failed"));
+                return;
+            }
+            std::optional<message_t> decoded_reply;
+            if (application_reply)
+                decoded_reply = message_t::from_raw (
+                  zlink::message_t::from (
+                    application_reply->payload),
+                  serializers);
+            completion->complete (
+              result_t<spot_create_result_t>::success (
+                {{spot_rid_t::from_string (
+                    zlink::routing_id_t::from (
+                      reply.spot_routing_id)
+                      .to_string ()),
+                  reply.object_generation,
+                  target.mesh_name,
+                  node_rid_t::from_string (
+                    target.rid.to_string ())},
+                 reply.result
+                       == protocol::user_spot_create_result_t::existing
+                   ? spot_create_state_t::existing
+                   : reply.result
+                         == protocol::user_spot_create_result_t::created
+                     ? spot_create_state_t::created
+                     : spot_create_state_t::rejected,
+                 std::move (decoded_reply)}));
+        });
+    if (!accepted)
+        completion->complete (
+          result_t<spot_create_result_t>::failure (
+            framework_error_kind_t::request_failed,
+            "User Spot create operation was not admitted"));
+    return output;
+}
+
+task_t<std::optional<spot_ref_t>>
+mesh_node_host_service_t::find_user_spot (spot_rid_t spot_rid)
+{
+    if (!_location_store)
+        return task_t<std::optional<spot_ref_t>> (
+          result_t<std::optional<spot_ref_t>>::failure (
+            framework_error_kind_t::invalid_configuration,
+            "Spot manager requires a Location Store"));
+    const auto read = _location_store
+      ->read_authority (
+        authority_key_t{
+          "2:" + std::string (spot_rid.value ())})
+      .result ()
+      .value ();
+    const auto *snapshot = std::get_if<authority_snapshot_t> (&read);
+    if (!snapshot
+        || snapshot->allocation.object_kind
+             != placement_object_kind_t::user_spot
+        || snapshot->allocation.capacity_state
+             != placement_capacity_state_t::active)
+        return task_t<std::optional<spot_ref_t>> (
+          result_t<std::optional<spot_ref_t>>::success (
+            std::nullopt));
+    return task_t<std::optional<spot_ref_t>> (
+      result_t<std::optional<spot_ref_t>>::success (
+        spot_ref_t{
+          std::move (spot_rid),
+          snapshot->object_generation,
+          snapshot->allocation.mesh_name,
+          snapshot->allocation.node_rid}));
+}
+
+task_t<bool> mesh_node_host_service_t::close_user_spot (
+  const std::shared_ptr<detail::mesh_node_runtime_t> &,
+  spot_ref_t spot)
+{
+    if (!_location_store)
+        return task_t<bool> (result_t<bool>::failure (
+          framework_error_kind_t::invalid_configuration,
+          "Spot manager requires a Location Store"));
+    const auto source_node = std::find_if (
+      _nodes.begin (), _nodes.end (),
+      [&] (const auto &node) {
+          return node && node->mesh_name () == spot.mesh_name ();
+      });
+    if (source_node == _nodes.end ())
+        return task_t<bool> (result_t<bool>::failure (
+          framework_error_kind_t::mesh_not_found,
+          "The SpotRef Mesh is not registered in this process"));
+    const auto source = *source_node;
+    const auto read = _location_store
+      ->read_authority (
+        authority_key_t{
+          "2:" + std::string (spot.spot_rid ().value ())})
+      .result ()
+      .value ();
+    const auto *snapshot = std::get_if<authority_snapshot_t> (&read);
+    if (!snapshot)
+        return task_t<bool> (result_t<bool>::success (false));
+    if (snapshot->object_generation != spot.object_generation ())
+        return task_t<bool> (result_t<bool>::failure (
+          framework_error_kind_t::spot_generation_stale,
+          "User Spot generation is stale"));
+    if (snapshot->allocation.object_kind
+          != placement_object_kind_t::user_spot
+        || snapshot->allocation.capacity_state
+             != placement_capacity_state_t::active
+        || snapshot->allocation.mesh_name != spot.mesh_name ()
+        || snapshot->allocation.node_rid.value ()
+             != spot.node_rid ().value ())
+        return task_t<bool> (result_t<bool>::failure (
+          framework_error_kind_t::spot_moving,
+          "User Spot owner is moving"));
+    const auto source_status = source->native_node ().status ();
+    protocol::user_spot_close_header_t command{
+      0,
+      {source_status.lifecycle_generation (),
+       next_user_spot_operation.fetch_add (
+         1, std::memory_order_relaxed)},
+      source_status.routing_id ().to_bytes (),
+      source_status.lifecycle_generation (),
+      {zlink::routing_id_t::from (
+         std::string (spot.spot_rid ().value ()))
+         .to_bytes (),
+       spot.object_generation (),
+       zlink::routing_id_t::from (
+         std::string (snapshot->allocation.node_rid.value ()))
+         .to_bytes (),
+       snapshot->allocation.node_lifecycle_generation,
+       snapshot->authority_owner_generation,
+       snapshot->store_version},
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch ()
+          + std::chrono::seconds (30))
+          .count ())};
+    auto completion =
+      std::make_shared<detail::task_completion_source_t<bool>> ();
+    auto output = completion->task ();
+    const auto accepted =
+      source->native_node ().close_user_spot_remote (
+        zlink::routing_id_t::from (
+          std::string (snapshot->allocation.node_rid.value ())),
+        std::move (command), std::chrono::seconds (30),
+        [completion] (
+          foundation::operation_terminal_t terminal,
+          protocol::user_spot_close_reply_t reply) {
+            if (terminal
+                  != foundation::operation_terminal_t::completed
+                || reply.header.terminal_result != 0) {
+                completion->complete (
+                  result_t<bool>::failure (
+                    framework_error_kind_t::request_failed,
+                    "Remote User Spot close failed"));
+                return;
+            }
+            completion->complete (
+              result_t<bool>::success (reply.closed));
+        });
+    if (!accepted)
+        completion->complete (
+          result_t<bool>::failure (
+            framework_error_kind_t::request_failed,
+            "User Spot close operation was not admitted"));
+    return output;
+}
+
 void mesh_node_host_service_t::start (service_provider_t &services)
 {
     _services = &services;
     _stop.store (false, std::memory_order_release);
     _accept_application_dispatch.store (true, std::memory_order_release);
-    for (const auto &node : _nodes)
-        node->start ();
     auto store = std::shared_ptr<location_store_t> (
       &services.get_required<location_store_t> (),
       [] (location_store_t *) noexcept {});
+    _location_store = store;
     for (std::size_t index = 0; index < _nodes.size (); ++index) {
         const auto registration = _registrations[index];
-        _nodes[index]->native_node ().configure_user_spot_operations (
+        const auto source = _nodes[index];
+        registration->spot_state->create_user_spot =
+          [this, source] (
+            bool exclusive,
+            std::optional<spot_rid_t> spot_rid,
+            std::string stable_type,
+            std::optional<std::string> mesh_name,
+            std::optional<message_t> request,
+            std::optional<placement_profile_t> profile,
+            std::optional<affinity_key_t> affinity,
+            std::chrono::milliseconds timeout) {
+              return create_user_spot (
+                source, exclusive, std::move (spot_rid),
+                std::move (stable_type), std::move (mesh_name),
+                std::move (request), std::move (profile),
+                std::move (affinity), timeout);
+          };
+        registration->spot_state->find_user_spot =
+          [this] (spot_rid_t spot_rid) {
+              return find_user_spot (std::move (spot_rid));
+          };
+        registration->spot_state->close_user_spot =
+          [this, source] (spot_ref_t spot) {
+              return close_user_spot (source, std::move (spot));
+          };
+        _nodes[index]->configure_user_spot_operations (
           store,
           [this, registration] (
             const stateful::object_ref_t &object,
@@ -136,6 +585,60 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                        == spot_create_state_t::existing,
                 std::move (application_reply)};
           });
+    }
+    for (const auto &node : _nodes)
+        node->start ();
+    auto &location_runtime =
+      services.get_required<location_runtime_t> ();
+    _location_owner = location_runtime.current_owner_token ();
+    if (!_location_owner)
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "MeshNode publication requires an active Location owner lease");
+    _published_mesh_nodes.clear ();
+    for (std::size_t index = 0; index < _nodes.size (); ++index) {
+        const auto &node = _nodes[index];
+        const auto &registration = _registrations[index];
+        const auto status = node->status ();
+        mesh_node_descriptor_t descriptor;
+        descriptor.mesh_name = node->mesh_name ();
+        descriptor.rid = status.routing_id ();
+        descriptor.lifecycle_generation =
+          status.lifecycle_generation ();
+        descriptor.descriptor_revision = 1;
+        descriptor.endpoint = status.local_endpoint ();
+        descriptor.channel_weights = node->channel_weights ();
+        descriptor.object_role = object_role_t::server;
+        descriptor.placement_weight = 100;
+        descriptor.state = framework_runtime_state_t::serving;
+        descriptor.security_identity =
+          _location_owner->owner_id;
+        descriptor.owner_id = _location_owner->owner_id;
+        descriptor.lease_generation =
+          _location_owner->lease_generation;
+        for (const auto &stable_type :
+             registration->spot_state->snapshot.spot_names) {
+            if (registration->spot_state->snapshot.entry_spot_name
+                == stable_type)
+                continue;
+            descriptor.object_capabilities.push_back (
+              object_capability_t{
+                .object_kind =
+                  placement_object_kind_t::user_spot,
+                .stable_type = stable_type});
+        }
+        const auto written =
+          _location_store
+            ->update_mesh_node (
+              descriptor, location_write_intent_t::new_claim)
+            .result ()
+            .value ();
+        if (written.status != location_write_status_t::stored)
+            throw framework_exception_t (
+              framework_error_kind_t::invalid_configuration,
+              "MeshNode Location descriptor publication was fenced");
+        _published_mesh_nodes.push_back (
+          {descriptor.mesh_name, descriptor.rid});
     }
     for (std::size_t index = 0; index < _nodes.size (); ++index) {
         const auto node = _nodes[index];
@@ -309,6 +812,19 @@ void mesh_node_host_service_t::stop () noexcept
     }
     trace_mesh_host_stop ("pump-join-end");
     _threads.clear ();
+    if (_location_store && _location_owner) {
+        for (const auto &key : _published_mesh_nodes) {
+            try {
+                (void) _location_store
+                  ->remove_mesh_node (key, *_location_owner)
+                  .result ();
+            }
+            catch (...) {
+            }
+        }
+    }
+    _published_mesh_nodes.clear ();
+    _location_owner.reset ();
     for (auto &node : _nodes) {
         trace_mesh_host_stop ("node-stop-begin");
         node->stop ();

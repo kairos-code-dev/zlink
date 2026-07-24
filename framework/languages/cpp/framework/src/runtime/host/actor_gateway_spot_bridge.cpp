@@ -1199,9 +1199,9 @@ void configure_actor_gateway_spot_bridge (
             services.add_singleton<spot_node_runtime_t> (
               std::make_unique<spot_node_runtime_t> (*runtime));
         }
-        if (!services.contains (std::type_index (typeid (spot_node_manager_t)))) {
-            services.add_singleton<spot_node_manager_t> (
-              std::make_unique<spot_node_manager_t> (runtime->manager ()));
+        if (!services.contains (std::type_index (typeid (spot_manager_t)))) {
+            services.add_singleton<spot_manager_t> (
+              std::make_unique<spot_manager_t> (runtime->manager ()));
         }
         auto framework_provider = services.build_provider ();
         auto &actor_gateway = framework_provider.get_required<actor_gateway_runtime_t> ();

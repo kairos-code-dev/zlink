@@ -1182,9 +1182,9 @@ spot_handler_registry_t spot_context_t::handlers ()
     return spot_handler_registry_t (_state);
 }
 
-spot_node_manager_t spot_context_t::manager () const
+spot_manager_t spot_context_t::manager () const
 {
-    return spot_node_manager_t (_state->node);
+    return spot_manager_t (_state->node);
 }
 
 channel_client_t spot_context_t::outbound () const
@@ -2182,19 +2182,19 @@ spot_node_snapshot_t spot_node_builder_t::snapshot () const
     return _state->snapshot;
 }
 
-spot_create_result_t spot_node_builder_t::create_spot (std::string spot_name)
+detail::local_spot_create_result_t spot_node_builder_t::create_spot (std::string spot_name)
 {
     return detail::spot_node_runtime_t (_state).create_spot (std::move (spot_name));
 }
 
-spot_create_result_t spot_node_builder_t::create_spot_raw (std::string spot_name,
+detail::local_spot_create_result_t spot_node_builder_t::create_spot_raw (std::string spot_name,
                                                            zlink::message_t request)
 {
     return detail::spot_node_runtime_t (_state).create_spot (std::move (spot_name),
                                                              std::move (request));
 }
 
-spot_create_result_t spot_node_builder_t::create_spot (std::string spot_name,
+detail::local_spot_create_result_t spot_node_builder_t::create_spot (std::string spot_name,
                                                        const message_t &request)
 {
     if (!_state || !_state->channel_runtime || !_state->channel_runtime->serializers) {
@@ -2206,14 +2206,14 @@ spot_create_result_t spot_node_builder_t::create_spot (std::string spot_name,
       detail::message_to_raw (request, *_state->channel_runtime->serializers));
 }
 
-spot_create_result_t spot_node_builder_t::get_or_create_spot (std::string spot_name,
+detail::local_spot_create_result_t spot_node_builder_t::get_or_create_spot (std::string spot_name,
                                                               spot_rid_t spot_rid)
 {
     return detail::spot_node_runtime_t (_state).get_or_create_spot (std::move (spot_name),
                                                                     std::move (spot_rid));
 }
 
-spot_create_result_t spot_node_builder_t::get_or_create_spot_raw (std::string spot_name,
+detail::local_spot_create_result_t spot_node_builder_t::get_or_create_spot_raw (std::string spot_name,
                                                                   spot_rid_t spot_rid,
                                                                   zlink::message_t request)
 {
@@ -2221,7 +2221,7 @@ spot_create_result_t spot_node_builder_t::get_or_create_spot_raw (std::string sp
       std::move (spot_name), std::move (spot_rid), std::move (request));
 }
 
-spot_create_result_t spot_node_builder_t::get_or_create_spot (std::string spot_name,
+detail::local_spot_create_result_t spot_node_builder_t::get_or_create_spot (std::string spot_name,
                                                               spot_rid_t spot_rid,
                                                               const message_t &request)
 {
@@ -2276,119 +2276,152 @@ spot_node_runtime_t::spot_node_runtime_t (std::shared_ptr<spot_node_builder_stat
 namespace zlink::framework
 {
 
-spot_node_manager_t::spot_node_manager_t () :
+spot_manager_t::spot_manager_t () :
     _state (std::make_shared<detail::spot_node_builder_state_t> (""))
 {
 }
 
-spot_node_manager_t::spot_node_manager_t (
+spot_manager_t::spot_manager_t (
   std::shared_ptr<detail::spot_node_builder_state_t> state) :
     _state (std::move (state))
 {
 }
 
-spot_node_manager_t::~spot_node_manager_t () = default;
-spot_node_manager_t::spot_node_manager_t (spot_node_manager_t &&) noexcept = default;
-spot_node_manager_t &spot_node_manager_t::operator= (spot_node_manager_t &&) noexcept = default;
+spot_manager_t::~spot_manager_t () = default;
+spot_manager_t::spot_manager_t (spot_manager_t &&) noexcept = default;
+spot_manager_t &spot_manager_t::operator= (spot_manager_t &&) noexcept = default;
 
-spot_create_result_t spot_node_manager_t::create_spot (std::string spot_name)
+spot_create_call_t::spot_create_call_t (
+  std::shared_ptr<detail::spot_create_call_state_t> state) :
+    _state (std::move (state))
 {
-    return detail::spot_node_runtime_t (_state).create_spot (std::move (spot_name));
 }
 
-spot_create_result_t spot_node_manager_t::create_spot_raw (std::string spot_name,
-                                                           zlink::message_t request)
+spot_create_call_t::~spot_create_call_t () = default;
+spot_create_call_t::spot_create_call_t (spot_create_call_t &&) noexcept = default;
+spot_create_call_t &
+spot_create_call_t::operator= (spot_create_call_t &&) noexcept = default;
+
+spot_create_call_t &spot_create_call_t::in_mesh (std::string mesh_name)
 {
-    return detail::spot_node_runtime_t (_state).create_spot (std::move (spot_name),
-                                                             std::move (request));
+    if (!_state || _state->mesh_name)
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Spot create Mesh can be set only once");
+    _state->mesh_name = std::move (mesh_name);
+    return *this;
 }
 
-spot_create_result_t spot_node_manager_t::create_spot (std::string spot_name,
-                                                       const message_t &request)
+spot_create_call_t &spot_create_call_t::creation_request (message_t request)
 {
-    if (!_state || !_state->channel_runtime || !_state->channel_runtime->serializers) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "spot create requires a serializer registry");
-    }
-    return create_spot_raw (
-      std::move (spot_name),
-      detail::message_to_raw (request, *_state->channel_runtime->serializers));
+    if (!_state || _state->request)
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Spot creation request can be set only once");
+    _state->request = std::move (request);
+    return *this;
 }
 
-spot_create_result_t spot_node_manager_t::get_or_create_spot (std::string spot_name,
-                                                              spot_rid_t spot_rid)
+spot_create_call_t &
+spot_create_call_t::placement_profile (placement_profile_t profile)
 {
-    return detail::spot_node_runtime_t (_state).get_or_create_spot (std::move (spot_name),
-                                                                    std::move (spot_rid));
+    if (!_state || _state->profile)
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Spot placement profile can be set only once");
+    _state->profile = std::move (profile);
+    return *this;
 }
 
-spot_create_result_t spot_node_manager_t::get_or_create_spot_raw (std::string spot_name,
-                                                                  spot_rid_t spot_rid,
-                                                                  zlink::message_t request)
+spot_create_call_t &spot_create_call_t::affinity_key (affinity_key_t key)
 {
-    return detail::spot_node_runtime_t (_state).get_or_create_spot (
-      std::move (spot_name), std::move (spot_rid), std::move (request));
+    if (!_state || _state->affinity)
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Spot affinity key can be set only once");
+    _state->affinity = std::move (key);
+    return *this;
 }
 
-spot_create_result_t spot_node_manager_t::get_or_create_spot (std::string spot_name,
-                                                              spot_rid_t spot_rid,
-                                                              const message_t &request)
+spot_create_call_t &
+spot_create_call_t::timeout (std::chrono::milliseconds timeout)
 {
-    if (!_state || !_state->channel_runtime || !_state->channel_runtime->serializers) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "spot get or create requires a serializer registry");
-    }
-    return get_or_create_spot_raw (
-      std::move (spot_name), std::move (spot_rid),
-      detail::message_to_raw (request, *_state->channel_runtime->serializers));
+    if (!_state || _state->timeout || timeout <= std::chrono::milliseconds::zero ())
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Spot create timeout must be positive and set only once");
+    _state->timeout = timeout;
+    return *this;
 }
 
-zlink::message_t spot_node_manager_t::serialize_request (std::type_index request_type,
-                                                         const void *request) const
+task_t<spot_create_result_t> spot_create_call_t::submit ()
 {
-    if (!_state || !_state->channel_runtime || !_state->channel_runtime->serializers) {
-        throw framework_exception_t (framework_error_kind_t::request_protocol_error,
-                                     "spot request requires a serializer registry");
-    }
-    return detail::encoded_payload_to_raw (
-      _state->channel_runtime->serializers->serialize (request_type, request));
+    if (!_state || _state->submitted)
+        return task_t<spot_create_result_t> (
+          result_t<spot_create_result_t>::failure (
+            framework_error_kind_t::already_submitted,
+            "Spot create call was already submitted"));
+    _state->submitted = true;
+    if (!_state->node || !_state->node->create_user_spot)
+        return task_t<spot_create_result_t> (
+          result_t<spot_create_result_t>::failure (
+            framework_error_kind_t::invalid_configuration,
+            "Spot manager is not connected to a Location runtime"));
+    return _state->node->create_user_spot (
+      _state->exclusive, _state->spot_rid, std::move (_state->stable_type),
+      std::move (_state->mesh_name), std::move (_state->request),
+      std::move (_state->profile), std::move (_state->affinity),
+      _state->timeout.value_or (std::chrono::seconds (30)));
 }
 
-task_t<std::optional<spot_info_t>> spot_node_manager_t::find_spot (spot_rid_t spot_rid) const
+spot_create_call_t spot_manager_t::create (std::string stable_type)
 {
-    return task_t<std::optional<spot_info_t>> (result_t<std::optional<spot_info_t>>::success (
-      detail::spot_node_runtime_t (_state).find_spot (std::move (spot_rid))));
+    auto state = std::make_shared<detail::spot_create_call_state_t> ();
+    state->node = _state;
+    state->exclusive = true;
+    state->stable_type = std::move (stable_type);
+    return spot_create_call_t (std::move (state));
 }
 
-task_t<std::vector<spot_info_t>> spot_node_manager_t::list_spots () const
+spot_create_call_t spot_manager_t::get_or_create (
+  spot_rid_t spot_rid,
+  std::string stable_type)
 {
-    return task_t<std::vector<spot_info_t>> (result_t<std::vector<spot_info_t>>::success (
-      detail::spot_node_runtime_t (_state).list_spots ()));
+    auto state = std::make_shared<detail::spot_create_call_state_t> ();
+    state->node = _state;
+    state->spot_rid = std::move (spot_rid);
+    state->stable_type = std::move (stable_type);
+    return spot_create_call_t (std::move (state));
 }
 
-task_t<bool> spot_node_manager_t::close_spot (spot_rid_t spot_rid)
+task_t<std::optional<spot_ref_t>>
+spot_manager_t::find (spot_rid_t spot_rid) const
 {
-    return detail::spot_node_runtime_t (_state).close_spot (std::move (spot_rid));
+    if (!_state || !_state->find_user_spot)
+        return task_t<std::optional<spot_ref_t>> (
+          result_t<std::optional<spot_ref_t>>::failure (
+            framework_error_kind_t::invalid_configuration,
+            "Spot manager is not connected to a Location runtime"));
+    return _state->find_user_spot (std::move (spot_rid));
 }
 
-std::optional<std::string> spot_node_manager_t::spot_name_for (spot_rid_t spot_rid) const
+task_t<bool> spot_manager_t::close (spot_ref_t spot)
 {
-    return detail::spot_node_runtime_t (_state).spot_name_for (std::move (spot_rid));
-}
-
-std::optional<spot_route_t> spot_node_manager_t::resolve_spot (spot_rid_t spot_rid) const
-{
-    return detail::spot_node_runtime_t (_state).resolve_spot (std::move (spot_rid));
+    if (!_state || !_state->close_user_spot)
+        return task_t<bool> (result_t<bool>::failure (
+          framework_error_kind_t::invalid_configuration,
+          "Spot manager is not connected to a Location runtime"));
+    return _state->close_user_spot (std::move (spot));
 }
 
 std::optional<actor_ref_t>
-spot_node_manager_t::current_actor_ref (const actor_ref_t &actor_ref) const
+spot_manager_t::current_actor_ref (const actor_ref_t &actor_ref) const
 {
     return detail::spot_node_runtime_t (_state).current_actor_ref (actor_ref);
 }
 
 result_t<std::optional<zlink::message_t>>
-spot_node_manager_t::relay_actor_packet (const actor_ref_t &actor_ref,
+spot_manager_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                          actor_context_t actor_context,
                                          std::string_view packet_name,
                                          const zlink::message_t &message,
@@ -2402,7 +2435,7 @@ spot_node_manager_t::relay_actor_packet (const actor_ref_t &actor_ref,
 }
 
 result_t<std::optional<zlink::message_t>>
-spot_node_manager_t::relay_actor_packet (const actor_ref_t &actor_ref,
+spot_manager_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                          actor_context_t actor_context,
                                          detail::stream_message_kind_t message_kind,
                                          std::string_view packet_name,
@@ -2421,7 +2454,7 @@ spot_node_manager_t::relay_actor_packet (const actor_ref_t &actor_ref,
       serializers, std::move (metadata));
 }
 
-spot_publisher_client_t::spot_publisher_client_t (spot_node_manager_t manager,
+spot_publisher_client_t::spot_publisher_client_t (spot_manager_t manager,
                                                   serializer_registry_t &serializers) :
     _manager (std::move (manager)), _serializers (&serializers)
 {
@@ -2500,9 +2533,9 @@ publish_call_t spot_publisher_client_t::publish_raw (std::string channel_name,
 namespace zlink::framework::detail
 {
 
-spot_node_manager_t spot_node_runtime_t::manager () const
+spot_manager_t spot_node_runtime_t::manager () const
 {
-    return spot_node_manager_t (_state);
+    return spot_manager_t (_state);
 }
 
 result_t<spot_context_t>
@@ -4121,12 +4154,12 @@ std::vector<spot_node_snapshot_t> spot_node_runtime_t::snapshots (
     return result;
 }
 
-spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name)
+local_spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name)
 {
     return create_spot (std::move (spot_name), zlink::message_t{});
 }
 
-spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
+local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
   std::string spot_name,
   spot_rid_t spot_rid,
   zlink::message_t request,
@@ -4213,7 +4246,7 @@ spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
         }
         if (!response.accepted) {
             remove_activation ();
-            return spot_create_result_t{spot_rid, spot_create_state_t::rejected, response.reply,
+            return local_spot_create_result_t{spot_rid, spot_create_state_t::rejected, response.reply,
                                         context};
         }
         create_reply = response.reply;
@@ -4251,7 +4284,7 @@ spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
           _state->location_lifecycle->claim_spot (std::move (location));
         if (claimed.status != location_write_status_t::stored) {
             remove_ready_activation ();
-            return spot_create_result_t{spot_rid, spot_create_state_t::rejected, std::nullopt,
+            return local_spot_create_result_t{spot_rid, spot_create_state_t::rejected, std::nullopt,
                                         context};
         }
     }
@@ -4274,10 +4307,10 @@ spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
             metrics.updown ("zlink.spot.count", "{spot}", 1, {{"kind", kind}});
         }
     }
-    return spot_create_result_t{spot_rid, spot_create_state_t::created, create_reply, context};
+    return local_spot_create_result_t{spot_rid, spot_create_state_t::created, create_reply, context};
 }
 
-spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name,
+local_spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name,
                                                        zlink::message_t request)
 {
     std::unique_lock<std::recursive_mutex> node_lock (_state->mutex);
@@ -4291,13 +4324,13 @@ spot_create_result_t spot_node_runtime_t::create_spot (std::string spot_name,
                                          std::move (request), node_lock);
 }
 
-spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_name,
+local_spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_name,
                                                               spot_rid_t spot_rid)
 {
     return get_or_create_spot (std::move (spot_name), std::move (spot_rid), zlink::message_t{});
 }
 
-spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_name,
+local_spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_name,
                                                               spot_rid_t spot_rid,
                                                               zlink::message_t request)
 {
@@ -4318,7 +4351,7 @@ spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_n
             throw framework_exception_t (framework_error_kind_t::spot_type_mismatch,
                                          "spot rid is already bound to a different spot type");
         }
-        return spot_create_result_t{spot_rid, spot_create_state_t::existing, std::nullopt,
+        return local_spot_create_result_t{spot_rid, spot_create_state_t::existing, std::nullopt,
                                     existing->second};
     }
     if (const auto pending = _state->pending_spot_creations_by_rid.find (rid_value);
@@ -4331,13 +4364,13 @@ spot_create_result_t spot_node_runtime_t::get_or_create_spot (std::string spot_n
         node_lock.unlock ();
         auto result = future.get ();
         if (result.state == spot_create_state_t::created) {
-            return spot_create_result_t{result.spot_rid, spot_create_state_t::existing,
+            return local_spot_create_result_t{result.spot_rid, spot_create_state_t::existing,
                                         std::nullopt, result.context};
         }
         return result;
     }
 
-    auto promise = std::make_shared<std::promise<spot_create_result_t>> ();
+    auto promise = std::make_shared<std::promise<local_spot_create_result_t>> ();
     _state->pending_spot_creations_by_rid.emplace (
       rid_value, detail::spot_node_builder_state_t::pending_spot_creation_t{
                    spot_name, promise->get_future ().share ()});

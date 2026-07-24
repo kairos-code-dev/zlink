@@ -1208,7 +1208,7 @@ static_assert (
                  zlink::framework::task_t<bool>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ().manager ()),
-                 zlink::framework::spot_node_manager_t>);
+                 zlink::framework::spot_manager_t>);
 static_assert (!has_run_worker<zlink::framework::spot_context_t>);
 static_assert (has_split_workers<zlink::framework::spot_context_t>);
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_context_t &> ()
@@ -1256,27 +1256,35 @@ static_assert (
 static_assert (static_cast<int> (zlink::framework::spot_handler_kind_t::actor_send) == 2);
 static_assert (static_cast<int> (zlink::framework::spot_handler_kind_t::actor_request) == 3);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_manager_t &> ()
-                             .create_spot (std::declval<std::string> ())),
-                 zlink::framework::spot_create_result_t>);
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_manager_t &> ()
+                             .create (std::declval<std::string> ())),
+                 zlink::framework::spot_create_call_t>);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_manager_t &> ()
-                             .create_spot (std::declval<std::string> (),
-                                           std::declval<zlink::framework::message_t> ())),
-                 zlink::framework::spot_create_result_t>);
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_manager_t &> ()
-                             .get_or_create_spot (
-                               std::declval<std::string> (),
-                               std::declval<zlink::framework::spot_rid_t> ())),
-                 zlink::framework::spot_create_result_t>);
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_manager_t &> ()
-                             .get_or_create_spot (
-                               std::declval<std::string> (),
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_manager_t &> ()
+                             .get_or_create (
                                std::declval<zlink::framework::spot_rid_t> (),
+                               std::declval<std::string> ())),
+                 zlink::framework::spot_create_call_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<const zlink::framework::spot_manager_t &> ()
+                             .find (std::declval<zlink::framework::spot_rid_t> ())),
+                 zlink::framework::task_t<
+                   std::optional<zlink::framework::spot_ref_t>>>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_manager_t &> ()
+                             .close (std::declval<zlink::framework::spot_ref_t> ())),
+                 zlink::framework::task_t<bool>>);
+static_assert (!std::is_copy_constructible_v<zlink::framework::spot_create_call_t>);
+static_assert (std::is_move_constructible_v<zlink::framework::spot_create_call_t>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_create_call_t &> ()
+                             .creation_request (
                                std::declval<zlink::framework::message_t> ())),
-                 zlink::framework::spot_create_result_t>);
+                 zlink::framework::spot_create_call_t &>);
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::spot_create_call_t &> ()
+                             .submit ()),
+                 zlink::framework::task_t<zlink::framework::spot_create_result_t>>);
 static_assert (!has_destroy_actor<zlink::framework::spot_context_t>);
 static_assert (has_destroy_actor<zlink::framework::entry_spot_context_t>);
 static_assert (!has_run_worker<zlink::framework::entry_spot_context_t>);
@@ -1306,20 +1314,10 @@ static_assert (
                    std::declval<contract_actor_t &> ())),
                  zlink::framework::task_t<void>>);
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ().create_spot (
-                   "stage", std::declval<const zlink::framework::message_t &> ())),
-                 zlink::framework::spot_create_result_t>);
-static_assert (
   std::is_same_v<
     decltype (std::declval<zlink::framework::spot_node_builder_t &> ().add_spot<contract_spot_t> (
       "stage", std::declval<std::function<std::shared_ptr<contract_spot_t> ()>> ())),
     zlink::framework::spot_node_builder_t &>);
-static_assert (std::is_same_v<decltype (std::declval<zlink::framework::spot_node_builder_t &> ()
-                                          .get_or_create_spot (
-                                            "stage",
-                                            std::declval<zlink::framework::spot_rid_t> (),
-                                            std::declval<const zlink::framework::message_t &> ())),
-                              zlink::framework::spot_create_result_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_create_result_t> ().reply),
                  std::optional<zlink::framework::message_t>>);

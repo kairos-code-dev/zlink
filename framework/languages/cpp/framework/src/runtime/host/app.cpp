@@ -803,9 +803,9 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         }
     }
     if (!mesh_node_registrations.empty ()
-        && !_state->services.contains (std::type_index (typeid (spot_node_manager_t)))) {
-        _state->services.add_singleton<spot_node_manager_t> (
-          std::make_unique<spot_node_manager_t> (
+        && !_state->services.contains (std::type_index (typeid (spot_manager_t)))) {
+        _state->services.add_singleton<spot_manager_t> (
+          std::make_unique<spot_manager_t> (
             detail::spot_node_runtime_t (
               application_mesh_registration != mesh_node_registrations.end ()
                 ? (*application_mesh_registration)->spot_state
@@ -818,10 +818,13 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
         auto provider = _state->services.build_provider ();
         _state->services.add_singleton<spot_publisher_client_t> (
           std::make_unique<spot_publisher_client_t> (
-            provider.get_required<spot_node_manager_t> (),
+            provider.get_required<spot_manager_t> (),
             _state->serializers));
     }
     const auto location_owner = detail::location_owner_node_rid (mesh_node_registrations);
+    add_hosted_service (
+      std::make_unique<runtime::location_host_service_t> (
+        location_owner));
     std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> mesh_nodes;
     runtime::mesh_node_host_service_t *mesh_node_service = nullptr;
     if (!mesh_node_registrations.empty ()) {
@@ -1195,8 +1198,6 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               });
         }
     }
-    add_hosted_service (
-      std::make_unique<runtime::location_host_service_t> (location_owner));
     if (!monitoring_state->location_sources.empty ()) {
         add_hosted_service (
           std::make_unique<runtime::location_monitoring_host_service_t> (monitoring_state));

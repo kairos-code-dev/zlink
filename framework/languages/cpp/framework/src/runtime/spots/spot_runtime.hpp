@@ -53,10 +53,22 @@ class spot_node_builder_state_t
     struct pending_spot_creation_t
     {
         std::string spot_name;
-        std::shared_future<spot_create_result_t> future;
+        std::shared_future<local_spot_create_result_t> future;
     };
     std::map<std::string, pending_spot_creation_t> pending_spot_creations_by_rid;
     std::weak_ptr<service::mesh_node_t> native_node;
+    std::function<task_t<spot_create_result_t> (
+      bool,
+      std::optional<spot_rid_t>,
+      std::string,
+      std::optional<std::string>,
+      std::optional<message_t>,
+      std::optional<placement_profile_t>,
+      std::optional<affinity_key_t>,
+      std::chrono::milliseconds)> create_user_spot;
+    std::function<task_t<std::optional<spot_ref_t>> (spot_rid_t)>
+      find_user_spot;
+    std::function<task_t<bool> (spot_ref_t)> close_user_spot;
     std::shared_ptr<channel_runtime_state_t> channel_runtime;
     dispatch_options_t dispatch;
     runtime::location_lifecycle_t *location_lifecycle = nullptr;
@@ -157,6 +169,20 @@ class spot_node_builder_state_t
     std::vector<std::string> last_monitoring_peers;
     std::shared_ptr<runtime::offload_executor_t> worker_executor;
     std::uint64_t next_spot_id = 1;
+};
+
+struct spot_create_call_state_t
+{
+    std::shared_ptr<spot_node_builder_state_t> node;
+    bool exclusive = false;
+    std::optional<spot_rid_t> spot_rid;
+    std::string stable_type;
+    std::optional<std::string> mesh_name;
+    std::optional<message_t> request;
+    std::optional<placement_profile_t> profile;
+    std::optional<affinity_key_t> affinity;
+    std::optional<std::chrono::milliseconds> timeout;
+    bool submitted = false;
 };
 
 void drain_spot_node_executors (spot_node_builder_state_t &node);
@@ -341,10 +367,10 @@ class spot_node_runtime_t
                                                     const std::string &spot_node_name);
     static std::vector<spot_node_snapshot_t> snapshots (const zlink_builder_t &builder);
 
-    spot_create_result_t create_spot (std::string spot_name);
-    spot_create_result_t create_spot (std::string spot_name, zlink::message_t request);
-    spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
-    spot_create_result_t
+    local_spot_create_result_t create_spot (std::string spot_name);
+    local_spot_create_result_t create_spot (std::string spot_name, zlink::message_t request);
+    local_spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
+    local_spot_create_result_t
     get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
     std::optional<spot_info_t> find_spot (spot_rid_t spot_rid) const;
     std::vector<spot_info_t> list_spots () const;
@@ -441,7 +467,7 @@ class spot_node_runtime_t
                                                                serializer_registry_t &,
                                                                spot_actor_message_metadata_t)>
         relay);
-    spot_node_manager_t manager () const;
+    spot_manager_t manager () const;
     result_t<actor_join_reply_t> join_actor_to_spot_erased (
       const actor_ref_t &actor_ref,
       spot_rid_t spot_rid,
@@ -1007,7 +1033,7 @@ class spot_node_runtime_t
         }
     }
 
-    spot_create_result_t
+    local_spot_create_result_t
     create_spot_context_unlocked (std::string spot_name,
                                   spot_rid_t spot_rid,
                                   zlink::message_t request,

@@ -864,6 +864,75 @@ class auto_connect_request_client_t final : public zlink::framework::hosted_serv
     zlink::framework::app_t *_app;
 };
 
+class local_user_spot_t final : public zlink::framework::spot_t
+{
+};
+
+class user_spot_manager_client_t final
+    : public zlink::framework::hosted_service_t
+{
+  public:
+    explicit user_spot_manager_client_t (
+      zlink::framework::app_t &app) :
+        _app (&app)
+    {
+    }
+
+    void start (
+      zlink::framework::service_provider_t &services) override
+    {
+        try {
+            auto &manager =
+              services.get_required<zlink::framework::spot_manager_t> ();
+            const auto rid =
+              zlink::framework::spot_rid_t::from_string (
+                "local-user-spot");
+            auto created =
+              manager.get_or_create (rid, "room")
+                .timeout (std::chrono::seconds (2))
+                .submit ()
+                .result ();
+            if (!created) {
+                last_error =
+                  created.error () ? created.error ()->what ()
+                                   : "User Spot create failed";
+                _app->stop ();
+                return;
+            }
+            auto found = manager.find (rid).result ();
+            if (!found || !found.value ()) {
+                last_error =
+                  found.error () ? found.error ()->what ()
+                                 : "User Spot find failed";
+                _app->stop ();
+                return;
+            }
+            auto closed =
+              manager.close (*found.value ()).result ();
+            if (!closed || !closed.value ()) {
+                last_error =
+                  closed.error () ? closed.error ()->what ()
+                                  : "User Spot close failed";
+                _app->stop ();
+                return;
+            }
+            observed = true;
+        }
+        catch (const std::exception &error) {
+            last_error = error.what ();
+        }
+        _app->stop ();
+    }
+
+    void stop () noexcept override {}
+
+    bool observed = false;
+    std::string last_error;
+
+  private:
+    zlink::framework::app_t *_app;
+};
+
 class auto_connect_publish_client_t final : public zlink::framework::hosted_service_t
 {
   public:
@@ -1724,6 +1793,65 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     ASSERT_NE (nullptr, client);
     EXPECT_TRUE (client->observed) << client->last_error;
     EXPECT_TRUE (store->list_peers ({}).result ().value ().empty ());
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      SameProcessClientServerUsesLocalReadyServerWithoutExternalStoreOrManualEndpoint)
+{
+    auto app = zlink::framework::app_t::create ();
+    auto_connect_request_client_t *client = nullptr;
+    const auto endpoint =
+      std::string ("tcp://127.0.0.1:")
+      + std::to_string (bindable_loopback_port (29701));
+
+    app.add_zlink_framework ([&] (
+                               zlink::framework::zlink_framework_options_t &options) {
+        options.handlers ()
+          .group ("orders")
+          .add<auto_connect_request_handler_t> ();
+        options.add_client_server_channel ("orders")
+          .set_routing_id (
+            zlink::routing_id_t::from ("orders-local-router"))
+          .enable_server (endpoint)
+          .enable_client ()
+          .use_handler_group ("orders");
+    });
+    auto service =
+      std::make_unique<auto_connect_request_client_t> (app);
+    client = service.get ();
+    app.add_hosted_service (std::move (service));
+
+    EXPECT_EQ (0, app.run (0, nullptr));
+    ASSERT_NE (nullptr, client);
+    EXPECT_TRUE (client->observed) << client->last_error;
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      PublicSpotManagerUsesLocationReservationAndMeshCommands)
+{
+    auto app = zlink::framework::app_t::create ();
+    user_spot_manager_client_t *client = nullptr;
+    const auto endpoint =
+      std::string ("tcp://127.0.0.1:")
+      + std::to_string (bindable_loopback_port (29702));
+
+    app.add_zlink_framework ([&] (
+                               zlink::framework::zlink_framework_options_t &options) {
+        auto node = options.add_route_mesh ("spot-mesh");
+        node.channel_name ("spot-route");
+        node.set_routing_id (
+              zlink::routing_id_t::from ("spot-local-node"))
+          .listen (endpoint)
+          .add_spot<local_user_spot_t> ("room");
+    });
+    auto service =
+      std::make_unique<user_spot_manager_client_t> (app);
+    client = service.get ();
+    app.add_hosted_service (std::move (service));
+
+    EXPECT_EQ (0, app.run (0, nullptr));
+    ASSERT_NE (nullptr, client);
+    EXPECT_TRUE (client->observed) << client->last_error;
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,

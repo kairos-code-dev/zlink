@@ -30,6 +30,18 @@ class in_memory_location_store_t final : public location_store_t,
     }
 
     std::optional<pending_creation_projection_t>
+    read_pending_creation (object_creation_key_t key) override
+    {
+        std::lock_guard lock (_gate);
+        const auto found = _reservations.find (object_key (key));
+        if (found == _reservations.end ()
+            || found->second.status != reservation_status_t::prepared)
+            return std::nullopt;
+        return pending_creation_projection_t{
+          found->second.request.intent, found->second.fence};
+    }
+
+    std::optional<pending_creation_projection_t>
     read_verified_pending_creation (
       object_creation_key_t key,
       const object_reservation_fence_t &fence) override
@@ -43,7 +55,8 @@ class in_memory_location_store_t final : public location_store_t,
         const auto &request = found->second.request;
         if (request.intent.request_content_reference.empty ())
             return std::nullopt;
-        return pending_creation_projection_t{request.intent};
+        return pending_creation_projection_t{
+          request.intent, found->second.fence};
     }
 
     task_t<location_write_result_t> update_mesh_node (
@@ -918,6 +931,12 @@ class in_memory_location_store_t final : public location_store_t,
                 return completed (
                   object_reserve_result_t{
                     object_type_mismatch_t{authority->second}});
+            if (authority->second.allocation.capacity_state
+                == placement_capacity_state_t::pending)
+                return completed (
+                  object_reserve_result_t{
+                    object_reserve_conflict_t{
+                      authority->second}});
             return completed (
               object_reserve_result_t{
                 object_already_exists_t{authority->second}});

@@ -44,10 +44,29 @@ class mesh_node_host_service_t final : public hosted_service_t
       std::chrono::steady_clock::time_point deadline) noexcept;
 
   private:
+    task_t<spot_create_result_t> create_user_spot (
+      const std::shared_ptr<detail::mesh_node_runtime_t> &source,
+      bool exclusive,
+      std::optional<spot_rid_t> spot_rid,
+      std::string stable_type,
+      std::optional<std::string> mesh_name,
+      std::optional<message_t> request,
+      std::optional<placement_profile_t> profile,
+      std::optional<affinity_key_t> affinity,
+      std::chrono::milliseconds timeout);
+    task_t<std::optional<spot_ref_t>> find_user_spot (
+      spot_rid_t spot_rid);
+    task_t<bool> close_user_spot (
+      const std::shared_ptr<detail::mesh_node_runtime_t> &source,
+      spot_ref_t spot);
+
     std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> _registrations;
     serializer_registry_t *_serializers;
     dispatch_options_t _dispatch_options;
     service_provider_t *_services = nullptr;
+    std::shared_ptr<location_store_t> _location_store;
+    std::optional<location_owner_token_t> _location_owner;
+    std::vector<mesh_node_descriptor_key_t> _published_mesh_nodes;
     std::atomic_bool _stop{false};
     std::atomic_bool _accept_application_dispatch{false};
     mutable std::mutex _dispatch_gate_mutex;

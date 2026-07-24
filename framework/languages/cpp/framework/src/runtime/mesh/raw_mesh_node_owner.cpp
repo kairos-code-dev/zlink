@@ -446,6 +446,14 @@ bool raw_mesh_node_owner_t::reply_failure (
         throw std::invalid_argument (
           "raw mesh failed reply requires a request and terminal result");
     }
+    const auto local = _topology.local_descriptor ();
+    if (request.source_routing_id == local.node_routing_id) {
+        return _operations->fail (
+          operation_id (
+            local.lifecycle_generation,
+            *request.correlation),
+          foundation::operation_terminal_t::transport_failed);
+    }
     std::shared_ptr<detail::backend::raw_route_port_t> port;
     {
         std::lock_guard lifecycle_lock (_lifecycle_mutex);
@@ -657,6 +665,21 @@ bool raw_mesh_node_owner_t::request_infrastructure (
           std::move (callback))) {
         return false;
     }
+    if (target_routing_id == local.node_routing_id) {
+        const auto accepted = _mailbox.try_enqueue (
+          service_mailbox_record_t{
+            owner_key (local.node_routing_id),
+            service_mailbox_domain_t::infrastructure,
+            {header (correlation)},
+            local.node_routing_id,
+            correlation,
+            correlation});
+        if (!accepted)
+            (void) _operations->fail (
+              id,
+              foundation::operation_terminal_t::transport_failed);
+        return accepted;
+    }
     const auto operations = _operations;
     const auto submitted = port->request (
       target_routing_id, {header (correlation)}, timeout,
@@ -713,6 +736,15 @@ bool raw_mesh_node_owner_t::reply_infrastructure (
         throw std::invalid_argument (
           "raw mesh infrastructure reply requires a request record");
     }
+    const auto local = _topology.local_descriptor ();
+    if (request.source_routing_id == local.node_routing_id) {
+        return _operations->complete (
+          operation_id (
+            local.lifecycle_generation,
+            *request.correlation),
+          pack_infrastructure_reply (
+            {std::move (header)}));
+    }
     std::shared_ptr<detail::backend::raw_route_port_t> port;
     {
         std::lock_guard lifecycle_lock (_lifecycle_mutex);
@@ -738,6 +770,26 @@ bool raw_mesh_node_owner_t::reply_user_spot_create (
     if (reply.header.terminal_result != 0 && application_reply)
         throw std::invalid_argument (
           "failed User Spot create reply cannot carry a payload");
+    const auto local = _topology.local_descriptor ();
+    if (request.source_routing_id == local.node_routing_id) {
+        detail::backend::raw_message_t parts{
+          protocol::encode_user_spot_create_reply (
+            reply.header.correlation,
+            reply.header.terminal_result,
+            reply.header.failure_code,
+            reply.result,
+            reply.spot_routing_id,
+            reply.object_generation)};
+        if (application_reply)
+            parts.push_back (
+              protocol::encode_application_payload (
+                *application_reply));
+        return _operations->complete (
+          operation_id (
+            local.lifecycle_generation,
+            *request.correlation),
+          pack_infrastructure_reply (parts));
+    }
     if (!application_reply)
         return reply_infrastructure (
           request,

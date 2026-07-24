@@ -17,6 +17,7 @@ namespace zlink::framework
 namespace runtime
 {
 class actor_client_impl_t;
+class mesh_node_host_service_t;
 } // namespace runtime
 
 class actor_context_t;
@@ -27,7 +28,7 @@ class spot_actor_join_response_t;
 class spot_create_response_t;
 class spot_handler_registry_t;
 class spot_node_builder_t;
-class spot_node_manager_t;
+class spot_manager_t;
 class spot_t;
 
 namespace detail
@@ -93,6 +94,7 @@ class message_t
     friend class detail::spot_node_runtime_t;
     friend class detail::stream_runtime_t;
     friend class runtime::actor_client_impl_t;
+    friend class runtime::mesh_node_host_service_t;
     friend zlink::message_t detail::message_to_raw (const message_t &message,
                                                     const serializer_registry_t &serializers);
     friend class actor_context_t;
@@ -102,7 +104,7 @@ class message_t
     friend class spot_create_response_t;
     friend class spot_handler_registry_t;
     friend class spot_node_builder_t;
-    friend class spot_node_manager_t;
+    friend class spot_manager_t;
     friend class spot_t;
 
     static message_t from_raw (zlink::message_t message,

@@ -33,7 +33,20 @@ enum class framework_error_kind_t
     worker_timed_out = 18,
     worker_failed = 19,
     actor_location_stale = 20,
-    actor_create_rejected = 21
+    actor_create_rejected = 21,
+    object_client_not_configured = 22,
+    mesh_selection_required = 23,
+    mesh_not_found = 24,
+    invalid_configuration = 25,
+    already_submitted = 26,
+    actor_generation_stale = 27,
+    actor_moving = 28,
+    deadline_exceeded = 29,
+    placement_capacity_exhausted = 30,
+    routing_id_conflict = 31,
+    spot_generation_stale = 32,
+    spot_moving = 33,
+    relocation_data_lost = 34
 };
 
 namespace detail

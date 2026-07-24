@@ -1,5 +1,3 @@
-using Microsoft.Extensions.DependencyInjection;
-
 namespace Zlink.Framework.Runtime.Streams;
 
 using Zlink.Framework.Runtime.Actors;
@@ -10,7 +8,7 @@ internal sealed class ZLinkSessionActorCoordinator(
     string? actorDispatchMeshName)
 {
     private readonly ZLinkSessionActorBindingRegistry _bindings =
-        new(runtime, actorDispatchMeshName);
+        new(runtime);
     private readonly ZLinkBoundActorRelaySender _relaySender = new(runtime.Registration.DefaultRequestTimeout);
 
     private string ActorDispatchMeshName => actorDispatchMeshName
@@ -93,8 +91,7 @@ internal sealed class ZLinkSessionActorCoordinator(
                 return await _bindings.BindAsync(
                     context,
                     actor,
-                    cancellationToken,
-                    remoteBindingConfirmed: runtime.IsStarted && !nativeBound).ConfigureAwait(false);
+                    cancellationToken).ConfigureAwait(false);
             }
             catch (Exception bindingFailure)
             {
@@ -184,38 +181,6 @@ internal sealed class ZLinkSessionActorCoordinator(
     {
         if (actor is not ZLinkSessionActor actorRef)
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
-
-        if (runtime.Services.GetService<IZLinkActorResolver>() is { } directory)
-        {
-            // A resolve miss with the row still present is the
-            // transfer-commit window (a claimed-but-unpublished
-            // generation-0 row while the actor moves nodes). The session
-            // already holds a concrete bound ref: proceed with it — the
-            // source incarnation's capture pipeline preserves in-flight
-            // order — instead of stalling the frame behind the window.
-            // A confirmed store miss is terminal: the actor was destroyed.
-            var (current, rowPresent) = await directory
-                .FindWithPresenceAsync(actorRef.ActorId, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (current is null && !rowPresent && !actorRef.AwaitingLocationObservation)
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorRouteNotFound,
-                    $"Actor '{actorRef.ActorId}' is no longer available.");
-
-            if (current is { } resolved)
-            {
-                actorRef.MarkLocationObserved();
-                if (!ActorRefsEqual(resolved, actorRef.Ref))
-                {
-                    actorRef = (ZLinkSessionActor)await BindOrGetActorAsync(
-                            actorRef.Context,
-                            resolved,
-                            cancellationToken)
-                        .ConfigureAwait(false);
-                }
-            }
-        }
 
         if (stream is ZLinkManagedStream managedStream)
         {

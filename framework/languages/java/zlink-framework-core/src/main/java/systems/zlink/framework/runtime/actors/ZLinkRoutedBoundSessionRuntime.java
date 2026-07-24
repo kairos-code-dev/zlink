@@ -13,7 +13,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
-import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
+
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -146,7 +146,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         Duration timeout,
         ZLinkBoundSessionSendOptions options,
         ZLinkRelayMetadataPolicy metadataPolicy,
-        systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate)
+        java.util.concurrent.atomic.AtomicBoolean submitGate)
         implements ZLinkBoundSessionSendCall {
         SendCall(
             ZLinkBackendSpot sourceEntrySpot,
@@ -161,7 +161,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             ZLinkRelayMetadataPolicy metadataPolicy) {
             this(sourceEntrySpot, routedTransport, routeChannelName, targetNodeRid,
                 targetEntrySpotId, actorRef, payload, timeout, options, metadataPolicy,
-                new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate());
+                new java.util.concurrent.atomic.AtomicBoolean());
         }
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             return new SendCall(
@@ -193,9 +193,9 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-            CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-                submitGate.begin();
+        public CompletionStage<Void> submit() {
+            CompletionStage<Void> duplicate =
+                ZLinkOneWayCalls.beginOneWay(submitGate);
             if (duplicate != null) {
                 return duplicate;
             }
@@ -207,7 +207,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             }
             Message frame = Message.from(frameBytes);
             try {
-                return ZLinkSubmitResults.fromVoidStage(
+                return ZLinkOneWayCalls.adaptOneWay(
                     ZLinkRoutedBoundSessionRuntime.sendFrame(
                         sourceEntrySpot,
                         routedTransport,

@@ -48,7 +48,11 @@ export declare enum ZLinkFrameworkErrorKind {
     SpotGenerationStale = "spotGenerationStale",
     SpotMoving = "spotMoving",
     RelocationDataLost = "relocationDataLost",
-    SpotIdConflict = "spotIdConflict"
+    SpotIdConflict = "spotIdConflict",
+    RuntimeShutdown = "runtimeShutdown",
+    RelocationDisabled = "relocationDisabled",
+    RelocationTargetUnavailable = "relocationTargetUnavailable",
+    RelocationFailed = "relocationFailed"
 }
 
 export declare const ZLINK_FRAMEWORK_ERROR_KIND_VALUES:
@@ -86,12 +90,13 @@ export interface ZLinkFrameworkOptions {
     addStreamNode(name: string): ZLinkStreamNodeBuilder;
 }
 
-export interface ZLinkHandlerContext {
+export interface ZLinkMessageContext {
+    readonly meshName?: string;
     readonly channelName?: string;
     readonly packetName: string;
     readonly contentType?: string;
-    readonly connectionAborted: AbortSignal;
     readonly metadata: ZLinkMessageMetadata;
+    readonly correlationId?: string;
 }
 
 export type ZLinkHandlerDelegate = () => Promise<unknown>;
@@ -104,9 +109,7 @@ export declare function ZLinkHandlerGroup(groupName: string): ClassDecorator;
 
 export interface ZLinkHandlerInvocation {
     readonly ownerKind: string;
-    readonly channelName?: string;
-    readonly packetName: string;
-    readonly metadata: ZLinkMessageMetadata;
+    readonly messageContext: ZLinkMessageContext;
 }
 
 export type ZLinkLocationActorEvent = ZLinkRuntimeEvent & ({
@@ -151,7 +154,10 @@ serverOptions.addRouteMesh("orders")
 `MeshNotFound=24`, `InvalidConfiguration=25`, `AlreadySubmitted=26`,
 `ActorGenerationStale=27`, `ActorMoving=28`, `DeadlineExceeded=29`,
 `PlacementCapacityExhausted=30`, `RoutingIdConflict=31`, `SpotGenerationStale=32`,
-`SpotMoving=33`, `RelocationDataLost=34`, `SpotIdConflict=35`를 반환한다. `RelocationDataLost`는 Location authority가 공개한 Relocation
+`SpotMoving=33`, `RelocationDataLost=34`, `SpotIdConflict=35`,
+`RuntimeShutdown=36`, `RelocationDisabled=37`,
+`RelocationTargetUnavailable=38`, `RelocationFailed=39`를 반환한다.
+`RelocationDataLost`는 Location authority가 공개한 Relocation
 payload가 영구적으로 없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 이전 owner로 rollback하지
 않는다. 기본 retriable kind는 `RouteNotConnected`, `ActorLocationStale`,
 `ActorMoving`, `DeadlineExceeded`, `PlacementCapacityExhausted`, `SpotMoving`이다.
@@ -424,14 +430,6 @@ export interface ZLinkMessageFlowEvent {
     readonly actorId?: string;
     readonly messageSizeBytes?: number;
     readonly durationSeconds?: number;
-    readonly remoteSnapshotCount?: bigint;
-    readonly remoteAdmittedCount?: bigint;
-    readonly remoteDroppedCount?: bigint;
-    readonly localSnapshotCount?: bigint;
-    readonly localAdmittedCount?: bigint;
-    readonly localDroppedCount?: bigint;
-    readonly targetCount?: bigint;
-    readonly dropCount?: bigint;
 }
 
 export interface ZLinkRuntimeErrorEvent {
@@ -594,18 +592,6 @@ export interface ZLinkMeshChannelSnapshot {
     readonly selectable: boolean;
 }
 
-export interface ZLinkLogicalMulticastSnapshot {
-    readonly submitted: bigint;
-    readonly backpressured: bigint;
-    readonly dropped: bigint;
-    readonly remoteSnapshotCount: bigint;
-    readonly remoteAdmittedCount: bigint;
-    readonly remoteDroppedCount: bigint;
-    readonly localSnapshotCount: bigint;
-    readonly localAdmittedCount: bigint;
-    readonly localDroppedCount: bigint;
-}
-
 export interface ZLinkMeshClaimSnapshot {
     readonly applicationActive: boolean;
     readonly pendingApplicationWork: bigint;
@@ -686,7 +672,6 @@ export interface ZLinkMeshNodeSnapshot {
     readonly descriptorSources: readonly string[];
     readonly peers: readonly ZLinkMeshPeerSnapshot[];
     readonly channels: readonly ZLinkMeshChannelSnapshot[];
-    readonly multicast: ZLinkLogicalMulticastSnapshot;
     readonly instanceSpots: readonly ZLinkInstanceSpotTypeSnapshot[];
     readonly claims: ZLinkMeshClaimSnapshot;
     readonly location: ZLinkLocationRuntimeSnapshot;
@@ -705,12 +690,6 @@ export interface ZLinkMeshRuntimeEvent {
     readonly claimDomain?: string;
     readonly mailboxDomain?: "application" | "infrastructure";
     readonly messageKind?: string;
-    readonly remoteSnapshotCount?: bigint;
-    readonly remoteAdmittedCount?: bigint;
-    readonly remoteDroppedCount?: bigint;
-    readonly localSnapshotCount?: bigint;
-    readonly localAdmittedCount?: bigint;
-    readonly localDroppedCount?: bigint;
     readonly reason?: string;
     readonly state?: ZLinkMeshNodeState;
 }

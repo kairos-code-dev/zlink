@@ -147,16 +147,19 @@ public final class systems.zlink.framework.runtime.host.ZLinkTerminationResult e
   public systems.zlink.framework.runtime.host.ZLinkTerminationOutcome outcome();
   public systems.zlink.framework.runtime.host.ZLinkTerminationReason reason();
 }
-public interface systems.zlink.framework.ZLinkHandlerContext {
+public interface systems.zlink.framework.ZLinkMessageContext {
+  public abstract java.util.Optional<java.lang.String> meshName();
   public abstract java.util.Optional<java.lang.String> channelName();
-  public abstract java.util.Optional<java.lang.String> packetName();
+  public abstract java.lang.String packetName();
   public abstract java.util.Optional<java.lang.String> contentType();
   public abstract java.util.Map<java.lang.String, java.lang.String> metadata();
+  public abstract java.util.Optional<java.lang.String> correlationId();
 }
 public interface systems.zlink.framework.ZLinkHandlerFilter {
-  public abstract <T> java.util.concurrent.CompletionStage<T> invoke(systems.zlink.framework.ZLinkInvocationContext, systems.zlink.framework.ZLinkNext<T>);
+  public abstract <T> java.util.concurrent.CompletionStage<T> invoke(systems.zlink.framework.ZLinkHandlerInvocation, systems.zlink.framework.ZLinkNext<T>);
 }
-public interface systems.zlink.framework.ZLinkInvocationContext extends systems.zlink.framework.ZLinkHandlerContext {
+public interface systems.zlink.framework.ZLinkHandlerInvocation {
+  public abstract systems.zlink.framework.ZLinkMessageContext messageContext();
   public abstract java.util.Optional<java.lang.Object> request();
 }
 public interface systems.zlink.framework.ZLinkMessageSerializer {
@@ -205,6 +208,9 @@ public final class systems.zlink.framework.errors.ZLinkFrameworkErrorKind extend
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RELOCATION_DATA_LOST;
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_ID_CONFLICT;
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RUNTIME_SHUTDOWN;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RELOCATION_DISABLED;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RELOCATION_TARGET_UNAVAILABLE;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RELOCATION_FAILED;
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind[] values();
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind valueOf(java.lang.String);
   public int value();
@@ -227,7 +233,9 @@ public class systems.zlink.framework.errors.ZLinkFrameworkException extends java
 `INVALID_CONFIGURATION=25`, `ALREADY_SUBMITTED=26`, `ACTOR_GENERATION_STALE=27`, `ACTOR_MOVING=28`,
 `DEADLINE_EXCEEDED=29`, `PLACEMENT_CAPACITY_EXHAUSTED=30`, `ROUTING_ID_CONFLICT=31`,
 `SPOT_GENERATION_STALE=32`, `SPOT_MOVING=33`, `RELOCATION_DATA_LOST=34`,
-`SPOT_ID_CONFLICT=35`, `RUNTIME_SHUTDOWN=36`을 고정한다. `ROUTING_ID_CONFLICT`는 MeshNode RID 충돌에만 사용하고
+`SPOT_ID_CONFLICT=35`, `RUNTIME_SHUTDOWN=36`, `RELOCATION_DISABLED=37`,
+`RELOCATION_TARGET_UNAVAILABLE=38`, `RELOCATION_FAILED=39`를 고정한다.
+`ROUTING_ID_CONFLICT`는 MeshNode RID 충돌에만 사용하고
 Spot·Entry Spot identity 충돌은 `SPOT_ID_CONFLICT`로 반환한다. `fromValue(int)`도 같은
 mapping을 사용한다. `RELOCATION_DATA_LOST`는 Location authority가 공개한 Relocation payload가 영구적으로
 없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 재시도하거나 이전 owner로 rollback하지 않는다.

@@ -5,12 +5,13 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.backend.*;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 import java.util.logging.Logger;
@@ -43,15 +44,8 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     private final boolean nativeSessionRelayAttached;
     private final ZLinkStreamCodec defaultCodec;
     private final ZLinkMessageFlowTracer flow;
-    private final List<ZLinkSessionActor> bound = new ArrayList<>();
-    private systems.zlink.framework.actors.ZLinkActorDirectory actorDirectory;
+    private final List<ZLinkSessionActor> bound = new CopyOnWriteArrayList<>();
     private ZLinkRelayMetadataPolicy metadataPolicy = ZLinkRelayMetadataPolicy.EMPTY;
-
-    public ZLinkSessionActorsRuntime actorDirectory(
-        systems.zlink.framework.actors.ZLinkActorDirectory actorDirectory) {
-        this.actorDirectory = actorDirectory;
-        return this;
-    }
 
     public ZLinkSessionActorsRuntime metadataPolicy(
         Set<String> sessionToActorKeys,
@@ -217,11 +211,19 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
     public CompletionStage<Void> notifyDisconnectedAll() {
         List<ZLinkSessionActor> current = List.copyOf(bound);
         return CompletableFuture.allOf(current.stream()
-            .map(actor -> actor.notifyDisconnected().toCompletableFuture())
+            .map(ZLinkSessionActorsRuntime::notifyDisconnectedSafely)
             .toArray(CompletableFuture[]::new))
             .whenComplete((ignored, error) -> bound.removeAll(current));
     }
 
+    private static CompletableFuture<Void> notifyDisconnectedSafely(
+        ZLinkSessionActor actor) {
+        try {
+            return actor.notifyDisconnected().toCompletableFuture();
+        } catch (RuntimeException error) {
+            return CompletableFuture.failedFuture(error);
+        }
+    }
 
     private CompletionStage<ZLinkSessionActor> bindBackendRef(
         ZLinkBackendActorRef ref) {
@@ -258,6 +260,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     + " actorNode=" + ref.nodeRid()
                     + " actorId=" + ref.actorId()
                     + " generation=" + ref.generation());
+                AtomicReference<ZLinkBoundActor> binding = new AtomicReference<>();
                 ZLinkBoundActor actor = new ZLinkBoundActor(
                     stream,
                     sessionRid,
@@ -272,9 +275,10 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     defaultCodec,
                     RELAY_HEADERS,
                     flow,
-                    actorDirectory,
+                    () -> isCurrentBinding(binding.get()),
                     metadataPolicy);
-                bound.add(actor);
+                binding.set(actor);
+                replaceBinding(actor);
                 return actor;
             })
             .thenCompose(actor -> actor.notifyRemoteBoundSession()
@@ -338,6 +342,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     sourceNodeRid,
                     sourceSessionRid);
                 boundSession.setBindingToken(bindingToken);
+                AtomicReference<ZLinkBoundActor> binding = new AtomicReference<>();
                 ZLinkBoundActor boundActor = new ZLinkBoundActor(
                     stream,
                     sessionRid,
@@ -352,13 +357,23 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     defaultCodec,
                     RELAY_HEADERS,
                     flow,
-                    actorDirectory,
+                    () -> isCurrentBinding(binding.get()),
                     metadataPolicy);
+                binding.set(boundActor);
                 boundSession.setUnbindListener(() -> bound.remove(boundActor));
                 boundSession.setRebindListener(boundActor::rebindNativeActor);
-                bound.add(boundActor);
+                replaceBinding(boundActor);
                 return boundActor;
             });
+    }
+
+    private void replaceBinding(ZLinkBoundActor actor) {
+        bound.removeIf(existing -> existing.actorId().equals(actor.actorId()));
+        bound.add(actor);
+    }
+
+    private boolean isCurrentBinding(ZLinkBoundActor actor) {
+        return actor != null && bound.contains(actor);
     }
 
     private CompletionStage<Void> awaitRouteReady(ZLinkBackendActorRef ref) {

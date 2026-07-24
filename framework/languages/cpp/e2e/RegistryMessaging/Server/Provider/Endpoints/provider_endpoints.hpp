@@ -20,7 +20,7 @@ inline profile_res_t request_profile (zlink::framework::channel_client_t &channe
 {
     auto reply = channels.request (channel_name, request)
                    .timeout (std::chrono::seconds (5))
-                   .async<profile_res_t> ()
+                   .submit<profile_res_t> ()
                    .result ();
     if (!reply) {
         throw zlink::framework::framework_exception_t (
@@ -35,7 +35,7 @@ inline scenario_route_res_t request_route (zlink::framework::route_client_t &rou
 {
     auto reply = routes.request_to_node (route_channel, target, request)
                    .timeout (std::chrono::seconds (5))
-                   .async<scenario_route_res_t> ()
+                   .submit<scenario_route_res_t> ()
                    .result ();
     if (!reply) {
         throw zlink::framework::framework_exception_t (
@@ -144,7 +144,7 @@ class http_route_missing_handler_t
                                      zlink::routing_id_t::from (std::string ("missing-rid")),
                                      request)
                       .timeout (std::chrono::milliseconds (300))
-                      .async<scenario_route_res_t> ();
+                      .submit<scenario_route_res_t> ();
         return {.failed = !call.result ().has_value (),
                 .error_type = public_error_type (call.result ())};
     }

@@ -36,7 +36,8 @@ public enum ZLinkFrameworkErrorKind {
     SPOT_GENERATION_STALE(32),
     SPOT_MOVING(33),
     RELOCATION_DATA_LOST(34),
-    SPOT_ID_CONFLICT(35);
+    SPOT_ID_CONFLICT(35),
+    RUNTIME_SHUTDOWN(36);
 
     private final int value;
 

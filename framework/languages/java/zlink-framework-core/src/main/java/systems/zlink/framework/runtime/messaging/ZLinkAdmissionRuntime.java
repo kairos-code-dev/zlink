@@ -1,4 +1,4 @@
-package systems.zlink.framework.runtime.messaging;
+package systems.zlink.framework.runtime.host;
 
 import java.time.Duration;
 import java.util.ArrayDeque;
@@ -17,8 +17,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import systems.zlink.framework.channels.ZLinkSubmitResult;
-import systems.zlink.framework.channels.ZLinkSubmitStatus;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
 import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
 
@@ -37,17 +35,76 @@ final class ZLinkAdmissionRuntime {
     private ZLinkAdmissionRuntime() {
     }
 
-    static CompletionStage<ZLinkSubmitResult> submit(
+    static java.util.function.BiFunction<
+        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+        systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey,
+        java.util.function.BiFunction<
+            java.util.function.Supplier<Boolean>,
+            Runnable,
+            java.util.concurrent.CompletionStage<Void>>> factory(
+        systems.zlink.framework.runtime.internal.backend
+            .ZLinkBackendAdapterProvider provider) {
+        var source = provider.admissionSource();
+        var timeout = provider.admissionTimeout();
+        var capacity = provider.admissionPendingCapacity();
+        var readyRegistrar = provider.admissionReadyRegistrar();
+        var shutdownRegistrar = provider.admissionShutdownRegistrar();
+        return factory(
+            source, timeout, capacity, readyRegistrar, shutdownRegistrar);
+    }
+
+    static java.util.function.BiFunction<
+        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+        systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey,
+        java.util.function.BiFunction<
+            java.util.function.Supplier<Boolean>,
+            Runnable,
+            java.util.concurrent.CompletionStage<Void>>> factory(
+        java.util.function.Function<ZLinkBackendObject, ZLinkBackendObject> source,
+        java.util.function.Function<ZLinkBackendObject, Duration> timeout,
+        java.util.function.ToIntFunction<ZLinkBackendObject> capacity,
+        java.util.function.BiConsumer<
+            ZLinkBackendObject,
+            java.util.function.Consumer<ZLinkBackendAdmissionKey>> readyRegistrar,
+        java.util.function.BiConsumer<ZLinkBackendObject, Runnable>
+            shutdownRegistrar) {
+        return (backend, key) -> (submission, cleanup) ->
+            submit(
+                backend,
+                key,
+                submission,
+                cleanup,
+                source,
+                timeout,
+                capacity,
+                readyRegistrar,
+                shutdownRegistrar);
+    }
+
+    static CompletionStage<Void> submit(
         ZLinkBackendObject backend,
         ZLinkBackendAdmissionKey key,
         Supplier<Boolean> attempt,
-        Runnable cleanup) {
-        ZLinkBackendObject admissionSource = backend.admissionSource();
-        return source(admissionSource).submit(
+        Runnable cleanup,
+        java.util.function.Function<ZLinkBackendObject, ZLinkBackendObject>
+            sourceResolver,
+        java.util.function.Function<ZLinkBackendObject, Duration> timeoutResolver,
+        java.util.function.ToIntFunction<ZLinkBackendObject> capacityResolver,
+        java.util.function.BiConsumer<
+            ZLinkBackendObject,
+            java.util.function.Consumer<ZLinkBackendAdmissionKey>> readyRegistrar,
+        java.util.function.BiConsumer<ZLinkBackendObject, Runnable>
+            shutdownRegistrar) {
+        ZLinkBackendObject admissionSource = sourceResolver.apply(backend);
+        return source(
+            admissionSource,
+            capacityResolver.applyAsInt(admissionSource),
+            readyRegistrar,
+            shutdownRegistrar).submit(
             key,
             attempt,
             cleanup,
-            normalizedTimeoutMillis(admissionSource.admissionTimeout()));
+            normalizedTimeoutMillis(timeoutResolver.apply(admissionSource)));
     }
 
     static int normalizedTimeoutMillis(Duration timeout) {
@@ -67,16 +124,23 @@ final class ZLinkAdmissionRuntime {
         return (int) millis;
     }
 
-    private static Source source(ZLinkBackendObject backend) {
+    private static Source source(
+        ZLinkBackendObject backend,
+        int pendingCapacity,
+        java.util.function.BiConsumer<
+            ZLinkBackendObject,
+            java.util.function.Consumer<ZLinkBackendAdmissionKey>> readyRegistrar,
+        java.util.function.BiConsumer<ZLinkBackendObject, Runnable>
+            shutdownRegistrar) {
         synchronized (SOURCES) {
             Source current = SOURCES.get(backend);
             if (current != null) {
                 return current;
             }
-            Source created = new Source(backend.admissionPendingCapacity());
+            Source created = new Source(pendingCapacity);
             SOURCES.put(backend, created);
-            backend.setAdmissionReadyHandler(created::ready);
-            backend.setAdmissionShutdownHandler(created::shutdown);
+            readyRegistrar.accept(backend, created::ready);
+            shutdownRegistrar.accept(backend, created::shutdown);
             return created;
         }
     }
@@ -89,6 +153,7 @@ final class ZLinkAdmissionRuntime {
         private final Map<ZLinkBackendAdmissionKey, Integer> readyCredits =
             new HashMap<>();
         private final Set<Pending> pending = new HashSet<>();
+        private final ArrayDeque<Pending> capacityWaiters = new ArrayDeque<>();
         private int pendingCount;
         private boolean shutdown;
 
@@ -100,13 +165,19 @@ final class ZLinkAdmissionRuntime {
             this.pendingCapacity = pendingCapacity;
         }
 
-        CompletionStage<ZLinkSubmitResult> submit(
+        CompletionStage<Void> submit(
             ZLinkBackendAdmissionKey key,
             Supplier<Boolean> attempt,
             Runnable cleanup,
             int timeoutMillis) {
             Pending item = new Pending(this, key, attempt, cleanup);
+            item.deadlineNanos = System.nanoTime()
+                + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
             if (item.attemptOnce() == AttemptResult.RETRY) {
+                item.deadline = DEADLINES.schedule(
+                    item::timeout,
+                    timeoutMillis,
+                    TimeUnit.MILLISECONDS);
                 drive(item, timeoutMillis);
             }
             return item.future;
@@ -147,10 +218,11 @@ final class ZLinkAdmissionRuntime {
                 }
                 queues.clear();
                 readyCredits.clear();
+                capacityWaiters.clear();
             }
             for (Pending item : terminal) {
-                item.completeMarked(
-                    ZLinkSubmitResults.result(ZLinkSubmitStatus.SHUTDOWN));
+                item.completeExceptionallyMarked(
+                    ZLinkOneWayAdmission.result(ZLinkOneWayAdmissionStatus.SHUTDOWN));
             }
         }
 
@@ -167,11 +239,11 @@ final class ZLinkAdmissionRuntime {
                     return;
                 }
                 if (wait == AwaitResult.BACKPRESSURED) {
-                    item.completeMarked(ZLinkSubmitResults.result(
-                        ZLinkSubmitStatus.BACKPRESSURED));
+                    item.completeExceptionallyMarked(ZLinkOneWayAdmission.result(
+                        ZLinkOneWayAdmissionStatus.BACKPRESSURED));
                 } else if (wait == AwaitResult.SHUTDOWN) {
-                    item.completeMarked(ZLinkSubmitResults.result(
-                        ZLinkSubmitStatus.SHUTDOWN));
+                    item.completeExceptionallyMarked(ZLinkOneWayAdmission.result(
+                        ZLinkOneWayAdmissionStatus.SHUTDOWN));
                 }
                 return;
             }
@@ -188,16 +260,20 @@ final class ZLinkAdmissionRuntime {
                 }
                 if (!item.reserved) {
                     if (pendingCount >= pendingCapacity) {
-                        markDoneLocked(item);
-                        return AwaitResult.BACKPRESSURED;
+                        if (!item.waitingCapacity) {
+                            if (capacityWaiters.size() >= pendingCapacity) {
+                                markDoneLocked(item);
+                                return AwaitResult.BACKPRESSURED;
+                            }
+                            item.waitingCapacity = true;
+                            pending.add(item);
+                            capacityWaiters.addLast(item);
+                        }
+                        return AwaitResult.QUEUED;
                     }
                     item.reserved = true;
                     pending.add(item);
                     pendingCount++;
-                    item.deadline = DEADLINES.schedule(
-                        item::timeout,
-                        timeoutMillis,
-                        TimeUnit.MILLISECONDS);
                 }
                 if (readyCredits.remove(item.key) != null) {
                     return AwaitResult.RETRY;
@@ -245,12 +321,34 @@ final class ZLinkAdmissionRuntime {
                 }
                 item.queued = false;
             }
+            if (item.waitingCapacity) {
+                capacityWaiters.remove(item);
+                item.waitingCapacity = false;
+            }
             if (item.reserved) {
                 pending.remove(item);
                 item.reserved = false;
                 pendingCount--;
+                promoteCapacityWaiterLocked();
+            } else {
+                pending.remove(item);
             }
             return true;
+        }
+
+        private void promoteCapacityWaiterLocked() {
+            Pending promoted;
+            while ((promoted = capacityWaiters.pollFirst()) != null) {
+                promoted.waitingCapacity = false;
+                if (promoted.done) {
+                    continue;
+                }
+                promoted.reserved = true;
+                pendingCount++;
+                Pending retry = promoted;
+                DEADLINES.execute(() -> drive(retry, 0));
+                return;
+            }
         }
     }
 
@@ -275,8 +373,10 @@ final class ZLinkAdmissionRuntime {
         private final AdmissionFuture future;
         private boolean queued;
         private boolean reserved;
+        private boolean waitingCapacity;
         private boolean done;
         private boolean cleaned;
+        private long deadlineNanos;
         private ScheduledFuture<?> deadline;
 
         Pending(
@@ -292,28 +392,36 @@ final class ZLinkAdmissionRuntime {
         }
 
         AttemptResult attemptOnce() {
-            ZLinkSubmitResult terminal = null;
+            RuntimeException terminal = null;
             Throwable failure = null;
             synchronized (source.lock) {
                 if (done) {
                     return AttemptResult.TERMINAL;
                 }
-                if (source.shutdown) {
+                if (System.nanoTime() >= deadlineNanos) {
                     source.markDoneLocked(this);
-                    terminal = ZLinkSubmitResults.result(ZLinkSubmitStatus.SHUTDOWN);
+                    terminal = ZLinkOneWayAdmission.result(
+                        ZLinkOneWayAdmissionStatus.TIMED_OUT);
+                } else if (source.shutdown) {
+                    source.markDoneLocked(this);
+                    terminal = ZLinkOneWayAdmission.result(ZLinkOneWayAdmissionStatus.SHUTDOWN);
                 } else {
                     try {
                         if (attempt.get()) {
                             source.markDoneLocked(this);
-                            terminal = ZLinkSubmitResults.result(
-                                ZLinkSubmitStatus.SUBMITTED);
+                            terminal = ZLinkOneWayAdmission.result(
+                                ZLinkOneWayAdmissionStatus.SUBMITTED);
                         } else {
                             return AttemptResult.RETRY;
                         }
                     } catch (RuntimeException error) {
-                        ZLinkSubmitResult mapped = ZLinkSubmitResults.fromFailure(error);
+                        RuntimeException mapped = ZLinkOneWayAdmission.fromFailure(error);
                         if (mapped != null
-                            && mapped.status() == ZLinkSubmitStatus.BACKPRESSURED) {
+                            && mapped instanceof systems.zlink.framework.errors
+                                .ZLinkFrameworkException frameworkError
+                            && frameworkError.kind()
+                                == systems.zlink.framework.errors
+                                    .ZLinkFrameworkErrorKind.DEADLINE_EXCEEDED) {
                             return AttemptResult.RETRY;
                         }
                         source.markDoneLocked(this);
@@ -328,7 +436,11 @@ final class ZLinkAdmissionRuntime {
             if (failure != null) {
                 completeExceptionallyMarked(failure);
             } else {
-                completeMarked(terminal);
+                if (terminal == null) {
+                    completeMarked();
+                } else {
+                    completeExceptionallyMarked(terminal);
+                }
             }
             return AttemptResult.TERMINAL;
         }
@@ -337,7 +449,8 @@ final class ZLinkAdmissionRuntime {
             if (!source.markDone(this)) {
                 return;
             }
-            completeMarked(ZLinkSubmitResults.result(ZLinkSubmitStatus.TIMED_OUT));
+            completeExceptionallyMarked(
+                ZLinkOneWayAdmission.result(ZLinkOneWayAdmissionStatus.TIMED_OUT));
         }
 
         boolean cancel() {
@@ -352,22 +465,16 @@ final class ZLinkAdmissionRuntime {
             }
         }
 
-        void completeMarked(ZLinkSubmitResult result) {
+        void completeMarked() {
             cancelDeadline();
-            try {
-                future.completeTerminal(result);
-            } finally {
-                cleanupOnce();
-            }
+            cleanupOnce();
+            future.completeTerminal();
         }
 
         void completeExceptionallyMarked(Throwable error) {
             cancelDeadline();
-            try {
-                future.completeExceptionallyTerminal(error);
-            } finally {
-                cleanupOnce();
-            }
+            cleanupOnce();
+            future.completeExceptionallyTerminal(error);
         }
 
         private void cancelDeadline() {
@@ -393,7 +500,7 @@ final class ZLinkAdmissionRuntime {
     }
 
     private static final class AdmissionFuture
-        extends CompletableFuture<ZLinkSubmitResult> {
+        extends CompletableFuture<Void> {
         private final Pending pending;
 
         AdmissionFuture(Pending pending) {
@@ -409,8 +516,8 @@ final class ZLinkAdmissionRuntime {
             return super.cancel(false);
         }
 
-        boolean completeTerminal(ZLinkSubmitResult result) {
-            return super.complete(result);
+        boolean completeTerminal() {
+            return super.complete(null);
         }
 
         boolean completeExceptionallyTerminal(Throwable error) {

@@ -16,12 +16,6 @@ public record ZLinkMeshRuntimeEvent(
     Optional<String> channelName,
     Optional<String> claimDomain,
     Optional<String> messageKind,
-    Optional<Long> remoteSnapshotCount,
-    Optional<Long> remoteAdmittedCount,
-    Optional<Long> remoteDroppedCount,
-    Optional<Long> localSnapshotCount,
-    Optional<Long> localAdmittedCount,
-    Optional<Long> localDroppedCount,
     Optional<String> reason,
     Optional<ZLinkMeshNodeState> state) {
 }

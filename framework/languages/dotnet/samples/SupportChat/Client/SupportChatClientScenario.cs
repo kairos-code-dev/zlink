@@ -114,7 +114,7 @@ internal sealed class SupportChatClientScenario
 
         // Typing is a one-way send; only the other participant is notified.
         var typingForCustomer1 = customer1.WaitFor<TypingChangedNotify>().Async(cancellationToken);
-        agentRoom1.SendTyping(true, cancellationToken);
+        await agentRoom1.SendTypingAsync(true, cancellationToken);
         var typing1 = await typingForCustomer1;
         ZlinkStreamAssert.Ensure(typing1.Payload.ConversationId == cid1, "Assertion failed: typing1.Payload.ConversationId == cid1");
         ZlinkStreamAssert.Ensure(typing1.Payload.ActorId == "agent-1", "Assertion failed: typing1.Payload.ActorId == \"agent-1\"");
@@ -182,7 +182,7 @@ internal sealed class SupportChatClientScenario
         await ZlinkStreamAssert.ExpectFailureAsync(
             async ct => _ = await customerRoom1.SendChatAsync("are you there?", ct),
             nameof(ZlinkStreamErrorCode.RemoteError));
-        customerRoom1.SendTyping(true, cancellationToken);
+        await customerRoom1.SendTypingAsync(true, cancellationToken);
         await reconnectingAgent.ExpectNone<TypingChangedNotify>()
             .Within(TimeSpan.FromMilliseconds(500))
             .Async(cancellationToken);
@@ -236,9 +236,9 @@ internal sealed class SupportChatClientScenario
                 .Async<SendChatMessageRes>(cancellationToken);
         }
 
-        public void SendTyping(bool isTyping, CancellationToken cancellationToken)
+        public ValueTask SendTypingAsync(bool isTyping, CancellationToken cancellationToken)
         {
-            connector.Send(new SetTypingReq(isTyping)).Metadata(Cid, conversationId).Submit(cancellationToken);
+            return connector.Send(new SetTypingReq(isTyping)).Metadata(Cid, conversationId).Async(cancellationToken);
         }
 
         public ValueTask<CloseConversationRes> CloseAsync(string? reason, CancellationToken cancellationToken)

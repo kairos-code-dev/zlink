@@ -47,11 +47,11 @@ if (mode === '--contract') {
       '`RuntimeShutdown`']],
     [frameworkApi, 'Framework API', [
       '반환 데이터 없이 정상 완료',
-      'monitoring metric과 runtime event',
+      'Remote와 local target 수와 target별 수락·drop·unreachable 결과는 public publish 결과나 publish 전용',
       '`RuntimeShutdown`']],
     [spotMessaging, 'Spot messaging', [
-      '정상 완료는 source-local outbound queue가 operation을 수락했다는 뜻',
-      'public 반환값이 아니라 monitoring metric과 event']],
+      '정상 완료는 source의 local outbound admission이 끝나 outbound queue가 operation을',
+      'snapshot, metric, runtime event 또는 message-flow count로 제공하지 않는다']],
     [scenario, 'Config 13', [
       '원격 handler 실행 완료가 아니다',
       'timeout 예외',
@@ -104,10 +104,10 @@ if (mode === '--contract') {
   }
 
   const directRouteContextFragments = {
-    dotnet: ['ZLinkRouteSendContext', 'string MeshName', 'RoutingId SourceNodeRid'],
-    cpp: ['route_handler_context_t', 'std::string mesh_name', 'source_node_rid'],
-    java: ['ZLinkRouteSendContext', 'meshName()', 'sourceNodeRid()'],
-    node: ['ZLinkRouteSendContext', 'readonly meshName: string', 'readonly sourceNodeRid: RoutingId'],
+    dotnet: ['ZLinkRouteMessageContext', 'string? MeshName', 'RoutingId SourceNodeRid'],
+    cpp: ['route_message_context_t', 'std::string mesh_name', 'source_node_rid'],
+    java: ['ZLinkRouteMessageContext', 'meshName()', 'sourceNodeRid()'],
+    node: ['ZLinkRouteMessageContext', 'readonly meshName: string', 'readonly sourceNodeRid: RoutingId'],
   };
   for (const [language, fragments] of Object.entries(directRouteContextFragments)) {
     const source = contracts.get(language).source;
@@ -118,15 +118,11 @@ if (mode === '--contract') {
     }
   }
 
-  const multicastFragments = {
-    dotnet: 'unreachable count',
-    cpp: 'remote_unreachable_count',
-    java: 'unreachable',
-    node: 'remoteUnreachableCount',
-  };
-  for (const [language, fragment] of Object.entries(multicastFragments)) {
-    if (!contracts.get(language).source.includes(fragment)) {
-      fail(`${language} Logical Multicast monitoring omits unreachable remote targets`);
+  const removedMulticastMonitoring =
+    /\b(?:ZLinkLogicalMulticastSnapshot|logical_multicast_snapshot_t|RemoteSnapshotCount|RemoteAdmittedCount|RemoteDroppedCount|RemoteUnreachableCount|LocalSnapshotCount|LocalAdmittedCount|LocalDroppedCount|remoteSnapshotCount|remoteAdmittedCount|remoteDroppedCount|remoteUnreachableCount|localSnapshotCount|localAdmittedCount|localDroppedCount|remote_snapshot_count|remote_admitted_count|remote_dropped_count|remote_unreachable_count|local_snapshot_count|local_admitted_count|local_dropped_count)\b/;
+  for (const [language, contract] of contracts) {
+    if (removedMulticastMonitoring.test(contract.code)) {
+      fail(`${language} retains removed Logical Multicast monitoring declarations`);
     }
   }
 
@@ -248,6 +244,125 @@ for (const [language, relative, extensions] of publicRoots) {
     }
   }
 }
+
+const kotlinOneWayWrappers = read(
+  'framework/languages/java/zlink-framework-kotlin/src/main/kotlin/'
+  + 'systems/zlink/framework/kotlin/ZLinkOneWayCalls.kt');
+for (const fragment of [
+  'interface ZLinkKotlinMessageSendCall',
+  'interface ZLinkKotlinSpotSendCall',
+  'interface ZLinkKotlinSpotRequestCall',
+  'suspend fun await()',
+  'fun ZLinkKotlinRouteClient.sendToSpot(',
+  'fun <TReply : Any> ZLinkKotlinRouteClient.requestToSpot(',
+]) {
+  if (!kotlinOneWayWrappers.includes(fragment)) {
+    fail(`kotlin one-way wrapper is missing: ${fragment}`);
+  }
+}
+
+for (const relative of [
+  'framework/languages/java/zlink-framework-core/src/main/java/'
+    + 'systems/zlink/framework/runtime/messaging/ZLinkOneWayAdmission.java',
+  'framework/languages/java/zlink-framework-core/src/main/java/'
+    + 'systems/zlink/framework/runtime/messaging/ZLinkOneWayAdmissionStatus.java',
+]) {
+  const source = read(relative);
+  if (/^\s*public\s+(?:final\s+)?(?:class|enum|interface)\s+ZLinkOneWay/m.test(source)) {
+    fail(`java internal one-way helper is exposed as public: ${relative}`);
+  }
+}
+
+const javaBackendObject = read(
+  'framework/languages/java/zlink-framework-core/src/main/java/'
+  + 'systems/zlink/framework/runtime/backend/ZLinkBackendObject.java');
+if (/\b(?:ONE_WAY_|submitOneWay|beginOneWay|adaptOneWay|oneWayStatus)\b/.test(
+  javaBackendObject)) {
+  fail('java public backend interface exposes internal one-way admission helpers');
+}
+if (/\b(?:admissionSource|setAdmissionReadyHandler|setAdmissionShutdownHandler|admissionTimeout|admissionPendingCapacity)\b/
+  .test(javaBackendObject)) {
+  fail('java public backend interface exposes admission runtime wiring');
+}
+
+if (/class StageMessageSendCall[\s\S]*?override fun metadata\([^)]*\)[\s\S]*?=\s*this/
+  .test(kotlinOneWayWrappers)) {
+  fail('kotlin stage-backed one-way wrapper silently discards metadata');
+}
+if (/metadataSupported\s*=\s*false/.test(kotlinOneWayWrappers)) {
+  fail('kotlin canonical one-way wrapper exposes metadata but rejects it at runtime');
+}
+
+const packageNamingSources = {
+  dotnetHttp: read(
+    'framework/languages/dotnet/src/Zlink.HttpClient/ZLinkHttpRequestBuilder.cs'),
+  dotnetConnector: [
+    'framework/languages/dotnet/src/Systems.Zlink.Stream.Connector/'
+      + 'Runtime/Calls/ZlinkStreamSendBuilder.cs',
+    'framework/languages/dotnet/src/Systems.Zlink.Stream.Connector/'
+      + 'Runtime/Calls/ZlinkStreamExpectNoneBuilder.cs',
+  ].map(read).join('\n'),
+  javaHttp: read(
+    'framework/languages/java/zlink-http-client/src/main/java/'
+      + 'systems/zlink/httpclient/ZLinkHttpRequestBuilder.java'),
+  javaConnector: read(
+    'framework/languages/java/zlink-stream-connector/src/main/java/'
+      + 'systems/zlink/stream/connector/ZLinkStreamSendCall.java'),
+  kotlinHttp: read(
+    'framework/languages/java/zlink-http-client-kotlin/src/main/kotlin/'
+      + 'systems/zlink/httpclient/kotlin/HttpClientCoroutines.kt'),
+  nodeHttp: read(
+    'framework/languages/node/packages/http-client/src/request-builder.ts'),
+  nodeConnector: read(
+    'framework/languages/node/packages/stream-connector/src/Contracts/Calls/'
+      + 'ZlinkStreamCalls.ts'),
+  cppHttp: read(
+    'framework/languages/cpp/http-client/include/zlink/http_client/'
+      + 'contracts/client.hpp'),
+  cppConnector: read(
+    'framework/languages/cpp/connector/core/include/zlink/stream_connector/'
+      + 'contracts/calls/zlink_stream_calls.hpp'),
+};
+if (/\bSubmitAsync\s*\(/.test(
+  packageNamingSources.dotnetHttp + packageNamingSources.dotnetConnector)) {
+  fail('dotnet HTTP Client or Stream Connector retains SubmitAsync');
+}
+if (!/\bsubmitRaw\s*\(/.test(packageNamingSources.javaHttp)
+    || !/CompletionStage<Void>\s+submit\s*\(/.test(
+      packageNamingSources.javaConnector)) {
+  fail('java HTTP Client or Stream Connector naming is not canonical');
+}
+if (!/suspend\s+fun[\s\S]*\bawait\s*\(/.test(packageNamingSources.kotlinHttp)) {
+  fail('kotlin HTTP Client coroutine wrapper is missing await');
+}
+if (/\basyncRaw\s*\(/.test(packageNamingSources.nodeHttp)
+    || !/\bsubmitRaw\s*\(/.test(packageNamingSources.nodeHttp)
+    || !/Promise<void>/.test(packageNamingSources.nodeConnector)) {
+  fail('node HTTP Client or Stream Connector naming is not canonical');
+}
+if (!/\bsubmit\s*\(/.test(packageNamingSources.cppHttp)
+    || !/\bsubmit\s*\(/.test(packageNamingSources.cppConnector)) {
+  fail('cpp HTTP Client or Stream Connector naming is not canonical');
+}
+
+const cppSubmitRuntime = read(
+  'framework/languages/cpp/framework/src/runtime/messaging/'
+  + 'async_submit_runtime.cpp');
+const cppMulticastExecutor = cppSubmitRuntime.match(
+  /class logical_multicast_executor_t[\s\S]*?\n};/);
+if (!cppMulticastExecutor) {
+  fail('cpp Logical Multicast executor implementation is missing');
+} else if (/\b_pending\b/.test(cppMulticastExecutor[0])) {
+  fail('cpp Logical Multicast executor retains a pending payload queue');
+}
+const cppGeneralExecutor = cppSubmitRuntime.match(
+  /class async_submit_runtime_t[\s\S]*?\n};/);
+if (!cppGeneralExecutor) {
+  fail('cpp general one-way executor implementation is missing');
+} else if (/\b_waiting\b/.test(cppGeneralExecutor[0])) {
+  fail('cpp general one-way executor retains an unbounded overflow queue');
+}
+
 if (failures.length) {
   process.stderr.write(`${failures.map(message => `[submit-api] IMPLEMENTATION GAP: ${message}`).join('\n')}\n`);
   process.exit(1);

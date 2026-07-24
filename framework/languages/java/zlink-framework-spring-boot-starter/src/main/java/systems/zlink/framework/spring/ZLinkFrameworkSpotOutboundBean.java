@@ -16,15 +16,17 @@ final class ZLinkFrameworkSpotOutboundBean implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkSendCall sendToSpot(SpotHandle spot, Object message) {
-        return lifecycle.spotOutbound().sendToSpot(spot, message);
+    public systems.zlink.framework.spots.ZLinkSpotSendCall sendToSpot(
+        String spotId,
+        Object message) {
+        return lifecycle.spotOutbound().sendToSpot(spotId, message);
     }
 
     @Override
-    public ZLinkRequestCall requestToSpot(
-        SpotHandle spot,
+    public systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(
+        String spotId,
         Object request) {
-        return lifecycle.spotOutbound().requestToSpot(spot, request);
+        return lifecycle.spotOutbound().requestToSpot(spotId, request);
     }
 
     @Override

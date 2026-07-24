@@ -73,6 +73,8 @@ public final class ZLinkInMemoryLocationStore implements
     private long ownerLeaseGeneration;
     private final RowTable<ZLinkMeshNodeDescriptor> meshNodes =
         new RowTable<>();
+    private final Map<String, EntrySpotClaim> entrySpotClaims =
+        new HashMap<>();
     private final RowTable<ZLinkFanoutPublisherDescriptor> fanoutPublishers =
         new RowTable<>();
     private final RowTable<ZLinkPeerLocation> peers = new RowTable<>();
@@ -89,9 +91,11 @@ public final class ZLinkInMemoryLocationStore implements
     public ZLinkInMemoryLocationStore(Clock clock) {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.authority = new ZLinkInMemoryAuthorityStore(
+            gate,
             clock,
             this::isExactOwnerLeaseLive,
-            this::findMeshNodeDescriptor);
+            this::findMeshNodeDescriptor,
+            this::isSpotIdentityClaimed);
     }
 
     @Override
@@ -240,6 +244,27 @@ public final class ZLinkInMemoryLocationStore implements
                     descriptor.rid()));
             ZLinkMeshNodeDescriptor current =
                 meshNodes.rows.get(key);
+            String entryAuthorityKey = descriptor.entrySpotId()
+                .map(ZLinkAuthorityKeyCodec::spot)
+                .orElse(null);
+            EntrySpotClaim entryClaim = entryAuthorityKey == null
+                ? null
+                : entrySpotClaims.get(entryAuthorityKey);
+            if (entryClaim != null
+                && !isExactOwnerLeaseLive(entryClaim.owner())) {
+                entrySpotClaims.remove(entryAuthorityKey);
+                entryClaim = null;
+            }
+            if ((intent == ZLinkLocationWriteIntent.NEW_CLAIM
+                    || intent == ZLinkLocationWriteIntent.TAKEOVER)
+                && ((entryClaim != null
+                        && !entryClaim.matches(key, descriptor))
+                    || (entryAuthorityKey != null
+                        && authority.containsAuthority(
+                            entryAuthorityKey)))) {
+                return completed(
+                    ZLinkLocationWriteResult.rejectedConflict());
+            }
             if (intent == ZLinkLocationWriteIntent.NEW_CLAIM
                 && current != null
                 && isExactOwnerLeaseLive(
@@ -290,6 +315,14 @@ public final class ZLinkInMemoryLocationStore implements
             meshNodes.rows.put(
                 key,
                 copyDescriptor(descriptor, now));
+            if (entryAuthorityKey != null) {
+                entrySpotClaims.put(
+                    entryAuthorityKey,
+                    new EntrySpotClaim(
+                        key,
+                        descriptor.lifecycleGeneration(),
+                        owner));
+            }
             return completed(ZLinkLocationWriteResult.stored(
                 descriptor.lifecycleGeneration(),
                 now));
@@ -310,6 +343,14 @@ public final class ZLinkInMemoryLocationStore implements
                 return completed(
                     ZLinkLocationWriteStatus.IGNORED_STALE);
             }
+            current.entrySpotId().ifPresent(spotId -> {
+                String authorityKey = ZLinkAuthorityKeyCodec.spot(spotId);
+                EntrySpotClaim claim = entrySpotClaims.get(authorityKey);
+                if (claim != null
+                    && claim.matches(meshNodeKey(key), current)) {
+                    entrySpotClaims.remove(authorityKey);
+                }
+            });
             meshNodes.rows.remove(meshNodeKey(key));
             return completed(ZLinkLocationWriteStatus.STORED);
         }
@@ -738,14 +779,30 @@ public final class ZLinkInMemoryLocationStore implements
             }
             String ownerId = owner.ownerId();
             long removed = 0;
-            List<String> descriptorKeys = meshNodes.rows.entrySet()
+            List<Map.Entry<String, ZLinkMeshNodeDescriptor>>
+                descriptorEntries = meshNodes.rows.entrySet()
                 .stream()
                 .filter(entry -> entry.getValue().ownerId()
-                    .equals(ownerId))
-                .map(Map.Entry::getKey)
+                        .equals(ownerId)
+                    && entry.getValue().leaseGeneration()
+                        == owner.leaseGeneration())
                 .toList();
-            descriptorKeys.forEach(meshNodes.rows::remove);
-            removed += descriptorKeys.size();
+            descriptorEntries.forEach(entry -> {
+                entry.getValue().entrySpotId().ifPresent(spotId -> {
+                    String authorityKey =
+                        ZLinkAuthorityKeyCodec.spot(spotId);
+                    EntrySpotClaim claim =
+                        entrySpotClaims.get(authorityKey);
+                    if (claim != null
+                        && claim.matches(
+                            entry.getKey(),
+                            entry.getValue())) {
+                        entrySpotClaims.remove(authorityKey);
+                    }
+                });
+                meshNodes.rows.remove(entry.getKey());
+            });
+            removed += descriptorEntries.size();
             List<String> fanoutKeys = fanoutPublishers.rows.entrySet()
                 .stream()
                 .filter(entry -> entry.getValue().ownerId().equals(ownerId)
@@ -1125,8 +1182,10 @@ public final class ZLinkInMemoryLocationStore implements
             descriptor.applicationVersion(),
             descriptor.objectCapabilities(),
             descriptor.objectRole(),
+            descriptor.entrySpotId(),
             descriptor.placementWeight(),
             descriptor.capacity(),
+            descriptor.activationConcurrency(),
             descriptor.maintenanceWave(),
             descriptor.state(),
             descriptor.securityIdentity(),
@@ -1172,6 +1231,7 @@ public final class ZLinkInMemoryLocationStore implements
             descriptor.applicationVersion(),
             descriptor.objectCapabilities(),
             descriptor.objectRole(),
+            descriptor.entrySpotId(),
             descriptor.placementWeight(),
             new ZLinkPlacementCapacity(
                 new ZLinkCapacityUsage(
@@ -1183,6 +1243,7 @@ public final class ZLinkInMemoryLocationStore implements
                     Math.toIntExact(spots[1]),
                     descriptor.capacity().spots().limit()),
                 spotTypes),
+            descriptor.activationConcurrency(),
             descriptor.maintenanceWave(),
             descriptor.state(),
             descriptor.securityIdentity(),
@@ -1207,6 +1268,7 @@ public final class ZLinkInMemoryLocationStore implements
                 current.objectCapabilities(),
                 candidate.objectCapabilities())
             && current.objectRole() == candidate.objectRole()
+            && current.entrySpotId().equals(candidate.entrySpotId())
             && current.capacity().actors().limit()
                 == candidate.capacity().actors().limit()
             && current.capacity().spots().limit()
@@ -1278,6 +1340,20 @@ public final class ZLinkInMemoryLocationStore implements
         stamps.put(scope, stamps.getOrDefault(scope, 0L) + 1);
     }
 
+    private boolean isSpotIdentityClaimed(String authorityKey) {
+        synchronized (gate) {
+            EntrySpotClaim claim = entrySpotClaims.get(authorityKey);
+            if (claim == null) {
+                return false;
+            }
+            if (!isExactOwnerLeaseLive(claim.owner())) {
+                entrySpotClaims.remove(authorityKey);
+                return false;
+            }
+            return true;
+        }
+    }
+
     private static boolean matches(ZLinkPeerLocation row, ZLinkPeerLocationFilter filter) {
         ZLinkPeerLocationFilter safeFilter = filter == null ? ZLinkPeerLocationFilter.all() : filter;
         return (safeFilter.autoConnectType() == null || row.autoConnectType() == safeFilter.autoConnectType())
@@ -1339,5 +1415,21 @@ public final class ZLinkInMemoryLocationStore implements
     private record LeaseRow(
         ZLinkLocationOwnerToken token,
         Instant expiresAt) {
+    }
+
+    private record EntrySpotClaim(
+        String descriptorKey,
+        long lifecycleGeneration,
+        ZLinkLocationOwnerToken owner) {
+        private boolean matches(
+            String expectedDescriptorKey,
+            ZLinkMeshNodeDescriptor descriptor) {
+            return descriptorKey.equals(expectedDescriptorKey)
+                && lifecycleGeneration
+                    == descriptor.lifecycleGeneration()
+                && owner.ownerId().equals(descriptor.ownerId())
+                && owner.leaseGeneration()
+                    == descriptor.leaseGeneration();
+        }
     }
 }

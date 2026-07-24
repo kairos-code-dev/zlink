@@ -206,16 +206,6 @@ export class ServiceInstanceActivationRedirectError extends Error {
   }
 }
 
-export interface ServiceLogicalMulticastDetail {
-  readonly snapshotRemoteTargetCount: number;
-  readonly admittedRemoteTargetCount: number;
-  readonly droppedRemoteTargetCount: number;
-  readonly unreachableRemoteTargetCount: number;
-  readonly snapshotLocalSpotCount: number;
-  readonly admittedLocalSpotCount: number;
-  readonly droppedLocalSpotCount: number;
-}
-
 export interface ServiceUserSpotOperationResult {
   readonly terminalResult: number;
   readonly failureCode: number;
@@ -667,34 +657,19 @@ export class ServiceStatefulRuntime {
     topic: string,
     payload: ServiceApplicationPayload,
     sourceSpotId = this.nodeRid
-  ): ServiceLogicalMulticastDetail {
-    const local = this.enqueueLogicalMulticast(channelName, topic, sourceSpotId, payload);
+  ): void {
+    this.enqueueLogicalMulticast(channelName, topic, sourceSpotId, payload);
     const targets = this.raw.topology.peers()
       .filter(peer => peer.descriptor.channels.some(
         channel => channel.name === channelName && channel.weight > 0
       ));
-    let admittedRemoteTargetCount = 0;
-    let unreachableRemoteTargetCount = 0;
     const header = encodeLogicalMulticastHeader(channelName, topic, sourceSpotId);
     const payloadFrame = encodeApplicationPayload(payload);
     for (const target of targets) {
       // Remote admission ends at the source outbound transport queue. The
       // receiver's Spot queue and handler completion are not publish results.
-      if (this.raw.sendService(target.descriptor.nodeRoutingId, [header, payloadFrame])) {
-        admittedRemoteTargetCount++;
-      } else {
-        unreachableRemoteTargetCount++;
-      }
+      this.raw.sendService(target.descriptor.nodeRoutingId, [header, payloadFrame]);
     }
-    return {
-      snapshotRemoteTargetCount: targets.length,
-      admittedRemoteTargetCount,
-      droppedRemoteTargetCount: targets.length - admittedRemoteTargetCount,
-      unreachableRemoteTargetCount,
-      snapshotLocalSpotCount: local.snapshot,
-      admittedLocalSpotCount: local.admitted,
-      droppedLocalSpotCount: local.snapshot - local.admitted
-    };
   }
 
   sendToSpot(
@@ -1938,7 +1913,7 @@ export class ServiceStatefulRuntime {
     sourceSpotId: string,
     payload: ServiceApplicationPayload,
     sourceNodeRid = this.nodeRid
-  ): { readonly snapshot: number; readonly admitted: number } {
+  ): void {
     const targets = [...this.subscriptions.entries()]
       .filter(([, values]) => [...values].some(value => {
         const separator = value.indexOf('\0');
@@ -1947,11 +1922,10 @@ export class ServiceStatefulRuntime {
       }))
       .map(([spotId]) => spotId)
       .sort();
-    let admitted = 0;
     for (const spotId of targets) {
       const spot = this.registry.spot(spotId);
       if (spot === undefined) continue;
-      if (this.raw.mailbox.tryEnqueue({
+      this.raw.mailbox.tryEnqueue({
         owner: `spot:${spotId}`,
         domain: 'application',
         parts: [
@@ -1967,11 +1941,8 @@ export class ServiceStatefulRuntime {
           topic,
           targetSpot: spot.ref
         } satisfies ServiceStatefulMailboxData
-      })) {
-        admitted++;
-      }
+      });
     }
-    return { snapshot: targets.length, admitted };
   }
 
   private enqueueActorControl(spotId: string, control: ActorControlPayload): void {

@@ -35,7 +35,7 @@ inline void run_sm_b7_scenario (const std::string &play_http_endpoint,
                           .display_name = "SM-B7 Order",
                           .level = 7,
                           .tags = {"order", "SM-B7"}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!joined) {
         throw std::runtime_error (joined.error () ? joined.error ()->what ()

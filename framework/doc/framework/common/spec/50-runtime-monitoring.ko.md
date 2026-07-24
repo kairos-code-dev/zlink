@@ -23,7 +23,7 @@ queue 자료 구조를 공개 계약으로 정하지 않는다.
 
 Runtime monitoring service는 등록된 MeshName별 [MeshNode](01-glossary.ko.md#meshnode) [snapshot](01-glossary.ko.md#snapshot), 등록된 [ClientServer Channel](01-glossary.ko.md#clientserver-channel)별 snapshot과
 endpoint 없이 등록된 automatic fanout subscriber의 ChannelName별 snapshot을 구분해 반환한다. [RouteMesh](01-glossary.ko.md#routemesh)의
-peer·channel·multicast·mailbox 상태, ClientServer의 client·server 상태 또는 fanout subscriber의 자동 연결
+peer·channel·mailbox 상태, ClientServer의 client·server 상태 또는 fanout subscriber의 자동 연결
 상태를 서로 다른 service에서 조합하도록 호출자에게 요구하지 않는다.
 
 Host termination은 [MeshName](01-glossary.ko.md#meshname)에 속하지 않으므로 host runtime snapshot에서 한 번만 제공한다. MeshNode
@@ -91,7 +91,6 @@ await foreach (var change in routeMeshRuntime.ObserveAsync(
 | MeshNode | `MeshName`, RID, lifecycle generation, descriptor revision, endpoint, service state, descriptor source set, object role, exact Entry Spot ID와 placement weight를 제공한다. Entry Spot ID는 Object Server에서만 존재한다. |
 | Peer | RID, [lifecycle generation](01-glossary.ko.md#lifecycle-generation), [descriptor revision](01-glossary.ko.md#descriptor-revision), endpoint, admission state, ready 여부, service state, `ChannelName` set과 마지막 failure를 제공한다. |
 | Channel | `ChannelName`, local [weight](01-glossary.ko.md#weight), [ready](01-glossary.ko.md#ready) member 수와 새 target으로 선택할 수 있는지를 제공한다. |
-| [Logical Multicast](01-glossary.ko.md#logical-multicast) | Submit, backpressure와 drop 누계, 그리고 remote·local target의 snapshot·admitted·dropped 수를 제공한다. |
 | Mailbox | Application·infrastructure domain별 active turn 수와 pending work 수를 제공한다. |
 | Object placement | Actor 전체, User·Instance [Spot](01-glossary.ko.md#spot) 전체와 Spot stable type별 active·reserved count·설정한 limit, reservation failure와 최근 placement outcome을 제공한다. |
 | Location | Store가 구성되어 있는지, ready·degraded state와 마지막 성공·실패 시각을 제공한다. |
@@ -163,8 +162,6 @@ snapshot에는 monotonic `Sequence`와 관찰 시각을 포함한다. 같은 Mes
 | `zlink.runtime.mesh_node.state_changed` | MeshNode lifecycle 또는 ready state 변경 |
 | `zlink.runtime.mesh_node.peer_changed` | peer admission, ready, generation 또는 service state 변경 |
 | `zlink.runtime.mesh_node.channel_changed` | channel weight, ready member 수 또는 선택 가능 상태 변경 |
-| `zlink.runtime.mesh_node.multicast_backpressured` | Logical Multicast admission이 backpressure를 반환 |
-| `zlink.runtime.mesh_node.multicast_dropped` | local 또는 remote target별 drop 발생 |
 | `zlink.runtime.mesh_node.mailbox_changed` | application 또는 infrastructure mailbox 상태 변경 |
 | `zlink.runtime.object.placement_changed` | create reservation, Ready·abort, capacity exhaustion 또는 relocation으로 object placement 집계가 변경 |
 | `zlink.runtime.mesh_node.routing_id_conflict` | automatic RID descriptor owner claim이 active conflict로 실패 |
@@ -182,7 +179,7 @@ RID, ClientServer event는 ChannelName과 조건부 Server RID를 가진다. Fan
 private socket 상태를 조회할 필요가 없다. Location changed variant는 같은 시점의 immutable Location snapshot을
 필수로 가지며 publisher entry를 요구하지 않는다. Publisher가 0개인 store degraded·recovered 전이도 이
 variant로 표현한다. 해당 event에 필요한 경우에만 peer RID, lifecycle generation, descriptor revision, weight,
-mailbox domain, message kind, remote·local snapshot/admitted/dropped count, reason과 service state를 추가한다. Payload와
+mailbox domain, message kind, reason과 service state를 추가한다. Payload와
 application metadata를 event에 복사하지 않는다.
 
 Placement event는 object kind, stable type, outcome, reason, capacity delta와 현재 node aggregate만 제공한다.
@@ -224,7 +221,6 @@ discriminated union 또는 variant로 이 닫힌 관계를 보존한다.
 | Mailbox domain | `application`, `infrastructure` |
 | Descriptor source | `manual`, `redis`, `manual_and_redis` |
 | Store state | `not_configured`, `ready`, `degraded`, `stopped` |
-| Multicast reason | `backpressure`, `send_timeout`, `target_closed`, `shutdown` |
 | Placement outcome | `reserved`, `ready`, `aborted`, `capacity_exhausted`, `owner_stale`, `store_failed` |
 
 정확한 오류 객체와 언어별 casing은 언어별 공개 인터페이스 문서가 정한다.
@@ -278,8 +274,10 @@ Reactive Streams subscription cancel 또는 observation handle close로 표현�
 
 ## 7. 구현 및 contract test 검증 요구
 
-- MeshNode snapshot 하나로 peer, channel, multicast와 mailbox를 읽고, host termination state는 host runtime
+- MeshNode snapshot 하나로 peer, channel과 mailbox를 읽고, host termination state는 host runtime
   snapshot 하나에서 읽을 수 있다.
+- Publish target 수와 target별 수락·실패 결과를 MeshNode snapshot이나 runtime
+  event에 포함하지 않는다.
 - ClientServer Channel snapshot 하나로 local role, ready server, weight, service state와 location 상태를 함께 읽을 수
   있으며 MeshName을 요구하지 않는다.
 - peer lifecycle generation, descriptor revision과 실제 ready state를 별도 필드로 관찰할 수 있다.
@@ -292,7 +290,6 @@ Reactive Streams subscription cancel 또는 observation handle close로 표현�
   Location snapshot으로 검증한다. Raw socket monitor나 private runtime hook을 evidence로 사용하지 않는다.
 - Fanout publisher 하나의 beacon timeout은 해당 publisher entry만 `disconnected`로 바꾸고 다른 publisher
   entry의 ready 상태를 변경하지 않는다.
-- publish operation의 backpressure 결과와 target별 drop 수가 각각 관찰된다. 같은 operation에서 둘 다 발생할 수 있다.
 - application callback이 대기 중이어도 infrastructure mailbox change와 request completion이 관찰된다.
 - observer failure나 느린 소비가 dispatch, reply와 termination terminal result를 바꾸지 않는다.
 - sequence gap 뒤 snapshot 재조회로 최신 상태를 복원할 수 있다.

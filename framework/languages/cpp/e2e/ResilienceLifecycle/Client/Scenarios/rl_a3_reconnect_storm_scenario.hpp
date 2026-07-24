@@ -44,7 +44,7 @@ inline void run_rl_a3_reconnect_storm_probe (const client_options_t &options)
         const auto marker = "rl-a3-" + std::to_string (index);
         const auto reply = consumer.post ("/profile/request/new-client")
                              .body (profile_req_t{.value = "fast", .marker = marker})
-                             .async<profile_res_t> ().result ().value ().body;
+                             .submit<profile_res_t> ().result ().value ().body;
         ensure (reply.value == "profile:fast", "RL-A3 storm request returned an invalid value");
         ensure (reply.provider_rid == "api-a" || reply.provider_rid == "api-b",
                 "RL-A3 storm request returned an unexpected provider");

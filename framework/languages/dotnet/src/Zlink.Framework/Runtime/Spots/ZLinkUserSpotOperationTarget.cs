@@ -382,8 +382,14 @@ internal sealed class ZLinkUserSpotOperationTarget(
             || !string.Equals(snapshot.OwnerId, fence.TargetOwnerId, StringComparison.Ordinal)
             || snapshot.OwnerLeaseGeneration
             != checked((long)fence.TargetOwnerLeaseGeneration)
-            || snapshot.Allocation.CapacityDelta
-            != checked((int)fence.PendingCapacityDelta))
+            || snapshot.Allocation.Capacity
+            != new ZLinkCapacityVector(
+                0,
+                checked((int)fence.PendingCapacityDelta),
+                new ZLinkSpotTypeCapacityDelta(
+                    ZLinkPlacementObjectKind.UserSpot,
+                    operation.StableType,
+                    checked((int)fence.PendingCapacityDelta))))
             throw Moving(operation.SpotId);
     }
 

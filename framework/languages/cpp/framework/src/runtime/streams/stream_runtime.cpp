@@ -369,13 +369,13 @@ stream_write_call_t &stream_write_call_t::compress ()
     return *this;
 }
 
-task_t<submit_result_t> stream_write_call_t::submit ()
+task_t<void> stream_write_call_t::submit ()
 {
     auto state = _state;
     auto claimed = state->claim_submit ();
     if (!claimed) {
-        return task_t<submit_result_t> (
-          detail::result_access_t::failure<submit_result_t> (*claimed.error ()));
+        return task_t<void> (
+          detail::result_access_t::failure<void> (*claimed.error ()));
     }
     return detail::submit_one_way_task ([state] { return state->submit_now (); });
 }
@@ -422,13 +422,13 @@ stream_send_call_t &stream_send_call_t::compress ()
     return *this;
 }
 
-task_t<submit_result_t> stream_send_call_t::submit ()
+task_t<void> stream_send_call_t::submit ()
 {
     auto state = _state;
     auto claimed = state->claim_submit ();
     if (!claimed) {
-        return task_t<submit_result_t> (
-          detail::result_access_t::failure<submit_result_t> (*claimed.error ()));
+        return task_t<void> (
+          detail::result_access_t::failure<void> (*claimed.error ()));
     }
     return detail::submit_one_way_task ([state] { return state->submit_now (); });
 }

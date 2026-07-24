@@ -50,7 +50,7 @@ inline void post_empty (const std::string &base_url, const std::string &path)
                     .base_url (base_url)
                     .timeout (std::chrono::seconds (3))
                     .build ();
-    auto response = client.post (path).async_raw ().result ();
+    auto response = client.post (path).submit_raw ().result ();
     ensure (response && response.value ().status < 400, "HTTP POST failed: " + base_url + path);
 }
 
@@ -61,7 +61,7 @@ inline bool try_get_health (const std::string &base_url)
                     .timeout (std::chrono::milliseconds (500))
                     .build ();
     try {
-        auto response = client.get ("/health").async_raw ().result ();
+        auto response = client.get ("/health").submit_raw ().result ();
         return response && response.value ().status == 200;
     }
     catch (...) {

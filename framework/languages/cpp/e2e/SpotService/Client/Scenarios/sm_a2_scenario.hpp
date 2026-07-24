@@ -30,7 +30,7 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint,
         .body (evidence_wait_req_t{
           .contains_all = {"StateRouted", context.spot_rid,
                            std::to_string (context.current_value)}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!observed) {
         throw std::runtime_error (observed.error () ? observed.error ()->what ()
@@ -71,7 +71,7 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint)
                           .display_name = "Alice",
                           .level = 7,
                           .tags = {"alpha", "local"}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!joined) {
         throw std::runtime_error (joined.error () ? joined.error ()->what ()
@@ -90,7 +90,7 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint)
     auto first = api.post ("/spot/state")
                    .body (spot_state_req_t{.actor_id = "alice",
                                            .state = state_req_t{.op = "add", .amount = 3}})
-                   .async_raw ()
+                   .submit_raw ()
                    .result ();
     if (!first) {
         throw std::runtime_error (first.error () ? first.error ()->what ()
@@ -106,7 +106,7 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint)
     auto second = api.post ("/spot/state")
                     .body (spot_state_req_t{.actor_id = "alice",
                                             .state = state_req_t{.op = "add", .amount = 4}})
-                    .async_raw ()
+                    .submit_raw ()
                     .result ();
     if (!second) {
         throw std::runtime_error (second.error () ? second.error ()->what ()
@@ -132,7 +132,7 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint)
         auto raw = client.post ("/spot/state")
                      .body (spot_state_req_t{.actor_id = "alice",
                                              .state = state_req_t{.op = "add", .amount = 5}})
-                     .async_raw ()
+                     .submit_raw ()
                      .result ();
         if (!raw) {
             throw std::runtime_error (raw.error () ? raw.error ()->what ()
@@ -152,7 +152,7 @@ inline void run_sm_a2_scenario (const std::string &play_http_endpoint)
         auto raw = client.post ("/spot/state")
                      .body (spot_state_req_t{.actor_id = "alice",
                                              .state = state_req_t{.op = "add", .amount = 6}})
-                     .async_raw ()
+                     .submit_raw ()
                      .result ();
         if (!raw) {
             throw std::runtime_error (raw.error () ? raw.error ()->what ()

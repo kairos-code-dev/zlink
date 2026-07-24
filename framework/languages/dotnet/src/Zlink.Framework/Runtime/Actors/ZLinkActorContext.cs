@@ -17,6 +17,13 @@ internal sealed class ZLinkActorContext(
            ?? throw new InvalidOperationException(
                $"Actor '{state.ActorId}' does not belong to a registered RouteMesh.");
 
+    public string ActorId => state.ActorId;
+
+    public ulong ObjectGeneration
+        => state.NativeActorRef?.Generation
+           ?? throw new InvalidOperationException(
+               $"Actor '{state.ActorId}' does not have an object generation.");
+
     public string? SpotId => state.SpotId;
 
     public IZLinkBoundSession BoundSession
@@ -48,9 +55,6 @@ internal sealed class ZLinkActorContext(
         return ZLinkActorJoinCall.ForEntrySpot(
             runtime,
             CurrentActor,
-            state.NativeActorRef?.NodeRid
-            ?? throw new InvalidOperationException(
-                $"Actor '{state.ActorId}' does not have a current node identity."),
             request);
     }
 }
@@ -62,27 +66,20 @@ internal sealed class ZLinkActorJoinCall :
     private readonly IZLinkActor _actor;
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly ZLinkMessage _request;
-    private readonly RoutingId _targetNodeRid;
     private readonly string? _targetSpotId;
-    private readonly TargetKind _targetKind;
-    private readonly ZLinkSerialTurn? _turn;
+    private int _submitted;
     private TimeSpan? _timeout;
 
     private ZLinkActorJoinCall(
         ZLinkFrameworkRuntime runtime,
         IZLinkActor actor,
-        RoutingId targetNodeRid,
         string? targetSpotId,
-        ZLinkMessage request,
-        TargetKind targetKind)
+        ZLinkMessage request)
     {
         _runtime = runtime;
         _actor = actor;
-        _targetNodeRid = targetNodeRid;
         _targetSpotId = targetSpotId;
         _request = request;
-        _targetKind = targetKind;
-        _turn = ZLinkSerialTurn.Current;
     }
 
     public static IZLinkActorJoinSpotCall ForSpot(
@@ -92,18 +89,15 @@ internal sealed class ZLinkActorJoinCall :
         ZLinkMessage request)
     {
         return new ZLinkActorJoinCall(
-            runtime, actor, default, ZLinkSpotId.Require(spotId, nameof(spotId)),
-            request, TargetKind.Spot);
+            runtime, actor, ZLinkSpotId.Require(spotId, nameof(spotId)), request);
     }
 
     public static IZLinkActorJoinEntrySpotCall ForEntrySpot(
         ZLinkFrameworkRuntime runtime,
         IZLinkActor actor,
-        RoutingId spotNodeRid,
         ZLinkMessage request)
     {
-        return new ZLinkActorJoinCall(
-            runtime, actor, spotNodeRid, null, request, TargetKind.EntrySpot);
+        return new ZLinkActorJoinCall(runtime, actor, null, request);
     }
 
     IZLinkActorJoinSpotCall IZLinkActorJoinSpotCall.Timeout(TimeSpan timeout)
@@ -118,61 +112,38 @@ internal sealed class ZLinkActorJoinCall :
         return this;
     }
 
-    public ValueTask<ZLinkActorJoinResult> Async(CancellationToken cancellationToken = default)
+    public void Defer()
     {
-        return ExecuteAsync(cancellationToken);
-    }
+        if (Interlocked.Exchange(ref _submitted, 1) != 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.AlreadySubmitted,
+                "Actor Join was already deferred.");
 
-    public ValueTask<ZLinkActorJoinResult> Yield(CancellationToken cancellationToken = default)
-    {
-        return _turn is null
-            ? ExecuteAsync(cancellationToken)
-            : _turn.YieldFrameworkCallAsync(ExecuteAsync, cancellationToken);
+        var snapshot = _request.Snapshot(_runtime.Registration.Codecs);
+        var actorState = _runtime.GetOrCreateActorState(_actor.ActorId);
+        var join = new ZLinkDeferredActorJoin(
+            _runtime,
+            actorState,
+            _actor,
+            actorState.NativeActorRef?.Generation
+            ?? throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                $"Actor '{_actor.ActorId}' does not have a current object generation."),
+            _targetSpotId,
+            snapshot,
+            _timeout ?? _runtime.Registration.DefaultRequestTimeout);
+        ZLinkDeferredActorJoinHandlerScope.Register(
+            join,
+            snapshot.Encode(_runtime.Registration.Codecs).Payload.Bytes.Length);
     }
 
     private void SetTimeout(TimeSpan timeout)
     {
+        if (Volatile.Read(ref _submitted) != 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.AlreadySubmitted,
+                "Actor Join options cannot change after Defer.");
         ZLinkRequestTimeoutValidation.Validate(timeout, nameof(timeout));
         _timeout = timeout;
-    }
-
-    private async ValueTask<ZLinkActorJoinResult> ExecuteAsync(CancellationToken cancellationToken)
-    {
-        using var operation = _runtime.EnterOperation();
-        using var flow = _targetKind == TargetKind.Spot
-            ? ZLinkFlowContext.EnterCurrentOrCreate(
-                ZLinkFlowOrigin.Application,
-                _runtime.Flow.CaptureEnabled)
-            : default;
-        var timeout = _timeout ?? _runtime.Registration.DefaultRequestTimeout;
-        using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutSource.CancelAfter(timeout);
-
-        try
-        {
-            return _targetKind == TargetKind.Spot
-                ? await _runtime.JoinActorAsync(
-                    _targetSpotId!,
-                    _actor,
-                    _request,
-                    timeoutSource.Token).ConfigureAwait(false)
-                : await _runtime.JoinActorEntrySpotAsync(
-                    _targetNodeRid,
-                    _actor,
-                    _request,
-                    timeoutSource.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested &&
-                                                 timeoutSource.IsCancellationRequested)
-        {
-            var target = _targetKind == TargetKind.Spot ? "SPOT" : "Entry SPOT";
-            throw new TimeoutException($"{target} actor join timed out after {timeout}.");
-        }
-    }
-
-    private enum TargetKind
-    {
-        Spot,
-        EntrySpot
     }
 }

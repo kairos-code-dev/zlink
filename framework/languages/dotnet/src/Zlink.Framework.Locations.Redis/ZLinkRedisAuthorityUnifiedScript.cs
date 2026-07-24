@@ -126,7 +126,7 @@ local function allocation(row)
         stableType = row.stableType,
         descriptor = descriptorFromKey(row.descriptorKey),
         descriptorLifecycleGeneration = row.descriptorLifecycleGeneration,
-        capacityDelta = tonumber(row.capacityDelta)
+        capacityBundle = row.capacityBundle
     }
 end
 
@@ -159,7 +159,7 @@ local historyFields = {
     'authorityKey', 'payload', 'storeVersion', 'objectGeneration',
     'authorityOwnerGeneration', 'ownerId', 'ownerLeaseGeneration',
     'allocationState', 'objectKind', 'stableType', 'descriptorKey',
-    'descriptorLifecycleGeneration', 'capacityDelta', 'reservationId',
+    'descriptorLifecycleGeneration', 'capacityBundle', 'reservationId',
     'requestContentReference', 'requestSha256', 'requestEncodedSize'
 }
 
@@ -305,6 +305,45 @@ local function capacityTypeBucket(nodeBucket, objectKind, stableType)
         .. string.len(stableType) .. ':' .. stableType
 end
 
+local function decodeCapacityBundle(encoded)
+    local offset = 1
+    local function segment()
+        local colon = string.find(encoded, ':', offset, true)
+        if not colon then error('invalid capacity bundle') end
+        local length = tonumber(string.sub(encoded, offset, colon - 1))
+        if not length or length < 0 then error('invalid capacity bundle') end
+        local start = colon + 1
+        local finish = start + length - 1
+        if finish > #encoded then error('invalid capacity bundle') end
+        offset = finish + 1
+        return string.sub(encoded, start, finish)
+    end
+    if segment() ~= 'zlink-capacity-bundle-v2' then
+        error('invalid capacity bundle')
+    end
+    local capacity = {
+        actors = tonumber(segment()),
+        spots = tonumber(segment()),
+        spotType = nil
+    }
+    local presence = segment()
+    if presence == '1' then
+        capacity.spotType = {
+            objectKind = segment(),
+            stableType = segment(),
+            count = tonumber(segment())
+        }
+    elseif presence ~= '0' then error('invalid capacity bundle') end
+    if offset ~= #encoded + 1 then error('invalid capacity bundle') end
+    return capacity
+end
+
+local function capacityDelta(capacity, objectKind)
+    return objectKind == 'actor'
+        and tonumber(capacity.actors)
+        or tonumber(capacity.spots)
+end
+
 local function leaseLive(owner, leaseKey)
     local value = redis.call(
         'HMGET', leaseKey, 'ownerId', 'generation', 'expiresAt')
@@ -351,13 +390,18 @@ local function descriptorAdmission(target, descriptorKey, admissionKey, leaseKey
     if not matched then return nil, 'targetUnavailable' end
     local nodeBucket = capacityNodeBucket(
         target.descriptorKey, target.lifecycleGeneration, request.objectKind)
-    local typeBucket = capacityTypeBucket(
-        nodeBucket, request.objectKind, request.stableType)
-    local delta = tonumber(request.capacityDelta)
+    local typeBucket = nil
+    if request.objectKind ~= 'actor' then
+        typeBucket = capacityTypeBucket(
+            nodeBucket, request.objectKind, request.stableType)
+    end
+    local delta = capacityDelta(request.capacity, request.objectKind)
     local nodeActive = tonumber(redis.call('HGET', KEYS[7], nodeBucket) or '0')
     local nodePending = tonumber(redis.call('HGET', KEYS[8], nodeBucket) or '0')
-    local typeActive = tonumber(redis.call('HGET', KEYS[9], typeBucket) or '0')
-    local typePending = tonumber(redis.call('HGET', KEYS[10], typeBucket) or '0')
+    local typeActive = typeBucket
+        and tonumber(redis.call('HGET', KEYS[9], typeBucket) or '0') or 0
+    local typePending = typeBucket
+        and tonumber(redis.call('HGET', KEYS[10], typeBucket) or '0') or 0
     local populationLimit = request.objectKind == 'actor'
         and tonumber(metadata[7] or '0')
         or tonumber(metadata[8] or '0')
@@ -374,6 +418,7 @@ local function descriptorAdmission(target, descriptorKey, admissionKey, leaseKey
 end
 
 local function capacityAdd(key, bucket, delta)
+    if not bucket or bucket == '' or delta == 0 then return end
     local current = tonumber(redis.call('HGET', key, bucket) or '0')
     local nextValue = current + delta
     if nextValue < 0 or nextValue > 2147483647 then
@@ -383,10 +428,19 @@ local function capacityAdd(key, bucket, delta)
     else redis.call('HSET', key, bucket, nextValue) end
 end
 
+local function capacitySatisfies(key, bucket, required)
+    return not bucket or bucket == '' or required == 0
+        or tonumber(redis.call('HGET', key, bucket) or '0') >= required
+end
+
 local function rowBuckets(row)
     local node = capacityNodeBucket(
         row.descriptorKey, row.descriptorLifecycleGeneration, row.objectKind)
-    return node, capacityTypeBucket(node, row.objectKind, row.stableType)
+    local typeBucket = nil
+    if row.objectKind ~= 'actor' then
+        typeBucket = capacityTypeBucket(node, row.objectKind, row.stableType)
+    end
+    return node, typeBucket
 end
 
 local function sourceMatches(row, value)
@@ -396,8 +450,12 @@ local function sourceMatches(row, value)
        and row.stableType == value.stableType
        and sameDescriptor(row, value.sourceDescriptorKey,
             value.sourceNodeLifecycleGeneration)
-       and tonumber(row.capacityDelta) == tonumber(value.capacityDelta)
+       and row.capacityBundle == value.capacityBundle
        and sameOwner(row, value.sourceOwner)
+end
+
+local function aggregateLockKey(authorityKey)
+    return '\0aggregate:' .. authorityKey
 end
 
 local function readReservation(key)
@@ -446,7 +504,7 @@ if op == 'reserve' then
         stableType = request.stableType,
         descriptorKey = request.target.descriptorKey,
         descriptorLifecycleGeneration = request.target.lifecycleGeneration,
-        capacityDelta = request.capacityDelta,
+        capacityBundle = request.capacityBundle,
         reservationId = request.reservationId,
         requestContentReference = request.intent.requestContentReference,
         requestSha256 = request.intent.requestSha256,
@@ -456,9 +514,10 @@ if op == 'reserve' then
     redis.call('HSET', KEYS[14],
         'status', 'reserved', 'authorityKey', request.key,
         'storeVersion', revision, 'requestJson', ARGV[2],
-        'nodeBucket', buckets.node, 'typeBucket', buckets.type)
-    capacityAdd(KEYS[8], buckets.node, tonumber(request.capacityDelta))
-    capacityAdd(KEYS[10], buckets.type, tonumber(request.capacityDelta))
+        'nodeBucket', buckets.node, 'typeBucket', buckets.type or '')
+    local delta = capacityDelta(request.capacity, request.objectKind)
+    capacityAdd(KEYS[8], buckets.node, delta)
+    capacityAdd(KEYS[10], buckets.type, delta)
     indexCurrent(request.key, revision)
     local result = snapshot(row)
     return cjson.encode({kind = 'reserved',
@@ -518,7 +577,8 @@ if op == 'completeCreation' then
     if request.terminal.state == 'Created' then
         request.objectKind = row.objectKind
         request.stableType = row.stableType
-        request.capacityDelta = 0
+        local rowCapacity = decodeCapacityBundle(row.capacityBundle)
+        request.capacity = {actors = 0, spots = 0}
         local _, failure = descriptorAdmission(request.target)
         if failure then return cjson.encode({kind = 'stale'}) end
         archiveCurrent(KEYS[1], KEYS[2], KEYS[3])
@@ -530,10 +590,11 @@ if op == 'completeCreation' then
         row.requestSha256 = nil
         row.requestEncodedSize = nil
         writeRow(KEYS[1], row)
-        capacityAdd(KEYS[8], reservation.nodeBucket, -tonumber(row.capacityDelta))
-        capacityAdd(KEYS[10], reservation.typeBucket, -tonumber(row.capacityDelta))
-        capacityAdd(KEYS[7], reservation.nodeBucket, tonumber(row.capacityDelta))
-        capacityAdd(KEYS[9], reservation.typeBucket, tonumber(row.capacityDelta))
+        local delta = capacityDelta(rowCapacity, row.objectKind)
+        capacityAdd(KEYS[8], reservation.nodeBucket, -delta)
+        capacityAdd(KEYS[10], reservation.typeBucket, -delta)
+        capacityAdd(KEYS[7], reservation.nodeBucket, delta)
+        capacityAdd(KEYS[9], reservation.typeBucket, delta)
         redis.call('HSET', KEYS[14], 'status', 'committed')
         indexCurrent(request.key, row.storeVersion)
         completedKind = 'created'
@@ -544,8 +605,10 @@ if op == 'completeCreation' then
         local revision = decimalToHex(row.storeVersion)
         writeTombstone(KEYS[2], KEYS[3], revision, request.key)
         redis.call('DEL', KEYS[1])
-        capacityAdd(KEYS[8], reservation.nodeBucket, -tonumber(row.capacityDelta))
-        capacityAdd(KEYS[10], reservation.typeBucket, -tonumber(row.capacityDelta))
+        local delta = capacityDelta(
+            decodeCapacityBundle(row.capacityBundle), row.objectKind)
+        capacityAdd(KEYS[8], reservation.nodeBucket, -delta)
+        capacityAdd(KEYS[10], reservation.typeBucket, -delta)
         redis.call(
             'HSET', KEYS[14], 'status',
             request.terminal.state == 'Rejected' and 'rejected' or 'failed')
@@ -590,10 +653,10 @@ if op == 'commit' then
     end
     request.objectKind = row.objectKind
     request.stableType = row.stableType
-    request.capacityDelta = 0
+    local rowCapacity = decodeCapacityBundle(row.capacityBundle)
+    request.capacity = {actors = 0, spots = 0}
     local _, failure = descriptorAdmission(request.target)
     if failure then return cjson.encode({kind = 'stale'}) end
-    request.capacityDelta = tonumber(row.capacityDelta)
     if not counterAvailable('storeRevision', 1) then
         return cjson.encode({kind = 'generationExhausted'})
     end
@@ -606,10 +669,11 @@ if op == 'commit' then
     row.requestSha256 = nil
     row.requestEncodedSize = nil
     writeRow(KEYS[1], row)
-    capacityAdd(KEYS[8], reservation.nodeBucket, -tonumber(row.capacityDelta))
-    capacityAdd(KEYS[10], reservation.typeBucket, -tonumber(row.capacityDelta))
-    capacityAdd(KEYS[7], reservation.nodeBucket, tonumber(row.capacityDelta))
-    capacityAdd(KEYS[9], reservation.typeBucket, tonumber(row.capacityDelta))
+    local delta = capacityDelta(rowCapacity, row.objectKind)
+    capacityAdd(KEYS[8], reservation.nodeBucket, -delta)
+    capacityAdd(KEYS[10], reservation.typeBucket, -delta)
+    capacityAdd(KEYS[7], reservation.nodeBucket, delta)
+    capacityAdd(KEYS[9], reservation.typeBucket, delta)
     redis.call('HSET', KEYS[14], 'status', 'committed')
     indexCurrent(request.key, row.storeVersion)
     return cjson.encode({kind = 'committed', ready = snapshot(row)})
@@ -635,8 +699,10 @@ if op == 'abort' then
     local revision = decimalToHex(row.storeVersion)
     writeTombstone(KEYS[2], KEYS[3], revision, request.key)
     redis.call('DEL', KEYS[1])
-    capacityAdd(KEYS[8], reservation.nodeBucket, -tonumber(row.capacityDelta))
-    capacityAdd(KEYS[10], reservation.typeBucket, -tonumber(row.capacityDelta))
+    local delta = capacityDelta(
+        decodeCapacityBundle(row.capacityBundle), row.objectKind)
+    capacityAdd(KEYS[8], reservation.nodeBucket, -delta)
+    capacityAdd(KEYS[10], reservation.typeBucket, -delta)
     redis.call('HSET', KEYS[14], 'status', 'aborted')
     indexCurrent(request.key, row.storeVersion)
     return cjson.encode({kind = 'aborted'})
@@ -651,7 +717,8 @@ if op == 'reserveRelocation' then
         return cjson.encode({kind = 'conflict', current = snapshot(rowAt(KEYS[1]))})
     end
     local row = rowAt(KEYS[1])
-    if not sourceMatches(row, request) then
+    if not sourceMatches(row, request)
+        or redis.call('HEXISTS', KEYS[6], aggregateLockKey(request.key)) == 1 then
         return cjson.encode({kind = 'conflict', current = snapshot(row)})
     end
     local buckets, failure = descriptorAdmission(request.target)
@@ -661,9 +728,11 @@ if op == 'reserveRelocation' then
         'status', 'reserved', 'authorityKey', request.key,
         'requestJson', ARGV[2], 'sourceNodeBucket', sourceNode,
         'sourceTypeBucket', sourceType, 'targetNodeBucket', buckets.node,
-        'targetTypeBucket', buckets.type, 'capacityDelta', request.capacityDelta)
-    capacityAdd(KEYS[8], buckets.node, tonumber(request.capacityDelta))
-    capacityAdd(KEYS[10], buckets.type, tonumber(request.capacityDelta))
+        'targetTypeBucket', buckets.type or '',
+        'capacityBundle', request.capacityBundle)
+    local delta = capacityDelta(request.capacity, request.objectKind)
+    capacityAdd(KEYS[8], buckets.node, delta)
+    capacityAdd(KEYS[10], buckets.type, delta)
     return cjson.encode({kind = 'reserved', fence = request.reservationId})
 end
 
@@ -678,9 +747,11 @@ if op == 'abortRelocation' then
     end
     if reservation.status ~= 'reserved' then return cjson.encode({kind = 'stale'}) end
     capacityAdd(KEYS[8], reservation.targetNodeBucket,
-        -tonumber(reservation.capacityDelta))
+        -capacityDelta(reservation.request.capacity,
+            reservation.request.objectKind))
     capacityAdd(KEYS[10], reservation.targetTypeBucket,
-        -tonumber(reservation.capacityDelta))
+        -capacityDelta(reservation.request.capacity,
+            reservation.request.objectKind))
     redis.call('HSET', KEYS[14], 'status', 'aborted')
     return cjson.encode({kind = 'aborted'})
 end
@@ -689,6 +760,9 @@ if op == 'cas' then
     local row = rowAt(KEYS[1])
     if not row or row.allocationState ~= 'active'
         or row.storeVersion ~= tostring(request.expectedStoreVersion) then
+        return cjson.encode({kind = 'conflict', current = snapshot(row)})
+    end
+    if redis.call('HEXISTS', KEYS[6], aggregateLockKey(request.key)) == 1 then
         return cjson.encode({kind = 'conflict', current = snapshot(row)})
     end
     if request.mutationKind == 'delete' or request.transition == 'preserve' then
@@ -716,7 +790,7 @@ if op == 'cas' then
         end
         request.objectKind = row.objectKind
         request.stableType = row.stableType
-        request.capacityDelta = tonumber(row.capacityDelta)
+        request.capacity = {actors = 0, spots = 0}
         request.target = reservation.request.target
         local _, failure = descriptorAdmission(request.target)
         if failure then return cjson.encode({kind = 'conflict', current = snapshot(row)}) end
@@ -725,8 +799,10 @@ if op == 'cas' then
     row.storeVersion = nextCounter('storeRevision')
     if request.mutationKind == 'delete' then
         local nodeBucket, typeBucket = rowBuckets(row)
-        capacityAdd(KEYS[7], nodeBucket, -tonumber(row.capacityDelta))
-        capacityAdd(KEYS[9], typeBucket, -tonumber(row.capacityDelta))
+        local delta = capacityDelta(
+            decodeCapacityBundle(row.capacityBundle), row.objectKind)
+        capacityAdd(KEYS[7], nodeBucket, -delta)
+        capacityAdd(KEYS[9], typeBucket, -delta)
         local revision = decimalToHex(row.storeVersion)
         writeTombstone(KEYS[2], KEYS[3], revision, request.key)
         redis.call('DEL', KEYS[1])
@@ -737,17 +813,23 @@ if op == 'cas' then
     row.payload = request.payload
     if request.transition == 'newOwner' then
         capacityAdd(KEYS[7], reservation.sourceNodeBucket,
-            -tonumber(reservation.capacityDelta))
+            -capacityDelta(reservation.request.capacity,
+                reservation.request.objectKind))
         capacityAdd(KEYS[9], reservation.sourceTypeBucket,
-            -tonumber(reservation.capacityDelta))
+            -capacityDelta(reservation.request.capacity,
+                reservation.request.objectKind))
         capacityAdd(KEYS[8], reservation.targetNodeBucket,
-            -tonumber(reservation.capacityDelta))
+            -capacityDelta(reservation.request.capacity,
+                reservation.request.objectKind))
         capacityAdd(KEYS[10], reservation.targetTypeBucket,
-            -tonumber(reservation.capacityDelta))
+            -capacityDelta(reservation.request.capacity,
+                reservation.request.objectKind))
         capacityAdd(KEYS[7], reservation.targetNodeBucket,
-            tonumber(reservation.capacityDelta))
+            capacityDelta(reservation.request.capacity,
+                reservation.request.objectKind))
         capacityAdd(KEYS[9], reservation.targetTypeBucket,
-            tonumber(reservation.capacityDelta))
+            capacityDelta(reservation.request.capacity,
+                reservation.request.objectKind))
         row.authorityOwnerGeneration = nextCounter('authorityOwnerGeneration')
         row.ownerId = request.targetOwner.ownerId
         row.ownerLeaseGeneration = request.targetOwner.leaseGeneration
@@ -773,13 +855,22 @@ if op == 'prepareAggregate' then
             and 'stale' or 'conflict'})
     end
     local participantCount = #request.participants
-    local reservationCount = #request.targetReservations
-    local seen = {}
+    local aggregateCapacity = request.capacity
+    local aggregateSpotType = aggregateCapacity.spotType
+    if aggregateSpotType == cjson.null then aggregateSpotType = nil end
     local newOwners = 0
+    local actors = 0
+    local spots = 0
+    local spotKind = nil
+    local spotType = nil
     for index, participant in ipairs(request.participants) do
         local row = rowAt(KEYS[19 + index])
         if not row or row.allocationState ~= 'active'
             or row.storeVersion ~= tostring(participant.expectedStoreVersion) then
+            return cjson.encode({kind = 'conflict'})
+        end
+        if redis.call(
+                'HEXISTS', KEYS[6], aggregateLockKey(participant.key)) == 1 then
             return cjson.encode({kind = 'conflict'})
         end
         if participant.ownerTransition == 'preserve' then
@@ -788,52 +879,93 @@ if op == 'prepareAggregate' then
                 leaseGeneration = row.ownerLeaseGeneration}, leaseKey) then
                 return cjson.encode({kind = 'conflict'})
             end
-        else newOwners = newOwners + 1 end
-    end
-    for index = 1, reservationCount do
-        local reservationKey = KEYS[19 + participantCount + index]
-        local reservation = readReservation(reservationKey)
-        if not reservation or reservation.status ~= 'reserved'
-            or seen[reservation.authorityKey] then
-            return cjson.encode({kind = 'conflict'})
-        end
-        seen[reservation.authorityKey] = true
-        local found = false
-        local participantRow = nil
-        for participantIndex, participant in ipairs(request.participants) do
-            if participant.key == reservation.authorityKey
-                and participant.ownerTransition == 'newOwner'
-                and tostring(participant.expectedStoreVersion)
-                    == tostring(reservation.request.expectedStoreVersion) then
-                found = true
-                participantRow = rowAt(KEYS[19 + participantIndex])
-                break
+        else
+            newOwners = newOwners + 1
+            local capacity = decodeCapacityBundle(row.capacityBundle)
+            actors = actors + tonumber(capacity.actors)
+            spots = spots + tonumber(capacity.spots)
+            if capacity.spotType then
+                if spotKind and (spotKind ~= capacity.spotType.objectKind
+                    or spotType ~= capacity.spotType.stableType) then
+                    return cjson.encode({kind = 'conflict'})
+                end
+                spotKind = capacity.spotType.objectKind
+                spotType = capacity.spotType.stableType
+            end
+            request.objectKind = row.objectKind
+            request.stableType = row.stableType
+            request.capacity = {actors = 0, spots = 0}
+            local targetOffset = 20 + participantCount * 2
+            local _, failure = descriptorAdmission(
+                request.target,
+                KEYS[targetOffset],
+                KEYS[targetOffset + 1],
+                KEYS[targetOffset + 2])
+            if failure and failure ~= 'placementCapacityExhausted' then
+                return cjson.encode({kind = 'conflict'})
             end
         end
-        if not found or not sourceMatches(participantRow, reservation.request) then
-            return cjson.encode({kind = 'conflict'})
-        end
-        request.objectKind = reservation.request.objectKind
-        request.stableType = reservation.request.stableType
-        request.capacityDelta = reservation.request.capacityDelta
-        local descriptorOffset =
-            19 + participantCount * 2 + reservationCount + index
-        local _, failure = descriptorAdmission(
-            reservation.request.target,
-            KEYS[descriptorOffset],
-            KEYS[descriptorOffset + reservationCount],
-            KEYS[descriptorOffset + reservationCount * 2])
-        if failure then return cjson.encode({kind = 'conflict'}) end
     end
-    if newOwners ~= reservationCount then return cjson.encode({kind = 'conflict'}) end
-    for index = 1, reservationCount do
-        redis.call('HSET', KEYS[19 + participantCount + index],
-            'status', 'prepared', 'aggregateKey', KEYS[14])
+    if actors ~= tonumber(aggregateCapacity.actors)
+        or spots ~= tonumber(aggregateCapacity.spots)
+        or ((aggregateSpotType == nil) ~= (spotKind == nil))
+        or (aggregateSpotType
+            and (aggregateSpotType.objectKind ~= spotKind
+                or aggregateSpotType.stableType ~= spotType
+                or tonumber(aggregateSpotType.count) ~= spots)) then
+        return cjson.encode({kind = 'conflict'})
+    end
+    local targetOffset = 20 + participantCount * 2
+    local actorBucket = nil
+    local spotBucket = nil
+    local typeBucket = nil
+    if actors > 0 then
+        request.objectKind = 'actor'
+        request.stableType = ''
+        request.capacity = {actors = actors, spots = 0}
+        local buckets, failure = descriptorAdmission(
+            request.target, KEYS[targetOffset],
+            KEYS[targetOffset + 1], KEYS[targetOffset + 2])
+        if failure == 'targetUnavailable' then
+            -- Every Actor stable type was checked above; only population applies here.
+            actorBucket = capacityNodeBucket(
+                request.target.descriptorKey,
+                request.target.lifecycleGeneration, 'actor')
+            local active = tonumber(redis.call('HGET', KEYS[7], actorBucket) or '0')
+            local pending = tonumber(redis.call('HGET', KEYS[8], actorBucket) or '0')
+            local limit = tonumber(redis.call(
+                'HGET', KEYS[targetOffset + 1], 'actorLimit') or '0')
+            if limit > 0 and active + pending + actors > limit then
+                return cjson.encode({kind = 'conflict'})
+            end
+        elseif failure then return cjson.encode({kind = 'conflict'})
+        else actorBucket = buckets.node end
+    end
+    if spots > 0 then
+        request.objectKind = spotKind
+        request.stableType = spotType
+        request.capacity = {actors = 0, spots = spots}
+        local buckets, failure = descriptorAdmission(
+            request.target, KEYS[targetOffset],
+            KEYS[targetOffset + 1], KEYS[targetOffset + 2])
+        if failure then return cjson.encode({kind = 'conflict'}) end
+        spotBucket = buckets.node
+        typeBucket = buckets.type
+    end
+    capacityAdd(KEYS[8], actorBucket, actors)
+    capacityAdd(KEYS[8], spotBucket, spots)
+    capacityAdd(KEYS[10], typeBucket, spots)
+    for _, participant in ipairs(request.participants) do
+        redis.call('HSET', KEYS[6],
+            aggregateLockKey(participant.key), KEYS[14])
     end
     redis.call('HSET', KEYS[14],
         'status', 'prepared', 'requestJson', ARGV[2],
         'participantCount', participantCount,
-        'reservationCount', reservationCount)
+        'targetActorBucket', actorBucket or '',
+        'targetSpotBucket', spotBucket or '',
+        'targetTypeBucket', typeBucket or '',
+        'capacityBundle', request.capacityBundle)
     return cjson.encode({kind = 'prepared', fence = request.fence})
 end
 
@@ -846,7 +978,6 @@ if op == 'commitAggregate' then
     if aggregate.status ~= 'prepared' then return cjson.encode({kind = 'stale'}) end
     local prepared = aggregate.request
     local participantCount = #prepared.participants
-    local reservationCount = #prepared.targetReservations
     local ownerChanges = 0
     for index, participant in ipairs(prepared.participants) do
         local row = rowAt(KEYS[19 + index])
@@ -854,39 +985,25 @@ if op == 'commitAggregate' then
             or row.storeVersion ~= tostring(participant.expectedStoreVersion) then
             return cjson.encode({kind = 'stale'})
         end
+        if redis.call(
+                'HGET', KEYS[6], aggregateLockKey(participant.key)) ~= KEYS[14] then
+            return cjson.encode({kind = 'stale'})
+        end
         if participant.ownerTransition == 'newOwner' then
             ownerChanges = ownerChanges + 1
-            local reservation = nil
-            local reservationIndex = nil
-            for candidateIndex = 1, reservationCount do
-                local candidate = readReservation(
-                    KEYS[19 + participantCount * 5 + candidateIndex])
-                if candidate and candidate.authorityKey == participant.key then
-                    reservation = candidate
-                    reservationIndex = candidateIndex
-                    break
-                end
-            end
-            if not reservation or reservation.status ~= 'prepared'
-                or reservation.aggregateKey ~= KEYS[14]
-                or not sourceMatches(row, reservation.request) then
-                return cjson.encode({kind = 'stale'})
-            end
-            request.objectKind = reservation.request.objectKind
-            request.stableType = reservation.request.stableType
-            request.capacityDelta = reservation.request.capacityDelta
-            local descriptorOffset =
-                19 + participantCount * 6 + reservationCount
-                    + reservationIndex
+            request.objectKind = row.objectKind
+            request.stableType = row.stableType
+            request.capacity = {actors = 0, spots = 0}
+            local descriptorOffset = 20 + participantCount * 6
             local _, failure = descriptorAdmission(
-                reservation.request.target,
+                prepared.target,
                 KEYS[descriptorOffset],
-                KEYS[descriptorOffset + reservationCount],
-                KEYS[descriptorOffset + reservationCount * 2])
+                KEYS[descriptorOffset + 1],
+                KEYS[descriptorOffset + 2])
             if failure then return cjson.encode({kind = 'stale'}) end
         else
             local preserveLeaseOffset =
-                19 + participantCount * 5 + reservationCount + index
+                19 + participantCount * 5 + index
             if not leaseLive({ownerId = row.ownerId,
                 leaseGeneration = row.ownerLeaseGeneration},
                 KEYS[preserveLeaseOffset]) then
@@ -894,39 +1011,43 @@ if op == 'commitAggregate' then
             end
         end
     end
+    local preparedCapacity = decodeCapacityBundle(aggregate.capacityBundle)
+    if not capacitySatisfies(
+            KEYS[8], aggregate.targetActorBucket,
+            tonumber(preparedCapacity.actors))
+        or not capacitySatisfies(
+            KEYS[8], aggregate.targetSpotBucket,
+            tonumber(preparedCapacity.spots))
+        or not capacitySatisfies(
+            KEYS[10], aggregate.targetTypeBucket,
+            tonumber(preparedCapacity.spots)) then
+        return cjson.encode({kind = 'stale'})
+    end
     local sourceNodeRequired = {}
     local sourceTypeRequired = {}
-    local targetNodeRequired = {}
-    local targetTypeRequired = {}
-    for reservationIndex = 1, reservationCount do
-        local reservation = readReservation(
-            KEYS[19 + participantCount * 5 + reservationIndex])
-        local delta = reservation and tonumber(reservation.capacityDelta)
-        if not reservation or not delta then
-            return cjson.encode({kind = 'stale'})
-        end
-        sourceNodeRequired[reservation.sourceNodeBucket] =
-            (sourceNodeRequired[reservation.sourceNodeBucket] or 0) + delta
-        sourceTypeRequired[reservation.sourceTypeBucket] =
-            (sourceTypeRequired[reservation.sourceTypeBucket] or 0) + delta
-        targetNodeRequired[reservation.targetNodeBucket] =
-            (targetNodeRequired[reservation.targetNodeBucket] or 0) + delta
-        targetTypeRequired[reservation.targetTypeBucket] =
-            (targetTypeRequired[reservation.targetTypeBucket] or 0) + delta
-    end
-    local function capacitySatisfies(key, required)
-        for bucket, delta in pairs(required) do
-            if tonumber(redis.call('HGET', key, bucket) or '0') < delta then
-                return false
+    for index, participant in ipairs(prepared.participants) do
+        if participant.ownerTransition == 'newOwner' then
+            local row = rowAt(KEYS[19 + index])
+            local capacity = decodeCapacityBundle(row.capacityBundle)
+            local delta = capacityDelta(capacity, row.objectKind)
+            local nodeBucket, typeBucket = rowBuckets(row)
+            sourceNodeRequired[nodeBucket] =
+                (sourceNodeRequired[nodeBucket] or 0) + delta
+            if typeBucket then
+                sourceTypeRequired[typeBucket] =
+                    (sourceTypeRequired[typeBucket] or 0) + delta
             end
         end
-        return true
     end
-    if not capacitySatisfies(KEYS[7], sourceNodeRequired)
-        or not capacitySatisfies(KEYS[9], sourceTypeRequired)
-        or not capacitySatisfies(KEYS[8], targetNodeRequired)
-        or not capacitySatisfies(KEYS[10], targetTypeRequired) then
-        return cjson.encode({kind = 'stale'})
+    for bucket, required in pairs(sourceNodeRequired) do
+        if not capacitySatisfies(KEYS[7], bucket, required) then
+            return cjson.encode({kind = 'stale'})
+        end
+    end
+    for bucket, required in pairs(sourceTypeRequired) do
+        if not capacitySatisfies(KEYS[9], bucket, required) then
+            return cjson.encode({kind = 'stale'})
+        end
     end
     if not counterAvailable('storeRevision', participantCount)
         or not counterAvailable('authorityOwnerGeneration', ownerChanges) then
@@ -954,41 +1075,25 @@ if op == 'commitAggregate' then
         row.storeVersion = nextCounter('storeRevision')
         row.payload = participant.authorityPayload
         if participant.ownerTransition == 'newOwner' then
-            local reservation = nil
-            local reservationKey = nil
-            for reservationIndex = 1, reservationCount do
-                local candidateKey =
-                    KEYS[19 + participantCount * 5 + reservationIndex]
-                local candidate = readReservation(candidateKey)
-                if candidate and candidate.authorityKey == participant.key then
-                    reservation = candidate
-                    reservationKey = candidateKey
-                    break
-                end
+            local capacity = decodeCapacityBundle(row.capacityBundle)
+            local delta = capacityDelta(capacity, row.objectKind)
+            local sourceNode, sourceType = rowBuckets(row)
+            local targetNode = row.objectKind == 'actor'
+                and aggregate.targetActorBucket or aggregate.targetSpotBucket
+            local targetType = nil
+            if row.objectKind ~= 'actor' then
+                targetType = aggregate.targetTypeBucket
             end
-            if not reservation or reservation.status ~= 'prepared'
-                or reservation.aggregateKey ~= KEYS[14] then
-                return cjson.encode({kind = 'stale'})
-            end
-            capacityAdd(KEYS[7], reservation.sourceNodeBucket,
-                -tonumber(reservation.capacityDelta))
-            capacityAdd(KEYS[9], reservation.sourceTypeBucket,
-                -tonumber(reservation.capacityDelta))
-            capacityAdd(KEYS[8], reservation.targetNodeBucket,
-                -tonumber(reservation.capacityDelta))
-            capacityAdd(KEYS[10], reservation.targetTypeBucket,
-                -tonumber(reservation.capacityDelta))
-            capacityAdd(KEYS[7], reservation.targetNodeBucket,
-                tonumber(reservation.capacityDelta))
-            capacityAdd(KEYS[9], reservation.targetTypeBucket,
-                tonumber(reservation.capacityDelta))
+            capacityAdd(KEYS[7], sourceNode, -delta)
+            capacityAdd(KEYS[9], sourceType, -delta)
+            capacityAdd(KEYS[7], targetNode, delta)
+            capacityAdd(KEYS[9], targetType, delta)
             row.authorityOwnerGeneration = nextCounter('authorityOwnerGeneration')
-            row.ownerId = reservation.request.targetOwner.ownerId
-            row.ownerLeaseGeneration = reservation.request.targetOwner.leaseGeneration
-            row.descriptorKey = reservation.request.targetDescriptorKey
+            row.ownerId = prepared.targetOwner.ownerId
+            row.ownerLeaseGeneration = prepared.targetOwner.leaseGeneration
+            row.descriptorKey = prepared.target.descriptorKey
             row.descriptorLifecycleGeneration =
-                reservation.request.targetNodeLifecycleGeneration
-            redis.call('HSET', reservationKey, 'status', 'committed')
+                prepared.target.lifecycleGeneration
         end
         writeRow(currentKey, row)
         redis.call('ZADD', KEYS[5], 0, participant.keyHex)
@@ -996,10 +1101,18 @@ if op == 'commitAggregate' then
             decimalToHex(row.storeVersion))
         redis.call('HSET', KEYS[6], participant.key,
             participant.membershipMutation)
+        redis.call('HDEL', KEYS[6], aggregateLockKey(participant.key))
         pruneHistory(currentKey, historyKey, revisionsKey,
             participant.key, participant.keyHex)
         pruneValueHistory(membershipHistoryKey, membershipRevisionsKey)
     end
+    local capacity = decodeCapacityBundle(aggregate.capacityBundle)
+    capacityAdd(KEYS[8], aggregate.targetActorBucket,
+        -tonumber(capacity.actors))
+    capacityAdd(KEYS[8], aggregate.targetSpotBucket,
+        -tonumber(capacity.spots))
+    capacityAdd(KEYS[10], aggregate.targetTypeBucket,
+        -tonumber(capacity.spots))
     redis.call('HSET', KEYS[14], 'status', 'committed')
     return cjson.encode({kind = 'committed'})
 end
@@ -1011,44 +1124,29 @@ if op == 'abortAggregate' then
         return cjson.encode({kind = 'alreadyAborted'})
     end
     if aggregate.status ~= 'prepared' then return cjson.encode({kind = 'stale'}) end
-    local prepared = aggregate.request
-    local participantCount = #prepared.participants
-    local pendingNodeRequired = {}
-    local pendingTypeRequired = {}
-    for index = 1, #prepared.targetReservations do
-        local reservationKey = KEYS[19 + participantCount + index]
-        local reservation = readReservation(reservationKey)
-        local delta = reservation and tonumber(reservation.capacityDelta)
-        if not reservation or not delta then
-            return cjson.encode({kind = 'stale'})
-        end
-        pendingNodeRequired[reservation.targetNodeBucket] =
-            (pendingNodeRequired[reservation.targetNodeBucket] or 0) + delta
-        pendingTypeRequired[reservation.targetTypeBucket] =
-            (pendingTypeRequired[reservation.targetTypeBucket] or 0) + delta
-    end
-    for bucket, delta in pairs(pendingNodeRequired) do
-        if tonumber(redis.call('HGET', KEYS[8], bucket) or '0') < delta then
+    local capacity = decodeCapacityBundle(aggregate.capacityBundle)
+    for _, participant in ipairs(aggregate.request.participants) do
+        if redis.call(
+                'HGET', KEYS[6], aggregateLockKey(participant.key)) ~= KEYS[14] then
             return cjson.encode({kind = 'stale'})
         end
     end
-    for bucket, delta in pairs(pendingTypeRequired) do
-        if tonumber(redis.call('HGET', KEYS[10], bucket) or '0') < delta then
-            return cjson.encode({kind = 'stale'})
-        end
+    if not capacitySatisfies(
+            KEYS[8], aggregate.targetActorBucket, tonumber(capacity.actors))
+        or not capacitySatisfies(
+            KEYS[8], aggregate.targetSpotBucket, tonumber(capacity.spots))
+        or not capacitySatisfies(
+            KEYS[10], aggregate.targetTypeBucket, tonumber(capacity.spots)) then
+        return cjson.encode({kind = 'stale'})
     end
-    for index = 1, #prepared.targetReservations do
-        local reservationKey = KEYS[19 + participantCount + index]
-        local reservation = readReservation(reservationKey)
-        if not reservation or reservation.status ~= 'prepared'
-            or reservation.aggregateKey ~= KEYS[14] then
-            return cjson.encode({kind = 'stale'})
-        end
-        capacityAdd(KEYS[8], reservation.targetNodeBucket,
-            -tonumber(reservation.capacityDelta))
-        capacityAdd(KEYS[10], reservation.targetTypeBucket,
-            -tonumber(reservation.capacityDelta))
-        redis.call('HSET', reservationKey, 'status', 'aborted')
+    capacityAdd(KEYS[8], aggregate.targetActorBucket,
+        -tonumber(capacity.actors))
+    capacityAdd(KEYS[8], aggregate.targetSpotBucket,
+        -tonumber(capacity.spots))
+    capacityAdd(KEYS[10], aggregate.targetTypeBucket,
+        -tonumber(capacity.spots))
+    for _, participant in ipairs(aggregate.request.participants) do
+        redis.call('HDEL', KEYS[6], aggregateLockKey(participant.key))
     end
     redis.call('HSET', KEYS[14], 'status', 'aborted')
     return cjson.encode({kind = 'aborted'})

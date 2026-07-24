@@ -32,15 +32,18 @@ public sealed class ContractSurfaceCoverage
         Assert.Contains(typeof(IZLinkRequestCall).GetMethods(), method => method.Name == "Yield");
         Assert.DoesNotContain(typeof(IZLinkActorSendCall).GetMethods(), method => method.Name is "PacketName" or "Async");
         Assert.DoesNotContain(typeof(IZLinkActorRequestCall).GetMethods(), method => method.Name == "PacketName");
-        Assert.Contains(typeof(IZLinkActorJoinCall).GetMethods(), method => method.Name == "Yield");
+        Assert.Equal(
+            ["Defer"],
+            typeof(IZLinkActorDeferredJoinCall).GetMethods().Select(method => method.Name).ToArray());
         Assert.DoesNotContain(typeof(IZLinkActorContext).GetMembers(), member => member.Name is "IsJoined" or "GetSpot");
         Assert.Contains(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name == "Yield");
         Assert.Contains(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name == "Submit");
         Assert.DoesNotContain(typeof(IZLinkDispatchOptions).GetProperties(), property => property.Name.EndsWith("DispatchMode", StringComparison.Ordinal));
 
-        Assert.True(typeof(ZLinkActorJoinResult).IsAbstract);
-        Assert.True(typeof(ZLinkActorJoinResult.Accepted).IsSealed);
-        Assert.True(typeof(ZLinkActorJoinResult.Rejected).IsSealed);
+        Assert.True(typeof(ZLinkActorJoinCompletion).IsAbstract);
+        Assert.True(typeof(ZLinkActorJoinCompletion.Accepted).IsSealed);
+        Assert.True(typeof(ZLinkActorJoinCompletion.Rejected).IsSealed);
+        Assert.True(typeof(ZLinkActorJoinCompletion.Failed).IsSealed);
         Assert.Empty(typeof(SpotHandle).GetConstructors());
         Assert.Equal(
             new[] { "Connect", "Disconnect", "ListConnections" },
@@ -52,7 +55,7 @@ public sealed class ContractSurfaceCoverage
     {
         Type[] roots =
         [
-            typeof(ZLinkActorJoinResult), typeof(ZLinkActorJoinResult<>),
+            typeof(ZLinkActorJoinCompletion),
             typeof(ZLinkDrainResult), typeof(ZLinkLocationRuntimeEvent),
             typeof(ZLinkLocationPeerEvent), typeof(ZLinkLocationSpotEvent),
             typeof(ZLinkLocationActorEvent),

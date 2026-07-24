@@ -536,6 +536,12 @@ struct spot_info_t
     std::string spot_name;
 };
 
+enum class user_spot_execution_mode_t
+{
+    spot_wide = 0,
+    per_actor = 1
+};
+
 struct spot_node_snapshot_t
 {
     std::string name;
@@ -548,6 +554,7 @@ struct spot_node_snapshot_t
     std::vector<std::string> pub_sub_manual_connections;
     std::optional<std::string> discovery_channel_name;
     std::vector<std::string> spot_names;
+    std::map<std::string, user_spot_execution_mode_t> spot_execution_modes;
     std::optional<std::string> entry_spot_name;
     std::vector<accepted_spot_route_channel_t> accepted_route_channels;
     std::optional<std::string> spot_route_channel_name;
@@ -839,7 +846,8 @@ class spot_context_t
                                std::function<task_t<zlink::message_t> (
                                  const std::string &,
                                  std::chrono::milliseconds,
-                                 const request_call_t<zlink::message_t>::metadata_map_t &)> submit);
+                                 const request_call_t<zlink::message_t>::metadata_map_t &)> submit,
+                               request_call_t<zlink::message_t>::preflight_fn_t preflight = {});
 
         template <typename TReply> request_call_t<TReply> as () const
         {
@@ -849,6 +857,7 @@ class spot_context_t
             }
             auto serializers = _serializers;
             auto submit = _submit;
+            auto preflight = _preflight;
             return request_call_t<TReply> (
               _packet_name,
               [serializers,
@@ -872,7 +881,8 @@ class spot_context_t
                   catch (const framework_exception_t &error) {
                       co_return detail::result_access_t::failure<TReply> (error);
                   }
-              });
+              },
+              std::move (preflight));
         }
 
       private:
@@ -884,6 +894,7 @@ class spot_context_t
           std::chrono::milliseconds,
           const request_call_t<zlink::message_t>::metadata_map_t &)>
           _submit;
+        request_call_t<zlink::message_t>::preflight_fn_t _preflight;
     };
 
     explicit spot_context_t (std::shared_ptr<detail::spot_context_state_t> state);
@@ -1280,7 +1291,9 @@ class spot_handler_registry_t
                                             serializer_registry_t &serializers,
                                             const zlink::message_t &message,
                                             spot_actor_message_metadata_t metadata = {},
-                                            bool serial_dispatch = true) const;
+                                            bool serial_dispatch = true,
+                                            std::string actor_execution_key = {},
+                                            std::string actor_execution_spot_id = {}) const;
 
     void register_actor_admission_erased (std::type_index actor_type,
                                           detail::spot_actor_admission_callbacks_t callbacks);
@@ -1419,7 +1432,9 @@ class spot_publisher_client_t
     {
         if (!_serializers) {
             return publish_call_t (
-              publish_result_t{.status = submit_status_t::shutdown, .detail = {}});
+              result_t<void>::failure (
+                framework_error_kind_t::invalid_configuration,
+                "logical multicast has no serializer registry"));
         }
         try {
             auto payload =
@@ -1427,9 +1442,9 @@ class spot_publisher_client_t
             return publish_raw (std::move (channel_name), std::move (topic),
                                 detail::message_name<TEvent> (), std::move (payload));
         }
-        catch (const framework_exception_t &) {
+        catch (const framework_exception_t &error) {
             return publish_call_t (
-              publish_result_t{.status = submit_status_t::shutdown, .detail = {}});
+              detail::result_access_t::failure<void> (error));
         }
     }
 
@@ -1512,7 +1527,11 @@ class spot_node_builder_t
     // straggler forwarding mapping after a completed transfer. Default 5s;
     // deployments override it, tests shorten it.
     spot_node_builder_t &set_actor_transfer_forward_window (std::chrono::milliseconds window);
-    template <typename TSpot> spot_node_builder_t &add_spot (std::string spot_name)
+    template <typename TSpot>
+    spot_node_builder_t &
+    add_spot (std::string spot_name,
+              user_spot_execution_mode_t execution_mode =
+                user_spot_execution_mode_t::spot_wide)
     {
         static_assert (std::is_base_of_v<spot_t, TSpot>,
                        "SPOT type must derive from zlink::framework::spot_t");
@@ -1520,14 +1539,17 @@ class spot_node_builder_t
                        "Entry SPOT type must be registered with add_entry_spot<TEntrySpot>()");
         const auto registered_name = spot_name;
         auto &builder =
-          add_spot_factory (std::move (spot_name), std::type_index (typeid (TSpot)), false);
+          add_spot_factory (std::move (spot_name), std::type_index (typeid (TSpot)), false,
+                            execution_mode);
         register_lifecycle<TSpot> (registered_name);
         return builder;
     }
 
     template <typename TSpot>
     spot_node_builder_t &add_spot (std::string spot_name,
-                                   std::function<std::shared_ptr<TSpot> ()> factory)
+                                   std::function<std::shared_ptr<TSpot> ()> factory,
+                                   user_spot_execution_mode_t execution_mode =
+                                     user_spot_execution_mode_t::spot_wide)
     {
         static_assert (std::is_base_of_v<spot_t, TSpot>,
                        "SPOT type must derive from zlink::framework::spot_t");
@@ -1539,7 +1561,8 @@ class spot_node_builder_t
         }
         const auto registered_name = spot_name;
         auto &builder =
-          add_spot_factory (std::move (spot_name), std::type_index (typeid (TSpot)), false);
+          add_spot_factory (std::move (spot_name), std::type_index (typeid (TSpot)), false,
+                            execution_mode);
         register_lifecycle<TSpot> (registered_name, std::move (factory));
         return builder;
     }
@@ -1549,7 +1572,8 @@ class spot_node_builder_t
         static_assert (std::is_base_of_v<entry_spot_t, TEntrySpot>,
                        "Entry SPOT type must derive from zlink::framework::entry_spot_t");
         auto &builder =
-          add_spot_factory (std::string ("entry"), std::type_index (typeid (TEntrySpot)), true);
+          add_spot_factory (std::string ("entry"), std::type_index (typeid (TEntrySpot)), true,
+                            user_spot_execution_mode_t::spot_wide);
         register_lifecycle<TEntrySpot> ("entry");
         return builder;
     }
@@ -1564,7 +1588,8 @@ class spot_node_builder_t
                                          "Entry SPOT factory must not be empty");
         }
         auto &builder =
-          add_spot_factory (std::string ("entry"), std::type_index (typeid (TEntrySpot)), true);
+          add_spot_factory (std::string ("entry"), std::type_index (typeid (TEntrySpot)), true,
+                            user_spot_execution_mode_t::spot_wide);
         register_lifecycle<TEntrySpot> ("entry", std::move (factory));
         return builder;
     }
@@ -1735,7 +1760,10 @@ class spot_node_builder_t
     get_or_create_spot_raw (std::string spot_name, spot_id_t spot_id, zlink::message_t request);
 
     spot_node_builder_t &
-    add_spot_factory (std::string spot_name, std::type_index spot_type, bool entry_spot);
+    add_spot_factory (std::string spot_name,
+                      std::type_index spot_type,
+                      bool entry_spot,
+                      user_spot_execution_mode_t execution_mode);
     spot_node_builder_t &
     accept_implicit_route_mesh (std::string route_channel_name,
                                 std::vector<std::string> manual_connections = {});

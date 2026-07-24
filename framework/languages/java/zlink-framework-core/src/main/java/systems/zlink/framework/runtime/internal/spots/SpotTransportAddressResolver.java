@@ -5,5 +5,9 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.spots.SpotHandle;
 
 public interface SpotTransportAddressResolver {
-    CompletionStage<Optional<SpotTransportAddress>> resolve(SpotHandle handle);
+    default CompletionStage<Optional<SpotTransportAddress>> resolve(SpotHandle handle) {
+        return resolve(handle.spotId());
+    }
+
+    CompletionStage<Optional<SpotTransportAddress>> resolve(String spotId);
 }

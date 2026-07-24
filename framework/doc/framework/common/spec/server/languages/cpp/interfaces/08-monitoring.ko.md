@@ -2,6 +2,10 @@
 
 [C++ exact interface 목차](README.ko.md)
 
+Monitoring에 표시하는 Channel, ClientServer와 placement weight는 configuration과
+descriptor가 사용하는 값과 같다. C++에서는 signed `int`의 `0..10000` 범위로
+표현하며 `std::uint8_t`처럼 범위가 더 좁은 타입으로 바꾸지 않는다.
+
 ## 1. Host termination 관측
 
 Host 단위 상태는 RouteMesh·ClientServer·fanout snapshot과 분리한다. `mesh_node_state_t`는 MeshNode 상태를
@@ -43,6 +47,28 @@ public:
       std::function<void(const framework_runtime_event_t &)> observer) = 0;
 };
 ```
+
+### 1.1 MeshNode placement capacity
+
+`mesh_node_snapshot_t`의 exact declaration은
+[Channel messaging](03-channel-messaging.ko.md)에 있다. Snapshot에서 사용하는
+`capacity_usage_t`, `spot_type_capacity_t`와 `placement_capacity_t`는
+[Location Store interface](07-location-store.ko.md)가 정의한다.
+
+Actor 전체, Spot 전체와 Spot stable type별 capacity는 각각 현재 사용 중인 수,
+생성을 위해 예약한 수와 설정한 limit을 분리해서 보여 준다. Actor 집계에는 Entry
+Spot과 User Spot의 Actor를 모두 포함한다. Spot 전체와 stable type별 집계에는
+User·Instance Spot을 포함하고 Entry Spot은 제외한다. 같은 stable type 이름을
+사용하더라도 User Spot과 Instance Spot은 `object_kind`로 구분한다.
+
+`activation_concurrency`는 현재 factory·initialization 실행 수와 양수 limit을
+별도로 보여 준다. 이 수를 population capacity의 `reserved`에 합치지 않는다.
+이 값은 Location Store의 authoritative counter를 관측용으로 복사한 snapshot이다.
+Descriptor나 runtime snapshot 갱신이 늦을 수 있으므로 새 배치를 수락할 수 있는지
+판정하는 API로 사용하지 않는다. Capacity reservation 실패는
+`placement_reservation_failure_count`와
+`last_placement_reservation_failure`에 기록하며 application factory나 handler
+exception으로 바꾸지 않는다.
 
 ## 2. 메시지 흐름 관측
 

@@ -1,6 +1,11 @@
+using Systems.Zlink;
+using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Contracts.Locations;
+using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Channels;
 using Zlink.Framework.Runtime.Configuration;
 using Zlink.Framework.Runtime.Configuration.Builders;
+using Zlink.Framework.Runtime.Spots;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
@@ -83,6 +88,104 @@ public sealed class WeightContractTests
         Assert.Equal(100, counts["one"]);
         Assert.Equal(300, counts["three"]);
     }
+
+    [Fact]
+    public void ObjectPlacementFiltersCapacityAndZeroWeightBeforeSelection()
+    {
+        var eligible = Descriptor(
+            weight: 100,
+            actors: new ZLinkPopulationCapacity(9, 0, 10),
+            spots: new ZLinkPopulationCapacity(9, 0, 10),
+            spotType: new ZLinkSpotTypeCapacity(
+                ZLinkPlacementObjectKind.UserSpot,
+                "room",
+                9,
+                0,
+                10));
+        Assert.True(ZLinkActorManagerService.IsEligibleCandidate(
+            eligible,
+            "player"));
+        Assert.True(ZLinkSpotRuntimeManager.IsEligibleCandidate(
+            eligible,
+            "room"));
+
+        var zeroWeight = eligible with { PlacementWeight = 0 };
+        Assert.False(ZLinkActorManagerService.IsEligibleCandidate(
+            zeroWeight,
+            "player"));
+        Assert.False(ZLinkSpotRuntimeManager.IsEligibleCandidate(
+            zeroWeight,
+            "room"));
+
+        var actorFull = eligible with
+        {
+            Capacity = eligible.Capacity with
+            {
+                Actors = new ZLinkPopulationCapacity(9, 1, 10)
+            }
+        };
+        Assert.False(ZLinkActorManagerService.IsEligibleCandidate(
+            actorFull,
+            "player"));
+
+        var spotTypeFull = eligible with
+        {
+            Capacity = eligible.Capacity with
+            {
+                SpotTypes =
+                [
+                    new ZLinkSpotTypeCapacity(
+                        ZLinkPlacementObjectKind.UserSpot,
+                        "room",
+                        9,
+                        1,
+                        10)
+                ]
+            }
+        };
+        Assert.False(ZLinkSpotRuntimeManager.IsEligibleCandidate(
+            spotTypeFull,
+            "room"));
+    }
+
+    private static ZLinkMeshNodeDescriptor Descriptor(
+        int weight,
+        ZLinkPopulationCapacity actors,
+        ZLinkPopulationCapacity spots,
+        ZLinkSpotTypeCapacity spotType) =>
+        new(
+            "objects",
+            RoutingId.From("weight-target"),
+            7,
+            1,
+            "inproc://weight-target",
+            new Dictionary<string, int>(),
+            "test",
+            "owner",
+            3,
+            DateTimeOffset.UtcNow)
+        {
+            State = ZLinkFrameworkRuntimeState.Serving,
+            ObjectRole = ZLinkMeshNodeObjectRole.Server,
+            EntrySpotId = "weight-entry",
+            PlacementWeight = weight,
+            ObjectCapabilities =
+            [
+                new(
+                    ZLinkPlacementObjectKind.Actor,
+                    "player",
+                    ZLinkObjectMaintenancePolicyKind.Disabled,
+                    false,
+                    0),
+                new(
+                    ZLinkPlacementObjectKind.UserSpot,
+                    "room",
+                    ZLinkObjectMaintenancePolicyKind.Disabled,
+                    false,
+                    0)
+            ],
+            Capacity = new(actors, spots, [spotType])
+        };
 
     private sealed record WeightedCandidate(string Name, int Weight);
 }

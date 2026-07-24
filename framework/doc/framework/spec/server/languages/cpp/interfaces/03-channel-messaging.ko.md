@@ -198,19 +198,6 @@ struct mesh_channel_snapshot_t {
     bool selectable;
 };
 
-struct logical_multicast_snapshot_t {
-    std::uint64_t submitted;
-    std::uint64_t backpressured;
-    std::uint64_t dropped;
-    std::uint64_t remote_snapshot_count;
-    std::uint64_t remote_admitted_count;
-    std::uint64_t remote_dropped_count;
-    std::uint64_t remote_unreachable_count;
-    std::uint64_t local_snapshot_count;
-    std::uint64_t local_admitted_count;
-    std::uint64_t local_dropped_count;
-};
-
 struct mesh_claim_snapshot_t {
     bool application_active;
     std::uint64_t pending_application_work;
@@ -260,7 +247,6 @@ struct mesh_node_snapshot_t {
     std::vector<std::string> descriptor_sources;
     std::vector<mesh_peer_snapshot_t> peers;
     std::vector<mesh_channel_snapshot_t> channels;
-    logical_multicast_snapshot_t multicast;
     std::vector<instance_spot_type_snapshot_t> instance_spots;
     mesh_claim_snapshot_t claims;
     location_runtime_snapshot_t location;
@@ -278,13 +264,6 @@ struct mesh_runtime_event_t {
     std::optional<std::string> channel_name;
     std::optional<std::string> claim_domain;
     std::optional<std::string> message_kind;
-    std::optional<std::uint64_t> remote_snapshot_count;
-    std::optional<std::uint64_t> remote_admitted_count;
-    std::optional<std::uint64_t> remote_dropped_count;
-    std::optional<std::uint64_t> remote_unreachable_count;
-    std::optional<std::uint64_t> local_snapshot_count;
-    std::optional<std::uint64_t> local_admitted_count;
-    std::optional<std::uint64_t> local_dropped_count;
     std::optional<std::string> reason;
     std::optional<mesh_node_state_t> state;
 };
@@ -688,30 +667,10 @@ public:
     std::vector<std::string> list_connections() const;
 };
 
-template <typename TReply>
-struct actor_join_accepted_t {
-    actor_ref_t actor;
-    TReply reply;
-};
-
-template <typename TReply>
-struct actor_join_rejected_t {
-    TReply reply;
-};
-
-template <typename TReply>
-using typed_actor_join_result_t =
-  std::variant<actor_join_accepted_t<TReply>, actor_join_rejected_t<TReply>>;
-
-using actor_join_result_t = typed_actor_join_result_t<message_t>;
-
 class actor_join_call_t {
 public:
     actor_join_call_t &timeout(std::chrono::milliseconds timeout);
-    task_t<actor_join_result_t> async();
-
-    template <typename TReply>
-    task_t<typed_actor_join_result_t<TReply>> async();
+    void defer();
 };
 
 // 숫자 값은 관측·진단 데이터의 안정 키이므로 고정한다(framework API §13).
@@ -752,7 +711,10 @@ enum class framework_error_kind_t {
     spot_moving = 33,                  // retriable
     relocation_data_lost = 34,         // non-retriable
     spot_id_conflict = 35,
-    runtime_shutdown = 36
+    runtime_shutdown = 36,
+    relocation_disabled = 37,
+    relocation_target_unavailable = 38,
+    relocation_failed = 39
 };
 
 class framework_exception_t : public std::exception {
@@ -771,7 +733,7 @@ class request_call_t {
 public:
     request_call_t &timeout(std::chrono::milliseconds timeout);
     request_call_t &metadata(std::string key, std::string value);
-    task_t<TReply> async();
+    task_t<TReply> submit();
     task_t<TReply> yield();
 };
 
@@ -781,7 +743,7 @@ public:
     channel_request_call_t &metadata(std::string key, std::string value);
 
     template <typename TReply>
-    task_t<TReply> async();
+    task_t<TReply> submit();
 
     template <typename TReply>
     task_t<TReply> yield();
@@ -832,7 +794,7 @@ template <typename TActor>
 class bind_actor_call_t {
 public:
     bind_actor_call_t &timeout(std::chrono::milliseconds timeout);
-    task_t<TActor> async();
+    task_t<TActor> submit();
 };
 
 class message_metadata_t {
@@ -843,25 +805,23 @@ public:
     const std::map<std::string, std::string> &values() const noexcept;
 };
 
-struct handler_context_t {
-    std::string channel_name;
+struct message_context_t {
+    std::optional<std::string> mesh_name;
+    std::optional<std::string> channel_name;
     std::string packet_name;
-    std::string content_type;
+    std::optional<std::string> content_type;
     message_metadata_t metadata;
     std::optional<std::string> correlation_id;
 };
 
-struct request_context_t : handler_context_t {};
-struct send_context_t : handler_context_t {};
-
-struct publish_context_t : handler_context_t {
+struct publish_message_context_t : message_context_t {
     std::string topic;
     std::string source;
 };
 
-struct handler_invocation_context_t {
+struct handler_invocation_t {
     handler_descriptor_t descriptor;
-    handler_context_t context;
+    message_context_t message_context;
     std::shared_ptr<const zlink::message_t> message;
 };
 
@@ -890,14 +850,14 @@ serializer를 통해 typed payload로 변환하고, DI에서 owner를 resolve한
 호출한다.
 
 handler method는 payload만 받을 수도 있고, payload 뒤에 typed context를 함께 받을 수도
-있다. request handler는 `request_context_t`, send handler는 `send_context_t`, event/publish
-handler는 `publish_context_t`를 받는다. Channel context는 ChannelName, packet name, content type, immutable
+있다. request와 send handler는 `message_context_t`, event/publish handler는
+`publish_message_context_t`를 받는다. Channel context는 ChannelName, packet name, content type, immutable
 metadata와 correlation ID를 제공한다. Node direct context는 MeshName, source·target RID와 같은 metadata·correlation
 정보를 제공한다. Raw multipart header나 dispatch table은 public context로 노출하지 않는다.
 
 handler filter는 `.NET`의 handler filter처럼 handler 호출 앞뒤의 공통 처리를 맡는다.
 일반 application 설정에서는 `options.use_filter<TFilter>()`로 등록한다. filter 타입은
-`invoke(const handler_invocation_context_t &, handler_next_t)`를 제공하며, 계속 처리하려면
+`invoke(const handler_invocation_t &, handler_next_t)`를 제공하며, 계속 처리하려면
 `co_await next()`를 호출하고 요청을 가로채야 하면 reply message를 직접 반환한다. descriptor
 lookup, serializer 선택, DI resolve 순서와 filter chain 저장 방식은 public API로 노출하지 않는다.
 
@@ -912,7 +872,7 @@ stream callback은 framework가 packet을 수신하고 header 검증을 마친 �
 
 request handler 반환값은 `TReply` 또는 `task_t<TReply>`를 허용한다. `task_t<TReply>`를
 반환하는 handler는 `.NET`의 `async Task<TReply>` handler와 같은 의미이며, 내부
-request처럼 결과를 기다려야 하는 호출은 `co_await call.async()` 형태로 사용한다.
+request처럼 결과를 기다려야 하는 호출은 `co_await call.submit()` 형태로 사용한다.
 one-way send/push는 `co_await call.submit()`으로 send timeout까지 bounded admission 결과를 받는다.
 즉시 수락되면 준비된 task가 바로 완료될 수 있으며 remote handler 완료는 기다리지 않는다.
 
@@ -1053,7 +1013,7 @@ public:
     spot_request_call_t &in_mesh(std::string mesh_name);
 
     template <typename TReply>
-    task_t<TReply> async();
+    task_t<TReply> submit();
 
     template <typename TReply>
     task_t<TReply> yield();
@@ -1081,7 +1041,7 @@ target-not-found로 끝난다.
 `instance_spot()`은 stable type을 생략하고 `instance_spot(stable_type)`은 stable type을 명시한다.
 `in_mesh(...)`는 Instance marker와 함께 Missing RID의 최초 Mesh 선택에만 적용한다. Caller-defined
 placement selector는 제공하지 않는다. Marker와 각 option은 한 call에서 한 번만 설정할 수 있고 중복 설정은
-`invalid_configuration`이다. `submit()`, `async<TReply>()` 또는 `yield<TReply>()` 가운데 terminal operation도
+`invalid_configuration`이다. `submit()`, `submit<TReply>()` 또는 `yield<TReply>()` 가운데 terminal operation도
 한 번만 시작할 수 있으며 두 번째 호출은 `already_submitted`다.
 
 User Spot factory의 `execution_mode`는 startup 뒤 바꿀 수 없다. 기본 `spot_wide`는 Spot callback,
@@ -1096,7 +1056,7 @@ timer의 callback만 직렬화하는 timer별 lane을 사용한다. Entry Spot�
 Entry Spot, Node, Channel 또는 실행 문맥 밖에서 호출하면 operation을 admission queue에 제출하기 전에
 `invalid_configuration`으로 실패한다. `request_to_node(...)`처럼 Channel·Spot·Actor request가 아닌 operation이
 공통 request call type의 `yield()`를 호출해도 submit 전에 같은 오류로 실패한다. 현재 callback이 유지하는
-gate가 완료에 필요한 call을 `async()`로 기다리거나 자신에게 보낸 request를 기다리는 경우도 같은 시점에
+gate가 완료에 필요한 call을 `submit()`으로 기다리거나 자신에게 보낸 request를 기다리는 경우도 같은 시점에
 `invalid_configuration`으로 실패한다. One-way self send는 FIFO queue에 제출할 수 있지만 inline 또는
 reentrant dispatch로 실행하지 않는다.
 
@@ -1138,11 +1098,9 @@ Logical Multicast의 `publish_call_t::submit()`은 bounded I/O executor에 direc
 얻지 못하면 send timeout까지 capacity를 기다린다. Slot을 얻으면 raw binding publish를 정확히 한 번 호출한다.
 이 call이 시작된 시점이 operation commit barrier다. Transaction이 시작된 뒤 개별 target 실패는 이미 수락한
 target을 rollback하거나 전체 publish를 자동 재시도하지 않는다. Remote transport와 local Spot queue의
-snapshot·admitted·dropped·unreachable count는 `logical_multicast_snapshot_t`, metric,
-`mesh_runtime_event_t`와 `message_flow_event_t`에 기록한다. Target snapshot이 0개여도 정상 완료한다. Remote
-admitted count는 source의 local outbound transport queue 제출만 집계하고 local admitted count는 origin node의
-local Spot application queue 제출만 집계한다. Remote Spot queue 제출과 remote·local handler 실행 또는 완료는
-`task_t<void>` 완료 조건이 아니다.
+target별 수락·실패 결과는 반환하거나 public monitoring에 집계하지 않는다. Target snapshot이 0개여도
+정상 완료한다. Remote Spot queue 제출과 remote·local handler 실행 또는 완료는 `task_t<void>` 완료
+조건이 아니다.
 
 framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성하지 않고 DI에서
 주입받아 사용할 수 있다.
@@ -1156,7 +1114,7 @@ framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성
 ## 5. Channel 표면
 
 ```cpp
-struct route_handler_context_t {
+struct route_message_context_t {
     std::string mesh_name;
     zlink::routing_id_t source_node_rid;
     zlink::routing_id_t target_node_rid;

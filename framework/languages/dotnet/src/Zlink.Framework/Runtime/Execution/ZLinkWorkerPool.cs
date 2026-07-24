@@ -13,10 +13,12 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
     private readonly int _maxQueueLength;
     private readonly int _minThreads;
     private readonly Queue<WorkerItem> _directQueue = new();
+    private readonly SemaphoreSlim _directWaiterSlots;
     private readonly Queue<WorkerItem> _queue = new();
     private readonly CancellationTokenSource _shutdownSource = new();
     private readonly object _sync = new();
     private readonly HashSet<Thread> _threads = [];
+    private TaskCompletionSource _directCapacityChanged = NewCapacitySignal();
     private bool _disposed;
     private Task? _disposeTask;
     private int _idleThreads;
@@ -40,11 +42,15 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
         MaxThreads = maxThreads;
         _idleTimeout = idleTimeout;
         _maxQueueLength = maxQueueLength;
+        _directWaiterSlots = new SemaphoreSlim(maxQueueLength, maxQueueLength);
     }
 
     public CancellationToken ShutdownToken => _shutdownSource.Token;
 
     public int MaxThreads { get; }
+
+    internal int DirectAdmissionWaiterCount =>
+        _maxQueueLength - _directWaiterSlots.CurrentCount;
 
     public int ThreadCount
     {
@@ -91,6 +97,7 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
                 _directQueue.Clear();
                 _queue.Clear();
                 Monitor.PulseAll(_sync);
+                SignalDirectCapacityChanged();
                 cancel = true;
             }
             completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -122,6 +129,7 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
                 _directQueue.Clear();
                 _queue.Clear();
                 Monitor.PulseAll(_sync);
+                SignalDirectCapacityChanged();
                 cancel = true;
             }
         }
@@ -187,6 +195,64 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
         }
     }
 
+    internal async ValueTask<ZLinkWorkerSubmitResult> SubmitDirectAsync(
+        Action<CancellationToken> work,
+        Action? cancelBeforeStart,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
+        var deadline = DateTimeOffset.UtcNow.Add(timeout);
+
+        while (true)
+        {
+            Task capacityChanged;
+            lock (_sync)
+            {
+                if (_disposed) return ZLinkWorkerSubmitResult.Stopped;
+                if (deadline <= DateTimeOffset.UtcNow) return ZLinkWorkerSubmitResult.Full;
+
+                var availableReservations = _idleThreads
+                                            + (MaxThreads - _threadCount)
+                                            - _directQueue.Count;
+                if (availableReservations > 0)
+                {
+                    var reservedIdleThread = _idleThreads > _directQueue.Count;
+                    _directQueue.Enqueue(new WorkerItem(work, cancelBeforeStart));
+                    if (reservedIdleThread)
+                    {
+                        Monitor.Pulse(_sync);
+                    }
+                    else
+                    {
+                        _threadCount++;
+                        StartWorkerThread();
+                    }
+
+                    return ZLinkWorkerSubmitResult.Accepted;
+                }
+
+                capacityChanged = _directCapacityChanged.Task;
+            }
+
+            var remaining = deadline - DateTimeOffset.UtcNow;
+            if (remaining <= TimeSpan.Zero) return ZLinkWorkerSubmitResult.Full;
+            if (!_directWaiterSlots.Wait(0)) return ZLinkWorkerSubmitResult.Full;
+            try
+            {
+                await capacityChanged.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                return ZLinkWorkerSubmitResult.Full;
+            }
+            finally
+            {
+                _directWaiterSlots.Release();
+            }
+        }
+    }
+
     private void StartWorkerThread()
     {
         var thread = new Thread(WorkerLoop)
@@ -235,6 +301,10 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
                     // Worker call wrappers convert their own failures; a throwing
                     // wrapper must never take the pool thread down.
                 }
+                finally
+                {
+                    lock (_sync) SignalDirectCapacityChanged();
+                }
             }
         }
         finally
@@ -244,6 +314,7 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
                 _threads.Remove(Thread.CurrentThread);
                 _threadCount--;
                 Monitor.PulseAll(_sync);
+                SignalDirectCapacityChanged();
             }
         }
     }
@@ -251,6 +322,16 @@ internal sealed class ZLinkWorkerPool : IDisposable, IAsyncDisposable
     private sealed record WorkerItem(
         Action<CancellationToken> Run,
         Action? CancelBeforeStart);
+
+    private void SignalDirectCapacityChanged()
+    {
+        var signal = _directCapacityChanged;
+        _directCapacityChanged = NewCapacitySignal();
+        signal.TrySetResult();
+    }
+
+    private static TaskCompletionSource NewCapacitySignal() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private async Task CompleteStopAsync(
         IReadOnlyList<Thread> threads,

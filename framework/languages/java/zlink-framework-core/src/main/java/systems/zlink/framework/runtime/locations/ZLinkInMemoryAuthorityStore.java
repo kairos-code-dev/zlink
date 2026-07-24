@@ -20,10 +20,11 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.*;
 
 final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
-    private final Object gate = new Object();
+    private final Object gate;
     private final Clock clock;
     private final Predicate<ZLinkLocationOwnerToken> ownerLeaseIsLive;
     private final DescriptorLookup descriptorLookup;
+    private final Predicate<String> spotIdentityClaimed;
     private final Map<String, Row> rows = new HashMap<>();
     private final Map<String, ReservationState> reservations = new HashMap<>();
     private final Map<ZLinkCreationOperationIdentity,
@@ -34,7 +35,9 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
     private final Map<String, byte[]> membershipMutations =
         new HashMap<>();
     private final Map<AllocationCounterKey, CapacityCounter>
-        nodeAllocationCounters = new HashMap<>();
+        actorAllocationCounters = new HashMap<>();
+    private final Map<AllocationCounterKey, CapacityCounter>
+        spotAllocationCounters = new HashMap<>();
     private final Map<TypeAllocationCounterKey, CapacityCounter>
         typeAllocationCounters = new HashMap<>();
     private long revision;
@@ -44,16 +47,43 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
     ZLinkInMemoryAuthorityStore(
         Clock clock,
         Predicate<ZLinkLocationOwnerToken> ownerLeaseIsLive) {
-        this(clock, ownerLeaseIsLive, (key, generation, owner) -> null);
+        this(
+            new Object(),
+            clock,
+            ownerLeaseIsLive,
+            (key, generation, owner) -> null,
+            ignored -> false);
     }
 
     ZLinkInMemoryAuthorityStore(
         Clock clock,
         Predicate<ZLinkLocationOwnerToken> ownerLeaseIsLive,
         DescriptorLookup descriptorLookup) {
+        this(
+            new Object(),
+            clock,
+            ownerLeaseIsLive,
+            descriptorLookup,
+            ignored -> false);
+    }
+
+    ZLinkInMemoryAuthorityStore(
+        Object gate,
+        Clock clock,
+        Predicate<ZLinkLocationOwnerToken> ownerLeaseIsLive,
+        DescriptorLookup descriptorLookup,
+        Predicate<String> spotIdentityClaimed) {
+        this.gate = gate;
         this.clock = clock;
         this.ownerLeaseIsLive = ownerLeaseIsLive;
         this.descriptorLookup = descriptorLookup;
+        this.spotIdentityClaimed = spotIdentityClaimed;
+    }
+
+    boolean containsAuthority(String key) {
+        synchronized (gate) {
+            return rows.containsKey(key);
+        }
     }
 
     @Override
@@ -97,7 +127,7 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                     return completed(new ZLinkAuthorityConflict(
                         snapshot(current, now)));
                 }
-                adjustActive(current.allocation, -current.allocation.capacityDelta());
+                adjustActive(current.allocation, current.allocation.capacityBundle(), -1);
                 rows.remove(key);
                 return completed(new ZLinkAuthorityDeleted(
                     nextVersion(),
@@ -214,6 +244,13 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         ZLinkObjectReservationRequest request,
         ZLinkStoreCancellation cancellation) {
         synchronized (gate) {
+            if (request.objectKind()
+                    != ZLinkPlacementObjectKind.ACTOR
+                && spotIdentityClaimed.test(
+                    request.authorityKey())) {
+                return completed(new ZLinkObjectConflict(
+                    new ZLinkAuthorityMissing(clock.instant())));
+            }
             Instant now = clock.instant();
             Row current = rows.get(request.authorityKey());
             if (current != null) {
@@ -240,7 +277,7 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 request.targetOwner(),
                 request.objectKind(),
                 request.stableType(),
-                request.pendingCapacityDelta());
+                request.capacityBundle());
             if (admission == DescriptorAdmission.UNAVAILABLE) {
                 return completed(new ZLinkObjectConflict(
                     new ZLinkAuthorityMissing(now)));
@@ -280,10 +317,11 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                         request.stableType(),
                         request.targetDescriptor(),
                         request.targetDescriptorLifecycleGeneration(),
-                        request.pendingCapacityDelta())));
+                        request.capacityBundle())));
             adjustPending(
                 rows.get(request.authorityKey()).allocation,
-                request.pendingCapacityDelta());
+                request.capacityBundle(),
+                1);
             reservations.put(
                 request.authorityKey(),
                 new ReservationState(
@@ -351,14 +389,12 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             if (!pendingReservationMatches(current, state.reservation)) {
                 return ZLinkObjectCommitResult.STALE;
             }
-            if (descriptorAdmission(
+            if (!descriptorIsCurrent(
                     reservation.targetDescriptor(),
                     reservation.targetDescriptorLifecycleGeneration(),
                     reservation.targetOwner(),
                     current.allocation.objectKind(),
-                    current.allocation.stableType(),
-                    0)
-                != DescriptorAdmission.ACCEPTED) {
+                    current.allocation.stableType())) {
                 return ZLinkObjectCommitResult.STALE;
             }
             if (!hasCounterRoom(revision, 1)) {
@@ -416,7 +452,8 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             rows.remove(reservation.authorityKey());
             adjustPending(
                 current.allocation,
-                -current.allocation.capacityDelta());
+                current.allocation.capacityBundle(),
+                -1);
             state.state = State.ABORTED;
             revision++;
             creationTerminals.put(terminal.operation(), terminal);
@@ -447,7 +484,8 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             rows.remove(reservation.authorityKey());
             adjustPending(
                 current.allocation,
-                -current.allocation.capacityDelta());
+                current.allocation.capacityBundle(),
+                -1);
             state.state = State.ABORTED;
             return completed(ZLinkObjectAbortResult.ABORTED);
         }
@@ -488,7 +526,8 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             rows.remove(reservation.authorityKey());
             adjustPending(
                 current.allocation,
-                -current.allocation.capacityDelta());
+                current.allocation.capacityBundle(),
+                -1);
             state.state = State.ABORTED;
             creationTerminals.put(terminal.operation(), terminal);
             return completed(ZLinkObjectAbortResult.ABORTED);
@@ -620,7 +659,7 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 request.targetOwner(),
                 request.objectKind(),
                 request.stableType(),
-                request.capacityDelta());
+                request.capacityBundle());
             if (admission == DescriptorAdmission.UNAVAILABLE) {
                 return completed(
                     new ZLinkRelocationCapacityTargetUnavailable());
@@ -634,7 +673,8 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 new CapacityState(request, State.RESERVED));
             adjustPending(
                 activeTargetAllocation(request),
-                request.capacityDelta());
+                request.capacityBundle(),
+                1);
             return completed(new ZLinkRelocationCapacityReserved(
                 new ZLinkRelocationCapacityFence(fenceValue)));
         }
@@ -665,7 +705,8 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             }
             adjustPending(
                 activeTargetAllocation(state.request),
-                -state.request.capacityDelta());
+                state.request.capacityBundle(),
+                -1);
             state.state = State.ABORTED;
             return completed(
                 ZLinkRelocationCapacityAbortResult.ABORTED);
@@ -697,54 +738,9 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             }
             if (request.participants().isEmpty()
                 || request.participants().size() > 1024
-                || request.targetReservations().size() > 1024
                 || request.inventoryDigest().length != 32
                 || !aggregateParticipantsAreCanonical(
                     request.participants())) {
-                return completed(new ZLinkAggregateConflict());
-            }
-            Set<String> newOwnerKeys = new HashSet<>();
-            for (ZLinkAggregateParticipant participant :
-                request.participants()) {
-                if (participant.ownerTransition()
-                        == ZLinkAuthorityGenerationTransition.NEW_OWNER
-                    && !newOwnerKeys.add(participant.authorityKey())) {
-                    return completed(new ZLinkAggregateConflict());
-                }
-            }
-            Set<String> reservedKeys = new HashSet<>();
-            for (ZLinkRelocationCapacityFence capacityFence :
-                request.targetReservations()) {
-                CapacityState capacity =
-                    capacityReservations.get(capacityFence.value());
-                Row current = capacity == null
-                    ? null
-                    : rows.get(capacity.request.authorityKey());
-                if (capacity == null
-                    || capacity.state != State.RESERVED
-                    || (capacity.boundAggregateId != null
-                        && (!capacity.boundAggregateId.equals(
-                                request.aggregateId())
-                            || capacity.boundAggregateGeneration
-                                != request.aggregateGeneration()))
-                    || current == null
-                    || !current.storeVersion.equals(
-                        capacity.request.expectedStoreVersion())
-                    || !current.owner.equals(
-                        capacity.request.sourceOwner())
-                    || !sourceAllocationMatches(
-                        current.allocation,
-                        capacity.request)
-                    || !targetDescriptorIsCurrent(
-                        capacity.request)
-                    || !capacity.request.targetOwner()
-                        .equals(request.targetOwner())
-                    || !reservedKeys.add(
-                        capacity.request.authorityKey())) {
-                    return completed(new ZLinkAggregateConflict());
-                }
-            }
-            if (!newOwnerKeys.equals(reservedKeys)) {
                 return completed(new ZLinkAggregateConflict());
             }
             int ownerGenerationCount = Math.toIntExact(
@@ -766,27 +762,46 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 request.participants()) {
                 Row row = rows.get(participant.authorityKey());
                 if (row == null
+                    || participantIsPrepared(
+                        participant.authorityKey())
                     || row.allocation.state()
                         != ZLinkPlacementAllocationState.ACTIVE
                     || !row.storeVersion.equals(
-                        participant.expectedStoreVersion())) {
+                        participant.expectedStoreVersion())
+                    || (participant.ownerTransition()
+                        == ZLinkAuthorityGenerationTransition.NEW_OWNER
+                        && !targetSupportsAllocation(
+                            request,
+                            row.allocation))) {
                     return completed(new ZLinkAggregateConflict());
                 }
             }
-            for (ZLinkRelocationCapacityFence capacityFence :
-                request.targetReservations()) {
-                CapacityState capacity =
-                    capacityReservations.get(capacityFence.value());
-                capacity.boundAggregateId = request.aggregateId();
-                capacity.boundAggregateGeneration =
-                    request.aggregateGeneration();
-                capacity.state = State.PREPARED;
+            if (!aggregateBundleMatchesParticipants(request)
+                || descriptorAdmission(
+                    request.targetDescriptor(),
+                    request.targetDescriptorLifecycleGeneration(),
+                    request.targetOwner(),
+                    request.capacityBundle())
+                    != DescriptorAdmission.ACCEPTED) {
+                return completed(new ZLinkAggregateConflict());
             }
+            adjustPending(
+                aggregateTargetAllocation(request),
+                request.capacityBundle(),
+                1);
             aggregates.put(
                 request.aggregateId(),
                 new AggregateState(request, State.PREPARED));
             return completed(new ZLinkAggregatePrepared(fence));
         }
+    }
+
+    private boolean participantIsPrepared(String authorityKey) {
+        return aggregates.values().stream().anyMatch(aggregate ->
+            aggregate.state == State.PREPARED
+                && aggregate.request.participants().stream().anyMatch(
+                    participant ->
+                        participant.authorityKey().equals(authorityKey)));
     }
 
     @Override
@@ -834,11 +849,11 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 long ownerGeneration = changesOwner
                     ? ++authorityOwnerGeneration
                     : current.authorityOwnerGeneration;
-                CapacityState capacity = changesOwner
-                    ? capacityForAuthority(
+                ZLinkPlacementAllocation targetAllocation = changesOwner
+                    ? aggregateTargetAllocation(
                         state.request,
-                        participant.authorityKey())
-                    : null;
+                        current.allocation)
+                    : current.allocation;
                 rows.put(
                     participant.authorityKey(),
                     new Row(
@@ -849,25 +864,26 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                         changesOwner
                             ? state.request.targetOwner()
                             : current.owner,
-                        changesOwner
-                            ? activeTargetAllocation(
-                                capacity.request)
-                            : current.allocation));
+                        targetAllocation));
                 membershipMutations.put(
                     participant.authorityKey(),
                     participant.membershipMutation());
                 if (changesOwner) {
-                    relocateAllocation(
+                    adjustActive(
                         current.allocation,
-                        activeTargetAllocation(capacity.request));
+                        current.allocation.capacityBundle(),
+                        -1);
                 }
             }
+            adjustPending(
+                aggregateTargetAllocation(state.request),
+                state.request.capacityBundle(),
+                -1);
+            adjustActive(
+                aggregateTargetAllocation(state.request),
+                state.request.capacityBundle(),
+                1);
             state.state = State.COMMITTED;
-            for (ZLinkRelocationCapacityFence capacityFence :
-                state.request.targetReservations()) {
-                capacityReservations.get(capacityFence.value()).state =
-                    State.COMMITTED;
-            }
             return completed(ZLinkAggregateCommitResult.COMMITTED);
         }
     }
@@ -889,19 +905,10 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 return completed(ZLinkAggregateAbortResult.STALE);
             }
             state.state = State.ABORTED;
-            for (ZLinkRelocationCapacityFence capacityFence :
-                state.request.targetReservations()) {
-                CapacityState capacity =
-                    capacityReservations.get(capacityFence.value());
-                if (capacity != null
-                    && capacity.state == State.PREPARED
-                    && capacity.isBoundTo(fence)) {
-                    adjustPending(
-                        activeTargetAllocation(capacity.request),
-                        -capacity.request.capacityDelta());
-                    capacity.state = State.ABORTED;
-                }
-            }
+            adjustPending(
+                aggregateTargetAllocation(state.request),
+                state.request.capacityBundle(),
+                -1);
             return completed(ZLinkAggregateAbortResult.ABORTED);
         }
     }
@@ -931,14 +938,71 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
 
     private boolean targetDescriptorIsCurrent(
         ZLinkRelocationCapacityReservationRequest request) {
-        return descriptorAdmission(
-                request.targetDescriptor(),
-                request.targetDescriptorLifecycleGeneration(),
-                request.targetOwner(),
-                request.objectKind(),
-                request.stableType(),
+        ZLinkMeshNodeDescriptor descriptor = descriptorLookup.find(
+            request.targetDescriptor(),
+            request.targetDescriptorLifecycleGeneration(),
+            request.targetOwner());
+        if (descriptor == null
+            || descriptor.lifecycleGeneration()
+                != request.targetDescriptorLifecycleGeneration()
+            || !descriptor.ownerId().equals(request.targetOwner().ownerId())
+            || descriptor.leaseGeneration()
+                != request.targetOwner().leaseGeneration()
+            || descriptor.state()
+                != systems.zlink.framework.runtime.host
+                    .ZLinkFrameworkRuntimeState.SERVING
+            || descriptor.objectRole() != ZLinkMeshNodeObjectRole.SERVER
+            || descriptor.placementWeight() <= 0
+            || descriptor.objectCapabilities().stream().noneMatch(
+                capability ->
+                    capability.objectKind() == request.objectKind()
+                        && capability.stableType().equals(
+                            request.stableType()))) {
+            return false;
+        }
+        return currentCapacityFits(descriptor, request.capacityBundle());
+    }
+
+    private boolean currentCapacityFits(
+        ZLinkMeshNodeDescriptor descriptor,
+        ZLinkPlacementCapacityBundle bundle) {
+        AllocationCounterKey nodeKey = new AllocationCounterKey(
+            new ZLinkMeshNodeDescriptorKey(
+                descriptor.meshName(),
+                descriptor.rid()),
+            descriptor.lifecycleGeneration());
+        if (!hasCapacity(
+                actorAllocationCounters.get(nodeKey),
+                descriptor.capacity().actors().limit(),
                 0)
-            == DescriptorAdmission.ACCEPTED;
+            || !hasCapacity(
+                spotAllocationCounters.get(nodeKey),
+                descriptor.capacity().spots().limit(),
+                0)) {
+            return false;
+        }
+        if (bundle.spotType().isEmpty()) {
+            return true;
+        }
+        ZLinkSpotTypeCapacityDelta delta = bundle.spotType().orElseThrow();
+        ZLinkObjectCapability capability =
+            descriptor.objectCapabilities().stream()
+                .filter(candidate ->
+                    candidate.objectKind() == delta.objectKind()
+                        && candidate.stableType().equals(
+                            delta.stableType()))
+                .findFirst()
+                .orElse(null);
+        return capability != null
+            && hasCapacity(
+                typeAllocationCounters.get(
+                    new TypeAllocationCounterKey(
+                        nodeKey.descriptor(),
+                        nodeKey.lifecycleGeneration(),
+                        delta.objectKind(),
+                        delta.stableType())),
+                capability.spotLimit(),
+                0);
     }
 
     private DescriptorAdmission descriptorAdmission(
@@ -947,7 +1011,7 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         ZLinkLocationOwnerToken owner,
         ZLinkPlacementObjectKind objectKind,
         String stableType,
-        int capacityDelta) {
+        ZLinkPlacementCapacityBundle capacityBundle) {
         ZLinkMeshNodeDescriptor descriptor = descriptorLookup.find(
             descriptorKey,
             lifecycleGeneration,
@@ -979,71 +1043,148 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         if (capability == null) {
             return DescriptorAdmission.UNAVAILABLE;
         }
+        if (!bundleMatchesObject(
+            capacityBundle,
+            objectKind,
+            stableType)) {
+            return DescriptorAdmission.UNAVAILABLE;
+        }
         return canReserve(
             descriptor,
-            capability,
-            objectKind,
-            stableType,
-            capacityDelta)
+            capacityBundle)
                 ? DescriptorAdmission.ACCEPTED
                 : DescriptorAdmission.CAPACITY_EXHAUSTED;
     }
 
+    private boolean descriptorIsCurrent(
+        ZLinkMeshNodeDescriptorKey descriptorKey,
+        long lifecycleGeneration,
+        ZLinkLocationOwnerToken owner,
+        ZLinkPlacementObjectKind objectKind,
+        String stableType) {
+        ZLinkMeshNodeDescriptor descriptor = descriptorLookup.find(
+            descriptorKey,
+            lifecycleGeneration,
+            owner);
+        return descriptor != null
+            && descriptor.state()
+                == systems.zlink.framework.runtime.host
+                    .ZLinkFrameworkRuntimeState.SERVING
+            && descriptor.objectRole() == ZLinkMeshNodeObjectRole.SERVER
+            && descriptor.objectCapabilities().stream().anyMatch(
+                capability ->
+                    capability.objectKind() == objectKind
+                        && capability.stableType().equals(stableType));
+    }
+
+    private DescriptorAdmission descriptorAdmission(
+        ZLinkMeshNodeDescriptorKey descriptorKey,
+        long lifecycleGeneration,
+        ZLinkLocationOwnerToken owner,
+        ZLinkPlacementCapacityBundle capacityBundle) {
+        ZLinkMeshNodeDescriptor descriptor = descriptorLookup.find(
+            descriptorKey,
+            lifecycleGeneration,
+            owner);
+        if (descriptor == null
+            || descriptor.lifecycleGeneration() != lifecycleGeneration
+            || !descriptor.ownerId().equals(owner.ownerId())
+            || descriptor.leaseGeneration() != owner.leaseGeneration()
+            || descriptor.state()
+                != systems.zlink.framework.runtime.host
+                    .ZLinkFrameworkRuntimeState.SERVING
+            || descriptor.objectRole() != ZLinkMeshNodeObjectRole.SERVER
+            || descriptor.placementWeight() <= 0) {
+            return DescriptorAdmission.UNAVAILABLE;
+        }
+        if (capacityBundle.spotType().isPresent()) {
+            ZLinkSpotTypeCapacityDelta spot =
+                capacityBundle.spotType().orElseThrow();
+            boolean supported = descriptor.objectCapabilities().stream()
+                .anyMatch(capability ->
+                    capability.objectKind() == spot.objectKind()
+                        && capability.stableType().equals(
+                            spot.stableType()));
+            if (!supported) {
+                return DescriptorAdmission.UNAVAILABLE;
+            }
+        }
+        return canReserve(descriptor, capacityBundle)
+            ? DescriptorAdmission.ACCEPTED
+            : DescriptorAdmission.CAPACITY_EXHAUSTED;
+    }
+
     private boolean canReserve(
         ZLinkMeshNodeDescriptor descriptor,
-        ZLinkObjectCapability capability,
-        ZLinkPlacementObjectKind objectKind,
-        String stableType,
-        int delta) {
+        ZLinkPlacementCapacityBundle bundle) {
         AllocationCounterKey nodeKey = new AllocationCounterKey(
             new ZLinkMeshNodeDescriptorKey(
                 descriptor.meshName(),
                 descriptor.rid()),
             descriptor.lifecycleGeneration());
-        TypeAllocationCounterKey typeKey =
+        CapacityCounter actors = actorAllocationCounters.get(nodeKey);
+        CapacityCounter spots = spotAllocationCounters.get(nodeKey);
+        if (!hasCapacity(
+                actors,
+                descriptor.capacity().actors().limit(),
+                bundle.actorSlots())
+            || !hasCapacity(
+                spots,
+                descriptor.capacity().spots().limit(),
+                bundle.spotSlots())) {
+            return false;
+        }
+        if (bundle.spotType().isEmpty()) {
+            return true;
+        }
+        ZLinkSpotTypeCapacityDelta delta =
+            bundle.spotType().orElseThrow();
+        ZLinkObjectCapability capability =
+            descriptor.objectCapabilities().stream()
+                .filter(candidate ->
+                    candidate.objectKind() == delta.objectKind()
+                        && candidate.stableType().equals(
+                            delta.stableType()))
+                .findFirst()
+                .orElse(null);
+        if (capability == null) {
+            return false;
+        }
+        CapacityCounter type = typeAllocationCounters.get(
             new TypeAllocationCounterKey(
                 nodeKey.descriptor(),
                 nodeKey.lifecycleGeneration(),
-                objectKind,
-                stableType);
-        CapacityCounter type = typeAllocationCounters.get(typeKey);
-        long typeActive = type == null ? 0 : type.active;
-        long typePending = type == null ? 0 : type.pending;
-        long kindActive = typeAllocationCounters.entrySet().stream()
-            .filter(entry ->
-                entry.getKey().descriptor().equals(nodeKey.descriptor())
-                    && entry.getKey().lifecycleGeneration()
-                        == nodeKey.lifecycleGeneration()
-                    && (objectKind == ZLinkPlacementObjectKind.ACTOR
-                        ? entry.getKey().objectKind()
-                            == ZLinkPlacementObjectKind.ACTOR
-                        : entry.getKey().objectKind()
-                            != ZLinkPlacementObjectKind.ACTOR))
-            .mapToLong(entry -> entry.getValue().active)
-            .sum();
-        long kindReserved = typeAllocationCounters.entrySet().stream()
-            .filter(entry ->
-                entry.getKey().descriptor().equals(nodeKey.descriptor())
-                    && entry.getKey().lifecycleGeneration()
-                        == nodeKey.lifecycleGeneration()
-                    && (objectKind == ZLinkPlacementObjectKind.ACTOR
-                        ? entry.getKey().objectKind()
-                            == ZLinkPlacementObjectKind.ACTOR
-                        : entry.getKey().objectKind()
-                            != ZLinkPlacementObjectKind.ACTOR))
-            .mapToLong(entry -> entry.getValue().pending)
-            .sum();
-        int kindLimit = objectKind == ZLinkPlacementObjectKind.ACTOR
-            ? descriptor.capacity().actors().limit()
-            : descriptor.capacity().spots().limit();
-        int typeLimit = objectKind == ZLinkPlacementObjectKind.ACTOR
-            ? 0
-            : capability.spotLimit();
-        return delta >= 0
-            && (kindLimit == 0
-                || kindActive + kindReserved + delta <= kindLimit)
-            && (typeLimit == 0
-                || typeActive + typePending + delta <= typeLimit);
+                delta.objectKind(),
+                delta.stableType()));
+        return hasCapacity(type, capability.spotLimit(), delta.slots());
+    }
+
+    private static boolean hasCapacity(
+        CapacityCounter counter,
+        int limit,
+        int requested) {
+        long active = counter == null ? 0 : counter.active;
+        long pending = counter == null ? 0 : counter.pending;
+        return limit == 0 || active + pending + requested <= limit;
+    }
+
+    private static boolean bundleMatchesObject(
+        ZLinkPlacementCapacityBundle bundle,
+        ZLinkPlacementObjectKind kind,
+        String stableType) {
+        if (kind == ZLinkPlacementObjectKind.ACTOR) {
+            return bundle.actorSlots() > 0
+                && bundle.spotSlots() == 0
+                && bundle.spotType().isEmpty();
+        }
+        return bundle.actorSlots() == 0
+            && bundle.spotSlots() > 0
+            && bundle.spotType()
+                .filter(delta ->
+                    delta.objectKind() == kind
+                        && delta.stableType().equals(stableType)
+                        && delta.slots() == bundle.spotSlots())
+                .isPresent();
     }
 
     private static boolean sourceAllocationMatches(
@@ -1057,7 +1198,8 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 request.sourceDescriptor())
             && allocation.descriptorLifecycleGeneration()
                 == request.sourceDescriptorLifecycleGeneration()
-            && allocation.capacityDelta() == request.capacityDelta();
+            && allocation.capacityBundle().equals(
+                request.capacityBundle());
     }
 
     private static ZLinkPlacementAllocation activeTargetAllocation(
@@ -1068,23 +1210,88 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             request.stableType(),
             request.targetDescriptor(),
             request.targetDescriptorLifecycleGeneration(),
-            request.capacityDelta());
+            request.capacityBundle());
     }
 
-    private CapacityState capacityForAuthority(
+    private static ZLinkPlacementAllocation aggregateTargetAllocation(
+        ZLinkAggregatePrepareRequest request) {
+        ZLinkSpotTypeCapacityDelta spotType =
+            request.capacityBundle().spotType().orElse(null);
+        return new ZLinkPlacementAllocation(
+            ZLinkPlacementAllocationState.ACTIVE,
+            spotType == null
+                ? ZLinkPlacementObjectKind.ACTOR
+                : spotType.objectKind(),
+            spotType == null ? "aggregate-actors" : spotType.stableType(),
+            request.targetDescriptor(),
+            request.targetDescriptorLifecycleGeneration(),
+            request.capacityBundle());
+    }
+
+    private static ZLinkPlacementAllocation aggregateTargetAllocation(
         ZLinkAggregatePrepareRequest request,
-        String authorityKey) {
-        for (ZLinkRelocationCapacityFence fence :
-            request.targetReservations()) {
-            CapacityState capacity =
-                capacityReservations.get(fence.value());
-            if (capacity != null
-                && capacity.request.authorityKey().equals(authorityKey)) {
-                return capacity;
+        ZLinkPlacementAllocation source) {
+        return new ZLinkPlacementAllocation(
+            ZLinkPlacementAllocationState.ACTIVE,
+            source.objectKind(),
+            source.stableType(),
+            request.targetDescriptor(),
+            request.targetDescriptorLifecycleGeneration(),
+            source.capacityBundle());
+    }
+
+    private boolean targetSupportsAllocation(
+        ZLinkAggregatePrepareRequest request,
+        ZLinkPlacementAllocation allocation) {
+        ZLinkMeshNodeDescriptor descriptor = descriptorLookup.find(
+            request.targetDescriptor(),
+            request.targetDescriptorLifecycleGeneration(),
+            request.targetOwner());
+        return descriptor != null
+            && descriptor.objectCapabilities().stream().anyMatch(
+                capability ->
+                    capability.objectKind() == allocation.objectKind()
+                        && capability.stableType().equals(
+                            allocation.stableType()));
+    }
+
+    private boolean aggregateBundleMatchesParticipants(
+        ZLinkAggregatePrepareRequest request) {
+        long actors = 0;
+        long spots = 0;
+        ZLinkSpotTypeCapacityDelta expectedSpotType = null;
+        for (ZLinkAggregateParticipant participant : request.participants()) {
+            if (participant.ownerTransition()
+                != ZLinkAuthorityGenerationTransition.NEW_OWNER) {
+                continue;
+            }
+            Row row = rows.get(participant.authorityKey());
+            if (row == null) {
+                return false;
+            }
+            ZLinkPlacementCapacityBundle bundle =
+                row.allocation.capacityBundle();
+            actors = Math.addExact(actors, bundle.actorSlots());
+            spots = Math.addExact(spots, bundle.spotSlots());
+            if (bundle.spotType().isPresent()) {
+                ZLinkSpotTypeCapacityDelta current =
+                    bundle.spotType().orElseThrow();
+                if (expectedSpotType != null
+                    && (expectedSpotType.objectKind()
+                            != current.objectKind()
+                        || !expectedSpotType.stableType().equals(
+                            current.stableType()))) {
+                    return false;
+                }
+                expectedSpotType = current;
             }
         }
-        throw new IllegalStateException(
-            "prepared aggregate capacity is missing");
+        ZLinkPlacementCapacityBundle requested = request.capacityBundle();
+        return actors == requested.actorSlots()
+            && spots == requested.spotSlots()
+            && java.util.Objects.equals(
+                expectedSpotType,
+                requested.spotType().orElse(null));
     }
 
     private static boolean pendingReservationMatches(
@@ -1113,81 +1320,96 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             allocation.stableType(),
             allocation.descriptor(),
             allocation.descriptorLifecycleGeneration(),
-            allocation.capacityDelta());
+            allocation.capacityBundle());
     }
 
     private void activateAllocation(ZLinkPlacementAllocation allocation) {
-        adjustPending(allocation, -allocation.capacityDelta());
-        adjustActive(allocation, allocation.capacityDelta());
+        adjustPending(allocation, allocation.capacityBundle(), -1);
+        adjustActive(allocation, allocation.capacityBundle(), 1);
     }
 
     private void relocateAllocation(
         ZLinkPlacementAllocation source,
         ZLinkPlacementAllocation target) {
-        adjustActive(source, -source.capacityDelta());
-        adjustPending(target, -target.capacityDelta());
-        adjustActive(target, target.capacityDelta());
+        adjustActive(source, source.capacityBundle(), -1);
+        adjustPending(target, target.capacityBundle(), -1);
+        adjustActive(target, target.capacityBundle(), 1);
     }
 
     private void adjustPending(
         ZLinkPlacementAllocation allocation,
-        long delta) {
-        CapacityCounter node = nodeAllocationCounter(allocation);
-        CapacityCounter type = typeAllocationCounter(allocation);
-        long nodeValue = Math.addExact(node.pending, delta);
-        long typeValue = Math.addExact(type.pending, delta);
-        if (nodeValue < 0 || typeValue < 0) {
-            throw new IllegalStateException(
-                "pending placement capacity became negative");
-        }
-        node.pending = nodeValue;
-        type.pending = typeValue;
+        ZLinkPlacementCapacityBundle bundle,
+        int direction) {
+        adjustBundle(allocation, bundle, direction, false);
     }
 
     private void adjustActive(
         ZLinkPlacementAllocation allocation,
-        long delta) {
-        CapacityCounter node = nodeAllocationCounter(allocation);
-        CapacityCounter type = typeAllocationCounter(allocation);
-        long nodeValue = Math.addExact(node.active, delta);
-        long typeValue = Math.addExact(type.active, delta);
-        if (nodeValue < 0 || typeValue < 0) {
+        ZLinkPlacementCapacityBundle bundle,
+        int direction) {
+        adjustBundle(allocation, bundle, direction, true);
+    }
+
+    private void adjustBundle(
+        ZLinkPlacementAllocation allocation,
+        ZLinkPlacementCapacityBundle bundle,
+        int direction,
+        boolean active) {
+        AllocationCounterKey nodeKey = new AllocationCounterKey(
+            allocation.descriptor(),
+            allocation.descriptorLifecycleGeneration());
+        adjustCounter(
+            actorAllocationCounters.computeIfAbsent(
+                nodeKey, ignored -> new CapacityCounter()),
+            (long) direction * bundle.actorSlots(),
+            active);
+        adjustCounter(
+            spotAllocationCounters.computeIfAbsent(
+                nodeKey, ignored -> new CapacityCounter()),
+            (long) direction * bundle.spotSlots(),
+            active);
+        bundle.spotType().ifPresent(delta ->
+            adjustCounter(
+                typeAllocationCounters.computeIfAbsent(
+                    new TypeAllocationCounterKey(
+                        nodeKey.descriptor(),
+                        nodeKey.lifecycleGeneration(),
+                        delta.objectKind(),
+                        delta.stableType()),
+                    ignored -> new CapacityCounter()),
+                (long) direction * delta.slots(),
+                active));
+    }
+
+    private static void adjustCounter(
+        CapacityCounter counter,
+        long delta,
+        boolean active) {
+        long value = Math.addExact(
+            active ? counter.active : counter.pending,
+            delta);
+        if (value < 0) {
             throw new IllegalStateException(
-                "active placement capacity became negative");
+                "placement capacity became negative");
         }
-        node.active = nodeValue;
-        type.active = typeValue;
-    }
-
-    private CapacityCounter nodeAllocationCounter(
-        ZLinkPlacementAllocation allocation) {
-        return nodeAllocationCounters.computeIfAbsent(
-            new AllocationCounterKey(
-                allocation.descriptor(),
-                allocation.descriptorLifecycleGeneration()),
-            ignored -> new CapacityCounter());
-    }
-
-    private CapacityCounter typeAllocationCounter(
-        ZLinkPlacementAllocation allocation) {
-        return typeAllocationCounters.computeIfAbsent(
-            new TypeAllocationCounterKey(
-                allocation.descriptor(),
-                allocation.descriptorLifecycleGeneration(),
-                allocation.objectKind(),
-                allocation.stableType()),
-            ignored -> new CapacityCounter());
+        if (active) {
+            counter.active = value;
+        } else {
+            counter.pending = value;
+        }
     }
 
     long activeCapacity(
         ZLinkMeshNodeDescriptorKey descriptor,
         long lifecycleGeneration) {
         synchronized (gate) {
-            CapacityCounter counter = nodeAllocationCounters.get(
-                new AllocationCounterKey(
-                    descriptor,
-                    lifecycleGeneration));
-            return counter == null ? 0 : counter.active;
+            AllocationCounterKey key = new AllocationCounterKey(
+                descriptor,
+                lifecycleGeneration);
+            CapacityCounter actors = actorAllocationCounters.get(key);
+            CapacityCounter spots = spotAllocationCounters.get(key);
+            return (actors == null ? 0 : actors.active)
+                + (spots == null ? 0 : spots.active);
         }
     }
 
@@ -1195,11 +1417,13 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         ZLinkMeshNodeDescriptorKey descriptor,
         long lifecycleGeneration) {
         synchronized (gate) {
-            CapacityCounter counter = nodeAllocationCounters.get(
-                new AllocationCounterKey(
-                    descriptor,
-                    lifecycleGeneration));
-            return counter == null ? 0 : counter.pending;
+            AllocationCounterKey key = new AllocationCounterKey(
+                descriptor,
+                lifecycleGeneration);
+            CapacityCounter actors = actorAllocationCounters.get(key);
+            CapacityCounter spots = spotAllocationCounters.get(key);
+            return (actors == null ? 0 : actors.pending)
+                + (spots == null ? 0 : spots.pending);
         }
     }
 
@@ -1208,21 +1432,15 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
         long lifecycleGeneration,
         boolean actors) {
         synchronized (gate) {
-            long active = 0;
-            long reserved = 0;
-            for (var entry : typeAllocationCounters.entrySet()) {
-                var key = entry.getKey();
-                if (!key.descriptor().equals(descriptor)
-                    || key.lifecycleGeneration() != lifecycleGeneration
-                    || actors
-                        != (key.objectKind()
-                            == ZLinkPlacementObjectKind.ACTOR)) {
-                    continue;
-                }
-                active += entry.getValue().active;
-                reserved += entry.getValue().pending;
-            }
-            return new long[] {active, reserved};
+            CapacityCounter counter = (actors
+                ? actorAllocationCounters
+                : spotAllocationCounters).get(
+                    new AllocationCounterKey(
+                        descriptor,
+                        lifecycleGeneration));
+            return counter == null
+                ? new long[] {0, 0}
+                : new long[] {counter.active, counter.pending};
         }
     }
 
@@ -1258,8 +1476,12 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
             || left.aggregateGeneration()
                 != right.aggregateGeneration()
             || !left.targetOwner().equals(right.targetOwner())
-            || !left.targetReservations().equals(
-                right.targetReservations())
+            || !left.targetDescriptor().equals(
+                right.targetDescriptor())
+            || left.targetDescriptorLifecycleGeneration()
+                != right.targetDescriptorLifecycleGeneration()
+            || !left.capacityBundle().equals(
+                right.capacityBundle())
             || !Arrays.equals(
                 left.inventoryDigest(),
                 right.inventoryDigest())
@@ -1314,22 +1536,17 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
     private boolean aggregateStateIsCurrent(
         ZLinkAggregatePrepareRequest request,
         ZLinkAggregateFence aggregateFence) {
-        Map<String, CapacityState> capacitiesByAuthority =
-            new HashMap<>();
-        for (ZLinkRelocationCapacityFence fence :
-            request.targetReservations()) {
-            CapacityState capacity =
-                capacityReservations.get(fence.value());
-            if (capacity == null
-                || capacity.state != State.PREPARED
-                || !capacity.isBoundTo(aggregateFence)
-                || !targetDescriptorIsCurrent(
-                    capacity.request)
-                || capacitiesByAuthority.put(
-                    capacity.request.authorityKey(),
-                    capacity) != null) {
-                return false;
-            }
+        ZLinkMeshNodeDescriptor target = descriptorLookup.find(
+            request.targetDescriptor(),
+            request.targetDescriptorLifecycleGeneration(),
+            request.targetOwner());
+        if (target == null
+            || target.state()
+                != systems.zlink.framework.runtime.host
+                    .ZLinkFrameworkRuntimeState.SERVING
+            || target.objectRole() != ZLinkMeshNodeObjectRole.SERVER
+            || target.placementWeight() <= 0) {
+            return false;
         }
         for (ZLinkAggregateParticipant participant :
             request.participants()) {
@@ -1343,24 +1560,13 @@ final class ZLinkInMemoryAuthorityStore implements ZLinkAuthorityStore {
                 != ZLinkAuthorityGenerationTransition.NEW_OWNER) {
                 continue;
             }
-            CapacityState capacity =
-                capacitiesByAuthority.remove(
-                    participant.authorityKey());
-            if (capacity == null
-                || !capacity.request.expectedStoreVersion().equals(
-                    participant.expectedStoreVersion())
-                || !capacity.request.sourceOwner().equals(current.owner)
-                || !sourceAllocationMatches(
-                    current.allocation,
-                    capacity.request)
-                || !capacity.request.targetOwner().equals(
-                    request.targetOwner())
-                || !ownerLeaseIsLive.test(
-                    capacity.request.targetOwner())) {
+            if (!targetSupportsAllocation(
+                request,
+                current.allocation)) {
                 return false;
             }
         }
-        return capacitiesByAuthority.isEmpty();
+        return true;
     }
 
     private static boolean sameAggregate(

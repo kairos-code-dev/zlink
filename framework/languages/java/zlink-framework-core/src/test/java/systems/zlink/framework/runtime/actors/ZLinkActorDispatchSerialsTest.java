@@ -37,4 +37,26 @@ final class ZLinkActorDispatchSerialsTest {
             List.of("dispatch-started", "dispatch-completed", "handoff-started"),
             order);
     }
+
+    @Test
+    void allActorBarrierWaitsForEveryIndependentLane() {
+        ZLinkActorDispatchSerials dispatches = new ZLinkActorDispatchSerials();
+        CompletableFuture<Void> actorA = new CompletableFuture<>();
+        CompletableFuture<Void> actorB = new CompletableFuture<>();
+
+        dispatches.enqueue(
+            dispatches.prepare("actor-a"),
+            () -> actorA);
+        dispatches.enqueue(
+            dispatches.prepare("actor-b"),
+            () -> actorB);
+
+        CompletableFuture<Void> barrier =
+            dispatches.awaitQuiescence().toCompletableFuture();
+        assertFalse(barrier.isDone());
+        actorA.complete(null);
+        assertFalse(barrier.isDone());
+        actorB.complete(null);
+        barrier.join();
+    }
 }

@@ -10,8 +10,7 @@ namespace Zlink.Framework.Runtime.Host;
 /// independent Core MeshNode monitor, so event handlers never sit on the
 /// dispatch path.
 /// Peer ChannelName sets and channel readiness are derived from the Core peer
-/// and peer-channel snapshots. Core does not expose all multicast admission
-/// counters or drain seal state yet; those fields retain their gap values.
+/// and peer-channel snapshots.
 /// </summary>
 internal sealed class ZLinkRouteMeshRuntimeService(
     ZLinkFrameworkRuntime runtime,
@@ -35,13 +34,13 @@ internal sealed class ZLinkRouteMeshRuntimeService(
         var nodeRuntime = runtime.GetMeshNodeRuntime(meshName);
         var hub = GetOrCreateHub(meshName, nodeRuntime);
         var status = nodeRuntime.Node.MeshStatus();
-        var monitorStatus = hub.Status();
         var peers = nodeRuntime.Node.MeshPeers();
         var peerChannels = peers.Select(peer =>
                 SnapshotPeerChannels(nodeRuntime, peer))
             .ToArray();
-        var targetCounts = hub.TargetCounts();
         var state = MapNodeState(status.State);
+        var placement = hub.LocalDescriptor(status.RoutingId);
+        var fallbackCapacity = BuildPopulationCapacity(nodeRuntime.Registration);
         return new ZLinkMeshNodeSnapshot(
             meshName,
             status.RoutingId,
@@ -55,16 +54,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
             peers.Select((peer, index) => MapPeer(peer, peerChannels[index]))
                 .ToArray(),
             MapChannels(nodeRuntime, peers, peerChannels),
-            new ZLinkLogicalMulticastSnapshot(
-                status.MulticastSubmitted,
-                monitorStatus.BackpressuredSubmits,
-                status.MulticastDroppedTargets,
-                targetCounts.RemoteSnapshot,
-                targetCounts.RemoteAdmitted,
-                targetCounts.RemoteDropped,
-                targetCounts.LocalSnapshot,
-                targetCounts.LocalAdmitted,
-                targetCounts.LocalDropped),
             new ZLinkMeshClaimSnapshot(
                 ApplicationActive: state == ZLinkMeshNodeState.Serving,
                 status.PendingApplicationMessages,
@@ -77,7 +66,22 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                 WorkSealed: state is ZLinkMeshNodeState.Drained or ZLinkMeshNodeState.Stopped,
                 status.PendingApplicationMessages,
                 PendingTransferCount: 0,
-                PendingStreamBarrierCount: 0));
+                PendingStreamBarrierCount: 0))
+        {
+            ApplicationVersion = placement?.ApplicationVersion
+                ?? runtime.Registration.ApplicationVersion,
+            ObjectRole = placement?.ObjectRole
+                ?? nodeRuntime.Registration.ObjectRole,
+            PlacementWeight = placement?.PlacementWeight
+                ?? nodeRuntime.Registration.PlacementWeight,
+            PopulationCapacity = placement?.Capacity ?? fallbackCapacity,
+            ActivationConcurrency = placement?.ActivationConcurrency
+                ?? new ZLinkActivationConcurrency(
+                    0,
+                    nodeRuntime.Registration.MaxPendingActivations),
+            ObjectCapabilities = placement?.ObjectCapabilities
+                ?? Array.Empty<ZLinkObjectCapability>()
+        };
     }
 
     internal void Start()
@@ -184,10 +188,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                 "zlink.runtime.mesh_node.state_changed",
             MeshMonitorEventKind.ChannelChanged =>
                 "zlink.runtime.mesh_node.channel_changed",
-            MeshMonitorEventKind.Backpressured =>
-                "zlink.runtime.mesh_node.multicast_backpressured",
-            MeshMonitorEventKind.MulticastDropped =>
-                "zlink.runtime.mesh_node.multicast_dropped",
             MeshMonitorEventKind.ClaimRevoked =>
                 "zlink.runtime.mesh_node.claim_changed",
             MeshMonitorEventKind.PeerConnecting
@@ -213,10 +213,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
             MeshMonitorEventKind.Backpressured => "backpressure",
             _ => null
         };
-        var carriesTargetCounts = nativeEvent.Kind is
-            MeshMonitorEventKind.MulticastCommitted
-            or MeshMonitorEventKind.MulticastDropped
-            or MeshMonitorEventKind.Backpressured;
         var mapped = new ZLinkMeshRuntimeEvent(
             identifier,
             NextSequence(meshName),
@@ -237,12 +233,10 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                 ? "application"
                 : null,
             MessageKind: null,
-            carriesTargetCounts ? nativeEvent.SnapshotRemoteTargetCount : null,
-            carriesTargetCounts ? nativeEvent.AdmittedRemoteTargetCount : null,
-            carriesTargetCounts ? nativeEvent.DroppedRemoteTargetCount : null,
-            carriesTargetCounts ? nativeEvent.SnapshotLocalSpotCount : null,
-            carriesTargetCounts ? nativeEvent.AdmittedLocalSpotCount : null,
-            carriesTargetCounts ? nativeEvent.DroppedLocalSpotCount : null,
+            PlacementOutcome: null,
+            Capacity: null,
+            PopulationCapacity: null,
+            ActivationConcurrency: null,
             reason,
             nativeEvent.Kind == MeshMonitorEventKind.StateChanged
                 ? MapNodeState(nativeEvent.MeshState)
@@ -348,6 +342,10 @@ internal sealed class ZLinkRouteMeshRuntimeService(
         ulong? lifecycleGeneration = null,
         ulong? descriptorRevision = null,
         string? channelName = null,
+        string? placementOutcome = null,
+        ZLinkCapacityVector? capacity = null,
+        ZLinkPlacementCapacity? populationCapacity = null,
+        ZLinkActivationConcurrency? activationConcurrency = null,
         string? reason = null,
         ZLinkMeshNodeState? state = null)
     {
@@ -363,12 +361,10 @@ internal sealed class ZLinkRouteMeshRuntimeService(
             channelName,
             ClaimDomain: null,
             MessageKind: null,
-            RemoteSnapshotCount: null,
-            RemoteAdmittedCount: null,
-            RemoteDroppedCount: null,
-            LocalSnapshotCount: null,
-            LocalAdmittedCount: null,
-            LocalDroppedCount: null,
+            placementOutcome,
+            capacity,
+            populationCapacity,
+            activationConcurrency,
             reason,
             state);
     }
@@ -385,6 +381,32 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                 : redis
                     ? ["redis"]
                     : [];
+    }
+
+    internal static ZLinkPlacementCapacity BuildPopulationCapacity(
+        ZLinkSpotNodeRegistration registration)
+    {
+        var spotTypes = registration.SpotRelocations
+            .Select(static entry => new ZLinkSpotTypeCapacity(
+                ZLinkPlacementObjectKind.UserSpot,
+                entry.Key,
+                Active: 0,
+                Reserved: 0,
+                entry.Value.Placement.MaxActiveObjects ?? 0))
+            .Concat(registration.InstanceSpotRelocations.Select(
+                static entry => new ZLinkSpotTypeCapacity(
+                    ZLinkPlacementObjectKind.InstanceSpot,
+                    entry.Key,
+                    Active: 0,
+                    Reserved: 0,
+                    entry.Value.Placement.MaxActiveObjects ?? 0)))
+            .OrderBy(static entry => entry.ObjectKind)
+            .ThenBy(static entry => entry.StableType, StringComparer.Ordinal)
+            .ToArray();
+        return new ZLinkPlacementCapacity(
+            new ZLinkPopulationCapacity(0, 0, registration.MaxActiveObjects),
+            new ZLinkPopulationCapacity(0, 0, registration.MaxActiveObjects),
+            spotTypes);
     }
 
     private ZLinkLocationRuntimeSnapshot LocationSnapshot()
@@ -493,14 +515,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
             .ToArray();
     }
 
-    private readonly record struct MulticastTargetCounts(
-        ulong RemoteSnapshot,
-        ulong RemoteAdmitted,
-        ulong RemoteDropped,
-        ulong LocalSnapshot,
-        ulong LocalAdmitted,
-        ulong LocalDropped);
-
     private static ZLinkMeshNodeState MapNodeState(MeshNodeState state)
     {
         return state switch
@@ -530,7 +544,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
         private readonly List<ObserverQueue> _observers = [];
         private readonly Dictionary<RoutingId, ZLinkMeshNodeDescriptor> _descriptors = [];
         private DateTimeOffset _nextDescriptorPoll;
-        private MulticastTargetCounts _targetCounts;
         private string? _lastLocationState;
 
         public MonitorHub(
@@ -546,12 +559,10 @@ internal sealed class ZLinkRouteMeshRuntimeService(
 
         public void Start() => _pump ??= Task.Run(PumpAsync);
 
-        public MeshMonitorStatus Status() => _monitor.Status();
-
-        public MulticastTargetCounts TargetCounts()
+        public ZLinkMeshNodeDescriptor? LocalDescriptor(RoutingId rid)
         {
             lock (_gate)
-                return _targetCounts;
+                return _descriptors.GetValueOrDefault(rid);
         }
 
         public ObserverQueue Subscribe(int capacity)
@@ -613,7 +624,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                         continue;
                     }
 
-                    RecordTargetCounts(nativeEvent);
                     var sourceRid = _nodeRuntime.Node.MeshStatus().RoutingId;
                     var mapped = _owner.MapMonitorEvents(
                         _meshName, sourceRid, nativeEvent);
@@ -659,18 +669,44 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                 .ConfigureAwait(false);
             if (_descriptors.Count == 0)
             {
-                foreach (var descriptor in current)
-                    _descriptors[descriptor.Rid] = descriptor;
+                lock (_gate)
+                {
+                    foreach (var descriptor in current)
+                        _descriptors[descriptor.Rid] = descriptor;
+                }
                 return;
             }
 
             var sourceRid = _nodeRuntime.Node.MeshStatus().RoutingId;
             foreach (var descriptor in current)
             {
-                if (!_descriptors.TryGetValue(descriptor.Rid, out var previous))
+                ZLinkMeshNodeDescriptor? previous;
+                lock (_gate)
+                    _descriptors.TryGetValue(descriptor.Rid, out previous);
+                if (previous is null)
                 {
-                    _descriptors[descriptor.Rid] = descriptor;
+                    lock (_gate)
+                        _descriptors[descriptor.Rid] = descriptor;
                     continue;
+                }
+                var capacityChanged =
+                    !SameCapacity(previous.Capacity, descriptor.Capacity)
+                    || previous.ActivationConcurrency
+                        != descriptor.ActivationConcurrency;
+                lock (_gate)
+                    _descriptors[descriptor.Rid] = descriptor;
+                if (capacityChanged && descriptor.Rid == sourceRid)
+                {
+                    Publish(_owner.Event(
+                        "zlink.runtime.object.placement_changed",
+                        _meshName,
+                        sourceRid,
+                        peerRid: descriptor.Rid,
+                        descriptorRevision: descriptor.DescriptorRevision,
+                        placementOutcome: "updated",
+                        populationCapacity: descriptor.Capacity,
+                        activationConcurrency:
+                            descriptor.ActivationConcurrency));
                 }
                 if (previous.DescriptorRevision == descriptor.DescriptorRevision
                     && previous.ChannelWeights.Count == descriptor.ChannelWeights.Count
@@ -679,7 +715,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                         && weight == pair.Value))
                     continue;
 
-                _descriptors[descriptor.Rid] = descriptor;
                 foreach (var channelName in previous.ChannelWeights.Keys
                              .Concat(descriptor.ChannelWeights.Keys)
                              .Distinct(StringComparer.Ordinal))
@@ -699,6 +734,13 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                 }
             }
         }
+
+        private static bool SameCapacity(
+            ZLinkPlacementCapacity left,
+            ZLinkPlacementCapacity right) =>
+            left.Actors == right.Actors
+            && left.Spots == right.Spots
+            && left.SpotTypes.SequenceEqual(right.SpotTypes);
 
         private void PublishLocationHealthChange()
         {
@@ -721,42 +763,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                 reason: state));
         }
 
-        private void RecordTargetCounts(MeshMonitorEvent nativeEvent)
-        {
-            var isTerminalTargetEvent = nativeEvent.Kind
-                is MeshMonitorEventKind.MulticastCommitted
-                or MeshMonitorEventKind.MulticastDropped
-                or MeshMonitorEventKind.Backpressured;
-            if (!isTerminalTargetEvent)
-                return;
-
-            // A publish with remote backpressure and a local drop emits both
-            // BACKPRESSURED and MULTICAST_DROPPED with the same target grid.
-            // The first event owns the cumulative snapshot contribution.
-            if (nativeEvent.Kind == MeshMonitorEventKind.MulticastDropped
-                && nativeEvent.ResultCode
-                == (int)ZlinkSubmitException.ErrorCode.Backpressured
-                && nativeEvent.DroppedRemoteTargetCount > 0)
-                return;
-
-            lock (_gate)
-            {
-                _targetCounts = new MulticastTargetCounts(
-                    _targetCounts.RemoteSnapshot
-                    + nativeEvent.SnapshotRemoteTargetCount,
-                    _targetCounts.RemoteAdmitted
-                    + nativeEvent.AdmittedRemoteTargetCount,
-                    _targetCounts.RemoteDropped
-                    + nativeEvent.DroppedRemoteTargetCount,
-                    _targetCounts.LocalSnapshot
-                    + nativeEvent.SnapshotLocalSpotCount,
-                    _targetCounts.LocalAdmitted
-                    + nativeEvent.AdmittedLocalSpotCount,
-                    _targetCounts.LocalDropped
-                    + nativeEvent.DroppedLocalSpotCount);
-            }
-        }
-
         private void Publish(ZLinkMeshRuntimeEvent runtimeEvent)
         {
             ObserverQueue[] observers;
@@ -768,8 +774,8 @@ internal sealed class ZLinkRouteMeshRuntimeService(
     }
 
     /// <summary>
-    /// Per-observer bounded queue. Counter events are aggregated on overflow,
-    /// state events retain the newest value, and terminal drain events cannot
+    /// Per-observer bounded queue. State events retain the newest value, and
+    /// terminal drain events cannot
     /// be displaced by later non-terminal traffic.
     /// </summary>
     private sealed class ObserverQueue
@@ -793,17 +799,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                     return;
                 if (_pending.Count == _capacity)
                 {
-                    var aggregateIndex = IsCounterEvent(runtimeEvent)
-                        ? _pending.FindIndex(item =>
-                            item.Identifier == runtimeEvent.Identifier)
-                        : -1;
-                    if (aggregateIndex >= 0)
-                    {
-                        _pending[aggregateIndex] = MergeCounters(
-                            _pending[aggregateIndex], runtimeEvent);
-                        return;
-                    }
-
                     var terminalIndex = _pending.FindIndex(IsTerminalDrainEvent);
                     if (terminalIndex >= 0 && !IsTerminalDrainEvent(runtimeEvent))
                         return;
@@ -856,13 +851,6 @@ internal sealed class ZLinkRouteMeshRuntimeService(
             }
         }
 
-        private static bool IsCounterEvent(ZLinkMeshRuntimeEvent runtimeEvent)
-        {
-            return runtimeEvent.Identifier is
-                "zlink.runtime.mesh_node.multicast_backpressured"
-                or "zlink.runtime.mesh_node.multicast_dropped";
-        }
-
         private static bool IsTerminalDrainEvent(
             ZLinkMeshRuntimeEvent runtimeEvent)
         {
@@ -873,32 +861,5 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                        or ZLinkMeshNodeState.ForceStopping;
         }
 
-        private static ZLinkMeshRuntimeEvent MergeCounters(
-            ZLinkMeshRuntimeEvent older,
-            ZLinkMeshRuntimeEvent newer)
-        {
-            return newer with
-            {
-                RemoteSnapshotCount = Sum(
-                    older.RemoteSnapshotCount, newer.RemoteSnapshotCount),
-                RemoteAdmittedCount = Sum(
-                    older.RemoteAdmittedCount, newer.RemoteAdmittedCount),
-                RemoteDroppedCount = Sum(
-                    older.RemoteDroppedCount, newer.RemoteDroppedCount),
-                LocalSnapshotCount = Sum(
-                    older.LocalSnapshotCount, newer.LocalSnapshotCount),
-                LocalAdmittedCount = Sum(
-                    older.LocalAdmittedCount, newer.LocalAdmittedCount),
-                LocalDroppedCount = Sum(
-                    older.LocalDroppedCount, newer.LocalDroppedCount)
-            };
-        }
-
-        private static ulong? Sum(ulong? left, ulong? right)
-        {
-            return left is null && right is null
-                ? null
-                : (left ?? 0) + (right ?? 0);
-        }
     }
 }

@@ -318,9 +318,9 @@ public sealed class ZlinkStreamTypedSendBuilder
         return this;
     }
 
-    public void Submit(CancellationToken cancellationToken = default)
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
-        _inner.Submit(cancellationToken);
+        return _inner.Async(cancellationToken);
     }
 }
 

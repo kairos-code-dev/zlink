@@ -98,7 +98,7 @@ class TestEntrySpot implements ZLinkEntrySpot<TestActor> {
   }
 
   scheduleDestroy(actor: TestActor): void {
-    const operation = this.context.runIoWorker(async () => true).async().then(async () => {
+    const operation = this.context.runIoWorker(async () => true).submit().then(async () => {
       await this.context.destroyActor(actor);
     });
     this.pendingDestroys.set(actor.actorId, operation);

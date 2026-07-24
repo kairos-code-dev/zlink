@@ -31,7 +31,7 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
     auto target_created_raw =
       play_a.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = target_spot_rid})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!target_created_raw || target_created_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C3 target spot create failed");
@@ -46,7 +46,7 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
     auto source_created_raw =
       play_b.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = source_spot_rid})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!source_created_raw || source_created_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-C3 source spot create failed");
@@ -65,7 +65,7 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
                                .target_spot_rid = target_spot_rid,
                                .marker = "direct"};
     auto direct_raw =
-      play_a.post ("/spot/to-spot/request").body (route_request).async_raw ().result ();
+      play_a.post ("/spot/to-spot/request").body (route_request).submit_raw ().result ();
     if (!direct_raw || direct_raw.value ().status >= 400) {
         const auto status =
           direct_raw ? std::to_string (direct_raw.value ().status) : std::string ("none");
@@ -87,7 +87,7 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
                                         .target_node_rid = "play-a",
                                         .target_spot_rid = target_spot_rid,
                                         .marker = "slow"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!timeout_raw || timeout_raw.value ().status >= 400) {
         const auto status =
@@ -111,7 +111,7 @@ inline void run_sm_c3_scenario (const std::string &play_http_endpoint,
                                         .target_node_rid = "play-a",
                                         .target_spot_rid = target_spot_rid,
                                         .marker = "missing"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!negative_raw || negative_raw.value ().status >= 400) {
         const auto status =

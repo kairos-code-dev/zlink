@@ -12,11 +12,18 @@ import {
 import type { ZLinkBackendMeshNode } from '../backend';
 import type { ZLinkRuntimeAdmissionGate } from '../admission';
 import type { ZLinkSpotNodeOptions } from '../configuration';
+import {
+  ZLinkObjectRole,
+  type ZLinkMeshNodeDescriptor
+} from '../../contracts';
 
 export interface ZLinkRouteMeshRuntimeCoordinatorOptions {
   readonly meshNames: readonly string[];
   readonly meshOptions: ReadonlyMap<string, ZLinkSpotNodeOptions>;
   readonly meshNode: (meshName: string) => ZLinkBackendMeshNode | undefined;
+  readonly meshNodeDescriptor?: (
+    meshName: string
+  ) => ZLinkMeshNodeDescriptor | undefined;
   readonly admission: ZLinkRuntimeAdmissionGate;
   readonly publishDraining: (meshName: string, signal: AbortSignal) => Promise<void>;
   readonly publishHostDraining: (signal: AbortSignal) => Promise<void>;
@@ -63,6 +70,7 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     const node = this.options.meshNode(meshName);
     if (node === undefined) throw routeNotFound(meshName);
     const status = node.status();
+    const descriptor = this.options.meshNodeDescriptor?.(meshName);
     const backendPeers = node.peers();
     const peerChannels = backendPeers.map((peer) => peer.routingId === null
       ? { names: [] as readonly string[], weights: [] as readonly number[] }
@@ -95,23 +103,26 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
       lifecycleGeneration: status.lifecycleGeneration,
       descriptorRevision: status.descriptorRevision,
       endpoint: status.localEndpoint,
+      objectRole: descriptor?.objectRole ?? ZLinkObjectRole.None,
+      placementWeight: descriptor?.placementWeight ?? 0,
+      populationCapacity: descriptor?.populationCapacity ?? {
+        actors: { active: 0, reserved: 0, limit: 0 },
+        spots: { active: 0, reserved: 0, limit: 0 },
+        spotTypes: []
+      },
+      activationConcurrency: descriptor?.activationConcurrency ?? {
+        active: 0,
+        limit: 1
+      },
+      applicationVersion: descriptor?.applicationVersion ?? 0n,
+      placementReservationFailureCount: 0n,
+      objectCapabilities: descriptor?.objectCapabilities ?? [],
       state: drain.state === ZLinkMeshNodeState.Serving ? backendState(status.state) : drain.state,
       sequence: drain.sequence > status.lastChangedMs ? drain.sequence : status.lastChangedMs,
       observedAt: new Date(),
       descriptorSources: [],
       peers,
       channels,
-      multicast: {
-        submitted: status.multicastSubmitted,
-        backpressured: 0n,
-        dropped: status.multicastDroppedTargets,
-        remoteSnapshotCount: 0n,
-        remoteAdmittedCount: 0n,
-        remoteDroppedCount: status.multicastDroppedTargets,
-        localSnapshotCount: 0n,
-        localAdmittedCount: 0n,
-        localDroppedCount: 0n
-      },
       claims: {
         applicationActive: pendingApplicationWork > 0n,
         pendingApplicationWork,

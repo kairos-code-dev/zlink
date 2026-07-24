@@ -121,10 +121,18 @@ export class ZLinkSpotActorMembership {
     }
     const request = BindingMessage.from(Buffer.alloc(0));
     try {
-      await actor.context.joinEntrySpot(
+      const context = actor.context as typeof actor.context & {
+        joinEntrySpotForRuntime(
+          nodeRid: RoutingId | undefined,
+          request: unknown,
+          signal?: AbortSignal
+        ): Promise<boolean>;
+      };
+      await context.joinEntrySpotForRuntime(
         entryNodeRid,
-        ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(request.data()))
-      ).submit(signal);
+        ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(request.data())),
+        signal
+      );
     } finally {
       request.close();
     }

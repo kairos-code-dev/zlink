@@ -7,6 +7,9 @@ const nodeTest = require('node:test');
 const zlink = require('@zlink-systems/zlink');
 const backend = require('../../packages/framework/dist/runtime/backend');
 const framework = require('../../packages/framework/dist/internal');
+const {
+  ZLinkSubmitStatus
+} = require('../../packages/framework/dist/runtime/messaging/submission-result');
 const channelEnvelope = require('../../packages/framework/dist/runtime/channels/channel-envelope');
 
 const removedSpotAdapterContracts = new Set([
@@ -444,7 +447,7 @@ test('MeshNode runtime manager owns lifecycle and forwards pull-dispatch records
   }
 });
 
-test('Logical Multicast mapper preserves partial remote admission detail on backpressure', async () => {
+test('Logical Multicast completion does not expose or record target admission results', async () => {
   const runtime = new framework.ZLinkSpotNodeRuntimeManager({
     registration: framework.createFrameworkRegistration({}),
     backendAdapterFactory: {},
@@ -454,80 +457,108 @@ test('Logical Multicast mapper preserves partial remote admission detail on back
   runtime.publishers.set('play', {
     async publishAsync() {
       coreCalls += 1;
-      return {
-        result: zlink.SubmitResult.Backpressured,
-        detail: {
-          snapshotRemoteTargetCount: 3,
-          admittedRemoteTargetCount: 1,
-          droppedRemoteTargetCount: 1,
-          unreachableRemoteTargetCount: 1,
-          snapshotLocalSpotCount: 2,
-          admittedLocalSpotCount: 1,
-          droppedLocalSpotCount: 1
-        }
-      };
     }
   });
 
   const result = await runtime.publish('play', 'events', 'score', 'ProfileChanged', { sequence: 1 });
 
   assert.equal(coreCalls, 1);
-  assert.deepEqual(result, {
-    status: framework.ZLinkSubmitStatus.Backpressured,
-    detail: {
-      snapshotRemoteNodeCount: 3n,
-      admittedRemoteNodeCount: 1n,
-      droppedRemoteNodeCount: 1n,
-      unreachableRemoteNodeCount: 1n,
-      snapshotLocalSpotCount: 2n,
-      admittedLocalSpotCount: 1n,
-      droppedLocalSpotCount: 1n
-    }
-  });
+  assert.deepEqual(result, { status: ZLinkSubmitStatus.Submitted });
 });
 
-test('Logical Multicast direct handoff admits one Core publish and backpressures the next', async () => {
+test('Logical Multicast terminal completes while target processing remains blocked', async () => {
   const runtime = new framework.ZLinkSpotNodeRuntimeManager({
     registration: framework.createFrameworkRegistration({}),
     backendAdapterFactory: {},
     context: {}
   });
   let coreCalls = 0;
-  let complete;
+  let completeTarget;
   runtime.publishers.set('play', {
     publishAsync() {
       coreCalls += 1;
-      return new Promise((resolve) => { complete = resolve; });
+      return new Promise((resolve) => { completeTarget = resolve; });
     }
   });
 
-  const first = runtime.publish('play', 'events', 'score', 'ProfileChanged', { sequence: 1 });
-  const second = await runtime.publish('play', 'events', 'score', 'ProfileChanged', { sequence: 2 });
-
+  const result = await runtime.publish(
+    'play', 'events', 'score', 'ProfileChanged', { sequence: 1 }
+  );
   assert.equal(coreCalls, 1);
-  assert.equal(second.status, framework.ZLinkSubmitStatus.Backpressured);
-  assert.deepEqual(second.detail, {
-    snapshotRemoteNodeCount: 0n,
-    admittedRemoteNodeCount: 0n,
-    droppedRemoteNodeCount: 0n,
-    unreachableRemoteNodeCount: 0n,
-    snapshotLocalSpotCount: 0n,
-    admittedLocalSpotCount: 0n,
-    droppedLocalSpotCount: 0n
+  assert.equal(result.status, ZLinkSubmitStatus.Submitted);
+  assert.equal(runtime.activePublishes.has('play'), false);
+  completeTarget();
+});
+
+test('Logical Multicast post-start failure does not change the caller terminal', async () => {
+  const runtime = new framework.ZLinkSpotNodeRuntimeManager({
+    registration: framework.createFrameworkRegistration({}),
+    backendAdapterFactory: {},
+    context: {}
   });
-  complete({
-    result: zlink.SubmitResult.Ok,
-    detail: {
-      snapshotRemoteTargetCount: 1,
-      admittedRemoteTargetCount: 1,
-      droppedRemoteTargetCount: 0,
-      unreachableRemoteTargetCount: 0,
-      snapshotLocalSpotCount: 0,
-      admittedLocalSpotCount: 0,
-      droppedLocalSpotCount: 0
+  let failTarget;
+  runtime.publishers.set('play', {
+    publishAsync() {
+      return new Promise((_resolve, reject) => { failTarget = reject; });
     }
   });
-  assert.equal((await first).status, framework.ZLinkSubmitStatus.Submitted);
+
+  const result = await runtime.publish(
+    'play', 'events', 'score', 'ProfileChanged', { sequence: 1 }
+  );
+  failTarget(new Error('target failed after handoff'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(result.status, ZLinkSubmitStatus.Submitted);
+});
+
+test('Logical Multicast shutdown after handoff does not change the caller terminal', async () => {
+  const runtime = new framework.ZLinkSpotNodeRuntimeManager({
+    registration: framework.createFrameworkRegistration({}),
+    backendAdapterFactory: {},
+    context: {}
+  });
+  let coreCalls = 0;
+  runtime.publishers.set('play', {
+    publishAsync() {
+      coreCalls += 1;
+      return new Promise(() => undefined);
+    },
+    async close() {}
+  });
+
+  const submitted = await runtime.publish(
+    'play', 'events', 'score', 'ProfileChanged', { sequence: 1 }
+  );
+  await runtime.dispose();
+  assert.equal(submitted.status, ZLinkSubmitStatus.Submitted);
+  await assert.rejects(
+    runtime.publish('play', 'events', 'score', 'ProfileChanged', { sequence: 2 }),
+    (error) => {
+      assert.equal(error instanceof framework.ZLinkFrameworkException, true);
+      assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.RuntimeShutdown);
+      return true;
+    }
+  );
+  assert.equal(coreCalls, 1);
+  assert.equal(runtime.activePublishes.has('play'), false);
+});
+
+test('Logical Multicast accepts zero subscribers as normal completion', async () => {
+  const runtime = new framework.ZLinkSpotNodeRuntimeManager({
+    registration: framework.createFrameworkRegistration({}),
+    backendAdapterFactory: {},
+    context: {}
+  });
+  runtime.publishers.set('play', {
+    async publishAsync() {
+    }
+  });
+
+  const result = await runtime.publish(
+    'play', 'events', 'score', 'ProfileChanged', { sequence: 1 }
+  );
+
+  assert.equal(result.status, ZLinkSubmitStatus.Submitted);
 });
 
 test('Logical Multicast releases its handoff slot after envelope encoding fails', async () => {
@@ -540,18 +571,6 @@ test('Logical Multicast releases its handoff slot after envelope encoding fails'
   runtime.publishers.set('play', {
     async publishAsync() {
       coreCalls += 1;
-      return {
-        result: zlink.SubmitResult.Ok,
-        detail: {
-          snapshotRemoteTargetCount: 0,
-          admittedRemoteTargetCount: 0,
-          droppedRemoteTargetCount: 0,
-          unreachableRemoteTargetCount: 0,
-          snapshotLocalSpotCount: 1,
-          admittedLocalSpotCount: 1,
-          droppedLocalSpotCount: 0
-        }
-      };
     }
   });
   const cyclic = {};
@@ -567,8 +586,7 @@ test('Logical Multicast releases its handoff slot after envelope encoding fails'
     'play', 'events', 'score', 'ProfileChanged', { sequence: 2 }
   );
   assert.equal(coreCalls, 1);
-  assert.equal(result.status, framework.ZLinkSubmitStatus.Submitted);
-  assert.equal(result.detail.admittedLocalSpotCount, 1n);
+  assert.equal(result.status, ZLinkSubmitStatus.Submitted);
 });
 
 test('Logical Multicast abort before handoff calls Core zero times', async () => {
@@ -595,7 +613,7 @@ test('Logical Multicast abort before handoff calls Core zero times', async () =>
   assert.equal(coreCalls, 0);
 });
 
-test('Logical Multicast abort after Core start preserves final Core detail', async () => {
+test('Logical Multicast abort after Core start preserves committed completion', async () => {
   const runtime = new framework.ZLinkSpotNodeRuntimeManager({
     registration: framework.createFrameworkRegistration({}),
     backendAdapterFactory: {},
@@ -615,25 +633,13 @@ test('Logical Multicast abort after Core start preserves final Core detail', asy
   const pending = runtime.publish(
     'play', 'events', 'score', 'ProfileChanged', { sequence: 1 }, controller.signal
   );
-  assert.equal(forwardedSignal, controller.signal);
+  assert.equal(forwardedSignal, undefined);
   controller.abort(new Error('late abort'));
-  complete({
-    result: zlink.SubmitResult.Ok,
-    detail: {
-      snapshotRemoteTargetCount: 1,
-      admittedRemoteTargetCount: 1,
-      droppedRemoteTargetCount: 0,
-      unreachableRemoteTargetCount: 0,
-      snapshotLocalSpotCount: 0,
-      admittedLocalSpotCount: 0,
-      droppedLocalSpotCount: 0
-    }
-  });
 
   const result = await pending;
   assert.equal(coreCalls, 1);
-  assert.equal(result.status, framework.ZLinkSubmitStatus.Submitted);
-  assert.equal(result.detail.admittedRemoteNodeCount, 1n);
+  assert.equal(result.status, ZLinkSubmitStatus.Submitted);
+  complete();
 });
 
 test('Logical Multicast binding commit preserves admission after post-start abort', async () => {

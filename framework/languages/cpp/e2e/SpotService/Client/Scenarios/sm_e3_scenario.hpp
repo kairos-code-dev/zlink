@@ -28,7 +28,7 @@ inline void run_sm_e3_scenario (const std::string &play_http_endpoint)
         .body (spot_idle_close_req_t{.spot_rid = spot_rid,
                                      .name = timer_name,
                                      .period_ms = 50})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!idle) {
         throw std::runtime_error (idle.error () ? idle.error ()->what ()
@@ -48,7 +48,7 @@ inline void run_sm_e3_scenario (const std::string &play_http_endpoint)
     auto closed_spot_request =
       play_a.post ("/spot/missing-target/request")
         .body (spot_missing_target_req_t{.spot_rid = spot_rid})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!closed_spot_request || closed_spot_request.value ().status >= 400) {
         throw std::runtime_error ("SM-E3 closed spot request endpoint failed");

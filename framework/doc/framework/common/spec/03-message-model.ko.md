@@ -22,10 +22,10 @@ host 단위 정책이며 업무 handler나 개별 send/request 호출에 반복�
 
 | 종류 | 의미 | 완료 |
 |---|---|---|
-| Send | 대상 handler에 한 번 전달하는 one-way 메시지 | submit 결과만 반환하며 원격 handler 완료를 기다리지 않는다 |
+| Send | 대상 handler에 한 번 전달하는 one-way 메시지 | Source-local queue가 수락하면 반환 데이터 없이 완료하며 원격 handler 완료를 기다리지 않는다 |
 | Request | 대상 handler가 reply 또는 오류를 반환하는 메시지 | reply, 오류, timeout 또는 cancellation로 한 번 완료된다 |
-| Logical Multicast | target ChannelName의 각 MeshNode에서 조건에 맞는 Spot에 발행하는 메시지 | target별 ROUTER·local queue 제출을 집계한 submit 결과를 반환한다 |
-| Classic fanout publish | 독립 fanout channel의 subscriber에 발행하는 메시지 | local publisher transport의 bounded admission 결과를 반환하며 subscriber 수신은 확인하지 않는다 |
+| Logical Multicast | target ChannelName의 각 MeshNode에서 조건에 맞는 Spot에 발행하는 메시지 | Source-local capacity를 확보해 publish를 시작하면 반환 데이터 없이 완료하며 target별 수를 monitoring에 집계하지 않는다 |
+| Classic fanout publish | 독립 fanout channel의 subscriber에 발행하는 메시지 | Local publisher queue가 수락하면 반환 데이터 없이 완료하며 subscriber 수신은 확인하지 않는다 |
 | STREAM send/request | 연결된 session에 보내는 one-way 메시지 또는 reply를 요구하는 메시지 | session sequence와 lifecycle 계약을 따른다 |
 
 Request의 reply 상관관계는 transport가 발급한 operation ID 또는 [session sequence](01-glossary.ko.md#session-sequence)가 소유한다. packet name이나
@@ -39,6 +39,21 @@ at-least-once 실행에도 같은 결과로 수렴해야 한다. CAS loser는 cr
 Ready commit 또는 fenced failure cleanup이 끝날 때까지 content reference를 유지한다. [ObjectGeneration](01-glossary.ko.md#objectgeneration),
 AuthorityOwnerGeneration, attempt와 owner lease token은 Store fencing에만 사용하며 application message payload나
 handler context에 포함하지 않는다.
+
+### 2.1 MessageContext
+
+일반 send·request와 Actor handler는 공통 `MessageContext`를 받는다. 이 context는 current message의
+nullable MeshName, nullable ChannelName, PacketName, ContentType, immutable Metadata와 UTF-8 exact nullable
+CorrelationId를 제공한다. CorrelationId는 send에서 null이고 request에서 non-null이다. MeshName은
+RouteMesh와 Spot·Actor dispatch에서 non-null이며 ClientServer·STREAM에서는 null이다. Connection
+cancellation은 universal context가 아니라 언어별 handler 인자나 Session 전용 context가 소유한다.
+Node direct는 `RouteMessageContext`, Logical Multicast는
+`PublishMessageContext`, STREAM dispatch는 `SessionMessageContext`로 각 경로의 추가 정보를 제공한다.
+
+Send·Request·SpotActor별 marker context는 제공하지 않는다. Actor request의 context에 reply metadata·compression
+option을 두지 않으며 별도 reply call도 만들지 않는다. Handler filter는 message context의 subtype이 아닌
+`HandlerInvocation`을 받고, invocation 안에서 current `MessageContext`, descriptor, payload와 chain을 읽는다.
+Object lifecycle Context와 현재 message의 MessageContext는 서로 다른 계약이다.
 
 ## 3. Application metadata
 

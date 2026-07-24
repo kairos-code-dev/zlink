@@ -68,6 +68,13 @@ Binding route는 Framework가 관리한다. Application이 별도 Location row, 
 지정하는 global proxy를 제공하지 않는다. Disconnect는 binding을 해제하지만 Actor를 destroy하거나 membership을
 바꾸지 않는다.
 
+Bind가 성공하면 session owner는 Actor마다 exact `ActorId`·`ObjectGeneration`, Mesh와 owner Node RID,
+node·authority·lease generation, session owner lifecycle, binding generation·token과 sequence를 함께
+보관한다. Relay, request relay와 disconnect 통지는 이 route를 사용하며 message마다 Location Store를
+조회하지 않는다. 저장 route는 current owner lease와 local admission deadline 안에서만 유효하다. Store
+장애는 fence deadline을 연장하지 않는다. Stale route는 active committed forwarding mapping으로 original
+operation을 전달하거나 typed stale error로 끝내며 fresh `ActorRef`를 조회해 자동 재제출하지 않는다.
+
 Actor와 STREAM session이 서로 다른 MeshNode에 있으면 session owner가 `boundSessionBind(38)` control request를
 Actor owner에 보낸다. Actor owner는 Actor ObjectGeneration, target NodeGeneration과
 AuthorityOwnerGeneration을 모두 확인한 뒤 binding generation을 등록하고 terminal reply를 한 번만 반환한다.
@@ -97,14 +104,17 @@ Socket, transport handle과 session callback state를 target Actor process로 �
 4. Lease-backed one-way packet만 negotiated boundary 안에서 relocation envelope에 포함할 수 있다.
 5. Target은 Relocation Store root를 restore하고 accepted journal을 실행하지 않은 staging queue로 준비한다. 새 route를
    stage하지만 switch·unseal하지 않는다.
-6. Durable source cleanup과 Completed authority CAS 뒤 target이 session route commit을 보낸다.
-7. Session owner는 exact Actor ObjectGeneration, 이전·target AuthorityOwnerGeneration, binding generation,
-   session owner lease와 high-water를 검증해 route를 atomic switch하고 routed ACK를 보낸다.
-8. Owner commit 뒤 lifecycle callback과 accepted journal replay를 완료하고 maintenance authority를 steady target으로
-   normalize한 뒤에만 target Actor packet·push admission을 연다.
+6. Owner·membership commit 뒤 lifecycle callback과 accepted journal replay를 완료하고, durable source cleanup과
+   Completed authority CAS를 차례로 끝낸다.
+7. Target이 command 44로 session route commit을 보내면 Session owner는 exact Actor ObjectGeneration,
+   이전·target AuthorityOwnerGeneration, binding generation, session owner lease와 high-water를 검증해 해당
+   Actor route만 atomic switch하고 command 45 routed ACK를 보낸다.
+8. Maintenance authority를 steady target으로 normalize한 뒤에만 target Actor packet·push admission을 연다.
 
 Activated, Cleaning과 Completed만으로 route나 admission을 열 수 없다. 이전 owner, stale authority owner generation,
 binding token과 sequence의 packet·reply·push·close는 current connection에 적용하지 않는다.
+Route update는 bound `ObjectGeneration`이 같은 relocation에만 허용한다. 같은 ActorId의 새 incarnation은
+explicit bind가 필요하다. 같은 Session의 다른 Actor binding은 route, token과 generation을 유지한다.
 
 ## 6. Failure와 recovery
 
@@ -129,6 +139,13 @@ STREAM transport close는 accepted binding의 exact tombstone 완료를 lifecycl
 deadline·transport failure가 관찰된 뒤에 local binding과 socket을 정리한다. Cleanup failure를 무시한 채 close를
 성공으로 반환하지 않으며, 무기한 기다리지 않는다. Close가 실패해도 local binding은 제거하므로 늦은 Actor push가
 닫힌 connection으로 전달되지 않는다.
+
+Physical disconnect를 관찰하면 Framework는 current binding snapshot 전체에 disconnect를 자동 제출한다.
+각 작업은 저장한 route와 exact binding identity를 검증하고 current Actor queue에서 current Entry Spot 또는
+User Spot의 Actor disconnect callback을 끝낸다. 한 작업의 실패는 나머지 통지나 Session cleanup을 막지 않는
+all-settled 규칙을 사용한다. Automatic 통지와 public `NotifyDisconnected` 논리 통지가 경쟁하면 exact
+binding identity로 dedupe하고 Spot callback은 최대 한 번 실행한다. 이 통지는 Actor를 destroy하거나
+membership을 바꾸지 않는다.
 
 Request completion, send-ready, binding update, relocation barrier와 disconnect cleanup은 infrastructure task에서
 진행한다. Session 또는 Actor application callback이 비동기 작업을 기다리는 동안에도 진행해야 한다.

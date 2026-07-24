@@ -192,7 +192,7 @@ public sealed partial class RegressionTests
         Assert.Contains("builder.Services.AddSingleton<CourierSessionBinder>()", courierSessionHost,
             StringComparison.Ordinal);
         Assert.Contains("await binder.BindAsync(request.CourierId", courierSessionHandler, StringComparison.Ordinal);
-        Assert.Contains("context.Client.Reply(bound).SubmitAsync(cancellationToken)", courierSessionHandler,
+        Assert.Contains("context.Client.Reply(bound).Async(cancellationToken)", courierSessionHandler,
             StringComparison.Ordinal);
     }
 

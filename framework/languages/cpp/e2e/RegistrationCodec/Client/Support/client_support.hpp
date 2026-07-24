@@ -73,7 +73,7 @@ inline evidence_snapshot_t fetch_evidence (const std::string &base_url)
                     .base_url (base_url)
                     .timeout (std::chrono::milliseconds (1000))
                     .build ();
-    return client.get ("/evidence").async<evidence_snapshot_t> ().result ().value ().body;
+    return client.get ("/evidence").submit<evidence_snapshot_t> ().result ().value ().body;
 }
 
 inline bool snapshot_contains (const evidence_snapshot_t &snapshot,

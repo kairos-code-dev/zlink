@@ -63,7 +63,7 @@ internal sealed class ChannelStartupPublishHostedService(
         while (!stoppingToken.IsCancellationRequested)
         {
             await publisher.Publish(channelName, topic, new TestHostPublishedEvent(value))
-                .SubmitAsync(stoppingToken);
+                .Async(stoppingToken);
 
             try
             {
@@ -113,7 +113,7 @@ internal sealed class SpotStartupPublishHostedService(
                     channelName,
                     topic,
                     new StartupStageEvent(value))
-                .SubmitAsync(stoppingToken);
+                .Async(stoppingToken);
 
             try
             {
@@ -365,6 +365,6 @@ internal sealed class TestHostRawStreamSession(
         recorder.RecordPayload(payload.Decode<string>());
         await Context.Client.Reply("pong")
             .Compress()
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }

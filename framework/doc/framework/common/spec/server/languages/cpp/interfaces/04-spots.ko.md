@@ -1,5 +1,12 @@
 # C++ Spot exact interface
 
+Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
+callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
+같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
+normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+변경하지 않는다.
+
 [C++ exact interface 목차](README.ko.md)
 
 ## 1. Spot identity와 relocation 등록
@@ -88,7 +95,9 @@ public:
     using actor_type = TActor;
 
     virtual ~spot_t() = default;
-    virtual void configure(spot_context_t &context) = 0;
+    virtual spot_context_t &context() noexcept = 0;
+    virtual const spot_context_t &context() const noexcept = 0;
+    virtual void configure() = 0;
     virtual task_t<spot_create_response_t> on_create(
       const message_t &request);
     virtual task_t<void> on_initialize();
@@ -109,7 +118,9 @@ public:
     using actor_type = TActor;
 
     virtual ~entry_spot_t() = default;
-    virtual void configure(entry_spot_context_t &context) = 0;
+    virtual entry_spot_context_t &context() noexcept = 0;
+    virtual const entry_spot_context_t &context() const noexcept = 0;
+    virtual void configure() = 0;
     virtual task_t<void> on_initialize();
     virtual task_t<void> on_closing(
       const spot_closing_context_t &context,
@@ -129,7 +140,9 @@ public:
 class instance_spot_t {
 public:
     virtual ~instance_spot_t() = default;
-    virtual void configure(instance_spot_context_t &context) = 0;
+    virtual instance_spot_context_t &context() noexcept = 0;
+    virtual const instance_spot_context_t &context() const noexcept = 0;
+    virtual void configure() = 0;
     virtual task_t<void> on_initialize();
     virtual task_t<void> on_closing(
       const spot_closing_context_t &context,
@@ -141,6 +154,7 @@ public:
     std::string_view mesh_name() const;
     node_rid_t node_rid() const;
     spot_id_t spot_id() const;
+    std::uint64_t object_generation() const noexcept;
     channel_client_t outbound() const;
 
     template <typename TCommand>
@@ -270,28 +284,6 @@ struct spot_actor_message_metadata_t {
     std::map<std::string, std::string> values;
 };
 
-class spot_actor_reply_options_t {
-public:
-    spot_actor_reply_options_t &metadata(std::string key, std::string value);
-    spot_actor_reply_options_t &compress(bool enabled = true);
-
-    spot_actor_message_metadata_t metadata_values;
-    bool compress_payload = false;
-};
-
-struct spot_actor_send_context_t {
-    std::string packet_name;
-    std::string content_type;
-    spot_actor_message_metadata_t metadata;
-};
-
-struct spot_actor_request_context_t {
-    std::string packet_name;
-    std::string content_type;
-    spot_actor_message_metadata_t metadata;
-    spot_actor_reply_options_t reply;
-};
-
 struct spot_packet_context_t {
     std::string packet_name;
     std::string content_type;
@@ -333,15 +325,34 @@ public:
     task_t<void> disconnect();
 };
 
+class actor_join_call_t {
+public:
+    actor_join_call_t(actor_join_call_t &&) noexcept;
+    actor_join_call_t &operator=(actor_join_call_t &&) noexcept;
+    actor_join_call_t(const actor_join_call_t &) = delete;
+    actor_join_call_t &operator=(const actor_join_call_t &) = delete;
+
+    actor_join_call_t &timeout(std::chrono::milliseconds timeout);
+
+    // 현재 handler가 정상 종료한 뒤 Join을 시작하도록 등록한다.
+    void defer();
+};
+
 class actor_context_t {
 public:
     const actor_ref_t &actor_ref() const noexcept;
+    const actor_id_t &actor_id() const noexcept;
+    std::uint64_t object_generation() const noexcept;
     std::string_view mesh_name() const noexcept;
     std::optional<spot_id_t> spot_id() const;
     bound_session_t bound_session() const;
 
+    actor_join_call_t join_spot(spot_id_t spot_id);
+
     actor_join_call_t join_spot(spot_id_t spot_id,
       const zlink::framework::message_t &request);
+
+    actor_join_call_t join_entry_spot();
 
     actor_join_call_t join_entry_spot(
       const zlink::framework::message_t &request);
@@ -392,7 +403,7 @@ Entry Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
 
 Actor와 User·Instance Spot의 cross-node materialization 동작은 factory 등록에 연결한
 `relocation_policy_t<T>`가 정한다. 별도 relocation adapter registry나 operation별 adapter는 제공하지 않는다.
-[Snapshot](../../../../01-glossary.ko.md#snapshot) Spot factory만 `spot_relocation_adapter_t<TSpot>`로 Spot application state를 capture·restore한다. Whole
+[Snapshot](../../../../01-glossary.ko.md#relocation-policy) Spot factory만 `spot_relocation_adapter_t<TSpot>`로 Spot application state를 capture·restore한다. Whole
 User Spot relocation은 Spot root에 Spot adapter를 사용하고 각 Actor participant에는
 `actor_relocation_adapter_t<TActor>`를 사용한다. Same-node operation과 Disabled·Recreate policy는 Spot adapter를
 호출하지 않는다. Disabled cross-node operation은 capture 전에 거부한다.
@@ -420,8 +431,9 @@ Entry Spot 타입은 `zlink::framework::entry_spot_t<TActor>`를 상속해야 �
 callback의 virtual contract를 고정하며, `add_spot<TSpot>()`와 `add_entry_spot<TEntrySpot>()`가 이 계약을
 compile-time으로 확인한다. 이름이나 파일 위치와 method 존재 여부만으로 역할을 추론하지 않는다.
 
-Instance Spot은 `instance_spot_t`를 상속하며 Actor callback을 갖지 않는다. Framework가
-`instance_spot_context_t` 인자를 전달하는 `configure(...)`, message를 받지 않는 `on_initialize()`,
+Instance Spot은 `instance_spot_t`를 상속하며 Actor callback을 갖지 않는다. Application
+instance는 Framework가 생성할 때 결합한 `instance_spot_context_t`를 `context()`로
+노출한다. Framework는 인자 없는 `configure()`, message를 받지 않는 `on_initialize()`,
 `on_closing(context, cleanup_cancellation)`을 actor-free lifecycle로 사용한다. `configure(...)`에서는 direct
 packet과 timer handler만 등록할 수 있다. Instance context의 전용 registry에는 Actor handler와 Logical
 Multicast [subscription](../../../../01-glossary.ko.md#subscription) 등록 member가 존재하지 않는다. 같은 MeshNode에서 stable
@@ -430,7 +442,7 @@ Multicast [subscription](../../../../01-glossary.ko.md#subscription) 등록 memb
 
 실행 중인 Instance Spot이 없을 때 새 instance를 만들고 초기화하여 사용할 수 있게 준비하는 과정을
 cold activation이라 한다. Factory는 Instance Spot marker가 있는 direct call의 cold activation 또는 stored
-creation intent의 reactivation scope에서 `TSpot` instance를 만든 뒤 `configure(instance_spot_context_t&)`와
+creation intent의 reactivation scope에서 `TSpot` instance를 만든 뒤 `configure()`와
 `on_initialize()`를 순서대로 호출한다. 빈 `message_t`를 `on_create(...)`에 넘기지 않는다. Framework는 첫
 업무 message를 durable activation inbox의 첫 record로 확정하고 handler barrier를 유지한 상태에서 recovery
 root·cursor를 포함한 Location `Ready`를 commit한다. Runtime은 첫 record를 local queue head로 복원한 뒤
@@ -527,7 +539,20 @@ class player_actor_t;
 class bingo_room_spot_t : public zlink::framework::spot_t<player_actor_t>,
                           public bingo_room_t {
 public:
-    void configure(zlink::framework::spot_context_t &context) override;
+    explicit bingo_room_spot_t(
+      zlink::framework::spot_context_t context)
+      : context_(std::move(context)) {}
+
+    zlink::framework::spot_context_t &context() noexcept override {
+        return context_;
+    }
+
+    const zlink::framework::spot_context_t &context()
+      const noexcept override {
+        return context_;
+    }
+
+    void configure() override;
 
     zlink::framework::task_t<zlink::framework::spot_actor_join_response_t>
     on_actor_join(
@@ -542,19 +567,38 @@ public:
 
     zlink::framework::task_t<void> on_disconnect_actor(
       player_actor_t &actor) override;
+
+private:
+    zlink::framework::spot_context_t context_;
 };
 
 class player_actor_t : public zlink::framework::actor_t {
 public:
     start_bingo_game_res_t start_game(
-      const zlink::framework::spot_actor_request_context_t &context,
+      const zlink::framework::message_context_t &message_context,
       const start_bingo_game_req_t &request);
 };
 
 class bingo_entry_spot_t
   : public zlink::framework::entry_spot_t<player_actor_t> {
 public:
-    void configure(zlink::framework::entry_spot_context_t &context) override;
+    explicit bingo_entry_spot_t(
+      zlink::framework::entry_spot_context_t context)
+      : context_(std::move(context)) {}
+
+    zlink::framework::entry_spot_context_t &context() noexcept override {
+        return context_;
+    }
+
+    const zlink::framework::entry_spot_context_t &context()
+      const noexcept override {
+        return context_;
+    }
+
+    void configure() override;
+
+private:
+    zlink::framework::entry_spot_context_t context_;
 };
 ```
 
@@ -581,7 +625,8 @@ accepted가 `true`일 때만 actor 위치를 user Spot으로 commit하고
 callback이다. Maintenance가 Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter
 `restore(...)`를 먼저 완료하고 Recreate는 payload restore 없이 factory materialization을 완료한다. 그 다음
 Location authority·Entry membership commit, target `on_actor_relocated(...)`와 source `on_leave_actor(...)` 완료,
-old Entry membership의 durable cleanup, Actor accepted journal replay와 dispatch admission 순서로 실행한다.
+Actor accepted journal replay·logical timer 복원, old Entry membership을 포함한 durable source cleanup,
+`Completed` CAS, bound-session route switch·ACK, steady normalization과 dispatch admission 순서로 실행한다.
 Source process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신한다.
 Journal은 commit 전에 검증해 staging queue에만
 준비하고 application handler를 실행하지 않는다. 두 callback 중 하나가 실패해도 authority를 source로 rollback하지 않고
@@ -595,7 +640,7 @@ membership gate와 구분한다.
 commit 뒤 호출한다. Whole User Spot aggregate relocation에서는 membership이 유지되므로 member Actor에 대한 Entry
 Spot 또는 User Spot membership callback을 모두 호출하지 않는다. Disabled operation에서도
 `on_actor_relocated(...)`를 호출하지 않는다.
-actor packet member는 `spot_actor_request_context_t` 또는 `spot_actor_send_context_t`, mutable Actor와 DTO를
+actor packet member는 `message_context_t`, mutable Actor와 DTO를
 받는다. actor disconnected callback도 같은 concrete Actor reference를 받는다.
 Runtime의 private dispatch가 `message_t`를 DTO로 바꾸고 현재 Spot instance와 Actor를 찾아 typed member
 function을 호출한다. Application은 invoker, service provider, serializer registry와 [descriptor](../../../../01-glossary.ko.md#descriptor) 조회 표면을
@@ -621,25 +666,35 @@ Timer backend 선택은 [비동기 실행 정책](../../../../04-async-execution
 
 ActorGateway session relay의 public 표면은 `session_actor_manager_t`, `session_actor_t`,
 `actor_context_t`, `bound_session_t`다. MeshNode transport metadata는 이 표면에 노출하지 않는다.
-actor context의 `join_spot(...)` request와 reply는 DTO 또는 `zlink::framework::message_t`다.
+actor context의 `join_spot(...)` request는 DTO 또는 `zlink::framework::message_t`다.
 JSON DTO는 기본 serializer를 사용하므로 message type별 codec 설정이 필요 없다. Protobuf,
 MessagePack, custom binary payload처럼 기본 JSON으로 표현할 수 없는 타입만 startup/options 에
 serializer extension을 연결하고 업무 코드는 같은 join 호출을 유지한다. join 결과는
-승인과 거절 `variant`다. 승인 값만 join 이후 actor ref를 가지며 두 값 모두 reply
-`zlink::framework::message_t`를 담는다. typed reply가 필요하면
-`async<TReply>()`가 같은 serializer registry로 decode한다. Entry Spot join도 같은 결과 타입을 반환한다.
+`actor_t::on_join_completed(...)`에 전달하는 승인과 거절 `variant`다. 승인 값만
+이동 이후의 actor ref를 가지며 두 값 모두 application reply
+`zlink::framework::message_t`를 담는다. Entry Spot join도 같은 completion 타입을 사용한다.
+request를 생략한 overload는 빈 `message_t`를 사용한다.
 raw payload 처리는 framework 내부 invoker가 맡으며 application public actor context에
 별도 raw join overload를 두지 않는다.
 
 호출 실행 표면은 공통 비동기 call 계약을 C++ coroutine 관례로 표현한다. `request(...)`, `send(...)`,
 `join_spot(...)`과 `join_entry_spot(...)`은 call object를 반환한다. One-way call의 `submit()`은 send timeout까지
 bounded admission 결과를 담은 `task_t`를 반환한다. Session Actor `relay(...)`는 별도 call object를 만들지 않고
-같은 admission 결과를 `task_t<void>`로 직접 반환한다. Request와 join은 `async()`가 reply 완료를
+정상 완료 값을 만들지 않는 `task_t<void>`를 반환한다. Request는 `submit()`이 reply 완료를
 기다리는 지점이다.
 일반 channel `request_call_t`는 metadata와 request timeout을, `send_call_t`는 metadata만 submit 전에 모으고,
 submit 시점에 framework envelope 정책으로 넘긴다. typed packet name은 registration
-descriptor가 결정한다. Request와 join의 `async()`는 terminal reply 또는 결과까지 현재 owner turn을
-유지한다. `yield()`는 `SpotWide` User Spot 또는 Instance Spot의 shared turn에서만 그 turn을 반환한다.
+descriptor가 결정한다.
+
+Actor Join은 다른 messaging call과 실행 경계가 다르다. `defer()`는 target을 조회하거나
+Store I/O를 시작하지 않고 현재 handler에 Join intent와 비활성 queue barrier만 등록한다.
+handler가 정상 종료하면 barrier를 활성화하여 Join을 시작하고, handler가 실패하면 등록 내용을
+폐기한다. `defer()`는 값을 반환하지 않으며 `submit()`, `async()`, `yield()` terminal을 제공하지 않는다.
+Join 결과는 나중에 `actor_t::on_join_completed(...)`로 알린다. 기본 timeout은 5초이고,
+명시하는 값은 millisecond 기준 `1..INT_MAX` 범위여야 한다. Framework는 `defer()` 시점의
+monotonic clock으로 absolute deadline을 고정한다.
+
+`yield()`는 `SpotWide` User Spot 또는 Instance Spot의 shared turn에서만 그 turn을 반환한다.
 그 밖의 문맥에서는 operation을 제출하거나 turn을 반환하지 않고 `invalid_configuration`으로 완료한다.
 Worker call도 같은 실행 문맥 제한을 적용한다. CPU worker는 동기 작업, I/O worker는 `task_t<TResult>`를 반환하는
 작업을 받는다. 한 call object에서 terminator를 두 번 시작하면 protocol error로 완료한다.
@@ -647,7 +702,7 @@ Worker call도 같은 실행 문맥 제한을 적용한다. CPU worker는 동기
 ```cpp
 auto reply = co_await client
   .request("profile", query) // ChannelName만으로 호출 대상을 선택한다.
-  .async<profile_reply_t>();
+  .submit<profile_reply_t>();
 
 use_profile(reply);
 ```
@@ -656,7 +711,7 @@ public framework async 표면에 `std::future`를 사용하지 않는다. blocki
 timer, STREAM session callback, actor relay 경로에서 허용하지 않는다.
 
 오류 종류는 `.NET` framework의 `ZLinkFrameworkErrorKind`를 C++ naming으로 투영한다.
-`async()`는 실패 시 같은 정보를 가진 `framework_exception_t`를 throw한다.
+`submit()`은 실패 시 같은 정보를 가진 `framework_exception_t`를 throw한다.
 
 ## 3. Timer
 
@@ -734,6 +789,7 @@ public:
 
     spot_create_call_t &timeout(std::chrono::milliseconds timeout);
     task_t<spot_create_result_t> submit();
+    task_t<spot_create_result_t> yield();
 };
 
 class spot_manager_t {

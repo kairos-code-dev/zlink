@@ -37,7 +37,7 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
                           .display_name = "SM-D6 Bound",
                           .level = 6,
                           .tags = {"stream", "SM-D6"}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!joined || joined.value ().status >= 400) {
         auto reason = std::string ("SM-D6 actor join failed");
@@ -105,7 +105,7 @@ inline void run_sm_d6_scenario (const std::string &session_stream_endpoint,
       play_a.post ("/spot/push-bound-session")
         .body (bound_session_push_req_t{.actor_id = actor_id,
                                         .push = actor_push_req_t{"push-bound-only"}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!pushed || pushed.value ().status >= 400) {
         throw std::runtime_error ("SM-D6 push trigger failed");

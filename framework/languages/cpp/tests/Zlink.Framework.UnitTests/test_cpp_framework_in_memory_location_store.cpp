@@ -114,7 +114,7 @@ location_owner_token_t claim_owner (
 zlink::framework::mesh_node_descriptor_t make_mesh_node (
   std::string rid,
   location_owner_token_t owner,
-  std::uint32_t pending_limit = 128)
+  std::int32_t actor_limit = 10000)
 {
     using namespace zlink::framework;
     return mesh_node_descriptor_t{
@@ -127,10 +127,15 @@ zlink::framework::mesh_node_descriptor_t make_mesh_node (
       .object_capabilities =
         {{.object_kind = placement_object_kind_t::actor,
           .stable_type = "player",
+          .policy = maintenance_policy_kind_t::recreate},
+         {.object_kind = placement_object_kind_t::user_spot,
+          .stable_type = "room",
           .policy = maintenance_policy_kind_t::recreate}},
       .object_role = object_role_t::server,
-      .object_capacity =
-        {.active_limit = 100, .pending_limit = pending_limit},
+      .capacity = {
+        .actors = {.limit = actor_limit},
+        .spots = {.limit = 128}},
+      .activation_concurrency = {.limit = 128},
       .state = framework_runtime_state_t::serving,
       .security_identity = "test",
       .owner_id = std::move (owner.owner_id),
@@ -141,7 +146,7 @@ void publish_mesh_node (
   in_memory_location_store_t &store,
   std::string rid,
   location_owner_token_t owner,
-  std::uint32_t pending_limit = 128)
+  std::int32_t actor_limit = 10000)
 {
     EXPECT_EQ (
       location_write_status_t::stored,
@@ -149,7 +154,7 @@ void publish_mesh_node (
         .update_mesh_node (
           make_mesh_node (
             std::move (rid), std::move (owner),
-            pending_limit),
+            actor_limit),
           location_write_intent_t::new_claim)
         .result ()
         .value ()
@@ -225,7 +230,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
          .owner = owner_a},
       .creating_payload = {
         std::byte{0x01}, std::byte{0x02}},
-      .pending_capacity_delta = 1};
+      .capacity_bundle = {.actor_slots = 1}};
     const auto reserved =
       store.reserve (reservation).result ().value ();
     const auto *reserved_value =
@@ -290,7 +295,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
          .node_rid = node_rid_t::from_string ("node-b"),
          .node_lifecycle_generation = 1,
          .owner = owner_b},
-      .capacity_delta = 1};
+      .capacity_bundle = {.actor_slots = 1}};
     const auto capacity =
       store.reserve_relocation_capacity (capacity_request)
         .result ()
@@ -370,7 +375,8 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
         {.mesh_name = "play",
          .node_rid = node_rid_t::from_string ("node-target"),
          .node_lifecycle_generation = 1,
-         .owner = owner}};
+         .owner = owner},
+      .capacity_bundle = {.actor_slots = 1}};
     EXPECT_NE (
       nullptr,
       std::get_if<object_reserve_conflict_t> (
@@ -404,7 +410,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
       store.list_mesh_nodes ("play").result ().value ();
     ASSERT_EQ (1u, listed.items.size ());
     EXPECT_EQ (
-      1u, listed.items.front ().object_capacity.pending_limit);
+      1, listed.items.front ().capacity.actors.limit);
 }
 
 TEST (ZLinkFrameworkInMemoryLocationStore,
@@ -431,7 +437,8 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
         {.mesh_name = "play",
          .node_rid = node_rid_t::from_string ("node-max"),
          .node_lifecycle_generation = 1,
-         .owner = owner}};
+         .owner = owner},
+      .capacity_bundle = {.actor_slots = 1}};
     const auto reserved =
       std::get<object_reserved_t> (
         store.reserve (request).result ().value ());
@@ -487,7 +494,8 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
         {.mesh_name = "play",
          .node_rid = node_rid_t::from_string ("creation-node"),
          .node_lifecycle_generation = 1,
-         .owner = owner}};
+         .owner = owner},
+      .capacity_bundle = {.actor_slots = 1}};
     const auto reserved =
       std::get<object_reserved_t> (
         store.reserve (request).result ().value ());
@@ -527,7 +535,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
 }
 
 TEST (ZLinkFrameworkInMemoryLocationStore,
-      AggregateRequiresExactRelocationCapacityFenceSet)
+      AggregateRequiresExactCapacityBundle)
 {
     using namespace zlink::framework;
     in_memory_location_store_t store;
@@ -537,17 +545,30 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
     publish_mesh_node (store, "node-b", owner_b);
 
     const auto create =
-      [&] (std::string id, std::byte marker)
+      [&] (placement_object_kind_t kind,
+           std::string stable_type,
+           std::string id,
+           std::byte marker)
         -> authority_snapshot_t {
         object_reserve_request_t request{
-          .key = {placement_object_kind_t::actor, id},
-          .intent = {.stable_type = "player"},
+          .key = {kind, id},
+          .intent = {.stable_type = stable_type},
           .target =
             {.mesh_name = "play",
              .node_rid = node_rid_t::from_string ("node-a"),
              .node_lifecycle_generation = 1,
              .owner = owner_a},
-          .creating_payload = {marker}};
+          .creating_payload = {marker},
+          .capacity_bundle =
+            kind == placement_object_kind_t::actor
+              ? placement_capacity_bundle_t{.actor_slots = 1}
+              : placement_capacity_bundle_t{
+                  .spot_slots = 1,
+                  .spot_type =
+                    spot_type_capacity_delta_t{
+                      .object_kind = kind,
+                      .stable_type = stable_type,
+                      .slots = 1}}};
         const auto reserved =
           store.reserve (request).result ().value ();
         const auto &fence =
@@ -560,108 +581,77 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
                    .value ())
           .ready;
       };
-    const auto first = create ("aggregate-a", std::byte{0x11});
-    const auto second = create ("aggregate-b", std::byte{0x12});
-    const auto extra = create ("aggregate-c", std::byte{0x13});
-
-    const auto reserve_capacity =
-      [&] (std::uint8_t id,
-           std::string key,
-           const authority_snapshot_t &snapshot)
-        -> relocation_capacity_fence_t {
-        std::array<std::byte, 16> reservation_id{};
-        reservation_id[15] = static_cast<std::byte> (id);
-        relocation_capacity_reserve_request_t request{
-          .reservation_id = reservation_id,
-          .key = {std::move (key)},
-          .expected_store_version = snapshot.store_version,
-          .object_kind = placement_object_kind_t::actor,
-          .stable_type = "player",
-          .source =
-            {.mesh_name = "play",
-             .node_rid = node_rid_t::from_string ("node-a"),
-             .node_lifecycle_generation = 1,
-             .owner = owner_a},
-          .target =
-            {.mesh_name = "play",
-             .node_rid = node_rid_t::from_string ("node-b"),
-             .node_lifecycle_generation = 1,
-             .owner = owner_b}};
-        return std::get<relocation_capacity_reserved_t> (
-                 store
-                   .reserve_relocation_capacity (
-                     std::move (request))
-                   .result ()
-                   .value ())
-          .fence;
-      };
-    const auto first_fence =
-      reserve_capacity (1, "1:aggregate-a", first);
-    const auto second_fence =
-      reserve_capacity (2, "1:aggregate-b", second);
-    const auto extra_fence =
-      reserve_capacity (3, "1:aggregate-c", extra);
+    const auto first = create (
+      placement_object_kind_t::user_spot,
+      "room",
+      "aggregate-room",
+      std::byte{0x11});
+    const auto second = create (
+      placement_object_kind_t::actor,
+      "player",
+      "aggregate-actor",
+      std::byte{0x12});
 
     aggregate_prepare_request_t request;
     request.aggregate_id.value[15] = std::byte{0x21};
     request.aggregate_generation = 1;
     request.participants = {
-      {{ "1:aggregate-a" },
+      {{ "2:aggregate-room" },
        first.store_version,
        authority_generation_transition_t::new_owner,
        {std::byte{0x31}},
        {}},
-      {{ "1:aggregate-b" },
+      {{ "1:aggregate-actor" },
        second.store_version,
        authority_generation_transition_t::new_owner,
        {std::byte{0x32}},
        {}}};
+    std::sort (
+      request.participants.begin (),
+      request.participants.end (),
+      [] (const auto &left, const auto &right) {
+          return left.key.value < right.key.value;
+      });
+    request.target_descriptor = {
+      .mesh_name = "play",
+      .rid = zlink::routing_id_t::from ("node-b")};
+    request.target_descriptor_lifecycle_generation = 1;
     request.target_owner = owner_b;
 
-    request.target_reservations = {first_fence};
+    request.capacity_bundle = {
+      .actor_slots = 2,
+      .spot_slots = 1,
+      .spot_type =
+        spot_type_capacity_delta_t{
+          .object_kind = placement_object_kind_t::user_spot,
+          .stable_type = "room",
+          .slots = 1}};
     EXPECT_NE (
       nullptr,
       std::get_if<aggregate_prepare_conflict_t> (
         &store.prepare_aggregate (request).result ().value ()));
-    request.target_reservations = {first_fence, first_fence};
-    EXPECT_NE (
-      nullptr,
-      std::get_if<aggregate_prepare_conflict_t> (
-        &store.prepare_aggregate (request).result ().value ()));
-    request.target_reservations = {
-      first_fence, second_fence, extra_fence};
-    EXPECT_NE (
-      nullptr,
-      std::get_if<aggregate_prepare_conflict_t> (
-        &store.prepare_aggregate (request).result ().value ()));
+    request.capacity_bundle.actor_slots = 1;
     EXPECT_EQ (
       first.store_version,
       std::get<authority_snapshot_t> (
-        store.read_authority ({"1:aggregate-a"})
+        store.read_authority ({"2:aggregate-room"})
           .result ()
           .value ())
         .store_version);
     EXPECT_EQ (
       second.store_version,
       std::get<authority_snapshot_t> (
-        store.read_authority ({"1:aggregate-b"})
+        store.read_authority ({"1:aggregate-actor"})
           .result ()
           .value ())
         .store_version);
 
-    request.target_reservations = {
-      first_fence, second_fence};
     store.release_owner_lease (owner_a).result ().value ();
     const auto prepared =
       store.prepare_aggregate (request).result ().value ();
     const auto *prepared_value =
       std::get_if<aggregate_prepared_t> (&prepared);
     ASSERT_NE (nullptr, prepared_value);
-    EXPECT_EQ (
-      relocation_capacity_abort_result_t::stale,
-      store.abort_relocation_capacity (first_fence)
-        .result ()
-        .value ());
     EXPECT_EQ (
       aggregate_commit_result_t::committed,
       store.commit_aggregate (prepared_value->fence)
@@ -670,14 +660,14 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
     EXPECT_EQ (
       owner_b.lease_generation,
       std::get<authority_snapshot_t> (
-        store.read_authority ({"1:aggregate-a"})
+        store.read_authority ({"2:aggregate-room"})
           .result ()
           .value ())
         .owner.lease_generation);
     EXPECT_EQ (
       owner_b.lease_generation,
       std::get<authority_snapshot_t> (
-        store.read_authority ({"1:aggregate-b"})
+        store.read_authority ({"1:aggregate-actor"})
           .result ()
           .value ())
         .owner.lease_generation);

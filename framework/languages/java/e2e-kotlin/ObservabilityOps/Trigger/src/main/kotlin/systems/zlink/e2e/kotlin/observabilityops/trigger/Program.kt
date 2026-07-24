@@ -104,7 +104,7 @@ private suspend fun readerFreeB4(endpoint: String, output: Path) {
     try {
         connector.connect().await()
         repeat(8192) { index ->
-            connector.send(raw("ReaderFreeTraffic", byteArrayOf((index and 0xff).toByte()))).submit()
+            connector.send(raw("ReaderFreeTraffic", byteArrayOf((index and 0xff).toByte()))).await()
             trafficEvents++
         }
         try {

@@ -24,7 +24,8 @@ class serial_execution_queue_t
 
     explicit serial_execution_queue_t (offload_executor_t &executor,
                                        std::size_t capacity = 4096,
-                                       error_handler_t error_handler = {});
+                                       error_handler_t error_handler = {},
+                                       bool allow_yield = false);
     ~serial_execution_queue_t ();
 
     serial_execution_queue_t (const serial_execution_queue_t &) = delete;
@@ -42,6 +43,7 @@ class serial_execution_queue_t
 
     std::size_t pending_count () const;
     bool closed () const;
+    bool allows_yield () const noexcept { return _allow_yield; }
 
   private:
     struct work_item_t
@@ -56,6 +58,7 @@ class serial_execution_queue_t
 
     offload_executor_t &_executor;
     const std::size_t _capacity;
+    const bool _allow_yield;
     error_handler_t _error_handler;
     mutable std::mutex _mutex;
     std::condition_variable _empty;

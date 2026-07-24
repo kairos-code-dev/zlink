@@ -127,7 +127,7 @@ class courier_entry_spot_t : public entry_spot_t
                                          actor.error () ? actor.error ()->what ()
                                                         : "courier actor create failed");
         }
-        auto bound = co_await actors.bind_or_get (actor.value ().ref ()).async ();
+        auto bound = co_await actors.bind_or_get (actor.value ().ref ()).submit ();
         auto joined = co_await bound.context ()
                         .join_entry_spot (node_rid_t::from_string (g_node_rid), request)
                         .async ();

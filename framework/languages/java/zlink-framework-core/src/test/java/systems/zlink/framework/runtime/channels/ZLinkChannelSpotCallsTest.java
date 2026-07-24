@@ -19,7 +19,7 @@ final class ZLinkChannelSpotCallsTest {
             CompletionException.class,
             () -> SpotCallAddresses.resolve(
                     ignored -> CompletableFuture.completedFuture(Optional.empty()),
-                    SpotHandles.create("stale-spot"))
+                    "stale-spot")
                 .toCompletableFuture()
                 .join());
 

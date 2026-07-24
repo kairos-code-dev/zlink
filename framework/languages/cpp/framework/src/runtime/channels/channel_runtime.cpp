@@ -625,6 +625,17 @@ void channel_runtime_t::drain () noexcept
     outbound_request_controller_t (*_state).drain ();
 }
 
+void channel_runtime_t::record_fanout_received (const std::string &topic) const
+{
+    if (!_state->monitoring) {
+        return;
+    }
+    runtime::runtime_metrics_t metrics (_state->monitoring);
+    if (metrics.enabled ()) {
+        metrics.counter ("zlink.fanout.received", "{message}", 1, {{"topic", topic}});
+    }
+}
+
 void channel_runtime_t::publish_socket_event (const std::string &channel_name,
                                               socket_event_kind_t event,
                                               std::string local_address,
@@ -1165,10 +1176,10 @@ result_t<void> route_send_call_t::submit_now ()
     return _submit (_packet_name, _metadata);
 }
 
-task_t<submit_result_t> route_send_call_t::submit ()
+task_t<void> route_send_call_t::submit ()
 {
     if (!_submission->try_claim ()) {
-        return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+        return task_t<void> (result_t<void>::failure (
           framework_error_kind_t::request_protocol_error,
           "route send call has already been submitted"));
     }

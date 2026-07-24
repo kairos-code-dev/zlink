@@ -54,6 +54,29 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
     }
 
     bool belongs_to (const void *owner) const noexcept override { return owner == &_queue; }
+    bool allows_yield () const noexcept override { return _queue.allows_yield (); }
+
+    result_t<void> defer (std::function<void ()> work) override
+    {
+        if (!work) {
+            return result_t<void>::failure (
+              framework_error_kind_t::invalid_configuration,
+              "Deferred Actor join work is empty");
+        }
+        std::lock_guard lock (_mutex);
+        if (_released) {
+            return result_t<void>::failure (
+              framework_error_kind_t::invalid_configuration,
+              "Actor join defer requires an open Framework handler turn");
+        }
+        if (_deferred.size () >= 64) {
+            return result_t<void>::failure (
+              framework_error_kind_t::invalid_configuration,
+              "A Framework handler may defer at most 64 Actor joins");
+        }
+        _deferred.push_back (std::move (work));
+        return result_t<void>::success ();
+    }
 
     bool complete (std::function<void ()> completion) { return finish (std::move (completion)); }
 
@@ -61,6 +84,7 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
     bool finish (std::function<void ()> completion)
     {
         serial_execution_queue_t::async_completion_t complete;
+        std::vector<std::function<void ()>> deferred;
         {
             std::lock_guard lock (_mutex);
             if (_released) {
@@ -68,11 +92,22 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
             }
             _released = true;
             complete = std::move (_complete);
+            deferred = std::move (_deferred);
         }
         if (!complete) {
             return false;
         }
-        complete (std::move (completion));
+        complete ([completion = std::move (completion),
+                   deferred = std::move (deferred)] () mutable {
+            if (completion) {
+                completion ();
+            }
+            for (auto &work : deferred) {
+                if (work) {
+                    work ();
+                }
+            }
+        });
         return true;
     }
 
@@ -80,13 +115,16 @@ class serial_turn_handle_impl_t final : public detail::serial_turn_t,
     std::string _name;
     mutable std::mutex _mutex;
     serial_execution_queue_t::async_completion_t _complete;
+    std::vector<std::function<void ()>> _deferred;
     bool _released = false;
 };
 
 serial_execution_queue_t::serial_execution_queue_t (offload_executor_t &executor,
                                                     std::size_t capacity,
-                                                    error_handler_t error_handler) :
-    _executor (executor), _capacity (capacity), _error_handler (std::move (error_handler))
+                                                    error_handler_t error_handler,
+                                                    bool allow_yield) :
+    _executor (executor), _capacity (capacity), _allow_yield (allow_yield),
+    _error_handler (std::move (error_handler))
 {
     if (_capacity == 0) {
         throw std::invalid_argument ("serial execution queue capacity is zero");

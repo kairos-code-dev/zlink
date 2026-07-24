@@ -95,9 +95,9 @@ client DEALER, classic fanout은 publisher socket, STREAM send·reply는 해당 
 Logical Multicast의 `IZLinkPublishCall`은 bounded I/O executor에 direct handoff한다. 즉시 worker slot을 얻지
 못하면 send timeout까지 capacity를 기다린다. Slot을 얻으면 bindings의 public raw socket publish를 정확히
 한 번 호출하며, 이 시점이 operation commit barrier다. Transaction이 시작된 뒤 개별 target 실패는 이미
-수락한 target을 rollback하거나 전체 publish를 자동 재시도하지 않는다. Remote transport와 local Spot queue의
-snapshot·admitted·dropped·unreachable count는 monitoring metric과 runtime event에 기록한다. Target snapshot이
-0개여도 정상 완료한다.
+수락한 target을 rollback하거나 전체 publish를 자동 재시도하지 않는다. Remote transport와 local Spot
+queue의 target별 수락·실패 결과는 반환하거나 monitoring에 집계하지 않는다. Target snapshot이 0개여도
+정상 완료한다.
 
 `CancellationToken`이 admission보다 먼저 확정되면 cancelled `ValueTask`로 한 번만 완료한다.
 Pre-cancellation은 runtime admission을 시작하지 않는다. Admission·timeout·[shutdown](../../../../01-glossary.ko.md#shutdown)과

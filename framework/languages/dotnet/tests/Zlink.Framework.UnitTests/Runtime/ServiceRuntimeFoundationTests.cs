@@ -399,7 +399,7 @@ public sealed class ServiceRuntimeFoundationTests
             "owner", ownerRid, TimeSpan.FromMinutes(1));
         var claim = Assert.IsType<InstanceSpotClaimResult.Claimed>(
             await store.ClaimInstanceSpotAsync(new InstanceSpotClaimRequest(
-                "mesh", RoutingId.From("spot"), "cart", ownerRid, 3, "owner")));
+                "mesh", "spot", "cart", ownerRid, 3, "owner")));
         var location = claim.Snapshot.Location;
         var fence = new InstanceSpotFence(
             location.MeshName,
@@ -422,7 +422,7 @@ public sealed class ServiceRuntimeFoundationTests
             await store.ReleaseInstanceSpotAsync(fence));
         Assert.IsType<InstanceSpotResolveResult.Missing>(
             await store.ResolveInstanceSpotAsync(
-                new ZLinkSpotLocationKey("mesh", RoutingId.From("spot"))));
+                new ZLinkSpotLocationKey("spot")));
     }
 
     [Fact]

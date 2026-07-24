@@ -8,10 +8,10 @@ import type {
   ZLinkSession,
   ZLinkProviderResolver,
   ZLinkMessageSerializer,
-  ZLinkSubmitResult,
   ZLinkStreamCompressionCodec,
   ZLinkStreamCompressionOptions
 } from '../../contracts';
+import type { ZLinkSubmitResult } from '../messaging/submission-result';
 import {
   ZLinkMessage
 } from '../../contracts';
@@ -375,7 +375,7 @@ export class ZLinkStreamBindingRuntime {
   }
 
   async cleanup(context: DefaultZLinkSessionContext): Promise<void> {
-    await this.sessionActors.cleanupContext(context);
+    await this.boundActorRelay.notifyPhysicalDisconnect(context);
   }
 
   async sendBoundSession(

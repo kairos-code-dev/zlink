@@ -80,7 +80,7 @@ internal sealed class QuestProgressNotifyActorHandler
         QuestProgressNotify request,
         CancellationToken cancellationToken)
     {
-        await actor.Context.BoundSession.Send(request).SubmitAsync(cancellationToken);
+        await actor.Context.BoundSession.Send(request).Async(cancellationToken);
     }
 }
 
@@ -98,6 +98,6 @@ internal sealed class QuestCompletedNotifyActorHandler
         QuestCompletedNotify request,
         CancellationToken cancellationToken)
     {
-        await actor.Context.BoundSession.Send(request).SubmitAsync(cancellationToken);
+        await actor.Context.BoundSession.Send(request).Async(cancellationToken);
     }
 }

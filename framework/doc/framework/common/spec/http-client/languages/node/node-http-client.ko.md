@@ -10,7 +10,7 @@
 
 `@zlink-systems/http-client`는 Node에서 HTTP request를 보내기 위한 별도 client-side
 산출물이다. JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder 스타일로
-undici의 낮은 수준 설정을 흡수한다. typed JSON 경로(`body(dto)`/`submit<T>()`)는 그 위에
+undici의 낮은 수준 설정을 흡수한다. typed JSON 경로(`body(dto)`/`async<T>()`)는 그 위에
 얹은 편의 계층이다.
 
 `@zlink-systems/framework`의 에러 모델(`ZLinkFrameworkException`)에 의존하지만 framework
@@ -36,10 +36,13 @@ core의 기본 의존성은 아니다(단방향 의존).
   `followRedirects`, `retry`, `cookies`, `proxy`, `proxyBasicAuth`, `compression`,
   `build`, 그리고 단발 verb shortcut.
 - `ZLinkHttpRequestBuilder` — `header`, `query`, `timeout`, `body`(JSON/raw 오버로드),
-  `bodyStream`, `form`, `multipart`, `multipartFile`, `submitRaw`, `download`, `submit<T>`,
+  `bodyStream`, `form`, `multipart`, `multipartFile`, `submitRaw`, `download`, `async<T>`,
   `fetch<T>`(`Promise<T>`, body만 반환).
 - `ZLinkHttpServerRequestBuilder` — standalone 표면과 one-way
   `submit(): Promise<void>`를 제공한다. One-way 완료에는 전송 결과나 admission status가 없다.
+  Node HTTP Client의 typed response terminal은 `async<T>(): Promise<HttpResponse<T>>`를 유지한다.
+  TypeScript의 generic type은 runtime에서 제거되므로 no-argument `submit<T>()`와 one-way
+  `submit()`을 같은 상속 계층에 선언하면 두 operation을 구분할 수 없기 때문이다.
 - `RawHttpResponse` { `status`, `headers`, `body` }.
 - `HttpResponse<T>` { `status`, `headers`, `body`, `rawBody` }.
 - `ZLinkHttpMethod`, `BodyChunkProvider`(`() => Uint8Array | null`), `DownloadSink`.

@@ -89,11 +89,11 @@ public interface IZLinkSessionSendCall
     IZLinkSessionSendCall Compress();
 
     /// <summary>
-    /// Submits the session send. Input validation and nonblocking local
-    /// transport acceptance complete before this method returns. A full or
-    /// unavailable transport is reported immediately.
+    /// Submits the session send. Input validation and local transport
+    /// acceptance complete before this method returns. If the transport queue
+    /// is full, the call waits up to the configured send timeout.
     /// </summary>
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 
@@ -106,6 +106,6 @@ public interface IZLinkSessionReplyCall
     /// the request packet name and does not expose PacketName because a reply
     /// must keep the request correlation.
     /// </summary>
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }

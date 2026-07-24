@@ -167,6 +167,14 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
+    public ZLinkFanoutPublishCall publish(
+        String channelName,
+        String topic,
+        Object message) {
+        return requireRuntime().fanout().publish(channelName, topic, message);
+    }
+
+    @Override
     public ZLinkSendCall sendToNode(
         String channelName,
         RoutingId target,
@@ -175,10 +183,10 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
-    public ZLinkSendCall sendToSpot(
-        SpotHandle spot,
+    public systems.zlink.framework.spots.ZLinkSpotSendCall sendToSpot(
+        String spotId,
         Object message) {
-        return requireRuntime().route().sendToSpot(spot, message);
+        return requireRuntime().route().sendToSpot(spotId, message);
     }
 
     @Override
@@ -190,10 +198,10 @@ public final class ZLinkFrameworkLifecycle
     }
 
     @Override
-    public ZLinkRequestCall requestToSpot(
-        SpotHandle spot,
+    public systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(
+        String spotId,
         Object message) {
-        return requireRuntime().route().requestToSpot(spot, message);
+        return requireRuntime().route().requestToSpot(spotId, message);
     }
 
     public ZLinkSpotManager spotManager() {

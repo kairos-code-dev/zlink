@@ -51,7 +51,8 @@ export enum ZLinkFrameworkErrorKind {
   SpotGenerationStale = 'spotGenerationStale',
   SpotMoving = 'spotMoving',
   RelocationDataLost = 'relocationDataLost',
-  SpotIdConflict = 'spotIdConflict'
+  SpotIdConflict = 'spotIdConflict',
+  RuntimeShutdown = 'runtimeShutdown'
 }
 
 export const ZLINK_FRAMEWORK_ERROR_KIND_VALUES: Readonly<Record<ZLinkFrameworkErrorKind, number>> = Object.freeze({
@@ -90,7 +91,8 @@ export const ZLINK_FRAMEWORK_ERROR_KIND_VALUES: Readonly<Record<ZLinkFrameworkEr
   [ZLinkFrameworkErrorKind.SpotGenerationStale]: 32,
   [ZLinkFrameworkErrorKind.SpotMoving]: 33,
   [ZLinkFrameworkErrorKind.RelocationDataLost]: 34,
-  [ZLinkFrameworkErrorKind.SpotIdConflict]: 35
+  [ZLinkFrameworkErrorKind.SpotIdConflict]: 35,
+  [ZLinkFrameworkErrorKind.RuntimeShutdown]: 36
 });
 
 export function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean {

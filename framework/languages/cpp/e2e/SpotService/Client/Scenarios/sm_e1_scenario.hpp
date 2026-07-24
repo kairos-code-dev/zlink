@@ -33,7 +33,7 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
     auto created =
       play_b.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = spot_rid})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!created) {
         throw std::runtime_error (created.error () ? created.error ()->what ()
@@ -55,7 +55,7 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
         .body (spot_missing_route_req_t{.target_node_rid = "play-b",
                                         .spot_rid = spot_rid,
                                         .value = "missing-route"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!missing) {
         throw std::runtime_error (missing.error () ? missing.error ()->what ()
@@ -75,7 +75,7 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
     auto request_missing_handler = [&] {
         return play_a.post ("/spot/missing-handler/request")
           .body (spot_missing_handler_req_t{.spot_rid = spot_rid})
-          .async_raw ()
+          .submit_raw ()
           .result ();
     };
     auto missing_handler_request = request_missing_handler ();
@@ -108,7 +108,7 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
     auto missing_handler_command =
       play_a.post ("/spot/missing-handler/command")
         .body (spot_missing_command_req_t{.spot_rid = spot_rid, .marker = "sm-e1-missing-command"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!missing_handler_command || missing_handler_command.value ().status >= 400) {
         throw std::runtime_error ("SM-E1 missing handler command endpoint failed");
@@ -126,7 +126,7 @@ inline void run_sm_e1_scenario (const std::string &play_http_endpoint,
     auto missing_target =
       play_a.post ("/spot/missing-target/request")
         .body (spot_missing_target_req_t{.spot_rid = absent_spot_rid})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!missing_target || missing_target.value ().status >= 400) {
         throw std::runtime_error ("SM-E1 missing target endpoint failed");

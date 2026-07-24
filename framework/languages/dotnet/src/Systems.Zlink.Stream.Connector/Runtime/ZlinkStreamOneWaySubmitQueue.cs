@@ -28,7 +28,7 @@ internal sealed class ZlinkStreamOneWaySubmitQueue
         _completion = taskRunner.Run(DrainAsync);
     }
 
-    public void Submit(
+    public async ValueTask SubmitAsync(
         ZlinkStreamOutboundFrame frame,
         CancellationToken cancellationToken)
     {
@@ -37,10 +37,19 @@ internal sealed class ZlinkStreamOneWaySubmitQueue
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.SendFailed,
                 "Connector is not accepting one-way sends.");
-        if (!_queue.Writer.TryWrite(new SubmitItem(frame, null, CancellationToken.None)))
+        try
+        {
+            await _queue.Writer.WriteAsync(
+                    new SubmitItem(frame, null, CancellationToken.None),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ChannelClosedException)
+        {
             throw ZlinkStreamConnector.Error(
                 ZlinkStreamErrorCode.SendFailed,
-                "Connector one-way send queue is full.");
+                "Connector is not accepting one-way sends.");
+        }
     }
 
     public async ValueTask SendAsync(

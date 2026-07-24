@@ -139,7 +139,7 @@ public sealed class ZoneSpot(
                     ZoneId,
                     NodeId,
                     Transferred: enter.FromNodeId != NodeId))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
 
         logger.LogInformation(
             "zone spot: player entered. zone={ZoneId}, player={PlayerId}, bot={IsBot}, from={FromNodeId}",
@@ -226,7 +226,7 @@ public sealed class ZoneSpot(
                     ZoneWorldNames.ZoneChannel,
                     ZoneWorldNames.BorderTopic(ZoneId, borderEvent.ToZoneId),
                     borderEvent)
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
         }
 
     }
@@ -284,7 +284,7 @@ public sealed class ZoneSpot(
 
             try
             {
-                await actor.Context.BoundSession.Send(message).SubmitAsync(cancellationToken);
+                await actor.Context.BoundSession.Send(message).Async(cancellationToken);
             }
             catch (Exception error)
             {

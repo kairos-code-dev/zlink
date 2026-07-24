@@ -9,7 +9,6 @@ import java.util.Set;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
-import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
 import systems.zlink.framework.spots.ZLinkSpot;
@@ -30,7 +29,7 @@ public final class SpotNodeRegistration {
     private String routerBind;
     private String pubBind;
     private RoutingId routingId;
-    private RoutingId entrySpotRoutingId;
+    private String entrySpotId;
 
     public SpotNodeRegistration(String meshName, String nodeName) {
         this.meshName = meshName;
@@ -73,8 +72,14 @@ public final class SpotNodeRegistration {
         return routingId;
     }
 
-    public RoutingId entrySpotRoutingId() {
-        return entrySpotRoutingId;
+    public String entrySpotId() {
+        if (entrySpotId == null) {
+            entrySpotId = nodeName
+                + "-entry-"
+                + java.util.UUID.randomUUID().toString()
+                    .toLowerCase(java.util.Locale.ROOT);
+        }
+        return entrySpotId;
     }
 
     public boolean routerEnabled() {
@@ -120,10 +125,6 @@ public final class SpotNodeRegistration {
                 "spot node routing id is already configured: " + nodeName);
         }
         this.routingId = routingId;
-    }
-
-    ZLinkEntrySpotOptions entrySpotOptions() {
-        return new EntrySpotOptions();
     }
 
     void addRouterManualConnection(String endpoint) {
@@ -189,22 +190,6 @@ public final class SpotNodeRegistration {
                 "duplicate actor transfer adapter on node: " + type);
         }
         enableRouter();
-    }
-
-    private final class EntrySpotOptions implements ZLinkEntrySpotOptions {
-        @Override
-        public RoutingId routingId() {
-            return entrySpotRoutingId;
-        }
-
-        @Override
-        public void setRoutingId(RoutingId routingId) {
-            if (routingId == null) {
-                throw new ZLinkConfigurationException(
-                    "entry spot routing id is required");
-            }
-            entrySpotRoutingId = routingId;
-        }
     }
 
     public void validate() {

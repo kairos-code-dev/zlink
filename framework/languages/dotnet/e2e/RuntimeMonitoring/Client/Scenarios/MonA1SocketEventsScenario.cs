@@ -94,13 +94,12 @@ internal static class MonA1SocketEventsScenario
             && channel.Selectable,
             "MON-A1 baseline channel fields were incomplete.");
         ZlinkStreamAssert.Ensure(
-            snapshot.Multicast.Submitted == 0
-            && snapshot.Claims.ApplicationActive
+            snapshot.Claims.ApplicationActive
             && snapshot.Claims.InfrastructureActive
             && snapshot.Location.State == "ready"
             && snapshot.Drain.State == "Serving"
             && !snapshot.Drain.WorkSealed,
-            "MON-A1 multicast, claim, location or drain fields were incomplete.");
+            "MON-A1 claim, location or drain fields were incomplete.");
     }
 
     private static async Task<MeshRuntimeSnapshotRes> SnapshotAsync(

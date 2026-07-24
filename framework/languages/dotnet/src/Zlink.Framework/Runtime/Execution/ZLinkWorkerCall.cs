@@ -41,9 +41,12 @@ internal sealed class ZLinkWorkerCall<TResult>(
     public ValueTask<TResult> Yield(CancellationToken cancellationToken = default)
     {
         EnsureSingleTerminator();
-        return _turn is null
-            ? ExecuteAsync(cancellationToken)
-            : _turn.YieldFrameworkCallAsync(ExecuteAsync, cancellationToken);
+        var turn = ZLinkApplicationExecutionContext.RequireYieldTurn("CPU worker");
+        if (!ReferenceEquals(turn, _turn))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                "CPU worker Yield must execute in the callback turn that created the call.");
+        return turn.YieldFrameworkCallAsync(ExecuteAsync, cancellationToken);
     }
 
     private ValueTask<TResult> ExecuteAsync(CancellationToken cancellationToken)

@@ -47,7 +47,9 @@
 ### 1.4 Messaging call terminator (목표 계약)
 
 **HTTP request builder는 Messaging call builder다.** 비동기 완료 종결자는 .NET `Async`, Kotlin
-wrapper `await`, Java·Node.js·C++ `submit`을 사용한다. Awaitable을 쓰지 않는 호출자를 위한 callback
+wrapper `await`, Java·C++ `submit`을 사용한다. Node는 raw response에 `submitRaw`, typed response와
+callback에 `async`, one-way에 `submit`을 사용한다.
+Awaitable을 쓰지 않는 호출자를 위한 callback
 완료 경로도 함께 제공한다([12 HTTP client](12-http-client.ko.md)).
 아래는 **목표 계약**이며 현재 구현과의 차이는
 [구현 차이 §12.22](../90-implementation-gap.ko.md)가 소유한다.
@@ -55,16 +57,17 @@ wrapper `await`, Java·Node.js·C++ `submit`을 사용한다. Awaitable을 쓰�
 | 개념 | cpp | dotnet | java | kotlin | node |
 | --- | --- | --- | --- | --- | --- |
 | **비동기 완료** (raw) | `submit_raw()` → `task_t<raw_http_response_t>` | `AsyncRaw(ct?)` → `ValueTask<RawHttpResponse>` | `submitRaw()` → `CompletionStage<RawHttpResponse>` | `awaitRaw()` (suspend) | `submitRaw()` → `Promise<RawHttpResponse>` |
-| **비동기 완료** (typed) | `submit<T>()` → `task_t<http_response_t<T>>` | `Async<T>(ct?)` | `submit(Class<T>)` | `await(type)` / `await<T>()` (reified) | `submit<T>()` |
+| **비동기 완료** (typed) | `submit<T>()` → `task_t<http_response_t<T>>` | `Async<T>(ct?)` | `submit(Class<T>)` | `await(type)` / `await<T>()` (reified) | `async<T>()` |
 | **비동기 완료** (download) | `download(sink)` | `DownloadAsync(sink, ct?)` | `download(Consumer<byte[]>)` | `awaitDownload(sink)` | `download(sink)` |
 | **one-way** | `submit()` → `task_t<void>` | `Async(ct?)` → `ValueTask` | `submit()` → `CompletionStage<Void>` | `await()` → `Unit` (suspend) | `submit()` → `Promise<void>` |
-| **callback** | `submit<T>(callback)` | `Async<T>(callback)` | `submit(Class<T>, callback)` | (suspend로 대체) | `submit<T>(callback)` |
+| **callback** | `submit<T>(callback)` | `Async<T>(callback)` | `submit(Class<T>, callback)` | (suspend로 대체) | `async<T>(callback)` |
 | blocking 언래핑 | **두지 않는다** | **두지 않는다** | **두지 않는다** | **두지 않는다** | **두지 않는다** |
 
 - HTTP request builder에는 `Yield`·`yield`를 제공하지 않는다. Spot shared turn을 반납해야 하는
   application은 HTTP call을 `RunIoWorker(...)`에 넣고 Worker call의 `Yield`를 사용한다.
 - one-way 완료 값은 전송 결과나 admission status를 포함하지 않는다. 반환형은 비동기 완료와 실패만 전달한다.
-- `.NET`의 비동기 종결자는 `Async`, Kotlin wrapper는 `await`, C++·Java·Node.js는 `submit`을 사용한다.
+- `.NET`의 비동기 종결자는 `Async`, Kotlin wrapper는 `await`, C++·Java는 `submit`을 사용한다.
+  Node는 raw response에 `submitRaw`, typed response와 callback에 `async`, one-way에 `submit`을 사용한다.
 - kotlin의 `fetch<T>()`는 suspend 함수이며 blocking이 아니다. body만 돌려주는 편의 확장이다.
 
 ### 1.5 응답/보조 타입

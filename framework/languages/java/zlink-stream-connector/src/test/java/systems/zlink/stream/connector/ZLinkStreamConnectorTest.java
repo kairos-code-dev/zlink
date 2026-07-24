@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -121,8 +122,8 @@ final class ZLinkStreamConnectorTest {
 
     @Test
     void oneWayAndTypedCallSurfacesMatchTheJavaContract() throws Exception {
-        assertEquals(void.class, ZLinkStreamSendCall.class.getMethod("submit").getReturnType());
-        assertEquals(void.class, ZLinkTypedStreamSendCall.class.getMethod("submit").getReturnType());
+        assertEquals(CompletionStage.class, ZLinkStreamSendCall.class.getMethod("submit").getReturnType());
+        assertEquals(CompletionStage.class, ZLinkTypedStreamSendCall.class.getMethod("submit").getReturnType());
         assertEquals(
             ZLinkTypedStreamSendCall.class,
             ZLinkStreamConnector.class.getMethod("send", Object.class).getReturnType());

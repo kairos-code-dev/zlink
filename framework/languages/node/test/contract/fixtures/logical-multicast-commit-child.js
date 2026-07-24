@@ -3,6 +3,9 @@
 const assert = require('node:assert/strict');
 const backend = require('../../../packages/framework/dist/runtime/backend');
 const framework = require('../../../packages/framework/dist/internal');
+const {
+  ZLinkSubmitStatus
+} = require('../../../packages/framework/dist/runtime/messaging/submission-result');
 
 async function waitFor(condition, label) {
   const deadline = Date.now() + 2000;
@@ -51,9 +54,7 @@ async function main() {
     );
     afterStart.abort(new Error('abort after Core start'));
     const result = await committed;
-    assert.equal(result.status, framework.ZLinkSubmitStatus.Submitted);
-    assert.equal(result.detail.snapshotLocalSpotCount, 1n);
-    assert.equal(result.detail.admittedLocalSpotCount, 1n);
+    assert.equal(result.status, ZLinkSubmitStatus.Submitted);
   } finally {
     subscriber.close();
     publisher.close();

@@ -46,6 +46,7 @@ internal sealed class ZLinkActorRuntimeState(
     private volatile ZLinkActorDestroyPhase _destroyPhase;
     private volatile bool _teardownPending;
     private volatile bool _reservedCreationPending;
+    private int _deferredJoinPending;
 
     public bool IsDispatchBlocked =>
         _destroyPhase != ZLinkActorDestroyPhase.None
@@ -53,6 +54,42 @@ internal sealed class ZLinkActorRuntimeState(
         || _reservedCreationPending;
 
     public bool IsTeardownPending => _teardownPending;
+
+    public ZLinkActorDispatchMailbox.BarrierReservation ReserveDeferredJoinBarrier()
+    {
+        if (IsDispatchBlocked
+            || Handoff.BlocksLocalDispatch
+            || Interlocked.CompareExchange(ref _deferredJoinPending, 1, 0) != 0)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorMoving,
+                $"Actor '{ActorId}' already has an active lifecycle transition.");
+
+        try
+        {
+            return _dispatchMailbox.ReserveBarrier();
+        }
+        catch
+        {
+            Volatile.Write(ref _deferredJoinPending, 0);
+            throw;
+        }
+    }
+
+    public void EnsureDeferredJoinIdentity(IZLinkActor actor, ulong objectGeneration)
+    {
+        if (ContextInvalidated
+            || !ReferenceEquals(Actor, actor)
+            || NativeActorRef is not { Generation: var currentGeneration }
+            || currentGeneration != objectGeneration)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorGenerationStale,
+                $"Actor '{ActorId}' no longer matches the context that registered the Join.");
+    }
+
+    public void ReleaseDeferredJoinBarrier()
+    {
+        Volatile.Write(ref _deferredJoinPending, 0);
+    }
 
     public void BeginReservedCreation()
     {
@@ -575,6 +612,23 @@ internal sealed class ZLinkActorRuntimeState(
     {
         using var turn = await _dispatchMailbox.EnterAsync(cancellationToken).ConfigureAwait(false);
         EnsureDispatchAvailable();
+        await operation(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask ExecuteRelocationCompletionAsync(
+        ulong objectGeneration,
+        Func<CancellationToken, ValueTask> operation,
+        CancellationToken cancellationToken)
+    {
+        using var turn = await _dispatchMailbox.EnterAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (ContextInvalidated
+            || NativeActorRef is not { Generation: var currentGeneration }
+            || currentGeneration != objectGeneration
+            || Actor is null)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorGenerationStale,
+                $"Actor '{ActorId}' no longer matches its durable Join completion.");
         await operation(cancellationToken).ConfigureAwait(false);
     }
 

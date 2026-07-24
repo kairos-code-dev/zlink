@@ -194,7 +194,7 @@ internal sealed class TicTacToeGame(
             recipients,
             async actor =>
             {
-                await actor.Context.BoundSession.Send(message).SubmitAsync(cancellationToken);
+                await actor.Context.BoundSession.Send(message).Async(cancellationToken);
             });
     }
 
@@ -220,7 +220,7 @@ internal sealed class TicTacToeGame(
             recipients,
             async actor =>
             {
-                await actor.Context.BoundSession.Send(message).SubmitAsync(cancellationToken);
+                await actor.Context.BoundSession.Send(message).Async(cancellationToken);
             });
     }
 
@@ -249,7 +249,7 @@ internal sealed class TicTacToeGame(
                     SampleTopics.PlayerMilestoneChannel,
                     SampleTopics.PlayerMilestone,
                     new PlayerWinMilestoneEvent(after.RoomId, player.ActorId, player.DisplayName, wins))
-                .SubmitAsync(cancellationToken));
+                .Async(cancellationToken));
     }
 
     private async ValueTask VerifyWinMilestonePublishAsync(ValueTask<ZLinkPublishResult> submit)

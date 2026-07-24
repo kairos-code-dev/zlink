@@ -234,6 +234,31 @@ public final class ZLinkChannelRuntime
 
     public ZLinkChannelRuntime(
         ZLinkChannelBackendAdapter backend,
+        ZLinkFrameworkRegistration registration,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerActivator handlerFactory,
+        java.util.function.BiFunction<
+            ZLinkBackendObject,
+            ZLinkBackendAdmissionKey,
+            java.util.function.BiFunction<
+                java.util.function.Supplier<Boolean>,
+                Runnable,
+                CompletionStage<Void>>> admission) {
+        this(
+            backend,
+            backend.createContext(),
+            true,
+            null,
+            null,
+            registration,
+            serializer,
+            handlerFactory,
+            null,
+            admission);
+    }
+
+    public ZLinkChannelRuntime(
+        ZLinkChannelBackendAdapter backend,
         ZLinkBackendAdapterProvider backendFactory,
         ZLinkBackendAdapterOptions adapterOptions,
         ZLinkFrameworkRegistration registration,
@@ -289,7 +314,39 @@ public final class ZLinkChannelRuntime
             registration,
             serializer,
             handlerFactory,
-            eventDispatcher);
+            eventDispatcher,
+            (ignoredBackend, ignoredKey) -> (ignoredSubmission, ignoredCleanup) ->
+                CompletableFuture.failedFuture(new IllegalStateException(
+                    "one-way admission factory is required")));
+    }
+
+    public ZLinkChannelRuntime(
+        ZLinkChannelBackendAdapter backend,
+        ZLinkBackendContext context,
+        ZLinkBackendAdapterProvider backendFactory,
+        ZLinkBackendAdapterOptions adapterOptions,
+        ZLinkFrameworkRegistration registration,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerActivator handlerFactory,
+        ZLinkRuntimeEventDispatcher eventDispatcher,
+        java.util.function.BiFunction<
+            ZLinkBackendObject,
+            ZLinkBackendAdmissionKey,
+            java.util.function.BiFunction<
+                java.util.function.Supplier<Boolean>,
+                Runnable,
+                CompletionStage<Void>>> admission) {
+        this(
+            backend,
+            context,
+            false,
+            backendFactory,
+            adapterOptions,
+            registration,
+            serializer,
+            handlerFactory,
+            eventDispatcher,
+            admission);
     }
 
     private ZLinkChannelRuntime(
@@ -302,6 +359,38 @@ public final class ZLinkChannelRuntime
         ZLinkMessageSerializer serializer,
         ZLinkHandlerActivator handlerFactory,
         ZLinkRuntimeEventDispatcher eventDispatcher) {
+        this(
+            backend,
+            context,
+            ownsContext,
+            backendFactory,
+            adapterOptions,
+            registration,
+            serializer,
+            handlerFactory,
+            eventDispatcher,
+            (ignoredBackend, ignoredKey) -> (ignoredSubmission, ignoredCleanup) ->
+                CompletableFuture.failedFuture(new IllegalStateException(
+                    "one-way admission factory is required")));
+    }
+
+    private ZLinkChannelRuntime(
+        ZLinkChannelBackendAdapter backend,
+        ZLinkBackendContext context,
+        boolean ownsContext,
+        ZLinkBackendAdapterProvider backendFactory,
+        ZLinkBackendAdapterOptions adapterOptions,
+        ZLinkFrameworkRegistration registration,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerActivator handlerFactory,
+        ZLinkRuntimeEventDispatcher eventDispatcher,
+        java.util.function.BiFunction<
+            ZLinkBackendObject,
+            ZLinkBackendAdmissionKey,
+            java.util.function.BiFunction<
+                java.util.function.Supplier<Boolean>,
+                Runnable,
+                CompletionStage<Void>>> admission) {
         this.serializer = Objects.requireNonNull(serializer, "serializer");
         this.replyDecoder = new ZLinkChannelReplyDecoder(this.serializer);
         this.codecs = Objects.requireNonNull(registration.codecs(), "codecs");
@@ -339,7 +428,8 @@ public final class ZLinkChannelRuntime
             defaultRequestTimeout,
             replyDecoder,
             this::sendToSpotViaRouterChannel,
-            this::requestToSpotViaRouterChannel);
+            this::requestToSpotViaRouterChannel,
+            new ZLinkOneWayCalls(admission));
         this.dispatchReporter = new ZLinkChannelDispatchReporter(dispatchErrors);
         this.messageDispatcher = new ZLinkChannelMessageDispatcher(
             dispatchRegistry,
@@ -842,6 +932,21 @@ public final class ZLinkChannelRuntime
     }
 
     @Override
+    public ZLinkFanoutPublishCall publish(
+        String channelName,
+        String topic,
+        Object message) {
+        ZLinkPayloadEncoding.EncodedPayload encoded =
+            ZLinkPayloadEncoding.encode(serializer, message);
+        return new PublishCall(
+            callRuntime,
+            requirePublisher(channelName),
+            topic,
+            encoded.payload(),
+            Optional.of(encoded.packetName()));
+    }
+
+    @Override
     public ZLinkSendCall sendToNode(String channelName, RoutingId target, Object message) {
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
@@ -868,17 +973,17 @@ public final class ZLinkChannelRuntime
     }
 
     @Override
-    public ZLinkSendCall sendToSpot(
-        SpotHandle spot,
+    public systems.zlink.framework.spots.ZLinkSpotSendCall sendToSpot(
+        String spotId,
         Object message) {
-        Objects.requireNonNull(spot, "spot");
+        Objects.requireNonNull(spotId, "spotId");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteSpotSendCall(
             callRuntime,
             null,
             spotAddressResolver,
-            spot,
+            spotId,
             encoded.payload(),
             Optional.of(encoded.packetName()));
     }
@@ -914,17 +1019,17 @@ public final class ZLinkChannelRuntime
     }
 
     @Override
-    public ZLinkRequestCall requestToSpot(
-        SpotHandle spot,
+    public systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(
+        String spotId,
         Object message) {
-        Objects.requireNonNull(spot, "spot");
+        Objects.requireNonNull(spotId, "spotId");
         ZLinkPayloadEncoding.EncodedPayload encoded =
             ZLinkPayloadEncoding.encode(serializer, message);
         return new RouteSpotRequestCall(
             callRuntime,
             null,
             spotAddressResolver,
-            spot,
+            spotId,
             encoded.payload(),
             Optional.of(encoded.packetName()),
             Duration.ofSeconds(1));

@@ -130,7 +130,8 @@ final class SpotActivation
         ZLinkBackendActorLifecycleEvent event,
         ZLinkBackendActorRef actorRef,
         ZLinkActor actor) {
-        return context.enqueueDispatch(() -> {
+        return host.actorSessions().dispatch(actor, () ->
+            context.enqueueActorDispatch(actor.actorId(), () -> {
             if (host.isClosing()) {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             }
@@ -143,10 +144,8 @@ final class SpotActivation
             if (transition == null) {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             }
-            return host.shouldRunActorLifecycleInSpotDispatch(event, actor)
-                ? transition.get()
-                : host.actorSessions().dispatch(actor, transition);
-        });
+            return transition.get();
+        }));
     }
 
     CompletionStage<Void> handleDispatchEvent(ZLinkBackendSpotDispatchInfo info) {
@@ -598,11 +597,12 @@ final class SpotActivation
             return;
         }
         try {
-            host.awaitClosing(host.runWithOutbound(context.dispatchOutbound(), () ->
-                ZLinkHandlerStages.fromStageSupplier(() -> spot.onClosing(
-                    new systems.zlink.framework.spots.ZLinkSpotClosingContext(
-                        reason,
-                        deadline)))));
+            host.awaitClosing(context.enqueueLifecycle(() ->
+                host.runWithOutbound(context.dispatchOutbound(), () ->
+                    ZLinkHandlerStages.fromStageSupplier(() -> spot.onClosing(
+                        new systems.zlink.framework.spots.ZLinkSpotClosingContext(
+                            reason,
+                            deadline))))));
         } finally {
             closeResources();
         }

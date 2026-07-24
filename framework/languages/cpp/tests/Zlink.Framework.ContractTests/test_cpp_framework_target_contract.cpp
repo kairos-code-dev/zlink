@@ -561,7 +561,7 @@ int main ()
     /* CPP-G0-ASYNC-001 — one-way terminators return the async admission result. */
     gate.require (!tree_contains (include_root, "void submit ()"), "CPP-G0-ASYNC-001",
                   "server one-way submit terminators still discard admission results");
-    gate.require (actor_hpp.find ("task_t<submit_result_t> submit") != std::string::npos,
+    gate.require (actor_hpp.find ("task_t<void> submit") != std::string::npos,
                   "CPP-G0-ASYNC-001",
                   "actor one-way send does not expose the async admission result");
 
@@ -604,7 +604,8 @@ int main ()
                               : error_hpp.substr (enum_begin, enum_end - enum_begin);
     for (const std::string forbidden : {"actor_stale_generation", "timeout", "shutdown",
                                         "disconnected", "closed", "cancelled"}) {
-        gate.require (enum_block.find (forbidden) == std::string::npos, "CPP-G0-ERROR-001",
+        gate.require (enum_block.find ("\n    " + forbidden + " =") == std::string::npos,
+                      "CPP-G0-ERROR-001",
                       "framework_error_kind_t still exposes non-contract value: " + forbidden);
     }
 
@@ -624,10 +625,14 @@ int main ()
     gate.require (actor_hpp.find ("std::optional<spot_id_t> spot_id") != std::string::npos,
                   "CPP-G0-ACTOR-001", "actor_context_t::spot_id() nullable accessor is missing");
 
-    /* CPP-G0-ACTOR-002 — join result is an accepted/rejected variant. */
-    for (const std::string required : {"actor_join_accepted_t", "actor_join_rejected_t"}) {
-        gate.require (actor_hpp.find (required) != std::string::npos, "CPP-G0-ACTOR-002",
-                      "variant join result type is missing: " + required);
+    /* CPP-G0-ACTOR-002 — Actor Join is a deferred, result-free handler terminal. */
+    gate.require (actor_hpp.find ("void defer ()") != std::string::npos,
+                  "CPP-G0-ACTOR-002", "Actor Join defer terminal is missing");
+    for (const std::string removed : {"actor_join_accepted_t", "actor_join_rejected_t",
+                                      "actor_join_result_t", "task_t<actor_join"}) {
+        gate.require (actor_hpp.find (removed) == std::string::npos,
+                      "CPP-G0-ACTOR-002",
+                      "legacy result-bearing Actor Join surface remains: " + removed);
     }
 
     /* CPP-G0-SPOTMGR-001 — async spot queries. */

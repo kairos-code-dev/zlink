@@ -11,10 +11,6 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkSpotTimerHandler;
 import systems.zlink.framework.spots.ZLinkTimerOptions;
 import systems.zlink.framework.spots.ZLinkTimerTick;
-import systems.zlink.framework.handlers.ZLinkSpotSubscription;
-import systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler;
-import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceState;
-import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
 
 public final class MonitoringSpot implements ZLinkSpot<ZLinkActor> {
     private final ZLinkSpotContext context;
@@ -26,11 +22,6 @@ public final class MonitoringSpot implements ZLinkSpot<ZLinkActor> {
     @Override
     public ZLinkSpotContext context() {
         return context;
-    }
-
-    @Override
-    public void configure() {
-        context.handlers().addHandler(MulticastProbeHandler.class);
     }
 
     @Override
@@ -68,27 +59,4 @@ public final class MonitoringSpot implements ZLinkSpot<ZLinkActor> {
         }
     }
 
-    @ZLinkSpotSubscription(topic = "monitoring.multicast")
-    public static final class MulticastProbeHandler
-        implements ZLinkSpotSubscriptionHandler<MonitoringSpot, Contracts.MulticastProbe> {
-        private final MulticastGate gate;
-        private final EvidenceState evidence;
-
-        public MulticastProbeHandler(MulticastGate gate, EvidenceState evidence) {
-            this.gate = gate;
-            this.evidence = evidence;
-        }
-
-        @Override
-        public CompletionStage<Void> handle(
-            MonitoringSpot spot,
-            Contracts.MulticastProbe event) {
-            String rid = spot.context().spotRid().toString();
-            String detail = event.value().length() <= 96
-                ? event.value()
-                : event.value().substring(0, 96);
-            evidence.record("multicast", rid, "received", detail);
-            return gate.await(rid);
-        }
-    }
 }

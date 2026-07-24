@@ -56,7 +56,7 @@ class supportchat_session_t final : public packet_stream_session_t
                 .request ("supportchat.api",
                           authenticate_user_req_t{
                             payload.parse_json<authenticate_req_t> ().access_token})
-                .async<authenticate_user_res_t> ();
+                .submit<authenticate_user_res_t> ();
             if (!verified.accepted) {
                 throw framework_exception_t (framework_error_kind_t::request_rejected,
                                              verified.reason.value_or ("AuthenticationRejected"));
@@ -68,9 +68,9 @@ class supportchat_session_t final : public packet_stream_session_t
                                                           authenticated.role,
                                                           authenticated.actor_id};
             auto ensured = co_await _channels.request ("supportchat.support", ensure)
-                              .async<ensure_support_user_actor_res_t> ();
+                              .submit<ensure_support_user_actor_res_t> ();
             auto actor_ref = ensured.actor.to_actor_ref (support_user_actor_type);
-            auto bound = co_await _actors.bind_or_get (actor_ref).async ();
+            auto bound = co_await _actors.bind_or_get (actor_ref).submit ();
             _identity_actor_id = std::string (bound.actor_id ());
             _identity_display_name = authenticated.display_name;
             _identity_role = authenticated.role;
@@ -90,7 +90,7 @@ class supportchat_session_t final : public packet_stream_session_t
         }
         auto actor = co_await select_actor (stream, dispatch);
         if (dispatch.can_reply ()) {
-            auto reply = co_await actor.relay_request (payload).async ();
+            auto reply = co_await actor.relay_request (payload).submit ();
             stream.reply_packet (reply).submit ();
             co_return;
         }
@@ -121,7 +121,7 @@ class supportchat_session_t final : public packet_stream_session_t
             auto refreshed =
               co_await actor.relay_request (std::string (dispatch.packet_name ()),
                                             zlink::message_t::from_json (join_conversation_req_t {}))
-                .async ();
+                .submit ();
             co_return ensure_agent_conversation_res_t{
               actor_ref_snapshot_t::from (actor.ref ()),
               refreshed.parse_json<join_conversation_res_t> ().state};
@@ -132,9 +132,9 @@ class supportchat_session_t final : public packet_stream_session_t
             .request ("supportchat.support",
                       ensure_agent_conversation_req_t{_identity_actor_id, _identity_display_name,
                                                       conversation_id})
-            .async<ensure_agent_conversation_res_t> ();
+            .submit<ensure_agent_conversation_res_t> ();
         auto actor_ref = ensured.actor.to_actor_ref (support_user_actor_type);
-        auto bound = co_await _actors.bind_or_get (actor_ref).async ();
+        auto bound = co_await _actors.bind_or_get (actor_ref).submit ();
         const auto conversation_actor_id = std::string (bound.actor_id ());
         _conversation_actor_ids[conversation_id] = conversation_actor_id;
         co_return ensured;

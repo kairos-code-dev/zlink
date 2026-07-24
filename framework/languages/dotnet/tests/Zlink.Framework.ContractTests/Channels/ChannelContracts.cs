@@ -14,9 +14,8 @@ public sealed class ChannelContracts
     {
         var client = new ExampleRouteClient();
 
-        var sent = await client.SendToChannel("api", new AuthenticateRequest("player-1"))
-            .SubmitAsync();
-        Assert.Equal(ZLinkSubmitStatus.Submitted, sent.Status);
+        await client.SendToChannel("api", new AuthenticateRequest("player-1"))
+            .Async();
 
         var reply = await client
             .RequestToChannel("api", new AuthenticateRequest("player-1"))
@@ -39,9 +38,8 @@ public sealed class ChannelContracts
         var client = new ExampleRouteClient();
         var target = RoutingId.From("play-node-1");
 
-        var sent = await client.SendToNode("play-router", target, new RoomEvent("opened"))
-            .SubmitAsync();
-        Assert.Equal(ZLinkSubmitStatus.Submitted, sent.Status);
+        await client.SendToNode("play-router", target, new RoomEvent("opened"))
+            .Async();
 
         var room = await client
             .RequestToNode("play-router", target, new AllocateRoom("alice"))
@@ -71,9 +69,8 @@ public sealed class ChannelContracts
     {
         var publisher = new ExampleFanoutPublisher();
 
-        var published = await publisher.Publish("events", "room.opened", new RoomEvent("opened"))
-            .SubmitAsync();
-        Assert.Equal(ZLinkSubmitStatus.Submitted, published.Status);
+        await publisher.Publish("events", "room.opened", new RoomEvent("opened"))
+            .Async();
 
         Assert.Equal(("events", "room.opened"), publisher.LastPublish);
     }
@@ -100,12 +97,12 @@ public sealed class ChannelContracts
 
         // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
         _ = await orders.SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
-            .SubmitAsync();
+            .Async();
 
         // gRPC server-streaming / event feed -> pub/sub fan-out to many subscribers.
         _ = await events
             .Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
-            .SubmitAsync();
+            .Async();
 
         Assert.Equal("order-1042", placed.OrderId); // unary RPC reply correlated by type
         Assert.Equal("inventory", orders.ChannelName);
@@ -217,8 +214,8 @@ public sealed class ChannelContracts
 
         public IZLinkSendCall Metadata(ZLinkMessageMetadata metadata) => this;
 
-        public ValueTask<ZLinkSubmitResult> SubmitAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
+        public ValueTask Async(CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
     }
 
     private class ExampleRequestCall(object? reply) : IZLinkRequestCall
@@ -245,8 +242,8 @@ public sealed class ChannelContracts
 
     private sealed class ExampleFanoutPublishCall : IZLinkFanoutPublishCall
     {
-        public ValueTask<ZLinkSubmitResult> SubmitAsync(CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
+        public ValueTask Async(CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
     }
 
     private sealed class ExampleRouteSendCall : ExampleSendCall

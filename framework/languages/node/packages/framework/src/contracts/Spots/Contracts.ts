@@ -7,7 +7,6 @@ import type {
   ZLinkMessage,
   ZLinkMessageMetadata
 } from '../Common';
-import type { ZLinkSubmitResult } from '../RouteMesh';
 import type { ZLinkSpotTimerHandler } from '../Handlers';
 import type { ZLinkTimer, ZLinkTimerOptions } from '../Timers';
 import type { ZLinkEntrySpot, ZLinkInstanceSpot, ZLinkSpot } from './ZLinkSpot';
@@ -32,8 +31,7 @@ export interface ZLinkInstanceSpotHandlerRegistry {
 
 export interface ZLinkWorkerCall<T> {
   timeoutMs(durationMs: number): ZLinkWorkerCall<T>;
-  submit(signal?: AbortSignal): void;
-  async(signal?: AbortSignal): Promise<T>;
+  submit(signal?: AbortSignal): Promise<T>;
   yield(signal?: AbortSignal): Promise<T>;
 }
 
@@ -110,7 +108,7 @@ export interface ZLinkSpotSendCall {
   instanceSpot(): this;
   instanceSpot(instanceSpotType: string): this;
   inMesh(meshName: string): this;
-  submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+  submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSpotRequestCall {

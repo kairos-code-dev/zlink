@@ -191,7 +191,7 @@ inline profile_res_t request_profile_once (zlink::framework::channel_client_t &c
 {
     auto call = channels.request (api_channel, request)
                   .timeout (timeout)
-                  .async<profile_res_t> ();
+                  .submit<profile_res_t> ();
     const auto &reply = call.result ();
     if (reply) {
         return reply.value ();
@@ -237,7 +237,7 @@ class manual_profile_request_handler_t
     {
         auto call = _channels.request ("resilience.lifecycle.api.manual", request)
                       .timeout (std::chrono::milliseconds (3000))
-                      .async<profile_res_t> ();
+                      .submit<profile_res_t> ();
         const auto &reply = call.result ();
         if (reply) {
             return reply.value ();
@@ -266,7 +266,7 @@ class manual_b_profile_request_handler_t
     {
         auto call = _channels.request ("resilience.lifecycle.api.manual.b", request)
                       .timeout (std::chrono::milliseconds (3000))
-                      .async<profile_res_t> ();
+                      .submit<profile_res_t> ();
         const auto &reply = call.result ();
         if (reply) {
             return reply.value ();
@@ -295,7 +295,7 @@ class slow_request_handler_t
     {
         auto call = _channels.request (api_channel, request)
                       .timeout (std::chrono::milliseconds (100))
-                      .async<profile_res_t> ();
+                      .submit<profile_res_t> ();
         const auto &reply = call.result ();
         if (reply) {
             return {.failed = false, .error_type = ""};
@@ -324,7 +324,7 @@ class missing_request_handler_t
     {
         auto call = _channels.request (api_channel, missing_profile_req_t{request})
                       .timeout (std::chrono::milliseconds (3000))
-                      .async<profile_res_t> ();
+                      .submit<profile_res_t> ();
         const auto &reply = call.result ();
         if (reply) {
             return {.failed = false, .error_type = ""};
@@ -500,7 +500,7 @@ class transient_route_request_service_t final :
                   route_channel, zlink::routing_id_t::from ("api-a"),
                   _request)
                 .timeout (std::chrono::seconds (5))
-                .async<scenario_route_res_t> ()
+                .submit<scenario_route_res_t> ()
                 .result ()
                 .value ();
         }

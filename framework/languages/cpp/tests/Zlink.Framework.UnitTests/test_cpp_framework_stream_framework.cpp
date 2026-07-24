@@ -86,7 +86,8 @@ class duplicate_reply_session_t final : public zlink::framework::packet_stream_s
     {
         auto winner = stream.reply_packet (payload);
         auto loser = stream.reply_packet (payload);
-        winner_status = (co_await winner.submit ()).status;
+        co_await winner.submit ();
+        winner_completed = true;
         try {
             (void) co_await loser.submit ();
         }
@@ -98,8 +99,7 @@ class duplicate_reply_session_t final : public zlink::framework::packet_stream_s
         co_return;
     }
 
-    zlink::framework::submit_status_t winner_status =
-      zlink::framework::submit_status_t::shutdown;
+    bool winner_completed = false;
     bool loser_rejected = false;
 };
 
@@ -638,8 +638,7 @@ int main ()
     if (!runtime.dispatch_packet (
           duplicate_reply_session, duplicate_reply_stream, request_header,
           zlink::message_t::from (std::string ("duplicate-reply")))
-        || duplicate_reply_session.winner_status
-             != zlink::framework::submit_status_t::submitted
+        || !duplicate_reply_session.winner_completed
         || !duplicate_reply_session.loser_rejected
         || runtime.written_headers (duplicate_reply_stream).size () != 1) {
         return 236;
@@ -762,11 +761,12 @@ int main ()
     const auto close_result = fluent_stream.close ().result ();
     const auto write_rejected_disconnected = [] (auto &&write_fn) {
         try {
-            return write_fn ().status
-                   == zlink::framework::submit_status_t::route_not_connected;
-        }
-        catch (const zlink::framework::framework_exception_t &) {
+            write_fn ();
             return false;
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            return error.kind ()
+                   == zlink::framework::framework_error_kind_t::route_not_connected;
         }
     };
     if (!write_rejected_disconnected ([&] {

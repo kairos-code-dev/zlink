@@ -1,9 +1,13 @@
 import type {
   ZLinkBoundSessionSendCall,
   ZLinkSessionReplyCall,
-  ZLinkSessionSendCall,
-  ZLinkSubmitResult
+  ZLinkSessionSendCall
 } from '../../contracts';
+import type { ZLinkSubmitResult } from '../messaging/submission-result';
+import {
+  requireOneWayCompletion
+} from '../messaging/submission-result';
+import { ZLinkFrameworkErrorKind } from '../../contracts';
 import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
 import {
@@ -70,17 +74,22 @@ export class DefaultZLinkBoundSessionSendCall implements ZLinkBoundSessionSendCa
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
+  async submit(signal?: AbortSignal): Promise<void> {
     ensureSingleSubmit(this.executed);
     const packetName = resolvePacketName(this.message, this.selectedPacketName);
     this.executed = true;
     throwIfAborted(signal);
-    return await this.runtime.sendBoundSession(
+    const result = await this.runtime.sendBoundSession(
       this.actorId,
       this.message,
       packetName,
       this.selectedMetadata,
       signal
+    );
+    requireOneWayCompletion(
+      result,
+      'Bound session send',
+      ZLinkFrameworkErrorKind.ActorSessionNotBound
     );
   }
 }
@@ -111,7 +120,7 @@ export class DefaultZLinkSessionSendCall implements ZLinkSessionSendCall {
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
+  async submit(signal?: AbortSignal): Promise<void> {
     ensureSingleSubmit(this.executed);
     const packetName = resolvePacketName(this.message, this.selectedPacketName);
     this.executed = true;
@@ -125,7 +134,8 @@ export class DefaultZLinkSessionSendCall implements ZLinkSessionSendCall {
       this.message
     );
     try {
-      return await this.context.stream.submitRaw(message, signal);
+      const result = await this.context.stream.submitRaw(message, signal);
+      requireOneWayCompletion(result, 'STREAM session send');
     } finally {
       message.close();
     }
@@ -146,7 +156,7 @@ export class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
+  async submit(signal?: AbortSignal): Promise<void> {
     ensureSingleSubmit(this.executed);
     this.executed = true;
     const requestHeader = this.context.dispatchHeader;
@@ -166,7 +176,8 @@ export class DefaultZLinkSessionReplyCall implements ZLinkSessionReplyCall {
       this.message
     );
     try {
-      return await this.context.stream.submitRaw(message, signal);
+      const result = await this.context.stream.submitRaw(message, signal);
+      requireOneWayCompletion(result, 'STREAM session reply');
     } finally {
       message.close();
     }

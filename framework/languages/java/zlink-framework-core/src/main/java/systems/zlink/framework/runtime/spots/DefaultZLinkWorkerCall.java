@@ -53,6 +53,14 @@ final class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(result);
     }
 
+    @Override
+    public CompletionStage<T> yield() {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.requireYieldAllowed("CPU worker");
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+            .yieldCurrent(submit());
+    }
+
     private void start(CompletableFuture<T> result) {
         AtomicBoolean settled = new AtomicBoolean();
         DefaultZLinkWorkerCancellation cancellation =

@@ -56,11 +56,11 @@ internal sealed class WorldAnnounceSubscriber(
                     continue;
                 }
 
-                // SubmitAsync waits only for transport admission, not handler execution. Awaiting
+                // Async waits only for transport admission, not handler execution. Awaiting
                 // it keeps an admission failure visible without extending the remote handler turn.
                 await routes
                     .SendToSpot(handle, new DeliverAnnounceMsg(message.AnnouncementId, message.Text))
-                    .SubmitAsync(cancellationToken);
+                    .Async(cancellationToken);
             }
             catch (Exception error)
             {

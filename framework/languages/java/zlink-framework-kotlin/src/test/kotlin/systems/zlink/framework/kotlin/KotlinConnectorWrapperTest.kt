@@ -111,7 +111,7 @@ final class KotlinConnectorWrapperTest {
                 connector.connect().await()
                 assertTrue(connector.isConnected)
 
-                connector.send(payload("Echo", "send")).submit()
+                connector.send(payload("Echo", "send")).await()
                 val sent = server.readApplicationFrame()
                 assertEquals(1, sent.kind)
                 assertEquals("Echo", sent.name)

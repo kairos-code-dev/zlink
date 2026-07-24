@@ -42,7 +42,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
     auto created =
       play_a.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = spot_rid})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!created) {
         throw std::runtime_error (created.error () ? created.error ()->what ()
@@ -60,7 +60,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
       play_b.post ("/spot/state/request")
         .body (spot_state_route_req_t{
           .spot_rid = spot_rid, .state = state_req_t{.op = "add", .amount = 0}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!route_ready) {
         throw std::runtime_error (route_ready.error () ? route_ready.error ()->what ()
@@ -79,7 +79,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
         .body (spot_stage_probe_req_t{.spot_rid = spot_rid,
                                       .marker = "sm-a5-stage",
                                       .delta = 9})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!stage_probe) {
         throw std::runtime_error (stage_probe.error () ? stage_probe.error ()->what ()
@@ -98,7 +98,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
         .body (spot_stage_timer_req_t{.spot_rid = spot_rid,
                                       .name = "sm-a5-stage-timer",
                                       .period_ms = 50})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!timer_started) {
         throw std::runtime_error (timer_started.error () ? timer_started.error ()->what ()
@@ -118,7 +118,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
           .contains_all = {"SpotInitialized", spot_rid, "StageRequest", "sm-a5-stage:9",
                            "StageTimer", "sm-a5-stage-timer:1"},
           .timeout_milliseconds = 10000})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!evidence) {
         throw std::runtime_error (evidence.error () ? evidence.error ()->what ()
@@ -129,7 +129,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
     auto closed =
       play_a.post ("/spot/close")
         .body (close_spot_req_t{.key = key})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!closed) {
         throw std::runtime_error (closed.error () ? closed.error ()->what ()
@@ -146,7 +146,7 @@ inline void run_sm_a5_scenario (const std::string &play_a_http_endpoint,
       play_a.post ("/evidence/wait")
         .body (evidence_wait_req_t{.contains_all = {"SpotClosing", spot_rid},
                                    .timeout_milliseconds = 5000})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!closing_evidence) {
         throw std::runtime_error (closing_evidence.error () ? closing_evidence.error ()->what ()

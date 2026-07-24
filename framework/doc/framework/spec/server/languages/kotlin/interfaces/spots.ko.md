@@ -3,6 +3,13 @@
 [인터페이스 목차](README.ko.md) · [Java Spot](../../java/interfaces/spots.ko.md) ·
 [Spot 공통 계약](../../../23-spot-actor.ko.md)
 
+Session에 bind된 Actor의 physical disconnect는 Framework가 automatic all-settled로 통지한다. Actor
+disconnect callback은 destroy·leave·membership 변경이 아니다. Actor relocation은 같은 ObjectGeneration에
+대해 owner·membership commit, 필요한 lifecycle callback과 accepted journal replay·logical timer 복원, durable source cleanup,
+`Completed` CAS를 차례로 끝낸 뒤 command 44·45로 해당 binding route만 바꾼다. Relocation 자체는
+disconnect callback을 실행하지 않는다. 같은 Session의 다른 Actor route와 physical STREAM connection은
+유지하며 routed ACK와 steady normalization 전에는 target session packet·push admission을 열지 않는다.
+
 SpotId는 UTF-8 encoded 크기 1..255 bytes의 `String`이며 Location Store transaction domain 전체에서
 유일한 logical ID다. 비교는 case-sensitive exact match이고 Unicode normalization과 case folding을
 적용하지 않는다. 일반 Spot send/request는
@@ -99,7 +106,7 @@ interface ZLinkSuspendingSpotPacketHandler<TSpot : ZLinkSpot<*>, TMessage> {
     suspend fun handle(
         spot: TSpot,
         message: TMessage,
-        context: ZLinkSendContext,
+        context: ZLinkMessageContext,
     )
 }
 
@@ -108,7 +115,7 @@ interface ZLinkSuspendingSpotRequestHandler<TSpot : Any, TRequest, TReply> {
     suspend fun handle(
         spot: TSpot,
         request: TRequest,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): TReply
 }
 
@@ -117,7 +124,7 @@ interface ZLinkSuspendingSpotSubscriptionHandler<TSpot : Any, TEvent> {
     suspend fun handle(
         spot: TSpot,
         event: TEvent,
-        context: ZLinkPublishContext,
+        context: ZLinkPublishMessageContext,
     )
 }
 
@@ -286,8 +293,9 @@ route client와 manager는 fluent option과 single-use state를 보존하는 전
 
 `onActorRelocatedSuspending(actor)`는 Java `ZLinkEntrySpot.onActorRelocated(actor)`의 coroutine bridge이며 별도 lifecycle
 API가 아니다. Maintenance target은 Actor adapter restore, Location commit, 이 callback과 source Entry Spot의
-`onLeaveActorSuspending(actor)`, old Entry membership의 durable cleanup, accepted journal replay와 dispatch
-개방 순서로 처리한다. Source process가 종료되면 exact source fence의 durable cleanup terminal이 source
+`onLeaveActorSuspending(actor)`, accepted journal replay·logical timer 복원, old Entry membership을 포함한 durable
+source cleanup, `Completed` CAS, bound-session route switch·ACK, steady normalization과 dispatch 개방 순서로
+처리한다. Source process가 종료되면 exact source fence의 durable cleanup terminal이 source
 callback 완료를 대신한다. 어느 callback의 exception도 commit을 rollback하지
 않고 target을 sealed 상태로 유지한 채 retry한다. User Spot application join만
 `onActorJoinSuspending`과 `onJoinedActorSuspending`을 사용한다. 새 Actor의 첫 생성은

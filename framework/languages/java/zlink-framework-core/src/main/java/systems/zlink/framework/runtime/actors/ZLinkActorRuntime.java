@@ -27,7 +27,6 @@ import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorJoinCall;
-import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorCreateResult;
 import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
@@ -80,6 +79,23 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             boolean getOrCreate);
     }
 
+    @FunctionalInterface
+    public interface EntrySpotTargetSelector {
+        CompletionStage<EntrySpotTarget> select(
+            String actorType,
+            Duration timeout);
+    }
+
+    public record EntrySpotTarget(
+        RoutingId nodeRid,
+        String spotId) {
+        public EntrySpotTarget {
+            java.util.Objects.requireNonNull(nodeRid, "nodeRid");
+            systems.zlink.framework.runtime.internal.spots
+                .ZLinkSpotIdValidator.requireValid(spotId);
+        }
+    }
+
     private final ZLinkInternalSpotNode spotNode;
     private final Map<String, Class<? extends ZLinkActorFactory>> factories;
     private final ZLinkActorTransferRegistry actorTransfers;
@@ -116,10 +132,86 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
     private systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer flow;
     private volatile boolean draining;
     private volatile CreationSubmitter creationSubmitter;
+    private volatile EntrySpotTargetSelector entrySpotTargetSelector =
+        (ignoredType, ignoredTimeout) ->
+            CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "eligible Entry Spot selection is unavailable"));
     private ZLinkRelayMetadataPolicy metadataPolicy = ZLinkRelayMetadataPolicy.EMPTY;
+    private final ZLinkOneWayCalls oneWayCalls;
+    private volatile ZLinkDeferredJoinAcceptedRecovery deferredJoinAcceptedRecovery;
 
     public void beginDrain() {
         draining = true;
+    }
+
+    public void setDeferredJoinAcceptedRecovery(
+        systems.zlink.framework.locations.ZLinkRelocationStore store) {
+        deferredJoinAcceptedRecovery = store == null
+            ? null
+            : new ZLinkDeferredJoinAcceptedRecovery(store, serializer);
+    }
+
+    CompletionStage<ZLinkDeferredJoinAcceptedRecovery.Manifest>
+        prepareDeferredJoinAccepted(
+            systems.zlink.framework.actors.ZLinkActorJoinOperationId operationId,
+            ZLinkBackendActorRef actor,
+            byte[] rawReply) {
+        ZLinkDeferredJoinAcceptedRecovery recovery = deferredJoinAcceptedRecovery;
+        if (recovery == null) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "cross-node deferred Actor Join requires a Relocation Store"));
+        }
+        return recovery.prepare(operationId, actor, rawReply);
+    }
+
+    public CompletionStage<Void> deliverDeferredJoinAccepted(
+        ZLinkActorSpotRoutePackets.TransferRequest request,
+        ZLinkBackendActorRef actor) {
+        if (request.completionManifest() == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        ZLinkDeferredJoinAcceptedRecovery recovery = deferredJoinAcceptedRecovery;
+        if (recovery == null) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "deferred Actor Join completion recovery is unavailable"));
+        }
+        return deliverDeferredJoinAcceptedWithRetry(
+            recovery,
+            request.completionManifest(),
+            actor,
+            0);
+    }
+
+    private CompletionStage<Void> deliverDeferredJoinAcceptedWithRetry(
+        ZLinkDeferredJoinAcceptedRecovery recovery,
+        ZLinkDeferredJoinAcceptedRecovery.Manifest manifest,
+        ZLinkBackendActorRef actor,
+        int attempt) {
+        return recovery.deliver(manifest, actor, this)
+            .exceptionallyCompose(error -> {
+                if (attempt >= 2 || draining) {
+                    return CompletableFuture.failedFuture(error);
+                }
+                CompletableFuture<Void> delay = new CompletableFuture<>();
+                CompletableFuture.delayedExecutor(
+                        10L << attempt,
+                        java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .execute(() -> delay.complete(null));
+                return delay.thenCompose(ignored ->
+                    deliverDeferredJoinAcceptedWithRetry(
+                        recovery,
+                        manifest,
+                        actor,
+                        attempt + 1));
+            });
+    }
+
+    /**
+     * Completes after every admitted Actor turn, including a yielded terminal
+     * continuation, has reached its terminal boundary.
+     */
+    public CompletionStage<Void> awaitDrainBarrier() {
+        return dispatches.awaitQuiescence();
     }
 
     public boolean drainComplete() {
@@ -202,8 +294,8 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
                 request,
                 defaultRequestTimeout,
                 context.spotJoinServices())
-            .submit()
-            .thenApply(result -> result instanceof ZLinkActorJoinResult.Accepted<?>);
+            .execute()
+            .thenApply(result -> result instanceof ZLinkActorJoinOutcome.Accepted);
         return attempt.whenComplete((moved, failure) -> request.close())
             .exceptionallyCompose(failure -> {
                 Throwable cause = failure instanceof CompletionException && failure.getCause() != null
@@ -300,7 +392,14 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         Duration actorTransferForwardWindow,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerActivator handlerFactory,
-        ZLinkStreamCodec defaultStreamCodec) {
+        ZLinkStreamCodec defaultStreamCodec,
+        java.util.function.BiFunction<
+            systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+            systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey,
+            java.util.function.BiFunction<
+                java.util.function.Supplier<Boolean>,
+                Runnable,
+                CompletionStage<Void>>> admission) {
         if (factories.isEmpty()) {
             throw new ZLinkConfigurationException("at least one actor factory is required");
         }
@@ -323,6 +422,34 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             handlerFactory);
         this.defaultStreamCodec =
             defaultStreamCodec == null ? ZLinkStreamCodec.JSON : defaultStreamCodec;
+        this.oneWayCalls = new ZLinkOneWayCalls(admission);
+    }
+
+    public ZLinkActorRuntime(
+        ZLinkInternalSpotNode spotNode,
+        Map<String, Class<? extends ZLinkActorFactory>> factories,
+        Map<String, Class<? extends ZLinkActorTransferAdapter<?>>> transferAdapters,
+        Duration defaultRequestTimeout,
+        Duration actorTransferForwardWindow,
+        ZLinkMessageSerializer serializer,
+        ZLinkHandlerActivator handlerFactory,
+        ZLinkStreamCodec defaultStreamCodec) {
+        this(
+            spotNode,
+            factories,
+            transferAdapters,
+            defaultRequestTimeout,
+            actorTransferForwardWindow,
+            serializer,
+            handlerFactory,
+            defaultStreamCodec,
+            (ignoredBackend, ignoredKey) -> (ignoredSubmission, ignoredCleanup) ->
+                CompletableFuture.failedFuture(new IllegalStateException(
+                    "one-way admission factory is required")));
+    }
+
+    ZLinkOneWayCalls oneWayCalls() {
+        return oneWayCalls;
     }
 
     @Override
@@ -940,7 +1067,9 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         RoutingId entryNodeRid) {
         DefaultActorContext context = requireContext(actor);
         context.setEntrySpotNodeRid(entryNodeRid);
-        context.markMovedToEntrySpot(context.actorRef(), entryNodeRid);
+        context.markMovedToEntrySpot(
+            context.actorRef(),
+            new EntrySpotTarget(entryNodeRid, context.entrySpotId()));
         String actorType = actorRegistry.actorType(actor.actorId());
         CompletionStage<Void> ownership = actorRegistry.clearPendingTransfer(actor.actorId())
             ? locations.claimActor(
@@ -1485,6 +1614,32 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return false;
     }
 
+    public boolean isActorAtSpot(String actorId, String spotId) {
+        ZLinkActor actor = actorRegistry.actor(actorId);
+        DefaultActorContext context =
+            actor == null ? null : actorRegistry.context(actor);
+        return context != null
+            && (java.util.Objects.equals(context.joinedSpotId(), spotId)
+                || (context.currentSpot() == null
+                    && java.util.Objects.equals(context.entrySpotId(), spotId)));
+    }
+
+    ZLinkActor actorById(String actorId) {
+        return actorRegistry.actor(actorId);
+    }
+
+    public List<String> actorIdsInSpot(String spotId) {
+        java.util.Objects.requireNonNull(spotId, "spotId");
+        synchronized (this) {
+            return actorRegistry.entries().stream()
+                .filter(entry -> spotId.equals(
+                    entry.context().joinedSpotId()))
+                .map(entry -> entry.actor().actorId())
+                .sorted()
+                .toList();
+        }
+    }
+
     public CompletionStage<Optional<ZLinkActor>> getOrCreateLocalActor(
         String actorId,
         Class<?> expectedActorType) {
@@ -1557,8 +1712,37 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         return dispatches.runTurn(actorId, operation);
     }
 
+    CompletionStage<Void> submitDeferredJoinBarrier(
+        String actorId,
+        Supplier<CompletionStage<Void>> operation) {
+        if (!actorRegistry.contains(actorId)) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "actor is not managed by this runtime: " + actorId));
+        }
+        return dispatches.enqueueBarrier(actorId, operation);
+    }
+
     boolean isActorDispatchActive(ZLinkActor actor) {
         return dispatches.isActive(actor.actorId());
+    }
+
+    void requireDeferredJoinRegistration(DefaultActorContext context) {
+        if (draining) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RUNTIME_SHUTDOWN,
+                "Actor join admission is sealed while the runtime is draining");
+        }
+        ZLinkActor actor = context.actor();
+        if (actor == null || actorRegistry.context(actor) != context) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ACTOR_GENERATION_STALE,
+                "Actor context does not represent the current local incarnation");
+        }
+        if (context.moving()) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ACTOR_MOVING,
+                "Actor already has a membership transition in progress");
+        }
     }
 
     void continueAfterActorDispatch(
@@ -1645,6 +1829,16 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
 
     public void setCreationSubmitter(CreationSubmitter submitter) {
         creationSubmitter = submitter;
+    }
+
+    public void setEntrySpotTargetSelector(
+        EntrySpotTargetSelector selector) {
+        entrySpotTargetSelector = selector == null
+            ? (ignoredType, ignoredTimeout) ->
+                CompletableFuture.failedFuture(
+                    new ZLinkConfigurationException(
+                        "eligible Entry Spot selection is unavailable"))
+            : selector;
     }
 
     public void setSpotResolver(Function<String, ZLinkSpot<?>> spotResolver) {
@@ -1818,12 +2012,15 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         Message request = Message.from(new byte[0]);
         return new ZLinkActorEntrySpotJoinCall(
                 context,
-                entrySpotNodeRid,
+                ignored -> CompletableFuture.completedFuture(
+                    new EntrySpotTarget(
+                        entrySpotNodeRid,
+                        context.entrySpotId())),
                 request,
                 timeout,
                 context.entrySpotJoinServices())
-            .submit()
-            .thenCompose(result -> result instanceof systems.zlink.framework.actors.ZLinkActorJoinResult.Accepted<?>
+            .execute()
+            .thenCompose(result -> result instanceof ZLinkActorJoinOutcome.Accepted
                 ? CompletableFuture.<Void>completedFuture(null)
                 : CompletableFuture.<Void>failedFuture(new ZLinkConfigurationException(
                     "actor Entry Spot join was rejected: " + actor.actorId())))
@@ -2146,8 +2343,11 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
 
         void markMovedToEntrySpot(
             ZLinkBackendActorRef actorRef,
-            RoutingId entrySpotNodeRid) {
-            state.markMovedToEntrySpot(actorRef, entrySpotNodeRid);
+            EntrySpotTarget target) {
+            state.markMovedToEntrySpot(
+                actorRef,
+                target.nodeRid(),
+                target.spotId());
         }
 
         void markLeft() {
@@ -2172,26 +2372,30 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
         }
 
         @Override
-        public ZLinkActorJoinCall joinEntrySpot(RoutingId spotNodeRid, Object request) {
-            if (spotNodeRid == null) {
-                throw new ZLinkConfigurationException("spotNodeRid is required");
-            }
+        public ZLinkActorJoinCall joinEntrySpot() {
+            return createJoinEntrySpotCall(
+                Message.from(new byte[0]),
+                defaultRequestTimeout);
+        }
+
+        @Override
+        public ZLinkActorJoinCall joinEntrySpot(Object request) {
             if (request == null) {
                 throw new ZLinkConfigurationException("request is required");
             }
             return createJoinEntrySpotCall(
-                spotNodeRid,
                 messageFromRequest(request),
                 defaultRequestTimeout);
         }
 
         private ZLinkActorJoinCall createJoinEntrySpotCall(
-            RoutingId spotNodeRid,
             Message request,
             Duration timeout) {
             return new ZLinkActorEntrySpotJoinCall(
                 this,
-                spotNodeRid,
+                requestedTimeout -> entrySpotTargetSelector.select(
+                    actorRegistry.actorType(state.actorId()),
+                    requestedTimeout),
                 request,
                 timeout,
                 entrySpotJoinServices());
@@ -2201,7 +2405,19 @@ public final class ZLinkActorRuntime implements ZLinkActorManager, ZLinkActorDir
             return new ZLinkActorEntrySpotJoinCall.Services(
                 spotNode,
                 serializer,
+                ZLinkActorRuntime.this,
                 ZLinkActorRuntime.this::renewActorMovedToEntrySpotLocation);
+        }
+
+        @Override
+        public ZLinkActorJoinCall joinSpot(String spotId) {
+            if (spotId == null) {
+                throw new ZLinkConfigurationException("spotId is required");
+            }
+            return createJoinSpotCall(
+                spotId,
+                Message.from(new byte[0]),
+                defaultRequestTimeout);
         }
 
         @Override

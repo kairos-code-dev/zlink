@@ -402,7 +402,7 @@ class actor_ping_handler_t
         }
         co_return co_await _actors.request_to_actor (*actor_ref, request)
           .timeout (std::chrono::milliseconds (5000))
-          .async<obs::actor_ping_res_t> ();
+          .submit<obs::actor_ping_res_t> ();
     }
 
   private:
@@ -447,7 +447,7 @@ class obs_session_t final : public fw::packet_stream_session_t
         }
         auto reply = co_await _routes.request_to_spot (*handle, request)
                        .timeout (std::chrono::milliseconds (5000))
-                       .async<obs::obs_action_res_t> ();
+                       .submit<obs::obs_action_res_t> ();
         stream.reply_packet (zlink::message_t::from_json (reply))
           .submit ();
         co_return;
@@ -562,7 +562,7 @@ class action_handler_t
         }
         co_return co_await _routes.request_to_spot (*spot, request)
           .timeout (std::chrono::milliseconds (5000))
-          .async<obs::obs_action_res_t> ();
+          .submit<obs::obs_action_res_t> ();
     }
 
   private:

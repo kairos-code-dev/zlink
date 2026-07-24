@@ -1236,7 +1236,8 @@ void configure_actor_gateway_spot_bridge (
     auto &actor_gateway = framework_provider.get_required<actor_gateway_runtime_t> ();
     actor_gateway.on_join_spot ([bindings = actor_gateway_spot_nodes, actor_gateway,
                                  &serializers] (const actor_ref_t &actor_ref, spot_id_t spot_id,
-                                                const zlink::message_t &payload) mutable {
+                                                const zlink::message_t &payload,
+                                                std::chrono::milliseconds) mutable {
         auto join_local = [&] (actor_gateway_spot_node_binding_t &binding,
                                const spot_id_t &target_spot_id) {
             if (!actor_ref.node_rid ().empty ()
@@ -1259,24 +1260,15 @@ void configure_actor_gateway_spot_bridge (
         return join_spot_with_target_binding_first (bindings, spot_id, join_local, join_fallback);
     });
     actor_gateway.on_join_entry_spot ([bindings = actor_gateway_spot_nodes, &serializers] (
-                                        const actor_ref_t &actor_ref, node_rid_t node_rid,
-                                        const zlink::message_t &payload) mutable {
+                                        const actor_ref_t &actor_ref,
+                                        const zlink::message_t &payload,
+                                        std::chrono::milliseconds) mutable {
         auto last = result_t<actor_join_reply_t>::failure (
           framework_error_kind_t::spot_route_not_found, "SPOT node route not found");
         for (auto &binding : bindings) {
-            if (!node_rid.empty () && node_rid.value () != binding.local_spot_node_rid) {
-                auto joined = join_actor_to_entry_spot_through_route (
-                  binding.runtime, binding.route_client, binding.local_spot_node_rid,
-                  binding.route_channel_name, actor_ref, node_rid, payload, std::nullopt,
-                  serializers);
-                if (joined || !is_spot_route_miss (joined.error_kind ())) {
-                    return joined;
-                }
-                last = std::move (joined);
-                continue;
-            }
-            return binding.runtime.join_actor_to_entry_spot_erased (actor_ref, std::move (node_rid),
-                                                                    payload);
+            auto node_rid = node_rid_t (binding.local_spot_node_rid);
+            return binding.runtime.join_actor_to_entry_spot_erased (
+              actor_ref, std::move (node_rid), payload);
         }
         return last;
     });

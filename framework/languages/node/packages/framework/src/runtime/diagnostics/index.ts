@@ -40,6 +40,7 @@ import {
   ZLinkSocketEventKind as SocketEventKind,
   ZLinkSocketNativeEventType as SocketNativeEventType,
   ZLinkMeshNodeState,
+  ZLinkObjectRole,
   ZLinkSpotEventKind as SpotEventKind
 } from '../../contracts';
 import type {
@@ -337,23 +338,38 @@ export class ZLinkMeshMonitoringSource {
       lifecycleGeneration: status.lifecycleGeneration,
       descriptorRevision: status.descriptorRevision,
       endpoint: status.localEndpoint,
+      objectRole: this.meshOptions?.objectRole === 'server'
+        ? ZLinkObjectRole.Server
+        : this.meshOptions?.objectRole === 'client'
+          ? ZLinkObjectRole.Client
+          : ZLinkObjectRole.None,
+      placementWeight: this.meshOptions?.placementWeight ?? 0,
+      populationCapacity: {
+        actors: {
+          active: 0,
+          reserved: 0,
+          limit: this.meshOptions?.actorLimit ?? 0
+        },
+        spots: {
+          active: 0,
+          reserved: 0,
+          limit: this.meshOptions?.spotLimit ?? 0
+        },
+        spotTypes: []
+      },
+      activationConcurrency: {
+        active: 0,
+        limit: this.meshOptions?.activationConcurrencyLimit ?? 128
+      },
+      applicationVersion: 0n,
+      placementReservationFailureCount: 0n,
+      objectCapabilities: [],
       state: meshNodeState(status.state),
       sequence: status.lastChangedMs,
       observedAt: new Date(),
       descriptorSources: [],
       peers,
       channels: localChannels,
-      multicast: {
-        submitted: status.multicastSubmitted,
-        backpressured: 0n,
-        dropped: status.multicastDroppedTargets,
-        remoteSnapshotCount: 0n,
-        remoteAdmittedCount: 0n,
-        remoteDroppedCount: status.multicastDroppedTargets,
-        localSnapshotCount: 0n,
-        localAdmittedCount: 0n,
-        localDroppedCount: 0n
-      },
       claims: {
         applicationActive: status.pendingApplicationMessages > 0n,
         pendingApplicationWork: status.pendingApplicationMessages,

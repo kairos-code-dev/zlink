@@ -57,7 +57,7 @@ inline void run_rl_c1_client_host_lifecycle_probe (const client_options_t &optio
         const auto marker = "rl-c1-" + std::to_string (index);
         const auto reply = consumer.post ("/profile/request/new-client")
                              .body (profile_req_t{.value = "fast", .marker = marker})
-                             .async<profile_res_t> ().result ().value ().body;
+                             .submit<profile_res_t> ().result ().value ().body;
         ensure (reply.value == "profile:fast", "RL-C1 request failed before cleanup");
     }
 
@@ -66,7 +66,7 @@ inline void run_rl_c1_client_host_lifecycle_probe (const client_options_t &optio
         const auto reply =
           consumer.post ("/route/request/recreated-mesh")
             .body (scenario_route_req_t{.value = marker})
-            .async<scenario_route_res_t> ()
+            .submit<scenario_route_res_t> ()
             .result ()
             .value ()
             .body;
@@ -88,7 +88,7 @@ inline void run_rl_c1_client_host_lifecycle_probe (const client_options_t &optio
     const auto follow_up = consumer.post ("/profile/request/new-client")
                              .body (profile_req_t{.value = "fast",
                                                   .marker = "rl-c1-after-cleanup"})
-                             .async<profile_res_t> ().result ().value ().body;
+                             .submit<profile_res_t> ().result ().value ().body;
     ensure (follow_up.value == "profile:fast", "RL-C1 follow-up failed after cleanup");
 
     wait_provider_evidence_prefix (options, "rl-c1-");

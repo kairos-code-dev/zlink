@@ -319,14 +319,14 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
         SendFlags flags,
         ReadOnlyMemory<byte> metadata);
 
-    MeshPublishResult Publish(
+    void Publish(
         string channelName,
         string topic,
         Message message,
         SendFlags flags,
         ReadOnlyMemory<byte> metadata);
 
-    MeshPublishResult Publish(
+    void Publish(
         string channelName,
         string topic,
         IReadOnlyList<Message> parts,

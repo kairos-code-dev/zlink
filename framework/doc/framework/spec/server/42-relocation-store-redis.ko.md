@@ -16,6 +16,9 @@ Relocation Store는 Location Store와 별도 public interface, 별도 등록과 
 두 implementation은 같은 Redis deployment 또는 cluster를 서로 다른 key prefix로 사용할 수 있고 물리적으로
 분리된 Redis를 사용할 수도 있다. Location Store transaction은 Relocation Store key를 포함하지 않으며 두 Store
 사이에 distributed transaction이나 2PC를 요구하지 않는다.
+Session socket, binding token과 per-Actor route는 Relocation Store payload나 manifest에 포함하지 않는다.
+Framework session owner가 Bind 때 route를 저장하고 같은 ObjectGeneration relocation의 `Completed` 이후
+route switch를 수행한다.
 
 ## 2. Immutable root와 manifest
 

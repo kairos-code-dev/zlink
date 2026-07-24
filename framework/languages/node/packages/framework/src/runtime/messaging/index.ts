@@ -2,7 +2,6 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException
 } from '../../contracts';
-import { ZLinkConfigurationException } from '../configuration';
 import { createAbortError, throwIfAborted } from '../abort';
 
 type ZLinkRequestSubmit<TReply> = (
@@ -18,10 +17,12 @@ interface ZLinkPendingSubmitOptions {
 
 export class ZLinkAsyncSubmitter {
   private readonly queue: ZLinkPendingSubmit<unknown>[] = [];
+  private readonly capacityWaiters: ZLinkPendingSubmit<unknown>[] = [];
   private readonly active = new Set<ZLinkPendingSubmit<unknown>>();
   private requestActive = false;
   private readonly timeoutMs: number | undefined;
   private readonly capacity: number;
+  private readonly waiterCapacity: number;
   private readonly onCommandFailure: ((error: unknown) => void) | undefined;
   private readyRegistered = false;
   private readyCredit = false;
@@ -32,15 +33,19 @@ export class ZLinkAsyncSubmitter {
     options: {
       readonly timeoutMs?: number;
       readonly capacity?: number;
+      readonly waiterCapacity?: number;
       readonly onCommandFailure?: (error: unknown) => void;
     } = {}
   ) {
     this.timeoutMs = options.timeoutMs === -1 ? undefined : options.timeoutMs ?? 1000;
     this.capacity = options.capacity ?? 4096;
+    this.waiterCapacity = options.waiterCapacity ?? this.capacity;
     this.onCommandFailure = options.onCommandFailure;
   }
 
   submitCommand(submit: () => boolean, signal?: AbortSignal, onDiscard?: () => void): Promise<void> {
+    const overflow = this.rejectHardOverflow<void>(signal, onDiscard);
+    if (overflow !== undefined) return overflow;
     const pending = this.createPending<void>(
       () => submit(),
       true,
@@ -73,6 +78,11 @@ export class ZLinkAsyncSubmitter {
   }
 
   submitCommandOneWay(submit: () => boolean, signal?: AbortSignal, onDiscard?: () => void): void {
+    const overflow = this.rejectHardOverflow<void>(signal, onDiscard);
+    if (overflow !== undefined) {
+      void overflow.catch(() => undefined);
+      throw hardOverflowError();
+    }
     const pending = this.createPending<void>(
       () => submit(),
       true,
@@ -87,10 +97,12 @@ export class ZLinkAsyncSubmitter {
       return;
     }
     if (this.disposed) {
-      this.rejectOneWaySubmission(pending, new ZLinkConfigurationException('ZLink async submitter is disposed.'));
+      this.rejectOneWaySubmission(pending, runtimeShutdownError());
     }
     if (this.pendingQueueLength() >= this.capacity) {
-      this.rejectOneWaySubmission(pending, new ZLinkConfigurationException('ZLink async submit queue is full.'));
+      this.capacityWaiters.push(pending as ZLinkPendingSubmit<unknown>);
+      this.finishOneWaySubmission(pending);
+      return;
     }
     this.queue.push(pending as ZLinkPendingSubmit<unknown>);
     this.consumeReadyCredit();
@@ -103,6 +115,8 @@ export class ZLinkAsyncSubmitter {
     timeoutMs?: number,
     onDiscard?: () => void
   ): Promise<TReply> {
+    const overflow = this.rejectHardOverflow<TReply>(signal, onDiscard, requestTimeoutError);
+    if (overflow !== undefined) return overflow;
     const pending = this.createPending<TReply>(submit, false, signal, timeoutMs, onDiscard);
     this.ensureReadyHandler();
     if (!this.requestActive && this.trySubmitPending(pending)) {
@@ -118,8 +132,9 @@ export class ZLinkAsyncSubmitter {
     }
     this.disposed = true;
     this.readyCredit = false;
-    const error = new ZLinkConfigurationException('ZLink async submitter is disposed.');
+    const error = runtimeShutdownError();
     this.queue.length = 0;
+    this.capacityWaiters.length = 0;
     for (const pending of this.active) {
       pending.reject(error);
     }
@@ -140,7 +155,7 @@ export class ZLinkAsyncSubmitter {
     onDiscard?: () => void
   ): ZLinkPendingSubmit<TReply> {
     if (this.disposed) {
-      const error = new ZLinkConfigurationException('ZLink async submitter is disposed.');
+      const error = runtimeShutdownError();
       throw discardBeforePending(error, onDiscard);
     }
     try {
@@ -165,11 +180,15 @@ export class ZLinkAsyncSubmitter {
 
   private enqueue<TReply>(pending: ZLinkPendingSubmit<TReply>): Promise<TReply> {
     if (this.disposed) {
-      pending.reject(new ZLinkConfigurationException('ZLink async submitter is disposed.'));
+      pending.reject(runtimeShutdownError());
       return pending.promise;
     }
     if (this.queue.length >= this.capacity) {
-      pending.reject(new ZLinkConfigurationException('ZLink async submit queue is full.'));
+      if (this.capacityWaiters.length >= this.waiterCapacity) {
+        pending.reject(hardOverflowError());
+        return pending.promise;
+      }
+      this.capacityWaiters.push(pending as ZLinkPendingSubmit<unknown>);
       return pending.promise;
     }
 
@@ -265,15 +284,86 @@ export class ZLinkAsyncSubmitter {
     return this.queue.length;
   }
 
+  private rejectHardOverflow<TReply>(
+    signal: AbortSignal | undefined,
+    onDiscard: (() => void) | undefined,
+    overflowError: () => Error = hardOverflowError
+  ): Promise<TReply> | undefined {
+    if (this.queue.length < this.capacity
+      || this.capacityWaiters.length < this.waiterCapacity) {
+      return undefined;
+    }
+    try {
+      if (this.disposed) {
+        throw runtimeShutdownError();
+      }
+      throwIfAborted(signal);
+    } catch (error) {
+      return Promise.reject(discardBeforePending(error, onDiscard));
+    }
+    try {
+      onDiscard?.();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return Promise.reject(overflowError());
+  }
+
   private completePending(pending: ZLinkPendingSubmit<unknown>): void {
     this.active.delete(pending);
     this.removeQueued(pending);
+    this.removeCapacityWaiter(pending);
+    this.admitCapacityWaiters();
   }
 
   private removeQueued(pending: ZLinkPendingSubmit<unknown>): void {
     const index = this.queue.indexOf(pending);
     if (index >= 0) this.queue.splice(index, 1);
   }
+
+  private removeCapacityWaiter(pending: ZLinkPendingSubmit<unknown>): void {
+    const index = this.capacityWaiters.indexOf(pending);
+    if (index >= 0) this.capacityWaiters.splice(index, 1);
+  }
+
+  private admitCapacityWaiters(): void {
+    while (!this.disposed && this.queue.length < this.capacity && this.capacityWaiters.length > 0) {
+      const pending = this.capacityWaiters.shift()!;
+      if (!this.active.has(pending)) continue;
+      this.queue.push(pending);
+    }
+    this.consumeReadyCredit();
+  }
+}
+
+function hardOverflowError(): ZLinkFrameworkException {
+  return new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.DeadlineExceeded,
+    'ZLink async submit timed out because its bounded admission waiters are full.',
+    true
+  );
+}
+
+function runtimeShutdownError(): ZLinkFrameworkException {
+  return new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.RuntimeShutdown,
+    'ZLink async submitter rejected the operation because the runtime is shutting down.'
+  );
+}
+
+function submitTimeoutError(): ZLinkFrameworkException {
+  return new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.DeadlineExceeded,
+    'ZLink async submit timed out.',
+    true
+  );
+}
+
+function requestTimeoutError(): ZLinkFrameworkException {
+  return new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.RequestFailed,
+    'ZLink async submit timed out.'
+  );
 }
 
 export { ZLinkMeshSubmitterRegistry } from './mesh-submitters';
@@ -295,6 +385,7 @@ class ZLinkPendingSubmit<TReply> {
   private readonly signal: AbortSignal | undefined;
   private readonly abortHandler: (() => void) | undefined;
   private readonly timeout: ReturnType<typeof setTimeout> | undefined;
+  private readonly deadlineMs: number | undefined;
   private completed = false;
   private accepted = false;
   private submitting = false;
@@ -308,16 +399,16 @@ class ZLinkPendingSubmit<TReply> {
     private readonly onSettled: () => void
   ) {
     this.signal = options.signal;
+    this.deadlineMs = options.timeoutMs === undefined
+      ? undefined
+      : Date.now() + Math.max(0, options.timeoutMs);
     this.promise = new Promise<TReply>((resolve, reject) => {
       this.resolvePromise = resolve;
       this.rejectPromise = reject;
     });
     if (options.timeoutMs !== undefined) {
       this.timeout = setTimeout(
-        () => this.reject(new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.RequestFailed,
-          'ZLink async submit timed out.'
-        )),
+        () => this.reject(this.timeoutError()),
         options.timeoutMs
       );
     }
@@ -333,6 +424,10 @@ class ZLinkPendingSubmit<TReply> {
 
   trySubmit(): boolean {
     if (this.completed) {
+      return true;
+    }
+    if (this.deadlineMs !== undefined && Date.now() >= this.deadlineMs) {
+      this.reject(this.timeoutError());
       return true;
     }
     let accepted: boolean;
@@ -360,6 +455,10 @@ class ZLinkPendingSubmit<TReply> {
       this.resolve(undefined as TReply);
     }
     return accepted;
+  }
+
+  private timeoutError(): ZLinkFrameworkException {
+    return this.completeOnAccepted ? submitTimeoutError() : requestTimeoutError();
   }
 
   takeSubmissionError(): unknown {

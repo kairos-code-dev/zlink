@@ -44,11 +44,11 @@ export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>
 }
 
 export interface ZLinkEntrySpotActorRequestHandler<TActor extends ZLinkActor, TRequest, TReply> {
-    handle(actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
+    handle(actor: TActor, context: ZLinkMessageContext, request: TRequest): Promise<TReply>;
 }
 
 export interface ZLinkEntrySpotActorSendHandler<TActor extends ZLinkActor, TMessage> {
-    handle(actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
+    handle(actor: TActor, context: ZLinkMessageContext, message: TMessage): Promise<void>;
 }
 
 export interface ZLinkEntrySpotContext<TActor extends ZLinkActor = ZLinkActor, TEntrySpot extends ZLinkEntrySpot<TActor> = ZLinkEntrySpot<TActor>> extends ZLinkSpotCommonContext<TEntrySpot> {
@@ -88,9 +88,9 @@ Actor를 target Entry Spot에 materialize할 때 Snapshot은 Actor adapter `rest
 payload restore 없이 factory materialization을 완료한다. Accepted journal은 checksum, 순서와 fence만 검증해
 application handler가 실행하지 않는 target staging queue에 준비한 뒤 Prepared CAS와 Location
 authority·Entry membership commit을 수행한다. Commit 뒤 target `onActorRelocated(...)`와 source
-`onLeaveActor(...)`를 완료하고 old Entry membership의 durable cleanup을 끝낸 다음 accepted journal을 replay한다.
+`onLeaveActor(...)`를 완료하고 accepted journal을 replay하며 logical timer를 복원한 다음 old Entry membership과 나머지 source resource를 durable하게 cleanup한다.
 Source process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신한다.
-두 callback과 old Entry membership cleanup, replay, 남은 source resource cleanup, Completed CAS, route ACK와
+두 callback과 replay, old Entry membership을 포함한 source cleanup, Completed CAS, route ACK와
 steady normalization을 모두 완료한 뒤 Actor dispatch admission을 연다. 두 callback
 중 하나가 throw하거나 rejected Promise로 끝나도 authority를 source로 rollback하지 않고 target을 sealed 상태로
 유지한 채 exact relocation fence로 retry한다. 두 callback은 at-least-once 호출될 수 있으므로 retry-safe해야 한다.
@@ -241,14 +241,14 @@ export interface ZLinkPublishCall {
     submit(signal?: AbortSignal): Promise<void>;
 }
 
-export interface ZLinkPublishContext extends ZLinkHandlerContext {
+export interface ZLinkPublishMessageContext extends ZLinkMessageContext {
     readonly channelName: string;
     readonly topic: string;
     readonly source?: string;
 }
 
 export interface ZLinkPublishHandler<TMessage> {
-    handle(message: TMessage, context: ZLinkPublishContext): Promise<void>;
+    handle(message: TMessage, context: ZLinkPublishMessageContext): Promise<void>;
 }
 ```
 
@@ -275,12 +275,8 @@ export interface ZLinkChannelRequestCall {
     yield<TReply>(signal?: AbortSignal): Promise<TReply>;
 }
 
-export interface ZLinkRequestContext extends ZLinkHandlerContext {
-    readonly channelName: string;
-}
-
 export interface ZLinkRequestHandler<TRequest, TResponse> {
-    handle(request: TRequest, context: ZLinkRequestContext): Promise<TResponse>;
+    handle(request: TRequest, context: ZLinkMessageContext): Promise<TResponse>;
 }
 
 export interface ZLinkRouteClient {
@@ -360,20 +356,17 @@ option은 제공하지 않는다.
 ## 5. Route handler와 one-way submit
 
 ```ts
-export interface ZLinkRouteRequestContext extends ZLinkRouteSendContext {
-}
-
 export interface ZLinkRouteRequestHandler<TRequest, TReply> {
-    handle(request: TRequest, context: ZLinkRouteRequestContext): Promise<TReply>;
+    handle(request: TRequest, context: ZLinkRouteMessageContext): Promise<TReply>;
 }
 
-export interface ZLinkRouteSendContext extends ZLinkHandlerContext {
+export interface ZLinkRouteMessageContext extends ZLinkMessageContext {
     readonly meshName: string;
     readonly sourceNodeRid: RoutingId;
 }
 
 export interface ZLinkRouteSendHandler<TMessage> {
-    handle(message: TMessage, context: ZLinkRouteSendContext): Promise<void>;
+    handle(message: TMessage, context: ZLinkRouteMessageContext): Promise<void>;
 }
 
 export interface ZLinkRuntimeEvent {
@@ -398,12 +391,8 @@ export interface ZLinkSendCall {
     submit(signal?: AbortSignal): Promise<void>;
 }
 
-export interface ZLinkSendContext extends ZLinkHandlerContext {
-    readonly channelName: string;
-}
-
 export interface ZLinkSendHandler<TMessage> {
-    handle(message: TMessage, context: ZLinkSendContext): Promise<void>;
+    handle(message: TMessage, context: ZLinkMessageContext): Promise<void>;
 }
 ```
 
@@ -438,8 +427,8 @@ slot을 얻지 못하면 send timeout까지 capacity를 기다린다. Slot을 �
 abort와 shutdown이 operation 시작을 막을 수 있다. Publish attempt를 시작한 시점이 operation commit
 barrier이며, 그 뒤의 abort는 이미 확정한 snapshot operation을 중단하지 않는다. Transaction이 시작된 뒤
 개별 target 실패는 이미 수락한 target을 rollback하거나 전체 publish를 자동 재시도하지 않는다. Remote
-transport와 local Spot queue의 snapshot·admitted·dropped·unreachable count는 monitoring snapshot, metric과
-runtime event에 기록한다. Target snapshot이 0개여도 정상 완료한다.
+transport와 local Spot queue의 target별 수락·실패 결과는 반환하거나 monitoring에 집계하지 않는다.
+Target snapshot이 0개여도 정상 완료한다.
 
 ## 6. Serializer와 STREAM session
 
@@ -458,14 +447,14 @@ export interface ZLinkSession {
     onConnected?(context: ZLinkSessionContext): Promise<void>;
     onDisconnected?(context: ZLinkSessionContext): Promise<void>;
     onError?(context: ZLinkSessionContext, error: ZLinkStreamError): Promise<void>;
-    onDispatch?(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<void>;
+    onDispatch?(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage): Promise<void>;
 }
 
 export interface ZLinkSessionActor {
     readonly actorId: ActorId;
     readonly ref: ActorRef;
     relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
-    relay(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage,
+    relay(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage,
         signal?: AbortSignal): Promise<void>;
     notifyDisconnected(signal?: AbortSignal): Promise<void>;
 }
@@ -493,7 +482,7 @@ export interface ZLinkSessionContext {
     close(signal?: AbortSignal): Promise<void>;
 }
 
-export interface ZLinkSessionDispatchContext {
+export interface ZLinkSessionMessageContext {
     readonly packetName: string;
     readonly metadata: ZLinkMessageMetadata;
     readonly canReply: boolean;
@@ -505,11 +494,11 @@ export interface ZLinkSessionFactory<TSession extends ZLinkSession = ZLinkSessio
 
 export interface ZLinkSessionHandlerRegistry {
     addHandler<THandler>(handlerType: Type<THandler>): this;
-    tryHandle(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage): Promise<boolean>;
+    tryHandle(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage): Promise<boolean>;
 }
 
 export interface ZLinkSessionPacketHandler<TSessionContext, TMessage = ZLinkMessage> {
-    handle(context: TSessionContext, dispatch: ZLinkSessionDispatchContext, message: TMessage): Promise<void>;
+    handle(context: TSessionContext, dispatch: ZLinkSessionMessageContext, message: TMessage): Promise<void>;
 }
 
 export interface ZLinkSessionReplyCall {
@@ -524,6 +513,14 @@ export interface ZLinkSessionSendCall {
     submit(signal?: AbortSignal): Promise<void>;
 }
 ```
+
+Bind 뒤 relay·request relay와 `notifyDisconnected`는 Actor별 저장 route를 사용하며 message마다 Location
+Store를 조회하지 않는다. Physical disconnect는 Framework가 current binding 전체에 자동 all-settled 통지를
+수행한다. `notifyDisconnected`는 연결이 유지된 상태의 논리적 통지이며 callback 완료까지 기다린다.
+Automatic 통지와 경쟁해도 exact binding identity마다 Spot callback을 최대 한 번 실행한다. Relocation route
+update는 같은 ObjectGeneration에만 허용하고 `Completed` 뒤 해당 Actor route만 바꾼다.
+Command 44·45 routed ACK와 steady normalization 전에는 target Actor의 session packet·push admission을
+열지 않으며, 같은 Session의 다른 Actor route와 physical STREAM connection은 유지한다.
 
 Payload만 받는 `relay(...)`는 local relay queue가 operation을 수락하면 정상 완료하는 one-way admission이다.
 Dispatch context를 받는 overload는 explicit current STREAM request reply capability를 호출 즉시 runtime에

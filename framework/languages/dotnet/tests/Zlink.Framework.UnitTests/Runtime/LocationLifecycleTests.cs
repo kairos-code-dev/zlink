@@ -227,11 +227,11 @@ public sealed class LocationLifecycleTests
             ActorId,
             new ActorRef(RoutingId.From("node-1"), ActorId, 1));
         await node.ActorOwnership.NotifyActorJoinedSpotAsync(
-            ActorId, RoutingId.From("spot-1"), spotGeneration: 4);
+            ActorId, "spot-1", spotGeneration: 4);
 
         var joined = await fixture.Store.ResolveActorAsync(key);
         Assert.Equal(ZLinkSpotKind.User, joined!.SpotKind);
-        Assert.Equal(RoutingId.From("spot-1"), joined.SpotId);
+        Assert.Equal("spot-1", joined.SpotId);
         Assert.Equal(4UL, joined.SpotGeneration);
         Assert.Equal(ActorId, joined.ActorRef.ActorId);
         Assert.Equal(1UL, joined.MembershipEpoch);
@@ -240,7 +240,7 @@ public sealed class LocationLifecycleTests
 
         var left = await fixture.Store.ResolveActorAsync(key);
         Assert.Equal(ZLinkSpotKind.Entry, left!.SpotKind);
-        Assert.False(left.SpotId is { Size: > 0 });
+        Assert.True(string.IsNullOrEmpty(left.SpotId));
         Assert.Equal(2UL, left.MembershipEpoch);
     }
 
@@ -249,7 +249,7 @@ public sealed class LocationLifecycleTests
     {
         await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
-        var spotId = RoutingId.From("spot-7");
+        const string spotId = "spot-7";
 
         await CreateTrackedActorAsync(node);
         await node.ActorOwnership.ReleaseActorAsync(ActorId);
@@ -261,13 +261,14 @@ public sealed class LocationLifecycleTests
             7,
             "game",
             RoutingId.From("node-a"),
+            1,
             ZLinkSpotKind.User,
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, status);
-        Assert.NotNull(await fixture.Store.ResolveSpotAsync(new ZLinkSpotLocationKey("mesh", spotId)));
+        Assert.NotNull(await fixture.Store.ResolveSpotAsync(new ZLinkSpotLocationKey(spotId)));
 
         await node.SpotLocations.ReleaseAsync("mesh", spotId);
-        Assert.Null(await fixture.Store.ResolveSpotAsync(new ZLinkSpotLocationKey("mesh", spotId)));
+        Assert.Null(await fixture.Store.ResolveSpotAsync(new ZLinkSpotLocationKey(spotId)));
     }
 
     [Fact]
@@ -312,7 +313,7 @@ public sealed class LocationLifecycleTests
 
         await node.ActorOwnership.NotifyActorJoinedSpotAsync(
             ActorId,
-            RoutingId.From("spot-1"),
+            "spot-1",
             spotGeneration: 1);
 
         var row = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(MeshName, ActorId));
@@ -320,7 +321,7 @@ public sealed class LocationLifecycleTests
         // The rejected reference publish is not part of the committed base.
         Assert.Equal(0UL, row.ActorRef.Generation);
         Assert.Equal(ZLinkSpotKind.User, row.SpotKind);
-        Assert.Equal(RoutingId.From("spot-1"), row.SpotId);
+        Assert.Equal("spot-1", row.SpotId);
     }
 
     [Fact]
@@ -336,7 +337,7 @@ public sealed class LocationLifecycleTests
 
         var renew = node.ActorOwnership.NotifyActorJoinedSpotAsync(
             ActorId,
-            RoutingId.From("spot-1"),
+            "spot-1",
             spotGeneration: 1).AsTask();
         await controlled.RenewStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var release = node.ActorOwnership.ReleaseActorAsync(ActorId).AsTask();
@@ -358,8 +359,8 @@ public sealed class LocationLifecycleTests
         await using var fixture = await LifecycleFixture.CreateAsync();
         var original = await fixture.NodeAsync("node-a");
         var restarted = await fixture.NodeAsync("node-a");
-        var spotId = RoutingId.From("spot-7");
-        var key = new ZLinkSpotLocationKey("mesh", spotId);
+        const string spotId = "spot-7";
+        var key = new ZLinkSpotLocationKey(spotId);
 
         var first = await original.SpotLocations.ClaimAsync(
             "mesh",
@@ -367,6 +368,7 @@ public sealed class LocationLifecycleTests
             7,
             "game",
             RoutingId.From("node-a"),
+            1,
             ZLinkSpotKind.User,
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, first);
@@ -378,6 +380,7 @@ public sealed class LocationLifecycleTests
             7,
             "game",
             RoutingId.From("node-a"),
+            1,
             ZLinkSpotKind.User,
             deactivate: null);
 
@@ -401,8 +404,8 @@ public sealed class LocationLifecycleTests
         await using var fixture = await LifecycleFixture.CreateAsync();
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
-        var spotId = RoutingId.From("spot-7");
-        var key = new ZLinkSpotLocationKey("mesh", spotId);
+        const string spotId = "spot-7";
+        var key = new ZLinkSpotLocationKey(spotId);
 
         var first = await nodeA.SpotLocations.ClaimAsync(
             "mesh",
@@ -410,6 +413,7 @@ public sealed class LocationLifecycleTests
             7,
             "game",
             RoutingId.From("node-a"),
+            1,
             ZLinkSpotKind.User,
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, first);
@@ -420,6 +424,7 @@ public sealed class LocationLifecycleTests
             7,
             "game",
             RoutingId.From("node-b"),
+            1,
             ZLinkSpotKind.User,
             deactivate: null);
 
@@ -454,7 +459,7 @@ public sealed class LocationLifecycleTests
 
         var stale = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await nodeA.ActorOwnership.NotifyActorJoinedSpotAsync(
-                ActorId, RoutingId.From("spot-1"), spotGeneration: 1));
+                ActorId, "spot-1", spotGeneration: 1));
         Assert.Equal(ZLinkFrameworkErrorKind.ActorLocationStale, stale.Kind);
 
         await deactivated.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -491,7 +496,7 @@ public sealed class LocationLifecycleTests
 
         await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await nodeA.ActorOwnership.NotifyActorJoinedSpotAsync(
-                ActorId, RoutingId.From("spot-1"), spotGeneration: 1));
+                ActorId, "spot-1", spotGeneration: 1));
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var firstDispose = nodeA.Lifecycle.DisposeAsync().AsTask();
@@ -510,7 +515,7 @@ public sealed class LocationLifecycleTests
     {
         await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
-        var spotId = RoutingId.From("spot-9");
+        const string spotId = "spot-9";
 
         var resolver = new ZLinkLocationAddressResolvers(
             node.Resolvers,
@@ -522,6 +527,7 @@ public sealed class LocationLifecycleTests
             7,
             "game",
             RoutingId.From("node-a"),
+            1,
             ZLinkSpotKind.User,
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, status);

@@ -288,9 +288,6 @@ if [[ "${SCENARIO}" == "all" ]]; then
   grep -q "scenario MON-A3 passed" "${log_dir}/client.stdout.log"
   grep -q "scenario MON-A4 passed" "${log_dir}/client.stdout.log"
   grep -q "scenario MON-A5 passed" "${log_dir}/client.stdout.log"
-  grep -q "scenario MON-B1 passed" "${log_dir}/client.stdout.log"
-  grep -q "scenario MON-B2 passed" "${log_dir}/client.stdout.log"
-  grep -q "scenario MON-C1 passed" "${log_dir}/client.stdout.log"
   grep -q "scenario MON-D1 passed" "${log_dir}/client.stdout.log"
 else
   grep -q "scenario ${SCENARIO} passed" "${log_dir}/client.stdout.log"

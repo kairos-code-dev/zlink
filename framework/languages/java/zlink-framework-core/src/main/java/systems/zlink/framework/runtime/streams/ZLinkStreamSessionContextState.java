@@ -40,6 +40,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
     private final ZLinkStreamCompressionCodec compressionCodec;
     private final ZLinkMessageFlowTracer flow;
     private final Supplier<CompletionStage<Void>> closeAction;
+    private final ZLinkOneWayCalls oneWayCalls;
     private final ConcurrentHashMap<String, ZLinkStreamHeader> requestHeadersByFlow =
         new ConcurrentHashMap<>();
     private final ConcurrentHashMap<ZLinkStreamHeader, Boolean> claimedReplyHeaders =
@@ -55,6 +56,39 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         ZLinkStreamCompressionCodec compressionCodec,
         ZLinkMessageFlowTracer flow,
         Supplier<CompletionStage<Void>> closeAction) {
+        this(
+            streamNodeName,
+            stream,
+            routingId,
+            actors,
+            serializer,
+            defaultCodec,
+            compressionCodec,
+            flow,
+            closeAction,
+            new ZLinkOneWayCalls((backend, key) -> (submission, cleanup) -> {
+                try {
+                    return submission.get()
+                        ? CompletableFuture.completedFuture(null)
+                        : CompletableFuture.failedFuture(new IllegalStateException(
+                            "one-way submission was not admitted"));
+                } finally {
+                    cleanup.run();
+                }
+            }));
+    }
+
+    ZLinkStreamSessionContextState(
+        String streamNodeName,
+        ZLinkBackendStreamSocket stream,
+        RoutingId routingId,
+        ZLinkSessionActors actors,
+        ZLinkMessageSerializer serializer,
+        ZLinkStreamCodec defaultCodec,
+        ZLinkStreamCompressionCodec compressionCodec,
+        ZLinkMessageFlowTracer flow,
+        Supplier<CompletionStage<Void>> closeAction,
+        ZLinkOneWayCalls oneWayCalls) {
         this.streamNodeName = streamNodeName;
         this.stream = stream;
         this.routingId = routingId;
@@ -64,6 +98,7 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
         this.compressionCodec = compressionCodec;
         this.flow = flow;
         this.closeAction = java.util.Objects.requireNonNull(closeAction, "closeAction");
+        this.oneWayCalls = oneWayCalls;
     }
 
     @Override
@@ -94,7 +129,12 @@ final class ZLinkStreamSessionContextState implements ZLinkSessionContext {
             this,
             serializer,
             defaultCodec,
-            compressionCodec);
+            compressionCodec,
+            oneWayCalls);
+    }
+
+    ZLinkOneWayCalls oneWayCalls() {
+        return oneWayCalls;
     }
 
     @Override

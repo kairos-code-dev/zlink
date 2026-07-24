@@ -14,7 +14,7 @@ namespace zlink::framework::e2e::spot_service::client::scenarios
 inline evidence_snapshot_t fetch_sm_g2_evidence (zlink::http_client::client_t &client,
                                                  const std::string &name)
 {
-    auto raw = client.get ("/evidence").async_raw ().result ();
+    auto raw = client.get ("/evidence").submit_raw ().result ();
     if (!raw) {
         throw std::runtime_error (raw.error () ? raw.error ()->what ()
                                                : "SM-G2 " + name + " evidence HTTP failed");
@@ -45,7 +45,7 @@ inline direct_spot_res_t post_sm_g2_direct_request (zlink::http_client::client_t
                                                    const std::string &label)
 {
     std::string last_error = label + " was not attempted";
-    auto raw = client.post ("/spot/direct").body (request).async_raw ().result ();
+    auto raw = client.post ("/spot/direct").body (request).submit_raw ().result ();
     if (raw && raw.value ().status < 400) {
         return nlohmann::json::parse (raw.value ().body).get<direct_spot_res_t> ();
     }
@@ -82,7 +82,7 @@ inline void run_sm_g2_scenario (const std::string &play_http_endpoint,
     auto first_created_raw =
       play_a.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = first_owner_spot})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!first_created_raw || first_created_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-G2 first owner spot create failed");
@@ -108,7 +108,7 @@ inline void run_sm_g2_scenario (const std::string &play_http_endpoint,
     auto remapped_created_raw =
       play_b.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = remapped_owner_spot})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!remapped_created_raw || remapped_created_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-G2 remapped owner spot create failed");

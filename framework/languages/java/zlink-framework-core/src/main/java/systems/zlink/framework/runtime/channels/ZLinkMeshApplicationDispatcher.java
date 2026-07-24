@@ -18,7 +18,7 @@ import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
-import systems.zlink.framework.channels.ZLinkSubmitStatus;
+
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.internal.drain.ZLinkMeshDrainCoordinator;
 import systems.zlink.framework.runtime.mesh.MeshNodeRegistration;
@@ -102,8 +102,7 @@ public final class ZLinkMeshApplicationDispatcher
         int localPendingCapacity =
             mesh.configureRouterSocket().receiveHighWaterMark() > 0
                 ? mesh.configureRouterSocket().receiveHighWaterMark()
-                : systems.zlink.framework.runtime.backend.ZLinkBackendObject
-                    .DEFAULT_PENDING_ADMISSION_CAPACITY;
+                : 4096;
         namespaces.put(
             NODE_NAMESPACE,
             routeNamespace(mesh.nodeHandlers(), localPendingCapacity));
@@ -157,24 +156,24 @@ public final class ZLinkMeshApplicationDispatcher
     }
 
     @Override
-    public ZLinkSubmitStatus submitLocalNodeSend(
+    public int submitLocalNodeSend(
         systems.zlink.contracts.core.RoutingId sourceNodeRid,
         byte[] metadataBytes,
         List<Message> parts) {
         Namespace namespace = namespaces.get(NODE_NAMESPACE);
         if (namespace == null || parts.size() < 2) {
-            return ZLinkSubmitStatus.TARGET_NOT_FOUND;
+            return ZLinkOneWayCalls.TARGET_NOT_FOUND;
         }
         String packetName = parts.get(0).toUtf8String();
         ChannelRouteSendHandlerRegistration route = namespace.routeSends.get(packetName);
         if (route == null) {
-            return ZLinkSubmitStatus.TARGET_NOT_FOUND;
+            return ZLinkOneWayCalls.TARGET_NOT_FOUND;
         }
         ZLinkMeshDrainCoordinator.Claim claim = drains == null
             ? null
             : drains.tryClaim(meshName);
         if (drains != null && claim == null) {
-            return ZLinkSubmitStatus.SHUTDOWN;
+            return ZLinkOneWayCalls.SHUTDOWN;
         }
 
         Message payload = null;
@@ -205,9 +204,9 @@ public final class ZLinkMeshApplicationDispatcher
                 if (claim != null) {
                     claim.close();
                 }
-                return ZLinkSubmitStatus.BACKPRESSURED;
+                return ZLinkOneWayCalls.BACKPRESSURED;
             }
-            return ZLinkSubmitStatus.SUBMITTED;
+            return ZLinkOneWayCalls.SUBMITTED;
         } catch (RuntimeException failure) {
             if (payload != null) {
                 payload.close();

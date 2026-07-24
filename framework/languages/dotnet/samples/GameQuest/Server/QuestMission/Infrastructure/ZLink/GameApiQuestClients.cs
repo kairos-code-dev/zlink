@@ -44,14 +44,14 @@ internal sealed class ZLinkQuestProgressNotifier(IZLinkRouteClient channels) : I
             foreach (var progress in contracts)
                 await channels.SendToChannel(SampleNames.MeshName, SampleNames.GameApiChannel,
                         new QuestProgressNotify(playerId, progress))
-                    .SubmitAsync(cancellationToken);
+                    .Async(cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(completedQuestId))
             {
                 var completed = contracts.First(progress => progress.QuestId == completedQuestId);
                 await channels.SendToChannel(SampleNames.MeshName, SampleNames.GameApiChannel,
                         new QuestCompletedNotify(playerId, completed, true))
-                    .SubmitAsync(cancellationToken);
+                    .Async(cancellationToken);
             }
 
             return new QuestProgressNotifyResult(true, null, null);

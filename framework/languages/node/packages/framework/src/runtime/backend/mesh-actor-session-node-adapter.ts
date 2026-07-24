@@ -1,5 +1,5 @@
 import { SubmitResult } from '@zlink-systems/zlink';
-import { ZLinkSubmitStatus } from '../../contracts';
+import { ZLinkSubmitStatus } from '../messaging/submission-result';
 import type {
   ZLinkBackendActorSessionNode,
   ZLinkBackendMeshNode

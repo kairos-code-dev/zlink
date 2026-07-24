@@ -315,7 +315,8 @@ adapter를 사용한다. Same-node join·relocation에서는 adapter를 호출�
 
 Target은 owner commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
 실행하지 않는다. Standalone Actor는 owner commit 뒤 Entry Spot callback과 old Entry membership의 durable
-cleanup을 완료한 다음 journal replay를 실행한다. `"activated"`에 도달해도
+callback을 완료한 다음 journal replay를 실행하고 old Entry membership을 포함한 source resource를 durable하게
+cleanup한다. `"activated"`에 도달해도
 application과 session ingress는 sealed 상태를 유지하고 bound-session route는 staged 상태로만 준비한다. Source
 cleanup이 terminal 상태에 도달하고 authority의 `"completed"` CAS가 성공한 뒤에만 target을 `"ready"`로 열고
 relocation fence를 해제한다.
@@ -348,7 +349,7 @@ CAS, recovery transport와 teardown failure는 adapter failure가 아니며 해�
 phase의 `StoreUnavailable`, `RelocationFailed` 또는 `TeardownFailed`로 분류한다.
 
 Standalone Actor maintenance는 authority·Entry membership commit 뒤 target `onActorRelocated`와 source
-`onLeaveActor`를 호출하고 old Entry membership의 durable cleanup을 완료한 다음 accepted journal을 replay한다.
+`onLeaveActor`를 호출하고 accepted journal을 replay하며 logical timer를 복원한 다음 old Entry membership을 포함한 source resource를 durable하게 cleanup한다.
 Target dispatch는 이 순서가 끝날 때까지 닫는다. Source process가 종료되면 exact source fence의 durable cleanup
 terminal이 source callback 완료를 대신해 target recovery가 계속된다.
 

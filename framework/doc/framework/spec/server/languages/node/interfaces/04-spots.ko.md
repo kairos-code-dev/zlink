@@ -6,6 +6,13 @@
 이 문서는 ZLink Framework 11.0.0에서 `@zlink-systems/framework`와
 `@zlink-systems/nestjs`가 내보내는 Spot 관련 정확한 TypeScript declaration을 고정한다.
 
+Session에 bind된 Actor의 physical disconnect는 Framework가 automatic all-settled로 통지한다. Actor
+disconnect callback은 destroy·leave·membership 변경이 아니다. Actor relocation은 같은 ObjectGeneration에
+대해 owner·membership commit, 필요한 lifecycle callback과 accepted journal replay·logical timer 복원, durable source cleanup,
+`Completed` CAS를 차례로 끝낸 뒤 command 44·45로 해당 binding route만 바꾼다. Relocation 자체는
+disconnect callback을 실행하지 않는다. 같은 Session의 다른 Actor route와 physical STREAM connection은
+유지하며 routed ACK와 steady normalization 전에는 target session packet·push admission을 열지 않는다.
+
 ## 1. Global identity와 lifecycle
 
 `SpotId`는 Location Store transaction domain 전체에서 유일한 logical ID다. 일반 message는 SpotId만 받고
@@ -75,6 +82,7 @@ export interface ZLinkInstanceSpot {
 export interface ZLinkSpotCommonContext<TSpot> {
     readonly meshName: string;
     readonly spotId: SpotId;
+    readonly objectGeneration: bigint;
     readonly nodeRid: RoutingId;
     readonly outbound: ZLinkSpotOutbound;
     addTimer<THandler extends ZLinkSpotTimerHandler<TSpot>>(
@@ -164,26 +172,18 @@ export interface ZLinkSpotRequestCall {
 }
 
 export interface ZLinkSpotPacketHandler<TSpot, TMessage> {
-    handle(spot: TSpot, message: TMessage, context: ZLinkHandlerContext): Promise<void>;
+    handle(spot: TSpot, message: TMessage, context: ZLinkMessageContext): Promise<void>;
 }
 
 export declare function ZLinkSpotActorRequest(packetName?: string): MethodDecorator;
 export declare function ZLinkSpotActorSend(packetName?: string): MethodDecorator;
 
-export interface ZLinkSpotActorSendContext extends ZLinkHandlerContext {
-    readonly metadata: ZLinkMessageMetadata;
+export interface ZLinkSpotActorSendHandler<TSpot, TActor extends ZLinkActor, TMessage> {
+    handle(spot: TSpot, actor: TActor, context: ZLinkMessageContext, message: TMessage): Promise<void>;
 }
 
-export interface ZLinkSpotActorRequestContext extends ZLinkSpotActorSendContext {
-    readonly reply: ZLinkSpotActorReplyOptions;
-}
-
-export interface ZLinkSpotActorSendHandler<TActor extends ZLinkActor, TMessage> {
-    handle(actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
-}
-
-export interface ZLinkSpotActorRequestHandler<TActor extends ZLinkActor, TRequest, TReply> {
-    handle(actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
+export interface ZLinkSpotActorRequestHandler<TSpot, TActor extends ZLinkActor, TRequest, TReply> {
+    handle(spot: TSpot, actor: TActor, context: ZLinkMessageContext, request: TRequest): Promise<TReply>;
 }
 ```
 

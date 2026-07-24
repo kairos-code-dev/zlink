@@ -32,7 +32,7 @@ inline void run_sm_a6_scenario (const std::string &play_http_endpoint)
     auto lifecycle =
       play_a.post ("/spot/lifecycle")
         .body (lifecycle_req_t{"sm-a6-life"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!lifecycle) {
         throw std::runtime_error (lifecycle.error () ? lifecycle.error ()->what ()
@@ -50,7 +50,7 @@ inline void run_sm_a6_scenario (const std::string &play_http_endpoint)
         .body (evidence_wait_req_t{
           .contains_all = {"SpotLifecycleClosed", user_spot_rid_for_key ("sm-a6-life")},
           .timeout_milliseconds = 5000})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!lifecycle_evidence) {
         throw std::runtime_error (lifecycle_evidence.error ()
@@ -71,7 +71,7 @@ inline void run_sm_a6_scenario (const std::string &play_http_endpoint)
                           .display_name = "SM-A6",
                           .level = 6,
                           .tags = {"close-reject"}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!joined) {
         throw std::runtime_error (joined.error () ? joined.error ()->what ()
@@ -87,7 +87,7 @@ inline void run_sm_a6_scenario (const std::string &play_http_endpoint)
     auto close_busy =
       play_a.post ("/spot/close")
         .body (close_spot_req_t{.key = "sm-a6-busy"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!close_busy) {
         throw std::runtime_error (close_busy.error () ? close_busy.error ()->what ()

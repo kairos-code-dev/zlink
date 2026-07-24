@@ -1,6 +1,7 @@
 package systems.zlink.framework.runtime.spots;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
@@ -9,8 +10,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.PublishDetail;
-import systems.zlink.framework.channels.ZLinkSubmitStatus;
+
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.configuration.ZLinkDispatchOptionsRegistration;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
@@ -19,9 +19,7 @@ import systems.zlink.framework.runtime.messaging.ZLinkStringMessageSerializer;
 
 final class ZLinkSpotDirectPublishTest {
     @Test
-    void publicSpotPublishReturnsSourceLocalMulticastDetail() {
-        PublishDetail expected =
-            new PublishDetail(3, 2, 1, 0, 4, 3, 1);
+    void publicSpotPublishCompletesWithoutTargetResult() {
         AtomicInteger publishCalls = new AtomicInteger();
         ZLinkBackendSpot spot = (ZLinkBackendSpot) Proxy.newProxyInstance(
             ZLinkBackendSpot.class.getClassLoader(),
@@ -31,9 +29,9 @@ final class ZLinkSpotDirectPublishTest {
                 case "admissionSource" -> ignored;
                 case "admissionTimeout" -> Duration.ofSeconds(1);
                 case "admissionPendingCapacity" -> 8;
-                case "publishDetailed" -> {
+                case "publish" -> {
                     publishCalls.incrementAndGet();
-                    yield expected;
+                    yield true;
                 }
                 case "close", "setAdmissionReadyHandler",
                     "setAdmissionShutdownHandler" -> null;
@@ -64,13 +62,7 @@ final class ZLinkSpotDirectPublishTest {
                 .toCompletableFuture()
                 .join();
 
-            assertEquals(ZLinkSubmitStatus.SUBMITTED, result.status());
-            assertEquals(3, result.detail().snapshotRemoteNodeCount());
-            assertEquals(2, result.detail().admittedRemoteNodeCount());
-            assertEquals(1, result.detail().droppedRemoteNodeCount());
-            assertEquals(4, result.detail().snapshotLocalSpotCount());
-            assertEquals(3, result.detail().admittedLocalSpotCount());
-            assertEquals(1, result.detail().droppedLocalSpotCount());
+            assertNull(result);
             assertEquals(1, publishCalls.get());
         }
     }

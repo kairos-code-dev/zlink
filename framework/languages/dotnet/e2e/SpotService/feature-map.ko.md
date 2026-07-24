@@ -31,7 +31,10 @@
 | SM-D2 | 구현 | remote actor session bind/relay marker가 있다. |
 | SM-D3 | 구현 | entry spot bind와 user spot bind를 각각 stream session에 연결하고 relay/push marker를 확인한다. |
 | SM-D4 | 구현 | multiple actor bind marker가 있다. |
-| SM-D5 | 구현 | explicit disconnect notification marker가 있다. |
+| SM-D4A | 미구현 | 같은 Actor의 Session A→B rebind 뒤 Session A stale relay·late disconnect가 새 binding과 다른 bound Actor에 영향을 주지 않는 focused runner가 없다. |
+| SM-D4B | 미구현 | bind 뒤 Location Store read 차단, valid stored route와 single-forward stale mapping을 함께 검증하는 focused runner가 없다. |
+| SM-D5 | 구현 | physical stream disconnect에서 application이 Actor 목록을 순회하지 않아도 Framework가 고정한 모든 bound Actor에 disconnect를 자동 통지한다. explicit `NotifyDisconnectedAsync`는 별도 logical notification으로 유지한다. |
+| SM-D5A | 미구현 | physical connection을 유지한 public logical disconnect가 선택 Actor callback 완료만 기다리고 다른 Actor에 영향을 주지 않는 focused runner가 없다. |
 | SM-D6 | 구현 | bound session push targeting marker가 있다. |
 | SM-D7 | 구현 | stream auth and dispatch marker가 있다. |
 | SM-D8 | 구현 | stream 연결 종료 중 pending request 실패를 확인하고 새 session에서 reauth/rebind 후 messaging 재개 marker를 확인한다. |

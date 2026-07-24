@@ -3,7 +3,6 @@ using SpotService.Shared;
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Actors;
 using Zlink.Framework.Contracts.Channels;
-using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Messaging;
 using Zlink.Framework.Contracts.Streams;
 
@@ -29,22 +28,11 @@ internal sealed class ScenarioSession(
         return ValueTask.CompletedTask;
     }
 
-    public async ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
+    public ValueTask OnDisconnectedAsync(CancellationToken cancellationToken)
     {
-        foreach (var actor in Context.Actors.Bound.Take(1))
-            try
-            {
-                await actor.NotifyDisconnectedAsync(cancellationToken);
-            }
-            catch (ZLinkFrameworkException error)
-                when (error.Kind == ZLinkFrameworkErrorKind.ActorRouteNotFound)
-            {
-                evidence.Add(
-                    $"session-disconnect-skip|rid={evidence.Rid}|session={Context.SessionId}"
-                    + $"|actor={actor.ActorId}|reason=actor-route-not-found");
-            }
-
+        cancellationToken.ThrowIfCancellationRequested();
         evidence.Add($"session-disconnected|rid={evidence.Rid}|session={Context.SessionId}");
+        return ValueTask.CompletedTask;
     }
 
     public ValueTask OnErrorAsync(ZLinkStreamError error, CancellationToken cancellationToken)

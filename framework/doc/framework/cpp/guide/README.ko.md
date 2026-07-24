@@ -86,7 +86,7 @@ MessagePack / Protobuf)는 프레임워크가 처리한다.
 // 보내는 쪽 (채널 클라이언트)
 auto result = co_await _client
     .request ("support.core", open_conversation_req_t{user_id})
-    .async<open_conversation_res_t> ();
+    .submit<open_conversation_res_t> ();
 
 // 받는 쪽 (채널 서버의 핸들러)
 class open_conversation_handler_t {
@@ -148,7 +148,7 @@ class support_session_t : public zlink::framework::packet_stream_session_t {
                             const zlink::message_t &payload) override
     {
         auto actor = co_await _actors.find (actor_id);
-        co_await actor.value ().relay (payload).async ();   // 현재 dispatch의 packet을 actor로 전달
+        co_await actor.value ().relay (payload);   // 현재 dispatch의 packet을 actor로 전달
     }
 };
 ```

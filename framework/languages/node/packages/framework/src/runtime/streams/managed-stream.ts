@@ -7,10 +7,12 @@ import type {
 } from '../../contracts';
 import {
   ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
+  ZLinkFrameworkException
+} from '../../contracts';
+import {
   ZLinkSubmitStatus,
   type ZLinkSubmitResult
-} from '../../contracts';
+} from '../messaging/submission-result';
 import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
 import { encodeFrameworkPayloadMessage } from '../messaging/payload-codec';
@@ -54,7 +56,10 @@ export class ZLinkManagedStream implements ZLinkStream {
   ) {
     this.submitter = submitter ?? new ZLinkAsyncSubmitter(
       (handler) => socket.onSendReady(handler),
-      { timeoutMs: socket.sendTimeoutMs > 0 ? socket.sendTimeoutMs : 1000 }
+      {
+        timeoutMs: socket.sendTimeoutMs > 0 ? socket.sendTimeoutMs : 1000,
+        capacity: Math.max(1, socket.sendHighWaterMark ?? 1)
+      }
     );
   }
 

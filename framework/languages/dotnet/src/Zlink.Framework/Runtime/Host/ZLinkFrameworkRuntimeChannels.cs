@@ -18,7 +18,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             GetOrStartState(),
             channelName);
 
-    internal async ValueTask<ZLinkSubmitResult> SendToChannelAsync(
+    internal async ValueTask<ZLinkOneWaySubmitResult> SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
@@ -127,7 +127,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         throw CreateUnknownRouteTargetException(routerChannelId, targetNodeRid, targetDescription);
     }
 
-    internal async ValueTask<ZLinkSubmitResult> SendToSpotViaRouterChannelAsync(
+    internal async ValueTask<ZLinkOneWaySubmitResult> SendToSpotViaRouterChannelAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         string targetSpotId,

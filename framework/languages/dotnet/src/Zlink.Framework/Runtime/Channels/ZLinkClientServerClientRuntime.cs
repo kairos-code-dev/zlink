@@ -121,7 +121,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         }
     }
 
-    internal async ValueTask<ZLinkSubmitResult> SendAsync(
+    internal async ValueTask<ZLinkOneWaySubmitResult> SendAsync(
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)
     {
@@ -130,7 +130,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         if (target is null)
         {
             ZLinkMessageParts.DisposeAll(parts);
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.TargetNotFound);
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.TargetNotFound);
         }
         return await target.Submitter.SubmitAsync(
                 parts,

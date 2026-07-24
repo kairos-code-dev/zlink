@@ -39,7 +39,7 @@ final class ZLinkSpotTimerRegistryTest {
             List.of(),
             null,
             "test",
-            operation -> {
+            (timerName, operation) -> {
                 enteredDispatch.set(true);
                 return operation.get();
             });
@@ -69,7 +69,7 @@ final class ZLinkSpotTimerRegistryTest {
             List.of(),
             null,
             "test",
-            operation -> operation.get());
+            (timerName, operation) -> operation.get());
         registry.setSpot(new TestSpot());
 
         try {
@@ -110,7 +110,7 @@ final class ZLinkSpotTimerRegistryTest {
             List.of(),
             null,
             "source",
-            operation -> {
+            (timerName, operation) -> {
                 queued.set(operation);
                 pending.countDown();
                 return queuedCompletion;
@@ -154,7 +154,7 @@ final class ZLinkSpotTimerRegistryTest {
             List.of(),
             null,
             "target",
-            operation -> operation.get());
+            (timerName, operation) -> operation.get());
         target.setSpot(new TestSpot());
         try {
             var decoded = ZLinkSpotTimerRelocationEnvelope.decode(
@@ -188,7 +188,7 @@ final class ZLinkSpotTimerRegistryTest {
             List.of(),
             null,
             "test",
-            operation -> operation.get());
+            (timerName, operation) -> operation.get());
         registry.setSpot(new TestSpot());
         try {
             registry.add(
@@ -227,7 +227,7 @@ final class ZLinkSpotTimerRegistryTest {
             List.of(),
             null,
             "test",
-            operation -> operation.get());
+            (timerName, operation) -> operation.get());
         registry.setSpot(new TestSpot());
         try {
             ZLinkTimer timer = registry.add(

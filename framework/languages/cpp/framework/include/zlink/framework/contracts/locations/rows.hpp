@@ -26,8 +26,7 @@ struct object_capability_t
     maintenance_policy_kind_t policy =
       maintenance_policy_kind_t::disabled;
     bool has_snapshot_adapter = false;
-    std::optional<std::uint32_t> active_limit;
-    std::optional<std::uint32_t> pending_limit;
+    std::int32_t spot_limit = 0;
 };
 
 struct capacity_usage_t
@@ -52,6 +51,12 @@ struct placement_capacity_t
     std::vector<spot_type_capacity_t> spot_types;
 };
 
+struct activation_concurrency_t
+{
+    std::uint32_t active = 0;
+    std::int32_t limit = 128;
+};
+
 struct mesh_node_descriptor_t
 {
     std::string mesh_name;
@@ -66,8 +71,8 @@ struct mesh_node_descriptor_t
     std::vector<object_capability_t> object_capabilities;
     object_role_t object_role = object_role_t::none;
     int placement_weight = 100;
-    object_capacity_options_t object_capacity{};
-    placement_capacity_t placement_capacity{};
+    placement_capacity_t capacity{};
+    activation_concurrency_t activation_concurrency{};
     std::optional<std::string> maintenance_wave;
     framework_runtime_state_t state =
       framework_runtime_state_t::preparing;

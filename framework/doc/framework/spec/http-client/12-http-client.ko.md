@@ -48,7 +48,8 @@ client.post("/games")               // operation
       .query("region", "kr")
       .body(createGameReq)
       .timeout(3s)
-      .submit<CreateGameRes>()      // C++·Java·Node의 response completion terminator
+      .submit<CreateGameRes>()      // C++·Java의 response completion terminator
+                                    // Node는 async<CreateGameRes>() 사용
 ```
 
 - verb 7종: `get` / `post` / `put` / `delete` / `patch` / `head` / `options`.
@@ -61,7 +62,9 @@ builder의 세부 계약(path 형식, percent-encoding, body 소스별 retry 가
 ## 3. 실행 terminator — one-way와 response completion (+ callback)
 
 HTTP client의 완료 표면은 one-way submission, response completion과 callback이다. 정확한 이름은
-.NET `Async`, Kotlin wrapper `await`, Java·Node·C++ `submit`이다. Shared Spot gate를 반납하는
+.NET `Async`, Kotlin wrapper `await`, Java·C++ `submit`이다. Node는 raw response에 `submitRaw`,
+typed response와 callback에 `async`, one-way에 `submit`을 사용한다. TypeScript 상속 signature
+제약은 언어별 exact interface가 소유한다. Shared Spot gate를 반납하는
 `Yield`는 서버 request와 worker allowlist가 소유하며 HTTP request builder에는 포함하지 않는다
 ([04 §1.1](../04-async-execution-policy.ko.md)).
 

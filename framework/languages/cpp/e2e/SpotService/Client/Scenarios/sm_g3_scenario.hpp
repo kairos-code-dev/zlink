@@ -39,7 +39,7 @@ inline evidence_snapshot_t fetch_sm_g3_evidence_until (zlink::http_client::clien
                                                        const std::string &spot_rid)
 {
     for (int attempt = 0; attempt < 80; ++attempt) {
-        auto raw = client.get ("/evidence").async_raw ().result ();
+        auto raw = client.get ("/evidence").submit_raw ().result ();
         if (raw && raw.value ().status < 400) {
             auto snapshot =
               nlohmann::json::parse (raw.value ().body).get<evidence_snapshot_t> ();

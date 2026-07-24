@@ -11,7 +11,7 @@ public final class RcB3MessagePackCodecScenario {
     public static void run(ScenarioContext context) {
         String packedValue = context.server()
             .post("/codec/roundtrip")
-            .async(Contracts.CodecScenarioRes.class).toCompletableFuture().join().body()
+            .submit(Contracts.CodecScenarioRes.class).toCompletableFuture().join().body()
             .messagePackValue();
         ScenarioAssert.ensure("echo:msgpack-request".equals(packedValue),
             "RC-B3 request mismatch");

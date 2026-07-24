@@ -631,9 +631,9 @@ public sealed class DrainCoordinatorTests
             return ValueTask.CompletedTask;
         });
         await connector.Connect.Async();
-        connector.Send(new DrainProbeMessage("connected"))
+        await connector.Send(new DrainProbeMessage("connected"))
             .PacketName("drain.probe")
-            .Submit();
+            .Async();
         await sessionProbe.Connected.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         var result = await host.Services.GetRequiredService<IZLinkDrainControl>()
@@ -680,9 +680,9 @@ public sealed class DrainCoordinatorTests
         };
 
         await connector.Connect.Async();
-        connector.Send(new DrainProbeMessage("new-after-drain"))
+        await connector.Send(new DrainProbeMessage("new-after-drain"))
             .PacketName("drain.probe")
-            .Submit();
+            .Async();
 
         Assert.Equal(
             ZlinkStreamCloseReason.ServerDrain,

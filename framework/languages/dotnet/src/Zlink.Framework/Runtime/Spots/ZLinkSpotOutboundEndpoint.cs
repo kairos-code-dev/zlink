@@ -89,7 +89,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return outbound.TrySendToChannelOnce(channelName, parts, metadata);
     }
 
-    public ValueTask<ZLinkSubmitResult> SendToChannelAsync(
+    public ValueTask<ZLinkOneWaySubmitResult> SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
@@ -122,30 +122,25 @@ internal sealed class ZLinkSpotOutboundEndpoint(
             metadata);
     }
 
-    public async ValueTask<MeshPublishResult> PublishCurrentAsync(
+    public async ValueTask<SubmitResult> PublishCurrentAsync(
         string channelName,
         string topic,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
-        ReadOnlyMemory<byte> metadata = default)
+        ReadOnlyMemory<byte> metadata,
+        Action release,
+        IZLinkRuntimeErrorSink errorSink)
     {
         using var operation = runtime.EnterOperation();
         return await ZLinkLogicalMulticastSubmitter.SubmitAsync(
                 runtime.WorkerPool,
-                () => outbound.PublishCurrentBlocking(channelName, topic, parts, metadata),
+                () => outbound.PublishCurrent(channelName, topic, parts, metadata),
                 cancellationToken,
-                runtime.ShutdownToken)
+                runtime.ShutdownToken,
+                runtime.Registration.DefaultSocketSendTimeout,
+                release,
+                errorSink)
             .ConfigureAwait(false);
-    }
-
-    public MeshPublishResult TryPublishCurrentOnce(
-        string channelName,
-        string topic,
-        IReadOnlyList<Message> parts,
-        ReadOnlyMemory<byte> metadata)
-    {
-        using var operation = runtime.EnterOperation();
-        return outbound.TryPublishCurrentOnce(channelName, topic, parts, metadata);
     }
 
     /// <summary>Performs the first non-blocking spot-send admission attempt.
@@ -169,7 +164,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
             metadata);
     }
 
-    public ValueTask<ZLinkSubmitResult> SendToSpotAsync(
+    public ValueTask<ZLinkOneWaySubmitResult> SendToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         string targetSpotId,

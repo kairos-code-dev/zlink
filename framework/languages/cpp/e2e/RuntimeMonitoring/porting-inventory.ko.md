@@ -2,9 +2,10 @@
 
 ## 10.0.0 목표 판정
 
-Config 7은 MeshNode·peer·ChannelName readiness, Spot Logical Multicast backpressure·drop, runtime health를
-공개 monitoring 표면으로 검증해야 한다. 아래 파일 대응과 기존 MON marker는 현재 구현 inventory이며,
-이 목표 축을 모두 충족하기 전까지 RuntimeMonitoring 포팅 상태는 `10.0.0 전환 대상`이다.
+Config 7은 MeshNode·peer·ChannelName readiness와 runtime health를 공개 monitoring 표면으로 검증한다.
+Publish는 전용 snapshot·metric·runtime event를 만들지 않으므로 remote·local target 결과의 부재를
+별도 negative E2E로 검증해야 한다. 아래 파일 대응과 기존 MON marker는 현재 구현 inventory이며,
+이 목표 축을 모두 충족하기 전까지 RuntimeMonitoring 포팅 상태는 `11.0.0 전환 대상`이다.
 
 
 기준 구현: `framework/languages/dotnet/e2e/RuntimeMonitoring`
@@ -30,8 +31,8 @@ store를 공유하고, location runtime monitoring source가 topology/status/ser
 | `Client/Scenarios/MonA3SpotEventsScenario.cs` | `Client/Scenarios/mon_a3_spot_events_scenario.hpp` | scenario | done | Redis location store로 발견한 SPOT mesh peer, subject 변화, timer failure evidence를 검증한다. |
 | `Client/Scenarios/MonA4AvailabilityTransitionScenario.cs` | `Client/Scenarios/mon_a4_availability_transition_scenario.hpp` | scenario | done | drain/restore admin evidence, socket admission event, location topology evidence를 검증한다. |
 | `Client/Scenarios/MonA5FixedKindsScenario.cs` | `Client/Scenarios/mon_a5_fixed_kinds_scenario.hpp` | scenario | done | invalid handshake, location `StatusChanged`, spot `StatusChanged`, stopped timer evidence를 검증한다. |
-| `Client/Scenarios/MonB1KindFilterScenario.cs` | `Client/Scenarios/mon_b1_kind_filter_scenario.hpp` | scenario | done | filtered service의 socket event kind filter를 `ConnectionReady` event로 검증한다. |
-| `Client/Scenarios/MonB2RegistrationValidationScenario.cs` | `Client/Scenarios/mon_b2_registration_validation_scenario.hpp` | scenario | done | 중복 source, 비양수 location interval, missing spot/socket source framework 적용 검증을 확인한다. |
+| `Client/Scenarios/MonB1RemoteBackpressureScenario.cs` | 제거 | scenario | superseded | target별 publish result·event·snapshot count를 요구하던 시나리오는 CA-D77 계약과 함께 제거했다. 새 MON-B1은 publish 전용 관측값 부재를 검증해야 한다. |
+| `Client/Scenarios/MonB2LocalTargetDropScenario.cs` | 제거 | scenario | superseded | local target별 publish result·event·snapshot count를 요구하던 시나리오는 CA-D77 계약과 함께 제거했다. 새 MON-B2는 publish 전용 관측값 부재를 검증해야 한다. |
 | `Client/Scenarios/MonC1DispatchFailureScenario.cs` | `Client/Scenarios/mon_c1_dispatch_failure_scenario.hpp` | scenario | done | throwing service evidence, stderr marker, follow-up request recovery를 검증한다. |
 | `Client/Scenarios/MonD1FailureRecoveryScenario.cs` | `Client/Scenarios/mon_d1_failure_recovery_scenario.hpp` | scenario | done | filtered service stop/restart 뒤 trigger HTTP request, restarted service evidence, restart 이후 location topology continuity evidence를 검증한다. |
 | `Server/Registry/*` | not-needed | server-role | not-needed | Config 7 C++는 별도 registry process를 실행하지 않는다. Redis location store와 `location-runtime` source가 같은 검증 의미를 담당한다. |
@@ -63,8 +64,8 @@ store를 공유하고, location runtime monitoring source가 topology/status/ser
 | `MON-A3` | `Client/Scenarios/mon_a3_spot_events_scenario.hpp` | done |
 | `MON-A4` | `Client/Scenarios/mon_a4_availability_transition_scenario.hpp` | done |
 | `MON-A5` | `Client/Scenarios/mon_a5_fixed_kinds_scenario.hpp` | done |
-| `MON-B1` | `Client/Scenarios/mon_b1_kind_filter_scenario.hpp` | done |
-| `MON-B2` | `Client/Scenarios/mon_b2_registration_validation_scenario.hpp` | done |
+| `MON-B1` | `Client/Scenarios/mon_b_publish_monitoring_absence_scenario.hpp` | partial — compile-time public member 부재와 zero-target publish 뒤 snapshot·event 부재를 검사한다. 기존 Service API drift를 고친 뒤 process 증거와 막힌 remote target 검증이 필요하다. |
+| `MON-B2` | `Client/Scenarios/mon_b_publish_monitoring_absence_scenario.hpp` | partial — local subscriber가 있는 publish 뒤 snapshot·event 부재를 검사한다. 기존 Service API drift를 고친 뒤 handler 단일 처리와 막힌 local target 검증이 필요하다. |
 | `MON-C1` | `Client/Scenarios/mon_c1_dispatch_failure_scenario.hpp` | done |
 | `MON-D1` | `Client/Scenarios/mon_d1_failure_recovery_scenario.hpp` | done |
 
@@ -73,11 +74,10 @@ store를 공유하고, location runtime monitoring source가 topology/status/ser
 - 2026-07-08: `timeout 560s framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260708-133413-118111`
-  - 의미: Redis location store 기반 service, filtered service, throwing service, trigger, client role이
-    같은 gate에서 MON-A1, MON-A2, MON-A3, MON-A4, MON-A5, MON-B1, MON-B2, MON-C1, MON-D1을
-    검증한다. MON-B2 validation 출력과 MON-D1 restart 검증까지 포함한다.
+  - 의미: 당시 계약의 MON-A1~MON-D1 회귀 증거다. CA-D77에서 제거한 target별 publish 집계를
+    검증한 MON-B1·MON-B2 결과는 현재 계약의 완료 증거로 사용하지 않는다.
 - 2026-07-03: `framework/languages/cpp/e2e/RuntimeMonitoring/run_e2e.sh`
   - 결과: 통과
   - 로그: `logs/20260703-214231-52862`
-  - 의미: Redis location store 기반 service, filtered service, throwing service, trigger, client role이
-    같은 gate에서 MON-A1, MON-A2, MON-A3, MON-A4, MON-A5, MON-B1, MON-B2, MON-C1, MON-D1을 검증한다.
+  - 의미: Redis location store 기반 service, filtered service, throwing service와 trigger의 과거 회귀
+    증거다. Public validation endpoint와 MON-D1의 잘못된 MeshName·observer capacity 검증은 유지한다.

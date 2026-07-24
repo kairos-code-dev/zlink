@@ -25,7 +25,7 @@ inline void run_sm_f3_scenario (const std::string &play_http_endpoint,
       play.post ("/channel/control-ping")
         .body (channel_control_ping_req_t{.target_node_rid = "play-b",
                                           .value = "route-mixed-f3"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!normal_route_after_spot || normal_route_after_spot.value ().status >= 400) {
         throw std::runtime_error ("SM-F3 normal route packet failed after spot route");
@@ -41,7 +41,7 @@ inline void run_sm_f3_scenario (const std::string &play_http_endpoint,
                                        .spot_rid = remote_spot,
                                        .value = "route-mixed",
                                        .source_actor_id = "external-client"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!raw || raw.value ().status >= 400) {
         throw std::runtime_error ("SM-F3 spot route packet failed after normal route");

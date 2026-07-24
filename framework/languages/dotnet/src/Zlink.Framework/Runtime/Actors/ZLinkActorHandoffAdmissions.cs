@@ -578,6 +578,15 @@ internal sealed class ZLinkActorHandoffAdmissions(
                && string.Equals(candidate.TargetSpotId, candidateTargetSpotId, StringComparison.Ordinal)
                && (!requireRecordedCompletion
                    || Completion is not null
+                   && Completion.OperationIdHigh == candidate.OperationIdHigh
+                   && Completion.OperationIdLow == candidate.OperationIdLow
+                   && string.Equals(
+                       Completion.ReplyContentType,
+                       candidate.ReplyContentType,
+                       StringComparison.Ordinal)
+                   && (Completion.Reply ?? []).AsSpan().SequenceEqual(candidate.Reply ?? []))
+               && (!requireRecordedCompletion
+                   || Completion is not null
                    && ZLinkActorHandoffRequestIdentity.FramesEqual(Completion.Frames, candidate.Frames));
     }
 }

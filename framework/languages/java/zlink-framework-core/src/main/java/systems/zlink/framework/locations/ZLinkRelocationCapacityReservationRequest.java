@@ -15,7 +15,7 @@ public record ZLinkRelocationCapacityReservationRequest(
     ZLinkMeshNodeDescriptorKey targetDescriptor,
     long targetDescriptorLifecycleGeneration,
     ZLinkLocationOwnerToken targetOwner,
-    int capacityDelta) {
+    ZLinkPlacementCapacityBundle capacityBundle) {
     public ZLinkRelocationCapacityReservationRequest {
         Objects.requireNonNull(reservationId, "reservationId");
         Objects.requireNonNull(authorityKey, "authorityKey");
@@ -43,9 +43,6 @@ public record ZLinkRelocationCapacityReservationRequest(
             throw new IllegalArgumentException(
                 "reservationId must not be zero");
         }
-        if (capacityDelta <= 0) {
-            throw new IllegalArgumentException(
-                "capacityDelta must be in 1..Integer.MAX_VALUE");
-        }
+        Objects.requireNonNull(capacityBundle, "capacityBundle");
     }
 }

@@ -19,7 +19,7 @@ internal sealed class WorldOperationsAdapter(
                 ZoneWorldNames.BroadcastChannel,
                 ZoneWorldNames.AnnounceTopic,
                 new WorldAnnounceEvent(announcementId, text))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
 
     public async ValueTask PublishMaintenanceChangeAsync(
         string nodeId,
@@ -30,7 +30,7 @@ internal sealed class WorldOperationsAdapter(
                 ZoneWorldNames.BroadcastChannel,
                 ZoneWorldNames.MaintenanceTopic,
                 new NodeMaintenanceChangedEvent(nodeId, enabled))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
 
     public ValueTask<ApplyNodeMaintenanceRes?> TryApplyMaintenanceAsync(
         string nodeId,

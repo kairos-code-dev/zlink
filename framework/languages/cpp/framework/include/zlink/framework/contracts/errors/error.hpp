@@ -47,7 +47,8 @@ enum class framework_error_kind_t
     spot_generation_stale = 32,
     spot_moving = 33,
     relocation_data_lost = 34,
-    spot_id_conflict = 35
+    spot_id_conflict = 35,
+    runtime_shutdown = 36
 };
 
 namespace detail
@@ -123,7 +124,11 @@ class framework_exception_t : public std::exception
     static bool is_retriable_by_default (framework_error_kind_t kind) noexcept
     {
         return kind == framework_error_kind_t::route_not_connected
-               || kind == framework_error_kind_t::actor_location_stale;
+               || kind == framework_error_kind_t::actor_location_stale
+               || kind == framework_error_kind_t::actor_moving
+               || kind == framework_error_kind_t::deadline_exceeded
+               || kind == framework_error_kind_t::placement_capacity_exhausted
+               || kind == framework_error_kind_t::spot_moving;
     }
 
     framework_error_kind_t _kind;

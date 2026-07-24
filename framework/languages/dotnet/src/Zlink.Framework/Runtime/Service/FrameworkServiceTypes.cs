@@ -12,8 +12,7 @@ internal sealed record MeshNodeStatus(
     ulong LifecycleGeneration, ulong DescriptorRevision, uint ChannelCount,
     uint ConfiguredPeerCount, uint AdmittedPeerCount, uint DrainingPeerCount,
     ulong PendingApplicationMessages, ulong PendingInfrastructureMessages,
-    ulong PendingBytes, ulong MulticastSubmitted, ulong MulticastDroppedTargets,
-    int LastError, ulong LastChangedMs);
+    ulong PendingBytes, int LastError, ulong LastChangedMs);
 
 internal sealed record MeshNodePeer(
     ulong ConnectionIntentId, MeshPeerSource Source, MeshPeerState State,
@@ -233,20 +232,18 @@ internal enum MeshMonitorEventMask : ulong
     PeerRejected = 1UL << 5,
     ChannelChanged = 1UL << 6,
     MessageSubmitted = 1UL << 7,
-    MulticastCommitted = 1UL << 8,
-    MulticastDropped = 1UL << 9,
-    Backpressured = 1UL << 10,
-    OperationCompleted = 1UL << 11,
-    ProtocolError = 1UL << 12,
-    ClaimRevoked = 1UL << 13,
-    All = (1UL << 14) - 1
+    Backpressured = 1UL << 8,
+    OperationCompleted = 1UL << 9,
+    ProtocolError = 1UL << 10,
+    ClaimRevoked = 1UL << 11,
+    All = (1UL << 12) - 1
 }
 
 internal enum MeshMonitorEventKind
 {
     StateChanged = 1, PeerConnecting, PeerAdmitted, PeerDraining, PeerClosed,
-    PeerRejected, ChannelChanged, MessageSubmitted, MulticastCommitted,
-    MulticastDropped, Backpressured, OperationCompleted, ProtocolError, ClaimRevoked
+    PeerRejected, ChannelChanged, MessageSubmitted, Backpressured,
+    OperationCompleted, ProtocolError, ClaimRevoked
 }
 
 internal sealed record MeshMonitorEvent(
@@ -255,15 +252,12 @@ internal sealed record MeshMonitorEvent(
     ulong PeerLifecycleGeneration, ulong PeerDescriptorRevision,
     MeshOwnerKind OwnerKind, string SpotId, ActorRef Actor,
     string ChannelName, MeshOperationId OperationId,
-    uint SnapshotRemoteTargetCount, uint AdmittedRemoteTargetCount,
-    uint DroppedRemoteTargetCount, uint UnreachableRemoteTargetCount,
-    uint SnapshotLocalSpotCount, uint AdmittedLocalSpotCount,
-    uint DroppedLocalSpotCount, int ResultCode, int FailureErrno);
+    int ResultCode, int FailureErrno);
 
 internal sealed record MeshMonitorStatus(
     MeshNodeState State, ulong PeerAdmitted, ulong PeerRejected,
     ulong SubmittedMessages, ulong CompletedOperations, ulong ProtocolErrors,
-    ulong BackpressuredSubmits, ulong DroppedTargets, ulong LastSequence);
+    ulong BackpressuredSubmits, ulong LastSequence);
 
 internal interface IMeshNodeMonitor : IDisposable, IAsyncDisposable
 {
@@ -405,13 +399,6 @@ internal readonly struct MeshReceiveRecord
             null);
 }
 
-internal readonly record struct MeshPublishDetail(
-    ulong SnapshotRemoteTargets, ulong AdmittedRemoteTargets,
-    ulong DroppedRemoteTargets, ulong UnreachableRemoteTargets,
-    ulong SnapshotLocalSpots, ulong AdmittedLocalSpots,
-    ulong DroppedLocalSpots);
-internal readonly record struct MeshPublishResult(SubmitResult Result, MeshPublishDetail Detail);
-
 internal interface IMeshNode : IDisposable, IAsyncDisposable
 {
     RoutingId RoutingId { get; }
@@ -514,7 +501,7 @@ internal interface ISpot : IDisposable, IAsyncDisposable
     SubmitResult RequestToChannel(string channelName, IReadOnlyList<Message> parts,
         out MeshOperationId operationId, TimeSpan timeout = default,
         SendFlags flags = SendFlags.None, ReadOnlyMemory<byte> metadata = default);
-    MeshPublishResult Publish(string channelName, string topic,
+    void Publish(string channelName, string topic,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
         ReadOnlyMemory<byte> metadata = default);
     SubmitResult SendToSpot(RoutingId targetNodeRid, string targetSpotId,

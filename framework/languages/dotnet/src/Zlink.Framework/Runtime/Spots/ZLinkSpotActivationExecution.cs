@@ -1,7 +1,7 @@
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed record ZLinkSpotRelocationSeal(
-    ZLinkSerialRelocationSeal QueueSeal,
+    ZLinkSpotExecutionRelocationSeal QueueSeal,
     IReadOnlyList<ZLinkRelocationLogicalTimer> LogicalTimers);
 
 internal sealed record ZLinkSpotRelocationApplicationState(
@@ -192,11 +192,7 @@ internal sealed partial class ZLinkSpotActivation
                         return;
                     }
 
-                    if (!QueueApplicationSerialized(
-                        static (activation, state, ct) => activation._dispatcher.DispatchActorFramesAsync(state, ct),
-                        dispatchable,
-                        countAsRequest: false,
-                        dispatchable.Dispose))
+                    if (!QueueActorFrames(dispatchable))
                         dispatchable.Dispose();
                 });
 
@@ -242,31 +238,34 @@ internal sealed partial class ZLinkSpotActivation
             cancellationToken);
     }
 
-    public ValueTask CloseAsync(CancellationToken cancellationToken)
+    public async ValueTask CloseAsync(CancellationToken cancellationToken)
     {
         if (Interlocked.Exchange(ref _closingInvoked, 1) != 0)
-            return ValueTask.CompletedTask;
-        return _serial.ExecuteLifecycleAsync(
-            static (activation, ct) => activation.Spot.OnClosingAsync(ct),
-            cancellationToken);
+            return;
+        _ = await _serial.ExecuteQuiescentLifecycleAsync(
+                async static (activation, ct) =>
+                {
+                    await activation.Spot.OnClosingAsync(ct).ConfigureAwait(false);
+                    return true;
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     internal async ValueTask<bool> TryCloseIfNoActorsAsync(
         CancellationToken cancellationToken)
     {
-        var accepted = false;
-        await _serial.ExecuteLifecycleAsync(
+        return await _serial.ExecuteQuiescentLifecycleAsync(
                 async (activation, ct) =>
                 {
-                    if (activation._actors.Count > 0) return;
+                    if (activation._actors.Count > 0) return false;
 
-                    accepted = true;
                     if (Interlocked.Exchange(ref activation._closingInvoked, 1) == 0)
                         await activation.Spot.OnClosingAsync(ct).ConfigureAwait(false);
+                    return true;
                 },
                 cancellationToken)
             .ConfigureAwait(false);
-        return accepted;
     }
 
     private ValueTask ExecuteSerializedAsync(
@@ -434,6 +433,25 @@ internal sealed partial class ZLinkSpotActivation
             received.Dispose);
     }
 
+    private bool QueueActorFrames(ZLinkSpotActorFrameBatch frames)
+    {
+        if (!_runtime.TryEnterInboundOperation(countAsRequest: false, out var lease))
+            return false;
+
+        if (_serial.TryRunDetached(
+                "user-spot-actor-frames",
+                async ct =>
+                {
+                    using (lease)
+                        await _dispatcher.DispatchActorFramesAsync(frames, _serial, ct)
+                            .ConfigureAwait(false);
+                }))
+            return true;
+
+        lease.Dispose();
+        return false;
+    }
+
 
     private async ValueTask DispatchSubscriptionsAsync(CancellationToken cancellationToken)
     {
@@ -532,7 +550,13 @@ internal sealed partial class ZLinkSpotActivation
         CancellationToken cancellationToken)
     {
         var state = new TimerDispatchState(descriptor, tick);
-        await ExecuteApplicationSerializedAsync(
+        if (!_runtime.TryEnterInboundOperation(countAsRequest: false, out var lease))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestRejected,
+                "SPOT application admission is sealed for drain.");
+        using (lease)
+            await _serial.ExecuteTimerAsync(
+                descriptor.Name,
                 async static (activation, state, innerCt) =>
                 {
                     state.Delivered = await activation
@@ -544,7 +568,7 @@ internal sealed partial class ZLinkSpotActivation
                 },
                 state,
                 cancellationToken)
-            .ConfigureAwait(false);
+                .ConfigureAwait(false);
         return state.Delivered;
     }
 

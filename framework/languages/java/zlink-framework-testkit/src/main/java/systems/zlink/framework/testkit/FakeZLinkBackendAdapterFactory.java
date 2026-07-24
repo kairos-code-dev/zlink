@@ -26,7 +26,6 @@ import systems.zlink.contracts.service.spot.ActorTransferPrepareResult;
 import systems.zlink.contracts.service.spot.ActorTransferToken;
 import systems.zlink.contracts.service.spot.ActorTransferTokenFixture;
 import systems.zlink.contracts.service.spot.PrepareActorTransferResult;
-import systems.zlink.contracts.service.spot.PublishDetail;
 import systems.zlink.contracts.service.spot.OwnerKind;
 import systems.zlink.contracts.service.spot.ReadyRecord;
 import systems.zlink.contracts.service.spot.ReceiveRecord;
@@ -667,8 +666,6 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 0,
                 0,
                 0,
-                0,
-                0,
                 System.currentTimeMillis());
         }
         @Override public List<MeshPeerEntry> peers() { return List.of(); }
@@ -880,23 +877,21 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public void connectPeer(RoutingId peerRid, String endpoint) { record("connectPeer." + peerRid + "." + endpoint); }
         @Override public void disconnectPeer(String endpoint) { record("disconnectPeer." + endpoint); }
         @Override public void disconnectPeer(RoutingId peerRid) { record("disconnectPeer." + peerRid); }
-        @Override public PublishDetail publishDetailed(
+        @Override public void publish(
             String channelName,
             String topic,
             List<Message> parts,
             SendFlags flags) {
-            record("publishDetailed." + channelName + "." + topic + "." + firstPart(parts));
-            return new PublishDetail(0, 0, 0, 0, 0, 0, 0);
+            record("publish." + channelName + "." + topic + "." + firstPart(parts));
         }
-        @Override public PublishDetail publishDetailed(
+        @Override public void publish(
             String channelName,
             String topic,
             byte[] metadata,
             List<Message> parts,
             SendFlags flags) {
             owner.captureApplicationMetadata(metadata);
-            record("publishDetailed." + channelName + "." + topic + "." + firstPart(parts));
-            return new PublishDetail(0, 0, 0, 0, 0, 0, 0);
+            record("publish." + channelName + "." + topic + "." + firstPart(parts));
         }
         @Override public ZLinkBackendSpotRouteBridge createRouteBridge() {
             record("createRouteBridge");

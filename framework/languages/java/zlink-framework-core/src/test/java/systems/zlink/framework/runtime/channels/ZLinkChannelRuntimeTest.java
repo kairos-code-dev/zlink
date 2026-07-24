@@ -32,7 +32,7 @@ import systems.zlink.contracts.sockets.RecvResult;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.contracts.sockets.SubmitResult;
 import systems.zlink.framework.channels.ZLinkRequestContext;
-import systems.zlink.framework.channels.ZLinkSubmitStatus;
+
 import systems.zlink.framework.configuration.ZLinkEndpointConnections;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.backend.*;
@@ -50,12 +50,12 @@ import systems.zlink.framework.runtime.internal.spots.SpotTransportAddressResolv
 
 final class ZLinkChannelRuntimeTest {
     private static ZLinkHandlerActivator handlers() {
-        SpotTransportAddressResolver resolver = handle ->
+        SpotTransportAddressResolver resolver = spotId ->
             java.util.concurrent.CompletableFuture.completedFuture(Optional.of(
                 new SpotTransportAddress(
                     "play.route",
                     RoutingId.from("play-node"),
-                    handle.spotId(),
+                    spotId,
                     1L,
                     systems.zlink.framework.spots.ZLinkSpotKind.USER)));
         return ZLinkHandlerActivator.services()
@@ -177,7 +177,7 @@ final class ZLinkChannelRuntimeTest {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
 
             TestReply reply = runtime.requestToSpot(
-                    SpotHandles.create("room-spot"),
+                    "room-spot",
                     new TestRequest("hello"))
                 .timeout(Duration.ofMillis(300))
                 .submit(TestReply.class).toCompletableFuture().join();
@@ -203,7 +203,7 @@ final class ZLinkChannelRuntimeTest {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
 
             runtime.sendToSpot(
-                    SpotHandles.create("room-spot"),
+                    "room-spot",
                     new TestRequest("hello"))
                 .submit().toCompletableFuture().join();
 
@@ -296,7 +296,9 @@ final class ZLinkChannelRuntimeTest {
                  backend,
                  options.registration(),
                  new ZLinkJsonMessageSerializer(),
-                 handlers())) {
+                 handlers(),
+                 systems.zlink.framework.runtime.host
+                     .ZLinkTestAdmissionFactory.create())) {
             runtime.registerSpotRouterNode("mesh", backend.spotNode);
             runtime.registerSpotRouterNode("play", backend.spotNode);
 
@@ -338,13 +340,15 @@ final class ZLinkChannelRuntimeTest {
     void localNodeSendWaitsForTheExactCapacitySignalWithoutPublicRetry() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
-        backend.spotNode.localNodeStatuses.add(ZLinkSubmitStatus.BACKPRESSURED);
-        backend.spotNode.localNodeStatuses.add(ZLinkSubmitStatus.SUBMITTED);
+        backend.spotNode.localNodeStatuses.add(1);
+        backend.spotNode.localNodeStatuses.add(0);
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
                  backend,
                  options.registration(),
                  new ZLinkJsonMessageSerializer(),
-                 handlers())) {
+                 handlers(),
+                 systems.zlink.framework.runtime.host
+                     .ZLinkTestAdmissionFactory.create())) {
             runtime.registerSpotRouterNode("mesh", backend.spotNode);
 
             var result = runtime.sendToNode(
@@ -357,7 +361,7 @@ final class ZLinkChannelRuntimeTest {
             assertFalse(result.isDone());
             assertEquals(1, backend.spotNode.localNodeAttempts);
             backend.spotNode.signalLocalNodeReady();
-            assertEquals(ZLinkSubmitStatus.SUBMITTED, result.join().status());
+            assertEquals(0, systems.zlink.framework.runtime.messaging.OneWayTestStatus.status(result));
             assertEquals(2, backend.spotNode.localNodeAttempts);
         }
     }
@@ -366,24 +370,26 @@ final class ZLinkChannelRuntimeTest {
     void localNodeTimeoutPreventsLateAdmission() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
-        backend.spotNode.localNodeStatuses.add(ZLinkSubmitStatus.BACKPRESSURED);
+        backend.spotNode.localNodeStatuses.add(1);
         backend.spotNode.admissionTimeout = Duration.ofNanos(1);
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
                  backend,
                  options.registration(),
                  new ZLinkJsonMessageSerializer(),
-                 handlers())) {
+                 handlers(),
+                 systems.zlink.framework.runtime.host
+                     .ZLinkTestAdmissionFactory.create())) {
             runtime.registerSpotRouterNode("mesh", backend.spotNode);
 
             var result = runtime.sendToNode(
                     "mesh",
                     RoutingId.from("owner-node"),
                     new TestRequest("timeout"))
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
 
-            assertEquals(ZLinkSubmitStatus.TIMED_OUT, result.status());
+            assertEquals(
+                2,
+                systems.zlink.framework.runtime.messaging.OneWayTestStatus.status(result));
             backend.spotNode.signalLocalNodeReady();
             assertEquals(1, backend.spotNode.localNodeAttempts);
         }
@@ -404,7 +410,7 @@ final class ZLinkChannelRuntimeTest {
             runtime.registerSpotRouterNode("play.route", backend.spotNode);
 
             TestReply reply = runtime.requestToSpot(
-                    SpotHandles.create("room-spot"),
+                    "room-spot",
                     new TestRequest("hello"))
                 .timeout(Duration.ofMillis(300))
                 .submit(TestReply.class).toCompletableFuture().join();
@@ -431,7 +437,7 @@ final class ZLinkChannelRuntimeTest {
             CompletionException error = org.junit.jupiter.api.Assertions.assertThrows(
                 CompletionException.class,
                 () -> runtime.requestToSpot(
-                        SpotHandles.create("room-spot"),
+                        "room-spot",
                         new TestRequest("hello"))
                     .timeout(Duration.ofMillis(300))
                     .submit(TestReply.class).toCompletableFuture().join());
@@ -1544,7 +1550,8 @@ final class ZLinkChannelRuntimeTest {
     private record TestReply(String value) {
     }
 
-    private static final class FakeSpotNode implements ZLinkInternalSpotNode {
+    private static final class FakeSpotNode implements ZLinkInternalSpotNode,
+        systems.zlink.framework.runtime.host.ZLinkTestAdmissionFactory.Backend {
         private final FakeSpotRouteBridge bridge;
         private final FakeSpot entrySpot = new FakeSpot();
         private volatile byte[] lastMetadata = new byte[0];
@@ -1553,7 +1560,7 @@ final class ZLinkChannelRuntimeTest {
         private int requestAttempts;
         private int requestFailuresRemaining;
         private SubmitResult requestFailureResult = SubmitResult.NOT_CONNECTED;
-        private final ArrayDeque<ZLinkSubmitStatus> localNodeStatuses =
+        private final ArrayDeque<Integer> localNodeStatuses =
             new ArrayDeque<>();
         private java.util.function.Consumer<ZLinkBackendAdmissionKey> admissionReady =
             ignored -> { };
@@ -1582,13 +1589,13 @@ final class ZLinkChannelRuntimeTest {
             java.util.function.Consumer<ZLinkBackendAdmissionKey> handler) {
             admissionReady = handler;
         }
-        @Override public java.util.Optional<ZLinkSubmitStatus> submitLocalNodeSend(
+        @Override public java.util.Optional<Integer> submitLocalNodeSend(
             RoutingId sourceNodeRid,
             byte[] metadata,
             List<Message> parts) {
             localNodeAttempts++;
-            ZLinkSubmitStatus status = localNodeStatuses.isEmpty()
-                ? ZLinkSubmitStatus.SUBMITTED
+            Integer status = localNodeStatuses.isEmpty()
+                ? 0
                 : localNodeStatuses.removeFirst();
             return java.util.Optional.of(status);
         }

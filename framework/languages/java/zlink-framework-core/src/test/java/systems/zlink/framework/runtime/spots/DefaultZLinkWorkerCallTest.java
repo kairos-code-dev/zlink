@@ -13,6 +13,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,30 @@ class DefaultZLinkWorkerCallTest {
         if (pool != null) {
             pool.close();
         }
+    }
+
+    @Test
+    void yieldRejectedBeforeWorkerSubmissionOutsideSharedSpotGate() {
+        pool = new ZLinkWorkerPool(0, 1, Duration.ofSeconds(30), 4);
+        AtomicInteger executions = new AtomicInteger();
+        var execution = new systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.ApplicationExecution(
+                "room-1", "actor-a", false, false, ignored -> false);
+
+        try (var ignored = systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.enterApplicationExecution(execution)) {
+            var failure = assertThrows(
+                systems.zlink.framework.errors.ZLinkFrameworkException.class,
+                () -> new DefaultZLinkWorkerCall<>(pool, cancellation -> {
+                    executions.incrementAndGet();
+                    return 1;
+                }).yield());
+            assertEquals(
+                systems.zlink.framework.errors.ZLinkFrameworkErrorKind
+                    .INVALID_CONFIGURATION,
+                failure.kind());
+        }
+        assertEquals(0, executions.get());
     }
 
     @Test

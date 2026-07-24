@@ -101,7 +101,7 @@ public sealed partial class StreamConnectorTests
         var exception = Assert.Throws<ZlinkStreamException>(() =>
             connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "b"u8.ToArray()))
                 .PacketName("h")
-                .Submit());
+                .Async());
 
         Assert.Equal(ZlinkStreamErrorCode.Disconnected, exception.Error.Code);
     }
@@ -118,7 +118,7 @@ public sealed partial class StreamConnectorTests
         var exception = Assert.Throws<ZlinkStreamException>(() =>
             connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "bb"u8.ToArray()))
                 .PacketName("h")
-                .Submit());
+                .Async());
 
         Assert.Equal(ZlinkStreamErrorCode.ValidationFailed, exception.Error.Code);
     }

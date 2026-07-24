@@ -94,10 +94,17 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   분기되는지 확인한다. `actor-id` 없이 보내는 request는 다중 bind 상태에서 실패해야 한다.
   `logs/focused-actor-session-20260630-021110-2323861`에서 `SM-D4` marker, 두 actor의
   `ActorSessionBound`, `ActorEntryRequest` evidence를 확인했다.
-- `SM-D5`: stream disconnect 때 session handler가 선택한 bound actor에만 public
-  `ZLinkSessionActor.notifyDisconnected`를 호출하고, entry spot의 disconnect callback evidence가
-  남는지 확인한다. `logs/focused-actor-session-20260630-021110-2323861`에서 `SM-D5` marker,
+- `SM-D4A` (미구현): 같은 Actor의 Session A→B rebind 뒤 Session A stale relay·late disconnect가
+  새 binding과 다른 bound Actor에 영향을 주지 않는 Kotlin focused runner가 없다.
+- `SM-D4B` (미구현): bind 뒤 Location Store read 차단과 stored route stale mapping을 검증하는
+  Kotlin focused runner가 없다.
+- `SM-D5`: physical stream disconnect 때 Framework가 고정한 모든 bound Actor에 disconnect를
+  자동 통지하고 entry spot의 callback evidence가 남는지 확인한다. session handler는 Actor 목록을
+  순회하지 않으며, public `ZLinkSessionActor.notifyDisconnected`는 별도 logical notification에만
+  사용한다. `logs/focused-actor-session-20260630-021110-2323861`에서 `SM-D5` marker,
   `ActorDisconnectNotified`, `ActorEntryDisconnected` evidence를 확인했다.
+- `SM-D5A` (미구현): physical connection을 유지한 public logical disconnect가 선택 Actor callback
+  완료만 기다리고 다른 Actor에 영향을 주지 않는 Kotlin focused runner가 없다.
 - `SM-D6`: `session-a`와 `session-b`에 각각 연결한 stream session 중 request를 보낸 actor의 bound
   session에만 public `ZLinkSessionActor.boundSession().send` push가 전달되고, 다른 gateway의 session에는
   `ActorPushNotify`가 전달되지 않는지 확인한다. `logs/focused-actor-session-20260630-031506-2451994`에서

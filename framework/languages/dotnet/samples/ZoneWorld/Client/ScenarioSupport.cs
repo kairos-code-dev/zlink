@@ -47,7 +47,7 @@ public sealed class GameClient(IZlinkStreamConnector connector, string playerId)
         return Join;
     }
 
-    public void Move(int x, int y) => Connector.Send(new MoveMsg(x, y)).Submit();
+    public ValueTask MoveAsync(int x, int y) => Connector.Send(new MoveMsg(x, y)).Async();
 
     /// <summary>Builds legal movement steps without sending or waiting for messages. Each
     /// scenario keeps the connector wait and command order visible at its call site.</summary>

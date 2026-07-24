@@ -32,7 +32,7 @@ public final class ZLinkMeshNodeRuntime implements AutoCloseable {
             node.setRouterPendingAdmissionCapacity(
                 routerSendHighWaterMark > 0
                     ? routerSendHighWaterMark
-                    : ZLinkBackendObject.DEFAULT_PENDING_ADMISSION_CAPACITY);
+                    : 4096);
             node.setRouterSendTimeout(
                 registration.configureRouterSocket().sendTimeout()
                     .orElse(Duration.ofSeconds(1)));

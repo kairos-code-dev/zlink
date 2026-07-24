@@ -6,7 +6,7 @@ namespace Zlink.Framework.Runtime.Host;
 internal sealed class ZLinkSpotRouteRouterDispatcher(
     Func<ZLinkFrameworkComponentState> getState)
 {
-    public ValueTask<ZLinkSubmitResult> SendAsync(
+    public ValueTask<ZLinkOneWaySubmitResult> SendAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
         string targetSpotId,

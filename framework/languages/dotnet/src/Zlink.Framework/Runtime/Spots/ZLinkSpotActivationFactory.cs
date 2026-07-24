@@ -34,7 +34,12 @@ internal sealed class ZLinkSpotActivationFactory(
                 spotChannelName,
                 frameworkRegistration.DefaultRequestTimeout,
                 registration.Router?.SocketConfig.SendTimeout
-                ?? frameworkRegistration.DefaultSocketSendTimeout);
+                ?? frameworkRegistration.DefaultSocketSendTimeout,
+                registration.UserSpotFactoryOptions.TryGetValue(
+                    spotType,
+                    out var userSpotOptions)
+                    ? userSpotOptions.ExecutionMode
+                    : ZLinkUserSpotExecutionMode.SpotWide);
 
             var spot = (IZLinkSpot)ActivatorUtilities.CreateInstance(
                 spotScope.ServiceProvider,

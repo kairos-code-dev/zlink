@@ -68,7 +68,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         return _closeByProxyAsync(cancellationToken);
     }
 
-    internal async ValueTask<ZLinkSubmitResult> RelayActorRefAsync(
+    internal async ValueTask<ZLinkOneWaySubmitResult> RelayActorRefAsync(
         ZLinkSessionActor actor,
         Message payload,
         CancellationToken cancellationToken)
@@ -88,11 +88,11 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
                     ReplyActorRawAsync,
                     cancellationToken)
                 .ConfigureAwait(false);
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Submitted);
         }
         catch (TimeoutException)
         {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.TimedOut);
         }
         catch (ZLinkFrameworkException failure)
             when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
@@ -135,7 +135,7 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         return Transport.Write(payload);
     }
 
-    internal ValueTask<ZLinkSubmitResult> SubmitAsync(
+    internal ValueTask<ZLinkOneWaySubmitResult> SubmitAsync(
         Message payload,
         CancellationToken cancellationToken)
     {
@@ -143,8 +143,8 @@ internal sealed class ZLinkSessionContext : IZLinkSessionContext
         {
             try
             {
-                return ValueTask.FromResult(new ZLinkSubmitResult(
-                    Write(payload) ? ZLinkSubmitStatus.Submitted : ZLinkSubmitStatus.Backpressured));
+                return ValueTask.FromResult(new ZLinkOneWaySubmitResult(
+                    Write(payload) ? ZLinkOneWaySubmitStatus.Submitted : ZLinkOneWaySubmitStatus.Backpressured));
             }
             finally
             {

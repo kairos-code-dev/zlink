@@ -22,7 +22,7 @@ internal sealed class QuestProgressNotifyHandler(
         if (actor is null) return;
 
         await actorClient.SendToActor(
-            SampleNames.MeshName, actor.Value, request).SubmitAsync(cancellationToken);
+            SampleNames.MeshName, actor.Value, request).Async(cancellationToken);
     }
 }
 
@@ -41,6 +41,6 @@ internal sealed class QuestCompletedNotifyHandler(
         if (actor is null) return;
 
         await actorClient.SendToActor(
-            SampleNames.MeshName, actor.Value, request).SubmitAsync(cancellationToken);
+            SampleNames.MeshName, actor.Value, request).Async(cancellationToken);
     }
 }

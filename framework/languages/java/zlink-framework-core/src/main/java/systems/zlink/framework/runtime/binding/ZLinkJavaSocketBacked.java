@@ -9,11 +9,17 @@ import systems.zlink.contracts.sockets.Socket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
 import systems.zlink.framework.runtime.backend.ZLinkBackendObject;
 
-interface ZLinkJavaSocketBacked extends ZLinkBackendObject {
+interface ZLinkJavaSocketBacked
+    extends ZLinkBackendObject, ZLinkJavaAdmissionBacked {
     Map<Socket, Runnable> ADMISSION_SHUTDOWN_HANDLERS =
         Collections.synchronizedMap(new WeakHashMap<>());
 
     Socket nativeSocket();
+
+    @Override
+    default ZLinkBackendObject admissionSource() {
+        return this;
+    }
 
     default void setAdmissionReadyHandler(
         Consumer<ZLinkBackendAdmissionKey> handler) {
@@ -28,9 +34,13 @@ interface ZLinkJavaSocketBacked extends ZLinkBackendObject {
             : configured;
     }
 
-    @Override
     default void setAdmissionShutdownHandler(Runnable handler) {
         ADMISSION_SHUTDOWN_HANDLERS.put(nativeSocket(), handler);
+    }
+
+    @Override
+    default int admissionPendingCapacity() {
+        return 4096;
     }
 
     default void notifyAdmissionShutdown() {

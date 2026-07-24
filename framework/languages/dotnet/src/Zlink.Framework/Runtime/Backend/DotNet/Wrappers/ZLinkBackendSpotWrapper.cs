@@ -141,18 +141,18 @@ internal sealed class ZLinkBackendSpotWrapper :
         return _spot.SendToChannel(channelName, parts, flags, metadata);
     }
 
-    public MeshPublishResult Publish(
+    public void Publish(
         string channelName, string topic, Message message, SendFlags flags,
         ReadOnlyMemory<byte> metadata)
     {
-        return _spot.Publish(channelName, topic, new[] { message }, flags, metadata);
+        _spot.Publish(channelName, topic, new[] { message }, flags, metadata);
     }
 
-    public MeshPublishResult Publish(
+    public void Publish(
         string channelName, string topic, IReadOnlyList<Message> parts, SendFlags flags,
         ReadOnlyMemory<byte> metadata)
     {
-        return _spot.Publish(channelName, topic, parts, flags, metadata);
+        _spot.Publish(channelName, topic, parts, flags, metadata);
     }
 
     public SubmitResult SendToSpot(

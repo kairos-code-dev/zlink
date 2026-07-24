@@ -1,5 +1,22 @@
 # Java SpotActorTransfer E2E feature map
 
+## Deferred Actor Join 구현 증거
+
+- `ZLinkDeferredActorJoinScopeTest`는 User·Entry Spot handler 한 번에서 서로 다른
+  member Actor의 intent를 여러 개 등록하고, handler 정상 terminal 뒤 등록 순서대로
+  barrier가 활성화되는지 확인한다.
+- `ZLinkAsyncSerialQueueTest.lifecycleBarrierRunsAfterActiveTurnAndBeforeQueuedApplicationTurns`
+  는 각 Actor barrier가 현재 실행 중인 turn 다음, 이미 대기 중인 application turn
+  앞에서 실행되는지 확인한다.
+- `ZLinkDeferredJoinAcceptedRecoveryTest`는 cross-node Accepted completion의
+  `OperationId`, raw reply, manifest cursor와 기존 `ObjectGeneration`을 Relocation
+  Store root에 보존하고, callback 실패 뒤 같은 operation을 다시 Actor mailbox에
+  제출하며 성공한 operation을 중복 제출하지 않는지 확인한다.
+- `ZLinkActorSpotRoutePacketsTest`는 Relocation Store reference, checksum과 cursor가
+  routed relocation commit wire를 왕복하는지 확인한다.
+- 실제 process 종료 뒤 target recovery와 E2E marker 검증은 아직 이 lane의 완료
+  증거가 아니며, Config 10 deferred Join scenario를 활성화할 때 별도로 확인해야 한다.
+
 기준 문서: `framework/doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md`
 
 이 문서는 Config 10의 계약 시나리오와 Java E2E의 현재 검증 범위를 연결한다. `run_e2e.sh all`은
@@ -20,6 +37,7 @@
 | ST-D1 | 구현 | joined callback 대기 중에는 target location이 공개되지 않고 callback 완료 뒤 target owner로 바뀌는지 확인한다. |
 | ST-D2 | 구현 | stale source release가 새 generation의 target location을 제거하지 못하는지 확인한다. |
 | ST-E1 | 구현 | remote transfer 전후 bound session push가 source에서 target으로 이어지는지 확인한다. |
+| ST-E1A | 미구현 | 새 Actor incarnation에 이전 generation binding event가 영향을 주지 않고 explicit bind가 필요한지 검증하는 runner가 없다. |
 | ST-E2 | 구현 | 실패한 transfer 뒤 bound session push가 기존 source actor로 전달되는지 확인한다. |
 | ST-F1 | 구현 | moving 중 packet을 target backlog에 적재하고 arrival index 순서대로 handler에서 다시 처리하는지 확인한다. target `backlog_enqueued` evidence 뒤 replay되는 경로까지 검증한다. |
 | ST-F2 | 구현 | handoff backlog를 location publish 전에 target에 적재하고, target direct packet보다 먼저 처리하는지 확인한다. |

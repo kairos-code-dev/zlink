@@ -90,6 +90,8 @@ internal static class ZLinkRemoteActorJoinPackets
         string sourceSpotId,
         RoutingId sourceNodeRid,
         string targetSpotId,
+        ZLinkActorJoinOperationId? operationId,
+        ZLinkRemoteActorAdmissionReply admissionReply,
         IReadOnlyList<ZLinkActorHandoffFrame> frames)
     {
         return ZLinkEnvelopeCodec.EncodeParts(
@@ -100,7 +102,11 @@ internal static class ZLinkRemoteActorJoinPackets
                 ZLinkSpotId.Require(sourceSpotId, nameof(sourceSpotId)),
                 sourceNodeRid.ToBytes().ToArray(),
                 ZLinkSpotId.Require(targetSpotId, nameof(targetSpotId)),
-                frames),
+                frames,
+                operationId?.High ?? 0,
+                operationId?.Low ?? 0,
+                operationId is null ? null : admissionReply.ReplyContentType,
+                operationId is null ? null : admissionReply.Reply),
             typeof(ZLinkRemoteActorHandoffCompletionRequest),
             null);
     }
@@ -316,4 +322,8 @@ internal sealed record ZLinkRemoteActorHandoffCompletionRequest(
     string SourceSpotId,
     byte[] SourceNodeRid,
     string TargetSpotId,
-    IReadOnlyList<ZLinkActorHandoffFrame> Frames);
+    IReadOnlyList<ZLinkActorHandoffFrame> Frames,
+    ulong OperationIdHigh = 0,
+    ulong OperationIdLow = 0,
+    string? ReplyContentType = null,
+    byte[]? Reply = null);

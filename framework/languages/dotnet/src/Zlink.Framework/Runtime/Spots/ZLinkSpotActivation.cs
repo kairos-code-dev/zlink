@@ -42,7 +42,8 @@ internal sealed partial class ZLinkSpotActivation :
         string spotNodeName,
         string channelName,
         TimeSpan defaultRequestTimeout,
-        TimeSpan? sendTimeout)
+        TimeSpan? sendTimeout,
+        ZLinkUserSpotExecutionMode executionMode = ZLinkUserSpotExecutionMode.SpotWide)
     {
         _runtime = runtime;
         _timers = new ZLinkSpotTimerRegistry(() => runtime.Flow.CaptureEnabled);
@@ -54,6 +55,7 @@ internal sealed partial class ZLinkSpotActivation :
         SpotNodeName = spotNodeName;
         ChannelName = channelName;
         DefaultRequestTimeout = defaultRequestTimeout;
+        ExecutionMode = executionMode;
         _outbound = new ZLinkSpotOutboundTransport(
             nativeSpot,
             sendTimeout,
@@ -69,7 +71,8 @@ internal sealed partial class ZLinkSpotActivation :
             () => IsDisposed,
             _stopSource.Token,
             runtime.ErrorSink,
-            () => runtime.Flow.CaptureEnabled);
+            () => runtime.Flow.CaptureEnabled,
+            executionMode: executionMode);
         _dispatcher = new ZLinkSpotActivationDispatcher(
             runtime,
             nativeSpot,
@@ -99,6 +102,9 @@ internal sealed partial class ZLinkSpotActivation :
 
     public int JoinedActorCount => _actors.Count;
 
+    internal bool ContainsActor(string actorId) =>
+        _actors.TryGetActor(actorId, out _);
+
     public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
 
     public string ChannelName { get; }
@@ -106,6 +112,8 @@ internal sealed partial class ZLinkSpotActivation :
     public string MeshName => ChannelName;
 
     public TimeSpan DefaultRequestTimeout { get; }
+
+    public ZLinkUserSpotExecutionMode ExecutionMode { get; }
 
     public ZLinkCodecRegistryBuilder Codecs => _runtime.Registration.Codecs;
 

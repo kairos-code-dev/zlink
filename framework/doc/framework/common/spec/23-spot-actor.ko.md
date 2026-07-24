@@ -164,14 +164,29 @@ Actor payload를 Actor queue에 넣는 위치와 handler 실행 권한을 결정
 허용한다. Entry Spot Actor와 `PerActor` User Spot에서는 현재 turn을 유지하는
 `Async`만 사용한다.
 
-Actor join call은 execution mode와 관계없이 `Yield`를 제공하지 않는다. Join 결과는 `Async`로 기다리며,
-현재 Actor queue job과 lifecycle commit 순서를 유지한다. `SpotWide` member Actor가 request나 worker
-completion을 `Yield`로 기다릴 때도 Actor queue claim은 유지하므로 같은 Actor의 다음 job은 continuation보다
-먼저 실행하지 않는다.
+Actor Join call은 execution mode와 관계없이 동기 `Defer()`만 제공한다. 현재 handler에서는 intent와
+barrier registration만 완료하고 handler의 마지막 continuation이 정상적으로 끝난 뒤 Join을 실행한다.
+Join에는 `Async`·`await`·`submit`과 `Yield`를 제공하지 않는다. Request나 worker의 `Yield`와 달리
+`Defer()`는 Spot gate와 Actor queue claim을 반납하지 않는다.
+
+한 handler는 Join을 최대 64개까지 등록할 수 있다. Join request 하나는 encoded
+최대 1 MiB이고, 같은 handler가 등록한 모든 Join request의 합계는 최대 8 MiB다.
+제한을 넘긴 현재 registration은 일부 record를 남기지 않고 동기
+`InvalidConfiguration`으로 실패한다.
+
+Timeout을 생략하면 5초를 사용한다. 명시 값은 millisecond로 올림한
+`1..INT_MAX` 범위의 유한한 값이어야 한다. Framework는 `Defer()`를 호출한 시점에
+monotonic clock으로 absolute deadline을 한 번 계산한다. 따라서 handler가
+`Defer()` 뒤에 계속 실행한 시간도 Join timeout에 포함된다.
 
 User Spot은 join proposal, joined, leave와 disconnected lifecycle control을 해당 Spot control queue에서
 직렬화한다. 같은 Spot의 packet·timer turn과 callback 순서는 Spot turn이 정한다. Instance Spot은 Actor
 membership target이 아니다.
+
+Actor disconnected callback은 physical Session disconnect의 current binding snapshot 또는 public
+`NotifyDisconnected`의 명시적 logical notification에서 실행된다. Framework는 exact binding identity마다
+최대 한 번 실행하며 Actor destroy, leave 또는 membership 변경으로 해석하지 않는다. 한 Actor callback
+failure는 다른 binding 통지와 Session cleanup을 막지 않는다.
 
 일반 User Spot Close는 current Actor membership이 하나라도 있으면 public `false`로 끝나고 admission과
 authority를 유지한다. Caller가 명시적 leave 또는 destroy를 끝낸 뒤에만 close할 수 있다. Framework는 Actor를
@@ -210,8 +225,7 @@ public interface IZLinkActorJoinSpotCall : IZLinkActorJoinCall
 
 public interface IZLinkActorJoinCall
 {
-    ValueTask<ZLinkActorJoinResult> Async(
-        CancellationToken cancellationToken = default);
+    void Defer();
 }
 ```
 
@@ -220,17 +234,86 @@ Actor handler에서 특정 User Spot에 join하는 최소 예시는 다음과 �
 찾고, 다른 node에 있으면 같은 operation 안에서 relocation을 수행한다.
 
 ```csharp
-var result = await Context
+Context
     .JoinSpot(targetSpotId, ZLinkMessage.From(joinRequest))
     .Timeout(TimeSpan.FromSeconds(5)) // Join과 필요한 relocation 전체에 적용한다.
-    .Async(cancellationToken); // Actor turn을 유지하고 최종 승인 결과를 기다린다.
+    .Defer(); // 현재 handler가 정상 종료한 뒤 실행할 Join을 등록한다.
 ```
 
 Join request는 선택 사항이다. 생략하면 target proposal callback에 empty request를
-전달한다. 이 request는 join을 승인할지 판단할 때만 사용하며 relocation state
+전달한다. `Defer()`는 request의 immutable snapshot과 absolute deadline을 고정한다. 이 request는 join을 승인할지 판단할 때만 사용하며 relocation state
 payload로 재사용하지 않는다.
 
+`Defer()`는 현재 handler의 registration scope가 열려 있을 때만 호출할 수 있다.
+Framework가 추적하는 awaited continuation은 같은 scope를 사용한다. Handler가
+종료되어 scope가 닫힌 뒤 호출하면 `InvalidConfiguration`이다. Handler에서 시작한
+작업을 기다리지 않고 background에서 계속 실행하는 detached task의 호출은
+application contract 위반이다. Framework는 모든 언어에서 detached task를 scope가
+닫히기 전에 식별한다고 보장하지 않는다.
+
+Handler가 정상적으로 끝나면 등록한 barrier를 모두 활성화한다. Handler가 exception,
+cancellation 또는 request reply encoding 실패로 끝나면 모두 폐기한다. Reply
+encoding이 끝난 뒤 caller가 연결을 종료했거나 transport가 reply를 수락하지 못한
+경우에는 Join을 취소하지 않는다.
+
+Join 결과는 0이 아닌 128-bit `OperationId`와 함께 Actor completion callback으로 전달한다. `Accepted`는
+target Actor, `Rejected`와 commit 전 `Failed`는 source Actor가 받는다. Commit 뒤 recovery는 source로
+rollback하지 않고 target을 복구한 뒤 같은 `OperationId`의 `Accepted`를 전달한다. Target joined callback,
+source leave notification과 durable cleanup이 끝나기 전에 completion과 뒤 application payload를 실행하지
+않는다.
+
+Same-node Join은 membership commit만 durable하며 completion, `OperationId`, optional reply와 retry cursor는
+current process lifetime까지만 유지한다. Cross-node Join은 Location authority가 published Relocation manifest
+reference를 가리킨 Accepted에만 durable at-least-once completion을 보장하고 manifest가 `OperationId`,
+optional reply와 completion cursor를 보존한다. Rejected와 commit 전 Failed는 source process lifetime을 넘는
+completion replay를 보장하지 않는다.
+
+`OperationId`는 application completion callback이 재시도된 결과인지 구분하는
+idempotency ID다. Relocation 전체를 식별하는 `RelocationId`, placement reservation
+ID나 여러 Store 항목을 함께 확정하는 aggregate commit ID와 같은 값으로 사용하지
+않는다. Cross-node Accepted의 Relocation manifest에는 별도 field로 저장한다.
+
+| Completion outcome | Callback을 실행하는 Actor | Application이 받는 정보 |
+|---|---|---|
+| `Accepted` | 위치 변경을 commit한 target Actor가 받는다. Same-target no-op에서는 현재 Actor가 받는다. | Current `ActorRef`와 target admission callback이 반환한 optional reply를 받는다. |
+| `Rejected` | 기존 source Actor가 받는다. | Target admission callback이 반환한 optional reply를 받는다. |
+| `Failed` | Commit 전에는 source Actor가 받는다. Commit 뒤 recovery에서는 target Actor가 받지만 확정된 `Accepted`를 `Failed`로 바꾸지 않는다. | Typed Framework error kind와 다시 시도할 수 있는지 여부를 받는다. |
+
+`Failed`가 전달하는 error kind는 실패 지점을 다음과 같이 구분한다. Target
+`OnActorJoin`이 정상적으로 거절한 결과는 `Failed`가 아니라 `Rejected`다.
+
+| 실패한 지점 | `Failed.Kind` |
+|---|---|
+| 요청한 User Spot을 찾을 수 없다. | `SpotRouteNotFound` |
+| 이동할 수 있는 Entry Spot이나 호환 target node가 없다. | `RelocationTargetUnavailable` |
+| Target node의 수용 가능량이 부족하다. | `PlacementCapacityExhausted` |
+| Actor의 relocation policy가 cross-node 이동을 금지한다. | `RelocationDisabled` |
+| Deadline까지 위치 변경을 commit하지 못한다. | `DeadlineExceeded` |
+| Admission callback이 exception으로 끝나거나 capture·factory·restore·staging이 실패한다. | `RelocationFailed` |
+| Durable relocation payload가 없거나 검증에 실패한다. | `RelocationDataLost` |
+| Actor generation, owner 또는 membership fence가 현재 값과 다르다. | `ActorGenerationStale`, `ActorLocationStale` 또는 `ActorMoving` |
+| Runtime shutdown이 먼저 시작되어 commit 전에 중단한다. | `RuntimeShutdown` |
+
+`Accepted`는 위치와 membership 변경이 commit되었다는 뜻이며 completion callback
+실행까지 끝났다는 뜻은 아니다. Framework는 lifecycle callback과 source membership
+cleanup 뒤 completion callback을 먼저 실행한다. Completion이 계속 실패하면 Actor를
+sealed 상태로 유지하고 barrier 뒤의 일반 message를 실행하지 않는다.
+
 Same-node join은 relocation이 아니므로 relocation policy가 `Disabled`여도 허용한다.
+
+Actor가 이미 요청한 User Spot에 속해 있거나 Entry Spot Actor가 다시
+`JoinEntrySpot`을 호출하면 Framework는 실제 이동 없이 `Accepted` completion을
+제출한다. Location Store, membership과 capacity를 변경하지 않으며
+`OnActorJoin`, `OnJoinedActor`와 `OnLeaveActor`도 호출하지 않는다.
+
+Join과 host maintenance가 동시에 시작되면 먼저 seal하거나 claim한 작업을 따른다.
+Join claim이 `Retire`보다 먼저면 maintenance는 Join이 terminal 상태가 될 때까지
+기다린다. `Retire` seal이 먼저면 Join은 `ActorMoving`, shutdown admission seal이
+먼저면 `RuntimeShutdown`으로 끝난다.
+
+같은 handler가 barrier를 등록한 Actor에 request를 보내고 reply를 기다리면
+request와 handler가 서로 기다릴 수 있다. Framework는 이 request를 queue에
+제출하기 전에 `InvalidConfiguration`으로 거부한다.
 
 ### 4.1 Entry Spot과 User Spot의 callback 비교
 
@@ -303,56 +386,73 @@ Cross-node join은 다음 순서를 지킨다.
    Actor를 준비한다. `Snapshot`이면 target factory가 만든 Actor에 같은 adapter의
    `Restore`를 호출한다. 이미 수락했지만 실행하지 않은 작업은 handler를 실행하지
    않은 채 검증하여 target queue에 준비한다.
-6. Owner와 membership을 하나의 authority commit으로 전환한다.
-7. Target joined callback과 source leave notification을 실행하고 old Entry membership의 durable cleanup을
-   완료한 뒤 accepted message·journal을 replay한다. Framework는 logical timer를 자동 복원하되 target
+6. Actor authority, source·target membership, capacity와 aggregate generation을
+   제한된 하나의 transaction으로 함께 전환한다. 이 전환을 bounded aggregate
+   commit이라 한다.
+7. Target joined callback과 source leave notification을 실행한다. 그다음 target
+   Actor에서 `Accepted` completion callback과 accepted journal을 barrier 뒤 일반
+   message보다 먼저 replay한다. Framework는 logical timer를 복원하지만 target
    application admission은 계속 닫아 둔다.
-8. 보관한 작업을 target에서 이어서 처리한 뒤 source resource를 정리한다. Store에
-   relocation 완료를 기록하고 bound session이 있으면 새 route 확인까지 마친다.
-   이 과정이 모두 끝난 뒤 target Actor가 새 application message를 받게 한다.
+8. 실행 전 queue와 source ingress hold를 target으로 옮기고 old Entry membership과
+   남은 source resource의 durable cleanup을 끝낸 뒤 Completed authority CAS를 수행한다.
+9. 이동한 Actor가 Session에 bind되어 있으면 command 44·45로 Session owner가 보관한
+   해당 Actor의 binding route만 target owner로 갱신하고 routed ACK를 받는다. 같은
+   Session의 다른 Actor route와 physical STREAM connection은 유지한다. Steady target
+   normalization 뒤 target packet·push admission을 연다. 후처리 완료를 표시하기 위해
+   Location Store의 같은 aggregate를 두 번째로 commit하지 않는다.
 
 ```mermaid
 sequenceDiagram
-    participant Caller
-    participant Framework
-    participant TargetSpot as Target Spot
+    participant Handler
+    participant SourceRuntime as Source runtime
     participant SourceActor as Source Actor
+    participant TargetSpot as Target Spot
     participant RelocationStore as Relocation Store
     participant LocationStore as Location Store
     participant TargetActor as Target Actor
     participant SessionOwner as Session owner
 
-    Caller->>Framework: join 요청 제출
-    Framework->>TargetSpot: proposal callback 실행
-    TargetSpot-->>Framework: 승인 반환
-    Framework->>SourceActor: permit 확보 뒤 admission과 membership 봉인
+    Handler->>SourceRuntime: Join intent와 비활성 barrier 등록
+    Handler-->>SourceRuntime: Handler 정상 종료
+    SourceRuntime->>TargetSpot: proposal callback 실행
+    TargetSpot-->>SourceRuntime: 승인 반환
+    SourceRuntime->>SourceActor: permit 확보 뒤 admission과 membership 봉인
     SourceActor->>RelocationStore: state와 실행 전 작업을 저장
-    Framework->>TargetActor: staging Actor 준비와 state 복원
-    Framework->>LocationStore: owner와 membership을 함께 commit
-    Framework->>TargetSpot: target joined callback 실행
-    Framework->>SourceActor: source leave notification 실행
-    Framework->>TargetActor: 수락 후 미실행 작업 재처리
-    Framework->>Framework: 남은 source resource cleanup
-    Framework->>LocationStore: authority를 Completed로 CAS
+    SourceRuntime->>TargetActor: staging Actor 준비와 state 복원
+    SourceRuntime->>LocationStore: authority·membership·capacity를 함께 commit
+    LocationStore-->>SourceRuntime: 새 owner generation과 membership 확정
+    SourceRuntime->>SourceActor: Source Context operation 차단
+    SourceRuntime->>TargetSpot: target joined callback 실행
+    SourceRuntime->>SourceActor: source leave notification 실행
+    SourceRuntime->>TargetActor: Accepted completion과 journal replay
+    SourceRuntime->>TargetActor: 실행 전 queue와 hold message 전달
+    SourceRuntime->>SourceRuntime: durable source cleanup
+    SourceRuntime->>LocationStore: Completed authority CAS
     opt bound session이 있으면
-        Framework->>SessionOwner: session route 전환 요청
-        SessionOwner-->>Framework: route 전환 ACK
+        SourceRuntime->>SessionOwner: command 44 route 갱신 요청
+        SessionOwner-->>SourceRuntime: command 45 routed ACK
     end
-    Framework->>TargetActor: steady target normalization 뒤 admission 개방
+    SourceRuntime->>TargetActor: steady normalization 뒤 admission 개방
 ```
 
 이 다이어그램은 cross-node join이 commit까지 성공하는 정상 경로만 보여준다. Proposal
 reject나 commit 전 failure가 발생하면 target staging을 폐기하고 source 상태를
 복원하며, commit 뒤 failure에서는 source로 rollback하지 않는다.
 
-Commit 전 reject, timeout, `Capture`·`Restore` failure와 CAS conflict는 target staging을 폐기하고 source owner, state와
-membership을 유지한다. Commit 뒤에는 source로 rollback하지 않고 exact authority와 durable capture에서 target
-recovery를 계속한다. [ObjectGeneration](01-glossary.ko.md#objectgeneration)은 유지하고 AuthorityOwnerGeneration만 증가한다.
+Commit 전 reject, timeout, `Capture`·`Restore` failure와 aggregate commit conflict는
+target staging을 폐기하고 source owner, state와 membership을 유지한다. Commit
+뒤에는 source로 rollback하지 않고 확정된 위치정보와 durable capture에서 target
+recovery를 계속한다. [ObjectGeneration](01-glossary.ko.md#objectgeneration)은 유지하고
+cross-node에서 owner가 바뀌므로 `AuthorityOwnerGeneration`만 증가한다. Target
+Context는 유지한 `ObjectGeneration`과 새 owner generation에 결합한다. Source
+Context는 bounded aggregate commit이 성공한 뒤 operation을 수행할 수 없도록
+fence한다.
 
-Permit을 얻기 전에는 source queue를 seal하지 않는다. Permit을 얻지 못한 queue는 application message와 timer를
-계속 처리한다. Seal 뒤 도착한 ingress는 relocation payload에 합치지 않고 bounded hold에 둔다. Commit 전 abort는
-hold를 source queue에 arrival order로 되돌리고, commit 뒤에는 original operation identity와 generation을 보존해
-target으로 relay한다.
+`Defer()` 뒤 source seal 전에 도착한 message는 barrier 뒤 Actor queue에 둔다.
+Cross-node 이동에서는 이 queue를 실행 전 queue와 함께 target으로 옮긴다. Source
+seal 뒤 도착한 message만 크기가 제한된 ingress hold에 보관한다. Commit 전
+abort에서는 hold를 source queue에 arrival order로 되돌리고, commit 뒤에는 original
+operation identity와 `ObjectGeneration`을 보존해 target으로 전달한다.
 
 Application이 요청한 User Spot join은 target admission callback, commit 뒤 target joined와 source leave
 notification을 사용한다. User Spot에서 Entry Spot으로 복귀하면 target admission callback 없이 commit하고
@@ -397,8 +497,8 @@ Actor·User Spot·Instance Spot의 [Object Server](01-glossary.ko.md#object-role
 | Policy | 의미 |
 |---|---|
 | `Disabled` | Cross-node relocation을 capture 전에 거부하고 source owner와 admission을 유지한다. |
-| `Recreate` | Target factory를 실행하지만 application state payload는 전달하지 않는다. |
-| `Snapshot` | Object kind에 맞는 relocation adapter로 application state를 opaque byte sequence로 capture·restore한다. |
+| `Recreate` | Target factory를 실행하고 Framework queue·timer 정보는 유지하지만 application state payload는 전달하지 않는다. 새 application 객체를 만들더라도 같은 logical incarnation이므로 `ObjectGeneration`을 유지한다. |
+| `Snapshot` | Handler가 정상적으로 끝난 경계의 application state를 object 종류에 맞는 relocation adapter로 opaque byte sequence에 capture하고 target에 복원한다. Framework queue·timer 정보도 함께 유지한다. |
 
 Actor는 `ActorRelocationAdapter`, User·Instance Spot은 `SpotRelocationAdapter`를 사용한다. 두 adapter의
 operation 이름은 `Capture`와 `Restore`다. `Capture`는 source instance를 받아 byte sequence를 반환하고,
@@ -438,13 +538,16 @@ Aggregate ID는 non-zero 128-bit value다. Aggregate record는 최대 1024 parti
 1. Spot queue turn 경계에서 aggregate의 active unit, callback과 예상 payload byte permit을 모두 얻은 뒤 source
    User Spot의 join·leave와 모든 participant admission을 reversible하게 seal한다.
 2. Exact participant inventory를 aggregate record에 고정한다.
-3. 모든 policy, target type·[Snapshot](01-glossary.ko.md#snapshot) adapter capability와 active·pending capacity를 preflight한다.
+3. 모든 policy, target type·[Snapshot](01-glossary.ko.md#relocation-policy) adapter capability와 active·pending capacity를 preflight한다.
 4. `Snapshot` participant의 모든 state, 실행하지 않은 message queue, accepted journal과 timer logical
    registration·pending tick을 capture하고 target reservation·factory·restore를 admission이 닫힌 상태로 준비한다.
 5. Generic Store transaction이 Spot owner, 모든 Actor owner와 membership visibility를 하나의 commit generation으로
    전환한다.
-6. Authority commit 뒤 target lifecycle callback, accepted message·journal replay, Framework timer 자동 복원,
-   source ingress hold relay, route ACK와 steady normalization을 완료한 뒤 전체 admission을 연다.
+6. Authority commit 뒤 target lifecycle callback, accepted message·journal replay와 Framework timer 자동
+   복원을 끝낸다. Durable source cleanup과 Completed authority CAS 뒤 aggregate에 포함된 bound Actor마다
+   command 44·45로 Session owner의 해당 route만 target으로 바꾼다. 같은 Session의 aggregate 밖 Actor
+   route와 physical STREAM connection은 유지한다. 모든 routed ACK와 steady normalization 뒤 전체
+   packet·push admission을 연다.
 
 4번의 restore는 5번 aggregate commit 전에 끝나야 한다. User Spot aggregate는 logical membership을 그대로
 이동하므로 target에서 `OnJoinedActor`·`OnActorRelocated`를 호출하거나 source에서 `OnLeaveActor`를 호출하지
@@ -493,10 +596,18 @@ User Spot aggregate의 Spot과 member Actor forwarding mapping은 같은 commit 
 
 ## 9. Bound session
 
-Actor가 이동해도 physical STREAM connection, session identity와 ObjectGeneration은 유지된다. Session owner는
-binding token, AuthorityOwnerGeneration과 sequence barrier로 새 Actor owner route를 선택한다. Target은 route
-commit ACK와 steady normalization 전 packet·push admission을 열지 않는다. 이전 owner generation, [binding token](01-glossary.ko.md#binding-token)과
-sequence의 packet, reply, push와 close는 current binding에 적용하지 않는다.
+Actor가 이동해도 physical STREAM connection, session identity와 ObjectGeneration은
+유지된다. Owner·membership commit 뒤 callback·journal replay와 durable source
+cleanup을 끝내고 Completed authority CAS를 수행한다. 그 뒤 Session owner는
+[binding token](01-glossary.ko.md#binding-token), AuthorityOwnerGeneration과 sequence
+barrier를 검증해 command 44·45로 해당 Actor의 binding route만 target owner로 바꾸고
+routed ACK를 반환한다. 한 Session에 Actor가 여러 개 bind되어 있어도 이동하지 않은
+Actor의 route는 바꾸지 않는다.
+
+Target은 steady normalization 전에는 session packet·push admission을 열지 않는다.
+이전 owner generation, binding token과 sequence의 packet, reply, push와 close는
+current binding에 적용하지 않는다. Route update는 bound ObjectGeneration이 같은
+relocation에만 허용하며 같은 ActorId의 새 incarnation은 explicit bind가 필요하다.
 
 ## 10. 구현 및 contract test 검증 요구
 
@@ -512,11 +623,45 @@ sequence의 packet, reply, push와 close는 current binding에 적용하지 않�
   TTL 뒤 Ready authority가 없으면 새 reservation으로 다시 생성할 수 있다.
 - Join proposal이 capture보다 먼저 실행되고 commit 전 failure가 source 전체를 유지한다.
 - Actor join은 execution mode와 관계없이 `Yield`를 제공하지 않는다.
+- `Defer()`가 target 조회나 Store I/O 없이 현재 handler에 intent와 비활성
+  barrier만 등록하고, handler의 마지막 continuation이 정상 종료한 뒤 실행한다.
+- Handler가 실패하면 해당 handler가 등록한 barrier를 모두 폐기한다.
+- Handler당 Join 64개, request 하나당 1 MiB, request 합계 8 MiB 제한을 적용하고
+  초과한 registration이 partial record 없이 동기 실패한다.
+- Timeout 생략 시 5초를 사용하고 `Defer()` 시점에 monotonic absolute deadline을
+  고정한다.
+- Registration scope가 닫힌 뒤 `Defer()`를 거부하며 detached task의 호출을
+  application contract 위반으로 처리한다.
 - `SpotWide` member Actor의 request·worker `Yield`가 Actor queue claim을 유지하여 같은 Actor의 다음
   job보다 continuation을 먼저 완료한다.
+- Barrier가 걸린 Actor를 같은 handler에서 awaited request하면
+  `InvalidConfiguration`으로 거부한다.
+- Join과 Retire·Shutdown 경합에서 먼저 확정한 claim·seal에 따라 wait,
+  `ActorMoving` 또는 `RuntimeShutdown`으로 끝난다.
+- Same-target User Spot Join과 Entry Spot Actor의 `JoinEntrySpot`을 Store mutation과
+  lifecycle callback이 없는 `Accepted`로 완료한다.
+- Reply encoding 실패는 barrier를 폐기하지만 encoding 뒤 caller disconnect나
+  transport admission 실패는 Join을 취소하지 않는다.
 - Cross-node join이 shared factory policy를 사용하며 same-node join은 `Disabled`로 차단하지 않는다.
-- Actor ObjectGeneration은 create부터 destroy까지 유지되고 relocation에서는 AuthorityOwnerGeneration만 바뀐다.
-- User Spot과 member Actor가 bounded aggregate의 commit generation 하나로 함께 전환된다.
+- Same-node Join, cross-node Join과 `Recreate`에서 Actor `ObjectGeneration`을
+  유지하고 cross-node owner 변경에서만 `AuthorityOwnerGeneration`을 증가시킨다.
+- Actor authority, source·target membership, capacity와 aggregate generation을
+  bounded aggregate commit 하나로 확정하며 후처리를 위해 같은 aggregate를 다시
+  commit하지 않는다.
+- Same-node outcome, `Rejected`와 commit 전 `Failed` completion은 process 재시작
+  뒤 replay를 보장하지 않고, published Relocation manifest가 있는 cross-node
+  `Accepted`만 durable at-least-once completion을 보장한다.
+- Public [Actor Join `OperationId`](01-glossary.ko.md#actor-join-operation-id)를
+  completion idempotency에만 사용하고 `RelocationId`,
+  reservation ID와 aggregate commit ID를 재사용하지 않는다.
+- `Defer()` 뒤 source seal 전 message는 barrier 뒤 Actor queue에 두고, seal 뒤
+  message만 [bounded ingress hold](01-glossary.ko.md#relocation-ingress-hold)에 보관한다.
+- Completion callback을 barrier 뒤 일반 message보다 먼저 실행한다.
+- `Snapshot`은 handler 종료 경계의 application state와 Framework queue·timer를
+  복원하고, `Recreate`는 application state 없이 Framework queue·timer만 복원한다.
+- User Spot과 member Actor가
+  [bounded aggregate commit](01-glossary.ko.md#bounded-aggregate-commit)의
+  generation 하나로 함께 전환된다.
 - Commit 뒤 failure가 participant 일부를 source로 rollback하지 않는다.
 - Forwarding이 bounded committed mapping만 사용하고 [operation identity](01-glossary.ko.md#operation-identity)를 보존한다.
 - Bound STREAM connection은 이동하지 않으며 authority generation과 sequence barrier로 route만 바뀐다.

@@ -1,5 +1,11 @@
-import type { ActorRef, ZLinkBoundSession, ZLinkBoundSessionSendCall, ZLinkSubmitResult } from '../../contracts';
-import { ZLinkSpotKind, ZLinkSubmitStatus } from '../../contracts';
+import type { ActorRef, ZLinkBoundSession, ZLinkBoundSessionSendCall } from '../../contracts';
+import { ZLinkFrameworkErrorKind, ZLinkSpotKind } from '../../contracts';
+import {
+  requireOneWayCompletion,
+  throwAlreadySubmitted,
+  ZLinkSubmitStatus,
+  type ZLinkSubmitResult
+} from '../messaging/submission-result';
 import {
   ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET,
   ZLINK_REMOTE_ACTOR_SESSION_DISCONNECTED_PACKET,
@@ -111,14 +117,19 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
+  async submit(signal?: AbortSignal): Promise<void> {
     if (this.executed) {
-      throw new Error('Bound session send already submitted.');
+      throwAlreadySubmitted('Bound session send call');
     }
     const packetName = resolveFrameworkPacketName(this.message, this.selectedPacketName, 'Bound session');
     this.executed = true;
     throwIfAborted(signal);
-    return await this.execute(packetName, signal);
+    const result = await this.execute(packetName, signal);
+    requireOneWayCompletion(
+      result,
+      'Bound session send',
+      ZLinkFrameworkErrorKind.ActorSessionNotBound
+    );
   }
 
   private async execute(packetName: string, signal?: AbortSignal): Promise<ZLinkSubmitResult> {

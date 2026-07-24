@@ -16,7 +16,7 @@
     "descriptorIndex": "P:{zlink-location-v3}:descriptor:mesh:index",
     "descriptorOwnerIndex": "P:{zlink-location-v3}:descriptor:mesh:owner:b1b7c0df46d5b802be976881fb3bd200c0d40a6e365325151c21acabc4f891bc",
     "ownerLease": "P:{zlink-location-v3}:owner-lease:d62b91aa54fc7602607015419048bd12e99caf5982ef3af2d6fdeeaa04056089",
-    "entrySpotIdentityClaim": "P:{zlink-location-v3}:entry-spot-id:fc6007f49d36eb520b96ba773826f056812c29ca2620ec674a0495028305c9d3"
+    "entrySpotIdentityClaim": "P:{zlink-location-v3}:entry-spot-id:b7749d9ccfc5111a65a1d0fc67a00677be672141743416c4dacd79992161e65f"
   },
   "ownerLeaseHashFields": [
     "ownerId",

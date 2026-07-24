@@ -136,7 +136,7 @@ internal sealed class PlayEntrySpot(
             var observers = _observers.Values.ToArray();
             foreach (var observer in observers)
                 await observer.Context.BoundSession.Send(notify)
-                    .SubmitAsync(cancellationToken);
+                    .Async(cancellationToken);
         }
     }
 }

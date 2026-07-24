@@ -3,6 +3,7 @@ namespace Zlink.Framework.Runtime.Actors;
 internal sealed class ZLinkActorDispatchMailbox
 {
     private readonly object _sync = new();
+    private readonly Queue<Waiter> _barrierWaiters = new();
     private readonly Queue<Waiter> _waiters = new();
     private bool _busy;
     private int _pendingMessages;
@@ -46,6 +47,28 @@ internal sealed class ZLinkActorDispatchMailbox
         }
     }
 
+    public BarrierReservation ReserveBarrier()
+    {
+        var cancellation = new CancellationTokenSource();
+        ValueTask<Turn> turn;
+        lock (_sync)
+        {
+            if (!_busy)
+            {
+                _busy = true;
+                turn = ValueTask.FromResult(new Turn(this));
+            }
+            else
+            {
+                var waiter = new Waiter(cancellation.Token, false, false);
+                _barrierWaiters.Enqueue(waiter);
+                turn = AwaitTurnAsync(waiter);
+            }
+        }
+
+        return new BarrierReservation(turn.AsTask(), cancellation);
+    }
+
     private static async ValueTask<Turn> AwaitTurnAsync(Waiter waiter)
     {
         try
@@ -66,9 +89,11 @@ internal sealed class ZLinkActorDispatchMailbox
             Waiter? next = null;
             lock (_sync)
             {
-                while (_waiters.Count > 0)
+                while (_barrierWaiters.Count > 0 || _waiters.Count > 0)
                 {
-                    next = _waiters.Dequeue();
+                    next = _barrierWaiters.Count > 0
+                        ? _barrierWaiters.Dequeue()
+                        : _waiters.Dequeue();
                     if (next.CountsAsPendingMessage)
                     {
                         _pendingMessages--;
@@ -95,6 +120,49 @@ internal sealed class ZLinkActorDispatchMailbox
             if (next.TrySetReady()) return;
 
             next.Dispose();
+        }
+    }
+
+    public sealed class BarrierReservation(
+        Task<Turn> turn,
+        CancellationTokenSource cancellation)
+    {
+        private int _claimed;
+
+        public async ValueTask<Turn> ClaimAsync()
+        {
+            if (Interlocked.Exchange(ref _claimed, 1) != 0)
+                throw new InvalidOperationException("Actor barrier reservation was already consumed.");
+
+            cancellation.Dispose();
+            return await turn.ConfigureAwait(false);
+        }
+
+        public void Discard()
+        {
+            if (Interlocked.Exchange(ref _claimed, 1) != 0) return;
+
+            if (turn.IsCompletedSuccessfully)
+            {
+                cancellation.Dispose();
+                turn.Result.Dispose();
+                return;
+            }
+
+            cancellation.Cancel();
+            cancellation.Dispose();
+            _ = ObserveCancellationAsync(turn);
+        }
+
+        private static async Task ObserveCancellationAsync(Task<Turn> pending)
+        {
+            try
+            {
+                using var turn = await pending.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
     }
 

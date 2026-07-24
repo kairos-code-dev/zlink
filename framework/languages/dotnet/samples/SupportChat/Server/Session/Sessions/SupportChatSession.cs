@@ -92,7 +92,7 @@ internal sealed class SupportChatSession(
                 authenticated.ActorId,
                 authenticated.DisplayName,
                 authenticated.Role))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     private async ValueTask JoinConversationAsync(
@@ -130,7 +130,7 @@ internal sealed class SupportChatSession(
             _identityActorId,
             conversationId);
         await Context.Client.Reply(new JoinConversationRes(ensured.State))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     private async ValueTask RelayConversationPacketAsync(

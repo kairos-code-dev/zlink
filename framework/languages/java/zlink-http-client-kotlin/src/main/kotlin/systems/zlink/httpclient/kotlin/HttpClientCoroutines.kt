@@ -48,7 +48,13 @@ suspend fun ZLinkHttpRequestBuilder.awaitDownload(sink: (ByteArray) -> Unit): Ra
 
 /** Awaits a typed response while retaining the current server Spot turn. */
 suspend fun <T> ZLinkHttpServerRequestBuilder.await(type: Class<T>): HttpResponse<T> =
-    async(type).await()
+    submit(type).await()
+
+/** Awaits completion of a one-way server request without exposing a response value. */
+@JvmName("awaitOneWay")
+suspend fun ZLinkHttpServerRequestBuilder.await() {
+    submit().await()
+}
 
 /** Releases the current server Spot turn while awaiting the HTTP response. */
 suspend fun <T> ZLinkHttpServerRequestBuilder.yieldAwait(type: Class<T>): HttpResponse<T> =

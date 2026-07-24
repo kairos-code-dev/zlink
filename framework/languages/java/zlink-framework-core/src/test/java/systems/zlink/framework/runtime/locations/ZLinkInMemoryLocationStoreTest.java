@@ -20,6 +20,7 @@ import systems.zlink.framework.locations.ZLinkAuthorityGenerationTransition;
 import systems.zlink.framework.locations.ZLinkAuthorityPut;
 import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
 import systems.zlink.framework.locations.ZLinkAuthorityStored;
+import systems.zlink.framework.locations.ZLinkActivationConcurrency;
 import systems.zlink.framework.locations.ZLinkCapacityUsage;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
@@ -53,6 +54,7 @@ import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewStale;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewed;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
+import systems.zlink.framework.locations.ZLinkPlacementCapacityBundle;
 import systems.zlink.framework.locations.ZLinkPeerLocationKey;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkPlacementCapacity;
@@ -287,7 +289,7 @@ class ZLinkInMemoryLocationStoreTest {
                         7,
                         owner,
                         new byte[] {1},
-                        1),
+                        ZLinkPlacementCapacityBundle.actor(1)),
                     () -> false)
                 .toCompletableFuture().get()).reservation();
         assertEquals(
@@ -316,6 +318,55 @@ class ZLinkInMemoryLocationStoreTest {
         assertEquals(
             actorCapacity(0, 0, 8),
             onlyMeshNode(store).capacity());
+    }
+
+    @Test
+    void entrySpotIdentityIsClaimedGloballyAndReleasedByExactOwner()
+        throws Exception {
+        ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore(
+            Clock.fixed(NOW, ZoneOffset.UTC));
+        ZLinkLocationOwnerToken firstOwner = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("entry-owner-a", Duration.ofSeconds(30))
+                .toCompletableFuture().get()).token();
+        ZLinkLocationOwnerToken secondOwner = assertInstanceOf(
+            ZLinkOwnerLeaseClaimed.class,
+            store.claimOwnerLease("entry-owner-b", Duration.ofSeconds(30))
+                .toCompletableFuture().get()).token();
+        String entrySpotId =
+            "mesh-entry-00000000-0000-4000-8000-000000000099";
+        ZLinkMeshNodeDescriptor first = meshNodeDescriptor(
+            firstOwner, NODE_A, 7, 1,
+            "tcp://127.0.0.1:7000", entrySpotId);
+        RoutingId secondRid = RoutingId.from(new byte[] {0x02});
+        ZLinkMeshNodeDescriptor second = meshNodeDescriptor(
+            secondOwner, secondRid, 8, 1,
+            "tcp://127.0.0.1:7001", entrySpotId);
+
+        assertEquals(
+            ZLinkLocationWriteStatus.STORED,
+            store.updateMeshNode(first, ZLinkLocationWriteIntent.NEW_CLAIM)
+                .toCompletableFuture().get().status());
+        assertEquals(
+            ZLinkLocationWriteStatus.REJECTED_CONFLICT,
+            store.updateMeshNode(second, ZLinkLocationWriteIntent.NEW_CLAIM)
+                .toCompletableFuture().get().status());
+        assertEquals(
+            ZLinkLocationWriteStatus.STORED,
+            store.removeMeshNode(
+                    new ZLinkMeshNodeDescriptorKey("mesh", NODE_A),
+                    firstOwner)
+                .toCompletableFuture().get());
+        assertEquals(
+            ZLinkLocationWriteStatus.STORED,
+            store.updateMeshNode(second, ZLinkLocationWriteIntent.NEW_CLAIM)
+                .toCompletableFuture().get().status());
+        assertEquals(
+            ZLinkLocationWriteStatus.IGNORED_STALE,
+            store.removeMeshNode(
+                    new ZLinkMeshNodeDescriptorKey("mesh", NODE_A),
+                    firstOwner)
+                .toCompletableFuture().get());
     }
 
     @Test
@@ -367,7 +418,7 @@ class ZLinkInMemoryLocationStoreTest {
             7,
             owner,
             new byte[] {1},
-            1);
+            ZLinkPlacementCapacityBundle.actor(1));
         var reserved = assertInstanceOf(
             ZLinkObjectReserved.class,
             store.reserve(request, () -> false)
@@ -556,7 +607,7 @@ class ZLinkInMemoryLocationStoreTest {
             7,
             owner,
             new byte[] {1},
-            1);
+            ZLinkPlacementCapacityBundle.actor(1));
     }
 
     private static ZLinkCreationOperationTerminal terminal(
@@ -604,7 +655,7 @@ class ZLinkInMemoryLocationStoreTest {
                         7,
                         owner,
                         new byte[] {1},
-                        1),
+                        ZLinkPlacementCapacityBundle.actor(1)),
                     () -> false)
                 .toCompletableFuture().get()).reservation();
         assertEquals(
@@ -648,10 +699,26 @@ class ZLinkInMemoryLocationStoreTest {
         ZLinkLocationOwnerToken owner,
         long revision,
         String endpoint) {
-        return new ZLinkMeshNodeDescriptor(
-            "mesh",
+        return meshNodeDescriptor(
+            owner,
             NODE_A,
             7,
+            revision,
+            endpoint,
+            "mesh-entry-00000000-0000-4000-8000-000000000001");
+    }
+
+    private static ZLinkMeshNodeDescriptor meshNodeDescriptor(
+        ZLinkLocationOwnerToken owner,
+        RoutingId rid,
+        long lifecycleGeneration,
+        long revision,
+        String endpoint,
+        String entrySpotId) {
+        return new ZLinkMeshNodeDescriptor(
+            "mesh",
+            rid,
+            lifecycleGeneration,
             revision,
             endpoint,
             Map.of("game", 100),
@@ -663,8 +730,10 @@ class ZLinkInMemoryLocationStoreTest {
                 true,
                 0)),
             ZLinkMeshNodeObjectRole.SERVER,
+            Optional.of(entrySpotId),
             100,
             actorCapacity(0, 0, 8),
+            new ZLinkActivationConcurrency(0, 128),
             Optional.empty(),
             systems.zlink.framework.runtime.host
                 .ZLinkFrameworkRuntimeState.SERVING,

@@ -64,7 +64,7 @@ internal sealed class BingoEntrySpot(
                     RoomId = actor.RoomId,
                     TargetNodeRid = Context.NodeRid.ToString()
                 })
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
     }
 
     public ValueTask OnLeaveActorAsync(

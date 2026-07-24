@@ -109,4 +109,12 @@ final class DefaultZLinkIoWorkerCall<T> implements ZLinkWorkerCall<T> {
         }
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(result);
     }
+
+    @Override
+    public CompletionStage<T> yield() {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.requireYieldAllowed("I/O worker");
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+            .yieldCurrent(submit());
+    }
 }

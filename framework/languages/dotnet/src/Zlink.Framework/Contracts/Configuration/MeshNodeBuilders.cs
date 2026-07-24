@@ -66,7 +66,7 @@ public interface IZLinkMeshObjectServerBuilder
 
     IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
         string spotType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkUserSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkSpot;
 
@@ -100,6 +100,20 @@ public sealed record ZLinkObjectPlacementOptions
     public int? MaxActiveObjects { get; init; }
 
     public int? MaxPendingActivations { get; init; }
+}
+
+public enum ZLinkUserSpotExecutionMode
+{
+    SpotWide = 0,
+    PerActor = 1
+}
+
+public sealed record ZLinkUserSpotFactoryOptions
+{
+    public int StableTypeLimit { get; init; }
+
+    public ZLinkUserSpotExecutionMode ExecutionMode { get; init; }
+        = ZLinkUserSpotExecutionMode.SpotWide;
 }
 
 public interface IZLinkMeshNodeBuilder : IZLinkMeshObjectServerBuilder

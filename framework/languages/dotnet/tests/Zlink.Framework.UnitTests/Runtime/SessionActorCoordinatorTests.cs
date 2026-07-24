@@ -21,9 +21,10 @@ public sealed class SessionActorCoordinatorTests
             static () => ValueTask.CompletedTask,
             static _ => ValueTask.CompletedTask);
 
-        var result = await context.Client.Send(new SessionPush("value")).SubmitAsync();
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await context.Client.Send(new SessionPush("value")).Async());
 
-        Assert.Equal(ZLinkSubmitStatus.Backpressured, result.Status);
+        Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, error.Kind);
         Assert.Equal(SendFlags.DontWait, stream.LastWriteFlags);
     }
 
@@ -50,13 +51,13 @@ public sealed class SessionActorCoordinatorTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             context.Client.Reply(new SessionPush("cancelled"))
-                .SubmitAsync(cancellation.Token)
+                .Async(cancellation.Token)
                 .AsTask());
         Assert.Empty(stream.Writes);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             context.Client.Reply(new SessionPush("duplicate"))
-                .SubmitAsync()
+                .Async()
                 .AsTask());
     }
 
@@ -211,9 +212,10 @@ public sealed class SessionActorCoordinatorTests
     }
 
     [Fact]
-    public async Task Bound_Actor_Relay_Rejects_A_Stale_Directory_Ref_Before_Native_Send()
+    public async Task Bound_Actor_Relay_Does_Not_Resolve_The_Location_Store_Per_Message()
     {
-        var runtime = CreateRuntime(actorDirectory: new MissingActorDirectory());
+        var directory = new MissingActorDirectory();
+        var runtime = CreateRuntime(actorDirectory: directory);
         var context = CreateSessionContext(runtime, "session-rid");
         var actor = new ActorRef(RoutingId.From("actor-node"), "actor-1", 1);
         var bound = await context.ActorCoordinator.BindOrGetActorAsync(
@@ -238,13 +240,16 @@ public sealed class SessionActorCoordinatorTests
                 CancellationToken.None));
 
         Assert.Equal(ZLinkFrameworkErrorKind.ActorRouteNotFound, error.Kind);
+        Assert.Equal(0, directory.Calls);
+        Assert.Equal(actor, Assert.Single(context.Actors.Bound).Ref);
     }
 
     [Fact]
-    public async Task Bound_Actor_Relay_Rebinds_To_The_Current_Directory_Ref_After_Handoff()
+    public async Task Bound_Actor_Relay_Keeps_The_Exact_Bound_Route_Until_Relocation_Switches_It()
     {
         var current = new ActorRef(RoutingId.From("actor-node-b"), "actor-1", 2);
-        var runtime = CreateRuntime(actorDirectory: new FixedActorDirectory(current));
+        var directory = new FixedActorDirectory(current);
+        var runtime = CreateRuntime(actorDirectory: directory);
         var context = CreateSessionContext(runtime, "session-rid");
         var stale = new ActorRef(RoutingId.From("actor-node-a"), "actor-1", 1);
         var bound = await context.ActorCoordinator.BindOrGetActorAsync(
@@ -268,9 +273,10 @@ public sealed class SessionActorCoordinatorTests
                 static (_, _, _) => ValueTask.CompletedTask,
                 CancellationToken.None));
 
-        var rebound = Assert.Single(context.Actors.Bound);
-        Assert.Equal(current, rebound.Ref);
-        Assert.DoesNotContain(bound, context.Actors.Bound);
+        var retained = Assert.Single(context.Actors.Bound);
+        Assert.Same(bound, retained);
+        Assert.Equal(stale, retained.Ref);
+        Assert.Equal(0, directory.Calls);
     }
 
     private static ZLinkSessionContext CreateSessionContext(
@@ -307,19 +313,29 @@ public sealed class SessionActorCoordinatorTests
 
     private sealed class MissingActorDirectory : IZLinkActorResolver
     {
+        public int Calls { get; private set; }
+
         public ValueTask<(ActorRef? Ref, bool RowPresent)> FindWithPresenceAsync(
             string actorId,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<(ActorRef?, bool)>((null, false));
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return ValueTask.FromResult<(ActorRef?, bool)>((null, false));
+        }
     }
 
     private sealed class FixedActorDirectory(ActorRef actor) : IZLinkActorResolver
     {
+        public int Calls { get; private set; }
+
         public ValueTask<(ActorRef? Ref, bool RowPresent)> FindWithPresenceAsync(
             string actorId,
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<(ActorRef?, bool)>(
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return ValueTask.FromResult<(ActorRef?, bool)>(
                 actor.ActorId == actorId ? (actor, true) : (null, false));
+        }
     }
 
     private sealed class TestSessionHandlerRegistry : IZLinkSessionHandlerRegistry

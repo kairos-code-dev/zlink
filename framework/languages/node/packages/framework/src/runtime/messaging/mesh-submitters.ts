@@ -1,13 +1,20 @@
 import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException
+} from '../../contracts';
+import {
   ZLinkSubmitStatus,
   type ZLinkSubmitResult
-} from '../../contracts';
+} from './submission-result';
 import { ZLinkAsyncSubmitter } from './index';
 
 interface ZLinkMeshSubmitterEntry {
   submitter: ZLinkAsyncSubmitter;
   wake?: () => void;
 }
+
+type ZLinkMeshSendTimeoutResolver = (meshName: string) => number;
+type ZLinkMeshCapacityResolver = (meshName: string) => number;
 
 class ZLinkMeshTerminalResult extends Error {
   constructor(readonly result: ZLinkSubmitResult) {
@@ -20,7 +27,10 @@ export class ZLinkMeshSubmitterRegistry {
   private readonly entries = new Map<string, ZLinkMeshSubmitterEntry>();
   private disposed = false;
 
-  constructor(private readonly timeoutMs = 1000) {}
+  constructor(
+    private readonly timeoutMs: number | ZLinkMeshSendTimeoutResolver,
+    private readonly capacity: number | ZLinkMeshCapacityResolver
+  ) {}
 
   async submit(
     meshName: string,
@@ -41,6 +51,10 @@ export class ZLinkMeshSubmitterRegistry {
       return { status: ZLinkSubmitStatus.Submitted };
     } catch (error) {
       if (error instanceof ZLinkMeshTerminalResult) return error.result;
+      if (error instanceof ZLinkFrameworkException
+        && error.kind === ZLinkFrameworkErrorKind.RuntimeShutdown) {
+        return { status: ZLinkSubmitStatus.Shutdown };
+      }
       if (error instanceof Error && /timed out/i.test(error.message)) {
         return { status: ZLinkSubmitStatus.TimedOut };
       }
@@ -74,7 +88,14 @@ export class ZLinkMeshSubmitterRegistry {
     };
     entry.submitter = new ZLinkAsyncSubmitter(
       (handler) => { entry!.wake = handler; },
-      { timeoutMs: this.timeoutMs }
+      {
+        timeoutMs: typeof this.timeoutMs === 'function'
+          ? this.timeoutMs(meshName)
+          : this.timeoutMs,
+        capacity: typeof this.capacity === 'function'
+          ? this.capacity(meshName)
+          : this.capacity
+      }
     );
     this.entries.set(meshName, entry);
     return entry;

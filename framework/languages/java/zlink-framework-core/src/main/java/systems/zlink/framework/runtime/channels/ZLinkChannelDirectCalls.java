@@ -85,11 +85,11 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
-import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
+
 
 final class PublishCall implements ZLinkFanoutPublishCall {
-    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
-        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
+    private final java.util.concurrent.atomic.AtomicBoolean submitGate =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private final ZLinkChannelCallRuntime runtime;
     private final ZLinkBackendPublisherSocket publisher;
     private final String topic;
@@ -122,22 +122,15 @@ final class PublishCall implements ZLinkFanoutPublishCall {
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-            submitGate.begin();
+    public CompletionStage<Void> submit() {
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }
         ZLinkRuntimeMetrics.increment("zlink.fanout.published", Map.of());
-        if (runtime.flow().enabled(ZLinkMessageFlowOutcome.SENT)) {
-            runtime.flow().trace(new ZLinkMessageFlowEvent(
-                ZLinkMessageFlowOutcome.SENT,
-                ZLinkDispatchErrorSurface.CHANNEL,
-                ZLinkDispatchMessageKind.PUBLISH,
-                packetName.orElse(null), null, topic, null, null, null, null, null));
-        }
         List<Message> publishParts = ZLinkChannelCallRuntime.parts(packetName, payload);
-        return ZLinkSubmitResults.submitAsync(
+        return runtime.oneWayCalls().submitOneWay(
             publisher,
             ZLinkBackendAdmissionKey.socket(),
             () -> publisher.publish(topic, publishParts, SendFlags.DONT_WAIT),
@@ -146,8 +139,8 @@ final class PublishCall implements ZLinkFanoutPublishCall {
 }
 
 final class SendCall implements ZLinkSendCall {
-    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
-        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
+    private final java.util.concurrent.atomic.AtomicBoolean submitGate =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private final ZLinkChannelCallRuntime runtime;
     private final ZLinkBackendDealerSocket client;
     private final Message payload;
@@ -173,9 +166,9 @@ final class SendCall implements ZLinkSendCall {
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-            submitGate.begin();
+    public CompletionStage<Void> submit() {
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }
@@ -187,7 +180,7 @@ final class SendCall implements ZLinkSendCall {
                 packetName.orElse(null), null, null, null, null, null, null, null));
         }
         List<Message> parts = ZLinkChannelCallRuntime.parts(packetName, payload);
-        return ZLinkSubmitResults.submitAsync(
+        return runtime.oneWayCalls().submitOneWay(
             client,
             ZLinkBackendAdmissionKey.socket(),
             () -> client.send(parts, SendFlags.DONT_WAIT),
@@ -273,6 +266,14 @@ final class RequestCall implements ZLinkRequestCall {
             },
             result);
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(result);
+    }
+
+    @Override
+    public <TReply> CompletionStage<TReply> yield(Class<TReply> replyType) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.requireYieldAllowed("Channel request");
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+            .yieldCurrent(submit(replyType));
     }
 
 }

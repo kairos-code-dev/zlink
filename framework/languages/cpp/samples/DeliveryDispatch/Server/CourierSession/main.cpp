@@ -55,14 +55,14 @@ class courier_session_t final : public packet_stream_session_t
             auto found =
               co_await _routes
                 .request_to_spot (entry_spot, find_courier_actor_req_t{request.courier_id})
-                .async<find_courier_actor_res_t> ();
+                .submit<find_courier_actor_res_t> ();
             auto actor_ref = found.actor;
             if (!actor_ref) {
                 auto ensured =
                   co_await _routes
                     .request_to_spot (entry_spot,
                                       ensure_courier_actor_req_t{request.courier_id})
-                    .async<ensure_courier_actor_res_t> ();
+                    .submit<ensure_courier_actor_res_t> ();
                 actor_ref = ensured.actor;
             }
 
@@ -70,7 +70,7 @@ class courier_session_t final : public packet_stream_session_t
             auto actor =
               co_await _actors
                 .bind_or_get (actor_ref->to_actor_ref (sample_names_t::courier_actor_type))
-                .async ();
+                .submit ();
             const auto actor_id = std::string (actor.actor_id ());
             _bound_actors[actor_id] = std::string (actor_ref->node_rid.value ());
             /* location store 조회를 await한 뒤라 stream dispatch 문맥의 thread-local 헤더에
@@ -79,7 +79,7 @@ class courier_session_t final : public packet_stream_session_t
                            .relay_request (bind_courier_session_req_t::packet_name,
                                            zlink::message_t::from_json (bind_courier_session_req_t{
                                              request.courier_id, *actor_ref, session_route}))
-                           .async ();
+                           .submit ();
             stream.reply_packet (reply).submit ();
             std::cerr << "deliverydispatch courier-session: bound courier=" << request.courier_id
                       << "\n";

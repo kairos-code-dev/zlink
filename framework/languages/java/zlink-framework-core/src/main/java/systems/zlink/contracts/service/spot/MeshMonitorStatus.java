@@ -10,8 +10,6 @@ public record MeshMonitorStatus(
     long submittedMessages,
     long completedOperations,
     long backpressuredSubmits,
-    long multicastMessages,
-    long multicastDroppedTargets,
     long activeClaims,
     long pendingApplicationMessages,
     long pendingInfrastructureMessages,

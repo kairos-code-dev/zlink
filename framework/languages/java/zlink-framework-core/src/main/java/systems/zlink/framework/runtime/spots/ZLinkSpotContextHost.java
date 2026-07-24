@@ -28,6 +28,10 @@ abstract class ZLinkSpotContextHost {
 
     abstract CompletionStage<Boolean> closeSpot(String spotId);
 
+    abstract boolean isActorMember(String spotId, String actorId);
+
+    abstract boolean isActorAtSpot(String actorId, String spotId);
+
     abstract <T> CompletionStage<T> runWithOutbound(
         DefaultSpotOutbound outbound,
         Supplier<CompletionStage<T>> operation);

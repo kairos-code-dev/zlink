@@ -85,11 +85,11 @@ import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationA
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
-import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
+
 
 final class RouteSendCall implements ZLinkSendCall {
-    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
-        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
+    private final java.util.concurrent.atomic.AtomicBoolean submitGate =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private final ZLinkChannelCallRuntime runtime;
     private final ZLinkBackendRouterSocket router;
     private final RoutingId target;
@@ -122,9 +122,9 @@ final class RouteSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-            submitGate.begin();
+    public CompletionStage<Void> submit() {
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }
@@ -136,7 +136,7 @@ final class RouteSendCall implements ZLinkSendCall {
                 packetName.orElse(null), null, null, null, target.toString(), null, null, null));
         }
         List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
-        return ZLinkSubmitResults.submitAsync(
+        return runtime.oneWayCalls().submitOneWay(
             router,
             ZLinkBackendAdmissionKey.socket(),
             () -> router.send(target, sendParts, SendFlags.DONT_WAIT),
@@ -229,11 +229,17 @@ final class RouteRequestCall implements ZLinkRequestCall {
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(result);
     }
 
+    @Override
+    public <TReply> CompletionStage<TReply> yield(Class<TReply> replyType) {
+        return systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.rejectYield("MeshNode request");
+    }
+
 }
 
 final class MeshNodeRouteSendCall implements ZLinkSendCall {
-    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
-        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
+    private final java.util.concurrent.atomic.AtomicBoolean submitGate =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private final ZLinkChannelCallRuntime runtime;
     private final ZLinkInternalSpotNode node;
     private final RoutingId target;
@@ -283,9 +289,9 @@ final class MeshNodeRouteSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-            submitGate.begin();
+    public CompletionStage<Void> submit() {
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }
@@ -298,20 +304,19 @@ final class MeshNodeRouteSendCall implements ZLinkSendCall {
         }
         List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
         if (node.routingId().equals(target)) {
-            return ZLinkSubmitResults.submitAsync(
+            return runtime.oneWayCalls().submitOneWay(
                 node,
                 ZLinkBackendAdmissionKey.node(target),
                 () -> submitLocal(node, target, metadata.encode(), sendParts),
                 () -> sendParts.forEach(Message::close));
         }
-        java.util.Optional<systems.zlink.framework.channels.ZLinkSubmitStatus> classified =
+        java.util.Optional<Integer> classified =
             node.classifyNodeSendTarget(target);
         if (classified.isPresent()) {
             sendParts.forEach(Message::close);
-            return CompletableFuture.completedFuture(
-                ZLinkSubmitResults.result(classified.orElseThrow()));
+            return ZLinkOneWayCalls.oneWayStatus(classified.orElseThrow());
         }
-        return ZLinkSubmitResults.submitAsync(
+        return runtime.oneWayCalls().submitOneWay(
             node,
             ZLinkBackendAdmissionKey.node(target),
             () -> node.sendToNode(
@@ -324,25 +329,29 @@ final class MeshNodeRouteSendCall implements ZLinkSendCall {
         RoutingId target,
         byte[] metadata,
         List<Message> parts) {
-        systems.zlink.framework.channels.ZLinkSubmitStatus status =
+        int status =
             node.submitLocalNodeSend(target, metadata, parts)
-                .orElse(systems.zlink.framework.channels.ZLinkSubmitStatus.ROUTE_NOT_CONNECTED);
+                .orElse(ZLinkOneWayCalls.ROUTE_NOT_CONNECTED);
         return switch (status) {
-            case SUBMITTED -> true;
-            case BACKPRESSURED -> false;
-            case TARGET_NOT_FOUND -> throw new ZlinkSubmitException(SubmitResult.NOT_FOUND);
-            case ROUTE_NOT_CONNECTED ->
+            case ZLinkOneWayCalls.SUBMITTED -> true;
+            case ZLinkOneWayCalls.BACKPRESSURED -> false;
+            case ZLinkOneWayCalls.TARGET_NOT_FOUND ->
+                throw new ZlinkSubmitException(SubmitResult.NOT_FOUND);
+            case ZLinkOneWayCalls.ROUTE_NOT_CONNECTED ->
                 throw new ZlinkSubmitException(SubmitResult.NOT_CONNECTED);
-            case SHUTDOWN -> throw new ZlinkSubmitException(SubmitResult.TERMINATED);
-            case TIMED_OUT -> throw new IllegalStateException(
+            case ZLinkOneWayCalls.SHUTDOWN ->
+                throw new ZlinkSubmitException(SubmitResult.TERMINATED);
+            case ZLinkOneWayCalls.TIMED_OUT -> throw new IllegalStateException(
                 "local Node admission cannot return a timeout before waiting");
+            default -> throw new IllegalStateException(
+                "unknown local Node admission status: " + status);
         };
     }
 }
 
 final class MeshChannelRouteSendCall implements ZLinkSendCall {
-    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
-        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
+    private final java.util.concurrent.atomic.AtomicBoolean submitGate =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private final ZLinkChannelCallRuntime runtime;
     private final String channelName;
     private final ZLinkInternalSpotNode node;
@@ -398,14 +407,14 @@ final class MeshChannelRouteSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-            submitGate.begin();
+    public CompletionStage<Void> submit() {
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }
         List<Message> parts = ZLinkChannelCallRuntime.parts(packetName, payload);
-        return ZLinkSubmitResults.submitAsync(
+        return runtime.oneWayCalls().submitOneWay(
             node,
             ZLinkBackendAdmissionKey.channel(channelName),
             () -> node.sendToChannel(
@@ -495,6 +504,14 @@ final class MeshChannelRouteRequestCall implements ZLinkRequestCall {
         }
         submitAttempt(replyType, result, deadline, payloadBytes);
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(result);
+    }
+
+    @Override
+    public <TReply> CompletionStage<TReply> yield(Class<TReply> replyType) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.requireYieldAllowed("Channel request");
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+            .yieldCurrent(submit(replyType));
     }
 
     private <TReply> void submitAttempt(
@@ -669,5 +686,11 @@ final class MeshNodeRouteRequestCall implements ZLinkRequestCall {
             requestParts.forEach(Message::close);
         }
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(result);
+    }
+
+    @Override
+    public <TReply> CompletionStage<TReply> yield(Class<TReply> replyType) {
+        return systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.rejectYield("MeshNode request");
     }
 }

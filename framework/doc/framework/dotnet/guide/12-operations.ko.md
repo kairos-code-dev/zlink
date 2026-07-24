@@ -83,11 +83,6 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 | `zlink.mesh_node.requests.inflight` | reply를 기다리는 request 수 |
 | `zlink.mesh_node.request.duration` | request submit부터 terminal completion까지의 시간 |
 | `zlink.mesh_node.request.timeouts` | request timeout 누계 |
-| `zlink.mesh_node.multicast.submits` | Logical Multicast operation 결과 누계 |
-| `zlink.mesh_node.multicast.targets` | operation마다 선택한 remote MeshNode 수 |
-| `zlink.mesh_node.multicast.pending` | admission을 기다리는 multicast operation 수 |
-| `zlink.mesh_node.multicast.backpressures` | multicast backpressure 누계 |
-| `zlink.mesh_node.multicast.drops` | multicast target별 drop 누계 |
 | `zlink.mesh_node.messages.dropped` | Framework가 원인을 확인한 one-way drop 누계 |
 | `zlink.mesh_node.claim.queue.depth` | owner application·infrastructure pending work 수 |
 | `zlink.mesh_node.claim.active` | 현재 실행 중인 claim 수 |

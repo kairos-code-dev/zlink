@@ -293,7 +293,7 @@ public sealed record ZLinkPlacementCapacity(
 
 `ChannelWeights`의 key 집합은 [descriptor](../../../../01-glossary.ko.md#descriptor)를 처음 게시하기 전에 고정한 ChannelName membership과 같다.
 Stable type은 UTF-8 byte 순서로 정렬한다.
-`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 [stable type](../../../../01-glossary.ko.md#stable-type), policy, [Snapshot](../../../../01-glossary.ko.md#snapshot) adapter 등록 여부와
+`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 [stable type](../../../../01-glossary.ko.md#stable-type), policy, [Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter 등록 여부와
 type별 capacity limit을 한 항목에 함께 둔다. `HasSnapshotAdapter`는 target에 해당 object kind의 adapter가
 등록되어 있는지만 나타내며 application state의 format, version이나 contract ID를 광고하지 않는다.
 `ApplicationVersion`은 `0..long.MaxValue`이고 Redis JSON에서는 선행 0 없는 10진 integer로 저장한다. Channel

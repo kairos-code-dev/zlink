@@ -1,11 +1,12 @@
 import type { Message } from '@zlink-systems/zlink';
 import {
   ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
-  ZLinkSubmitStatus,
-  type ZLinkPublishResult,
-  type ZLinkSubmitResult
+  ZLinkFrameworkException
 } from '../../contracts';
+import {
+  ZLinkSubmitStatus,
+  type ZLinkSubmitResult
+} from '../messaging/submission-result';
 import {
   ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
   ZLinkDispatchErrorSurface,
@@ -217,7 +218,7 @@ export class ZLinkChannelOutboundOperations {
     packetName: string | undefined,
     event: unknown,
     metadata: ReadonlyMap<string, string> = new Map()
-  ): ZLinkPublishResult {
+  ): ZLinkSubmitResult {
     requirePublicFanoutTopic(topic);
     const publisher = this.sockets['publisher'](channelName);
     const correlationId = newChannelCorrelationId();
@@ -240,7 +241,7 @@ export class ZLinkChannelOutboundOperations {
     if (!accepted) {
       return publishResult(ZLinkSubmitStatus.Backpressured);
     }
-    this.tracePublish(channelName, topic, packetName, correlationId);
+    this.recordPublishMetric(topic);
     return publishResult(ZLinkSubmitStatus.Submitted);
   }
 
@@ -251,7 +252,7 @@ export class ZLinkChannelOutboundOperations {
     event: unknown,
     signal?: AbortSignal,
     metadata: ReadonlyMap<string, string> = new Map()
-  ): Promise<ZLinkPublishResult> {
+  ): Promise<ZLinkSubmitResult> {
     throwIfAborted(signal);
     requirePublicFanoutTopic(topic);
     const publisher = this.sockets['publisher'](channelName);
@@ -280,25 +281,12 @@ export class ZLinkChannelOutboundOperations {
       }
       throw error;
     }
-    this.tracePublish(channelName, topic, packetName, correlationId);
+    this.recordPublishMetric(topic);
     return publishResult(ZLinkSubmitStatus.Submitted);
   }
 
-  private tracePublish(
-    channelName: string,
-    topic: string,
-    packetName: string | undefined,
-    correlationId: string
-  ): void {
+  private recordPublishMetric(topic: string): void {
     this.dispatchServices.metrics().count('zlink.fanout.published', 1, { topic });
-    this.dispatchServices.traceOutbound(ZLinkMessageFlowOutcome.Sent, () => ({
-      surface: ZLinkDispatchErrorSurface.Channel,
-      messageKind: ZLinkDispatchMessageKind.Publish,
-      channelName,
-      packetName,
-      correlationId,
-      topic
-    }));
   }
 
   tryRouteSubmit(
@@ -521,17 +509,6 @@ export class ZLinkChannelOutboundOperations {
   }
 }
 
-function publishResult(status: ZLinkSubmitStatus): ZLinkPublishResult {
-  return {
-    status,
-    detail: {
-      snapshotRemoteNodeCount: 0n,
-      admittedRemoteNodeCount: 0n,
-      droppedRemoteNodeCount: 0n,
-      unreachableRemoteNodeCount: 0n,
-      snapshotLocalSpotCount: 0n,
-      admittedLocalSpotCount: 0n,
-      droppedLocalSpotCount: 0n
-    }
-  };
+function publishResult(status: ZLinkSubmitStatus): ZLinkSubmitResult {
+  return { status };
 }

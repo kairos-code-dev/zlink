@@ -18,7 +18,7 @@ public interface IZLinkSession
         ZLinkStreamError error,
         CancellationToken cancellationToken);
     ValueTask OnDispatchAsync(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
@@ -43,7 +43,7 @@ public interface IZLinkSessionHandlerRegistry
     void AddHandler<THandler>() where THandler : class;
     void AddHandler<THandler>(string packetName) where THandler : class;
     ValueTask<bool> TryHandleAsync(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 }
@@ -52,7 +52,7 @@ public interface IZLinkSessionPacketHandler<in TSessionContext, TMessage>
 {
     ValueTask HandleAsync(
         TSessionContext context,
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -98,7 +98,7 @@ public interface IZLinkSessionActor
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
     ValueTask RelayAsync(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
     ValueTask NotifyDisconnectedAsync(
@@ -119,9 +119,9 @@ public readonly record struct ZLinkStreamError(
     ZLinkStreamSessionError Error,
     ZLinkStreamDiagnostic? Diagnostic);
 
-public sealed class ZLinkSessionDispatchContext
+public sealed class ZLinkSessionMessageContext
 {
-    public ZLinkSessionDispatchContext(
+    public ZLinkSessionMessageContext(
         string packetName,
         ZLinkMessageMetadata? metadata = null,
         bool canReply = false) { }
@@ -150,10 +150,18 @@ reply·retry를 하지 않는다. One-way dispatch context는 reply capability�
 monitoring으로 보고하며 `OnErrorAsync(...)`에 전달하지 않는다.
 
 Session binding은 `ActorRef.ActorId + ObjectGeneration`의 exact incarnation을 한 번 고정한다. Ref의
-MeshName·NodeRid는 최초 control route snapshot으로 사용한다. Mapping이 없으면 `ActorLocationStale`, current
+NodeRid와 Framework가 resolve한 Mesh는 최초 control route snapshot으로 사용한다. Mapping이 없으면 `ActorLocationStale`, current
 generation이 다르면 `ActorGenerationStale`, pre-commit seal 중이면 `ActorMoving`이다. Framework는 Store에서
 다른 ref를 찾아 같은 bind operation을 hidden retry하지 않는다. Bind 뒤 Actor relocation이 commit되면 runtime이
 binding route를 갱신한다. Local `IZLinkActor`를 받는 overload는 제공하지 않는다.
+
+Bind 뒤 relay·request relay와 `NotifyDisconnectedAsync`는 Actor별 저장 route를 사용하며 message마다
+Location Store를 조회하지 않는다. Physical disconnect는 Framework가 current binding 전체에 자동 all-settled
+통지를 수행한다. `NotifyDisconnectedAsync`는 연결이 유지된 상태의 논리적 통지이며 callback 완료까지
+기다린다. Automatic 통지와 경쟁해도 exact binding identity마다 Spot callback을 최대 한 번 실행한다.
+Relocation route update는 같은 ObjectGeneration에만 허용하고 `Completed` 뒤 해당 Actor route만 바꾼다.
+Command 44·45 routed ACK와 steady normalization 전에는 target Actor의 session packet·push admission을
+열지 않으며, 같은 Session의 다른 Actor route와 physical STREAM connection은 유지한다.
 
 ## 2. STREAM transport handle
 

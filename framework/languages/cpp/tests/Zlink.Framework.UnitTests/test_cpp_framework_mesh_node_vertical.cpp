@@ -34,6 +34,53 @@ namespace
 {
 using namespace std::chrono_literals;
 
+class monitoring_mesh_store_t final :
+    public zlink::framework::mesh_node_location_store_t
+{
+  public:
+    zlink::framework::mesh_node_descriptor_t descriptor;
+
+    zlink::framework::task_t<zlink::framework::location_write_result_t>
+    update_mesh_node (
+      zlink::framework::mesh_node_descriptor_t value,
+      zlink::framework::location_write_intent_t) override
+    {
+        descriptor = std::move (value);
+        return zlink::framework::task_t<
+          zlink::framework::location_write_result_t> (
+          zlink::framework::result_t<
+            zlink::framework::location_write_result_t>::success (
+            zlink::framework::location_write_result_t::stored (1, {})));
+    }
+
+    zlink::framework::task_t<zlink::framework::location_write_status_t>
+    remove_mesh_node (
+      zlink::framework::mesh_node_descriptor_key_t,
+      zlink::framework::location_owner_token_t) override
+    {
+        return zlink::framework::task_t<
+          zlink::framework::location_write_status_t> (
+          zlink::framework::result_t<
+            zlink::framework::location_write_status_t>::success (
+            zlink::framework::location_write_status_t::stored));
+    }
+
+    zlink::framework::task_t<zlink::framework::location_page_t<
+      zlink::framework::mesh_node_descriptor_t>>
+    list_mesh_nodes (
+      std::string mesh_name,
+      zlink::framework::location_page_request_t = {}) override
+    {
+        zlink::framework::location_page_t<
+          zlink::framework::mesh_node_descriptor_t> page;
+        if (descriptor.mesh_name == mesh_name)
+            page.items.push_back (descriptor);
+        return zlink::framework::task_t<decltype (page)> (
+          zlink::framework::result_t<decltype (page)>::success (
+            std::move (page)));
+    }
+};
+
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::zlink_builder_t &> ().add_route_mesh (
                    std::declval<std::string> ())),
@@ -382,9 +429,31 @@ void verify_local_node_submit_bridge ()
 void verify_public_runtime_surface ()
 {
     auto registration = make_node ("tcp://127.0.0.1:0", "runtime-a");
+    registration->actor_limit = 0;
+    registration->spot_limit = 17;
+    registration->activation_concurrency_limit = 5;
+    registration->placement_weight = 42;
     auto node =
       std::make_shared<zlink::framework::detail::mesh_node_runtime_t> (registration);
     node->start ();
+    monitoring_mesh_store_t monitoring_store;
+    const auto node_status = node->status ();
+    monitoring_store.descriptor.mesh_name = "vertical-mesh";
+    monitoring_store.descriptor.rid = node_status.routing_id ();
+    monitoring_store.descriptor.lifecycle_generation =
+      node_status.lifecycle_generation ();
+    monitoring_store.descriptor.descriptor_revision = 3;
+    monitoring_store.descriptor.placement_weight = 42;
+    monitoring_store.descriptor.capacity = {
+      .actors = {.active = 4, .reserved = 2, .limit = 0},
+      .spots = {.active = 3, .reserved = 1, .limit = 17},
+      .spot_types =
+        {{.object_kind =
+            zlink::framework::placement_object_kind_t::user_spot,
+          .stable_type = "room",
+          .usage = {.active = 3, .reserved = 1, .limit = 9}}}};
+    monitoring_store.descriptor.activation_concurrency = {
+      .active = 2, .limit = 5};
     assert (registration->listen_endpoint == node->status ().local_endpoint ());
     assert (registration->listen_endpoint != "tcp://127.0.0.1:0");
     auto runtime =
@@ -401,7 +470,8 @@ void verify_public_runtime_surface ()
             return zlink::framework::task_t<zlink::framework::drain_result_t> (
               zlink::framework::result_t<zlink::framework::drain_result_t>::success (
                 zlink::framework::drained_t{}));
-        });
+        },
+        &monitoring_store);
     runtime->start ();
     zlink::framework::runtime::route_mesh_runtime_options_service_t runtime_options (
       {node});
@@ -411,6 +481,17 @@ void verify_public_runtime_surface ()
     assert (first.mesh_name == "vertical-mesh");
     assert (first.rid.to_string () == "runtime-a");
     assert (first.state == zlink::framework::mesh_node_state_t::serving);
+    assert (first.placement_weight == 42);
+    assert (first.object_capacity.actors.limit == 0);
+    assert (first.object_capacity.actors.active == 4);
+    assert (first.object_capacity.actors.reserved == 2);
+    assert (first.object_capacity.spots.limit == 17);
+    assert (first.object_capacity.spot_types.size () == 1);
+    assert (first.object_capacity.spot_types.front ().usage.active == 3);
+    assert (first.object_capacity.spot_types.front ().usage.reserved == 1);
+    assert (first.object_capacity.spot_types.front ().usage.limit == 9);
+    assert (first.activation_concurrency.active == 2);
+    assert (first.activation_concurrency.limit == 5);
     assert (first.channels.size () == 1);
     assert (first.channels.front ().channel_name == "work");
     assert (first.channels.front ().ready_member_count == 1);

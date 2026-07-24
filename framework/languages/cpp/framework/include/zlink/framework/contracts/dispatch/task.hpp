@@ -32,6 +32,8 @@ class serial_turn_t
     virtual bool released () const = 0;
     virtual task_scheduler_t resume_scheduler () = 0;
     virtual bool belongs_to (const void *owner) const noexcept = 0;
+    virtual bool allows_yield () const noexcept = 0;
+    virtual result_t<void> defer (std::function<void ()> work) = 0;
 };
 
 inline thread_local std::shared_ptr<serial_turn_t> current_serial_turn_handle;
@@ -91,6 +93,25 @@ prepare_serial_turn_await (bool release_turn)
     }
     return serial_turn_await_plan_t{turn, held_serial_turn_scheduler (turn), true};
 }
+
+inline bool current_serial_turn_allows_yield ()
+{
+    const auto turn = capture_current_serial_turn ();
+    return turn && !turn->released () && turn->allows_yield ();
+}
+
+inline result_t<void> defer_current_serial_turn (std::function<void ()> work)
+{
+    auto turn = capture_current_serial_turn ();
+    if (!turn || turn->released ()) {
+        return result_t<void>::failure (
+          framework_error_kind_t::invalid_configuration,
+          "Actor join defer requires an open Framework handler turn");
+    }
+    return turn->defer (std::move (work));
+}
+
+template <typename T> task_t<T> unsupported_yield_task ();
 
 /* Ambient dispatch-context propagation across coroutine suspension
  * (flow-correlation MFLOW-EXT-014). The runtime installs the hooks once; a
@@ -434,6 +455,13 @@ template <typename T> task_t<T> reschedule_task (task_t<T> task, task_scheduler_
           }
       });
     return output;
+}
+
+template <typename T> task_t<T> unsupported_yield_task ()
+{
+    return task_t<T> (result_t<T>::failure (
+      framework_error_kind_t::invalid_configuration,
+      "yield is available only in a SpotWide User Spot or Instance Spot callback"));
 }
 
 

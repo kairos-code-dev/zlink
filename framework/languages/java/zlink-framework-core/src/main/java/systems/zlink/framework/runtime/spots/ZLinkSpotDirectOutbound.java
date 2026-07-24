@@ -21,20 +21,44 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
-import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
+
 
 final class ZLinkSpotDirectOutbound {
     private final ZLinkSpotRouteMessages messages;
     private final Executor handlerExecutor;
     private final ZLinkMessageFlowTracer flow;
+    private final ZLinkOneWayCalls oneWayCalls;
 
     ZLinkSpotDirectOutbound(
         ZLinkSpotRouteMessages messages,
         Executor handlerExecutor,
         ZLinkMessageFlowTracer flow) {
+        this(
+            messages,
+            handlerExecutor,
+            flow,
+            new ZLinkOneWayCalls((backend, key) -> (submission, cleanup) -> {
+                try {
+                    return submission.get()
+                        ? java.util.concurrent.CompletableFuture.completedFuture(null)
+                        : java.util.concurrent.CompletableFuture.failedFuture(
+                            new IllegalStateException(
+                                "one-way submission was not admitted"));
+                } finally {
+                    cleanup.run();
+                }
+            }));
+    }
+
+    ZLinkSpotDirectOutbound(
+        ZLinkSpotRouteMessages messages,
+        Executor handlerExecutor,
+        ZLinkMessageFlowTracer flow,
+        ZLinkOneWayCalls oneWayCalls) {
         this.messages = messages;
         this.handlerExecutor = handlerExecutor;
         this.flow = flow;
+        this.oneWayCalls = oneWayCalls;
     }
 
     ZLinkSendCall send(
@@ -77,7 +101,7 @@ final class ZLinkSpotDirectOutbound {
             this, spot, channelName, topic, payload, packetName);
     }
 
-    CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submitSend(
+    CompletionStage<Void> submitSend(
         ZLinkBackendSpot spot,
         RoutingId targetNodeRid,
         String spotId,
@@ -93,7 +117,7 @@ final class ZLinkSpotDirectOutbound {
             targetNodeRid,
             spotId);
         List<Message> parts = messages.encode(packetName, payload);
-        return ZLinkSubmitResults.submitAsync(
+        return oneWayCalls.submitOneWay(
             spot,
             ZLinkBackendAdmissionKey.spot(targetNodeRid, spotId),
             () -> spot.sendToSpot(
@@ -154,7 +178,7 @@ final class ZLinkSpotDirectOutbound {
         return result.thenApplyAsync(reply -> reply, handlerExecutor);
     }
 
-    CompletionStage<systems.zlink.framework.channels.ZLinkPublishResult> submitPublish(
+    CompletionStage<Void> submitPublish(
         ZLinkBackendSpot spot,
         String channelName,
         String topic,
@@ -169,41 +193,21 @@ final class ZLinkSpotDirectOutbound {
             null,
             null);
         List<Message> parts = messages.encode(packetName, payload);
-        java.util.concurrent.atomic.AtomicReference<
-            systems.zlink.contracts.service.spot.PublishDetail> detail =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        return ZLinkSubmitResults.submitAsync(
+        return oneWayCalls.submitOneWay(
                 spot,
                 ZLinkBackendAdmissionKey.channel(channelName),
                 () -> {
-                    var submitted = spot.publishDetailed(
+                    spot.publish(
                         channelName,
                         topic,
                         metadata.encode(),
                         parts,
                         SendFlags.DONT_WAIT);
-                    detail.set(submitted);
-                    return submitted != null;
+                    // Target-specific acceptance is outside the publish terminal.
+                    return true;
                 },
                 () -> parts.forEach(Message::close))
-            .thenApply(result -> {
-                var submitted = detail.get();
-                return new systems.zlink.framework.channels.ZLinkPublishResult(
-                    result.status(),
-                    submitted == null
-                        ? new systems.zlink.framework.channels
-                            .ZLinkLogicalMulticastDetail(
-                                0, 0, 0, 0, 0, 0, 0)
-                        : new systems.zlink.framework.channels
-                            .ZLinkLogicalMulticastDetail(
-                                submitted.snapshotRemoteTargetCount(),
-                                submitted.admittedRemoteTargetCount(),
-                                submitted.droppedRemoteTargetCount(),
-                                submitted.unreachableRemoteTargetCount(),
-                                submitted.snapshotLocalSpotCount(),
-                                submitted.admittedLocalSpotCount(),
-                                submitted.droppedLocalSpotCount()));
-            });
+            .thenApply(ignored -> null);
     }
 
     private void trace(
@@ -234,8 +238,8 @@ final class ZLinkSpotDirectOutbound {
 }
 
 final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
-    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
-        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
+    private final java.util.concurrent.atomic.AtomicBoolean submitGate =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private final ZLinkSpotDirectOutbound outbound;
     private final ZLinkBackendSpot spot;
     private final RoutingId targetNodeRid;
@@ -322,9 +326,9 @@ final class ZLinkSpotDirectSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-            submitGate.begin();
+    public CompletionStage<Void> submit() {
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }
@@ -449,6 +453,8 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
 
     @Override
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.rejectSameSpotWait(spotId);
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(
             outbound.submitRequest(
             spot,
@@ -462,11 +468,19 @@ final class ZLinkSpotDirectRequestCall implements ZLinkRequestCall {
             replyType));
     }
 
+    @Override
+    public <TReply> CompletionStage<TReply> yield(Class<TReply> replyType) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.requireYieldAllowed("Spot request");
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+            .yieldCurrent(submit(replyType));
+    }
+
 }
 
 final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
-    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
-        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
+    private final java.util.concurrent.atomic.AtomicBoolean submitGate =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private final ZLinkSpotDirectOutbound outbound;
     private final ZLinkBackendSpot spot;
     private final String channelName;
@@ -527,9 +541,9 @@ final class ZLinkSpotDirectPublishCall implements ZLinkPublishCall {
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkPublishResult> submit() {
-        CompletionStage<systems.zlink.framework.channels.ZLinkPublishResult> duplicate =
-            submitGate.begin();
+    public CompletionStage<Void> submit() {
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }

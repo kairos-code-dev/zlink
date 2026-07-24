@@ -31,40 +31,19 @@ final class ZLinkInMemoryAggregateCapacityTest {
             RoutingId.from("target-node"));
 
     @Test
-    void aggregateBindsReservedFenceUntilAggregateAbort() throws Exception {
+    void aggregateReservesCapacityUntilAggregateAbort() throws Exception {
         Fixture fixture = fixture();
         fixture.sourceLive.set(false);
 
-        var capacity = assertInstanceOf(
-            ZLinkRelocationCapacityReserved.class,
-            fixture.store.reserveRelocationCapacity(
-                    fixture.capacityRequest,
-                    () -> false)
-                .toCompletableFuture().get());
-        fixture.targetDescriptorLive.set(false);
-        assertInstanceOf(
-            ZLinkRelocationCapacityAlreadyReserved.class,
-            fixture.store.reserveRelocationCapacity(
-                    fixture.capacityRequest,
-                    () -> false)
-                .toCompletableFuture().get());
-        fixture.targetDescriptorLive.set(true);
         ZLinkAggregatePrepareRequest request =
             aggregateRequest(
                 UUID.randomUUID(),
                 fixture.current,
                 fixture.target,
-                capacity.fence(),
                 new byte[] {2});
         var prepared = assertInstanceOf(
             ZLinkAggregatePrepared.class,
             fixture.store.prepareAggregate(request, () -> false)
-                .toCompletableFuture().get());
-        assertInstanceOf(
-            ZLinkRelocationCapacityAlreadyReserved.class,
-            fixture.store.reserveRelocationCapacity(
-                    fixture.capacityRequest,
-                    () -> false)
                 .toCompletableFuture().get());
         assertEquals(
             1,
@@ -77,7 +56,6 @@ final class ZLinkInMemoryAggregateCapacityTest {
                         request.aggregateId(),
                         fixture.current,
                         fixture.target,
-                        capacity.fence(),
                         new byte[] {2}),
                     () -> false)
                 .toCompletableFuture().get());
@@ -88,14 +66,7 @@ final class ZLinkInMemoryAggregateCapacityTest {
                         request.aggregateId(),
                         fixture.current,
                         fixture.target,
-                        capacity.fence(),
                         new byte[] {9}),
-                    () -> false)
-                .toCompletableFuture().get());
-        assertEquals(
-            ZLinkRelocationCapacityAbortResult.STALE,
-            fixture.store.abortRelocationCapacity(
-                    capacity.fence(),
                     () -> false)
                 .toCompletableFuture().get());
         assertInstanceOf(
@@ -105,7 +76,6 @@ final class ZLinkInMemoryAggregateCapacityTest {
                         UUID.randomUUID(),
                         fixture.current,
                         fixture.target,
-                        capacity.fence(),
                         new byte[] {2}),
                     () -> false)
                 .toCompletableFuture().get());
@@ -139,12 +109,6 @@ final class ZLinkInMemoryAggregateCapacityTest {
                     () -> false)
                 .toCompletableFuture().get());
         assertEquals(
-            ZLinkRelocationCapacityAbortResult.STALE,
-            fixture.store.abortRelocationCapacity(
-                    capacity.fence(),
-                    () -> false)
-                .toCompletableFuture().get());
-        assertEquals(
             fixture.current.storeVersion(),
             current(fixture).storeVersion());
         assertEquals(
@@ -170,7 +134,9 @@ final class ZLinkInMemoryAggregateCapacityTest {
                 1,
                 List.of(participant, participant),
                 new byte[32],
-                List.of(),
+                TARGET_DESCRIPTOR,
+                9,
+                ZLinkPlacementCapacityBundle.actor(1),
                 fixture.target));
         assertEquals(
             fixture.current.storeVersion(),
@@ -178,16 +144,10 @@ final class ZLinkInMemoryAggregateCapacityTest {
     }
 
     @Test
-    void aggregateCommitConsumesBoundFenceAndReplacesActiveAllocation()
+    void aggregateCommitConsumesReservedBundleAndReplacesActiveAllocation()
         throws Exception {
         Fixture fixture = fixture();
         fixture.sourceLive.set(false);
-        var capacity = assertInstanceOf(
-            ZLinkRelocationCapacityReserved.class,
-            fixture.store.reserveRelocationCapacity(
-                    fixture.capacityRequest,
-                    () -> false)
-                .toCompletableFuture().get());
         var prepared = assertInstanceOf(
             ZLinkAggregatePrepared.class,
             fixture.store.prepareAggregate(
@@ -195,7 +155,6 @@ final class ZLinkInMemoryAggregateCapacityTest {
                         UUID.randomUUID(),
                         fixture.current,
                         fixture.target,
-                        capacity.fence(),
                         new byte[] {2}),
                     () -> false)
                 .toCompletableFuture().get());
@@ -318,7 +277,7 @@ final class ZLinkInMemoryAggregateCapacityTest {
                 TARGET_DESCRIPTOR,
                 9,
                 target,
-                current.allocation().capacityDelta());
+                current.allocation().capacityBundle());
         return new Fixture(
             store,
             key,
@@ -348,7 +307,7 @@ final class ZLinkInMemoryAggregateCapacityTest {
                         7,
                         owner,
                         new byte[] {1},
-                        1),
+                        ZLinkPlacementCapacityBundle.actor(1)),
                     () -> false)
                 .toCompletableFuture().get()).reservation();
         assertEquals(
@@ -377,7 +336,6 @@ final class ZLinkInMemoryAggregateCapacityTest {
         UUID aggregateId,
         ZLinkAuthoritySnapshot current,
         ZLinkLocationOwnerToken target,
-        ZLinkRelocationCapacityFence capacityFence,
         byte[] payload) {
         return new ZLinkAggregatePrepareRequest(
             aggregateId,
@@ -389,7 +347,9 @@ final class ZLinkInMemoryAggregateCapacityTest {
                 payload,
                 new byte[] {3})),
             new byte[32],
-            List.of(capacityFence),
+            TARGET_DESCRIPTOR,
+            9,
+            ZLinkPlacementCapacityBundle.actor(1),
             target);
     }
 
@@ -412,11 +372,13 @@ final class ZLinkInMemoryAggregateCapacityTest {
                 true,
                 0)),
             ZLinkMeshNodeObjectRole.SERVER,
+            Optional.of("entry-" + key.rid()),
             100,
             new ZLinkPlacementCapacity(
                 new ZLinkCapacityUsage(0, 0, 64),
                 new ZLinkCapacityUsage(0, 0, 0),
                 List.of()),
+            new ZLinkActivationConcurrency(0, 128),
             Optional.empty(),
             systems.zlink.framework.runtime.host
                 .ZLinkFrameworkRuntimeState.SERVING,

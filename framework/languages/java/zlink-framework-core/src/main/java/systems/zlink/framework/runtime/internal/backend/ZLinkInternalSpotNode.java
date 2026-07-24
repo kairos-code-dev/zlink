@@ -18,9 +18,8 @@ import systems.zlink.contracts.service.spot.ActorTransferPrepare;
 import systems.zlink.contracts.service.spot.ActorTransferPrepareResult;
 import systems.zlink.contracts.service.spot.ActorTransferToken;
 import systems.zlink.contracts.service.spot.PrepareActorTransferResult;
-import systems.zlink.contracts.service.spot.PublishDetail;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.channels.ZLinkSubmitStatus;
+
 
 public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
     RoutingId routingId();
@@ -47,14 +46,14 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
         // Alternate backends may not support process-local Node direct dispatch.
     }
 
-    default java.util.Optional<ZLinkSubmitStatus> submitLocalNodeSend(
+    default java.util.Optional<Integer> submitLocalNodeSend(
         RoutingId targetNodeRid,
         byte[] metadata,
         List<Message> parts) {
         return java.util.Optional.empty();
     }
 
-    default java.util.Optional<ZLinkSubmitStatus> classifyNodeSendTarget(
+    default java.util.Optional<Integer> classifyNodeSendTarget(
         RoutingId targetNodeRid) {
         return java.util.Optional.empty();
     }
@@ -159,22 +158,23 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
             "MeshNode channel request metadata is unavailable");
     }
 
-    default PublishDetail publishDetailed(
+    default void publish(
         String channelName,
         String topic,
         List<Message> parts,
         SendFlags flags) {
-        throw new UnsupportedOperationException("MeshNode publish detail is unavailable");
+        throw new UnsupportedOperationException("MeshNode publish is unavailable");
     }
 
-    default PublishDetail publishDetailed(
+    default void publish(
         String channelName,
         String topic,
         byte[] metadata,
         List<Message> parts,
         SendFlags flags) {
         if (metadata == null || metadata.length == 0) {
-            return publishDetailed(channelName, topic, parts, flags);
+            publish(channelName, topic, parts, flags);
+            return;
         }
         throw new UnsupportedOperationException("MeshNode publish metadata is unavailable");
     }

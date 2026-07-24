@@ -84,68 +84,7 @@ class monitoring_spot_t : public zlink::framework::spot_t
 class monitoring_subject_spot_t : public zlink::framework::spot_t
 {
   public:
-    explicit monitoring_subject_spot_t (server::evidence_store_t &evidence) :
-        _evidence (evidence)
-    {
-    }
-
-    void configure (zlink::framework::spot_context_t &context)
-    {
-        _context = context;
-        context.handlers ().add_subscribe<
-          &monitoring_subject_spot_t::on_multicast> ("monitor.multicast");
-    }
-
-    void on_multicast (const multicast_probe_t &message)
-    {
-        _evidence.add (
-          "multicast-received|rid=" + _evidence.rid () + "|spot="
-          + std::string (_context.spot_rid ().value ()) + "|marker="
-          + message.marker + "|sequence=" + std::to_string (message.sequence));
-    }
-
-  private:
-    server::evidence_store_t &_evidence;
-    zlink::framework::spot_context_t _context;
-};
-
-class monitoring_slow_spot_t : public zlink::framework::spot_t
-{
-  public:
-    monitoring_slow_spot_t (server::evidence_store_t &evidence,
-                            application_gate_t &gate) :
-        _evidence (evidence), _gate (gate)
-    {
-    }
-
-    void configure (zlink::framework::spot_context_t &context)
-    {
-        _context = context;
-        context.handlers ().add_subscribe<
-          &monitoring_slow_spot_t::on_multicast> ("monitor.prefill");
-        context.handlers ().add_subscribe<
-          &monitoring_slow_spot_t::on_multicast> ("monitor.multicast");
-    }
-
-    void on_multicast (const multicast_probe_t &message)
-    {
-        if (message.marker == "mon-c1-application-gate") {
-            _evidence.add ("application-gate|state=entered");
-            _gate.wait_if_armed ();
-            _evidence.add ("application-gate|state=released");
-        } else {
-            std::this_thread::sleep_for (std::chrono::milliseconds (25));
-        }
-        _evidence.add (
-          "multicast-received|rid=" + _evidence.rid () + "|spot="
-          + std::string (_context.spot_rid ().value ()) + "|marker="
-          + message.marker + "|sequence=" + std::to_string (message.sequence));
-    }
-
-  private:
-    server::evidence_store_t &_evidence;
-    application_gate_t &_gate;
-    zlink::framework::spot_context_t _context;
+    ~monitoring_subject_spot_t () override = default;
 };
 
 inline void failing_timer_handler_t::handle (monitoring_spot_t &,
@@ -334,7 +273,7 @@ class mesh_profile_request_handler_t
               route_mesh_channel, zlink::routing_id_t::from (target),
               payload)
             .timeout (std::chrono::seconds (5))
-            .async<profile_res_t> ()
+            .submit<profile_res_t> ()
             .result ()
             .value ();
         _evidence.add (
@@ -372,7 +311,7 @@ class mesh_application_gate_request_handler_t
               route_mesh_channel, zlink::routing_id_t::from (target),
               payload)
             .timeout (std::chrono::seconds (15))
-            .async<application_gate_res_t> ()
+            .submit<application_gate_res_t> ()
             .result ()
             .value ();
         return {.body = nlohmann::json (reply).dump ()};
@@ -476,35 +415,6 @@ class create_subject_handler_t
     zlink::framework::spot_node_manager_t &_spots;
 };
 
-class create_slow_subject_handler_t
-{
-  public:
-    using dependency_types = zlink::framework::dependency_list_t<
-      zlink::framework::spot_node_manager_t>;
-
-    explicit create_slow_subject_handler_t (
-      zlink::framework::spot_node_manager_t &spots) :
-        _spots (spots)
-    {
-    }
-
-    zlink::framework::http_response_t
-    handle (const zlink::framework::http_request_t &request)
-    {
-        const auto spot_rid = request.query_values.at ("spotRid");
-        (void) _spots.get_or_create_spot (
-          monitoring_slow_spot,
-          zlink::framework::spot_rid_t::from_string (spot_rid));
-        zlink::framework::http_response_t response;
-        response.body =
-          nlohmann::json{{"status", "created"}, {"spotRid", spot_rid}}.dump ();
-        return response;
-    }
-
-  private:
-    zlink::framework::spot_node_manager_t &_spots;
-};
-
 class close_subject_handler_t
 {
   public:
@@ -537,178 +447,38 @@ class close_subject_handler_t
     zlink::framework::spot_node_manager_t &_spots;
 };
 
-inline std::string submit_status_name (zlink::framework::submit_status_t status)
-{
-    switch (status) {
-        case zlink::framework::submit_status_t::submitted:
-            return "Submitted";
-        case zlink::framework::submit_status_t::backpressured:
-            return "Backpressured";
-        case zlink::framework::submit_status_t::timed_out:
-            return "TimedOut";
-        case zlink::framework::submit_status_t::target_not_found:
-            return "TargetNotFound";
-        case zlink::framework::submit_status_t::route_not_connected:
-            return "RouteNotConnected";
-        case zlink::framework::submit_status_t::shutdown:
-            return "Shutdown";
-    }
-    return "Shutdown";
-}
-
-inline multicast_publish_res_t multicast_response (
-  const zlink::framework::publish_result_t &result,
-  int sequence,
-  const zlink::framework::mesh_node_snapshot_t &snapshot)
-{
-    return multicast_publish_res_t{
-      .status = submit_status_name (result.status),
-      .sequence = sequence,
-      .snapshot_remote = result.detail.snapshot_remote_node_count,
-      .admitted_remote = result.detail.admitted_remote_node_count,
-      .dropped_remote = result.detail.dropped_remote_node_count,
-      .snapshot_local = result.detail.snapshot_local_spot_count,
-      .admitted_local = result.detail.admitted_local_spot_count,
-      .dropped_local = result.detail.dropped_local_spot_count,
-      .submitted_total = snapshot.multicast.submitted,
-      .backpressured_total = snapshot.multicast.backpressured,
-      .dropped_total = snapshot.multicast.dropped};
-}
-
-class publish_until_handler_t
+class publish_probe_handler_t
 {
   public:
     using dependency_types = zlink::framework::dependency_list_t<
-      zlink::framework::spot_publisher_client_t,
-      zlink::framework::route_mesh_runtime_t>;
+      zlink::framework::spot_publisher_client_t>;
 
-    publish_until_handler_t (
-      zlink::framework::spot_publisher_client_t &publisher,
-      zlink::framework::route_mesh_runtime_t &runtime) :
-        _publisher (publisher), _runtime (runtime)
+    explicit publish_probe_handler_t (
+      zlink::framework::spot_publisher_client_t &publisher) :
+        _publisher (publisher)
     {
     }
 
     zlink::framework::http_response_t
-    handle (const zlink::framework::http_request_t &http)
+    handle (const zlink::framework::http_request_t &request)
     {
-        const auto request =
-          nlohmann::json::parse (http.body).get<multicast_publish_req_t> ();
-        const auto payload_size =
-          std::clamp (request.payload_bytes, 1, 1024 * 1024);
-        const auto attempts = std::clamp (request.max_attempts, 1, 50000);
-        const std::string payload (static_cast<std::size_t> (payload_size), 'x');
-        zlink::framework::publish_result_t last{
-          .status = zlink::framework::submit_status_t::shutdown};
-        for (int sequence = 1; sequence <= attempts; ++sequence) {
-            auto call = _publisher.publish (
-              route_mesh_channel, "monitor.multicast",
-              multicast_probe_t{request.marker, sequence, payload});
-            const auto result = call.submit ().result ().value ();
-            last = result;
-            const bool remote_expected =
-              !request.expected_remote_dropped
-              || (result.detail.dropped_remote_node_count
-                    == *request.expected_remote_dropped
-                  && result.detail.admitted_remote_node_count
-                       + result.detail.dropped_remote_node_count
-                     == result.detail.snapshot_remote_node_count);
-            const bool local_expected =
-              !request.expected_local_dropped
-              || (result.detail.dropped_local_spot_count
-                    == *request.expected_local_dropped
-                  && result.detail.admitted_local_spot_count
-                       + result.detail.dropped_local_spot_count
-                     == result.detail.snapshot_local_spot_count);
-            if (remote_expected && local_expected) {
-                zlink::framework::http_response_t response;
-                response.body = nlohmann::json (
-                  multicast_response (
-                    result, sequence, _runtime.snapshot (route_mesh_name)))
-                                  .dump ();
-                return response;
-            }
-            if (!request.blocking)
-                std::this_thread::yield ();
-        }
+        const auto topic = request.query_values.at ("topic");
+        _publisher
+          .publish (
+            route_mesh_channel,
+            topic,
+            profile_req_t{.value = "publish", .marker = topic})
+          .submit ()
+          .result ()
+          .value ();
         zlink::framework::http_response_t response;
         response.body =
-          nlohmann::json (
-            multicast_response (
-              last, attempts, _runtime.snapshot (route_mesh_name)))
-            .dump ();
+          nlohmann::json{{"status", "published"}, {"topic", topic}}.dump ();
         return response;
     }
 
   private:
     zlink::framework::spot_publisher_client_t &_publisher;
-    zlink::framework::route_mesh_runtime_t &_runtime;
-};
-
-class local_drop_handler_t
-{
-  public:
-    using dependency_types = zlink::framework::dependency_list_t<
-      zlink::framework::spot_publisher_client_t,
-      zlink::framework::route_mesh_runtime_t>;
-
-    local_drop_handler_t (
-      zlink::framework::spot_publisher_client_t &publisher,
-      zlink::framework::route_mesh_runtime_t &runtime) :
-        _publisher (publisher), _runtime (runtime)
-    {
-    }
-
-    zlink::framework::http_response_t
-    handle (const zlink::framework::http_request_t &http)
-    {
-        const auto request =
-          nlohmann::json::parse (http.body).get<multicast_publish_req_t> ();
-        const auto payload_size =
-          std::clamp (request.payload_bytes, 1, 1024 * 1024);
-        const auto attempts = std::clamp (request.max_attempts, 1, 50000);
-        const std::string payload (static_cast<std::size_t> (payload_size), 'x');
-        zlink::framework::publish_result_t last{
-          .status = zlink::framework::submit_status_t::shutdown};
-        for (int sequence = 1; sequence <= attempts; ++sequence) {
-            (void) _publisher
-              .publish (
-                route_mesh_channel, "monitor.prefill",
-                multicast_probe_t{request.marker, sequence, payload})
-              .submit ()
-              .result ();
-            const auto result =
-              _publisher
-                .publish (
-                  route_mesh_channel, "monitor.multicast",
-                  multicast_probe_t{request.marker, sequence, payload})
-                .submit ()
-                .result ()
-                .value ();
-            last = result;
-            if (result.detail.snapshot_local_spot_count == 2
-                && result.detail.admitted_local_spot_count == 1
-                && result.detail.dropped_local_spot_count == 1) {
-                zlink::framework::http_response_t response;
-                response.body = nlohmann::json (
-                  multicast_response (
-                    result, sequence, _runtime.snapshot (route_mesh_name)))
-                                  .dump ();
-                return response;
-            }
-        }
-        zlink::framework::http_response_t response;
-        response.body =
-          nlohmann::json (
-            multicast_response (
-              last, attempts, _runtime.snapshot (route_mesh_name)))
-            .dump ();
-        return response;
-    }
-
-  private:
-    zlink::framework::spot_publisher_client_t &_publisher;
-    zlink::framework::route_mesh_runtime_t &_runtime;
 };
 
 class shutdown_handler_t
@@ -748,24 +518,6 @@ class runtime_observation_store_t
                           + std::to_string (*event.lifecycle_generation);
               if (event.channel_name)
                   line += "|channel=" + *event.channel_name;
-              if (event.remote_snapshot_count)
-                  line += "|remote-snapshot="
-                          + std::to_string (*event.remote_snapshot_count);
-              if (event.remote_admitted_count)
-                  line += "|remote-admitted="
-                          + std::to_string (*event.remote_admitted_count);
-              if (event.remote_dropped_count)
-                  line += "|remote-dropped="
-                          + std::to_string (*event.remote_dropped_count);
-              if (event.local_snapshot_count)
-                  line += "|local-snapshot="
-                          + std::to_string (*event.local_snapshot_count);
-              if (event.local_admitted_count)
-                  line += "|local-admitted="
-                          + std::to_string (*event.local_admitted_count);
-              if (event.local_dropped_count)
-                  line += "|local-dropped="
-                          + std::to_string (*event.local_dropped_count);
               if (event.claim_domain)
                   line += "|claim-domain=" + *event.claim_domain;
               if (event.reason)
@@ -910,22 +662,6 @@ class runtime_snapshot_handler_t
                          {"descriptorSources", snapshot.descriptor_sources},
                          {"peers", std::move (peers)},
                          {"channels", std::move (channels)},
-                         {"multicast",
-                          {{"submitted", snapshot.multicast.submitted},
-                           {"backpressured", snapshot.multicast.backpressured},
-                           {"dropped", snapshot.multicast.dropped},
-                           {"remoteSnapshotCount",
-                            snapshot.multicast.remote_snapshot_count},
-                           {"remoteAdmittedCount",
-                            snapshot.multicast.remote_admitted_count},
-                           {"remoteDroppedCount",
-                            snapshot.multicast.remote_dropped_count},
-                           {"localSnapshotCount",
-                            snapshot.multicast.local_snapshot_count},
-                           {"localAdmittedCount",
-                            snapshot.multicast.local_admitted_count},
-                           {"localDroppedCount",
-                            snapshot.multicast.local_dropped_count}}},
                          {"claims",
                           {{"applicationActive", snapshot.claims.application_active},
                            {"applicationPending",

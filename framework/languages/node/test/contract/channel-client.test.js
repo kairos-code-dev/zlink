@@ -12,6 +12,9 @@ const { NestFactory } = require('@nestjs/core');
 const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
 const { resolveFrameworkPacketName } = require('../../packages/framework/dist/runtime/messaging/packet-name');
+const {
+  ZLinkSubmitStatus
+} = require('../../packages/framework/dist/runtime/messaging/submission-result');
 
 function dispatchOptions(observerType) {
   return framework.createFrameworkOptions((options) => {
@@ -90,7 +93,7 @@ test('ZLinkSendCall snapshots metadata and reports asynchronous admission once',
   const transport = {
     async submitToChannel(meshName, channelName, packetName, message, signal, metadata) {
       calls.push({ kind: 'async', meshName, channelName, packetName, message, signal, metadata: [...metadata] });
-      return { status: framework.ZLinkSubmitStatus.Submitted };
+      return { status: ZLinkSubmitStatus.Submitted };
     },
     async requestToChannel() {},
     async submit() {},
@@ -106,12 +109,12 @@ test('ZLinkSendCall snapshots metadata and reports asynchronous admission once',
   const second = client.sendToChannel('mesh', 'api', typedPacket('Notice', { id: 2 }))
     .metadata('tenant', 'green');
 
-  assert.deepEqual(await first.submit(), { status: framework.ZLinkSubmitStatus.Submitted });
+  assert.equal(await first.submit(), undefined);
   await assert.rejects(
     async () => first.submit(),
     /already been submitted/
   );
-  assert.deepEqual(await second.submit(), { status: framework.ZLinkSubmitStatus.Submitted });
+  assert.equal(await second.submit(), undefined);
   assert.deepEqual(calls.map(({ kind, metadata }) => ({ kind, metadata })), [
     {
       kind: 'async',
@@ -176,7 +179,7 @@ test('ZLinkRouteClient one-way calls report asynchronous transport admission', a
 
   const result = await client.sendToNode('route', 'target', packet).submit();
 
-  assert.deepEqual(result, { status: framework.ZLinkSubmitStatus.Submitted });
+  assert.equal(result, undefined);
   assert.deepEqual(calls, [{
     routerChannelId: 'route',
     targetNodeRid: 'target',
@@ -260,8 +263,8 @@ test('ZLinkRouteClient refreshes and retries a Spot send that was not admitted o
         targets.push(String(target.targetNodeRid));
         return {
           status: targets.length === 1
-            ? framework.ZLinkSubmitStatus.TargetNotFound
-            : framework.ZLinkSubmitStatus.Submitted
+            ? ZLinkSubmitStatus.TargetNotFound
+            : ZLinkSubmitStatus.Submitted
         };
       },
       async requestToSpot() {}
@@ -269,7 +272,7 @@ test('ZLinkRouteClient refreshes and retries a Spot send that was not admitted o
   );
 
   const result = await client.sendToSpot(handle, typedPacket('Notice', { id: 1 })).submit();
-  assert.equal(result.status, framework.ZLinkSubmitStatus.Submitted);
+  assert.equal(result, undefined);
   assert.deepEqual(targets, ['node-old', 'node-new']);
 });
 
@@ -543,11 +546,11 @@ test('one-way call validation wins over a pre-aborted signal', async () => {
   const transport = {
     async submitToChannel() {
       transportAttempts += 1;
-      return { status: framework.ZLinkSubmitStatus.Submitted };
+      return { status: ZLinkSubmitStatus.Submitted };
     },
     async publish() {
       transportAttempts += 1;
-      return { status: framework.ZLinkSubmitStatus.Submitted };
+      return { status: ZLinkSubmitStatus.Submitted };
     }
   };
 
@@ -571,25 +574,71 @@ test('Logical Multicast call object permits only one submit invocation', async (
   const client = new framework.DefaultZLinkSpotPublisherClient(registration, {
     async publish() {
       attempts += 1;
-      return {
-        status: framework.ZLinkSubmitStatus.Submitted,
-        detail: {
-          snapshotRemoteNodeCount: 0n,
-          admittedRemoteNodeCount: 0n,
-          droppedRemoteNodeCount: 0n,
-          unreachableRemoteNodeCount: 0n,
-          snapshotLocalSpotCount: 0n,
-          admittedLocalSpotCount: 0n,
-          droppedLocalSpotCount: 0n
-        }
-      };
+      return { status: ZLinkSubmitStatus.Submitted };
     }
   });
   const call = client.publish('mesh', 'events', 'topic', typedPacket('Event', 'event'));
 
-  assert.equal((await call.submit()).status, framework.ZLinkSubmitStatus.Submitted);
-  await assert.rejects(() => call.submit(), /already been submitted/i);
+  assert.equal(await call.submit(), undefined);
+  await assert.rejects(() => call.submit(), (error) => {
+    assert.equal(error instanceof framework.ZLinkFrameworkException, true);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.AlreadySubmitted);
+    return true;
+  });
   assert.equal(attempts, 1);
+});
+
+test('Logical Multicast completion does not expose target admission results', async () => {
+  const registration = meshChannelRegistration('mesh', 'events');
+  const client = new framework.DefaultZLinkSpotPublisherClient(registration, {
+    async publish() {
+      return { status: ZLinkSubmitStatus.Submitted };
+    }
+  });
+
+  assert.equal(
+    await client.publish('mesh', 'events', 'topic', typedPacket('Event', 'event')).submit(),
+    undefined
+  );
+});
+
+test('Logical Multicast pre-commit admission failure remains exceptional', async () => {
+  const registration = meshChannelRegistration('mesh', 'events');
+  const client = new framework.DefaultZLinkSpotPublisherClient(registration, {
+    async publish() {
+      return { status: ZLinkSubmitStatus.Backpressured };
+    }
+  });
+
+  await assert.rejects(
+    () => client.publish('mesh', 'events', 'topic', typedPacket('Event', 'event')).submit(),
+    (error) => {
+      assert.equal(error instanceof framework.ZLinkFrameworkException, true);
+      assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.DeadlineExceeded);
+      return true;
+    }
+  );
+});
+
+test('Logical Multicast call built before runtime disposal reports RuntimeShutdown on submit', async () => {
+  const registration = meshChannelRegistration('mesh', 'events');
+  let manager = {
+    publish() {
+      throw new Error('disposed runtime must not be called');
+    }
+  };
+  const transport = new framework.ZLinkRuntimeSpotPublisherTransport(() => manager);
+  const client = new framework.DefaultZLinkSpotPublisherClient(registration, transport);
+  const call = client.publish(
+    'mesh', 'events', 'topic', typedPacket('Event', 'event')
+  );
+  manager = undefined;
+
+  await assert.rejects(call.submit(), (error) => {
+    assert.equal(error instanceof framework.ZLinkFrameworkException, true);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.RuntimeShutdown);
+    return true;
+  });
 });
 
 test('ZLinkDealerChannelClientTransport rejects pre-aborted signal before creating socket operations', async () => {
@@ -690,10 +739,7 @@ test('ZLinkChannelClient sends through public dealer/router binding sockets', as
       assert.equal(envelope.header.messageName, 'Greeting');
       assert.deepEqual(envelope.header.metadata, { 'trace-id': 'send-1' });
       assert.equal(envelope.body, 'hello');
-      assert.deepEqual(
-        await submit,
-        { status: framework.ZLinkSubmitStatus.Submitted }
-      );
+      assert.equal(await submit, undefined);
     } finally {
       received.close();
     }
@@ -3598,14 +3644,21 @@ test('ZLinkAsyncSubmitter discards queued ownership exactly once when aborted be
   assert.equal(discarded, 1);
 });
 
-test('ZLinkAsyncSubmitter one-way submission rejects a full local queue synchronously', () => {
-  const submitter = new framework.ZLinkAsyncSubmitter(() => undefined, { capacity: 1 });
+test('ZLinkAsyncSubmitter one-way submission waits for full local queue capacity', async () => {
+  const failures = [];
+  const submitter = new framework.ZLinkAsyncSubmitter(() => undefined, {
+    capacity: 1,
+    timeoutMs: 5,
+    onCommandFailure: (error) => failures.push(error)
+  });
+  submitter.submitCommandOneWay(() => false);
   submitter.submitCommandOneWay(() => false);
 
-  assert.throws(
-    () => submitter.submitCommandOneWay(() => false),
-    /queue is full/i
-  );
+  assert.equal(failures.length, 0);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(failures.length, 2);
+  assert.match(failures[0].message, /timed out/i);
+  assert.match(failures[1].message, /timed out/i);
   submitter.dispose();
 });
 
@@ -3671,7 +3724,7 @@ test('ZLinkAsyncSubmitter settles with both abort and discard failures', async (
   submitter.dispose();
 });
 
-test('ZLinkAsyncSubmitter attempts every valid command before checking waiter capacity', async () => {
+test('ZLinkAsyncSubmitter waits for bounded executor capacity instead of rejecting immediately', async () => {
   let ready = () => undefined;
   const submitter = new framework.ZLinkAsyncSubmitter(
     (handler) => { ready = handler; },
@@ -3693,18 +3746,18 @@ test('ZLinkAsyncSubmitter attempts every valid command before checking waiter ca
   assert.equal(acceptedAttempts, 1);
 
   let rejectedAttempts = 0;
-  await assert.rejects(
-    () => submitter.submitCommand(() => {
-      rejectedAttempts += 1;
-      return false;
-    }),
-    /queue is full/
-  );
+  let thirdSettled = false;
+  const third = submitter.submitCommand(() => ++rejectedAttempts >= 2);
+  void third.finally(() => { thirdSettled = true; });
   assert.equal(rejectedAttempts, 1);
+  await Promise.resolve();
+  assert.equal(thirdSettled, false);
 
   firstController.abort();
   await assert.rejects(first, (error) => error?.name === 'AbortError');
   ready();
+  await third;
+  assert.equal(rejectedAttempts, 2);
   assert.equal(firstAttempts, 1);
   submitter.dispose();
 });
@@ -3859,6 +3912,124 @@ test('ZLinkAsyncSubmitter terminal cleanup restores waiter capacity without late
   submitter.dispose();
 });
 
+test('ZLinkAsyncSubmitter hard cap retains no closure or payload and recovers', async () => {
+  let ready = () => undefined;
+  let accepting = false;
+  let coreCalls = 0;
+  let discarded = 0;
+  const submitter = new framework.ZLinkAsyncSubmitter(
+    (handler) => { ready = handler; },
+    {
+      capacity: 1,
+      waiterCapacity: 1,
+      timeoutMs: 1_000
+    }
+  );
+  const attempt = () => {
+    coreCalls += 1;
+    return accepting;
+  };
+  const first = submitter.submitCommand(attempt);
+  const second = submitter.submitCommand(attempt);
+  const overflow = Array.from({ length: 5_000 }, () =>
+    submitter.submitCommand(
+      () => {
+        coreCalls += 1;
+        return true;
+      },
+      undefined,
+      () => { discarded += 1; }
+    )
+  );
+
+  assert.equal(coreCalls, 2);
+  assert.equal(submitter.queue.length, 1);
+  assert.equal(submitter.capacityWaiters.length, 1);
+  assert.equal(submitter.active.size, 2);
+  const overflowResults = await Promise.allSettled(overflow);
+  assert.equal(overflowResults.every((result) =>
+    result.status === 'rejected'
+      && result.reason instanceof framework.ZLinkFrameworkException
+      && result.reason.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
+  ), true);
+  assert.equal(discarded, 5_000);
+  assert.equal(coreCalls, 2);
+  assert.equal(submitter.active.size, 2);
+
+  accepting = true;
+  ready();
+  await first;
+  ready();
+  await second;
+  assert.equal(submitter.active.size, 0);
+  assert.equal(submitter.queue.length, 0);
+  assert.equal(submitter.capacityWaiters.length, 0);
+
+  await submitter.submitCommand(attempt);
+  assert.equal(coreCalls, 5);
+  submitter.dispose();
+});
+
+test('ZLinkAsyncSubmitter ready callback cannot admit work after its absolute deadline', async () => {
+  let ready = () => undefined;
+  let coreCalls = 0;
+  const submitter = new framework.ZLinkAsyncSubmitter(
+    (handler) => { ready = handler; },
+    {
+      capacity: 1,
+      waiterCapacity: 1,
+      timeoutMs: 5
+    }
+  );
+  const expired = submitter.submitCommand(() => {
+    coreCalls += 1;
+    return false;
+  });
+  const blockedUntil = Date.now() + 15;
+  while (Date.now() < blockedUntil) {
+    // Keep the turn active so SEND_READY wins the event-loop race with timer dispatch.
+  }
+  ready();
+
+  await assert.rejects(expired, (error) => {
+    assert.equal(error instanceof framework.ZLinkFrameworkException, true);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.DeadlineExceeded);
+    return true;
+  });
+  assert.equal(coreCalls, 1);
+  submitter.dispose();
+});
+
+test('ZLinkAsyncSubmitter shutdown preserves RuntimeShutdown and releases pending payload', async () => {
+  let discarded = 0;
+  const submitter = new framework.ZLinkAsyncSubmitter(
+    () => undefined,
+    {
+      capacity: 1,
+      waiterCapacity: 1,
+      timeoutMs: 1_000
+    }
+  );
+  const pending = submitter.submitCommand(
+    () => false,
+    undefined,
+    () => { discarded += 1; }
+  );
+  submitter.dispose();
+
+  await assert.rejects(pending, (error) => {
+    assert.equal(error instanceof framework.ZLinkFrameworkException, true);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.RuntimeShutdown);
+    return true;
+  });
+  assert.equal(discarded, 1);
+  assert.throws(
+    () => submitter.submitCommand(() => true),
+    (error) => error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.RuntimeShutdown
+  );
+});
+
 test('self-RID RouteMesh uses bounded local admission and SEND_READY wakeup without replay', async () => {
   const host = new framework.ZLinkFrameworkRuntimeHost({
     registration: framework.createFrameworkRegistration()
@@ -3887,7 +4058,7 @@ test('self-RID RouteMesh uses bounded local admission and SEND_READY wakeup with
   };
 
   const first = host.routeTransport.submit('mesh', 'self-node', 'Notice', { sequence: 1 });
-  assert.deepEqual(await first, { status: framework.ZLinkSubmitStatus.Submitted });
+  assert.deepEqual(await first, { status: ZLinkSubmitStatus.Submitted });
   assert.equal(scheduled.length, 1);
 
   const second = host.routeTransport.submit('mesh', 'self-node', 'Notice', { sequence: 2 });
@@ -3895,7 +4066,7 @@ test('self-RID RouteMesh uses bounded local admission and SEND_READY wakeup with
   assert.equal(scheduled.length, 1);
 
   await scheduled.shift()();
-  assert.deepEqual(await second, { status: framework.ZLinkSubmitStatus.Submitted });
+  assert.deepEqual(await second, { status: ZLinkSubmitStatus.Submitted });
   assert.equal(scheduled.length, 1);
 
   const cancelledController = new AbortController();
@@ -3910,13 +4081,13 @@ test('self-RID RouteMesh uses bounded local admission and SEND_READY wakeup with
   await assert.rejects(cancelled, (error) => error?.name === 'AbortError');
 
   const timedOut = host.routeTransport.submit('mesh', 'self-node', 'Notice', { sequence: 4 });
-  assert.deepEqual(await timedOut, { status: framework.ZLinkSubmitStatus.TimedOut });
+  assert.deepEqual(await timedOut, { status: ZLinkSubmitStatus.TimedOut });
 
   await scheduled.shift()();
   assert.equal(scheduled.length, 0);
 
   const recovered = host.routeTransport.submit('mesh', 'self-node', 'Notice', { sequence: 5 });
-  assert.deepEqual(await recovered, { status: framework.ZLinkSubmitStatus.Submitted });
+  assert.deepEqual(await recovered, { status: ZLinkSubmitStatus.Submitted });
   assert.equal(scheduled.length, 1);
   await scheduled.shift()();
   assert.equal(handled, 3);

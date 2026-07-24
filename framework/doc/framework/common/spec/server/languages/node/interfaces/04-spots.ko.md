@@ -1,5 +1,12 @@
 # Node.js Spot과 Instance Spot 공개 인터페이스
 
+Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
+callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
+같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
+normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+변경하지 않는다.
+
 [인터페이스 목차](README.ko.md) · [Spot address와 messaging](../../../../24-spot-address-messaging.ko.md) ·
 [Spot·Actor membership](../../../../23-spot-actor.ko.md)
 
@@ -75,6 +82,7 @@ export interface ZLinkInstanceSpot {
 export interface ZLinkSpotCommonContext<TSpot> {
     readonly meshName: string;
     readonly spotId: SpotId;
+    readonly objectGeneration: number;
     readonly nodeRid: RoutingId;
     readonly outbound: ZLinkSpotOutbound;
     addTimer<THandler extends ZLinkSpotTimerHandler<TSpot>>(
@@ -155,26 +163,18 @@ export interface ZLinkSpotRequestCall {
 }
 
 export interface ZLinkSpotPacketHandler<TSpot, TMessage> {
-    handle(spot: TSpot, message: TMessage, context: ZLinkHandlerContext): Promise<void>;
+    handle(spot: TSpot, message: TMessage, context: ZLinkMessageContext): Promise<void>;
 }
 
 export declare function ZLinkSpotActorRequest(packetName?: string): MethodDecorator;
 export declare function ZLinkSpotActorSend(packetName?: string): MethodDecorator;
 
-export interface ZLinkSpotActorSendContext extends ZLinkHandlerContext {
-    readonly metadata: ZLinkMessageMetadata;
+export interface ZLinkSpotActorSendHandler<TSpot, TActor extends ZLinkActor, TMessage> {
+    handle(spot: TSpot, actor: TActor, context: ZLinkMessageContext, message: TMessage): Promise<void>;
 }
 
-export interface ZLinkSpotActorRequestContext extends ZLinkSpotActorSendContext {
-    readonly reply: ZLinkSpotActorReplyOptions;
-}
-
-export interface ZLinkSpotActorSendHandler<TActor extends ZLinkActor, TMessage> {
-    handle(actor: TActor, context: ZLinkSpotActorSendContext, message: TMessage): Promise<void>;
-}
-
-export interface ZLinkSpotActorRequestHandler<TActor extends ZLinkActor, TRequest, TReply> {
-    handle(actor: TActor, context: ZLinkSpotActorRequestContext, request: TRequest): Promise<TReply>;
+export interface ZLinkSpotActorRequestHandler<TSpot, TActor extends ZLinkActor, TRequest, TReply> {
+    handle(spot: TSpot, actor: TActor, context: ZLinkMessageContext, request: TRequest): Promise<TReply>;
 }
 ```
 
@@ -207,6 +207,7 @@ export interface ZLinkSpotCreateCall {
     request(request: unknown): this;
     timeout(timeoutMs: number): this;
     submit(signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+    yield(signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
 }
 
 export interface ZLinkSpotGetOrCreateCall {
@@ -214,6 +215,7 @@ export interface ZLinkSpotGetOrCreateCall {
     request(request: unknown): this;
     timeout(timeoutMs: number): this;
     submit(signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+    yield(signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
 }
 ```
 

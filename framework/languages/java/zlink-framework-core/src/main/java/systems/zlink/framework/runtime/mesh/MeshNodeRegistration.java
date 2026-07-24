@@ -19,14 +19,15 @@ import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteRequestHandler;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.channels.ZLinkSendHandler;
-import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
 import systems.zlink.framework.configuration.ZLinkMeshChannelBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshObjectClientBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder;
 import systems.zlink.framework.configuration.ZLinkMeshNodeSocketConfig;
-import systems.zlink.framework.configuration.ZLinkObjectPlacementOptions;
+import systems.zlink.framework.configuration.ZLinkActorFactoryOptions;
+import systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions;
+import systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions;
 import systems.zlink.framework.configuration.ZLinkMeshPeerConnection;
 import systems.zlink.framework.configuration.ZLinkMeshPeerConnections;
 import systems.zlink.framework.configuration.ZLinkSpotPublisherConfig;
@@ -58,8 +59,12 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     private final SpotPublisherConfig spotPublisher = new SpotPublisherConfig();
     private String bindEndpoint;
     private RoutingId routingId;
-    private RoutingId entrySpotRoutingId;
+    private String routingIdPrefix;
+    private String entrySpotId;
     private int placementWeight = 100;
+    private int actorCapacity;
+    private int spotCapacity;
+    private int activationConcurrency = 128;
     private Integer allocationSlotCount;
     private String allocationPrefix;
     private String allocationGroup;
@@ -85,6 +90,18 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         return placementWeight;
     }
 
+    public int actorCapacity() {
+        return actorCapacity;
+    }
+
+    public int spotCapacity() {
+        return spotCapacity;
+    }
+
+    public int activationConcurrency() {
+        return activationConcurrency;
+    }
+
     public Integer allocationSlotCount() {
         return allocationSlotCount;
     }
@@ -93,15 +110,20 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         return allocationPrefix == null ? meshName : allocationPrefix;
     }
 
+    public String routingIdPrefix() {
+        return routingIdPrefix == null ? meshName : routingIdPrefix;
+    }
+
+    public String entrySpotId() {
+        return ensureEntrySpotId();
+    }
+
     public String allocationGroup() {
         return allocationGroup == null ? meshName : allocationGroup;
     }
 
     public void applyAllocatedRoutingId(RoutingId value) {
         routingId = Objects.requireNonNull(value, "routingId");
-        if (!entrySpots.isEmpty() || !actorFactories.isEmpty()) {
-            entrySpotRoutingId = value;
-        }
     }
 
     public List<String> channelNames() {
@@ -168,6 +190,10 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         return objectRoles.client || objectRoles.server;
     }
 
+    public boolean objectServer() {
+        return objectRoles.server;
+    }
+
     public boolean requiresRelocationStore() {
         return java.util.stream.Stream.of(
                 relocatableSpotFactories.values().stream()
@@ -178,10 +204,6 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
                     .map(RelocatableActorFactory::relocationPolicy))
             .flatMap(java.util.function.Function.identity())
             .anyMatch(policy -> !(policy instanceof ZLinkRelocationPolicy.Disabled<?>));
-    }
-
-    public RoutingId entrySpotRoutingId() {
-        return entrySpotRoutingId;
     }
 
     public Duration defaultRequestTimeout() {
@@ -245,12 +267,50 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     }
 
     @Override
+    public ZLinkMeshNodeBuilder setRoutingIdPrefix(String value) {
+        routingIdPrefix = requireText(value, "routing ID prefix");
+        entrySpotId = null;
+        return this;
+    }
+
+    @Override
     public ZLinkMeshNodeBuilder setPlacementWeight(int value) {
         if (value < 0 || value > 10_000) {
             throw new ZLinkConfigurationException(
                 "placement weight must be in range 0..10000");
         }
         placementWeight = value;
+        return this;
+    }
+
+    @Override
+    public ZLinkMeshNodeBuilder setActorCapacity(int maxActors) {
+        if (maxActors < 0) {
+            throw new ZLinkConfigurationException(
+                "Actor capacity must not be negative.");
+        }
+        actorCapacity = maxActors;
+        return this;
+    }
+
+    @Override
+    public ZLinkMeshNodeBuilder setSpotCapacity(int maxSpots) {
+        if (maxSpots < 0) {
+            throw new ZLinkConfigurationException(
+                "Spot capacity must not be negative.");
+        }
+        spotCapacity = maxSpots;
+        return this;
+    }
+
+    @Override
+    public ZLinkMeshNodeBuilder setActivationConcurrency(
+        int maxConcurrentActivations) {
+        if (maxConcurrentActivations <= 0) {
+            throw new ZLinkConfigurationException(
+                "Activation concurrency must be positive.");
+        }
+        activationConcurrency = maxConcurrentActivations;
         return this;
     }
 
@@ -326,21 +386,6 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
             Objects.requireNonNull(requestType, "requestType"),
             Objects.requireNonNull(replyType, "replyType")));
         return this;
-    }
-
-    @Override
-    public ZLinkEntrySpotOptions configureEntrySpot() {
-        return new ZLinkEntrySpotOptions() {
-            @Override
-            public RoutingId routingId() {
-                return entrySpotRoutingId;
-            }
-
-            @Override
-            public void setRoutingId(RoutingId value) {
-                entrySpotRoutingId = Objects.requireNonNull(value, "routingId");
-            }
-        };
     }
 
     @Override
@@ -468,6 +513,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         public ZLinkMeshObjectServerBuilder server() {
             client = true;
             server = true;
+            ensureEntrySpotId();
             return this;
         }
 
@@ -483,13 +529,13 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         ZLinkMeshObjectServerBuilder addSpotFactory(
             String stableType,
             Class<TSpot> spotType,
-            ZLinkObjectPlacementOptions placement,
+            ZLinkUserSpotFactoryOptions options,
             ZLinkRelocationPolicy<TSpot> relocationPolicy) {
             String type = requireStableType(stableType);
             RelocatableSpotFactory<TSpot> value = new RelocatableSpotFactory<>(
                 type,
                 Objects.requireNonNull(spotType, "spotType"),
-                requirePlacement(placement),
+                Objects.requireNonNull(options, "options"),
                 Objects.requireNonNull(relocationPolicy, "relocationPolicy"));
             putUnique(relocatableSpotFactories, type, value, "Spot stable type");
             spotFactories.add(spotType);
@@ -501,14 +547,14 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         ZLinkMeshObjectServerBuilder addInstanceSpotFactory(
             String stableType,
             Class<TSpot> spotType,
-            ZLinkObjectPlacementOptions placement,
+            ZLinkInstanceSpotFactoryOptions options,
             ZLinkRelocationPolicy<TSpot> relocationPolicy) {
             String type = requireStableType(stableType);
             RelocatableInstanceSpotFactory<TSpot> value =
                 new RelocatableInstanceSpotFactory<>(
                     type,
                     Objects.requireNonNull(spotType, "spotType"),
-                    requirePlacement(placement),
+                    Objects.requireNonNull(options, "options"),
                     Objects.requireNonNull(relocationPolicy, "relocationPolicy"));
             putUnique(
                 relocatableInstanceSpotFactories,
@@ -524,14 +570,14 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
             String stableType,
             Class<TActor> actorType,
             Class<? extends ZLinkActorFactory> factoryType,
-            ZLinkObjectPlacementOptions placement,
+            ZLinkActorFactoryOptions options,
             ZLinkRelocationPolicy<TActor> relocationPolicy) {
             String type = requireStableType(stableType);
             RelocatableActorFactory<TActor> value = new RelocatableActorFactory<>(
                 type,
                 Objects.requireNonNull(actorType, "actorType"),
                 Objects.requireNonNull(factoryType, "factoryType"),
-                requirePlacement(placement),
+                Objects.requireNonNull(options, "options"),
                 Objects.requireNonNull(relocationPolicy, "relocationPolicy"));
             putUnique(relocatableActorFactories, type, value, "Actor stable type");
             putUnique(actorFactories, type, factoryType, "actor factory");
@@ -539,25 +585,18 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         }
     }
 
+    private String ensureEntrySpotId() {
+        if (entrySpotId == null) {
+            entrySpotId = routingIdPrefix()
+                + "-entry-"
+                + java.util.UUID.randomUUID().toString()
+                    .toLowerCase(java.util.Locale.ROOT);
+        }
+        return entrySpotId;
+    }
+
     private static String requireStableType(String value) {
         return requireText(value, "stable type");
-    }
-
-    private static ZLinkObjectPlacementOptions requirePlacement(
-        ZLinkObjectPlacementOptions placement) {
-        ZLinkObjectPlacementOptions value =
-            Objects.requireNonNull(placement, "placement");
-        validateCapacity(value.maxActiveObjects(), "max active objects");
-        validateCapacity(
-            value.maxPendingActivations(),
-            "max pending activations");
-        return value;
-    }
-
-    private static void validateCapacity(Integer value, String label) {
-        if (value != null && value <= 0) {
-            throw new ZLinkConfigurationException(label + " must be positive");
-        }
     }
 
     private static String requireText(String value, String label) {
@@ -601,14 +640,14 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     public record RelocatableSpotFactory<TSpot extends ZLinkSpot<?>>(
         String stableType,
         Class<TSpot> spotType,
-        ZLinkObjectPlacementOptions placement,
+        ZLinkUserSpotFactoryOptions options,
         ZLinkRelocationPolicy<TSpot> relocationPolicy) {
     }
 
     public record RelocatableInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
         String stableType,
         Class<TSpot> spotType,
-        ZLinkObjectPlacementOptions placement,
+        ZLinkInstanceSpotFactoryOptions options,
         ZLinkRelocationPolicy<TSpot> relocationPolicy) {
     }
 
@@ -616,7 +655,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         String stableType,
         Class<TActor> actorType,
         Class<? extends ZLinkActorFactory> factoryType,
-        ZLinkObjectPlacementOptions placement,
+        ZLinkActorFactoryOptions options,
         ZLinkRelocationPolicy<TActor> relocationPolicy) {
     }
 

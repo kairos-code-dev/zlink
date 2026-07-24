@@ -313,8 +313,6 @@ final class MonitoringEventsTest {
                 0L,
                 0L,
                 0L,
-                0L,
-                0L,
                 0,
                 10L);
         }

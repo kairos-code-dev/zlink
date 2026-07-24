@@ -33,7 +33,8 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalAsyncSpotDispatchHandler;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 
-final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
+final class ZLinkJavaMeshSpot
+    implements ZLinkBackendSpot, ZLinkJavaAdmissionBacked {
 
     private final ZLinkJavaMeshNode owner;
     private final Spot spot;

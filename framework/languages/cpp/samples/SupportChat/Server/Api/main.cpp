@@ -99,7 +99,7 @@ class open_conversation_api_handler_t
             .request ("supportchat.support",
                       allocate_conversation_req_t{request.customer_actor_id,
                                                   request.customer_display_name, request.subject})
-            .async<allocate_conversation_res_t> ();
+            .submit<allocate_conversation_res_t> ();
         std::cerr << "supportchat api: conversation allocated id=" << allocated.conversation_id
                   << " status=" << allocated.status << "\n";
         co_return open_conversation_api_res_t{allocated.conversation_id, allocated.status};

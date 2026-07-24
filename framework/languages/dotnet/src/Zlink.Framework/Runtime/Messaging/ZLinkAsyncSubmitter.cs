@@ -12,8 +12,12 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     private readonly object _disposeGate = new();
     private readonly ZLinkSubmitOperationFactory _operationFactory;
     private readonly ZLinkSubmitQueue _pending;
+    private readonly SemaphoreSlim _pendingSlots;
+    private readonly int _pendingWaiterCapacity;
+    private readonly SemaphoreSlim _pendingWaiterSlots;
     private readonly TimeSpan _sendTimeout;
     private readonly CancellationToken _stopToken;
+    private readonly CancellationTokenSource _admissionClosed = new();
     private readonly object _submitGate = new();
     private readonly Func<bool>? _failFastNotConnected;
     private TaskCompletionSource? _activeDrainCompletion;
@@ -40,6 +44,9 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     {
         _failFastNotConnected = failFastNotConnected;
         _pending = new ZLinkSubmitQueue(capacity);
+        _pendingSlots = new SemaphoreSlim(capacity, capacity);
+        _pendingWaiterCapacity = capacity;
+        _pendingWaiterSlots = new SemaphoreSlim(capacity, capacity);
         _sendTimeout = ValidateTimeout(sendTimeout);
         _stopToken = stopToken;
         _operationFactory = new ZLinkSubmitOperationFactory(_sendTimeout, _submitGate, OnPendingTerminal);
@@ -48,6 +55,9 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
 
     internal static int ResolvePendingCapacity(int sendHighWaterMark) =>
         sendHighWaterMark > 0 ? sendHighWaterMark : DefaultCapacity;
+
+    internal int PendingAdmissionWaiterCount =>
+        _pendingWaiterCapacity - _pendingWaiterSlots.CurrentCount;
 
     public ValueTask DisposeAsync()
     {
@@ -77,6 +87,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         {
             Volatile.Write(ref _accepting, false);
             _pending.Complete();
+            _admissionClosed.Cancel();
         }
 
         lock (_gate)
@@ -91,6 +102,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         }
 
         var remaining = _pending.DrainAll();
+        if (remaining.Count != 0) _pendingSlots.Release(remaining.Count);
 
         foreach (var item in remaining)
             try
@@ -119,7 +131,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             cancellationToken);
     }
 
-    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+    public async ValueTask<ZLinkOneWaySubmitResult> SubmitAsync(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> attemptSubmit,
         CancellationToken cancellationToken = default)
@@ -127,23 +139,23 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         try
         {
             await Async(parts, attemptSubmit, cancellationToken).ConfigureAwait(false);
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Submitted);
         }
         catch (ZLinkPendingAdmissionFullException)
         {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.Backpressured);
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Backpressured);
         }
         catch (TimeoutException)
         {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.TimedOut);
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.TimedOut);
         }
         catch (ZLinkSubmitShutdownException)
         {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.Shutdown);
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Shutdown);
         }
         catch (ObjectDisposedException)
         {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.Shutdown);
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Shutdown);
         }
         catch (ZLinkFrameworkException failure)
             when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var result))
@@ -193,13 +205,14 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         return SubmitRequestCoreAsync(parts, trySubmit, cancellationToken, discardResult);
     }
 
-    private ValueTask SubmitCommandAsync(
+    private async ValueTask SubmitCommandAsync(
         IReadOnlyList<Message> parts,
         Func<IReadOnlyList<Message>, bool> trySubmit,
         CancellationToken cancellationToken)
     {
         var operationId = ZLinkTelemetry.CaptureSubmitOperationId();
         var ownsParts = true;
+        Task? pendingCompletion = null;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -215,7 +228,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                     Trace(operationId, "commit");
                     ownsParts = false;
                     ZLinkMessageParts.DisposeAll(parts);
-                    return ValueTask.CompletedTask;
+                    return;
                 }
 
                 if (submitFailure is ZlinkSubmitException submitError && !IsRetryableSubmitFailure(submitError))
@@ -231,13 +244,15 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                 if (submitFailure is not null) pending.RecordSubmitFailure(submitFailure);
 
                 ownsParts = false;
-                EnqueuePending(pending, cancellationToken);
-                return new ValueTask(pending.Task);
+                await EnqueuePendingAsync(pending, cancellationToken).ConfigureAwait(false);
+                pendingCompletion = pending.Task;
             }
             finally
             {
                 EndInitialAttempt();
             }
+
+            await pendingCompletion!.ConfigureAwait(false);
         }
         catch
         {
@@ -304,7 +319,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
                 if (retryableFailure is not null) pendingSubmit.RecordSubmitFailure(retryableFailure);
 
                 ownsParts = false;
-                EnqueuePending(pendingSubmit, cancellationToken);
+                await EnqueuePendingAsync(pendingSubmit, cancellationToken).ConfigureAwait(false);
                 return await completion.Task.ConfigureAwait(false);
             }
             finally
@@ -347,10 +362,48 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
         Drain();
     }
 
-    private void EnqueuePending(PendingSubmit pending, CancellationToken cancellationToken)
+    private async ValueTask EnqueuePendingAsync(
+        PendingSubmit pending,
+        CancellationToken cancellationToken)
     {
+        var acquired = false;
+        var waiterAcquired = false;
         try
         {
+            if (_pendingSlots.Wait(0))
+            {
+                acquired = true;
+            }
+            else
+            {
+                if (!_pendingWaiterSlots.Wait(0))
+                    throw new TimeoutException(
+                        "ZLink async submit pending admission waiter capacity is full.");
+                waiterAcquired = true;
+            }
+
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken,
+                _stopToken,
+                _admissionClosed.Token);
+            var remaining = pending.Deadline is { } deadline
+                ? deadline - DateTimeOffset.UtcNow
+                : Timeout.InfiniteTimeSpan;
+            if (remaining != Timeout.InfiniteTimeSpan && remaining <= TimeSpan.Zero)
+                throw new TimeoutException(
+                    "ZLink async submit timed out while waiting for pending admission capacity.");
+            if (!acquired)
+            {
+                if (!await _pendingSlots.WaitAsync(remaining, linked.Token).ConfigureAwait(false))
+                    throw new TimeoutException(
+                        "ZLink async submit timed out while waiting for pending admission capacity.");
+                acquired = true;
+            }
+            if (pending.Deadline is { } absoluteDeadline
+                && absoluteDeadline <= DateTimeOffset.UtcNow)
+                throw new TimeoutException(
+                    "ZLink async submit timed out while waiting for pending admission capacity.");
+
             // Activate before publishing the item to the queue. A ready
             // callback must never observe an item whose cancellation and
             // deadline terminal paths are not registered yet.
@@ -358,15 +411,29 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
             lock (_gate)
             {
                 if (!_pending.TryEnqueue(pending))
-                    throw new ZLinkPendingAdmissionFullException();
+                    throw new InvalidOperationException(
+                        "Pending admission capacity was acquired but the queue rejected the item.");
                 Trace(pending.OperationId, "pending");
             }
         }
+        catch (OperationCanceledException) when (_admissionClosed.IsCancellationRequested)
+        {
+            throw new ObjectDisposedException(nameof(ZLinkAsyncSubmitter));
+        }
+        catch (OperationCanceledException) when (_stopToken.IsCancellationRequested)
+        {
+            throw new ZLinkSubmitShutdownException();
+        }
         catch
         {
+            if (acquired) _pendingSlots.Release();
             pending.Dispose();
             Trace(pending.OperationId, "cleanup");
             throw;
+        }
+        finally
+        {
+            if (waiterAcquired) _pendingWaiterSlots.Release();
         }
     }
 
@@ -517,6 +584,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     {
         if (_pending.TryDequeue(expected, out var pending) && pending is not null)
         {
+            _pendingSlots.Release();
             pending.Dispose();
             Trace(pending.OperationId, "cleanup");
         }
@@ -526,6 +594,7 @@ internal sealed class ZLinkAsyncSubmitter : IAsyncDisposable
     {
         if (_pending.TryRemove(expected, out var pending) && pending is not null)
         {
+            _pendingSlots.Release();
             pending.Dispose();
             Trace(pending.OperationId, "cleanup");
         }

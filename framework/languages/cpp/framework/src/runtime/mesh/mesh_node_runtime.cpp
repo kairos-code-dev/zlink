@@ -156,6 +156,7 @@ void mesh_node_runtime_t::start ()
     runtime::messaging::activate_submit_owner (this);
 
     std::lock_guard lock (_state->mutex);
+    _state->spot_state->one_way_send_timeout = one_way_send_timeout (*_state);
     if (_state->mesh_name.empty ()) {
         throw configuration_error ("MeshName is required");
     }
@@ -1220,6 +1221,25 @@ int mesh_node_runtime_t::placement_weight () const
     return _state->placement_weight;
 }
 
+std::int32_t mesh_node_runtime_t::actor_limit () const
+{
+    std::lock_guard lock (_state->mutex);
+    return _state->actor_limit;
+}
+
+std::int32_t mesh_node_runtime_t::spot_limit () const
+{
+    std::lock_guard lock (_state->mutex);
+    return _state->spot_limit;
+}
+
+std::int32_t
+mesh_node_runtime_t::activation_concurrency_limit () const
+{
+    std::lock_guard lock (_state->mutex);
+    return _state->activation_concurrency_limit;
+}
+
 void mesh_node_runtime_t::set_placement_weight (int weight)
 {
     if (!_node)
@@ -1492,6 +1512,40 @@ mesh_node_builder_t::set_placement_weight (int weight)
           "placement weight must be in range 0..10000");
     std::lock_guard lock (_state->mutex);
     _state->placement_weight = weight;
+    return *this;
+}
+
+mesh_node_builder_t &
+mesh_node_builder_t::set_actor_limit (std::int32_t limit)
+{
+    if (limit < 0)
+        throw detail::configuration_error (
+          "Actor capacity limit must be non-negative");
+    std::lock_guard lock (_state->mutex);
+    _state->actor_limit = limit;
+    return *this;
+}
+
+mesh_node_builder_t &
+mesh_node_builder_t::set_spot_limit (std::int32_t limit)
+{
+    if (limit < 0)
+        throw detail::configuration_error (
+          "Spot capacity limit must be non-negative");
+    std::lock_guard lock (_state->mutex);
+    _state->spot_limit = limit;
+    return *this;
+}
+
+mesh_node_builder_t &
+mesh_node_builder_t::set_activation_concurrency (
+  std::int32_t limit)
+{
+    if (limit <= 0)
+        throw detail::configuration_error (
+          "Activation concurrency limit must be positive");
+    std::lock_guard lock (_state->mutex);
+    _state->activation_concurrency_limit = limit;
     return *this;
 }
 

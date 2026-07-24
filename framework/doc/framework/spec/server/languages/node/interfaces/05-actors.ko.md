@@ -6,6 +6,13 @@
 이 문서는 ZLink Framework 11.0.0에서 `@zlink-systems/framework`와
 `@zlink-systems/nestjs`가 내보내는 Actor 관련 정확한 TypeScript declaration을 고정한다.
 
+Session에 bind된 Actor의 physical disconnect는 Framework가 automatic all-settled로 통지한다. Actor
+disconnect callback은 destroy·leave·membership 변경이 아니다. Actor relocation은 같은 ObjectGeneration에
+대해 owner·membership commit, 필요한 lifecycle callback과 accepted journal replay·logical timer 복원, durable source cleanup,
+`Completed` CAS를 차례로 끝낸 뒤 command 44·45로 해당 binding route만 바꾼다. Relocation 자체는
+disconnect callback을 실행하지 않는다. 같은 Session의 다른 Actor route와 physical STREAM connection은
+유지하며 routed ACK와 steady normalization 전에는 target session packet·push admission을 열지 않는다.
+
 ## 1. Actor identity, factory와 context
 
 `ActorId`는 Location Store transaction domain 전체에서 유일한 logical ID다. UTF-8 encoded 크기는
@@ -15,21 +22,25 @@ bind할 때 사용하는 immutable location snapshot이다.
 
 ```ts
 export interface ZLinkActor {
-    readonly actorId: ActorId;
     readonly context: ZLinkActorContext;
     configure?(): void;
+    onJoinCompleted?(completion: ZLinkActorJoinCompletion): Promise<void>;
 }
 
 export interface ZLinkActorContext {
+    readonly actorId: ActorId;
+    readonly objectGeneration: bigint;
     readonly meshName: string;
     readonly spotId?: SpotId;
     readonly boundSession: ZLinkBoundSession;
+    joinSpot(spotId: SpotId): ZLinkActorJoinSpotCall;
     joinSpot(spotId: SpotId, request: unknown): ZLinkActorJoinSpotCall;
+    joinEntrySpot(): ZLinkActorJoinEntrySpotCall;
     joinEntrySpot(request: unknown): ZLinkActorJoinEntrySpotCall;
 }
 
 export interface ZLinkActorFactory<TActor extends ZLinkActor = ZLinkActor> {
-    create(actorId: ActorId, context: ZLinkActorContext, signal?: AbortSignal): Promise<TActor>;
+    create(context: ZLinkActorContext, signal?: AbortSignal): Promise<TActor>;
 }
 
 export interface ZLinkActorHandlerRegistry {
@@ -38,7 +49,7 @@ export interface ZLinkActorHandlerRegistry {
 
 export interface ZLinkActorJoinCall<TSelf> {
     timeout(timeoutMs: number): TSelf;
-    submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
+    defer(): void;
 }
 
 export interface ZLinkActorJoinEntrySpotCall
@@ -47,9 +58,29 @@ export interface ZLinkActorJoinEntrySpotCall
 export interface ZLinkActorJoinSpotCall
     extends ZLinkActorJoinCall<ZLinkActorJoinSpotCall> {}
 
-export type ZLinkActorJoinResult<TReply = unknown> =
-    | { readonly status: 'accepted'; readonly actor: ActorRef; readonly reply: TReply }
-    | { readonly status: 'rejected'; readonly rejection: TReply };
+export interface ZLinkActorJoinOperationId {
+    readonly high: bigint;
+    readonly low: bigint;
+}
+
+export type ZLinkActorJoinCompletion =
+    | {
+        readonly status: 'accepted';
+        readonly operationId: ZLinkActorJoinOperationId;
+        readonly actor: ActorRef;
+        readonly reply?: ZLinkMessage;
+      }
+    | {
+        readonly status: 'rejected';
+        readonly operationId: ZLinkActorJoinOperationId;
+        readonly reply?: ZLinkMessage;
+      }
+    | {
+        readonly status: 'failed';
+        readonly operationId: ZLinkActorJoinOperationId;
+        readonly kind: ZLinkFrameworkErrorKind;
+        readonly isRetriable: boolean;
+      };
 ```
 
 `ActorId`와 `ActorRef`의 canonical declaration은
@@ -133,16 +164,20 @@ barrier를 같은 lifecycle에서 완료한다. 최초 생성에는 join·joined
 Ready 이후 one-way message는 Actor queue에 직접 제출한다. Resolve 또는 queue admission 이후 stale route가
 확인되어도 Framework는 새 owner를 찾아 같은 operation을 hidden retry하지 않는다.
 
-Actor join call은 `submit(...)`만 제공하고 `yield(...)`를 제공하지 않는다. `SpotWide` User Spot의 member
+Actor join call은 동기 `defer()`만 제공하고 `submit(...)`·`yield(...)`를 제공하지 않는다. `SpotWide` User Spot의 member
 Actor가 Actor·Spot·Channel request 또는 worker call을 `yield(...)`하면 Actor queue claim은 유지하고 User
 Spot gate만 반환한다. 같은 Actor의 다음 job은 terminal continuation이 gate를 다시 얻어 현재 job을 완료할
 때까지 시작하지 않는다. Entry Spot과 `PerActor` User Spot Actor에서는 request·worker operation submit 전에
 `InvalidConfiguration`으로 완료한다.
 
-`SpotWide` member Actor가 현재 User Spot을 떠나는 `joinSpot(...).submit(...)`을 기다리면 source lifecycle
-callback이 같은 User Spot gate를 얻을 수 없다. Framework는 join operation submission, outbound admission과
-source·target queue 변경 전에 `InvalidConfiguration`으로 완료하며 callback을 inline 또는 재진입 방식으로
-호출하지 않는다.
+`defer()`는 current handler registration만 완료하고 handler 정상 terminal 뒤 Join을 실행한다. Handler가
+`yield(...)`를 사용하면 최종 continuation terminal까지 barrier를 활성화하지 않는다. Result는 same operation
+ID의 `onJoinCompleted(...)` Actor callback으로 전달한다.
+Operation ID는 completion idempotency ID이며 RelocationId나 reservation ID가 아니다. Same-node outcome과
+Rejected·commit 전 Failed completion retry는 current process lifetime으로 제한한다. Cross-node commit 뒤
+Accepted만 Relocation manifest에 operation ID, optional reply와 cursor를 보존해 durable at-least-once로 전달한다.
+Request 없는 overload는 empty `ZLinkMessage`를 고정한다. Timeout 기본값은 5초이고 명시 값은
+millisecond 올림 기준 finite `1..2_147_483_647` ms다. `defer()`에서 monotonic absolute deadline을 고정한다.
 
 `ZLinkActorContext.spotId`가 없으면 Actor는 current Entry Spot member이고 값이 있으면 해당 User Spot member다.
 같은 상태를 나타내는 별도 boolean이나 mutable Spot instance를 제공하지 않는다. `findSpot(actorId)`도 current User

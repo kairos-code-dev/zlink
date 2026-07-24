@@ -27,8 +27,8 @@ record ZLinkTypedStreamConnectorSendCall(
     }
 
     @Override
-    public void submit() {
-        delegate.submit();
+    public CompletionStage<Void> submit() {
+        return delegate.submit();
     }
 }
 

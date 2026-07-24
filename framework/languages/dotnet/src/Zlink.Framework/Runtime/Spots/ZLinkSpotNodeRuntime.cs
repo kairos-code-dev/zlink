@@ -269,7 +269,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             $"node '{targetNodeRid}'");
     }
 
-    internal ValueTask<ZLinkSubmitResult> SendToNodeAsync(
+    internal ValueTask<ZLinkOneWaySubmitResult> SendToNodeAsync(
         RoutingId targetNodeRid,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
@@ -286,7 +286,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             cancellationToken);
     }
 
-    private ValueTask<ZLinkSubmitResult> SubmitToLocalNodeAsync(
+    private ValueTask<ZLinkOneWaySubmitResult> SubmitToLocalNodeAsync(
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata)
@@ -295,9 +295,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (_stopSource.IsCancellationRequested)
-                return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Shutdown));
+                return ValueTask.FromResult(new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Shutdown));
             if (_nodeRouteDispatcher is null)
-                return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.TargetNotFound));
+                return ValueTask.FromResult(new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.TargetNotFound));
             if (!ZLinkMeshMetadataCodec.TryDecode(metadata.Span, out var decodedMetadata))
                 throw new ArgumentException("Application metadata is malformed.", nameof(metadata));
 
@@ -309,10 +309,10 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
                 reply: null,
                 metadata: decodedMetadata);
             if (_nodeRouteDispatcher.TryDispatch(received))
-                return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
+                return ValueTask.FromResult(new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Submitted));
 
             received.Dispose();
-            return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Shutdown));
+            return ValueTask.FromResult(new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Shutdown));
         }
         catch
         {
@@ -321,7 +321,7 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         }
     }
 
-    internal ValueTask<ZLinkSubmitResult> SendToActorAsync(
+    internal ValueTask<ZLinkOneWaySubmitResult> SendToActorAsync(
         ZLinkBackendActorRef actor,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken)

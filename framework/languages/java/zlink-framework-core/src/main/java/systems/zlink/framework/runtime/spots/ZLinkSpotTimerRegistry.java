@@ -263,7 +263,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
         private void dispatchPending(
             ZLinkSpotTimerSchedule.PendingTick selected) {
             ZLinkTimerTick tick = selected.tick();
-            dispatch.enqueue(() -> {
+            dispatch.enqueue(name, () -> {
                 synchronized (ZLinkSpotTimerRegistry.this) {
                     if (disposed || frozen || pendingTick != selected) {
                         return CompletableFuture.completedFuture(null);
@@ -410,6 +410,8 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
 
     @FunctionalInterface
     interface Dispatch {
-        CompletionStage<Void> enqueue(Supplier<CompletionStage<Void>> operation);
+        CompletionStage<Void> enqueue(
+            String timerName,
+            Supplier<CompletionStage<Void>> operation);
     }
 }

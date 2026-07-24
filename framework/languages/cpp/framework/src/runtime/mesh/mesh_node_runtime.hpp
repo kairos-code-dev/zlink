@@ -43,6 +43,9 @@ struct mesh_node_builder_state_t
     std::string listen_endpoint;
     std::optional<zlink::routing_id_t> routing_id;
     int placement_weight = 100;
+    std::int32_t actor_limit = 10000;
+    std::int32_t spot_limit = 128;
+    std::int32_t activation_concurrency_limit = 128;
     std::map<std::string, mesh_channel_registration_t> channels;
     std::function<void (const std::string &)> channel_name_observer;
     route_handler_registry_t handlers;
@@ -216,6 +219,9 @@ class mesh_node_runtime_t
     void set_channel_weight (const std::string &channel_name, int weight);
     int placement_weight () const;
     void set_placement_weight (int weight);
+    std::int32_t actor_limit () const;
+    std::int32_t spot_limit () const;
+    std::int32_t activation_concurrency_limit () const;
     void application_work_enqueued () noexcept;
     void application_work_started () noexcept;
     void application_work_finished () noexcept;

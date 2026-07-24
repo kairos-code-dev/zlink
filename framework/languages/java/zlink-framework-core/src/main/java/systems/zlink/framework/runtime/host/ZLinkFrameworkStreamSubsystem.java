@@ -27,8 +27,7 @@ final class ZLinkFrameworkStreamSubsystem {
         systems.zlink.framework.runtime.mesh.ZLinkMeshNodesRuntime meshNodes,
         systems.zlink.framework.runtime.backend.ZLinkBackendContext backendContext,
         ZLinkSpotRuntime spots,
-        ZLinkActorRuntime actors,
-        systems.zlink.framework.actors.ZLinkActorDirectory actorDirectory) {
+        ZLinkActorRuntime actors) {
         ZLinkStreamRuntime streams = options.registration().streamNodes().isEmpty()
             ? null
             : new ZLinkStreamRuntime(
@@ -44,10 +43,8 @@ final class ZLinkFrameworkStreamSubsystem {
                 spots,
                 eventDispatcher,
                 backendContext,
-                false);
-        if (streams != null) {
-            streams.setActorDirectory(actorDirectory);
-        }
+                false,
+                ZLinkAdmissionRuntime.factory(backendFactory));
         return new ZLinkFrameworkStreamSubsystem(streams);
     }
 

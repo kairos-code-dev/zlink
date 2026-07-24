@@ -11,6 +11,5 @@ public record MeshNodeStatus(MeshNodeState state, RoutingId routingId, String me
                              int configuredPeerCount, int admittedPeerCount,
                              int drainingPeerCount, long pendingApplicationMessages,
                              long pendingInfrastructureMessages, long pendingBytes,
-                             long multicastSubmitted, long multicastDroppedTargets,
                              int lastError, long lastChangedMs) {
 }

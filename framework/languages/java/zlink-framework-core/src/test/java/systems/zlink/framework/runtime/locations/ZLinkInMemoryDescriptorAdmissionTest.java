@@ -362,6 +362,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                 true,
                 2)),
             ZLinkMeshNodeObjectRole.SERVER,
+            Optional.of("mesh-entry-00000000-0000-4000-8000-000000000051"),
             100,
             new ZLinkPlacementCapacity(
                 new ZLinkCapacityUsage(0, 0, 0),
@@ -370,6 +371,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                     ZLinkPlacementObjectKind.USER_SPOT,
                     "lobby",
                     new ZLinkCapacityUsage(0, 0, 2)))),
+            new ZLinkActivationConcurrency(0, 128),
             Optional.empty(),
             ZLinkFrameworkRuntimeState.SERVING,
             "security",
@@ -391,7 +393,10 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                 descriptor.lifecycleGeneration(),
                 owner,
                 new byte[] {1},
-                1));
+                ZLinkPlacementCapacityBundle.spot(
+                    ZLinkPlacementObjectKind.USER_SPOT,
+                    "lobby",
+                    1)));
         assertEquals(
             new ZLinkPlacementCapacity(
                 new ZLinkCapacityUsage(0, 0, 0),
@@ -494,7 +499,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
             descriptor.lifecycleGeneration(),
             owner,
             new byte[] {1},
-            1);
+            ZLinkPlacementCapacityBundle.actor(1));
     }
 
     private static ZLinkRelocationCapacityReservationRequest relocation(
@@ -516,7 +521,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
             descriptorKey(target),
             target.lifecycleGeneration(),
             targetOwner,
-            current.allocation().capacityDelta());
+            current.allocation().capacityBundle());
     }
 
     private static ZLinkMeshNodeDescriptor descriptor(
@@ -547,11 +552,13 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
             1,
             capabilities,
             ZLinkMeshNodeObjectRole.SERVER,
+            Optional.of("entry-" + rid),
             100,
             actorCapacity(
                 0,
                 0,
                 Math.min(playerActiveLimit, nodeActiveLimit)),
+            new ZLinkActivationConcurrency(0, 128),
             Optional.empty(),
             state,
             "security",

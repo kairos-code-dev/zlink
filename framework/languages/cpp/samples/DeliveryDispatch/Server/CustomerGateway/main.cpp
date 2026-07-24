@@ -220,7 +220,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
         if (dispatch.packet_name () != subscribe_delivery_req_t::packet_name) {
             auto actor = require_single_bound_actor (std::string (dispatch.packet_name ()));
             if (dispatch.can_reply ()) {
-                auto reply = co_await actor.relay_request (payload).async ();
+                auto reply = co_await actor.relay_request (payload).submit ();
                 stream.reply_packet (reply).submit ();
                 co_return;
             }
@@ -235,7 +235,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "customer actor create failed");
         }
-        auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).async ();
+        auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).submit ();
         const auto actor_id = std::string (bound.actor_id ());
         auto joined =
           co_await bound.context ()
@@ -248,7 +248,7 @@ class customer_gateway_session_t final : public packet_stream_session_t
                                          "joined customer actor route is not found");
         }
         auto reply =
-          co_await current->relay_request (zlink::message_t::from_json (request)).async ();
+          co_await current->relay_request (zlink::message_t::from_json (request)).submit ();
         _bound_actors[actor_id] = sample_names_t::customer_spot_node;
         _sessions.subscribe (actor_id, request.delivery_id, stream);
         stream.reply_packet (reply).submit ();

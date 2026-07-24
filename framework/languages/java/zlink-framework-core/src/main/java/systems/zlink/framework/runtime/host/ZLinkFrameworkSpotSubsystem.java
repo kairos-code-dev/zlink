@@ -65,7 +65,8 @@ final class ZLinkFrameworkSpotSubsystem {
             serializer,
             runtimeHandlers,
             eventDispatcher,
-            meshNodes);
+            meshNodes,
+            ZLinkAdmissionRuntime.factory(backendFactory));
         spots.setLocationLifecycle(locationLifecycle);
         if (authorityStore != null
             && locationStore != null

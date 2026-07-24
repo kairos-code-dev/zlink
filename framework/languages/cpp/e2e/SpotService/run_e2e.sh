@@ -2951,7 +2951,7 @@ def count(snapshot, marker, actor):
 
 assert count(play_a, "ActorDisconnected", single) == 1
 assert count(play_a, "ActorDisconnected", notified) == 1
-assert count(play_a, "ActorDisconnected", muted) == 0
+assert count(play_a, "ActorDisconnected", muted) == 1
 assert count(play_b, "ActorDisconnected", remote) == 1
 assert count(play_a, "ActorDisconnected", remote) == 0
 assert count(play_b, "ActorDisconnected", notified) == 0
@@ -2960,14 +2960,8 @@ assert count(play_a, "ActorLeft", single) == 0
 assert count(play_a, "ActorLeft", notified) == 0
 assert count(play_a, "ActorLeft", muted) == 0
 assert count(play_b, "ActorLeft", remote) == 0
-assert count(session_a, "StreamDisconnectNotified", single) == 1
-assert count(session_a, "StreamDisconnectNotified", notified) == 1
-assert count(session_a, "StreamDisconnectNotified", remote) == 1
-assert count(session_a, "StreamDisconnectNotified", muted) == 0
-assert count(session_a, "StreamUnbound", single) == 1
-assert count(session_a, "StreamUnbound", notified) == 1
-assert count(session_a, "StreamUnbound", muted) == 1
-assert count(session_a, "StreamUnbound", remote) == 1
+assert sum(1 for item in session_a["entries"]
+           if item["marker"] == "StreamDisconnected") == 3
 assert not any(item["actor_id"] in (single, notified, muted)
                or item["spot_rid"] in (single_spot, notified_spot, muted_spot)
                for item in play_b["entries"])

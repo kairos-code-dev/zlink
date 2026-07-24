@@ -5,8 +5,6 @@ import systems.zlink.contracts.messaging.Message
 import systems.zlink.framework.actors.ZLinkActorDirectory
 import systems.zlink.framework.actors.ZLinkActorClient
 import systems.zlink.framework.actors.ZLinkActorRequestCall
-import systems.zlink.framework.actors.ZLinkActorJoinCall
-import systems.zlink.framework.actors.ZLinkActorJoinResult
 import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.actors.ActorRefSnapshot
 import systems.zlink.framework.channels.ZLinkClient
@@ -24,7 +22,6 @@ import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotCreateResult
 import systems.zlink.framework.spots.ZLinkSpotManager
 import systems.zlink.framework.spots.ZLinkWorkerCall
-import systems.zlink.framework.spots.SpotHandle
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionActors
 import kotlin.jvm.JvmName
@@ -97,30 +94,6 @@ suspend fun ZLinkLocationReadiness.isPeerReady(
 suspend fun ZLinkSessionActors.bindOrGetActor(actor: ActorRef): ZLinkSessionActor =
     awaitFrameworkStage(bindOrGet(actor))
 
-@JvmName("awaitJoinCallVoid")
-suspend fun ZLinkActorJoinCall.awaitJoin(): ZLinkActorJoinResult<Void> =
-    awaitFrameworkStage(submit())
-
-@JvmName("awaitJoinCall")
-suspend fun <TReply> ZLinkActorJoinCall.awaitJoin(replyType: Class<TReply>): ZLinkActorJoinResult<TReply> =
-    awaitFrameworkStage(submit(replyType))
-
-@JvmName("awaitJoinCallReified")
-inline suspend fun <reified TReply> ZLinkActorJoinCall.awaitJoinReply(): ZLinkActorJoinResult<TReply> =
-    awaitJoin(TReply::class.java)
-
-@JvmName("yieldJoinCallVoid")
-suspend fun ZLinkActorJoinCall.yieldJoin(): ZLinkActorJoinResult<Void> =
-    awaitFrameworkStage(yield())
-
-@JvmName("yieldJoinCall")
-suspend fun <TReply> ZLinkActorJoinCall.yieldJoin(replyType: Class<TReply>): ZLinkActorJoinResult<TReply> =
-    awaitFrameworkStage(yield(replyType))
-
-@JvmName("yieldJoinCallReified")
-inline suspend fun <reified TReply> ZLinkActorJoinCall.yieldJoinReply(): ZLinkActorJoinResult<TReply> =
-    yieldJoin(TReply::class.java)
-
 suspend fun <T> ZLinkWorkerCall<T>.yieldWorker(): T =
     awaitFrameworkStage(yield())
 
@@ -158,16 +131,16 @@ suspend inline fun <reified TReply> ZLinkRouteClient.request(
 ): TReply =
     requestToNode(channelName, target, message).awaitReply()
 
-fun <TMessage> ZLinkRouteClient.send(
-    target: SpotHandle,
+fun <TMessage> ZLinkRouteClient.sendToSpotCall(
+    spotId: String,
     message: TMessage,
-): ZLinkSendCall = sendToSpot(target, message)
+): ZLinkSendCall = sendToSpot(spotId, message)
 
-suspend inline fun <reified TReply> ZLinkRouteClient.request(
-    target: SpotHandle,
+suspend inline fun <reified TReply> ZLinkRouteClient.requestToSpotAwait(
+    spotId: String,
     message: Message,
 ): TReply =
-    requestToSpot(target, message).awaitReply()
+    requestToSpot(spotId, message).awaitReply()
 
 fun ZLinkFrameworkOptions.configureStreamCompression(
     configure: ZLinkStreamCompressionBuilder.() -> Unit,

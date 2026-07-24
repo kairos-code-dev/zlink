@@ -129,7 +129,7 @@ class gateway_actor_push_handler_t
             auto reply =
               _actors.request_to_actor (*actor_ref.value (), e2e::actor_push_req_t{request.value})
                 .timeout (std::chrono::milliseconds (10000))
-                .async<e2e::actor_push_res_t> ()
+                .submit<e2e::actor_push_res_t> ()
                 .result ();
             if (!reply) {
                 const auto error_kind = gateway_error_kind_name (reply.error_kind ());

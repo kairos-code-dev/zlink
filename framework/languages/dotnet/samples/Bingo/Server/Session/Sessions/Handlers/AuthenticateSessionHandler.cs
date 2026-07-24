@@ -66,7 +66,7 @@ internal sealed class AuthenticateBingoSessionHandler(
                 DisplayName = authenticated.DisplayName,
                 ActorNodeRid = ensured.Actor.NodeRid
             })
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     private static ActorRef ToActorRef(ActorRefWire snapshot)

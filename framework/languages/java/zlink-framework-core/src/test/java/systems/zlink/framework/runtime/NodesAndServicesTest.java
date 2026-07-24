@@ -27,7 +27,6 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkRelocationPolicy;
-import systems.zlink.framework.configuration.ZLinkObjectPlacementOptions;
 import systems.zlink.framework.runtime.InMemoryRelocationStore;
 import systems.zlink.framework.configuration.ZLinkMessageFlowEvent;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
@@ -180,12 +179,14 @@ final class NodesAndServicesTest {
             .addSpotFactory(
                 "room",
                 RoomSpot.class,
-                new ZLinkObjectPlacementOptions(null, null),
+                new systems.zlink.framework.configuration
+                    .ZLinkUserSpotFactoryOptions(0),
                 ZLinkRelocationPolicy.disabled())
             .addSpotFactory(
                 "client",
                 ClientSpot.class,
-                new ZLinkObjectPlacementOptions(null, null),
+                new systems.zlink.framework.configuration
+                    .ZLinkUserSpotFactoryOptions(0),
                 ZLinkRelocationPolicy.disabled());
 
         try (ZLinkFrameworkRuntime runtime =
@@ -349,12 +350,14 @@ final class NodesAndServicesTest {
         @Override
         public CompletionStage<Void> onInitialize() {
             return handles.resolveSpotHandle(targetMeshName, targetRoomRid.toString())
-                .thenCompose(handle -> context.outbound()
-                    .requestToSpot(
-                        handle.orElseThrow(() -> new IllegalStateException("target Spot handle not found")),
-                        new Ping("ping"))
-                    .timeout(Duration.ofSeconds(2))
-                    .submit(Pong.class))
+                .thenCompose(handle -> {
+                    handle.orElseThrow(() ->
+                        new IllegalStateException("target Spot handle not found"));
+                    return context.outbound()
+                        .requestToSpot(targetRoomRid.toString(), new Ping("ping"))
+                        .timeout(Duration.ofSeconds(2))
+                        .submit(Pong.class);
+                })
                 .whenComplete((value, error) -> {
                     if (error != null) {
                         reply.completeExceptionally(error);

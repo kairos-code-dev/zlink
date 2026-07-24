@@ -31,7 +31,7 @@ inline void run_sm_a3_scenario (const std::string &play_http_endpoint,
                           .display_name = "SM-A3",
                           .level = 3,
                           .tags = {"direct"}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!joined) {
         throw std::runtime_error (joined.error () ? joined.error ()->what ()
@@ -52,7 +52,7 @@ inline void run_sm_a3_scenario (const std::string &play_http_endpoint,
         .body (direct_spot_route_req_t{.target_node_rid = "play-a",
                                        .spot_rid = created.spot_rid,
                                        .value = "route-direct"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!raw) {
         throw std::runtime_error (raw.error () ? raw.error ()->what () : "SM-A3 HTTP failed");

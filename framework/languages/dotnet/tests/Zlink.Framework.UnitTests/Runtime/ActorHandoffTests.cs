@@ -508,14 +508,14 @@ public sealed class ActorHandoffTests
         var request = new ZLinkRemoteActorAdmissionRequest(
             "actor-1",
             "warrior",
-            [],
+            "source-spot",
             [],
             "application/json",
             [],
             "handoff-1",
             (time.GetUtcNow() + TimeSpan.FromSeconds(5)).ToUnixTimeMilliseconds());
         var reply = new ZLinkRemoteActorAdmissionReply(true, "application/json", [], request.DeadlineUnixTimeMilliseconds);
-        var targetSpotId = RoutingId.From("spot-1");
+        const string targetSpotId = "spot-1";
 
         admissions.Register(request, targetSpotId, reply);
         Assert.True(admissions.TryGetReply(request, targetSpotId, out var stored));
@@ -526,7 +526,7 @@ public sealed class ActorHandoffTests
         Assert.Throws<InvalidOperationException>(() =>
             admissions.BeginCommit(JoinRequest("actor-1") with { SourceNodeRid = [9] }, targetSpotId));
         Assert.Throws<InvalidOperationException>(() =>
-            admissions.BeginCommit(JoinRequest("actor-1"), RoutingId.From("spot-other")));
+            admissions.BeginCommit(JoinRequest("actor-1"), "spot-other"));
 
         time.Advance(TimeSpan.FromSeconds(6));
         Assert.Throws<TimeoutException>(() =>
@@ -554,7 +554,7 @@ public sealed class ActorHandoffTests
         var time = new ManualTimeProvider();
         var admissions = new ZLinkActorHandoffAdmissions(time);
         var request = AdmissionRequest(time, "handoff-1");
-        var targetSpot = RoutingId.From("spot-1");
+        const string targetSpot = "spot-1";
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var calls = 0;
@@ -583,7 +583,7 @@ public sealed class ActorHandoffTests
         var time = new ManualTimeProvider();
         var admissions = new ZLinkActorHandoffAdmissions(time);
         var request = AdmissionRequest(time, "handoff-drain");
-        var target = RoutingId.From("target-spot");
+        const string target = "target-spot";
         var decisionStarted = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var decision = new TaskCompletionSource<ZLinkRemoteActorAdmissionReply>(
@@ -621,7 +621,7 @@ public sealed class ActorHandoffTests
         var admissions = new ZLinkActorHandoffAdmissions(time);
         var gate = new ZLinkDrainAdmissionGate();
         var request = AdmissionRequest(time, "handoff-accepted-before-drain");
-        var target = RoutingId.From("target-spot");
+        const string target = "target-spot";
 
         Assert.True(gate.TryEnterActorAdmission(out var admissionLease));
         var reply = await admissions.AdmitAsync(
@@ -653,7 +653,7 @@ public sealed class ActorHandoffTests
     {
         var admissions = new ZLinkActorHandoffAdmissions();
         var request = CommitRequest("handoff-1", []);
-        var targetSpot = RoutingId.From("spot-1");
+        const string targetSpot = "spot-1";
         var reply = ZLinkRemoteActorJoinPackets.CreateJoinReply(true, ActorRef("node-b", 2));
 
         admissions.RecordJoinOutcome(request, targetSpot, reply);
@@ -670,7 +670,7 @@ public sealed class ActorHandoffTests
             request.HandoffId,
             request.SourceSpotId,
             request.SourceNodeRid,
-            targetSpot.ToBytes().ToArray(),
+            targetSpot,
             []);
         Assert.True(admissions.TryBeginCompletion(completion, targetSpot));
         admissions.CancelCompletion(completion, targetSpot);
@@ -691,7 +691,7 @@ public sealed class ActorHandoffTests
         // source's reconciliation (RequestRejected), never retried.
         var changedTarget = Assert.Throws<ZLinkFrameworkException>(() =>
             admissions.TryBeginCompletion(
-                completion with { TargetSpotId = RoutingId.From("spot-other").ToBytes().ToArray() },
+                completion with { TargetSpotId = "spot-other" },
                 targetSpot));
         Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, changedTarget.Kind);
     }
@@ -700,7 +700,7 @@ public sealed class ActorHandoffTests
     public void ActiveTerminalOutcomes_AreNotEvictedByTheCompletedResultCapacity()
     {
         var admissions = new ZLinkActorHandoffAdmissions();
-        var targetSpot = RoutingId.From("spot-1");
+        const string targetSpot = "spot-1";
         var first = CommitRequest("handoff-0", []);
         for (var index = 0; index < 1025; index++)
         {
@@ -719,7 +719,7 @@ public sealed class ActorHandoffTests
     {
         var time = new ManualTimeProvider();
         var admissions = new ZLinkActorHandoffAdmissions(time);
-        var targetSpot = RoutingId.From("spot-1");
+        const string targetSpot = "spot-1";
         var request = CommitRequest("handoff-expiring", []);
         var accepted = ZLinkRemoteActorJoinPackets.CreateJoinReply(true, ActorRef("node-b", 2));
         var rejected = ZLinkRemoteActorJoinPackets.CreateJoinReply(false, ActorRef("rejected", 0));
@@ -735,7 +735,7 @@ public sealed class ActorHandoffTests
             request.HandoffId,
             request.SourceSpotId,
             request.SourceNodeRid,
-            targetSpot.ToBytes().ToArray(),
+            targetSpot,
             []);
         // A completion the target no longer honors is terminal for the
         // source's reconciliation (RequestRejected), never retried.
@@ -748,7 +748,7 @@ public sealed class ActorHandoffTests
     public void PreparedAcceptance_CanBeAtomicallyCompensatedToRejection()
     {
         var admissions = new ZLinkActorHandoffAdmissions();
-        var targetSpot = RoutingId.From("spot-1");
+        const string targetSpot = "spot-1";
         var request = CommitRequest("handoff-compensated", []);
         var accepted = ZLinkRemoteActorJoinPackets.CreateJoinReply(true, ActorRef("node-b", 2));
         var rejected = ZLinkRemoteActorJoinPackets.CreateJoinReply(false, ActorRef("rejected", 0));
@@ -765,7 +765,7 @@ public sealed class ActorHandoffTests
     {
         var time = new ManualTimeProvider();
         var admissions = new ZLinkActorHandoffAdmissions(time);
-        var targetSpot = RoutingId.From("spot-1");
+        const string targetSpot = "spot-1";
         var expired = AdmissionRequest(time, "handoff-1");
         admissions.Register(
             expired,
@@ -865,7 +865,7 @@ public sealed class ActorHandoffTests
             "application/json",
             [],
             frames,
-            [1],
+            "source-spot",
             [2]);
 
     private static ZLinkRemoteActorAdmissionRequest AdmissionRequest(
@@ -874,7 +874,7 @@ public sealed class ActorHandoffTests
         => new(
             "actor-1",
             "warrior",
-            [1],
+            "source-spot",
             [2],
             "application/json",
             [],

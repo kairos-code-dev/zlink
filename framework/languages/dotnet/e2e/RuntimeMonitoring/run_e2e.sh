@@ -12,7 +12,7 @@ else
 fi
 if [[ "$SCENARIO" == "all" ]]; then
   for scenario in \
-    MON-A1 MON-A2 MON-A3 MON-A4 MON-A5 MON-B1 MON-B2 MON-C1 MON-D1; do
+    MON-A1 MON-A2 MON-A3 MON-A4 MON-A5 MON-C1 MON-D1; do
     "$0" "$scenario"
   done
   echo "runtime-monitoring all scenarios passed"

@@ -2,97 +2,160 @@
 
 [인터페이스 목차](README.ko.md) · [Java Channel](../../java/interfaces/channel-messaging.ko.md)
 
-Kotlin은 Java Channel client와 call을 사용하고 `CompletionStage.await()`로 기다린다. Coroutine extension은
-ChannelName과 typed reply를 관용적으로 투영하지만 별도 request 상태 기계를 만들지 않는다.
-Logical Multicast의 remote admitted는 source의 local outbound transport queue 제출만 집계한다. Local
-admitted는 origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과
-remote·local handler 실행 또는 완료는 coroutine bridge 완료 조건이 아니다.
+Kotlin application은 Java Channel call을 직접 사용하지 않는다. Kotlin 전용 client와 call wrapper가 Java
+call을 내부에 보관하며 일반 완료는 `await()`, 현재 Spot turn을 반납하는 완료는 `yield()`로 투영한다.
+One-way `await()`의 정상 결과는 `Unit`이고 실패는 Java stage의 exception을 그대로 전달한다.
+Typed request의 reified entry method는 wrapper를 만들 때 `KClass<TReply>.java`를 내부 Java
+`Class<TReply>`로 고정한다. Application은 terminal에서 reply type을 다시 넘기거나
+`.submit().await()`를 작성하지 않는다.
 
-Spot direct send/request는 Channel call로 축소하지 않는다. Java `ZLinkRouteClient`가 반환하는
-`ZLinkSpotSendCall`과 `ZLinkSpotRequestCall`을 유지해야 Missing Instance cold activation의
-`instanceSpot`과 `inMesh`를 terminal submit 전에 구성할 수 있다. Kotlin의
-Spot 전용 extension과 exact JVM signature는 [Spot 인터페이스](spots.ko.md)가 소유한다.
+Spot direct send/request는 Channel call로 축소하지 않는다. Kotlin 전용 Spot wrapper가
+`instanceSpot`과 `inMesh`를 terminal `await()`·`yield()` 전에 구성하므로 Missing Instance cold
+activation의 fluent state를 유지한다. Kotlin의 Spot 전용 wrapper와 exact JVM signature는
+[Spot 인터페이스](spots.ko.md)가 소유한다.
 
 ## Kotlin source signature
 
 ```kotlin
 interface ZLinkSuspendingRequestHandler<TRequest, TReply> {
-    suspend fun handle(request: TRequest, context: ZLinkRequestContext): TReply
+    suspend fun handle(request: TRequest, context: ZLinkMessageContext): TReply
 }
 
 interface ZLinkSuspendingSendHandler<TMessage> {
-    suspend fun handle(message: TMessage, context: ZLinkSendContext)
+    suspend fun handle(message: TMessage, context: ZLinkMessageContext)
 }
 
 interface ZLinkSuspendingPublishHandler<TMessage> {
-    suspend fun handle(message: TMessage, context: ZLinkPublishContext)
+    suspend fun handle(message: TMessage, context: ZLinkPublishMessageContext)
 }
 
 interface ZLinkSuspendingRouteRequestHandler<TRequest, TReply> {
-    suspend fun handle(request: TRequest, context: ZLinkRouteRequestContext): TReply
+    suspend fun handle(request: TRequest, context: ZLinkRouteMessageContext): TReply
 }
 
 interface ZLinkSuspendingRouteSendHandler<TMessage> {
-    suspend fun handle(message: TMessage, context: ZLinkRouteSendContext)
+    suspend fun handle(message: TMessage, context: ZLinkRouteMessageContext)
 }
 
-suspend fun <TReply> ZLinkRequestCall.awaitReply(
-    replyType: Class<TReply>,
-): TReply
-inline suspend fun <reified TReply> ZLinkRequestCall.awaitReply(): TReply
-suspend fun <TReply> ZLinkRequestCall.yieldReply(
-    replyType: Class<TReply>,
-): TReply
-inline suspend fun <reified TReply> ZLinkRequestCall.yieldReply(): TReply
+interface ZLinkKotlinMessageSendCall {
+    fun metadata(key: String, value: String): ZLinkKotlinMessageSendCall
+    suspend fun await()
+}
 
-fun <TMessage> ZLinkClient.send(
-    channelName: String,
-    message: TMessage,
-): ZLinkSendCall
-suspend inline fun <reified TReply> ZLinkClient.request(
-    channelName: String,
-    message: Message,
-): TReply
+interface ZLinkKotlinSubmissionCall {
+    suspend fun await()
+}
 
-fun <TEvent> ZLinkFanoutClient.publishToTopic(
-    channelName: String,
-    topic: String,
-    message: TEvent,
-): ZLinkFanoutPublishCall
-fun <TEvent> ZLinkFanoutClient.publishToTopic(
-    channelName: String,
-    message: TEvent,
-): ZLinkFanoutPublishCall
+interface ZLinkKotlinRequestCall<TReply> {
+    fun metadata(key: String, value: String): ZLinkKotlinRequestCall<TReply>
+    fun timeout(timeout: Duration): ZLinkKotlinRequestCall<TReply>
+    suspend fun await(): TReply
+    suspend fun yield(): TReply
+}
 
-fun <TMessage> ZLinkRouteClient.send(
+interface ZLinkKotlinClient {
+    fun sendToChannel(
+        channelName: String,
+        message: Any,
+    ): ZLinkKotlinMessageSendCall
+
+    fun <TReply : Any> requestToChannel(
+        channelName: String,
+        request: Any,
+        replyType: KClass<TReply>,
+    ): ZLinkKotlinRequestCall<TReply>
+}
+
+inline fun <reified TReply : Any> ZLinkKotlinClient.requestToChannel(
+    channelName: String,
+    request: Any,
+): ZLinkKotlinRequestCall<TReply> =
+    requestToChannel(channelName, request, TReply::class)
+
+interface ZLinkKotlinFanoutClient {
+    fun publish(
+        channelName: String,
+        topic: String,
+        event: Any,
+    ): ZLinkKotlinSubmissionCall
+    fun publish(
+        channelName: String,
+        event: Any,
+    ): ZLinkKotlinSubmissionCall
+}
+
+interface ZLinkKotlinRouteClient {
+    fun sendToNode(
+        meshName: String,
+        target: RoutingId,
+        message: Any,
+    ): ZLinkKotlinMessageSendCall
+
+    fun <TReply : Any> requestToNode(
+        meshName: String,
+        target: RoutingId,
+        request: Any,
+        replyType: KClass<TReply>,
+    ): ZLinkKotlinRequestCall<TReply>
+
+    fun sendToChannel(
+        channelName: String,
+        message: Any,
+    ): ZLinkKotlinMessageSendCall
+
+    fun <TReply : Any> requestToChannel(
+        channelName: String,
+        request: Any,
+        replyType: KClass<TReply>,
+    ): ZLinkKotlinRequestCall<TReply>
+}
+
+inline fun <reified TReply : Any> ZLinkKotlinRouteClient.requestToNode(
     meshName: String,
     target: RoutingId,
-    message: TMessage,
-): ZLinkSendCall
-fun <TMessage> ZLinkRouteClient.send(
+    request: Any,
+): ZLinkKotlinRequestCall<TReply> =
+    requestToNode(meshName, target, request, TReply::class)
+
+inline fun <reified TReply : Any> ZLinkKotlinRouteClient.requestToChannel(
     channelName: String,
-    message: TMessage,
-): ZLinkSendCall
-suspend inline fun <reified TReply> ZLinkRouteClient.request(
-    meshName: String,
-    target: RoutingId,
-    message: Message,
-): TReply
-suspend inline fun <reified TReply> ZLinkRouteClient.request(
-    channelName: String,
-    message: Message,
-): TReply
+    request: Any,
+): ZLinkKotlinRequestCall<TReply> =
+    requestToChannel(channelName, request, TReply::class)
 
 public fun messageOf(value: Any): ZLinkMessage
 public inline fun <reified T> ZLinkMessage.decode(): T
 ```
 
+`ZLinkKotlinRequestCall.yield()`는 Java `yield(...)`의 coroutine bridge일 뿐 임의 suspension을 Yield로
+바꾸지 않는다.
+`SPOT_WIDE` User Spot 또는 Instance Spot application handler가 아니면 coroutine을 suspend하거나 underlying
+operation을 제출하기 전에 `InvalidConfiguration`으로 완료한다. Node direct request, Entry·`PER_ACTOR`,
+Channel handler와 owner context 밖에도 같은 규칙을 적용한다. 현재 Spot gate가 필요한 target을 기다리는
+일반 `await()`도 submission 전에 거부한다. One-way wrapper는 FIFO queue admission을 유지하고 handler를
+inline 또는 reentrant하게 호출하지 않는다.
+
+Queue가 가득 차면 send timeout까지 기다린다. Timeout, cancellation, route 단절과 runtime 종료는 exception으로
+완료하며 runtime 종료 kind는 `RuntimeShutdown=36`이다. Target 부재는 operation별 기존 not-found kind를
+사용한다. Actor는 `ActorRouteNotFound`, Spot은 `SpotRouteNotFound`, Mesh는 `MeshNotFound`, request는
+`RequestTargetNotFound`, bound session과 Session Actor mapping은 `ActorSessionNotBound`다.
+
 Topic을 받는 `publishToTopic(...)`에 내부 liveness용 exact byte `01 5A 4C 46 31`을 전달하면 transport를
-시작하지 않고 Java runtime의 `ZLinkConfigurationException`을 발생시킨다. [Topic](../../../../01-glossary.ko.md#topic)을 생략한 overload는 typed
+시작하지 않고 Java runtime의 `ZLinkConfigurationException`을 발생시킨다.
+[Topic](../../../../01-glossary.ko.md#topic)을 생략한 overload는 typed
 event의 packet name을 사용하므로 이 내부 topic을 만들지 않는다.
 
 RouteMesh DSL은 Java builder의 의미를 바꾸지 않고 receiver와 lambda만 제공한다. MeshNode 하나의 physical
 connection 위에 [ChannelName](../../../../01-glossary.ko.md#channelname)별 role을 구성한다.
+
+RouteMesh Channel Server와 ClientServer Server weight는 Java builder의 signed `int`를 사용한다. 허용 범위는
+`0..10000`, 기본값은 `100`이며 0은 새 target 선택에서 제외한다. Logical Multicast는 positive member를
+각각 한 번만 포함하고 weight 크기로 제출 횟수를 늘리지 않는다. 범위 밖 startup·runtime 설정은
+configuration error다.
+Logical Multicast의 remote target은 source에서 고정한 MeshNode route의 local transport queue에 한 번씩
+제출하고 local target은 일치하는 local Spot queue에 한 번씩 제출한다. Target별 성공·drop·unreachable
+결과는 `await()`의 결과로 반환하거나 public monitoring에 집계하지 않는다. Remote Spot queue 수락과
+remote·local handler 실행 또는 완료는 coroutine bridge 완료 조건이 아니다.
 
 ```kotlin
 fun ZLinkFrameworkOptions.routeMesh(
@@ -113,8 +176,7 @@ fun ZLinkMeshPeerConnections.connect(
 
 ```kotlin
 val reply = routeClient
-    .requestToChannel("inventory", request)
-    .submit(InventoryReply::class.java)
+    .requestToChannel<InventoryReply>("inventory", request)
     .await()
 ```
 
@@ -136,18 +198,45 @@ public final class systems.zlink.framework.kotlin.ZLinkRouteMeshExtensionsKt {
 public final class systems.zlink.framework.kotlin.ZLinkSuspendingHandlersKt {
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingPublishHandler<TMessage> {
-  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.channels.ZLinkPublishContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.channels.ZLinkPublishMessageContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler<TRequest, TReply> {
-  public abstract java.lang.Object handle(TRequest, systems.zlink.framework.channels.ZLinkRequestContext, kotlin.coroutines.Continuation<? super TReply>);
+  public abstract java.lang.Object handle(TRequest, systems.zlink.framework.ZLinkMessageContext, kotlin.coroutines.Continuation<? super TReply>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler<TRequest, TReply> {
-  public abstract java.lang.Object handle(TRequest, systems.zlink.framework.channels.ZLinkRouteRequestContext, kotlin.coroutines.Continuation<? super TReply>);
+  public abstract java.lang.Object handle(TRequest, systems.zlink.framework.channels.ZLinkRouteMessageContext, kotlin.coroutines.Continuation<? super TReply>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingRouteSendHandler<TMessage> {
-  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.channels.ZLinkRouteSendContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.channels.ZLinkRouteMessageContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingSendHandler<TMessage> {
-  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.channels.ZLinkSendContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.ZLinkMessageContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall {
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall metadata(java.lang.String, java.lang.String);
+  public abstract java.lang.Object await(kotlin.coroutines.Continuation<? super kotlin.Unit>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall {
+  public abstract java.lang.Object await(kotlin.coroutines.Continuation<? super kotlin.Unit>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinRequestCall<TReply> {
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinRequestCall<TReply> metadata(java.lang.String, java.lang.String);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinRequestCall<TReply> timeout-LRDsOJo(long);
+  public abstract java.lang.Object await(kotlin.coroutines.Continuation<? super TReply>);
+  public abstract java.lang.Object yield(kotlin.coroutines.Continuation<? super TReply>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinClient {
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall sendToChannel(java.lang.String, java.lang.Object);
+  public abstract <TReply> systems.zlink.framework.kotlin.ZLinkKotlinRequestCall<TReply> requestToChannel(java.lang.String, java.lang.Object, kotlin.reflect.KClass<TReply>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinFanoutClient {
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall publish(java.lang.String, java.lang.String, java.lang.Object);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall publish(java.lang.String, java.lang.Object);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinRouteClient {
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall sendToNode(java.lang.String, systems.zlink.contracts.core.RoutingId, java.lang.Object);
+  public abstract <TReply> systems.zlink.framework.kotlin.ZLinkKotlinRequestCall<TReply> requestToNode(java.lang.String, systems.zlink.contracts.core.RoutingId, java.lang.Object, kotlin.reflect.KClass<TReply>);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall sendToChannel(java.lang.String, java.lang.Object);
+  public abstract <TReply> systems.zlink.framework.kotlin.ZLinkKotlinRequestCall<TReply> requestToChannel(java.lang.String, java.lang.Object, kotlin.reflect.KClass<TReply>);
 }
 ```

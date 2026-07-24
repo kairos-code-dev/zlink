@@ -14,15 +14,16 @@ import org.springframework.core.env.StandardEnvironment;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringEventHandlers;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.MonitoringSpot;
-import systems.zlink.e2e.runtimemonitoring.service.handlers.MulticastGate;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.TriggeredMonitoringSpot;
 import systems.zlink.e2e.runtimemonitoring.service.handlers.WorkReqHandler;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceHttpServer;
 import systems.zlink.e2e.runtimemonitoring.service.support.EvidenceState;
 import systems.zlink.e2e.runtimemonitoring.service.support.ObserverIsolationProbe;
 import systems.zlink.e2e.runtimemonitoring.shared.Contracts;
+import systems.zlink.framework.actors.ZLinkRelocationPolicy;
 import systems.zlink.framework.configuration.ZLinkMessageFlowLogMode;
 import systems.zlink.framework.configuration.ZLinkMeshNodeBuilder;
+import systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationOptions;
 import systems.zlink.framework.locations.redis.ZLinkRedisLocationStore;
 import systems.zlink.framework.messaging.ZLinkMessage;
@@ -35,6 +36,7 @@ import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.spring.ZLinkMonitoringLifecycle;
 import systems.zlink.framework.spring.ZLinkMonitoringOptionsCustomizer;
 import systems.zlink.framework.spots.ZLinkSpotManager;
+import systems.zlink.framework.spots.ZLinkSpotPublisherClient;
 
 @EnableZLinkFramework
 @EnableConfigurationProperties(ServiceOptions.class)
@@ -76,11 +78,10 @@ public final class Program {
         systems.zlink.framework.channels.ZLinkChannelRuntimeOptions runtimeOptions,
         systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions meshRuntimeOptions,
         systems.zlink.framework.channels.ZLinkRouteClient routeClient,
-        ObjectProvider<systems.zlink.framework.spots.ZLinkSpotPublisherClient> publisher,
-        MulticastGate multicastGate,
         ObjectProvider<ZLinkRouteMeshRuntime> meshRuntime,
         ObserverIsolationProbe observerIsolation,
         ObjectProvider<ZLinkSpotManager> spots,
+        ZLinkSpotPublisherClient publisher,
         org.springframework.context.ConfigurableApplicationContext applicationContext,
         ServiceOptions config) {
         return new EvidenceHttpServer(
@@ -89,11 +90,10 @@ public final class Program {
             runtimeOptions,
             meshRuntimeOptions,
             routeClient,
-            publisher,
-            multicastGate,
             meshRuntime,
             observerIsolation,
             spots,
+            publisher,
             applicationContext,
             config.httpEndpoint());
     }
@@ -108,31 +108,32 @@ public final class Program {
                 .messageFlow(ZLinkMessageFlowLogMode.KEY_TRANSITIONS)
                 .traceLogFile(config.logDirectory() + "/service-flow.log")
                 .traceLabel("java-mon-service");
+            java.net.URI apiEndpoint = java.net.URI.create(config.apiEndpoint());
             options.addClientServerChannel(Contracts.CHANNEL)
-                .enableServer(config.apiEndpoint())
-                .setRoutingId(RoutingId.from(config.routingId()))
+                .server()
+                .setAdvertiseHost(apiEndpoint.getHost())
+                .listen(apiEndpoint.getPort())
                 .addRequestHandler(
                     WorkReqHandler.class,
                     Contracts.WorkReq.class,
-                    Contracts.WorkRes.class,
-                    "WorkReq");
+                    Contracts.WorkRes.class);
             if (config.enableHandshake()) {
+                java.net.URI handshakeEndpoint =
+                    java.net.URI.create(config.handshakeEndpoint());
                 options.addClientServerChannel(Contracts.HANDSHAKE_CHANNEL)
-                    .enableServer(config.handshakeEndpoint())
-                    .setRoutingId(RoutingId.from(config.routingId() + "-handshake"))
+                    .server()
+                    .setAdvertiseHost(handshakeEndpoint.getHost())
+                    .listen(handshakeEndpoint.getPort())
                     .addRequestHandler(
                         WorkReqHandler.class,
                         Contracts.WorkReq.class,
-                        Contracts.WorkRes.class,
-                        "HandshakeWorkReq");
+                        Contracts.WorkRes.class);
             }
             if (config.enableSpot()) {
                 ZLinkMeshNodeBuilder node = options.addRouteMesh(Contracts.SPOT_MESH)
                     .listen(config.meshEndpoint())
                     .setRoutingId(RoutingId.from(config.routingId() + "-spot"));
                 node.configureRouterSocket().setReceiveHighWaterMark(1);
-                node.configureSpotPublisher().setSendHighWaterMark(1);
-                node.configureSpotPublisher().setSendTimeout(Duration.ofMillis(10));
                 node.channelName(Contracts.SPOT_CHANNEL)
                     .addRequestHandler(
                         WorkReqHandler.class,
@@ -143,8 +144,17 @@ public final class Program {
                         RoutingId.from("svc-a-spot"),
                         config.meshPeerEndpoint());
                 }
-                node.addSpotFactory(MonitoringSpot.class);
-                node.addSpotFactory(TriggeredMonitoringSpot.class);
+                var objects = node.objects().server();
+                objects.addSpotFactory(
+                    Contracts.MONITORING_SPOT_TYPE,
+                    MonitoringSpot.class,
+                    new ZLinkUserSpotFactoryOptions(0),
+                    ZLinkRelocationPolicy.disabled());
+                objects.addSpotFactory(
+                    Contracts.TRIGGERED_MONITORING_SPOT_TYPE,
+                    TriggeredMonitoringSpot.class,
+                    new ZLinkUserSpotFactoryOptions(0),
+                    ZLinkRelocationPolicy.disabled());
             }
         };
     }
@@ -169,11 +179,6 @@ public final class Program {
     }
 
     @Bean
-    MulticastGate multicastGate() {
-        return new MulticastGate();
-    }
-
-    @Bean
     ZLinkRedisLocationStore locationStore(ServiceOptions config) {
         return new ZLinkRedisLocationStore(new ZLinkRedisLocationOptions()
             .setConnectionString(config.redisLocationEndpoint())
@@ -192,9 +197,10 @@ public final class Program {
                 throw new IllegalStateException("spot manager is required when spot monitoring is enabled");
             }
             manager.getOrCreate(
-                MonitoringSpot.class,
-                RoutingId.from("monitoring-room-" + config.routingId()),
-                ZLinkMessage.of("bootstrap"))
+                    "monitoring-room-" + config.routingId(),
+                    Contracts.MONITORING_SPOT_TYPE)
+                .request(ZLinkMessage.of("bootstrap"))
+                .submit()
                 .whenComplete((ignoredResult, error) -> {
                     if (error != null) {
                         throw new IllegalStateException("failed to create monitoring Spot", error);

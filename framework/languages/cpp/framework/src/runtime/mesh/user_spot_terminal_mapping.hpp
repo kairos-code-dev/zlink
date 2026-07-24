@@ -41,7 +41,7 @@ inline framework_error_kind_t map_user_spot_wire_failure (
         case protocol::framework_error_code::workerQueueFull:
             return creation
                      ? framework_error_kind_t::
-                         placement_capacity_exhausted
+                        placement_capacity_exhausted
                      : framework_error_kind_t::worker_queue_full;
         case protocol::framework_error_code::workerTimedOut:
             return framework_error_kind_t::worker_timed_out;

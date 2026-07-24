@@ -8,7 +8,6 @@ import type {
 } from '../../contracts';
 import { zlinkMessageMetadata } from '../../contracts';
 import {
-  ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
   ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
   ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
   ZLinkDispatchErrorSurface,
@@ -27,7 +26,6 @@ import {
   ZLinkChannelMessageKind,
   type ZLinkChannelEnvelopeCodecRegistry
 } from '../channels/channel-envelope';
-import { flowIfEnabled } from '../diagnostics';
 import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 import { createProviderInstance } from './spot-provider';
 import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
@@ -171,19 +169,6 @@ export class ZLinkSpotSubscriptionDispatch {
     const event = decodeChannelPayload(envelope, this.channelCodecs());
     const spot = this.options.getTarget();
     const subSource = message.routingId === null ? undefined : String(message.routingId);
-    const subCorr = envelope.header.correlationId ?? undefined;
-    flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Received)?.trace({
-      outcome: ZLinkMessageFlowOutcome.Received,
-      surface: ZLinkDispatchErrorSurface.SpotSubscription,
-      messageKind: ZLinkDispatchMessageKind.Publish,
-      packetName: envelope.packetName,
-      channelName: envelope.header.channelName,
-      topic: message.topic,
-      sourceRid: subSource,
-      correlationId: subCorr,
-      flowId: envelope.header.flowId,
-      flowOrigin: envelope.header.flowOrigin
-    });
     const inboundFlow = createInboundFlow(
       envelope.header.flowId,
       envelope.header.flowOrigin,
@@ -203,18 +188,6 @@ export class ZLinkSpotSubscriptionDispatch {
             topic: message.topic,
             source: subSource,
             metadata: zlinkMessageMetadata(envelope.header.metadata)
-          });
-          flowIfEnabled(this.options.dispatchErrors?.flow, ZLinkMessageFlowOutcome.Dispatched)?.trace({
-            outcome: ZLinkMessageFlowOutcome.Dispatched,
-            surface: ZLinkDispatchErrorSurface.SpotSubscription,
-            messageKind: ZLinkDispatchMessageKind.Publish,
-            packetName: envelope.packetName,
-            channelName: envelope.header.channelName,
-            topic: message.topic,
-            sourceRid: subSource,
-            correlationId: subCorr,
-            flowId: envelope.header.flowId,
-            flowOrigin: envelope.header.flowOrigin
           });
         } catch (error) {
           this.options.dispatchErrors?.report({

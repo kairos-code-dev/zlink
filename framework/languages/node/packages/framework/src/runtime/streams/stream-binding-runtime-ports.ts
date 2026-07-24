@@ -1,5 +1,6 @@
-import type { ActorRef, ZLinkSessionActor, ZLinkSubmitResult } from '../../contracts';
+import type { ActorRef, ZLinkSessionActor } from '../../contracts';
 import type { ZLinkBackendActorSessionNode } from '../backend';
+import type { ZLinkSubmitResult } from '../messaging/submission-result';
 import type { DefaultZLinkSessionActor } from './session-context';
 import type { ZLinkBoundSessionResponseTarget } from './bound-session-response-target';
 

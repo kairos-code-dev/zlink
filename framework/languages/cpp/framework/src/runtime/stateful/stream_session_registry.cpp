@@ -27,8 +27,17 @@ stream_connection_t stream_session_registry_t::open (
     std::lock_guard lock (_mutex);
     const auto generation = ++_last_connection_generation[connection_id];
     stream_connection_t connection{std::move (connection_id), generation};
+    const auto previous = _connections.find (connection.connection_id);
+    if (previous != _connections.end ()) {
+        for (const auto &[actor_id, binding] : previous->second.bindings) {
+            const auto indexed = _actor_bindings.find (actor_id);
+            if (indexed != _actor_bindings.end ()
+                && indexed->second == binding)
+                _actor_bindings.erase (indexed);
+        }
+    }
     _connections[connection.connection_id] =
-      connection_state_t{connection, 1, 1, std::nullopt};
+      connection_state_t{connection};
     return connection;
 }
 
@@ -40,6 +49,11 @@ bool stream_session_registry_t::close (
     if (current == _connections.end ()
         || current->second.connection != connection) {
         return false;
+    }
+    for (const auto &[actor_id, binding] : current->second.bindings) {
+        const auto indexed = _actor_bindings.find (actor_id);
+        if (indexed != _actor_bindings.end () && indexed->second == binding)
+            _actor_bindings.erase (indexed);
     }
     _connections.erase (current);
     return true;
@@ -66,11 +80,24 @@ stream_session_registry_t::bind (
         return {stateful_error_t::conflict, {}};
     }
     auto &state = current->second;
-    if (state.barrier_token)
+    const auto actor_id = actor.key;
+    if (state.barrier_tokens.contains (actor_id))
         return {stateful_error_t::moving, {}};
     stream_binding_t binding{
       connection, state.next_binding_generation++, actor};
-    state.binding = binding;
+    const auto previous = _actor_bindings.find (actor_id);
+    if (previous != _actor_bindings.end ()) {
+        const auto previous_connection =
+          _connections.find (previous->second.connection.connection_id);
+        if (previous_connection != _connections.end ()
+            && previous_connection->second.connection
+                 == previous->second.connection) {
+            previous_connection->second.bindings.erase (actor_id);
+            previous_connection->second.barrier_tokens.erase (actor_id);
+        }
+    }
+    state.bindings[actor_id] = binding;
+    _actor_bindings[actor_id] = binding;
     return {stateful_error_t::none, binding};
 }
 
@@ -82,11 +109,15 @@ stateful_error_t stream_session_registry_t::unbind (
       _connections.find (binding.connection.connection_id);
     if (current == _connections.end ()
         || current->second.connection != binding.connection
-        || !current->second.binding
-        || *current->second.binding != binding) {
+        || !current->second.bindings.contains (binding.actor.key)
+        || current->second.bindings.at (binding.actor.key) != binding) {
         return stateful_error_t::conflict;
     }
-    current->second.binding.reset ();
+    current->second.bindings.erase (binding.actor.key);
+    current->second.barrier_tokens.erase (binding.actor.key);
+    const auto indexed = _actor_bindings.find (binding.actor.key);
+    if (indexed != _actor_bindings.end () && indexed->second == binding)
+        _actor_bindings.erase (indexed);
     return stateful_error_t::none;
 }
 
@@ -94,13 +125,6 @@ std::pair<stateful_error_t, std::optional<stream_dispatch_t>>
 stream_session_registry_t::admit_inbound (
   const stream_binding_t &binding)
 {
-    const auto authority = _resolver (binding.actor.key);
-    if (!authority || !exact_actor (*authority, binding.actor)) {
-        return {authority ? stateful_error_t::generation_stale
-                          : stateful_error_t::not_found,
-                std::nullopt};
-    }
-
     std::lock_guard lock (_mutex);
     if (_all_sealed)
         return {stateful_error_t::moving, std::nullopt};
@@ -108,14 +132,14 @@ stream_session_registry_t::admit_inbound (
       _connections.find (binding.connection.connection_id);
     if (current == _connections.end ()
         || current->second.connection != binding.connection
-        || !current->second.binding
-        || *current->second.binding != binding) {
+        || !current->second.bindings.contains (binding.actor.key)
+        || current->second.bindings.at (binding.actor.key) != binding) {
         return {stateful_error_t::conflict, std::nullopt};
     }
-    if (current->second.barrier_token)
+    if (current->second.barrier_tokens.contains (binding.actor.key))
         return {stateful_error_t::moving, std::nullopt};
     const auto sequence = current->second.next_inbound_sequence++;
-    current->second.active_inbound.insert (sequence);
+    current->second.active_inbound.emplace (sequence, binding.actor.key);
     return {stateful_error_t::none,
             stream_dispatch_t{
               binding, sequence}};
@@ -130,11 +154,13 @@ stateful_error_t stream_session_registry_t::complete_inbound (
     if (current == _connections.end ()
         || current->second.connection != dispatch.binding.connection)
         return stateful_error_t::conflict;
-    return current->second.active_inbound.erase (
-             dispatch.inbound_sequence)
-             == 1
-           ? stateful_error_t::none
-           : stateful_error_t::not_found;
+    const auto active =
+      current->second.active_inbound.find (dispatch.inbound_sequence);
+    if (active == current->second.active_inbound.end ()
+        || active->second != dispatch.binding.actor.key)
+        return stateful_error_t::not_found;
+    current->second.active_inbound.erase (active);
+    return stateful_error_t::none;
 }
 
 std::pair<stateful_error_t, stream_barrier_t>
@@ -143,21 +169,29 @@ stream_session_registry_t::try_seal_actor (const object_ref_t &actor)
     if (actor.kind != object_kind_t::actor)
         return {stateful_error_t::invalid, {}};
     std::lock_guard lock (_mutex);
-    std::vector<connection_state_t *> affected;
-    for (auto &[_, state] : _connections) {
-        if (!state.binding || !exact_actor (state.binding->actor, actor))
-            continue;
-        if (state.barrier_token)
-            return {stateful_error_t::moving, {}};
-        if (!state.active_inbound.empty ())
-            return {stateful_error_t::backpressured, {}};
-        affected.push_back (&state);
+    connection_state_t *affected = nullptr;
+    const auto indexed = _actor_bindings.find (actor.key);
+    if (indexed != _actor_bindings.end ()
+        && exact_actor (indexed->second.actor, actor)) {
+        const auto connection =
+          _connections.find (indexed->second.connection.connection_id);
+        if (connection != _connections.end ()
+            && connection->second.connection
+                 == indexed->second.connection) {
+            affected = &connection->second;
+            if (affected->barrier_tokens.contains (actor.key))
+                return {stateful_error_t::moving, {}};
+            for (const auto &[_, active_actor] : affected->active_inbound) {
+                if (active_actor == actor.key)
+                    return {stateful_error_t::backpressured, {}};
+            }
+        }
     }
     if (_next_barrier_token == 0)
         return {stateful_error_t::conflict, {}};
     const auto token = _next_barrier_token++;
-    for (auto *state : affected)
-        state->barrier_token = token;
+    if (affected != nullptr)
+        affected->barrier_tokens[actor.key] = token;
     _barriers.emplace (token, actor);
     return {
       stateful_error_t::none, stream_barrier_t{token, actor}};
@@ -171,8 +205,10 @@ stateful_error_t stream_session_registry_t::abort_barrier (
     if (found == _barriers.end () || !exact_actor (found->second, barrier.actor))
         return stateful_error_t::not_found;
     for (auto &[_, state] : _connections) {
-        if (state.barrier_token == barrier.token)
-            state.barrier_token.reset ();
+        const auto token = state.barrier_tokens.find (barrier.actor.key);
+        if (token != state.barrier_tokens.end ()
+            && token->second == barrier.token)
+            state.barrier_tokens.erase (token);
     }
     _barriers.erase (found);
     return stateful_error_t::none;
@@ -191,14 +227,28 @@ stateful_error_t stream_session_registry_t::commit_barrier (
         || target.authority_owner_generation
              <= barrier.actor.authority_owner_generation)
         return stateful_error_t::conflict;
-    for (auto &[_, state] : _connections) {
-        if (state.barrier_token != barrier.token)
-            continue;
-        auto next = *state.binding;
+    const auto indexed = _actor_bindings.find (barrier.actor.key);
+    if (indexed != _actor_bindings.end ()) {
+        const auto connection =
+          _connections.find (indexed->second.connection.connection_id);
+        if (connection == _connections.end ()
+            || connection->second.connection
+                 != indexed->second.connection)
+            return stateful_error_t::conflict;
+        auto &state = connection->second;
+        const auto token = state.barrier_tokens.find (barrier.actor.key);
+        const auto binding = state.bindings.find (barrier.actor.key);
+        if (token == state.barrier_tokens.end ()
+            || token->second != barrier.token
+            || binding == state.bindings.end ()
+            || !exact_actor (binding->second.actor, barrier.actor))
+            return stateful_error_t::conflict;
+        auto next = binding->second;
         next.actor = target;
         next.binding_generation = state.next_binding_generation++;
-        state.binding = std::move (next);
-        state.barrier_token.reset ();
+        binding->second = next;
+        indexed->second = next;
+        state.barrier_tokens.erase (token);
     }
     _barriers.erase (found);
     return stateful_error_t::none;
@@ -228,6 +278,7 @@ void stream_session_registry_t::force_close_all () noexcept
     std::lock_guard lock (_mutex);
     _all_sealed = true;
     _barriers.clear ();
+    _actor_bindings.clear ();
     _connections.clear ();
 }
 
@@ -239,8 +290,8 @@ bool stream_session_registry_t::is_current (
       _connections.find (binding.connection.connection_id);
     return current != _connections.end ()
            && current->second.connection == binding.connection
-           && current->second.binding
-           && *current->second.binding == binding;
+           && current->second.bindings.contains (binding.actor.key)
+           && current->second.bindings.at (binding.actor.key) == binding;
 }
 
 bool stream_session_registry_t::exact_actor (

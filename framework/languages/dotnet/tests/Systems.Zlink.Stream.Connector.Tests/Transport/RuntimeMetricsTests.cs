@@ -55,7 +55,7 @@ public sealed partial class StreamConnectorTests
         await connector.Connect.Async();
         connector.Send(new ZlinkStreamEncodedPayload(ZlinkStreamCodec.Raw, "outbound"u8.ToArray()))
             .PacketName("metric.outbound")
-            .Submit();
+            .Async();
 
         await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
         await server;

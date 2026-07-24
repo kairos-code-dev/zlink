@@ -15,7 +15,7 @@ public final class RmC9BackpressureScenario {
         ZLinkHttpClient backpressureConsumer,
         ZLinkHttpClient providerA,
         ZLinkHttpClient providerB) {
-        backpressureConsumer.post("/profile/backpressure/reset").async(Object.class).toCompletableFuture().join().body();
+        backpressureConsumer.post("/profile/backpressure/reset").submit(Object.class).toCompletableFuture().join().body();
         String marker = "rm-c9-" + java.util.UUID.randomUUID().toString().replace("-", "");
         java.util.List<java.util.concurrent.CompletableFuture<String>> sends = new java.util.ArrayList<>();
         for (int index = 0; index < SLOW_SEND_COUNT; index++) {
@@ -23,7 +23,7 @@ public final class RmC9BackpressureScenario {
             sends.add(java.util.concurrent.CompletableFuture.supplyAsync(() ->
                 backpressureConsumer.post("/profile/backpressure/send")
                     .body(new Contracts.ProfileMsg(commandId))
-                    .async(Contracts.BackpressureRes.class).toCompletableFuture().join().body()
+                    .submit(Contracts.BackpressureRes.class).toCompletableFuture().join().body()
                     .outcome()));
         }
         java.util.List<String> outcomes = sends.stream()
@@ -53,7 +53,7 @@ public final class RmC9BackpressureScenario {
                 return backpressureConsumer.post("/profile/request")
                     .body(new Contracts.ProfileReq(marker))
                     .timeout(java.time.Duration.ofSeconds(10))
-                    .async(Contracts.ProfileRes.class).toCompletableFuture().join().body();
+                    .submit(Contracts.ProfileRes.class).toCompletableFuture().join().body();
             } catch (RuntimeException error) {
                 lastFailure = error;
                 ScenarioWait.sleep(500);

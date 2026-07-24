@@ -14,20 +14,20 @@ public interface ZLinkMeshObjectServerBuilder {
     <TSpot extends ZLinkSpot<?>> ZLinkMeshObjectServerBuilder addSpotFactory(
         String stableType,
         Class<TSpot> spotType,
-        ZLinkObjectPlacementOptions placement,
+        ZLinkUserSpotFactoryOptions options,
         ZLinkRelocationPolicy<TSpot> relocationPolicy);
 
     <TSpot extends ZLinkInstanceSpot>
     ZLinkMeshObjectServerBuilder addInstanceSpotFactory(
         String stableType,
         Class<TSpot> spotType,
-        ZLinkObjectPlacementOptions placement,
+        ZLinkInstanceSpotFactoryOptions options,
         ZLinkRelocationPolicy<TSpot> relocationPolicy);
 
     <TActor extends ZLinkActor> ZLinkMeshObjectServerBuilder addActorFactory(
         String stableType,
         Class<TActor> actorType,
         Class<? extends ZLinkActorFactory> factoryType,
-        ZLinkObjectPlacementOptions placement,
+        ZLinkActorFactoryOptions options,
         ZLinkRelocationPolicy<TActor> relocationPolicy);
 }

@@ -26,7 +26,7 @@ import systems.zlink.framework.actors.ActorRefSnapshot;
 import systems.zlink.framework.actors.ZLinkActorDirectory;
 import systems.zlink.framework.actors.ZLinkActorClient;
 import systems.zlink.framework.actors.ZLinkActorJoinCall;
-import systems.zlink.framework.actors.ZLinkActorJoinResult;
+import systems.zlink.framework.actors.ZLinkActorJoinCompletion;
 import systems.zlink.framework.actors.ZLinkActorManager;
 import systems.zlink.framework.actors.ZLinkActorRequestCall;
 import systems.zlink.framework.actors.ZLinkActorSendCall;
@@ -35,8 +35,9 @@ import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.configuration.ZLinkFrameworkOptions;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
-import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.SpotRef;
+import systems.zlink.framework.spots.ZLinkSpotRequestCall;
+import systems.zlink.framework.spots.ZLinkSpotSendCall;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationFilter;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
@@ -188,8 +189,10 @@ final class LocationContractTest {
             "applicationVersion",
             "objectCapabilities",
             "objectRole",
+            "entrySpotId",
             "placementWeight",
             "capacity",
+            "activationConcurrency",
             "maintenanceWave",
             "state",
             "securityIdentity",
@@ -407,7 +410,8 @@ final class LocationContractTest {
             Map.entry("SPOT_GENERATION_STALE", 32),
             Map.entry("SPOT_MOVING", 33),
             Map.entry("RELOCATION_DATA_LOST", 34),
-            Map.entry("SPOT_ID_CONFLICT", 35)));
+            Map.entry("SPOT_ID_CONFLICT", 35),
+            Map.entry("RUNTIME_SHUTDOWN", 36)));
         assertRetriableOnly(ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED, ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE);
 
         assertEnumValues(ZLinkLocationAutoConnectType.class, Map.of(
@@ -506,20 +510,24 @@ final class LocationContractTest {
 
     @Test
     void actorJoinAndManagerSurfacesPinSharedCallShape() throws Exception {
-        assertEquals(CompletionStage.class, ZLinkActorJoinCall.class
-            .getMethod("submit")
-            .getReturnType());
-        assertEquals(CompletionStage.class, ZLinkActorJoinCall.class
-            .getMethod("submit", Class.class)
+        assertEquals(void.class, ZLinkActorJoinCall.class
+            .getMethod("defer")
             .getReturnType());
         assertEquals(ZLinkActorJoinCall.class, ZLinkActorJoinCall.class
             .getMethod("timeout", java.time.Duration.class)
             .getReturnType());
-        assertTrue(ZLinkActorJoinResult.class.isSealed());
-        assertRecordComponents(ZLinkActorJoinResult.Accepted.class, "actor", "reply");
-        assertRecordComponents(ZLinkActorJoinResult.Rejected.class, "reply");
+        assertTrue(ZLinkActorJoinCompletion.class.isSealed());
+        assertRecordComponents(
+            ZLinkActorJoinCompletion.Accepted.class,
+            "operationId", "actor", "reply");
+        assertRecordComponents(
+            ZLinkActorJoinCompletion.Rejected.class,
+            "operationId", "reply");
+        assertRecordComponents(
+            ZLinkActorJoinCompletion.Failed.class,
+            "operationId", "kind", "isRetriable");
         assertEquals(ActorRef.class,
-            componentType(ZLinkActorJoinResult.Accepted.class, "actor"));
+            componentType(ZLinkActorJoinCompletion.Accepted.class, "actor"));
 
         assertEquals(CompletionStage.class, ZLinkActorManager.class
             .getMethod("create", String.class, String.class)
@@ -578,11 +586,11 @@ final class LocationContractTest {
                 String.class,
                 Object.class)
             .getReturnType());
-        assertEquals(ZLinkSendCall.class, ZLinkRouteClient.class
-            .getMethod("sendToSpot", SpotHandle.class, Object.class)
+        assertEquals(ZLinkSpotSendCall.class, ZLinkRouteClient.class
+            .getMethod("sendToSpot", String.class, Object.class)
             .getReturnType());
-        assertEquals(ZLinkRequestCall.class, ZLinkRouteClient.class
-            .getMethod("requestToSpot", SpotHandle.class, Object.class)
+        assertEquals(ZLinkSpotRequestCall.class, ZLinkRouteClient.class
+            .getMethod("requestToSpot", String.class, Object.class)
             .getReturnType());
         assertNoPublicMethod(ZLinkRouteClient.class, "send", String.class, RoutingId.class, Object.class);
         assertNoPublicMethod(ZLinkRouteClient.class, "request", String.class, RoutingId.class, Object.class);

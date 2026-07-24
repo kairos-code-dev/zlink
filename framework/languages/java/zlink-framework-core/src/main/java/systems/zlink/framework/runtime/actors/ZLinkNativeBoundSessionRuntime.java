@@ -17,7 +17,7 @@ import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
-import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
+
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 
 final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
@@ -84,7 +84,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
     CompletionStage<Void> sendFrame(byte[] frameBytes) {
         ZLinkBackendActorRef currentActorRef = currentActorRef();
         Message frame = Message.from(frameBytes);
-        return ZLinkSubmitResults.submitAsync(
+        return actorRuntime.oneWayCalls().submitOneWay(
             spotNode,
             ZLinkBackendAdmissionKey.boundSession(
                 currentActorRef.nodeRid(),
@@ -115,7 +115,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         Duration timeout,
         ZLinkBoundSessionSendOptions options,
         ZLinkRelayMetadataPolicy metadataPolicy,
-        systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate)
+        java.util.concurrent.atomic.AtomicBoolean submitGate)
         implements ZLinkBoundSessionSendCall {
         SendCall(
             ZLinkInternalSpotNode spotNode,
@@ -129,7 +129,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
             ZLinkRelayMetadataPolicy metadataPolicy) {
             this(spotNode, actorRuntime, actor, sourceNodeRid, sourceSessionRid, payload,
                 timeout, options, metadataPolicy,
-                new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate());
+                new java.util.concurrent.atomic.AtomicBoolean());
         }
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             return new SendCall(
@@ -159,9 +159,9 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
         }
 
         @Override
-        public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-            CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-                submitGate.begin();
+        public CompletionStage<Void> submit() {
+            CompletionStage<Void> duplicate =
+                ZLinkOneWayCalls.beginOneWay(submitGate);
             if (duplicate != null) {
                 return duplicate;
             }
@@ -173,7 +173,7 @@ final class ZLinkNativeBoundSessionRuntime implements ZLinkBoundSession {
                 payload.close();
             }
             Message frame = Message.from(frameBytes);
-            return ZLinkSubmitResults.submitAsync(
+            return actorRuntime.oneWayCalls().submitOneWay(
                 spotNode,
                 ZLinkBackendAdmissionKey.boundSession(
                     currentActorRef.nodeRid(),

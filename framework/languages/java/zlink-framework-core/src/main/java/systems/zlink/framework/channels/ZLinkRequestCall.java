@@ -17,9 +17,6 @@ public interface ZLinkRequestCall {
 
     <TReply> CompletionStage<TReply> submit(Class<TReply> replyType);
 
-    default <TReply> CompletionStage<TReply> yield(Class<TReply> replyType) {
-        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.yieldCurrent(
-            submit(replyType));
-    }
+    <TReply> CompletionStage<TReply> yield(Class<TReply> replyType);
 
 }

@@ -127,7 +127,7 @@ public sealed class StreamFlowEndToEndTests
             CancellationToken cancellationToken)
         {
             await Context.Client.Reply(new FlowReply("reply"))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
         }
     }
 }

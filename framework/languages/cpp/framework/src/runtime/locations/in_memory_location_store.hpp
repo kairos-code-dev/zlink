@@ -692,16 +692,13 @@ class in_memory_location_store_t final : public location_store_t,
                   authority_compare_exchange_result_t{
                     authority_conflict_t{
                       authority_missing_t{now}}});
-            const auto capacity_key =
-              allocation_capacity_key (found->second.allocation);
-            const auto active_count =
-              _active_by_placement.find (capacity_key);
-            if (found->second.allocation.capacity_state
-                  != placement_capacity_state_t::active
+            if (found->second.allocation.state
+                  != placement_allocation_state_t::active
                 || !owner_token_is_live (found->second.owner, now)
-                || active_count == _active_by_placement.end ()
-                || active_count->second
-                     < found->second.allocation.capacity_delta)
+                || !capacity_bundle_present (
+                  _active_by_placement,
+                  found->second.allocation.target,
+                  found->second.allocation.capacity_bundle))
                 return completed (
                   authority_compare_exchange_result_t{
                     authority_conflict_t{found->second}});
@@ -710,9 +707,11 @@ class in_memory_location_store_t final : public location_store_t,
                   authority_compare_exchange_result_t{
                     authority_generation_exhausted_t{}});
             const auto store_version = next_store_version ();
-            auto &active =
-              _active_by_placement[capacity_key];
-            active -= found->second.allocation.capacity_delta;
+            apply_capacity_bundle (
+              _active_by_placement,
+              found->second.allocation.target,
+              found->second.allocation.capacity_bundle,
+              false);
             _authorities.erase (found);
             return completed (
               authority_compare_exchange_result_t{
@@ -731,8 +730,8 @@ class in_memory_location_store_t final : public location_store_t,
               "authority owner or relocation capacity fence does not match generation transition");
 
         if (found == _authorities.end ()
-            || found->second.allocation.capacity_state
-                 != placement_capacity_state_t::active)
+            || found->second.allocation.state
+                 != placement_allocation_state_t::active)
             return completed (
               authority_compare_exchange_result_t{
                 authority_conflict_t{
@@ -994,16 +993,11 @@ class in_memory_location_store_t final : public location_store_t,
               reservation->second.request.key.kind,
               reservation->second.request.intent.stable_type,
               now);
-            const auto capacity_key = target_capacity_key (
-              request.fence.target,
-              reservation->second.request.key.kind,
-              reservation->second.request.intent.stable_type);
-            const auto pending =
-              _pending_by_placement.find (capacity_key);
             if (!descriptor
-                || pending == _pending_by_placement.end ()
-                || pending->second
-                     < request.fence.pending_capacity_delta)
+                || !capacity_bundle_present (
+                  _pending_by_placement,
+                  request.fence.target,
+                  request.fence.capacity_bundle))
                 return completed (
                   object_complete_creation_result_t{
                     object_creation_completion_conflict_t{
@@ -1017,14 +1011,17 @@ class in_memory_location_store_t final : public location_store_t,
             authority->second.payload =
               created->ready_payload;
             authority->second.store_now = now;
-            authority->second.allocation.capacity_state =
-              placement_capacity_state_t::active;
+            authority->second.allocation.state =
+              placement_allocation_state_t::active;
             reservation->second.snapshot = authority->second;
             reservation->second.status =
               reservation_status_t::committed;
             release_pending (reservation->second);
-            _active_by_placement[capacity_key] +=
-              request.fence.pending_capacity_delta;
+            apply_capacity_bundle (
+              _active_by_placement,
+              request.fence.target,
+              request.fence.capacity_bundle,
+              true);
             ready = authority->second;
         } else {
             _authorities.erase (authority);
@@ -1062,8 +1059,8 @@ class in_memory_location_store_t final : public location_store_t,
                 return completed (
                   object_reserve_result_t{
                     object_type_mismatch_t{authority->second}});
-            if (authority->second.allocation.capacity_state
-                == placement_capacity_state_t::pending)
+            if (authority->second.allocation.state
+                == placement_allocation_state_t::reserved)
                 return completed (
                   object_reserve_result_t{
                     object_reserve_conflict_t{
@@ -1083,47 +1080,16 @@ class in_memory_location_store_t final : public location_store_t,
               object_reserve_result_t{
                 object_reserve_conflict_t{
                   authority_missing_t{now}}});
-        const auto limit = pending_limit (
-          *target_descriptor,
-          request.key.kind,
-          request.intent.stable_type);
-        const auto &pending =
-          _pending_by_placement[
-            target_capacity_key (
-              request.target,
+        if (!bundle_matches_object (
+              request.capacity_bundle,
               request.key.kind,
-              request.intent.stable_type)];
-        const auto active_limit_value = active_limit (
-          *target_descriptor,
-          request.key.kind,
-          request.intent.stable_type);
-        const auto &active =
-          _active_by_placement[
-            target_capacity_key (
+              request.intent.stable_type))
+            throw std::invalid_argument (
+              "object reservation capacity bundle does not match the object");
+        if (!capacity_available (
+              *target_descriptor,
               request.target,
-              request.key.kind,
-              request.intent.stable_type)];
-        const auto typed_capacity_limit =
-          placement_limit (
-            *target_descriptor, request.key.kind,
-            request.intent.stable_type);
-        if (request.pending_capacity_delta == 0
-            || request.pending_capacity_delta
-                 > static_cast<std::uint32_t> (
-                   std::numeric_limits<std::int32_t>::max ())
-            || request.pending_capacity_delta > limit
-            || pending
-                 > limit - request.pending_capacity_delta
-            || request.pending_capacity_delta > active_limit_value
-            || active
-                 > active_limit_value
-                     - request.pending_capacity_delta
-            || (typed_capacity_limit != 0
-                && (request.pending_capacity_delta
-                      > typed_capacity_limit
-                    || active + pending
-                         > typed_capacity_limit
-                             - request.pending_capacity_delta)))
+              request.capacity_bundle))
             return completed (
               object_reserve_result_t{
                 object_placement_capacity_exhausted_t{}});
@@ -1143,7 +1109,7 @@ class in_memory_location_store_t final : public location_store_t,
           _object_generation,
           _authority_owner_generation,
           request.target,
-          request.pending_capacity_delta};
+          request.capacity_bundle};
         authority_snapshot_t creating{
           store_version,
           request.creating_payload,
@@ -1151,13 +1117,11 @@ class in_memory_location_store_t final : public location_store_t,
           _authority_owner_generation,
           request.target.owner,
           now,
-          {placement_capacity_state_t::pending,
+          {placement_allocation_state_t::reserved,
            request.key.kind,
            request.intent.stable_type,
-           request.target.mesh_name,
-           request.target.node_rid,
-           request.target.node_lifecycle_generation,
-           request.pending_capacity_delta},
+           request.target,
+           request.capacity_bundle},
           pending_object_creation_t{
             fence.reservation_id,
             request.intent.request_content_reference,
@@ -1169,12 +1133,11 @@ class in_memory_location_store_t final : public location_store_t,
         _authorities[key] = creating;
         _object_types[key] = request.intent.stable_type;
         _reservations[key] = std::move (reservation);
-        _pending_by_placement[
-          target_capacity_key (
-            request.target,
-            request.key.kind,
-            request.intent.stable_type)] +=
-          request.pending_capacity_delta;
+        apply_capacity_bundle (
+          _pending_by_placement,
+          request.target,
+          request.capacity_bundle,
+          true);
         return completed (
           object_reserve_result_t{
             object_reserved_t{std::move (fence),
@@ -1227,30 +1190,11 @@ class in_memory_location_store_t final : public location_store_t,
               reservation->second.request.key.kind,
               reservation->second.request.intent.stable_type,
               now);
-        const auto capacity_key = target_capacity_key (
-          request.fence.target,
-          reservation->second.request.key.kind,
-          reservation->second.request.intent.stable_type);
-        const auto pending =
-          _pending_by_placement.find (capacity_key);
-        const auto active =
-          _active_by_placement.find (capacity_key);
         if (!descriptor
-            || pending == _pending_by_placement.end ()
-            || pending->second
-                 < request.fence.pending_capacity_delta
-            || request.fence.pending_capacity_delta
-                 > active_limit (
-                   *descriptor,
-                   reservation->second.request.key.kind,
-                   reservation->second.request.intent.stable_type)
-            || (active != _active_by_placement.end ()
-                && active->second
-                     > active_limit (
-                         *descriptor,
-                         reservation->second.request.key.kind,
-                         reservation->second.request.intent.stable_type)
-                         - request.fence.pending_capacity_delta))
+            || !capacity_bundle_present (
+              _pending_by_placement,
+              request.fence.target,
+              request.fence.capacity_bundle))
             return completed (
               object_commit_result_t{
                   object_commit_conflict_t{authority->second}});
@@ -1262,17 +1206,16 @@ class in_memory_location_store_t final : public location_store_t,
         authority->second.store_version = next_store_version ();
         authority->second.payload = std::move (request.ready_payload);
         authority->second.store_now = now;
-        authority->second.allocation.capacity_state =
-          placement_capacity_state_t::active;
+        authority->second.allocation.state =
+          placement_allocation_state_t::active;
         reservation->second.snapshot = authority->second;
         reservation->second.status = reservation_status_t::committed;
         release_pending (reservation->second);
-        _active_by_placement[
-          target_capacity_key (
-            request.fence.target,
-            reservation->second.request.key.kind,
-            reservation->second.request.intent.stable_type)] +=
-          request.fence.pending_capacity_delta;
+        apply_capacity_bundle (
+          _active_by_placement,
+          request.fence.target,
+          request.fence.capacity_bundle,
+          true);
         return completed (
           object_commit_result_t{
             object_committed_t{authority->second}});
@@ -1332,10 +1275,10 @@ class in_memory_location_store_t final : public location_store_t,
             || request.key.value.empty ()
             || request.expected_store_version.empty ()
             || request.stable_type.empty ()
-            || request.capacity_delta == 0
-            || request.capacity_delta
-                 > static_cast<std::uint32_t> (
-                   std::numeric_limits<std::int32_t>::max ()))
+            || !bundle_matches_object (
+              request.capacity_bundle,
+              request.object_kind,
+              request.stable_type))
             throw std::invalid_argument (
               "relocation capacity reservation is incomplete");
 
@@ -1398,42 +1341,10 @@ class in_memory_location_store_t final : public location_store_t,
             return completed (
               relocation_capacity_reserve_result_t{
                 relocation_capacity_target_unavailable_t{}});
-        const auto limit = pending_limit (
-          *target_descriptor,
-          request.object_kind,
-          request.stable_type);
-        const auto target_pending =
-          _pending_by_placement[
-            target_capacity_key (
+        if (!capacity_available (
+              *target_descriptor,
               request.target,
-              request.object_kind,
-              request.stable_type)];
-        const auto active_limit_value = active_limit (
-          *target_descriptor,
-          request.object_kind,
-          request.stable_type);
-        const auto target_active =
-          _active_by_placement[
-            target_capacity_key (
-              request.target,
-              request.object_kind,
-              request.stable_type)];
-        const auto typed_capacity_limit =
-          placement_limit (
-            *target_descriptor, request.object_kind,
-            request.stable_type);
-        if (request.capacity_delta > limit
-            || target_pending
-                 > limit - request.capacity_delta
-            || request.capacity_delta > active_limit_value
-            || target_active
-                 > active_limit_value - request.capacity_delta
-            || (typed_capacity_limit != 0
-                && (request.capacity_delta
-                      > typed_capacity_limit
-                    || target_active + target_pending
-                         > typed_capacity_limit
-                             - request.capacity_delta)))
+              request.capacity_bundle))
             return completed (
               relocation_capacity_reserve_result_t{
                 relocation_capacity_exhausted_t{}});
@@ -1442,12 +1353,11 @@ class in_memory_location_store_t final : public location_store_t,
           "relocation-" + reservation_key};
         relocation_capacity_state_t state{
           request, fence, relocation_reservation_status_t::reserved};
-        _pending_by_placement[
-          target_capacity_key (
-            request.target,
-            request.object_kind,
-            request.stable_type)]
-          += request.capacity_delta;
+        apply_capacity_bundle (
+          _pending_by_placement,
+          request.target,
+          request.capacity_bundle,
+          true);
         _relocation_capacity_by_id.emplace (
           reservation_key, fence.value);
         _relocation_capacity_reservations.emplace (
@@ -1507,6 +1417,12 @@ class in_memory_location_store_t final : public location_store_t,
             || all_zero (request.aggregate_id.value)
             || request.target_owner.owner_id.empty ()
             || request.target_owner.lease_generation <= 0
+            || !valid_capacity_bundle (
+              request.capacity_bundle)
+            || request.capacity_bundle.spot_slots != 1
+            || !request.capacity_bundle.spot_type
+            || request.capacity_bundle.spot_type->object_kind
+                 != placement_object_kind_t::user_spot
             || aggregate_encoded_size (request)
                  > 1024u * 1024u)
             return completed (
@@ -1546,89 +1462,76 @@ class in_memory_location_store_t final : public location_store_t,
                   aggregate_prepare_result_t{
                     aggregate_prepare_conflict_t{}});
         }
-        std::map<std::string, std::string>
-          new_owner_participants;
+        placement_capacity_bundle_t inventory;
+        std::optional<spot_type_capacity_delta_t> inventory_spot_type;
         for (const auto &participant : request.participants) {
-            if (participant.owner_transition
-                == authority_generation_transition_t::new_owner)
-                new_owner_participants.emplace (
-                  participant.key.value,
-                  participant.expected_store_version);
+            const auto authority =
+              _authorities.find (participant.key.value);
+            if (authority == _authorities.end ()
+                || authority->second.allocation.state
+                     != placement_allocation_state_t::active
+                || participant.owner_transition
+                     != authority_generation_transition_t::new_owner
+                || !capacity_bundle_present (
+                  _active_by_placement,
+                  authority->second.allocation.target,
+                  authority->second.allocation.capacity_bundle))
+                return completed (
+                  aggregate_prepare_result_t{
+                    aggregate_prepare_conflict_t{}});
+            inventory.actor_slots +=
+              authority->second.allocation.capacity_bundle.actor_slots;
+            inventory.spot_slots +=
+              authority->second.allocation.capacity_bundle.spot_slots;
+            if (authority->second.allocation.capacity_bundle.spot_type) {
+                const auto &spot_type =
+                  *authority->second.allocation.capacity_bundle.spot_type;
+                if (inventory_spot_type
+                    && (inventory_spot_type->object_kind
+                          != spot_type.object_kind
+                        || inventory_spot_type->stable_type
+                             != spot_type.stable_type))
+                    return completed (
+                      aggregate_prepare_result_t{
+                        aggregate_prepare_conflict_t{}});
+                inventory_spot_type = spot_type;
+            }
         }
-        if (request.target_reservations.size ()
-            != new_owner_participants.size ())
+        inventory.spot_type = inventory_spot_type;
+        if (!same_capacity_bundle (
+              inventory, request.capacity_bundle))
             return completed (
               aggregate_prepare_result_t{
                 aggregate_prepare_conflict_t{}});
-        std::set<std::string> observed_fences;
-        std::set<std::string> observed_keys;
-        for (const auto &fence : request.target_reservations) {
-            if (!observed_fences.insert (fence.value).second)
-                return completed (
-                  aggregate_prepare_result_t{
-                    aggregate_prepare_conflict_t{}});
-            const auto reservation =
-              _relocation_capacity_reservations.find (
-                fence.value);
-            if (reservation
-                  == _relocation_capacity_reservations.end ()
-                || reservation->second.status
-                     != relocation_reservation_status_t::reserved
-                || !same_owner (
-                  reservation->second.request.target.owner,
-                  request.target_owner)
-                || !observed_keys
-                      .insert (
-                        reservation->second.request.key.value)
-                      .second)
-                return completed (
-                  aggregate_prepare_result_t{
-                    aggregate_prepare_conflict_t{}});
-            const auto participant =
-              new_owner_participants.find (
-                reservation->second.request.key.value);
-            const auto authority =
-              _authorities.find (
-                reservation->second.request.key.value);
-            if (participant == new_owner_participants.end ()
-                || participant->second
-                     != reservation->second.request
-                          .expected_store_version)
-                return completed (
-                  aggregate_prepare_result_t{
-                    aggregate_prepare_conflict_t{}});
-            if (authority == _authorities.end ()
-                || !same_owner (
-                  authority->second.owner,
-                  reservation->second.request.source.owner)
-                || !allocation_matches_source (
-                  authority->second.allocation,
-                  reservation->second.request)
-                || !live_target_descriptor (
-                  reservation->second.request.target,
-                  reservation->second.request.object_kind,
-                  reservation->second.request.stable_type,
-                  clock_t::now ())
-                || !relocation_capacity_counters_available (
-                  reservation->second))
-                return completed (
-                  aggregate_prepare_result_t{
-                    aggregate_prepare_conflict_t{}});
-        }
+        const object_creation_target_t target{
+          request.target_descriptor.mesh_name,
+          node_rid_t::from_string (
+            request.target_descriptor.rid.to_string ()),
+          request.target_descriptor_lifecycle_generation,
+          request.target_owner};
+        const auto target_descriptor = live_target_descriptor (
+          target,
+          placement_object_kind_t::user_spot,
+          request.capacity_bundle.spot_type->stable_type,
+          clock_t::now ());
+        if (!target_descriptor
+            || !capacity_available (
+              *target_descriptor,
+              target,
+              request.capacity_bundle))
+            return completed (
+              aggregate_prepare_result_t{
+                aggregate_prepare_conflict_t{}});
 
         aggregate_state_t state;
         state.request = std::move (request);
         _aggregates.emplace (aggregate_key, std::move (state));
         const auto &stored = _aggregates.at (aggregate_key).request;
-        for (const auto &fence : stored.target_reservations) {
-            auto &reservation =
-              _relocation_capacity_reservations.at (fence.value);
-            reservation.status =
-              relocation_reservation_status_t::prepared;
-            reservation.aggregate_id = stored.aggregate_id;
-            reservation.aggregate_generation =
-              stored.aggregate_generation;
-        }
+        apply_capacity_bundle (
+          _pending_by_placement,
+          target,
+          stored.capacity_bundle,
+          true);
         return completed (
           aggregate_prepare_result_t{
             aggregate_prepared_t{
@@ -1684,36 +1587,39 @@ class in_memory_location_store_t final : public location_store_t,
                 return completed (
                   aggregate_commit_result_t::stale);
         }
-        for (const auto &fence :
-             aggregate->second.request.target_reservations) {
-            const auto reservation =
-              _relocation_capacity_reservations.find (
-                fence.value);
-            if (reservation
-                  == _relocation_capacity_reservations.end ()
-                || reservation->second.status
-                     != relocation_reservation_status_t::prepared
-                || !reservation_bound_to (
-                  reservation->second,
-                  aggregate->second.request)
-                || !live_target_descriptor (
-                  reservation->second.request.target,
-                  reservation->second.request.object_kind,
-                  reservation->second.request.stable_type,
-                  now))
-                return completed (
-                  aggregate_commit_result_t::stale);
-            const auto authority = _authorities.find (
-              reservation->second.request.key.value);
+        const object_creation_target_t target{
+          aggregate->second.request.target_descriptor.mesh_name,
+          node_rid_t::from_string (
+            aggregate->second.request.target_descriptor.rid.to_string ()),
+          aggregate->second.request
+            .target_descriptor_lifecycle_generation,
+          aggregate->second.request.target_owner};
+        const auto target_descriptor = live_target_descriptor (
+          target,
+          placement_object_kind_t::user_spot,
+          aggregate->second.request.capacity_bundle.spot_type
+            ? aggregate->second.request.capacity_bundle
+                .spot_type->stable_type
+            : std::string{},
+          now);
+        if (!target_descriptor
+            || !capacity_bundle_present (
+              _pending_by_placement,
+              target,
+              aggregate->second.request.capacity_bundle))
+            return completed (
+              aggregate_commit_result_t::stale);
+        for (const auto &participant :
+             aggregate->second.request.participants) {
+            const auto authority =
+              _authorities.find (participant.key.value);
             if (authority == _authorities.end ()
-                || !same_owner (
-                  authority->second.owner,
-                  reservation->second.request.source.owner)
-                || !allocation_matches_source (
-                  authority->second.allocation,
-                  reservation->second.request)
-                || !relocation_capacity_counters_available (
-                  reservation->second))
+                || authority->second.allocation.state
+                     != placement_allocation_state_t::active
+                || !capacity_bundle_present (
+                  _active_by_placement,
+                  authority->second.allocation.target,
+                  authority->second.allocation.capacity_bundle))
                 return completed (
                   aggregate_commit_result_t::stale);
         }
@@ -1732,45 +1638,26 @@ class in_memory_location_store_t final : public location_store_t,
                   _authority_owner_generation;
                 snapshot.owner =
                   aggregate->second.request.target_owner;
-                const auto reservation =
-                  std::find_if (
-                    aggregate->second.request
-                      .target_reservations.begin (),
-                    aggregate->second.request
-                      .target_reservations.end (),
-                    [this, &participant] (
-                      const relocation_capacity_fence_t &item) {
-                        const auto found =
-                          _relocation_capacity_reservations.find (
-                            item.value);
-                        return found
-                                 != _relocation_capacity_reservations.end ()
-                               && found->second.request.key.value
-                                    == participant.key.value;
-                    });
-                snapshot.allocation =
-                  allocation_from_relocation (
-                    _relocation_capacity_reservations.at (
-                      reservation->value)
-                      .request);
+                const auto source_allocation =
+                  snapshot.allocation;
+                apply_capacity_bundle (
+                  _active_by_placement,
+                  source_allocation.target,
+                  source_allocation.capacity_bundle,
+                  false);
+                snapshot.allocation.target = target;
+                apply_capacity_bundle (
+                  _active_by_placement,
+                  target,
+                  snapshot.allocation.capacity_bundle,
+                  true);
             }
         }
-        for (const auto &fence_value :
-             aggregate->second.request.target_reservations) {
-            const auto reservation =
-              _relocation_capacity_reservations.find (
-                fence_value.value);
-            if (reservation
-                  != _relocation_capacity_reservations.end ()
-                && reservation->second.status
-                     == relocation_reservation_status_t::prepared
-                && reservation_bound_to (
-                  reservation->second,
-                  aggregate->second.request)) {
-                consume_relocation_capacity (
-                  reservation->second);
-            }
-        }
+        apply_capacity_bundle (
+          _pending_by_placement,
+          target,
+          aggregate->second.request.capacity_bundle,
+          false);
         aggregate->second.status = aggregate_status_t::committed;
         return completed (
           aggregate_commit_result_t::committed);
@@ -1796,24 +1683,18 @@ class in_memory_location_store_t final : public location_store_t,
         if (aggregate->second.status
             == aggregate_status_t::committed)
             return completed (aggregate_abort_result_t::stale);
-        for (const auto &fence_value :
-             aggregate->second.request.target_reservations) {
-            const auto reservation =
-              _relocation_capacity_reservations.find (
-                fence_value.value);
-            if (reservation
-                  != _relocation_capacity_reservations.end ()
-                && reservation->second.status
-                     == relocation_reservation_status_t::prepared
-                && reservation_bound_to (
-                  reservation->second,
-                  aggregate->second.request)) {
-                release_relocation_pending (
-                  reservation->second);
-                reservation->second.status =
-                  relocation_reservation_status_t::aborted;
-            }
-        }
+        const object_creation_target_t target{
+          aggregate->second.request.target_descriptor.mesh_name,
+          node_rid_t::from_string (
+            aggregate->second.request.target_descriptor.rid.to_string ()),
+          aggregate->second.request
+            .target_descriptor_lifecycle_generation,
+          aggregate->second.request.target_owner};
+        apply_capacity_bundle (
+          _pending_by_placement,
+          target,
+          aggregate->second.request.capacity_bundle,
+          false);
         aggregate->second.status = aggregate_status_t::aborted;
         return completed (aggregate_abort_result_t::aborted);
     }
@@ -2004,57 +1885,6 @@ class in_memory_location_store_t final : public location_store_t,
                  : &*found;
     }
 
-    static std::uint32_t pending_limit (
-      const mesh_node_descriptor_t &descriptor,
-      placement_object_kind_t kind,
-      const std::string &stable_type)
-    {
-        const auto capability =
-          find_capability (descriptor, kind, stable_type);
-        return capability && capability->pending_limit
-                 ? *capability->pending_limit
-                 : descriptor.object_capacity.pending_limit;
-    }
-
-    static std::uint32_t active_limit (
-      const mesh_node_descriptor_t &descriptor,
-      placement_object_kind_t kind,
-      const std::string &stable_type)
-    {
-        const auto capability =
-          find_capability (descriptor, kind, stable_type);
-        return capability && capability->active_limit
-                 ? *capability->active_limit
-                 : descriptor.object_capacity.active_limit;
-    }
-
-    static std::uint64_t placement_limit (
-      const mesh_node_descriptor_t &descriptor,
-      placement_object_kind_t kind,
-      const std::string &stable_type)
-    {
-        if (kind == placement_object_kind_t::actor)
-            return descriptor.placement_capacity.actors.limit < 0
-                     ? 0
-                     : static_cast<std::uint64_t> (
-                         descriptor.placement_capacity.actors.limit);
-        const auto typed = std::find_if (
-          descriptor.placement_capacity.spot_types.begin (),
-          descriptor.placement_capacity.spot_types.end (),
-          [&] (const spot_type_capacity_t &candidate) {
-              return candidate.object_kind == kind
-                     && candidate.stable_type == stable_type;
-          });
-        if (typed != descriptor.placement_capacity.spot_types.end ()
-            && typed->usage.limit > 0)
-            return static_cast<std::uint64_t> (
-              typed->usage.limit);
-        return descriptor.placement_capacity.spots.limit < 0
-                 ? 0
-                 : static_cast<std::uint64_t> (
-                     descriptor.placement_capacity.spots.limit);
-    }
-
     static bool valid_mesh_node_descriptor (
       const mesh_node_descriptor_t &descriptor)
     {
@@ -2067,23 +1897,27 @@ class in_memory_location_store_t final : public location_store_t,
             || descriptor.application_version < 0
             || descriptor.placement_weight < 0
             || descriptor.placement_weight > 10000
-            || descriptor.object_capacity.active
-                 > descriptor.object_capacity.active_limit
-            || descriptor.object_capacity.pending
-                 > descriptor.object_capacity.pending_limit
-            || descriptor.object_capacity.active_limit == 0
-            || descriptor.object_capacity.active_limit
-                 > std::numeric_limits<std::int32_t>::max ()
-            || descriptor.object_capacity.pending_limit == 0
-            || descriptor.object_capacity.pending_limit
-                 > std::numeric_limits<std::int32_t>::max ()
+            || descriptor.activation_concurrency.limit <= 0
+            || descriptor.activation_concurrency.active
+                 > static_cast<std::uint32_t> (
+                     descriptor.activation_concurrency.limit)
             || descriptor.security_identity.empty ()
             || descriptor.owner_id.empty ()
             || descriptor.lease_generation <= 0
             || descriptor.object_capabilities.size () > 1024
-            || descriptor.placement_capacity.actors.limit < 0
-            || descriptor.placement_capacity.spots.limit < 0
-            || descriptor.placement_capacity.spot_types.size ()
+            || descriptor.capacity.actors.limit < 0
+            || descriptor.capacity.spots.limit < 0
+            || (descriptor.capacity.actors.limit > 0
+                && descriptor.capacity.actors.active
+                     + descriptor.capacity.actors.reserved
+                   > static_cast<std::uint64_t> (
+                       descriptor.capacity.actors.limit))
+            || (descriptor.capacity.spots.limit > 0
+                && descriptor.capacity.spots.active
+                     + descriptor.capacity.spots.reserved
+                   > static_cast<std::uint64_t> (
+                       descriptor.capacity.spots.limit))
+            || descriptor.capacity.spot_types.size ()
                  > 1024
             || (descriptor.object_role != object_role_t::server
                 && !descriptor.object_capabilities.empty ()))
@@ -2102,16 +1936,10 @@ class in_memory_location_store_t final : public location_store_t,
                 || ((capability.policy
                        == maintenance_policy_kind_t::snapshot)
                     != capability.has_snapshot_adapter)
-                || (capability.active_limit
-                    && (*capability.active_limit == 0
-                        || *capability.active_limit
-                             > std::numeric_limits<
-                                 std::int32_t>::max ()))
-                || (capability.pending_limit
-                    && (*capability.pending_limit == 0
-                        || *capability.pending_limit
-                             > std::numeric_limits<
-                                 std::int32_t>::max ())))
+                || capability.spot_limit < 0
+                || (capability.object_kind
+                      == placement_object_kind_t::actor
+                    && capability.spot_limit != 0))
                 return false;
             const auto key = std::make_pair (
               static_cast<int> (capability.object_kind),
@@ -2124,7 +1952,7 @@ class in_memory_location_store_t final : public location_store_t,
         std::pair<int, std::string> previous_capacity;
         first = true;
         for (const auto &typed :
-             descriptor.placement_capacity.spot_types) {
+             descriptor.capacity.spot_types) {
             if (typed.stable_type.empty ()
                 || typed.object_kind
                      == placement_object_kind_t::actor
@@ -2155,8 +1983,7 @@ class in_memory_location_store_t final : public location_store_t,
                && left.policy == right.policy
                && left.has_snapshot_adapter
                     == right.has_snapshot_adapter
-               && left.active_limit == right.active_limit
-               && left.pending_limit == right.pending_limit;
+               && left.spot_limit == right.spot_limit;
     }
 
     static bool same_capabilities (
@@ -2187,24 +2014,22 @@ class in_memory_location_store_t final : public location_store_t,
                  left.object_capabilities,
                  right.object_capabilities)
                && left.object_role == right.object_role
-               && left.object_capacity.active_limit
-                    == right.object_capacity.active_limit
-               && left.object_capacity.pending_limit
-                    == right.object_capacity.pending_limit
-               && left.placement_capacity.actors.limit
-                    == right.placement_capacity.actors.limit
-               && left.placement_capacity.spots.limit
-                    == right.placement_capacity.spots.limit
+               && left.capacity.actors.limit
+                    == right.capacity.actors.limit
+               && left.capacity.spots.limit
+                    == right.capacity.spots.limit
                && std::equal (
-                 left.placement_capacity.spot_types.begin (),
-                 left.placement_capacity.spot_types.end (),
-                 right.placement_capacity.spot_types.begin (),
-                 right.placement_capacity.spot_types.end (),
+                 left.capacity.spot_types.begin (),
+                 left.capacity.spot_types.end (),
+                 right.capacity.spot_types.begin (),
+                 right.capacity.spot_types.end (),
                  [] (const auto &lhs, const auto &rhs) {
                      return lhs.object_kind == rhs.object_kind
                             && lhs.stable_type == rhs.stable_type
                             && lhs.usage.limit == rhs.usage.limit;
                  })
+               && left.activation_concurrency.limit
+                    == right.activation_concurrency.limit
                && left.security_identity
                     == right.security_identity;
     }
@@ -2218,23 +2043,19 @@ class in_memory_location_store_t final : public location_store_t,
                     == right.descriptor_revision
                && left.channel_weights == right.channel_weights
                && left.placement_weight == right.placement_weight
-               && left.object_capacity.active
-                    == right.object_capacity.active
-               && left.object_capacity.pending
-                    == right.object_capacity.pending
-               && left.placement_capacity.actors.active
-                    == right.placement_capacity.actors.active
-               && left.placement_capacity.actors.reserved
-                    == right.placement_capacity.actors.reserved
-               && left.placement_capacity.spots.active
-                    == right.placement_capacity.spots.active
-               && left.placement_capacity.spots.reserved
-                    == right.placement_capacity.spots.reserved
+               && left.capacity.actors.active
+                    == right.capacity.actors.active
+               && left.capacity.actors.reserved
+                    == right.capacity.actors.reserved
+               && left.capacity.spots.active
+                    == right.capacity.spots.active
+               && left.capacity.spots.reserved
+                    == right.capacity.spots.reserved
                && std::equal (
-                 left.placement_capacity.spot_types.begin (),
-                 left.placement_capacity.spot_types.end (),
-                 right.placement_capacity.spot_types.begin (),
-                 right.placement_capacity.spot_types.end (),
+                 left.capacity.spot_types.begin (),
+                 left.capacity.spot_types.end (),
+                 right.capacity.spot_types.begin (),
+                 right.capacity.spot_types.end (),
                  [] (const auto &lhs, const auto &rhs) {
                      return lhs.object_kind == rhs.object_kind
                             && lhs.stable_type == rhs.stable_type
@@ -2242,6 +2063,8 @@ class in_memory_location_store_t final : public location_store_t,
                             && lhs.usage.reserved == rhs.usage.reserved
                             && lhs.usage.limit == rhs.usage.limit;
                  })
+               && left.activation_concurrency.active
+                    == right.activation_concurrency.active
                && left.maintenance_wave
                     == right.maintenance_wave
                && left.state == right.state
@@ -2471,30 +2294,29 @@ class in_memory_location_store_t final : public location_store_t,
       const placement_allocation_t &allocation,
       const relocation_capacity_reserve_request_t &request)
     {
-        return allocation.capacity_state
-                 == placement_capacity_state_t::active
+        return allocation.state
+                 == placement_allocation_state_t::active
                && allocation.object_kind == request.object_kind
                && allocation.stable_type == request.stable_type
-               && allocation.mesh_name == request.source.mesh_name
-               && allocation.node_rid.value ()
+               && allocation.target.mesh_name == request.source.mesh_name
+               && allocation.target.node_rid.value ()
                     == request.source.node_rid.value ()
-               && allocation.node_lifecycle_generation
+               && allocation.target.node_lifecycle_generation
                     == request.source.node_lifecycle_generation
-               && allocation.capacity_delta
-                    == request.capacity_delta;
+               && same_capacity_bundle (
+                 allocation.capacity_bundle,
+                 request.capacity_bundle);
     }
 
     static placement_allocation_t allocation_from_relocation (
       const relocation_capacity_reserve_request_t &request)
     {
         return {
-          placement_capacity_state_t::active,
+          placement_allocation_state_t::active,
           request.object_kind,
           request.stable_type,
-          request.target.mesh_name,
-          request.target.node_rid,
-          request.target.node_lifecycle_generation,
-          request.capacity_delta};
+          request.target,
+          request.capacity_bundle};
     }
 
     static bool same_fence (
@@ -2507,8 +2329,9 @@ class in_memory_location_store_t final : public location_store_t,
                && left.object_generation == right.object_generation
                && left.authority_owner_generation
                     == right.authority_owner_generation
-               && left.pending_capacity_delta
-                    == right.pending_capacity_delta
+               && same_capacity_bundle (
+                 left.capacity_bundle,
+                 right.capacity_bundle)
                && same_target (left.target, right.target);
     }
 
@@ -2524,7 +2347,9 @@ class in_memory_location_store_t final : public location_store_t,
                && left.stable_type == right.stable_type
                && same_target (left.source, right.source)
                && same_target (left.target, right.target)
-               && left.capacity_delta == right.capacity_delta;
+               && same_capacity_bundle (
+                 left.capacity_bundle,
+                 right.capacity_bundle);
     }
 
     static bool same_aggregate_request (
@@ -2538,8 +2363,15 @@ class in_memory_location_store_t final : public location_store_t,
                  != right.inventory_digest.value
             || !same_owner (left.target_owner, right.target_owner)
             || left.participants.size () != right.participants.size ()
-            || left.target_reservations.size ()
-                 != right.target_reservations.size ())
+            || left.target_descriptor.mesh_name
+                 != right.target_descriptor.mesh_name
+            || left.target_descriptor.rid
+                 != right.target_descriptor.rid
+            || left.target_descriptor_lifecycle_generation
+                 != right.target_descriptor_lifecycle_generation
+            || !same_capacity_bundle (
+              left.capacity_bundle,
+              right.capacity_bundle))
             return false;
         for (std::size_t index = 0;
              index < left.participants.size (); ++index) {
@@ -2552,12 +2384,6 @@ class in_memory_location_store_t final : public location_store_t,
                 || l.membership_mutation
                      != r.membership_mutation
                 || l.owner_transition != r.owner_transition)
-                return false;
-        }
-        for (std::size_t index = 0;
-             index < left.target_reservations.size (); ++index) {
-            if (left.target_reservations[index].value
-                != right.target_reservations[index].value)
                 return false;
         }
         return true;
@@ -2579,174 +2405,291 @@ class in_memory_location_store_t final : public location_store_t,
                 return std::numeric_limits<std::size_t>::max ();
             size += increment;
         }
-        for (const auto &fence : request.target_reservations) {
-            if (fence.value.size ()
-                > std::numeric_limits<std::size_t>::max () - size)
-                return std::numeric_limits<std::size_t>::max ();
-            size += fence.value.size ();
-        }
+        size += request.target_descriptor.mesh_name.size ()
+                + request.target_descriptor.rid.size () + 64;
         return size;
     }
 
-    static bool reservation_bound_to (
-      const relocation_capacity_state_t &reservation,
-      const aggregate_prepare_request_t &aggregate)
-    {
-        return reservation.aggregate_id
-               && reservation.aggregate_id->value
-                    == aggregate.aggregate_id.value
-               && reservation.aggregate_generation
-                    == aggregate.aggregate_generation;
-    }
-
-    static std::string target_capacity_key (
-      const object_creation_target_t &target,
-      placement_object_kind_t kind,
-      const std::string &stable_type)
+    static std::string capacity_node_key (
+      const object_creation_target_t &target)
     {
         return target.mesh_name + "\x1f"
                + std::string (target.node_rid.value ()) + "\x1f"
                + std::to_string (
-                 target.node_lifecycle_generation)
-               + "\x1f"
-               + std::to_string (static_cast<int> (kind))
-               + "\x1f" + stable_type;
+                 target.node_lifecycle_generation);
+    }
+
+    static std::string actor_capacity_key (
+      const object_creation_target_t &target)
+    {
+        return capacity_node_key (target) + "\x1f" + "actor";
+    }
+
+    static std::string spot_capacity_key (
+      const object_creation_target_t &target)
+    {
+        return capacity_node_key (target) + "\x1f" + "spot";
+    }
+
+    static std::string spot_type_capacity_key (
+      const object_creation_target_t &target,
+      const spot_type_capacity_delta_t &spot_type)
+    {
+        return spot_capacity_key (target) + "\x1f"
+               + std::to_string (
+                 static_cast<int> (spot_type.object_kind))
+               + "\x1f" + spot_type.stable_type;
+    }
+
+    static bool valid_capacity_bundle (
+      const placement_capacity_bundle_t &bundle)
+    {
+        if (bundle.actor_slots
+              > static_cast<std::uint32_t> (
+                std::numeric_limits<std::int32_t>::max ())
+            || bundle.spot_slots > 1
+            || (bundle.actor_slots == 0
+                && bundle.spot_slots == 0)
+            || (bundle.spot_slots == 0
+                && bundle.spot_type)
+            || (bundle.spot_slots == 1
+                && (!bundle.spot_type
+                    || bundle.spot_type->slots != 1
+                    || bundle.spot_type->stable_type.empty ()
+                    || bundle.spot_type->object_kind
+                         == placement_object_kind_t::actor)))
+            return false;
+        return true;
+    }
+
+    static bool bundle_matches_object (
+      const placement_capacity_bundle_t &bundle,
+      placement_object_kind_t kind,
+      const std::string &stable_type)
+    {
+        if (!valid_capacity_bundle (bundle))
+            return false;
+        if (kind == placement_object_kind_t::actor)
+            return bundle.actor_slots == 1
+                   && bundle.spot_slots == 0;
+        return bundle.actor_slots == 0
+               && bundle.spot_slots == 1
+               && bundle.spot_type
+               && bundle.spot_type->object_kind == kind
+               && bundle.spot_type->stable_type == stable_type;
+    }
+
+    static bool same_capacity_bundle (
+      const placement_capacity_bundle_t &left,
+      const placement_capacity_bundle_t &right)
+    {
+        if (left.actor_slots != right.actor_slots
+            || left.spot_slots != right.spot_slots
+            || left.spot_type.has_value ()
+                 != right.spot_type.has_value ())
+            return false;
+        return !left.spot_type
+               || (left.spot_type->object_kind
+                     == right.spot_type->object_kind
+                   && left.spot_type->stable_type
+                        == right.spot_type->stable_type
+                   && left.spot_type->slots
+                        == right.spot_type->slots);
+    }
+
+    bool capacity_available (
+      const mesh_node_descriptor_t &descriptor,
+      const object_creation_target_t &target,
+      const placement_capacity_bundle_t &bundle) const
+    {
+        const auto available = [&] (
+          const std::string &key, std::uint32_t delta,
+          std::int32_t limit) {
+            if (delta == 0 || limit == 0)
+                return true;
+            const auto active = _active_by_placement.find (key);
+            const auto reserved = _pending_by_placement.find (key);
+            const auto current =
+              (active == _active_by_placement.end ()
+                 ? 0u
+                 : active->second)
+              + (reserved == _pending_by_placement.end ()
+                   ? 0u
+                   : reserved->second);
+            return current <= static_cast<std::uint64_t> (limit)
+                     - std::min<std::uint64_t> (
+                       delta, static_cast<std::uint64_t> (limit))
+                   && delta <= static_cast<std::uint32_t> (limit);
+        };
+        if (!available (
+              actor_capacity_key (target), bundle.actor_slots,
+              descriptor.capacity.actors.limit)
+            || !available (
+              spot_capacity_key (target), bundle.spot_slots,
+              descriptor.capacity.spots.limit))
+            return false;
+        if (bundle.spot_type) {
+            const auto typed = std::find_if (
+              descriptor.capacity.spot_types.begin (),
+              descriptor.capacity.spot_types.end (),
+              [&] (const spot_type_capacity_t &candidate) {
+                  return candidate.object_kind
+                           == bundle.spot_type->object_kind
+                         && candidate.stable_type
+                              == bundle.spot_type->stable_type;
+              });
+            const auto limit =
+              typed == descriptor.capacity.spot_types.end ()
+                ? 0
+                : typed->usage.limit;
+            if (!available (
+                  spot_type_capacity_key (
+                    target, *bundle.spot_type),
+                  bundle.spot_type->slots, limit))
+                return false;
+        }
+        return true;
+    }
+
+    static void apply_capacity_bundle (
+      std::map<std::string, std::uint64_t> &counters,
+      const object_creation_target_t &target,
+      const placement_capacity_bundle_t &bundle,
+      bool add)
+    {
+        const auto apply = [&] (
+          const std::string &key, std::uint32_t delta) {
+            if (delta == 0)
+                return;
+            auto &current = counters[key];
+            if (add)
+                current += delta;
+            else
+                current = current >= delta
+                            ? current - delta
+                            : 0;
+        };
+        apply (actor_capacity_key (target), bundle.actor_slots);
+        apply (spot_capacity_key (target), bundle.spot_slots);
+        if (bundle.spot_type)
+            apply (
+              spot_type_capacity_key (
+                target, *bundle.spot_type),
+              bundle.spot_type->slots);
+    }
+
+    static bool capacity_bundle_present (
+      const std::map<std::string, std::uint64_t> &counters,
+      const object_creation_target_t &target,
+      const placement_capacity_bundle_t &bundle)
+    {
+        const auto present = [&] (
+          const std::string &key, std::uint32_t delta) {
+            if (delta == 0)
+                return true;
+            const auto found = counters.find (key);
+            return found != counters.end ()
+                   && found->second >= delta;
+        };
+        return present (
+                 actor_capacity_key (target),
+                 bundle.actor_slots)
+               && present (
+                 spot_capacity_key (target),
+                 bundle.spot_slots)
+               && (!bundle.spot_type
+                   || present (
+                     spot_type_capacity_key (
+                       target, *bundle.spot_type),
+                     bundle.spot_type->slots));
     }
 
     void apply_capacity_projection (
       mesh_node_descriptor_t &descriptor) const
     {
-        descriptor.placement_capacity.actors.active = 0;
-        descriptor.placement_capacity.actors.reserved = 0;
-        descriptor.placement_capacity.spots.active = 0;
-        descriptor.placement_capacity.spots.reserved = 0;
+        descriptor.capacity.actors.active = 0;
+        descriptor.capacity.actors.reserved = 0;
+        descriptor.capacity.spots.active = 0;
+        descriptor.capacity.spots.reserved = 0;
         const object_creation_target_t target{
           descriptor.mesh_name,
           node_rid_t::from_string (descriptor.rid.to_string ()),
           descriptor.lifecycle_generation,
           {descriptor.owner_id, descriptor.lease_generation}};
-        for (const auto &capability :
-             descriptor.object_capabilities) {
-            const auto key = target_capacity_key (
-              target, capability.object_kind,
-              capability.stable_type);
-            const auto active = _active_by_placement.find (key);
-            const auto reserved =
-              _pending_by_placement.find (key);
-            const auto active_count =
-              active == _active_by_placement.end ()
-                ? 0u
-                : active->second;
-            const auto reserved_count =
-              reserved == _pending_by_placement.end ()
-                ? 0u
-                : reserved->second;
-            if (capability.object_kind
-                == placement_object_kind_t::actor) {
-                descriptor.placement_capacity.actors.active
-                  += active_count;
-                descriptor.placement_capacity.actors.reserved
-                  += reserved_count;
-                continue;
-            }
-            descriptor.placement_capacity.spots.active
-              += active_count;
-            descriptor.placement_capacity.spots.reserved
-              += reserved_count;
-            const auto typed = std::find_if (
-              descriptor.placement_capacity.spot_types.begin (),
-              descriptor.placement_capacity.spot_types.end (),
-              [&] (const spot_type_capacity_t &candidate) {
-                  return candidate.object_kind
-                           == capability.object_kind
-                         && candidate.stable_type
-                              == capability.stable_type;
-              });
-            if (typed
-                != descriptor.placement_capacity.spot_types.end ()) {
-                typed->usage.active = active_count;
-                typed->usage.reserved = reserved_count;
-            }
+        const auto count = [] (
+          const std::map<std::string, std::uint64_t> &values,
+          const std::string &key) {
+            const auto found = values.find (key);
+            return found == values.end () ? 0u : found->second;
+        };
+        descriptor.capacity.actors.active =
+          count (_active_by_placement, actor_capacity_key (target));
+        descriptor.capacity.actors.reserved =
+          count (_pending_by_placement, actor_capacity_key (target));
+        descriptor.capacity.spots.active =
+          count (_active_by_placement, spot_capacity_key (target));
+        descriptor.capacity.spots.reserved =
+          count (_pending_by_placement, spot_capacity_key (target));
+        for (auto &typed : descriptor.capacity.spot_types) {
+            const spot_type_capacity_delta_t delta{
+              typed.object_kind, typed.stable_type, 1};
+            typed.usage.active =
+              count (
+                _active_by_placement,
+                spot_type_capacity_key (target, delta));
+            typed.usage.reserved =
+              count (
+                _pending_by_placement,
+                spot_type_capacity_key (target, delta));
         }
-    }
-
-    static std::string allocation_capacity_key (
-      const placement_allocation_t &allocation)
-    {
-        return allocation.mesh_name + "\x1f"
-               + std::string (allocation.node_rid.value ()) + "\x1f"
-               + std::to_string (
-                 allocation.node_lifecycle_generation)
-               + "\x1f"
-               + std::to_string (
-                 static_cast<int> (allocation.object_kind))
-               + "\x1f" + allocation.stable_type;
     }
 
     void release_pending (const reservation_state_t &reservation)
     {
-        auto &pending =
-          _pending_by_placement[
-            target_capacity_key (
-              reservation.fence.target,
-              reservation.request.key.kind,
-              reservation.request.intent.stable_type)];
-        pending =
-          pending >= reservation.fence.pending_capacity_delta
-            ? pending - reservation.fence.pending_capacity_delta
-            : 0;
+        apply_capacity_bundle (
+          _pending_by_placement,
+          reservation.fence.target,
+          reservation.fence.capacity_bundle,
+          false);
     }
 
     void release_relocation_pending (
       const relocation_capacity_state_t &reservation)
     {
-        auto &pending =
-          _pending_by_placement[
-            target_capacity_key (
-              reservation.request.target,
-              reservation.request.object_kind,
-              reservation.request.stable_type)];
-        pending -= reservation.request.capacity_delta;
+        apply_capacity_bundle (
+          _pending_by_placement,
+          reservation.request.target,
+          reservation.request.capacity_bundle,
+          false);
     }
 
     bool relocation_capacity_counters_available (
       const relocation_capacity_state_t &reservation) const
     {
-        const auto source = _active_by_placement.find (
-          target_capacity_key (
-            reservation.request.source,
-            reservation.request.object_kind,
-            reservation.request.stable_type));
-        const auto target = _pending_by_placement.find (
-          target_capacity_key (
-            reservation.request.target,
-            reservation.request.object_kind,
-            reservation.request.stable_type));
-        return source != _active_by_placement.end ()
-               && source->second
-                    >= reservation.request.capacity_delta
-               && target != _pending_by_placement.end ()
-               && target->second
-                    >= reservation.request.capacity_delta;
+        return capacity_bundle_present (
+                 _active_by_placement,
+                 reservation.request.source,
+                 reservation.request.capacity_bundle)
+               && capacity_bundle_present (
+                 _pending_by_placement,
+                 reservation.request.target,
+                 reservation.request.capacity_bundle);
     }
 
     void consume_relocation_capacity (
       relocation_capacity_state_t &reservation)
     {
         release_relocation_pending (reservation);
-        auto &source_active =
-          _active_by_placement[
-            target_capacity_key (
-              reservation.request.source,
-              reservation.request.object_kind,
-              reservation.request.stable_type)];
-        source_active -= reservation.request.capacity_delta;
-        _active_by_placement[
-          target_capacity_key (
-            reservation.request.target,
-            reservation.request.object_kind,
-            reservation.request.stable_type)]
-          += reservation.request.capacity_delta;
+        apply_capacity_bundle (
+          _active_by_placement,
+          reservation.request.source,
+          reservation.request.capacity_bundle,
+          false);
+        apply_capacity_bundle (
+          _active_by_placement,
+          reservation.request.target,
+          reservation.request.capacity_bundle,
+          true);
         reservation.status =
           relocation_reservation_status_t::committed;
     }
@@ -3025,8 +2968,8 @@ class in_memory_location_store_t final : public location_store_t,
     std::map<std::string, std::string>
       _relocation_capacity_by_id;
     std::map<std::string, aggregate_state_t> _aggregates;
-    std::map<std::string, std::uint32_t> _pending_by_placement;
-    std::map<std::string, std::uint32_t> _active_by_placement;
+    std::map<std::string, std::uint64_t> _pending_by_placement;
+    std::map<std::string, std::uint64_t> _active_by_placement;
     std::uint64_t _object_generation = 0;
     std::uint64_t _authority_owner_generation = 0;
     std::uint64_t _store_revision = 0;

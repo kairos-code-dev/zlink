@@ -80,7 +80,7 @@ public sealed class SpotRouteDispatcherTests
         return new ZLinkBackendRouteReceived(
             owned,
             sourceNodeRid: RoutingId.From("route-source"),
-            spotId: RoutingId.From("route-target"),
+            spotId: "route-target",
             requestSeq: null,
             reply: null);
     }

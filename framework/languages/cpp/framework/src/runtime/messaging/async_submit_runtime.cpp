@@ -43,6 +43,52 @@ bool is_backpressured (const result_t<void> &result) noexcept
     return !result && result.error_kind () == framework_error_kind_t::worker_queue_full;
 }
 
+result_t<void> one_way_terminal_result (const result_t<void> &result)
+{
+    if (result) {
+        return result_t<void>::success ();
+    }
+    const auto *error = result.error ();
+    if (error == nullptr) {
+        return result_t<void>::failure (
+          framework_error_kind_t::request_failed, "one-way submit failed");
+    }
+    switch (detail::boundary_state (*error)) {
+        case detail::boundary_error_t::timed_out:
+            return result_t<void>::failure (
+              framework_error_kind_t::deadline_exceeded,
+              error->what (), true);
+        case detail::boundary_error_t::shutdown:
+            return result_t<void>::failure (
+              framework_error_kind_t::runtime_shutdown,
+              error->what ());
+        case detail::boundary_error_t::disconnected:
+            return result_t<void>::failure (
+              framework_error_kind_t::route_not_connected,
+              error->what (), true);
+        case detail::boundary_error_t::none:
+        case detail::boundary_error_t::closed:
+        case detail::boundary_error_t::cancelled:
+        case detail::boundary_error_t::stale_generation:
+            return detail::result_access_t::failure<void> (*error);
+    }
+    return detail::result_access_t::failure<void> (*error);
+}
+
+result_t<void> deadline_exceeded ()
+{
+    return result_t<void>::failure (
+      framework_error_kind_t::deadline_exceeded,
+      "one-way admission deadline was exceeded", true);
+}
+
+result_t<void> runtime_shutdown ()
+{
+    return result_t<void>::failure (
+      framework_error_kind_t::runtime_shutdown,
+      "one-way admission runtime is stopped");
+}
+
 result_t<void> invoke_attempt (const std::function<result_t<void> ()> &submit,
                                submit_attempt_context_t &context)
 {
@@ -65,7 +111,7 @@ struct pending_entry_t
     submit_attempt_context_t context;
     std::chrono::steady_clock::time_point deadline;
     std::function<result_t<void> ()> submit;
-    std::shared_ptr<detail::task_completion_source_t<submit_result_t>> completion;
+    std::shared_ptr<detail::task_completion_source_t<void>> completion;
 };
 
 class async_submit_runtime_t
@@ -91,15 +137,14 @@ class async_submit_runtime_t
             _timer.join ();
         }
         for (auto &entry : pending) {
-            entry.completion->complete (result_t<submit_result_t>::success (
-              {submit_status_t::shutdown}));
+            entry.completion->complete (runtime_shutdown ());
         }
     }
 
-    task_t<submit_result_t> submit (std::function<result_t<void> ()> submit)
+    task_t<void> submit (std::function<result_t<void> ()> submit)
     {
         if (!submit) {
-            return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+            return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::request_protocol_error,
               "one-way call is not bound to a submit operation"));
         }
@@ -111,60 +156,58 @@ class async_submit_runtime_t
             first = invoke_attempt (submit, context);
         }
         catch (const framework_exception_t &error) {
-            return task_t<submit_result_t> (
-              detail::result_access_t::failure<submit_result_t> (error));
+            return task_t<void> (
+              detail::result_access_t::failure<void> (error));
         }
         catch (const std::exception &error) {
-            return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+            return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::request_failed, error.what ()));
         }
         catch (...) {
-            return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+            return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::request_failed, "one-way submit failed"));
         }
 
         record_attempt (context.target);
         if (!is_backpressured (first)) {
-            return task_t<submit_result_t> (detail::one_way_submit_result (first));
+            return task_t<void> (one_way_terminal_result (first));
         }
 
         const auto timeout = context.timeout > std::chrono::milliseconds::zero ()
                                ? context.timeout
                                : std::chrono::seconds (1);
         auto completion =
-          std::make_shared<detail::task_completion_source_t<submit_result_t>> ();
+          std::make_shared<detail::task_completion_source_t<void>> ();
         auto task = completion->task ();
-        bool full = false;
+        bool overflow = false;
         {
             std::lock_guard lock (_mutex);
             if (_stopping
                 || (context.owner != nullptr
                     && (_shutdown_owners.contains (context.owner)
                         || _owner_epochs[context.owner] != context.owner_epoch))) {
-                completion->complete (result_t<submit_result_t>::success (
-                  {submit_status_t::shutdown}));
+                completion->complete (runtime_shutdown ());
                 return task;
             }
             const auto owner_pending = _reservations.find (context.owner);
             const auto owner_pending_count = owner_pending == _reservations.end ()
                                                ? 0
                                                : owner_pending->second;
-            if (context.capacity == 0 || owner_pending_count >= context.capacity) {
-                full = true;
-            } else {
+            if (context.capacity != 0
+                && owner_pending_count < context.capacity) {
                 ++_reservations[context.owner];
                 _pending.push_back ({++_next_id, context.owner_epoch,
                                      std::move (context),
                                      std::chrono::steady_clock::now () + timeout,
                                      std::move (submit), completion});
+            } else {
+                overflow = true;
             }
         }
-        if (full) {
-            completion->complete (result_t<submit_result_t>::success (
-              {submit_status_t::backpressured}));
-        } else {
-            _changed.notify_all ();
+        if (overflow) {
+            completion->complete (deadline_exceeded ());
         }
+        _changed.notify_all ();
         return task;
     }
 
@@ -252,8 +295,7 @@ class async_submit_runtime_t
             }
         }
         for (auto &entry : stopped) {
-            entry.completion->complete (result_t<submit_result_t>::success (
-              {submit_status_t::shutdown}));
+            entry.completion->complete (runtime_shutdown ());
         }
         _changed.notify_all ();
     }
@@ -310,8 +352,7 @@ class async_submit_runtime_t
             _owner_epochs.clear ();
         }
         for (auto &entry : stopped) {
-            entry.completion->complete (result_t<submit_result_t>::success (
-              {submit_status_t::shutdown}));
+            entry.completion->complete (runtime_shutdown ());
         }
         _changed.notify_all ();
     }
@@ -357,8 +398,7 @@ class async_submit_runtime_t
         };
         if (std::chrono::steady_clock::now () >= entry.deadline) {
             finish_retry ();
-            entry.completion->complete (result_t<submit_result_t>::success (
-              {submit_status_t::timed_out}));
+            entry.completion->complete (deadline_exceeded ());
             return;
         }
 
@@ -371,25 +411,25 @@ class async_submit_runtime_t
         catch (const framework_exception_t &error) {
             finish_retry ();
             entry.completion->complete (
-              detail::result_access_t::failure<submit_result_t> (error));
+              detail::result_access_t::failure<void> (error));
             return;
         }
         catch (const std::exception &error) {
             finish_retry ();
-            entry.completion->complete (result_t<submit_result_t>::failure (
+            entry.completion->complete (result_t<void>::failure (
               framework_error_kind_t::request_failed, error.what ()));
             return;
         }
         catch (...) {
             finish_retry ();
-            entry.completion->complete (result_t<submit_result_t>::failure (
+            entry.completion->complete (result_t<void>::failure (
               framework_error_kind_t::request_failed, "one-way submit failed"));
             return;
         }
         record_attempt (entry.context.target);
         if (!is_backpressured (result)) {
             finish_retry ();
-            entry.completion->complete (detail::one_way_submit_result (result));
+            entry.completion->complete (one_way_terminal_result (result));
             return;
         }
 
@@ -424,8 +464,7 @@ class async_submit_runtime_t
             }
         }
         if (stopped) {
-            entry.completion->complete (result_t<submit_result_t>::success (
-              {submit_status_t::shutdown}));
+            entry.completion->complete (runtime_shutdown ());
         }
         _changed.notify_all ();
     }
@@ -448,12 +487,11 @@ class async_submit_runtime_t
                         return _stopping || !_pending.empty () || !_ready.empty ();
                     });
                 } else {
-                    const auto next = std::min_element (
-                      _pending.begin (), _pending.end (), [] (const auto &left,
-                                                              const auto &right) {
-                          return left.deadline < right.deadline;
-                      });
-                    _changed.wait_until (lock, next->deadline);
+                    auto next_deadline = std::chrono::steady_clock::time_point::max ();
+                    for (const auto &entry : _pending) {
+                        next_deadline = std::min (next_deadline, entry.deadline);
+                    }
+                    _changed.wait_until (lock, next_deadline);
                 }
                 if (_stopping) {
                     return;
@@ -481,8 +519,7 @@ class async_submit_runtime_t
                 retry_once (std::move (*ready));
             }
             for (auto &entry : expired) {
-                entry.completion->complete (result_t<submit_result_t>::success (
-                  {submit_status_t::timed_out}));
+                entry.completion->complete (deadline_exceeded ());
             }
         }
     }
@@ -514,15 +551,25 @@ class logical_multicast_executor_t
         for (std::size_t index = 0; index < count; ++index) {
             _workers.emplace_back ([this] { run (); });
         }
+        _handoff_worker = std::thread ([this] { run_handoff (); });
     }
 
     ~logical_multicast_executor_t ()
     {
+        std::optional<multicast_job_t> waiting;
         {
             std::lock_guard lock (_mutex);
             _stopping = true;
+            waiting = std::move (_handoff);
+            _handoff.reset ();
         }
         _changed.notify_all ();
+        if (waiting) {
+            waiting->completion->complete (runtime_shutdown ());
+        }
+        if (_handoff_worker.joinable ()) {
+            _handoff_worker.join ();
+        }
         for (auto &worker : _workers) {
             if (worker.joinable ()) {
                 worker.join ();
@@ -530,41 +577,77 @@ class logical_multicast_executor_t
         }
     }
 
-    task_t<publish_result_t> submit (std::function<publish_result_t ()> work)
+    task_t<void> submit (std::function<result_t<void> ()> work,
+                         std::chrono::milliseconds timeout)
     {
         if (!work) {
-            return task_t<publish_result_t> (result_t<publish_result_t>::failure (
+            return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::request_protocol_error,
               "logical multicast call is not bound to a publisher"));
         }
         auto completion =
-          std::make_shared<detail::task_completion_source_t<publish_result_t>> ();
+          std::make_shared<detail::task_completion_source_t<void>> ();
         auto task = completion->task ();
+        const auto deadline = std::chrono::steady_clock::now () + timeout;
+        bool overflow = false;
+        std::optional<multicast_job_t> expired;
         {
             std::lock_guard lock (_mutex);
             if (_stopping) {
-                completion->complete (result_t<publish_result_t>::success (
-                  {submit_status_t::shutdown, {}}));
+                completion->complete (runtime_shutdown ());
                 return task;
             }
-            if (_available == 0) {
-                completion->complete (result_t<publish_result_t>::success (
-                  {submit_status_t::backpressured, {}}));
-                return task;
+            multicast_job_t job{
+              std::move (work), completion, deadline};
+            if (_available != 0 && _handoff) {
+                if (_handoff->deadline <= std::chrono::steady_clock::now ()) {
+                    expired = std::move (_handoff);
+                    _handoff.reset ();
+                    --_available;
+                    _jobs.push_back (std::move (job));
+                } else {
+                    --_available;
+                    _jobs.push_back (std::move (*_handoff));
+                    _handoff = std::move (job);
+                }
+            } else if (_available != 0) {
+                --_available;
+                _jobs.push_back (std::move (job));
+            } else if (!_handoff) {
+                _handoff = std::move (job);
+            } else {
+                overflow = true;
             }
-            --_available;
-            _jobs.emplace_back (std::move (work), completion);
         }
-        _changed.notify_one ();
+        if (overflow) {
+            completion->complete (deadline_exceeded ());
+        }
+        if (expired) {
+            expired->completion->complete (deadline_exceeded ());
+        }
+        _changed.notify_all ();
         return task;
     }
 
   private:
+    struct multicast_job_t
+    {
+        std::function<result_t<void> ()> work;
+        std::shared_ptr<detail::task_completion_source_t<void>> completion;
+        std::chrono::steady_clock::time_point deadline;
+    };
+
+    void release_slot ()
+    {
+        std::lock_guard lock (_mutex);
+        ++_available;
+        _changed.notify_all ();
+    }
+
     void run ()
     {
         for (;;) {
-            std::pair<std::function<publish_result_t ()>,
-                      std::shared_ptr<detail::task_completion_source_t<publish_result_t>>> job;
+            multicast_job_t job;
             {
                 std::unique_lock lock (_mutex);
                 _changed.wait (lock, [&] { return _stopping || !_jobs.empty (); });
@@ -574,36 +657,75 @@ class logical_multicast_executor_t
                 job = std::move (_jobs.front ());
                 _jobs.pop_front ();
             }
+            // Dequeue is the public terminal boundary. Target processing starts
+            // after this handoff and cannot change the caller's completed result.
+            job.completion->complete (result_t<void>::success ());
             try {
-                job.second->complete (
-                  result_t<publish_result_t>::success (job.first ()));
+                (void) job.work ();
             }
-            catch (const framework_exception_t &error) {
-                job.second->complete (
-                  detail::result_access_t::failure<publish_result_t> (error));
+            catch (const framework_exception_t &) {
             }
-            catch (const std::exception &error) {
-                job.second->complete (result_t<publish_result_t>::failure (
-                  framework_error_kind_t::request_failed, error.what ()));
+            catch (const std::exception &) {
             }
             catch (...) {
-                job.second->complete (result_t<publish_result_t>::failure (
-                  framework_error_kind_t::request_failed,
-                  "logical multicast submit failed"));
             }
+            release_slot ();
+        }
+    }
+
+    void run_handoff ()
+    {
+        for (;;) {
+            std::optional<multicast_job_t> expired;
             {
-                std::lock_guard lock (_mutex);
-                ++_available;
+                std::unique_lock lock (_mutex);
+                _changed.wait (lock, [this] {
+                    return _stopping || _handoff.has_value ();
+                });
+                if (_stopping) {
+                    return;
+                }
+                while (_handoff && !_stopping) {
+                    if (_handoff->deadline
+                        <= std::chrono::steady_clock::now ()) {
+                        expired = std::move (_handoff);
+                        _handoff.reset ();
+                        _changed.notify_all ();
+                        break;
+                    }
+                    if (_available != 0) {
+                        --_available;
+                        _jobs.push_back (std::move (*_handoff));
+                        _handoff.reset ();
+                        _changed.notify_all ();
+                        break;
+                    }
+                    const auto deadline = _handoff->deadline;
+                    if (!_changed.wait_until (lock, deadline, [this] {
+                            return _stopping || _available != 0;
+                        })) {
+                        expired = std::move (_handoff);
+                        _handoff.reset ();
+                        _changed.notify_all ();
+                        break;
+                    }
+                }
+                if (_stopping) {
+                    return;
+                }
+            }
+            if (expired) {
+                expired->completion->complete (deadline_exceeded ());
             }
         }
     }
 
     std::mutex _mutex;
     std::condition_variable _changed;
-    std::deque<std::pair<
-      std::function<publish_result_t ()>,
-      std::shared_ptr<detail::task_completion_source_t<publish_result_t>>>> _jobs;
+    std::deque<multicast_job_t> _jobs;
+    std::optional<multicast_job_t> _handoff;
     std::vector<std::thread> _workers;
+    std::thread _handoff_worker;
     std::size_t _available = 0;
     bool _stopping = false;
 };
@@ -672,16 +794,18 @@ void reset_async_submit_runtime_for_tests ()
 namespace zlink::framework::detail
 {
 
-task_t<submit_result_t>
+task_t<void>
 submit_one_way_task (std::function<result_t<void> ()> submit)
 {
     return runtime::messaging::runtime ().submit (std::move (submit));
 }
 
-task_t<publish_result_t>
-submit_logical_multicast_task (std::function<publish_result_t ()> submit)
+task_t<void>
+submit_logical_multicast_task (std::function<result_t<void> ()> submit,
+                               std::chrono::milliseconds timeout)
 {
-    return runtime::messaging::multicast_executor ().submit (std::move (submit));
+    return runtime::messaging::multicast_executor ().submit (
+      std::move (submit), timeout);
 }
 
 } // namespace zlink::framework::detail

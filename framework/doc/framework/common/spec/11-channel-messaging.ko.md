@@ -135,14 +135,15 @@ sequenceDiagram
         Index->>Selector: 같은 ChannelName의 ready server 후보 전달
     end
     Selector->>Selector: weight 0과 drain 중인 target 제외
-    Selector->>Transport: 선택한 target으로 message 즉시 제출
-    Transport-->>Index: 송신 경로 수락 결과 반환
-    Index-->>Caller: submit 결과 반환
+    Selector->>Transport: 선택한 target으로 message 제출
+    Transport-->>Index: Source-local queue 수락 완료
+    Index-->>Caller: 반환 데이터 없이 정상 완료
     Transport->>Target: message 전달
 ```
 
-위 다이어그램은 one-way send의 target 선택과 submit을 보여준다. Framework는 선택한
-RID나 server identity를 application에 중간 결과로 반환하지 않는다.
+위 다이어그램은 one-way send의 target 선택과 비동기 제출 완료를 보여준다. 정상 완료는 선택한 송신
+경로의 source-local queue가 message를 수락했다는 뜻이다. Framework는 수락 상태, 선택한 RID 또는 server
+identity를 application 결과로 반환하지 않는다.
 
 ### 3.3 등록되지 않은 ChannelName
 
@@ -197,7 +198,7 @@ public interface IZLinkRouteRequestHandler<in TRequest, TReply>
 {
     ValueTask<TReply> HandleAsync(
         TRequest request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken);
 }
 
@@ -205,7 +206,7 @@ public interface IZLinkRequestHandler<in TRequest, TResponse>
 {
     ValueTask<TResponse> HandleAsync(
         TRequest request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken);
 }
 ```
@@ -457,7 +458,7 @@ public sealed class BillingHandler
 {
     public ValueTask<BillingReply> HandleAsync(
         BillingRequest request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken)
     {
         var tenantId = context.Metadata.Find("tenant-id");
@@ -503,7 +504,7 @@ encoding 방식은 공개 계약이 아니다. Application은 metadata frame을 
 | 송신 경로 종류 | RouteMesh와 ClientServer 중 어떤 경로를 사용했는지 나타낸다. |
 | MeshName | RouteMesh 경로를 사용한 경우의 물리 mesh를 나타낸다. |
 | Source와 target RID 또는 [server identity](01-glossary.ko.md#server-identity) | 실제 message가 이동한 node를 식별한다. |
-| 선택 결과와 submit 결과 | Target 선택과 송신 경로 수락을 구분한다. |
+| 선택 결과와 송신 경로 수락 여부 | Target 선택과 source-local queue의 admission을 구분해 관측한다. |
 | Handler 전달 결과 | Target queue와 handler에 전달한 결과를 나타낸다. |
 | Drain state | Target이 새로운 선택에서 제외된 이유를 나타낸다. |
 

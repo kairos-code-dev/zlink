@@ -55,7 +55,7 @@ inline std::vector<std::string> fetch_evidence (const std::string &base_url)
                   .base_url (base_url)
                   .timeout (std::chrono::milliseconds (1000))
                   .build ();
-    return http.get ("/evidence").async<std::vector<std::string>> ().result ().value ().body;
+    return http.get ("/evidence").submit<std::vector<std::string>> ().result ().value ().body;
 }
 
 inline std::vector<std::string> wait_evidence_contains (const std::string &base_url,
@@ -70,7 +70,7 @@ inline std::vector<std::string> wait_evidence_contains (const std::string &base_
       .body (evidence_wait_req_t{.contains_all = {required},
                                      .contains_any_groups = {},
                                      .timeout_milliseconds = static_cast<int> (timeout.count ())})
-      .async<std::vector<std::string>> ().result ().value ().body;
+      .submit<std::vector<std::string>> ().result ().value ().body;
 }
 
 inline std::vector<std::string> wait_evidence_count_at_least (
@@ -117,7 +117,7 @@ inline profile_res_t post_profile_request (const std::string &base_url,
                   .base_url (base_url)
                   .timeout (std::chrono::milliseconds (5000))
                   .build ();
-    return http.post (path).body (request).async<profile_res_t> ().result ().value ().body;
+    return http.post (path).body (request).submit<profile_res_t> ().result ().value ().body;
 }
 
 inline std::vector<std::string> wait_log_contains (const std::string &base_url,
@@ -133,7 +133,7 @@ inline std::vector<std::string> wait_log_contains (const std::string &base_url,
       .body (evidence_wait_req_t{.contains_all = {required},
                                      .contains_any_groups = {},
                                      .timeout_milliseconds = static_cast<int> (timeout.count ())})
-      .async<std::vector<std::string>> ().result ().value ().body;
+      .submit<std::vector<std::string>> ().result ().value ().body;
 }
 
 } // namespace zlink::framework::e2e::runtime_monitoring::client

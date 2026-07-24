@@ -53,9 +53,15 @@ internal static class ZLinkRequestFailureMapper
                 ZLinkFrameworkErrorKind.RequestTargetNotFound,
                 $"{operationName} failed because the target was not found.",
                 innerException: error),
-            ZlinkSubmitException.ErrorCode.Backpressured => new TimeoutException(
+            ZlinkSubmitException.ErrorCode.Backpressured => new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.DeadlineExceeded,
                 $"{operationName} timed out while the socket was backpressured.",
+                true,
                 error),
+            ZlinkSubmitException.ErrorCode.Terminated => new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RuntimeShutdown,
+                $"{operationName} failed because the runtime is shutting down.",
+                innerException: error),
             ZlinkSubmitException.ErrorCode.NotAdmitted
                 or ZlinkSubmitException.ErrorCode.InvalidState => new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RequestRejected,
@@ -67,7 +73,6 @@ internal static class ZLinkRequestFailureMapper
                 or ZlinkSubmitException.ErrorCode.ThreadViolation
                 or ZlinkSubmitException.ErrorCode.OutOfMemory
                 or ZlinkSubmitException.ErrorCode.SeqExhausted
-                or ZlinkSubmitException.ErrorCode.Terminated
                 or ZlinkSubmitException.ErrorCode.InternalError => new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.RequestFailed,
                     $"{operationName} submit failed with result '{error.Result}'.",
@@ -87,9 +92,14 @@ internal static class ZLinkRequestFailureMapper
             return CreateSubmitException(submitError, operationName);
 
         return lastSubmitFailure is null
-            ? new TimeoutException($"{operationName} timed out before the socket became writable.")
-            : new TimeoutException(
+            ? new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.DeadlineExceeded,
                 $"{operationName} timed out before the socket became writable.",
+                true)
+            : new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.DeadlineExceeded,
+                $"{operationName} timed out before the socket became writable.",
+                true,
                 lastSubmitFailure);
     }
 

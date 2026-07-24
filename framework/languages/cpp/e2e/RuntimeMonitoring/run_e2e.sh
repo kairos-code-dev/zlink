@@ -69,16 +69,11 @@ zlink_redis_start_scoped_assign REDIS_CONTAINER redis_port \
 REDIS_ENDPOINT="127.0.0.1:${redis_port}"
 REDIS_KEY_PREFIX="zlink:cpp:runtime-monitoring:${RUN_ID}"
 PIDS=()
-FILTERED_STOPPED=0
 
 cleanup() {
   local code=$?
   local cleanup_failed=0
   local status
-  if [[ "$FILTERED_STOPPED" == "1" ]]; then
-    kill -CONT "$FILTERED_PID" >/dev/null 2>&1 || true
-    FILTERED_STOPPED=0
-  fi
   for pid in "${PIDS[@]}"; do
     if kill -0 "$pid" >/dev/null 2>&1; then
       kill "$pid" >/dev/null 2>&1 || true
@@ -314,9 +309,6 @@ start_service_a() {
   local label="$5"
   local config_path="$CONFIG_DIR/$label.json"
   local mesh_peers="$MESH_FILTERED,$MESH_THROW"
-  if [[ "$SCENARIO_LOWER" == "mon-b1" ]]; then
-    mesh_peers=""
-  fi
   write_service_config "$config_path" svc-a "$http_endpoint" "$channel_endpoint" \
     "$router_endpoint" "$pub_endpoint" "$LOG_DIR/$label.evidence.log" all \
     "$MESH_SERVICE" "$mesh_peers"
@@ -331,9 +323,6 @@ start_service_b() {
   local label="$1"
   local config_path="$CONFIG_DIR/$label.json"
   local mesh_peers="$MESH_SERVICE,$MESH_THROW"
-  if [[ "$SCENARIO_LOWER" == "mon-b1" ]]; then
-    mesh_peers=""
-  fi
   write_service_config "$config_path" svc-b "$HTTP_FILTERED" "$CHANNEL_FILTERED" \
     "$SPOT_ROUTER_FILTERED" "$SPOT_PUB_FILTERED" "$LOG_DIR/$label.evidence.log" \
     socket-filter "$MESH_FILTERED" "$mesh_peers"
@@ -349,9 +338,6 @@ start_service_a "$CHANNEL" "$SPOT_ROUTER_SERVICE" "$SPOT_PUB_SERVICE" \
 start_service_b filtered
 
 THROW_MESH_PEERS="$MESH_SERVICE,$MESH_FILTERED"
-if [[ "$SCENARIO_LOWER" == "mon-b1" ]]; then
-  THROW_MESH_PEERS=""
-fi
 write_service_config "$CONFIG_DIR/throw.json" svc-throw "$HTTP_THROW" "$CHANNEL_THROW" \
   "$SPOT_ROUTER_THROW" "$SPOT_PUB_THROW" "$LOG_DIR/throw.evidence.log" throwing \
   "$MESH_THROW" "$THROW_MESH_PEERS"
@@ -398,41 +384,6 @@ with open(path, "w", encoding="utf-8") as file:
 os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
 }
-
-if [[ "$SCENARIO_LOWER" == "mon-b1" ]]; then
-  python3 - "$HTTP_SERVICE" "$HTTP_FILTERED" "$HTTP_THROW" <<'PY'
-import json
-import sys
-import time
-import urllib.request
-
-service_a, service_b, service_c = sys.argv[1:]
-
-def post(base, path):
-    request = urllib.request.Request(f"{base}{path}", data=b"", method="POST")
-    with urllib.request.urlopen(request, timeout=5) as response:
-        if response.status >= 400:
-            raise RuntimeError(f"POST {path} failed with status {response.status}")
-
-post(service_a, "/runtime/observe")
-post(service_a, "/admin/subject/create?spotRid=mon-b1-a")
-post(service_b, "/admin/subject/create?spotRid=mon-b1-b")
-post(service_c, "/admin/subject/create?spotRid=mon-b1-c")
-deadline = time.monotonic() + 30
-while time.monotonic() < deadline:
-    with urllib.request.urlopen(f"{service_a}/runtime/snapshot", timeout=2) as response:
-        snapshot = json.load(response)
-    if sum(1 for peer in snapshot["peers"] if peer["ready"]) >= 2:
-        break
-    time.sleep(0.05)
-else:
-    raise RuntimeError(
-        "MON-B1 expected two ready remote peers: "
-        + json.dumps(snapshot["peers"], sort_keys=True))
-PY
-  kill -STOP "$FILTERED_PID"
-  FILTERED_STOPPED=1
-fi
 
 if [[ "$SCENARIO_LOWER" == "mon-a5" ]]; then
   python3 - "$HTTP_SERVICE" <<'PY'
@@ -511,10 +462,6 @@ if [[ "$SCENARIO_LOWER" != "mon-a4" && "$SCENARIO_LOWER" != "mon-d1" ]]; then
       "$LOG_DIR/filtered.evidence.log"
     grep -q "claim-domain=application|reason=released" \
       "$LOG_DIR/filtered.evidence.log"
-  fi
-  if [[ "$SCENARIO_LOWER" == "mon-b1" ]]; then
-    kill -CONT "$FILTERED_PID"
-    FILTERED_STOPPED=0
   fi
 fi
 

@@ -57,21 +57,21 @@ int reservation_covers_in_flight_retry ()
     std::atomic_int rejected_attempts{0};
     auto rejected = detail::submit_one_way_task ([&] {
         admission::note_submit_attempt (
-          "reservation", &owner, std::chrono::milliseconds (500), 1);
+          "reservation", &owner, std::chrono::milliseconds (30), 1);
         ++rejected_attempts;
         return full ();
     });
-    const bool bounded =
-      rejected.await_ready () && rejected.result ().value ().status
-                                    == submit_status_t::backpressured
-      && rejected_attempts.load () == 1;
+    const bool bounded = !rejected.await_ready () && rejected_attempts.load () == 1;
     {
         std::lock_guard lock (mutex);
         release_retry = true;
     }
     changed.notify_all ();
-    const auto first_status = first.result ().value ().status;
-    return bounded && first_status == submit_status_t::submitted
+    first.result ().value ();
+    const auto &rejected_result = rejected.result ();
+    return bounded && !rejected_result
+             && rejected_result.error_kind ()
+                  == framework_error_kind_t::deadline_exceeded
              && admission::pending_submit_count_for_tests () == 0
            ? 0
            : 2;
@@ -115,9 +115,7 @@ int retry_credit_does_not_cross_operation ()
         release_retry = true;
     }
     changed.notify_all ();
-    if (first.result ().value ().status != submit_status_t::submitted) {
-        return 2;
-    }
+    first.result ().value ();
 
     std::atomic_int second_attempts{0};
     auto second = detail::submit_one_way_task ([&] {
@@ -136,8 +134,8 @@ int retry_credit_does_not_cross_operation ()
         return 3;
     }
     admission::notify_submit_ready ("credit", &owner);
-    return second.result ().value ().status == submit_status_t::submitted
-             && second_attempts.load () == 3
+    second.result ().value ();
+    return second_attempts.load () == 3
            ? 0
            : 4;
 }
@@ -150,7 +148,7 @@ int stopped_owner_epoch_cannot_reserve_after_restart ()
     std::condition_variable changed;
     bool attempt_entered = false;
     bool release_attempt = false;
-    std::promise<submit_status_t> terminal_source;
+    std::promise<framework_error_kind_t> terminal_source;
     auto terminal = terminal_source.get_future ();
     std::thread submitter ([&] {
         auto operation = detail::submit_one_way_task ([&] {
@@ -162,7 +160,7 @@ int stopped_owner_epoch_cannot_reserve_after_restart ()
             changed.wait (lock, [&] { return release_attempt; });
             return full ();
         });
-        terminal_source.set_value (operation.result ().value ().status);
+        terminal_source.set_value (operation.result ().error_kind ());
     });
     {
         std::unique_lock lock (mutex);
@@ -183,7 +181,7 @@ int stopped_owner_epoch_cannot_reserve_after_restart ()
     }
     changed.notify_all ();
     submitter.join ();
-    return terminal.get () == submit_status_t::shutdown
+    return terminal.get () == framework_error_kind_t::runtime_shutdown
              && admission::pending_submit_count_for_tests () == 0
            ? 0
            : 2;
@@ -198,9 +196,7 @@ int public_call_terminator_is_one_shot ()
           return result_t<void>::success ();
       });
     auto copy = call;
-    if (call.submit ().result ().value ().status != submit_status_t::submitted) {
-        return 1;
-    }
+    call.submit ().result ().value ();
     try {
         (void) copy.submit ().result ().value ();
     }

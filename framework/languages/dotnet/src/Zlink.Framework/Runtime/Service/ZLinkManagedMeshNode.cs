@@ -583,8 +583,6 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 checked((ulong)pendingInfrastructure),
                 checked((ulong)Volatile.Read(ref _queuedBytes)),
                 0,
-                0,
-                0,
                 checked((ulong)Environment.TickCount64));
         }
     }
@@ -985,7 +983,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             out operationId);
     }
 
-    internal MeshPublishResult Publish(
+    internal void Publish(
         string sourceSpotId,
         string channelName,
         string topic,
@@ -997,12 +995,9 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             .Where(spot => spot.Matches(channelName, topic))
             .OrderBy(static spot => spot.RoutingId.ToHex(), StringComparer.Ordinal)
             .ToArray();
-        ulong localAdmitted = 0;
-        ulong localDropped = 0;
         foreach (var spot in localTargets)
         {
             var retained = CloneParts(parts);
-            var before = Volatile.Read(ref _queuedMessages);
             EnqueueOwned(
                 MailboxKey.ForSpot(spot, MeshReadyDomains.Application),
                 new MeshReceiveRecord(
@@ -1023,21 +1018,15 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     0,
                     null),
                 retained);
-            if (Volatile.Read(ref _queuedMessages) > before)
-                localAdmitted++;
-            else
-                localDropped++;
         }
 
         var targets = SnapshotChannelTargets(channelName)
             .Where(target => target.RoutingId != _routingId)
             .Select(static target => target.RoutingId)
             .ToList();
-        ulong admitted = 0;
-        ulong dropped = 0;
         foreach (var target in targets)
         {
-            var result = SubmitApplication(
+            _ = SubmitApplication(
                 target,
                 ServiceWireConstants.Command.ChannelSend,
                 0,
@@ -1045,24 +1034,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 parts,
                 flags,
                 metadata);
-            if (result == SubmitResult.Ok) admitted++;
-            else dropped++;
         }
-        var submit = admitted > 0 || localAdmitted > 0
-            ? SubmitResult.Ok
-            : dropped > 0 || localDropped > 0
-                ? SubmitResult.Backpressured
-                : SubmitResult.NotFound;
-        return new MeshPublishResult(
-            submit,
-            new MeshPublishDetail(
-                checked((ulong)targets.Count),
-                admitted,
-                dropped,
-                dropped,
-                checked((ulong)localTargets.Length),
-                localAdmitted,
-                localDropped));
     }
 
     public SubmitResult SendToActor(
@@ -4435,13 +4407,15 @@ internal sealed class ZLinkManagedSpot(
             flags,
             metadata);
 
-    public MeshPublishResult Publish(
+    public void Publish(
         string channelName,
         string topic,
         IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None,
-        ReadOnlyMemory<byte> metadata = default) =>
+        ReadOnlyMemory<byte> metadata = default)
+    {
         node.Publish(SpotId, channelName, topic, parts, flags, metadata);
+    }
 
     public SubmitResult SendToSpot(
         RoutingId targetNodeRid,

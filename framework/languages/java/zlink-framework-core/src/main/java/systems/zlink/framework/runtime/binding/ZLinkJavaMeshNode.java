@@ -51,9 +51,7 @@ final class ZLinkJavaMeshNode implements ZLinkInternalMeshNode {
     private ZLinkMeshApplicationReceiver localApplicationReceiver;
     private Duration routerSendTimeout = Duration.ofSeconds(1);
     private volatile int placementWeight = 100;
-    private int routerPendingAdmissionCapacity =
-        systems.zlink.framework.runtime.backend.ZLinkBackendObject
-            .DEFAULT_PENDING_ADMISSION_CAPACITY;
+    private int routerPendingAdmissionCapacity = 4096;
 
     ZLinkJavaMeshNode(MeshNode node, String meshName) {
         this.node = node;

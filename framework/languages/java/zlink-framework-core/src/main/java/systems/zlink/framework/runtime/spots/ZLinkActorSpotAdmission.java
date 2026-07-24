@@ -59,6 +59,10 @@ final class ZLinkActorSpotAdmission {
         requireActors().traceActorTransferMarker(marker, actorId, Long.toString(arrivalIndex));
     }
 
+    boolean isActorAtSpot(String actorId, String spotId) {
+        return requireActors().isActorAtSpot(actorId, spotId);
+    }
+
     CompletionStage<Void> destroyFromEntry(RoutingId nodeRid, ZLinkActor actor) {
         return requireActors().destroyFromEntrySpot(nodeRid, actor);
     }
@@ -393,16 +397,10 @@ final class ZLinkActorSpotAdmission {
                 return joinedCallback.apply(actor)
                     .thenRun(() -> runtime.traceActorTransferMarker(
                         "target_joined_callback", actor.actorId(), request.transferId()))
-                    .thenCompose(ignored -> backlogReplay.apply(actorRef))
-                    .thenApply(replies -> {
-                        runtime.traceActorTransferMarker(
-                            "target_backlog_replayed", actor.actorId(), request.transferId());
-                        return replies;
-                    })
-                    .thenCompose(replies -> (entryTarget
+                    .thenCompose(ignored -> (entryTarget
                         ? runtime.commitEntryLocation(actor, primaryNode.routingId())
                         : runtime.commitJoinedLocation(actor, spotId))
-                        .thenApply(committed -> {
+                        .thenCompose(committed -> {
                             runtime.traceActorTransferMarker(
                                 "location_committed", actor.actorId(), request.transferId());
                             if (preparedFence != null) {
@@ -411,8 +409,14 @@ final class ZLinkActorSpotAdmission {
                                     actorRef, spotId, nextEpoch);
                                 primaryNode.activateActorTransfer(preparedFence.token());
                             }
-                            return replies;
+                            return runtime.deliverDeferredJoinAccepted(request, actorRef);
                         }))
+                    .thenCompose(ignored -> backlogReplay.apply(actorRef))
+                    .thenApply(replies -> {
+                        runtime.traceActorTransferMarker(
+                            "target_backlog_replayed", actor.actorId(), request.transferId());
+                        return replies;
+                    })
                     .thenApply(replies -> new RoutedJoin(
                         completeRemoteMove(runtime, actor),
                         ZLinkSpotActorJoinResponse.accept(), replies))

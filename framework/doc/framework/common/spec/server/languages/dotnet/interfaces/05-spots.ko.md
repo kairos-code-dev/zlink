@@ -1,5 +1,12 @@
 # .NET Spot 공개 인터페이스
 
+Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
+callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
+같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
+normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+변경하지 않는다.
+
 [.NET exact interface 목차](README.ko.md)
 
 ## 1. Spot
@@ -136,6 +143,7 @@ public interface IZLinkSpotCommonContext
 {
     string MeshName { get; }
     string SpotId { get; }
+    ulong ObjectGeneration { get; }
     RoutingId NodeRid { get; }
     IZLinkSpotOutbound Outbound { get; }
     ValueTask<IZLinkTimer> AddTimer<THandler>(
@@ -274,32 +282,6 @@ public interface IZLinkEntrySpotContext : IZLinkSpotCommonContext
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ZLinkSpotActorReplyOptions
-{
-    public ZLinkSpotActorReplyOptions();
-    public ZLinkSpotActorReplyOptions Metadata(string key, string value);
-    public ZLinkSpotActorReplyOptions Compress(bool enabled = true);
-}
-
-public sealed class ZLinkSpotActorSendContext : IZLinkHandlerContext
-{
-    public string? ChannelName { get; }
-    public string PacketName { get; }
-    public string? ContentType { get; }
-    public ZLinkMessageMetadata Metadata { get; }
-    public CancellationToken ConnectionAborted { get; }
-}
-
-public sealed class ZLinkSpotActorRequestContext : IZLinkHandlerContext
-{
-    public string? ChannelName { get; }
-    public string PacketName { get; }
-    public string? ContentType { get; }
-    public ZLinkMessageMetadata Metadata { get; }
-    public CancellationToken ConnectionAborted { get; }
-    public ZLinkSpotActorReplyOptions Reply { get; }
-}
-
 public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
     where TSpot : class
     where TActor : IZLinkActor
@@ -307,7 +289,7 @@ public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -319,7 +301,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
     ValueTask<TReply> HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -331,7 +313,7 @@ public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -343,7 +325,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
     ValueTask<TReply> HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -356,7 +338,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
 Actor membership과 local instance가 유효한 상태에서 callback을 실행하고 completion 뒤 scope와 [authority](../../../../01-glossary.ko.md#authority)를
 정리한다. Standalone Actor relocation은 Entry Spot을 닫지 않으므로 이 callback을 호출하지 않는다.
 
-`IZLinkSpotRelocationAdapter<TSpot>`은 [Snapshot](../../../../01-glossary.ko.md#snapshot) policy로 cross-node User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) instance를
+`IZLinkSpotRelocationAdapter<TSpot>`은 [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy로 cross-node User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) instance를
 materialize할 때만 호출한다. Whole User Spot relocation에서는 [Spot](../../../../01-glossary.ko.md#spot) adapter가 Spot application payload를 처리하고,
 각 member Actor의 payload는 Actor factory에 등록한 Actor adapter가 각각 처리한다. `Recreate`는 adapter를 호출하지
 않고 application state 없이 instance를 다시 만들며 `Disabled`는 capture 전에 cross-node 이동을 거부한다.
@@ -372,11 +354,12 @@ exactly-once로 실행한다고 보장하지 않는다.
 
 Maintenance가 Actor를 다른 node의 Entry Spot에 복원하면 Actor adapter restore를 먼저 완료하고 Location authority와
 Entry [membership](../../../../01-glossary.ko.md#membership)을 commit한다. Target Entry Spot의 `OnActorRelocatedAsync(...)`와 source Entry Spot의
-`OnLeaveActorAsync(...)`가 모두 성공한 뒤에만 Actor dispatch admission을 연다. 어느 callback이 실패해도
+`OnLeaveActorAsync(...)`를 완료한 뒤 accepted journal을 replay하고 logical timer를 복원한다. 이어서 old Entry
+membership을 포함한 source resource cleanup, `Completed` CAS, bound-session route switch·ACK와 steady
+normalization을 마친 뒤에만 Actor dispatch admission을 연다. 어느 callback이 실패해도
 authority를 source로 rollback하지 않고 target을 sealed 상태로 유지한 채 재시도한다.
-두 callback 뒤 old Entry membership의 durable cleanup을 완료해야 accepted journal을 replay할 수 있다.
 Source process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신하므로
-target recovery를 막지 않는다. Replay 뒤 남은 source resource cleanup은 이 lifecycle gate와 구분한다.
+target recovery를 막지 않는다.
 User Spot으로 향하는 일반 application join은 target의 `OnActorJoinAsync(...)`,
 membership commit, target의 `OnJoinedActorAsync(...)` 순서를 유지한다. Entry Spot
 복귀는 admission callback 없이 membership을 commit한 뒤 target Entry Spot의
@@ -670,6 +653,5 @@ index가 owner [MeshNode](../../../../01-glossary.ko.md#meshnode)를 선택하�
 각 remote target은 MeshNode ROUTER의 송신 규칙을 따르며, 같은 node의 일치하는 Spot queue는 immutable
 message storage를 공유한다. 정확한 설정 표면은
 [Topology configuration §5](03-configuration-topology.ko.md#5-publisher와-runtime-option)가 소유한다.
-Remote transport와 local Spot queue의 snapshot·admitted·dropped·unreachable count는 public 반환값이
-아니라 monitoring metric과 runtime event에 기록한다. Remote Spot queue 제출과 remote·local handler 실행
-또는 완료는 기다리지 않는다.
+Remote transport와 local Spot queue의 target별 수락·실패 결과는 반환하거나 monitoring에 집계하지
+않는다. Remote Spot queue 제출과 remote·local handler 실행 또는 완료는 기다리지 않는다.

@@ -1,4 +1,4 @@
-// SM-D5: session disconnect → 명시적 actor 통지 시나리오를 검증한다.
+// SM-D5: physical session disconnect의 Framework 자동 Actor 통지를 검증한다.
 import {
   zlinkStreamConnectorFactory,
   zlinkStreamJsonCodec,
@@ -44,7 +44,7 @@ export async function runSmD5(options: ClientOptions): Promise<void> {
   } satisfies EvidenceWaitReq);
   ensure(
     expectedEvidence.every((expected) => evidence.some((line) => line.includes(expected))),
-    'SM-D5 expected selected bound actor disconnect notification.'
+    'SM-D5 expected Framework automatic bound actor disconnect notification.'
   );
 
   console.log('scenario SM-D5 passed');

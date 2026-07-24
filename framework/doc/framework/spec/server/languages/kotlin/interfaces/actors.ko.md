@@ -3,6 +3,13 @@
 [인터페이스 목차](README.ko.md) · [Java Actor](../../java/interfaces/actors.ko.md) ·
 [Actor 공통 계약](../../../22-actor-model.ko.md)
 
+Session에 bind된 Actor의 physical disconnect는 Framework가 automatic all-settled로 통지한다. Actor
+disconnect callback은 destroy·leave·membership 변경이 아니다. Actor relocation은 같은 ObjectGeneration에
+대해 owner·membership commit, 필요한 lifecycle callback과 accepted journal replay·logical timer 복원, durable source cleanup,
+`Completed` CAS를 차례로 끝낸 뒤 command 44·45로 해당 binding route만 바꾼다. Relocation 자체는
+disconnect callback을 실행하지 않는다. 같은 Session의 다른 Actor route와 physical STREAM connection은
+유지하며 routed ACK와 steady normalization 전에는 target session packet·push admission을 열지 않는다.
+
 Kotlin은 Java의 global Actor identity와 fluent operation을 그대로 사용한다. `ActorId`는 Location Store
 transaction domain 전체에서 유일하며 UTF-8 encoded 크기는 1..255 bytes다. 대소문자를 구분하고
 normalization하지 않는다. 일반 send/request는 ActorId만 받으며 current authority를 resolve한다.
@@ -60,7 +67,7 @@ interface ZLinkSuspendingEntrySpotActorSendHandler<
     suspend fun handle(
         entrySpot: TEntrySpot,
         actor: TActor,
-        context: ZLinkSpotActorSendContext,
+        context: ZLinkMessageContext,
         message: TMessage,
     )
 }
@@ -71,7 +78,7 @@ interface ZLinkSuspendingEntrySpotActorRequestHandler<
     suspend fun handle(
         entrySpot: TEntrySpot,
         actor: TActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: TRequest,
     ): TReply
 }
@@ -82,7 +89,7 @@ interface ZLinkSuspendingSpotActorSendHandler<
     suspend fun handle(
         spot: TSpot,
         actor: TActor,
-        context: ZLinkSpotActorSendContext,
+        context: ZLinkMessageContext,
         message: TMessage,
     )
 }
@@ -93,14 +100,29 @@ interface ZLinkSuspendingSpotActorRequestHandler<
     suspend fun handle(
         spot: TSpot,
         actor: TActor,
-        context: ZLinkSpotActorRequestContext,
+        context: ZLinkMessageContext,
         request: TRequest,
     ): TReply
 }
 
+abstract class ZLinkSuspendingActor : ZLinkActor {
+    abstract val context: ZLinkActorContext
+
+    // Java accessor를 같은 exact Context property에 연결한다.
+    final override fun context(): ZLinkActorContext = context
+
+    // Java callback을 coroutine으로 연결하는 final bridge다.
+    final override fun onJoinCompleted(
+        completion: ZLinkActorJoinCompletion,
+    ): CompletionStage<Void>
+
+    abstract suspend fun onJoinCompletedSuspending(
+        completion: ZLinkActorJoinCompletion,
+    )
+}
+
 abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
     protected abstract suspend fun createActor(
-        actorId: String,
         context: ZLinkActorContext,
     ): ZLinkActor
 }
@@ -145,13 +167,6 @@ interface ZLinkKotlinWorkerCall<T> {
     suspend fun yield(): T
 }
 
-suspend fun ZLinkActorJoinCall.awaitJoin(): ZLinkActorJoinResult<Void>
-suspend fun <TReply> ZLinkActorJoinCall.awaitJoin(
-    replyType: Class<TReply>,
-): ZLinkActorJoinResult<TReply>
-inline suspend fun <reified TReply> ZLinkActorJoinCall.awaitJoinReply():
-    ZLinkActorJoinResult<TReply>
-
 ```
 
 ## Exact generated JVM signature
@@ -159,19 +174,25 @@ inline suspend fun <reified TReply> ZLinkActorJoinCall.awaitJoinReply():
 ```java
 public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingActorFactory implements systems.zlink.framework.actors.ZLinkActorFactory {
   public systems.zlink.framework.kotlin.ZLinkSuspendingActorFactory();
-  public final java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActor> create(java.lang.String, systems.zlink.framework.actors.ZLinkActorContext);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActor> create(systems.zlink.framework.actors.ZLinkActorContext);
+}
+public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingActor implements systems.zlink.framework.actors.ZLinkActor {
+  public abstract systems.zlink.framework.actors.ZLinkActorContext getContext();
+  public final systems.zlink.framework.actors.ZLinkActorContext context();
+  public final java.util.concurrent.CompletionStage<java.lang.Void> onJoinCompleted(systems.zlink.framework.actors.ZLinkActorJoinCompletion);
+  public abstract java.lang.Object onJoinCompletedSuspending(systems.zlink.framework.actors.ZLinkActorJoinCompletion, kotlin.coroutines.Continuation<? super kotlin.Unit>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorSendHandler<TEntrySpot extends systems.zlink.framework.spots.ZLinkEntrySpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TMessage> {
-  public abstract java.lang.Object handle(TEntrySpot, TActor, systems.zlink.framework.spots.ZLinkSpotActorSendContext, TMessage, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TEntrySpot, TActor, systems.zlink.framework.ZLinkMessageContext, TMessage, kotlin.coroutines.Continuation<? super kotlin.Unit>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpotActorRequestHandler<TEntrySpot extends systems.zlink.framework.spots.ZLinkEntrySpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TRequest, TReply> {
-  public abstract java.lang.Object handle(TEntrySpot, TActor, systems.zlink.framework.spots.ZLinkSpotActorRequestContext, TRequest, kotlin.coroutines.Continuation<? super TReply>);
+  public abstract java.lang.Object handle(TEntrySpot, TActor, systems.zlink.framework.ZLinkMessageContext, TRequest, kotlin.coroutines.Continuation<? super TReply>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorSendHandler<TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TMessage> {
-  public abstract java.lang.Object handle(TSpot, TActor, systems.zlink.framework.spots.ZLinkSpotActorSendContext, TMessage, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TSpot, TActor, systems.zlink.framework.ZLinkMessageContext, TMessage, kotlin.coroutines.Continuation<? super kotlin.Unit>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotActorRequestHandler<TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TRequest, TReply> {
-  public abstract java.lang.Object handle(TSpot, TActor, systems.zlink.framework.spots.ZLinkSpotActorRequestContext, TRequest, kotlin.coroutines.Continuation<? super TReply>);
+  public abstract java.lang.Object handle(TSpot, TActor, systems.zlink.framework.ZLinkMessageContext, TRequest, kotlin.coroutines.Continuation<? super TReply>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkKotlinActorCreateCall {
   public abstract systems.zlink.framework.kotlin.ZLinkKotlinActorCreateCall inMesh(java.lang.String);
@@ -200,12 +221,18 @@ Exact `ActorRef`를 받는 public operation은
 destroy와 session bind뿐이다. Missing exact ref는 `false`, generation 불일치는 `ActorGenerationStale`, seal된
 이관 구간은 `ActorMoving`으로 처리한다.
 
-Actor join extension은 `awaitJoin`만 제공하고 `yieldJoin` 계열은 제공하지 않는다. Request·worker·create
+Actor Join에는 coroutine terminal을 추가하지 않는다. Java exact interface의 동기
+`defer()`를 handler 실행 중 한 번 호출해 handler terminal barrier만 등록한다. `defer()`는
+suspend하지 않고 Spot gate나 Actor FIFO claim을 반납하지 않는다. Request·worker·create
 wrapper의 `yield()`는 `SPOT_WIDE` User Spot member Actor에서 Actor FIFO claim을 유지하고 User Spot gate만
 반환한다. Entry Actor와 `PER_ACTOR` Actor에서는 underlying Java operation submission 전에
 `InvalidConfiguration`으로 완료한다. 같은 Actor 자신에게 보내는 awaited request도 coroutine을 suspend하거나
 queue를 변경하기 전에 거부한다.
-`SPOT_WIDE` member Actor가 현재 User Spot을 떠나는 `joinSpot(...).awaitJoin(...)`을 기다리는 경우도 source
-lifecycle callback이 같은 gate를 얻어야 하므로 underlying Java operation을 제출하거나 coroutine을
-suspend하고 source·target queue를 변경하기 전에 `InvalidConfiguration`으로 완료한다. Callback을 inline
-또는 재진입 방식으로 호출하지 않는다.
+`SPOT_WIDE` member Actor가 현재 User Spot을 떠나는 Join도 `defer()`만 등록하고 handler의 마지막
+continuation이 끝난 뒤 실행한다. Completion callback을 inline 또는 재진입 방식으로 호출하지 않는다.
+Operation ID는 completion idempotency ID이며 RelocationId나 reservation ID가 아니다. Same-node outcome과
+Rejected·commit 전 Failed completion retry는 current process lifetime으로 제한한다. Cross-node commit 뒤
+Accepted만 Relocation manifest에 operation ID, optional reply와 cursor를 보존해 durable at-least-once로 전달한다.
+Kotlin은 Java의 request 없는 overload를 그대로 사용하며 empty `ZLinkMessage`를 고정한다. Timeout 기본값은
+5초이고 명시 값은 millisecond 올림 기준 finite `1..Int.MAX_VALUE` ms다. `defer()`에서 monotonic absolute
+deadline을 고정한다.

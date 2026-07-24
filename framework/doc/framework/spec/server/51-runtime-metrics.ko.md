@@ -43,23 +43,17 @@ object 수에 비례해 증가하지 않게 하려면 어떤 계기를 제공해
 `selected|no_member|not_ready|draining`, `surface`는
 `node|channel|spot|instance_spot|actor`의 닫힌 값이다.
 
-### 3.2 Logical Multicast와 drop
+### 3.2 One-way message drop
 
 | 계기 | 종류 | 단위 | Label | 의미 |
 |---|---|---|---|---|
-| `zlink.mesh_node.multicast.submits` | counter | `{operation}` | `mesh_name`, `channel_name`, `outcome` | publish operation 결과 누계 |
-| `zlink.mesh_node.multicast.targets` | histogram | `{target}` | `mesh_name`, `channel_name` | operation마다 선택한 remote MeshNode 수 |
-| `zlink.mesh_node.multicast.pending` | updown | `{operation}` | `mesh_name`, `channel_name` | admission을 기다리는 operation 수 |
-| `zlink.mesh_node.multicast.backpressures` | counter | `{operation}` | `mesh_name`, `channel_name`, `reason` | remote ROUTER의 용량 부족 또는 send timeout 누계 |
-| `zlink.mesh_node.multicast.drops` | counter | `{target}` | `mesh_name`, `channel_name`, `reason` | local 또는 remote target별 drop 누계 |
 | `zlink.mesh_node.messages.dropped` | counter | `{message}` | `mesh_name`, `surface`, `message_kind`, `reason` | Framework가 원인을 확인한 one-way drop 누계 |
 
-multicast `outcome`은 `accepted|backpressured|timed_out|shutdown`, `reason`은
-`backpressure|send_timeout|target_closed|shutdown`의 닫힌 값이다. message drop `reason`은
+Message drop `reason`은
 `no_handler|decode_error|backpressure|stale_target|shutdown`의 닫힌 값이다.
 
-Logical Multicast의 `targets`는 remote node 수만 기록한다. local matching Spot 수와 topic별 수를 label로
-분해하지 않는다.
+Logical Multicast와 classic fanout publish는 이 counter에서 제외한다. Publish
+target 수, target별 수락·실패와 backpressure를 전용 metric으로 기록하지 않는다.
 
 ### 3.3 Mailbox와 turn
 
@@ -188,7 +182,6 @@ metric은 언어 표준 meter 또는 registry에 연결하며 특정 exporter를
 ## 9. 검증 요구
 
 - 계기 이름, 종류, 단위와 닫힌 label value가 모든 언어에서 같다.
-- publish operation의 backpressure와 target별 drop이 별도 counter에 기록된다.
 - application·infrastructure mailbox backlog를 domain별로 관찰할 수 있다.
 - Actor 전체·Spot 전체·Spot stable type의 active·reserved·limit이 monitoring snapshot과 일치하고 activation
   concurrency와 분리된다.

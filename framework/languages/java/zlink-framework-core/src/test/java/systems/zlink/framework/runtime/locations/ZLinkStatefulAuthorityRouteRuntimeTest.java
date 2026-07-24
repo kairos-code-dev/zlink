@@ -25,6 +25,7 @@ import systems.zlink.framework.locations.ZLinkLocationWatchStore;
 import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
 import systems.zlink.framework.locations.ZLinkPlacementAllocation;
 import systems.zlink.framework.locations.ZLinkPlacementAllocationState;
+import systems.zlink.framework.locations.ZLinkPlacementCapacityBundle;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalMeshNode;
@@ -133,7 +134,10 @@ final class ZLinkStatefulAuthorityRouteRuntimeTest {
                         MESH_NAME,
                         NODE_RID),
                     NODE_GENERATION,
-                    1),
+                    ZLinkPlacementCapacityBundle.spot(
+                        ZLinkPlacementObjectKind.INSTANCE_SPOT,
+                        STABLE_TYPE,
+                        1)),
                 Instant.EPOCH));
     }
 

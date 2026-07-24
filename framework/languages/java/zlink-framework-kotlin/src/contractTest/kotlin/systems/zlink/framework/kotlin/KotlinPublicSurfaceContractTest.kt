@@ -2,6 +2,7 @@ package systems.zlink.framework.kotlin
 
 import java.lang.reflect.Modifier
 import java.security.MessageDigest
+import java.util.concurrent.CompletionStage
 import kotlin.coroutines.Continuation
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -10,7 +11,6 @@ import org.junit.jupiter.api.Test
 import systems.zlink.framework.channels.ZLinkClient
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkSendCall
-import systems.zlink.framework.channels.ZLinkSubmitResult
 import systems.zlink.framework.streams.ZLinkSessionActor
 
 class KotlinPublicSurfaceContractTest {
@@ -26,27 +26,104 @@ class KotlinPublicSurfaceContractTest {
     ).map { Class.forName("systems.zlink.framework.kotlin.$it") }
 
     @Test
-    fun `one way projections preserve call and result types`() {
-        assertExtensionReturnCount(ZLinkClient::class.java, "send", ZLinkSendCall::class.java, 1)
-        assertExtensionReturnCount(ZLinkRouteClient::class.java, "send", ZLinkSendCall::class.java, 3)
-        assertStageResultType(ZLinkSessionActor::class.java, "relay", ZLinkSubmitResult::class.java)
+    fun canonicalOneWayWrappersHideJavaCalls() {
+        val wrapperTypes = listOf(
+            ZLinkKotlinMessageSendCall::class.java,
+            ZLinkKotlinRequestCall::class.java,
+            ZLinkKotlinClient::class.java,
+            ZLinkKotlinFanoutClient::class.java,
+            ZLinkKotlinRouteClient::class.java,
+            ZLinkKotlinActorClient::class.java,
+            ZLinkKotlinSessionClient::class.java,
+            ZLinkKotlinSessionSendCall::class.java,
+            ZLinkKotlinSessionReplyCall::class.java,
+            ZLinkKotlinWorkerCall::class.java,
+        )
+        wrapperTypes.flatMap { it.declaredMethods.asList() }.forEach { method ->
+            assertFalse(
+                method.returnType.name.startsWith("systems.zlink.framework.channels.ZLink"),
+                "Java call return leaked from ${method.declaringClass.simpleName}.${method.name}",
+            )
+            assertFalse(
+                method.parameterTypes.any {
+                    it.name.startsWith("systems.zlink.framework.channels.ZLink")
+                },
+                "Java call parameter leaked from ${method.declaringClass.simpleName}.${method.name}",
+            )
+        }
     }
 
     @Test
-    fun `public coroutine surface exposes one await terminator and no yield alternative`() {
+    fun spotWrappersExposeCanonicalFluentState() {
+        assertPublicMethodCounts(
+            "ZLinkKotlinSpotSendCall",
+            mapOf(
+                "metadata" to 1,
+                "instanceSpot" to 2,
+                "inMesh" to 1,
+                "await" to 1,
+            ),
+        )
+        assertPublicMethodCounts(
+            "ZLinkKotlinSpotRequestCall",
+            mapOf(
+                "metadata" to 1,
+                "instanceSpot" to 2,
+                "inMesh" to 1,
+                "timeout" to 1,
+                "await" to 1,
+                "yield" to 1,
+            ),
+        )
+    }
+
+    @Test
+    fun `one way projections preserve call and completion types`() {
+        assertTrue(
+            ZLinkKotlinClient::class.java.methods.any {
+                it.name == "sendToChannel" &&
+                    it.returnType == ZLinkKotlinMessageSendCall::class.java
+            },
+        )
+        assertTrue(
+            ZLinkKotlinRouteClient::class.java.methods.count {
+                it.name.startsWith("sendTo") &&
+                    it.returnType == ZLinkKotlinMessageSendCall::class.java
+            } >= 2,
+        )
+        assertTrue(
+            ZLinkKotlinSessionActor::class.java.methods.any {
+                it.name == "relay" &&
+                    it.returnType == ZLinkKotlinMessageSendCall::class.java
+            },
+        )
+    }
+
+    @Test
+    fun `one way coroutine surface exposes await and no yield alternative`() {
+        val oneWayTypes = listOf(
+            ZLinkKotlinMessageSendCall::class.java,
+            ZLinkKotlinSessionSendCall::class.java,
+            ZLinkKotlinSessionReplyCall::class.java,
+        )
+        assertTrue(oneWayTypes.all { type -> type.declaredMethods.any { method ->
+            method.name == "await" &&
+                method.parameterTypes.lastOrNull() == Continuation::class.java
+        } })
+        assertFalse(oneWayTypes.any { type ->
+            type.declaredMethods.any { it.name.contains("yield", ignoreCase = true) }
+        })
+
         val surfaceClasses = listOf(
             Class.forName("systems.zlink.framework.kotlin.ZLinkCoroutineTurnAwaitKt"),
             Class.forName("systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt"),
             Class.forName("systems.zlink.framework.kotlin.ZLinkConnectorExtensionsKt"),
+            Class.forName("systems.zlink.framework.kotlin.ZLinkOneWayCallsKt"),
         )
         val publicMethods = surfaceClasses
             .flatMap { it.declaredMethods.asList() }
             .filter { Modifier.isPublic(it.modifiers) }
 
-        assertTrue(publicMethods.any { method ->
-            method.name == "await" && method.parameterTypes.lastOrNull() == Continuation::class.java
-        })
-        assertFalse(publicMethods.any { it.name.contains("yield", ignoreCase = true) })
         assertFalse(publicMethods.any { method ->
             method.parameterTypes.any { it.simpleName.contains("CancellationToken") }
         })
@@ -151,8 +228,7 @@ class KotlinPublicSurfaceContractTest {
                 "awaitReply" to 4, "requestToActorAwait" to 2,
                 "findActor" to 1, "ensureActor" to 2, "snapshot" to 1,
                 "actorRef" to 1, "isPeerReady" to 1, "bindOrGetActor" to 1,
-                "awaitJoinCallVoid" to 1, "awaitJoinCall" to 1,
-                "awaitJoinCallReified" to 1, "send" to 3, "request" to 3,
+                "send" to 3, "request" to 3,
                 "publishToTopic" to 1, "create" to 3, "getOrCreate" to 2,
                 "configureStreamCompression" to 1,
             ),
@@ -187,15 +263,21 @@ class KotlinPublicSurfaceContractTest {
     }
 
     @Test
-    fun `one way Kotlin calls do not expose coroutine completion`() {
-        val methods = facadeClasses
-            .flatMap { it.declaredMethods.asList() }
-            .filter { Modifier.isPublic(it.modifiers) }
-        assertFalse(methods.any { it.name == "awaitSend" || it.name == "sendToActorAwait" })
-        assertFalse(methods.any { it.name.contains("yield", ignoreCase = true) })
-        val publishMethods = methods.filter { it.name == "publishToTopic" }
-        assertTrue(publishMethods.isNotEmpty())
-        assertFalse(publishMethods.any { it.parameterTypes.lastOrNull() == Continuation::class.java })
+    fun `one way Kotlin calls expose only await coroutine completion`() {
+        val oneWayTypes = listOf(
+            ZLinkKotlinMessageSendCall::class.java,
+            ZLinkKotlinSessionSendCall::class.java,
+            ZLinkKotlinSessionReplyCall::class.java,
+        )
+        oneWayTypes.forEach { type ->
+            val methods = type.declaredMethods.filter { Modifier.isPublic(it.modifiers) }
+            assertEquals(1, methods.count { it.name == "await" })
+            assertFalse(methods.any { it.name.contains("yield", ignoreCase = true) })
+            assertFalse(methods.any { method ->
+                method.returnType == CompletionStage::class.java ||
+                    method.parameterTypes.any { it == CompletionStage::class.java }
+            })
+        }
 
         val typedWaitMethods = Class.forName(
             "systems.zlink.framework.kotlin.ZLinkStreamTypedWaitCall",
@@ -218,7 +300,7 @@ class KotlinPublicSurfaceContractTest {
             ),
         )
         assertPublicMethodCounts("ZLinkKotlinLifecycleCall", mapOf("await" to 1))
-        assertPublicMethodCounts("ZLinkKotlinSendCall", mapOf("submit" to 1))
+        assertPublicMethodCounts("ZLinkKotlinSendCall", mapOf("await" to 1))
         assertPublicMethodCounts(
             "ZLinkStreamTypedWaitCall",
             mapOf("timeout" to 1, "where" to 1, "await" to 1),
@@ -238,7 +320,7 @@ class KotlinPublicSurfaceContractTest {
             "ZLinkSpotHandlerRegistryExtensionsKt" to "0cc8a319eb99070b97332cab96c480fc74c14b9b160b022fa8d60ab4de814196",
             "ZLinkKotlinStreamConnector" to "c8e8a1bd37072daba92df701ed3cfc41b9649884244cb957f1d536643fbba82a",
             "ZLinkKotlinLifecycleCall" to "bef9eb581a23386b7802f54c64e3fec57c9920a17745c00c59195f7e67949aa5",
-            "ZLinkKotlinSendCall" to "175454d3701a871365fbb774ca9e05c06e11ccdeb78fe013d874c704e2da56f0",
+            "ZLinkKotlinSendCall" to "bef9eb581a23386b7802f54c64e3fec57c9920a17745c00c59195f7e67949aa5",
             "ZLinkStreamTypedWaitCall" to "6385a73bc528712e6d0f31512ba8f29c1951b2c347c48b6001f03c34e80d84f4",
         )
         expectedHashes.forEach { (typeName, expectedHash) ->

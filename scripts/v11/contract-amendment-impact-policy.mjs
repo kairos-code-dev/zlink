@@ -55,24 +55,117 @@ export const replacementParitySignature = behavior => JSON.stringify({
 
 const runtimeLanguage = language => language === 'kotlin' ? 'java' : language;
 
+const normalizedOwner = member => normalize(member.ownerIdentity);
+const normalizedMemberName = member => normalize(member.memberName);
+const isKotlinSourcePackageMember = member => member.language === 'kotlin'
+  && member.ownerIdentity.includes('::<package>');
+
 export const closedCatchAllExpectations = {
   'kotlin-reviewed-contract-set': {
-    count: 101,
-    identitySetSha256: '6d58e7d504a195ad442e3480566fff99334615ba38e0bb7877a734a922208274',
+    count: 95,
+    identitySetSha256: '5937b0bd1328b8842b0a6377d77b9d926d4189e3870ede85d691c233f5047c0c',
   },
   'node-reviewed-contract-set': {
-    count: 56,
-    identitySetSha256: 'bfbd12fbb0328f3c5d9d10dbe508edb9f001249fca95fdff1ffa472a7635c5c0',
+    count: 54,
+    identitySetSha256: '28b3aaa4f7a606fbe54b4538e7d293785c7879976f077ffed2c958a7c763e208',
   },
 };
 
 export const sourceJvmParityExpectation = {
-  groups: 44,
-  recoveredPairs: 40,
-  identitySetSha256: 'a7a9bddbd92d04a617d423f8dfb50ce0e095c72a5311d0aee130d80e3328e14d',
+  groups: 51,
+  recoveredPairs: 47,
+  identitySetSha256: '80709b4b015cd3b082dca1894c3659a5616f13f1104e0b25526c15b4d2887b75',
 };
 
 const rules = [
+  {
+    id: 'publish-monitoring-removal',
+    matches: (_value, member) => {
+      const owner = normalizedOwner(member);
+      const name = normalizedMemberName(member);
+      const targetCount = /^(?:remote|local)(?:snapshot|admitted|dropped)count$/u.test(name)
+        || /^(?:target|drop)count$/u.test(name);
+      return /logicalmulticastsnapshot(?:t)?$/u.test(owner)
+        || (/meshnodesnapshot(?:t)?$/u.test(owner) && name === 'multicast')
+        || (/(?:meshruntimeevent|messageflowevent)(?:t)?$/u.test(owner) && targetCount);
+    },
+    decisions: ['CA-D77'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'deferred-actor-join',
+    matches: (_value, member) => {
+      const owner = normalizedOwner(member);
+      const name = normalizedMemberName(member);
+      return /actorjoin(?:call|result)/u.test(owner)
+        || name === 'typedactorjoinresultt'
+        || (isKotlinSourcePackageMember(member)
+          && /^(?:awaitjoin|awaitjoinreply)$/u.test(name));
+    },
+    decisions: ['CA-D74'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'object-context-composition',
+    matches: (_value, member) => {
+      const owner = normalizedOwner(member);
+      const name = normalizedMemberName(member);
+      return (portableOwner(member.ownerIdentity) === 'actor' && name === 'actorid')
+        || (/zlinkentryspot$/u.test(owner) && name === 'context');
+    },
+    decisions: ['CA-D75'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'unified-message-context',
+    matches: (_value, member) => {
+      const owner = normalizedOwner(member);
+      return /(?:handlercontextt|zlinkhandlercontext|routehandlercontextt|zlinkroutesendcontext|zlinkrouterequestcontext|zlinksendcontext|zlinkrequestcontext|publishcontextt|zlinkpublishcontext|spotactorsendcontextt|spotactorrequestcontextt|spotactorreplyoptionst|zlinkspotactorsendcontext|zlinkspotactorrequestcontext|zlinkspotactorreplyoptions|zlinksessiondispatchcontext|handlerinvocationcontextt|zlinkhandlerinvocation|zlinkinvocationcontext)$/u.test(owner);
+    },
+    decisions: ['CA-D76'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'one-way-result-removal',
+    matches: (_value, member) =>
+      /(?:logicalmulticastdetail|publishresult|submitresult|submitstatus)(?:t)?$/u
+        .test(normalizedOwner(member)),
+    decisions: ['CA-D72'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'one-way-terminator-rename',
+    matches: (_value, member) => {
+      const owner = normalizedOwner(member);
+      const name = normalizedMemberName(member);
+      const dotnetOneWayCall = member.language === 'dotnet'
+        && /izlink(?:actor)?sendcall$|izlinkboundsessionsendcall$|izlinkfanoutpublishcall$|izlinkpublishcall$|izlinksessionsendcall$|izlinksessionreplycall$/u.test(owner)
+        && name === 'submitasync';
+      const kotlinOneWay = member.language === 'kotlin'
+        && (/zlinkframeworkextensionskt$/u.test(owner) || isKotlinSourcePackageMember(member))
+        && /^(?:send|publishtotopic)$/u.test(name);
+      return dotnetOneWayCall || kotlinOneWay;
+    },
+    decisions: ['CA-D72', 'CA-D73'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'async-terminator-rename',
+    matches: (_value, member) => {
+      const owner = normalizedOwner(member);
+      const name = normalizedMemberName(member);
+      const cppOrNodeCall = /(?:actorrequestcallt|channelrequestcallt|requestcallt|workercallt|zlinkworkercall)$/u
+        .test(owner) && /^(?:async|asyncmessage)$/u.test(name);
+      const kotlinSourceCall = isKotlinSourcePackageMember(member)
+        && /^(?:awaitreply|request|requesttoactorawait|yieldreply|yieldworker)$/u.test(name);
+      const kotlinJvmCall = member.language === 'kotlin'
+        && /zlinkframeworkextensionskt$/u.test(owner)
+        && /^(?:awaitreply|request|requesttoactorawait|yieldreply|yieldworker)$/u.test(name);
+      return cppOrNodeCall || kotlinSourceCall || kotlinJvmCall;
+    },
+    decisions: ['CA-D73'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
   {
     id: 'redis-transfer-store-split',
     matches: value => /redis.*checkpoint|checkpoint.*redis/u.test(value),
@@ -141,7 +234,13 @@ const rules = [
   },
   {
     id: 'yield-surface-restriction',
-    matches: value => /yield/u.test(value),
+    matches: (value, member) => /yield/u.test(value)
+      && !/actorjoin/u.test(normalizedOwner(member))
+      && !(isKotlinSourcePackageMember(member)
+        && /^(?:yieldreply|yieldworker)$/u.test(normalizedMemberName(member)))
+      && !(member.language === 'kotlin'
+        && /zlinkframeworkextensionskt$/u.test(normalizedOwner(member))
+        && /^(?:yieldreply|yieldworker)$/u.test(normalizedMemberName(member))),
     decisions: ['CA-D58', 'CA-D59'],
     coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
   },
@@ -160,14 +259,19 @@ const rules = [
   },
   {
     id: 'reviewed-exact-surface-cleanup',
-    matches: value => /zlinkentryspotcontext|zlinkframeworkruntimeeventruntime|zlinkhandlerinvocation(?:context|message)/u.test(value)
-      && !/spotrid/u.test(value),
+    matches: (value, member) =>
+      /zlinkentryspotcontext|zlinkframeworkruntimeeventruntime|zlinkhandlerinvocation(?:context|message)/u
+        .test(value)
+      && !/spotrid|zlinkhandlerinvocation(?:context|message)/u.test(value)
+      && !(/zlinkentryspot$/u.test(normalizedOwner(member))
+        && normalizedMemberName(member) === 'context'),
     decisions: ['CA-D29'],
     coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
   },
   {
     id: 'actor-spot-relocation',
-    matches: value => /joinentryspot/u.test(value),
+    matches: (value, member) => /joinentryspot/u.test(value)
+      && !/actorjoin/u.test(normalizedOwner(member)),
     decisions: ['CA-D07'],
     coverage: () => ['e2e:add:same-node-join-without-relocation-payload'],
   },
@@ -350,7 +454,8 @@ const rules = [
   {
     id: 'node-reviewed-contract-set',
     matches: (value, member) => member.language === 'node'
-      && /zlinksocket|zlinkspotevent|zlinkdecoratormetadata|zlinkframeworkerrorkindvalues|zlinkspotactorrequest|zlinkspotactorreplyoptions|zlinkspotpeer|zlinksession|zlinkactorjoinresult|iszlinkframeworkerrorretriablebydefault/i.test(value),
+      && /zlinksocket|zlinkspotevent|zlinkdecoratormetadata|zlinkframeworkerrorkindvalues|zlinkspotactorrequest|zlinkspotactorreplyoptions|zlinkspotpeer|zlinksession|zlinkactorjoinresult|iszlinkframeworkerrorretriablebydefault/i.test(value)
+      && !/zlinkactorjoinresult|zlinksessiondispatchcontext|zlinkspotactorreplyoptions|zlinkspotactorrequestcontext/i.test(value),
     decisions: ['CA-D29'],
     coverage: () => ['public-behavior:formal-contract-parity:node'],
   },

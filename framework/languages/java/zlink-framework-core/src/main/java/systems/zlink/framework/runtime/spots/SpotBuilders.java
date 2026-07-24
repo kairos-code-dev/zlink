@@ -4,7 +4,6 @@ import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkActorTransferAdapter;
-import systems.zlink.framework.configuration.ZLinkEntrySpotOptions;
 import systems.zlink.framework.configuration.ZLinkSpotMeshBuilder;
 import systems.zlink.framework.configuration.ZLinkSpotNodeBuilder;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
@@ -63,11 +62,6 @@ public final class SpotBuilders {
         public ZLinkSpotNodeBuilder connectPeerPub(String endpoint) {
             node.addPubSubManualConnection(endpoint);
             return this;
-        }
-
-        @Override
-        public ZLinkEntrySpotOptions configureEntrySpot() {
-            return node.entrySpotOptions();
         }
 
         @Override

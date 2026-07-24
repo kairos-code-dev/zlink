@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -285,6 +286,7 @@ class stateful_object_runtime_t
         std::deque<turn_record_t> application;
         std::deque<turn_record_t> held_application;
         std::deque<turn_record_t> infrastructure;
+        std::optional<turn_record_t> yielded_continuation;
         bool application_active = false;
         bool infrastructure_active = false;
     };
@@ -299,6 +301,7 @@ class stateful_object_runtime_t
         std::optional<relocation_restore_identity_t> restore_identity;
         queue_t queue;
         std::map<std::uint64_t, logical_timer_t> timers;
+        std::uint64_t barrier_generation = 0;
     };
 
     struct membership_move_t
@@ -310,6 +313,7 @@ class stateful_object_runtime_t
     struct relocation_seal_state_t
     {
         std::vector<object_key_t> keys;
+        std::vector<object_ref_t> sources;
         std::vector<frozen_object_state_t> frozen;
     };
 
@@ -329,6 +333,7 @@ class stateful_object_runtime_t
     const std::size_t _application_capacity;
     const std::size_t _infrastructure_capacity;
     mutable std::mutex _mutex;
+    std::condition_variable _quiescence;
     std::vector<placement_candidate_t> _candidates;
     std::map<object_key_t, object_record_t> _objects;
     std::map<object_key_t, std::uint64_t> _last_generation;

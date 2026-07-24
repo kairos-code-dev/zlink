@@ -297,7 +297,11 @@ internal sealed class ZLinkActorCreateOperationTarget(
             || snapshot.Allocation.DescriptorLifecycleGeneration != fence.TargetNodeGeneration
             || !string.Equals(snapshot.OwnerId, fence.TargetOwnerId, StringComparison.Ordinal)
             || snapshot.OwnerLeaseGeneration != checked((long)fence.TargetOwnerLeaseGeneration)
-            || snapshot.Allocation.CapacityDelta != checked((int)fence.PendingCapacityDelta))
+            || snapshot.Allocation.Capacity
+            != new ZLinkCapacityVector(
+                checked((int)fence.PendingCapacityDelta),
+                0,
+                null))
             throw Stale(operation.ActorId, "The Actor creation reservation fence is stale.");
     }
 

@@ -10,15 +10,18 @@ internal sealed class ZLinkPublishCall(
     object? message)
     : IZLinkFanoutPublishCall
 {
-    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+    private readonly ZLinkOneWayCallGate _submission = new("Fanout publish");
+
+    public async ValueTask Async(
         CancellationToken cancellationToken = default)
     {
+        _submission.Claim();
         using var operation = runtime.EnterOperation();
         using var flow = ZLinkFlowContext.EnterCurrentOrCreate(
             ZLinkFlowOrigin.Application,
             runtime.Flow.CaptureEnabled);
         cancellationToken.ThrowIfCancellationRequested();
-        var (bundle, publisher, envelopedMsg, header) = Build();
+        var (bundle, publisher, envelopedMsg) = Build();
         var result = await (bundle.Submitter
                     ?? throw new InvalidOperationException(
                         "ZLink publish submitter is not initialized."))
@@ -27,46 +30,25 @@ internal sealed class ZLinkPublishCall(
                     pending => publisher.Publish(topic, pending, SendFlags.DontWait),
                     cancellationToken)
                 .ConfigureAwait(false);
-        if (result.Status == ZLinkSubmitStatus.Submitted)
-        {
-            TraceSent(bundle, header);
-            ZLinkRuntimeMetrics.RecordFanoutPublished(null);
-        }
-        return result;
+        ZLinkOneWaySubmitOutcome.EnsureAccepted(result, "Fanout publish");
+        ZLinkRuntimeMetrics.RecordFanoutPublished(null);
     }
 
     private (ZLinkChannelRuntimeBundle Bundle, IZLinkBackendPublisherSocket Publisher,
-        IReadOnlyList<Message> Message, ZLinkEnvelopeHeader Header) Build()
+        IReadOnlyList<Message> Message) Build()
     {
         var bundle = runtime.GetPublisherBundle(channelName);
         var publisher = (IZLinkBackendPublisherSocket)bundle.Socket;
-        var traceSent = runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent);
         var header = ZLinkClientCallCodec.CreateEnvelope(
             ZLinkMessageKind.Publish,
             channelName,
             ZLinkMessageNameResolver.ResolveFromMessage(message),
             topic: topic,
             source: channelName,
-            includeCorrelationId: traceSent,
+            includeCorrelationId: false,
             includeDeadline: false);
         var envelopedMsg = ZLinkEnvelopeCodec.EncodeParts(
             header, message, message?.GetType(), registration.Codecs);
-        return (bundle, publisher, envelopedMsg, header);
-    }
-
-    private void TraceSent(ZLinkChannelRuntimeBundle bundle, ZLinkEnvelopeHeader header)
-    {
-        if (!runtime.Flow.Enabled(ZLinkMessageFlowOutcome.Sent))
-            return;
-        runtime.Flow.Trace(new ZLinkMessageFlowEvent(
-            ZLinkMessageFlowOutcome.Sent,
-            ZLinkDispatchErrorSurface.Channel,
-            ZLinkDispatchMessageKind.Publish,
-            header.MessageName,
-            channelName,
-            topic,
-            header.CorrelationId,
-            LocalRid: bundle.LocalRid,
-            SocketRole: bundle.SocketRole));
+        return (bundle, publisher, envelopedMsg);
     }
 }

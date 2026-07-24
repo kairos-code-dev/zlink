@@ -286,6 +286,7 @@ internal sealed partial class ZLinkSpotActivation
                            $"Actor '{actorState.ActorId}' does not have a native Actor ref during handoff rollback.");
         return _dispatcher.DispatchActorFramesAsync(
             ZLinkActorHandoffFrames.Restore(actorRef, frames),
+            _serial,
             cancellationToken);
     }
 

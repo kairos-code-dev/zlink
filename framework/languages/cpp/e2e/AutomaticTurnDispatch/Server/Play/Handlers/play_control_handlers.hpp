@@ -85,7 +85,7 @@ class bind_await_actors_handler_t
                   actor.error_kind (),
                   actor.error () ? actor.error ()->what () : "actor get or create failed");
             }
-            auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
+            auto bound = _actors.bind_or_get (actor.value ().ref ()).submit ().result ();
             if (!bound) {
                 throw zlink::framework::framework_exception_t (
                   bound.error_kind (),

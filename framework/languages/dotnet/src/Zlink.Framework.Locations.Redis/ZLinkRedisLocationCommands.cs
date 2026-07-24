@@ -148,6 +148,8 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                     JsonSerializer.Serialize(descriptor.ObjectCapabilities),
                     descriptor.Capacity.Actors.Limit,
                     descriptor.Capacity.Spots.Limit,
+                    descriptor.ActivationConcurrency.Limit,
+                    descriptor.EntrySpotId ?? string.Empty,
                     immutableDigest,
                     expectedOwner
                 ]).ConfigureAwait(false))!;
@@ -695,7 +697,7 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
     {
         var segments = new List<string>
         {
-            "zlink-mesh-node-immutable-v1",
+            "zlink-mesh-node-immutable-v2",
             descriptor.MeshName,
             descriptor.Rid.ToHex(),
             descriptor.LifecycleGeneration.ToString(
@@ -718,9 +720,14 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
             ZLinkMeshNodeObjectRole.Server => "server",
             _ => throw new ArgumentOutOfRangeException(nameof(descriptor))
         });
+        segments.Add(descriptor.EntrySpotId is null ? "0" : "1");
+        if (descriptor.EntrySpotId is not null)
+            segments.Add(descriptor.EntrySpotId);
         segments.Add(descriptor.Capacity.Actors.Limit.ToString(
             System.Globalization.CultureInfo.InvariantCulture));
         segments.Add(descriptor.Capacity.Spots.Limit.ToString(
+            System.Globalization.CultureInfo.InvariantCulture));
+        segments.Add(descriptor.ActivationConcurrency.Limit.ToString(
             System.Globalization.CultureInfo.InvariantCulture));
         var capabilities = descriptor.ObjectCapabilities
             .OrderBy(
@@ -745,8 +752,10 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                     nameof(descriptor))
             });
             segments.Add(capability.HasSnapshotAdapter ? "1" : "0");
-            segments.Add(capability.Limit.ToString(
-                System.Globalization.CultureInfo.InvariantCulture));
+            segments.Add(capability.ObjectKind == ZLinkPlacementObjectKind.Actor
+                ? string.Empty
+                : capability.Limit.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture));
         }
         var preimage = string.Concat(segments.Select(static segment =>
             Encoding.UTF8.GetByteCount(segment).ToString(

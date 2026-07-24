@@ -113,7 +113,7 @@ class actor_session_t final : public fw::packet_stream_session_t
             throw fw::framework_exception_t (fw::framework_error_kind_t::actor_route_not_found,
                                              "actor session target was not found");
         }
-        auto bound = co_await _actors.bind_or_get (*actor_ref).async ();
+        auto bound = co_await _actors.bind_or_get (*actor_ref).submit ();
         _bound_actor_id = std::string (bound.actor_id ());
         _bind_scenario = request.scenario;
         _evidence.append ({request.scenario, _bound_actor_id, "bind", _gateway_rid});

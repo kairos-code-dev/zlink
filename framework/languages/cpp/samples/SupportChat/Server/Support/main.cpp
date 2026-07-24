@@ -569,7 +569,7 @@ class support_entry_spot_t : public entry_spot_t
                                                  open_conversation_api_req_t{
                                                    actor.actor_id, actor.display_name,
                                                    request.subject})
-            .async<open_conversation_api_res_t> ();
+            .submit<open_conversation_api_res_t> ();
         const auto conversation_id = allocated.conversation_id;
         const auto spot_rid = spot_rid_t::from_string (conversation_id);
         const auto participant_id = actor.participant_id.empty () ? actor.actor_id
@@ -578,7 +578,7 @@ class support_entry_spot_t : public entry_spot_t
           co_await actor.context
             .join_spot (spot_rid, join_conversation_req_t{participant_id, actor.role,
                                                           actor.display_name})
-            .async<join_conversation_res_t> ();
+            .submit<join_conversation_res_t> ();
         const auto *accepted =
           std::get_if<framework::actor_join_accepted_t<join_conversation_res_t>> (&joined);
         if (accepted == nullptr) {
@@ -736,7 +736,7 @@ class ensure_agent_conversation_handler_t
             .join_spot (spot_rid_t::from_string (request.conversation_id),
                         join_conversation_req_t{request.roster_actor_id, role_t::agent,
                                                 request.display_name})
-            .async<join_conversation_res_t> ();
+            .submit<join_conversation_res_t> ();
         const auto *joined_accepted =
           std::get_if<framework::actor_join_accepted_t<join_conversation_res_t>> (&joined);
         if (joined_accepted == nullptr) {

@@ -16,7 +16,6 @@ public record ZLinkMeshNodeSnapshot(
     List<String> descriptorSources,
     List<ZLinkMeshPeerSnapshot> peers,
     List<ZLinkMeshChannelSnapshot> channels,
-    ZLinkLogicalMulticastSnapshot multicast,
     ZLinkMeshClaimSnapshot claims,
     ZLinkLocationRuntimeSnapshot location,
     ZLinkMeshDrainSnapshot drain) {

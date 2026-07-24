@@ -117,7 +117,7 @@ export class ScenarioEntrySpot implements ZLinkEntrySpot<ScenarioActor> {
 
   scheduleDestroy(actor: ScenarioActor): void {
     const evidence = ScenarioEntrySpot.requireEvidence();
-    void this.context.runIoWorker(async () => true).async().then(async () => {
+    void this.context.runIoWorker(async () => true).submit().then(async () => {
       try {
         await this.context.destroyActor(actor);
         evidence.add(`actor-destroyed|rid=${evidence.rid}|actor=${actor.actorId}`);

@@ -254,6 +254,7 @@ class channel_runtime_t
       const std::string &channel_name) noexcept;
     dispatch_options_t dispatch_options () const;
     const dispatch_options_t &dispatch_options_ref () const noexcept { return _state->dispatch; }
+    void record_fanout_received (const std::string &topic) const;
     void mark_auto_connect_active ();
     void drain () noexcept;
     void publish_socket_event (const std::string &channel_name,

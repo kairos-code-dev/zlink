@@ -123,6 +123,10 @@ class mesh_node_builder_t
     mesh_node_builder_t &listen (std::string endpoint);
     mesh_node_builder_t &set_routing_id (zlink::routing_id_t routing_id);
     mesh_node_builder_t &set_placement_weight (int weight);
+    mesh_node_builder_t &set_actor_limit (std::int32_t limit);
+    mesh_node_builder_t &set_spot_limit (std::int32_t limit);
+    mesh_node_builder_t &
+    set_activation_concurrency (std::int32_t limit);
     mesh_node_builder_t &use_allocated_routing_id (std::size_t slot_count,
                                                    std::string routing_id_prefix = {});
     mesh_node_builder_t &set_routing_id_allocation_group (std::string group_name);
@@ -161,17 +165,24 @@ class mesh_node_builder_t
         return *this;
     }
 
-    template <typename TSpot> mesh_node_builder_t &add_spot (std::string spot_name)
+    template <typename TSpot>
+    mesh_node_builder_t &
+    add_spot (std::string spot_name,
+              user_spot_execution_mode_t execution_mode =
+                user_spot_execution_mode_t::spot_wide)
     {
-        spot_builder ().template add_spot<TSpot> (std::move (spot_name));
+        spot_builder ().template add_spot<TSpot> (std::move (spot_name), execution_mode);
         return *this;
     }
 
     template <typename TSpot>
     mesh_node_builder_t &add_spot (std::string spot_name,
-                                   std::function<std::shared_ptr<TSpot> ()> factory)
+                                   std::function<std::shared_ptr<TSpot> ()> factory,
+                                   user_spot_execution_mode_t execution_mode =
+                                     user_spot_execution_mode_t::spot_wide)
     {
-        spot_builder ().template add_spot<TSpot> (std::move (spot_name), std::move (factory));
+        spot_builder ().template add_spot<TSpot> (
+          std::move (spot_name), std::move (factory), execution_mode);
         return *this;
     }
 

@@ -20,16 +20,12 @@ import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorClient
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorDirectory
-import systems.zlink.framework.actors.ZLinkActorJoinCall
-import systems.zlink.framework.actors.ZLinkActorJoinResult
 import systems.zlink.framework.actors.ZLinkActorRequestCall
 import systems.zlink.framework.actors.ZLinkActorSendCall
 import systems.zlink.framework.actors.ActorRef
 import systems.zlink.framework.channels.ZLinkRequestCall
 import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.channels.ZLinkSendCall
-import systems.zlink.framework.channels.ZLinkSubmitResult
-import systems.zlink.framework.channels.ZLinkSubmitStatus
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind
 import systems.zlink.framework.errors.ZLinkFrameworkException
 import systems.zlink.framework.errors.ZLinkConfigurationException
@@ -134,16 +130,6 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     @Test
-    fun `join await extension awaits submit without calling blocking Java await`() = runBlocking {
-        val call = RecordingJoinCall(ZLinkActorJoinResult.Accepted(ACTOR_REF, "joined"))
-
-        val result = call.awaitJoinReply<String>()
-
-        assertEquals("joined", result.reply())
-        assertEquals(String::class.java, call.replyType)
-    }
-
-    @Test
     fun `actor request extension delegates to Java actor ref client call`() = runBlocking {
         val actorClient = RecordingActorClient(ActorReply("reply"))
 
@@ -218,26 +204,9 @@ class KotlinFrameworkExtensionsContractTest {
         }
     }
 
-    private class RecordingJoinCall<TReply>(
-        private val result: ZLinkActorJoinResult<TReply>,
-    ) : ZLinkActorJoinCall {
-        var replyType: Class<*>? = null
-
-        override fun timeout(timeout: Duration): ZLinkActorJoinCall = this
-
-        override fun submit(): CompletionStage<ZLinkActorJoinResult<Void>> =
-            CompletableFuture.completedFuture(ZLinkActorJoinResult.Accepted(ACTOR_REF, null))
-
-        override fun <T : Any?> submit(replyType: Class<T>): CompletionStage<ZLinkActorJoinResult<T>> {
-            this.replyType = replyType
-            @Suppress("UNCHECKED_CAST")
-            return CompletableFuture.completedFuture(result as ZLinkActorJoinResult<T>)
-        }
-    }
-
     private class RecordingSendCall : ZLinkSendCall {
-        override fun submit(): CompletionStage<ZLinkSubmitResult> =
-            CompletableFuture.completedFuture(ZLinkSubmitResult(ZLinkSubmitStatus.SUBMITTED))
+        override fun submit(): CompletionStage<Void> =
+            CompletableFuture.completedFuture(null)
     }
 
     private class RecordingRequestCall<TReply>(
@@ -247,6 +216,9 @@ class KotlinFrameworkExtensionsContractTest {
 
         override fun <T : Any?> submit(replyType: Class<T>): CompletionStage<T> =
             CompletableFuture.completedFuture(replyType.cast(reply))
+
+        override fun <T : Any?> yield(replyType: Class<T>): CompletionStage<T> =
+            submit(replyType)
     }
 
     private class RecordingActorClient<TReply>(
@@ -271,17 +243,24 @@ class KotlinFrameworkExtensionsContractTest {
     }
 
     private class RecordingActorSendCall : ZLinkActorSendCall {
-        override fun submit(): CompletionStage<ZLinkSubmitResult> =
-            CompletableFuture.completedFuture(ZLinkSubmitResult(ZLinkSubmitStatus.SUBMITTED))
+        override fun metadata(key: String, value: String): ZLinkActorSendCall = this
+
+        override fun submit(): CompletionStage<Void> =
+            CompletableFuture.completedFuture(null)
     }
 
     private class RecordingActorRequestCall<TReply>(
         private val reply: TReply,
     ) : ZLinkActorRequestCall {
+        override fun metadata(key: String, value: String): ZLinkActorRequestCall = this
+
         override fun timeout(timeout: Duration): ZLinkActorRequestCall = this
 
         override fun <T : Any?> submit(replyType: Class<T>): CompletionStage<T> =
             CompletableFuture.completedFuture(replyType.cast(reply))
+
+        override fun <T : Any?> yield(replyType: Class<T>): CompletionStage<T> =
+            submit(replyType)
     }
 
     private class FailingRequestCall(
@@ -294,6 +273,9 @@ class KotlinFrameworkExtensionsContractTest {
             future.completeExceptionally(error)
             return future
         }
+
+        override fun <T : Any?> yield(replyType: Class<T>): CompletionStage<T> =
+            submit(replyType)
     }
 
     private class TestActor : ZLinkActor {

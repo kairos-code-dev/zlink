@@ -37,7 +37,6 @@ import systems.zlink.contracts.service.spot.OperationId;
 import systems.zlink.contracts.service.spot.OperationKind;
 import systems.zlink.contracts.service.spot.OwnerKind;
 import systems.zlink.contracts.service.spot.PeerChannels;
-import systems.zlink.contracts.service.spot.PublishDetail;
 import systems.zlink.contracts.service.spot.ReadyDomain;
 import systems.zlink.contracts.service.spot.ReadyRecord;
 import systems.zlink.contracts.service.spot.ReceiveRecord;
@@ -367,8 +366,6 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             0,
             0,
             0,
-            0,
-            0,
             System.currentTimeMillis());
     }
 
@@ -522,7 +519,7 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         return port.send(requireStarted(), target.orElseThrow(), frames);
     }
 
-    PublishDetail publishLogicalMulticast(
+    void publishLogicalMulticast(
         ZLinkJavaRawSpot source,
         String channelName,
         String topic,
@@ -531,14 +528,13 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
         String selectedChannel = requireChannel(channelName);
         ZLinkJavaRawSpotNode currentSpots =
             (ZLinkJavaRawSpotNode) spotNode();
-        ZLinkJavaRawSpotNode.MulticastLocalDetail local =
-            currentSpots.enqueueLogicalMulticast(
-                selectedChannel,
-                topic,
-                source == null ? routingId.toString() : source.routingId(),
-                routingId,
-                metadata,
-                parts);
+        currentSpots.enqueueLogicalMulticast(
+            selectedChannel,
+            topic,
+            source == null ? routingId.toString() : source.routingId(),
+            routingId,
+            metadata,
+            parts);
         List<ZLinkServiceTopologyRegistry.Peer> targets =
             topology == null
                 ? List.of()
@@ -559,26 +555,12 @@ final class ZLinkJavaRawMeshNode implements ZLinkInternalMeshNode {
             frames.add(metadata.clone());
         }
         frames.add(wire.encodeApplicationPayload(applicationPayload(parts)));
-        int admittedRemote = 0;
-        int unreachableRemote = 0;
         for (ZLinkServiceTopologyRegistry.Peer target : targets) {
-            if (port.send(
+            port.send(
                 requireStarted(),
                 target.descriptor().nodeRoutingId(),
-                frames)) {
-                admittedRemote++;
-            } else {
-                unreachableRemote++;
-            }
+                frames);
         }
-        return new PublishDetail(
-            targets.size(),
-            admittedRemote,
-            targets.size() - admittedRemote,
-            unreachableRemote,
-            local.snapshot(),
-            local.admitted(),
-            local.snapshot() - local.admitted());
     }
 
     boolean requestNode(

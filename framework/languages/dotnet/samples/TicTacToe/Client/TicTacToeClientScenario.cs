@@ -195,7 +195,7 @@ public sealed class TicTacToeClientScenario(ILogger logger)
             observerSawMilestone.Payload.Wins,
             observerSawMilestone.Payload.ReceivingSpotNodeRid);
 
-        client1.Send(new LeaveGameReq(room.RoomId)).Submit(cancellationToken);
-        client2.Send(new LeaveGameReq(room.RoomId)).Submit(cancellationToken);
+        await client1.Send(new LeaveGameReq(room.RoomId)).Async(cancellationToken);
+        await client2.Send(new LeaveGameReq(room.RoomId)).Async(cancellationToken);
     }
 }

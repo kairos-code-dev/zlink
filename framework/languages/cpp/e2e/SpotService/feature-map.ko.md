@@ -34,8 +34,9 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   검증한다.
 - `SM-B5`: handler 없는 actor packet request가 client-visible error로 끝나고
   `no_handler` dispatch error marker가 play 노드 로그에 남는지 검증한다.
-- `SM-B6`: 명시적 leave는 actor leave reply와 evidence로 검증하고, 비정상 disconnect 통지는
-  `SM-D5` stream disconnect 시나리오에서 선택한 actor에만 callback이 실행되는지 함께 검증한다.
+- `SM-B6` (재검증 필요): 명시적 leave는 actor leave reply와 evidence로 검증한다. Physical stream
+  disconnect는 application이 Actor를 선택하지 않고 Framework가 current binding 전체에 자동 통지해야
+  하므로 최신 runtime runner 증거가 필요하다.
 - `SM-B7`: HTTP evidence snapshot에서 `ActorCreated`, entry spot packet handler, user spot join,
   join callback, 후속 actor packet handler의 순서를 검증한다.
 - `SM-B8`: stream auth로 actor를 bind한 뒤 entry Spot의 public `destroyActor`로 actor를 명시 파괴하고,
@@ -65,8 +66,11 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   검증한다.
 - `SM-D4`: 한 stream session에 두 actor를 bind하고 `actor-id` metadata로 각각 다른 actor에
   relay/push가 전달되며, metadata 없는 request가 실패하는지 검증한다.
-- `SM-D5`: stream session 종료 시 session handler가 선택한 actor에만 public
-  `notify_disconnected`를 호출하고, 해당 actor의 disconnect callback만 실행되는지 검증한다.
+- `SM-D4A` (미구현): 같은 Actor의 Session A→B rebind 뒤 stale relay·late disconnect 격리 runner가 없다.
+- `SM-D4B` (미구현): bind 뒤 no-Store stored route와 single-forward stale mapping runner가 없다.
+- `SM-D5` (재검증 필요): application의 selected Actor notify loop를 제거했고 runner assertion을
+  Framework automatic all-bound notification으로 바꿨다. 최신 runtime focused 실행 증거가 필요하다.
+- `SM-D5A` (미구현): physical connection을 유지한 선택 Actor logical disconnect runner가 없다.
 - `SM-D6`: actor push가 bound stream session으로만 전달되고, 연결만 하고 bind하지 않은 consumer는
   같은 push를 받지 않는지 검증한다.
 - `SM-D7`: stream auth 전 packet dispatch가 실패하고, 잘못된 auth request가 public error로
@@ -131,3 +135,15 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
 
 - 위 target별 ROUTER backpressure 시나리오를 실행할 제어 가능한 harness의 구현 증거를
   Framework 10.0.0 적용 단계에서 확정해야 한다.
+# CA-D78 Session Actor binding runtime evidence
+
+- `SA-BIND-01`, `SA-BIND-02`: `test_cpp_framework_m6b_runtime`과
+  `test_cpp_framework_actor_gateway`가 한 connection의 multi-Actor binding, Actor당 단일
+  current Session, stale binding token 차단을 검증한다.
+- `SA-ROUTE-01`, `SA-ROUTE-02`: bind 이후 inbound admission은 저장한 exact binding만
+  검증하며 authority resolver를 다시 호출하지 않는다.
+- `SA-DISC-01`, `SA-DISC-03`, `SA-DISC-04`, `SA-DISC-05`: physical STREAM disconnect는
+  current binding snapshot 전체를 처리하고 개별 callback failure 뒤에도 나머지 callback과
+  cleanup을 계속한다.
+- `SA-MOVE-06`: internal Actor route update는 같은 `ObjectGeneration`에서만 허용한다.
+  공통 E2E scenario의 실제 process 간 검증은 새 scenario porting 뒤 별도 PASS log로 갱신한다.

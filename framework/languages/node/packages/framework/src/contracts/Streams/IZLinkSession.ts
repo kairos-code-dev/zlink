@@ -2,7 +2,6 @@ import type { RoutingId, ZLinkMessage } from '../Common';
 import type { ZLinkSessionActors } from './IZLinkSessionActor';
 import type { ZLinkStreamError } from './ZLinkStreamError';
 import type { ZLinkSessionHandlerRegistry } from './IZLinkSessionPacketHandler';
-import type { ZLinkSubmitResult } from '../RouteMesh';
 
 export interface ZLinkSession {
   readonly context: ZLinkSessionContext;
@@ -41,10 +40,10 @@ export interface ZLinkSessionClient {
 export interface ZLinkSessionSendCall {
   metadata(key: string, value: string): this;
   compress(enabled?: boolean): this;
-  submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+  submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSessionReplyCall {
   compress(enabled?: boolean): this;
-  submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+  submit(signal?: AbortSignal): Promise<void>;
 }

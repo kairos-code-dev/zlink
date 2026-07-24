@@ -108,10 +108,10 @@ export class ZlinkStreamSendBuilder implements ZlinkStreamSendCall {
     return this;
   }
 
-  submit(signal?: AbortSignal): void {
+  async submit(signal?: AbortSignal): Promise<void> {
     throwIfAborted(signal);
     this.state.ensureNotExecuted();
-    void this.connector.sendEncoded(
+    await this.connector.sendEncoded(
       ZlinkStreamMessageKind.Send,
       this.state.resolveMessageName(),
       this.payload,
@@ -120,7 +120,7 @@ export class ZlinkStreamSendBuilder implements ZlinkStreamSendCall {
       undefined,
       signal,
       this.state.flow
-    ).catch(() => undefined);
+    );
   }
 }
 

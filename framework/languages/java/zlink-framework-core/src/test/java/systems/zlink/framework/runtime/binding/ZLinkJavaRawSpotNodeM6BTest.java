@@ -719,19 +719,15 @@ final class ZLinkJavaRawSpotNodeM6BTest {
 
             var source = (ZLinkJavaRawSpot) right.spotNode().createSpot(
                 "jvm-m6b-multicast-source");
-            systems.zlink.contracts.service.spot.PublishDetail detail;
             try (Message packet = Message.from("Packet");
                  Message payload = Message.from("multicast")) {
-                detail = right.publishLogicalMulticast(
+                right.publishLogicalMulticast(
                     source,
                     "events",
                     "orders",
                     new byte[] {7},
                     List.of(packet, payload));
             }
-            assertEquals(1, detail.snapshotRemoteTargetCount());
-            assertEquals(1, detail.admittedRemoteTargetCount());
-            assertEquals(0, detail.droppedRemoteTargetCount());
 
             systems.zlink.framework.runtime.backend.ZLinkBackendTopicMessage
                 received = null;
@@ -753,28 +749,6 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             } finally {
                 received.parts().forEach(Message::close);
             }
-
-            left.setChannelWeight("events", 0);
-            long updateDeadline =
-                System.nanoTime() + Duration.ofSeconds(2).toNanos();
-            systems.zlink.contracts.service.spot.PublishDetail excluded;
-            do {
-                try (Message packet = Message.from("Packet");
-                     Message payload = Message.from("after-weight-zero")) {
-                    excluded = right.publishLogicalMulticast(
-                        source,
-                        "events",
-                        "orders",
-                        null,
-                        List.of(packet, payload));
-                }
-                if (excluded.snapshotRemoteTargetCount() != 0) {
-                    Thread.sleep(1);
-                }
-            } while (excluded.snapshotRemoteTargetCount() != 0
-                && System.nanoTime() < updateDeadline);
-            assertEquals(0, excluded.snapshotRemoteTargetCount());
-            assertEquals(0, excluded.admittedRemoteTargetCount());
 
             left.setPlacementWeight(0);
             long placementUpdateDeadline =

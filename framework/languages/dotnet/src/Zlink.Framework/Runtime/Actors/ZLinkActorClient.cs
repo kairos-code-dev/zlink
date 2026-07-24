@@ -31,7 +31,7 @@ internal sealed class ZLinkActorClient(
         return new ZLinkActorRequestCall<TRequest>(this, meshName, actor, request);
     }
 
-    private async ValueTask<ZLinkSubmitResult> SubmitSendAsync<TMessage>(
+    private async ValueTask<ZLinkOneWaySubmitResult> SubmitSendAsync<TMessage>(
         string meshName,
         ActorRef actor,
         string packetName,
@@ -309,6 +309,7 @@ internal sealed class ZLinkActorClient(
         TMessage message) : IZLinkActorSendCall
     {
         private readonly ZLinkCallMetadata _metadata = new();
+        private readonly ZLinkOneWayCallGate _submission = new("Actor send");
 
         public IZLinkActorSendCall Metadata(string key, string value)
         {
@@ -322,16 +323,19 @@ internal sealed class ZLinkActorClient(
             return this;
         }
 
-        public ValueTask<ZLinkSubmitResult> SubmitAsync(
+        public ValueTask Async(
             CancellationToken cancellationToken = default)
         {
+            _submission.Claim();
             return client.SubmitSendAsync(
                 meshName,
                 actor,
                 ZLinkMessageNameResolver.ResolveFromMessage(message),
                 message,
                 _metadata,
-                cancellationToken);
+                cancellationToken).EnsureAcceptedAsync(
+                    "Actor send",
+                    ZLinkFrameworkErrorKind.ActorRouteNotFound);
         }
     }
 
@@ -342,6 +346,8 @@ internal sealed class ZLinkActorClient(
         TRequest request) : IZLinkActorRequestCall
     {
         private readonly ZLinkCallMetadata _metadata = new();
+        private readonly ZLinkApplicationExecutionScope? _executionScope =
+            ZLinkApplicationExecutionContext.Current;
         private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
         private TimeSpan? _timeout;
 
@@ -366,14 +372,20 @@ internal sealed class ZLinkActorClient(
 
         public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
         {
+            ZLinkApplicationExecutionContext.RejectActorRequestWhenSameClaim(
+                actor.ActorId,
+                _executionScope);
             return ExecuteAsync<TReply>(cancellationToken);
         }
 
         public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
         {
-            return _turn is null
-                ? ExecuteAsync<TReply>(cancellationToken)
-                : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+            ZLinkApplicationExecutionContext.RejectActorRequestWhenSameClaim(
+                actor.ActorId,
+                _executionScope);
+            return ZLinkApplicationExecutionContext
+                .RequireYieldTurn(_turn, "Actor request")
+                .YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
         }
 
         private ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)

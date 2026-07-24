@@ -58,7 +58,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
             auto reply = co_await request_control<yd::bind_await_actors_res_t> (
               request, packet, target_or_default (dispatch));
             for (const auto &actor : reply.actors) {
-                (void) co_await _actors.bind_or_get (to_actor_ref (actor)).async ();
+                (void) co_await _actors.bind_or_get (to_actor_ref (actor)).submit ();
                 _bound_actors[actor.actor_id] = actor.node_rid;
             }
             stream.reply_packet (zlink::message_t::from_json (reply)).submit ();
@@ -203,7 +203,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
             std::thread (
               [actor_value = std::move (actor_value), stream_copy = std::move (stream_copy),
                packet, payload_copy = std::move (payload_copy)] () mutable {
-                  auto task = actor_value.relay_request (packet, payload_copy).async ();
+                  auto task = actor_value.relay_request (packet, payload_copy).submit ();
                   const auto &reply = task.result ();
                   if (reply) {
                       stream_copy.reply_packet (reply.value ()).submit ();
@@ -271,7 +271,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
              * 넉넉한 값을 쓴다. */
             co_await _routes.request_to_node (yd::control_channel, target, request)
             .timeout (std::chrono::milliseconds (15000))
-            .template async<TReply> ();
+            .template submit<TReply> ();
         co_return reply;
     }
 
@@ -379,7 +379,7 @@ class await_session_t final : public zlink::framework::packet_stream_session_t
             try {
                 auto reply = co_await _routes.request_to_spot (resolve_spot (spot_rid), request)
                                .timeout (timeout)
-                               .template async<TReply> ();
+                               .template submit<TReply> ();
                 co_return reply;
             }
             catch (const zlink::framework::framework_exception_t &error) {

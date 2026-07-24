@@ -44,7 +44,7 @@ class authenticate_session_handler_t
         from_stream_payload (payload, request);
         const auto authenticate_request = authenticate_player_req_t{request.access_token};
         auto authenticated = co_await _client.request (
-            sample_names_t::api_channel, authenticate_request).async<authenticate_player_res_t> ();
+            sample_names_t::api_channel, authenticate_request).submit<authenticate_player_res_t> ();
         if (!authenticated.accepted || authenticated.actor_id.empty ()
             || authenticated.display_name.empty ()) {
             co_return result_t<session_actor_t>::failure (framework_error_kind_t::request_failed,
@@ -66,8 +66,9 @@ class authenticate_session_handler_t
         }
         auto ensured = co_await _routes
             .request_to_spot (*play_entry_spot, create_request)
-            .async<ensure_player_actor_res_t> ();
-        auto bound = co_await actors.bind_or_get (ensured.actor.to_actor_ref (ensured.actor_type)).async ();
+            .submit<ensure_player_actor_res_t> ();
+        auto bound =
+          co_await actors.bind_or_get (ensured.actor.to_actor_ref (ensured.actor_type)).submit ();
         auto actor = actors.find (ensured.actor.actor_id).value_or (bound);
 
         const auto reply_payload = authenticate_res_t{

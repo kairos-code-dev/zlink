@@ -74,22 +74,6 @@ internal static class MonC1DispatchFailureScenario
             await Task.Delay(125);
         }
 
-        await serviceA.Post("/admin/subject/create").Async<object>();
-        await serviceA.Post("/admin/slow-subject/create/monitor-slow")
-            .Async<object>();
-        var publish = (await serviceA.Post("/spot/local-drop")
-            .Body(new MulticastPublishReq(
-                "mon-c1-pressure",
-                PayloadBytes: 1024 * 1024,
-                MaxAttempts: 20000,
-                Blocking: false,
-                ExpectedLocalDropped: 1))
-            .Async<MulticastPublishRes>()).Body;
-        ZlinkStreamAssert.Ensure(
-            publish.DroppedLocal == 1
-            && publish.DroppedTotal > before.Multicast.Dropped,
-            "MON-C1 did not create cumulative drop pressure.");
-
         var active = (await serviceA.Get(
                 $"/runtime/snapshot/{RuntimeMonitoringNames.SpotChannel}")
             .Async<MeshRuntimeSnapshotRes>()).Body;
@@ -97,9 +81,6 @@ internal static class MonC1DispatchFailureScenario
             active.Claims.ApplicationActive
             && active.Claims.InfrastructureActive,
             "MON-C1 infrastructure claim did not progress with the application gate held.");
-        ZlinkStreamAssert.Ensure(
-            active.Multicast.Dropped >= publish.DroppedTotal,
-            "MON-C1 snapshot lost the cumulative drop counter.");
 
         var beforeRelease = await WaitForObserverAsync(
             serviceA,
@@ -128,9 +109,8 @@ internal static class MonC1DispatchFailureScenario
         ZlinkStreamAssert.Ensure(
             resynced.Sequence >= afterRelease.SlowLatestSequence
             && resynced.Channels.Any(channel =>
-                channel.ChannelName == RuntimeMonitoringNames.SpotChannel)
-            && resynced.Multicast.Dropped >= publish.DroppedTotal,
-            "MON-C1 snapshot resync did not retain the latest channel and multicast state.");
+                channel.ChannelName == RuntimeMonitoringNames.SpotChannel),
+            "MON-C1 snapshot resync did not retain the latest channel state.");
 
         await serviceA.Post("/admin/application-gate/release").Async<object>();
         var gatedReply = (await blockedRequest).Body;

@@ -18,7 +18,7 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.channels.ZLinkChannelRuntime;
 import systems.zlink.framework.runtime.diagnostics.ZLinkMessageFlowTracer;
 import systems.zlink.framework.runtime.messaging.ZLinkApplicationMetadata;
-import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
+
 
 final class ZLinkSpotRoutedOutbound {
     private final ZLinkChannelRuntime channels;
@@ -76,7 +76,7 @@ final class ZLinkSpotRoutedOutbound {
             timeout);
     }
 
-    CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submitSend(
+    CompletionStage<Void> submitSend(
         String routerChannelId,
         RoutingId targetNodeRid,
         String spotId,
@@ -108,7 +108,7 @@ final class ZLinkSpotRoutedOutbound {
         }
         List<Message> parts = messages.encode(packetName, payload);
         try {
-            return ZLinkSubmitResults.fromVoidStage(channels.sendToSpotViaRouterChannel(
+            return ZLinkOneWayCalls.adaptOneWay(channels.sendToSpotViaRouterChannel(
                 routerChannelId,
                 targetNodeRid,
                 spotId,
@@ -207,8 +207,8 @@ final class ZLinkSpotRoutedOutbound {
 }
 
 final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
-    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
-        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
+    private final java.util.concurrent.atomic.AtomicBoolean submitGate =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private final ZLinkSpotRoutedOutbound outbound;
     private final String routerChannelId;
     private final RoutingId targetNodeRid;
@@ -295,9 +295,9 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-            submitGate.begin();
+    public CompletionStage<Void> submit() {
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }
@@ -422,6 +422,8 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
 
     @Override
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.rejectSameSpotWait(spotId);
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(
             outbound.submitRequest(
             routerChannelId,
@@ -433,6 +435,14 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             metadata,
             timeout,
             replyType));
+    }
+
+    @Override
+    public <TReply> CompletionStage<TReply> yield(Class<TReply> replyType) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.requireYieldAllowed("Spot request");
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+            .yieldCurrent(submit(replyType));
     }
 
 }

@@ -304,7 +304,7 @@ class gamequest_session_t final : public packet_stream_session_t
                   actor.error_kind (),
                   actor.error () ? actor.error ()->what () : "gamequest session actor bind failed");
             }
-            auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).async ();
+            auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).submit ();
             (void) co_await bound.context ()
               .join_entry_spot (node_rid_t::from_string (_topology.selected_api_node_rid ()),
                                 request)
@@ -321,7 +321,7 @@ class gamequest_session_t final : public packet_stream_session_t
             auto reply = co_await current
                            ->relay_request (join_session_req_t::packet_name,
                                             zlink::message_t::from_json (request))
-                           .async ();
+                           .submit ();
             stream.reply_packet (reply).submit ();
             co_return;
         }
@@ -349,7 +349,7 @@ class gamequest_session_t final : public packet_stream_session_t
             auto target = co_await resolve_player_spot (request.player_id);
             auto result = co_await _routes
                             .request_to_spot (std::move (target), request)
-                            .template async<projection_admin_res_t> ();
+                            .template submit<projection_admin_res_t> ();
             stream.reply_packet (zlink::message_t::from_json (result)).submit ();
             co_return;
         }
@@ -445,7 +445,7 @@ class gamequest_session_t final : public packet_stream_session_t
                           std::move (target),
                           sync_quest_progress_req_t{player_id,
                                                     _store.snapshot_kill_count (player_id)})
-                        .template async<sync_quest_progress_res_t> ();
+                        .template submit<sync_quest_progress_res_t> ();
         co_return synced;
     }
 
@@ -469,7 +469,7 @@ class gamequest_session_t final : public packet_stream_session_t
           co_await _channels
             .request (quest_owner_channel_for (owner_mission_id (player_id)),
                       ensure_player_quest_spot_req_t{player_id})
-            .template async<ensure_player_quest_spot_res_t> ();
+            .template submit<ensure_player_quest_spot_res_t> ();
         if (!ensured.ok) {
             throw framework_exception_t (framework_error_kind_t::request_failed,
                                          "GameQuest player quest spot ensure failed");

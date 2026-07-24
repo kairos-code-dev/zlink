@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const framework = require('../../packages/framework/dist/internal');
+const {
+  ZLinkSubmitStatus
+} = require('../../packages/framework/dist/runtime/messaging/submission-result');
 const { Message, RequestResult } = require('@zlink-systems/zlink');
 
 class ActorNotify { constructor(value) { this.value = value; } }
@@ -60,7 +63,7 @@ function completionTable(terminalResult, parts = []) {
   };
 }
 
-test('actor client submit returns the formal one-way admission result', async () => {
+test('actor client submit completes without exposing an admission result', async () => {
   const sends = [];
   const node = {
     sendToActor(actor, parts) {
@@ -74,16 +77,23 @@ test('actor client submit returns the formal one-way admission result', async ()
     locationResolver: () => resolver
   });
 
-  const submitted = await client.sendToActor(
+  const call = client.sendToActor(
     'play-mesh',
     actorRef(),
     new ActorNotify('ping')
-  ).submit();
+  );
+  const submitted = await call.submit();
 
-  assert.deepEqual(submitted, { status: framework.ZLinkSubmitStatus.Submitted });
+  assert.equal(submitted, undefined);
   assert.equal(sends.length, 1);
   assert.equal(sends[0].actor.actorId, 'actor-1');
   assert.equal(sends[0].parts.length, 2);
+  await assert.rejects(() => call.submit(), (error) => {
+    assert.equal(error instanceof framework.ZLinkFrameworkException, true);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.AlreadySubmitted);
+    return true;
+  });
+  assert.equal(sends.length, 1);
 });
 
 test('actor client selects the MeshNode and completion table by explicit RouteMesh name', async () => {
@@ -233,14 +243,24 @@ test('actor client maps stale ActorRef submit without resolving a replacement', 
   assert.deepEqual(sends.map((actor) => actor.generation), [1n]);
 });
 
-test('actor client submit maps native admission statuses without hiding invalid failures', async () => {
+test('actor client submit maps native terminal outcomes to operation-specific errors', async () => {
   const results = [
-    [0, framework.ZLinkSubmitStatus.Submitted],
-    [2, framework.ZLinkSubmitStatus.RouteNotConnected],
-    [3, framework.ZLinkSubmitStatus.TargetNotFound],
-    [4, framework.ZLinkSubmitStatus.Shutdown]
+    [2, framework.ZLinkFrameworkErrorKind.RouteNotConnected],
+    [3, framework.ZLinkFrameworkErrorKind.ActorRouteNotFound],
+    [4, framework.ZLinkFrameworkErrorKind.RuntimeShutdown]
   ];
-  for (const [nativeResult, expected] of results) {
+  const accepted = new framework.DefaultZLinkActorClient({
+    nodeProvider: () => ({ sendToActor: () => 0 }),
+    completionTableProvider: () => undefined,
+    locationResolver: () => createFailingResolver(),
+    meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5, 4096)
+  });
+  assert.equal(
+    await accepted.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(),
+    undefined
+  );
+
+  for (const [nativeResult, expectedKind] of results) {
     const client = new framework.DefaultZLinkActorClient({
       nodeProvider: () => ({
         sendToActor() {
@@ -249,11 +269,11 @@ test('actor client submit maps native admission statuses without hiding invalid 
       }),
       completionTableProvider: () => undefined,
       locationResolver: () => createFailingResolver(),
-      meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5)
+      meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5, 4096)
     });
-    assert.deepEqual(
-      await client.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(),
-      { status: expected }
+    await assert.rejects(
+      () => client.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(),
+      (error) => error.kind === expectedKind
     );
   }
 
@@ -262,11 +282,11 @@ test('actor client submit maps native admission statuses without hiding invalid 
       nodeProvider: () => ({ sendToActor: () => nativeResult }),
       completionTableProvider: () => undefined,
       locationResolver: () => createFailingResolver(),
-      meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5)
+      meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5, 4096)
     });
-    assert.deepEqual(
-      await client.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(),
-      { status: framework.ZLinkSubmitStatus.TimedOut }
+    await assert.rejects(
+      () => client.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(),
+      (error) => error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
     );
   }
 
@@ -278,7 +298,7 @@ test('actor client submit maps native admission statuses without hiding invalid 
     }),
     completionTableProvider: () => undefined,
     locationResolver: () => createFailingResolver(),
-    meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5)
+    meshSubmitters: new framework.ZLinkMeshSubmitterRegistry(5, 4096)
   });
   await assert.rejects(
     () => invalid.sendToActor('play-mesh', actorRef(), new ActorNotify('ping')).submit(),
@@ -288,11 +308,11 @@ test('actor client submit maps native admission statuses without hiding invalid 
 
 test('Mesh submit cancellation removes pending admission and prevents late replay', async () => {
   let attempts = 0;
-  const registry = new framework.ZLinkMeshSubmitterRegistry(1000);
+  const registry = new framework.ZLinkMeshSubmitterRegistry(1000, 4096);
   const controller = new AbortController();
   const pending = registry.submit('play-mesh', () => {
     attempts += 1;
-    return { status: framework.ZLinkSubmitStatus.Backpressured };
+    return { status: ZLinkSubmitStatus.Backpressured };
   }, controller.signal);
   controller.abort();
   await assert.rejects(pending, (error) => error?.name === 'AbortError');
@@ -304,16 +324,16 @@ test('Mesh submit cancellation removes pending admission and prevents late repla
 
 test('Mesh submit shutdown rejects pending and future admission without late replay', async () => {
   let attempts = 0;
-  const registry = new framework.ZLinkMeshSubmitterRegistry(1000);
+  const registry = new framework.ZLinkMeshSubmitterRegistry(1000, 4096);
   const pending = registry.submit('play-mesh', () => {
     attempts += 1;
-    return { status: framework.ZLinkSubmitStatus.Backpressured };
+    return { status: ZLinkSubmitStatus.Backpressured };
   });
 
   registry.dispose();
   assert.deepEqual(
     await pending,
-    { status: framework.ZLinkSubmitStatus.Shutdown }
+    { status: ZLinkSubmitStatus.Shutdown }
   );
   registry.notify('play-mesh');
   assert.equal(attempts, 1);
@@ -321,11 +341,42 @@ test('Mesh submit shutdown rejects pending and future admission without late rep
   assert.deepEqual(
     await registry.submit('play-mesh', () => {
       attempts += 1;
-      return { status: framework.ZLinkSubmitStatus.Submitted };
+      return { status: ZLinkSubmitStatus.Submitted };
     }),
-    { status: framework.ZLinkSubmitStatus.Shutdown }
+    { status: ZLinkSubmitStatus.Shutdown }
   );
   assert.equal(attempts, 1);
+});
+
+test('Mesh submit uses the configured per-mesh timeout and releases capacity after timeout', async () => {
+  let attempts = 0;
+  let ready = false;
+  const registry = new framework.ZLinkMeshSubmitterRegistry(
+    (meshName) => meshName === 'play-mesh' ? 50 : 500,
+    1
+  );
+  const started = Date.now();
+  const first = registry.submit('play-mesh', () => {
+    attempts += 1;
+    return { status: ZLinkSubmitStatus.Backpressured };
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  const second = registry.submit('play-mesh', () => {
+    attempts += 1;
+    return {
+      status: ready
+        ? ZLinkSubmitStatus.Submitted
+        : ZLinkSubmitStatus.Backpressured
+    };
+  });
+
+  assert.deepEqual(await first, { status: ZLinkSubmitStatus.TimedOut });
+  assert.equal(Date.now() - started < 500, true);
+  ready = true;
+  registry.notify('play-mesh');
+  assert.deepEqual(await second, { status: ZLinkSubmitStatus.Submitted });
+  assert.equal(attempts, 3);
+  registry.dispose();
 });
 
 test('actor target validation wins over a pre-aborted signal', async () => {

@@ -886,16 +886,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             new ServiceCollection().AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                options.AddRouteMesh("spot")
-                    .Listen("inproc://allocated-entry")
-                    .UseAllocatedRoutingId(10)
-                    .SetEntrySpotId(RoutingId.From("entry")).ChannelName("spot");
-            }));
-
-        Assert.Throws<ZLinkConfigurationException>(() =>
-            new ServiceCollection().AddZLinkFramework(options =>
-            {
-                options.UseTestLocationStore();
                 options.AddRouteMesh("events")
                     .Listen("inproc://allocated-group-only")
                     .SetRoutingIdAllocationGroup("group")

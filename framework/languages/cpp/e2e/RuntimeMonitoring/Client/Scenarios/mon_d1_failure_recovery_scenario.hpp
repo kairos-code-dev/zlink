@@ -21,7 +21,7 @@ inline void run_mon_d1_failure_recovery_scenario (const client_options_t &option
                   .timeout (std::chrono::milliseconds (3000))
                   .build ();
     const auto validation = http.get ("/runtime/validation")
-                              .async<nlohmann::json> ()
+                              .submit<nlohmann::json> ()
                               .result ()
                               .value ()
                               .body;

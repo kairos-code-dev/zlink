@@ -36,7 +36,7 @@ handle_remote_spot_yield (zlink::framework::spot_context_t &context,
     evidence.add ("remote-await-released|rid=" + evidence.node_rid + "|spot="
                   + spot_rid + "|request=" + request.request_id + "|target="
                   + request.target_spot_rid + "|handler=spot");
-    auto target_reply = co_await call.async ();
+    auto target_reply = co_await call.submit ();
     evidence.add ("remote-await-resumed|rid=" + evidence.node_rid + "|spot="
                   + spot_rid + "|request=" + request.request_id + "|target="
                   + request.target_spot_rid + "|targetNode=" + target_reply.node_rid

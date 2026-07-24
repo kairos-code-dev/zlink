@@ -4,7 +4,8 @@ internal sealed class ZLinkSpotHttpExecutionScheduler : IZLinkHttpExecutionSched
 {
     public IZLinkHttpExecutionTurn? Capture()
     {
-        return ZLinkSerialTurn.Current is { } turn
+        return ZLinkApplicationExecutionContext.Current is { YieldAllowed: true }
+               && ZLinkSerialTurn.Current is { } turn
             ? new ZLinkSpotHttpExecutionTurn(turn)
             : null;
     }

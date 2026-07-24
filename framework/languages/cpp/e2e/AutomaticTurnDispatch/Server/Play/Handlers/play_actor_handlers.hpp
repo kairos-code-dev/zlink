@@ -73,7 +73,7 @@ class await_entry_spot_t : public zlink::framework::entry_spot_t
         _evidence.add ("actor-await-released|rid=" + _evidence.node_rid + "|spot=" + spot_rid
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|handler=actor");
-        co_await call.async<yd::delay_res_t> ();
+        co_await call.submit<yd::delay_res_t> ();
         _evidence.add ("actor-await-resumed|rid=" + _evidence.node_rid + "|spot=" + spot_rid
                        + "|actor=" + actor.actor_id + "|mailbox=" + mailbox + "|request="
                        + request.request_id + "|handler=actor");
@@ -161,7 +161,7 @@ class await_entry_spot_t : public zlink::framework::entry_spot_t
         _evidence.add ("actor-push-await-released|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");
-        co_await call.async<yd::delay_res_t> ();
+        co_await call.submit<yd::delay_res_t> ();
         _evidence.add ("actor-push-await-resumed|rid=" + _evidence.node_rid + "|spot="
                        + spot_rid + "|actor=" + actor.actor_id + "|mailbox=" + mailbox
                        + "|request=" + request.request_id + "|handler=actor");

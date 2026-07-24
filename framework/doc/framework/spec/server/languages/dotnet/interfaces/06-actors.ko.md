@@ -2,6 +2,13 @@
 
 [.NET exact interface 목차](README.ko.md)
 
+Session에 bind된 Actor의 physical disconnect는 Framework가 automatic all-settled로 통지한다. Actor
+disconnect callback은 destroy·leave·membership 변경이 아니다. Actor relocation은 같은 ObjectGeneration에
+대해 owner·membership commit, 필요한 lifecycle callback과 accepted journal replay·logical timer 복원, durable source cleanup,
+`Completed` CAS를 차례로 끝낸 뒤 command 44·45로 해당 binding route만 바꾼다. Relocation 자체는
+disconnect callback을 실행하지 않는다. 같은 Session의 다른 Actor route와 physical STREAM connection은
+유지하며 routed ACK와 steady normalization 전에는 target session packet·push admission을 열지 않는다.
+
 ## 1. Actor
 
 ActorId는 Location Store transaction domain 전체에서 유일한 logical ID다. UTF-8 encoded 크기는
@@ -18,16 +25,24 @@ public readonly record struct ActorRef(
 
 public interface IZLinkActor
 {
-    string ActorId { get; }
     IZLinkActorContext Context { get; }
     void Configure() { }
+    ValueTask OnJoinCompletedAsync(
+        ZLinkActorJoinCompletion completion,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
 }
 
 public interface IZLinkActorContext
 {
+    string ActorId { get; }
+    ulong ObjectGeneration { get; }
     string MeshName { get; }
     string? SpotId { get; }
     IZLinkBoundSession BoundSession { get; }
+    IZLinkActorJoinSpotCall JoinSpot(string spotId);
     IZLinkActorJoinSpotCall JoinSpot(
         string spotId,
         ZLinkMessage request);
@@ -37,6 +52,7 @@ public interface IZLinkActorContext
     {
         return JoinSpot(spotId, ZLinkMessage.From(request));
     }
+    IZLinkActorJoinEntrySpotCall JoinEntrySpot();
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
         ZLinkMessage request);
     IZLinkActorJoinEntrySpotCall JoinEntrySpot<TRequest>(
@@ -63,7 +79,6 @@ public interface IZLinkActorHandlerRegistry
 public interface IZLinkActorFactory
 {
     ValueTask<IZLinkActor> CreateAsync(
-        string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default);
 }
@@ -73,7 +88,6 @@ public interface IZLinkActorFactory<TActor>
     where TActor : class, IZLinkActor
 {
     new ValueTask<TActor> CreateAsync(
-        string actorId,
         IZLinkActorContext context,
         CancellationToken cancellationToken = default);
 }
@@ -182,54 +196,37 @@ public interface IZLinkActorRequestCall : IZLinkMetadataCall<IZLinkActorRequestC
         CancellationToken cancellationToken = default);
 }
 
-public interface IZLinkActorJoinCall
+public interface IZLinkActorDeferredJoinCall
 {
-    ValueTask<ZLinkActorJoinResult> Async(
-        CancellationToken cancellationToken = default);
-    async ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
-        CancellationToken cancellationToken = default)
-    {
-        var result = await Async(cancellationToken).ConfigureAwait(false);
-        return result switch
-        {
-            ZLinkActorJoinResult.Accepted accepted =>
-                new ZLinkActorJoinResult<TReply>.Accepted(
-                    accepted.Actor,
-                    accepted.Reply.Decode<TReply>()),
-            ZLinkActorJoinResult.Rejected rejected =>
-                new ZLinkActorJoinResult<TReply>.Rejected(
-                    rejected.Reply.Decode<TReply>()),
-            _ => throw new InvalidOperationException("Unknown actor join result.")
-        };
-    }
+    void Defer();
 }
 
-public interface IZLinkActorJoinSpotCall : IZLinkActorJoinCall
+public interface IZLinkActorJoinSpotCall : IZLinkActorDeferredJoinCall
 {
     IZLinkActorJoinSpotCall Timeout(TimeSpan timeout);
 }
 
-public interface IZLinkActorJoinEntrySpotCall : IZLinkActorJoinCall
+public interface IZLinkActorJoinEntrySpotCall : IZLinkActorDeferredJoinCall
 {
     IZLinkActorJoinEntrySpotCall Timeout(TimeSpan timeout);
 }
 
-public abstract record ZLinkActorJoinResult
-{
-    private protected ZLinkActorJoinResult() { }
-    public sealed record Accepted(ActorRef Actor, ZLinkMessage Reply)
-        : ZLinkActorJoinResult;
-    public sealed record Rejected(ZLinkMessage Reply)
-        : ZLinkActorJoinResult;
-}
+public readonly record struct ZLinkActorJoinOperationId(ulong High, ulong Low);
 
-public abstract record ZLinkActorJoinResult<TReply>
+public abstract record ZLinkActorJoinCompletion
 {
-    private protected ZLinkActorJoinResult() { }
-    public sealed record Accepted(ActorRef Actor, TReply Reply)
-        : ZLinkActorJoinResult<TReply>;
-    public sealed record Rejected(TReply Reply)
-        : ZLinkActorJoinResult<TReply>;
+    private protected ZLinkActorJoinCompletion() { }
+    public sealed record Accepted(
+        ZLinkActorJoinOperationId OperationId,
+        ActorRef Actor,
+        ZLinkMessage? Reply) : ZLinkActorJoinCompletion;
+    public sealed record Rejected(
+        ZLinkActorJoinOperationId OperationId,
+        ZLinkMessage? Reply) : ZLinkActorJoinCompletion;
+    public sealed record Failed(
+        ZLinkActorJoinOperationId OperationId,
+        ZLinkFrameworkErrorKind Kind,
+        bool IsRetriable) : ZLinkActorJoinCompletion;
 }
 ```
 
@@ -237,16 +234,20 @@ Actor packet handler는 Spot이 소유한 registry에 등록한다. Handler의 �
 [Spot interface](05-spots.ko.md)가 정의한다. `SpotId == null`은 Entry Spot 단계이고 값이 있으면 해당 user
 Spot에 참여한 상태다. 같은 상태를 나타내는 별도 boolean은 제공하지 않는다.
 
-Actor join call은 `Async(...)`만 제공하고 `Yield(...)`를 제공하지 않는다. `SpotWide` User Spot의 member
+Actor join call은 결과 없는 동기 `Defer()`만 제공하고 `Async(...)`·`Yield(...)`를 제공하지 않는다. `SpotWide` User Spot의 member
 Actor가 Actor·Spot·Channel request 또는 worker call을 `Yield(...)`하면 Actor queue claim은 유지하고 User
 Spot gate만 반환한다. 같은 Actor의 다음 job은 terminal continuation이 gate를 다시 얻어 현재 job을 완료할
 때까지 시작하지 않는다. Entry Spot과 `PerActor` User Spot Actor에서는 request·worker operation submit 전에
 `InvalidConfiguration`으로 완료한다.
 
-`SpotWide` member Actor가 현재 User Spot을 떠나는 `JoinSpot(...).Async(...)`를 기다리면 source lifecycle
-callback이 같은 User Spot gate를 얻을 수 없다. Framework는 join operation submission, outbound admission과
-source·target queue 변경 전에 `InvalidConfiguration`으로 완료하며 callback을 inline 또는 재진입 방식으로
-호출하지 않는다.
+`Defer()`는 현재 handler에 immutable Join intent를 등록하며 handler 정상 terminal 뒤 실행한다. Target
+admission·relocation 결과는 같은 128-bit operation ID의 `OnJoinCompletedAsync(...)` callback으로 전달한다.
+Handler가 `Yield(...)`를 사용해도 barrier는 최종 continuation terminal 전에는 활성화하지 않는다.
+Operation ID는 completion idempotency ID이며 RelocationId나 reservation ID가 아니다. Same-node outcome과
+Rejected·commit 전 Failed completion retry는 current process lifetime으로 제한한다. Cross-node commit 뒤
+Accepted만 Relocation manifest에 operation ID, optional reply와 cursor를 보존해 durable at-least-once로 전달한다.
+Request 없는 overload는 empty `ZLinkMessage`를 고정한다. Timeout 기본값은 5초이고 명시 값은
+millisecond 올림 기준 finite `1..int.MaxValue` ms다. `Defer()`에서 monotonic absolute deadline을 고정한다.
 
 Relocation policy는 Actor factory registration이 소유한다. `Disabled`는 cross-node materialization이 필요한
 이동을 capture 전에 거부한다. `Recreate`는 target factory로 같은 logical identity를 다시 만들고 application
@@ -262,7 +263,8 @@ Spot relocation의 모든 Actor participant는 같은 Actor factory policy를 �
 
 Target은 owner commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
 실행하지 않는다. Standalone Actor는 owner commit 뒤 lifecycle callback과 old Entry membership의 durable
-cleanup을 완료한 다음 journal replay를 실행한다. `Activated`에 도달해도
+callback을 완료한 다음 journal replay를 실행하고 old Entry membership을 포함한 source resource를 durable하게
+cleanup한다. `Activated`에 도달해도
 application과 session ingress는 sealed 상태를 유지하고 bound-session route는 staged 상태로만 준비한다. Source
 cleanup이 terminal 상태에 도달하고 authority의 `Completed` CAS가 성공한 뒤에만 target을 `Ready`로 열고 relocation
 fence를 해제한다. `Completed`

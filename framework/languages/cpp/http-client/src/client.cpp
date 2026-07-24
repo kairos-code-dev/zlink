@@ -573,7 +573,7 @@ request_builder_t::dispatch_request (detail::http_request_t request) const
     return zlink::framework::task_t<raw_http_response_t> (_client._runtime->execute (request));
 }
 
-zlink::framework::task_t<raw_http_response_t> request_builder_t::async_raw () const
+zlink::framework::task_t<raw_http_response_t> request_builder_t::submit_raw () const
 {
     return dispatch_request (make_request (nullptr));
 }

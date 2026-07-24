@@ -108,8 +108,8 @@ public sealed class LocationResolverTests
     public async Task Spot_Recreated_After_Expired_Owner_Can_Restart_Generation()
     {
         var fixture = await FixtureAsync();
-        var spotId = RoutingId.From("spot-recreated");
-        var key = new ZLinkSpotLocationKey("play", spotId);
+        const string spotId = "spot-recreated";
+        var key = new ZLinkSpotLocationKey(spotId);
         await fixture.Store.UpdateSpotAsync(
             InMemoryLocationStoreTests.Spot(OwnerA, "spot-recreated") with
             {
@@ -225,7 +225,7 @@ public sealed class LocationResolverTests
     }
 
     [Fact]
-    public async Task Spot_Address_Resolves_Only_In_The_Requested_Mesh()
+    public async Task Spot_Address_Uses_Global_Id_And_Returns_The_Canonical_Row_Mesh()
     {
         var fixture = await FixtureAsync();
         await fixture.Store.UpdateSpotAsync(
@@ -236,22 +236,22 @@ public sealed class LocationResolverTests
             new ZLinkSpotHandleRegistry());
 
         var address = Assert.IsType<ZLinkResolvedSpotHandle>(
-            await addresses.ResolveSpotHandleAsync("play", RoutingId.From("spot-1")));
+            await addresses.ResolveSpotHandleAsync("play", "spot-1"));
 
-        Assert.Equal(RoutingId.From("spot-1"), address.SpotId);
+        Assert.Equal("spot-1", address.SpotId);
         Assert.Equal(RoutingId.From("node-1"), address.Snapshot.NodeRid);
         Assert.Equal(ZLinkSpotKind.User, address.Snapshot.SpotKind);
 
-        Assert.Null(await addresses.ResolveSpotHandleAsync(
-            "other",
-            RoutingId.From("spot-1")));
+        var sameGlobalAddress = Assert.IsType<ZLinkResolvedSpotHandle>(
+            await addresses.ResolveSpotHandleAsync("other", "spot-1"));
+        Assert.Equal("play", sameGlobalAddress.MeshName);
     }
 
     [Fact]
-    public async Task Spot_Address_Uses_Exact_Mesh_When_Routing_Id_Is_Shared()
+    public async Task Spot_Address_Uses_The_Canonical_Row_Mesh_For_A_Global_Id()
     {
         var fixture = await FixtureAsync();
-        var sharedRid = RoutingId.From("shared-entry");
+        const string sharedRid = "shared-entry";
         await fixture.Store.UpdateSpotAsync(
             InMemoryLocationStoreTests.Spot(OwnerA, "shared-entry") with
             {
@@ -260,15 +260,6 @@ public sealed class LocationResolverTests
                 OwnerNodeRid = RoutingId.From("node-1")
             },
             ZLinkLocationWriteIntent.NewClaim);
-        await fixture.Store.UpdateSpotAsync(
-            InMemoryLocationStoreTests.Spot(OwnerB, "shared-entry") with
-            {
-                MeshName = "play",
-                SpotId = sharedRid,
-                OwnerNodeRid = RoutingId.From("node-2")
-            },
-            ZLinkLocationWriteIntent.NewClaim);
-
         var addresses = new ZLinkLocationAddressResolvers(
             fixture.Resolvers,
             new ZLinkSpotHandleRegistry());
@@ -276,8 +267,8 @@ public sealed class LocationResolverTests
         var handle = Assert.IsType<ZLinkResolvedSpotHandle>(
             await addresses.ResolveSpotHandleAsync("play", sharedRid));
 
-        Assert.Equal("play", handle.MeshName);
-        Assert.Equal(RoutingId.From("node-2"), handle.Snapshot.NodeRid);
+        Assert.Equal("external", handle.MeshName);
+        Assert.Equal(RoutingId.From("node-1"), handle.Snapshot.NodeRid);
     }
 
     [Fact]
@@ -295,7 +286,7 @@ public sealed class LocationResolverTests
             await addresses.ResolveActorSpotHandleAsync("play", "actor-entry"));
 
         Assert.Equal(RoutingId.From("node-1"), handle.Snapshot.NodeRid);
-        Assert.Equal(RoutingId.From("node-1"), handle.SpotId);
+        Assert.Equal(handle.Snapshot.SpotId, handle.SpotId);
         Assert.Equal(ZLinkSpotKind.Entry, handle.Snapshot.SpotKind);
         Assert.DoesNotContain(
             typeof(SpotHandle).GetProperties(),
@@ -309,7 +300,7 @@ public sealed class LocationResolverTests
         var play = InMemoryLocationStoreTests.Actor(OwnerA, "shared-actor") with
         {
             SpotKind = ZLinkSpotKind.User,
-            SpotId = RoutingId.From("play-spot")
+            SpotId = "play-spot"
         };
         var external = InMemoryLocationStoreTests.Actor(OwnerB, "shared-actor") with
         {
@@ -317,7 +308,7 @@ public sealed class LocationResolverTests
             ActorRef = new ActorRef(RoutingId.From("node-2"), "shared-actor", 1),
             OwnerNodeRid = RoutingId.From("node-2"),
             SpotKind = ZLinkSpotKind.User,
-            SpotId = RoutingId.From("external-spot")
+            SpotId = "external-spot"
         };
         await fixture.Store.UpdateActorAsync(play, ZLinkLocationWriteIntent.NewClaim);
         await fixture.Store.UpdateActorAsync(external, ZLinkLocationWriteIntent.NewClaim);
@@ -331,12 +322,12 @@ public sealed class LocationResolverTests
 
         handles.UpdateActor(external with
         {
-            SpotId = RoutingId.From("external-moved"),
+            SpotId = "external-moved",
             MembershipEpoch = external.MembershipEpoch + 1
         });
 
-        Assert.Equal(RoutingId.From("play-spot"), playHandle.SpotId);
-        Assert.Equal(RoutingId.From("external-moved"), externalHandle.SpotId);
+        Assert.Equal("play-spot", playHandle.SpotId);
+        Assert.Equal("external-moved", externalHandle.SpotId);
     }
 
     [Fact]
@@ -350,7 +341,7 @@ public sealed class LocationResolverTests
             InMemoryLocationStoreTests.Actor(OwnerA, "actor-mapped") with
             {
                 SpotKind = ZLinkSpotKind.User,
-                SpotId = RoutingId.From("spot-mapped")
+                SpotId = "spot-mapped"
             },
             ZLinkLocationWriteIntent.NewClaim);
 
@@ -360,7 +351,7 @@ public sealed class LocationResolverTests
             handles);
 
         var spot = Assert.IsType<ZLinkResolvedSpotHandle>(
-            await addresses.ResolveSpotHandleAsync("play", RoutingId.From("spot-mapped")));
+            await addresses.ResolveSpotHandleAsync("play", "spot-mapped"));
         var actor = Assert.IsType<ZLinkResolvedSpotHandle>(
             await addresses.ResolveActorSpotHandleAsync("play", "actor-mapped"));
         Assert.Equal("play", spot.Snapshot.RouterChannelId);
@@ -373,7 +364,7 @@ public sealed class LocationResolverTests
         handles.UpdateActor(InMemoryLocationStoreTests.Actor(OwnerA, "actor-mapped") with
         {
             SpotKind = ZLinkSpotKind.User,
-            SpotId = RoutingId.From("spot-mapped"),
+            SpotId = "spot-mapped",
             MembershipEpoch = 2
         });
         Assert.Equal("play", spot.Snapshot.RouterChannelId);
@@ -416,15 +407,15 @@ public sealed class LocationResolverTests
     }
 
     [Fact]
-    public void Spot_Handle_Registry_Does_Not_Cross_Mesh_Boundaries()
+    public void Spot_Handle_Registry_Uses_Global_SpotId_Across_Mesh_Labels()
     {
-        var spotId = RoutingId.From("shared-spot");
+        const string spotId = "shared-spot";
         var handle = new ZLinkResolvedSpotHandle(
             new ZLinkSpotHandleSnapshot("play", RoutingId.From("node-1"), spotId, 1),
             1,
             _ => ValueTask.FromResult<(ZLinkSpotHandleSnapshot, ulong)?>(null));
         var handles = new ZLinkSpotHandleRegistry();
-        handles.RegisterSpot(new ZLinkSpotLocationKey("play", spotId), handle);
+        handles.RegisterSpot(new ZLinkSpotLocationKey(spotId), handle);
 
         handles.UpdateSpot(InMemoryLocationStoreTests.Spot(OwnerB, "shared-spot") with
         {
@@ -432,17 +423,16 @@ public sealed class LocationResolverTests
             OwnerNodeRid = RoutingId.From("node-2"),
             SpotGeneration = 2
         });
-        handles.RemoveSpot(new ZLinkSpotLocationKey("other", spotId), 3);
+        handles.RemoveSpot(new ZLinkSpotLocationKey(spotId), 3);
 
-        Assert.Equal("play", handle.Snapshot.RouterChannelId);
-        Assert.Equal(RoutingId.From("node-1"), handle.Snapshot.NodeRid);
+        Assert.Throws<ZLinkFrameworkException>(() => _ = handle.Snapshot);
     }
 
     [Fact]
     public void Polling_Refresh_Invalidates_Handles_Whose_Row_Vanished()
     {
-        var spotId = RoutingId.From("shared-spot");
-        var key = new ZLinkSpotLocationKey("play", spotId);
+        const string spotId = "shared-spot";
+        var key = new ZLinkSpotLocationKey(spotId);
         var first = new ZLinkResolvedSpotHandle(
             new ZLinkSpotHandleSnapshot("play", RoutingId.From("node-1"), spotId, 1),
             1,
@@ -487,7 +477,7 @@ public sealed class LocationResolverTests
         await host.ApplyAsync(
             new ZLinkLocationChanged(
                 ZLinkLocationKind.Spot,
-                new ZLinkLocationKey.Spot(new ZLinkSpotLocationKey("play", initial.SpotId)),
+                new ZLinkLocationKey.Spot(new ZLinkSpotLocationKey(initial.SpotId)),
                 ZLinkLocationChangeType.Upserted,
                 takeover.Generation,
                 DateTimeOffset.UtcNow),
@@ -518,7 +508,7 @@ public sealed class LocationResolverTests
         await host.ApplyAsync(
             new ZLinkLocationChanged(
                 ZLinkLocationKind.Spot,
-                new ZLinkLocationKey.Spot(new ZLinkSpotLocationKey("play", initial.SpotId)),
+                new ZLinkLocationKey.Spot(new ZLinkSpotLocationKey(initial.SpotId)),
                 ZLinkLocationChangeType.Removed,
                 written.Generation,
                 DateTimeOffset.UtcNow),
@@ -544,7 +534,7 @@ public sealed class LocationResolverTests
             new ZLinkSpotHandleSnapshot(
                 "play",
                 RoutingId.From("node-1"),
-                RoutingId.From("spot-1"),
+                "spot-1",
                 1),
             1,
             _ =>
@@ -577,7 +567,7 @@ public sealed class LocationResolverTests
             new ZLinkSpotHandleSnapshot(
                 "play",
                 RoutingId.From("node-new"),
-                RoutingId.From("spot-new"),
+                "spot-new",
                 2),
             2,
             _ => ValueTask.FromResult<(ZLinkSpotHandleSnapshot, ulong)?>(null));
@@ -586,27 +576,27 @@ public sealed class LocationResolverTests
             new ZLinkSpotHandleSnapshot(
                 "play",
                 RoutingId.From("node-old"),
-                RoutingId.From("spot-old"),
+                "spot-old",
                 1),
             1);
         handle.Invalidate(1);
 
         Assert.Equal(RoutingId.From("node-new"), handle.Snapshot.NodeRid);
-        Assert.Equal(RoutingId.From("spot-new"), handle.SpotId);
+        Assert.Equal("spot-new", handle.SpotId);
 
         handle.Invalidate(3);
         handle.Update(
             new ZLinkSpotHandleSnapshot(
                 "play",
                 RoutingId.From("node-same"),
-                RoutingId.From("spot-same"),
+                "spot-same",
                 3),
             3);
         handle.Update(
             new ZLinkSpotHandleSnapshot(
                 "play",
                 RoutingId.From("node-delayed"),
-                RoutingId.From("spot-delayed"),
+                "spot-delayed",
                 2),
             2);
         Assert.Throws<ZLinkFrameworkException>(() => _ = handle.Snapshot);
@@ -625,19 +615,19 @@ public sealed class LocationResolverTests
 
         var entryAddress = await addresses.ResolveActorSpotHandleAsync("play", entryActor.ActorId);
         Assert.NotNull(entryAddress);
-        Assert.Equal(entryActor.OwnerNodeRid, entryAddress.SpotId);
+        Assert.Equal(entryActor.SpotId, entryAddress.SpotId);
 
         var userActor = InMemoryLocationStoreTests.Actor(OwnerA, "actor-2") with
         {
             ActorRef = new ActorRef(RoutingId.From("node-1"), "actor-2", 1),
             SpotKind = ZLinkSpotKind.User,
-            SpotId = RoutingId.From("spot-7")
+            SpotId = "spot-7"
         };
         await fixture.Store.UpdateActorAsync(userActor, ZLinkLocationWriteIntent.NewClaim);
 
         var userAddress = await addresses.ResolveActorSpotHandleAsync("play", userActor.ActorId);
         Assert.NotNull(userAddress);
-        Assert.Equal(RoutingId.From("spot-7"), userAddress.SpotId);
+        Assert.Equal("spot-7", userAddress.SpotId);
     }
 
     [Fact]
@@ -647,7 +637,7 @@ public sealed class LocationResolverTests
         var actor = InMemoryLocationStoreTests.Actor(OwnerA) with
         {
             SpotKind = ZLinkSpotKind.User,
-            SpotId = RoutingId.From("spot-old")
+            SpotId = "spot-old"
         };
         await fixture.Store.UpdateActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
         var addresses = new ZLinkLocationAddressResolvers(
@@ -661,12 +651,12 @@ public sealed class LocationResolverTests
             {
                 OwnerId = OwnerB,
                 OwnerNodeRid = RoutingId.From("node-2"),
-                SpotId = RoutingId.From("spot-new"),
+                SpotId = "spot-new",
                 MembershipEpoch = actor.MembershipEpoch + 1
             },
             ZLinkLocationWriteIntent.Takeover);
 
-        var attempts = new List<RoutingId>();
+        var attempts = new List<string>();
         var spotId = await ZLinkSpotHandleRequestExecution.ExecuteAsync(
             handle,
             snapshot =>
@@ -680,9 +670,9 @@ public sealed class LocationResolverTests
             },
             CancellationToken.None);
 
-        Assert.Equal([RoutingId.From("spot-old"), RoutingId.From("spot-new")], attempts);
-        Assert.Equal(RoutingId.From("spot-new"), spotId);
-        Assert.Equal(RoutingId.From("spot-new"), handle.SpotId);
+        Assert.Equal(["spot-old", "spot-new"], attempts);
+        Assert.Equal("spot-new", spotId);
+        Assert.Equal("spot-new", handle.SpotId);
     }
 
     [Fact]
@@ -692,7 +682,7 @@ public sealed class LocationResolverTests
         var actor = InMemoryLocationStoreTests.Actor(OwnerA) with
         {
             SpotKind = ZLinkSpotKind.User,
-            SpotId = RoutingId.From("spot-old")
+            SpotId = "spot-old"
         };
         await fixture.Store.UpdateActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
         var handles = new ZLinkSpotHandleRegistry();
@@ -705,12 +695,12 @@ public sealed class LocationResolverTests
         handles.UpdateActor(actor with
         {
             OwnerNodeRid = RoutingId.From("node-2"),
-            SpotId = RoutingId.From("spot-new"),
+            SpotId = "spot-new",
             MembershipEpoch = actor.MembershipEpoch + 1
         });
 
         Assert.Equal(RoutingId.From("node-2"), handle.Snapshot.NodeRid);
-        Assert.Equal(RoutingId.From("spot-new"), handle.SpotId);
+        Assert.Equal("spot-new", handle.SpotId);
     }
 
     [Fact]
@@ -720,7 +710,7 @@ public sealed class LocationResolverTests
         var actor = InMemoryLocationStoreTests.Actor(OwnerA) with
         {
             SpotKind = ZLinkSpotKind.User,
-            SpotId = RoutingId.From("spot-old")
+            SpotId = "spot-old"
         };
         await fixture.Store.UpdateActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
         var locationOptions = new ZLinkLocationOptions
@@ -745,13 +735,13 @@ public sealed class LocationResolverTests
             {
                 OwnerId = OwnerB,
                 OwnerNodeRid = RoutingId.From("node-2"),
-                SpotId = RoutingId.From("spot-new"),
+                SpotId = "spot-new",
                 MembershipEpoch = actor.MembershipEpoch + 1
             },
             ZLinkLocationWriteIntent.Takeover);
 
         await WaitUntilAsync(
-            () => handle.SpotId == RoutingId.From("spot-new"),
+            () => handle.SpotId == "spot-new",
             TimeSpan.FromSeconds(2));
         Assert.Equal(RoutingId.From("node-2"), handle.Snapshot.NodeRid);
         Assert.Equal("play", handle.Snapshot.RouterChannelId);

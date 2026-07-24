@@ -640,7 +640,7 @@ class route_send_call_t
     route_send_call_t (std::string packet_name, submit_fn_t submit);
 
     route_send_call_t &metadata (std::string key, std::string value);
-    task_t<submit_result_t> submit ();
+    task_t<void> submit ();
 
   private:
     result_t<void> submit_now ();

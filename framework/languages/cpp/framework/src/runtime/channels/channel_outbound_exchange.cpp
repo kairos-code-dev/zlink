@@ -1248,13 +1248,21 @@ channel_outbound_exchange_t::submit_publish (std::string channel_name,
                       framework_error_kind_t::request_failed,
                       "channel message exceeds configured max message size");
                 }
-                return (*publish) (
-                  std::move (topic),
+                auto published = (*publish) (
+                  topic,
                   call_packet_name,
                   _state->serializers->content_type (
                     event_type),
                   std::move (payload),
                   resolve_send_wait_timeout (timeout));
+                if (published && _state->monitoring) {
+                    runtime::runtime_metrics_t metrics (_state->monitoring);
+                    if (metrics.enabled ()) {
+                        metrics.counter ("zlink.fanout.published", "{message}", 1,
+                                         {{"topic", topic}});
+                    }
+                }
+                return published;
             }
             catch (const framework_exception_t &error) {
                 return detail::result_access_t::failure<void> (
@@ -1271,20 +1279,6 @@ channel_outbound_exchange_t::submit_publish (std::string channel_name,
             auto header = codec.create_envelope (runtime::messaging::message_kind_t::publish,
                                                  channel_name, call_packet_name, timeout, topic);
             header.metadata = metadata;
-            detail::message_flow_tracer_t (_state->dispatch)
-              .trace (message_flow_outcome_t::sent, [&] {
-                  return message_flow_event_t{message_flow_outcome_t::sent,
-                                              dispatch_error_surface_t::channel,
-                                              dispatch_message_kind_t::publish,
-                                              call_packet_name,
-                                              channel_name,
-                                              topic,
-                                              header.correlation_id,
-                                              std::nullopt,
-                                              std::nullopt,
-                                              std::nullopt,
-                                              std::nullopt};
-            });
             auto parts = encode_channel_payload_parts (header, event_type, encode_payload,
                                                        *_state->serializers);
             if (exceeds_configured_max_message_size (parts, *publisher)) {

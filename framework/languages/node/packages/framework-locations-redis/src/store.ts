@@ -186,9 +186,9 @@ export class ZLinkRedisLocationStore implements
     const entryAuthorityKey = descriptor.entrySpotId === undefined
       ? ''
       : encodeAuthorityKey('user_spot', descriptor.entrySpotId);
-    const entryIdentityClaimKey = entryAuthorityKey.length === 0
+    const entryIdentityClaimKey = descriptor.entrySpotId === undefined
       ? this.keys.schema()
-      : this.keys.entrySpotIdentityClaim(entryAuthorityKey);
+      : this.keys.entrySpotIdentityClaim(descriptor.entrySpotId);
     const raw = asArray(await this.eval(MESH_DESCRIPTOR_WRITE_SCRIPT, [
       this.keys.descriptorMesh(rowKey),
       this.keys.descriptorAdmissionMesh(rowKey),
@@ -237,17 +237,14 @@ export class ZLinkRedisLocationStore implements
       'updatedAtMs'
     ], signal));
     const descriptor = materialize(kindMeshNode, fields);
-    const entryAuthorityKey = descriptor?.entrySpotId === undefined
-      ? ''
-      : encodeAuthorityKey('user_spot', descriptor.entrySpotId);
     const raw = asArray(await this.eval(MESH_DESCRIPTOR_REMOVE_SCRIPT, [
       this.keys.descriptorMesh(rowKey),
       this.keys.descriptorAdmissionMesh(rowKey),
       this.keys.descriptorMeshIndex(),
       this.keys.descriptorMeshOwnerIndex(owner.ownerId, owner.leaseGeneration.toString()),
-      entryAuthorityKey.length === 0
+      descriptor?.entrySpotId === undefined
         ? this.keys.schema()
-        : this.keys.entrySpotIdentityClaim(entryAuthorityKey)
+        : this.keys.entrySpotIdentityClaim(descriptor.entrySpotId)
     ], [
       owner.ownerId,
       owner.leaseGeneration.toString(),
@@ -1095,12 +1092,14 @@ export class ZLinkRedisLocationStore implements
       throw new TypeError('Object creation content receipt is invalid.');
     }
     const reservationId = randomUUID();
+    const globalId = requireText(request.key.globalId, 'object global ID');
     const raw = await this.authorityCall('reserve', {
       key: encodeAuthorityKey(
         request.key.kind,
-        requireText(request.key.globalId, 'object global ID')
+        globalId
       ),
       objectKind: request.key.kind,
+      entrySpotId: request.key.kind === 'actor' ? undefined : globalId,
       stableType: requireText(request.intent.stableType, 'stable type'),
       capacity: capacityJson(request.capacity),
       capacityBundle: encodeCapacityBundle(request.capacity),
@@ -1730,8 +1729,12 @@ export class ZLinkRedisLocationStore implements
           BigInt(terminalOperation.operationIdHigh),
           BigInt(terminalOperation.operationIdLow)
         );
-    const terminalOrEntryIdentityKey = operation === 'reserve' && authorityKey.length > 0
-      ? this.keys.entrySpotIdentityClaim(authorityKey)
+    const entrySpotId = operation === 'reserve' && value.objectKind !== 'actor'
+      && typeof value.entrySpotId === 'string'
+      ? value.entrySpotId
+      : '';
+    const terminalOrEntryIdentityKey = entrySpotId.length > 0
+      ? this.keys.entrySpotIdentityClaim(entrySpotId)
       : creationTerminalKey;
     const keys = [
       authorityKey.length === 0 ? placeholder : this.keys.authorityCurrent(authorityKey),

@@ -140,7 +140,7 @@ class ensure_actor_handler_t
             if (!actor) {
                 throw *actor.error ();
             }
-            auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
+            auto bound = _actors.bind_or_get (actor.value ().ref ()).submit ().result ();
             if (!bound) {
                 throw *bound.error ();
             }

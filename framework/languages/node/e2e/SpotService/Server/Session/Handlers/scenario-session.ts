@@ -38,9 +38,8 @@ class ScenarioSession implements ZLinkSession {
   }
 
   async onDisconnected(): Promise<void> {
-    for (const actor of this.context.actors.bound.slice(0, 1)) {
-      await actor.notifyDisconnected();
-    }
+    // Framework가 disconnect 시점의 exact binding snapshot 전체에 통지한다.
+    // Application callback은 Actor 목록을 순회하거나 통지를 다시 제출하지 않는다.
     this.evidence.add(`session-disconnected|rid=${this.evidence.rid}|session=${this.context.sessionId}`);
   }
 

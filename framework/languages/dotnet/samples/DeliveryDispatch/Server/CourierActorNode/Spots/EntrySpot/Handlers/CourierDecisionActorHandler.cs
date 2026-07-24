@@ -41,7 +41,7 @@ internal sealed class CourierDecisionActorHandler(
                     attempt.Value,
                     message.Accepted,
                     message.Reason))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
 
         logger.LogInformation(
             "deliverydispatch courier-actor: decision delivery={DeliveryId} courier={CourierId} attempt={Attempt} accepted={Accepted}",

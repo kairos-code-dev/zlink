@@ -321,11 +321,11 @@ public sealed class ZLinkAsyncSubmitterTests
     }
 
     [Fact]
-    public async Task Async_ThrowsWhenQueueIsFull()
+    public async Task Async_WaitsUntilSendTimeoutWhenPendingCapacityIsFull()
     {
         await using var submitter = new ZLinkAsyncSubmitter(
             _ => { },
-            TimeSpan.FromSeconds(1),
+            TimeSpan.FromMilliseconds(100),
             CancellationToken.None,
             1);
 
@@ -335,10 +335,82 @@ public sealed class ZLinkAsyncSubmitterTests
 
         Assert.False(first.IsCompleted);
 
-        Assert.Throws<ZLinkPendingAdmissionFullException>(() =>
-            submitter.Async(
-                Message.From("second"),
-                _ => false));
+        var second = submitter.Async(
+            Message.From("second"),
+            _ => false);
+
+        Assert.False(second.IsCompleted);
+        await Assert.ThrowsAsync<TimeoutException>(() => second.AsTask());
+        await Assert.ThrowsAsync<TimeoutException>(() => first.AsTask());
+    }
+
+    [Fact]
+    public async Task Async_BoundsPendingCapacityWaitersAndNeverLateAdmitsOverflow()
+    {
+        Action? ready = null;
+        var writable = false;
+        var admitted = 0;
+        await using var submitter = new ZLinkAsyncSubmitter(
+            handler => ready = handler,
+            TimeSpan.FromSeconds(2),
+            CancellationToken.None,
+            capacity: 1);
+
+        bool Submit(Message _)
+        {
+            if (!writable) return false;
+            Interlocked.Increment(ref admitted);
+            return true;
+        }
+
+        var first = submitter.Async(Message.From("first"), Submit).AsTask();
+        var waiter = submitter.Async(Message.From("waiter"), Submit).AsTask();
+        Assert.True(SpinWait.SpinUntil(
+            () => submitter.PendingAdmissionWaiterCount == 1,
+            TimeSpan.FromSeconds(1)));
+
+        var overflow = Enumerable.Range(0, 32)
+            .Select(index => submitter.Async(Message.From($"overflow-{index}"), Submit).AsTask())
+            .ToArray();
+        foreach (var rejected in overflow)
+            await Assert.ThrowsAsync<TimeoutException>(() => rejected);
+
+        Assert.Equal(1, submitter.PendingAdmissionWaiterCount);
+        writable = true;
+        Assert.NotNull(ready);
+        ready();
+        await first.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.True(SpinWait.SpinUntil(
+            () => submitter.PendingAdmissionWaiterCount == 0,
+            TimeSpan.FromSeconds(1)));
+        ready();
+        await waiter.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(2, admitted);
+    }
+
+    [Fact]
+    public async Task Async_ShutdownReleasesBoundedPendingCapacityWaiter()
+    {
+        using var shutdown = new CancellationTokenSource();
+        await using var submitter = new ZLinkAsyncSubmitter(
+            _ => { },
+            TimeSpan.FromSeconds(2),
+            shutdown.Token,
+            capacity: 1);
+        var first = submitter.SubmitAsync([Message.From("first")], _ => false).AsTask();
+        var waiter = submitter.SubmitAsync([Message.From("waiter")], _ => false).AsTask();
+        Assert.True(SpinWait.SpinUntil(
+            () => submitter.PendingAdmissionWaiterCount == 1,
+            TimeSpan.FromSeconds(1)));
+
+        shutdown.Cancel();
+
+        Assert.Equal(ZLinkOneWaySubmitStatus.Shutdown, (await first).Status);
+        Assert.Equal(ZLinkOneWaySubmitStatus.Shutdown, (await waiter).Status);
+        Assert.True(SpinWait.SpinUntil(
+            () => submitter.PendingAdmissionWaiterCount == 0,
+            TimeSpan.FromSeconds(1)));
     }
 
     [Fact]
@@ -350,10 +422,11 @@ public sealed class ZLinkAsyncSubmitterTests
             CancellationToken.None,
             failFastNotConnected: static () => true);
 
-        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+        var exception = await Assert.ThrowsAsync<ZLinkFrameworkException>(() =>
             submitter.Async(
                 Message.From("payload"),
-                _ => throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.NotConnected)));
+                _ => throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.NotConnected))
+                .AsTask());
 
         Assert.Equal(ZLinkFrameworkErrorKind.RouteNotConnected, exception.Kind);
     }

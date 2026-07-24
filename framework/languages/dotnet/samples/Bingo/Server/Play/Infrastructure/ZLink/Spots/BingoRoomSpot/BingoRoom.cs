@@ -104,7 +104,7 @@ internal sealed class BingoRoom(
         if (_game is not null && _game.Status == BingoRoomStatus.Running)
             await actor.Context.BoundSession
                 .Send(new BingoGameStartedNotify { State = _game.Snapshot() })
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
 
     }
 
@@ -234,7 +234,7 @@ internal sealed class BingoRoom(
                         ItemName = BingoRewardItems.GoldenDauberName,
                         Rarity = BingoRewardItems.LegendaryRarity
                     })
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             logger.LogInformation(
                 "bingo reward: multicast status={Status}, remote={AdmittedRemote}/{SnapshotRemote}, local={AdmittedLocal}/{SnapshotLocal}",
                 publish.Status,
@@ -322,7 +322,7 @@ internal sealed class BingoRoom(
                     Rarity = message.Rarity,
                     ReceivingSpotNodeRid = Context.NodeRid.ToString()
                 })
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     internal async ValueTask<bool> StopObservingAsync(PlayerActor actor, string roomId,

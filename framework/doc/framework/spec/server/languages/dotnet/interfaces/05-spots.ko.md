@@ -2,6 +2,13 @@
 
 [.NET exact interface 목차](README.ko.md)
 
+Session에 bind된 Actor의 physical disconnect는 Framework가 automatic all-settled로 통지한다. Actor
+disconnect callback은 destroy·leave·membership 변경이 아니다. Actor relocation은 같은 ObjectGeneration에
+대해 owner·membership commit, 필요한 lifecycle callback과 accepted journal replay·logical timer 복원, durable source cleanup,
+`Completed` CAS를 차례로 끝낸 뒤 command 44·45로 해당 binding route만 바꾼다. Relocation 자체는
+disconnect callback을 실행하지 않는다. 같은 Session의 다른 Actor route와 physical STREAM connection은
+유지하며 routed ACK와 steady normalization 전에는 target session packet·push admission을 열지 않는다.
+
 ## 1. Spot
 
 SpotId는 UTF-8 encoded 크기 1..255 bytes의 `string`이며 Location Store transaction domain 전체에서
@@ -137,6 +144,7 @@ public interface IZLinkSpotCommonContext
 {
     string MeshName { get; }
     string SpotId { get; }
+    ulong ObjectGeneration { get; }
     RoutingId NodeRid { get; }
     IZLinkSpotOutbound Outbound { get; }
     ValueTask<IZLinkTimer> AddTimer<THandler>(
@@ -275,32 +283,6 @@ public interface IZLinkEntrySpotContext : IZLinkSpotCommonContext
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ZLinkSpotActorReplyOptions
-{
-    public ZLinkSpotActorReplyOptions();
-    public ZLinkSpotActorReplyOptions Metadata(string key, string value);
-    public ZLinkSpotActorReplyOptions Compress(bool enabled = true);
-}
-
-public sealed class ZLinkSpotActorSendContext : IZLinkHandlerContext
-{
-    public string? ChannelName { get; }
-    public string PacketName { get; }
-    public string? ContentType { get; }
-    public ZLinkMessageMetadata Metadata { get; }
-    public CancellationToken ConnectionAborted { get; }
-}
-
-public sealed class ZLinkSpotActorRequestContext : IZLinkHandlerContext
-{
-    public string? ChannelName { get; }
-    public string PacketName { get; }
-    public string? ContentType { get; }
-    public ZLinkMessageMetadata Metadata { get; }
-    public CancellationToken ConnectionAborted { get; }
-    public ZLinkSpotActorReplyOptions Reply { get; }
-}
-
 public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
     where TSpot : class
     where TActor : IZLinkActor
@@ -308,7 +290,7 @@ public interface IZLinkSpotActorSendHandler<TSpot, TActor, in TMessage>
     ValueTask HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -320,7 +302,7 @@ public interface IZLinkSpotActorRequestHandler<TSpot, TActor, in TRequest, TRepl
     ValueTask<TReply> HandleAsync(
         TSpot spot,
         TActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -332,7 +314,7 @@ public interface IZLinkEntrySpotActorSendHandler<TEntrySpot, TActor, in TMessage
     ValueTask HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorSendContext context,
+        IZLinkMessageContext context,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -344,7 +326,7 @@ public interface IZLinkEntrySpotActorRequestHandler<TEntrySpot, TActor, in TRequ
     ValueTask<TReply> HandleAsync(
         TEntrySpot entrySpot,
         TActor actor,
-        ZLinkSpotActorRequestContext context,
+        IZLinkMessageContext context,
         TRequest request,
         CancellationToken cancellationToken);
 }
@@ -382,11 +364,12 @@ exactly-once로 실행한다고 보장하지 않는다.
 
 Maintenance가 Actor를 다른 node의 Entry Spot에 복원하면 Actor adapter restore를 먼저 완료하고 Location authority와
 Entry membership을 commit한다. Target Entry Spot의 `OnActorRelocatedAsync(...)`와 source Entry Spot의
-`OnLeaveActorAsync(...)`가 모두 성공한 뒤에만 Actor dispatch admission을 연다. 어느 callback이 실패해도
+`OnLeaveActorAsync(...)`를 완료한 뒤 accepted journal을 replay하고 logical timer를 복원한다. 이어서 old Entry
+membership을 포함한 source resource cleanup, `Completed` CAS, bound-session route switch·ACK와 steady
+normalization을 마친 뒤에만 Actor dispatch admission을 연다. 어느 callback이 실패해도
 authority를 source로 rollback하지 않고 target을 sealed 상태로 유지한 채 재시도한다.
-두 callback 뒤 old Entry membership의 durable cleanup을 완료해야 accepted journal을 replay할 수 있다.
 Source process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신하므로
-target recovery를 막지 않는다. Replay 뒤 남은 source resource cleanup은 이 lifecycle gate와 구분한다.
+target recovery를 막지 않는다.
 User Spot application join은 `OnActorJoinAsync(...)`, membership commit, `OnJoinedActorAsync(...)` 순서를
 유지한다. User Spot에서 Entry Spot으로 복귀하면 Entry Spot의 `OnActorJoinAsync(...)`를 호출하지 않고 commit
 뒤 target `OnJoinedActorAsync(...)`와 source `OnLeaveActorAsync(...)`를 호출한다. Actor 최초 생성은
@@ -671,6 +654,5 @@ index가 owner MeshNode를 선택하며 caller는 MeshName을 추가로 넘기�
 각 remote target은 MeshNode ROUTER의 송신 규칙을 따르며, 같은 node의 일치하는 Spot queue는 immutable
 message storage를 공유한다. 정확한 설정 표면은
 [Topology configuration §5](03-configuration-topology.ko.md#5-publisher와-runtime-option)가 소유한다.
-Remote target의 source-local transport admission과 local Spot queue admission은 monitoring metric과 runtime
-event에 snapshot·admitted·dropped·unreachable count로 기록한다. Remote Spot queue 제출과 remote·local
-handler 실행 또는 완료는 기다리지 않는다.
+Remote transport와 local Spot queue의 target별 수락·실패 결과는 반환하거나 monitoring에 집계하지
+않는다. Remote Spot queue 제출과 remote·local handler 실행 또는 완료는 기다리지 않는다.

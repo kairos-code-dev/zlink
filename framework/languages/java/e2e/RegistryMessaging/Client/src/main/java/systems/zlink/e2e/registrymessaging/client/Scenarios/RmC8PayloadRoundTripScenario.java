@@ -24,7 +24,7 @@ public final class RmC8PayloadRoundTripScenario {
             String payload = buildPayload(size);
             Contracts.PayloadRes reply = singleConsumer.post("/profile/payload")
                 .body(new Contracts.PayloadReq(marker, payload))
-                .async(Contracts.PayloadRes.class).toCompletableFuture().join().body();
+                .submit(Contracts.PayloadRes.class).toCompletableFuture().join().body();
             ScenarioAssert.that(reply.marker().equals(marker), "RM-C8 payload marker mismatch for " + size);
             ScenarioAssert.that(reply.length() == payload.length(), "RM-C8 payload length mismatch for " + size);
             ScenarioAssert.that(reply.sha256().equals(sha256(payload)), "RM-C8 payload hash mismatch for " + size);
@@ -33,13 +33,13 @@ public final class RmC8PayloadRoundTripScenario {
             .body(new Contracts.PayloadReq(
                 "rm-c8-over-limit-" + java.util.UUID.randomUUID(),
                 buildPayload(3 * 1024 * 1024)))
-            .async(Contracts.RequestFailureRes.class).toCompletableFuture().join().body();
+            .submit(Contracts.RequestFailureRes.class).toCompletableFuture().join().body();
         ScenarioAssert.that(oversized.failed(), "RM-C8 oversized payload should fail");
         ScenarioAssert.that("TimeoutException".equals(oversized.errorKind()),
             "RM-C8 oversized payload should report TimeoutException, got " + oversized.errorKind());
         Contracts.ProfileRes followUp = singleConsumer.post("/profile/request")
             .body(new Contracts.ProfileReq("rm-c8-after"))
-            .async(Contracts.ProfileRes.class).toCompletableFuture().join().body();
+            .submit(Contracts.ProfileRes.class).toCompletableFuture().join().body();
         ScenarioAssert.that("profile:rm-c8-after".equals(followUp.value()), "RM-C8 follow-up request failed");
         String[] evidence = ScenarioAssert.concat(
             ScenarioAssert.evidence(providerA),

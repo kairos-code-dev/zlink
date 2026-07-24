@@ -47,7 +47,7 @@ inline void wait_topology_weight (zlink::http_client::client_t &topology,
                                               {"timeoutMilliseconds", 1000}}
                                  .dump (),
                                "application/json")
-                        .async<std::vector<topology_entry_result_t>> ()
+                        .submit<std::vector<topology_entry_result_t>> ()
                         .result ();
         if (result) {
             for (const auto &entry : result.value ().body) {
@@ -81,10 +81,10 @@ inline void run_inflight_crash_scenario (const client_options_t &options)
                       .timeout (std::chrono::milliseconds (35000))
                       .build ();
 
-    provider_a.post ("/admin/drain").async_raw ().result ().value ();
+    provider_a.post ("/admin/drain").submit_raw ().result ().value ();
     provider_a.post ("/admin/weight/wait")
       .body (nlohmann::json{{"expected", 0}}.dump (), "application/json")
-      .async_raw ()
+      .submit_raw ()
       .result ()
       .value ();
 
@@ -98,7 +98,7 @@ inline void run_inflight_crash_scenario (const client_options_t &options)
             auto response = slow_consumer.post ("/profile/request/manual-b")
                               .body (profile_req_t{.value = "slow", .marker = marker})
                               .timeout (std::chrono::milliseconds (5000))
-                              .async<profile_res_t> ()
+                              .submit<profile_res_t> ()
                               .result ();
             return response.has_value ();
         }
@@ -128,7 +128,7 @@ inline void run_inflight_crash_scenario (const client_options_t &options)
                             {"timeoutMilliseconds", 30000}}
                .dump (),
              "application/json")
-      .async<std::vector<topology_entry_result_t>> ()
+      .submit<std::vector<topology_entry_result_t>> ()
       .result ()
       .value ();
 
@@ -139,10 +139,10 @@ inline void run_inflight_crash_scenario (const client_options_t &options)
                                 .base_url (options.http_a_endpoint)
                                 .timeout (std::chrono::milliseconds (10000))
                                 .build ();
-    provider_a_restore.post ("/admin/restore").async_raw ().result ().value ();
+    provider_a_restore.post ("/admin/restore").submit_raw ().result ().value ();
     provider_a_restore.post ("/admin/weight/wait")
       .body (nlohmann::json{{"expected", 100}}.dump (), "application/json")
-      .async_raw ()
+      .submit_raw ()
       .result ()
       .value ();
     wait_topology_weight (topology, "api-a", 100);
@@ -154,7 +154,7 @@ inline void run_inflight_crash_scenario (const client_options_t &options)
     const auto follow_up_raw = follow_up_consumer.post ("/profile/request")
                                  .body (profile_req_t{.value = "fast",
                                                       .marker = "rl-b2-after-crash"})
-                                 .async_raw ()
+                                 .submit_raw ()
                                  .result ()
                                  .value ();
     ensure (follow_up_raw.status < 400,
@@ -173,7 +173,7 @@ inline void run_inflight_crash_scenario (const client_options_t &options)
                             {"timeoutMilliseconds", 30000}}
                .dump (),
              "application/json")
-      .async<std::vector<topology_entry_result_t>> ()
+      .submit<std::vector<topology_entry_result_t>> ()
       .result ()
       .value ();
 
@@ -186,7 +186,7 @@ inline void run_inflight_crash_scenario (const client_options_t &options)
                              .body (profile_req_t{.value = "fast",
                                                   .marker = "rl-b2-restored-"
                                                             + std::to_string (index)})
-                             .async<profile_res_t> ().result ().value ().body;
+                             .submit<profile_res_t> ().result ().value ().body;
         ensure (reply.value == "profile:fast",
                 "RL-B2 restored request returned an invalid value");
     }
@@ -206,7 +206,7 @@ inline void run_inflight_crash_scenario (const client_options_t &options)
                                         {"timeoutMilliseconds", 30000}}
                            .dump (),
                          "application/json")
-                  .async<std::vector<topology_entry_result_t>> ()
+                  .submit<std::vector<topology_entry_result_t>> ()
                   .result ()
                   .value ();
 
@@ -220,7 +220,7 @@ inline void run_inflight_crash_scenario (const client_options_t &options)
                   second_crash_consumer.post ("/profile/request")
                     .body (profile_req_t{.value = "fast",
                                          .marker = "rl-b2-second-crash-alternate"})
-                    .async_raw ()
+                    .submit_raw ()
                     .result ()
                     .value ();
                 ensure (second_crash_raw.status < 400,

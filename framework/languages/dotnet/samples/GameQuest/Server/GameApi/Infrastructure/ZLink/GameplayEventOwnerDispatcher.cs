@@ -26,7 +26,7 @@ internal sealed class GameplayEventOwnerDispatcher(
                         gameplayEvent.Count,
                         gameplayEvent.SourceApi)),
                     gameplayEvent.CreatedAtUnixMs))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         return owner.ToString();
     }
 

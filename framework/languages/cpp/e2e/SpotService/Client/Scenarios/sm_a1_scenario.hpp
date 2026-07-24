@@ -26,7 +26,7 @@ inline void run_sm_a1_scenario (const std::string &play_http_endpoint,
     auto raw =
       api.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = context.spot_rid})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!raw) {
         throw std::runtime_error (raw.error () ? raw.error ()->what () : "SM-A1 HTTP failed");
@@ -60,7 +60,7 @@ inline void run_sm_a1_scenario (const std::string &play_http_endpoint)
                           .display_name = "Alice",
                           .level = 7,
                           .tags = {"alpha", "local"}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!raw) {
         throw std::runtime_error (raw.error () ? raw.error ()->what () : "SM-A1 HTTP failed");
@@ -85,7 +85,7 @@ inline void run_sm_a1_scenario (const std::string &play_http_endpoint)
         throw std::runtime_error ("SM-A1 actor ref is not concrete");
     }
 
-    auto location_raw = api.get ("/locations/spots").async_raw ().result ();
+    auto location_raw = api.get ("/locations/spots").submit_raw ().result ();
     if (!location_raw) {
         throw std::runtime_error (location_raw.error () ? location_raw.error ()->what ()
                                                         : "SM-A1 location query failed");

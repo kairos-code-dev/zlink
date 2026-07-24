@@ -1,4 +1,10 @@
 import type { ActorRef, RoutingId } from '../Common';
+import type {
+  ZLinkObjectCapability,
+  ZLinkObjectRole,
+  ZLinkPopulationCapacity,
+  ZLinkSpotTypeCapacity
+} from '../Locations';
 
 export interface ZLinkActorMembership {
   readonly actor: ActorRef;
@@ -63,39 +69,6 @@ export interface ZLinkRuntimeErrorSink {
   onRuntimeError(error: ZLinkRuntimeErrorEvent): Promise<void> | void;
 }
 
-export enum ZLinkSubmitStatus {
-  Submitted = 'submitted',
-  Backpressured = 'backpressured',
-  TimedOut = 'timedOut',
-  TargetNotFound = 'targetNotFound',
-  RouteNotConnected = 'routeNotConnected',
-  Shutdown = 'shutdown'
-}
-
-export interface ZLinkSubmitResult {
-  readonly status: ZLinkSubmitStatus;
-}
-
-export interface ZLinkLogicalMulticastDetail {
-  readonly snapshotRemoteNodeCount: bigint;
-  readonly admittedRemoteNodeCount: bigint;
-  readonly droppedRemoteNodeCount: bigint;
-  readonly unreachableRemoteNodeCount: bigint;
-  readonly snapshotLocalSpotCount: bigint;
-  readonly admittedLocalSpotCount: bigint;
-  readonly droppedLocalSpotCount: bigint;
-}
-
-export interface ZLinkPublishResult {
-  /**
-   * Reports source-local outbound transport queue admission for remote targets
-   * and origin-local Spot queue admission for local targets. It does not wait
-   * for remote Spot queue admission, acknowledgements, or handler execution.
-   */
-  readonly status: ZLinkSubmitStatus;
-  readonly detail: ZLinkLogicalMulticastDetail;
-}
-
 export interface ZLinkRouteMeshRuntimeOptions {
   mesh(meshName: string): ZLinkMeshPlacementRuntimeOptions;
   channel(channelName: string): ZLinkMeshChannelRuntimeOptions;
@@ -138,18 +111,6 @@ export interface ZLinkMeshChannelSnapshot {
   readonly selectable: boolean;
 }
 
-export interface ZLinkLogicalMulticastSnapshot {
-  readonly submitted: bigint;
-  readonly backpressured: bigint;
-  readonly dropped: bigint;
-  readonly remoteSnapshotCount: bigint;
-  readonly remoteAdmittedCount: bigint;
-  readonly remoteDroppedCount: bigint;
-  readonly localSnapshotCount: bigint;
-  readonly localAdmittedCount: bigint;
-  readonly localDroppedCount: bigint;
-}
-
 export interface ZLinkMeshClaimSnapshot {
   readonly applicationActive: boolean;
   readonly pendingApplicationWork: bigint;
@@ -178,13 +139,27 @@ export interface ZLinkMeshNodeSnapshot {
   readonly lifecycleGeneration: bigint;
   readonly descriptorRevision: bigint;
   readonly endpoint: string;
+  readonly objectRole: ZLinkObjectRole;
+  readonly placementWeight: number;
+  readonly populationCapacity: {
+    readonly actors: ZLinkPopulationCapacity;
+    readonly spots: ZLinkPopulationCapacity;
+    readonly spotTypes: readonly ZLinkSpotTypeCapacity[];
+  };
+  readonly activationConcurrency: {
+    readonly active: number;
+    readonly limit: number;
+  };
+  readonly applicationVersion: bigint;
+  readonly placementReservationFailureCount: bigint;
+  readonly lastPlacementReservationFailure?: string;
+  readonly objectCapabilities: readonly ZLinkObjectCapability[];
   readonly state: ZLinkMeshNodeState;
   readonly sequence: bigint;
   readonly observedAt: Date;
   readonly descriptorSources: readonly string[];
   readonly peers: readonly ZLinkMeshPeerSnapshot[];
   readonly channels: readonly ZLinkMeshChannelSnapshot[];
-  readonly multicast: ZLinkLogicalMulticastSnapshot;
   readonly claims: ZLinkMeshClaimSnapshot;
   readonly location: ZLinkLocationRuntimeSnapshot;
   readonly drain: ZLinkMeshDrainSnapshot;
@@ -202,12 +177,18 @@ export interface ZLinkMeshRuntimeEvent {
   readonly channelName?: string;
   readonly claimDomain?: string;
   readonly messageKind?: string;
-  readonly remoteSnapshotCount?: bigint;
-  readonly remoteAdmittedCount?: bigint;
-  readonly remoteDroppedCount?: bigint;
-  readonly localSnapshotCount?: bigint;
-  readonly localAdmittedCount?: bigint;
-  readonly localDroppedCount?: bigint;
+  readonly placementOutcome?: string;
+  readonly capacity?: {
+    readonly actorSlots: number;
+    readonly spotSlots: number;
+    readonly spotTypes: readonly {
+      readonly objectKind: 'user_spot' | 'instance_spot';
+      readonly stableType: string;
+      readonly slots: number;
+    }[];
+  };
+  readonly populationCapacity?: ZLinkMeshNodeSnapshot['populationCapacity'];
+  readonly activationConcurrency?: ZLinkMeshNodeSnapshot['activationConcurrency'];
   readonly reason?: string;
   readonly state?: ZLinkMeshNodeState;
 }

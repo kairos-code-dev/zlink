@@ -4,11 +4,11 @@ internal sealed class ZLinkSessionActor(
     ZLinkSessionContext context,
     ActorRef actorRef,
     RoutingId sessionRid,
-    string bindingToken,
-    bool remoteBindingConfirmed)
+    string bindingToken)
     : IZLinkSessionActor
 {
-    private int _awaitingLocationObservation = remoteBindingConfirmed ? 1 : 0;
+    private readonly object _disconnectGate = new();
+    private Task? _disconnectTask;
 
     internal ZLinkSessionContext Context { get; } = context;
 
@@ -19,23 +19,31 @@ internal sealed class ZLinkSessionActor(
 
     public ActorRef Ref { get; } = actorRef;
 
-    internal bool AwaitingLocationObservation =>
-        Volatile.Read(ref _awaitingLocationObservation) != 0;
-
-    internal void MarkLocationObserved() =>
-        Interlocked.Exchange(ref _awaitingLocationObservation, 0);
-
-    public ValueTask<ZLinkSubmitResult> RelayAsync(
+    public ValueTask RelayAsync(
         ZLinkMessage payload,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(payload);
         var raw = payload.ToRawMessage(Context.Runtime.Registration.Codecs);
-        return Context.RelayActorRefAsync(this, raw, cancellationToken);
+        return Context.RelayActorRefAsync(this, raw, cancellationToken)
+            .EnsureAcceptedAsync(
+                "Session Actor relay",
+                ZLinkFrameworkErrorKind.ActorRouteNotFound);
     }
 
     public ValueTask NotifyDisconnectedAsync(CancellationToken cancellationToken = default)
     {
-        return Context.NotifyActorRefDisconnectedAsync(this, cancellationToken);
+        Task notification;
+        lock (_disconnectGate)
+        {
+            _disconnectTask ??= Context
+                .NotifyActorRefDisconnectedAsync(this, CancellationToken.None)
+                .AsTask();
+            notification = _disconnectTask;
+        }
+
+        return cancellationToken.CanBeCanceled
+            ? new ValueTask(notification.WaitAsync(cancellationToken))
+            : new ValueTask(notification);
     }
 }

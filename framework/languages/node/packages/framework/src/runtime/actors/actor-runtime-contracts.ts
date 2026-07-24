@@ -76,7 +76,7 @@ export interface ZLinkActorJoinCoordinator {
   joinEntrySpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
-    nodeRid: RoutingId,
+    nodeRid: RoutingId | undefined,
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined

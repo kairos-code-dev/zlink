@@ -14,7 +14,7 @@
   이때 응답 body가 노출되지 않는다 — 에러 페이로드가 필요하면 언어별 raw response terminator를
   쓴다(개정 후보 [R1](10-revision-candidates.ko.md)).
 - 정확한 이름은 .NET `AsyncRaw`/`Async<T>`, Kotlin `awaitRaw`/`await<T>`,
-  Java·Node `submitRaw`/`submit<T>`, C++ `submit_raw`/`submit<T>`다.
+  Java `submitRaw`/`submit<T>`, Node `submitRaw`/`async<T>`, C++ `submit_raw`/`submit<T>`다.
 - 완료 값을 동기로 언래핑하는 public terminator는 두지 않는다. typed response의 body만
   필요하면 비동기 typed terminator를 완료한 뒤 호출자가 body를 선택한다
   ([5장](05-execution-model.ko.md)).

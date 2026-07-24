@@ -10,7 +10,9 @@
 
 #include <zlink/framework/contracts/detail/call_facade.hpp>
 #include <zlink/framework/contracts/errors/result.hpp>
+#include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <atomic>
 #include <condition_variable>
@@ -259,7 +261,7 @@ int main ()
     using zlink::framework::runtime::messaging::pending_submit_t;
     using zlink::framework::runtime::messaging::submit_queue_t;
 
-    auto sample_task = sample_call_t (42).async ();
+    auto sample_task = sample_call_t (42).submit ();
     if (sample_task.result ().value () != 42) {
         return 1;
     }
@@ -398,10 +400,7 @@ int main ()
         if (!admitted.await_ready ()) {
             return 67;
         }
-        if (admitted_result.value ().status
-            != zlink::framework::submit_status_t::submitted) {
-            return 68;
-        }
+        admitted_result.value ();
         if (msg::pending_submit_count_for_tests () != 0) {
             return 69;
         }
@@ -415,8 +414,8 @@ int main ()
               zlink::framework::framework_error_kind_t::worker_queue_full,
               "capacity is not available");
         });
-        if (timed_out.result ().value ().status
-              != zlink::framework::submit_status_t::timed_out
+        if (timed_out.result ().error_kind ()
+              != zlink::framework::framework_error_kind_t::deadline_exceeded
             || timed_out_attempts != 1) {
             return 64;
         }
@@ -434,8 +433,8 @@ int main ()
               "capacity is not available");
         });
         msg::shutdown_submit_owner (&shutdown_owner);
-        if (shutdown.result ().value ().status
-            != zlink::framework::submit_status_t::shutdown) {
+        if (shutdown.result ().error_kind ()
+            != zlink::framework::framework_error_kind_t::runtime_shutdown) {
             return 66;
         }
 
@@ -448,7 +447,7 @@ int main ()
         std::condition_variable epoch_changed;
         bool epoch_attempt_entered = false;
         bool epoch_attempt_release = false;
-        std::promise<zlink::framework::submit_status_t> epoch_terminal_source;
+        std::promise<zlink::framework::framework_error_kind_t> epoch_terminal_source;
         auto epoch_terminal = epoch_terminal_source.get_future ();
         std::thread epoch_submitter ([&] {
             auto operation = zlink::framework::detail::submit_one_way_task ([&] {
@@ -462,7 +461,7 @@ int main ()
                   zlink::framework::framework_error_kind_t::worker_queue_full,
                   "capacity is not available");
             });
-            epoch_terminal_source.set_value (operation.result ().value ().status);
+            epoch_terminal_source.set_value (operation.result ().error_kind ());
         });
         {
             std::unique_lock lock (epoch_mutex);
@@ -484,14 +483,15 @@ int main ()
         }
         epoch_changed.notify_all ();
         epoch_submitter.join ();
-        if (epoch_terminal.get () != zlink::framework::submit_status_t::shutdown
+        if (epoch_terminal.get ()
+              != zlink::framework::framework_error_kind_t::runtime_shutdown
             || msg::pending_submit_count_for_tests () != 0) {
             return 83;
         }
 
-        /* A pending slot remains reserved while its retry is in flight. A
-         * second operation must perform its first transport attempt, then
-         * fail without joining the bounded waiter set. */
+        /* A pending slot remains reserved while its retry is in flight. Once
+         * the bounded waiter capacity is exhausted, a second operation does
+         * not retain its submit closure and completes with DeadlineExceeded. */
         msg::reset_async_submit_runtime_for_tests ();
         int reservation_owner = 0;
         std::mutex reservation_mutex;
@@ -524,15 +524,15 @@ int main ()
         std::atomic_int second_attempts{0};
         auto second_reserved = zlink::framework::detail::submit_one_way_task ([&] {
             msg::note_submit_attempt ("mesh:node:reserved", &reservation_owner,
-                                      std::chrono::milliseconds (500), 1);
+                                      std::chrono::milliseconds (30), 1);
             ++second_attempts;
             return zlink::framework::result_t<void>::failure (
               zlink::framework::framework_error_kind_t::worker_queue_full,
               "capacity is not available");
         });
         if (!second_reserved.await_ready () || second_attempts.load () != 1
-            || second_reserved.result ().value ().status
-                 != zlink::framework::submit_status_t::backpressured) {
+            || second_reserved.result ().error_kind ()
+                 != zlink::framework::framework_error_kind_t::deadline_exceeded) {
             {
                 std::lock_guard lock (reservation_mutex);
                 retry_release = true;
@@ -540,15 +540,33 @@ int main ()
             reservation_changed.notify_all ();
             return 71;
         }
+        std::atomic_int hard_overflow_attempts{0};
+        for (int index = 0; index < 5000; ++index) {
+            auto overflow = zlink::framework::detail::submit_one_way_task ([&] {
+                msg::note_submit_attempt (
+                  "mesh:node:reserved", &reservation_owner,
+                  std::chrono::milliseconds (500), 1);
+                ++hard_overflow_attempts;
+                return zlink::framework::result_t<void>::failure (
+                  zlink::framework::framework_error_kind_t::worker_queue_full,
+                  "capacity is not available");
+            });
+            if (!overflow.await_ready ()
+                || overflow.result ().error_kind ()
+                     != zlink::framework::framework_error_kind_t::deadline_exceeded) {
+                return 72;
+            }
+        }
+        if (hard_overflow_attempts.load () != 5000
+            || msg::pending_submit_count_for_tests () != 1) {
+            return 85;
+        }
         {
             std::lock_guard lock (reservation_mutex);
             retry_release = true;
         }
         reservation_changed.notify_all ();
-        if (first_reserved.result ().value ().status
-            != zlink::framework::submit_status_t::submitted) {
-            return 72;
-        }
+        first_reserved.result ().value ();
 
         /* A readiness signal received while retrying belongs to that
          * operation. It must not become an extra retry credit for a later
@@ -592,10 +610,7 @@ int main ()
             credit_retry_release = true;
         }
         credit_changed.notify_all ();
-        if (credit_first.result ().value ().status
-            != zlink::framework::submit_status_t::submitted) {
-            return 74;
-        }
+        credit_first.result ().value ();
 
         std::atomic_int credit_second_attempts{0};
         auto credit_second = zlink::framework::detail::submit_one_way_task ([&] {
@@ -620,9 +635,8 @@ int main ()
             return 75;
         }
         msg::notify_submit_ready ("mesh:node:credit", &credit_owner);
-        if (credit_second.result ().value ().status
-              != zlink::framework::submit_status_t::submitted
-            || credit_second_attempts.load () != 3) {
+        credit_second.result ().value ();
+        if (credit_second_attempts.load () != 3) {
             return 76;
         }
 
@@ -637,10 +651,7 @@ int main ()
               return zlink::framework::result_t<void>::success ();
           });
         auto duplicate_copy = duplicate_call;
-        if (duplicate_call.submit ().result ().value ().status
-            != zlink::framework::submit_status_t::submitted) {
-            return 77;
-        }
+        duplicate_call.submit ().result ().value ();
         bool duplicate_rejected = false;
         try {
             (void) duplicate_copy.submit ().result ().value ();
@@ -648,7 +659,7 @@ int main ()
         catch (const zlink::framework::framework_exception_t &error) {
             duplicate_rejected =
               error.kind ()
-              == zlink::framework::framework_error_kind_t::request_protocol_error;
+              == zlink::framework::framework_error_kind_t::already_submitted;
         }
         if (!duplicate_rejected || duplicate_attempts.load () != 1) {
             return 78;
@@ -658,13 +669,10 @@ int main ()
         zlink::framework::publish_call_t multicast_call (
           [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
               ++multicast_calls;
-              return zlink::framework::publish_result_t{};
+              return zlink::framework::result_t<void>::success ();
           });
         auto multicast_copy = multicast_call;
-        if (multicast_call.submit ().result ().value ().status
-            != zlink::framework::submit_status_t::submitted) {
-            return 79;
-        }
+        multicast_call.submit ().result ().value ();
         bool duplicate_multicast_rejected = false;
         try {
             (void) multicast_copy.submit ().result ().value ();
@@ -672,22 +680,121 @@ int main ()
         catch (const zlink::framework::framework_exception_t &error) {
             duplicate_multicast_rejected =
               error.kind ()
-              == zlink::framework::framework_error_kind_t::request_protocol_error;
+              == zlink::framework::framework_error_kind_t::already_submitted;
         }
         if (!duplicate_multicast_rejected || multicast_calls.load () != 1) {
             return 80;
         }
-        zlink::framework::logical_multicast_detail_t multicast_detail{
-          .snapshot_remote_node_count = 3,
-          .admitted_remote_node_count = 1,
-          .dropped_remote_node_count = 1,
-          .unreachable_remote_node_count = 1};
-        if (multicast_detail.snapshot_remote_node_count
-            != multicast_detail.admitted_remote_node_count
-                 + multicast_detail.dropped_remote_node_count
-                 + multicast_detail.unreachable_remote_node_count) {
-            return 81;
+        /* Logical Multicast uses direct worker handoff. Saturation must not
+         * retain an unbounded queue of publish payloads. */
+        const auto worker_count = std::max<unsigned int> (
+          2, std::thread::hardware_concurrency ());
+        std::mutex multicast_gate_mutex;
+        std::condition_variable multicast_gate_changed;
+        bool release_multicast_workers = false;
+        std::vector<zlink::framework::task_t<void>> occupied_workers;
+        occupied_workers.reserve (worker_count);
+        for (unsigned int index = 0; index < worker_count; ++index) {
+            zlink::framework::publish_call_t occupied (
+              [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
+                  std::unique_lock lock (multicast_gate_mutex);
+                  multicast_gate_changed.wait (
+                    lock, [&] { return release_multicast_workers; });
+                  return zlink::framework::result_t<void>::success ();
+              });
+            occupied_workers.push_back (occupied.submit ());
         }
+        std::atomic_int handoff_calls{0};
+        zlink::framework::publish_call_t handoff (
+          [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
+              ++handoff_calls;
+              return zlink::framework::result_t<void>::success ();
+          },
+          std::chrono::seconds (1));
+        auto handoff_task = handoff.submit ();
+        std::atomic_int overflow_calls{0};
+        zlink::framework::publish_call_t overflow (
+          [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
+              ++overflow_calls;
+              return zlink::framework::result_t<void>::success ();
+          },
+          std::chrono::milliseconds (25));
+        bool overflow_timed_out = false;
+        auto overflow_task = overflow.submit ();
+        const bool overflow_completed_immediately = overflow_task.await_ready ();
+        try {
+            overflow_task.result ().value ();
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            overflow_timed_out =
+              error.kind ()
+              == zlink::framework::framework_error_kind_t::deadline_exceeded;
+        }
+        if (!overflow_completed_immediately || !overflow_timed_out
+            || overflow_calls.load () != 0) {
+            return 82;
+        }
+        {
+            std::lock_guard lock (multicast_gate_mutex);
+            release_multicast_workers = true;
+        }
+        multicast_gate_changed.notify_all ();
+        for (auto &task : occupied_workers) {
+            task.result ().value ();
+        }
+        handoff_task.result ().value ();
+        if (handoff_calls.load () != 1) {
+            return 83;
+        }
+
+        bool release_deadline_workers = false;
+        std::vector<zlink::framework::task_t<void>> deadline_workers;
+        deadline_workers.reserve (worker_count);
+        for (unsigned int index = 0; index < worker_count; ++index) {
+            zlink::framework::publish_call_t occupied (
+              [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
+                  std::unique_lock lock (multicast_gate_mutex);
+                  multicast_gate_changed.wait (
+                    lock, [&] { return release_deadline_workers; });
+                  return zlink::framework::result_t<void>::success ();
+              });
+            deadline_workers.push_back (occupied.submit ());
+        }
+        std::atomic_int expired_handoff_calls{0};
+        zlink::framework::publish_call_t expired_handoff (
+          [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
+              ++expired_handoff_calls;
+              return zlink::framework::result_t<void>::success ();
+          },
+          std::chrono::milliseconds (25));
+        auto expired_handoff_task = expired_handoff.submit ();
+        std::this_thread::sleep_for (std::chrono::milliseconds (35));
+        {
+            std::lock_guard lock (multicast_gate_mutex);
+            release_deadline_workers = true;
+        }
+        multicast_gate_changed.notify_all ();
+        bool handoff_timed_out = false;
+        try {
+            expired_handoff_task.result ().value ();
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            handoff_timed_out =
+              error.kind ()
+              == zlink::framework::framework_error_kind_t::deadline_exceeded;
+        }
+        for (auto &task : deadline_workers) {
+            task.result ().value ();
+        }
+        if (!handoff_timed_out || expired_handoff_calls.load () != 0) {
+            return 84;
+        }
+
+        zlink::framework::publish_call_t recovered (
+          [] (const zlink::framework::publish_call_t::metadata_map_t &) {
+              return zlink::framework::result_t<void>::success ();
+          });
+        recovered.submit ().result ().value ();
         msg::reset_async_submit_runtime_for_tests ();
     }
 

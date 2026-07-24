@@ -72,7 +72,7 @@ internal sealed class OrderWorkflowSpot(
                     state.OrderId,
                     state.Status,
                     instance.InstanceId))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
         return new StartOrderWorkflowRes(state);
     }
 

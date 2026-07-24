@@ -300,7 +300,14 @@ final class ZLinkUserSpotOperationHandler
                 && fence.targetNodeRid().equals(node.status().routingId())
                 && fence.targetNodeGeneration()
                     == node.status().lifecycleGeneration()
-                && allocation.capacityDelta() == fence.pendingCapacityDelta(),
+                && allocation.capacityBundle().equals(
+                    systems.zlink.framework.locations
+                        .ZLinkPlacementCapacityBundle.spot(
+                            systems.zlink.framework.locations
+                                .ZLinkPlacementObjectKind.USER_SPOT,
+                            request.intent().stableType(),
+                            Math.toIntExact(
+                                fence.pendingCapacityDelta()))),
             "stale User Spot create reservation");
         return new Admission(
             new ZLinkObjectReservation(

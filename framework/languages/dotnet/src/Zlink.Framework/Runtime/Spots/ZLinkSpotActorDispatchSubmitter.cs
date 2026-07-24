@@ -15,7 +15,8 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
 
         try
         {
-            await serial.ExecuteAsync(
+            await serial.ExecuteActorAsync(
+                runtimeState.ActorId,
                 async static (_, state, ct) =>
                 {
                     using var currentPayload = state.Payload;
@@ -49,7 +50,8 @@ internal sealed class ZLinkSpotActorDispatchSubmitter(
         try
         {
             var state = new ActorReplyDispatchState(dispatcher, actor, runtimeState, header, ownedPayload);
-            await serial.ExecuteAsync(
+            await serial.ExecuteActorAsync(
+                runtimeState.ActorId,
                 async static (_, state, ct) =>
                 {
                     using var currentPayload = state.Payload;

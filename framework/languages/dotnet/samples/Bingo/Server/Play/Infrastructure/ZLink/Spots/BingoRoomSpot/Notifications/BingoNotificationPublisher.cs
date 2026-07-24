@@ -33,12 +33,12 @@ internal sealed class BingoNotificationPublisher
                         IsHost = roomEvent.IsHost,
                         State = roomEvent.State
                     })
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
                 break;
             case BingoRoomEventKind.GameStarted:
                 await roomEvent.Recipient.Context.BoundSession
                 .Send(new BingoGameStartedNotify { State = roomEvent.State })
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
                 break;
             case BingoRoomEventKind.NumberDrawn:
                 await roomEvent.Recipient.Context.BoundSession
@@ -50,12 +50,12 @@ internal sealed class BingoNotificationPublisher
                         Number = roomEvent.DrawnNumber,
                         State = roomEvent.State
                     })
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
                 break;
             case BingoRoomEventKind.GameEnded:
                 await roomEvent.Recipient.Context.BoundSession
                 .Send(new BingoGameEndedNotify { State = roomEvent.State })
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported event kind {roomEvent.Kind}.");

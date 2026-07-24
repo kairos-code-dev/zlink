@@ -221,8 +221,6 @@ test('mesh monitoring source adapts formal peer endpoint into the public spot ev
           pendingApplicationMessages: 0n,
           pendingInfrastructureMessages: 0n,
           pendingBytes: 0n,
-          multicastSubmitted: 0n,
-          multicastDroppedTargets: 0n,
           lastError: 0,
           lastChangedMs: 2n
         };
@@ -287,8 +285,6 @@ test('mesh monitoring preserves a connecting peer before its routing identity is
           pendingApplicationMessages: 0n,
           pendingInfrastructureMessages: 0n,
           pendingBytes: 0n,
-          multicastSubmitted: 0n,
-          multicastDroppedTargets: 0n,
           lastError: 0,
           lastChangedMs: 2n
         };

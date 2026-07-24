@@ -13,7 +13,7 @@ internal interface IZlinkStreamConnectorInternal : IZlinkStreamConnector
         ZlinkStreamOutboundFrame frame,
         CancellationToken cancellationToken);
 
-    void SubmitFrame(
+    ValueTask SubmitFrameAsync(
         ZlinkStreamOutboundFrame frame,
         CancellationToken cancellationToken);
 

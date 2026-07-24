@@ -87,7 +87,7 @@ public static class DispatchServerHostFactory
                 request.PickupAddress,
                 request.DropoffAddress);
             await channels.SendToChannel(SampleNames.MeshName, SampleNames.DispatchChannel, assign)
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             loggerFactory.CreateLogger("DeliveryDispatch.Server.Dispatch")
                 .LogInformation("deliverydispatch api: created delivery={DeliveryId}", request.DeliveryId);
             return Results.Ok(new CreateDeliveryRes(request.DeliveryId));

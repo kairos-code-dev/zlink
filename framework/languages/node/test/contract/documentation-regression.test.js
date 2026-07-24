@@ -243,8 +243,8 @@ test('node one-way submit documentation keeps the bounded admission contract', (
     'utf8'
   );
 
-  assert.match(calls, /export interface ZLinkSendCall \{[\s\S]*submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>;/);
-  assert.match(calls, /export interface ZLinkPublishCall \{[\s\S]*submit\(signal\?: AbortSignal\): Promise<ZLinkPublishResult>;/);
+  assert.match(calls, /export interface ZLinkSendCall \{[\s\S]*submit\(signal\?: AbortSignal\): Promise<void>;/);
+  assert.match(calls, /export interface ZLinkPublishCall \{[\s\S]*submit\(signal\?: AbortSignal\): Promise<void>;/);
   assert.doesNotMatch(calls, new RegExp(['try', 'Submit'].join('')));
   assert.match(matrix, /`submit\(\)`은 bounded\s+admission 결과를 비동기로 반환/);
   assert.doesNotMatch(matrix, /Promise.*미해결 유지|ready 이후에 resolve|submitter timeout 정책에 따라 resolve/);

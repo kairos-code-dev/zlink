@@ -23,7 +23,7 @@ bingo_entry_spot_t::observe_bingo_events (
     const auto join_request = bingo_room_join_req_t{
       request.room_id, actor.actor.actor_id, display_name, true};
     auto joined = co_await actor.context.join_spot (observer_rid, join_request)
-                    .async<bingo_room_join_res_t> ();
+                    .submit<bingo_room_join_res_t> ();
     const auto &joined_accepted =
       std::get<framework::actor_join_accepted_t<bingo_room_join_res_t>> (joined);
     co_return observe_bingo_events_res_t{

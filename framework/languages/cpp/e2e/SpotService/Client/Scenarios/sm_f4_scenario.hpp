@@ -56,7 +56,7 @@ inline void run_sm_f4_scenario (const std::string &play_http_endpoint,
     auto source_created =
       play_a.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = source_spot})
-        .async<create_spot_res_t> ()
+        .submit<create_spot_res_t> ()
         .result ();
     if (!source_created || source_created.value ().body.spot_rid != source_spot) {
         throw std::runtime_error ("SM-F4 source spot setup failed");
@@ -64,14 +64,14 @@ inline void run_sm_f4_scenario (const std::string &play_http_endpoint,
 
     auto created = play_b.post ("/spot/create")
                      .body (create_spot_req_t{.spot_rid = target_spot})
-                     .async<create_spot_res_t> ()
+                     .submit<create_spot_res_t> ()
                      .result ();
     if (!created || created.value ().body.spot_rid != target_spot) {
         throw std::runtime_error ("SM-F4 target spot setup failed");
     }
 
-    auto evidence_before_a = play_a.get ("/evidence").async<evidence_snapshot_t> ().result ();
-    auto evidence_before_b = play_b.get ("/evidence").async<evidence_snapshot_t> ().result ();
+    auto evidence_before_a = play_a.get ("/evidence").submit<evidence_snapshot_t> ().result ();
+    auto evidence_before_b = play_b.get ("/evidence").submit<evidence_snapshot_t> ().result ();
     if (!evidence_before_a || !evidence_before_b) {
         throw std::runtime_error ("SM-F4 initial evidence read failed");
     }
@@ -81,7 +81,7 @@ inline void run_sm_f4_scenario (const std::string &play_http_endpoint,
 
     auto closed = play_b.post ("/spot/close")
                     .body (close_spot_req_t{.key = target_key})
-                    .async<close_spot_res_t> ()
+                    .submit<close_spot_res_t> ()
                     .result ();
     if (!closed || !closed.value ().body.closed) {
         throw std::runtime_error ("SM-F4 target spot close failed");
@@ -94,7 +94,7 @@ inline void run_sm_f4_scenario (const std::string &play_http_endpoint,
                                         .target_node_rid = "play-b",
                                         .target_spot_rid = target_spot,
                                         .marker = "missing-route"})
-        .async<spot_to_spot_negative_route_res_t> ()
+        .submit<spot_to_spot_negative_route_res_t> ()
         .result ();
     if (!missing_route || !missing_route.value ().body.request_failed) {
         throw std::runtime_error ("SM-F4 missing target request unexpectedly succeeded");
@@ -105,14 +105,14 @@ inline void run_sm_f4_scenario (const std::string &play_http_endpoint,
         .body (evidence_wait_req_t{
           .contains_all = {"SpotRouteDispatchFailure", "DirectSpotReq", "reply_error"},
           .timeout_milliseconds = 10000})
-        .async<evidence_snapshot_t> ()
+        .submit<evidence_snapshot_t> ()
         .result ();
     auto evidence_after_b =
       play_b.post ("/evidence/wait")
         .body (evidence_wait_req_t{
           .contains_all = {"SpotRouteDispatchFailure", "DirectSpotMsg", "drop"},
           .timeout_milliseconds = 10000})
-        .async<evidence_snapshot_t> ()
+        .submit<evidence_snapshot_t> ()
         .result ();
     if (!evidence_after_a || !evidence_after_b) {
         throw std::runtime_error ("SM-F4 dispatch failure evidence was not observed");
@@ -133,7 +133,7 @@ inline void run_sm_f4_scenario (const std::string &play_http_endpoint,
                                        .spot_rid = remote_spot,
                                        .value = "route-recovery",
                                        .source_actor_id = "external-client"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!raw || raw.value ().status >= 400) {
         throw std::runtime_error ("SM-F4 recovery spot route request failed");

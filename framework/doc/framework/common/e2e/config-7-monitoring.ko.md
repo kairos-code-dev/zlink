@@ -59,13 +59,13 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
 
 우선순위: `P0`
 
-**검증 질문:** MeshNode snapshot이 peer, channel, multicast, claim과 location을 일관되게 제공하고, host 종료
+**검증 질문:** MeshNode snapshot이 peer, channel, claim과 location을 일관되게 제공하고, host 종료
 상태는 MeshName과 무관한 framework runtime snapshot 한 곳에서 제공되는가.
 
 - 절차: `svc-a`만 실행한 baseline과 `svc-b`가 ready가 된 뒤 `svc-a`의 MeshNode snapshot을 각각 읽고, 같은
   host의 framework runtime snapshot도 별도로 읽는다.
 - 검증: MeshNode snapshot은 MeshName, RID, lifecycle generation, descriptor revision, endpoint, component
-  lifecycle state, descriptor source, peer·channel·multicast·claim·location 값을 포함한다. Host framework
+  lifecycle state, descriptor source, peer·channel·claim·location 값을 포함한다. Host framework
   snapshot은 MeshName 없이 runtime state, effective termination intent, deadline, sealed work, pending count와
   terminal result를 한 번 제공한다. 두 번째 MeshNode snapshot sequence는 같은 MeshName source의 첫 값보다
   크고, host sequence는 같은 host source 안에서만 비교한다. 반환된 snapshot은 후속 호출 뒤에도 바뀌지 않는
@@ -143,37 +143,39 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
   혼합하지 않고 다음 snapshot에서 수렴한다.
 - 세부 동작: typed capacity와 stale descriptor projection의 관측 경계.
 
-### Track B — Logical Multicast backpressure와 drop
+### Track B — Publish 전용 monitoring 부재
 
-#### MON-B1 remote ROUTER backpressure
+#### MON-B1 remote target 실패와 monitoring 부재
 
 우선순위: `P0`
 
-**검증 질문:** remote ROUTER target이 송신을 수락할 수 없을 때 public publish 결과와 분리된 target 집계가
-함께 관찰되는가.
+**검증 질문:** remote ROUTER target이 송신을 수락할 수 없어도 publish 전용 snapshot·metric·runtime
+event를 만들지 않는가.
 
 - 절차: `svc-b` 방향 ROUTER 송신 HWM에 도달하도록 수신을 막고 Logical Multicast를 짧은 send
   timeout으로 제출한다. 다른 remote target은 수락 가능한 상태로 둔다.
-- 검증: Publish operation은 고정 snapshot을 한 번 처리한 뒤 반환 데이터 없이 정상 완료한다.
-  `zlink.runtime.mesh_node.multicast_backpressured` event가 발생하며 후속 snapshot의
-  published·backpressured와 remote·local snapshot/admitted/dropped 수가 실제 target 결과와 일치한다.
-  앞에서 수락된 target의 payload는 취소되지 않고 전체 publish를 rollback하거나 자동 재시도하지 않는다.
-- 세부 동작: [Spot Messaging §4.1](../../spec/server/20-spot-messaging.ko.md#41-target별-수락)과
+- 검증: Publish operation은 source-local capacity를 확보해 작업을 시작하면 반환 데이터 없이 정상
+  완료한다. MeshNode snapshot에 Logical Multicast 통계 객체가 없고 publish target count field도 없다.
+  `zlink.runtime.mesh_node.multicast_backpressured`, `zlink.runtime.mesh_node.multicast_dropped`와
+  `zlink.mesh_node.multicast.*` metric은 발생하지 않는다. 앞에서 수락된 target의 payload는 취소되지 않고
+  전체 publish를 rollback하거나 자동 재시도하지 않는다.
+- 세부 동작: [Spot Messaging §4.1](../../spec/server/20-spot-messaging.ko.md#41-publish-시작과-완료)과
   [Runtime Monitoring §3](../../spec/server/50-runtime-monitoring.ko.md#3-event-identifiers)의
-  target별 제출 계약.
+  publish 전용 monitoring 제거 계약.
 
-#### MON-B2 local target drop
+#### MON-B2 local target drop과 monitoring 부재
 
 우선순위: `P0`
 
-**검증 질문:** 용량이 없는 local target과 수락된 target이 분리되어 관찰되는가.
+**검증 질문:** 용량이 없는 local target이 있어도 target별 결과를 public monitoring에 집계하지 않는가.
 
 - 절차: 하나의 matching target은 수락 가능하게 두고 다른 target은 bounded queue가 가득 찬 상태로 만든
   뒤 publish한다.
 - 검증: 수락 가능한 target은 payload를 한 번 처리하고 막힌 target은 처리하지 않는다.
-  `zlink.runtime.mesh_node.multicast_dropped` event와 후속 snapshot의 remote·local snapshot, admitted,
-  dropped 수가 실제 target evidence와 일치한다. Backpressure event로 바꾸어 기록하지 않는다.
-- 세부 동작: 부분 수락과 target drop의 분리.
+  Public publish terminal은 결과값 없이 정상 완료하며 MeshNode snapshot, runtime event, metric과
+  message-flow trace에 local target count나 drop count가 없다. 전체 publish를 rollback하거나 자동
+  재시도하지 않는다.
+- 세부 동작: 부분 전달과 public monitoring 부재의 분리.
 
 ### Track C — claim progress와 observer 격리
 

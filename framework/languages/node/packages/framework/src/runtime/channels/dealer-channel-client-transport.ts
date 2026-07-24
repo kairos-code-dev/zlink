@@ -6,9 +6,8 @@ import type {
 import { ZLinkConfigurationException } from '../configuration';
 import {
   ZLinkSubmitStatus,
-  type ZLinkPublishResult,
   type ZLinkSubmitResult
-} from '../../contracts';
+} from '../messaging/submission-result';
 import {
   decodeChannelReply,
   encodeChannelEnvelopeParts,
@@ -101,7 +100,7 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     packetName: string | undefined,
     event: Message,
     metadata: ReadonlyMap<string, string> = new Map()
-  ): ZLinkPublishResult {
+  ): ZLinkSubmitResult {
     if (this.publisher === undefined) {
       throw new ZLinkConfigurationException('Channel publisher runtime is not started.');
     }
@@ -132,23 +131,12 @@ export class ZLinkDealerChannelClientTransport implements ZLinkChannelClientTran
     event: Message,
     signal?: AbortSignal,
     metadata: ReadonlyMap<string, string> = new Map()
-  ): Promise<ZLinkPublishResult> {
+  ): Promise<ZLinkSubmitResult> {
     throwIfAborted(signal);
     return this.tryPublish(channelName, topic, packetName, event, metadata);
   }
 }
 
-function emptyPublishResult(status: ZLinkSubmitStatus): ZLinkPublishResult {
-  return {
-    status,
-    detail: {
-      snapshotRemoteNodeCount: 0n,
-      admittedRemoteNodeCount: 0n,
-      droppedRemoteNodeCount: 0n,
-      unreachableRemoteNodeCount: 0n,
-      snapshotLocalSpotCount: 0n,
-      admittedLocalSpotCount: 0n,
-      droppedLocalSpotCount: 0n
-    }
-  };
+function emptyPublishResult(status: ZLinkSubmitStatus): ZLinkSubmitResult {
+  return { status };
 }

@@ -14,7 +14,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.backend.ZLinkBackendStreamSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
-import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
+
 import systems.zlink.framework.streams.ZLinkSessionClient;
 import systems.zlink.framework.streams.ZLinkSessionReplyCall;
 import systems.zlink.framework.streams.ZLinkSessionSendCall;
@@ -29,6 +29,7 @@ final class ZLinkStreamSessionClient implements ZLinkSessionClient {
     private final ZLinkMessageSerializer serializer;
     private final ZLinkStreamCodec defaultCodec;
     private final ZLinkStreamCompressionCodec compressionCodec;
+    private final ZLinkOneWayCalls oneWayCalls;
 
     ZLinkStreamSessionClient(
         ZLinkBackendStreamSocket stream,
@@ -36,13 +37,15 @@ final class ZLinkStreamSessionClient implements ZLinkSessionClient {
         ZLinkStreamSessionContextState context,
         ZLinkMessageSerializer serializer,
         ZLinkStreamCodec defaultCodec,
-        ZLinkStreamCompressionCodec compressionCodec) {
+        ZLinkStreamCompressionCodec compressionCodec,
+        ZLinkOneWayCalls oneWayCalls) {
         this.stream = stream;
         this.routingId = routingId;
         this.context = context;
         this.serializer = serializer;
         this.defaultCodec = defaultCodec;
         this.compressionCodec = compressionCodec;
+        this.oneWayCalls = oneWayCalls;
     }
 
     @Override
@@ -57,7 +60,8 @@ final class ZLinkStreamSessionClient implements ZLinkSessionClient {
             Map.of(),
             false,
             defaultCodec,
-            compressionCodec);
+            compressionCodec,
+            oneWayCalls);
     }
 
     @Override
@@ -84,7 +88,8 @@ record ZLinkStreamSessionSendCall(
     boolean compressed,
     ZLinkStreamCodec codec,
     ZLinkStreamCompressionCodec compressionCodec,
-    systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate)
+    ZLinkOneWayCalls oneWayCalls,
+    java.util.concurrent.atomic.AtomicBoolean submitGate)
     implements ZLinkSessionSendCall {
     ZLinkStreamSessionSendCall(
         ZLinkBackendStreamSocket stream,
@@ -94,10 +99,11 @@ record ZLinkStreamSessionSendCall(
         Map<String, String> metadata,
         boolean compressed,
         ZLinkStreamCodec codec,
-        ZLinkStreamCompressionCodec compressionCodec) {
+        ZLinkStreamCompressionCodec compressionCodec,
+        ZLinkOneWayCalls oneWayCalls) {
         this(stream, routingId, payload, packetName, metadata, compressed, codec,
-            compressionCodec,
-            new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate());
+            compressionCodec, oneWayCalls,
+            new java.util.concurrent.atomic.AtomicBoolean());
     }
     @Override
     public ZLinkSessionSendCall metadata(String key, String value) {
@@ -111,7 +117,8 @@ record ZLinkStreamSessionSendCall(
             Map.copyOf(next),
             compressed,
             codec,
-            compressionCodec);
+            compressionCodec,
+            oneWayCalls);
     }
 
     public ZLinkSessionSendCall packetName(String messageName) {
@@ -126,7 +133,8 @@ record ZLinkStreamSessionSendCall(
             metadata,
             compressed,
             codec,
-            compressionCodec);
+            compressionCodec,
+            oneWayCalls);
     }
 
     @Override
@@ -139,13 +147,14 @@ record ZLinkStreamSessionSendCall(
             metadata,
             true,
             codec,
-            compressionCodec);
+            compressionCodec,
+            oneWayCalls);
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-            submitGate.begin();
+    public CompletionStage<Void> submit() {
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }
@@ -162,7 +171,7 @@ record ZLinkStreamSessionSendCall(
             metadata,
             Optional.of(ZLinkStreamCorrelation.next()));
         List<Message> parts = List.of(Message.from(encoded.payload()));
-        return ZLinkSubmitResults.submitAsync(
+        return oneWayCalls.submitOneWay(
             stream,
             ZLinkBackendAdmissionKey.socket(),
             () -> stream.send(routingId, header, parts, SendFlags.DONT_WAIT),
@@ -181,7 +190,7 @@ record ZLinkStreamSessionReplyCall(
     String packetName,
     boolean compressed,
     ZLinkStreamCompressionCodec compressionCodec,
-    systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate)
+    java.util.concurrent.atomic.AtomicBoolean submitGate)
     implements ZLinkSessionReplyCall {
     ZLinkStreamSessionReplyCall(
         ZLinkBackendStreamSocket stream,
@@ -192,7 +201,7 @@ record ZLinkStreamSessionReplyCall(
         boolean compressed,
         ZLinkStreamCompressionCodec compressionCodec) {
         this(stream, routingId, payload, context, packetName, compressed, compressionCodec,
-            new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate());
+            new java.util.concurrent.atomic.AtomicBoolean());
     }
     @Override
     public ZLinkSessionReplyCall compress() {
@@ -207,11 +216,11 @@ record ZLinkStreamSessionReplyCall(
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
+    public CompletionStage<Void> submit() {
         Optional<ZLinkStreamHeader> currentHeader = context.currentDispatchHeader();
         if (currentHeader.isEmpty() || currentHeader.get().requestSequence().isEmpty()) {
-            CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-                submitGate.begin();
+            CompletionStage<Void> duplicate =
+                ZLinkOneWayCalls.beginOneWay(submitGate);
             if (duplicate != null) {
                 return duplicate;
             }
@@ -219,8 +228,8 @@ record ZLinkStreamSessionReplyCall(
             return CompletableFuture.failedFuture(new IllegalStateException(
                 "Reply is only available while handling a request packet."));
         }
-        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-            submitGate.begin();
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }
@@ -241,7 +250,7 @@ record ZLinkStreamSessionReplyCall(
             encoded.flags(),
             packetName,
             Map.of());
-        return ZLinkSubmitResults.submitAsync(
+        return context.oneWayCalls().submitOneWay(
             stream,
             ZLinkBackendAdmissionKey.socket(),
             () -> {

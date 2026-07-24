@@ -24,12 +24,16 @@ internal sealed class ZLinkSpotHandlerInvoker(
         object? message,
         CancellationToken cancellationToken)
     {
-        var invocation = descriptor.IsAttributed
-            ? descriptor.PassCancellationToken
-                ? InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message, cancellationToken)
-                : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message)
-            : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken);
-        await invocation
+        await InvokeWithDeferredJoinsAsync(
+                async () =>
+                {
+                    var invocation = descriptor.IsAttributed
+                        ? descriptor.PassCancellationToken
+                            ? InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message, cancellationToken)
+                            : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message)
+                        : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken);
+                    await invocation.ConfigureAwait(false);
+                })
             .ConfigureAwait(false);
     }
 
@@ -38,12 +42,12 @@ internal sealed class ZLinkSpotHandlerInvoker(
         object? message,
         CancellationToken cancellationToken)
     {
-        var invocation = descriptor.IsAttributed
-            ? descriptor.PassCancellationToken
-                ? InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message, cancellationToken)
-                : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message)
-            : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken);
-        return await invocation
+        return await InvokeWithDeferredJoinsAsync(
+                () => descriptor.IsAttributed
+                    ? descriptor.PassCancellationToken
+                        ? InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message, cancellationToken)
+                        : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message)
+                    : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken))
             .ConfigureAwait(false);
     }
 
@@ -52,12 +56,16 @@ internal sealed class ZLinkSpotHandlerInvoker(
         object? message,
         CancellationToken cancellationToken)
     {
-        var invocation = descriptor.IsAttributed
-            ? descriptor.PassCancellationToken
-                ? InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message, cancellationToken)
-                : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message)
-            : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken);
-        await invocation
+        await InvokeWithDeferredJoinsAsync(
+                async () =>
+                {
+                    var invocation = descriptor.IsAttributed
+                        ? descriptor.PassCancellationToken
+                            ? InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message, cancellationToken)
+                            : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, message)
+                        : InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, message, cancellationToken);
+                    await invocation.ConfigureAwait(false);
+                })
             .ConfigureAwait(false);
     }
 
@@ -66,7 +74,14 @@ internal sealed class ZLinkSpotHandlerInvoker(
         ZLinkTimerTick tick,
         CancellationToken cancellationToken)
     {
-        await InvokeAsync(descriptor.HandlerType, descriptor.Invoker, spot, tick, cancellationToken)
+        await InvokeWithDeferredJoinsAsync(
+                async () => await InvokeAsync(
+                        descriptor.HandlerType,
+                        descriptor.Invoker,
+                        spot,
+                        tick,
+                        cancellationToken)
+                    .ConfigureAwait(false))
             .ConfigureAwait(false);
     }
 
@@ -110,14 +125,16 @@ internal sealed class ZLinkSpotHandlerInvoker(
             codecs,
             compressionCodec);
         var context = CreateSendContext(header, cancellationToken);
-        await InvokeAsync(
-                descriptor.HandlerType,
-                descriptor.Invoker,
-                spot,
-                actor,
-                context,
-                message,
-                cancellationToken)
+        await InvokeWithDeferredJoinsAsync(
+                async () => await InvokeAsync(
+                        descriptor.HandlerType,
+                        descriptor.Invoker,
+                        spot,
+                        actor,
+                        context,
+                        message,
+                        cancellationToken)
+                    .ConfigureAwait(false))
             .ConfigureAwait(false);
     }
 
@@ -145,21 +162,41 @@ internal sealed class ZLinkSpotHandlerInvoker(
             codecs,
             compressionCodec);
         var context = CreateRequestContext(header, cancellationToken);
-        var reply = await InvokeAsync(
-                descriptor.HandlerType,
-                descriptor.Invoker,
-                spot,
-                actor,
-                context,
-                message,
-                cancellationToken)
+        return await InvokeWithDeferredJoinsAsync(
+                async () =>
+                {
+                    var reply = await InvokeAsync(
+                            descriptor.HandlerType,
+                            descriptor.Invoker,
+                            spot,
+                            actor,
+                            context,
+                            message,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    var encoded = ZLinkStreamPacketPayloadCodec.Encode(reply, descriptor.ReplyType, codecs);
+                    return ZLinkActorReply.FromPayload(
+                        encoded.Codec,
+                        encoded.Payload.ToArray(),
+                        context.Reply.CreateSnapshot(),
+                        compressionCodec);
+                })
             .ConfigureAwait(false);
-        var encoded = ZLinkStreamPacketPayloadCodec.Encode(reply, descriptor.ReplyType, codecs);
-        return ZLinkActorReply.FromPayload(
-            encoded.Codec,
-            encoded.Payload.ToArray(),
-            context.Reply.CreateSnapshot(),
-            compressionCodec);
+    }
+
+    private async ValueTask InvokeWithDeferredJoinsAsync(Func<ValueTask> callback)
+    {
+        using var joins = ZLinkDeferredActorJoinHandlerScope.Open(spot is not IZLinkInstanceSpot);
+        await callback().ConfigureAwait(false);
+        joins.Complete();
+    }
+
+    private async ValueTask<T> InvokeWithDeferredJoinsAsync<T>(Func<ValueTask<T>> callback)
+    {
+        using var joins = ZLinkDeferredActorJoinHandlerScope.Open(spot is not IZLinkInstanceSpot);
+        var result = await callback().ConfigureAwait(false);
+        joins.Complete();
+        return result;
     }
 
     private ZLinkSpotActorSendContext CreateSendContext(

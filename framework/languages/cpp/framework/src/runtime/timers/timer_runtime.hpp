@@ -4,6 +4,7 @@
 #include <zlink/framework/contracts/spots/spot.hpp>
 #include <zlink/framework/contracts/timers/timer.hpp>
 #include <zlink/Contracts/Eventing/timers.hpp>
+#include "runtime/execution/serial_execution_queue.hpp"
 
 #include <functional>
 #include <memory>
@@ -27,6 +28,7 @@ class timer_state_t
     std::type_index handler_type{typeid (void)};
     handler_invoker_t handler_invoker;
     std::unique_ptr<zlink::timer_t> native_timer;
+    std::shared_ptr<runtime::serial_execution_queue_t> lane;
     std::uint64_t delivery_index = 0;
     std::uint64_t last_scheduled_index = 0;
     bool disposed = false;

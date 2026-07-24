@@ -10,17 +10,21 @@ import type {
   ZLinkMeshNodeDescriptor,
   ZLinkMessageSerializer,
   ZLinkProviderResolver,
-  ZLinkPublishResult,
   ZLinkRuntimeEventPublisher,
   ZLinkSpotPublisherClient
 } from '../../contracts';
 import {
   ZLinkFrameworkRuntimeState,
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
   ZLinkLocationWriteIntent,
   ZLinkLocationWriteStatus,
-  ZLinkObjectRole,
-  ZLinkSubmitStatus
+  ZLinkObjectRole
 } from '../../contracts';
+import {
+  ZLinkSubmitStatus,
+  type ZLinkSubmitResult
+} from '../messaging/submission-result';
 import {
   ZLinkRuntimeDispatchErrorAction as ZLinkDispatchErrorAction,
   ZLinkRuntimeDispatchErrorReason as ZLinkDispatchErrorReason,
@@ -32,7 +36,6 @@ import {
   SubmitResult
 } from '@zlink-systems/zlink';
 import {
-  type MeshPublishDetail,
   ReceiveKind,
   type ReadyRecord,
   type ReceiveRecord
@@ -83,6 +86,7 @@ import type {
   ZLinkSpotActorHandoffRuntime,
   ZLinkSpotBoundSessionRuntime
 } from './spot-runtime-ports';
+import { createAbortError } from '../abort';
 
 const ZLINK_SEND_DONT_WAIT = 1;
 
@@ -114,6 +118,16 @@ export interface ZLinkSpotNodeRuntimeManagerOptions {
   ) => void | Promise<void>;
 }
 
+interface ZLinkPublishSlotWaiter {
+  readonly resolve: (acquired: boolean) => void;
+  readonly reject: (error: unknown) => void;
+  readonly signal?: AbortSignal;
+  abortHandler?: () => void;
+  timeout?: ReturnType<typeof setTimeout>;
+  deadlineMs?: number;
+  settled: boolean;
+}
+
 export class ZLinkSpotNodeRuntimeManager {
   private readonly meshNodes = new Map<string, ZLinkBackendMeshNode>();
   private readonly meshPumps = new Map<string, ZLinkMeshDispatchPump>();
@@ -125,6 +139,8 @@ export class ZLinkSpotNodeRuntimeManager {
     ReturnType<ZLinkBackendMeshNode['createPublisher']>
   >();
   private readonly activePublishes = new Set<string>();
+  private readonly publishSlotWaiters = new Map<string, ZLinkPublishSlotWaiter[]>();
+  private disposed = false;
   private readonly autoConnectLoops: ZLinkAutoConnectLoop[] = [];
   private readonly publishedMeshNodeDescriptors =
     new Map<string, ZLinkMeshNodeDescriptor>();
@@ -409,6 +425,10 @@ export class ZLinkSpotNodeRuntimeManager {
     return this.meshNodes.get(meshName);
   }
 
+  meshNodeDescriptor(meshName: string): ZLinkMeshNodeDescriptor | undefined {
+    return this.publishedMeshNodeDescriptors.get(meshName);
+  }
+
   placementWeight(meshName: string): number {
     const registration = this.options.registration.spotNodes.get(meshName);
     if (registration === undefined) {
@@ -569,6 +589,7 @@ export class ZLinkSpotNodeRuntimeManager {
   }
 
   async dispose(signal?: AbortSignal): Promise<void> {
+    this.disposed = true;
     const autoConnectLoops = [...this.autoConnectLoops];
     const entryActivations = [...this.entryActivations.values()];
     const meshPumps = [...this.meshPumps.values()];
@@ -581,6 +602,7 @@ export class ZLinkSpotNodeRuntimeManager {
     this.meshCompletions.clear();
     const publishers = [...this.publishers.values()];
     this.publishers.clear();
+    this.rejectPublishSlotWaiters(runtimeShutdownError());
     const errors: unknown[] = [];
     const settle = async (operations: readonly Promise<unknown>[]) => {
       const results = await Promise.allSettled(operations);
@@ -819,7 +841,7 @@ export class ZLinkSpotNodeRuntimeManager {
     );
   }
 
-  async publish(
+  publish(
     meshName: string,
     channelName: string,
     topic: string,
@@ -827,21 +849,60 @@ export class ZLinkSpotNodeRuntimeManager {
     event: Message,
     signal?: AbortSignal,
     metadata: ReadonlyMap<string, string> = new Map()
-  ): Promise<ZLinkPublishResult> {
+  ): Promise<ZLinkSubmitResult> {
+    if (this.disposed) {
+      return Promise.reject(runtimeShutdownError());
+    }
     if (signal?.aborted === true) {
-      throw signal.reason;
+      return Promise.reject(signal.reason ?? createAbortError());
     }
     const publisher = this.publishers.get(meshName);
     if (publisher === undefined) {
       throw new ZLinkConfigurationException(`RouteMesh '${meshName}' publisher is not started.`);
     }
-    if (this.activePublishes.has(meshName)) {
-      return emptyPublishResult(ZLinkSubmitStatus.Backpressured);
+    const sendTimeoutMs = this.options.registration.spotNodes
+      .get(meshName)?.publisherConfig?.sendTimeoutMs ?? 1000;
+    const slot = this.acquirePublishSlot(meshName, sendTimeoutMs, signal);
+    if (slot === false) {
+      // The bounded executor-admission tokens are exhausted. Do not retain the
+      // payload, cancellation state, or a timer for this hard-overload call.
+      return Promise.resolve(this.publishTimedOut());
     }
+    if (slot === true) {
+      return this.executePublish(
+        publisher,
+        meshName,
+        channelName,
+        topic,
+        packetName,
+        event,
+        metadata
+      );
+    }
+    return slot.then((acquired) => acquired
+      ? this.executePublish(
+        publisher,
+        meshName,
+        channelName,
+        topic,
+        packetName,
+        event,
+        metadata
+      )
+      : this.publishTimedOut());
+  }
 
-    // The slot limits direct handoff capacity but does not commit the publish.
-    // The binding arbitrates abort against the native worker's Core-call start.
-    this.activePublishes.add(meshName);
+  private async executePublish(
+    publisher: ReturnType<ZLinkBackendMeshNode['createPublisher']>,
+    meshName: string,
+    channelName: string,
+    topic: string,
+    packetName: string | undefined,
+    event: Message,
+    metadata: ReadonlyMap<string, string>
+  ): Promise<ZLinkSubmitResult> {
+    // The slot is the source-local admission boundary. Once publishAsync takes
+    // the owned frames, target processing cannot change the caller terminal.
     try {
       const parts = encodeChannelPublishEnvelopeParts(
         channelName,
@@ -852,15 +913,17 @@ export class ZLinkSpotNodeRuntimeManager {
         this.options.dispatchErrors?.flow.flowCreationEnabled() ?? true,
         metadata
       );
-      return mapPublishResult(await publisher.publishAsync(
+      const processing = publisher.publishAsync(
         channelName,
         topic,
         parts,
         undefined,
-        signal
-      ));
+        undefined
+      );
+      void Promise.resolve(processing).catch(() => undefined);
+      return Promise.resolve({ status: ZLinkSubmitStatus.Submitted });
     } finally {
-      this.activePublishes.delete(meshName);
+      this.releasePublishSlot(meshName);
     }
   }
 
@@ -871,7 +934,7 @@ export class ZLinkSpotNodeRuntimeManager {
     packetName: string | undefined,
     event: Message,
     metadata: ReadonlyMap<string, string> = new Map()
-  ): ZLinkPublishResult {
+  ): ZLinkSubmitResult {
     return this.publishWithFlags(meshName, channelName, topic, packetName, event, ZLINK_SEND_DONT_WAIT, metadata);
   }
 
@@ -883,7 +946,10 @@ export class ZLinkSpotNodeRuntimeManager {
     event: Message,
     flags: number,
     metadata: ReadonlyMap<string, string>
-  ): ZLinkPublishResult {
+  ): ZLinkSubmitResult {
+    if (this.disposed) {
+      throw runtimeShutdownError();
+    }
     const publisher = this.publishers.get(meshName);
     if (publisher === undefined) {
       throw new ZLinkConfigurationException(`RouteMesh '${meshName}' publisher is not started.`);
@@ -898,14 +964,145 @@ export class ZLinkSpotNodeRuntimeManager {
       metadata
     );
     try {
-      return mapPublishDetail(publisher.publish(channelName, topic, parts, { flags }));
+      publisher.publish(channelName, topic, parts, { flags });
+      return { status: ZLinkSubmitStatus.Submitted };
     } catch (error) {
       if (error instanceof SubmitError) {
-        return emptyPublishResult(mapPublishSubmitStatus(error.result));
+        return { status: mapPublishSubmitStatus(error.result) };
       }
       throw error;
     }
   }
+
+  private acquirePublishSlot(
+    meshName: string,
+    timeoutMs: number,
+    signal?: AbortSignal
+  ): boolean | Promise<boolean> {
+    if (!this.activePublishes.has(meshName)) {
+      this.activePublishes.add(meshName);
+      return true;
+    }
+    const waiterCapacity = Math.max(
+      1,
+      this.options.registration.spotNodes
+        .get(meshName)?.publisherConfig?.sendHighWaterMark ?? 1
+    );
+    const waiters = this.publishSlotWaiters.get(meshName) ?? [];
+    if (waiters.length >= waiterCapacity) {
+      // This call has no bounded executor-admission token. Fail without
+      // retaining its payload in a pending work queue.
+      return false;
+    }
+    return new Promise<boolean>((resolve, reject) => {
+      const waiter: ZLinkPublishSlotWaiter = {
+        resolve,
+        reject,
+        signal,
+        settled: false
+      };
+      if (timeoutMs !== -1) {
+        waiter.deadlineMs = Date.now() + Math.max(0, timeoutMs);
+      }
+      waiters.push(waiter);
+      this.publishSlotWaiters.set(meshName, waiters);
+      if (timeoutMs !== -1) {
+        waiter.timeout = setTimeout(() => this.settlePublishSlotWaiter(
+          meshName,
+          waiter,
+          false
+        ), Math.max(0, timeoutMs));
+      }
+      if (signal !== undefined) {
+        waiter.abortHandler = () => this.rejectPublishSlotWaiter(
+          meshName,
+          waiter,
+          signal.reason ?? createAbortError()
+        );
+        signal.addEventListener('abort', waiter.abortHandler, { once: true });
+      }
+    });
+  }
+
+  private publishTimedOut(): ZLinkSubmitResult {
+    return { status: ZLinkSubmitStatus.TimedOut };
+  }
+
+  private releasePublishSlot(meshName: string): void {
+    const waiters = this.publishSlotWaiters.get(meshName);
+    while (waiters !== undefined && waiters.length > 0) {
+      const waiter = waiters.shift()!;
+      if (waiter.settled) continue;
+      if (waiter.deadlineMs !== undefined && Date.now() >= waiter.deadlineMs) {
+        this.cleanupPublishSlotWaiter(waiter);
+        waiter.settled = true;
+        waiter.resolve(false);
+        continue;
+      }
+      this.cleanupPublishSlotWaiter(waiter);
+      waiter.settled = true;
+      waiter.resolve(true);
+      if (waiters.length === 0) this.publishSlotWaiters.delete(meshName);
+      return;
+    }
+    this.publishSlotWaiters.delete(meshName);
+    this.activePublishes.delete(meshName);
+  }
+
+  private settlePublishSlotWaiter(
+    meshName: string,
+    waiter: ZLinkPublishSlotWaiter,
+    acquired: boolean
+  ): void {
+    if (waiter.settled) return;
+    waiter.settled = true;
+    this.removePublishSlotWaiter(meshName, waiter);
+    this.cleanupPublishSlotWaiter(waiter);
+    waiter.resolve(acquired);
+  }
+
+  private rejectPublishSlotWaiter(
+    meshName: string,
+    waiter: ZLinkPublishSlotWaiter,
+    error: unknown
+  ): void {
+    if (waiter.settled) return;
+    waiter.settled = true;
+    this.removePublishSlotWaiter(meshName, waiter);
+    this.cleanupPublishSlotWaiter(waiter);
+    waiter.reject(error);
+  }
+
+  private removePublishSlotWaiter(meshName: string, waiter: ZLinkPublishSlotWaiter): void {
+    const waiters = this.publishSlotWaiters.get(meshName);
+    if (waiters === undefined) return;
+    const index = waiters.indexOf(waiter);
+    if (index >= 0) waiters.splice(index, 1);
+    if (waiters.length === 0) this.publishSlotWaiters.delete(meshName);
+  }
+
+  private cleanupPublishSlotWaiter(waiter: ZLinkPublishSlotWaiter): void {
+    if (waiter.timeout !== undefined) clearTimeout(waiter.timeout);
+    if (waiter.abortHandler !== undefined) {
+      waiter.signal?.removeEventListener('abort', waiter.abortHandler);
+    }
+  }
+
+  private rejectPublishSlotWaiters(error: unknown): void {
+    for (const [meshName, waiters] of this.publishSlotWaiters) {
+      for (const waiter of [...waiters]) {
+        this.rejectPublishSlotWaiter(meshName, waiter, error);
+      }
+    }
+    this.activePublishes.clear();
+  }
+}
+
+function runtimeShutdownError(): ZLinkFrameworkException {
+  return new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.RuntimeShutdown,
+    'SPOT publisher runtime is shutting down.'
+  );
 }
 
 export function createFrameworkEntrySpotId(prefix: string): string {
@@ -927,28 +1124,6 @@ function resolveChannelMeshName(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-function mapPublishResult(outcome: {
-  readonly result: number;
-  readonly detail: MeshPublishDetail;
-}): ZLinkPublishResult {
-  return {
-    status: mapPublishSubmitStatus(outcome.result),
-    detail: {
-      snapshotRemoteNodeCount: BigInt(outcome.detail.snapshotRemoteTargetCount),
-      admittedRemoteNodeCount: BigInt(outcome.detail.admittedRemoteTargetCount),
-      droppedRemoteNodeCount: BigInt(outcome.detail.droppedRemoteTargetCount),
-      unreachableRemoteNodeCount: BigInt(outcome.detail.unreachableRemoteTargetCount),
-      snapshotLocalSpotCount: BigInt(outcome.detail.snapshotLocalSpotCount),
-      admittedLocalSpotCount: BigInt(outcome.detail.admittedLocalSpotCount),
-      droppedLocalSpotCount: BigInt(outcome.detail.droppedLocalSpotCount)
-    }
-  };
-}
-
-function mapPublishDetail(detail: MeshPublishDetail): ZLinkPublishResult {
-  return mapPublishResult({ result: SubmitResult.Ok, detail });
-}
-
 function mapPublishSubmitStatus(result: number): ZLinkSubmitStatus {
   switch (result) {
     case SubmitResult.Ok:
@@ -957,7 +1132,9 @@ function mapPublishSubmitStatus(result: number): ZLinkSubmitStatus {
     case SubmitResult.NotAdmitted:
       return ZLinkSubmitStatus.Backpressured;
     case SubmitResult.NotFound:
-      return ZLinkSubmitStatus.TargetNotFound;
+      // A publish with no matching subscriber is a successful zero-recipient
+      // operation, not an operation-specific not-found failure.
+      return ZLinkSubmitStatus.Submitted;
     case SubmitResult.NotConnected:
       return ZLinkSubmitStatus.RouteNotConnected;
     case SubmitResult.Terminated:
@@ -966,21 +1143,6 @@ function mapPublishSubmitStatus(result: number): ZLinkSubmitStatus {
     default:
       throw new ZLinkConfigurationException(`Logical Multicast failed with submit result '${result}'.`);
   }
-}
-
-function emptyPublishResult(status: ZLinkSubmitStatus): ZLinkPublishResult {
-  return {
-    status,
-    detail: {
-      snapshotRemoteNodeCount: 0n,
-      admittedRemoteNodeCount: 0n,
-      droppedRemoteNodeCount: 0n,
-      unreachableRemoteNodeCount: 0n,
-      snapshotLocalSpotCount: 0n,
-      admittedLocalSpotCount: 0n,
-      droppedLocalSpotCount: 0n
-    }
-  };
 }
 
 function requireEntrySpotReply(result: number): void {

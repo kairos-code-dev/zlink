@@ -19,7 +19,7 @@ inline profile_res_t request_profile (zlink::framework::channel_client_t &channe
 {
     auto call = channels.request (api_channel, request)
                   .timeout (timeout)
-                  .async<profile_res_t> ();
+                  .submit<profile_res_t> ();
     const auto &reply = call.result ();
     if (reply) {
         return reply.value ();
@@ -33,7 +33,7 @@ inline payload_res_t request_payload (zlink::framework::channel_client_t &channe
 {
     auto call = channels.request (api_channel, request)
                   .timeout (std::chrono::milliseconds (3000))
-                  .async<payload_res_t> ();
+                  .submit<payload_res_t> ();
     const auto &reply = call.result ();
     if (reply) {
         return reply.value ();
@@ -106,7 +106,7 @@ class slow_request_handler_t
     {
         auto call = _channels.request (api_channel, request)
                       .timeout (std::chrono::milliseconds (100))
-                      .async<profile_res_t> ();
+                      .submit<profile_res_t> ();
         const auto &reply = call.result ();
         if (reply) {
             return {.failed = false, .error_type = ""};
@@ -135,7 +135,7 @@ class missing_request_handler_t
     {
         auto call = _channels.request (api_channel, missing_profile_req_t{request})
                       .timeout (std::chrono::milliseconds (3000))
-                      .async<profile_res_t> ();
+                      .submit<profile_res_t> ();
         const auto &reply = call.result ();
         if (reply) {
             return {.failed = false, .error_type = ""};
@@ -207,7 +207,7 @@ class payload_over_limit_handler_t
     {
         auto call = _channels.request (api_channel, request)
                       .timeout (std::chrono::milliseconds (1500))
-                      .async<payload_res_t> ();
+                      .submit<payload_res_t> ();
         const auto &reply = call.result ();
         if (reply) {
             return {.failed = false, .error_type = ""};

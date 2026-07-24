@@ -18,7 +18,7 @@ public interface IZLinkSession
         ZLinkStreamError error,
         CancellationToken cancellationToken);
     ValueTask OnDispatchAsync(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken)
     {
@@ -43,7 +43,7 @@ public interface IZLinkSessionHandlerRegistry
     void AddHandler<THandler>() where THandler : class;
     void AddHandler<THandler>(string packetName) where THandler : class;
     ValueTask<bool> TryHandleAsync(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
 }
@@ -52,7 +52,7 @@ public interface IZLinkSessionPacketHandler<in TSessionContext, TMessage>
 {
     ValueTask HandleAsync(
         TSessionContext context,
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         TMessage message,
         CancellationToken cancellationToken);
 }
@@ -98,7 +98,7 @@ public interface IZLinkSessionActor
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
     ValueTask RelayAsync(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
     ValueTask NotifyDisconnectedAsync(
@@ -119,9 +119,9 @@ public readonly record struct ZLinkStreamError(
     ZLinkStreamSessionError Error,
     ZLinkStreamDiagnostic? Diagnostic);
 
-public sealed class ZLinkSessionDispatchContext
+public sealed class ZLinkSessionMessageContext
 {
-    public ZLinkSessionDispatchContext(
+    public ZLinkSessionMessageContext(
         string packetName,
         ZLinkMessageMetadata? metadata = null,
         bool canReply = false) { }
@@ -135,9 +135,18 @@ public sealed class ZLinkSessionDispatchContext
 terminator는 transport를 시작하기 전에 token을 원자적으로 claim하고 소비한다. 같은 token에서 만든 두 call이
 경쟁하면 claim에 실패한 call은 transport를 시도하지 않고 exceptional completion으로 끝난다. Send packet에서
 만든 reply, 이미 사용한 token과 중복 submit도 같은 방식으로 거부한다. Token을 소비한 call이 timeout,
-`Backpressured` 또는 cancellation로 끝나도 token을 다시 사용할 수 없다. 유효한 reply는 STREAM socket send
+`DeadlineExceeded` 또는 cancellation로 끝나도 token을 다시 사용할 수 없다. 유효한 reply는 STREAM socket send
 timeout만 admission deadline으로 사용한다. Caller request timeout은 wire로 전달되지 않으므로 reply [deadline](../../../../01-glossary.ko.md#deadline)으로
 사용하지 않으며, timeout이나 cancellation 뒤에는 late reply를 보내지 않는다.
+
+Bind 뒤 relay·request relay와 `NotifyDisconnectedAsync(...)`는 Actor별 저장 route를 사용하며 message마다
+Location Store를 조회하지 않는다. Physical disconnect는 Framework가 current binding 전체에 automatic
+all-settled 통지를 수행하고 exact binding identity마다 Spot callback을 최대 한 번 실행한다.
+`NotifyDisconnectedAsync(...)`는 connection이 유지된 상태의 logical notification이며 callback terminal까지
+기다린다. Relocation route update는 같은 ObjectGeneration에만 허용하고 callback·journal replay,
+durable source cleanup과 `Completed` 뒤 해당 Actor route만 바꾼다. Command 44·45 routed ACK와 steady
+normalization 전에는 target session packet·push admission을 열지 않으며 같은 Session의 다른 Actor
+route와 physical STREAM connection은 유지한다.
 
 Payload만 받는 `RelayAsync(...)`는 local relay queue가 operation을 수락하면 정상 완료하는 one-way
 admission이다. Dispatch context를 받는 overload는 explicit current STREAM request reply capability를 호출 즉시

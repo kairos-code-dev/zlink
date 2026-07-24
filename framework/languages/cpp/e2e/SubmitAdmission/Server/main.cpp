@@ -66,36 +66,35 @@ role_options_t read_options (zlink::framework::app_t &app, int argc, char **argv
     return app.config ().bind_required<role_options_t> ("e2e");
 }
 
-const char *status_name (zlink::framework::submit_status_t status)
+std::string terminal_name (const zlink::framework::result_t<void> &result)
 {
-    using status_t = zlink::framework::submit_status_t;
-    switch (status) {
-        case status_t::submitted:
+    using error_kind_t = zlink::framework::framework_error_kind_t;
+    if (result) {
             return "Submitted";
-        case status_t::backpressured:
-            return "Backpressured";
-        case status_t::timed_out:
-            return "TimedOut";
-        case status_t::target_not_found:
-            return "TargetNotFound";
-        case status_t::route_not_connected:
-            return "RouteNotConnected";
-        case status_t::shutdown:
-            return "Shutdown";
     }
-    return "Unknown";
+    switch (result.error_kind ()) {
+        case error_kind_t::deadline_exceeded:
+            return "DeadlineExceeded";
+        case error_kind_t::actor_route_not_found:
+        case error_kind_t::spot_route_not_found:
+        case error_kind_t::request_target_not_found:
+            return "TargetNotFound";
+        case error_kind_t::route_not_connected:
+            return "RouteNotConnected";
+        case error_kind_t::runtime_shutdown:
+            return "RuntimeShutdown";
+        default:
+            return std::string ("Exceptional:")
+                   + (result.error () ? result.error ()->what () : "submit failed");
+    }
 }
 
 sa::submit_response_t response_from (
   const std::string &operation_id,
-  const zlink::framework::result_t<zlink::framework::submit_result_t> &result)
+  const zlink::framework::result_t<void> &result)
 {
-    if (!result) {
-        throw zlink::framework::framework_exception_t (
-          result.error_kind (), result.error () ? result.error ()->what () : "submit failed");
-    }
     return {.operation_id = operation_id,
-            .status = status_name (result.value ().status),
+            .status = terminal_name (result),
             .public_invocation_count = 1,
             .terminal_count = 1};
 }
@@ -186,14 +185,7 @@ class fanout_submit_handler_t
         const auto result = _publisher.publish (sa::fanout_channel, "admission", message)
                               .submit ()
                               .result ();
-        if (!result) {
-            throw zlink::framework::framework_exception_t (
-              result.error_kind (), result.error () ? result.error ()->what () : "publish failed");
-        }
-        return {.operation_id = message.operation_id,
-                .status = status_name (result.value ().status),
-                .public_invocation_count = 1,
-                .terminal_count = 1};
+        return response_from (message.operation_id, result);
     }
 
   private:
@@ -500,7 +492,7 @@ class ensure_actor_handler_t
         if (!created) {
             throw *created.error ();
         }
-        auto bound = _actors.bind_or_get (created.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (created.value ().ref ()).submit ().result ();
         if (!bound) {
             throw *bound.error ();
         }
@@ -555,13 +547,9 @@ class bound_session_submit_handler_t
 };
 
 std::string stream_terminal (
-  const zlink::framework::result_t<zlink::framework::submit_result_t> &result)
+  const zlink::framework::result_t<void> &result)
 {
-    if (result) {
-        return status_name (result.value ().status);
-    }
-    return std::string ("Exceptional:")
-           + (result.error () ? result.error ()->what () : "stream submit failed");
+    return terminal_name (result);
 }
 
 class submit_admission_stream_session_t final :
@@ -607,7 +595,7 @@ class submit_admission_stream_session_t final :
             zlink::framework::actor_ref_t ref (
               zlink::framework::node_rid_t::from_string (target.node_rid),
               admission_actor_type, target.actor_id, target.generation);
-            auto bound = co_await _actors.bind_or_get (std::move (ref)).async ();
+            auto bound = co_await _actors.bind_or_get (std::move (ref)).submit ();
             const auto &bound_ref = bound.ref ();
             stream
               .reply_packet (zlink::message_t::from_json (sa::actor_target_t{
@@ -626,12 +614,12 @@ class submit_admission_stream_session_t final :
                   zlink::framework::framework_error_kind_t::actor_route_not_found,
                   "session actor relay target was not bound");
             }
-            const auto result =
-              co_await actor->relay ("admission", zlink::message_t::from_json (request.message));
+            co_await actor->relay (
+              "admission", zlink::message_t::from_json (request.message));
             stream
               .reply_packet (zlink::message_t::from_json (
                 sa::submit_response_t{.operation_id = request.message.operation_id,
-                                      .status = status_name (result.status),
+                                      .status = "Submitted",
                                       .public_invocation_count = 1,
                                       .terminal_count = 1}))
               .submit ();

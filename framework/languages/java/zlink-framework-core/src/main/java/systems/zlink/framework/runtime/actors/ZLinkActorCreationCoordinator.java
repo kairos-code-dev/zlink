@@ -173,7 +173,7 @@ public final class ZLinkActorCreationCoordinator
             new ZLinkLocationOwnerToken(
                 target.ownerId(), target.leaseGeneration()),
             creating,
-            1);
+            ZLinkPlacementCapacityBundle.actor(1));
         return locations.reserve(request, OPEN)
             .thenCompose(result -> {
                 if (result instanceof ZLinkObjectAlreadyExists exists) {
@@ -483,8 +483,10 @@ public final class ZLinkActorCreationCoordinator
                 && fence.targetNodeRid().equals(node.status().routingId())
                 && fence.targetNodeGeneration()
                     == node.status().lifecycleGeneration()
-                && allocation.capacityDelta()
-                    == fence.pendingCapacityDelta(),
+                && allocation.capacityBundle().equals(
+                    ZLinkPlacementCapacityBundle.actor(
+                        Math.toIntExact(
+                            fence.pendingCapacityDelta()))),
             "stale Actor create reservation");
         return new ZLinkObjectReservation(
             key,
@@ -691,6 +693,35 @@ public final class ZLinkActorCreationCoordinator
             });
     }
 
+    public CompletionStage<ZLinkActorRuntime.EntrySpotTarget>
+        selectEntrySpotTarget(
+            String actorType,
+            Duration timeout) {
+        if (actorType == null || actorType.isBlank()) {
+            return failed("Actor stable type is not available");
+        }
+        if (timeout == null || timeout.isZero() || timeout.isNegative()) {
+            return failed("Entry Spot selection timeout must be positive");
+        }
+        long deadline;
+        try {
+            deadline = Math.addExact(
+                System.currentTimeMillis(),
+                timeout.toMillis());
+        } catch (ArithmeticException overflow) {
+            deadline = Long.MAX_VALUE;
+        }
+        return selectTarget(actorType, deadline, Set.of())
+            .thenCompose(target -> target.entrySpotId()
+                .<CompletionStage<ZLinkActorRuntime.EntrySpotTarget>>map(
+                    spotId -> CompletableFuture.completedFuture(
+                        new ZLinkActorRuntime.EntrySpotTarget(
+                            target.rid(),
+                            spotId)))
+                .orElseGet(() -> failed(
+                    "Target descriptor has no Entry Spot identity")));
+    }
+
     static boolean hasCapacity(
         ZLinkMeshNodeDescriptor candidate,
         ZLinkObjectCapability capability) {
@@ -720,19 +751,19 @@ public final class ZLinkActorCreationCoordinator
 
     private CompletionStage<ZLinkSpotLocation> resolveEntrySpot(
         ZLinkMeshNodeDescriptor target) {
-        return locations.listSpotLocations(
-                ZLinkSpotLocationFilter.all(),
-                ZLinkPageRequest.firstPage())
-            .thenCompose(page -> page.items().stream()
-                .filter(spot ->
-                    spot.spotKind() == ZLinkSpotKind.ENTRY
-                        && spot.meshName().equals(target.meshName())
-                        && spot.nodeRid().equals(target.rid()))
-                .findFirst()
-                .<CompletionStage<ZLinkSpotLocation>>map(
-                    CompletableFuture::completedFuture)
-                .orElseGet(() -> failed(
-                    "Target Entry Spot is not Ready")));
+        return target.entrySpotId()
+            .<CompletionStage<ZLinkSpotLocation>>map(spotId ->
+                locations.resolveSpot(new ZLinkSpotLocationKey(spotId))
+                    .thenCompose(entry ->
+                        entry != null
+                            && entry.spotKind() == ZLinkSpotKind.ENTRY
+                            && entry.meshName().equals(target.meshName())
+                            && entry.nodeRid().equals(target.rid())
+                        ? CompletableFuture.completedFuture(entry)
+                        : failed(
+                            "Target descriptor Entry Spot is not Ready")))
+            .orElseGet(() -> failed(
+                "Target descriptor has no Entry Spot identity"));
     }
 
     private static ZLinkServiceM6BWireCodec.ReservationFence

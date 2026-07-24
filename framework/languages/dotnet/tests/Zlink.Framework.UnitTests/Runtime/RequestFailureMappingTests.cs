@@ -199,7 +199,7 @@ public sealed class RequestFailureMappingTests
     }
 
     [Fact]
-    public async Task SubmitRequestAsync_Preserves_Backpressured_On_Submit_Timeout()
+    public async Task SubmitRequestAsync_Maps_Backpressure_Timeout_To_DeadlineExceeded()
     {
         await using var submitter = new ZLinkAsyncSubmitter(
             _ => { },
@@ -210,7 +210,8 @@ public sealed class RequestFailureMappingTests
             Message.From("payload"),
             (_, _, _) => throw new ZlinkSubmitException(ZlinkSubmitException.ErrorCode.Backpressured));
 
-        var error = await Assert.ThrowsAsync<TimeoutException>(async () => await task.AsTask());
+        var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () => await task.AsTask());
+        Assert.Equal(ZLinkFrameworkErrorKind.DeadlineExceeded, error.Kind);
         Assert.IsType<ZlinkSubmitException>(error.InnerException);
     }
 }

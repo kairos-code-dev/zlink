@@ -1,7 +1,8 @@
 package systems.zlink.framework.channels;
 
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.spots.SpotHandle;
+import systems.zlink.framework.spots.ZLinkSpotRequestCall;
+import systems.zlink.framework.spots.ZLinkSpotSendCall;
 
 public interface ZLinkRouteClient {
     ZLinkSendCall sendToChannel(
@@ -17,8 +18,8 @@ public interface ZLinkRouteClient {
         RoutingId target,
         Object message);
 
-    ZLinkSendCall sendToSpot(
-        SpotHandle spot,
+    ZLinkSpotSendCall sendToSpot(
+        String spotId,
         Object message);
 
     ZLinkRequestCall requestToNode(
@@ -26,7 +27,7 @@ public interface ZLinkRouteClient {
         RoutingId target,
         Object message);
 
-    ZLinkRequestCall requestToSpot(
-        SpotHandle spot,
+    ZLinkSpotRequestCall requestToSpot(
+        String spotId,
         Object message);
 }

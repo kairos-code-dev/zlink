@@ -38,8 +38,8 @@ machine inventory가 소유하고, 현재 구현과의 차이, review finding, t
 8. E2E·sample source와 registration은 유지한 채 실행 graph에서만 격리하고 C++·.NET·JVM·Node.js runtime을
    같은 계약 snapshot에서 병렬 구현한다. Java와 Kotlin은 JVM runtime과 build 파일을 공유한다. 이 구간은
    internal unit·contract·resource·protocol regression만 실행한다.
-9. 네 runtime과 production placeholder 제거가 끝나면 공통 E2E와 sample spec을 최종 확정한다. Codex
-   Codex 5.6 sol `xhigh`와 Claude Sonnet이 같은 candidate를 독립 review하고 assertion·coverage·다섯 언어 parity를 승인한
+9. 네 runtime과 production placeholder 제거가 끝나면 공통 E2E와 sample spec을 최종 확정한다.
+   Codex 5.6 sol `high`와 Claude Sonnet이 같은 candidate를 독립 review하고 assertion·coverage·다섯 언어 parity를 승인한
    뒤에만 E2E source와 registration을 변경한다.
 10. E2E는 topology, stateful object, maintenance, race·`4 x 4` 순서로 활성화하고 전체 E2E 통과 뒤 sample을
    실행한다.

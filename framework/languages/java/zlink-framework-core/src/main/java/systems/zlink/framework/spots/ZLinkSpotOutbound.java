@@ -5,12 +5,12 @@ import systems.zlink.framework.channels.ZLinkSendCall;
 import systems.zlink.framework.channels.ZLinkRequestCall;
 
 public interface ZLinkSpotOutbound {
-    ZLinkSendCall sendToSpot(
-        SpotHandle spot,
+    ZLinkSpotSendCall sendToSpot(
+        String spotId,
         Object message);
 
-    ZLinkRequestCall requestToSpot(
-        SpotHandle spot,
+    ZLinkSpotRequestCall requestToSpot(
+        String spotId,
         Object request);
 
     ZLinkPublishCall publish(

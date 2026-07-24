@@ -65,7 +65,8 @@ class HttpClientCoroutineTest {
             ZLinkHttpClient.create(server.baseUrl).buildServer(turn).use { client ->
                 assertEquals(7, client.get("/p").await<Player>().body().id)
                 assertEquals(7, client.get("/p").yieldAwait<Player>().body().id)
-                assertEquals(1, asyncCalls.get())
+                client.post("/p").await()
+                assertEquals(2, asyncCalls.get())
                 assertEquals(1, yieldCalls.get())
             }
         }

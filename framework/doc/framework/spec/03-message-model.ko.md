@@ -58,6 +58,26 @@ Spot direct, Actor와 STREAM send/request가 같은 계약을 사용한다.
 Metadata의 내부 frame 배치와 encoding은 공개 계약이 아니다. Framework는 payload와 metadata의 경계를
 유지하고, relay가 필요한 경로에서도 application이 frame을 조립하거나 parsing하게 하지 않는다.
 
+### 3.1 Message Context
+
+Inbound handler가 받는 현재 message 정보는 object lifecycle Context와 구분한다. 공통 이름은
+`MessageContext`이며 nullable MeshName, nullable ChannelName, packet name, nullable content type, immutable
+metadata와 UTF-8 exact nullable correlation을 제공한다. Correlation은 send에서 null이고 request에서
+non-null이다. MeshName은 RouteMesh와 Spot·Actor dispatch에서 non-null이며 ClientServer·STREAM처럼 Mesh에
+속하지 않는 경로에서는 null이다. Connection cancellation은 universal MessageContext에 넣지 않고 언어별
+handler cancellation 인자나 Session 전용 context가 소유한다. Actor나 Spot identity·operation capability를
+Message Context에 넣지 않는다.
+
+Send와 request는 고유 field가 없으므로 별도 `SendContext`, `RequestContext` 또는 Spot Actor 전용 context를
+제공하지 않는다. Node direct는 source node를 추가한 `RouteMessageContext`, Publish는 topic과 nullable source를
+추가한 `PublishMessageContext`를 사용한다. STREAM Session은 reply 가능 여부와 session 전용 정보를 제공하므로
+`SessionMessageContext`를 유지한다. Handler filter의 descriptor, payload와 chain 실행 객체는 Message Context가
+아니며 `HandlerInvocation`으로 부른다.
+
+일반 request reply payload는 handler 반환값을 Framework 고정 policy로 encode한다. STREAM Session Reply call
+이외에는 reply metadata/compression option 또는 Reply builder를 제공하지 않는다. 따라서 Spot Actor 전용
+reply option도 없다.
+
 ## 4. 전달 규칙
 
 | 경로 | metadata 전달 |

@@ -135,11 +135,13 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(
             new[]
             {
+                "activationConcurrencyLimit",
                 "actorLimit",
                 "applicationVersion",
                 "capabilities",
                 "descriptorKey",
                 "descriptorRevision",
+                "entrySpotId",
                 "immutableDigest",
                 "lifecycleGeneration",
                 "objectRole",

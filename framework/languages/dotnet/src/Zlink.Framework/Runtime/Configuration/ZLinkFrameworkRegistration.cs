@@ -349,6 +349,8 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public HashSet<Type> SpotFactories { get; } = [];
 
+    public Dictionary<Type, ZLinkUserSpotFactoryOptions> UserSpotFactoryOptions { get; } = [];
+
     public Dictionary<string, ZLinkInstanceSpotFactoryRegistration>
         InstanceSpotFactories { get; } = new(StringComparer.Ordinal);
 

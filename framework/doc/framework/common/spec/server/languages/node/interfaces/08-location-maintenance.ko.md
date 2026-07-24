@@ -277,7 +277,7 @@ export interface ZLinkOwnerLeaseStore {
 ```
 
 `applicationVersion`은 `0..9223372036854775807` 범위의 `bigint`다. `objectCapabilities`는 Actor와 User·Instance
-Spot을 object kind와 stable type별로 구분하고 policy, [Snapshot](../../../../01-glossary.ko.md#snapshot) adapter 등록 여부와 type별
+Spot을 object kind와 stable type별로 구분하고 policy, [Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter 등록 여부와 type별
 capacity limit을 같은 항목에 둔다. `hasSnapshotAdapter`는 해당 kind adapter의 등록 여부만 나타내며 state format,
 version이나 contract ID를 싣지 않는다. Snapshot policy이면 이 값은 `true`여야 하고 Disabled·Recreate이면
 `false`다. Current active·pending count는 `objectCapacity`에 둔다. Runtime state,

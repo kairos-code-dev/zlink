@@ -47,6 +47,6 @@ internal sealed class SubscribeDeliverySessionHandler(
             CustomerId,
             request.DeliveryId);
         await context.Client.Reply(new SubscribeDeliveryRes(request.DeliveryId))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }

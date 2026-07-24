@@ -84,11 +84,11 @@ public sealed class ZoneWorldOpsConsoleRegistryTests
         public IZLinkSessionSendCall Metadata(string key, string value) => this;
         public IZLinkSessionSendCall Metadata(ZLinkMessageMetadata metadata) => this;
         public IZLinkSessionSendCall Compress() => this;
-        public ValueTask<ZLinkSubmitResult> SubmitAsync(CancellationToken cancellationToken = default)
+        public ValueTask Async(CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             submit();
-            return ValueTask.FromResult(new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted));
+            return ValueTask.CompletedTask;
         }
     }
 }

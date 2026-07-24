@@ -19,7 +19,7 @@ Relocation Store에는 다음 정보가 속한다.
 - Timer logical registration과 pending tick
 - Participant payload
 - Manifest와 Framework metadata
-- Terminal completion
+- Cross-node Accepted completion의 `OperationId`, optional reply와 retry cursor
 - Replay와 recovery payload
 - Complete activation envelope
 - Durable activation inbox의 첫 record
@@ -31,6 +31,13 @@ Store의 payload만으로 owner를 바꾸지 않는다.
 
 Provider는 relocation·[activation envelope](01-glossary.ko.md#activation-envelope), application state, message, timer와 journal record의
 내용을 해석하지 않는다.
+
+Relocation Store는 Session binding route도 저장하거나 갱신하지 않는다. Actor가
+Session에 bind되어 있으면 Framework runtime이 Location Store의 owner·membership
+commit, callback·journal replay, durable source cleanup과 `Completed`를 끝낸 뒤 같은
+ObjectGeneration을 검증하고 command 44·45로 Session owner가 보관한 해당 Actor
+route만 target owner로 갱신한다. Routed ACK와 steady normalization 전에는 target
+Actor의 session packet·push admission을 열지 않는다.
 
 Relocation Store는 Location Store와 별도 public interface, 별도 등록과 별도 Redis implementation을 사용한다.
 두 implementation은 같은 Redis deployment 또는 cluster를 서로 다른 key prefix로 사용할 수 있고 물리적으로
@@ -61,6 +68,14 @@ User Spot aggregate와 maintenance inventory의 권한 원본은 Location Store�
 Relocation manifest는 participant별 state·journal payload를 찾기 위한 projection과 같은 canonical inventory digest를
 가질 수 있지만 owner·[membership](01-glossary.ko.md#membership) commit의 권한 근거가 아니다. Runtime은 Location participant set의 digest와
 Relocation manifest digest가 정확히 같은 경우에만 restore와 replay를 시작한다.
+
+Actor Join의 public `OperationId`는 completion callback의 중복 처리를 막는 별도
+field다. `RelocationId`, placement reservation ID나 aggregate commit ID를
+`OperationId`로 대신 사용하지 않는다. Same-node Join, `Rejected`와 commit 전
+`Failed`는 process 재시작 뒤 completion replay를 보장하지 않으므로 이 목적의
+durable manifest를 만들지 않는다. Location Store의 bounded aggregate commit까지
+성공한 cross-node `Accepted`만 manifest의 `OperationId`, optional reply와 cursor를
+사용해 completion을 at-least-once로 복구한다.
 
 각 tree component의 retention은 24시간이고 renew threshold는 12시간이다. Provider는 Redis server time으로
 `ExpiresAt`과 `StoreNow`를 계산한다. Application host wall clock은 retention 판단에 사용하지 않는다.
@@ -160,6 +175,14 @@ authority의 availability와 Relocation payload의 availability는 독립적이�
 
 - Chunk와 root가 immutable하고 completion append가 새 root를 만든다.
 - Relocation manifest의 inventory digest가 Location Store의 authoritative canonical participant set과 일치한다.
+- Cross-node Actor Join의 `Accepted` manifest가 public completion `OperationId`,
+  optional reply와 retry cursor를 서로 다른 field로 보존한다.
+- Public completion
+  [Actor Join `OperationId`](01-glossary.ko.md#actor-join-operation-id)가
+  `RelocationId`, reservation ID나 aggregate
+  commit ID를 재사용하지 않는다.
+- Same-node Join, `Rejected`와 commit 전 `Failed`를 process 재시작 뒤 replay하기
+  위한 새 durable record를 만들지 않는다.
 - Put과 root 검증이 authority CAS보다 먼저 수행된다.
 - CAS conflict로 연결되지 않은 root가 orphan retention 또는 idempotent cleanup으로 제거된다.
 - Location authority reference release가 Relocation root delete보다 먼저 수행된다.

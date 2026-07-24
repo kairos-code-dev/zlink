@@ -36,6 +36,19 @@ Application은 session object, `ActorRef`, typed payload·reply와 bound-session
 4. Session handler가 typed payload를 current Actor route로 제출한다.
 5. Actor handler는 typed reply를 반환하거나 current bound session으로 one-way push를 보낸다.
 
+한 session은 여러 Actor를 동시에 bind할 수 있다. 예를 들어 한 connection이 player
+Actor와 party Actor를 함께 사용해도 된다. 반대 방향에는 제한이 있다. Actor 하나는
+동시에 session 하나에만 bind할 수 있다. 따라서 session은 Actor별 binding과 route를
+각각 보관한다.
+
+| 확인할 질문 | 계약 |
+|---|---|
+| Session 하나가 bind할 수 있는 Actor 수 | 여러 Actor를 bind할 수 있다. |
+| Actor 하나가 동시에 bind할 수 있는 session 수 | 하나다. 새 binding이 확정되면 이전 binding은 무효화한다. |
+| Message마다 Actor 위치를 찾는 방법 | Bind 때 확인한 route를 사용한다. Relay할 때 Location Store를 다시 조회하지 않는다. |
+| Actor가 다른 node로 이동한 뒤의 route | Relocation commit 뒤 Framework가 session에 보관한 해당 Actor route를 갱신한다. |
+| Connection이 끊겼을 때 Actor가 알 수 있는 방법 | Framework가 current binding snapshot의 각 Actor에 자동 통지한다. |
+
 ## 3. Inbound dispatch와 reply
 
 STREAM packet은 먼저 session의 typed handler registry로 dispatch된다. Handler가
@@ -61,7 +74,8 @@ Session이 닫힌 뒤 늦게 도착한 reply도 새 session이나 새 binding의
 않는다. 서로 다른 session의 request가 같은 업무 결과를 공유하는 것을 막기 위한
 경계다.
 
-## 4. Binding authority
+<a id="4-binding-authority"></a>
+## 4. Session이 Actor route를 보관하는 방법
 
 Binding은 다음 값을 연결하는 runtime 관계다.
 
@@ -75,7 +89,17 @@ Binding은 다음 값을 연결하는 runtime 관계다.
 한 Actor는 동시에 session binding 하나만 가진다. Session 하나에는 여러 Actor를
 bind할 수 있다.
 
-Bind는 caller가 제출한 `ActorRef`의 위치로 control request를 한 번 보낸다. Actor와
+Session owner는 Actor마다 다음 정보를 하나의 binding으로 보관한다.
+
+| 정보 | 사용하는 이유 |
+|---|---|
+| `ActorId`, `ObjectGeneration` | 같은 ID로 다시 만들어진 다른 Actor에게 보내지 않기 위해 사용한다. |
+| `MeshName`, owner `NodeRid` | Bind 이후 relay와 disconnect 통지를 보낼 주소로 사용한다. |
+| `NodeGeneration`, `AuthorityOwnerGeneration`, `OwnerLeaseGeneration` | 재시작 전 node나 이전 owner에게 보내지 않기 위해 검증한다. |
+| Session owner RID와 lifecycle generation, binding generation과 token | 이전 connection이나 교체된 binding의 늦은 message를 거부한다. |
+| Session sequence | 같은 session에서 수락한 message의 순서를 보존한다. |
+
+Bind는 caller가 제출한 `ActorRef`의 위치를 최초 route로 사용해 control request를 한 번 보낸다. Actor와
 STREAM session이 서로 다른 MeshNode에 있으면 session owner가
 `boundSessionBind(38)` control request를 Actor owner에 보낸다. Actor owner는
 Actor `ObjectGeneration`, target `NodeGeneration`(target node process lifecycle을
@@ -93,6 +117,13 @@ owner는 source Actor `ObjectGeneration`, source `NodeGeneration`,
 
 Source는 bind 전에 Store에서 current route를 미리 조회하지 않는다. Local Actor
 instance를 받는 overload도 제공하지 않는다.
+
+Bind가 성공하면 session owner는 검증된 Actor route를 binding에 저장한다. 이후
+`RelayAsync(...)`, disconnect 통지와 Actor에서 session으로 보내는 push는 이 binding
+정보를 사용한다. Message를 보낼 때마다 Location Store에서 Actor 위치를 조회하지
+않는다. 저장한 route가 더 이상 유효하지 않으면 active forwarding mapping으로 정확히
+한 번 전달하거나 typed stale error로 끝낸다. Location Store에서 새 `ActorRef`를 찾아
+같은 message를 다른 owner에게 자동으로 다시 보내지 않는다.
 
 Binding identity는 session owner Node RID, 그 node의 lifecycle generation과
 owner-local binding generation을 함께 사용한다. Binding generation의 대소 비교는
@@ -130,19 +161,25 @@ relay하는 공개 표면을 보여준다. 다른 언어에 같은 signature를 
 ```csharp
 public interface IZLinkSessionActors
 {
+    // 이 session에 현재 bind된 Actor를 모두 제공한다.
+    IReadOnlyCollection<IZLinkSessionActor> Bound { get; }
+
     ValueTask<IZLinkSessionActor> BindAsync(
         ActorRef actor,
         CancellationToken cancellationToken = default);
     ValueTask<IZLinkSessionActor> BindOrGetAsync(
         ActorRef actor,
         CancellationToken cancellationToken = default);
+
+    // Global Actor directory가 아니라 현재 session의 binding만 찾는다.
+    IZLinkSessionActor? Find(string actorId);
 }
 
 public interface IZLinkSessionActor
 {
     ActorRef Ref { get; }
     ValueTask RelayAsync(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
     ValueTask NotifyDisconnectedAsync(
@@ -160,10 +197,62 @@ await boundActor.RelayAsync(
     cancellationToken); // 원래 request 정보와 session sequence를 보존해 제출한다.
 ```
 
+### 4.1 Connection disconnect를 Actor에 알리는 방법
+
+Framework는 physical connection disconnect를 관찰하면 current binding snapshot을
+고정하고 각 exact binding identity에 disconnect를 자동 제출한다. Application의
+Session disconnect callback은 bound Actor를 순회하지 않는다. Framework는 binding에
+보관한 route와 generation을 검증해 통지를 Actor queue로 전달하며 이 과정에서도
+Location Store를 조회하지 않는다.
+
+한 Actor의 제출이나 callback이 실패해도 나머지 Actor 통지와 Session cleanup을
+계속하는 all-settled 규칙을 사용한다. Automatic 통지와 public
+`NotifyDisconnectedAsync(...)` 논리 통지가 경쟁하면 exact binding identity로
+dedupe하고 current Spot의 callback은 최대 한 번 실행한다. Automatic 통지는 lifecycle
+deadline 안에서 callback terminal을 기다린 뒤 tombstone과 local cleanup을 진행한다.
+Deadline 또는 callback failure가 발생해도 나머지 binding cleanup을 계속한다.
+
+Actor가 속한 현재 Entry Spot 또는 User Spot은 이 통지를
+`OnDisconnectActorAsync(...)`로 받는다. Public `NotifyDisconnectedAsync(...)`는
+physical connection이 유지된 상태에서 application이 선택한 Actor 하나에 같은 logical
+notification을 명시적으로 보내는 operation이다. 두 통지는 connection 종료 사실만
+알리며 Actor를 destroy하거나 Spot membership을 변경하지 않는다.
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant SessionOwner as Session owner node
+    participant ActorOwner as Actor owner node
+    participant ActorQueue as Actor queue
+    participant CurrentSpot as Current Spot
+
+    Client->>SessionOwner: 업무 message 전송
+    Note over SessionOwner: Bind 때 저장한 Actor route 사용<br/>Location Store 조회 없음
+    SessionOwner->>ActorOwner: binding token과 session sequence로 relay
+    ActorOwner->>ActorQueue: Actor message 제출
+
+    Client-xSessionOwner: connection 종료
+    SessionOwner->>SessionOwner: current binding snapshot 고정
+    loop bind된 Actor마다
+        SessionOwner->>ActorOwner: 저장한 route로 disconnect 통지
+        ActorOwner->>ActorQueue: disconnect 작업 제출
+        ActorQueue->>CurrentSpot: OnDisconnectActorAsync 호출
+    end
+    SessionOwner->>SessionOwner: all-settled 뒤 tombstone과 local cleanup
+```
+
 ## 5. Actor relocation route barrier
 
 Actor가 다른 MeshNode로 이동해도 physical STREAM connection과 session scope는 session owner process에 유지된다.
 Socket, transport handle과 session callback state를 target Actor process로 이동하거나 복제하지 않는다.
+
+Relocation 중에도 session은 Location Store를 조회해 route를 추측하지 않는다. Source와
+target이 owner 변경을 commit한 뒤 target이 session owner에 새 route를 전달한다.
+Session owner는 exact generation과 high-water를 검증한 뒤 해당 Actor binding의
+route만 atomic하게 바꾼다. 같은 Session에 bind된 다른 Actor의 route와 physical
+STREAM connection은 바꾸지 않는다. 이 갱신이 relocation에서 수행하는 마지막 binding
+route 변경이며, ACK가 끝나기 전에는 target Actor의 session packet·push admission을
+열지 않는다.
 
 1. Source Actor seal과 함께 current AuthorityOwnerGeneration, binding generation과 마지막 accepted session sequence를
    barrier에 기록한다.
@@ -172,11 +261,12 @@ Socket, transport handle과 session callback state를 target Actor process로 �
 4. Lease-backed one-way packet만 negotiated boundary 안에서 relocation envelope에 포함할 수 있다.
 5. Target은 Relocation Store root를 restore하고 accepted journal을 실행하지 않은 staging queue로 준비한다. 새 route를
    stage하지만 switch·unseal하지 않는다.
-6. Durable source cleanup과 Completed authority CAS 뒤 target이 session route commit을 보낸다.
-7. Session owner는 exact Actor ObjectGeneration, 이전·target AuthorityOwnerGeneration, binding generation,
-   session owner lease와 high-water를 검증해 route를 atomic switch하고 routed ACK를 보낸다.
-8. Owner commit 뒤 lifecycle callback과 accepted journal replay를 완료하고 maintenance authority를 steady target으로
-   normalize한 뒤에만 target Actor packet·push admission을 연다.
+6. Owner·membership commit 뒤 lifecycle callback과 accepted journal replay를 완료하고, durable source cleanup과
+   Completed authority CAS를 차례로 끝낸다.
+7. Target이 command 44로 session route commit을 보내면 Session owner는 exact Actor ObjectGeneration,
+   이전·target AuthorityOwnerGeneration, binding generation, session owner lease와 high-water를 검증해 해당
+   Actor route만 atomic switch하고 command 45 routed ACK를 보낸다.
+8. Maintenance authority를 steady target으로 normalize한 뒤에만 target Actor packet·push admission을 연다.
 
 ```mermaid
 sequenceDiagram
@@ -193,11 +283,12 @@ sequenceDiagram
     Framework->>SourceActor: bound-session request를 terminal drain
     Framework->>RelocationStore: Actor state와 허용된 one-way journal 저장
     TargetActor->>RelocationStore: root를 읽어 staging queue와 새 route 준비
+    Framework->>TargetActor: callback과 accepted journal replay
     Framework->>Framework: durable source cleanup 완료
     Framework->>LocationStore: authority를 Completed로 CAS
-    TargetActor->>SessionOwner: exact generation으로 route 전환 요청
-    SessionOwner-->>TargetActor: atomic route 전환 ACK
-    Framework->>TargetActor: callback과 accepted journal replay
+    TargetActor->>SessionOwner: command 44로 binding route 갱신 요청
+    SessionOwner->>SessionOwner: exact generation 확인 후 route 교체
+    SessionOwner-->>TargetActor: command 45 binding route 갱신 ACK
     Framework->>TargetActor: steady target normalization 뒤 admission 개방
 ```
 
@@ -252,11 +343,18 @@ Actor owner host의 Retire는 §5 barrier를 사용한다. Session owner host의
 
 - Actor dispatch enablement가 MeshName을 받지 않고 global Actor authority를 사용한다.
 - Object role 또는 Store가 없으면 startup에서 거부하고 local-only binding을 만들지 않는다.
+- Session 하나에 여러 Actor를 bind하고 Actor마다 독립된 route와 binding token을 유지한다.
 - Local·remote payload가 Actor queue로 직접 전달되고 Spot callback을 거치지 않는다.
 - Bind가 exact ActorRef를 한 번 제출하고 stale route를 hidden Store retry하지 않는다.
+- Bind 뒤 relay와 disconnect 통지가 저장한 route를 사용하며 message마다 Location Store를
+  조회하지 않는다.
+- Physical disconnect 때 Framework가 current binding snapshot 전체에 자동 all-settled 통지하고 current
+  Spot의 `OnDisconnectActorAsync(...)`를 exact binding identity마다 최대 한 번 호출한다.
 - Rebind 뒤 이전 token과 authority fence가 current binding을 바꾸지 않는다.
 - Request reply가 original STREAM correlation으로 한 번 완료된다.
 - Physical STREAM connection과 session object를 Actor target process로 이동하지 않는다.
+- Relocation commit 뒤 session owner의 해당 Actor route가 갱신되며 route 갱신 ACK 전에는
+  target session admission을 열지 않는다.
 - Bound-session request가 Captured 전에 terminal drain되고 durable journal에 들어가지 않는다.
 - Completed route switch ACK와 steady normalization 전 target admission이 닫혀 있다.
 - Commit 전 failure는 source route, commit 뒤 failure는 target recovery로 수렴한다.

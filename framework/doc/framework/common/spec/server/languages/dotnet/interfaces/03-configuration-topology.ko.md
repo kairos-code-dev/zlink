@@ -294,7 +294,7 @@ lowercase canonical 문자열로 표현한다. Prefix는 ASCII `[A-Za-z0-9._-]` 
 허용한다. Slot count, allocation group과 public allocation provider는 제공하지 않는다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
-[Spot](../../../../01-glossary.ko.md#spot) type과 stateful object capability collection은 각각 최대 1024개다. [Snapshot](../../../../01-glossary.ko.md#snapshot) adapter 등록 여부는 각
+[Spot](../../../../01-glossary.ko.md#spot) type과 stateful object capability collection은 각각 최대 1024개다. [Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter 등록 여부는 각
 object capability의 `HasSnapshotAdapter`에 포함하며 별도 contract collection을 만들지 않는다. Runtime은 완성된
 descriptor를 socket bind 전에 한 번에 검증한다. Bound를 넘으면 startup을 실패시키며 collection을
 truncate·split하거나 descriptor 일부를 게시하지 않는다.
@@ -462,13 +462,11 @@ public interface IZLinkMeshNodeSocketConfig
 
 `ConfigureSpotPublisher()`는 publish 전용 전달 정책 option을 제공하지 않는다. [Logical Multicast](../../../../01-glossary.ko.md#logical-multicast)의
 publish는 pending queue 없이 bounded I/O executor에 direct handoff한다. 즉시 worker slot을 얻지 못하면 raw
-socket call을 시작하지 않고 `Backpressured`를 반환한다. Slot을 얻으면 bindings의 public raw socket call을
-정확히 한 번 실행한다. 각 remote
-target은 MeshNode ROUTER의 HWM과 send timeout을 따르며, public raw socket call이 target별 deadline까지
-수락하지 못한 결과는
-`Backpressured`와 partial detail에 보존한다. Remote capacity drop이 없으면 모든 remote route가 준비되지 않은
-경우에도 top-level status는 `Submitted`일 수 있다. 앞에서 수락된 target은 뒤 target의 실패 때문에 취소되지
-않으며, local Spot queue의 drop은 detail에만 반영하고 top-level status를 바꾸지 않는다.
+socket call을 시작하지 않고 send timeout까지 capacity를 기다린다. Slot을 얻으면 bindings의 public raw
+socket call을 정확히 한 번 시작하며 이 시점에 결과값 없는 terminal이 정상 완료한다. 각 remote target은
+MeshNode ROUTER의 HWM과 send timeout을 따르지만 target별 수락·실패 결과를 기다리거나 public monitoring에
+집계하지 않는다. 앞에서 수락된 target은 뒤 target의 실패 때문에 취소되지 않으며 전체 publish를 자동
+재시도하지 않는다. Target snapshot이 0개여도 정상 완료한다.
 
 `IZLinkRouteMeshRuntimeOptions`는 public DI singleton이다. 등록되지 않은 membership을 조회하면
 `ZLinkConfigurationException`이다. `MailboxMessageBudget`와 `MailboxByteBudget`은 [owner](../../../../01-glossary.ko.md#owner)별 application

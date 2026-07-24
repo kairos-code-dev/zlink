@@ -236,7 +236,7 @@ class commerce_api_handlers_t
                               owner.route_rid,
                               ensure_order_workflow_spot_req_t{request.order_id})
             .timeout (std::chrono::milliseconds (5000))
-            .template async<ok_res_t> ();
+            .template submit<ok_res_t> ();
         if (!ensured.ok) {
             throw framework_exception_t (framework_error_kind_t::request_failed,
                                          "ShoppingMall workflow spot ensure failed");
@@ -251,7 +251,7 @@ class commerce_api_handlers_t
         }
         co_return co_await _routes.request_to_spot (*target, request)
           .timeout (std::chrono::milliseconds (5000))
-          .template async<TReply> ();
+          .template submit<TReply> ();
     }
 
     sample_topology_t &_topology;

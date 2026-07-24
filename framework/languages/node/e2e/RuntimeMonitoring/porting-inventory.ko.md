@@ -2,8 +2,9 @@
 
 ## 10.0.0 목표 판정
 
-Config 7은 MeshNode·peer·ChannelName readiness, Spot Logical Multicast backpressure·drop, runtime health를
-공개 monitoring 표면으로 검증해야 한다. 아래 파일 대응과 기존 MON marker는 현재 구현 inventory이며,
+Config 7은 MeshNode·peer·ChannelName readiness와 runtime health를 공개 monitoring 표면으로 검증해야 한다.
+Spot Logical Multicast는 target별 결과를 집계하지 않으며 publish 전용 snapshot·metric·runtime event가
+없다는 negative contract를 검증한다. 아래 파일 대응과 기존 MON marker는 현재 구현 inventory이며,
 이 목표 축을 모두 충족하기 전까지 RuntimeMonitoring 포팅 상태는 `10.0.0 전환 대상`이다.
 
 
@@ -23,8 +24,8 @@ Config 7은 MeshNode·peer·ChannelName readiness, Spot Logical Multicast backpr
 | MON-A3 | `Client/Scenarios/MonA3SpotEventsScenario.cs` | `Client/Scenarios/mon-a3-spot-events-scenario.ts` | done | spot event observation. PASS: `logs/20260703-220339-17357` |
 | MON-A4 | `Client/Scenarios/MonA4AvailabilityTransitionScenario.cs` | `Client/Scenarios/mon-a4-availability-transition-scenario.ts` | done | 정상 replacement, `SIGKILL`·lease 만료 failover, socket weight 제외를 서로 다른 단계로 검증한다. PASS: `log/20260716-113646-3682839` |
 | MON-A5 | `Client/Scenarios/MonA5FixedKindsScenario.cs` | `Client/Scenarios/mon-a5-fixed-kinds-scenario.ts`, `Client/main.ts`, `feature-map.ko.md` | done | malformed raw TCP attempt를 public `HandshakeFailed` socket evidence로 검증하고 location runtime status evidence를 함께 확인한다. PASS: `logs/20260703-220339-17357` |
-| MON-B1 | `Client/Scenarios/MonB1KindFilterScenario.cs` | `Client/Scenarios/mon-b1-kind-filter-scenario.ts` | done | event kind filter. PASS: `logs/20260703-220339-17357` |
-| MON-B2 | `Client/Scenarios/MonB2RegistrationValidationScenario.cs` | `Client/Scenarios/mon-b2-registration-validation-scenario.ts` | done | registration validation. PASS: `logs/20260703-220339-17357` |
+| MON-B1 | `Client/Scenarios/MonBPublishMonitoringAbsenceScenario.cs` | 미구현 | pending | Target 0 publish의 결과 없는 transaction 시작과 publish 전용 snapshot·metric·runtime event 부재를 검증해야 한다. |
+| MON-B2 | `Client/Scenarios/MonBPublishMonitoringAbsenceScenario.cs` | 미구현 | pending | Local subscriber publish에서도 target별 count가 없고 공통 runtime snapshot은 유지됨을 검증해야 한다. |
 | MON-C1 | `Client/Scenarios/MonC1DispatchFailureScenario.cs` | `Client/Scenarios/mon-c1-dispatch-failure-scenario.ts` | done | dispatch failure isolation. PASS: `logs/20260703-220339-17357` |
 | MON-D1 | `Client/Scenarios/MonD1FailureRecoveryScenario.cs` | `Client/Scenarios/mon-d1-failure-recovery-scenario.ts` | done | service-B shutdown/restart 뒤 같은 endpoint request와 location runtime topology continuity evidence를 검증한다. PASS: `logs/20260703-220339-17357` |
 

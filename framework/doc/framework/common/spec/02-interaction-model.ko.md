@@ -16,16 +16,16 @@
 
 | 모델 | 대상 선택 | 호출자가 관찰하는 완료 |
 |---|---|---|
-| node direct send | Caller가 같은 `MeshName`에 속한 RID 하나를 직접 지정한다. | Framework가 message를 submit한 결과를 반환한다. |
+| node direct send | Caller가 같은 `MeshName`에 속한 RID 하나를 직접 지정한다. | Source-local queue가 message를 수락하면 반환 데이터 없이 완료한다. |
 | [node direct](01-glossary.ko.md#node-direct) request | Caller가 같은 `MeshName`에 속한 RID 하나를 직접 지정한다. | Reply, timeout 또는 route 오류 가운데 하나로 완료한다. |
-| channel send | Framework가 `ChannelName`에 등록된 RouteMesh 또는 ClientServer 송신 경로에서 ready target 하나를 선택한다. | Framework가 message를 submit한 결과를 반환한다. |
+| channel send | Framework가 `ChannelName`에 등록된 RouteMesh 또는 ClientServer 송신 경로에서 ready target 하나를 선택한다. | 선택한 송신 경로의 source-local queue가 수락하면 반환 데이터 없이 완료한다. |
 | channel request | Framework가 `ChannelName`에 등록된 [RouteMesh](01-glossary.ko.md#routemesh) 또는 ClientServer 송신 경로에서 [ready target](01-glossary.ko.md#ready-target) 하나를 선택한다. | Reply, timeout 또는 route 오류 가운데 하나로 완료한다. |
-| [Logical Multicast](01-glossary.ko.md#logical-multicast) | Framework가 `ChannelName`의 remote member와 local Spot 중에서 조건에 맞는 대상을 선택한다. | Publish admission 결과를 반환하며 handler 완료를 기다리지 않는다. |
-| Spot message | Caller가 global Spot ID를 지정하고 Framework가 current Ready [authority](01-glossary.ko.md#authority)의 [owner](01-glossary.ko.md#owner)를 찾는다. | Send는 submit 결과로, request는 reply 결과로 완료한다. |
-| Actor message | Caller가 global Actor ID를 지정하고 Framework가 current [Ready](01-glossary.ko.md#ready) authority의 owner를 찾는다. | Send는 submit 결과로, request는 reply 결과로 완료한다. |
+| [Logical Multicast](01-glossary.ko.md#logical-multicast) | Framework가 `ChannelName`의 remote member와 local Spot 중에서 조건에 맞는 대상을 선택한다. | Bounded worker와 source-local capacity를 확보해 publish transaction을 시작하면 반환 데이터 없이 완료한다. Target별 제출과 handler 완료를 기다리지 않는다. |
+| Spot message | Caller가 global Spot ID를 지정하고 Framework가 current Ready [authority](01-glossary.ko.md#authority)의 [owner](01-glossary.ko.md#owner)를 찾는다. | Send는 source-local queue 수락 뒤 반환 데이터 없이, request는 reply 결과로 완료한다. |
+| Actor message | Caller가 global Actor ID를 지정하고 Framework가 current [Ready](01-glossary.ko.md#ready) authority의 owner를 찾는다. | Send는 source-local queue 수락 뒤 반환 데이터 없이, request는 reply 결과로 완료한다. |
 | Object create·get-or-create | Caller가 global ID와 stable type을 지정하고 필요하면 placement intent를 추가한다. | Exact `ActorRef`·`SpotRef` 또는 typed creation 오류를 반환한다. |
-| classic fanout | Framework가 준비된 subscriber 집합을 대상으로 사용한다. | Local publisher transport가 publish를 수락했는지를 반환한다. |
-| STREAM | Caller가 session RID로 식별되는 연결을 사용한다. | Packet submit 결과 또는 session lifecycle event를 관찰한다. |
+| classic fanout | Framework가 준비된 subscriber 집합을 대상으로 사용한다. | Local publisher queue가 수락하면 반환 데이터 없이 완료한다. |
+| STREAM | Caller가 session RID로 식별되는 연결을 사용한다. | One-way packet은 local queue 수락 뒤 반환 데이터 없이 완료하고 request는 reply를 반환한다. |
 
 Channel operation에서 Framework가 조건에 맞는 target 하나를 고르는 방식을
 `select-one`이라 한다.
@@ -193,18 +193,18 @@ Logical Multicast publish는 target ChannelName, [topic](01-glossary.ko.md#topic
 
 Framework service runtime은 bounded I/O executor에 publish transaction을 제출한다. Send timeout까지
 worker slot을 확보하지 못하면 transaction을 시작하지 않고 `DeadlineExceeded`로 실패한다. Handoff에 성공해
-transaction이 시작되면 각 remote target을 해당 send timeout까지 제출하고 local Spot queue는 즉시 판단한다.
+transaction이 시작되면 public terminal은 반환 데이터 없이 정상 완료하고, runtime은 각 remote target과
+local Spot queue의 제출을 내부에서 계속한다.
 Transaction 시작이 [snapshot](01-glossary.ko.md#snapshot) operation의 commit point이므로 cancellation이나 shutdown으로 남은 target 제출을
 중단하지 않는다.
 앞에서 수락된 remote target과 local Spot queue는 뒤 target의 실패 때문에 취소되지 않는다.
 
 Snapshot target이 모두 0이어도 정상 완료한다. Transaction이 시작된 뒤 발생한 remote 연결 불가, outbound
 capacity 부족과 local Spot queue drop은 이미 수락된 target을 rollback하거나 전체 publish를 retry하지 않는다.
-Target별 snapshot·admitted·dropped·unreachable 수는 public 결과가 아니라 monitoring metric과 event에
-기록한다.
+Target별 수락·실패 결과는 public 결과로 반환하거나 publish 전용 monitoring 값으로 집계하지 않는다.
 
-publish 성공은 Spot handler의 실행 완료를 뜻하지 않는다. snapshot target에 대한 제출 결과가 집계되었다는
-뜻이며, remote ROUTER가 수락한 뒤 수신 MeshNode의 local Spot queue에서 발생한 drop까지 보장하지 않는다.
+Publish 정상 완료는 transaction을 시작했다는 뜻이다. 고정한 snapshot의 target 제출, Spot handler 실행,
+subscriber 수신 또는 remote ROUTER가 수락한 뒤 수신 MeshNode의 local Spot queue 수락을 보장하지 않는다.
 
 ## 6. Classic fanout
 
@@ -218,7 +218,7 @@ Publisher call은 publisher socket send timeout까지 local admission을 기다�
 
 Publish의 공통 입력은 ChannelName, topic과 typed event다. Typed event의 packet name을 topic으로
 사용하는 편의 호출도 같은 operation을 만든다. 두 호출은 같은 publisher transport, timeout과
-submit 결과를 사용하며 subscriber dispatch는 [packet name](01-glossary.ko.md#packet-name)으로 handler를 선택하고 topic을 handler
+비동기 완료 규칙을 사용하며 subscriber dispatch는 [packet name](01-glossary.ko.md#packet-name)으로 handler를 선택하고 topic을 handler
 context에 보존한다.
 
 Publisher는 전용 location descriptor에 ChannelName과 실제 endpoint를 게시한다. Automatic subscriber는
@@ -342,7 +342,7 @@ await spotPublisher
     .Publish("world-events", "zone.7", new WeatherChanged("rain"))
     .Async(cancellationToken);
 
-// Snapshot 대상과 실제 admission 수는 monitoring metric과 event에서 관찰한다.
+// Target별 제출 결과는 반환하거나 publish 전용 monitoring으로 집계하지 않는다.
 
 // Classic fanout: 독립 publisher transport에 현재 연결된 subscriber를 대상으로 한다.
 await fanout
@@ -350,8 +350,8 @@ await fanout
     .Async(cancellationToken);
 ```
 
-두 publish 모두 handler 완료를 기다리지 않는다. Logical Multicast의 target별 제출 수는 monitoring이
-집계하며 Classic fanout도 public admission 결과를 반환하지 않는다.
+두 publish 모두 handler 완료를 기다리지 않는다. Target별 제출 결과는 public 결과로 반환하거나
+publish 전용 monitoring으로 집계하지 않는다.
 
 ### 9.4 STREAM session
 

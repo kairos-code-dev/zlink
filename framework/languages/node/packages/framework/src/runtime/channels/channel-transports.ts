@@ -10,15 +10,16 @@ import type {
   ZLinkBackendSpot
 } from '../backend/contracts';
 import type {
-  ZLinkPublishResult,
-  ZLinkSubmitResult,
   ZLinkFrameworkErrorKind as ZLinkFrameworkErrorKindType
 } from '../../contracts';
 import {
   ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
-  ZLinkSubmitStatus
+  ZLinkFrameworkException
 } from '../../contracts';
+import {
+  ZLinkSubmitStatus,
+  type ZLinkSubmitResult
+} from '../messaging/submission-result';
 import { ZLinkConfigurationException } from '../configuration';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import { throwIfAborted } from '../abort';
@@ -63,7 +64,7 @@ export interface ZLinkChannelClientTransport {
     packetName: string | undefined,
     event: unknown,
     metadata?: ReadonlyMap<string, string>
-  ): ZLinkPublishResult;
+  ): ZLinkSubmitResult;
   publish(
     channelName: string,
     topic: string,
@@ -71,7 +72,7 @@ export interface ZLinkChannelClientTransport {
     event: unknown,
     signal?: AbortSignal,
     metadata?: ReadonlyMap<string, string>
-  ): ZLinkPublishResult | Promise<ZLinkPublishResult>;
+  ): ZLinkSubmitResult | Promise<ZLinkSubmitResult>;
 }
 
 export interface ZLinkSpotPublisherClientTransport {
@@ -82,7 +83,7 @@ export interface ZLinkSpotPublisherClientTransport {
     packetName: string | undefined,
     event: unknown,
     metadata?: ReadonlyMap<string, string>
-  ): ZLinkPublishResult;
+  ): ZLinkSubmitResult;
   publish(
     meshName: string,
     channelName: string,
@@ -91,7 +92,7 @@ export interface ZLinkSpotPublisherClientTransport {
     event: unknown,
     signal?: AbortSignal,
     metadata?: ReadonlyMap<string, string>
-  ): ZLinkPublishResult | Promise<ZLinkPublishResult>;
+  ): ZLinkSubmitResult | Promise<ZLinkSubmitResult>;
 }
 
 export interface ZLinkRouteClientTransport {
@@ -192,7 +193,7 @@ interface ZLinkChannelTransportRuntime {
     packetName: string | undefined,
     event: unknown,
     metadata?: ReadonlyMap<string, string>
-  ): ZLinkPublishResult;
+  ): ZLinkSubmitResult;
   publish(
     channelName: string,
     topic: string,
@@ -200,7 +201,7 @@ interface ZLinkChannelTransportRuntime {
     event: unknown,
     signal?: AbortSignal,
     metadata?: ReadonlyMap<string, string>
-  ): Promise<ZLinkPublishResult>;
+  ): Promise<ZLinkSubmitResult>;
   canRouteChannel(routerChannelId: string): boolean;
   canRoutePacketChannel(routerChannelId: string): boolean;
   tryRouteSubmit(
@@ -312,7 +313,7 @@ export class ZLinkRuntimeChannelTransport implements ZLinkChannelClientTransport
     packetName: string | undefined,
     event: unknown,
     metadata?: ReadonlyMap<string, string>
-  ): ZLinkPublishResult {
+  ): ZLinkSubmitResult {
     return this.requireManager().tryPublish(channelName, topic, packetName, event, metadata);
   }
 
@@ -323,7 +324,7 @@ export class ZLinkRuntimeChannelTransport implements ZLinkChannelClientTransport
     event: unknown,
     signal?: AbortSignal,
     metadata?: ReadonlyMap<string, string>
-  ): Promise<ZLinkPublishResult> {
+  ): Promise<ZLinkSubmitResult> {
     return this.requireManager().publish(channelName, topic, packetName, event, signal, metadata);
   }
 

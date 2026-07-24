@@ -379,6 +379,10 @@ export interface ZLinkSpotRouterCapabilityOptions {
   readonly manualConnections?: readonly string[];
   readonly manualPeerConnections?: readonly ZLinkSpotRouterPeerConnectionOptions[];
   readonly routingId?: string;
+  readonly sendHighWaterMark?: number;
+  readonly receiveHighWaterMark?: number;
+  readonly sendTimeoutMs?: number;
+  readonly maxMessageSize?: number;
 }
 
 export interface ZLinkSpotRouterPeerConnectionOptions {

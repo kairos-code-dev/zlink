@@ -70,8 +70,8 @@ export class RedisStoreKeys {
     return `${this.authorityDomain}:descriptor:mesh:owner:${digest(`${ownerId}\0${leaseGeneration}`)}`;
   }
 
-  entrySpotIdentityClaim(authorityKey: string): string {
-    return `${this.authorityDomain}:entry-spot-id:${digest(authorityKey)}`;
+  entrySpotIdentityClaim(spotId: string): string {
+    return `${this.authorityDomain}:entry-spot-id:${digest(spotId)}`;
   }
 
   descriptorClientServer(canonicalKey: string): string {

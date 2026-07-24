@@ -43,7 +43,7 @@ public final class MonitoringScenarioContext implements AutoCloseable {
     public Contracts.WorkRes request(String value) {
         Contracts.WorkRes reply = trigger.post("/request")
             .body(new Contracts.WorkReq(value))
-            .async(Contracts.WorkRes.class).toCompletableFuture().join().body();
+            .submit(Contracts.WorkRes.class).toCompletableFuture().join().body();
         ensure(reply.value().equals("work:" + value), "reply mismatch for " + value);
         return reply;
     }
@@ -67,14 +67,14 @@ public final class MonitoringScenarioContext implements AutoCloseable {
             .timeout(Duration.ofSeconds(10))
             .post("/runtime/request")
             .body(new Contracts.WorkReq(value))
-            .async(Contracts.WorkRes.class)
+            .submit(Contracts.WorkRes.class)
             .toCompletableFuture()
             .join()
             .body();
     }
 
     public ValidationResult validation(String name) {
-        return trigger.post("/validation/" + name).async(ValidationResult.class).toCompletableFuture().join().body();
+        return trigger.post("/validation/" + name).submit(ValidationResult.class).toCompletableFuture().join().body();
     }
 
     public void post(String baseUrl, String path) {
@@ -86,29 +86,6 @@ public final class MonitoringScenarioContext implements AutoCloseable {
             .join();
         ensure(response.status() >= 200 && response.status() < 300,
             "POST " + baseUrl + path + " returned " + response.status() + ": " + response.body());
-    }
-
-    public Contracts.PublishOutcome publish(
-        String baseUrl,
-        String value,
-        int count) {
-        return publish(baseUrl, value, count, false);
-    }
-
-    public Contracts.PublishOutcome publish(
-        String baseUrl,
-        String value,
-        int count,
-        boolean stopOnLocalDrop) {
-        return ZLinkHttpClient.create(baseUrl)
-            .timeout(Duration.ofSeconds(30))
-            .post("/runtime/multicast/publish")
-            .body(new Contracts.PublishCommand(
-                "monitoring.multicast", value, count, stopOnLocalDrop))
-            .async(Contracts.PublishOutcome.class)
-            .toCompletableFuture()
-            .join()
-            .body();
     }
 
     public long evidenceCount(
@@ -134,14 +111,14 @@ public final class MonitoringScenarioContext implements AutoCloseable {
         return ZLinkHttpClient.create(baseUrl)
             .timeout(Duration.ofSeconds(3))
             .get("/evidence")
-            .async(Contracts.EvidenceSnapshot.class).toCompletableFuture().join().body();
+            .submit(Contracts.EvidenceSnapshot.class).toCompletableFuture().join().body();
     }
 
     public Contracts.RuntimeSnapshot runtimeSnapshot(String baseUrl) {
         return ZLinkHttpClient.create(baseUrl)
             .timeout(Duration.ofSeconds(3))
             .get("/runtime/snapshot")
-            .async(Contracts.RuntimeSnapshot.class)
+            .submit(Contracts.RuntimeSnapshot.class)
             .toCompletableFuture()
             .join()
             .body();
@@ -151,7 +128,7 @@ public final class MonitoringScenarioContext implements AutoCloseable {
         return ZLinkHttpClient.create(baseUrl)
             .timeout(Duration.ofSeconds(3))
             .post("/runtime/observer/" + action)
-            .async(Contracts.ObserverIsolationStatus.class)
+            .submit(Contracts.ObserverIsolationStatus.class)
             .toCompletableFuture()
             .join()
             .body();

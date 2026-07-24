@@ -310,35 +310,49 @@ terminator가 정하는가.
 
 ### Track E — actor join
 
-#### TD-E1 Entry Spot에서 user Spot으로 join한다 (async)
+#### TD-E1 Entry Spot에서 user Spot으로 Join을 defer한다
 
 우선순위: `P0`
 
-**검증 질문:** 가장 흔한 join 경로가 turn 유지 `async`로 정상 동작하는가.
+**검증 질문:** handler가 Join을 등록한 뒤 정상 종료해야만 membership transition이 시작되는가.
 
-- 절차: Entry Spot membership을 가진 actor의 handler가 `JoinSpot(...).Async(...)`로 user Spot에 join한다.
-- 검증: join이 timeout 없이 완료되고 evidence 순서는 `target OnActorJoin → location CAS commit →
-  source OnLeaveActor → target OnJoinedActor`다([23 §4](../../spec/server/23-spot-actor.ko.md#4-join-의미와-commit-순서)).
+- 절차: Entry Spot membership을 가진 Actor의 handler가 `JoinSpot(...).Defer()`를 호출하고, 같은 handler에서
+  marker를 하나 더 기록한 뒤 정상 종료한다. 같은 Actor에 후속 packet도 제출한다.
+- 검증: handler terminal 전에는 target admission·Location CAS·source/target lifecycle evidence가 없다.
+  이후 evidence 순서는 `target OnActorJoin → location CAS commit → target OnJoinedActor →
+  source OnLeaveActor → Actor OnJoinCompleted(Accepted)`다
+  ([23 §4](../../spec/server/23-spot-actor.ko.md#4-join-의미와-commit-순서)).
   Entry Spot도 이 join의 source이므로 source leave를 생략하지 않는다. 다른 actor의 join·packet이 그 사이
   막히지 않는다. 같은 Entry Actor에 뒤이어 제출한 packet은 join job의 terminal 완료 전에는 시작하지
   않으며, 두 job의 handler 실행 구간은 겹치지 않는다.
-- 세부 동작: Entry Actor별 FIFO·non-overlap과 서로 다른 Actor의 독립 진행.
+- 세부 동작: deferred barrier, Entry Actor별 FIFO·non-overlap과 서로 다른 Actor의 독립 진행.
 
-#### TD-E2 PerActor user Spot에서 다른 user Spot으로 join한다 (async)
+#### TD-E2 PerActor와 SpotWide에서 같은 deferred Join 의미를 제공한다
 
 우선순위: `P0`
 
-**검증 질문:** Actor turn을 유지하는 `async`로 방 이동을 기다려도 Spot lifecycle control이 정체되지 않는가.
+**검증 질문:** execution mode와 관계없이 Defer가 gate나 Actor claim을 반납하지 않는가.
 
-- 절차: `PerActor` User Spot A membership을 가진 Actor handler가 자기 Actor turn을 유지한 채
-  `JoinSpot(B).Async(...)`를 호출한다.
-- 검증: **join이 timeout 없이 완료된다.** evidence 순서는 `target OnActorJoin → location CAS commit →
-  source OnLeaveActor → target OnJoinedActor`다([23 §4](../../spec/server/23-spot-actor.ko.md#4-join-의미와-commit-순서)).
+- 절차: `PerActor`와 `SpotWide` User Spot A의 Actor handler가 각각 `JoinSpot(B).Defer()`를 호출한다.
+  `SpotWide` 반복에서는 먼저 request `Yield` continuation을 발생시키고, 다시 gate를 획득한 마지막
+  continuation에서 Join을 defer한다.
+- 검증: 두 mode 모두 handler의 최종 terminal 뒤에만 Join이 활성화된다. `Yield`는 기존 규칙대로
+  SpotWide gate를 반납하지만 `Defer()`는 gate와 Actor FIFO claim을 반납하지 않는다. evidence 순서는
+  `target OnActorJoin → location CAS commit → target OnJoinedActor → source OnLeaveActor →
+  Actor OnJoinCompleted(Accepted)`다.
   CAS 실패 주입에서는 source leave와 target membership evidence가 없어야 한다. 세 lifecycle callback은
   각각 해당 Spot의 control claim에서 실행되고 caller의 Actor turn id와 달라야 한다. 같은 호출을
-  `SpotWide` member Actor에서 awaited operation으로 시작하면 source lifecycle이 current gate를 필요로 하므로
-  submit 전에 same-gate 오류로 끝나야 한다.
-- 세부 동작: Actor caller turn과 Spot lifecycle control claim의 독립 진행.
+  awaited Join이나 coroutine wrapper로 시작할 수 있는 public terminal이 없어야 한다.
+- 세부 동작: Yield와 Defer의 gate 의미 분리, Actor caller turn과 Spot lifecycle control claim의 독립 진행.
+
+#### TD-E2A handler 실패는 비활성 Join barrier를 폐기한다
+
+우선순위: `P0`
+
+- 절차: handler가 Join을 `Defer()`한 뒤 예외 또는 cancellation로 끝나게 한다.
+- 검증: target admission, Location Store mutation, source seal과 completion callback이 모두 0건이다.
+  같은 Actor의 후속 작업은 기존 membership에서 정상 처리된다.
+- 세부 동작: handler terminal과 deferred barrier cleanup.
 
 #### TD-E3 반대 방향 join 두 개가 동시에 진행된다
 

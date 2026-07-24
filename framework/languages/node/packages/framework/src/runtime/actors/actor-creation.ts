@@ -82,6 +82,7 @@ export class ZLinkActorCreationCoordinator {
     state: ZLinkActorRuntimeState,
     restore: (() => Promise<ZLinkActor>) | undefined
   ): Promise<ZLinkActorCreationAttemptResult> {
+    void actorId;
     const context = state.ensureContext(() => new DefaultZLinkActorContext(
       state,
       this.options.joinCoordinator,
@@ -91,7 +92,7 @@ export class ZLinkActorCreationCoordinator {
       this.options.actorLeaveSpot
     ));
     const actor = restore === undefined
-      ? await (await this.createFactory(actorType)).create(actorId, context)
+      ? await (await this.createFactory(actorType)).create(context)
       : await restore();
     attachTransferredActorContext(actor, context);
     state.bindActor(actor, context);
@@ -119,7 +120,12 @@ export class ZLinkActorCreationCoordinator {
       this.options.actorMeshNameProvider,
       this.options.actorLeaveSpot
     ));
-    const actor = await factory.create(actorId, context, signal);
+    const actor = await factory.create(context, signal);
+    if (actor.context !== context || actor.actorId !== context.actorId) {
+      throw new ZLinkConfigurationException(
+        `Actor factory '${actorType}' must return an Actor bound to the exact supplied context.`
+      );
+    }
     const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
     try {
       let nodeRid: RoutingId | undefined;

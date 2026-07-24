@@ -69,7 +69,7 @@ public sealed partial class StreamConnectorTests
         await connector.Connect.Async();
 
         connector.Send(new PackedPing { Text = "hello" })
-            .PacketName("packed").Submit();
+            .PacketName("packed").Async();
         await server;
     }
 
@@ -176,7 +176,7 @@ public sealed partial class StreamConnectorTests
                     ZlinkStreamCodec.Raw,
                     ReadOnlyMemory<byte>.Empty))
                 .PacketName("flow-followup")
-                .Submit();
+                .Async();
             return ValueTask.CompletedTask;
         });
 
@@ -249,7 +249,7 @@ public sealed partial class StreamConnectorTests
                         ZlinkStreamCodec.Raw,
                         ReadOnlyMemory<byte>.Empty))
                     .PacketName("flow-followup")
-                    .Submit();
+                    .Async();
             });
 
         await WaitUntilAsync(() => connector.PendingDispatchCount > 0, TimeSpan.FromSeconds(5));
@@ -261,7 +261,7 @@ public sealed partial class StreamConnectorTests
                 ZlinkStreamCodec.Raw,
                 ReadOnlyMemory<byte>.Empty))
             .PacketName("unrelated")
-            .Submit();
+            .Async();
         await server.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
@@ -310,7 +310,7 @@ public sealed partial class StreamConnectorTests
 
         connector.Send(new Ping("custom"))
             .PacketName("custom")
-            .Compress().Submit();
+            .Compress().Async();
         await server;
     }
 
@@ -338,7 +338,7 @@ public sealed partial class StreamConnectorTests
 
         connector.Send(new Ping("single-compress"))
             .PacketName("single-compress")
-            .Compress().Submit();
+            .Compress().Async();
 
         await server;
         Assert.Equal(1, compressionCodec.CompressCount);

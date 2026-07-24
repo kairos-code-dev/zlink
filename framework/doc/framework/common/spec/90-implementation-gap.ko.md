@@ -407,9 +407,7 @@ consumer contract test가 exact interface와 일치해야 한다.
 
 **.NET 부분 충족.** [.NET topology monitoring](server/languages/dotnet/interfaces/10-topology-monitoring.ko.md)과
 [Runtime monitoring](50-runtime-monitoring.ko.md)은 MeshNode snapshot에 peer별 ChannelName
-set, channel별 ready member 수, [Logical Multicast](01-glossary.ko.md#logical-multicast) admission 누계(backpressure·remote/local
-snapshot·admitted·dropped), drain seal 상태와 pending relocation·STREAM barrier
-수를 요구한다.
+set, channel별 ready member 수, drain seal 상태와 pending relocation·STREAM barrier 수를 요구한다.
 
 현재 .NET `IZLinkRouteMeshRuntime` 구현은 exact interface와 event stream(polling 파생)을
 제공하지만 Core `zlink_mesh_node_status_t`/`zlink_mesh_peer_entry_t`가 위 값을 노출하지 않아
@@ -433,7 +431,6 @@ binding의 `zlink_mesh_node_peer_channels` 연결로 peer별 ChannelName과 chan
 status·monitor가 다음
 값을 제공하지 않아 snapshot 전체를 실측값으로 채울 수 없다.
 
-- Logical Multicast의 backpressure 및 remote/local snapshot·admitted·dropped 누계
 - drain deadline·work seal과 pending relocation·STREAM barrier 수
 - location store의 마지막 실패 시각
 
@@ -587,7 +584,7 @@ Entry callback 순서, User Spot aggregate commit, precommit source 복원, boun
 
 .NET, C++와 JVM에서는 일반 signal admission이 동작한다. .NET과 Node.js에서는 queue가 없는 Logical
 Multicast direct handoff와 commit barrier도 동작하며, Node.js binding은 Core call을 event loop 밖에서
-실행한다. Target별 partial detail은 public 결과가 아니라 monitoring metric·event로 옮겨야 한다. 네 runtime의
+실행한다. Target별 partial detail과 publish 전용 monitoring은 제거해야 한다. 네 runtime의
 Config 13 runner와 feature map은 존재하지만,
 .NET·C++·JVM·Node.js도 현재
 구현한 일부 process 시나리오만 검증한다. Family 전체의 pending waiter, queue reservation, transport attempt,
@@ -603,12 +600,14 @@ MeshNode는 물리 ROUTER에 하나의 HWM override만 적용하고, 현재 .NET
 변경도 다섯 언어의 public contract를 함께 바꾸는 별도 설계 작업으로 처리한다.
 
 Logical Multicast는 partial admission 뒤 전체 publish를 다시 실행할 수 없으므로 일반 send-ready 재시도
-경로를 사용할 수 없다. 모든 언어는 대기 queue가 없는 bounded I/O executor direct handoff에서
-Core blocking publish를 한 번만 시작하고,
+경로를 사용할 수 없다. 모든 언어는 unbounded payload queue가 없는 bounded I/O executor를 사용한다.
+즉시 worker slot을 얻지 못한 operation은 bounded handoff waiter 안에서만 send timeout까지 기다린다.
+Waiter capacity까지 모두 사용 중이면 새 payload를 보관하지 않고 `DeadlineExceeded`로 즉시 완료한다.
+Slot을 얻은 operation만 direct handoff로 Core blocking publish를 한 번 시작하고,
 Core call이 시작된 뒤에는 cancellation이나 shutdown이 snapshot의 나머지 target 제출을 중단하지 않는 commit
 barrier를 구현해야 한다. Contract test는 여섯 submit status, local exceptional completion, finite timeout
-validation, cancellation·timeout·shutdown terminal 경합, no late admission과 multicast single-call을 함께
-검증해야 한다.
+validation, cancellation·timeout·shutdown terminal 경합, bounded waiter overflow, no late admission과
+multicast single-call을 함께 검증해야 한다.
 
 ### 12.44 전 언어 global Spot placement 계약 미구현
 
@@ -653,6 +652,57 @@ runtime에서 병렬로 진행한다. Java와 Kotlin은 JVM runtime을 공유하
 projection을 제거한다.
 Remote target의 queue 미수락 receipt와 자동 request 재제출은 첫 계약에 추가하지 않는다. Instance intent가
 없는 일반 message는 durable creation intent 없이 owner를 선택하거나 Instance를 선제 activation하지 않는다.
+
+### 12.45 전 언어 User Spot execution mode와 barrier 미구현
+
+정식 계약은 User Spot factory의 기본 `SpotWide`와 선택형 `PerActor`를 요구한다.
+`SpotWide` member Actor는 Actor FIFO claim 안에서 User Spot gate를 얻는다.
+`PerActor`는 Actor별 FIFO lane, Spot direct·lifecycle lane과 timer별 FIFO lane을
+사용한다. 현재 runtime은 언어마다 Actor mailbox와 Spot queue의 중첩 순서가
+다르고 yielded continuation까지 기다리는 close·snapshot·relocation barrier가 없다.
+
+각 runtime은 `Actor claim → User Spot gate` 순서를 지키고 application continuation을
+inline으로 실행하지 않아야 한다. Barrier는 admission과 participant 변경을 먼저
+seal한 뒤 active·yielded Actor·Spot·timer lane이 같은 generation의 안전 경계에
+도달했을 때만 capture한다.
+
+### 12.46 전 언어 Yield allowlist와 submit 전 검증 미구현
+
+`Yield`는 Channel·Spot·Actor request와 I/O·CPU worker call에만 존재하고
+`SpotWide` User Spot과 Instance Spot에서만 실행할 수 있다. 현재 public interface에는
+Actor Join과 일반 owner call의 `Yield`가 남아 있고 일부 runtime은 outbound
+operation이나 worker를 시작한 뒤 execution context를 검사한다.
+
+Entry Spot·Entry Actor·`PerActor`·Node·Channel·owner 밖의 호출은 operation ID,
+outbound admission, worker scheduling과 queue를 변경하기 전에
+`InvalidConfiguration`으로 끝나야 한다. 같은 gate를 다시 기다리는 `Async`와
+자기 Actor로 보내는 awaited request도 timeout에 의존하지 않고 submit 전에
+거부해야 한다.
+
+### 12.47 전 언어 typed capacity와 Location transaction 미구현
+
+현재 구현의 generic active object·pending activation 수와 scalar capacity delta는
+Actor와 Spot의 다른 비용 및 User Spot aggregate를 표현하지 못한다. 목표 계약은
+Actor total, Spot total과 선택적인 Spot stable-type bucket을 typed vector로
+예약한다. `0`은 unlimited이고 activation concurrency는 population limit과 별도다.
+
+Creation·commit·abort·destroy·relocation과 aggregate commit은 vector 전체와
+authority를 하나의 Location Store transaction에서 변경해야 한다. 공식 Redis
+provider는 `{zlink-location-v3}` epoch로 migration하고 monitoring은 계층별
+active·reserved·limit을 제공해야 한다.
+
+### 12.48 전 언어 Entry Spot lifecycle ID 미구현
+
+Entry Spot은 MeshNode diagnostic prefix에 `-entry-`와 독립적인 RFC 4122 UUID v4
+lowercase canonical 문자열을 붙인 Spot ID를 lifecycle마다 발급한다. Runtime과
+provider는 같은 lifecycle의 exact descriptor mapping, replacement lifecycle의 새
+Spot ID와 global namespace 충돌 처리를 구현해야 한다.
+
+Active collision이면 record를 변경하거나 다른 ID로 재시도하지 않고
+`SpotIdConflict` startup failure를 반환한다. Caller가 지정한 User·Instance Spot ID가
+Entry Spot 예약 형식과 같으면 Location Store reservation과 factory 전에
+`InvalidConfiguration`으로 거부한다. RID 문자열을 parse하거나 MeshNode RID 전체를
+결합해 Entry Spot 관계를 복원하지 않는다.
 
 ## 13. 샘플 계약 차이
 
@@ -728,25 +778,40 @@ E2E gate는 실제 application과 runtime이 만든 값을 검증해야 한다. 
 - 정상 경로뿐 아니라 결함을 재현하는 fault injection과 부정 assertion을 포함한다.
 - 알려진 위반 구현이나 같은 결함을 의도적으로 넣은 변형에서 먼저 실패한다.
 
-### 15.5 Actor join 결과의 타입 안전성 차이
+### 15.5 Deferred Actor Join, Context composition과 MessageContext 차이
 
-[23 §4](23-spot-actor.ko.md#4-actor-join과-commit-순서)의 actor join 결과는 accepted와 rejected를 구분한 뒤에만
-성공 reply에 접근할 수 있어야 한다. 언어별 exact spec도 rejected 갈래의 값을 `reply`와 다른
-이름으로 정의해 분기 없는 공통 접근을 막는다.
+[Actor model](22-actor-model.ko.md), [Spot·Actor membership](23-spot-actor.ko.md)과
+[비동기 실행 정책](04-async-execution-policy.ko.md)은 목표 계약을 먼저 고정한다.
+현재 다섯 언어 runtime은 아래 계약을 아직 구현하지 않았으므로 정식 interface가
+존재한다는 사실만으로 구현이 완료되었다고 판단하면 안 된다.
 
-| 언어 | 목표 public 타입 | 실제 source 차이 |
+| ID | 목표 계약과 현재 구현 차이 | 대상 |
 |---|---|---|
-| Java/Kotlin | sealed interface에는 공통 `reply()`가 없고 `Rejected`는 `rejection`을 노출한다 | Java source의 상위 interface와 두 record가 모두 `reply()`를 노출한다. Kotlin도 이 타입을 공유한다 |
-| C++ | `accepted_t`는 `reply`, `rejected_t`는 `rejection`을 노출한다 | source의 두 variant alternative가 모두 `reply` 멤버를 노출한다 |
+| **IMP-JOIN-1** | Join call은 handler 안에서 동기 `Defer`로만 등록하고 process-local handler terminal 뒤 barrier를 활성화해야 한다. 현재 구현에는 deferred barrier, handler failure cleanup, handler당 64 Join·8 MiB 제한과 Actor queue boundary가 없다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-JOIN-2** | Accepted·Rejected·Failed 결과를 별도 128-bit completion operation ID와 함께 Actor callback에 전달해야 한다. Same-node·Rejected·commit 전 Failed는 process lifetime, cross-node Accepted만 manifest를 통한 durable at-least-once 범위다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-JOIN-3** | `Defer`는 Spot gate와 Actor FIFO claim을 반납하지 않는다. `SpotWide`에서 `Yield`한 마지막 continuation의 terminal이 barrier 기준이며 `PerActor`와 Entry의 Yield 금지도 유지해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-CTX-1** | Actor·User·Entry·Instance Spot은 factory에서 받은 exact Context를 보관하고 ID 중복 factory 인자를 제거해야 한다. Same-node는 Context를 유지하고 cross-node는 ObjectGeneration을 유지한 새 owner Context를 사용하며 source Context를 fence해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-CTX-2** | 공통 inbound 타입은 `MessageContext`, Route·Publish·Session은 specialized MessageContext여야 한다. Send·Request·Spot Actor marker context, Actor request reply option과 이전 filter invocation 이름을 제거해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-CTX-3** | Actor handler는 containing Spot, Actor, MessageContext와 payload를 받아야 한다. `PerActor`·Entry에서 공유 Spot state를 직렬화하려면 명시적인 Spot send/request를 사용해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-ERR-1** | `RelocationDisabled=37`, `RelocationTargetUnavailable=38`, `RelocationFailed=39`를 같은 숫자와 의미로 공개해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
 
-Java Bingo의 join 호출부는 accepted/rejected 분기 없이 `joined.reply()`를 사용한다. C++ contract
-test도 `actor_join_rejected_t.reply`를 public 표면으로 고정한다. 이 구조에서는 거절 결과가 성공
-reply를 가진 것처럼 처리되는 코드를 컴파일 단계에서 차단할 수 없다.
+구현은 exact interface, runtime queue·authority·relocation state machine, durable
+manifest, contract test와 E2E를 함께 바꿔야 한다. Kotlin은 Java의 동기 `defer()`를
+그대로 사용하며 coroutine wrapper를 만들지 않는다. `Defer`는 one-way terminal이
+아니므로 one-way `Submit` naming과 실행 결과 계약을 재사용하지 않는다.
 
-구현은 Java 상위 interface의 `reply()`를 제거하고 rejected record component를 `rejection`으로
-바꿔야 한다. C++도 rejected 멤버를 `rejection`으로 바꾸고, 두 언어의 contract test는 분기 없는
-공통 reply 접근이 성립하지 않음을 검증해야 한다. 호출부는 accepted를 확인한 뒤에만 성공 reply와
-후속 상태 변경을 처리한다.
+### 15.6 Session–Actor binding route와 disconnect 차이
+
+[31](31-session-actor-dispatch.ko.md)은 Bind 뒤 Actor별 exact route를 저장하고 relay·request relay·
+disconnect마다 Location Store를 조회하지 않으며, physical disconnect 때 current binding 전체에 자동
+all-settled 통지를 수행하도록 요구한다.
+
+| ID | 목표 계약과 현재 구현 차이 | 대상 |
+|---|---|---|
+| **IMP-SA-1** | Physical disconnect automatic all-bound 통지, exact binding identity dedupe와 한 Actor 실패 뒤 나머지 통지 계속이 언어마다 다르거나 없다 | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-SA-2** | Relay와 disconnect는 Bind 때 저장한 route를 owner lease·local admission deadline 안에서 사용해야 한다. .NET과 Java는 relay 과정에서 directory·Location Store lookup과 rebind를 수행한다 | .NET · Java · Kotlin |
+| **IMP-SA-3** | Route update는 같은 ObjectGeneration의 relocation에만 허용하고 새 incarnation은 explicit bind해야 한다. 일부 runtime은 다른 generation을 current binding으로 교체한다 | .NET · Java · Kotlin · C++ |
+| **IMP-SA-4** | `Completed` 뒤 command 44·45 route switch·ACK, steady normalization 뒤 target admission을 열어야 한다. Runtime·contract test의 전 언어 parity 증거가 아직 없다 | .NET · Java · Kotlin · Node.js · C++ |
 
 ## 16. 언어별 구현 차이 연결
 

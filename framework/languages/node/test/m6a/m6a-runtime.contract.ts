@@ -7,7 +7,6 @@ import {
   SERVICE_WIRE_REQUIRED_CAPABILITY,
   ServiceWireCommand
 } from '../../../../runtime/protocol/generated/node/service_wire_constants';
-import { SubmitResult } from '@zlink-systems/zlink';
 import {
   RawServiceMeshRuntime
 } from '../../packages/framework/src/runtime/foundation/raw-service-mesh-runtime';
@@ -369,13 +368,11 @@ test('raw runtime admits peers and completes node/channel requests once', async 
     assert.throws(() => backend.setPlacementWeight(-1), /0\.\.10000/);
     assert.throws(() => backend.setChannelWeight('alpha', 10_001), /0\.\.10000/);
     const publisher = backend.createPublisher();
-    const publish = await publisher.publishAsync(
+    await publisher.publishAsync(
       'alpha',
       'topic',
       [Buffer.from('event')]
     );
-    assert.equal(publish.result, SubmitResult.Ok);
-    assert.equal(publish.detail.snapshotLocalSpotCount, 0);
     publisher.close();
   } finally {
     backend.close();

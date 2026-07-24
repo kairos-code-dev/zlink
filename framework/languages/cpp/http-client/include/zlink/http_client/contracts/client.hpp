@@ -173,7 +173,7 @@ class request_builder_t
                                        std::string content,
                                        std::string content_type);
 
-    zlink::framework::task_t<raw_http_response_t> async_raw () const;
+    zlink::framework::task_t<raw_http_response_t> submit_raw () const;
 
     // Streams the response body to `sink` chunk by chunk instead of buffering
     // it; the returned response carries status and headers with an empty body.
@@ -181,9 +181,9 @@ class request_builder_t
     zlink::framework::task_t<raw_http_response_t>
     download (std::function<void (std::string_view)> sink) const;
 
-    template <typename T> zlink::framework::task_t<http_response_t<T>> async () const
+    template <typename T> zlink::framework::task_t<http_response_t<T>> submit () const
     {
-        auto raw_task = async_raw ();
+        auto raw_task = submit_raw ();
         raw_http_response_t raw;
         try {
             raw = co_await raw_task;
@@ -214,9 +214,9 @@ class request_builder_t
         }
     }
 
-    template <typename T, typename TCallback> void async (TCallback &&callback) const
+    template <typename T, typename TCallback> void submit (TCallback &&callback) const
     {
-        auto task = async<T> ();
+        auto task = submit<T> ();
         zlink::framework::detail::observe_task_completion (task,
                                                            std::forward<TCallback> (callback));
     }
@@ -311,19 +311,18 @@ class server_request_builder_t : public request_builder_t
         return *this;
     }
 
-    void submit () const
+    zlink::framework::task_t<void> submit () const
     {
-        auto task = request_builder_t::async_raw ();
-        zlink::framework::detail::observe_task_completion (
-          task, [] (const zlink::framework::result_t<raw_http_response_t> &) {});
+        (void) co_await schedule_raw (false);
+        co_return;
     }
 
-    template <typename T> zlink::framework::task_t<http_response_t<T>> async () const
+    template <typename T> zlink::framework::task_t<http_response_t<T>> submit () const
     {
         return schedule<T> (false);
     }
 
-    zlink::framework::task_t<raw_http_response_t> async_raw () const
+    zlink::framework::task_t<raw_http_response_t> submit_raw () const
     {
         return schedule_raw (false);
     }
@@ -338,9 +337,9 @@ class server_request_builder_t : public request_builder_t
         return schedule_raw (true);
     }
 
-    template <typename T, typename TCallback> void async (TCallback &&callback) const
+    template <typename T, typename TCallback> void submit (TCallback &&callback) const
     {
-        auto task = request_builder_t::async<T> ();
+        auto task = request_builder_t::submit<T> ();
         auto scheduler = _execution_turn->callback_scheduler ();
         if (scheduler) {
             task = zlink::framework::detail::reschedule_task (std::move (task),
@@ -354,7 +353,7 @@ class server_request_builder_t : public request_builder_t
     template <typename T>
     zlink::framework::task_t<http_response_t<T>> schedule (bool release_turn) const
     {
-        auto task = request_builder_t::async<T> ();
+        auto task = request_builder_t::submit<T> ();
         auto scheduler = _execution_turn->prepare (release_turn);
         if (!scheduler) {
             return task;
@@ -365,7 +364,7 @@ class server_request_builder_t : public request_builder_t
 
     zlink::framework::task_t<raw_http_response_t> schedule_raw (bool release_turn) const
     {
-        auto task = request_builder_t::async_raw ();
+        auto task = request_builder_t::submit_raw ();
         auto scheduler = _execution_turn->prepare (release_turn);
         if (!scheduler) {
             return task;

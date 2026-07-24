@@ -38,7 +38,7 @@ internal sealed class ZlinkStreamSendBuilder : IZlinkStreamSendCall
         return this;
     }
 
-    public void Submit(CancellationToken cancellationToken = default)
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
         _state.EnsureNotExecuted();
         var name = _state.ResolveMessageName();
@@ -49,6 +49,6 @@ internal sealed class ZlinkStreamSendBuilder : IZlinkStreamSendCall
             _state.Metadata,
             _state.Compress);
 
-        _connector.SubmitFrame(frame, cancellationToken);
+        return _connector.SubmitFrameAsync(frame, cancellationToken);
     }
 }

@@ -228,22 +228,26 @@ aggregate owner와 membership visibility를 원자적으로 바꾼다. Target은
 validation·staging을 끝낸다.
 
 Source Entry Spot의 standalone Actor를 maintenance relocation한 경우 commit 뒤 target Entry Spot의
-`OnActorRelocated`를 먼저 실행한다. 이어 source Entry Spot의 `OnLeaveActor`와 old Entry membership cleanup을
-완료하고, source process가 callback을 실행할 수 없으면 같은 fence의 durable source cleanup이 그 완료를
-대신한다. 이 두 lifecycle gate가 끝난 뒤에만 target이 accepted message·journal을 replay한다. Application이
+`OnActorRelocated`를 먼저 실행하고 source Entry Spot의 `OnLeaveActor`를 이어서 실행한다. Source process가
+callback을 실행할 수 없으면 같은 fence의 durable terminal이 그 완료를 대신한다. Lifecycle gate가 끝나면
+target이 accepted message·journal을 replay하고 logical timer를 복원한다. 그 뒤 old Entry membership과 남은 source resource를
+durable하게 cleanup한다. Application이
 요청한 일반 same-node·cross-node join은 maintenance callback을 호출하지 않고 target `OnJoinedActor`를 사용한다.
 
 Whole User Spot aggregate는 membership을 유지하므로 member Actor에 대해 target `OnJoinedActor`·
 `OnActorRelocated`나 source `OnLeaveActor`를 호출하지 않는다. Aggregate commit 뒤 lifecycle membership callback
-없이 accepted message·journal을 replay하고 logical timer를 복원한다. Timer scheduler는 새 native handle을
+없이 accepted message·journal을 replay하고 logical timer를 복원한 뒤 source resource를 durable하게 cleanup한다.
+Timer scheduler는 새 native handle을
 만들고 pending tick을 frozen ordering boundary에 넣는다. Application `Restore`는 Framework timer를 다시
-등록하지 않는다. 이후 `Cleaning` phase는 callback 완료로 이미 정리한 old Entry membership을 중복 변경하지
-않고 남은 source scope와 participant state를 fenced cleanup한다.
+등록하지 않는다. 이후 `Cleaning` phase는 old Entry membership, source scope와 participant state를 하나의
+fenced durable cleanup으로 정리한다.
 
 Physical STREAM connection은 이동하지 않는다. Session owner는 ingress를 reversible하게 seal하고 high-water를
-source에 전달한다. Target restore와 replay가 high-water까지 끝나도 route를 즉시 바꾸지 않는다. `Completed` CAS 뒤
-session owner가 binding route를 atomic하게 바꾸고 routed ACK를 보내며, target은 steady authority normalization 뒤
-application admission을 연다.
+source에 전달한다. Target restore가 끝나도 route를 즉시 바꾸지 않는다. Owner·membership commit 뒤 필요한
+lifecycle callback과 accepted journal replay·logical timer 복원을 마치고, durable source cleanup과 `Completed` CAS를 차례로
+완료한다. 그 뒤에만 command 44 route switch와 command 45 routed ACK를 교환한다. Maintenance authority를
+steady 상태로 normalize한 다음 target application admission을 연다. Relocation 자체는 physical·logical
+disconnect가 아니므로 Actor disconnect callback을 실행하지 않는다.
 
 `Activated`, `Cleaning`과 `Completed`에서는 target이 계속 sealed 상태다. `Completed`만으로 manager `Find`의 Ready projection을
 publish하지 않는다. Abort도 source route ACK와 steady source normalization 뒤에 admission을 복원한다.
@@ -289,7 +293,17 @@ Forwarding queue는 최대 1024 message 또는 16 MiB다. 실패한 operation을
 재제출하지 않는다. `ActorRef`와 `SpotRef`는 immutable location snapshot이므로 exact-ref mutation은 fresh
 incarnation으로 자동 retarget하지 않는다.
 
-## 12. 검증
+## 12. Bound-session route 경계
+
+Route update는 bound ObjectGeneration이 같은 participant에만 적용하며 같은 Session의 aggregate 밖 Actor
+route는 유지한다. 새 incarnation은 explicit bind가 필요하다. Session route는 두 Store에 기록하지 않고 Bind
+때 session owner가 저장하므로 relay·disconnect마다 Location Store를 조회하지 않는다.
+
+Physical disconnect는 저장 route로 current binding 전체에 all-settled 통지한다. Exact binding identity별
+callback 완료 뒤 tombstone과 local cleanup을 진행하며 Store 장애는 owner lease와 local admission
+deadline을 연장하지 않는다.
+
+## 13. 검증
 
 - Barrier inventory, create·join과 신규 admission이 한 순서로 정렬된다.
 - Retire intent notification이 application callback을 호출하지 않고 permit 실패 시 queue를 seal하지 않는다.

@@ -18,7 +18,7 @@ public sealed partial class StreamConnectorTests
             .PacketName("json.send")
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
-            .Compress().Submit();
+            .Compress().Async();
 
         Assert.Equal(ZlinkStreamCodec.Json, connector.SendCall.Payload.Codec);
         Assert.Equal("json.send", connector.SendCall.Name);
@@ -109,7 +109,7 @@ public sealed partial class StreamConnectorTests
             .PacketName("packed.send")
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
-            .Compress().Submit();
+            .Compress().Async();
 
         Assert.Equal(ZlinkStreamCodec.MessagePack, connector.SendCall.Payload.Codec);
         Assert.Equal("packed.send", connector.SendCall.Name);
@@ -146,7 +146,7 @@ public sealed partial class StreamConnectorTests
             .PacketName("proto.send")
             .Metadata("k", "v")
             .Metadata(ZlinkStreamMetadata.Empty.With("m", "n"))
-            .Compress().Submit();
+            .Compress().Async();
 
         Assert.Equal(ZlinkStreamCodec.Protobuf, connector.SendCall.Payload.Codec);
         Assert.Equal("proto.send", connector.SendCall.Name);
@@ -177,17 +177,17 @@ public sealed partial class StreamConnectorTests
         var connector = new RecordingConnector();
 
         connector.Send(new JsonPayload("json"))
-            .PacketName("auto.json").Submit();
+            .PacketName("auto.json").Async();
         Assert.Equal(ZlinkStreamCodec.Json, connector.SendCall.Payload.Codec);
 
         var packedConnector = new RecordingConnector(ZLinkMessagePackCodec.Default);
         packedConnector.Send(new PackedConnectorPayload { Text = "packed" })
-            .PacketName("auto.packed").Submit();
+            .PacketName("auto.packed").Async();
         Assert.Equal(ZlinkStreamCodec.MessagePack, packedConnector.SendCall.Payload.Codec);
 
         var protobufConnector = new RecordingConnector(ZLinkProtobufCodec.Default);
         protobufConnector.Send(new StringValue { Value = "proto" })
-            .PacketName("auto.proto").Submit();
+            .PacketName("auto.proto").Async();
         Assert.Equal(ZlinkStreamCodec.Protobuf, protobufConnector.SendCall.Payload.Codec);
 
         JsonPayload? namedPayload = null;
@@ -588,8 +588,9 @@ public sealed partial class StreamConnectorTests
             return this;
         }
 
-        public void Submit(CancellationToken cancellationToken = default)
+        public ValueTask Async(CancellationToken cancellationToken = default)
         {
+            return ValueTask.CompletedTask;
         }
     }
 

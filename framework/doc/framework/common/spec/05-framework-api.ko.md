@@ -167,7 +167,8 @@ transport API와 명시적인 encoded payload 확장에만 둔다. Handler는 ty
 
 Operation별 call object는 해당 기능에 유효한 설정만 제공한다.
 
-- one-way send와 session Actor relay는 metadata 가능 여부와 관계없이 비동기 submit 결과를 제공한다.
+- one-way send와 session Actor relay는 source-local admission을 비동기로 기다리며 정상 완료 값을 반환하지
+  않는다.
 - request는 metadata, reply timeout, 취소와 typed reply를 제공한다.
 - Logical Multicast publish는 metadata, ChannelName, [topic](01-glossary.ko.md#topic)과 비동기 submit 하나를 사용한다.
 - Spot과 Actor message 호출은 global ID를 보존하고 current Ready [authority](01-glossary.ko.md#authority)를 Framework 내부에서 resolve한다.
@@ -187,7 +188,7 @@ Metadata는 Framework가 검증한 immutable [snapshot](01-glossary.ko.md#snapsh
 마지막 값이 사용된다. metadata 전체의 UTF-8 encoded 크기는 1024 bytes를 넘을 수 없다. reply는 request
 metadata를 자동 복사하지 않는다.
 
-## 7. Logical Multicast 결과
+## 7. Logical Multicast 완료
 
 MeshNode와 Spot publish API는 publish 전용 전달 정책 option을 제공하지 않는다. Framework의 bounded I/O
 executor는 publish operation을 send timeout까지 admission한다. Timeout 전에 시작하지 못하면
@@ -195,10 +196,10 @@ executor는 publish operation을 send timeout까지 admission한다. Timeout 전
 확정한 target snapshot을 정확히 한 번 처리하며 cancellation이나 shutdown으로 나머지 target 제출을
 중단하지 않는다.
 
-Remote와 local 각각의 snapshot, admitted, dropped 수와 remote unreachable 수는 public publish 결과가
-아니라 monitoring metric과 runtime event로 제공한다. Snapshot target이 0개여도 정상 완료한다. Transaction
-시작 뒤 remote capacity·연결 실패와 local Spot queue drop은 전체 publish를 rollback하거나 exceptional
-completion으로 바꾸지 않는다. 앞에서 수락한 target은 뒤 target의 실패 때문에 취소하지 않는다.
+Target별 수락·실패 결과는 public publish 결과로 반환하거나 publish 전용 monitoring 값으로 집계하지
+않는다. Snapshot target이 0개여도 정상 완료한다. Transaction 시작 뒤 remote capacity·연결 실패와 local
+Spot queue drop은 전체 publish를 rollback하거나 exceptional completion으로 바꾸지 않는다. 앞에서 수락한
+target은 뒤 target의 실패 때문에 취소하지 않는다.
 
 ## 8. Handler 등록과 dispatch
 
@@ -542,7 +543,7 @@ RouteMesh·ClientServer select-one ChannelName은 성공한 admission 전까지 
 |---|---|
 | 해당 operation family의 source outbound admission이 operation을 수락함 | one-way send·publish는 결과값 없이 정상 완료하고 request는 pending completion으로 전환 |
 | 일반 one-way의 첫 submit이 backpressured임 | send timeout까지 send-ready를 기다린다. Timeout 전 capacity가 생기면 한 번 제출하고, deadline이 먼저 끝나면 `DeadlineExceeded` exception으로 완료 |
-| Logical Multicast snapshot 처리 중 remote capacity가 부족함 | 앞에서 수락한 target은 유지하고 target별 실패를 monitoring metric·event에 기록한다. Public result나 전체 rollback은 만들지 않음 |
+| Logical Multicast를 시작한 뒤 일부 target에 제출하지 못함 | 이미 수락한 target은 유지한다. Target별 실패를 public 결과나 publish 전용 monitoring으로 만들지 않으며 전체 operation을 rollback하거나 자동 retry하지 않음 |
 | 알려진 direct target의 route가 준비되지 않음 | `RouteNotConnected` |
 | Actor·Spot authority 또는 Node·Channel 송신 경로가 없음 | operation별 기존 route-not-found·`MeshNotFound`·`RequestTargetNotFound` exception |
 | target admission seal 또는 application policy가 거부함 | `RequestRejected` 또는 해당 one-way rejection 결과 |

@@ -18,12 +18,12 @@ bingo_entry_spot_t::match_bingo (const player_actor_t &actor,
       std::string (_context.node_rid ().value ())};
     auto matched = co_await _context.outbound ()
                      .request (sample_names_t::api_channel, match_request)
-                     .async<match_bingo_api_res_t> ();
+                     .submit<match_bingo_api_res_t> ();
     const auto spot_rid = spot_rid_t::from_string (matched.room_id);
     const auto join_request = bingo_room_join_req_t{
       matched.room_id, actor.actor.actor_id, display_name};
     auto joined = co_await actor.context.join_spot (spot_rid, join_request)
-                    .async<bingo_room_join_res_t> ();
+                    .submit<bingo_room_join_res_t> ();
     const auto *accepted =
       std::get_if<actor_join_accepted_t<bingo_room_join_res_t>> (&joined);
     if (accepted == nullptr) {

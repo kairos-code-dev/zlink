@@ -145,13 +145,6 @@ struct message_flow_event_t {
     std::optional<std::string> spot_id;
     std::optional<std::string> actor_id;
     std::optional<std::size_t> message_size;
-    std::optional<std::uint64_t> remote_snapshot_count;
-    std::optional<std::uint64_t> remote_admitted_count;
-    std::optional<std::uint64_t> remote_dropped_count;
-    std::optional<std::uint64_t> remote_unreachable_count;
-    std::optional<std::uint64_t> local_snapshot_count;
-    std::optional<std::uint64_t> local_admitted_count;
-    std::optional<std::uint64_t> local_dropped_count;
     std::optional<dispatch_error_reason_t> error_reason;
     std::optional<dispatch_error_action_t> error_action;
     std::exception_ptr exception;

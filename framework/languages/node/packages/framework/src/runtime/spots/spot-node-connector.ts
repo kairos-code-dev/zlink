@@ -79,7 +79,12 @@ export class ZLinkSpotNodeConnector {
       return;
     }
     const publisher = node.createSpot();
-    const submitter = new ZLinkAsyncSubmitter((handler) => publisher.onSendReady(handler));
+    const submitter = new ZLinkAsyncSubmitter(
+      (handler) => publisher.onSendReady(handler),
+      {
+        capacity: Math.max(1, spotNode.publisherConfig?.sendHighWaterMark ?? 1)
+      }
+    );
     this.options.ownedObjects.push(publisher);
     this.options.publisherBundles.set(spotNodeName, { node, spot: publisher, submitter });
   }

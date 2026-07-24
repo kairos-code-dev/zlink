@@ -1,8 +1,6 @@
 namespace Zlink.Framework.Runtime.Streams;
 
-internal sealed class ZLinkSessionActorBindingRegistry(
-    ZLinkFrameworkRuntime runtime,
-    string? actorDispatchMeshName)
+internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime runtime)
 {
     private readonly Dictionary<string, ZLinkSessionActor> _actorsById = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ZLinkSessionActorBinding> _bindings = new(StringComparer.Ordinal);
@@ -21,8 +19,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(
     public ValueTask<IZLinkSessionActor> BindAsync(
         ZLinkSessionContext context,
         ActorRef actor,
-        CancellationToken cancellationToken,
-        bool remoteBindingConfirmed = false)
+        CancellationToken cancellationToken)
     {
         var actorId = actor.ActorId;
         if (string.IsNullOrWhiteSpace(actorId)) throw new InvalidOperationException("Actor id must not be empty.");
@@ -38,8 +35,7 @@ internal sealed class ZLinkSessionActorBindingRegistry(
             context,
             actor,
             binding.SessionRid,
-            binding.BindingToken,
-            remoteBindingConfirmed);
+            binding.BindingToken);
 
         lock (_bindings)
         {
@@ -115,36 +111,42 @@ internal sealed class ZLinkSessionActorBindingRegistry(
             _actorsById.Clear();
         }
 
-        // The session transport is gone: propagate the disconnect to each
-        // remotely-bound actor BEFORE dropping the local records — the remote
-        // relay resolves the actor's session route from them. A node-local
-        // actor's disconnect callback rides the native stream binding instead.
-        var localNodeRid = runtime.GetActorSpotNode()?.RoutingId;
-        foreach (var actor in actors)
-        {
-            if (localNodeRid is { } local && actor.Ref.NodeRid == local) continue;
-            try
-            {
-                await runtime.NotifyActorDisconnectedAsync(
-                        actorDispatchMeshName
-                        ?? throw new ZLinkConfigurationException(
-                            "STREAM Actor dispatch requires EnableActorDispatch(meshName)."),
-                        actor.Ref,
-                        actor.BindingToken,
-                        cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception)
-            {
-                // Cleanup must release every binding even when one peer is
-                // unreachable; the actor node's own lifecycle recovers it.
-            }
-        }
+        // The transport disconnect owns one fixed binding snapshot. Notify
+        // every exact binding concurrently, but bound each callback by the
+        // runtime deadline so one Actor cannot hold session cleanup.
+        await Task.WhenAll(actors
+                .DistinctBy(actor => (
+                    actor.ActorId,
+                    actor.Ref.NodeRid,
+                    actor.Ref.Generation,
+                    actor.BindingToken))
+                .Select(NotifyBestEffortAsync))
+            .ConfigureAwait(false);
 
+        // Tombstones are always removed, including callback failure, timeout,
+        // and a concurrent explicit notification of the same binding.
         foreach (var binding in bindings)
         {
             runtime.UnbindSessionActor(binding.ActorId, context, binding.BindingToken);
             runtime.UnbindActorSession(binding.ActorId, binding.BindingToken);
+        }
+
+        return;
+
+        async Task NotifyBestEffortAsync(ZLinkSessionActor actor)
+        {
+            try
+            {
+                await actor.NotifyDisconnectedAsync(cancellationToken)
+                    .AsTask()
+                    .WaitAsync(runtime.Registration.DefaultRequestTimeout, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Cleanup is all-settled. The exact binding token prevents a
+                // stale or duplicate notification from affecting a replacement.
+            }
         }
     }
 

@@ -201,7 +201,13 @@ internal sealed class ZLinkSpotRuntimeManager(
                         target.LifecycleGeneration,
                         owner,
                         creating,
-                        1),
+                        new ZLinkCapacityVector(
+                            0,
+                            1,
+                            new ZLinkSpotTypeCapacityDelta(
+                                ZLinkPlacementObjectKind.UserSpot,
+                                stableType,
+                                1))),
                     deadlineToken.Token)
                 .ConfigureAwait(false);
             if (reserved is ZLinkObjectReserveResult.Reserved reservation)

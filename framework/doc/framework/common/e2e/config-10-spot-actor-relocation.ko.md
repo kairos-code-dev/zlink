@@ -315,7 +315,21 @@ completion barrier를 끝내는가.
   node에서 발생해야 한다. Session route switch ACK와 steady normalization 전에는 `AfterRelocationNotify`와
   target admission이 없어야 한다. Source process가 종료되면 recovery가 durable cleanup을 대신 완료한 뒤에만
   route를 전환하며, cleanup이 terminal이 아닌 상태에서 target push를 먼저 성공시키면 실패다.
+  ObjectGeneration은 relocation 전후 같아야 하며 같은 Session에 bind된 다른 Actor route는 바뀌지 않는다.
+  Evidence는 `owner_membership_committed -> callbacks_journal_replayed -> source_cleanup -> completed ->
+  route_switch -> routed_ack -> steady_normalized -> target_admission` 순서다. Command 44·45가 Completed 전에
+  나타나거나 relay 과정에서 Location Store read가 발생하면 실패다.
 - 세부 동작: bound session route 이전.
+
+#### ST-E1A new incarnation은 explicit bind
+
+우선순위: `P0`
+
+- 절차: bound Actor를 destroy한 뒤 같은 ActorId의 새 ObjectGeneration을 만들고 이전 binding route update와
+  새 `ActorRef` explicit bind를 각각 시도한다.
+- 검증: 이전 binding은 새 incarnation으로 자동 retarget하지 않고 typed stale error로 끝난다. Explicit bind만
+  새 ObjectGeneration을 등록하며 같은 Session의 다른 Actor binding은 유지된다.
+- 세부 동작: relocation route update와 incarnation rebind 구분.
 
 #### ST-E2 실패한 relocation은 bound session route를 바꾸지 않음
 
@@ -496,6 +510,101 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
   Active로 전환한다.
 - 세부 동작: participant authority와 capacity vector의 atomic aggregate.
 
+### Track H — deferred Join과 Context 계약
+
+#### ST-H1 Join registration, queue barrier와 immutable request
+
+우선순위: `P0`
+
+- 절차: Actor handler와 User·Entry Spot의 Spot·Timer handler에서 각각 Join call을 만들고 request와
+  deadline을 설정한 뒤 `Defer`를 호출한다. Defer 뒤 application이 원본 request 객체를 변경하고 같은
+  Actor로 packet을 계속 제출한다.
+- 검증: Defer는 동기 registration만 수행하며 handler의 마지막 continuation 전에는 target I/O와
+  Location mutation이 없다. Join은 Defer 시점의 immutable request와 absolute deadline을 사용한다.
+  같은 Actor의 후속 packet은 source seal 전에는 barrier 뒤 Actor queue에 수락되고 cross-node
+  relocation에서는 accepted journal·실행 전 queue와 함께 이관된다. Source seal 이후 CAS 전과 forwarding
+  구간의 payload만 bounded ingress hold에 들어간다. 다른 Actor와 Spot lane은 계속 진행된다.
+- 세부 동작: handler-scoped barrier, request snapshot과 Actor-scoped queue hold.
+
+#### ST-H2 completion outcome과 operation ID
+
+우선순위: `P0`
+
+- 절차: Same-node Accepted, cross-node Accepted, target Rejected, precommit failure 세 갈래를 실행하고
+  completion callback 자체도 한 번 실패시킨다. 각 갈래에서 current process retry를 확인하고 별도 crash
+  반복은 handler terminal 전, Location commit 전, cross-node commit 뒤와 same-node commit 뒤에 주입한다.
+- 검증: Actor는 `Accepted`, `Rejected`, `Failed` 가운데 하나를 받는다. 128-bit non-zero operation ID는
+  current process retry에서 동일하다. Cross-node commit 뒤 Accepted만 Relocation manifest의 operation ID,
+  optional reply와 cursor로 target replacement 뒤 durable at-least-once 복구된다. Handler activation·Location
+  commit 전 crash는 Join intent 복구를 요구하지 않고 source authority·membership을 유지한다. Same-node
+  outcome과 Rejected·precommit Failed는 process replacement 뒤 completion replay를 요구하지 않는다.
+  Callback retry가 끝나기 전에는 같은 process의 Actor application queue를 열지 않는다.
+- 세부 동작: durable completion과 idempotency key.
+
+#### ST-H3 Context identity와 relocation fence
+
+우선순위: `P0`
+
+- 절차: Actor·User·Entry·Instance Spot factory에 전달한 Context와 생성 object의 `Context` accessor를
+  reference identity로 비교한다. Same-node Join과 cross-node Join·Spot relocation을 각각 실행한다.
+- 검증: Factory는 ID를 중복 인자로 받지 않는다. Same-node Actor Join은 같은 Actor·Context 객체에서
+  membership만 commit 시점에 바꾼다. Cross-node Actor는 같은 ObjectGeneration을 유지한 새 target Context를
+  사용한다. Spot relocation도 ObjectGeneration을 유지하고 새 AuthorityOwnerGeneration과 target owner에
+  결합한 Context를 사용한다. Commit 뒤 source Context의 operation은 fence되고 current target으로 자동
+  전달되지 않는다. Snapshot은 handler tail의 application state와 Framework queue·timer를 복원한다.
+  Recreate는 ObjectGeneration을 유지한 새 instance에 Framework queue·timer만 복원하고 application state는
+  capture하지 않는다.
+- 세부 동작: Context composition, generation 유지와 source fencing.
+
+#### ST-H4 허용 문맥, 중복 등록과 relocation 오류 parity
+
+우선순위: `P0`
+
+- 절차: 허용된 Actor handler와 User·Entry Spot의 Spot·Timer handler에서 성공 반복을 실행한다. Instance
+  Spot handler·timer, factory, `Configure`, lifecycle callback, relocation adapter와 detached/background
+  task에서는 각각 Defer를 시도한다. 같은 call 두 번째 Defer, 같은 Actor의 pending transition 중 Defer,
+  Disabled policy, eligible target 부재와 target 확정 뒤 precommit failure도 각각 실행한다.
+- 검증: Instance Spot과 turn scope 밖의 모든 시도는 `InvalidConfiguration`으로 동기 실패하고 barrier,
+  target I/O와 Location mutation이 모두 0건이다. 두 번째 Defer는 `AlreadySubmitted`, pending transition은
+  `ActorMoving`으로 동기 실패한다. 나머지는 completion에서 `RelocationDisabled(37)`,
+  `RelocationTargetUnavailable(38)`, `RelocationFailed(39)`를 다섯 언어가 같은 숫자와 의미로 보고한다.
+- 세부 동작: closed execution context와 error-kind parity.
+
+#### ST-H4A registration limit, timeout과 transition race
+
+우선순위: `P0`
+
+- 절차: handler 하나에서 Join 64개와 encoded request 합계 8 MiB 경계를 채운 뒤 65번째·합계 초과·개별
+  1 MiB 초과를 각각 시도한다. Request 없는 overload, 기본 timeout과 min/max boundary도 실행한다.
+  Join claim과 Retire·Shutdown seal race, same-target User·Entry Join도 반복한다.
+- 검증: 초과·invalid timeout은 partial record 없이 동기 `InvalidConfiguration`이다. Request 생략은 empty
+  message, 기본은 5초, 명시는 millisecond 올림 finite `1..INT_MAX` ms이며 Defer 시 monotonic deadline을
+  고정한다. Join winner면 maintenance가 기다리고 Retire winner는 `ActorMoving`, Shutdown winner는
+  `RuntimeShutdown`이다. Same-target는 lifecycle·Store mutation 없이 Accepted completion을 실행한다.
+
+#### ST-H4B Yield, awaited cycle과 reply terminal
+
+우선순위: `P0`
+
+- 절차: Defer 뒤 request `Yield`, self awaited request, Spot handler가 barrier 대상 Actor를 await하는 request,
+  reply encoding failure와 encoding 뒤 transport admission failure·disconnect를 각각 실행한다.
+- 검증: Yield 중 inactive claim이 유지되고 두 awaited cycle은 submission 전에 `InvalidConfiguration`이다.
+  Reply encoding failure는 handler failure로 barrier를 폐기한다. Encoding 뒤 transport failure·disconnect는
+  정상 handler가 등록한 Join을 취소하지 않는다.
+
+#### ST-H5 MessageContext와 Actor handler signature parity
+
+우선순위: `P1`
+
+- 절차: contract snapshot으로 public declaration을 검사한 뒤 send·request·RouteMesh·publish·session과
+  User·Entry Spot Actor handler를 실제 public registration과 transport를 통해 호출한다.
+- 검증: declaration에는 공통 `MessageContext`와 Route·Publish·Session specialized MessageContext만 있고
+  Send·Request·SpotActor marker context와 Actor request reply option이 없다. 실제 dispatch에서는
+  MeshName·ChannelName·PacketName·ContentType·Metadata·nullable CorrelationId가 원본 envelope와 일치하고,
+  Route source RID, Publish topic·source와 Session `CanReply`도 operation kind에 맞는 값을 제공한다.
+  Actor handler는 containing Spot, Actor, MessageContext와 payload를 받으며 다섯 언어가 같은 정보를 제공한다.
+- 세부 동작: public context naming과 handler information parity.
+
 ## 5. 완료 기준
 
 - Track A, Track B, Track C의 `P0` 시나리오는 모든 framework 언어가 같은 의미로 구현해야 한다.
@@ -506,6 +615,8 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
   completion으로 처리하지 않는다.
 - Track G의 `P0` 시나리오는 `SpotWide`와 `PerActor`를 모두 사용하고 yielded continuation, timer lane과
   typed aggregate capacity를 public evidence로 검증해야 한다.
+- Track H의 `P0` 시나리오는 deferred barrier, completion, Context identity·fencing과 error-kind parity를
+  다섯 언어에서 검증해야 한다.
 - callback order는 단순 로그 문자열 grep이 아니라 역할 server evidence와 message flow correlation id로
   검증한다.
 - location 검증은 public Actor·Spot manager의 `Find`, runtime snapshot 또는 역할 server endpoint로 관찰한다. 내부 store key를 client가

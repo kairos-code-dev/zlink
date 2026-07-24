@@ -30,7 +30,7 @@ inline void run_sm_f5_scenario (const std::string &play_http_endpoint,
     auto create =
       play_b.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = target_spot})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!create || create.value ().status >= 400) {
         throw std::runtime_error ("SM-F5 target Spot create request failed");
@@ -46,7 +46,7 @@ inline void run_sm_f5_scenario (const std::string &play_http_endpoint,
         auto response =
           play.post ("/channel/control-ping")
             .body (channel_control_ping_req_t{.target_node_rid = "play-b", .value = value})
-            .async_raw ()
+            .submit_raw ()
             .result ();
         if (!response || response.value ().status >= 400) {
             throw std::runtime_error ("SM-F5 ordinary channel request failed");
@@ -66,7 +66,7 @@ inline void run_sm_f5_scenario (const std::string &play_http_endpoint,
                                        .spot_rid = target_spot,
                                        .value = "spot-before-close-f5",
                                        .source_actor_id = "external-client"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!before_close || before_close.value ().status >= 400) {
         throw std::runtime_error ("SM-F5 spot route failed before close");
@@ -80,7 +80,7 @@ inline void run_sm_f5_scenario (const std::string &play_http_endpoint,
     auto close =
       play_b.post ("/spot/close")
         .body (close_spot_req_t{.key = spot_key})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!close || close.value ().status >= 400) {
         throw std::runtime_error ("SM-F5 target Spot close request failed");
@@ -97,7 +97,7 @@ inline void run_sm_f5_scenario (const std::string &play_http_endpoint,
                                        .spot_rid = target_spot,
                                        .value = "spot-after-close-f5",
                                        .source_actor_id = "external-client"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (after_close && after_close.value ().status < 400) {
         throw std::runtime_error ("SM-F5 closed spot route unexpectedly succeeded");

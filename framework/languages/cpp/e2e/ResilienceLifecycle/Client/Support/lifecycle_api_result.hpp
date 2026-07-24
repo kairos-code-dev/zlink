@@ -18,7 +18,7 @@ inline evidence_snapshot_t fetch_evidence (const std::string &base_url)
                     .base_url (base_url)
                     .timeout (std::chrono::milliseconds (1000))
                     .build ();
-    return client.get ("/evidence").async<evidence_snapshot_t> ().result ().value ().body;
+    return client.get ("/evidence").submit<evidence_snapshot_t> ().result ().value ().body;
 }
 
 inline profile_res_t post_consumer_profile (const client_options_t &options,
@@ -33,7 +33,7 @@ inline profile_res_t post_consumer_profile (const client_options_t &options,
                     .timeout (timeout)
                     .build ();
     auto request = profile_req_t{.value = value, .marker = marker.empty () ? value : marker};
-    return client.post (path).body (request).async<profile_res_t> ().result ().value ().body;
+    return client.post (path).body (request).submit<profile_res_t> ().result ().value ().body;
 }
 
 inline zlink::http_client::raw_http_response_t
@@ -48,7 +48,7 @@ post_consumer_profile_raw (const client_options_t &options,
                     .timeout (timeout)
                     .build ();
     auto request = profile_req_t{.value = value, .marker = marker.empty () ? value : marker};
-    auto result = client.post (path).body (request).async_raw ().result ();
+    auto result = client.post (path).body (request).submit_raw ().result ();
     ensure (result.has_value (),
             std::string ("consumer HTTP request failed: ")
               + (result.error () ? result.error ()->what () : "unknown error"));
@@ -64,7 +64,7 @@ inline request_failure_res_t post_consumer_missing (const client_options_t &opti
                     .build ();
     return client.post ("/profile/request/missing")
       .body (profile_req_t{.value = value, .marker = value})
-      .async<request_failure_res_t> ().result ().value ().body;
+      .submit<request_failure_res_t> ().result ().value ().body;
 }
 
 inline operation_status_t post_consumer_command (const client_options_t &options,
@@ -77,7 +77,7 @@ inline operation_status_t post_consumer_command (const client_options_t &options
                     .build ();
     return client.post (path)
       .body (profile_msg_t{.command_id = command_id, .marker = command_id})
-      .async<operation_status_t> ().result ().value ().body;
+      .submit<operation_status_t> ().result ().value ().body;
 }
 
 inline void post_provider_admin (const std::string &base_url, const std::string &path)
@@ -86,7 +86,7 @@ inline void post_provider_admin (const std::string &base_url, const std::string 
                   .base_url (base_url)
                   .timeout (std::chrono::milliseconds (1000))
                   .build ();
-    auto response = http.post (path).async_raw ().result ();
+    auto response = http.post (path).submit_raw ().result ();
     ensure (response && response.value ().status < 400,
             "provider admin call failed: " + base_url + path);
 }

@@ -76,14 +76,6 @@ export interface ZLinkMessageFlowEvent {
   readonly actorId?: string;
   readonly messageSizeBytes?: number;
   readonly durationSeconds?: number;
-  readonly remoteSnapshotCount?: bigint;
-  readonly remoteAdmittedCount?: bigint;
-  readonly remoteDroppedCount?: bigint;
-  readonly localSnapshotCount?: bigint;
-  readonly localAdmittedCount?: bigint;
-  readonly localDroppedCount?: bigint;
-  readonly targetCount?: bigint;
-  readonly dropCount?: bigint;
 }
 
 export type ZLinkMessageFlowOutcome =

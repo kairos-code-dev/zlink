@@ -493,9 +493,9 @@ Commit 전에는 partial target owner를 resolve하지 않고 commit 뒤에는 t
 Target factory와 Snapshot adapter의 `Restore`는 Prepared CAS 전에 staging 상태로 완료한다. Accepted journal은
 이 단계에서 checksum, 순서와 fence를 검증해 target queue에 실행되지 않은 상태로 준비한다. Standalone Actor의
 owner·Entry membership commit 뒤에는 target Entry Spot의 `OnActorRelocated`와 source Entry Spot의 `OnLeaveActor`를
-실행하고 old Entry membership의 durable cleanup을 완료한 뒤 accepted journal을 replay한다. Source process가
-종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신한다. 이 cleanup은
-replay 뒤 `Cleaning` phase가 처리하는 나머지 source resource cleanup과 구분한다. User Spot aggregate는 logical membership을 유지하므로 Actor
+실행한 뒤 accepted journal을 replay하고, old Entry membership과 나머지 source resource를 durable하게 cleanup한다.
+Source process가 종료되면 exact source fence의 durable terminal이 source callback 완료를 대신한 뒤 replay와
+cleanup을 계속한다. User Spot aggregate는 logical membership을 유지하므로 Actor
 `OnJoinedActor`·`OnActorRelocated`·`OnLeaveActor` callback을 호출하지 않으며 aggregate commit 뒤 journal을 replay한다. Target은
 필요한 lifecycle callback과 journal replay, source cleanup, Completed, route ACK와 steady normalization을 모두
 끝내기 전에는 Ready route와 application admission을 공개하지 않는다.
@@ -555,15 +555,21 @@ instance는 폐기하며 새 attempt는 factory가 만든 새 instance에 같은
 retry-safe해야 하며 Framework는 external side effect의 exactly-once를 보장하지 않는다. Public callback에
 RelocationId를 노출하지 않는다. Only current exact owner와 TargetAttemptGeneration만 completion을 commit할 수 있다.
 
-Owner·membership commit, 필요한 lifecycle callback과 standalone Actor의 old Entry membership cleanup 뒤
-accepted journal을 application handler에 replay한다.
+Owner·membership commit 뒤 필요한 lifecycle callback과 accepted journal replay·logical timer 복원을 끝내고 standalone Actor의
+old Entry membership을 포함한 source resource를 durable하게 cleanup한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다.
 Framework는 `Restore`가 끝난 뒤 payload의 timer logical registration으로 target timer를 만들고 pending tick을
 frozen queue ordering boundary에 맞춰 replay한다. Application이 `Capture`나 `Restore`에서 Framework timer를 중복
 저장·등록하지 않는다.
-`Activated` 뒤에도 target을 Ready로 publish하지 않는다. Journal replay 뒤 남은 source resource의 durable cleanup state CAS,
-Completed authority CAS, bound-session route commit과 routed ACK, maintenance authority의 steady normalization을
-모두 마친 뒤 application admission을 열고 Ready route를 publish한다. Resolver는 relocation payload가 남은 authority를 어느 phase에서도 Ready로
-투영하지 않는다.
+`Activated` 뒤에도 target을 Ready로 publish하지 않는다. Owner·membership commit, lifecycle callback,
+accepted journal replay·logical timer 복원, durable source cleanup, Completed authority CAS를 차례로 마친다. Bound-session
+route는 그 뒤에만 command 44·45로 바꾸고 routed ACK를 받는다. Maintenance authority를 steady 상태로
+normalize한 다음 application admission을 열고 Ready route를 publish한다. Resolver는 relocation payload가
+남은 authority를 어느 phase에서도 Ready로 투영하지 않는다.
+Bound-session route는 Location Store row가 아니다. Session owner runtime이 Bind 때 저장하며 relay와
+disconnect마다 Store를 조회하지 않는다. 같은 ObjectGeneration의 relocation에 한해 `Completed` 뒤 해당
+Actor route만 command 44·45로 바꾼다. 새 incarnation은 explicit bind가 필요하며 Store 장애는 저장 route의
+owner lease나 local admission deadline을 연장하지 않는다.
 
 ### 7.5 Late request completion과 acknowledgement
 

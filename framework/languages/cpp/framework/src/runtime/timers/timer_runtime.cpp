@@ -81,6 +81,11 @@ timer_t spot_context_t::add_timer_erased (std::string name,
     state->options = options;
     state->handler_type = handler_type;
     state->handler_invoker = std::move (handler_invoker);
+    if (_state->execution_mode == user_spot_execution_mode_t::per_actor
+        && _state->serial_executor) {
+        state->lane = std::make_shared<runtime::serial_execution_queue_t> (
+          *_state->serial_executor);
+    }
     state->native_timer = std::make_unique<zlink::timer_t> ();
     auto context = _state;
     state->native_timer->on_fire ([context, state] (std::uint64_t fire_count) {
@@ -113,14 +118,19 @@ void timer_runtime_t::post_fire_count (const std::shared_ptr<spot_context_state_
     if (!context || !state || state->disposed) {
         return;
     }
-    const bool posted = context->try_post_serial_async (
-      "spot-timer:" + state->name, [context, state, fire_count] (auto complete) mutable {
+    auto work = [context, state, fire_count] (auto complete) mutable {
           framework::timer_t timer (state);
           auto runtime = timer_runtime_t (context);
           auto task = runtime.dispatch_fire_count_async (timer, fire_count);
           detail::observe_task_completion (
             task, [complete] (const result_t<timer_tick_t> &) mutable { complete ([] {}); });
-      });
+      };
+    const bool posted =
+      state->lane
+        ? state->lane->try_post_async (
+            "spot-timer:" + state->name, std::move (work))
+        : context->try_post_serial_async (
+            "spot-timer:" + state->name, std::move (work));
     if (!posted) {
         std::lock_guard lock (state->mutex);
         if (!state->disposed) {
@@ -353,6 +363,9 @@ void timer_runtime_t::cancel_all (spot_context_state_t &context) noexcept
         }
         timer->disposed = true;
         timer->running = false;
+        if (timer->lane) {
+            timer->lane->cancel_pending ();
+        }
     }
 }
 

@@ -33,7 +33,7 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
 | SM-B3 | 구현 | Session stream auth 뒤 bound actor에 `ComplexActorReq`를 relay하고 scalar, array, dictionary payload가 reply와 `actor-complex` evidence에 그대로 남는지 검증한다. 선택 PASS: `logs/20260629-201946-1303393`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-B4 | 구현 | Session stream auth가 `play-b` actor를 bind한 뒤 `ActorPingReq`가 cross-node로 `play-b` actor에서 처리되고 reply가 돌아오는지 검증한다. 선택 PASS: `logs/20260629-202300-1319449`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-B5 | 구현 | missing actor handler request가 stream error reply로 실패하고 `dispatch-error\|surface=spotActor\|kind=actorRequest\|reason=handlerMissing\|action=replyError` evidence를 남기는지 검증한다. 선택 PASS: `logs/20260630-072224-3098758` |
-| SM-B6 | 구현 | explicit leave는 `spot-actor-left` evidence만 남기고 disconnect evidence를 남기지 않으며, stream close는 Session `onDisconnected`와 선택 actor `entry-disconnected` evidence를 남기는지 검증한다. 선택 PASS: `logs/20260630-073618-3133487`; `all` PASS: `logs/20260630-074201-3148526` |
+| SM-B6 | 재검증 필요 | explicit leave는 `spot-actor-left` evidence만 남긴다. Physical stream close는 application이 Actor를 선택해 통지하지 않고 Framework가 current binding 전체에 자동 통지해야 한다. handler loop를 제거했으므로 최신 runtime runner 증거가 필요하다. |
 | SM-B7 | 구현 | 같은 actor에 `ActorPingReq` 두 개를 연속 전송해 `entry-created` -> `entry-joined` -> packet dispatch 순서와 `seen=1`, `seen=2` 직렬 처리 evidence를 검증한다. 선택 PASS: `logs/20260630-070802-3055574` |
 | SM-B8 | 구현 | Entry Spot actor handler에서 public `entrySpot.context.destroyActor(...)`를 호출하고, post-destroy `SnapshotReq`가 stream error reply로 실패하며 `actor-destroyed` evidence가 남는지 검증한다. 선택 PASS: `logs/20260630-072210-3097534` |
 | SM-B9 | 구현 | Entry Spot `onActorJoin(...)`이 actor id별 admission 결과를 반환하고 거부 actor는 request가 stream error reply로 실패하며 accepted actor는 정상 reply되는지 검증한다. 선택 PASS: `logs/20260707-195152-3345108` |
@@ -47,7 +47,10 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
 | SM-D2 | 구현 | Session HTTP endpoint가 control RouteMesh로 `play-b` readiness를 확인하고, stream auth로 bind한 remote actor에 `ActorPushReq`를 relay한다. `play-b` actor handler가 public bound session push로 `ActorPushNotify`를 보내고 reply node가 `play-b`인지 검증한다. 선택 PASS: `logs/20260629-212246-1563843`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D3 | 구현 | entry actor stream bind 뒤 `ActorPushReq` reply와 bound session push를 검증한다. user spot bind는 `UserSpotAuthReq`로 spot/actor join marker를 남기고 `UserActorPingReq`/`UserActorPushReq` relay reply, user spot rid, push payload, `actor-pingMsg` evidence를 검증한다. 선택 PASS: `logs/20260629-212739-1577626`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D4 | 구현 | `MultiBindReq`가 한 stream session에 두 actor를 bind하고, subsequent request가 stream metadata `actor-id`로 대상 actor를 선택한다. 각 actor request/reply, actor push, id 없는 request 실패를 검증한다. 선택 PASS: `logs/20260629-213206-1588322`; `all` PASS: `logs/20260630-074201-3148526` |
-| SM-D5 | 구현 | `session-a` local actor stream auth와 bind 뒤 stream close가 Session `onDisconnected`를 호출하고, handler가 선택 actor에 `notifyDisconnected()`를 호출해 `entry-disconnected` evidence를 남기는지 검증한다. 선택 PASS: `logs/20260630-073619-3133519`; `all` PASS: `logs/20260630-074201-3148526` |
+| SM-D4A | 미구현 | 같은 Actor를 Session A에서 Session B로 rebind한 뒤 Session A의 stale relay·late disconnect가 새 binding과 다른 bound Actor에 영향을 주지 않는 focused runner가 없다. |
+| SM-D4B | 미구현 | bind 뒤 Location Store read를 차단하고 valid stored route, single-forward stale mapping과 typed stale 결과를 함께 검증하는 runner가 없다. |
+| SM-D5 | 재검증 필요 | application `onDisconnected`의 selected Actor loop를 제거했다. Framework automatic all-bound notification과 all-settled cleanup은 최신 runtime focused runner로 다시 증명해야 한다. |
+| SM-D5A | 미구현 | physical connection을 유지한 public logical disconnect가 선택 Actor callback 완료만 기다리고 다른 Actor에 영향을 주지 않는 focused runner가 없다. |
 | SM-D6 | 구현 | bound consumer와 별도 consumer를 각각 `session-a`, `session-b` stream session에 연결하고, `ActorPushReq`로 발생한 `ActorPushNotify`가 target actor에 bind된 consumer에게만 전달되는지 검증한다. 별도 consumer는 다른 actor에 bind되어 있으며 target actor push count가 0인지 확인한다. 선택 PASS: `logs/20260629-213945-1613927`; `all` PASS: `logs/20260702-064908-43303` |
 | SM-D7 | 구현 | stream connector가 `AuthReq`로 actor bind를 완료하고, 같은 stream의 `ActorPingReq`가 bound actor로 dispatch되어 reply payload가 유지되는지 검증한다. 선택 PASS: `logs/20260629-214310-1624231`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D8 | 구현 | slow actor request가 pending인 상태에서 stream connector를 close하면 pending request가 실패하고 자동 재전송되지 않는지 확인한다. 이후 새 stream connector가 같은 actor id로 다시 auth/rebind하고 `ActorPingReq`가 정상 reply되는지 검증한다. 선택 PASS: `logs/20260629-214843-1639970`; `all` PASS: `logs/20260630-074201-3148526` |
@@ -146,3 +149,15 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
   - PASS: `logs/20260629-221012-1704641` (heartbeat-enabled stream 유지)
 - 선택 scenario: `timeout 360s framework/languages/node/e2e/SpotService/run_e2e.sh SM-E3`
   - PASS: `logs/20260630-081940-3248210` (idle close와 closed target route failure)
+# CA-D78 Session Actor binding runtime evidence
+
+- `SA-BIND-01`, `SA-BIND-02`: runtime contract test에서 한 Session의 multi-Actor binding과
+  binding token 교체 뒤 stale operation 차단을 검증한다.
+- `SA-ROUTE-01`, `SA-ROUTE-02`, `SA-MOVE-06`: relay는 registry에 저장한 exact binding
+  route를 사용한다. Internal route refresh는 같은 `ObjectGeneration`만 허용하고 새
+  incarnation은 explicit bind로만 교체한다.
+- `SA-DISC-01`, `SA-DISC-03`, `SA-DISC-04`, `SA-DISC-05`: physical STREAM disconnect는
+  current binding snapshot 전체를 deadline 안에서 all-settled로 통지하고 callback 실패와
+  관계없이 binding cleanup을 완료한다. Focused contract test는
+  `physical stream disconnect automatically notifies every captured actor and always cleans up`이다.
+- 공통 E2E scenario의 실제 process 간 검증은 새 scenario porting 뒤 별도 PASS log로 갱신한다.

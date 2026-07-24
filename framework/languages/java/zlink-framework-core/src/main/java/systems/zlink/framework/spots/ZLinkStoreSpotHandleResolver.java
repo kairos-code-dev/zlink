@@ -88,6 +88,14 @@ public final class ZLinkStoreSpotHandleResolver
                         row.spotKind()))));
     }
 
+    @Override
+    public CompletionStage<Optional<SpotTransportAddress>> resolve(String spotId) {
+        return resolveSpotHandle(spotId).thenCompose(handle -> handle
+            .map(this::resolve)
+            .orElseGet(() -> java.util.concurrent.CompletableFuture.completedFuture(
+                Optional.empty())));
+    }
+
     private CompletionStage<Optional<FrameworkSpotHandle>> resolveAuthority(
         String spotId) {
         if (authorities == null) {

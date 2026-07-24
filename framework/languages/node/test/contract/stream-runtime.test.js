@@ -4,6 +4,9 @@ const test = require('node:test');
 const connector = require('../../packages/stream-connector/dist');
 const protocolCodecs = require('./helpers/stream-protocol-codecs');
 const framework = require('../../packages/framework/dist/internal');
+const {
+  ZLinkSubmitStatus
+} = require('../../packages/framework/dist/runtime/messaging/submission-result');
 const streamProtocol = require('../../packages/framework/dist/runtime/streams/protocol');
 const {
   ZLinkRemoteBoundSessionRelay
@@ -412,7 +415,7 @@ test('runtime host local actor falls back to native SessionRelay when no JavaScr
     .packetName('Notify')
     .submit();
 
-  assert.deepEqual(result, { status: framework.ZLinkSubmitStatus.Submitted });
+  assert.equal(result, undefined);
   assert.equal(nativeSends.length, 1);
   assert.equal(routeCalls.length, 0);
   assert.deepEqual(nativeSends[0].actor, actorRef);
@@ -460,7 +463,7 @@ test('native bound-session send retries only after SEND_READY and preserves subm
   ready = true;
   host.meshSubmitters.notify('__native_bound_session');
 
-  assert.deepEqual(await submit, { status: framework.ZLinkSubmitStatus.Submitted });
+  assert.equal(await submit, undefined);
   assert.equal(attempts, 2);
 });
 
@@ -507,10 +510,19 @@ test('timed-out native bound-session send reports TimedOut without late admissio
   const actorRef = { nodeRid: 'node-a', actorId: 'actor-native-timeout', generation: 7n };
   let attempts = 0;
   const host = new framework.ZLinkFrameworkRuntimeHost({
-    registration: framework.createFrameworkRegistration()
+    registration: framework.createFrameworkRegistration({
+      spotNodes: {
+        play: {
+          router: {
+            bind: 'inproc://native-bound-session-timeout',
+            sendTimeoutMs: 5
+          }
+        }
+      }
+    })
   });
-  host.meshSubmitters.timeoutMs = 5;
   host.spotNodeRuntime = {
+    primaryMeshName: 'play',
     primaryMeshNode: {
       status: () => ({ routingId: zlink.RoutingId.from('node-local') }),
       sendActorBoundSession() {
@@ -529,13 +541,14 @@ test('timed-out native bound-session send reports TimedOut without late admissio
     }
   });
 
-  const result = await host.createActorManagerOptions()
-    .boundSessionFactory(actorRef.actorId)
-    .send({ ok: true })
-    .packetName('Notify')
-    .submit();
-
-  assert.deepEqual(result, { status: framework.ZLinkSubmitStatus.TimedOut });
+  await assert.rejects(
+    () => host.createActorManagerOptions()
+      .boundSessionFactory(actorRef.actorId)
+      .send({ ok: true })
+      .packetName('Notify')
+      .submit(),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
+  );
   assert.equal(attempts, 1);
   host.meshSubmitters.notify('__native_bound_session');
   await new Promise((resolve) => setImmediate(resolve));
@@ -926,13 +939,15 @@ test('local actor push preserves native target-not-found after its remote sessio
       };
     }
   });
-  const result = await host.createActorManagerOptions()
-    .boundSessionFactory(actorRef.actorId)
-    .send({ stale: true })
-    .packetName('Notify')
-    .submit();
+  await assert.rejects(
+    () => host.createActorManagerOptions()
+      .boundSessionFactory(actorRef.actorId)
+      .send({ stale: true })
+      .packetName('Notify')
+      .submit(),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorSessionNotBound
+  );
   assert.equal(nativeAttempts, 1);
-  assert.deepEqual(result, { status: framework.ZLinkSubmitStatus.TargetNotFound });
 });
 
 test('actor response compression reaches local, native, and remote bound-session transports', async () => {
@@ -1065,7 +1080,7 @@ test('runtime host remote bound session send submits a routed Session command', 
       packet: message,
       signal: options.signal
     });
-    return { status: framework.ZLinkSubmitStatus.Submitted };
+    return { status: ZLinkSubmitStatus.Submitted };
   };
   host.setActorManager({
     getState(actorId) {
@@ -1086,7 +1101,7 @@ test('runtime host remote bound session send submits a routed Session command', 
     .packetName('Notify')
     .submit();
 
-  assert.deepEqual(result, { status: framework.ZLinkSubmitStatus.Submitted });
+  assert.equal(result, undefined);
   await waitForCondition(() => routeCalls.length === 1, 'remote bound session route submit');
   assert.equal(routeCalls.length, 1);
   assert.equal(routeCalls[0].routerChannelId, 'room.route');
@@ -1346,6 +1361,36 @@ test('same actor ownership update changes the Spot route without rebinding the a
 
   assert.equal(refreshed, 0);
   assert.equal(packetTarget.spotId, 'zone-sw');
+});
+
+test('internal route refresh preserves object generation while explicit bind can replace an incarnation', async () => {
+  const bindingRuntime = new framework.ZLinkStreamBindingRuntime();
+  const context = bindingRuntime.createSessionContext(
+    recordingStream('session-generation-fence', 'session-a')
+  );
+  const original = await context.actors.bind({
+    nodeRid: 'actor-a',
+    actorId: 'actor-generation-fence',
+    generation: 1n
+  });
+
+  await assert.rejects(
+    bindingRuntime.refreshActor({
+      nodeRid: 'actor-b',
+      actorId: 'actor-generation-fence',
+      generation: 2n
+    }),
+    /cannot replace object generation/
+  );
+  assert.equal(bindingRuntime.find('actor-generation-fence'), original);
+
+  const replacement = await context.actors.bind({
+    nodeRid: 'actor-b',
+    actorId: 'actor-generation-fence',
+    generation: 2n
+  });
+  assert.notEqual(replacement, original);
+  assert.equal(replacement.ref.generation, 2n);
 });
 
 test('transferred actor ownership acknowledges the new route before session rebind completes', async () => {
@@ -1825,7 +1870,7 @@ test('session actor relay waits for an in-progress ownership refresh', async () 
     const refreshing = runtime.refreshActor({
       nodeRid: 'node-b',
       actorId: 'actor-a',
-      generation: 2n
+      generation: 1n
     });
     await refreshDidStart;
     const sendsBeforeRelay = socket.boundActorSends.length;
@@ -1884,7 +1929,7 @@ test('bound-session response keeps its stream route during an ownership refresh'
   const refreshing = runtime.refreshActor({
     nodeRid: 'node-b',
     actorId: 'actor-a',
-    generation: 2n
+    generation: 1n
   });
   await refreshDidStart;
 
@@ -2383,7 +2428,7 @@ test('stream session and bound session require packetName for structural payload
   assert.equal(sent[0].frame.header.name, 'ActorReady');
 });
 
-test('stream session actors bindOrGet preserves the handle while atomically updating a changed ref', async () => {
+test('stream session actors bindOrGet preserves a handle only within the same object generation', async () => {
   const runtime = new framework.ZLinkStreamBindingRuntime({
     transport: {
       async send() {},
@@ -2397,8 +2442,9 @@ test('stream session actors bindOrGet preserves the handle while atomically upda
   const moved = await context.actors.bindOrGet({ nodeRid: 'node-b', actorId: 'actor-1', generation: 2n });
 
   assert.equal(again, same);
-  assert.equal(moved, same);
+  assert.notEqual(moved, same);
   assert.deepEqual(moved.ref, { nodeRid: 'node-b', actorId: 'actor-1', generation: 2n });
+  assert.deepEqual(same.ref, firstRef);
 });
 
 test('stream session actor changed-ref bind failure restores the previous native and logical binding', async () => {
@@ -2440,6 +2486,7 @@ test('stream session actor changed-ref bind failure restores the previous native
   assert.equal(nativeRef.generation, 1n);
   assert.deepEqual(operations, [
     'bind:node-a:1',
+    'unbind:actor-rollback',
     'bind:node-b:2',
     'bind:node-a:1'
   ]);
@@ -2730,7 +2777,7 @@ test('session reply token remains consumed after failed admission', async () => 
   const context = runtime.createSessionContext({
     ...fakeStream('session-reply-timeout', 'rid-reply-timeout'),
     async submitRaw() {
-      return { status: framework.ZLinkSubmitStatus.TimedOut };
+      return { status: ZLinkSubmitStatus.TimedOut };
     }
   });
   context.enterDispatch({
@@ -2742,9 +2789,9 @@ test('session reply token remains consumed after failed admission', async () => 
     metadata: connector.ZlinkStreamMetadataMap.empty
   });
   try {
-    assert.deepEqual(
-      await context.client.reply({ accepted: true }).submit(),
-      { status: framework.ZLinkSubmitStatus.TimedOut }
+    await assert.rejects(
+      () => context.client.reply({ accepted: true }).submit(),
+      (error) => error.kind === framework.ZLinkFrameworkErrorKind.DeadlineExceeded
     );
     await assert.rejects(
       () => context.client.reply({ accepted: false }).submit(),
@@ -2762,7 +2809,7 @@ test('pre-aborted stream reply claims its token before cancellation without tran
     ...fakeStream('session-reply-abort', 'rid-reply-abort'),
     async submitRaw() {
       attempts += 1;
-      return { status: framework.ZLinkSubmitStatus.Submitted };
+      return { status: ZLinkSubmitStatus.Submitted };
     }
   });
   context.enterDispatch({
@@ -2797,7 +2844,7 @@ test('stream send validation and duplicate state win over pre-aborted signals', 
     ...fakeStream('session-send-validation', 'rid-send-validation'),
     async submitRaw() {
       attempts += 1;
-      return { status: framework.ZLinkSubmitStatus.Submitted };
+      return { status: ZLinkSubmitStatus.Submitted };
     }
   });
   const controller = new AbortController();
@@ -2809,8 +2856,12 @@ test('stream send validation and duplicate state win over pre-aborted signals', 
   );
 
   const call = context.client.send({ value: 'first' }).packetName('SessionNotice');
-  assert.deepEqual(await call.submit(), { status: framework.ZLinkSubmitStatus.Submitted });
-  await assert.rejects(() => call.submit(controller.signal), /only once/i);
+  assert.equal(await call.submit(), undefined);
+  await assert.rejects(() => call.submit(controller.signal), (error) => {
+    assert.equal(error instanceof framework.ZLinkFrameworkException, true);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.AlreadySubmitted);
+    return true;
+  });
   assert.equal(attempts, 1);
 });
 
@@ -3113,8 +3164,8 @@ function fakeStream(sessionId, routingId) {
     async submitRaw(message) {
       return {
         status: this.writeRaw(message)
-          ? framework.ZLinkSubmitStatus.Submitted
-          : framework.ZLinkSubmitStatus.Backpressured
+          ? ZLinkSubmitStatus.Submitted
+          : ZLinkSubmitStatus.Backpressured
       };
     },
     async close() {}
@@ -3140,8 +3191,8 @@ function recordingStream(sessionId, routingId) {
     async submitRaw(message) {
       return {
         status: this.writeRaw(message)
-          ? framework.ZLinkSubmitStatus.Submitted
-          : framework.ZLinkSubmitStatus.Backpressured
+          ? ZLinkSubmitStatus.Submitted
+          : ZLinkSubmitStatus.Backpressured
       };
     },
     async close() {}

@@ -211,7 +211,7 @@ snapshot 내용과 pause·release 순서만 기록하며 member 선택, target�
 | `routeGeneration`, `connectionGeneration` | reconnect 뒤 이전 operation이 다시 제출되지 않았는지 확인한다 |
 | `pendingWaiterCount`, `reservationCount`, `callbackCount` | shutdown·disposal 뒤 resource가 남지 않았는지 확인한다 |
 | `sendReadySignalCount`, `capacitySignalCount`, `retryAttemptCount`, `pollRetryCount`, `timerRetryCount` | pending operation이 관측한 signal과 그 signal로 시작한 재시도가 일대일인지 확인한다 |
-| `snapshotPassCount`, `targetAttemptCount`, `commitAt`, `publishedCount`, `droppedCount`, `unreachableCount` | Logical Multicast의 snapshot 단일 처리와 member별 단일 admission을 monitoring evidence로 확인한다 |
+| `snapshotPassCount`, `targetAttemptCount`, `commitAt` | 검증 build 내부 fixture로 Logical Multicast의 snapshot 단일 처리와 member별 단일 attempt를 확인한다. Public monitoring field가 아니다 |
 | `snapshotRecordedAt`, `snapshotBarrierReleasedAt`, `snapshotMemberIds` | Logical Multicast snapshot 확정과 target pipe 종료·barrier 해제 순서를 확인한다 |
 
 Runtime 내부 counter를 application의 성공 조건을 만들기 위한 제어 값으로 사용하지 않는다. Client가 받은
@@ -431,7 +431,7 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
 - **공통 evidence:** Global Actor ID, resolved·current object generation과 owner fence, terminal kind와
   generation별 handler count를 기록한다. Public call에는 `ActorRef`·handle·owner를 넘기지 않는다.
 
-### SA-E2E-13 — Logical Multicast snapshot 단일 처리와 partial monitoring
+### SA-E2E-13 — Logical Multicast snapshot 단일 처리와 monitoring 부재
 
 - **목적:** Logical Multicast가 executor direct handoff에 성공하면 target snapshot을 정확히 한 번 처리하고,
   각 snapshot member의 admission을 최대 한 번만 시도하며 partial admission을 전체 publish retry로 바꾸지
@@ -452,23 +452,22 @@ Public awaitable의 정상 완료·예외, 역할 server evidence와 사용한 g
   Commit된 case는 marker 뒤 cancellation 또는 shutdown signal을 발생시키되 gate와 snapshot을 유지한다.
 - **기대 결과:** Remote target별 source-local outbound transport queue의 capacity drop이 하나 이상인
   `SA-E2E-13.a`도 rollback이나 전체 retry 없이 반환 데이터 없이 정상 완료한다. Admitted와 dropped count는
-  monitoring event와 metric에만 남긴다. 모든 remote target이 unreachable이고 admitted가 0인
-  `SA-E2E-13.b`도 정상 완료하며 unreachable count를 monitoring에 보존한다. Snapshot count는 0보다 크고
-  admitted는 0, unreachable은
-  snapshot count와 같다. Direct
+  public 반환값이나 monitoring에 남기지 않는다. 모든 remote target이 unreachable인
+  `SA-E2E-13.b`도 정상 완료하며 target count나 unreachable count를 public monitoring에 보존하지 않는다. Direct
   handoff에 사용할 `worker slot`이 없는
   `SA-E2E-13.c`는 executor capacity를 send timeout까지 기다린다. Capacity가 생기면 한 번 처리하고 정상
   완료하며, 생기지 않으면 snapshot pass·commit 없이 timeout 예외로 끝난다. Snapshot count가 모두 0인
   `SA-E2E-13.d`는 유효한 local index entry를 유지하며 target admission attempt 없이 한 번의 snapshot
-  pass로 정상 완료한다. Local Spot만 capacity drop된 `SA-E2E-13.e`도 정상 완료하며 local dropped count만
-  monitoring에 증가한다. Commit된 operation은 snapshot pass를 정확히 한 번 끝내며 각 snapshot member에는
+  pass로 정상 완료한다. Local Spot만 capacity drop된 `SA-E2E-13.e`도 정상 완료하며 local dropped count를
+  public monitoring에 만들지 않는다. Commit된 operation은 snapshot pass를 정확히 한 번 끝내며 각 snapshot member에는
   admission을 최대 한 번 시도한다. Commit 뒤 signal은 정상 완료를 cancellation 또는 runtime shutdown
   예외로 바꾸지 않는다.
 - **공통 evidence:** Case마다 public invocation, executor direct handoff, transport attempt, commit count,
-  snapshot pass count와 target별 admission attempt count를 분리해 남긴다. Target별 delivery와
-  remote·local snapshot/admitted/dropped/unreachable monitoring count도
-  함께 기록한다. `SA-E2E-13.b`는 snapshot member ID, snapshot 기록 시각, 각 pipe 종료 시각과 barrier 해제
-  시각을 남긴다. `SA-E2E-13.d`는 process-local index entry와 ready match 0을 함께 기록한다.
+  snapshot pass count와 target별 admission attempt count를 검증 build 내부 evidence로 분리해 남긴다.
+  MeshNode snapshot의 multicast field, publish target count가 있는 runtime event·message-flow event와
+  `zlink.mesh_node.multicast.*` metric은 모두 부재함을 확인한다. `SA-E2E-13.b`는 snapshot member ID,
+  snapshot 기록 시각, 각 pipe 종료 시각과 barrier 해제 시각을 남긴다. `SA-E2E-13.d`는 process-local
+  index entry와 ready match 0을 함께 기록한다.
 
 ### SA-E2E-14 — Classic fanout subscriber 0
 

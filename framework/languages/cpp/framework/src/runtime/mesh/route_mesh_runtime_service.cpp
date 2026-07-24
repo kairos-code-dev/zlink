@@ -149,6 +149,7 @@ struct route_mesh_runtime_service_t::state_t :
 
     std::map<std::string, std::shared_ptr<hub_t>> hubs;
     location_runtime_query_t *location_runtime = nullptr;
+    mesh_node_location_store_t *location_store = nullptr;
     drain_callback_t drain_callback;
     await_drained_callback_t await_drained_callback;
     mutable std::mutex sequence_mutex;
@@ -229,12 +230,6 @@ struct route_mesh_runtime_service_t::state_t :
             .channel_name = std::nullopt,
             .claim_domain = std::optional<std::string>{"application"},
             .message_kind = std::nullopt,
-            .remote_snapshot_count = std::nullopt,
-            .remote_admitted_count = std::nullopt,
-            .remote_dropped_count = std::nullopt,
-            .local_snapshot_count = std::nullopt,
-            .local_admitted_count = std::nullopt,
-            .local_dropped_count = std::nullopt,
             .reason = std::optional<std::string>{
               active ? "active" : (pending_callbacks != 0 ? "pending" : "released")},
             .state = std::nullopt});
@@ -291,12 +286,6 @@ struct route_mesh_runtime_service_t::state_t :
             .channel_name = std::nullopt,
             .claim_domain = std::nullopt,
             .message_kind = std::nullopt,
-            .remote_snapshot_count = std::nullopt,
-            .remote_admitted_count = std::nullopt,
-            .remote_dropped_count = std::nullopt,
-            .local_snapshot_count = std::nullopt,
-            .local_admitted_count = std::nullopt,
-            .local_dropped_count = std::nullopt,
             .reason = std::optional<std::string>{state},
             .state = std::nullopt});
     }
@@ -334,10 +323,12 @@ route_mesh_runtime_service_t::route_mesh_runtime_service_t (
   std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> nodes,
   location_runtime_query_t *location_runtime,
   drain_callback_t drain,
-  await_drained_callback_t await_drained) :
+  await_drained_callback_t await_drained,
+  mesh_node_location_store_t *location_store) :
     _state (std::make_shared<state_t> ())
 {
     _state->location_runtime = location_runtime;
+    _state->location_store = location_store;
     _state->drain_callback = std::move (drain);
     _state->await_drained_callback = std::move (await_drained);
     for (auto &node : nodes)
@@ -457,20 +448,76 @@ route_mesh_runtime_service_t::snapshot (std::string mesh_name) const
         deadline = _state->drain_deadline;
         work_sealed = _state->work_sealed;
     }
+    mesh_node_descriptor_t placement;
+    placement.mesh_name = mesh_name;
+    placement.rid = status.routing_id ();
+    placement.lifecycle_generation = status.lifecycle_generation ();
+    placement.descriptor_revision = descriptor.descriptor_revision;
+    placement.endpoint = status.local_endpoint ();
+    placement.object_role = object_role_t::server;
+    placement.placement_weight = hub->node->placement_weight ();
+    placement.capacity.actors.limit = hub->node->actor_limit ();
+    placement.capacity.spots.limit = hub->node->spot_limit ();
+    placement.activation_concurrency.limit =
+      hub->node->activation_concurrency_limit ();
+    if (_state->location_store != nullptr) {
+        try {
+            location_page_request_t page;
+            for (;;) {
+                auto listed =
+                  _state->location_store->list_mesh_nodes (mesh_name, page);
+                const auto &result = listed.result ();
+                if (!result)
+                    break;
+                const auto &value = result.value ();
+                const auto found = std::find_if (
+                  value.items.begin (), value.items.end (),
+                  [&status] (const mesh_node_descriptor_t &candidate) {
+                      return candidate.rid == status.routing_id ()
+                             && candidate.lifecycle_generation
+                                  == status.lifecycle_generation ();
+                  });
+                if (found != value.items.end ()) {
+                    placement = *found;
+                    break;
+                }
+                if (!value.continuation_token)
+                    break;
+                page.continuation_token = value.continuation_token;
+            }
+        }
+        catch (...) {
+            // Monitoring keeps the last locally known limits when the
+            // authoritative descriptor cannot be read.
+        }
+    }
 
     return mesh_node_snapshot_t{
       .mesh_name = std::move (mesh_name),
       .rid = status.routing_id (),
+      .entry_spot_id = placement.entry_spot_id,
       .lifecycle_generation = status.lifecycle_generation (),
       .descriptor_revision = descriptor.descriptor_revision,
       .endpoint = status.local_endpoint (),
       .state = mapped_state,
+      .object_role = placement.object_role,
+      .application_version = placement.application_version,
+      .placement_weight = placement.placement_weight,
+      .object_capacity = placement.capacity,
+      .activation_concurrency =
+        activation_concurrency_snapshot_t{
+          .active = placement.activation_concurrency.active,
+          .limit = static_cast<std::uint32_t> (
+            placement.activation_concurrency.limit)},
+      .placement_reservation_failure_count = 0,
+      .last_placement_reservation_failure = std::nullopt,
+      .object_capabilities = placement.object_capabilities,
       .sequence = _state->next_sequence (descriptor.mesh_name),
       .observed_at = std::chrono::system_clock::now (),
       .descriptor_sources = {},
       .peers = std::move (peer_snapshots),
       .channels = std::move (channels),
-      .multicast = logical_multicast_snapshot_t{},
+      .instance_spots = {},
       .claims =
         mesh_claim_snapshot_t{
           .application_active = application_active,
@@ -519,12 +566,6 @@ route_mesh_runtime_service_t::observe (
       .channel_name = std::nullopt,
       .claim_domain = std::nullopt,
       .message_kind = std::nullopt,
-      .remote_snapshot_count = std::nullopt,
-      .remote_admitted_count = std::nullopt,
-      .remote_dropped_count = std::nullopt,
-      .local_snapshot_count = std::nullopt,
-      .local_admitted_count = std::nullopt,
-      .local_dropped_count = std::nullopt,
       .reason = std::nullopt,
       .state = map_state (status.state)});
     return std::make_unique<observation_t> (std::move (registered));

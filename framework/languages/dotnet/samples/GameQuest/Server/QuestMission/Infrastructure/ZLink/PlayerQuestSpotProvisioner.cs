@@ -20,7 +20,7 @@ internal sealed class PlayerQuestOwnerProvisioner(
         CancellationToken cancellationToken)
     {
         var address = await EnsureAddressAsync(gameplayEvent.PlayerId, cancellationToken);
-        await routes.SendToSpot(address, gameplayEvent).SubmitAsync(cancellationToken);
+        await routes.SendToSpot(address, gameplayEvent).Async(cancellationToken);
     }
 
     public async ValueTask<SyncQuestProgressRes> SyncAsync(

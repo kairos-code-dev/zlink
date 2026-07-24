@@ -137,23 +137,70 @@ public sealed class ActorClientTests
     }
 
     [Fact]
-    public void ActorSendCall_Has_One_Async_Submit_Terminal()
+    public void ActorSendCall_Has_One_Async_Terminal()
     {
         var submit = Assert.Single(
             typeof(IZLinkActorSendCall).GetMethods(),
-            static method => method.Name == "SubmitAsync");
-        Assert.Equal(typeof(ValueTask<ZLinkSubmitResult>), submit.ReturnType);
+            static method => method.Name == "Async");
+        Assert.Equal(typeof(ValueTask), submit.ReturnType);
         var cancellation = Assert.Single(submit.GetParameters());
         Assert.Equal(typeof(CancellationToken), cancellation.ParameterType);
         Assert.True(cancellation.HasDefaultValue);
         Assert.Empty(typeof(IZLinkActorSendCall).GetMethods().Where(static method =>
-            method.Name is "Submit" or "TrySubmit"));
+            method.Name is "Submit" or "SubmitAsync" or "TrySubmit"));
     }
 
     [Fact]
     public void ActorRequestCall_Has_No_Submit_Terminal()
     {
         Assert.Empty(typeof(IZLinkActorRequestCall).GetMethods().Where(static method => method.Name == "Submit"));
+    }
+
+    [Fact]
+    public void EveryOneWayBuilder_UsesSingleSubmissionGate()
+    {
+        var terminalInterfaces = new[]
+        {
+            typeof(IZLinkSendCall),
+            typeof(IZLinkPublishCall),
+            typeof(IZLinkActorSendCall),
+            typeof(IZLinkBoundSessionSendCall),
+            typeof(IZLinkSessionSendCall),
+            typeof(IZLinkSessionReplyCall)
+        };
+        var builders = typeof(ZLinkActorClient).Assembly
+            .GetTypes()
+            .Where(type => !type.IsAbstract
+                           && terminalInterfaces.Any(contract => contract.IsAssignableFrom(type)))
+            .ToArray();
+
+        Assert.NotEmpty(builders);
+        Assert.All(builders, type => Assert.True(
+            HasSubmissionGate(type),
+            $"{type.FullName} does not enforce single-use submission."));
+    }
+
+    [Fact]
+    public void OneWayGate_RejectsSecondTerminalWithAlreadySubmitted()
+    {
+        var gate = new ZLinkOneWayCallGate("Actor send");
+        gate.Claim();
+
+        var error = Assert.Throws<ZLinkFrameworkException>(gate.Claim);
+
+        Assert.Equal(ZLinkFrameworkErrorKind.AlreadySubmitted, error.Kind);
+    }
+
+    private static bool HasSubmissionGate(Type type)
+    {
+        for (var current = type; current is not null; current = current.BaseType)
+            if (current.GetFields(
+                    System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.NonPublic)
+                .Any(field => field.FieldType == typeof(ZLinkOneWayCallGate)))
+                return true;
+
+        return false;
     }
 
     private static IReadOnlyList<Message> ActorReplyParts(

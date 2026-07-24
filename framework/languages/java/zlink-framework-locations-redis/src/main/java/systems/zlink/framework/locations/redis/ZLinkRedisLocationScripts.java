@@ -90,6 +90,9 @@ final class ZLinkRedisLocationScripts {
             'HGET', KEYS[4], 'descriptorRevision')
         local currentFingerprint =
             redis.call('HGET', KEYS[4], 'immutableDigest')
+        local currentEntrySpotId =
+            redis.call('HGET', KEYS[4], 'entrySpotId')
+        local entrySpotId = ARGV[18]
 
         if ARGV[1] == 'new' then
             if currentOwner
@@ -127,7 +130,48 @@ final class ZLinkRedisLocationScripts {
             end
         end
 
+        if entrySpotId ~= '' then
+            if redis.call('EXISTS', KEYS[11]) == 1 then
+                return {'conflict', 0, nowMs}
+            end
+            local claimOwner =
+                redis.call('HGET', KEYS[10], 'ownerId')
+            local claimLease =
+                redis.call(
+                    'HGET', KEYS[10], 'ownerLeaseGeneration')
+            if claimOwner
+                and leaseIsLive(KEYS[12], claimOwner, claimLease)
+                and (redis.call(
+                        'HGET', KEYS[10], 'descriptorKey')
+                        ~= ARGV[13]
+                    or redis.call(
+                        'HGET', KEYS[10],
+                        'descriptorLifecycleGeneration')
+                        ~= ARGV[4]
+                    or claimOwner ~= ARGV[2]
+                    or claimLease ~= ARGV[3]) then
+                return {'conflict', 0, nowMs}
+            end
+        end
+
         local previousOwner = currentOwner
+        if currentEntrySpotId
+            and currentEntrySpotId ~= ''
+            and currentEntrySpotId ~= entrySpotId
+            and KEYS[13] ~= KEYS[4]
+            and redis.call('HGET', KEYS[13], 'descriptorKey')
+                == redis.call('HGET', KEYS[4], 'descriptorKey')
+            and redis.call(
+                'HGET', KEYS[13],
+                'descriptorLifecycleGeneration')
+                == currentLifecycle
+            and redis.call('HGET', KEYS[13], 'ownerId')
+                == currentOwner
+            and redis.call(
+                'HGET', KEYS[13], 'ownerLeaseGeneration')
+                == currentLease then
+            redis.call('DEL', KEYS[13])
+        end
         redis.call('HSET', KEYS[1],
             'owner', ARGV[2],
             'gen', ARGV[4],
@@ -146,7 +190,18 @@ final class ZLinkRedisLocationScripts {
             'capabilities', ARGV[14],
             'actorLimit', ARGV[15],
             'spotLimit', ARGV[16],
+            'activationConcurrencyLimit', ARGV[17],
+            'entrySpotId', entrySpotId,
             'immutableDigest', ARGV[6])
+        if entrySpotId ~= '' then
+            redis.call('HSET', KEYS[10],
+                'state', 'Claimed',
+                'spotId', entrySpotId,
+                'descriptorKey', ARGV[13],
+                'descriptorLifecycleGeneration', ARGV[4],
+                'ownerId', ARGV[2],
+                'ownerLeaseGeneration', ARGV[3])
+        end
         redis.call('SADD', KEYS[2], ARGV[8])
         redis.call('SADD', KEYS[5], ARGV[8])
         if previousOwner and previousOwner ~= ARGV[2] then
@@ -167,6 +222,20 @@ final class ZLinkRedisLocationScripts {
             or currentOwner ~= ARGV[1]
             or currentLease ~= ARGV[2] then
             return {'stale', 0, nowMs}
+        end
+        if KEYS[7] ~= KEYS[8]
+            and redis.call('HGET', KEYS[7], 'descriptorKey')
+                == redis.call('HGET', KEYS[3], 'descriptorKey')
+            and redis.call(
+                'HGET', KEYS[7],
+                'descriptorLifecycleGeneration')
+                == redis.call('HGET', KEYS[3], 'lifecycleGeneration')
+            and redis.call('HGET', KEYS[7], 'ownerId')
+                == currentOwner
+            and redis.call(
+                'HGET', KEYS[7], 'ownerLeaseGeneration')
+                == currentLease then
+            redis.call('DEL', KEYS[7])
         end
         redis.call('DEL', KEYS[1])
         redis.call('DEL', KEYS[3])
@@ -393,10 +462,34 @@ final class ZLinkRedisLocationScripts {
         end
         local removed = 0
         for index = 3, #ARGV do
-            local keyOffset = 5 + (index - 3) * 3
+            local keyOffset = 5 + (index - 3) * 4
             local rowKey = ARGV[index]
             if redis.call('HGET', KEYS[keyOffset], 'owner')
-                    == ARGV[1] then
+                    == ARGV[1]
+                and redis.call(
+                    'HGET', KEYS[keyOffset + 1],
+                    'ownerLeaseGeneration') == ARGV[2] then
+                if KEYS[keyOffset + 3] ~= KEYS[4]
+                    and redis.call(
+                        'HGET', KEYS[keyOffset + 3],
+                        'descriptorKey')
+                        == redis.call(
+                            'HGET', KEYS[keyOffset + 1],
+                            'descriptorKey')
+                    and redis.call(
+                        'HGET', KEYS[keyOffset + 3],
+                        'lifecycleGeneration')
+                        == redis.call(
+                            'HGET', KEYS[keyOffset + 1],
+                            'lifecycleGeneration')
+                    and redis.call(
+                        'HGET', KEYS[keyOffset + 3], 'ownerId')
+                        == ARGV[1]
+                    and redis.call(
+                        'HGET', KEYS[keyOffset + 3],
+                        'ownerLeaseGeneration') == ARGV[2] then
+                    redis.call('DEL', KEYS[keyOffset + 3])
+                end
                 redis.call('DEL', KEYS[keyOffset])
                 redis.call('DEL', KEYS[keyOffset + 1])
                 redis.call('SREM', KEYS[2], rowKey)

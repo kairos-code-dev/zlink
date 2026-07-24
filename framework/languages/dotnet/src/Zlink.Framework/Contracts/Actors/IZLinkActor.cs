@@ -9,4 +9,11 @@ public interface IZLinkActor
     void Configure()
     {
     }
+
+    ValueTask OnJoinCompletedAsync(
+        ZLinkActorJoinCompletion completion,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.CompletedTask;
+    }
 }

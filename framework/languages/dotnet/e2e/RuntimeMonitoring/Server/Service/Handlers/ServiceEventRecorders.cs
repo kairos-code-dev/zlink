@@ -88,12 +88,6 @@ internal sealed class MeshEventRecorder(
             + $"|generation={@event.LifecycleGeneration}"
             + $"|revision={@event.DescriptorRevision}"
             + $"|channel={@event.ChannelName}|state={@event.State}"
-            + $"|remote-snapshot={@event.RemoteSnapshotCount}"
-            + $"|remote-admitted={@event.RemoteAdmittedCount}"
-            + $"|remote-dropped={@event.RemoteDroppedCount}"
-            + $"|local-snapshot={@event.LocalSnapshotCount}"
-            + $"|local-admitted={@event.LocalAdmittedCount}"
-            + $"|local-dropped={@event.LocalDroppedCount}"
             + $"|reason={@event.Reason}");
 
         // The peer's channel weight lives in its descriptor row (a weight

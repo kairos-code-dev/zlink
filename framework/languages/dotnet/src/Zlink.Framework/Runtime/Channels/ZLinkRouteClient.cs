@@ -63,6 +63,7 @@ internal sealed class ZLinkChannelSendCall<TMessage>(
     TMessage message) : IZLinkSendCall
 {
     private readonly ZLinkCallMetadata _metadata = new();
+    private readonly ZLinkOneWayCallGate _submission = new("Channel send");
 
     public IZLinkSendCall Metadata(string key, string value)
     {
@@ -76,17 +77,19 @@ internal sealed class ZLinkChannelSendCall<TMessage>(
         return this;
     }
 
-    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+    public async ValueTask Async(
         CancellationToken cancellationToken = default)
     {
+        _submission.Claim();
         cancellationToken.ThrowIfCancellationRequested();
         var parts = Encode();
-        return await runtime.SendToChannelAsync(
+        var result = await runtime.SendToChannelAsync(
                 channelName,
                 parts,
                 cancellationToken,
                 _metadata.Encode())
             .ConfigureAwait(false);
+        ZLinkOneWaySubmitOutcome.EnsureAccepted(result, "Channel send");
     }
 
     private IReadOnlyList<Message> Encode()
@@ -134,9 +137,9 @@ internal sealed class ZLinkChannelRequestCall<TRequest>(
 
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
-        return _turn is null
-            ? ExecuteAsync<TReply>(cancellationToken)
-            : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+        return ZLinkApplicationExecutionContext
+            .RequireYieldTurn(_turn, "Channel request")
+            .YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
     }
 
     private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
@@ -173,6 +176,7 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
 {
     private readonly ZLinkCallMetadata _metadata = new();
     private readonly string _messageName = ZLinkMessageNameResolver.ResolveFromMessage(message);
+    private readonly ZLinkOneWayCallGate _submission = new("MeshNode send");
 
     public IZLinkSendCall Metadata(string key, string value)
     {
@@ -186,9 +190,10 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
         return this;
     }
 
-    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+    public async ValueTask Async(
         CancellationToken cancellationToken = default)
     {
+        _submission.Claim();
         cancellationToken.ThrowIfCancellationRequested();
         var nodeRuntime = runtime.GetMeshNodeRuntime(meshName);
         var parts = Encode();
@@ -200,15 +205,10 @@ internal sealed class ZLinkRouteSendCall<TMessage>(
                 targetNodeRid,
                 $"packet '{_messageName}'");
             handedOff = true;
-            return await nodeRuntime
+            var result = await nodeRuntime
                 .SendToNodeAsync(targetNodeRid, parts, cancellationToken, _metadata.Encode())
                 .ConfigureAwait(false);
-        }
-        catch (ZLinkFrameworkException failure)
-            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
-        {
-            if (!handedOff) DisposeBeforeHandoff(parts);
-            return failed;
+            ZLinkOneWaySubmitOutcome.EnsureAccepted(result, "Node send");
         }
         catch
         {
@@ -269,9 +269,9 @@ internal sealed class ZLinkRouteRequestCall<TRequest>(
 
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
-        return _turn is null
-            ? ExecuteAsync<TReply>(cancellationToken)
-            : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+        throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.InvalidConfiguration,
+            "MeshNode request does not support Yield.");
     }
 
     private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)
@@ -312,6 +312,7 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
     TMessage message) : IZLinkSendCall
 {
     private readonly ZLinkCallMetadata _metadata = new();
+    private readonly ZLinkOneWayCallGate _submission = new("Spot send");
 
     public IZLinkSendCall Metadata(string key, string value)
     {
@@ -325,9 +326,10 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
         return this;
     }
 
-    public async ValueTask<ZLinkSubmitResult> SubmitAsync(
+    public async ValueTask Async(
         CancellationToken cancellationToken = default)
     {
+        _submission.Claim();
         cancellationToken.ThrowIfCancellationRequested();
         var snapshot = target.Snapshot;
         var header = ZLinkClientCallCodec.CreateEnvelope(
@@ -337,7 +339,7 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
         var parts = ZLinkClientCallCodec.EncodeEnvelopeParts(header, message, runtime.Registration.Codecs);
         try
         {
-            return await runtime.SendToSpotViaRouterChannelAsync(
+            var result = await runtime.SendToSpotViaRouterChannelAsync(
                     snapshot.RouterChannelId,
                     snapshot.NodeRid,
                     snapshot.SpotId,
@@ -347,11 +349,14 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
                     cancellationToken,
                     _metadata.Encode())
                 .ConfigureAwait(false);
+            ZLinkOneWaySubmitOutcome.EnsureAccepted(
+                result,
+                "Spot send",
+                ZLinkFrameworkErrorKind.SpotRouteNotFound);
         }
-        catch (ZLinkFrameworkException failure)
-            when (ZLinkMeshCallSupport.TryMapSubmitFailure(failure, out var failed))
+        catch
         {
-            return failed;
+            throw;
         }
     }
 }
@@ -362,6 +367,8 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
     TRequest request) : IZLinkRequestCall
 {
     private readonly ZLinkCallMetadata _metadata = new();
+    private readonly ZLinkApplicationExecutionScope? _executionScope =
+        ZLinkApplicationExecutionContext.Current;
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private TimeSpan? _timeout;
 
@@ -386,14 +393,20 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
 
     public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default)
     {
+        ZLinkApplicationExecutionContext.RejectSpotRequestWhenSameGate(
+            target.Snapshot.SpotId,
+            _executionScope);
         return ExecuteAsync<TReply>(cancellationToken);
     }
 
     public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default)
     {
-        return _turn is null
-            ? ExecuteAsync<TReply>(cancellationToken)
-            : _turn.YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
+        ZLinkApplicationExecutionContext.RejectSpotRequestWhenSameGate(
+            target.Snapshot.SpotId,
+            _executionScope);
+        return ZLinkApplicationExecutionContext
+            .RequireYieldTurn(_turn, "Spot request")
+            .YieldFrameworkCallAsync(ExecuteAsync<TReply>, cancellationToken);
     }
 
     private async ValueTask<TReply> ExecuteAsync<TReply>(CancellationToken cancellationToken)

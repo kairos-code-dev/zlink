@@ -22,6 +22,7 @@ import { readZLinkDecoratorMetadata } from '../../contracts/Handlers/Attributes'
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type { ZLinkMessageSerializer } from '../../contracts';
 import { createActorJoinRequest, createActorMembership } from './actor-lifecycle-snapshot';
+import { runActorHandlerWithDeferredJoins } from './actor-join-deferred-scope';
 
 export enum ZLinkActorPacketKind {
   Send = 'send',
@@ -138,7 +139,8 @@ export class ZLinkSpotActorDispatcher {
     return this.execute(async () => {
       const descriptor = this.requirePacket(ZLinkActorPacketKind.Send, actor, packetName);
       const handler = this.createHandler<ZLinkSpotActorSendHandler<ZLinkActor, TMessage>>(descriptor);
-      await handler.handle(actor, this.createSendContext(packetName, context), message);
+      await runActorHandlerWithDeferredJoins(() =>
+        handler.handle(actor, this.createSendContext(packetName, context), message));
     });
   }
 
@@ -168,15 +170,17 @@ export class ZLinkSpotActorDispatcher {
         ...context,
         reply: context.reply ?? replyOptions
       };
-      const reply = await handler.handle(
-        actor,
-        this.createRequestContext(packetName, requestContext),
-        request
-      );
-      const optionsSnapshot = context.reply === undefined || context.reply instanceof DefaultZLinkSpotActorReplyOptions
-        ? replyOptions.snapshot()
-        : { metadata: new Map<string, string>(), compressPayload: false };
-      return await afterReply(reply, optionsSnapshot);
+      return await runActorHandlerWithDeferredJoins(async () => {
+        const reply = await handler.handle(
+          actor,
+          this.createRequestContext(packetName, requestContext),
+          request
+        );
+        const optionsSnapshot = context.reply === undefined || context.reply instanceof DefaultZLinkSpotActorReplyOptions
+          ? replyOptions.snapshot()
+          : { metadata: new Map<string, string>(), compressPayload: false };
+        return await afterReply(reply, optionsSnapshot);
+      });
     });
   }
 

@@ -194,7 +194,7 @@ Metadata는 Framework가 검증한 immutable snapshot으로 handler에 전달한
 마지막 값이 사용된다. metadata 전체의 UTF-8 encoded 크기는 1024 bytes를 넘을 수 없다. reply는 request
 metadata를 자동 복사하지 않는다.
 
-## 7. Logical Multicast 관측
+## 7. Logical Multicast 완료
 
 MeshNode와 Spot publish API는 publish 전용 전달 정책 option을 제공하지 않는다. Framework의 bounded I/O
 executor는 publish operation을 send timeout까지 admission한다. Timeout 전에 시작하지 못하면
@@ -202,10 +202,10 @@ executor는 publish operation을 send timeout까지 admission한다. Timeout 전
 확정한 target snapshot을 정확히 한 번 처리하며 cancellation이나 shutdown으로 나머지 target 제출을
 중단하지 않는다.
 
-Remote와 local 각각의 snapshot, admitted, dropped 수와 remote unreachable 수는 public publish 결과가
-아니라 monitoring metric과 runtime event로 제공한다. Snapshot target이 0개여도 정상 완료한다. Transaction
-시작 뒤 remote capacity·연결 실패와 local Spot queue drop은 전체 publish를 rollback하거나 exceptional
-completion으로 바꾸지 않는다. 앞에서 수락한 target은 뒤 target의 실패 때문에 취소하지 않는다.
+Remote와 local target 수와 target별 수락·drop·unreachable 결과는 public publish 결과나 publish 전용
+monitoring 값으로 제공하지 않는다. Snapshot target이 0개여도 정상 완료한다. Transaction 시작 뒤 remote
+capacity·연결 실패와 local Spot queue drop은 전체 publish를 rollback하거나 exceptional completion으로
+바꾸지 않는다. 앞에서 수락한 target은 뒤 target의 실패 때문에 취소하지 않는다.
 
 ## 8. Handler 등록과 dispatch
 
@@ -496,6 +496,9 @@ Actor egress는 bound session FIFO를 사용한다. Actor dispatch capability를
 | 34 | `RelocationDataLost` | no |
 | 35 | `SpotIdConflict` | no |
 | 36 | `RuntimeShutdown` | no |
+| 37 | `RelocationDisabled` | no |
+| 38 | `RelocationTargetUnavailable` | yes |
+| 39 | `RelocationFailed` | yes |
 
 `RouteNotConnected`는 알려진 target의 pipe가 준비되지 않은 상태이고, `RequestTargetNotFound`는 등록한
 송신 경로에 현재 선택 가능한 target snapshot이 없거나 ChannelName 송신 경로 자체가 없는 상태다.
@@ -506,6 +509,9 @@ admission을 거부한 상태다. `RelocationDataLost`는 Location authority가 
 rollback하지 않으며 같은 reference를 다시 시도해 복구 가능한 오류로 분류하지 않는다.
 `RoutingIdConflict`는 MeshNode transport RID owner claim 충돌이고, `SpotIdConflict`는 global Spot
 namespace의 Entry·User·Instance Spot ID claim 충돌이다.
+`RelocationDisabled`는 object policy가 cross-node relocation을 허용하지 않는 상태다.
+`RelocationTargetUnavailable`은 eligible target·capacity·reservation을 확보하지 못한 상태고,
+`RelocationFailed`는 target을 정한 뒤 capture·restore·commit 전 처리에서 실패한 상태다.
 
 ### 13.1 Operation 완료 변환
 
@@ -519,7 +525,7 @@ RouteMesh·ClientServer select-one ChannelName은 성공한 admission 전까지 
 |---|---|
 | 해당 operation family의 source outbound admission이 operation을 수락함 | one-way send·publish는 반환 데이터 없이 정상 완료하고 request는 pending reply completion으로 전환 |
 | 일반 one-way의 첫 submit이 backpressured임 | send timeout까지 send-ready를 기다린다. Timeout 전 capacity가 생기면 한 번 제출하고, deadline이 먼저 끝나면 `DeadlineExceeded` exception으로 완료 |
-| Logical Multicast transaction 시작 뒤 remote capacity가 부족함 | 앞에서 수락한 target은 유지하고 target별 실패를 monitoring metric·event에 기록한다. Public result나 전체 rollback은 만들지 않음 |
+| Logical Multicast transaction 시작 뒤 remote capacity가 부족함 | 앞에서 수락한 target은 유지한다. Target별 실패를 public result나 publish 전용 monitoring으로 만들지 않으며 전체 rollback도 하지 않음 |
 | 알려진 direct target의 route가 준비되지 않음 | `RouteNotConnected` |
 | Actor·Spot authority 또는 Node·Channel 송신 경로가 없음 | operation별 기존 route-not-found·`MeshNotFound`·`RequestTargetNotFound` exception |
 | target admission seal 또는 application policy가 거부함 | `RequestRejected` 또는 해당 one-way rejection 결과 |

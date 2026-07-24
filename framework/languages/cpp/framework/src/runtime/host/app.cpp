@@ -838,6 +838,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           std::type_index (typeid (route_mesh_runtime_t)))) {
         auto provider = _state->services.build_provider ();
         auto location_runtime = provider.get<location_runtime_query_t> ();
+        auto location_store = provider.get<location_store_t> ();
         auto mesh_runtime =
           std::make_shared<runtime::route_mesh_runtime_service_t> (
             mesh_nodes,
@@ -845,7 +846,8 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
             [this] (std::chrono::milliseconds deadline) {
                 return to_drain_task (shutdown (deadline));
             },
-            [this] { return to_drain_task (shutdown ()); });
+            [this] { return to_drain_task (shutdown ()); },
+            location_store ? &location_store->get () : nullptr);
         _state->services.add_factory<route_mesh_runtime_t> (
           [mesh_runtime] (service_provider_t &) {
               return std::static_pointer_cast<route_mesh_runtime_t> (mesh_runtime);
@@ -1022,23 +1024,27 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 request_timeout);
           });
         actor_gateway_runtime.on_join_entry_spot (
-          [application_mesh, request_timeout] (
+          [application_mesh] (
             const actor_ref_t &actor,
-            node_rid_t target_node,
-            const zlink::message_t &request) {
+            const zlink::message_t &request,
+            std::chrono::milliseconds timeout) {
+              const auto routing_id = application_mesh->routing_id ();
+              const auto target_node = routing_id
+                ? node_rid_t::from_string (routing_id->to_string ())
+                : actor.node_rid ();
               return application_mesh->join_application_actor_to_entry_spot (
-                actor, target_node, request, request_timeout);
+                actor, target_node, request, timeout);
           });
         actor_gateway_runtime.on_join_spot (
           [application_mesh, actor_gateway_runtime, live_locations =
              &_state->services.build_provider ()
-                .get_required<runtime::live_location_reader_t> (),
-           request_timeout] (
+                .get_required<runtime::live_location_reader_t> ()] (
             const actor_ref_t &actor,
             spot_id_t target_spot,
-            const zlink::message_t &request) {
+            const zlink::message_t &request,
+            std::chrono::milliseconds timeout) {
               const auto deadline =
-                std::chrono::steady_clock::now () + request_timeout;
+                std::chrono::steady_clock::now () + timeout;
               result_t<std::optional<spot_location_t>> located =
                 result_t<std::optional<spot_location_t>>::success (std::nullopt);
               do {
@@ -1073,7 +1079,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               return application_mesh->join_application_actor_to_spot (
                 actor, node_rid_t::from_string (target.node_rid.to_string ()),
                 target_spot, target.spot_generation,
-                request, request_timeout,
+                request, timeout,
                 bound_session
                   ? std::make_optional (bound_session->node_rid)
                   : std::nullopt,

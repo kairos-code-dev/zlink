@@ -110,6 +110,48 @@ test('stale or unknown mesh handles fail with a typed route error and do not cre
   );
 });
 
+test('RouteMesh snapshot projects typed population and activation capacity from the current descriptor', () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const runtime = createRuntime(gate, {
+    meshNodeDescriptor: () => ({
+      objectRole: framework.ZLinkObjectRole.Server,
+      placementWeight: 275,
+      populationCapacity: {
+        actors: { active: 7, reserved: 2, limit: 100 },
+        spots: { active: 3, reserved: 1, limit: 20 },
+        spotTypes: [{
+          objectKind: 'user_spot',
+          stableType: 'room',
+          active: 2,
+          reserved: 1,
+          limit: 10
+        }]
+      },
+      activationConcurrency: { active: 4, limit: 64 },
+      applicationVersion: 9n,
+      objectCapabilities: [{
+        objectKind: 'user_spot',
+        stableType: 'room',
+        policy: 'snapshot',
+        hasSnapshotAdapter: true,
+        limit: 10
+      }]
+    })
+  });
+
+  const snapshot = runtime.snapshot('game');
+  assert.equal(snapshot.objectRole, framework.ZLinkObjectRole.Server);
+  assert.equal(snapshot.placementWeight, 275);
+  assert.deepEqual(snapshot.populationCapacity.actors, {
+    active: 7,
+    reserved: 2,
+    limit: 100
+  });
+  assert.equal(snapshot.populationCapacity.spotTypes[0].stableType, 'room');
+  assert.deepEqual(snapshot.activationConcurrency, { active: 4, limit: 64 });
+  assert.equal(snapshot.applicationVersion, 9n);
+});
+
 test('multi-mesh drain fails before global owner cleanup can mutate another mesh', async () => {
   const gate = new framework.ZLinkRuntimeAdmissionGate();
   let published = 0;
@@ -181,6 +223,7 @@ function createRuntime(gate, overrides = {}) {
     meshNames: ['game'],
     meshOptions: new Map([['game', { meshChannels: {} }]]),
     meshNode: (meshName) => meshName === 'game' ? node : undefined,
+    meshNodeDescriptor: overrides.meshNodeDescriptor,
     admission: gate,
     publishDraining: overrides.publishDraining ?? (async () => {}),
     publishHostDraining: overrides.publishHostDraining ?? (async () => {}),
@@ -196,7 +239,7 @@ function fakeMeshNode() {
       return {
         meshName: 'game', routingId: 'node-a', lifecycleGeneration: 1n,
         descriptorRevision: 1n, localEndpoint: 'tcp://127.0.0.1:1', state: 3,
-        lastChangedMs: 1n, multicastSubmitted: 0n, multicastDroppedTargets: 0n,
+        lastChangedMs: 1n,
         pendingApplicationMessages: 0n, pendingInfrastructureMessages: 0n
       };
     },

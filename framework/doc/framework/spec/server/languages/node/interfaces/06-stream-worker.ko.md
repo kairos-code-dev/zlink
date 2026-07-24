@@ -23,7 +23,7 @@ export interface ZLinkSpotPublisherClient {
 export declare function ZLinkSpotRequest(packetName?: string): MethodDecorator;
 
 export interface ZLinkSpotRequestHandler<TSpot, TRequest, TReply> {
-    handle(spot: TSpot, request: TRequest, context: ZLinkHandlerContext): Promise<TReply>;
+    handle(spot: TSpot, request: TRequest, context: ZLinkMessageContext): Promise<TReply>;
 }
 
 export declare function ZLinkSpotSubscription(channelName: string, topic: string): MethodDecorator;
@@ -156,8 +156,7 @@ export interface ZLinkUnhandledDispatchOptions {
 
 export interface ZLinkWorkerCall<T> {
     timeoutMs(durationMs: number): ZLinkWorkerCall<T>;
-    submit(signal?: AbortSignal): void;
-    async(signal?: AbortSignal): Promise<T>;
+    submit(signal?: AbortSignal): Promise<T>;
     yield(signal?: AbortSignal): Promise<T>;
 }
 
@@ -169,8 +168,7 @@ export interface ZLinkWorkerOptions {
 }
 ```
 
-Request와 join의 result-bearing `submit()`은 공통 `Async` 의미이며 terminal reply 또는 결과까지 현재
-owner turn을 유지한다. Worker call은 결과를 기다리지 않는 `submit()`, 결과까지 현재 turn을 유지하는
-`async()`, 허용된 Spot execution gate를 반납하는 `yield()`를 별도로 제공한다. Worker `yield()`는
-`SpotWide` User Spot 또는 Instance Spot application handler에서만 operation을 제출한다. 그 밖의 context는
-worker queue 변경과 gate 반환 전에 `InvalidConfiguration`으로 완료한다.
+Request와 join의 result-bearing `submit()`은 terminal reply 또는 결과까지 현재 owner turn을 유지한다.
+Worker call의 `submit()`도 Worker 결과가 나올 때까지 현재 turn을 유지한다. `yield()`는 `SpotWide` User Spot
+또는 Instance Spot의 shared turn에서만 그 turn을 반환한다. 다른 실행 문맥에서는 worker를 제출하거나
+turn을 반환하지 않고 `InvalidConfiguration`으로 완료한다.

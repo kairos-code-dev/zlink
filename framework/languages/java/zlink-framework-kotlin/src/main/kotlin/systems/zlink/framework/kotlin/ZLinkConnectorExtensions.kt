@@ -5,6 +5,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import java.time.Duration
+import java.util.concurrent.CompletionStage
 import systems.zlink.stream.connector.ZLinkStreamConnector
 import systems.zlink.stream.connector.ZLinkStreamEncodedPayload
 import systems.zlink.stream.connector.ZLinkStreamError
@@ -163,14 +164,14 @@ class ZLinkKotlinLifecycleCall(
 }
 
 class ZLinkKotlinSendCall(
-    private val submitter: () -> Unit,
+    private val submitter: () -> CompletionStage<Void>,
 ) {
     constructor(inner: ZLinkStreamSendCall) : this({ inner.submit() })
 
     constructor(inner: ZLinkTypedStreamSendCall) : this({ inner.submit() })
 
-    fun submit() {
-        submitter()
+    suspend fun await() {
+        submitter().await()
     }
 }
 

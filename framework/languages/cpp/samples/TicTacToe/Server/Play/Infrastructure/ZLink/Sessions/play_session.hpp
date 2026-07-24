@@ -67,7 +67,7 @@ class play_session_t final : public packet_stream_session_t
         if (dispatch.can_reply ()) {
             auto reply =
               co_await actor.value ().relay_request (std::string (dispatch.packet_name ()), payload)
-                .async ();
+                .submit ();
             stream.reply_packet (reply).submit ();
             co_return;
         }

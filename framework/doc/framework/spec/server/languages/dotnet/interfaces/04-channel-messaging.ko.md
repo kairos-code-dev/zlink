@@ -8,58 +8,24 @@ Node direct와 ChannelName은 서로 다른 handler family를 사용한다. Node
 ChannelName context는 logical membership을 제공한다.
 
 ```csharp
-public interface IZLinkHandlerContext
+public interface IZLinkMessageContext
 {
+    string? MeshName { get; }
     string? ChannelName { get; }
     string PacketName { get; }
     string? ContentType { get; }
     ZLinkMessageMetadata Metadata { get; }
     string? CorrelationId { get; }
-    CancellationToken ConnectionAborted { get; }
 }
 
-public sealed class ZLinkSendContext : IZLinkHandlerContext
+public sealed class ZLinkRouteMessageContext : IZLinkMessageContext
 {
-    public string ChannelName { get; }
-    public string PacketName { get; }
-    public string? ContentType { get; }
-    public ZLinkMessageMetadata Metadata { get; }
-    public string? CorrelationId { get; }
-    public CancellationToken ConnectionAborted { get; }
-}
-
-public sealed class ZLinkRequestContext : IZLinkHandlerContext
-{
-    public string ChannelName { get; }
-    public string PacketName { get; }
-    public string? ContentType { get; }
-    public ZLinkMessageMetadata Metadata { get; }
-    public string? CorrelationId { get; }
-    public CancellationToken ConnectionAborted { get; }
-}
-
-public sealed class ZLinkRouteSendContext : IZLinkHandlerContext
-{
-    public string MeshName { get; }
+    public string? MeshName { get; }
     public string? ChannelName { get; }
     public string PacketName { get; }
     public string? ContentType { get; }
     public ZLinkMessageMetadata Metadata { get; }
     public string? CorrelationId { get; }
-    public CancellationToken ConnectionAborted { get; }
-    public RoutingId SourceNodeRid { get; }
-    public RoutingId TargetNodeRid { get; }
-}
-
-public sealed class ZLinkRouteRequestContext : IZLinkHandlerContext
-{
-    public string MeshName { get; }
-    public string? ChannelName { get; }
-    public string PacketName { get; }
-    public string? ContentType { get; }
-    public ZLinkMessageMetadata Metadata { get; }
-    public string? CorrelationId { get; }
-    public CancellationToken ConnectionAborted { get; }
     public RoutingId SourceNodeRid { get; }
     public RoutingId TargetNodeRid { get; }
 }
@@ -68,7 +34,7 @@ public interface IZLinkSendHandler<in TMessage>
 {
     ValueTask HandleAsync(
         TMessage message,
-        ZLinkSendContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken);
 }
 
@@ -76,7 +42,7 @@ public interface IZLinkRequestHandler<in TRequest, TResponse>
 {
     ValueTask<TResponse> HandleAsync(
         TRequest request,
-        ZLinkRequestContext context,
+        IZLinkMessageContext context,
         CancellationToken cancellationToken);
 }
 
@@ -84,7 +50,7 @@ public interface IZLinkRouteSendHandler<in TMessage>
 {
     ValueTask HandleAsync(
         TMessage message,
-        ZLinkRouteSendContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken);
 }
 
@@ -92,7 +58,7 @@ public interface IZLinkRouteRequestHandler<in TRequest, TReply>
 {
     ValueTask<TReply> HandleAsync(
         TRequest request,
-        ZLinkRouteRequestContext context,
+        ZLinkRouteMessageContext context,
         CancellationToken cancellationToken);
 }
 ```
@@ -136,7 +102,7 @@ ClientServer의 같은 ChannelName에 local Server가 있으면 remote Server와
 Client DEALER에서 Server ROUTER로 실제 transport message를 전달하므로 codec, HWM, timeout,
 cancellation, correlation과 terminal completion을 우회하지 않는다.
 
-`IZLinkHandlerContext`는 nullable ChannelName을 제공한다. Channel context는 non-null ChannelName을 제공하고,
+`IZLinkMessageContext`는 nullable ChannelName을 제공한다. Channel handler는 non-null ChannelName을 받고,
 Node direct 전용 context만 MeshName과 source·target RID를 추가로 제공한다. Correlation ID는 request에서 non-null이고
 send에서 null이며 Framework가 reply route와 함께 보존한다.
 

@@ -35,6 +35,8 @@ final class ZLinkFrameworkActorSubsystem {
     }
 
     static ZLinkFrameworkActorSubsystem create(
+        systems.zlink.framework.runtime.internal.backend
+            .ZLinkBackendAdapterProvider backendFactory,
         ZLinkFrameworkRegistration registration,
         ZLinkMessageSerializer serializer,
         ZLinkHandlerActivator.MutableServices runtimeHandlers,
@@ -80,7 +82,8 @@ final class ZLinkFrameworkActorSubsystem {
                 registration.actorTransferForwardWindow(),
                 serializer,
                 runtimeHandlers,
-                defaultStreamCodec)
+                defaultStreamCodec,
+                ZLinkAdmissionRuntime.factory(backendFactory))
             : null;
         ZLinkActorDirectory actorDirectory = actors != null
             ? actors
@@ -107,6 +110,8 @@ final class ZLinkFrameworkActorSubsystem {
                                 registration.defaultRequestTimeout());
                     meshNode.setActorCreateOperationHandler(creation);
                     actors.setCreationSubmitter(creation);
+                    actors.setEntrySpotTargetSelector(
+                        creation::selectEntrySpotTarget);
                 }
             }
         }
@@ -115,7 +120,8 @@ final class ZLinkFrameworkActorSubsystem {
                 spots::primaryNode,
                 storeLocationResolvers,
                 serializer,
-                registration.defaultRequestTimeout())
+                registration.defaultRequestTimeout(),
+                ZLinkAdmissionRuntime.factory(backendFactory))
             : null;
         registerActorServices(runtimeHandlers, actorClient, actorDirectory, actors);
         wireActorRuntime(

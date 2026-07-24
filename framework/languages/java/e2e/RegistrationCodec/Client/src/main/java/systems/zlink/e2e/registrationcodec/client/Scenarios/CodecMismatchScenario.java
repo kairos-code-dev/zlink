@@ -11,11 +11,11 @@ public final class CodecMismatchScenario {
     public static void run(ScenarioContext context) {
         Contracts.CodecMismatchProbeRes mismatch = context.codecRequester()
             .post("/codec/protobuf/request")
-            .async(Contracts.CodecMismatchProbeRes.class).toCompletableFuture().join().body();
+            .submit(Contracts.CodecMismatchProbeRes.class).toCompletableFuture().join().body();
         ScenarioAssert.ensure(mismatch.rejected(), "RC-B5 Protobuf mismatch was not rejected");
         Contracts.EchoRes jsonReply = context.codecRequester()
             .post("/codec/json/request")
-            .async(Contracts.EchoRes.class).toCompletableFuture().join().body();
+            .submit(Contracts.EchoRes.class).toCompletableFuture().join().body();
         ScenarioAssert.ensure("echo:rc-b5-json".equals(jsonReply.value()),
             "RC-B5 JSON traffic did not recover after mismatch");
         System.out.println("scenario RC-B5 passed");

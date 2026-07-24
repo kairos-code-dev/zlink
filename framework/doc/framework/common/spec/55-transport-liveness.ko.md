@@ -146,7 +146,7 @@ connection ID를 넣지 않으며 개별 identity는 bounded [snapshot](01-gloss
 - Probe와 ACK는 application handler로 전달되지 않고 다른 inbound service frame은 deadline을 갱신하지 않는다.
 - Fanout subscriber가 publisher마다 전용 SUB socket을 사용하고 같은 socket에서
   받은 첫 정상 application record 또는 형식이 정확한 beacon 뒤에만 ready가 된다.
-- Fanout beacon은 reserved topic·payload의 두-frame 규칙을 지키며 ACK, application dispatch와 publish·receive metric을
+- Fanout beacon은 reserved topic·payload의 두-frame 규칙을 지키며 ACK나 application dispatch를
   만들지 않는다.
 - Malformed reserved-topic record는 protocol error로 해당 publisher만 즉시 not-ready로 만들며 application
   delivery와 liveness activity를 만들지 않는다.

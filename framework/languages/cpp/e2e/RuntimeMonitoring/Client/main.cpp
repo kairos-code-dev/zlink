@@ -5,8 +5,7 @@
 #include "Scenarios/mon_a3_spot_events_scenario.hpp"
 #include "Scenarios/mon_a4_availability_transition_scenario.hpp"
 #include "Scenarios/mon_a5_fixed_kinds_scenario.hpp"
-#include "Scenarios/mon_b1_kind_filter_scenario.hpp"
-#include "Scenarios/mon_b2_registration_validation_scenario.hpp"
+#include "Scenarios/mon_b_publish_monitoring_absence_scenario.hpp"
 #include "Scenarios/mon_c1_dispatch_failure_scenario.hpp"
 #include "Scenarios/mon_d1_failure_recovery_scenario.hpp"
 #include "Support/client_options.hpp"
@@ -43,20 +42,21 @@ int run_scenarios (const client_options_t &client_options)
         if (wants ("mon-a5")) {
             rm_client::run_mon_a5_fixed_kinds_scenario (client_options);
         }
+        if (wants ("mon-b1")) {
+            rm_client::run_mon_b1_publish_monitoring_absence_scenario (client_options);
+        }
+        if (wants ("mon-b2")) {
+            rm_client::run_mon_b2_publish_monitoring_absence_scenario (client_options);
+        }
         if (scenario == "mon-a4") {
             rm_client::run_mon_a4_availability_transition_scenario (client_options);
-        }
-        if (wants ("mon-b1")) {
-            rm_client::run_mon_b1_kind_filter_scenario (client_options);
         }
         if (wants ("mon-c1")) {
             rm_client::run_mon_c1_dispatch_failure_scenario (client_options);
         }
-        if (wants ("mon-b2")) {
-            rm_client::run_mon_b2_registration_validation_scenario (client_options);
-        }
         if (!wants ("mon-a1") && !wants ("mon-a2") && !wants ("mon-a3") && !wants ("mon-a5")
-            && !wants ("mon-a4") && !wants ("mon-b1") && !wants ("mon-c1") && !wants ("mon-b2")) {
+            && !wants ("mon-a4") && !wants ("mon-b1") && !wants ("mon-b2")
+            && !wants ("mon-c1")) {
             throw std::runtime_error ("unknown RuntimeMonitoring scenario: " + scenario);
         }
     }

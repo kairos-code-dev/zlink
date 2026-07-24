@@ -18,7 +18,7 @@ const frameworkIntegration = require('../../packages/framework/dist/nest-integra
 const TLS_DIR = path.join(__dirname, '..', 'fixtures', 'tls');
 const tlsPath = (name) => path.join(TLS_DIR, name);
 
-test('standalone HTTP request exposes async and callback paths but no server terminators', async () => {
+test('standalone HTTP request exposes async response terminators but no server terminators', async () => {
   const server = await startServer((_req, res) => {
     res.setHeader('content-type', 'application/json');
     res.end(JSON.stringify({ ok: true }));
@@ -27,9 +27,25 @@ test('standalone HTTP request exposes async and callback paths but no server ter
   try {
     const call = client.get('/terminators');
     assert.equal(typeof call.async, 'function');
-    assert.equal(typeof call.asyncRaw, 'function');
+    assert.equal(typeof call.submitRaw, 'function');
     assert.equal(typeof call.submit, 'undefined');
     assert.equal(typeof call.yield, 'undefined');
+  } finally {
+    await client.close();
+    await server.close();
+  }
+});
+
+test('server HTTP one-way submit returns Promise<void>', async () => {
+  const server = await startServer((_req, res) => {
+    res.end();
+  });
+  const scheduler = frameworkIntegration.createIntegrationHttpExecutionScheduler({});
+  const client = ZLinkHttpClient.create(server.baseUrl).executionScheduler(scheduler).build();
+  try {
+    const submission = client.post('/one-way').submit();
+    assert.equal(submission instanceof Promise, true);
+    assert.equal(await submission, undefined);
   } finally {
     await client.close();
     await server.close();
@@ -184,7 +200,7 @@ test('dispatches each HTTP method', async () => {
   const client = ZLinkHttpClient.create(server.baseUrl).build();
   try {
     for (const verb of ['get', 'post', 'put', 'delete', 'patch', 'options']) {
-      const r = await client[verb]('/r').asyncRaw();
+      const r = await client[verb]('/r').submitRaw();
       assert.equal(r.status, 200);
     }
     assert.deepEqual(seen, ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']);
@@ -201,7 +217,7 @@ test('HEAD returns status with empty body', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).build();
   try {
-    const r = await client.head('/r').asyncRaw();
+    const r = await client.head('/r').submitRaw();
     assert.equal(r.status, 200);
     assert.equal(r.body, '');
     assert.equal(r.headers['x-marker'], 'present');
@@ -236,7 +252,7 @@ test('percent-encodes query parameters', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).build();
   try {
-    await client.get('/search').query('q', 'a b&c').query('k', 'v/w').asyncRaw();
+    await client.get('/search').query('q', 'a b&c').query('k', 'v/w').submitRaw();
     assert.equal(rawUrl, '/search?q=a%20b%26c&k=v%2Fw');
   } finally {
     await client.close();
@@ -254,7 +270,7 @@ test('sends default and request headers', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).defaultHeader('authorization', 'Bearer token-123').build();
   try {
-    await client.get('/r').header('x-trace', 'abc').asyncRaw();
+    await client.get('/r').header('x-trace', 'abc').submitRaw();
     assert.equal(auth, 'Bearer token-123');
     assert.equal(trace, 'abc');
   } finally {
@@ -292,7 +308,7 @@ test('raw body sets content type', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).build();
   try {
-    await client.post('/raw').body('plain text', 'text/plain').asyncRaw();
+    await client.post('/raw').body('plain text', 'text/plain').submitRaw();
     assert.equal(body, 'plain text');
     assert.equal(contentType, 'text/plain');
   } finally {
@@ -311,7 +327,7 @@ test('form-urlencoded body', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).build();
   try {
-    await client.post('/form').form('name', 'a b').form('city', 'x/y').asyncRaw();
+    await client.post('/form').form('name', 'a b').form('city', 'x/y').submitRaw();
     assert.equal(contentType, 'application/x-www-form-urlencoded');
     assert.equal(body, 'name=a%20b&city=x%2Fy');
   } finally {
@@ -334,7 +350,7 @@ test('multipart body', async () => {
       .post('/upload')
       .multipart('field', 'value')
       .multipartFile('file', 'a.txt', 'file-content', 'text/plain')
-      .asyncRaw();
+      .submitRaw();
     assert.ok(contentType.startsWith('multipart/form-data; boundary='));
     assert.ok(body.includes('name="field"'));
     assert.ok(body.includes('filename="a.txt"'));
@@ -364,7 +380,7 @@ test('streaming upload sends all chunks', async () => {
       const client = ZLinkHttpClient.create(`http://127.0.0.1:${port}`).build();
       const chunks = ['part-1;', 'part-2;', 'part-3'].map((s) => Buffer.from(s));
       let i = 0;
-      await client.post('/s').bodyStream(() => (i < chunks.length ? new Uint8Array(chunks[i++]) : null), 'application/octet-stream').asyncRaw();
+      await client.post('/s').bodyStream(() => (i < chunks.length ? new Uint8Array(chunks[i++]) : null), 'application/octet-stream').submitRaw();
       await client.close();
     });
   });
@@ -472,7 +488,7 @@ test('preserves authorization on same-origin redirect', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).bearerToken('secret').followRedirects(3).build();
   try {
-    await client.get('/start').asyncRaw();
+    await client.get('/start').submitRaw();
     assert.equal(authAtResult, 'Bearer secret');
   } finally {
     await client.close();
@@ -493,7 +509,7 @@ test('strips authorization on cross-origin redirect', async () => {
   });
   const client = ZLinkHttpClient.create(origin.baseUrl).bearerToken('secret').followRedirects(3).build();
   try {
-    await client.get('/start').asyncRaw();
+    await client.get('/start').submitRaw();
     assert.equal(authAtOther, null);
   } finally {
     await client.close();
@@ -511,7 +527,7 @@ test('redirect limit exceeded throws', async () => {
   const client = ZLinkHttpClient.create(server.baseUrl).followRedirects(2).build();
   try {
     await assert.rejects(
-      () => client.get('/loop').asyncRaw(),
+      () => client.get('/loop').submitRaw(),
       (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.RequestFailed,
     );
   } finally {
@@ -537,7 +553,7 @@ test('retries retriable transport failure', async () => {
   const { port } = server.address();
   const client = ZLinkHttpClient.create(`http://127.0.0.1:${port}`).retry(3).build();
   try {
-    const r = await client.get('/r').asyncRaw();
+    const r = await client.get('/r').submitRaw();
     assert.equal(r.status, 200);
     assert.ok(connections >= 2);
   } finally {
@@ -563,9 +579,9 @@ test('cookie jar round trip with path scope', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).cookies().build();
   try {
-    await client.get('/login').asyncRaw();
-    await client.get('/secure/data').asyncRaw();
-    await client.get('/open').asyncRaw();
+    await client.get('/login').submitRaw();
+    await client.get('/secure/data').submitRaw();
+    await client.get('/open').submitRaw();
     assert.equal(cookieAtScoped, 'session=abc');
     assert.equal(cookieAtRoot, null);
   } finally {
@@ -603,10 +619,10 @@ test('basic and bearer auth set authorization header', async () => {
   });
   try {
     const basic = ZLinkHttpClient.create(server.baseUrl).basicAuth('aria', 'secret').build();
-    await basic.get('/a').asyncRaw();
+    await basic.get('/a').submitRaw();
     await basic.close();
     const bearer = ZLinkHttpClient.create(server.baseUrl).bearerToken('tok-9').build();
-    await bearer.get('/b').asyncRaw();
+    await bearer.get('/b').submitRaw();
     await bearer.close();
     assert.equal(seen[0], 'Basic ' + Buffer.from('aria:secret').toString('base64'));
     assert.equal(seen[1], 'Bearer tok-9');
@@ -633,9 +649,9 @@ test('secure cookie not sent over http and Max-Age=0 deletes', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).cookies().build();
   try {
-    await client.get('/set').asyncRaw();
-    await client.get('/c1').asyncRaw();
-    await client.get('/c2').asyncRaw();
+    await client.get('/set').submitRaw();
+    await client.get('/c1').submitRaw();
+    await client.get('/c2').submitRaw();
     assert.equal(cookieAfterSecure, 'keep=1');
     assert.equal(cookieAfterDelete, null);
   } finally {
@@ -652,7 +668,7 @@ test('compressed malformed body throws payloadDecodeFailed', async () => {
   const client = ZLinkHttpClient.create(server.baseUrl).compression().build();
   try {
     await assert.rejects(
-      () => client.get('/bad').asyncRaw(),
+      () => client.get('/bad').submitRaw(),
       (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.PayloadDecodeFailed,
     );
   } finally {
@@ -669,7 +685,7 @@ test('timeout throws a retriable failure', async () => {
   const client = ZLinkHttpClient.create(server.baseUrl).timeout(80).build();
   try {
     await assert.rejects(
-      () => client.get('/slow').asyncRaw(),
+      () => client.get('/slow').submitRaw(),
       (e) => e instanceof ZLinkFrameworkException && e.isRetriable === true,
     );
   } finally {
@@ -686,7 +702,7 @@ test('max response body size is enforced', async () => {
   const client = ZLinkHttpClient.create(server.baseUrl).maxResponseBodySize(1024).build();
   try {
     await assert.rejects(
-      () => client.get('/big').asyncRaw(),
+      () => client.get('/big').submitRaw(),
       (e) => e instanceof ZLinkFrameworkException,
     );
   } finally {
@@ -703,7 +719,7 @@ test('non-blocking concurrency does not serialize requests', async () => {
   const client = ZLinkHttpClient.create(server.baseUrl).build();
   try {
     const start = Date.now();
-    const results = await Promise.all(Array.from({ length: 20 }, () => client.get('/r').asyncRaw()));
+    const results = await Promise.all(Array.from({ length: 20 }, () => client.get('/r').submitRaw()));
     const elapsed = Date.now() - start;
     for (const r of results) {
       assert.equal(r.status, 200);
@@ -736,7 +752,7 @@ test('validation rejects bad request configuration', async () => {
     (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.RequestProtocolError,
   );
   await assert.rejects(
-    () => client.post('/r').body('a', 'text/plain').form('b', 'c').asyncRaw(),
+    () => client.post('/r').body('a', 'text/plain').form('b', 'c').submitRaw(),
     (e) => e instanceof ZLinkFrameworkException && e.kind === ZLinkFrameworkErrorKind.RequestProtocolError,
   );
   await client.close();
@@ -748,7 +764,7 @@ test('trusts test certificate over https', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).trustCertificateFile(tlsPath('server-cert.pem')).build();
   try {
-    const r = await client.get('/secure').asyncRaw();
+    const r = await client.get('/secure').submitRaw();
     assert.equal(r.status, 200);
   } finally {
     await client.close();
@@ -762,7 +778,7 @@ test('untrusted https certificate is rejected', async () => {
   });
   const client = ZLinkHttpClient.create(server.baseUrl).trustCertificateFile(tlsPath('other-cert.pem')).build();
   try {
-    await assert.rejects(() => client.get('/secure').asyncRaw());
+    await assert.rejects(() => client.get('/secure').submitRaw());
   } finally {
     await client.close();
     await server.close();
@@ -784,7 +800,7 @@ test('presents client certificate for mTLS', async () => {
     .clientCertificateFile(tlsPath('client-cert.pem'), tlsPath('client-key.pem'))
     .build();
   try {
-    const r = await client.get('/mtls').asyncRaw();
+    const r = await client.get('/mtls').submitRaw();
     assert.equal(r.status, 200);
     assert.equal(presentedCN, 'zlink-test-client');
   } finally {

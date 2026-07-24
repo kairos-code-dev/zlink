@@ -14,7 +14,9 @@ internal sealed record ZLinkAggregateRelocationRequest(
     Guid AggregateId,
     ulong AggregateGeneration,
     IReadOnlyList<ZLinkAggregateRelocationParticipant> Participants,
-    IReadOnlyList<ZLinkRelocationCapacityFence> TargetReservations,
+    ZLinkMeshNodeDescriptorKey TargetDescriptor,
+    ulong TargetDescriptorLifecycleGeneration,
+    ZLinkCapacityVector Capacity,
     ZLinkLocationOwnerToken TargetOwner);
 
 internal sealed record ZLinkAggregateRelocationPublished(
@@ -90,7 +92,9 @@ internal sealed class ZLinkAggregateRelocationCoordinator(
                         request.AggregateGeneration,
                         publicationParticipants,
                         inventoryDigest,
-                        request.TargetReservations,
+                        request.TargetDescriptor,
+                        request.TargetDescriptorLifecycleGeneration,
+                        request.Capacity,
                         request.TargetOwner),
                     cancellationToken)
                 .ConfigureAwait(false);

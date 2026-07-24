@@ -1,5 +1,12 @@
 # Kotlin Spot 공개 인터페이스
 
+Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
+callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
+같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
+normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+변경하지 않는다.
+
 [인터페이스 목차](README.ko.md) · [Java Spot](../../java/interfaces/spots.ko.md) ·
 [Spot 공통 계약](../../../../23-spot-actor.ko.md)
 
@@ -17,13 +24,14 @@ Kotlin은 ordinal을 계약 값으로 사용하지 않고 `value()`를 사용한
 
 `ZLinkSpotManager.create(spotType)`은 User Spot ID를 생성하고,
 `getOrCreate(spotId, spotType)`은 caller가 정한 User [Spot ID](../../../../01-glossary.ko.md#spot-id)를 사용한다. Manager는 Instance Spot
-create/get-or-create를 제공하지 않는다. 두 operation은 Java single-use fluent call을 반환하며 `inMesh`,
-`request`, `timeout` 뒤 terminal `submit`을 정확히 한 번 호출한다. 중복
-option과 중복 submit, Mesh 선택, type 충돌과 deadline 규칙은 Actor operation과 같다. Entry Spot ID는
+create/get-or-create를 제공하지 않는다. 두 operation은 `inMesh`, `request`, `timeout`을 보존하는 Kotlin
+전용 single-use wrapper를 반환한다. Terminal `await()` 또는
+`yield()`를 정확히 한 번 호출한다. 중복 option과 중복 terminal, Mesh 선택, type 충돌과 deadline 규칙은
+Actor operation과 같다. Entry Spot ID는
 Framework가 만들며 public create 대상이 아니다.
 
-Spot send/request는 global SpotId만 address로 받고 Java의 `ZLinkSpotSendCall` 또는 `ZLinkSpotRequestCall`을
-반환한다. `instanceSpot()`이나 `instanceSpot(stableType)`을 호출한 call만 Missing Instance Spot의 cold
+Spot send/request는 global SpotId만 address로 받고 Kotlin 전용 Spot call wrapper를 반환한다.
+`instanceSpot()`이나 `instanceSpot(stableType)`을 호출한 call만 Missing Instance Spot의 cold
 activation intent를 만든다. Marker가 없으면 Missing
 [authority](../../../../01-glossary.ko.md#authority)는 not-found다. Existing authority가 있으면
 등록 type 수와 관계없이 저장된 stable type을 사용하므로 type을 다시 요구하지 않는다.
@@ -34,7 +42,8 @@ value 하나일 때만 그 type을 자동 선택한다. `inMesh`를 지정하면
 existing authority를 resolve하는 데는 필요하지 않다. Caller가 명시한 type과 stored type이 다르면
 `SpotTypeMismatch`다.
 `inMesh`는 Missing cold activation에서 Mesh를 선택할 때만 적용하며 existing [owner](../../../../01-glossary.ko.md#owner)를
-재배치하지 않는다. Kotlin은 이 fluent state를 숨기는 terminal request extension을 제공하지 않는다.
+재배치하지 않는다. Wrapper가 이 fluent state를 유지한 채 `await()` 또는 `yield()`에서 Java call을
+종료한다.
 
 ### Instance Spot cold activation과 첫 message
 
@@ -127,7 +136,7 @@ interface ZLinkSuspendingSpotPacketHandler<TSpot : ZLinkSpot<*>, TMessage> {
     suspend fun handle(
         spot: TSpot,
         message: TMessage,
-        context: ZLinkSendContext,
+        context: ZLinkMessageContext,
     )
 }
 
@@ -136,7 +145,7 @@ interface ZLinkSuspendingSpotRequestHandler<TSpot : Any, TRequest, TReply> {
     suspend fun handle(
         spot: TSpot,
         request: TRequest,
-        context: ZLinkRequestContext,
+        context: ZLinkMessageContext,
     ): TReply
 }
 
@@ -145,7 +154,7 @@ interface ZLinkSuspendingSpotSubscriptionHandler<TSpot : Any, TEvent> {
     suspend fun handle(
         spot: TSpot,
         event: TEvent,
-        context: ZLinkPublishContext,
+        context: ZLinkPublishMessageContext,
     )
 }
 
@@ -180,14 +189,10 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
     protected open suspend fun onClosingSuspending(
         context: ZLinkSpotClosingContext,
     )
-    protected abstract suspend fun onCreateActorSuspending(
+    protected open suspend fun onCreateActorSuspending(
         actor: TActor,
         createRequest: ZLinkMessage,
-    )
-    protected abstract suspend fun onActorJoinSuspending(
-        actorId: String,
-        request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse
+    ): ZLinkActorCreateResponse
     protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
     protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
     protected open suspend fun onDisconnectActorSuspending(actor: TActor)
@@ -196,14 +201,49 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
 
 inline fun <reified THandler : Any> ZLinkSpotHandlerRegistry.addHandler()
 
-fun <TMessage> ZLinkRouteClient.send(
+interface ZLinkKotlinSpotSendCall {
+    fun metadata(key: String, value: String): ZLinkKotlinSpotSendCall
+    fun instanceSpot(): ZLinkKotlinSpotSendCall
+    fun instanceSpot(stableType: String): ZLinkKotlinSpotSendCall
+    fun inMesh(meshName: String): ZLinkKotlinSpotSendCall
+    suspend fun await()
+}
+
+interface ZLinkKotlinSpotRequestCall<TReply> {
+    fun metadata(key: String, value: String): ZLinkKotlinSpotRequestCall<TReply>
+    fun instanceSpot(): ZLinkKotlinSpotRequestCall<TReply>
+    fun instanceSpot(stableType: String): ZLinkKotlinSpotRequestCall<TReply>
+    fun inMesh(meshName: String): ZLinkKotlinSpotRequestCall<TReply>
+    fun timeout(timeout: Duration): ZLinkKotlinSpotRequestCall<TReply>
+    suspend fun await(): TReply
+    suspend fun yield(): TReply
+}
+
+interface ZLinkKotlinSpotCreateCall {
+    fun inMesh(meshName: String): ZLinkKotlinSpotCreateCall
+    fun request(request: Any): ZLinkKotlinSpotCreateCall
+    fun timeout(timeout: Duration): ZLinkKotlinSpotCreateCall
+    suspend fun await(): ZLinkSpotCreateResult
+    suspend fun yield(): ZLinkSpotCreateResult
+}
+
+interface ZLinkKotlinSpotManager {
+    fun create(spotType: String): ZLinkKotlinSpotCreateCall
+    fun getOrCreate(
+        spotId: String,
+        spotType: String,
+    ): ZLinkKotlinSpotCreateCall
+}
+
+fun ZLinkKotlinRouteClient.sendToSpot(
     spotId: String,
-    message: TMessage,
-): ZLinkSpotSendCall
-fun <TRequest> ZLinkRouteClient.request(
+    message: Any,
+): ZLinkKotlinSpotSendCall
+
+inline fun <reified TReply> ZLinkKotlinRouteClient.requestToSpot(
     spotId: String,
-    message: TRequest,
-): ZLinkSpotRequestCall
+    request: Any,
+): ZLinkKotlinSpotRequestCall<TReply>
 ```
 
 User·Instance Spot relocation에서는 Java runtime이 logical timer registration, 마지막 완료 tick sequence, 다음 예정
@@ -242,24 +282,69 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingSpot<TActor 
   public final java.util.concurrent.CompletionStage<java.lang.Void> onDisconnectActor(TActor);
 }
 public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
-  public static final <TMessage> systems.zlink.framework.spots.ZLinkSpotSendCall send(systems.zlink.framework.channels.ZLinkRouteClient, java.lang.String, TMessage);
-  public static final <TRequest> systems.zlink.framework.spots.ZLinkSpotRequestCall request(systems.zlink.framework.channels.ZLinkRouteClient, java.lang.String, TRequest);
+  public static final systems.zlink.framework.kotlin.ZLinkKotlinSpotSendCall sendToSpot(systems.zlink.framework.kotlin.ZLinkKotlinRouteClient, java.lang.String, java.lang.Object);
+  public static final <TReply> systems.zlink.framework.kotlin.ZLinkKotlinSpotRequestCall<TReply> requestToSpot(systems.zlink.framework.kotlin.ZLinkKotlinRouteClient, java.lang.String, java.lang.Object);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinSpotSendCall {
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotSendCall metadata(java.lang.String, java.lang.String);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotSendCall instanceSpot();
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotSendCall instanceSpot(java.lang.String);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotSendCall inMesh(java.lang.String);
+  public abstract java.lang.Object await(kotlin.coroutines.Continuation<? super kotlin.Unit>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinSpotRequestCall<TReply> {
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotRequestCall<TReply> metadata(java.lang.String, java.lang.String);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotRequestCall<TReply> instanceSpot();
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotRequestCall<TReply> instanceSpot(java.lang.String);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotRequestCall<TReply> inMesh(java.lang.String);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotRequestCall<TReply> timeout-LRDsOJo(long);
+  public abstract java.lang.Object await(kotlin.coroutines.Continuation<? super TReply>);
+  public abstract java.lang.Object yield(kotlin.coroutines.Continuation<? super TReply>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinSpotCreateCall {
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotCreateCall inMesh(java.lang.String);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotCreateCall request(java.lang.Object);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotCreateCall timeout-LRDsOJo(long);
+  public abstract java.lang.Object await(kotlin.coroutines.Continuation<? super systems.zlink.framework.spots.ZLinkSpotCreateResult>);
+  public abstract java.lang.Object yield(kotlin.coroutines.Continuation<? super systems.zlink.framework.spots.ZLinkSpotCreateResult>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinSpotManager {
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotCreateCall create(java.lang.String);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSpotCreateCall getOrCreate(java.lang.String, java.lang.String);
 }
 ```
 
-Kotlin은 address DTO, process-local handle, resolver, unbounded directory와 User Spot create/get-or-create 또는
-Instance messaging의 direct terminal extension을 제공하지 않는다. Direct terminal extension은 fluent option과
-single-use state를 숨기기 때문이다.
+Kotlin은 address DTO, process-local handle, resolver와 unbounded directory를 제공하지 않는다. Kotlin-facing
+route client와 manager는 fluent option과 single-use state를 보존하는 전용 wrapper를 반환하며 Java call,
+`CompletionStage`와 `Class<T>`를 application에 노출하지 않는다.
 `close(SpotRef)`는 Missing이면 `false`, generation 불일치는 `SpotGenerationStale`, seal된 이관 구간은
 `SpotMoving`으로 처리하며 User Spot만 대상으로 한다. Instance Spot의 self-close는 Java
 `ZLinkInstanceSpotContext.close()`를 그대로 사용한다.
 
 `onActorRelocatedSuspending(actor)`는 Java `ZLinkEntrySpot.onActorRelocated(actor)`의 coroutine bridge이며 별도 lifecycle
 API가 아니다. Maintenance target은 Actor adapter restore, Location commit, 이 callback과 source Entry Spot의
-`onLeaveActorSuspending(actor)`, old Entry membership의 durable cleanup, accepted journal replay와 dispatch
-개방 순서로 처리한다. Source process가 종료되면 exact source fence의 durable cleanup terminal이 source
+`onLeaveActorSuspending(actor)`, accepted journal replay·logical timer 복원, old Entry membership을 포함한 durable
+source cleanup, `Completed` CAS, bound-session route switch·ACK, steady normalization과 dispatch 개방 순서로
+처리한다. Source process가 종료되면 exact source fence의 durable cleanup terminal이 source
 callback 완료를 대신한다. 어느 callback의 exception도 commit을 rollback하지
-않고 target을 sealed 상태로 유지한 채 retry한다. 일반
-same-node·remote join은 `onActorJoinSuspending`과 `onJoinedActorSuspending`을 사용하며 이 callback을 호출하지
-않는다. Maintenance relocation에서는 target의 일반 join callback은 호출하지 않는다. Whole User Spot aggregate에서는
-member의 Entry/User Spot [membership](../../../../01-glossary.ko.md#membership) callback을 모두 호출하지 않는다.
+않고 target을 sealed 상태로 유지한 채 retry한다. User Spot application join만
+`onActorJoinSuspending`과 `onJoinedActorSuspending`을 사용한다. 새 Actor의 첫 생성은
+`onCreateActorSuspending`의 승인과 선택적 reply만 사용하며 join/joined callback을 호출하지 않는다.
+User Spot에서 Entry Spot으로 돌아갈 때는 target의 `onJoinedActorSuspending`과 source의
+`onLeaveActorSuspending`을 호출한다. Maintenance relocation에서는 target의 `onActorRelocatedSuspending`과
+source의 `onLeaveActorSuspending`만 호출한다. Whole User Spot aggregate에서는 member의 Entry/User Spot
+[membership](../../../../01-glossary.ko.md#membership) callback을 모두 호출하지 않는다.
+
+User Spot factory mode의 기본값은 `SPOT_WIDE`다. 이 mode에서 suspending Spot·Actor·timer·lifecycle callback은
+일반 suspension 동안 User Spot gate를 유지한다. Member Actor는 Actor FIFO claim도 함께 유지한다.
+Request·worker·Actor·Spot create wrapper의 `yield()`만 gate를 반환하고 terminal completion 뒤 같은 gate를
+다시 얻어 coroutine continuation을 실행한다. `PER_ACTOR`에서는 Actor별 lane, Spot direct·lifecycle lane과 timer별 lane이
+독립적이며 suspension은 해당 lane permit만 유지한다. 서로 다른 Actor와 서로 다른 timer는 동시에 실행할 수
+있다. Close·relocation·snapshot은 새 admission을 seal하고 모든 coroutine continuation을 포함한 active lane이
+안전한 turn 경계에 도달한 all-lane barrier 뒤에만 진행한다. Barrier 실패는 같은 generation의 seal 전체를
+abort하고 application admission을 정확히 복원한다.
+
+Yield는 Channel·Spot·Actor request, I/O·CPU worker와 Actor·Spot create/get-or-create에만 제공한다.
+Entry Spot·Entry Actor·`PER_ACTOR`·Node·
+Channel·owner context 밖에서는 coroutine suspension, operation submission, queue mutation과 gate 반환 전에
+`InvalidConfiguration`으로 완료한다.

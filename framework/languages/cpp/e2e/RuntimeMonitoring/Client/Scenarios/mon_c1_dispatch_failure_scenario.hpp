@@ -32,16 +32,16 @@ inline void run_mon_c1_dispatch_failure_scenario (const client_options_t &option
                   .base_url (options.filtered_service_url)
                   .timeout (std::chrono::seconds (15))
                   .build ();
-    ensure (http.post ("/runtime/observe").async_raw ().result ().value ().status
+    ensure (http.post ("/runtime/observe").submit_raw ().result ().value ().status
               < 400,
             "MON-C1 normal observer did not start");
     ensure (
-      http.post ("/runtime/observe-isolation").async_raw ().result ().value ().status
+      http.post ("/runtime/observe-isolation").submit_raw ().result ().value ().status
         < 400,
       "MON-C1 isolated observers did not start");
     ensure (
       http.post ("/admin/application-gate/arm")
-          .async_raw ()
+          .submit_raw ()
           .result ()
           .value ()
           .status
@@ -50,7 +50,7 @@ inline void run_mon_c1_dispatch_failure_scenario (const client_options_t &option
 
     const auto release_gate = [&] {
         (void) http.post ("/admin/application-gate/release")
-          .async_raw ()
+          .submit_raw ()
           .result ();
     };
     auto gated_request = std::async (
@@ -62,7 +62,7 @@ inline void run_mon_c1_dispatch_failure_scenario (const client_options_t &option
           return gate_http
             .post ("/mesh/application-gate/request?targetRid=svc-b")
             .body (application_gate_req_t{.marker = "mon-c1-application-gate"})
-            .async<application_gate_res_t> ()
+            .submit<application_gate_res_t> ()
             .result ()
             .value ()
             .body;
@@ -70,7 +70,7 @@ inline void run_mon_c1_dispatch_failure_scenario (const client_options_t &option
     try {
         ensure (
           http.post ("/admin/application-gate/wait")
-              .async_raw ()
+              .submit_raw ()
               .result ()
               .value ()
               .status
@@ -96,7 +96,7 @@ inline void run_mon_c1_dispatch_failure_scenario (const client_options_t &option
           http.post ("/mesh/profile/request?targetRid=svc-throw")
             .body (profile_req_t{
               .value = "claim-progress", .marker = "mon-c1-infrastructure"})
-            .async<profile_res_t> ()
+            .submit<profile_res_t> ()
             .result ()
             .value ()
             .body;
@@ -110,7 +110,7 @@ inline void run_mon_c1_dispatch_failure_scenario (const client_options_t &option
             const auto changed =
               http.post (
                     "/admin/mesh-weight?weight=" + std::to_string (weight))
-                .async_raw ()
+                .submit_raw ()
                 .result ();
             ensure (changed && changed.value ().status < 400,
                     "MON-C1 channel pressure transition failed");

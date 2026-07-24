@@ -137,6 +137,18 @@ const addBaselineEntry = entry => entries.push({
   baselineHash: baselineHash(entry.path),
   approvedHash: null,
 });
+const addExecutionDisabledReviewedSourceEntry = entry => {
+  const baseline = baselineHash(entry.path);
+  const current = currentTrackedHash(entry.path);
+  entries.push({
+    ...entry,
+    baselineHash: baseline,
+    approvedHash: current === baseline ? null : current,
+    quarantineStatus: current === baseline
+      ? 'pending-disabled-by-contract-amendment'
+      : 'pending-disabled-reviewed-source',
+  });
+};
 
 const languageRoots = [
   {language: 'cpp', e2e: ['framework/languages/cpp/e2e'], samples: ['framework/languages/cpp/samples']},
@@ -181,10 +193,10 @@ for (const scope of languageRoots) {
           approvedHash: currentTrackedHash(suitePath),
         });
       } else {
-        addBaselineEntry(suiteEntry);
+        addExecutionDisabledReviewedSourceEntry(suiteEntry);
       }
       for (const registration of registrationFiles(suitePath)) {
-        addBaselineEntry({
+        const registrationEntry = {
           id: `registration:e2e:${scope.language}:${suite}:${sha256(registration.path).slice(0, 12)}`,
           kind: 'e2e-registration',
           language: scope.language,
@@ -196,7 +208,12 @@ for (const scope of languageRoots) {
           runtimeOwner: languageOwner(scope.language, stage),
           activationStage: stage,
           quarantineStatus: 'pending-disabled-by-contract-amendment',
-        });
+        };
+        if (suite === 'RuntimeMonitoring') {
+          addExecutionDisabledReviewedSourceEntry(registrationEntry);
+        } else {
+          addBaselineEntry(registrationEntry);
+        }
       }
     }
   }
@@ -204,7 +221,7 @@ for (const scope of languageRoots) {
     if (baselineFiles(sampleRoot).length === 0) continue;
     for (const sample of directDirectories(sampleRoot)) {
       const samplePath = `${sampleRoot}/${sample}`;
-      addBaselineEntry({
+      addExecutionDisabledReviewedSourceEntry({
         id: `sample:${scope.language}:${sample}`,
         kind: 'sample',
         language: scope.language,
@@ -608,7 +625,7 @@ const manifest = {
   schemaVersion: 1,
   version: '11.0.0',
   baselineRevision,
-  contractDecisionRange: 'CA-D01..CA-D71',
+  contractDecisionRange: 'CA-D01..CA-D77',
   publicContractTraceDelta: {
     path: traceRelativePath,
     baselineSha256: sha256(baselineTraceSource),

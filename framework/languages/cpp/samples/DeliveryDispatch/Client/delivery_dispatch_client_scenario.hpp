@@ -128,7 +128,7 @@ class delivery_dispatch_client_scenario_t
             return http.post ("/deliveries")
               .body (create_delivery_req_t{
                 delivery_id, "customer-1", "Kitchen 12", "Customer Lobby"})
-              .async<create_delivery_res_t> ().result ().value ().body;
+              .submit<create_delivery_res_t> ().result ().value ().body;
         });
         const auto courier_offer = offer.get ();
         send_decision (courier, courier_offer.delivery_id, courier_offer.courier_id, true);
@@ -184,7 +184,7 @@ class delivery_dispatch_client_scenario_t
             return http.post ("/deliveries")
               .body (create_delivery_req_t{
                 delivery_id, "customer-1", "Kitchen 12", "Customer Lobby"})
-              .async<create_delivery_res_t> ().result ().value ().body;
+              .submit<create_delivery_res_t> ().result ().value ().body;
         });
         (void) first_offer.get ();
         const auto accepted_offer = second_offer.get ();
@@ -204,7 +204,7 @@ class delivery_dispatch_client_scenario_t
     {
         auto assertion = http.post ("/self-check/assert")
                            .body (server_assertion_req_t{"delivery-success", "delivery-reassign"})
-                           .async<server_assertion_res_t> ().result ().value ().body;
+                           .submit<server_assertion_res_t> ().result ().value ().body;
         ensure (assertion.passed, "server evidence assertion failed");
         std::cout << "deliverydispatch-server-evidence=completed\n";
     }

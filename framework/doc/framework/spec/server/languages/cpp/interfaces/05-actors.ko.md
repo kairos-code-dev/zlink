@@ -3,6 +3,13 @@
 [C++ exact interface 목차](README.ko.md) · [Actor model](../../../22-actor-model.ko.md) ·
 [Spot·Actor membership](../../../23-spot-actor.ko.md)
 
+Session에 bind된 Actor의 physical disconnect는 Framework가 automatic all-settled로 통지한다. Actor
+disconnect callback은 destroy·leave·membership 변경이 아니다. Actor relocation은 같은 ObjectGeneration에
+대해 owner·membership commit, 필요한 lifecycle callback과 accepted journal replay·logical timer 복원, durable source cleanup,
+`Completed` CAS를 차례로 끝낸 뒤 command 44·45로 해당 binding route만 바꾼다. Relocation 자체는
+disconnect callback을 실행하지 않는다. 같은 Session의 다른 Actor route와 physical STREAM connection은
+유지하며 routed ACK와 steady normalization 전에는 target session packet·push admission을 열지 않는다.
+
 ## 1. Identity와 maintenance policy
 
 Actor가 사용하는 `actor_context_t`의 exact declaration은
@@ -31,13 +38,39 @@ public:
     const node_rid_t &node_rid() const noexcept;
 };
 
+struct actor_join_accepted_t {
+    std::uint64_t operation_id_high;
+    std::uint64_t operation_id_low;
+    actor_ref_t actor;
+    std::optional<message_t> reply;
+};
+
+struct actor_join_rejected_t {
+    std::uint64_t operation_id_high;
+    std::uint64_t operation_id_low;
+    std::optional<message_t> reply;
+};
+
+struct actor_join_failed_t {
+    std::uint64_t operation_id_high;
+    std::uint64_t operation_id_low;
+    framework_error_kind_t error_kind;
+    bool retryable;
+};
+
+using actor_join_completion_t = std::variant<
+  actor_join_accepted_t,
+  actor_join_rejected_t,
+  actor_join_failed_t>;
+
 class actor_t {
 public:
     virtual ~actor_t() = default;
-    const actor_id_t &actor_id() const noexcept;
-    actor_context_t &context() noexcept;
-    const actor_context_t &context() const noexcept;
+    virtual actor_context_t &context() noexcept = 0;
+    virtual const actor_context_t &context() const noexcept = 0;
     virtual void configure() {}
+    virtual task_t<void> on_join_completed(
+      const actor_join_completion_t &completion);
 };
 
 template <typename TActor>
@@ -46,7 +79,6 @@ class actor_factory_t {
 public:
     virtual ~actor_factory_t() = default;
     virtual task_t<std::shared_ptr<TActor>> create(
-      actor_id_t actor_id,
       actor_context_t &context,
       std::stop_token operation_cancellation) = 0;
 };
@@ -83,9 +115,16 @@ public:
 MeshName·NodeRid를 담는 immutable location snapshot이다. 일반 message target으로 사용하지 않는다. 별도
 `actor_ref_snapshot_t`는 제공하지 않는다.
 
-`actor_t`는 ActorId와 Framework가 연결한 `actor_context_t`를 소유하는 typed lifecycle base다. Framework는
+`actor_t`는 Framework가 연결한 `actor_context_t`를 소유하는 typed lifecycle base다. ActorId와
+ObjectGeneration은 `context()`에서 읽으며 별도 identity 값을 독립적으로 저장하지 않는다. Framework는
 `actor_factory_t<TActor>::create(...)`로 concrete Actor를 만든 뒤 `configure()`를 호출한다. Factory는 전달받은
-ActorId·context와 cancellation을 사용하며 다른 owner RID, relocation phase 또는 Store token을 받지 않는다.
+exact context와 cancellation을 사용하며 ActorId를 중복 인자로 받지 않는다. 다른 owner RID, relocation phase
+또는 Store token도 받지 않는다.
+
+Join completion의 128-bit operation ID는 completion idempotency ID이며 relocation ID나 reservation ID가
+아니다. Same-node outcome과 rejected·commit 전 failed completion retry는 current process lifetime으로
+제한한다. Cross-node commit 뒤 accepted만 Relocation manifest에 operation ID, optional reply와 cursor를
+보존해 durable at-least-once로 전달한다.
 
 모든 Actor factory는 `relocation_policy_t<TActor>`를 명시한다. `snapshot<TAdapter>()`의 `TAdapter`는
 `actor_relocation_adapter_t<TActor>`를 구현해야 하며 다른 adapter type이면 socket bind 전에 configuration error로
@@ -123,12 +162,12 @@ public:
     actor_request_call_t &metadata(std::string key, std::string value);
 
     template <typename TReply>
-    task_t<TReply> async();
+    task_t<TReply> submit();
 
     template <typename TReply>
     task_t<TReply> yield();
 
-    task_t<message_t> async_message();
+    task_t<message_t> submit_message();
     task_t<message_t> yield_message();
 };
 
@@ -236,7 +275,7 @@ Actor는 Actor별 lane에서 실행한다. 따라서 `SpotWide` Actor callback�
 Actor callback에서 `yield()`를 호출하면 operation을 제출하기 전에 `invalid_configuration`으로 실패한다.
 
 Actor callback이 자신에게 보낸 request를 기다리거나 현재 보유한 Spot gate에서만 완료할 수 있는 request를
-`async()`로 기다리면 admission 전에 `invalid_configuration`으로 실패한다. 자신에게 보내는 one-way operation은
+`submit()`으로 기다리면 admission 전에 `invalid_configuration`으로 실패한다. 자신에게 보내는 one-way operation은
 Actor FIFO queue에 제출할 수 있지만 현재 handler에서 inline 또는 reentrant 방식으로 실행하지 않는다.
 Original creation payload와 일반 message는 다른 owner나 새 incarnation으로 hidden retry하지 않는다. Caller가
 timeout, cancellation 또는 moving 결과를 받으면 새 operation을 명시적으로 시작해야 한다.

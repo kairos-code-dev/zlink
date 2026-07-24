@@ -4,9 +4,11 @@
 #include <zlink/framework/contracts/dispatch/task.hpp>
 
 #include <chrono>
+#include <condition_variable>
 #include <coroutine>
 #include <deque>
 #include <functional>
+#include <mutex>
 #include <thread>
 
 namespace
@@ -78,7 +80,7 @@ int main ()
     }
 
     zlink::framework::request_call_t<int> call (zlink::framework::detail::boundary_failure<int> (zlink::framework::detail::boundary_error_t::timed_out, "timeout"));
-    auto coroutine_result = call.async ().result ();
+    auto coroutine_result = call.submit ().result ();
     if ((coroutine_result.error () != nullptr
          && zlink::framework::detail::boundary_state (*coroutine_result.error ()) != zlink::framework::detail::boundary_error_t::timed_out)) {
         return 3;
@@ -92,7 +94,7 @@ int main ()
     }
 
     zlink::framework::request_call_t<int> shutdown_call (zlink::framework::detail::boundary_failure<int> (zlink::framework::detail::boundary_error_t::shutdown, "shutdown"));
-    const auto shutdown_result = shutdown_call.async ().result ();
+    const auto shutdown_result = shutdown_call.submit ().result ();
     if (shutdown_result || shutdown_result.error () == nullptr
         || zlink::framework::detail::boundary_state (*shutdown_result.error ())
              != zlink::framework::detail::boundary_error_t::shutdown) {
@@ -155,9 +157,7 @@ int main ()
           return zlink::framework::result_t<void>::success ();
       });
     const auto accepted_result = accepted.submit ().result ();
-    if (!accepted_result || !one_way_invoked
-        || accepted_result.value ().status
-             != zlink::framework::submit_status_t::submitted) {
+    if (!accepted_result || !one_way_invoked) {
         return 10;
     }
 
@@ -165,9 +165,9 @@ int main ()
       zlink::framework::detail::boundary_failure<void> (
         zlink::framework::detail::boundary_error_t::timed_out, "send timed out"));
     const auto timed_out_result = timed_out.submit ().result ();
-    if (!timed_out_result
-        || timed_out_result.value ().status
-             != zlink::framework::submit_status_t::timed_out) {
+    if (timed_out_result
+        || timed_out_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::deadline_exceeded) {
         return 11;
     }
 
@@ -175,12 +175,65 @@ int main ()
       zlink::framework::detail::boundary_failure<void> (
         zlink::framework::detail::boundary_error_t::disconnected, "route unavailable"));
     const auto disconnected_result = disconnected.submit ().result ();
-    if (!disconnected_result
-        || disconnected_result.value ().status
-             != zlink::framework::submit_status_t::route_not_connected) {
+    if (disconnected_result
+        || disconnected_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::route_not_connected) {
         return 12;
     }
 
+    std::mutex publish_mutex;
+    std::condition_variable publish_changed;
+    bool publish_started = false;
+    bool release_target = false;
+    zlink::framework::publish_call_t blocked_publish (
+      [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
+          std::unique_lock lock (publish_mutex);
+          publish_started = true;
+          publish_changed.notify_all ();
+          publish_changed.wait (lock, [&] { return release_target; });
+          return zlink::framework::result_t<void>::failure (
+            zlink::framework::framework_error_kind_t::request_failed,
+            "target failed after handoff");
+      });
+    const auto blocked_terminal = blocked_publish.submit ().result ();
+    if (!blocked_terminal) {
+        return 13;
+    }
+    {
+        std::unique_lock lock (publish_mutex);
+        if (!publish_changed.wait_for (
+              lock, std::chrono::seconds (1), [&] { return publish_started; })) {
+            return 14;
+        }
+        release_target = true;
+    }
+    publish_changed.notify_all ();
+
+    std::mutex failed_mutex;
+    std::condition_variable failed_changed;
+    bool failed_target_ran = false;
+    zlink::framework::publish_call_t failed_publish (
+      [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
+          {
+              std::lock_guard lock (failed_mutex);
+              failed_target_ran = true;
+          }
+          failed_changed.notify_all ();
+          return zlink::framework::result_t<void>::failure (
+            zlink::framework::framework_error_kind_t::request_failed,
+            "post-start failure is internal");
+      });
+    const auto failed_terminal = failed_publish.submit ().result ();
+    if (!failed_terminal) {
+        return 15;
+    }
+    {
+        std::unique_lock lock (failed_mutex);
+        if (!failed_changed.wait_for (
+              lock, std::chrono::seconds (1), [&] { return failed_target_ran; })) {
+            return 16;
+        }
+    }
 
     return 0;
 }

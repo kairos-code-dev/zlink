@@ -253,7 +253,7 @@ class channel_client_service_t final : public fw::hosted_service_t
         auto &sink = services.get_required<event_sink_t> ();
         auto reply = client.request (_channel, test_host_profile_request_t{_value})
                        .timeout (std::chrono::seconds (5))
-                       .async<test_host_profile_reply_t> ()
+                       .submit<test_host_profile_reply_t> ()
                        .result ();
         if (!reply) {
             sink.append (std::string ("channel-client-error|")

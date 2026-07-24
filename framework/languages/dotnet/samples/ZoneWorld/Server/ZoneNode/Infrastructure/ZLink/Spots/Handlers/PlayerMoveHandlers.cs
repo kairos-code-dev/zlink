@@ -136,6 +136,6 @@ internal sealed class PlayerMovement(
 
         await actor.Context.BoundSession
             .Send(new MoveRejectedNotify(reason, actor.Position.X, actor.Position.Y))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }

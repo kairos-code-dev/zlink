@@ -11,7 +11,6 @@ import {
 import type {
   MeshOperationId,
   MeshPeerEntry,
-  MeshPublishDetail,
   MeshPublisher,
   ReadyBatch,
   ReadyRecord,
@@ -355,8 +354,6 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
         (this.runtime?.mailbox.pendingBytes('application') ?? 0)
         + (this.runtime?.mailbox.pendingBytes('infrastructure') ?? 0)
       ),
-      multicastSubmitted: 0n,
-      multicastDroppedTargets: 0n,
       lastError: 0,
       lastChangedMs: BigInt(Math.trunc(performance.now()))
     };
@@ -397,9 +394,9 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       channelName: string,
       topic: string,
       parts: MessageLike | readonly MessageLike[]
-    ): MeshPublishDetail => {
+    ): void => {
       if (publisherClosed) throw new Error('Mesh publisher is closed.');
-      return this.requireStateful().publishLogicalMulticast(
+      this.requireStateful().publishLogicalMulticast(
         channelName,
         topic,
         encodeMultipart(parts)
@@ -409,7 +406,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       publish,
       publishAsync: async (channelName, topic, parts, _options, signal) => {
         signal?.throwIfAborted();
-        return { result: SubmitResult.Ok, detail: publish(channelName, topic, parts) };
+        publish(channelName, topic, parts);
       },
       close: () => {
         publisherClosed = true;
@@ -801,8 +798,8 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     channelName: string,
     topic: string,
     parts: MessageLike | readonly MessageLike[]
-  ): MeshPublishDetail {
-    return this.requireStateful().publishLogicalMulticast(
+  ): void {
+    this.requireStateful().publishLogicalMulticast(
       channelName,
       topic,
       encodeMultipart(parts),
@@ -1093,10 +1090,10 @@ class RawServiceSpot implements ServiceSpot {
     topic: string,
     parts: MessageLike | readonly MessageLike[],
     options?: { readonly flags?: number }
-  ): MeshPublishDetail {
+  ): void {
     this.requireOpen();
     void options;
-    return this.backend.publishFromSpot(this.state, channelName, topic, parts);
+    this.backend.publishFromSpot(this.state, channelName, topic, parts);
   }
 
   setSubscription(channelName: string, topicFilter: string, kind = 0): void {

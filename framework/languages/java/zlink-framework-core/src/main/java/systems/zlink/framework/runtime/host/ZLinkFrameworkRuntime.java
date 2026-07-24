@@ -316,6 +316,7 @@ public final class ZLinkFrameworkRuntime
             : null;
 
         ZLinkFrameworkActorSubsystem actorSubsystem = ZLinkFrameworkActorSubsystem.create(
+            backendFactory,
             this.registration,
             serializer,
             runtimeHandlers,
@@ -348,8 +349,7 @@ public final class ZLinkFrameworkRuntime
             this.meshNodes,
             this.backendContext,
             this.spots,
-            this.actors,
-            this.actorDirectory);
+            this.actors);
         this.streams = streamSubsystem.streams();
 
         locationSubsystem.startup()
@@ -995,6 +995,10 @@ public final class ZLinkFrameworkRuntime
             if (spots != null) {
                 applicationBarrier = applicationBarrier.thenCompose(
                     acceptedIgnored -> spots.awaitDrainBarrier());
+            }
+            if (actors != null) {
+                applicationBarrier = applicationBarrier.thenCompose(
+                    acceptedIgnored -> actors.awaitDrainBarrier());
             }
             if (streams != null) {
                 applicationBarrier = applicationBarrier.thenCompose(

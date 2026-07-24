@@ -5,9 +5,8 @@
 ChannelName은 process 안의 송신 경로를 선택한다. RouteMesh·ClientServer·fanout builder와 typed handler,
 client call의 정확한 payload type은 공통 계약의 역할 구분을 Java generic으로 투영한다. One-way operation은
 `submit()` 하나를 제공하고, request operation의 `submit(...)`은 terminal reply까지 기다린다.
-Logical Multicast의 remote admitted는 source의 local outbound transport queue 제출만 집계한다. Local
-admitted는 origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과
-remote·local handler 실행 또는 완료는 `CompletionStage` 완료 조건이 아니다.
+Logical Multicast는 target별 제출 결과를 반환하거나 publish 전용 monitoring으로 집계하지 않는다.
+Remote Spot queue 제출과 remote·local handler 실행 또는 완료는 `CompletionStage` 완료 조건이 아니다.
 
 ```java
 public interface ZLinkMeshChannelBuilder {
@@ -201,24 +200,22 @@ public interface systems.zlink.framework.channels.ZLinkPublishCall {
   public default systems.zlink.framework.channels.ZLinkPublishCall metadata(java.util.Map<java.lang.String, java.lang.String>);
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
-public interface systems.zlink.framework.channels.ZLinkPublishContext extends systems.zlink.framework.ZLinkHandlerContext {
+public interface systems.zlink.framework.channels.ZLinkPublishMessageContext extends systems.zlink.framework.ZLinkMessageContext {
   public abstract java.lang.String topic();
   public abstract java.util.Optional<java.lang.String> source();
 }
 public interface systems.zlink.framework.channels.ZLinkPublishHandler<TMessage> {
-  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TMessage, systems.zlink.framework.channels.ZLinkPublishContext);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TMessage, systems.zlink.framework.channels.ZLinkPublishMessageContext);
 }
 public interface systems.zlink.framework.channels.ZLinkRequestCall {
   public default systems.zlink.framework.channels.ZLinkRequestCall metadata(java.lang.String, java.lang.String);
   public default systems.zlink.framework.channels.ZLinkRequestCall metadata(java.util.Map<java.lang.String, java.lang.String>);
   public abstract systems.zlink.framework.channels.ZLinkRequestCall timeout(java.time.Duration);
   public abstract <TReply> java.util.concurrent.CompletionStage<TReply> submit(java.lang.Class<TReply>);
-  public default <TReply> java.util.concurrent.CompletionStage<TReply> yield(java.lang.Class<TReply>);
-}
-public interface systems.zlink.framework.channels.ZLinkRequestContext extends systems.zlink.framework.ZLinkHandlerContext {
+  public abstract <TReply> java.util.concurrent.CompletionStage<TReply> yield(java.lang.Class<TReply>);
 }
 public interface systems.zlink.framework.channels.ZLinkRequestHandler<TRequest, TReply> {
-  public abstract java.util.concurrent.CompletionStage<TReply> handle(TRequest, systems.zlink.framework.channels.ZLinkRequestContext);
+  public abstract java.util.concurrent.CompletionStage<TReply> handle(TRequest, systems.zlink.framework.ZLinkMessageContext);
 }
 public interface systems.zlink.framework.channels.ZLinkRouteClient {
   public abstract systems.zlink.framework.channels.ZLinkSendCall sendToChannel(java.lang.String, java.lang.Object);
@@ -236,29 +233,23 @@ public interface systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptio
   public abstract int placementWeight();
   public abstract void setPlacementWeight(int);
 }
-public interface systems.zlink.framework.channels.ZLinkRouteRequestContext extends systems.zlink.framework.ZLinkHandlerContext {
+public interface systems.zlink.framework.channels.ZLinkRouteMessageContext extends systems.zlink.framework.ZLinkMessageContext {
   public abstract java.lang.String meshName();
   public abstract systems.zlink.contracts.core.RoutingId sourceNodeRid();
 }
 public interface systems.zlink.framework.channels.ZLinkRouteRequestHandler<TRequest, TReply> {
-  public abstract java.util.concurrent.CompletionStage<TReply> handle(TRequest, systems.zlink.framework.channels.ZLinkRouteRequestContext);
-}
-public interface systems.zlink.framework.channels.ZLinkRouteSendContext extends systems.zlink.framework.ZLinkHandlerContext {
-  public abstract java.lang.String meshName();
-  public abstract systems.zlink.contracts.core.RoutingId sourceNodeRid();
+  public abstract java.util.concurrent.CompletionStage<TReply> handle(TRequest, systems.zlink.framework.channels.ZLinkRouteMessageContext);
 }
 public interface systems.zlink.framework.channels.ZLinkRouteSendHandler<TMessage> {
-  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TMessage, systems.zlink.framework.channels.ZLinkRouteSendContext);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TMessage, systems.zlink.framework.channels.ZLinkRouteMessageContext);
 }
 public interface systems.zlink.framework.channels.ZLinkSendCall {
   public default systems.zlink.framework.channels.ZLinkSendCall metadata(java.lang.String, java.lang.String);
   public default systems.zlink.framework.channels.ZLinkSendCall metadata(java.util.Map<java.lang.String, java.lang.String>);
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
-public interface systems.zlink.framework.channels.ZLinkSendContext extends systems.zlink.framework.ZLinkHandlerContext {
-}
 public interface systems.zlink.framework.channels.ZLinkSendHandler<TMessage> {
-  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TMessage, systems.zlink.framework.channels.ZLinkSendContext);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TMessage, systems.zlink.framework.ZLinkMessageContext);
 }
 public interface systems.zlink.framework.handlers.ZLinkHandlerGroup extends java.lang.annotation.Annotation {
   public abstract java.lang.String value();

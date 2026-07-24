@@ -61,14 +61,18 @@ Spot handler와 timer는 실행할 수 있지만 같은 Actor의 다음 payload�
 Spot Actor에서는 `Yield`를 허용하지 않으며 공통 call type의 호출은 operation submit 전에
 `InvalidConfiguration`으로 끝난다.
 
-Actor handler는 Actor 자신의 상태를 소유한다. Actor handler가 room·stage·zone 같은 Spot 소유 상태를
-읽거나 바꾸려면 명시적인 Spot send/request를 제출해야 한다. 그 작업은 target Spot turn에서 실행된다.
-Actor handler에 mutable Spot object를 직접 제공해서 두 실행 문맥의 직렬성 경계를 우회하지 않는다.
+Actor handler는 containing User·Entry Spot과 Actor를 함께 받는다. `SpotWide`에서는 둘이 같은 Spot gate에서
+실행되므로 Spot과 Actor 상태를 함께 다룰 수 있다. `PerActor`와 Entry Spot에서는 서로 다른 Actor handler가
+동시에 실행될 수 있으므로 application은 containing Spot의 mutable shared state를 Actor handler에서 직접
+변경할 때 thread safety를 직접 보장해야 한다. Framework는 이 접근의 race를 막거나 자동 직렬화하지 않는다.
+Spot 소유 상태를 직렬화하려면 명시적인 Spot send/request로 제출한다.
+Spot과 Actor의 lifecycle Context는 각 object의 `Context` 멤버로 읽고 handler 인자로 중복 전달하지 않는다.
 
 `SpotWide` Member Actor가 같은 User Spot gate가 필요한 Spot 또는 다른 member Actor의 request를 `Async`로
 기다리면 target을 실행할 수 없으므로 Framework는 resolve 뒤 outbound admission 전에
-`InvalidConfiguration`으로 거부한다. 현재 User Spot을 떠나는 `JoinSpot(...).Async`도 source lifecycle
-callback이 같은 gate를 얻어야 하므로 operation submission과 queue 변경 전에 같은 오류로 거부한다.
+`InvalidConfiguration`으로 거부한다. Actor Join은 이 awaited call 경로를 사용하지 않는다. Handler는
+`JoinSpot(...)` 또는 `JoinEntrySpot(...)` call의 `Defer()`를 호출해 intent만 등록하고 정상 handler terminal
+뒤 Framework가 Join을 실행한다.
 같은 Actor 자신에 대한 awaited request도 Actor queue claim 때문에 실행할 수 없으므로 `Async`와 `Yield`
 모두 거부한다. 같은 Actor에 보내는 one-way payload는 현재 payload 뒤 FIFO에 넣을 수 있으며 inline 또는
 재진입 handler 호출로 바꾸지 않는다.
@@ -76,6 +80,53 @@ callback이 같은 gate를 얻어야 하므로 operation submission과 queue 변
 ready notification, request completion, relocation barrier와 session-binding progress 같은 infrastructure
 작업은 Actor application claim과 분리한다. application handler가 대기 중이어도 infrastructure progress가
 계속되어야 한다.
+
+### 3.1 Deferred Join barrier
+
+`Defer()`는 target I/O를 시작하지 않는 동기 registration terminal이다. `Async`, `await`, `submit`, C++
+coroutine terminal과 `Yield`를 제공하지 않으며 Join 결과를 현재 handler continuation으로 반환하지 않는다.
+Registration은 Actor exact generation, current membership, immutable request snapshot, absolute deadline과
+non-zero 128-bit operation ID를 고정한다.
+한 handler turn은 최대 64개 Join과 encoded request 합계 8 MiB를 등록할 수 있고 개별 request는 최대
+1 MiB다. Request를 생략하면 empty message를 고정한다. Timeout 기본값은 5초이며 명시 값은 millisecond
+올림 기준 finite `1..INT_MAX` ms다. `Defer()`는 monotonic absolute deadline을 고정한다. Limit·timeout
+위반은 partial record 없이 `InvalidConfiguration`이다.
+
+Actor send/request handler와 User·Entry Spot의 packet·request·subscription·timer handler에서 local member
+Actor의 Join을 등록할 수 있다. Factory, `Configure`, lifecycle callback, relocation adapter, detached task,
+Instance Spot handler와 Framework가 관리하지 않는 thread에서는 `InvalidConfiguration`이다. 같은 call의 두
+번째 `Defer()`는 `AlreadySubmitted`, 같은 Actor의 다른 pending membership transition은 `ActorMoving`이다.
+
+Barrier는 handler가 정상적으로 끝날 때 활성화한다. Handler가 exception이나 cancellation로 끝나면 그
+handler가 등록한 비활성 barrier를 모두 폐기한다. 한 handler가 여러 Actor의 Join을 등록하면 handler terminal
+하나로 모두 활성화하거나 모두 폐기한다. Handler가 `Yield`를 사용한 경우 Yield continuation이 끝난 시점이
+handler terminal이다. `Defer()` 자체는 Spot gate나 Actor claim을 반납하지 않으며 `Yield`를 대신하지 않는다.
+`Defer()` 뒤 같은 handler가 제출한 self one-way payload는 barrier 뒤에 놓이고 Join보다 먼저 실행하지 않는다.
+
+Registration scope, handler-terminal linkage와 barrier activation은 process-local이다. Handler scope close와
+`Defer()`가 경합하면 scope seal 전에 원자적으로 포함하거나 seal 뒤 `InvalidConfiguration`으로 실패한다.
+Awaited continuation은 같은 open scope에서 등록할 수 있다. Unawaited·detached task의 호출은 application
+contract 위반이며 Framework는 언어 runtime의 ambient context만으로 이 오용을 조기에 검출한다고 보장하지
+않는다. Activation이나 Location commit 전에 source process가 종료되면 intent·completion 복구를 보장하지 않고
+source authority와 membership을 유지한다.
+
+Join claim과 Retire·Shutdown seal은 같은 Actor transition arbitration을 사용한다. Join claim이 먼저면
+maintenance가 terminal을 기다리고, Retire seal이 먼저면 `ActorMoving`, Shutdown admission seal이 먼저면
+`RuntimeShutdown`이다. Same-target User·Entry Join은 lifecycle callback과 Store mutation 없이 idempotent
+Accepted completion을 제출한다.
+
+Inactive claim은 handler가 나중에 `Yield`해도 유지한다. Self awaited request와 Spot handler가 barrier 대상
+Actor를 await하는 request는 cycle을 만들기 전에 `InvalidConfiguration`으로 거부한다. Request reply encoding
+실패는 handler failure로 barrier를 폐기하지만 encoding 뒤 transport admission failure나 disconnect는 Join을
+취소하지 않는다.
+
+Barrier가 활성화되면 대상 Actor의 현재 handler 뒤에서 안전한 Actor queue 경계를 예약한다. 이미 실행을
+시작한 job은 취소하지 않지만 실행 전 queue item, timer와 accepted journal은 relocation 대상이면 함께
+이관한다. Registration 뒤 source seal 전 도착한 payload는 barrier 뒤 Actor queue에 수락하며 cross-node
+relocation에서는 accepted journal과 실행 전 queue의 일부로 함께 이관한다. Source seal 이후 CAS 전과
+forwarding 구간에 도착한 payload만 bounded ingress hold에 보관한다. Commit 전 실패면 source queue로
+복원하고 commit 뒤에는 original operation identity와 generation을 유지해 target hold로 relay한다.
+bounded hold가 가득 차면 일반 messaging backpressure와 deadline을 적용한다.
 
 ## 4. Spot control claim
 
@@ -160,6 +211,15 @@ lifecycle에 포함되지 않는다. 정리가 끝난 뒤 같은 Actor ID의 새
 Manager `Find(ActorId)`는 current Ready authority의 `ActorRef`를 반환하며 creation을 시작하지 않는다. 별도
 Actor directory는 제공하지 않는다.
 
+Actor와 Actor Context는 composition 관계다. Actor는 Framework가 factory에 전달한 exact Context를 읽기 전용
+`Context` 멤버로 보관하고 `Configure()`는 Context 인자를 받지 않는다. Context가 `ActorId`,
+`ObjectGeneration`, current `MeshName`, nullable current `SpotId`와 bound-session capability를 제공하므로
+factory가 ActorId를 별도 인자로 다시 받지 않는다. Factory completion에서 Actor가 노출한 Context가 전달한
+exact Context와 다르면 Ready로 공개하지 않는다. Same-node Join은 Context 객체와 Actor generation을 유지한 채
+membership commit 시 `SpotId`를 바꾸고, cross-node Join은 같은 Actor identity와 target membership에 결합한
+새 Context를 target factory에 전달한다. Commit 뒤 source Context의 identity property는 source leave
+callback까지 읽을 수 있지만 새 send/request/session mutation/Join은 typed stale·moving failure로 끝난다.
+
 Actor를 user Spot으로 옮기는 join·leave·relocation은
 [23 Spot Actor](23-spot-actor.ko.md)의 fencing과 barrier를 따른다. 이동 중에 수락한 payload를 이전 Spot
 callback으로 보내지 않으며, Actor queue가 순서를 유지한다.
@@ -185,6 +245,12 @@ session inbound Actor payload도 Actor queue로 직접 제출한다. Spot member
 검증에 사용할 수 있지만 payload dispatch 위치를 Spot callback으로 바꾸지 않는다. bind, rebind,
 disconnect와 request correlation의 전체 계약은
 [31 Session Actor Dispatch](31-session-actor-dispatch.ko.md)가 정한다.
+Physical STREAM disconnect는 Framework가 current binding 전체에 자동 통지하고 current Actor queue에서
+Spot disconnect callback을 실행한다. 통지는 Actor destroy나 membership 변경이 아니다. Relocation은 같은
+ObjectGeneration을 유지한 해당 Actor에 대해 owner·membership commit, callback·journal replay, durable
+source cleanup과 `Completed`를 끝낸 뒤 command 44·45로 binding route만 바꾼다. 같은 Session의 다른
+Actor route와 physical STREAM connection은 유지하며 routed ACK와 steady normalization 전에는 target
+session packet·push admission을 열지 않는다. 새 incarnation은 explicit bind가 필요하다.
 
 ## 8. 실패와 관측
 
@@ -205,7 +271,8 @@ session-binding state와 dispatch 결과를 구분해야 한다. Actor ID는 met
 - Actor payload가 Spot callback이나 Spot application queue를 거치지 않는다.
 - join·leave·relocation과 lifecycle control만 Spot control claim을 사용한다.
 - 같은 Actor의 payload가 ingress 종류와 무관하게 Actor queue 수락 순서대로 실행된다.
-- Actor handler가 mutable Spot state에 직접 접근하지 않고 명시적인 Spot 호출을 사용한다.
+- PerActor·Entry Actor handler의 containing Spot mutable state는 application이 thread-safe하게 관리하거나
+  명시적인 Spot 호출로 직렬화한다.
 - session bind와 Spot membership이 독립적으로 바뀌며 서로를 암묵적으로 변경하지 않는다.
 - 같은 ActorId를 서로 다른 MeshName에 중복 생성하지 않는다.
 - Actor messaging이 ActorId만 받고 owner route와 generation을 application에 요구하지 않는다.

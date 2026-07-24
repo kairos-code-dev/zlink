@@ -185,7 +185,7 @@ public sealed class CoverageCriticalRuntimeTests
 
         var continuing = ZLinkSpotTimerFailureEventFactory.Create(
             "spot.events",
-            RoutingId.From("spot"),
+            "spot",
             true,
             descriptor,
             tick,
@@ -193,7 +193,7 @@ public sealed class CoverageCriticalRuntimeTests
             false);
         var stopped = ZLinkSpotTimerFailureEventFactory.Create(
             "spot.events",
-            RoutingId.From("spot"),
+            "spot",
             false,
             descriptor,
             tick,

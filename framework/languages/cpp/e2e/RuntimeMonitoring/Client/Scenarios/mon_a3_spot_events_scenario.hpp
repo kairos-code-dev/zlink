@@ -43,7 +43,7 @@ inline void run_mon_a3_spot_events_scenario (const client_options_t &options)
                       .timeout (std::chrono::milliseconds (3000))
                       .build ();
     auto changed =
-      filtered.post ("/admin/mesh-weight?weight=0").async_raw ().result ();
+      filtered.post ("/admin/mesh-weight?weight=0").submit_raw ().result ();
     ensure (changed && changed.value ().status < 400,
             "MON-A3 weight 0 public runtime-options call failed");
     const auto zero = wait_channel_weight (options.filtered_service_url, 0);
@@ -52,7 +52,7 @@ inline void run_mon_a3_spot_events_scenario (const client_options_t &options)
             "MON-A3 local weight 0 readiness is inconsistent");
 
     changed =
-      filtered.post ("/admin/mesh-weight?weight=100").async_raw ().result ();
+      filtered.post ("/admin/mesh-weight?weight=100").submit_raw ().result ();
     ensure (changed && changed.value ().status < 400,
             "MON-A3 weight restore public runtime-options call failed");
     const auto restored =

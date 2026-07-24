@@ -118,7 +118,7 @@ internal static class ZLinkRedisLocationScripts
         local incoming = cjson.decode(incomingJson)
         local currentOwner = redis.call('HGET', KEYS[1], 'owner')
         local currentJson = redis.call('HGET', KEYS[1], 'json')
-        if (currentOwner or '') ~= ARGV[20] then
+        if (currentOwner or '') ~= ARGV[22] then
             return {'retry', 0, nowMs}
         end
         local incomingLeaseGeneration =
@@ -157,6 +157,10 @@ internal static class ZLinkRedisLocationScripts
         local function sameImmutable(left, right)
             local leftCapacity = value(left, 'Capacity', 'capacity')
             local rightCapacity = value(right, 'Capacity', 'capacity')
+            local leftActivation = value(
+                left, 'ActivationConcurrency', 'activationConcurrency')
+            local rightActivation = value(
+                right, 'ActivationConcurrency', 'activationConcurrency')
             return tostring(value(left, 'MeshName', 'meshName'))
                     == tostring(value(right, 'MeshName', 'meshName'))
                 and tostring(value(left, 'Rid', 'rid'))
@@ -183,6 +187,8 @@ internal static class ZLinkRedisLocationScripts
                         'applicationVersion'))
                 and tostring(value(left, 'ObjectRole', 'objectRole'))
                     == tostring(value(right, 'ObjectRole', 'objectRole'))
+                and tostring(value(left, 'EntrySpotId', 'entrySpotId'))
+                    == tostring(value(right, 'EntrySpotId', 'entrySpotId'))
                 and sameKeySet(
                     value(left, 'ChannelWeights', 'channelWeights'),
                     value(right, 'ChannelWeights', 'channelWeights'))
@@ -201,6 +207,8 @@ internal static class ZLinkRedisLocationScripts
                     == tostring(value(
                         value(rightCapacity, 'Spots', 'spots'),
                         'Limit', 'limit'))
+                and tostring(value(leftActivation, 'Limit', 'limit'))
+                    == tostring(value(rightActivation, 'Limit', 'limit'))
         end
         local function bumpStamps()
             redis.call('INCR', ARGV[7])
@@ -231,7 +239,9 @@ internal static class ZLinkRedisLocationScripts
                 'capabilities', ARGV[16],
                 'actorLimit', ARGV[17],
                 'spotLimit', ARGV[18],
-                'immutableDigest', ARGV[19])
+                'activationConcurrencyLimit', ARGV[19],
+                'entrySpotId', ARGV[20],
+                'immutableDigest', ARGV[21])
             redis.call('SADD', KEYS[3], ARGV[5])
             redis.call('SADD', KEYS[7], ARGV[5])
             redis.call('SADD', KEYS[8], ARGV[5])

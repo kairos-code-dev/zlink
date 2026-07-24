@@ -261,7 +261,7 @@ public sealed partial class UnhandledDispatchPolicyTests
             new ZLinkBackendActorRef(RoutingId.From("source-node"), "source-actor", 1),
             new ZLinkBackendActorRef(RoutingId.From("target-node"), "target-actor", 1),
             RoutingId.From("source-node"),
-            RoutingId.From("target-spot"),
+            "target-spot",
             1,
             parts[0],
             parts);
@@ -312,7 +312,7 @@ public sealed partial class UnhandledDispatchPolicyTests
             new ZLinkBackendActorRef(RoutingId.From("source-node"), "source-actor", 1),
             new ZLinkBackendActorRef(RoutingId.From("target-node"), "target-actor", 1),
             RoutingId.From("source-node"),
-            RoutingId.From("target-spot"),
+            "target-spot",
             1,
             parts[0],
             parts);
@@ -369,7 +369,7 @@ public sealed partial class UnhandledDispatchPolicyTests
             new ZLinkBackendActorRef(RoutingId.From("source-node"), "source-actor", 1),
             new ZLinkBackendActorRef(RoutingId.From("target-node"), "target-actor", 1),
             RoutingId.From("source-node"),
-            RoutingId.From("target-spot"),
+            "target-spot",
             1,
             parts[0],
             parts);
@@ -1115,22 +1115,16 @@ public sealed partial class UnhandledDispatchPolicyTests
             return SubmitResult.Backpressured;
         }
 
-        public MeshPublishResult Publish(
+        public void Publish(
             string channelName, string topic, Message message, SendFlags flags,
             ReadOnlyMemory<byte> metadata)
         {
-            return new MeshPublishResult(
-                SubmitResult.Backpressured,
-                new MeshPublishDetail(0, 0, 0, 0, 0, 0, 0));
         }
 
-        public MeshPublishResult Publish(
+        public void Publish(
             string channelName, string topic, IReadOnlyList<Message> parts, SendFlags flags,
             ReadOnlyMemory<byte> metadata)
         {
-            return new MeshPublishResult(
-                SubmitResult.Backpressured,
-                new MeshPublishDetail(0, 0, 0, 0, 0, 0, 0));
         }
 
         public SubmitResult SendToSpot(

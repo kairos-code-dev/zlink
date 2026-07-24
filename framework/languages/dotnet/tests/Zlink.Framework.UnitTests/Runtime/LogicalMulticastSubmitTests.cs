@@ -1,6 +1,7 @@
 using System.Reflection;
 
 using Zlink.Framework.Runtime.Backend.Contracts;
+using Zlink.Framework.Runtime.Diagnostics;
 using Zlink.Framework.Runtime.Execution;
 using Zlink.Framework.Runtime.Spots;
 
@@ -13,41 +14,33 @@ public sealed class LogicalMulticastSubmitTests
     {
         var spot = DispatchProxy.Create<IZLinkBackendSpot, PublishSpotProxy>();
         var proxy = (PublishSpotProxy)(object)spot;
-        proxy.Result = new MeshPublishResult(
-            SubmitResult.Backpressured,
-            new MeshPublishDetail(2, 1, 1, 0, 0, 0, 0));
 
         await using var transport = new ZLinkSpotOutboundTransport(
             spot,
             TimeSpan.FromMilliseconds(250),
             CancellationToken.None);
         await using var pool = CreatePool();
-        using var nonBlockingMessage = Message.From("non-blocking");
-        var nonBlocking = transport.TryPublishCurrentOnce(
-            "events-channel", "events", [nonBlockingMessage], ReadOnlyMemory<byte>.Empty);
-
-        using var blockingMessage = Message.From("blocking");
-        var blocking = await ZLinkLogicalMulticastSubmitter.SubmitAsync(
+        using var message = Message.From("publish");
+        var result = await SubmitAsync(
             pool,
-            () => transport.PublishCurrentBlocking(
+            () => transport.PublishCurrent(
                 "events-channel",
                 "events",
-                [blockingMessage]),
+                [message]),
             CancellationToken.None,
-            CancellationToken.None);
+            CancellationToken.None,
+            TimeSpan.FromSeconds(1));
 
-        Assert.Equal(2, proxy.PublishCount);
-        Assert.Equal([SendFlags.DontWait, SendFlags.None], proxy.Flags);
-        Assert.Equal(SubmitResult.Backpressured, nonBlocking.Result);
-        Assert.Equal((uint)1, nonBlocking.Detail.AdmittedRemoteTargets);
-        Assert.Equal((uint)1, nonBlocking.Detail.DroppedRemoteTargets);
-        Assert.Equal(SubmitResult.Backpressured, blocking.Result);
-        Assert.Equal((uint)1, blocking.Detail.AdmittedRemoteTargets);
-        Assert.Equal((uint)1, blocking.Detail.DroppedRemoteTargets);
+        Assert.Equal(SubmitResult.Ok, result);
+        Assert.True(SpinWait.SpinUntil(
+            () => proxy.PublishCount == 1,
+            TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, proxy.PublishCount);
+        Assert.Equal([SendFlags.None], proxy.Flags);
     }
 
     [Fact]
-    public async Task Publish_ReturnsBackpressuredWithoutStartingCore_WhenNoWorkerCanBeReserved()
+    public async Task Publish_WaitsForWorkerReservationWithinAdmissionTimeout()
     {
         await using var pool = CreatePool();
         using var release = new ManualResetEventSlim(false);
@@ -60,51 +53,173 @@ public sealed class LogicalMulticastSubmitTests
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var publishCount = 0;
 
-        var result = await ZLinkLogicalMulticastSubmitter.SubmitAsync(
+        var pending = SubmitAsync(
             pool,
             () =>
             {
                 publishCount++;
-                return new MeshPublishResult(
-                    SubmitResult.Ok,
-                    new MeshPublishDetail(0, 0, 0, 0, 0, 0, 0));
             },
             CancellationToken.None,
-            CancellationToken.None);
+            CancellationToken.None,
+            TimeSpan.FromSeconds(1)).AsTask();
 
-        Assert.Equal(SubmitResult.Backpressured, result.Result);
+        Assert.False(pending.IsCompleted);
+        release.Set();
+        var result = await pending.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(SubmitResult.Ok, result);
+        Assert.True(SpinWait.SpinUntil(
+            () => Volatile.Read(ref publishCount) == 1,
+            TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, publishCount);
+    }
+
+    [Fact]
+    public async Task Publish_ReturnsBackpressuredAfterWorkerAdmissionTimeout()
+    {
+        await using var pool = CreatePool();
+        using var release = new ManualResetEventSlim(false);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.Equal(ZLinkWorkerSubmitResult.Accepted, pool.TrySubmitDirect(_ =>
+        {
+            started.TrySetResult();
+            release.Wait();
+        }));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var publishCount = 0;
+
+        var result = await SubmitAsync(
+            pool,
+            () =>
+            {
+                publishCount++;
+            },
+            CancellationToken.None,
+            CancellationToken.None,
+            TimeSpan.FromMilliseconds(50));
+
+        Assert.Equal(SubmitResult.Backpressured, result);
         Assert.Equal(0, publishCount);
         release.Set();
     }
 
     [Fact]
-    public async Task Publish_CancellationAfterCoreStarts_PreservesCoreResult()
+    public async Task Publish_BoundsWorkerAdmissionWaitersAndNeverRunsOverflowClosures()
+    {
+        await using var pool = CreatePool();
+        using var release = new ManualResetEventSlim(false);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Assert.Equal(ZLinkWorkerSubmitResult.Accepted, pool.TrySubmitDirect(_ =>
+        {
+            started.TrySetResult();
+            release.Wait();
+        }));
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var publishCount = 0;
+
+        void Publish()
+        {
+            Interlocked.Increment(ref publishCount);
+        }
+
+        var waiter = SubmitAsync(
+            pool,
+            Publish,
+            CancellationToken.None,
+            CancellationToken.None,
+            TimeSpan.FromSeconds(2)).AsTask();
+        Assert.True(SpinWait.SpinUntil(
+            () => pool.DirectAdmissionWaiterCount == 1,
+            TimeSpan.FromSeconds(1)));
+
+        var overflow = Enumerable.Range(0, 32)
+            .Select(_ => SubmitAsync(
+                pool,
+                Publish,
+                CancellationToken.None,
+                CancellationToken.None,
+                TimeSpan.FromSeconds(2)).AsTask())
+            .ToArray();
+        var rejected = await Task.WhenAll(overflow);
+
+        Assert.All(rejected, result => Assert.Equal(SubmitResult.Backpressured, result));
+        Assert.Equal(0, publishCount);
+        Assert.Equal(1, pool.DirectAdmissionWaiterCount);
+        release.Set();
+
+        Assert.Equal(
+            SubmitResult.Ok,
+            await waiter.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.True(SpinWait.SpinUntil(
+            () => Volatile.Read(ref publishCount) == 1,
+            TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, publishCount);
+        Assert.True(SpinWait.SpinUntil(
+            () => pool.DirectAdmissionWaiterCount == 0,
+            TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public async Task Publish_CancellationAfterOperationStarts_DoesNotChangeCompletedTerminal()
     {
         await using var pool = CreatePool();
         using var release = new ManualResetEventSlim(false);
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var cancellation = new CancellationTokenSource();
-        var expected = new MeshPublishResult(
-            SubmitResult.Ok,
-            new MeshPublishDetail(1, 1, 0, 0, 0, 0, 0));
-
-        var pending = ZLinkLogicalMulticastSubmitter.SubmitAsync(
+        var pending = SubmitAsync(
             pool,
             () =>
             {
                 started.TrySetResult();
                 release.Wait();
-                return expected;
             },
             cancellation.Token,
-            CancellationToken.None).AsTask();
+            CancellationToken.None,
+            TimeSpan.FromSeconds(1)).AsTask();
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         cancellation.Cancel();
-        Assert.False(pending.IsCompleted);
+        Assert.Equal(
+            SubmitResult.Ok,
+            await pending.WaitAsync(TimeSpan.FromSeconds(5)));
         release.Set();
+    }
 
-        Assert.Equal(expected, await pending.WaitAsync(TimeSpan.FromSeconds(5)));
+    [Fact]
+    public async Task Publish_FailureAfterOperationStarts_IsObservedWithoutChangingTerminal()
+    {
+        await using var pool = CreatePool();
+        var errorSink = new RecordingErrorSink();
+        var released = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var result = await ZLinkLogicalMulticastSubmitter.SubmitAsync(
+            pool,
+            () => throw new InvalidOperationException("target failed"),
+            CancellationToken.None,
+            CancellationToken.None,
+            TimeSpan.FromSeconds(1),
+            () => released.TrySetResult(),
+            errorSink);
+
+        Assert.Equal(SubmitResult.Ok, result);
+        await released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.IsType<InvalidOperationException>(errorSink.Error);
+    }
+
+    private static ValueTask<SubmitResult> SubmitAsync(
+        ZLinkWorkerPool pool,
+        Action publish,
+        CancellationToken cancellationToken,
+        CancellationToken shutdownToken,
+        TimeSpan timeout)
+    {
+        return ZLinkLogicalMulticastSubmitter.SubmitAsync(
+            pool,
+            publish,
+            cancellationToken,
+            shutdownToken,
+            timeout,
+            static () => { },
+            new RecordingErrorSink());
     }
 
     private static ZLinkWorkerPool CreatePool()
@@ -114,9 +229,6 @@ public sealed class LogicalMulticastSubmitTests
 
     private class PublishSpotProxy : DispatchProxy
     {
-        internal MeshPublishResult Result { get; set; } =
-            new(SubmitResult.Ok, new MeshPublishDetail(0, 0, 0, 0, 0, 0, 0));
-
         internal int PublishCount { get; private set; }
 
         internal List<SendFlags> Flags { get; } = [];
@@ -133,11 +245,23 @@ public sealed class LogicalMulticastSubmitTests
             };
         }
 
-        private MeshPublishResult Publish(object?[]? args)
+        private object? Publish(object?[]? args)
         {
             PublishCount++;
             Flags.Add((SendFlags)args![3]!);
-            return Result;
+            return null;
         }
+    }
+
+    private sealed class RecordingErrorSink : IZLinkRuntimeErrorSink
+    {
+        public Exception? Error { get; private set; }
+
+        public void ReportHandlerException(Exception exception) => Error = exception;
+
+        public void ReportUnhandledCallbackException(Exception exception) => Error = exception;
+
+        public void ReportRuntimeTaskException(string taskName, Exception exception) =>
+            Error = exception;
     }
 }

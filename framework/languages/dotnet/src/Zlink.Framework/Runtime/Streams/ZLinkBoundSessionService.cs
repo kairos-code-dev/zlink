@@ -58,7 +58,7 @@ internal sealed class ZLinkBoundSessionService(
         }
     }
 
-    internal async ValueTask<ZLinkSubmitResult> SubmitBoundSessionAsync<TMessage>(
+    internal async ValueTask<ZLinkOneWaySubmitResult> SubmitBoundSessionAsync<TMessage>(
         string actorId,
         string? packetName,
         IReadOnlyDictionary<string, string> metadata,
@@ -83,18 +83,18 @@ internal sealed class ZLinkBoundSessionService(
                     ct => SubmitDeferredFrameAsync(actorId, frame, ct)))
             {
                 TraceSent(actorId, packetName, frame);
-                return new ZLinkSubmitResult(ZLinkSubmitStatus.Submitted);
+                return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Submitted);
             }
         }
         catch (InvalidOperationException error)
             when (error.Message == "Bound-session deferred submit queue is full.")
         {
-            return new ZLinkSubmitResult(ZLinkSubmitStatus.Backpressured);
+            return new ZLinkOneWaySubmitResult(ZLinkOneWaySubmitStatus.Backpressured);
         }
 
         var result = await SubmitFrameAsync(actorId, frame, cancellationToken)
             .ConfigureAwait(false);
-        if (result.Status == ZLinkSubmitStatus.Submitted)
+        if (result.Status == ZLinkOneWaySubmitStatus.Submitted)
             TraceSent(actorId, packetName, frame);
         return result;
     }
@@ -106,7 +106,7 @@ internal sealed class ZLinkBoundSessionService(
     {
         var result = await SubmitFrameAsync(actorId, frame, cancellationToken)
             .ConfigureAwait(false);
-        if (result.Status != ZLinkSubmitStatus.Submitted)
+        if (result.Status != ZLinkOneWaySubmitStatus.Submitted)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.RequestFailed,
                 $"Deferred bound-session submit completed with '{result.Status}'.");
@@ -128,7 +128,7 @@ internal sealed class ZLinkBoundSessionService(
             ActorId: actorId));
     }
 
-    private ValueTask<ZLinkSubmitResult> SubmitFrameAsync(
+    private ValueTask<ZLinkOneWaySubmitResult> SubmitFrameAsync(
         string actorId,
         byte[] frame,
         CancellationToken cancellationToken)
@@ -227,6 +227,7 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
     TMessage message) : IZLinkBoundSessionSendCall
 {
     private readonly Dictionary<string, string> _metadata = new(StringComparer.Ordinal);
+    private readonly ZLinkOneWayCallGate _submission = new("Bound session send");
     public IZLinkBoundSessionSendCall Metadata(
         string key,
         string value)
@@ -242,14 +243,17 @@ internal sealed class ZLinkBoundSessionSendCall<TMessage>(
         return this;
     }
 
-    public ValueTask<ZLinkSubmitResult> SubmitAsync(
+    public ValueTask Async(
         CancellationToken cancellationToken = default)
     {
+        _submission.Claim();
         return service.SubmitBoundSessionAsync(
             actorId,
             ZLinkMessageNameResolver.ResolveFromMessage(message),
             _metadata,
             message,
-            cancellationToken);
+            cancellationToken).EnsureAcceptedAsync(
+                "Bound session send",
+                ZLinkFrameworkErrorKind.ActorSessionNotBound);
     }
 }

@@ -1,5 +1,6 @@
 package systems.zlink.framework.runtime.spots;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -57,8 +58,44 @@ final class ZLinkActorSessionCoordinator {
         return actors != null && actors.hasActorsInSpot(spotId);
     }
 
+    List<String> actorIdsInSpot(String spotId) {
+        return actors == null
+            ? List.of()
+            : actors.actorIdsInSpot(spotId);
+    }
+
+    Optional<systems.zlink.framework.execution.ZLinkAsyncSerialQueue.RelocationSeal>
+        trySealActorRelocation(String actorId) {
+        return requireActors().trySealActorRelocation(actorId);
+    }
+
+    boolean abortActorRelocation(
+        String actorId,
+        systems.zlink.framework.execution.ZLinkAsyncSerialQueue.RelocationSeal
+            seal) {
+        return requireActors().abortActorRelocation(actorId, seal);
+    }
+
+    Optional<List<systems.zlink.framework.execution.ZLinkAsyncSerialQueue.QueuedRecord>>
+        commitActorRelocation(
+            String actorId,
+            systems.zlink.framework.execution.ZLinkAsyncSerialQueue.RelocationSeal
+                seal) {
+        return requireActors().commitActorRelocation(actorId, seal);
+    }
+
     Optional<ZLinkActor> localActor(String actorId) {
         return actors == null ? Optional.empty() : actors.localActor(actorId);
+    }
+
+    boolean isActorMember(String spotId, String actorId) {
+        if (actors == null) {
+            return false;
+        }
+        return actors.localActor(actorId)
+            .flatMap(actors::spotId)
+            .filter(spotId::equals)
+            .isPresent();
     }
 
     CompletionStage<Void> dispatch(

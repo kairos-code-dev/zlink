@@ -77,7 +77,7 @@ internal sealed class OfferDeliveryRouteHandler(
                            $"Courier actor is not bound: {message.CourierId}");
 
         await actors.SendToActor(
-            SampleNames.MeshName, actorRef, message).SubmitAsync(cancellationToken);
+            SampleNames.MeshName, actorRef, message).Async(cancellationToken);
         logger.LogInformation(
             "deliverydispatch courier-route: offered delivery={DeliveryId} courier={CourierId} attempt={Attempt}",
             message.DeliveryId,

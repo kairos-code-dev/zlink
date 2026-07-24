@@ -139,10 +139,6 @@ public final class ZLinkHttpRequestBuilder {
         return execute(null);
     }
 
-    public CompletionStage<RawHttpResponse> asyncRaw() {
-        return execute(null);
-    }
-
     /**
      * Streams the response body to {@code sink} chunk by chunk instead of buffering it; the returned
      * response carries status and headers with an empty body (no decompression of chunks).
@@ -169,16 +165,12 @@ public final class ZLinkHttpRequestBuilder {
 
     /** Submits the request and decodes the JSON body to {@code type}. */
     public <T> CompletionStage<HttpResponse<T>> submit(Class<T> type) {
-        return decode(asyncRaw(), type);
+        return decode(submitRaw(), type);
     }
 
-    public <T> CompletionStage<HttpResponse<T>> async(Class<T> type) {
-        return decode(asyncRaw(), type);
-    }
-
-    public <T> void callback(Class<T> type, ZLinkHttpCallback<T> callback) {
+    public <T> void submit(Class<T> type, ZLinkHttpCallback<T> callback) {
         java.util.Objects.requireNonNull(callback, "callback");
-        async(type).whenComplete((response, error) ->
+        submit(type).whenComplete((response, error) ->
             callback.complete(error, error == null ? response : null));
     }
 

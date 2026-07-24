@@ -60,7 +60,7 @@ inline void run_rm_c2_targeted_route_scenario (const client_options_t &options)
                          scenario_route_req_t{.value = "target-b"})
                          .dump (),
                        "application/json")
-                .async_raw ()
+                .submit_raw ()
                 .result ()
                 .value ();
             if (response.status < 400) {

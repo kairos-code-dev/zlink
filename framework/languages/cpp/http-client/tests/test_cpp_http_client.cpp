@@ -29,6 +29,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -39,6 +40,10 @@ namespace beast = boost::beast;
 namespace http = beast::http;
 using tcp = asio::ip::tcp;
 using namespace std::chrono_literals;
+
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::http_client::server_request_builder_t> ().submit ()),
+               zlink::framework::task_t<void>>);
 
 struct create_game_request_t
 {
@@ -749,7 +754,7 @@ create_game_with_coroutine_submit (const zlink::http_client::client_t &client)
 {
     auto response = co_await client.post ("/games")
                       .body (create_game_request_t{.name = "coawait"})
-                      .async<create_game_reply_t> ();
+                      .submit<create_game_reply_t> ();
     co_return response;
 }
 
@@ -825,7 +830,7 @@ TEST (ZLinkHttpClient, ContractBuilderSubmitsTypedJsonRequests)
 
     auto result = client.post ("/games")
                     .body (create_game_request_t{.name = "match-1"})
-                    .async<create_game_reply_t> ()
+                    .submit<create_game_reply_t> ()
                     .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -846,7 +851,7 @@ TEST (ZLinkHttpClient, BuilderRequestShortcutOmitsExplicitBuild)
                     .timeout (std::chrono::milliseconds (500))
                     .post ("/games")
                     .body (create_game_request_t{.name = "shorthand"})
-                    .async<create_game_reply_t> ()
+                    .submit<create_game_reply_t> ()
                     .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -862,7 +867,7 @@ TEST (ZLinkHttpClient, AsyncReturnsTypedResponse)
 
     auto response = client.post ("/games")
                       .body (create_game_request_t{.name = "async"})
-                      .async<create_game_reply_t> ()
+                      .submit<create_game_reply_t> ()
                       .result ();
 
     ASSERT_TRUE (response);
@@ -875,7 +880,7 @@ TEST (ZLinkHttpClient, AsyncMapsFailureStatus)
     loopback_http_server_t server;
     auto client = make_json_client (server.base_url ());
 
-    const auto response = client.get ("/bad-request").async<create_game_reply_t> ().result ();
+    const auto response = client.get ("/bad-request").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (response);
     EXPECT_EQ (response.error_kind (),
                zlink::framework::framework_error_kind_t::request_failed);
@@ -903,7 +908,7 @@ TEST (ZLinkHttpClient, CoroutineClientDoesNotBlockCallerWhileResponseIsPending)
                     .build ();
 
     const auto started = std::chrono::steady_clock::now ();
-    auto task = client.get ("/slow").async<create_game_reply_t> ();
+    auto task = client.get ("/slow").submit<create_game_reply_t> ();
     const auto submit_elapsed = std::chrono::steady_clock::now () - started;
 
     EXPECT_LT (submit_elapsed, 100ms);
@@ -979,7 +984,7 @@ TEST (ZLinkHttpClient, CustomResumeSchedulerControlsCallbackExecution)
     std::thread::id callback_thread;
     client.post ("/games")
       .body (create_game_request_t{.name = "callback-scheduler"})
-      .async<create_game_reply_t> ([&] (const auto &result) {
+      .submit<create_game_reply_t> ([&] (const auto &result) {
           callback_called = true;
           callback_thread = std::this_thread::get_id ();
           ASSERT_TRUE (result);
@@ -1033,7 +1038,7 @@ TEST (ZLinkHttpClient, ExecuteSchedulerRejectionCompletesTaskAsClosed)
                     .coroutines (execute, resume)
                     .build ();
 
-    const auto result = client.get ("/games").async_raw ().result ();
+    const auto result = client.get ("/games").submit_raw ().result ();
 
     ASSERT_FALSE (result);
     ASSERT_NE (result.error (), nullptr);
@@ -1051,7 +1056,7 @@ TEST (ZLinkHttpClient, QueueTimeoutCompletesBeforeStartingHttpExchange)
                     .coroutines (execute, resume)
                     .build ();
 
-    auto task = client.get ("/games").async_raw ();
+    auto task = client.get ("/games").submit_raw ();
     ASSERT_EQ (execute->pending (), 1U);
     std::this_thread::sleep_for (30ms);
     ASSERT_TRUE (execute->run_one ());
@@ -1082,7 +1087,7 @@ TEST (ZLinkHttpClient, QueueDeadlineAppliesAcrossCoroutineRetries)
                     .build ();
 
     const auto started = std::chrono::steady_clock::now ();
-    const auto result = client.get ("/flaky-slow").async_raw ().result ();
+    const auto result = client.get ("/flaky-slow").submit_raw ().result ();
     const auto elapsed = std::chrono::steady_clock::now () - started;
 
     ASSERT_FALSE (result);
@@ -1104,7 +1109,7 @@ TEST (ZLinkHttpClient, ScheduledRequestOwnsTemporaryBuilderStateUntilCompletion)
                   .coroutines (execute, resume)
                   .post ("/games")
                   .body (create_game_request_t{.name = "temporary-builder"})
-                  .async<create_game_reply_t> ();
+                  .submit<create_game_reply_t> ();
 
     ASSERT_EQ (execute->pending (), 1U);
     ASSERT_TRUE (execute->run_one ());
@@ -1119,17 +1124,17 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
     loopback_http_server_t server;
     auto client = make_json_client (server.base_url ());
 
-    EXPECT_EQ (client.get ("/games").async<create_game_reply_t> ().result ().value ().body.method,
+    EXPECT_EQ (client.get ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
                "GET");
     EXPECT_EQ (client.put ("/games")
                  .body (create_game_request_t{.name = "put"})
-                 .async<create_game_reply_t> ()
+                 .submit<create_game_reply_t> ()
                  .result ()
                  .value ()
                  .body.method,
                "PUT");
     EXPECT_EQ (
-      client.delete_ ("/games").async<create_game_reply_t> ().result ().value ().body.method,
+      client.delete_ ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
       "DELETE");
 
     std::promise<zlink::framework::result_t<
@@ -1137,7 +1142,7 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
       callback_result;
     client.post ("/games")
       .body (create_game_request_t{.name = "callback"})
-      .async<create_game_reply_t> ([&callback_result] (const auto &result) {
+      .submit<create_game_reply_t> ([&callback_result] (const auto &result) {
           callback_result.set_value (result);
       });
     const auto callback = callback_result.get_future ().get ();
@@ -1148,7 +1153,7 @@ TEST (ZLinkHttpClient, SupportsCommonMethodsAndCallbackSubmit)
       zlink::http_client::http_response_t<create_game_reply_t>>>
       failure_callback_result;
     client.get ("/invalid-json")
-      .async<create_game_reply_t> ([&failure_callback_result] (const auto &result) {
+      .submit<create_game_reply_t> ([&failure_callback_result] (const auto &result) {
           failure_callback_result.set_value (result);
       });
     const auto failure_callback = failure_callback_result.get_future ().get ();
@@ -1164,21 +1169,25 @@ TEST (ZLinkHttpClient, ServerClientDelegatesTurnPolicyToInjectedExecutionTurn)
     auto client = zlink::http_client::client_t::create (server.base_url ()).build_server (turn);
 
     const auto async_response =
-      client.get ("/games").async<create_game_reply_t> ().result ();
+      client.get ("/games").submit<create_game_reply_t> ().result ();
     ASSERT_TRUE (async_response);
+    EXPECT_FALSE (turn->last_release.load ());
+
+    const auto one_way = client.post ("/games").submit ().result ();
+    ASSERT_TRUE (one_way);
     EXPECT_FALSE (turn->last_release.load ());
 
     const auto yield_response =
       client.get ("/games").yield<create_game_reply_t> ().result ();
     ASSERT_TRUE (yield_response);
     EXPECT_TRUE (turn->last_release.load ());
-    EXPECT_EQ (turn->prepare_calls.load (), 2);
-    EXPECT_EQ (turn->resume_calls.load (), 2);
+    EXPECT_EQ (turn->prepare_calls.load (), 3);
+    EXPECT_EQ (turn->resume_calls.load (), 3);
 
     std::promise<zlink::framework::result_t<
       zlink::http_client::http_response_t<create_game_reply_t>>>
       callback_result;
-    client.get ("/games").async<create_game_reply_t> (
+    client.get ("/games").submit<create_game_reply_t> (
       [&callback_result] (const auto &result) { callback_result.set_value (result); });
     ASSERT_TRUE (callback_result.get_future ().get ());
     EXPECT_EQ (turn->callback_scheduler_calls.load (), 1);
@@ -1196,7 +1205,7 @@ TEST (ZLinkHttpClient, SendsDefaultHeadersAndRequestOverride)
 
     auto result = client.get ("/headers")
                     .header ("X-ZLink-Override", "request")
-                    .async<header_echo_reply_t> ()
+                    .submit<header_echo_reply_t> ()
                     .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1209,25 +1218,25 @@ TEST (ZLinkHttpClient, MapsStatusDecodeAndTimeoutFailures)
     loopback_http_server_t server;
     auto client = make_json_client (server.base_url (), std::chrono::milliseconds (50));
 
-    const auto missing = client.get ("/missing").async<create_game_reply_t> ().result ();
+    const auto missing = client.get ("/missing").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (missing);
     EXPECT_EQ (missing.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
 
-    const auto bad_request = client.get ("/bad-request").async<create_game_reply_t> ().result ();
+    const auto bad_request = client.get ("/bad-request").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (bad_request);
     EXPECT_EQ (bad_request.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
 
-    const auto server_error = client.get ("/server-error").async<create_game_reply_t> ().result ();
+    const auto server_error = client.get ("/server-error").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (server_error);
     EXPECT_EQ (server_error.error_kind (),
                zlink::framework::framework_error_kind_t::request_failed);
 
-    const auto invalid_json = client.get ("/invalid-json").async<create_game_reply_t> ().result ();
+    const auto invalid_json = client.get ("/invalid-json").submit<create_game_reply_t> ().result ();
     ASSERT_FALSE (invalid_json);
     EXPECT_EQ (invalid_json.error_kind (),
                zlink::framework::framework_error_kind_t::payload_decode_failed);
 
-    const auto timeout = client.get ("/slow").async_raw ().result ();
+    const auto timeout = client.get ("/slow").submit_raw ().result ();
     ASSERT_FALSE (timeout);
     ASSERT_NE (timeout.error (), nullptr);
     EXPECT_EQ (zlink::framework::detail::boundary_state (*timeout.error ()),
@@ -1240,13 +1249,13 @@ TEST (ZLinkHttpClient, SupportsPatchHeadAndOptionsMethods)
     auto client = make_json_client (server.base_url ());
 
     EXPECT_EQ (
-      client.patch ("/games").async<create_game_reply_t> ().result ().value ().body.method,
+      client.patch ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
       "PATCH");
     EXPECT_EQ (
-      client.options ("/games").async<create_game_reply_t> ().result ().value ().body.method,
+      client.options ("/games").submit<create_game_reply_t> ().result ().value ().body.method,
       "OPTIONS");
 
-    const auto head = client.head ("/games").async_raw ().result ();
+    const auto head = client.head ("/games").submit_raw ().result ();
     ASSERT_TRUE (head) << head.error ()->what ();
     EXPECT_EQ (head.value ().status, 200);
     EXPECT_TRUE (head.value ().body.empty ());
@@ -1260,7 +1269,7 @@ TEST (ZLinkHttpClient, EncodesQueryParameters)
     const auto result = client.get ("/echo-target")
                           .query ("name", "hello world")
                           .query ("tag", "a&b")
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1276,7 +1285,7 @@ TEST (ZLinkHttpClient, SendsRawBodyWithContentType)
 
     const auto result = client.post ("/echo-content-type")
                           .body ("<game name=\"match-1\"/>", "application/xml")
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1293,7 +1302,7 @@ TEST (ZLinkHttpClient, SendsFormUrlencodedBody)
     const auto result = client.post ("/echo-content-type")
                           .form ("user", "kim lee")
                           .form ("role", "admin&ops")
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1310,7 +1319,7 @@ TEST (ZLinkHttpClient, SendsMultipartBody)
     const auto result = client.post ("/echo-content-type")
                           .multipart ("name", "avatar")
                           .multipart_file ("file", "avatar.png", "PNGDATA", "image/png")
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1336,7 +1345,7 @@ TEST (ZLinkHttpClient, RejectsMultipleBodySources)
           (void) client.post ("/games")
             .body (create_game_request_t{.name = "match-1"})
             .form ("user", "kim")
-            .async_raw ();
+            .submit_raw ();
       },
       "single body source"));
 }
@@ -1348,13 +1357,13 @@ TEST (ZLinkHttpClient, FollowsRedirectsWhenEnabled)
     auto following = zlink::http_client::client_t::create (server.base_url ())
                        .follow_redirects ()
                        .build ();
-    const auto followed = following.get ("/redirect-once").async<create_game_reply_t> ().result ();
+    const auto followed = following.get ("/redirect-once").submit<create_game_reply_t> ().result ();
     ASSERT_TRUE (followed) << followed.error ()->what ();
     EXPECT_EQ (followed.value ().status, 200);
     EXPECT_EQ (followed.value ().body.method, "GET");
 
     auto direct = make_json_client (server.base_url ());
-    const auto raw = direct.get ("/redirect-once").async_raw ().result ();
+    const auto raw = direct.get ("/redirect-once").submit_raw ().result ();
     ASSERT_TRUE (raw) << raw.error ()->what ();
     EXPECT_EQ (raw.value ().status, 302);
 }
@@ -1366,7 +1375,7 @@ TEST (ZLinkHttpClient, FollowsAbsoluteRedirectLocations)
                     .follow_redirects ()
                     .build ();
 
-    const auto result = client.get ("/redirect-absolute").async<create_game_reply_t> ().result ();
+    const auto result = client.get ("/redirect-absolute").submit<create_game_reply_t> ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().status, 200);
 }
@@ -1383,7 +1392,7 @@ TEST (ZLinkHttpClient, RedirectStripsAuthorizationAcrossHosts)
                                  .build ();
     const auto default_auth = default_auth_client.get ("/redirect-custom")
                                 .header ("X-ZLink-Redirect-Location", location)
-                                .async_raw ()
+                                .submit_raw ()
                                 .result ();
     ASSERT_TRUE (default_auth) << default_auth.error ()->what ();
     EXPECT_EQ (nlohmann::json::parse (default_auth.value ().body).at ("authorization"), "");
@@ -1394,7 +1403,7 @@ TEST (ZLinkHttpClient, RedirectStripsAuthorizationAcrossHosts)
     const auto request_auth = request_auth_client.get ("/redirect-custom")
                                 .header ("X-ZLink-Redirect-Location", location)
                                 .header ("authorization", "Bearer request-token")
-                                .async_raw ()
+                                .submit_raw ()
                                 .result ();
     ASSERT_TRUE (request_auth) << request_auth.error ()->what ();
     EXPECT_EQ (nlohmann::json::parse (request_auth.value ().body).at ("authorization"), "");
@@ -1411,7 +1420,7 @@ TEST (ZLinkHttpClient, RedirectKeepsAuthorizationForSameOrigin)
 
     const auto result = client.get ("/redirect-custom")
                           .header ("X-ZLink-Redirect-Location", location)
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1428,7 +1437,7 @@ TEST (ZLinkHttpClient, RedirectTransformsPostIntoGet)
 
     const auto result = client.post ("/redirect-once")
                           .body (create_game_request_t{.name = "match-1"})
-                          .async<create_game_reply_t> ()
+                          .submit<create_game_reply_t> ()
                           .result ();
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().body.method, "GET");
@@ -1441,7 +1450,7 @@ TEST (ZLinkHttpClient, StopsAtTheRedirectLimit)
                     .follow_redirects (3)
                     .build ();
 
-    const auto result = client.get ("/redirect-loop").async_raw ().result ();
+    const auto result = client.get ("/redirect-loop").submit_raw ().result ();
     ASSERT_FALSE (result);
     EXPECT_NE (std::string (result.error ()->what ()).find ("redirect limit"), std::string::npos);
 }
@@ -1454,7 +1463,7 @@ TEST (ZLinkHttpClient, RetriesRetriableTransportFailures)
 
     // The first /flaky connection is dropped without a response; the retry
     // must succeed against the recovered server.
-    const auto result = client.get ("/flaky").async<create_game_reply_t> ().result ();
+    const auto result = client.get ("/flaky").submit<create_game_reply_t> ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().status, 200);
 }
@@ -1464,11 +1473,11 @@ TEST (ZLinkHttpClient, DoesNotInternallyRetryNonIdempotentRequestsOnStaleConnect
     loopback_http_server_t server;
     auto client = zlink::http_client::client_t::create (server.base_url ()).build ();
 
-    ASSERT_TRUE (client.get ("/games").async_raw ().result ());
+    ASSERT_TRUE (client.get ("/games").submit_raw ().result ());
 
     const auto result = client.post ("/flaky")
                           .body (create_game_request_t{"post-on-stale-connection"})
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
 
     ASSERT_FALSE (result);
@@ -1481,9 +1490,9 @@ TEST (ZLinkHttpClient, StoresAndSendsCookies)
     auto client =
       zlink::http_client::client_t::create (server.base_url ()).cookies ().build ();
 
-    ASSERT_TRUE (client.get ("/set-cookie").async_raw ().result ());
+    ASSERT_TRUE (client.get ("/set-cookie").submit_raw ().result ());
 
-    const auto echoed = client.get ("/echo-cookie").async_raw ().result ();
+    const auto echoed = client.get ("/echo-cookie").submit_raw ().result ();
     ASSERT_TRUE (echoed) << echoed.error ()->what ();
     const auto cookie =
       nlohmann::json::parse (echoed.value ().body).at ("cookie").get<std::string> ();
@@ -1492,7 +1501,7 @@ TEST (ZLinkHttpClient, StoresAndSendsCookies)
     EXPECT_EQ (cookie.find ("theme=dark"), std::string::npos);
 
     auto without_jar = make_json_client (server.base_url ());
-    const auto plain = without_jar.get ("/echo-cookie").async_raw ().result ();
+    const auto plain = without_jar.get ("/echo-cookie").submit_raw ().result ();
     ASSERT_TRUE (plain);
     EXPECT_EQ (nlohmann::json::parse (plain.value ().body).at ("cookie").get<std::string> (), "");
 }
@@ -1503,9 +1512,9 @@ TEST (ZLinkHttpClient, MatchesCookiePathsWithSegmentBoundaries)
     auto client =
       zlink::http_client::client_t::create (server.base_url ()).cookies ().build ();
 
-    ASSERT_TRUE (client.get ("/set-cookie-overlap").async_raw ().result ());
+    ASSERT_TRUE (client.get ("/set-cookie-overlap").submit_raw ().result ());
 
-    const auto administrator = client.get ("/administrator/echo-cookie").async_raw ().result ();
+    const auto administrator = client.get ("/administrator/echo-cookie").submit_raw ().result ();
     ASSERT_TRUE (administrator) << administrator.error ()->what ();
     const auto administrator_cookie =
       nlohmann::json::parse (administrator.value ().body).at ("cookie").get<std::string> ();
@@ -1513,7 +1522,7 @@ TEST (ZLinkHttpClient, MatchesCookiePathsWithSegmentBoundaries)
     EXPECT_EQ (administrator_cookie.find ("scope=admin"), std::string::npos);
     EXPECT_EQ (administrator_cookie.find ("scope=games"), std::string::npos);
 
-    const auto admin = client.get ("/admin/echo-cookie").async_raw ().result ();
+    const auto admin = client.get ("/admin/echo-cookie").submit_raw ().result ();
     ASSERT_TRUE (admin) << admin.error ()->what ();
     const auto admin_cookie =
       nlohmann::json::parse (admin.value ().body).at ("cookie").get<std::string> ();
@@ -1530,7 +1539,7 @@ TEST (ZLinkHttpClient, RoutesPlainRequestsThroughHttpProxy)
                     .proxy (proxy.url ())
                     .build ();
 
-    const auto result = client.get ("/games").async<create_game_reply_t> ().result ();
+    const auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().status, 200);
     EXPECT_GT (proxy.forwarded_requests (), 0);
@@ -1542,7 +1551,7 @@ TEST (ZLinkHttpClient, DecompressesGzipResponses)
     auto client =
       zlink::http_client::client_t::create (server.base_url ()).compression ().build ();
 
-    const auto result = client.get ("/gzip").async_raw ().result ();
+    const auto result = client.get ("/gzip").submit_raw ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().body, "hello gzip payload");
     EXPECT_EQ (result.value ().headers.count ("content-encoding"), 0U);
@@ -1557,7 +1566,7 @@ TEST (ZLinkHttpClient, RejectsDecompressedResponseAboveBodyLimit)
                     .max_response_body_size (1024)
                     .build ();
 
-    const auto result = client.get ("/gzip-large").async_raw ().result ();
+    const auto result = client.get ("/gzip-large").submit_raw ().result ();
 
     ASSERT_FALSE (result);
     EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
@@ -1592,7 +1601,7 @@ TEST (ZLinkHttpClient, RejectsBufferedResponseAboveBodyLimit)
                     .max_response_body_size (32)
                     .build ();
 
-    const auto result = client.get ("/big").async_raw ().result ();
+    const auto result = client.get ("/big").submit_raw ().result ();
 
     ASSERT_FALSE (result);
     EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
@@ -1665,7 +1674,7 @@ TEST (ZLinkHttpClient, SendsBasicAuthAndBearerToken)
     const auto basic = zlink::http_client::client_t::create (server.base_url ())
                          .basic_auth ("user", "pass")
                          .get ("/echo-auth")
-                         .async_raw ()
+                         .submit_raw ()
                          .result ();
     ASSERT_TRUE (basic) << basic.error ()->what ();
     EXPECT_EQ (nlohmann::json::parse (basic.value ().body).at ("authorization"),
@@ -1674,7 +1683,7 @@ TEST (ZLinkHttpClient, SendsBasicAuthAndBearerToken)
     const auto bearer = zlink::http_client::client_t::create (server.base_url ())
                           .bearer_token ("token-123")
                           .get ("/echo-auth")
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
     ASSERT_TRUE (bearer) << bearer.error ()->what ();
     EXPECT_EQ (nlohmann::json::parse (bearer.value ().body).at ("authorization"),
@@ -1687,13 +1696,13 @@ TEST (ZLinkHttpClient, PerRequestTimeoutOverridesClientTimeout)
     auto client = make_json_client (server.base_url (), std::chrono::milliseconds (2000));
 
     const auto timed_out =
-      client.get ("/slow").timeout (std::chrono::milliseconds (100)).async_raw ().result ();
+      client.get ("/slow").timeout (std::chrono::milliseconds (100)).submit_raw ().result ();
     ASSERT_FALSE (timed_out);
     EXPECT_EQ (zlink::framework::detail::boundary_state (*timed_out.error ()),
                zlink::framework::detail::boundary_error_t::timed_out);
 
     // The same client without the override completes within its own timeout.
-    const auto completed = client.get ("/slow").async_raw ().result ();
+    const auto completed = client.get ("/slow").submit_raw ().result ();
     ASSERT_TRUE (completed) << completed.error ()->what ();
     EXPECT_EQ (completed.value ().status, 200);
 }
@@ -1703,9 +1712,9 @@ TEST (ZLinkHttpClient, ReusesKeptAliveConnections)
     loopback_http_server_t server;
     auto client = make_json_client (server.base_url ());
 
-    ASSERT_TRUE (client.get ("/games").async_raw ().result ());
-    ASSERT_TRUE (client.get ("/games").async_raw ().result ());
-    ASSERT_TRUE (client.get ("/games").async_raw ().result ());
+    ASSERT_TRUE (client.get ("/games").submit_raw ().result ());
+    ASSERT_TRUE (client.get ("/games").submit_raw ().result ());
+    ASSERT_TRUE (client.get ("/games").submit_raw ().result ());
 
     EXPECT_EQ (server.connections (), 1);
 }
@@ -1726,7 +1735,7 @@ TEST (ZLinkHttpClient, UploadsStreamedRequestBody)
                                 return chunks[next++];
                             },
                             "application/octet-stream")
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1751,7 +1760,7 @@ TEST (ZLinkHttpClient, DropsConsumedStreamBodyOn307Redirect)
                                                   : std::nullopt;
                             },
                             "application/octet-stream")
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1778,7 +1787,7 @@ TEST (ZLinkHttpClient, DropsConsumedStreamBodyOn303Redirect)
                                                   : std::nullopt;
                             },
                             "application/octet-stream")
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1812,7 +1821,7 @@ TEST (ZLinkHttpClient, CoroutineBodyStreamProviderRunsOnExecuteSchedulerWorker)
                                 return std::nullopt;
                             },
                             "text/plain")
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1826,7 +1835,7 @@ TEST (ZLinkHttpClient, DecompressesDeflateResponses)
     auto client =
       zlink::http_client::client_t::create (server.base_url ()).compression ().build ();
 
-    const auto result = client.get ("/deflate").async_raw ().result ();
+    const auto result = client.get ("/deflate").submit_raw ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().body, "hello deflate payload");
     EXPECT_EQ (result.value ().headers.count ("content-encoding"), 0U);
@@ -1841,7 +1850,7 @@ TEST (ZLinkHttpClient, RejectsUnauthorizedProxyAndAcceptsProxyBasicAuth)
     const auto denied = zlink::http_client::client_t::create (server.base_url ())
                           .proxy (proxy.url ())
                           .get ("/games")
-                          .async_raw ()
+                          .submit_raw ()
                           .result ();
     ASSERT_TRUE (denied);
     EXPECT_EQ (denied.value ().status, 407);
@@ -1850,7 +1859,7 @@ TEST (ZLinkHttpClient, RejectsUnauthorizedProxyAndAcceptsProxyBasicAuth)
                            .proxy (proxy.url ())
                            .proxy_basic_auth ("proxy", "secret")
                            .get ("/games")
-                           .async_raw ()
+                           .submit_raw ()
                            .result ();
     ASSERT_TRUE (allowed) << allowed.error ()->what ();
     EXPECT_EQ (allowed.value ().status, 200);
@@ -1868,7 +1877,7 @@ TEST (ZLinkHttpClient, PresentsClientCertificateForMutualTls)
         .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
         .client_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT, ZLINK_HTTP_CLIENT_TEST_KEY)
         .get ("/games")
-        .async_raw ()
+        .submit_raw ()
         .result ();
     ASSERT_TRUE (with_certificate) << with_certificate.error ()->what ();
     EXPECT_EQ (with_certificate.value ().status, 200);
@@ -1876,7 +1885,7 @@ TEST (ZLinkHttpClient, PresentsClientCertificateForMutualTls)
     const auto without_certificate = zlink::http_client::client_t::create (server.base_url ())
                                        .trust_certificate_file (ZLINK_HTTP_CLIENT_TEST_CERT)
                                        .get ("/games")
-                                       .async_raw ()
+                                       .submit_raw ()
                                        .result ();
     EXPECT_FALSE (without_certificate);
 }
@@ -1892,7 +1901,7 @@ TEST (ZLinkHttpClient, TunnelsHttpsThroughProxyConnect)
                     .proxy (proxy.url ())
                     .build ();
 
-    const auto result = client.get ("/games").async<create_game_reply_t> ().result ();
+    const auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
     ASSERT_TRUE (result) << result.error ()->what ();
     EXPECT_EQ (result.value ().status, 200);
     EXPECT_GT (proxy.connect_tunnels (), 0);
@@ -1908,7 +1917,7 @@ TEST (ZLinkHttpClient, SupportsHttpsWithExplicitTrust)
 
     auto result = client.post ("/games")
                     .body (create_game_request_t{.name = "secure"})
-                    .async<create_game_reply_t> ()
+                    .submit<create_game_reply_t> ()
                     .result ();
 
     ASSERT_TRUE (result) << result.error ()->what ();
@@ -1921,7 +1930,7 @@ TEST (ZLinkHttpClient, RejectsUntrustedHttpsCertificate)
     loopback_https_server_t server;
     auto client = make_json_client (server.base_url ());
 
-    auto result = client.get ("/games").async<create_game_reply_t> ().result ();
+    auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
 
     ASSERT_FALSE (result);
     EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);
@@ -1933,7 +1942,7 @@ TEST (ZLinkHttpClient, RejectsHttpsHostnameMismatch)
     auto client = make_json_client (server.mismatched_base_url (), std::chrono::milliseconds (500),
                                     std::string (ZLINK_HTTP_CLIENT_TEST_CERT));
 
-    auto result = client.get ("/games").async<create_game_reply_t> ().result ();
+    auto result = client.get ("/games").submit<create_game_reply_t> ().result ();
 
     ASSERT_FALSE (result);
     EXPECT_EQ (result.error_kind (), zlink::framework::framework_error_kind_t::request_failed);

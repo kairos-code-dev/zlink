@@ -22,7 +22,7 @@ import systems.zlink.framework.actors.ZLinkBoundSession;
 import systems.zlink.framework.actors.ZLinkBoundSessionSendCall;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
-import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
+
 import systems.zlink.framework.streams.ZLinkStreamCodec;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeaderFlag;
@@ -92,6 +92,14 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         if (!actorId.equals(targetActor.actorId())) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "bound session actor id mismatch: " + actorId));
+        }
+        ZLinkBackendActorRef sourceActor = actorRuntime.refFor(actor);
+        if (sourceActor.generation() != targetActor.generation()) {
+            return CompletableFuture.failedFuture(new ZLinkConfigurationException(
+                "relocation cannot rebind bound session actor " + actorId
+                    + " from generation " + sourceActor.generation()
+                    + " to " + targetActor.generation()
+                    + "; a new actor incarnation requires an explicit bind"));
         }
         ZLinkStreamHeader header = new ZLinkStreamHeader(
             ZLinkStreamMessageKind.SEND,
@@ -171,7 +179,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             actorId,
             encoded.payload(),
             ZLinkBoundSessionSendOptions.create(encoded.packetName(), defaultCodec),
-            metadataPolicy);
+            metadataPolicy,
+            actorRuntime.oneWayCalls());
     }
 
     @Override
@@ -191,7 +200,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
         Message payload,
         ZLinkBoundSessionSendOptions options,
         ZLinkRelayMetadataPolicy metadataPolicy,
-        systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate)
+        ZLinkOneWayCalls oneWayCalls,
+        java.util.concurrent.atomic.AtomicBoolean submitGate)
         implements ZLinkBoundSessionSendCall {
         SendCall(
             ZLinkBackendStreamSocket stream,
@@ -199,9 +209,10 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             String actorId,
             Message payload,
             ZLinkBoundSessionSendOptions options,
-            ZLinkRelayMetadataPolicy metadataPolicy) {
-            this(stream, sessionRid, actorId, payload, options, metadataPolicy,
-                new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate());
+            ZLinkRelayMetadataPolicy metadataPolicy,
+            ZLinkOneWayCalls oneWayCalls) {
+            this(stream, sessionRid, actorId, payload, options, metadataPolicy, oneWayCalls,
+                new java.util.concurrent.atomic.AtomicBoolean());
         }
         public ZLinkBoundSessionSendCall packetName(String packetName) {
             return new SendCall(
@@ -210,7 +221,8 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 actorId,
                 payload,
                 options.withPacketName(packetName),
-                metadataPolicy);
+                metadataPolicy,
+                oneWayCalls);
         }
 
         @Override
@@ -221,13 +233,14 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
                 actorId,
                 payload,
                 options.withMetadata(key, value),
-                metadataPolicy);
+                metadataPolicy,
+                oneWayCalls);
         }
 
         @Override
-        public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-            CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-                submitGate.begin();
+        public CompletionStage<Void> submit() {
+            CompletionStage<Void> duplicate =
+                ZLinkOneWayCalls.beginOneWay(submitGate);
             if (duplicate != null) {
                 return duplicate;
             }
@@ -239,7 +252,7 @@ final class ZLinkBoundSessionRuntime implements ZLinkBoundSession {
             }
             ZLinkStreamHeader header = metadataPolicy.actorToSession(options).header();
             Message payloadPart = Message.from(payloadBytes);
-            return ZLinkSubmitResults.submitAsync(
+            return oneWayCalls.submitOneWay(
                 stream,
                 ZLinkBackendAdmissionKey.socket(),
                 () -> stream.send(

@@ -64,7 +64,7 @@ class bingo_session_t final : public packet_stream_session_t
             co_return;
         }
         if (dispatch.can_reply ()) {
-            auto reply = co_await actor.value ().relay_request (payload).async ();
+            auto reply = co_await actor.value ().relay_request (payload).submit ();
             stream.reply_packet (reply).submit ();
             co_return;
         }

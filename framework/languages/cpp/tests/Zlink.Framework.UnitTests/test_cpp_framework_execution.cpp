@@ -5,6 +5,7 @@
 #include "runtime/spots/spot_runtime.hpp"
 
 #include <zlink/framework/contracts/spots/spot.hpp>
+#include <zlink/framework/contracts/actors/actor.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -122,7 +123,7 @@ zlink::framework::task_t<void> run_request_turn_probe (
     }
     zlink::framework::request_call_t<int> call (
       "TurnProbe", [reply] (const auto &, auto, const auto &) { return reply->task (); });
-    const auto value = release_turn ? co_await call.yield () : co_await call.async ();
+    const auto value = release_turn ? co_await call.yield () : co_await call.submit ();
     if (value != 7) {
         throw std::runtime_error ("turn probe reply mismatch");
     }
@@ -136,7 +137,10 @@ zlink::framework::task_t<void> run_request_turn_probe (
 bool verify_request_turn_mode (bool release_turn, const std::vector<int> &expected)
 {
     zlink::framework::runtime::offload_executor_t executor (2);
-    zlink::framework::runtime::serial_execution_queue_t queue (executor, 4);
+    zlink::framework::runtime::serial_execution_queue_t queue (
+      executor, 4,
+      zlink::framework::runtime::serial_execution_queue_t::error_handler_t{},
+      true);
     auto reply = std::make_shared<zlink::framework::detail::task_completion_source_t<int>> ();
     auto order = std::make_shared<std::vector<int>> ();
     auto order_gate = std::make_shared<std::mutex> ();
@@ -200,6 +204,22 @@ int main ()
         return 26;
     }
 
+    std::atomic_int unsupported_submit_count = 0;
+    zlink::framework::request_call_t<int> unsupported_yield (
+      "UnsupportedYield",
+      [&unsupported_submit_count] (const auto &, auto, const auto &) {
+          unsupported_submit_count.fetch_add (1);
+          return zlink::framework::task_t<int> (
+            zlink::framework::result_t<int>::success (1));
+      });
+    const auto unsupported_yield_result = unsupported_yield.yield ().result ();
+    if (unsupported_yield_result
+        || unsupported_yield_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::invalid_configuration
+        || unsupported_submit_count.load () != 0) {
+        return 30;
+    }
+
     zlink::framework::runtime::offload_executor_t executor (2);
 
     std::vector<int> order;
@@ -253,12 +273,12 @@ int main ()
 
     zlink::framework::spot_context_t context;
     auto async_call = context.run_cpu_worker ([] { return 1; });
-    auto async_result = async_call.async ().result ();
+    auto async_result = async_call.submit ().result ();
     if (async_result
         || async_result.error_kind () != zlink::framework::framework_error_kind_t::request_failed) {
         return 6;
     }
-    auto duplicate_async = async_call.async ().result ();
+    auto duplicate_async = async_call.submit ().result ();
     if (duplicate_async
         || duplicate_async.error_kind ()
              != zlink::framework::framework_error_kind_t::request_protocol_error) {
@@ -266,13 +286,13 @@ int main ()
     }
 
     auto callback_call = context.run_cpu_worker ([] { return 2; });
-    const auto unconfigured_result = callback_call.async ().result ();
+    const auto unconfigured_result = callback_call.submit ().result ();
     if (unconfigured_result
         || unconfigured_result.error_kind ()
              != zlink::framework::framework_error_kind_t::request_failed) {
         return 8;
     }
-    const auto duplicate_result = callback_call.async ().result ();
+    const auto duplicate_result = callback_call.submit ().result ();
     if (duplicate_result
         || duplicate_result.error_kind ()
              != zlink::framework::framework_error_kind_t::request_protocol_error) {
@@ -286,7 +306,7 @@ int main ()
         worker_thread = std::this_thread::get_id ();
         return 42;
     });
-    auto submit_task = submit_call.async ();
+    auto submit_task = submit_call.submit ();
     if (scheduler->worker_job_count () != 1 || scheduler->owner_job_count () != 0) {
         return 10;
     }
@@ -303,7 +323,7 @@ int main ()
     auto async_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
     auto async_context = context_with_scheduler (async_scheduler);
     auto worker_call = async_context.run_cpu_worker ([] { return 7; });
-    auto worker_task = worker_call.async ();
+    auto worker_task = worker_call.submit ();
     async_scheduler->run_worker_job ();
     async_scheduler->run_owner_job ();
     const auto worker_result = worker_task.result ();
@@ -315,7 +335,7 @@ int main ()
     full_scheduler->queue_full = true;
     auto full_context = context_with_scheduler (full_scheduler);
     auto full_call = full_context.run_cpu_worker ([] { return 3; });
-    auto full_task = full_call.async ();
+    auto full_task = full_call.submit ();
     if (full_scheduler->worker_job_count () != 0 || full_scheduler->owner_job_count () != 1) {
         return 14;
     }
@@ -330,7 +350,7 @@ int main ()
     auto timeout_scheduler = std::make_shared<controlled_worker_scheduler_t> ();
     auto timeout_context = context_with_scheduler (timeout_scheduler);
     auto timeout_call = timeout_context.run_cpu_worker ([] { return 9; });
-    auto timeout_task = timeout_call.timeout (std::chrono::milliseconds (5)).async ();
+    auto timeout_task = timeout_call.timeout (std::chrono::milliseconds (5)).submit ();
     for (int attempt = 0; attempt < 50 && timeout_scheduler->owner_job_count () == 0; ++attempt) {
         std::this_thread::sleep_for (std::chrono::milliseconds (2));
     }
@@ -356,7 +376,7 @@ int main ()
         auto source =
           std::make_shared<zlink::framework::detail::task_completion_source_t<int>> ();
         auto call = full_context.run_io_worker ([source] { return source->task (); });
-        io_tasks.push_back (call.async ());
+        io_tasks.push_back (call.submit ());
         io_sources.push_back (std::move (source));
     }
     if (full_scheduler->worker_job_count () != 0 || full_scheduler->owner_job_count () != 0) {
@@ -378,12 +398,53 @@ int main ()
     auto io_timeout_call = full_context.run_io_worker (
       [io_timeout_source] { return io_timeout_source->task (); });
     const auto io_timeout_result =
-      io_timeout_call.timeout (std::chrono::milliseconds (5)).async ().result ();
+      io_timeout_call.timeout (std::chrono::milliseconds (5)).submit ().result ();
     if (io_timeout_result
         || io_timeout_result.error_kind ()
              != zlink::framework::framework_error_kind_t::worker_timed_out
         || full_scheduler->worker_job_count () != 0) {
         return 29;
+    }
+
+    {
+        zlink::framework::runtime::offload_executor_t deferred_executor (1);
+        zlink::framework::runtime::serial_execution_queue_t deferred_queue (
+          deferred_executor, 16);
+        std::vector<std::string> events;
+        deferred_queue.run ("deferred-actor-join", [&] {
+            zlink::framework::actor_join_call_t ([&] (std::chrono::milliseconds) {
+                events.push_back ("join");
+            }).defer ();
+            events.push_back ("handler");
+        });
+        if (events != std::vector<std::string>{"handler", "join"}) {
+            return 30;
+        }
+
+        bool detached_rejected = false;
+        try {
+            zlink::framework::actor_join_call_t (
+              [] (std::chrono::milliseconds) {}).defer ();
+        }
+        catch (const zlink::framework::framework_exception_t &error) {
+            detached_rejected =
+              error.kind ()
+              == zlink::framework::framework_error_kind_t::invalid_configuration;
+        }
+        if (!detached_rejected) {
+            return 31;
+        }
+
+        events.clear ();
+        deferred_queue.run ("failed-handler", [&] {
+            zlink::framework::actor_join_call_t ([&] (std::chrono::milliseconds) {
+                events.push_back ("must-not-run");
+            }).defer ();
+            throw std::runtime_error ("handler failed");
+        });
+        if (!events.empty ()) {
+            return 32;
+        }
     }
 
     zlink::framework::runtime::offload_executor_t elastic_executor (

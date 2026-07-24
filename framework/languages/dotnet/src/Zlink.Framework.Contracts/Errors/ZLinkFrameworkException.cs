@@ -62,5 +62,6 @@ public enum ZLinkFrameworkErrorKind
     SpotGenerationStale = 32,
     SpotMoving = 33,
     RelocationDataLost = 34,
-    SpotIdConflict = 35
+    SpotIdConflict = 35,
+    RuntimeShutdown = 36
 }

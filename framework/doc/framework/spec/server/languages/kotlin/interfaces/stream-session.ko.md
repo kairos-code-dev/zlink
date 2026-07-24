@@ -17,6 +17,14 @@ Session send·reply, bound session send와 Session Actor relay는 Kotlin one-way
 runtime 종료는 exception으로 완료한다. Bound session이나 Session Actor mapping이 없으면
 `ActorSessionNotBound`를 사용하고 runtime 종료에는 `RuntimeShutdown=36`을 사용한다.
 
+Java `ZLinkSessionActor.notifyDisconnected()`는 연결이 유지된 상태의 논리적 통지로 그대로 사용한다. Bind 뒤
+relay와 disconnect는 Actor별 저장 route를 사용하며 message마다 Location Store를 조회하지 않는다. Physical
+disconnect는 Framework가 current binding 전체에 자동 all-settled 통지를 수행하고 exact binding
+identity마다 Spot callback을 최대 한 번 실행한다. Relocation route update는 같은 ObjectGeneration에만
+허용하고 `Completed` 뒤 해당 Actor route만 바꾼다.
+Command 44·45 routed ACK와 steady normalization 전에는 target Actor의 session packet·push admission을
+열지 않으며, 같은 Session의 다른 Actor route와 physical STREAM connection은 유지한다.
+
 ## Kotlin source signature
 
 ```kotlin
@@ -41,11 +49,11 @@ interface ZLinkKotlinSessionClient {
 }
 
 interface ZLinkKotlinSessionActor {
-    fun relay(message: ZLinkMessage): ZLinkKotlinMessageSendCall
+    fun relay(message: ZLinkMessage): ZLinkKotlinSubmissionCall
     fun relay(
-        dispatch: ZLinkSessionDispatchContext,
+        dispatch: ZLinkSessionMessageContext,
         message: ZLinkMessage,
-    ): ZLinkKotlinMessageSendCall
+    ): ZLinkKotlinSubmissionCall
 }
 
 interface ZLinkKotlinBoundSession {
@@ -73,8 +81,8 @@ public interface systems.zlink.framework.kotlin.ZLinkKotlinSessionClient {
   public abstract systems.zlink.framework.kotlin.ZLinkKotlinSessionReplyCall reply(java.lang.Object);
 }
 public interface systems.zlink.framework.kotlin.ZLinkKotlinSessionActor {
-  public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall relay(systems.zlink.framework.messaging.ZLinkMessage);
-  public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall relay(systems.zlink.framework.streams.ZLinkSessionDispatchContext, systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall relay(systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall relay(systems.zlink.framework.streams.ZLinkSessionMessageContext, systems.zlink.framework.messaging.ZLinkMessage);
 }
 public interface systems.zlink.framework.kotlin.ZLinkKotlinBoundSession {
   public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall send(java.lang.Object);

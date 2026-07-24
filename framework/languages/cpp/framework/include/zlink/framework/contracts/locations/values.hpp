@@ -67,12 +67,4 @@ enum class object_role_t : std::uint8_t
     server = 2
 };
 
-struct object_capacity_options_t
-{
-    std::uint32_t active = 0;
-    std::uint32_t pending = 0;
-    std::uint32_t active_limit = 10000;
-    std::uint32_t pending_limit = 128;
-};
-
 } // namespace zlink::framework

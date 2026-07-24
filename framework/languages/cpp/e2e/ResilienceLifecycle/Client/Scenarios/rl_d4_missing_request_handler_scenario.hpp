@@ -20,7 +20,7 @@ inline void run_rl_d4_missing_request_handler_scenario (const client_options_t &
                       .build ();
     const auto failure = consumer.post ("/profile/request/missing")
                            .body (profile_req_t{.value = "fast", .marker = "rl-d4-missing"})
-                           .async<request_failure_res_t> ().result ().value ().body;
+                           .submit<request_failure_res_t> ().result ().value ().body;
     ensure (failure.failed, "RL-D4 expected public failure payload");
     ensure (failure.error_type == "HandlerNotFound",
             "RL-D4 missing handler error type mismatch: " + failure.error_type);

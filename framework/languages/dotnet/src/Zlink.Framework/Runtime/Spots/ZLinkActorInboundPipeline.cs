@@ -58,6 +58,41 @@ internal sealed class ZLinkActorInboundPipeline(
         }
     }
 
+    public async ValueTask DispatchAsync(
+        ZLinkSpotActorFrameBatch frames,
+        ZLinkSpotSerialExecutor executor,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(executor);
+        var dispatches = new Task[frames.Count];
+        try
+        {
+            for (var i = 0; i < frames.Count; i++)
+            {
+                var frame = frames[i];
+                dispatches[i] = executor.ExecuteActorAsync(
+                    frame.Actor.ActorId,
+                    async static (_, state, ct) =>
+                    {
+                        using (state.Frame)
+                            await state.Pipeline.DispatchFrameAsync(
+                                    state.Frame,
+                                    ct,
+                                    allowCapture: true)
+                                .ConfigureAwait(false);
+                    },
+                    new ScheduledFrame(this, frame),
+                    cancellationToken).AsTask();
+            }
+
+            await Task.WhenAll(dispatches).ConfigureAwait(false);
+        }
+        finally
+        {
+            frames.Dispose();
+        }
+    }
+
     public async ValueTask DispatchReplayAsync(
         ZLinkSpotActorFrameBatch frames,
         Action acknowledgeFrame,
@@ -335,6 +370,10 @@ internal sealed class ZLinkActorInboundPipeline(
                 runtime.ShutdownToken)
             .ConfigureAwait(false);
     }
+
+    private sealed record ScheduledFrame(
+        ZLinkActorInboundPipeline Pipeline,
+        ZLinkSpotActorFrame Frame);
 }
 
 internal sealed class ZLinkEntrySpotActorInboundEndpoint(

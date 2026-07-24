@@ -1,5 +1,12 @@
 # Java Actor 공개 인터페이스
 
+Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
+callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
+같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
+normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+변경하지 않는다.
+
 [인터페이스 목차](README.ko.md) · [Actor 공통 계약](../../../../22-actor-model.ko.md)
 
 이 문서는 Java에서 Actor factory, context, messaging, manager와 relocation adapter를 표현하는 공개
@@ -8,7 +15,7 @@ operation은 exact `ActorRef`를 사용한다.
 
 ```java
 public interface ZLinkActorFactory {
-    CompletionStage<ZLinkActor> create(String actorId, ZLinkActorContext context);
+    CompletionStage<ZLinkActor> create(ZLinkActorContext context);
 }
 
 public interface ZLinkActorHandlerRegistry {
@@ -111,12 +118,12 @@ Standalone relocation의 Actor는 source Entry Spot member여야 한다. User Sp
 분리하지 않고 Spot과 current member 전체를 bounded aggregate로 함께 옮긴다. User Spot membership 자체는 Retire
 blocker가 아니며 participant 하나라도 `Disabled`이거나 호환 target을 확보할 수 없을 때만 aggregate 전체를
 차단한다. `Disabled` participant는 `BLOCKED/RELOCATION_DISABLED`, target·capacity·reservation 부재는
-`BLOCKED/TARGET_UNAVAILABLE`, application version·type·[Snapshot](../../../../01-glossary.ko.md#snapshot) adapter capability 불일치는
+`BLOCKED/TARGET_UNAVAILABLE`, application version·type·[Snapshot](../../../../01-glossary.ko.md#relocation-policy) adapter capability 불일치는
 `BLOCKED/STATE_INCOMPATIBLE`다. Standalone Actor는 target factory와 restore를 끝내고 accepted journal을
 application handler가 실행하지 않은 staging queue로 준비한 뒤 `NEW_OWNER` CAS를 수행한다. 이 CAS는
 owner, authority owner generation과 current [Spot](../../../../01-glossary.ko.md#spot)을 target Entry identity로
 원자적으로 바꾼다. Commit 뒤 target `onActorRelocated`와 source `onLeaveActor`를 호출하고 old Entry [membership](../../../../01-glossary.ko.md#membership)의
-durable cleanup을 완료한 뒤 journal replay와 dispatch를 개방한다. Callback 실패는 commit을 rollback하거나 source
+journal을 replay한 뒤 old Entry membership을 포함한 source resource를 durable하게 cleanup하고 dispatch를 개방한다. Callback 실패는 commit을 rollback하거나 source
 owner를 복원하지 않으며 callback을 retry한다.
 Source process가 종료되면 durable source cleanup이 source callback 완료를 대신해 target recovery가 계속된다.
 Lifecycle callback은 retry-safe해야 하며 at-least-once 호출될 수 있다. 이 순서를 제어하는 public phase API는 없다.
@@ -126,13 +133,29 @@ Lifecycle callback은 retry-safe해야 하며 at-least-once 호출될 수 있다
 target만 factory, initial Entry membership과 initialize를 수행한다. 성공하면 같은 reservation을 `READY`와
 active capacity로 commit하고 실패하면 abort한다. CAS 경쟁에서 진 target은 별도 factory를 실행하지 않는다.
 
+Actor Join call은 동기 `defer()`만 제공하며 `submit(...)`·`yield(...)`를 제공하지
+않는다. `defer()`는 current handler에 immutable Join intent와 비활성 barrier만
+등록하며 target 조회나 Store I/O를 시작하지 않는다. Handler가 정상적으로 끝나면
+Join을 실행하고 실패하면 barrier를 폐기한다. 결과는 같은 128-bit operation ID의
+`onJoinCompleted(...)` Actor callback으로 전달한다.
+
+Operation ID는 completion idempotency ID이며 `RelocationId`, reservation ID나
+aggregate commit ID가 아니다. Same-node outcome과 `Rejected`·commit 전 `Failed`
+completion retry는 current process lifetime으로 제한한다. Cross-node commit 뒤
+`Accepted`만 Relocation manifest에 operation ID, optional reply와 cursor를 보존해
+durable at-least-once로 전달한다.
+
+Request 없는 overload는 empty `ZLinkMessage`를 고정한다. Timeout 기본값은 5초이고
+명시 값은 millisecond 올림 기준 유한한 `1..Integer.MAX_VALUE` ms다. `defer()`에서
+monotonic absolute deadline을 고정한다.
+
 ## Exact public member inventory
 
 아래 선언은 이 category의 Java public type과 member를 고정한다.
 
 ```java
 public interface systems.zlink.framework.actors.ZLinkActorFactory {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActor> create(java.lang.String, systems.zlink.framework.actors.ZLinkActorContext);
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActor> create(systems.zlink.framework.actors.ZLinkActorContext);
 }
 public interface systems.zlink.framework.actors.ZLinkRelocationCancellation {
   public abstract boolean isCancellationRequested();
@@ -182,45 +205,61 @@ public final class systems.zlink.framework.actors.ActorRef extends java.lang.Rec
   public systems.zlink.contracts.core.RoutingId nodeRid();
 }
 public interface systems.zlink.framework.actors.ZLinkActor {
-  public abstract java.lang.String actorId();
   public abstract systems.zlink.framework.actors.ZLinkActorContext context();
   public default void configure();
+  public default java.util.concurrent.CompletionStage<java.lang.Void> onJoinCompleted(systems.zlink.framework.actors.ZLinkActorJoinCompletion);
 }
 public interface systems.zlink.framework.actors.ZLinkActorClient {
   public abstract systems.zlink.framework.actors.ZLinkActorSendCall sendToActor(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.actors.ZLinkActorRequestCall requestToActor(java.lang.String, java.lang.Object);
 }
 public interface systems.zlink.framework.actors.ZLinkActorContext {
+  public abstract java.lang.String actorId();
+  public abstract long objectGeneration();
   public abstract java.lang.String meshName();
   public abstract java.util.Optional<java.lang.String> spotId();
   public abstract systems.zlink.framework.actors.ZLinkBoundSession boundSession();
+  public abstract systems.zlink.framework.actors.ZLinkActorJoinCall joinSpot(java.lang.String);
   public abstract systems.zlink.framework.actors.ZLinkActorJoinCall joinSpot(java.lang.String, java.lang.Object);
+  public abstract systems.zlink.framework.actors.ZLinkActorJoinCall joinEntrySpot();
   public abstract systems.zlink.framework.actors.ZLinkActorJoinCall joinEntrySpot(java.lang.Object);
 }
 public interface systems.zlink.framework.actors.ZLinkActorJoinCall {
   public abstract systems.zlink.framework.actors.ZLinkActorJoinCall timeout(java.time.Duration);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActorJoinResult<java.lang.Void>> submit();
-  public abstract <TReply> java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActorJoinResult<TReply>> submit(java.lang.Class<TReply>);
+  public abstract void defer();
 }
-public final class systems.zlink.framework.actors.ZLinkActorJoinResult$Accepted<TReply> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkActorJoinResult<TReply> {
-  public systems.zlink.framework.actors.ZLinkActorJoinResult$Accepted(systems.zlink.framework.actors.ActorRef, TReply);
+public final class systems.zlink.framework.actors.ZLinkActorJoinOperationId extends java.lang.Record {
+  public systems.zlink.framework.actors.ZLinkActorJoinOperationId(long, long);
+  public long high();
+  public long low();
+}
+public final class systems.zlink.framework.actors.ZLinkActorJoinCompletion$Accepted extends java.lang.Record implements systems.zlink.framework.actors.ZLinkActorJoinCompletion {
+  public systems.zlink.framework.actors.ZLinkActorJoinCompletion$Accepted(systems.zlink.framework.actors.ZLinkActorJoinOperationId, systems.zlink.framework.actors.ActorRef, systems.zlink.framework.messaging.ZLinkMessage);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
+  public systems.zlink.framework.actors.ZLinkActorJoinOperationId operationId();
   public systems.zlink.framework.actors.ActorRef actor();
-  public TReply reply();
+  public systems.zlink.framework.messaging.ZLinkMessage reply();
 }
-public final class systems.zlink.framework.actors.ZLinkActorJoinResult$Rejected<TReply> extends java.lang.Record implements systems.zlink.framework.actors.ZLinkActorJoinResult<TReply> {
-  public systems.zlink.framework.actors.ZLinkActorJoinResult$Rejected(TReply);
+public final class systems.zlink.framework.actors.ZLinkActorJoinCompletion$Rejected extends java.lang.Record implements systems.zlink.framework.actors.ZLinkActorJoinCompletion {
+  public systems.zlink.framework.actors.ZLinkActorJoinCompletion$Rejected(systems.zlink.framework.actors.ZLinkActorJoinOperationId, systems.zlink.framework.messaging.ZLinkMessage);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
-  public TReply reply();
+  public systems.zlink.framework.actors.ZLinkActorJoinOperationId operationId();
+  public systems.zlink.framework.messaging.ZLinkMessage reply();
 }
-public sealed interface systems.zlink.framework.actors.ZLinkActorJoinResult<TReply>
-    permits systems.zlink.framework.actors.ZLinkActorJoinResult.Accepted,
-            systems.zlink.framework.actors.ZLinkActorJoinResult.Rejected {
-  public abstract TReply reply();
+public final class systems.zlink.framework.actors.ZLinkActorJoinCompletion$Failed extends java.lang.Record implements systems.zlink.framework.actors.ZLinkActorJoinCompletion {
+  public systems.zlink.framework.actors.ZLinkActorJoinCompletion$Failed(systems.zlink.framework.actors.ZLinkActorJoinOperationId, systems.zlink.framework.errors.ZLinkFrameworkErrorKind, boolean);
+  public systems.zlink.framework.actors.ZLinkActorJoinOperationId operationId();
+  public systems.zlink.framework.errors.ZLinkFrameworkErrorKind kind();
+  public boolean isRetriable();
+}
+public sealed interface systems.zlink.framework.actors.ZLinkActorJoinCompletion
+    permits systems.zlink.framework.actors.ZLinkActorJoinCompletion.Accepted,
+            systems.zlink.framework.actors.ZLinkActorJoinCompletion.Rejected,
+            systems.zlink.framework.actors.ZLinkActorJoinCompletion.Failed {
 }
 public interface systems.zlink.framework.actors.ZLinkActorManager {
   public abstract systems.zlink.framework.actors.ZLinkActorCreateCall create(java.lang.String, java.lang.String);
@@ -235,6 +274,7 @@ public interface systems.zlink.framework.actors.ZLinkActorCreateCall {
   public abstract systems.zlink.framework.actors.ZLinkActorCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
   public abstract systems.zlink.framework.actors.ZLinkActorCreateCall timeout(java.time.Duration);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult> submit();
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult> yield();
 }
 public interface systems.zlink.framework.actors.ZLinkActorGetOrCreateCall {
   public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall inMesh(java.lang.String);
@@ -242,6 +282,7 @@ public interface systems.zlink.framework.actors.ZLinkActorGetOrCreateCall {
   public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
   public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall timeout(java.time.Duration);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult> submit();
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult> yield();
 }
 public sealed interface systems.zlink.framework.actors.ZLinkActorCreateResult
     permits systems.zlink.framework.actors.ZLinkActorCreateResult.Existing,
@@ -249,11 +290,13 @@ public sealed interface systems.zlink.framework.actors.ZLinkActorCreateResult
             systems.zlink.framework.actors.ZLinkActorCreateResult.Rejected {
 }
 public interface systems.zlink.framework.actors.ZLinkActorRequestCall {
+  public abstract systems.zlink.framework.actors.ZLinkActorRequestCall metadata(java.lang.String, java.lang.String);
   public abstract systems.zlink.framework.actors.ZLinkActorRequestCall timeout(java.time.Duration);
   public abstract <TReply> java.util.concurrent.CompletionStage<TReply> submit(java.lang.Class<TReply>);
   public default <TReply> java.util.concurrent.CompletionStage<TReply> yield(java.lang.Class<TReply>);
 }
 public interface systems.zlink.framework.actors.ZLinkActorSendCall {
+  public abstract systems.zlink.framework.actors.ZLinkActorSendCall metadata(java.lang.String, java.lang.String);
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 public interface systems.zlink.framework.actors.ZLinkBoundSession {
@@ -292,5 +335,5 @@ Unknown property는 무시하고 duplicate property, required property 누락, �
 
 Actor request에 선언된 `yield(...)`는 현재 Actor handler가 `SpotWide` User Spot의 shared execution
 gate에서 실행 중일 때만 유효하다. Entry Spot Actor와 `PerActor` User Spot의 Actor가 호출하면 operation을
-제출하거나 turn을 반환하지 않고 `INVALID_CONFIGURATION`으로 완료한다. Actor join은 `submit(...)`으로만
-완료하며 `yield(...)`를 제공하지 않는다.
+제출하거나 turn을 반환하지 않고 `INVALID_CONFIGURATION`으로 완료한다. Actor Join은 현재
+handler 안에서 `defer()`로만 등록하며 `submit(...)`과 `yield(...)`를 제공하지 않는다.

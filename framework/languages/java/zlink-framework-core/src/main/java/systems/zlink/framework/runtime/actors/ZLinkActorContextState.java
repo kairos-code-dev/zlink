@@ -159,10 +159,13 @@ final class ZLinkActorContextState {
 
     void markMovedToEntrySpot(
         ZLinkBackendActorRef actorRef,
-        RoutingId entrySpotNodeRid) {
+        RoutingId entrySpotNodeRid,
+        String entrySpotId) {
         this.actorRef = actorRef;
         updateNativeBoundSessionActorRef(actorRef);
-        this.spotId = entrySpotNodeRid.toString();
+        this.entrySpotNodeRid = entrySpotNodeRid;
+        this.entrySpotId = entrySpotId;
+        this.spotId = entrySpotId;
         this.spot = null;
         this.joined = true;
     }

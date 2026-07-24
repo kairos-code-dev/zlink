@@ -128,17 +128,6 @@ public sealed record ZLinkMeshChannelSnapshot(
     int ReadyMemberCount,
     bool Selectable);
 
-public sealed record ZLinkLogicalMulticastSnapshot(
-    ulong Submitted,
-    ulong Backpressured,
-    ulong Dropped,
-    ulong RemoteSnapshotCount,
-    ulong RemoteAdmittedCount,
-    ulong RemoteDroppedCount,
-    ulong LocalSnapshotCount,
-    ulong LocalAdmittedCount,
-    ulong LocalDroppedCount);
-
 public sealed record ZLinkMeshClaimSnapshot(
     bool ApplicationActive,
     ulong PendingApplicationWork,
@@ -171,7 +160,6 @@ public sealed record ZLinkMeshNodeSnapshot(
     IReadOnlyList<string> DescriptorSources,
     IReadOnlyList<ZLinkMeshPeerSnapshot> Peers,
     IReadOnlyList<ZLinkMeshChannelSnapshot> Channels,
-    ZLinkLogicalMulticastSnapshot Multicast,
     ZLinkMeshClaimSnapshot Claims,
     ZLinkLocationRuntimeSnapshot Location)
 {
@@ -202,12 +190,6 @@ public sealed record ZLinkMeshRuntimeEvent(
     string? ChannelName,
     string? ClaimDomain,
     string? MessageKind,
-    ulong? RemoteSnapshotCount,
-    ulong? RemoteAdmittedCount,
-    ulong? RemoteDroppedCount,
-    ulong? LocalSnapshotCount,
-    ulong? LocalAdmittedCount,
-    ulong? LocalDroppedCount,
     string? PlacementOutcome,
     ZLinkCapacityVector? Capacity,
     ZLinkPlacementCapacity? PopulationCapacity,
@@ -480,14 +462,6 @@ public sealed record ZLinkRuntimeMessageFlowEvent(
     string? CorrelationId,
     string? FlowId,
     string? FlowOrigin,
-    ulong? RemoteSnapshotCount,
-    ulong? RemoteAdmittedCount,
-    ulong? RemoteDroppedCount,
-    ulong? LocalSnapshotCount,
-    ulong? LocalAdmittedCount,
-    ulong? LocalDroppedCount,
-    ulong? TargetCount,
-    ulong? DropCount,
     long? MessageSizeBytes,
     double? DurationSeconds);
 

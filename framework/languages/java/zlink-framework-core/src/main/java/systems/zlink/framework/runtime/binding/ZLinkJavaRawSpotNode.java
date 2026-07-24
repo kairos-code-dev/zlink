@@ -13,9 +13,8 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.PublishDetail;
 import systems.zlink.contracts.sockets.SendFlags;
-import systems.zlink.framework.channels.ZLinkSubmitStatus;
+
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinEntrySpotResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinResult;
@@ -35,7 +34,8 @@ import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
  * Framework-owned service runtime projected over the raw MeshNode transport.
  * Stateful Spot and Actor identity remains inside the Framework runtime.
  */
-final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
+final class ZLinkJavaRawSpotNode
+    implements ZLinkInternalSpotNode, ZLinkJavaAdmissionBacked {
     private final ZLinkJavaRawMeshNode owner;
     private final Map<String, ZLinkJavaRawSpot> spots =
         new ConcurrentHashMap<>();
@@ -145,7 +145,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
     }
 
     @Override
-    public Optional<ZLinkSubmitStatus> submitLocalNodeSend(
+    public Optional<Integer> submitLocalNodeSend(
         RoutingId targetNodeRid,
         byte[] metadata,
         List<Message> parts) {
@@ -154,21 +154,21 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         }
         ZLinkMeshApplicationReceiver current = applicationReceiver;
         if (current == null) {
-            return Optional.of(ZLinkSubmitStatus.TARGET_NOT_FOUND);
+            return Optional.of(ZLinkOneWayCalls.TARGET_NOT_FOUND);
         }
         return Optional.of(current.submitLocalNodeSend(
             routingId(), metadata, parts));
     }
 
     @Override
-    public Optional<ZLinkSubmitStatus> classifyNodeSendTarget(
+    public Optional<Integer> classifyNodeSendTarget(
         RoutingId targetNodeRid) {
         if (routingId().equals(targetNodeRid)
             || owner.peers().stream().anyMatch(
                 peer -> peer.routingId().equals(targetNodeRid))) {
             return Optional.empty();
         }
-        return Optional.of(ZLinkSubmitStatus.TARGET_NOT_FOUND);
+        return Optional.of(ZLinkOneWayCalls.TARGET_NOT_FOUND);
     }
 
     @Override
@@ -253,23 +253,23 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
     }
 
     @Override
-    public PublishDetail publishDetailed(
+    public void publish(
         String channelName,
         String topic,
         List<Message> parts,
         SendFlags flags) {
-        return owner.publishLogicalMulticast(
+        owner.publishLogicalMulticast(
             null, channelName, topic, new byte[0], parts);
     }
 
     @Override
-    public PublishDetail publishDetailed(
+    public void publish(
         String channelName,
         String topic,
         byte[] metadata,
         List<Message> parts,
         SendFlags flags) {
-        return owner.publishLogicalMulticast(
+        owner.publishLogicalMulticast(
             null, channelName, topic, metadata, parts);
     }
 
@@ -1317,37 +1317,23 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         String topic,
         byte[] metadata,
         List<Message> parts) {
-        PublishDetail detail = owner.publishLogicalMulticast(
+        owner.publishLogicalMulticast(
             source, channelName, topic, metadata, parts);
-        return detail.admittedLocalSpotCount() > 0
-            || detail.admittedRemoteTargetCount() > 0;
+        return true;
     }
 
-    PublishDetail publishDetailed(
-        ZLinkJavaRawSpot source,
-        String channelName,
-        String topic,
-        byte[] metadata,
-        List<Message> parts) {
-        return owner.publishLogicalMulticast(
-            source, channelName, topic, metadata, parts);
-    }
-
-    MulticastLocalDetail enqueueLogicalMulticast(
+    void enqueueLogicalMulticast(
         String channelName,
         String topic,
         String sourceSpotId,
         RoutingId sourceNodeRid,
         byte[] metadata,
         List<Message> parts) {
-        int snapshot = 0;
-        int admitted = 0;
         for (ZLinkJavaRawSpot target : spots.values()) {
             if (!target.accepts(topic)) {
                 continue;
             }
-            snapshot++;
-            boolean submitted = target.enqueueTopic(
+            target.enqueueTopic(
                 new systems.zlink.framework.runtime.backend
                 .ZLinkBackendTopicMessage(
                     Optional.of(sourceNodeRid),
@@ -1355,14 +1341,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                     topic,
                     metadata == null ? new byte[0] : metadata.clone(),
                     ZLinkJavaRawSpot.copy(parts)));
-            if (submitted) {
-                admitted++;
-            }
         }
-        return new MulticastLocalDetail(snapshot, admitted);
-    }
-
-    record MulticastLocalDetail(int snapshot, int admitted) {
     }
 
     boolean sendToSpot(

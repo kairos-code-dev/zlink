@@ -596,6 +596,21 @@ One-way 비동기 terminal의 정상 완료와 handler 실행 완료를 구분�
 .NET `Async`, Kotlin wrapper `await`, Java·Node.js·C++ `submit`을 사용한다. Request라면
 transport 수락과 reply 완료도 구분한다.
 
+이 이름 규칙은 다음 call builder에만 적용한다.
+
+- Server Framework, Stream Connector와 zlink HTTP Client의 send·request·publish·reply·wait call
+- `RunCpuWorker`와 `RunIoWorker`가 반환하는 Worker call
+
+Network topology·endpoint·MeshNode 연결, Host·runtime·client 설정, Channel membership, handler·codec·
+security·retry 등록과 같은 configuration builder에는 적용하지 않는다. Spot·Actor create·get-or-create·
+join·close·destroy·relocation 같은 object lifecycle builder도 이름 규칙의 일반 대상이 아니다. 다만
+create·get-or-create의 `Yield`는 허용된 Spot 실행 문맥에서 turn을 반납하기 위한 별도 execution 특례다.
+`RelayAsync(...)`처럼 builder를 반환하지 않는 직접 method의 이름도 이 규칙으로 바꾸지 않는다.
+
+같은 operation의 정상적인 비동기 완료를 표현할 때 .NET은 `Async`, Kotlin 전용 wrapper는 `await`,
+Java·Node.js·C++는 `submit`을 사용한다. 현재 shared Spot gate를 실제로 반납하는 terminal만
+`Yield`·`yield`라고 쓴다. `SubmitAsync`처럼 두 완료 의미를 한 이름에 섞지 않는다.
+
 다음 질문에 각각 답한다.
 
 - 송신 경로가 message를 수락하면 call이 완료되는가?
@@ -607,7 +622,7 @@ transport 수락과 reply 완료도 구분한다.
 
 정상 완료에는 반환 데이터가 없고 실패는 exception으로 전달한다. 오류 kind는 이름만
 나열하지 않고 caller가 관찰하는 조건을 표로 설명한다. Logical Multicast의 target별
-수치는 public result가 아니라 monitoring metric·event임을 같은 위치에서 설명한다.
+수치는 public result나 publish 전용 monitoring으로 제공하지 않음을 같은 위치에서 설명한다.
 
 ## 10. 이전 계약을 옮기고 대조하는 방법
 

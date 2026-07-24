@@ -137,7 +137,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
   }
 
   scheduleDestroy(actor: PlayActor): void {
-    void this.context.runIoWorker(async () => true).async().then(async () => {
+    void this.context.runIoWorker(async () => true).submit().then(async () => {
       console.log(`entry spot: actor destroy started. actor=${actor.actorId}`);
       await this.context.destroyActor(actor);
       console.log(`entry spot: actor destroyed. actor=${actor.actorId}`);

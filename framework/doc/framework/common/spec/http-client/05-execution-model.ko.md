@@ -11,7 +11,8 @@
 ## 5.1 두 실행 방식과 callback
 
 HTTP client는 one-way submission과 response completion을 제공한다. 정확한 terminator 이름은
-.NET `Async`, Kotlin wrapper `await`, Java·Node.js·C++ `submit`이다. Shared Spot gate를 반납하는
+.NET `Async`, Kotlin wrapper `await`, Java·C++ `submit`이다. Node는 raw response `submitRaw`,
+typed response·callback `async`와 one-way `submit`을 구분한다. Shared Spot gate를 반납하는
 `Yield`는 HTTP request builder가 아니라 서버 request와 Worker call에만 제공한다.
 
 | 실행 방식 | 무엇을 기다리나 | [Spot](../01-glossary.ko.md#spot) 실행 줄 |
@@ -35,7 +36,8 @@ Spot 실행 줄의 **새 turn**으로 들어간다
 | node | `Promise<T>` | undici libuv |
 
 **Terminator 이름은 framework 관용을 따른다.** .NET은 `Async(...)`, Kotlin wrapper는
-`await(...)`, Java·Node.js·C++는 `submit(...)`을 사용한다
+`await(...)`, Java·C++는 `submit(...)`을 사용한다. Node HTTP typed response와 callback은 TypeScript
+상속 signature 충돌을 피하기 위해 `async(...)`를 유지하고 raw response는 `submitRaw()`를 사용한다
 ([04 §2](../04-async-execution-policy.ko.md)).
 
 ## 5.2 외부 HTTP 대기와 Spot 실행 줄

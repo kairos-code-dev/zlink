@@ -107,9 +107,11 @@ internal sealed class ZLinkSpotActivationDispatcher
 
     public async ValueTask DispatchActorFramesAsync(
         ZLinkSpotActorFrameBatch frames,
+        ZLinkSpotSerialExecutor executor,
         CancellationToken cancellationToken)
     {
-        await _actorPipeline.DispatchAsync(frames, cancellationToken).ConfigureAwait(false);
+        await _actorPipeline.DispatchAsync(frames, executor, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public ValueTask DispatchActorReplayFramesAsync(

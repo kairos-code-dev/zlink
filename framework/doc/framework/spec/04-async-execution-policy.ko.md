@@ -19,7 +19,7 @@ request, reservation, factory와 Ready barrier 전체에 적용할 하나의 end
 | terminator | 수락 뒤 완료 의미 | owner turn |
 |---|---|---|
 | one-way 비동기 terminal | local outbound admission이 성공하면 반환 데이터 없이 완료하고, 실패하면 예외로 완료한다. Remote handler 완료는 기다리지 않는다 | await하지 않으면 현재 turn을 기다리게 하지 않는다 |
-| `Async` | request, join 또는 worker 결과가 terminal 상태가 될 때까지 기다린다 | 완료 continuation이 끝날 때까지 현재 owner turn을 유지한다 |
+| `Async` | request 또는 worker 결과가 terminal 상태가 될 때까지 기다린다 | 완료 continuation이 끝날 때까지 현재 owner turn을 유지한다 |
 | `Yield` | 허용된 Spot 실행 문맥에서 operation을 제출한 뒤 shared Spot execution gate를 반납하고 terminal 결과를 기다린다 | 완료 continuation은 같은 gate를 다시 얻은 뒤 새 turn에서 재개한다 |
 
 `Yield`는 `SpotWide` User Spot과 Instance Spot의 application callback에서만 사용할 수 있다. `SpotWide`
@@ -51,10 +51,9 @@ claim 때문에 실행될 수 없으므로 `Async`와 `Yield` 모두 같은 방�
 one-way message는 현재 record 뒤 Actor FIFO에 추가할 수 있다. Framework는 이 경우 handler를 inline으로
 호출하거나 재진입 실행으로 바꾸지 않는다.
 
-`SpotWide` Member Actor가 현재 User Spot을 떠나는 `JoinSpot(...).Async`를 기다리는 경우도 same-gate wait다.
-Join의 source lifecycle callback이 같은 User Spot gate를 얻어야 하므로 Framework는 operation submission,
-outbound admission과 source·target queue 변경 전에 `InvalidConfiguration`으로 거부한다. Join callback을
-inline 또는 재진입 방식으로 실행해 이 규칙을 우회하지 않는다.
+Actor Join에는 awaited `Async` terminal이 없다. Handler 안에서 `Defer()`로 barrier만 등록하고 handler의
+마지막 continuation이 정상 종료한 뒤 Join을 시작한다. Join callback을 inline 또는 재진입 방식으로
+실행하지 않는다.
 
 ### 1.2 Worker offload
 
@@ -85,7 +84,10 @@ send-ready 또는 local capacity signal을 기다린다. `Backpressured`는 term
 application exception이 아니다. Capacity가 먼저 확보되면 message를 정확히 한 번 제출하고 정상 완료한다.
 Timeout, cancellation 또는 runtime shutdown이 먼저 확정되면 late admission 없이 해당 예외로 한 번
 완료한다. Pending waiter를 위한 내부 bounded storage가 필요하더라도 그 포화 상태를 public result로
-노출하지 않으며, 같은 send timeout과 cancellation 계약 안에서 처리한다.
+노출하지 않는다. Waiter storage 안에 등록된 operation은 같은 send timeout과 cancellation 계약을
+적용한다. Bounded waiter capacity까지 모두 사용 중이면 Framework는 새 payload를 보관하지 않고
+`DeadlineExceeded`로 즉시 완료한다. 이 hard overload boundary에서도 `Backpressured` status를 공개하거나
+나중에 message를 제출하지 않는다.
 
 다음 오류는 반환 status가 아니라 Framework exceptional completion으로 전달한다.
 
@@ -123,14 +125,16 @@ operation을 다시 제출하지 않는다.
 
 Logical Multicast는 operation을 시작할 때 target snapshot을 고정하고 각 target을 한 번씩 시도한다.
 Operation 자체를 local executor에 제출할 수 없으면 send timeout까지 capacity를 기다리며 timeout,
-cancellation 또는 shutdown 중 먼저 확정된 예외로 완료한다. Transaction이 시작된 뒤에는 일부 target이
+cancellation 또는 shutdown 중 먼저 확정된 예외로 완료한다. Bounded worker와 source-local capacity를
+확보해 transaction이 시작되면 public terminal은 반환 데이터 없이 정상 완료하고 target별 제출은 내부에서
+계속한다. Transaction이 시작된 뒤에는 일부 target이
 이미 message를 수락했을 수 있으므로 개별 target 실패가 전체 publish를 rollback하지 않으며 이미 수락한
 target을 취소하거나 전체 publish를 자동 재시도하지 않는다.
 
-Remote target의 source-local transport admission과 local Spot queue admission 결과는 public 반환값이 아니라
-monitoring metric과 runtime event에 snapshot·admitted·dropped·unreachable count로 기록한다. Target snapshot이
-0개여도 정상 완료한다. Transaction 시작 뒤 개별 target 실패도 publish 전체의 exceptional completion으로
-바꾸지 않는다. 정상 완료는 모든 remote Spot queue 수락이나 subscriber handler 실행을 보장하지 않는다.
+Remote target의 source-local transport admission과 local Spot queue admission 결과는 public 반환값이나
+publish 전용 monitoring 값으로 만들지 않는다. Target snapshot이 0개여도 정상 완료한다. Transaction 시작
+뒤 개별 target 실패도 publish 전체의 exceptional completion으로 바꾸지 않는다. 정상 완료는 target별 제출 완료, 모든 remote
+Spot queue 수락이나 subscriber handler 실행을 보장하지 않는다.
 
 Classic fanout은 subscriber가 없어도 publisher의 local queue가 event를 수락하면 정상 완료한다. Subscriber
 수와 수신 완료를 public result로 만들지 않는다.
@@ -221,6 +225,23 @@ barrier를 연다.
 Handler가 예외를 반환하면 send handler는 오류 observer와 metric에 기록한다. Request handler는 같은
 request의 framework 오류 reply를 생성한다. 오류 observer의 실패는 원래 dispatch 결과를 바꾸지 않는다.
 
+### 3.1 Actor Join의 deferred terminal
+
+Actor membership Join의 `Defer()`는 async call naming 규칙의 예외가 아니라 비동기 operation을 시작하지 않는
+handler-scoped registration이다. 모든 언어에서 결과 없는 동기 terminal이며 awaitable이나 coroutine을
+반환하지 않는다. Handler terminal 뒤 infrastructure scheduler가 barrier를 활성화하고 Join을 실행한다.
+
+`Defer()`와 `Yield`는 서로 다른 기능이다. `Yield`는 현재 `SpotWide` gate를 일시적으로 반납하고 같은 handler
+continuation이 gate를 다시 얻도록 한다. `Defer()`는 gate와 Actor claim을 유지하며 handler continuation을
+재개할 Join 결과도 만들지 않는다. Handler가 Yield 전이나 Yield continuation에서 Join을 등록할 수 있지만
+barrier 활성화·폐기는 최종 handler terminal에서 한 번만 결정한다. Join completion은 원래 handler가 아니라
+이동 대상 Actor queue의 lifecycle callback으로 전달한다.
+
+One-way terminal의 single-use 규칙과 Join call의 single-use 규칙은 같은 `AlreadySubmitted` 오류를 사용하지만
+완료 경계는 다르다. One-way terminal은 bounded outbound admission을 기다리고, `Defer()`는 local registration
+검증까지만 수행한다. `Defer()` hard failure는 I/O나 queue mutation 전에 동기적으로 끝나며 target lookup,
+capacity, relocation policy와 callback failure는 handler terminal 뒤 Actor completion으로 전달한다.
+
 ## 4. Cancellation과 shutdown
 
 Cancellation은 협력적 요청이다. 이미 완료된 결과를 cancellation으로 바꾸지 않으며, 이미 수락한 one-way
@@ -245,8 +266,8 @@ Cancellation은 exceptional completion이다. Admission을 시작한 뒤 cancell
 
 Logical Multicast는 executor direct handoff와 publish transaction 시작이 원자적으로 확정되기 전에만 cancellation이
 operation 시작을 막을 수 있다. Publish transaction이 시작된 뒤의 cancellation은 commit된 snapshot
-operation을 중단하지 않으며 underlying operation은 target별 결과를 monitoring에 기록하고 반환 데이터 없이
-완료한다. .NET `ValueTask`와 Node.js `Promise`는 commit 뒤 cancellation 신호로 완료를 바꾸지 않는다.
+operation을 중단하지 않으며 target별 결과를 반환하거나 publish 전용 monitoring 값으로 만들지 않는다.
+.NET `ValueTask`와 Node.js `Promise`는 commit 뒤 cancellation 신호로 완료를 바꾸지 않는다.
 Java stage의 `cancel(false)`와 Kotlin의
 연결된 stage cancellation은 `false`를 반환하고 underlying operation을 취소하지 않는다. Kotlin에서는 이미
 취소된 caller coroutine이

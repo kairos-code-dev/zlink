@@ -113,7 +113,7 @@ pending operation 저장소, dispatch 순서와 native transport adapter는 공�
 location owner token, generation이나 retry 절차를 넘기지 않으며 routing envelope, location claim과
 serializer 선택은 framework가 처리한다.
 
-일반 request는 `request_to_node(...).timeout(...).async<TReply>()`로 typed reply를 받는다.
+일반 request는 `request_to_node(...).timeout(...).submit<TReply>()`로 typed reply를 받는다.
 `.metadata(key, value)`로 설정한 값은 application metadata 계약에 따라 snapshot되며, transport
 세부와 correlation 상태는 공개 API에 드러나지 않는다.
 
@@ -281,7 +281,7 @@ SPOT과 STREAM의 backpressure는 public **call object, timeout, result error ki
 
 ### 6.2 Handler filter
 
-**filter는 `handler_invocation_context_t`로 descriptor·dispatch context·immutable message payload를
+**filter는 `handler_invocation_t`로 descriptor·message context·immutable message payload를
 읽는다.** **payload를 바꾸려면 `next()` 결과 대신 새 `message_t`를 반환한다.**
 
 filter의 등록 순서·`next` 의미·scope는 [framework API §8.1](../../../../05-framework-api.ko.md)이
@@ -346,8 +346,7 @@ public:
     worker_call_t() = default;
     explicit worker_call_t(executor_t executor);
     worker_call_t &timeout (std::chrono::milliseconds value);
-    void submit ();
-    task_t<TResult> async ();
+    task_t<TResult> submit ();
     task_t<TResult> yield ();
 };
 
@@ -366,8 +365,8 @@ public:
 
 **worker는 spot·session 실행 문맥 밖에서 실행하는 작업이다.** 완료를 원래 실행 문맥에서 재개하는
 규칙은 [비동기 실행 정책](../../../../04-async-execution-policy.ko.md)이 소유한다. Worker function에는 timeout,
-host 종료와 caller cancellation을 합친 `std::stop_token`을 전달한다. `submit()`은 결과를 기다리지
-않는 terminal이고 `async()`는 현재 claim과 gate를 유지한 채 결과를 기다린다. `yield()`는 `SpotWide`
+host 종료와 caller cancellation을 합친 `std::stop_token`을 전달한다. `submit()`은 현재 claim과 gate를
+유지한 채 결과를 기다린다. `yield()`는 `SpotWide`
 User Spot 또는 Instance Spot callback에서만 현재 Spot gate를 반납하고, 완료 continuation이 같은 gate를
 다시 얻은 뒤 결과를 반환한다. `SpotWide` member Actor에서 호출하면 Actor FIFO claim은 계속 유지한다.
 `PerActor`, Entry Spot, Node, Channel과 실행 문맥 밖에서 `yield()`를 호출하면 worker queue에 제출하기 전에
@@ -377,7 +376,7 @@ User Spot 또는 Instance Spot callback에서만 현재 Spot gate를 반납하�
 ### 7.4 오류 경계
 
 동기 validation과 명시적인 결과 객체를 반환하는 API는 `result_t<T>`로 실패를 반환한다. 비동기 call의
-`async()`는 실패하면 같은 오류 정보를 가진 `framework_exception_t`를 throw한다. 오류 code는
+`submit()`은 실패하면 같은 오류 정보를 가진 `framework_exception_t`를 throw한다. 오류 code는
 `framework_exception_t::code()`의 `std::error_code`로 노출한다.
 
 

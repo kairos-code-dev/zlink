@@ -18,7 +18,7 @@ assembly Systems.Zlink.Stream.Connector
     method abstract Systems.Zlink.Stream.Connector.Contracts.Calls.IZlinkStreamSendCall Metadata(System.String key [nullability=read:not-null,write:not-null], System.String value [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Systems.Zlink.Stream.Connector.Contracts.Calls.IZlinkStreamSendCall Metadata(Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamMetadata metadata [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Systems.Zlink.Stream.Connector.Contracts.Calls.IZlinkStreamSendCall PacketName(System.String name [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method abstract System.Void Submit(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method abstract System.Threading.Tasks.ValueTask Async(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type interface Systems.Zlink.Stream.Connector.Contracts.Calls.IZlinkStreamSequenceCall
     method abstract System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamMessage<Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamEncodedPayload>>> Async(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method abstract Systems.Zlink.Stream.Connector.Contracts.Calls.IZlinkStreamSequenceCall Expect(System.Func<Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamMessage<Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamEncodedPayload>, System.Boolean> predicate [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
@@ -321,7 +321,7 @@ assembly Systems.Zlink.Stream.Connector
     method Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamTypedSendBuilder Metadata(System.String key [nullability=read:not-null,write:not-null], System.String value [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamTypedSendBuilder Metadata(Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamMetadata metadata [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
     method Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamTypedSendBuilder PacketName(System.String name [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
-    method System.Void Submit(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
+    method System.Threading.Tasks.ValueTask Async(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]
   type sealed-class Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamTypedSequenceBuilder<TPayload>
     generic TPayload variance=invariant nullable=nullable
     method System.Threading.Tasks.ValueTask<System.Collections.Generic.IReadOnlyList<Systems.Zlink.Stream.Connector.Contracts.ZlinkStreamMessage<TPayload?>>> Async(System.Threading.CancellationToken cancellationToken = default [nullability=read:not-null,write:not-null]) [return=read:not-null,write:not-null]

@@ -84,9 +84,10 @@ class actor_gateway_state_t
     using create_dispatcher_t = std::function<result_t<actor_ref_t> (
       std::string, std::string, const std::optional<zlink::message_t> &)>;
     using join_spot_dispatcher_t = std::function<result_t<actor_join_reply_t> (
-      const actor_ref_t &, spot_id_t, const zlink::message_t &)>;
+      const actor_ref_t &, spot_id_t, const zlink::message_t &,
+      std::chrono::milliseconds)>;
     using join_entry_spot_dispatcher_t = std::function<result_t<actor_join_reply_t> (
-      const actor_ref_t &, node_rid_t, const zlink::message_t &)>;
+      const actor_ref_t &, const zlink::message_t &, std::chrono::milliseconds)>;
     using relay_dispatcher_t = std::function<result_t<std::optional<zlink::message_t>> (
       const actor_ref_t &, actor_context_t, const stream_header_t &, const zlink::message_t &)>;
     using disconnect_dispatcher_t = std::function<result_t<void> (const actor_ref_t &)>;

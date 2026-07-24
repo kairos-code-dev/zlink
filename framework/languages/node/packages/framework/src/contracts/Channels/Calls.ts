@@ -1,10 +1,9 @@
 import type { ZLinkMessageMetadata } from '../Common';
-import type { ZLinkPublishResult, ZLinkSubmitResult } from '../RouteMesh';
 
 export interface ZLinkSendCall {
   metadata(key: string, value: string): this;
   metadata(metadata: ZLinkMessageMetadata): this;
-  submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+  submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkRequestCall {
@@ -23,9 +22,9 @@ export interface ZLinkPublishCall {
    * transport queues and matching local Spot queues. Completion does not
    * wait for remote Spot queue admission or subscriber handler execution.
    */
-  submit(signal?: AbortSignal): Promise<ZLinkPublishResult>;
+  submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkFanoutPublishCall {
-  submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+  submit(signal?: AbortSignal): Promise<void>;
 }

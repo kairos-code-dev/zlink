@@ -39,7 +39,7 @@ internal sealed class CourierOfferPort(
                     attempt,
                     delivery.PickupAddress,
                     delivery.DropoffAddress))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }
 

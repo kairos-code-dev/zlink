@@ -60,10 +60,11 @@ public final class Program {
                 .traceLogFile(config.logDirectory() + "/trigger-flow.log")
                 .traceLabel("java-mon-trigger");
             var channel = options.addClientServerChannel(Contracts.CHANNEL)
-                .enableClient(config.apiEndpoint());
+                .client()
+                .connect(config.apiEndpoint());
             String serviceBEndpoint = config.serviceBApiEndpoint();
             if (!serviceBEndpoint.isBlank()) {
-                channel.enableClient(serviceBEndpoint);
+                channel.connect(serviceBEndpoint);
             }
         };
     }

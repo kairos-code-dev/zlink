@@ -41,8 +41,8 @@ record ZLinkStreamConnectorSendCall(
     }
 
     @Override
-    public void submit() {
-        connector.submit(payload, compressed);
+    public CompletionStage<Void> submit() {
+        return connector.submit(payload, compressed);
     }
 }
 

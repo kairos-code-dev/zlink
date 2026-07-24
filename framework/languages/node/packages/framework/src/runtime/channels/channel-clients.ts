@@ -4,19 +4,23 @@ import type {
   ZLinkFanoutPublishCall,
   ZLinkMessageMetadata,
   ZLinkPublishCall,
-  ZLinkPublishResult,
   ZLinkRequestCall,
   ZLinkRouteClient,
   ZLinkSendCall,
-  ZLinkSpotPublisherClient,
-  ZLinkSubmitResult
+  ZLinkSpotPublisherClient
 } from '../../contracts';
 import type { SpotHandle } from '../spots/spot-handle';
 import {
   ZLinkConfigurationException,
   type ZLinkFrameworkRegistration
 } from '../configuration';
-import { ZLinkSubmitStatus } from '../../contracts';
+import {
+  requireOneWayCompletion,
+  requirePublishCompletion,
+  throwAlreadySubmitted,
+  ZLinkSubmitStatus,
+  type ZLinkSubmitResult
+} from '../messaging/submission-result';
 import type {
   ZLinkChannelClientTransport,
   ZLinkRouteClientTransport,
@@ -345,18 +349,19 @@ class DefaultZLinkSendCall implements ZLinkSendCall {
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
+  async submit(signal?: AbortSignal): Promise<void> {
     ensureNotExecuted(this.executed);
     this.validate();
     this.executed = true;
     throwIfAborted(signal);
-    return await this.submitter(undefined, new Map(this.selectedMetadata), signal);
+    const result = await this.submitter(undefined, new Map(this.selectedMetadata), signal);
+    requireOneWayCompletion(result, 'One-way send');
   }
 }
 
 function ensureNotExecuted(executed: boolean): void {
   if (executed) {
-    throw new ZLinkConfigurationException('ZLink call has already been submitted.');
+    throwAlreadySubmitted('ZLink call');
   }
 }
 
@@ -433,7 +438,7 @@ class DefaultZLinkPublishCall implements ZLinkPublishCall {
       packetName: string | undefined,
       metadata: ReadonlyMap<string, string>,
       signal?: AbortSignal
-    ) => ZLinkPublishResult | Promise<ZLinkPublishResult>
+    ) => ZLinkSubmitResult | Promise<ZLinkSubmitResult>
   ) {}
 
   metadata(key: string, value: string): this;
@@ -450,12 +455,13 @@ class DefaultZLinkPublishCall implements ZLinkPublishCall {
     return this;
   }
 
-  async submit(signal?: AbortSignal): Promise<ZLinkPublishResult> {
+  async submit(signal?: AbortSignal): Promise<void> {
     ensureNotExecuted(this.executed);
     this.validate();
     this.executed = true;
     throwIfAborted(signal);
-    return this.submitter(undefined, new Map(this.selectedMetadata), signal);
+    const result = await this.submitter(undefined, new Map(this.selectedMetadata), signal);
+    requirePublishCompletion(result, 'Logical Multicast publish');
   }
 }
 
@@ -467,11 +473,12 @@ class DefaultZLinkFanoutPublishCall implements ZLinkFanoutPublishCall {
     private readonly submitter: (signal?: AbortSignal) => Promise<ZLinkSubmitResult>
   ) {}
 
-  async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
+  async submit(signal?: AbortSignal): Promise<void> {
     ensureNotExecuted(this.executed);
     this.validate();
     this.executed = true;
     throwIfAborted(signal);
-    return await this.submitter(signal);
+    const result = await this.submitter(signal);
+    requireOneWayCompletion(result, 'Classic fanout publish');
   }
 }

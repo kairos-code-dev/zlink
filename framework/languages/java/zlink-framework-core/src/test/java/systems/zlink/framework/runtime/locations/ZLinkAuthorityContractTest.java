@@ -38,6 +38,7 @@ import systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey;
 import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkPlacementAllocation;
 import systems.zlink.framework.locations.ZLinkPlacementAllocationState;
+import systems.zlink.framework.locations.ZLinkPlacementCapacityBundle;
 import systems.zlink.framework.locations.ZLinkRelocationCapacityAbortResult;
 import systems.zlink.framework.locations.ZLinkRelocationCapacityFence;
 import systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest;
@@ -142,7 +143,7 @@ final class ZLinkAuthorityContractTest {
             descriptor,
             4,
             target,
-            1);
+            ZLinkPlacementCapacityBundle.actor(1));
         assertEquals(3, request.sourceDescriptorLifecycleGeneration());
         assertEquals(4, request.targetDescriptorLifecycleGeneration());
         assertThrows(IllegalArgumentException.class, () ->
@@ -158,7 +159,7 @@ final class ZLinkAuthorityContractTest {
                 descriptor,
                 4,
                 target,
-                1));
+                ZLinkPlacementCapacityBundle.actor(1)));
         assertThrows(IllegalArgumentException.class, () ->
             new ZLinkRelocationCapacityReservationRequest(
                 UUID.randomUUID(),
@@ -172,7 +173,8 @@ final class ZLinkAuthorityContractTest {
                 descriptor,
                 4,
                 target,
-                0));
+                new ZLinkPlacementCapacityBundle(
+                    0, 0, Optional.empty())));
     }
 
     @Test
@@ -187,7 +189,7 @@ final class ZLinkAuthorityContractTest {
                     "mesh",
                     RoutingId.from("node")),
                 7,
-                1);
+                ZLinkPlacementCapacityBundle.actor(1));
         ZLinkAuthoritySnapshot snapshot = new ZLinkAuthoritySnapshot(
             "v1",
             payload,

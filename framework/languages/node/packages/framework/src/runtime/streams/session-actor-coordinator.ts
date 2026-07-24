@@ -95,9 +95,14 @@ export class ZLinkSessionActorCoordinator {
     }
 
     const previous = this.routes.route(actorRef.actorId);
-    const reuseActor = previous?.context === context ? previous.actor : undefined;
+    const sameIncarnation =
+      previous !== undefined
+      && previous.actor.ref.actorId === actorRef.actorId
+      && BigInt(previous.actor.ref.generation) === BigInt(actorRef.generation);
+    const reuseActor =
+      previous?.context === context && sameIncarnation ? previous.actor : undefined;
     const previousRef = previous?.actor.ref;
-    const replacesSameNativeBinding = previous?.context === context;
+    const replacesSameNativeBinding = previous?.context === context && sameIncarnation;
     if (previous !== undefined && !replacesSameNativeBinding) {
       await this.unbindNativeActor(previous.context, actorRef.actorId, signal);
     }
@@ -203,6 +208,7 @@ export class ZLinkSessionActorCoordinator {
       throwIfAborted(signal);
       const route = this.routes.route(actorRef.actorId);
       if (route === undefined || sameActorRef(route.actor.ref, actorRef)) return;
+      requireSameIncarnation(route.actor.ref, actorRef);
       await this.replaceBinding(route.context, actorRef, signal);
     });
   }
@@ -212,24 +218,9 @@ export class ZLinkSessionActorCoordinator {
       throwIfAborted(signal);
       const route = this.routes.route(actorRef.actorId);
       if (route === undefined) return;
+      requireSameIncarnation(route.actor.ref, actorRef);
       await this.replaceBinding(route.context, actorRef, signal);
     });
-  }
-
-  async cleanupContext(context: DefaultZLinkSessionContext, signal?: AbortSignal): Promise<void> {
-    for (const actor of [...context.boundActors]) {
-      await this.lifecycle.run(actor.actorId, async () => {
-        const route = this.routes.route(actor.actorId);
-        if (route === undefined || route.context !== context || route.bindingToken !== actor.bindingToken) {
-          return;
-        }
-        try {
-          await this.unbindNativeActor(context, actor.actorId, signal);
-        } finally {
-          this.routes.unbind(actor.actorId, context, actor.bindingToken);
-        }
-      });
-    }
   }
 
   private resolveActorRef(actor: ZLinkActor): ActorRef {
@@ -320,4 +311,19 @@ function sameActorRef(left: ActorRef, right: ActorRef): boolean {
   return routingIdsEqual(left.nodeRid, right.nodeRid)
     && left.actorId === right.actorId
     && BigInt(left.generation) === BigInt(right.generation);
+}
+
+function requireSameIncarnation(current: ActorRef, updated: ActorRef): void {
+  if (
+    current.actorId === updated.actorId
+    && BigInt(current.generation) === BigInt(updated.generation)
+  ) {
+    return;
+  }
+  throw new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.ActorLocationStale,
+    `Actor '${updated.actorId}' route update cannot replace object generation `
+      + `${String(current.generation)} with ${String(updated.generation)}.`,
+    true
+  );
 }

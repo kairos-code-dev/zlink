@@ -4,6 +4,9 @@ const test = require('node:test');
 const zlink = require('@zlink-systems/zlink');
 const framework = require('../../packages/framework/dist/internal');
 const {
+  ZLinkSubmitStatus
+} = require('../../packages/framework/dist/runtime/messaging/submission-result');
+const {
   ZLinkSpotRoutedActorAdmission
 } = require('../../packages/framework/dist/runtime/spots/spot-routed-actor-admission');
 const {
@@ -2095,7 +2098,7 @@ test('SpotId outbound keeps Missing Instance placement intent behind the public 
   const addressTransport = {
     async sendToSpotAddress(spotId, message, options) {
       calls.push({ kind: 'send', spotId, message, options });
-      return { status: framework.ZLinkSubmitStatus.Accepted };
+      return { status: ZLinkSubmitStatus.Submitted };
     },
     async requestToSpotAddress(spotId, request, options) {
       calls.push({ kind: 'request', spotId, request, options });
@@ -2136,7 +2139,11 @@ test('SpotId outbound keeps Missing Instance placement intent behind the public 
 
   const reused = outbound.sendToSpot('instance-43', 'payload').instanceSpot();
   await reused.submit();
-  assert.throws(() => reused.submit(), framework.ZLinkConfigurationException);
+  await assert.rejects(() => reused.submit(), (error) => {
+    assert.equal(error instanceof framework.ZLinkFrameworkException, true);
+    assert.equal(error.kind, framework.ZLinkFrameworkErrorKind.AlreadySubmitted);
+    return true;
+  });
 });
 
 test('spot timer dispatches handler on the spot serial executor with dotnet tick metadata', async () => {

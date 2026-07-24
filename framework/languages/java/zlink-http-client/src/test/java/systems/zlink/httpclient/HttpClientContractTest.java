@@ -41,6 +41,20 @@ final class HttpClientContractTest {
     void serverClientUsesSelectedExecutionTerminatorAndHasNoBlockingFetch() throws Exception {
         assertThrows(NoSuchMethodException.class,
             () -> ZLinkHttpRequestBuilder.class.getMethod("fetch", Class.class));
+        assertThrows(NoSuchMethodException.class,
+            () -> ZLinkHttpRequestBuilder.class.getMethod("async", Class.class));
+        assertThrows(NoSuchMethodException.class,
+            () -> ZLinkHttpRequestBuilder.class.getMethod("asyncRaw"));
+        assertThrows(NoSuchMethodException.class,
+            () -> ZLinkHttpRequestBuilder.class.getMethod(
+                "callback", Class.class, ZLinkHttpCallback.class));
+        assertEquals(CompletionStage.class,
+            ZLinkHttpRequestBuilder.class.getMethod("submitRaw").getReturnType());
+        assertEquals(CompletionStage.class,
+            ZLinkHttpRequestBuilder.class.getMethod("submit", Class.class).getReturnType());
+        assertEquals(void.class,
+            ZLinkHttpRequestBuilder.class.getMethod(
+                "submit", Class.class, ZLinkHttpCallback.class).getReturnType());
         assertEquals(ZLinkHttpServerClient.class,
             ZLinkHttpClientBuilder.class.getMethod(
                 "buildServer", ZLinkHttpExecutionTurn.class).getReturnType());
@@ -64,11 +78,12 @@ final class HttpClientContractTest {
         try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
             ZLinkHttpServerClient serverClient = new ZLinkHttpServerClient(
                 client, turn, error -> { throw new AssertionError(error); });
-            assertEquals(7, serverClient.get("/p").async(Player.class)
+            assertEquals(7, serverClient.get("/p").submit(Player.class)
                 .toCompletableFuture().join().body().id());
             assertEquals(7, serverClient.get("/p").yield(Player.class)
                 .toCompletableFuture().join().body().id());
-            assertEquals(1, asyncCalls.get());
+            serverClient.post("/p").submit().toCompletableFuture().join();
+            assertEquals(2, asyncCalls.get());
             assertEquals(1, yieldCalls.get());
         } finally {
             server.closeable().close();
@@ -186,7 +201,7 @@ final class HttpClientContractTest {
         TestSupport.Server server = TestSupport.httpServer(exchange ->
             TestSupport.respond(exchange, 200, "{\"id\":7,\"name\":\"Aria\"}"));
         try (ZLinkHttpClient client = ZLinkHttpClient.create(server.baseUrl()).build()) {
-            Player player = client.get("/players/7").async(Player.class)
+            Player player = client.get("/players/7").submit(Player.class)
                 .toCompletableFuture().join().body();
             assertEquals(7, player.id());
             assertEquals("Aria", player.name());

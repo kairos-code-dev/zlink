@@ -59,8 +59,11 @@
         <Compile Include="Runtime/BackendMonitorWrapperTests.cs"/>
         <Compile Include="Runtime/CoverageCriticalRuntimeTests.cs"/>
         <Compile Include="Runtime/ClientServerChannelRuntimeTests.cs"/>
+        <Compile Include="Runtime/CapacityMonitoringProjectionTests.cs"/>
         <Compile Include="Runtime/CustomSerializerEnvelopeTests.cs"/>
         <Compile Include="Runtime/DrainCoordinatorTests.cs"/>
+        <Compile Include="Runtime/DeferredActorJoinContractTests.cs"/>
+        <Compile Include="Runtime/DeferredActorJoinDurabilityTests.cs"/>
         <Compile Include="Runtime/EntrySpotActorDispatchTests.cs"/>
         <Compile Include="Runtime/EnvelopeCodecTests.cs"/>
         <Compile Include="Runtime/EndpointConnectionsTests.cs"/>
@@ -103,6 +106,7 @@
         <Compile Include="Runtime/RuntimeMetricsTests.cs"/>
         <Compile Include="Runtime/UnhandledDispatchPolicyTests.cs"/>
         <Compile Include="Runtime/EntrySpotActorExactRequestMessageFlowTests.cs"/>
+        <Compile Include="Runtime/UserSpotExecutionSchedulerTests.cs"/>
         <Compile Include="Runtime/WorkerPoolTests.cs"/>
         <Compile Include="Runtime/WeightContractTests.cs"/>
         <Compile Include="Runtime/ZLinkAsyncSubmitterTests.cs"/>

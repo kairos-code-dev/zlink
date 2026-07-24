@@ -504,9 +504,9 @@ public sealed class ZLinkHttpServerRequestBuilder : ZLinkHttpRequestBuilder
     ///     Starts a one-way server request. Transport and response failures are reported through the
     ///     framework runtime error boundary.
     /// </summary>
-    public void Submit(CancellationToken cancellationToken = default)
+    public ValueTask Async(CancellationToken cancellationToken = default)
     {
-        var turn = RequireExecutionTurn("Submit");
-        _ = ObserveSubmissionAsync(turn, cancellationToken);
+        var turn = RequireExecutionTurn("Async");
+        return new ValueTask(ObserveSubmissionAsync(turn, cancellationToken));
     }
 }

@@ -543,7 +543,8 @@ if op == 'readCreationTerminal' then
 end
 
 if op == 'reserve' then
-    if redis.call('EXISTS', KEYS[19]) == 1 then
+    if request.objectKind ~= 'actor'
+        and redis.call('EXISTS', KEYS[19]) == 1 then
         return cjson.encode({kind = 'conflict', current = missing()})
     end
     local current = rowAt(KEYS[1])

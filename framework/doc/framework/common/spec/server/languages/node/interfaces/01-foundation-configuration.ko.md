@@ -289,7 +289,7 @@ transport message를 전달하고 handler 직접 호출로 codec, HWM, timeout, 
 terminal completion을 우회하지 않는다.
 
 Actor와 User·Instance Spot의 relocation policy는 factory 등록과 함께 전달한다. Generic policy type과
-Disabled·Recreate는 유지한다. [Snapshot](../../../../01-glossary.ko.md#snapshot) policy는 adapter `Type` 하나만 보유한다. Actor [factory](../../../../01-glossary.ko.md#factory)에는
+Disabled·Recreate는 유지한다. [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy는 adapter `Type` 하나만 보유한다. Actor [factory](../../../../01-glossary.ko.md#factory)에는
 `ZLinkActorRelocationAdapter<TActor>`, User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot) factory에는 `ZLinkSpotRelocationAdapter<TSpot>`가 필요하며
 종류나 instance type이 다르면 socket bind 전에 configuration error로 실패한다. 별도 adapter registry와
 operation별 adapter는 제공하지 않는다.
@@ -303,7 +303,8 @@ adapter를 사용한다. Same-node join·relocation에서는 adapter를 호출�
 
 Target은 owner commit 전에 restore와 accepted journal validation·staging만 완료하며 application handler를
 실행하지 않는다. Standalone Actor는 [owner](../../../../01-glossary.ko.md#owner) commit 뒤 Entry Spot callback과 old Entry [membership](../../../../01-glossary.ko.md#membership)의 durable
-cleanup을 완료한 다음 journal replay를 실행한다. `"activated"`에 도달해도
+callback을 완료한 다음 journal replay를 실행하고 old Entry membership을 포함한 source resource를 durable하게
+cleanup한다. `"activated"`에 도달해도
 application과 session ingress는 sealed 상태를 유지하고 bound-session route는 staged 상태로만 준비한다. Source
 cleanup이 terminal 상태에 도달하고 authority의 `"completed"` CAS가 성공한 뒤에만 target을 `"ready"`로 열고
 relocation fence를 해제한다.
@@ -336,7 +337,7 @@ CAS, recovery transport와 teardown failure는 adapter failure가 아니며 해�
 phase의 `StoreUnavailable`, `RelocationFailed` 또는 `TeardownFailed`로 분류한다.
 
 Standalone Actor maintenance는 authority·Entry membership commit 뒤 target `onActorRelocated`와 source
-`onLeaveActor`를 호출하고 old Entry membership의 durable cleanup을 완료한 다음 accepted journal을 replay한다.
+`onLeaveActor`를 호출하고 accepted journal을 replay하며 logical timer를 복원한 다음 old Entry membership을 포함한 source resource를 durable하게 cleanup한다.
 Target dispatch는 이 순서가 끝날 때까지 닫는다. Source process가 종료되면 exact source fence의 durable cleanup
 terminal이 source callback 완료를 대신해 target recovery가 계속된다.
 

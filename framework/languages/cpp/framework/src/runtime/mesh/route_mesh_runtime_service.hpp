@@ -5,6 +5,7 @@
 
 #include <zlink/framework/contracts/configuration/module.hpp>
 #include <zlink/framework/contracts/locations/runtime_query.hpp>
+#include <zlink/framework/contracts/locations/stores.hpp>
 #include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
 
 #include <atomic>
@@ -31,7 +32,8 @@ class route_mesh_runtime_service_t final : public route_mesh_runtime_t
       std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> nodes,
       location_runtime_query_t *location_runtime,
       drain_callback_t drain,
-      await_drained_callback_t await_drained);
+      await_drained_callback_t await_drained,
+      mesh_node_location_store_t *location_store = nullptr);
     ~route_mesh_runtime_service_t ();
 
     mesh_node_snapshot_t snapshot (std::string mesh_name) const override;

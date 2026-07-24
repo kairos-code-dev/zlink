@@ -71,6 +71,12 @@ public sealed class WorkerPoolTests
             async cancellationToken =>
             {
                 _ = cancellationToken;
+                using var execution = ZLinkApplicationExecutionContext.Push(
+                    new ZLinkApplicationExecutionScope(
+                        "worker-test-spot",
+                        ZLinkUserSpotExecutionMode.SpotWide,
+                        ActorId: null,
+                        YieldAllowed: true));
                 var call = CreateCall(
                     pool,
                     _ =>

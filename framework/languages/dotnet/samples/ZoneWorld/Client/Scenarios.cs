@@ -72,7 +72,7 @@ public static class Scenarios
                 p.PlayerId == player.PlayerId && p.X == targetX && p.Y == targetY))
             .Timeout(TimeSpan.FromSeconds(15))
             .Async(ct);
-        player.Move(targetX, targetY);
+        await player.MoveAsync(targetX, targetY);
         var state = (await waiting).Payload;
         player.Position = (targetX, targetY);
 
@@ -92,7 +92,7 @@ public static class Scenarios
         var waiting = player.Connector.WaitFor<MoveRejectedNotify>()
             .Timeout(TimeSpan.FromSeconds(15))
             .Async(ct);
-        player.Move(-40, join.Y);
+        await player.MoveAsync(-40, join.Y);
         var rejected = (await waiting).Payload;
 
         ZlinkStreamAssert.Ensure(object.Equals(MoveRejectReasons.OutOfRange, rejected.Reason), "OutOfRange is checked before TooFar");
@@ -146,7 +146,7 @@ public static class Scenarios
                     p.PlayerId == player.PlayerId && p.X == step.X && p.Y == step.Y))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(step.X, step.Y);
+            await player.MoveAsync(step.X, step.Y);
             await arrived;
             player.Position = step;
         }
@@ -154,7 +154,7 @@ public static class Scenarios
         var waiting = player.Connector.WaitFor<MoveRejectedNotify>()
             .Timeout(TimeSpan.FromSeconds(15))
             .Async(ct);
-        player.Move(50, 50);
+        await player.MoveAsync(50, 50);
         var rejected = (await waiting).Payload;
 
         ZlinkStreamAssert.Ensure(object.Equals(MoveRejectReasons.DiagonalCrossing, rejected.Reason), "a move may not cross both boundaries");
@@ -173,7 +173,7 @@ public static class Scenarios
                 p.PlayerId == player.PlayerId && p.X == targetX && p.Y == join.Y))
             .Timeout(TimeSpan.FromSeconds(15))
             .Async(ct);
-        player.Move(targetX, join.Y);
+        await player.MoveAsync(targetX, join.Y);
         var state = (await waiting).Payload;
         player.Position = (targetX, join.Y);
 
@@ -230,7 +230,7 @@ public static class Scenarios
                         .Where(message => message.Payload.PlayerId == client.PlayerId)
                         .Timeout(TimeSpan.FromSeconds(15))
                         .Async(ct);
-                    client.Move(target.X, target.Y);
+                    await client.MoveAsync(target.X, target.Y);
                     await changed;
                     client.Position = (target.X, target.Y);
                     continue;
@@ -243,7 +243,7 @@ public static class Scenarios
                             p.PlayerId == client.PlayerId && p.X == step.X && p.Y == step.Y))
                         .Timeout(TimeSpan.FromSeconds(15))
                         .Async(ct);
-                    client.Move(step.X, step.Y);
+                    await client.MoveAsync(step.X, step.Y);
                     await arrived;
                     client.Position = step;
                 }
@@ -266,7 +266,7 @@ public static class Scenarios
                     p.PlayerId == west.PlayerId && p.X == step.X && p.Y == step.Y))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            west.Move(step.X, step.Y);
+            await west.MoveAsync(step.X, step.Y);
             await arrived;
             west.Position = step;
         }
@@ -317,7 +317,7 @@ public static class Scenarios
                         p.PlayerId == player.PlayerId && p.X == step.X && p.Y == step.Y))
                     .Timeout(TimeSpan.FromSeconds(15))
                     .Async(ct);
-                player.Move(step.X, step.Y);
+                await player.MoveAsync(step.X, step.Y);
                 await arrived;
                 player.Position = step;
             }
@@ -325,7 +325,7 @@ public static class Scenarios
             var changedWait = player.Connector.WaitFor<ZoneChangedNotify>()
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(52, 25);
+            await player.MoveAsync(52, 25);
             var changed = (await changedWait).Payload;
             player.Position = (52, 25);
 
@@ -339,7 +339,7 @@ public static class Scenarios
                     p.PlayerId == player.PlayerId && p.X == 55 && p.Y == 25))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(55, 25);
+            await player.MoveAsync(55, 25);
             var state = (await stateWait).Payload;
             player.Position = (55, 25);
             ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, state.ZoneId), "the client keeps playing on the new node");
@@ -358,7 +358,7 @@ public static class Scenarios
                 p.PlayerId == rejoined.PlayerId && p.X == 60 && p.Y == 25))
             .Timeout(TimeSpan.FromSeconds(15))
             .Async(ct);
-        rejoined.Move(60, 25);
+        await rejoined.MoveAsync(60, 25);
         var resumedState = (await resumedWait).Payload;
         rejoined.Position = (60, 25);
         ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.NorthEast, resumedState.ZoneId), "the rejoined client controls the same actor");
@@ -376,7 +376,7 @@ public static class Scenarios
                     p.PlayerId == player.PlayerId && p.X == step.X && p.Y == step.Y))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(step.X, step.Y);
+            await player.MoveAsync(step.X, step.Y);
             await arrived;
             player.Position = step;
         }
@@ -384,7 +384,7 @@ public static class Scenarios
         var changedWait = player.Connector.WaitFor<ZoneChangedNotify>()
             .Timeout(TimeSpan.FromSeconds(15))
             .Async(ct);
-        player.Move(25, 52);
+        await player.MoveAsync(25, 52);
         var changed = (await changedWait).Payload;
         player.Position = (25, 52);
 
@@ -514,7 +514,7 @@ public static class Scenarios
                     p.PlayerId == player.PlayerId && p.X == step.X && p.Y == step.Y))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(step.X, step.Y);
+            await player.MoveAsync(step.X, step.Y);
             await arrived;
             player.Position = step;
         }
@@ -535,7 +535,7 @@ public static class Scenarios
             var rejectedWait = player.Connector.WaitFor<MoveRejectedNotify>()
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(52, 25);
+            await player.MoveAsync(52, 25);
             var rejected = (await rejectedWait).Payload;
             ZlinkStreamAssert.Ensure(object.Equals(MoveRejectReasons.ZoneMaintenance, rejected.Reason), "the maintained node refuses arrivals");
             ZlinkStreamAssert.Ensure(object.Equals(48, rejected.X), "a refused move leaves the coordinate untouched");
@@ -549,7 +549,7 @@ public static class Scenarios
                         p.PlayerId == player.PlayerId && p.X == step.X && p.Y == step.Y))
                     .Timeout(TimeSpan.FromSeconds(15))
                     .Async(ct);
-                player.Move(step.X, step.Y);
+                await player.MoveAsync(step.X, step.Y);
                 await arrived;
                 player.Position = step;
             }
@@ -557,7 +557,7 @@ public static class Scenarios
                 .Where(message => message.Payload.PlayerId == player.PlayerId)
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(48, 52);
+            await player.MoveAsync(48, 52);
             await southChanged;
             player.Position = (48, 52);
             foreach (var step in player.PlanWalkWithinZone(48, 55))
@@ -567,14 +567,14 @@ public static class Scenarios
                         p.PlayerId == player.PlayerId && p.X == step.X && p.Y == step.Y))
                     .Timeout(TimeSpan.FromSeconds(15))
                     .Async(ct);
-                player.Move(step.X, step.Y);
+                await player.MoveAsync(step.X, step.Y);
                 await arrived;
                 player.Position = step;
             }
             var refusedSouthWait = player.Connector.WaitFor<MoveRejectedNotify>()
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(52, 55);
+            await player.MoveAsync(52, 55);
             var refusedSouth = (await refusedSouthWait).Payload;
             ZlinkStreamAssert.Ensure(object.Equals(MoveRejectReasons.ZoneMaintenance, refusedSouth.Reason),
                 "the maintained node's other zone refuses arrivals too");
@@ -586,7 +586,7 @@ public static class Scenarios
                     p.PlayerId == player.PlayerId && p.X == 45 && p.Y == 55))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(45, 55);
+            await player.MoveAsync(45, 55);
             await westMove;
             player.Position = (45, 55);
         }
@@ -632,7 +632,7 @@ public static class Scenarios
                     p.PlayerId == player.PlayerId && p.X == 30 && p.Y == 30))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(30, 30);
+            await player.MoveAsync(30, 30);
             await moved;
             player.Position = (30, 30);
 
@@ -644,14 +644,14 @@ public static class Scenarios
                         p.PlayerId == player.PlayerId && p.X == step.X && p.Y == step.Y))
                     .Timeout(TimeSpan.FromSeconds(15))
                     .Async(ct);
-                player.Move(step.X, step.Y);
+                await player.MoveAsync(step.X, step.Y);
                 await arrived;
                 player.Position = step;
             }
             var changedWait = player.Connector.WaitFor<ZoneChangedNotify>()
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(30, 52);
+            await player.MoveAsync(30, 52);
             var changed = (await changedWait).Payload;
             player.Position = (30, 52);
             ZlinkStreamAssert.Ensure(object.Equals(ZoneIds.SouthWest, changed.ZoneId), "an intra-node zone change is allowed under maintenance");
@@ -691,7 +691,7 @@ public static class Scenarios
                     p.PlayerId == player.PlayerId && p.X == step.X && p.Y == step.Y))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(step.X, step.Y);
+            await player.MoveAsync(step.X, step.Y);
             await arrived;
             player.Position = step;
         }
@@ -707,7 +707,7 @@ public static class Scenarios
             var changedWait = player.Connector.WaitFor<ZoneChangedNotify>()
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            player.Move(52, 25);
+            await player.MoveAsync(52, 25);
             var changed = (await changedWait).Payload;
             player.Position = (52, 25);
             ZlinkStreamAssert.Ensure(object.Equals(NodeIds.East, changed.NodeId), "leaving a maintained node for a healthy one is allowed");
@@ -900,7 +900,7 @@ public static class Scenarios
                     p.PlayerId == west.PlayerId && p.X == step.X && p.Y == step.Y))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            west.Move(step.X, step.Y);
+            await west.MoveAsync(step.X, step.Y);
             await arrived;
             west.Position = step;
         }
@@ -922,7 +922,7 @@ public static class Scenarios
                     p.PlayerId == east.PlayerId && p.X == step.X && p.Y == step.Y))
                 .Timeout(TimeSpan.FromSeconds(15))
                 .Async(ct);
-            east.Move(step.X, step.Y);
+            await east.MoveAsync(step.X, step.Y);
             await arrived;
             east.Position = step;
         }
@@ -930,7 +930,7 @@ public static class Scenarios
             .Where(message => message.Payload.PlayerId == east.PlayerId)
             .Timeout(TimeSpan.FromSeconds(15))
             .Async(ct);
-        east.Move(52, 25);
+        await east.MoveAsync(52, 25);
         await eastChanged;
         east.Position = (52, 25);
         Console.WriteLine("scenario ZW-B4 checkpoint=east-in-zone-ne");
@@ -1078,7 +1078,7 @@ public static class Scenarios
         var rejected = player.Connector.WaitFor<MoveRejectedNotify>()
             .Timeout(TimeSpan.FromSeconds(15))
             .Async(ct);
-        player.Move(-40, player.Position.Y);
+        await player.MoveAsync(-40, player.Position.Y);
         await rejected;
 
         var state = (await player.Connector.WaitFor<ZoneStateNotify>()

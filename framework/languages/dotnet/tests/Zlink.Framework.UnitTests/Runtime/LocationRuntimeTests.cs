@@ -123,7 +123,7 @@ public sealed class LocationRuntimeTests
         var snapshot = await store.ListOwnerLeasesAsync();
         Assert.Empty(snapshot.Leases);
         Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-1")));
-        Assert.Null(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("play", RoutingId.From("spot-1"))));
+        Assert.Null(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("spot-1")));
         Assert.Empty(await store.ListMeshNodesAsync("play"));
     }
 
@@ -215,7 +215,7 @@ public sealed class LocationRuntimeTests
         Assert.Empty((await store.ListOwnerLeasesAsync()).Leases);
         Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-1")));
         Assert.Null(await store.ResolveSpotAsync(
-            new ZLinkSpotLocationKey("play", RoutingId.From("spot-drain"))));
+            new ZLinkSpotLocationKey("spot-drain")));
         Assert.Empty(await store.ListMeshNodesAsync("play"));
         await runtime.StopAsync();
     }

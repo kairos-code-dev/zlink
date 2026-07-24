@@ -45,19 +45,19 @@ bool placement_capacity_available (
 {
     if (kind == placement_object_kind_t::actor)
         return capacity_available (
-          descriptor.placement_capacity.actors);
+          descriptor.capacity.actors);
     if (!capacity_available (
-          descriptor.placement_capacity.spots))
+          descriptor.capacity.spots))
         return false;
     const auto typed = std::find_if (
-      descriptor.placement_capacity.spot_types.begin (),
-      descriptor.placement_capacity.spot_types.end (),
+      descriptor.capacity.spot_types.begin (),
+      descriptor.capacity.spot_types.end (),
       [&] (const spot_type_capacity_t &candidate) {
           return candidate.object_kind == kind
                  && candidate.stable_type == stable_type;
       });
     return typed
-             == descriptor.placement_capacity.spot_types.end ()
+             == descriptor.capacity.spot_types.end ()
            || capacity_available (typed->usage);
 }
 
@@ -339,10 +339,6 @@ mesh_node_host_service_t::create_actor (
         if (descriptor.state == framework_runtime_state_t::serving
             && descriptor.object_role == object_role_t::server
             && descriptor.placement_weight > 0
-            && descriptor.object_capacity.pending
-                 < descriptor.object_capacity.pending_limit
-            && descriptor.object_capacity.active
-                 < descriptor.object_capacity.active_limit
             && placement_capacity_available (
                  descriptor, placement_object_kind_t::actor,
                  stable_type)
@@ -438,7 +434,7 @@ mesh_node_host_service_t::create_actor (
               result_t<actor_create_result_t>::success (
                 actor_create_existing_t{
                   actor_ref_t{
-                    existing->current.allocation.node_rid,
+                    existing->current.allocation.target.node_rid,
                     existing->current.allocation.stable_type,
                     actor_id,
                     existing->current.object_generation}}));
@@ -472,7 +468,7 @@ mesh_node_host_service_t::create_actor (
                 return task_t<actor_create_result_t> (
                   result_t<actor_create_result_t>::failure (
                     framework_error_kind_t::
-                      placement_capacity_exhausted,
+                     placement_capacity_exhausted,
                     "Actor placement candidates were exhausted"));
             target = choose_target ();
             target_runtime = find_target_runtime ();
@@ -644,15 +640,15 @@ mesh_node_host_service_t::find_actor (
     const auto *snapshot =
       std::get_if<authority_snapshot_t> (&current);
     if (!snapshot
-        || snapshot->allocation.capacity_state
-             != placement_capacity_state_t::active)
+        || snapshot->allocation.state
+             != placement_allocation_state_t::active)
         return task_t<std::optional<actor_ref_t>> (
           result_t<std::optional<actor_ref_t>>::success (
             std::nullopt));
     return task_t<std::optional<actor_ref_t>> (
       result_t<std::optional<actor_ref_t>>::success (
         actor_ref_t{
-          snapshot->allocation.node_rid,
+          snapshot->allocation.target.node_rid,
           snapshot->allocation.stable_type,
           actor_id, snapshot->object_generation}));
 }
@@ -781,10 +777,6 @@ mesh_node_host_service_t::create_user_spot (
             if (descriptor.state == framework_runtime_state_t::serving
                 && descriptor.object_role == object_role_t::server
                 && descriptor.placement_weight > 0
-                && descriptor.object_capacity.pending
-                     < descriptor.object_capacity.pending_limit
-                && descriptor.object_capacity.active
-                     < descriptor.object_capacity.active_limit
                 && placement_capacity_available (
                      descriptor,
                      placement_object_kind_t::user_spot,
@@ -857,7 +849,13 @@ mesh_node_host_service_t::create_user_spot (
     reserve_request.intent.request_encoded_size =
       static_cast<std::uint64_t> (application_bytes.size ());
     reserve_request.creating_payload = creating_payload;
-    reserve_request.pending_capacity_delta = 1;
+    reserve_request.capacity_bundle = {
+      0,
+      1,
+      spot_type_capacity_delta_t{
+        placement_object_kind_t::user_spot,
+        stable_type,
+        1}};
     object_reserve_result_t reserved;
     while (true) {
         reserve_request.target = {
@@ -894,7 +892,7 @@ mesh_node_host_service_t::create_user_spot (
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
                 framework_error_kind_t::
-                  placement_capacity_exhausted,
+                 placement_capacity_exhausted,
                 "User Spot placement candidates were exhausted"));
         target = choose_target ();
     }
@@ -910,16 +908,16 @@ mesh_node_host_service_t::create_user_spot (
             {spot_ref_t{
                *spot_id,
                ready->current.object_generation,
-               ready->current.allocation.mesh_name,
-               ready->current.allocation.node_rid},
+               ready->current.allocation.target.mesh_name,
+               ready->current.allocation.target.node_rid},
              spot_create_state_t::existing,
              std::nullopt}));
     }
     if (const auto *mismatch =
           std::get_if<object_type_mismatch_t> (&reserved)) {
         if (exclusive
-            && mismatch->current.allocation.capacity_state
-                 == placement_capacity_state_t::active)
+            && mismatch->current.allocation.state
+                 == placement_allocation_state_t::active)
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
                 framework_error_kind_t::spot_id_conflict,
@@ -941,6 +939,11 @@ mesh_node_host_service_t::create_user_spot (
         source_created_reservation = true;
     } else if (const auto *conflict =
                  std::get_if<object_reserve_conflict_t> (&reserved)) {
+        if (exclusive)
+            return task_t<spot_create_result_t> (
+              result_t<spot_create_result_t>::failure (
+                framework_error_kind_t::spot_id_conflict,
+                "Framework-generated User SpotId already has an authority claim"));
         const auto *snapshot =
           std::get_if<authority_snapshot_t> (&conflict->current);
         if (!snapshot || !snapshot->pending_creation
@@ -954,11 +957,11 @@ mesh_node_host_service_t::create_user_spot (
           snapshot->store_version,
           snapshot->object_generation,
           snapshot->authority_owner_generation,
-          {snapshot->allocation.mesh_name,
-           snapshot->allocation.node_rid,
-           snapshot->allocation.node_lifecycle_generation,
+          {snapshot->allocation.target.mesh_name,
+           snapshot->allocation.target.node_rid,
+           snapshot->allocation.target.node_lifecycle_generation,
            snapshot->owner},
-          snapshot->allocation.capacity_delta};
+          snapshot->allocation.capacity_bundle};
         target.mesh_name = fence.target.mesh_name;
         target.rid = zlink::routing_id_t::from (
           std::string (fence.target.node_rid.value ()));
@@ -991,7 +994,7 @@ mesh_node_host_service_t::create_user_spot (
        fence.target.owner.owner_id,
        static_cast<std::uint64_t> (
          fence.target.owner.lease_generation),
-       fence.pending_capacity_delta},
+       fence.capacity_bundle.spot_slots},
       static_cast<std::uint64_t> (
         std::chrono::duration_cast<std::chrono::milliseconds> (
           std::chrono::system_clock::now ().time_since_epoch ()
@@ -1100,8 +1103,8 @@ mesh_node_host_service_t::find_user_spot (spot_id_t spot_id)
     if (!snapshot
         || snapshot->allocation.object_kind
              != placement_object_kind_t::user_spot
-        || snapshot->allocation.capacity_state
-             != placement_capacity_state_t::active)
+        || snapshot->allocation.state
+             != placement_allocation_state_t::active)
         return task_t<std::optional<spot_ref_t>> (
           result_t<std::optional<spot_ref_t>>::success (
             std::nullopt));
@@ -1110,8 +1113,8 @@ mesh_node_host_service_t::find_user_spot (spot_id_t spot_id)
         spot_ref_t{
           std::move (spot_id),
           snapshot->object_generation,
-          snapshot->allocation.mesh_name,
-          snapshot->allocation.node_rid}));
+          snapshot->allocation.target.mesh_name,
+          snapshot->allocation.target.node_rid}));
 }
 
 task_t<bool> mesh_node_host_service_t::close_user_spot (
@@ -1147,10 +1150,10 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
           "User Spot generation is stale"));
     if (snapshot->allocation.object_kind
           != placement_object_kind_t::user_spot
-        || snapshot->allocation.capacity_state
-             != placement_capacity_state_t::active
-        || snapshot->allocation.mesh_name != spot.mesh_name ()
-        || snapshot->allocation.node_rid.value ()
+        || snapshot->allocation.state
+             != placement_allocation_state_t::active
+        || snapshot->allocation.target.mesh_name != spot.mesh_name ()
+        || snapshot->allocation.target.node_rid.value ()
              != spot.node_rid ().value ())
         return task_t<bool> (result_t<bool>::failure (
           framework_error_kind_t::spot_moving,
@@ -1166,9 +1169,9 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
       {spot.spot_id (),
        spot.object_generation (),
        zlink::routing_id_t::from (
-         std::string (snapshot->allocation.node_rid.value ()))
+         std::string (snapshot->allocation.target.node_rid.value ()))
          .to_bytes (),
-       snapshot->allocation.node_lifecycle_generation,
+       snapshot->allocation.target.node_lifecycle_generation,
        snapshot->authority_owner_generation,
        snapshot->store_version},
       static_cast<std::uint64_t> (
@@ -1182,7 +1185,7 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
     const auto accepted =
       source->native_node ().close_user_spot_remote (
         zlink::routing_id_t::from (
-          std::string (snapshot->allocation.node_rid.value ())),
+          std::string (snapshot->allocation.target.node_rid.value ())),
         std::move (command), std::chrono::seconds (30),
         [completion] (
           foundation::operation_terminal_t terminal,
@@ -1318,6 +1321,12 @@ void mesh_node_host_service_t::start (service_provider_t &services)
         descriptor.object_role = object_role_t::server;
         descriptor.placement_weight =
           node->placement_weight ();
+        descriptor.capacity.actors.limit =
+          node->actor_limit ();
+        descriptor.capacity.spots.limit =
+          node->spot_limit ();
+        descriptor.activation_concurrency.limit =
+          node->activation_concurrency_limit ();
         descriptor.state = framework_runtime_state_t::serving;
         descriptor.security_identity =
           _location_owner->owner_id;
@@ -1334,7 +1343,7 @@ void mesh_node_host_service_t::start (service_provider_t &services)
                 .object_kind =
                   placement_object_kind_t::user_spot,
                 .stable_type = stable_type});
-            descriptor.placement_capacity.spot_types.push_back (
+            descriptor.capacity.spot_types.push_back (
               spot_type_capacity_t{
                 .object_kind =
                   placement_object_kind_t::user_spot,

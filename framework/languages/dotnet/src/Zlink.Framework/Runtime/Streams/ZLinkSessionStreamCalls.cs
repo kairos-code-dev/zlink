@@ -6,6 +6,8 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
     ZLinkSessionContext context,
     TMessage message)
 {
+    private readonly ZLinkOneWayCallGate _submission = new("Session operation");
+
     private readonly ZLinkStreamSendBuilder<TMessage> _builder = new(
         message,
         context.Codecs,
@@ -30,7 +32,9 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
         return this;
     }
 
-    protected async ValueTask<ZLinkSubmitResult> ExecuteAsync(
+    protected void ClaimSubmission() => _submission.Claim();
+
+    protected async ValueTask<ZLinkOneWaySubmitResult> ExecuteAsync(
         CancellationToken cancellationToken,
         bool validateBeforeCancellation = false)
     {
@@ -49,7 +53,7 @@ internal abstract class ZLinkSessionStreamCallBase<TMessage>(
             cancellationToken.ThrowIfCancellationRequested();
         }
         var result = await context.SubmitAsync(frame, cancellationToken).ConfigureAwait(false);
-        if (result.Status == ZLinkSubmitStatus.Submitted) context.TraceWritten(header);
+        if (result.Status == ZLinkOneWaySubmitStatus.Submitted) context.TraceWritten(header);
         return result;
     }
 
@@ -84,10 +88,11 @@ internal sealed class ZLinkSessionSendCall<TMessage>(
         return (IZLinkSessionSendCall)Compress();
     }
 
-    public ValueTask<ZLinkSubmitResult> SubmitAsync(
+    public ValueTask Async(
         CancellationToken cancellationToken = default)
     {
-        return ExecuteAsync(cancellationToken);
+        ClaimSubmission();
+        return ExecuteAsync(cancellationToken).EnsureAcceptedAsync("Session send");
     }
 
     protected override ZlinkStreamHeader CreateHeader(
@@ -119,10 +124,12 @@ internal sealed class ZLinkSessionReplyCall<TMessage>(
         return (IZLinkSessionReplyCall)Compress();
     }
 
-    public ValueTask<ZLinkSubmitResult> SubmitAsync(
+    public ValueTask Async(
         CancellationToken cancellationToken = default)
     {
-        return ExecuteAsync(cancellationToken, validateBeforeCancellation: true);
+        ClaimSubmission();
+        return ExecuteAsync(cancellationToken, validateBeforeCancellation: true)
+            .EnsureAcceptedAsync("Session reply");
     }
 
     protected override ZlinkStreamHeader CreateHeader(

@@ -5,9 +5,7 @@ import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonA2LocationEventsS
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonA3SpotEventsScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonA4AvailabilityTransitionScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonA5FixedKindsScenario;
-import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonB1KindFilterScenario;
-import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonB2RegistrationValidationScenario;
-import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonC1DispatchFailureScenario;
+import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonBPublishMonitoringAbsenceScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Scenarios.MonD1FailureRecoveryScenario;
 import systems.zlink.e2e.runtimemonitoring.client.Support.MonitoringScenarioContext;
 
@@ -41,9 +39,8 @@ public final class Program {
             MonA3SpotEventsScenario.run(context);
             MonA4AvailabilityTransitionScenario.run(context);
             MonA5FixedKindsScenario.run(context);
-            MonB1KindFilterScenario.run(context);
-            MonB2RegistrationValidationScenario.run(context);
-            MonC1DispatchFailureScenario.run(context);
+            MonBPublishMonitoringAbsenceScenario.runZeroTarget(context);
+            MonBPublishMonitoringAbsenceScenario.runLocalTarget(context);
             MonD1FailureRecoveryScenario.run(context);
             System.out.println("monitoring e2e result=passed");
         }
@@ -56,9 +53,8 @@ public final class Program {
             case "MON-A3" -> MonA3SpotEventsScenario.run(context);
             case "MON-A4" -> MonA4AvailabilityTransitionScenario.run(context);
             case "MON-A5" -> MonA5FixedKindsScenario.run(context);
-            case "MON-B1" -> MonB1KindFilterScenario.run(context);
-            case "MON-B2" -> MonB2RegistrationValidationScenario.run(context);
-            case "MON-C1" -> MonC1DispatchFailureScenario.run(context);
+            case "MON-B1" -> MonBPublishMonitoringAbsenceScenario.runZeroTarget(context);
+            case "MON-B2" -> MonBPublishMonitoringAbsenceScenario.runLocalTarget(context);
             case "MON-D1" -> MonD1FailureRecoveryScenario.run(context);
             default -> throw new IllegalArgumentException("Unknown RuntimeMonitoring scenario '" + scenario + "'.");
         }

@@ -96,12 +96,12 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
 
         // courier-a receives the offer through its bound stream session and accepts it.
         var courierOffer = (await offer).Payload;
-        courierA.Send(new CourierDecisionMsg(
+        await courierA.Send(new CourierDecisionMsg(
                 courierOffer.DeliveryId,
                 courierOffer.CourierId,
                 true,
                 null))
-            .Submit(cancellationToken);
+            .Async(cancellationToken);
 
         var statuses = await statusSequenceTask;
         var assigned = statuses[0].Payload;
@@ -165,12 +165,12 @@ internal sealed class DeliveryDispatchClientScenario(ILogger logger)
         // same delivery to courier-b, which accepts through its own bound stream session.
         _ = await firstOffer;
         var acceptedOffer = (await secondOffer).Payload;
-        courierB.Send(new CourierDecisionMsg(
+        await courierB.Send(new CourierDecisionMsg(
                 acceptedOffer.DeliveryId,
                 acceptedOffer.CourierId,
                 true,
                 null))
-            .Submit(cancellationToken);
+            .Async(cancellationToken);
 
         var statuses = await statusSequenceTask;
         var assigned = statuses[0].Payload;

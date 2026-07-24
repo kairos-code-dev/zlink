@@ -15,7 +15,6 @@ internal sealed class RawMeshMonitor : IMeshNodeMonitor
     private long _completed;
     private long _protocolErrors;
     private long _backpressured;
-    private long _dropped;
 
     internal RawMeshMonitor(MeshMonitorEventMask mask = MeshMonitorEventMask.All)
     {
@@ -31,7 +30,6 @@ internal sealed class RawMeshMonitor : IMeshNodeMonitor
             checked((ulong)Math.Max(0, Interlocked.Read(ref _completed))),
             checked((ulong)Math.Max(0, Interlocked.Read(ref _protocolErrors))),
             checked((ulong)Math.Max(0, Interlocked.Read(ref _backpressured))),
-            checked((ulong)Math.Max(0, Interlocked.Read(ref _dropped))),
             checked((ulong)Math.Max(0, Interlocked.Read(ref _sequence))));
 
     public MeshMonitorEvent? Recv(RecvFlags flags = RecvFlags.None)
@@ -71,9 +69,6 @@ internal sealed class RawMeshMonitor : IMeshNodeMonitor
             case MeshMonitorEventKind.Backpressured:
                 Interlocked.Increment(ref _backpressured);
                 break;
-            case MeshMonitorEventKind.MulticastDropped:
-                Interlocked.Increment(ref _dropped);
-                break;
         }
 
         if (Volatile.Read(ref _disposed) != 0 || !Includes(kind))
@@ -93,13 +88,6 @@ internal sealed class RawMeshMonitor : IMeshNodeMonitor
             default,
             channelName,
             operationId,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
             resultCode,
             failureErrno));
         _ = sequence;
@@ -132,8 +120,6 @@ internal sealed class RawMeshMonitor : IMeshNodeMonitor
             MeshMonitorEventKind.PeerRejected => MeshMonitorEventMask.PeerRejected,
             MeshMonitorEventKind.ChannelChanged => MeshMonitorEventMask.ChannelChanged,
             MeshMonitorEventKind.MessageSubmitted => MeshMonitorEventMask.MessageSubmitted,
-            MeshMonitorEventKind.MulticastCommitted => MeshMonitorEventMask.MulticastCommitted,
-            MeshMonitorEventKind.MulticastDropped => MeshMonitorEventMask.MulticastDropped,
             MeshMonitorEventKind.Backpressured => MeshMonitorEventMask.Backpressured,
             MeshMonitorEventKind.OperationCompleted => MeshMonitorEventMask.OperationCompleted,
             MeshMonitorEventKind.ProtocolError => MeshMonitorEventMask.ProtocolError,

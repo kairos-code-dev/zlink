@@ -53,8 +53,8 @@ authority에는 Location Store가 보유한 kind·type과 current Mesh를 사용
 
 Spot direct send는 비동기 submit 하나만 제공한다. Immediate-only 동기 terminator는 제공하지 않으며, queue가
 일시적으로 가득 차면 owner MeshNode ROUTER의 유한한 send timeout까지 admission을 기다린다. 완료 결과는
-반환하지 않는다. 정상 완료는 source-local outbound queue가 operation을 수락했다는 뜻이며 target Spot
-handler 실행은 기다리지 않는다. Capacity가 즉시 부족하면 유한한 send timeout까지 기다리고, 그 안에
+반환하지 않는다. 정상 완료는 source의 local outbound admission이 끝나 outbound queue가 operation을
+수락했다는 뜻이며 target Spot handler 실행은 기다리지 않는다. Capacity가 즉시 부족하면 유한한 send timeout까지 기다리고, 그 안에
 수락하지 못하면 `DeadlineExceeded`로 실패한다. Target·route 부재, cancellation과 runtime shutdown도
 operation-specific exception으로 완료한다. 자세한 경계는
 [04 비동기 실행 정책 §1.3](../04-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
@@ -122,29 +122,26 @@ application API에 노출하지 않는다.
 remote node의 Spot 목록이나 peer별 queue를 호출자에게 반환하지 않는다. 호출자가 공개 Node direct
 send를 반복해서 Logical Multicast를 구성하는 방식은 공통 계약이 아니다.
 
-### 4.1 Target별 수락
+### 4.1 Publish 시작과 완료
 
 Logical Multicast는 publish 전용 전달 정책 option을 제공하지 않는다. Framework의 bounded I/O executor는
-유한한 send timeout 안에서 worker slot과 source-local outbound capacity를 기다린다. Handoff에 성공하면
-service runtime은 snapshot의 각 remote target에 한 번 제출한다. Local Spot queue는 target별로 즉시
-수락하며, 용량이 없으면 해당 target을 drop 수에 기록하고 기다리지 않는다.
+설정한 send timeout 안에서 worker slot과 source-local queue capacity를 기다린다. 그 안에 확보하지 못하면
+target 처리를 시작하지 않고 `DeadlineExceeded`로 실패한다. Publish를 시작하기 전에 cancellation이나
+runtime shutdown이 확정되면 각각 기존 typed cancellation 또는 `RuntimeShutdown` 오류로 완료한다.
 
-Publish transaction이 시작되면 snapshot operation은 commit된 것이다. 이후 cancellation이나 shutdown으로
-남은 target 제출을 중단하지 않는다. 뒤 target에서 backpressure가 발생해도 앞에서 성공한 제출을 취소하지 않는다.
-Executor handoff나 source-local outbound capacity를 send timeout까지 확보하지 못하면
-`DeadlineExceeded`로 실패한다. Snapshot target이 0인 publish는 정상 완료한다. Transaction이 시작된 뒤
-remote 연결 불가와 local Spot queue drop이 발생해도 이미 수락된 target을 rollback하거나 전체 publish를
-retry하지 않으며 terminal call은 정상 완료한다.
+Worker와 source-local capacity를 확보하면 publish 작업을 시작하며 terminal call은 결과값 없이 정상
+완료한다. Subscriber가 없거나 target snapshot이 0이어도 같다. 시작한 작업은 snapshot의 각 remote
+MeshNode에 한 번 제출하고 origin MeshNode의 일치하는 local Spot queue에도 제출하지만, caller의 terminal
+완료를 위해 target별 수락 결과를 기다리지 않는다.
 
-publish 수락은 subscriber handler 실행이나 업무 처리를 확인하는 acknowledgement가 아니다. Remote count의
-admitted는 source MeshNode의 local outbound transport queue가 제출을 수락했다는 뜻이다. Framework는 수신
-MeshNode의 Spot queue 제출이나 handler 실행·완료를 기다리지 않는다. Local count의 admitted만 origin
-MeshNode에서 일치한 local Spot application queue가 제출을 수락했다는 뜻이다. 어느 경우에도 durable
-저장·재생·exactly-once 전달을 뜻하지 않는다.
+Publish가 시작된 뒤 발생한 remote 연결 불가, queue 용량 부족, cancellation 또는 shutdown은 이미 시작한
+operation을 전체 실패로 바꾸지 않는다. 성공한 target을 rollback하거나 전체 publish를 자동 재전송하지도
+않는다. Publish 완료는 subscriber 수신, Spot queue 수락, handler 실행 또는 업무 처리 완료를 확인하는
+acknowledgement가 아니며 durable 저장·재생·exactly-once 전달도 뜻하지 않는다.
 
-remote target의 snapshot, admitted, dropped, unreachable 수와 local Spot match의 snapshot, admitted,
-dropped 수는 public 반환값이 아니라 monitoring metric과 event로 기록한다. 이 집계는 관측 정보이며
-subscriber ACK나 handler 완료 결과가 아니다.
+Framework는 publish마다 remote·local target 수와 target별 수락·drop·unreachable 결과를 계산하여 public
+snapshot, metric, runtime event 또는 message-flow count로 제공하지 않는다. MeshNode·peer 연결 상태와
+transport·mailbox 전체 queue 상태는 publish와 무관한 공통 runtime monitoring으로 관찰한다.
 
 ## 5. Subscription과 dispatch
 
@@ -209,8 +206,9 @@ one-way와 request completion의 공통 의미는
 Spot direct와 Logical Multicast는 [03 메시지 모델](../03-message-model.ko.md)의 immutable metadata
 snapshot을 사용한다. metadata ownership, 크기와 reply 규칙은 이 문서에서 다시 정의하지 않는다.
 
-관측 정보는 current owner MeshName, ChannelName, origin RID, remote target 수, local match 수, admission 대기·실패,
-drop과 Spot dispatch 결과를 구분해야 한다. topic과 Spot ID는 metric label로 사용하지 않는다.
+Spot direct 관측은 current owner MeshName, ChannelName, origin RID, admission 대기·실패와 Spot dispatch
+결과를 구분해야 한다. Logical Multicast의 remote·local target 수와 target별 결과는 관측 정보로
+집계하지 않는다. Topic과 Spot ID는 metric label로 사용하지 않는다.
 
 ## 8. 검증 요구
 
@@ -230,7 +228,7 @@ drop과 Spot dispatch 결과를 구분해야 한다. topic과 Spot ID는 metric 
 - Logical Multicast가 bounded executor direct handoff에서 publish transaction을 한 번만 시작하고 commit 뒤 cancellation이
   snapshot의 나머지 target 제출을 중단하지 않는다.
 - 같은 node의 여러 target Spot이 immutable message storage를 공유한다.
-- local과 remote target의 독립 수락 결과가 snapshot·admitted·dropped·unreachable 수로 집계된다.
+- local과 remote target의 선택 수와 수락·drop·unreachable 결과를 publish 전용 monitoring으로 집계하지 않는다.
 - Actor payload가 Spot application queue와 Spot callback을 거치지 않는다.
 - join·leave와 lifecycle control만 Spot control claim으로 전달된다.
 - classic fanout PUB/SUB과 Logical Multicast의 연결 및 구독 상태가 섞이지 않는다.

@@ -48,9 +48,9 @@ restart 전후에 같은 RID나 endpoint를 요구하지 않는다.
 handler 동작(공유):
 
 - entry spot은 `JoinReq`로 user spot/actor를 만들고, user spot은 `StateReq(op)`로 상태를 바꾼다.
-- **session이 끊겨도 actor membership은 자동으로 안 바뀐다.** session handler가
-  `OnDisconnectedAsync`에서 원하는 actor에 `NotifyDisconnectedAsync(...)`를 직접 호출해야
-  actor `Disconnected`가 발생한다.
+- **session이 끊겨도 actor membership은 자동으로 바뀌지 않는다.** Framework가 current
+  binding snapshot 전체에 disconnect를 자동 all-settled 통지하며 application의 session
+  callback은 Actor 목록을 순회하지 않는다.
 - user spot은 명시적 `Close`로만 닫힌다(joined actor가 남아 있으면 거부). close 시
   언어별 `OnClosing` callback이 실행된다.
 - 미등록 spot route/actor packet은 dispatch error로 처리되고 message-flow error evidence
@@ -371,9 +371,14 @@ Actor queue가 그 owner node에서만 실행되는가.
 
 **검증 질문:** 명시적 leave는 `OnLeaveActorAsync`, 비정상 disconnect 통지는 `OnDisconnectActorAsync` — 두 경로가 각각 맞는 콜백을 actor당 한 번씩만 부르는가.
 
-- 절차: join한 actor에 대해 (a) 앱이 명시적으로 `leaveActor(...)`로 떠나보내거나, (b) stream 연결을 비정상 종료한 뒤 session handler가 `NotifyDisconnectedAsync(...)`를 호출한다. (bound session `DisconnectAsync`는 actor membership을 자동으로 바꾸지 않는다.)
-- 검증: (a)는 actor 소유 노드의 spot에서 `OnLeaveActorAsync`가, (b)는 `OnDisconnectActorAsync`가 1회 발화해 evidence에 남는다. leave/통지하지 않은 actor에는 발화하지 않는다. 발화는 actor당 1회로 중복·누락이 없다.
-- 세부 동작: 명시적 leave(`leaveActor`→`OnLeaveActorAsync`) vs 비정상 disconnect(`NotifyDisconnectedAsync`→`OnDisconnectActorAsync`).
+- 절차: join한 Actor에 대해 (a) application이 명시적으로 `leaveActor(...)`를 호출하거나,
+  (b) Actor를 bind한 STREAM connection을 비정상 종료한다. (b)의 session disconnect callback은
+  Actor 목록을 순회하거나 `NotifyDisconnectedAsync(...)`를 다시 호출하지 않는다.
+- 검증: (a)는 Actor 소유 노드의 Spot에서 `OnLeaveActorAsync`만 실행한다. (b)는 disconnect 시점의
+  current binding snapshot에 있는 Actor마다 `OnDisconnectActorAsync`를 exact binding identity 기준
+  최대 한 번 자동 실행한다. 두 경우 모두 Actor destroy를 뜻하지 않으며, (b)는 Spot membership을
+  변경하지 않는다. 한 Actor callback이 실패해도 다른 Actor callback과 session cleanup은 계속된다.
+- 세부 동작: 명시적 leave와 physical disconnect automatic all-settled notification의 구분.
 
 #### SM-B7 actor handler 실행 순서
 
@@ -603,15 +608,64 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
   current dispatch에 실패를 반환한다([31 §3](../../spec/server/31-session-actor-dispatch.ko.md#3-inbound-dispatch와-reply)).
 - 세부 동작: 다중 Actor bind, explicit target 선택과 dispatch-context relay.
 
-#### SM-D5 session disconnect → 명시적 actor 통지
+#### SM-D4A rebind와 stale binding 격리
 
 우선순위: `P0`
 
-**검증 질문:** 연결이 끊겨도 actor membership이 자동으로 해제되지 않고, handler가 `NotifyDisconnectedAsync`를 호출한 actor에 한해서만 `OnDisconnectActorAsync`가 실행되는가.
+**검증 질문:** 같은 Actor를 Session A에서 Session B로 rebind한 뒤 Session A의 이전 binding token으로
+도착한 relay와 늦은 disconnect가 Session B의 current binding에 영향을 주지 않는가.
 
-- 절차: SM-D1~D4로 bind한 상태에서 stream 연결을 비정상 종료(disconnect)한다. session handler의 `OnDisconnectedAsync`에서 선택한 bound actor에 `NotifyDisconnectedAsync(...)`를 호출한다. 단일·다중 bind, local·remote를 모두 시도한다.
-- 검증: session disconnect 자체는 actor membership을 자동으로 바꾸지 않는다. handler가 `NotifyDisconnectedAsync`를 호출한 actor에 한해, 그 actor가 존재하는 노드의 Spot에서 `OnDisconnectActorAsync` callback이 1회 발화해 evidence에 남는다. 통지하지 않은 actor에는 발화하지 않는다.
-- 세부 동작: session `OnDisconnectedAsync` → 선택 actor `NotifyDisconnectedAsync` → spot `OnDisconnectActorAsync` (자동 fanout 아님).
+- 절차: Actor X를 Session A에 bind한 뒤 같은 `ActorRef`를 Session B에 명시적으로 rebind한다. Session A의
+  이전 binding token과 저장 route로 relay를 제출하고, Session A의 이전 connection lifecycle에서 늦게
+  도착한 disconnect도 제출한다. 각 Session에는 Actor X 외의 Actor도 함께 bind해 다중 Actor binding을
+  유지한다.
+- 검증: stale relay는 Actor X의 Session B binding으로 전달되지 않고 typed stale 결과로 끝난다. Session A의
+  늦은 disconnect는 Session B binding을 해제하거나 Actor X의 disconnect callback을 다시 실행하지 않는다.
+  Session A와 B에 함께 bind된 다른 Actor의 binding도 유지된다. Actor X의 `ObjectGeneration`과 Spot
+  membership은 바뀌지 않는다.
+- 세부 동작: cross-session explicit rebind, exact binding identity와 stale lifecycle event 격리.
+
+#### SM-D4B 저장 route relay와 stale mapping
+
+우선순위: `P0`
+
+**검증 질문:** bind 뒤 relay·disconnect가 Location Store를 다시 읽지 않고 저장 route만 사용하며,
+stale route도 숨은 lookup이나 retry 없이 한 번의 forwarding 또는 typed stale 결과로 끝나는가.
+
+- 절차: exact `ActorRef` bind 직후 Location Store read counter를 기록하고 이후 read를 차단한다.
+  Valid stored route로 request, push와 disconnect를 수행한다. 이어 stale route에 대해 active committed
+  forwarding mapping이 있는 경우와 mapping이 만료되거나 없는 경우를 각각 실행한다.
+- 검증: bind 이후 두 경우 모두 Location Store read counter 증가는 `0`이다. Valid route는 owner lease와
+  local admission deadline 안에서 성공한다. Active mapping은 같은 exact identity를 최대 한 번
+  forwarding하고, expired/missing mapping은 typed stale 결과로 끝난다. Runtime은 fresh `ActorRef`를
+  lookup하거나 Store 장애를 이유로 retry·deadline 연장을 하지 않는다.
+- 세부 동작: stored route no-Store dispatch와 single-forward stale mapping.
+
+#### SM-D5 physical session disconnect automatic fan-out
+
+우선순위: `P0`
+
+**검증 질문:** 연결이 끊기면 Framework가 current binding 전체에 통지하면서 Actor와 membership은 유지하는가.
+
+- 절차: local·remote Actor를 여러 개 bind하고 한 Actor callback에는 실패를 주입한 뒤 STREAM을 비정상
+  종료한다. Application의 session disconnect callback은 Actor 목록을 순회하지 않는다. Automatic 통지와
+  별도 `NotifyDisconnectedAsync` 논리 통지를 동시에 실행하는 race도 반복한다.
+- 검증: disconnect 시점의 current binding 전체가 저장 route로 통지를 받고 각 current Spot callback은 exact
+  binding identity마다 최대 한 번 실행된다. 한 Actor 실패 뒤에도 다른 Actor 통지와 Session cleanup이
+  완료된다. Actor ObjectGeneration과 Spot membership은 유지된다. Location Store read를 차단해도 owner
+  lease와 local admission deadline 안의 저장 route 통지는 성공하며, expired route의 deadline은 Store
+  장애 때문에 연장되지 않는다.
+- 세부 동작: automatic all-settled fan-out, binding identity dedupe와 no-Store route.
+
+#### SM-D5A application logical disconnect
+
+우선순위: `P0`
+
+- 절차: physical connection을 유지한 채 선택한 bound Actor 하나에 public `NotifyDisconnectedAsync` 대응
+  operation을 호출한다.
+- 검증: 선택 Actor의 current Spot callback 완료 뒤 terminal이 완료되고 다른 bound Actor callback은
+  실행되지 않는다. Actor, membership과 connection은 유지된다.
+- 세부 동작: 명시적 logical notification과 physical disconnect의 구분.
 
 #### SM-D6 bound session push 타깃팅
 
@@ -691,13 +745,15 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
 우선순위: `P1`
 
 **검증 질문:** heartbeat가 정상이면 session 연결이 유지되고, heartbeat가 중단되면 `Disconnected`로
-감지되는가(actor 통지는 수동인가).
+감지된 뒤 current binding 전체에 자동 통지되는가.
 
 - 절차: stream 연결을 유지하며 heartbeat 주기를 지나친다. 한쪽이 heartbeat를 멈춘다.
 - 검증: 정상 heartbeat 동안 session 연결이 유지된다. heartbeat 중단은 connector에서
   `Disconnected` 상태나 오류로 감지되며 server stream session의 `OnDisconnectedAsync`가 실행된다.
-  bound actor의 `Disconnected`는 session handler가 `NotifyDisconnectedAsync`를 호출한 경우에만 발생한다.
-- 세부 동작: heartbeat 기반 liveness (session disconnect와 actor 통지 분리).
+  Framework는 disconnect 시점의 current binding snapshot을 고정하고 각 exact binding identity에
+  `OnDisconnectActorAsync`를 최대 한 번 all-settled 방식으로 자동 실행한다. Session handler는 Actor
+  목록을 순회하거나 `NotifyDisconnectedAsync`를 다시 호출하지 않는다.
+- 세부 동작: heartbeat 기반 liveness와 physical disconnect automatic notification.
 
 #### SM-D14 stream TLS
 

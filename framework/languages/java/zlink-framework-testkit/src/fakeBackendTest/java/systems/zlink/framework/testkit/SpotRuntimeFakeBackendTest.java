@@ -829,7 +829,7 @@ final class SpotRuntimeFakeBackendTest {
                 .submit();
             awaitCall(
                 backendFactory,
-                "spotNode.publishDetailed.game.stage.events.StageOpened");
+                "spotNode.publish.game.stage.events.StageOpened");
             assertEquals(
                 Map.of("trace-id", "publish"),
                 ZLinkApplicationMetadata.decode(
@@ -848,7 +848,7 @@ final class SpotRuntimeFakeBackendTest {
                 "spotNode.setPubBind.inproc://spot-pub",
                 "spotNode.entrySpot",
                 "create.entrySpot",
-                "spotNode.publishDetailed.game.stage.events.StageOpened",
+                "spotNode.publish.game.stage.events.StageOpened",
                 "close.spotNode",
                 "close.context"),
             backendFactory.calls());
@@ -955,7 +955,6 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-unhandled-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.enableRouter("inproc://spot-router"); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -990,7 +989,6 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-join-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.enableRouter("inproc://spot-router");
                 node.addEntrySpot(LifecycleEntrySpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -1030,7 +1028,6 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-reject-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -1055,7 +1052,6 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-actor-send-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -1088,7 +1084,6 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-actor-request-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -1118,7 +1113,6 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-interface-request-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -1144,7 +1138,6 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-shared-request-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -1173,7 +1166,6 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-interface-request-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(InterfaceEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -1206,7 +1198,6 @@ final class SpotRuntimeFakeBackendTest {
         DefaultZLinkFrameworkOptions options = optionsWithTargetLocation();
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-shared-request-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(SharedEntrySpot.class); node.addSpotFactory(SharedUserSpot.class);
                 node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -1340,7 +1331,6 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://context-leave-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entrySpot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class);
                 node.addSpotFactory(OutboundSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
@@ -1382,7 +1372,6 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-left-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
@@ -1408,7 +1397,6 @@ final class SpotRuntimeFakeBackendTest {
         options.addHandlersFromPackageOf(SpotRuntimeFakeBackendTest.class);
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
                 node.enableRouter("inproc://entry-joined-router");
-                { var entry = node.configureEntrySpot(); entry.setRoutingId(RoutingId.from("entry-spot")); };
                 node.addEntrySpot(LifecycleEntrySpot.class);
                 node.addSpotFactory(OutboundSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =

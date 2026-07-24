@@ -24,8 +24,10 @@ public record ZLinkMeshNodeDescriptor(
     long applicationVersion,
     List<ZLinkObjectCapability> objectCapabilities,
     ZLinkMeshNodeObjectRole objectRole,
+    Optional<String> entrySpotId,
     int placementWeight,
     ZLinkPlacementCapacity capacity,
+    ZLinkActivationConcurrency activationConcurrency,
     Optional<String> maintenanceWave,
     ZLinkFrameworkRuntimeState state,
     String securityIdentity,
@@ -52,6 +54,17 @@ public record ZLinkMeshNodeDescriptor(
                 "applicationVersion must not be negative");
         }
         Objects.requireNonNull(objectRole, "objectRole");
+        entrySpotId = Objects.requireNonNull(
+            entrySpotId,
+            "entrySpotId");
+        entrySpotId.ifPresent(
+            value -> systems.zlink.framework.runtime.internal.spots
+                .ZLinkSpotIdValidator.requireValid(value));
+        if ((objectRole == ZLinkMeshNodeObjectRole.SERVER)
+            != entrySpotId.isPresent()) {
+            throw new IllegalArgumentException(
+                "Only an Object Server descriptor must publish entrySpotId");
+        }
         if (placementWeight < 0 || placementWeight > 10_000) {
             throw new IllegalArgumentException(
                 "placementWeight must be in 0..10000");
@@ -102,6 +115,9 @@ public record ZLinkMeshNodeDescriptor(
             }
         }
         Objects.requireNonNull(capacity, "capacity");
+        Objects.requireNonNull(
+            activationConcurrency,
+            "activationConcurrency");
         maintenanceWave = Objects.requireNonNull(
             maintenanceWave,
             "maintenanceWave");

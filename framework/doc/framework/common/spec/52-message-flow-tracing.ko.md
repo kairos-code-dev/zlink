@@ -37,7 +37,7 @@ runtime 상태 변화는 [50 Runtime monitoring](50-runtime-monitoring.ko.md), �
 | `sent` | Outbound submit을 local transport가 수락했다. |
 | `reply_received` | Outbound request가 terminal reply를 받았다. |
 | `backpressured` | 수락할 공간이 부족하여 message를 받지 못했거나 제한 시간까지 기다렸다. |
-| `dropped` | 정책에 따라 message 전체 또는 Logical Multicast target 하나를 전달 대상에서 제외했다. |
+| `dropped` | 정책에 따라 message를 전달 대상에서 제외했다. |
 
 `sent`는 source의 local transport가 message를 받았다는 뜻이고, `admitted`는 기록
 대상 queue나 target 집합이 message를 받았다는 뜻이다. 두 phase 모두 remote
@@ -48,13 +48,11 @@ handler가 실행을 끝냈다는 보장은 아니다.
 
 | 필드 | 닫힌 값 |
 |---|---|
-| `surface` | Message가 통과한 표면을 `node`, `channel`, `spot`, `instance_spot`, `logical_multicast`, `actor`, `stream`, `classic_fanout`, `actor_relocation` 가운데 하나로 기록한다. |
-| `message_kind` | Message 종류를 `send`, `request`, `response`, `error`, `publish`, `control` 가운데 하나로 기록한다. |
+| `surface` | Message가 통과한 표면을 `node`, `channel`, `spot`, `instance_spot`, `actor`, `stream`, `actor_relocation` 가운데 하나로 기록한다. |
+| `message_kind` | Message 종류를 `send`, `request`, `response`, `error`, `control` 가운데 하나로 기록한다. |
 | `flow_origin` | Flow를 처음 만든 원인을 `inbound`, `timer`, `application`, `lifecycle` 가운데 하나로 기록한다. |
 
-[Logical Multicast](01-glossary.ko.md#logical-multicast) operation은 origin event 하나와 remote MeshNode target event를 기록할 수 있다. 같은 node의
-local [Spot](01-glossary.ko.md#spot) delivery를 payload 수만큼 encode한 별도 outbound event로 표현하지 않는다. local match 수와
-remote target 수를 count 필드로 기록한다.
+Logical Multicast와 classic fanout publish는 message-flow event를 만들지 않는다.
 
 ## 4. Event fields
 
@@ -81,9 +79,6 @@ remote target 수를 count 필드로 기록한다.
 | `instance_spot_type`, `activation_state` | Instance Spot event에 해당 값이 있을 때 기록한다. | Startup에 등록한 type과 `activating`, `ready`, `closing` 가운데 현재 state를 나타낸다. |
 | `correlation_id` | Request와 terminal reply를 연결해야 할 때 기록한다. | Request와 terminal reply가 같은 operation임을 나타낸다. |
 | `flow_id`, `flow_origin` | Causal flow를 기록할 때 두 field를 함께 기록한다. | Causal flow와 이 flow를 처음 만든 원인을 나타낸다. |
-| `remote_snapshot_count`, `remote_admitted_count`, `remote_dropped_count` | Logical Multicast에 remote target이 있을 때 기록한다. | Remote target을 snapshot한 수, admission에 성공한 수와 drop한 수를 나타낸다. |
-| `local_snapshot_count`, `local_admitted_count`, `local_dropped_count` | Logical Multicast에 local Spot target이 있을 때 기록한다. | Local Spot을 [snapshot](01-glossary.ko.md#snapshot)한 수, admission에 성공한 수와 drop한 수를 나타낸다. |
-| `target_count`, `drop_count` | Classic fanout 등 다른 fan-out 표면에서 집계가 있을 때 기록한다. | 전체 target 수와 drop한 target 수를 나타낸다. |
 | `message_size_bytes` | `verbose` mode에서만 기록한다. | Payload를 포함한 관찰 대상 message 크기를 byte 단위로 나타낸다. |
 | `duration_seconds` | Terminal event에서 경과 시간을 제공할 때 기록한다. | Operation 또는 handler가 끝날 때까지 걸린 시간을 초 단위로 나타낸다. |
 
@@ -143,8 +138,8 @@ Framework 기본 structured logger가 있으면 해당 logger로 출력한다. l
 fallback text를 제공할 때 prefix는 `zlink flow:`이고 key는 다음 문자열을 사용한다.
 
 `event`, `phase`, `surface`, `kind`, `mesh`, `channel`, `channel_route`, `source_rid`, `target_rid`, `server_rid`, `packet`, `topic`,
-`spot`, `instance_type`, `activation_state`, `actor`, `corr`, `flow`, `origin`, `outcome`, `reason`, `remote_snapshot`, `remote_admitted`,
-`remote_dropped`, `local_snapshot`, `local_admitted`, `local_dropped`, `targets`, `drops`, `size`.
+`spot`, `instance_type`, `activation_state`, `actor`, `corr`, `flow`, `origin`,
+`outcome`, `reason`, `size`.
 
 ## 6. Observer
 
@@ -212,10 +207,8 @@ options.ConfigureDispatch()
 - Spot direct application queue admission과 handler completion
 - [Instance Spot](01-glossary.ko.md#entry-user-instance-spot) source resolve·activation-envelope submit, target-owned claim·activation barrier, application
   admission과 post-submit one-way drop
-- Logical Multicast origin admission, remote target submit, local match와 target drop
 - Actor queue admission, handler completion과 relocation terminal result
 - STREAM session receive, Actor dispatch, reply와 bound-session send
-- [classic fanout](01-glossary.ko.md#classic-fanout) publish·receive와 Framework가 원인을 확인한 drop
 - request timeout, cancellation, shutdown과 dispatch error
 
 같은 operation을 wrapper와 하위 transport에서 중복 terminal event로 기록하지 않는다. 각 request에는
@@ -225,13 +218,13 @@ surface별 terminal event가 하나만 있어야 한다.
 
 - event identifier, phase, surface, message kind, outcome, dispatch reason·action과 field key가 모든
   언어에서 같다.
-- publish operation의 backpressure와 target별 loss는 서로 다른 event로 구분되며 같은 operation에 함께 나타날 수 있다.
 - Actor payload trace가 Spot dispatch phase로 기록되지 않는다.
 - observer·logger failure가 message dispatch와 reply를 바꾸지 않는다.
 - observer failure는 `observer_failed`/`message_flow_observer` runtime error event 하나로 보고되고
   sink 실패는 재귀 event를 만들지 않는다.
-- flow sampling이 Logical Multicast branch 전체에 일관되게 적용된다.
 - payload와 application metadata value가 event나 fallback log에 나타나지 않는다.
+- Logical Multicast와 classic fanout publish가 message-flow event, publish 전용
+  metric 또는 runtime event를 만들지 않는다.
 - 각 request surface가 terminal event를 정확히 한 번 기록한다.
 - Instance one-way activation 실패가 `surface=instance_spot`, `phase=dropped`로 한 번 기록되고 숨은 request나
   replay event를 만들지 않는다.

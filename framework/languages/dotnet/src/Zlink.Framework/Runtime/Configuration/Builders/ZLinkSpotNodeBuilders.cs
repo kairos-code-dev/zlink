@@ -163,26 +163,37 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         if (!registration.SpotFactories.Add(typeof(TSpot)))
             throw new ZLinkConfigurationException(
                 $"Duplicate SPOT factory '{typeof(TSpot)}' on MeshNode '{registration.SpotNodeName}'.");
+        registration.UserSpotFactoryOptions.Add(
+            typeof(TSpot),
+            new ZLinkUserSpotFactoryOptions());
 
         return this;
     }
 
     public IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
         string spotType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkUserSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkSpot
     {
         EnsureServerRole();
         ValidateObjectType(spotType, "Spot");
+        var effectiveOptions = options ?? new ZLinkUserSpotFactoryOptions();
+        ValidateUserSpotFactoryOptions(effectiveOptions);
         if (!registration.SpotFactories.Add(typeof(TSpot)))
             throw new ZLinkConfigurationException(
                 $"Duplicate SPOT factory '{typeof(TSpot)}' on MeshNode '{registration.SpotNodeName}'.");
+        registration.UserSpotFactoryOptions.Add(typeof(TSpot), effectiveOptions);
         AddRelocation(
             registration.SpotRelocations,
             spotType,
             typeof(TSpot),
-            placement,
+            effectiveOptions.StableTypeLimit == 0
+                ? null
+                : new ZLinkObjectPlacementOptions
+                {
+                    MaxActiveObjects = effectiveOptions.StableTypeLimit
+                },
             relocation,
             typeof(IZLinkSpotRelocationAdapter<>).MakeGenericType(typeof(TSpot)),
             relocation.AdapterType is { } spotAdapter
@@ -389,6 +400,17 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
             throw new ZLinkConfigurationException(
                 "MaxPendingActivations must be greater than zero.");
     }
+
+    private static void ValidateUserSpotFactoryOptions(
+        ZLinkUserSpotFactoryOptions options)
+    {
+        if (options.StableTypeLimit < 0)
+            throw new ZLinkConfigurationException(
+                "User Spot StableTypeLimit must not be negative.");
+        if (!Enum.IsDefined(options.ExecutionMode))
+            throw new ZLinkConfigurationException(
+                "User Spot execution mode is not supported.");
+    }
 }
 
 internal sealed class ZLinkMeshObjectRoleBuilder(
@@ -435,10 +457,10 @@ internal sealed class ZLinkMeshObjectServerBuilder(
 
     public IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
         string spotType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkUserSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkSpot =>
-        _builder.AddSpotFactory(spotType, placement, relocation);
+        _builder.AddSpotFactory(spotType, options, relocation);
 
     public IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,

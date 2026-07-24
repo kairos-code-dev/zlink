@@ -5,6 +5,9 @@ const zlink = require('@zlink-systems/zlink');
 const connector = require('../../packages/stream-connector/dist');
 const protocolCodecs = require('./helpers/stream-protocol-codecs');
 const framework = require('../../packages/framework/dist/internal');
+const {
+  ZLinkSubmitStatus
+} = require('../../packages/framework/dist/runtime/messaging/submission-result');
 
 test('class instance payload supplies packetName to channel send envelopes', async () => {
   class GetProfileReq {
@@ -79,7 +82,7 @@ test('class instance payload supplies packetName to stream send calls', async ()
     },
     async submitRaw(message) {
       written.push(message.bytes);
-      return { status: framework.ZLinkSubmitStatus.Submitted };
+      return { status: ZLinkSubmitStatus.Submitted };
     },
     async close() {}
   });

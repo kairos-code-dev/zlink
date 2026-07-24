@@ -321,19 +321,20 @@ typed 표면은 registry가 encode/decode할 수 있는 업무 객체 payload를
 동작한다. `String`, `byte[]`, `Message` 같은 raw payload는 connector 하위 경로나
 명시적 raw 사용에서만 다룬다.
 
-Kotlin extension은 Java typed payload 표면에 coroutine 호출 형태만 추가한다.
+Kotlin 표면은 Java call을 application에 직접 노출하지 않고 전용 wrapper로 감싼다. Reply type은 request
+wrapper를 만들 때 고정하므로 terminal에서 type이나 operation 이름을 반복하지 않는다.
 
 ```kotlin
-// request 응답은 ZLinkStreamRequestCall 의 reified typed awaitReply 로 받는다(codec 가 JSON 등 처리).
-// 이름은 §12의 목표 선언과 같다 -- 비-reified `await()`와 overload로 겹치지 않게 분리한다.
-inline suspend fun <reified TReply> ZLinkStreamRequestCall.awaitReply(): TReply
+// Reply type은 request를 만들 때 wrapper에 고정하고 await()로 결과를 기다린다.
+val reply: LoginReply = connector
+    .request<LoginReply>(LoginRequest("user-1"))
+    .await()
 
-// 구독은 connector 의 waitFor<T>() 또는 messages(packetName) Flow 로 한다.
-inline fun <reified TPayload> ZLinkStreamConnector.waitFor(): ZLinkStreamTypedWaitCall<TPayload>
-
-fun ZLinkStreamConnector.messages(
-    packetName: String,
-): Flow<ZLinkStreamMessage<ZLinkStreamEncodedPayload>>
+// Server push도 Kotlin 전용 wait wrapper의 await()로 기다린다.
+val pushed: ZLinkStreamMessage<Notice> = connector
+    .waitFor<Notice>()
+    .where { it.payload.important }
+    .await()
 ```
 
 ## 9. Dispatch Mode
@@ -449,8 +450,13 @@ class ZLinkKotlinStreamConnector {
     fun dispatch(): ZLinkKotlinLifecycleCall
     fun send(payload: ZLinkStreamEncodedPayload): ZLinkKotlinSendCall
     fun send(payload: Any): ZLinkKotlinSendCall
-    fun request(payload: ZLinkStreamEncodedPayload): ZLinkStreamRequestCall
-    fun request(payload: Any): ZLinkTypedStreamRequestCall
+    fun request(
+        payload: ZLinkStreamEncodedPayload,
+    ): ZLinkKotlinRawRequestCall
+    fun <TReply : Any> request(
+        payload: Any,
+        replyType: KClass<TReply>,
+    ): ZLinkKotlinRequestCall<TReply>
     fun <TPayload> waitFor(): ZLinkStreamTypedWaitCall<TPayload>
     fun <TPayload> waitFor(name: String): ZLinkStreamTypedWaitCall<TPayload>
     fun <TPayload> expectNone(name: String): ZLinkStreamTypedExpectNoneCall<TPayload>
@@ -467,9 +473,26 @@ class ZLinkKotlinSendCall {
     suspend fun await(): Unit
 }
 
-suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload
-inline suspend fun <reified TReply> ZLinkStreamRequestCall.awaitReply(): TReply
-inline suspend fun <reified TReply> ZLinkTypedStreamRequestCall.awaitReply(): TReply
+class ZLinkKotlinRawRequestCall {
+    fun packetName(name: String): ZLinkKotlinRawRequestCall
+    fun metadata(key: String, value: String): ZLinkKotlinRawRequestCall
+    fun timeout(timeout: Duration): ZLinkKotlinRawRequestCall
+    fun compress(): ZLinkKotlinRawRequestCall
+    suspend fun await(): ZLinkStreamEncodedPayload
+}
+
+class ZLinkKotlinRequestCall<TReply : Any> {
+    fun packetName(name: String): ZLinkKotlinRequestCall<TReply>
+    fun metadata(key: String, value: String): ZLinkKotlinRequestCall<TReply>
+    fun timeout(timeout: Duration): ZLinkKotlinRequestCall<TReply>
+    fun compress(): ZLinkKotlinRequestCall<TReply>
+    suspend fun await(): TReply
+}
+
+inline fun <reified TReply : Any> ZLinkKotlinStreamConnector.request(
+    payload: Any,
+): ZLinkKotlinRequestCall<TReply> =
+    request(payload, TReply::class)
 
 class ZLinkStreamTypedWaitCall<TPayload> {
     fun timeout(timeout: Duration): ZLinkStreamTypedWaitCall<TPayload>

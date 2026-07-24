@@ -1,0 +1,251 @@
+using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Security.Cryptography;
+
+namespace Zlink.Framework.Runtime.Actors;
+
+internal sealed class ZLinkDeferredActorJoinHandlerScope : IDisposable
+{
+    private const int MaxOperations = 64;
+    private const int MaxRequestBytes = 1024 * 1024;
+    private const int MaxTotalRequestBytes = 8 * 1024 * 1024;
+    private static readonly AsyncLocal<ZLinkDeferredActorJoinHandlerScope?> CurrentScope = new();
+    private readonly List<ZLinkDeferredActorJoin> _joins = [];
+    private readonly bool _allowed;
+    private readonly ZLinkDeferredActorJoinHandlerScope? _previous;
+    private readonly object _sync = new();
+    private int _requestBytes;
+    private bool _completed;
+    private bool _sealed;
+
+    private ZLinkDeferredActorJoinHandlerScope(bool allowed)
+    {
+        _allowed = allowed;
+        _previous = CurrentScope.Value;
+        CurrentScope.Value = this;
+    }
+
+    public static ZLinkDeferredActorJoinHandlerScope Open(bool allowed = true)
+    {
+        return new ZLinkDeferredActorJoinHandlerScope(allowed);
+    }
+
+    public static void Register(ZLinkDeferredActorJoin join, int requestBytes)
+    {
+        var scope = CurrentScope.Value
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.InvalidConfiguration,
+                        "Actor Join Defer is only valid in a Framework-managed Spot or Actor handler.");
+
+        if (requestBytes > MaxRequestBytes)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                $"Actor Join request exceeds the {MaxRequestBytes}-byte limit.");
+
+        lock (scope._sync)
+        {
+            if (!scope._allowed)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.InvalidConfiguration,
+                    "Instance Spot handlers cannot register Actor Join operations.");
+            if (scope._sealed)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.InvalidConfiguration,
+                    "Actor Join Defer cannot register after the handler has completed.");
+            if (scope._joins.Count >= MaxOperations)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.InvalidConfiguration,
+                    $"A handler turn cannot register more than {MaxOperations} Actor Joins.");
+            if (scope._requestBytes > MaxTotalRequestBytes - requestBytes)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.InvalidConfiguration,
+                    $"Actor Join requests in one handler turn exceed {MaxTotalRequestBytes} bytes.");
+
+            join.ReserveBarrier();
+            scope._joins.Add(join);
+            scope._requestBytes += requestBytes;
+        }
+    }
+
+    public void Complete()
+    {
+        lock (_sync)
+        {
+            if (_sealed) return;
+            _completed = true;
+            _sealed = true;
+        }
+    }
+
+    public void Dispose()
+    {
+        List<ZLinkDeferredActorJoin> joins;
+        lock (_sync)
+        {
+            _sealed = true;
+            joins = [.. _joins];
+        }
+
+        CurrentScope.Value = _previous;
+        if (_completed)
+        {
+            foreach (var join in joins) join.Activate();
+            return;
+        }
+
+        foreach (var join in joins) join.Discard();
+    }
+}
+
+internal sealed class ZLinkDeferredActorJoin(
+    ZLinkFrameworkRuntime runtime,
+    ZLinkActorRuntimeState actorState,
+    IZLinkActor actor,
+    ulong objectGeneration,
+    string? targetSpotId,
+    ZLinkMessage request,
+    TimeSpan timeout)
+{
+    private readonly long _registeredTimestamp = Stopwatch.GetTimestamp();
+    private readonly ZLinkActorJoinOperationId _operationId = CreateOperationId();
+    private ZLinkActorDispatchMailbox.BarrierReservation? _barrier;
+
+    public void ReserveBarrier()
+    {
+        if (runtime.ShutdownToken.IsCancellationRequested)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RuntimeShutdown,
+                "Actor Join cannot be deferred while the Framework runtime is shutting down.");
+        actorState.EnsureDeferredJoinIdentity(actor, objectGeneration);
+        _barrier = actorState.ReserveDeferredJoinBarrier();
+    }
+
+    public void Activate()
+    {
+        if (!runtime.TryRunDetached("actor-deferred-join", RunAsync))
+            Discard();
+    }
+
+    public void Discard()
+    {
+        var barrier = Interlocked.Exchange(ref _barrier, null);
+        barrier?.Discard();
+        actorState.ReleaseDeferredJoinBarrier();
+    }
+
+    private async ValueTask RunAsync(CancellationToken cancellationToken)
+    {
+        var barrier = Interlocked.Exchange(ref _barrier, null)
+                      ?? throw new InvalidOperationException(
+                          "Deferred Actor Join barrier was not reserved.");
+        try
+        {
+            using var turn = await barrier.ClaimAsync().ConfigureAwait(false);
+            var remaining = timeout - Stopwatch.GetElapsedTime(_registeredTimestamp);
+            if (remaining <= TimeSpan.Zero)
+            {
+                await NotifySourceAsync(
+                        new ZLinkActorJoinCompletion.Failed(
+                            _operationId,
+                            ZLinkFrameworkErrorKind.DeadlineExceeded,
+                            true),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(remaining);
+            ZLinkActorJoinCompletion? completion = null;
+            try
+            {
+                actorState.EnsureDeferredJoinIdentity(actor, objectGeneration);
+                var sourceNodeRid = actorState.NativeActorRef?.NodeRid;
+                var result = targetSpotId is { } spotId
+                    ? await runtime.JoinActorAsync(
+                            spotId,
+                            actor,
+                            request,
+                            _operationId,
+                            deadline.Token)
+                        .ConfigureAwait(false)
+                    : await runtime.JoinActorEntrySpotAsync(
+                            sourceNodeRid
+                            ?? throw new ZLinkFrameworkException(
+                                ZLinkFrameworkErrorKind.ActorRouteNotFound,
+                                $"Actor '{actor.ActorId}' does not have a current node identity."),
+                            actor,
+                            request,
+                            deadline.Token)
+                        .ConfigureAwait(false);
+
+                switch (result)
+                {
+                    case ZLinkActorJoinResult.Accepted accepted
+                        when sourceNodeRid is null || accepted.Actor.NodeRid == sourceNodeRid.Value:
+                        completion = new ZLinkActorJoinCompletion.Accepted(
+                            _operationId,
+                            accepted.Actor,
+                            accepted.Reply.IsEmpty ? null : accepted.Reply);
+                        break;
+                    case ZLinkActorJoinResult.Accepted:
+                        // The target runtime delivers durable cross-node Accepted
+                        // after replay and source cleanup through the handoff
+                        // completion request.
+                        break;
+                    case ZLinkActorJoinResult.Rejected rejected:
+                        completion = new ZLinkActorJoinCompletion.Rejected(
+                            _operationId,
+                            rejected.Reply.IsEmpty ? null : rejected.Reply);
+                        break;
+                }
+            }
+            catch (Exception exception)
+            {
+                var (kind, retriable) = MapFailure(exception, deadline);
+                completion = new ZLinkActorJoinCompletion.Failed(_operationId, kind, retriable);
+            }
+
+            if (completion is not null)
+                await NotifySourceAsync(completion, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            actorState.ReleaseDeferredJoinBarrier();
+        }
+    }
+
+    private ValueTask NotifySourceAsync(
+        ZLinkActorJoinCompletion completion,
+        CancellationToken cancellationToken)
+    {
+        return actor.OnJoinCompletedAsync(completion, cancellationToken);
+    }
+
+    private (ZLinkFrameworkErrorKind Kind, bool Retriable) MapFailure(
+        Exception exception,
+        CancellationTokenSource deadline)
+    {
+        if (exception is ZLinkFrameworkException framework)
+            return (framework.Kind, framework.IsRetriable);
+        if (exception is OperationCanceledException
+            && runtime.ShutdownToken.IsCancellationRequested)
+            return (ZLinkFrameworkErrorKind.RuntimeShutdown, false);
+        if (exception is TimeoutException
+            || exception is OperationCanceledException && deadline.IsCancellationRequested)
+            return (ZLinkFrameworkErrorKind.DeadlineExceeded, true);
+        return (ZLinkFrameworkErrorKind.RequestFailed, false);
+    }
+
+    private static ZLinkActorJoinOperationId CreateOperationId()
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        while (true)
+        {
+            RandomNumberGenerator.Fill(bytes);
+            var high = BinaryPrimitives.ReadUInt64BigEndian(bytes);
+            var low = BinaryPrimitives.ReadUInt64BigEndian(bytes[8..]);
+            if (high != 0 || low != 0) return new ZLinkActorJoinOperationId(high, low);
+        }
+    }
+}

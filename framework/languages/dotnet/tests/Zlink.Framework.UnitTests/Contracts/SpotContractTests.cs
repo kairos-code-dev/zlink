@@ -5,7 +5,7 @@ public sealed class SpotContractTests
     [Fact]
     public void SpotCreateResult_Exposes_Exact_SpotRef()
     {
-        var spotId = RoutingId.From("0a0b0c");
+        const string spotId = "0a0b0c";
 
         var reference = new SpotRef(
             spotId, 7, "game", RoutingId.From("node-a"));

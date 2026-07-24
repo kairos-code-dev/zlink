@@ -84,15 +84,16 @@ import systems.zlink.framework.runtime.handlers.ZLinkScannedHandlerSurface;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkPayloadEncoding;
 import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
-import systems.zlink.framework.runtime.messaging.ZLinkSubmitResults;
 
-final class RouteSpotSendCall implements ZLinkSendCall {
-    private final systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate submitGate =
-        new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate();
+
+final class RouteSpotSendCall
+    implements systems.zlink.framework.spots.ZLinkSpotSendCall {
+    private final java.util.concurrent.atomic.AtomicBoolean submitGate =
+        new java.util.concurrent.atomic.AtomicBoolean();
     private final ZLinkChannelCallRuntime runtime;
     private final String channelName;
     private final SpotTransportAddressResolver resolver;
-    private final SpotHandle target;
+    private final String target;
     private final Message payload;
     private final Optional<String> packetName;
 
@@ -100,7 +101,7 @@ final class RouteSpotSendCall implements ZLinkSendCall {
         ZLinkChannelCallRuntime runtime,
         String channelName,
         SpotTransportAddressResolver resolver,
-        SpotHandle target,
+        String target,
         Message payload,
         Optional<String> packetName) {
         this.runtime = runtime;
@@ -122,13 +123,13 @@ final class RouteSpotSendCall implements ZLinkSendCall {
     }
 
     @Override
-    public CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit() {
-        CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> duplicate =
-            submitGate.begin();
+    public CompletionStage<Void> submit() {
+        CompletionStage<Void> duplicate =
+            ZLinkOneWayCalls.beginOneWay(submitGate);
         if (duplicate != null) {
             return duplicate;
         }
-        return ZLinkSubmitResults.fromVoidStage(
+        return ZLinkOneWayCalls.adaptOneWay(
             SpotCallAddresses.resolve(resolver, target).thenCompose(address -> {
             List<Message> sendParts = ZLinkChannelCallRuntime.parts(packetName, payload);
             try {
@@ -146,11 +147,12 @@ final class RouteSpotSendCall implements ZLinkSendCall {
     }
 }
 
-final class RouteSpotRequestCall implements ZLinkRequestCall {
+final class RouteSpotRequestCall
+    implements systems.zlink.framework.spots.ZLinkSpotRequestCall {
     private final ZLinkChannelCallRuntime runtime;
     private final String channelName;
     private final SpotTransportAddressResolver resolver;
-    private final SpotHandle target;
+    private final String target;
     private final Message payload;
     private final Optional<String> packetName;
     private final Duration timeout;
@@ -159,7 +161,7 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
         ZLinkChannelCallRuntime runtime,
         String channelName,
         SpotTransportAddressResolver resolver,
-        SpotHandle target,
+        String target,
         Message payload,
         Optional<String> packetName,
         Duration timeout) {
@@ -184,7 +186,8 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
     }
 
     @Override
-    public ZLinkRequestCall timeout(Duration timeout) {
+    public systems.zlink.framework.spots.ZLinkSpotRequestCall timeout(
+        Duration timeout) {
         return new RouteSpotRequestCall(
             runtime,
             channelName,
@@ -197,6 +200,8 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
 
     @Override
     public <TReply> CompletionStage<TReply> submit(Class<TReply> replyType) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.rejectSameSpotWait(target);
         CompletionStage<TReply> stage = SpotCallAddresses.resolve(resolver, target).thenCompose(address -> {
             List<Message> requestParts = ZLinkChannelCallRuntime.parts(packetName, payload);
             return runtime.requestToSpot(
@@ -217,6 +222,14 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
         return systems.zlink.framework.execution.ZLinkAsyncSerialQueue.manageCurrent(stage);
     }
 
+    @Override
+    public <TReply> CompletionStage<TReply> yield(Class<TReply> replyType) {
+        systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.requireYieldAllowed("Spot request");
+        return systems.zlink.framework.execution.ZLinkAsyncSerialQueue
+            .yieldCurrent(submit(replyType));
+    }
+
 }
 
 final class SpotCallAddresses {
@@ -225,7 +238,7 @@ final class SpotCallAddresses {
 
     static CompletionStage<SpotTransportAddress> resolve(
         SpotTransportAddressResolver resolver,
-        SpotHandle target) {
+        String target) {
         if (resolver == null) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "SpotHandle resolver is not configured"));

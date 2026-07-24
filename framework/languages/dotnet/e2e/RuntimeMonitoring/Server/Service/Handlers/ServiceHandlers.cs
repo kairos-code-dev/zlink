@@ -79,66 +79,20 @@ internal sealed class MonitoringSubjectSpot(IZLinkSpotContext context) : IZLinkS
         Context.Handlers.AddSubscribe<MonitoringSubjectHandler>(
             RuntimeMonitoringNames.SpotChannel,
             "monitor.dynamic");
-        Context.Handlers.AddSubscribe<MulticastProbeHandler>(
-            RuntimeMonitoringNames.SpotChannel,
-            "monitor.multicast");
     }
 }
 
-internal sealed class MulticastProbeHandler(EvidenceStore evidence)
-    : IZLinkSpotSubscriptionHandler<MonitoringSubjectSpot, MulticastProbe>
-{
-    public ValueTask HandleAsync(
-        MonitoringSubjectSpot spot,
-        MulticastProbe message,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        evidence.Add(
-            $"multicast-received|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
-            + $"|marker={message.Marker}|sequence={message.Sequence}");
-        return ValueTask.CompletedTask;
-    }
-}
-
-internal sealed class MonitoringSlowSpot(IZLinkSpotContext context) : IZLinkSpot
-{
-    public IZLinkSpotContext Context { get; } = context;
-
-    public void Configure()
-    {
-        Context.Handlers.AddSubscribe<SlowMulticastProbeHandler>(
-            RuntimeMonitoringNames.SpotChannel,
-            "monitor.prefill");
-        Context.Handlers.AddSubscribe<SlowMulticastProbeHandler>(
-            RuntimeMonitoringNames.SpotChannel,
-            "monitor.multicast");
-    }
-}
-
-internal sealed class SlowMulticastProbeHandler(EvidenceStore evidence)
-    : IZLinkSpotSubscriptionHandler<MonitoringSlowSpot, MulticastProbe>
-{
-    public async ValueTask HandleAsync(
-        MonitoringSlowSpot spot,
-        MulticastProbe message,
-        CancellationToken cancellationToken)
-    {
-        // Keep one target busy long enough for its bounded mailbox to fill.
-        // This creates the partial local-target drop required by MON-B2/C1
-        // without generating thousands of unrelated messages.
-        await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
-        evidence.Add(
-            $"multicast-received|rid={evidence.Rid}|spot={spot.Context.SpotRid}"
-            + $"|marker={message.Marker}|sequence={message.Sequence}");
-    }
-}
-
-internal sealed class MonitoringSubjectHandler
+internal sealed class MonitoringSubjectHandler(EvidenceStore evidence)
     : IZLinkSpotSubscriptionHandler<MonitoringSubjectSpot, ProfileReq>
 {
     public ValueTask HandleAsync(
         MonitoringSubjectSpot spot,
         ProfileReq message,
-        CancellationToken cancellationToken) => ValueTask.CompletedTask;
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        evidence.Add(
+            $"logical-publish|topic=monitor.dynamic|marker={message.Marker}");
+        return ValueTask.CompletedTask;
+    }
 }

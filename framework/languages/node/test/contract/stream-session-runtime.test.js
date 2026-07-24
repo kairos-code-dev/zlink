@@ -896,6 +896,70 @@ test('stream session onDisconnected can explicitly notify bound actors before cl
   assert.equal(bindingRuntime.find('actor-a'), undefined);
 });
 
+test('physical stream disconnect automatically notifies every captured actor and always cleans up', async () => {
+  const socket = new FakeStreamSocket();
+  const events = [];
+  const bindingRuntime = new framework.ZLinkStreamBindingRuntime({
+    async notifyDisconnected(actor) {
+      events.push(actor.actorId);
+      if (actor.actorId === 'actor-a') {
+        throw new Error('actor-a callback failed');
+      }
+    }
+  });
+  const runtime = new framework.ZLinkStreamSessionRuntime({
+    socket,
+    bindingRuntime,
+    sessionFactory(context) {
+      return {
+        context,
+        async onConnected(ctx) {
+          await ctx.actors.bind({ nodeRid: 'node-a', actorId: 'actor-a', generation: 1 });
+          await ctx.actors.bind({ nodeRid: 'node-b', actorId: 'actor-b', generation: 1 });
+        },
+        async onDisconnected() {}
+      };
+    }
+  }, 'session-auto-disconnect');
+
+  runtime.enqueueConnected();
+  runtime.enqueueDisconnected();
+  await runtime.dispose();
+
+  assert.deepEqual(events.sort(), ['actor-a', 'actor-b']);
+  assert.equal(bindingRuntime.find('actor-a'), undefined);
+  assert.equal(bindingRuntime.find('actor-b'), undefined);
+});
+
+test('physical stream disconnect bounds a stalled actor callback by the lifecycle deadline', async () => {
+  const socket = new FakeStreamSocket();
+  const bindingRuntime = new framework.ZLinkStreamBindingRuntime({
+    actorBindTimeoutMs: 5,
+    async notifyDisconnected() {
+      await new Promise(() => {});
+    }
+  });
+  const runtime = new framework.ZLinkStreamSessionRuntime({
+    socket,
+    bindingRuntime,
+    sessionFactory(context) {
+      return {
+        context,
+        async onConnected(ctx) {
+          await ctx.actors.bind({ nodeRid: 'node-a', actorId: 'actor-stalled', generation: 1 });
+        },
+        async onDisconnected() {}
+      };
+    }
+  }, 'session-stalled-disconnect');
+
+  runtime.enqueueConnected();
+  runtime.enqueueDisconnected();
+  await runtime.dispose();
+
+  assert.equal(bindingRuntime.find('actor-stalled'), undefined);
+});
+
 test('stream session node runtime closes rejected packets after dispose', async () => {
   const socket = new FakeStreamSocket();
   const runtime = new framework.ZLinkStreamSessionNodeRuntime({

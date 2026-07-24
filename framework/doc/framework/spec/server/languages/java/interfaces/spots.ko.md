@@ -2,6 +2,13 @@
 
 [인터페이스 목차](README.ko.md) · [Spot 공통 계약](../../../20-spot-messaging.ko.md)
 
+Session에 bind된 Actor의 physical disconnect는 Framework가 automatic all-settled로 통지한다. Actor
+disconnect callback은 destroy·leave·membership 변경이 아니다. Actor relocation은 같은 ObjectGeneration에
+대해 owner·membership commit, 필요한 lifecycle callback과 accepted journal replay·logical timer 복원, durable source cleanup,
+`Completed` CAS를 차례로 끝낸 뒤 command 44·45로 해당 binding route만 바꾼다. Relocation 자체는
+disconnect callback을 실행하지 않는다. 같은 Session의 다른 Actor route와 physical STREAM connection은
+유지하며 routed ACK와 steady normalization 전에는 target session packet·push admission을 열지 않는다.
+
 ```java
 public record SpotRef(
     String spotId,
@@ -39,6 +46,7 @@ public interface ZLinkInstanceSpotHandlerRegistry {
 public interface ZLinkInstanceSpotContext {
     String meshName();
     String spotId();
+    long objectGeneration();
     RoutingId nodeRid();
     ZLinkInstanceSpotHandlerRegistry handlers();
     ZLinkSpotOutbound outbound();
@@ -159,8 +167,9 @@ precommit adapter exception과 contract 위반은 `Blocked/StateIncompatible`, d
 restore는 at-least-once이고 stale target attempt와 겹칠 수 있으므로 retry-safe해야 한다.
 
 Maintenance가 Actor를 target Entry Spot으로 옮길 때는 Actor adapter restore, Location authority·membership
-commit, target Entry Spot의 `onActorRelocated(actor)`와 source Entry Spot의 `onLeaveActor(actor)`, old Entry
-membership의 durable cleanup, accepted journal replay와 application dispatch 개방 순서로 진행한다. Source
+commit, target Entry Spot의 `onActorRelocated(actor)`와 source Entry Spot의 `onLeaveActor(actor)`, accepted journal
+replay·logical timer 복원, old Entry membership의 durable source cleanup, `Completed` CAS, bound-session route
+switch·ACK, steady normalization, application dispatch 개방 순서로 진행한다. Source
 process가 종료되면 exact source fence의 durable cleanup terminal이 source callback 완료를 대신한다. 어느
 callback이 exception으로 끝나도 commit을 rollback하거나 source owner를
 복원하지 않고 target을 sealed 상태로 유지한 채 같은 relocation fence에서 retry한다. 따라서 두 callback은
@@ -299,6 +308,7 @@ public interface systems.zlink.framework.spots.ZLinkInstanceSpot {
 public interface systems.zlink.framework.spots.ZLinkInstanceSpotContext {
   public abstract java.lang.String meshName();
   public abstract java.lang.String spotId();
+  public abstract long objectGeneration();
   public abstract systems.zlink.contracts.core.RoutingId nodeRid();
   public abstract systems.zlink.framework.spots.ZLinkInstanceSpotHandlerRegistry handlers();
   public abstract systems.zlink.framework.spots.ZLinkSpotOutbound outbound();
@@ -323,13 +333,14 @@ public interface systems.zlink.framework.spots.ZLinkEntrySpot<TActor extends sys
   public default java.util.concurrent.CompletionStage<java.lang.Void> onActorRelocated(TActor);
 }
 public interface systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler<TEntrySpot extends systems.zlink.framework.spots.ZLinkEntrySpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TRequest, TReply> {
-  public abstract java.util.concurrent.CompletionStage<TReply> handle(TEntrySpot, TActor, systems.zlink.framework.spots.ZLinkSpotActorRequestContext, TRequest);
+  public abstract java.util.concurrent.CompletionStage<TReply> handle(TEntrySpot, TActor, systems.zlink.framework.ZLinkMessageContext, TRequest);
 }
 public interface systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler<TEntrySpot extends systems.zlink.framework.spots.ZLinkEntrySpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TMessage> {
-  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TEntrySpot, TActor, systems.zlink.framework.spots.ZLinkSpotActorSendContext, TMessage);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TEntrySpot, TActor, systems.zlink.framework.ZLinkMessageContext, TMessage);
 }
 public interface systems.zlink.framework.spots.ZLinkEntrySpotContext {
   public abstract java.lang.String spotId();
+  public abstract long objectGeneration();
   public abstract systems.zlink.contracts.core.RoutingId nodeRid();
   public default systems.zlink.framework.spots.ZLinkSpotHandlerRegistry handlers();
   public abstract systems.zlink.framework.spots.ZLinkSpotOutbound outbound();
@@ -381,18 +392,15 @@ public final class systems.zlink.framework.spots.ZLinkActorCreateResponse extend
   public boolean accepted();
   public systems.zlink.framework.messaging.ZLinkMessage reply();
 }
-public interface systems.zlink.framework.spots.ZLinkSpotActorRequestContext extends systems.zlink.framework.ZLinkHandlerContext {
-}
 public interface systems.zlink.framework.spots.ZLinkSpotActorRequestHandler<TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TRequest, TReply> {
-  public abstract java.util.concurrent.CompletionStage<TReply> handle(TSpot, TActor, systems.zlink.framework.spots.ZLinkSpotActorRequestContext, TRequest);
-}
-public interface systems.zlink.framework.spots.ZLinkSpotActorSendContext extends systems.zlink.framework.ZLinkHandlerContext {
+  public abstract java.util.concurrent.CompletionStage<TReply> handle(TSpot, TActor, systems.zlink.framework.ZLinkMessageContext, TRequest);
 }
 public interface systems.zlink.framework.spots.ZLinkSpotActorSendHandler<TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TMessage> {
-  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TActor, systems.zlink.framework.spots.ZLinkSpotActorSendContext, TMessage);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TActor, systems.zlink.framework.ZLinkMessageContext, TMessage);
 }
 public interface systems.zlink.framework.spots.ZLinkSpotContext {
   public abstract java.lang.String spotId();
+  public abstract long objectGeneration();
   public abstract systems.zlink.contracts.core.RoutingId nodeRid();
   public default systems.zlink.framework.spots.ZLinkSpotHandlerRegistry handlers();
   public abstract systems.zlink.framework.spots.ZLinkSpotOutbound outbound();

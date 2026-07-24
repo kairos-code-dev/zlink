@@ -40,13 +40,11 @@ final class ZLinkAsyncSubmitterTest {
                  ZLinkFrameworkRuntime.start(options, new BackpressuredBackend())) {
             var result = runtime.client()
                 .sendToChannel("profile", "hello")
-                .submit()
-                .toCompletableFuture()
-                .join();
+                .submit();
 
             assertEquals(
-                systems.zlink.framework.channels.ZLinkSubmitStatus.TIMED_OUT,
-                result.status());
+                2,
+                systems.zlink.framework.runtime.messaging.OneWayTestStatus.status(result));
         }
     }
 
@@ -62,8 +60,8 @@ final class ZLinkAsyncSubmitterTest {
                 .submit();
 
             assertEquals(
-                systems.zlink.framework.channels.ZLinkSubmitStatus.SUBMITTED,
-                submission.toCompletableFuture().join().status());
+                0,
+                systems.zlink.framework.runtime.messaging.OneWayTestStatus.status(submission));
             assertEquals(SendFlags.DONT_WAIT, backend.flags);
         }
     }
@@ -78,13 +76,18 @@ final class ZLinkAsyncSubmitterTest {
             var call = runtime.fanout().publish("events", "payload");
 
             assertEquals(
-                systems.zlink.framework.channels.ZLinkSubmitStatus.SUBMITTED,
-                call.submit().toCompletableFuture().join().status());
+                0,
+                systems.zlink.framework.runtime.messaging.OneWayTestStatus.status(call.submit()));
             CompletionException duplicate = assertThrows(
                 CompletionException.class,
                 () -> call.submit().toCompletableFuture().join());
 
-            assertInstanceOf(IllegalStateException.class, duplicate.getCause());
+            var frameworkError = assertInstanceOf(
+                systems.zlink.framework.errors.ZLinkFrameworkException.class,
+                duplicate.getCause());
+            assertEquals(
+                systems.zlink.framework.errors.ZLinkFrameworkErrorKind.ALREADY_SUBMITTED,
+                frameworkError.kind());
             assertEquals(1, backend.submissions);
         }
     }
@@ -234,7 +237,7 @@ final class ZLinkAsyncSubmitterTest {
                 @Override public boolean send(List<Message> parts, SendFlags flags) {
                     return false;
                 }
-                @Override public Duration admissionTimeout() {
+                public Duration admissionTimeout() {
                     return Duration.ofMillis(20);
                 }
             };

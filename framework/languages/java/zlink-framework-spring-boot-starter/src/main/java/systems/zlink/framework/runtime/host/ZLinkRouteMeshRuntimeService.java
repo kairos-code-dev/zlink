@@ -17,7 +17,6 @@ import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.service.spot.MeshMonitorEvent;
 import systems.zlink.contracts.service.spot.MeshMonitorEventKind;
-import systems.zlink.contracts.service.spot.MeshMonitorStatus;
 import systems.zlink.contracts.service.spot.MeshNodeState;
 import systems.zlink.contracts.service.spot.MeshPeerEntry;
 import systems.zlink.contracts.service.spot.MeshPeerState;
@@ -27,7 +26,6 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.monitoring.Drained;
 import systems.zlink.framework.monitoring.ForceStopped;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot;
-import systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshDrainResult;
@@ -77,9 +75,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         var status = node.status();
         List<MeshPeerEntry> peers = node.peers();
         ZLinkMeshNodeState state = mapNodeState(status.state());
-        MonitorHub monitorHub = monitorHubs.get(meshName);
-        long multicastBackpressured =
-            monitorHub == null ? 0 : monitorHub.backpressuredSubmits();
         List<ZLinkMeshChannelSnapshot> channels = node.channelWeights().entrySet().stream()
             .sorted(Map.Entry.comparingByKey())
             .map(channel -> {
@@ -108,11 +103,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             descriptorSources(peers),
             peers.stream().map(peer -> mapPeer(node, peer)).toList(),
             channels,
-            new ZLinkLogicalMulticastSnapshot(
-                status.multicastSubmitted(),
-                multicastBackpressured,
-                status.multicastDroppedTargets(),
-                0, 0, 0, 0, 0, 0),
             new ZLinkMeshClaimSnapshot(
                 state == ZLinkMeshNodeState.SERVING,
                 status.pendingApplicationMessages(),
@@ -345,8 +335,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         String identifier = switch (event.kind()) {
             case STATE_CHANGED -> "zlink.runtime.mesh_node.state_changed";
             case CHANNEL_CHANGED -> "zlink.runtime.mesh_node.channel_changed";
-            case BACKPRESSURED -> "zlink.runtime.mesh_node.multicast_backpressured";
-            case MULTICAST_DROPPED -> "zlink.runtime.mesh_node.multicast_dropped";
             case CLAIM_REVOKED -> "zlink.runtime.mesh_node.claim_changed";
             case PEER_CONNECTING, PEER_ADMITTED, PEER_DRAINING, PEER_CLOSED,
                 PEER_REJECTED, PROTOCOL_ERROR -> "zlink.runtime.mesh_node.peer_changed";
@@ -365,9 +353,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             case BACKPRESSURED -> "backpressure";
             default -> null;
         };
-        boolean targetCounts = event.kind() == MeshMonitorEventKind.MULTICAST_COMMITTED
-            || event.kind() == MeshMonitorEventKind.MULTICAST_DROPPED
-            || event.kind() == MeshMonitorEventKind.BACKPRESSURED;
         ZLinkMeshRuntimeEvent mapped = new ZLinkMeshRuntimeEvent(
             identifier,
             nextSequence(meshName),
@@ -382,12 +367,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
                 ? Optional.of("application")
                 : Optional.empty(),
             Optional.empty(),
-            targetCounts ? Optional.of((long) event.snapshotRemoteTargetCount()) : Optional.empty(),
-            targetCounts ? Optional.of((long) event.admittedRemoteTargetCount()) : Optional.empty(),
-            targetCounts ? Optional.of((long) event.droppedRemoteTargetCount()) : Optional.empty(),
-            targetCounts ? Optional.of((long) event.snapshotLocalSpotCount()) : Optional.empty(),
-            targetCounts ? Optional.of((long) event.admittedLocalSpotCount()) : Optional.empty(),
-            targetCounts ? Optional.of((long) event.droppedLocalSpotCount()) : Optional.empty(),
             Optional.ofNullable(reason),
             event.kind() == MeshMonitorEventKind.STATE_CHANGED
                 ? Optional.of(mapNodeState(event.meshState()))
@@ -409,12 +388,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
                 mapped.channelName(),
                 mapped.claimDomain(),
                 mapped.messageKind(),
-                mapped.remoteSnapshotCount(),
-                mapped.remoteAdmittedCount(),
-                mapped.remoteDroppedCount(),
-                mapped.localSnapshotCount(),
-                mapped.localAdmittedCount(),
-                mapped.localDroppedCount(),
                 mapped.reason(),
                 mapped.state()));
     }
@@ -437,7 +410,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         private final Object gate = new Object();
         private final List<ObserverSubscription> observers = new ArrayList<>();
         private volatile boolean stopped;
-        private volatile MeshMonitorStatus monitorStatus;
         private Thread pump;
 
         MonitorHub(String meshName, ZLinkInternalMeshNode node) {
@@ -487,7 +459,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             try {
                 try {
                     monitor = node.openMonitor();
-                    monitorStatus = monitor.status();
                 } catch (RuntimeException ignored) {
                     // Snapshot polling remains authoritative when another monitor owns
                     // the Core push handle.
@@ -511,7 +482,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
                         }
                     }
                     if (nativeEvent == null) {
-                        refreshMonitorStatus(monitor);
                         var status = node.status();
                         List<MeshPeerEntry> peers = List.copyOf(node.peers());
                         String channels = channelSignature(node, peers);
@@ -555,7 +525,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
                     List<ZLinkMeshRuntimeEvent> events =
                         mapEvents(meshName, sourceRid, nativeEvent);
                     publish(events);
-                    refreshMonitorStatus(monitor);
                     previousState = node.status().state();
                     previousPeers = List.copyOf(node.peers());
                     previousChannels = channelSignature(node, previousPeers);
@@ -575,23 +544,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
                 if (monitor != null) {
                     monitor.close();
                 }
-            }
-        }
-
-        long backpressuredSubmits() {
-            MeshMonitorStatus current = monitorStatus;
-            return current == null ? 0 : current.backpressuredSubmits();
-        }
-
-        private void refreshMonitorStatus(
-            systems.zlink.contracts.service.spot.MeshNodeMonitor monitor) {
-            if (monitor == null) {
-                return;
-            }
-            try {
-                monitorStatus = monitor.status();
-            } catch (RuntimeException ignored) {
-                // The next recv attempt owns monitor failure handling.
             }
         }
 
@@ -663,12 +615,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
             peer == null ? Optional.empty() : Optional.of(peer.state().name().toLowerCase()),
             Optional.empty());
     }
@@ -706,12 +652,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
             state);
     }
 
@@ -725,12 +665,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             Instant.now(),
             meshName,
             sourceRid,
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
             Optional.empty(),
             Optional.empty(),
             Optional.empty(),
@@ -857,15 +791,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
         }
 
         private void coalesceOrReplace(ZLinkMeshRuntimeEvent event) {
-            if (isCounterEvent(event)) {
-                for (ZLinkMeshRuntimeEvent current : List.copyOf(pending)) {
-                    if (current.identifier().equals(event.identifier())) {
-                        pending.remove(current);
-                        pending.addLast(mergeCounters(current, event));
-                        return;
-                    }
-                }
-            }
             if (pending.stream().anyMatch(ObserverSubscription::isTerminalDrain)
                 && !isTerminalDrain(event)) {
                 return;
@@ -885,11 +810,6 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             pending.addLast(event);
         }
 
-        private static boolean isCounterEvent(ZLinkMeshRuntimeEvent event) {
-            return event.identifier().equals("zlink.runtime.mesh_node.multicast_backpressured")
-                || event.identifier().equals("zlink.runtime.mesh_node.multicast_dropped");
-        }
-
         private static boolean isTerminalDrain(ZLinkMeshRuntimeEvent event) {
             if (!event.identifier().equals("zlink.runtime.mesh_node.drain_changed")
                 || event.state().isEmpty()) {
@@ -901,36 +821,5 @@ public final class ZLinkRouteMeshRuntimeService implements ZLinkRouteMeshRuntime
             };
         }
 
-        private static ZLinkMeshRuntimeEvent mergeCounters(
-            ZLinkMeshRuntimeEvent older,
-            ZLinkMeshRuntimeEvent newer) {
-            return new ZLinkMeshRuntimeEvent(
-                newer.identifier(),
-                newer.sequence(),
-                newer.timestamp(),
-                newer.meshName(),
-                newer.sourceRid(),
-                newer.peerRid(),
-                newer.lifecycleGeneration(),
-                newer.descriptorRevision(),
-                newer.channelName(),
-                newer.claimDomain(),
-                newer.messageKind(),
-                sum(older.remoteSnapshotCount(), newer.remoteSnapshotCount()),
-                sum(older.remoteAdmittedCount(), newer.remoteAdmittedCount()),
-                sum(older.remoteDroppedCount(), newer.remoteDroppedCount()),
-                sum(older.localSnapshotCount(), newer.localSnapshotCount()),
-                sum(older.localAdmittedCount(), newer.localAdmittedCount()),
-                sum(older.localDroppedCount(), newer.localDroppedCount()),
-                newer.reason(),
-                newer.state());
-        }
-
-        private static Optional<Long> sum(Optional<Long> left, Optional<Long> right) {
-            if (left.isEmpty() && right.isEmpty()) {
-                return Optional.empty();
-            }
-            return Optional.of(left.orElse(0L) + right.orElse(0L));
-        }
     }
 }

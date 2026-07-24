@@ -14,11 +14,11 @@ public final class RmC5MissingPacketScenario {
         ZLinkHttpClient providerB) {
         Contracts.RequestFailureRes missing = discoveryConsumer.post("/profile/missing-request")
             .body(new Contracts.ProfileReq("missing"))
-            .async(Contracts.RequestFailureRes.class).toCompletableFuture().join().body();
+            .submit(Contracts.RequestFailureRes.class).toCompletableFuture().join().body();
         ScenarioAssert.that(missing.failed(), "RM-C5 missing request should fail");
         discoveryConsumer.post("/profile/missing-command")
             .body(new Contracts.ProfileMsg("missing-send"))
-            .async(Object.class).toCompletableFuture().join().body();
+            .submit(Object.class).toCompletableFuture().join().body();
         String[] requestEvidence = ScenarioAssert.waitAnyEvidence(providerA, providerB, "MissingProfileReq");
         ScenarioAssert.that(java.util.Arrays.stream(requestEvidence)
                 .anyMatch(line -> line.contains("dispatch-error")
@@ -35,7 +35,7 @@ public final class RmC5MissingPacketScenario {
             "RM-C5 missing send dispatch-error evidence missing");
         Contracts.ProfileRes normal = discoveryConsumer.post("/profile/request")
             .body(new Contracts.ProfileReq("normal"))
-            .async(Contracts.ProfileRes.class).toCompletableFuture().join().body();
+            .submit(Contracts.ProfileRes.class).toCompletableFuture().join().body();
         ScenarioAssert.that("profile:normal".equals(normal.value()), "RM-C5 normal request failed");
         System.out.println("scenario RM-C5 passed");
     }

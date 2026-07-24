@@ -33,7 +33,7 @@ class create_game_http_handler_t
         _logger.info (std::string ("recv ") + create_game_http_req_t::packet_name);
         const auto create_request = create_game_req_t{game_name};
         auto room = co_await _client.request (sample_names_t::play_channel, create_request)
-                      .async<create_game_res_t> ();
+                      .submit<create_game_res_t> ();
         _logger.info (std::string ("reply ") + create_game_http_res_t::packet_name);
         co_return create_game_http_res_t{
           room.room_id,        room.game_name,  room.owner_play_endpoint,

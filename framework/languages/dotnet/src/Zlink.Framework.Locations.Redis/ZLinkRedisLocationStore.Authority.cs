@@ -325,7 +325,8 @@ public sealed partial class ZLinkRedisLocationStore
                         key = request.Key.Value,
                         objectKind = ObjectKindToken(request.ObjectKind),
                         stableType = request.StableType,
-                        capacityDelta = request.PendingCapacityDelta,
+                        capacity = CapacityJson(request.Capacity),
+                        capacityBundle = EncodeCapacityBundle(request.Capacity),
                         payload = Convert.ToBase64String(
                             request.CreatingPayload.Span),
                         reservationId = reservationVersion,
@@ -437,7 +438,8 @@ public sealed partial class ZLinkRedisLocationStore
                 request.TargetNodeLifecycleGeneration.ToString(
                     System.Globalization.CultureInfo.InvariantCulture),
             targetOwner = OwnerJson(request.TargetOwner),
-            capacityDelta = request.CapacityDelta
+            capacity = CapacityJson(request.Capacity),
+            capacityBundle = EncodeCapacityBundle(request.Capacity)
         };
         var result = await ExecuteAsync(
                 database => AuthorityCallAsync(
@@ -459,7 +461,8 @@ public sealed partial class ZLinkRedisLocationStore
                         comparable.targetDescriptorKey,
                         comparable.targetNodeLifecycleGeneration,
                         comparable.targetOwner,
-                        comparable.capacityDelta,
+                        comparable.capacity,
+                        comparable.capacityBundle,
                         requestJson = JsonSerializer.Serialize(comparable),
                         target = new
                         {
@@ -823,9 +826,22 @@ public sealed partial class ZLinkRedisLocationStore
             }).ToArray(),
             inventoryDigest = Convert.ToBase64String(
                 request.InventoryDigest.Span),
-            targetReservations = request.TargetReservations
-                .Select(static value => value.Value)
-                .ToArray(),
+            target = new
+            {
+                descriptor = new
+                {
+                    meshName = request.TargetDescriptor.MeshName,
+                    rid = request.TargetDescriptor.Rid.ToHex()
+                },
+                descriptorKey = ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(
+                    request.TargetDescriptor),
+                lifecycleGeneration =
+                    request.TargetDescriptorLifecycleGeneration.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture),
+                owner = OwnerJson(request.TargetOwner)
+            },
+            capacity = CapacityJson(request.Capacity),
+            capacityBundle = EncodeCapacityBundle(request.Capacity),
             targetOwner = OwnerJson(request.TargetOwner)
         };
         var aggregateKey = _keys.HybridAggregateKey(
@@ -837,7 +853,9 @@ public sealed partial class ZLinkRedisLocationStore
             comparable.aggregateGeneration,
             comparable.participants,
             comparable.inventoryDigest,
-            comparable.targetReservations,
+            comparable.target,
+            comparable.capacity,
+            comparable.capacityBundle,
             comparable.targetOwner,
             aggregateKey =
                 $"{request.AggregateId:D}:{request.AggregateGeneration}",
@@ -1067,10 +1085,6 @@ public sealed partial class ZLinkRedisLocationStore
         var participants = request.GetProperty("participants")
             .EnumerateArray()
             .ToArray();
-        var fences = request.GetProperty("targetReservations")
-            .EnumerateArray()
-            .Select(static value => value.GetString()!)
-            .ToArray();
         var keys = new List<RedisKey>();
         foreach (var participant in participants)
             keys.Add(_keys.HybridAuthorityCurrentKey(
@@ -1090,23 +1104,6 @@ public sealed partial class ZLinkRedisLocationStore
                 keys.Add(_keys.HybridMembershipHistoryRevisionsKey(
                     participant.GetProperty("key").GetString()!));
         }
-        var reservations = new List<JsonElement>(fences.Length);
-        foreach (var fence in fences)
-        {
-            var relocationKey = _keys.HybridRelocationKey(fence);
-            keys.Add(relocationKey);
-            var json = await database.HashGetAsync(
-                    relocationKey,
-                    "requestJson")
-                .ConfigureAwait(false);
-            if (json.IsNull)
-            {
-                reservations.Add(default);
-                continue;
-            }
-            using var document = JsonDocument.Parse(json.ToString());
-            reservations.Add(document.RootElement.Clone());
-        }
         if (abort)
             return [.. keys];
         foreach (var participant in participants)
@@ -1120,24 +1117,13 @@ public sealed partial class ZLinkRedisLocationStore
                 ? _keys.HybridSchemaKey()
                 : _keys.HybridOwnerLeaseKey(current.ToString()));
         }
-        foreach (var reservation in reservations)
-            keys.Add(reservation.ValueKind == JsonValueKind.Undefined
-                ? _keys.HybridSchemaKey()
-                : _keys.HybridDescriptorKey(
-                    reservation.GetProperty("targetDescriptorKey")
-                        .GetString()!));
-        foreach (var reservation in reservations)
-            keys.Add(reservation.ValueKind == JsonValueKind.Undefined
-                ? _keys.HybridSchemaKey()
-                : _keys.HybridDescriptorAdmissionKey(
-                    reservation.GetProperty("targetDescriptorKey")
-                        .GetString()!));
-        foreach (var reservation in reservations)
-            keys.Add(reservation.ValueKind == JsonValueKind.Undefined
-                ? _keys.HybridSchemaKey()
-                : _keys.HybridOwnerLeaseKey(
-                    reservation.GetProperty("targetOwner")
-                        .GetProperty("ownerId").GetString()!));
+        var target = request.GetProperty("target");
+        var targetDescriptorKey =
+            target.GetProperty("descriptorKey").GetString()!;
+        keys.Add(_keys.HybridDescriptorKey(targetDescriptorKey));
+        keys.Add(_keys.HybridDescriptorAdmissionKey(targetDescriptorKey));
+        keys.Add(_keys.HybridOwnerLeaseKey(
+            target.GetProperty("owner").GetProperty("ownerId").GetString()!));
         return [.. keys];
     }
 
@@ -1197,7 +1183,8 @@ public sealed partial class ZLinkRedisLocationStore
                             "descriptorLifecycleGeneration")
                         .GetString()!,
                     System.Globalization.CultureInfo.InvariantCulture),
-                allocation.GetProperty("capacityDelta").GetInt32()),
+                DecodeCapacityBundle(
+                    allocation.GetProperty("capacityBundle").GetString()!)),
             pendingCreation,
             storeNow);
     }
@@ -1217,6 +1204,90 @@ public sealed partial class ZLinkRedisLocationStore
         leaseGeneration = owner.LeaseGeneration.ToString(
             System.Globalization.CultureInfo.InvariantCulture)
     };
+
+    private static object CapacityJson(ZLinkCapacityVector capacity) => new
+    {
+        actors = capacity.Actors,
+        spots = capacity.Spots,
+        spotType = capacity.SpotType is null
+            ? null
+            : new
+            {
+                objectKind = ObjectKindToken(capacity.SpotType.ObjectKind),
+                stableType = capacity.SpotType.StableType,
+                count = capacity.SpotType.Count
+            }
+    };
+
+    private static string EncodeCapacityBundle(ZLinkCapacityVector capacity)
+    {
+        static string Segment(string value) =>
+            $"{Encoding.UTF8.GetByteCount(value)}:{value}";
+        var encoded = Segment("zlink-capacity-bundle-v2")
+                      + Segment(capacity.Actors.ToString(
+                          System.Globalization.CultureInfo.InvariantCulture))
+                      + Segment(capacity.Spots.ToString(
+                          System.Globalization.CultureInfo.InvariantCulture));
+        if (capacity.SpotType is not { } spotType)
+            return encoded + Segment("0");
+        return encoded
+               + Segment("1")
+               + Segment(ObjectKindToken(spotType.ObjectKind))
+               + Segment(spotType.StableType)
+               + Segment(spotType.Count.ToString(
+                   System.Globalization.CultureInfo.InvariantCulture));
+    }
+
+    private static ZLinkCapacityVector DecodeCapacityBundle(string encoded)
+    {
+        var bytes = Encoding.UTF8.GetBytes(encoded);
+        var offset = 0;
+        string ReadSegment()
+        {
+            var colon = Array.IndexOf(bytes, (byte)':', offset);
+            if (colon < offset
+                || !int.TryParse(
+                    Encoding.ASCII.GetString(bytes, offset, colon - offset),
+                    out var length)
+                || length < 0
+                || colon + 1 + length > bytes.Length)
+                throw new InvalidDataException(
+                    "Redis capacity bundle is invalid.");
+            var value = Encoding.UTF8.GetString(bytes, colon + 1, length);
+            offset = colon + 1 + length;
+            return value;
+        }
+
+        if (ReadSegment() != "zlink-capacity-bundle-v2"
+            || !int.TryParse(ReadSegment(), out var actors)
+            || !int.TryParse(ReadSegment(), out var spots))
+            throw new InvalidDataException("Redis capacity bundle is invalid.");
+        var presence = ReadSegment();
+        ZLinkSpotTypeCapacityDelta? spotType = null;
+        if (presence == "1")
+        {
+            var kind = ReadSegment() switch
+            {
+                "user_spot" => ZLinkPlacementObjectKind.UserSpot,
+                "instance_spot" => ZLinkPlacementObjectKind.InstanceSpot,
+                _ => throw new InvalidDataException(
+                    "Redis capacity bundle Spot kind is invalid.")
+            };
+            var stableType = ReadSegment();
+            if (!int.TryParse(ReadSegment(), out var count))
+                throw new InvalidDataException(
+                    "Redis capacity bundle Spot count is invalid.");
+            spotType = new ZLinkSpotTypeCapacityDelta(
+                kind,
+                stableType,
+                count);
+        }
+        else if (presence != "0")
+            throw new InvalidDataException("Redis capacity bundle is invalid.");
+        if (offset != bytes.Length)
+            throw new InvalidDataException("Redis capacity bundle is invalid.");
+        return new ZLinkCapacityVector(actors, spots, spotType);
+    }
 
     private static string ObjectKindToken(ZLinkPlacementObjectKind kind) =>
         kind switch
@@ -1350,7 +1421,10 @@ public sealed partial class ZLinkRedisLocationStore
         if (request.CreationIntentHash.Length != 32
             || request.CreationIntentEncodedSize is < 0 or > 1024 * 1024
             || request.CreatingPayload.Length > 1024 * 1024
-            || request.PendingCapacityDelta <= 0
+            || !IsAllocationCapacityValid(
+                request.ObjectKind,
+                request.StableType,
+                request.Capacity)
             || request.TargetOwner.LeaseGeneration <= 0)
             throw new ArgumentOutOfRangeException(nameof(request));
     }
@@ -1365,7 +1439,10 @@ public sealed partial class ZLinkRedisLocationStore
             || string.IsNullOrWhiteSpace(request.StableType)
             || request.SourceOwner.LeaseGeneration <= 0
             || request.TargetOwner.LeaseGeneration <= 0
-            || request.CapacityDelta <= 0)
+            || !IsAllocationCapacityValid(
+                request.ObjectKind,
+                request.StableType,
+                request.Capacity))
             throw new ArgumentException(
                 "The relocation capacity reservation is invalid.",
                 nameof(request));
@@ -1379,6 +1456,8 @@ public sealed partial class ZLinkRedisLocationStore
             || request.AggregateGeneration is 0 or > long.MaxValue
             || request.Participants.Count is < 1 or > 1024
             || request.InventoryDigest.Length != 32
+            || request.TargetDescriptorLifecycleGeneration == 0
+            || !IsCapacityVectorValid(request.Capacity)
             || request.TargetOwner.Generation is 0 or > long.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(request));
         if (request.Participants.Any(static value =>
@@ -1397,6 +1476,49 @@ public sealed partial class ZLinkRedisLocationStore
             throw new ArgumentException(
                 "Aggregate participant keys must be unique and canonically sorted.",
                 nameof(request));
+    }
+
+    private static bool IsCapacityVectorValid(ZLinkCapacityVector capacity)
+    {
+        ArgumentNullException.ThrowIfNull(capacity);
+        if (capacity.Actors < 0
+            || capacity.Spots < 0
+            || capacity.Actors == 0 && capacity.Spots == 0)
+            return false;
+        if (capacity.SpotType is not { } spotType)
+            return capacity.Spots == 0;
+        return capacity.Spots == spotType.Count
+               && spotType.Count > 0
+               && spotType.ObjectKind is ZLinkPlacementObjectKind.UserSpot
+                   or ZLinkPlacementObjectKind.InstanceSpot
+               && !string.IsNullOrWhiteSpace(spotType.StableType);
+    }
+
+    private static bool IsAllocationCapacityValid(
+        ZLinkPlacementObjectKind objectKind,
+        string stableType,
+        ZLinkCapacityVector capacity)
+    {
+        if (!IsCapacityVectorValid(capacity))
+            return false;
+        return objectKind switch
+        {
+            ZLinkPlacementObjectKind.Actor =>
+                capacity.Actors == 1
+                && capacity.Spots == 0
+                && capacity.SpotType is null,
+            ZLinkPlacementObjectKind.UserSpot
+                or ZLinkPlacementObjectKind.InstanceSpot =>
+                capacity.Actors == 0
+                && capacity.Spots == 1
+                && capacity.SpotType is { Count: 1 } spotType
+                && spotType.ObjectKind == objectKind
+                && string.Equals(
+                    spotType.StableType,
+                    stableType,
+                    StringComparison.Ordinal),
+            _ => false
+        };
     }
 
     private static void ValidateFence(ZLinkAggregateFence fence)

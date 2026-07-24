@@ -30,7 +30,7 @@ internal sealed class CourierActor(
                 offer.DeliveryId,
                 offer.PickupAddress,
                 offer.DropoffAddress))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     /// <summary>

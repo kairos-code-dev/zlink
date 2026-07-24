@@ -16,7 +16,16 @@ public interface ZLinkMeshNodeBuilder {
 
     ZLinkMeshNodeBuilder setRoutingId(RoutingId routingId);
 
+    ZLinkMeshNodeBuilder setRoutingIdPrefix(String prefix);
+
     ZLinkMeshNodeBuilder setPlacementWeight(int weight);
+
+    ZLinkMeshNodeBuilder setActorCapacity(int maxActors);
+
+    ZLinkMeshNodeBuilder setSpotCapacity(int maxSpots);
+
+    ZLinkMeshNodeBuilder setActivationConcurrency(
+        int maxConcurrentActivations);
 
     ZLinkMeshNodeBuilder useAllocatedRoutingId(int slotCount);
 
@@ -44,8 +53,6 @@ public interface ZLinkMeshNodeBuilder {
         Class<THandler> handlerType,
         Class<TRequest> requestType,
         Class<TReply> replyType);
-
-    ZLinkEntrySpotOptions configureEntrySpot();
 
     ZLinkMeshNodeBuilder addSpotFactory(Class<? extends ZLinkSpot<?>> spotType);
 

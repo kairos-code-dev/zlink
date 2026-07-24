@@ -54,7 +54,7 @@ test('redis authority fixture fixes the cross-language hybrid encoding', () => {
     descriptorFixture.physicalKeys.entrySpotIdentityClaim,
     `P:{zlink-location-v3}:entry-spot-id:${
       createHash('sha256')
-        .update(descriptorFixture.entrySpotIdentityClaim.authorityKey, 'utf8')
+        .update(descriptorFixture.entrySpotIdentityClaim.hash.spotId, 'utf8')
         .digest('hex')
     }`
   );
@@ -105,7 +105,7 @@ test('redis location store matches core write lease and change-stamp contracts',
     assert.equal(renewed.status, framework.ZLinkLocationWriteStatus.Stored);
     assert.equal(renewed.generation, first.generation);
 
-    const resolved = await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') });
+    const resolved = await store.resolveSpot({ meshName: 'play', spotId: 'spot-1' });
     assert.equal(resolved.ownerId, 'owner-a');
     assert.equal('generation' in resolved, false);
     assert.equal(resolved.ownerNodeRid.toHex(), rid('node-a').toHex());
@@ -136,7 +136,7 @@ test('redis location store matches core write lease and change-stamp contracts',
     assert.deepEqual(ownerA.token, renewedOwnerA.token);
 
     assert.equal(await store.removeAllByOwner(renewedOwnerA.token), 4n);
-    assert.equal(await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') }), undefined);
+    assert.equal(await store.resolveSpot({ meshName: 'play', spotId: 'spot-1' }), undefined);
 
     const renewedOwnerB = await store.claimOwnerLease('owner-b', 30000);
     assert.equal(renewedOwnerB.kind, 'claimed');
@@ -251,10 +251,8 @@ test('redis exact MeshNode descriptor fixture and Actor transfer authority are a
       /^game-a-entry-[0-9a-f-]+$/
     );
     const entrySpotId = exactMeshNodeDescriptor().entrySpotId;
-    const entryAuthorityKey =
-      `zla1:s:${Buffer.byteLength(entrySpotId, 'utf8')}:${entrySpotId}`;
     const entryClaimKey = `${prefix}:{zlink-location-v3}:entry-spot-id:${
-      createHash('sha256').update(entryAuthorityKey, 'utf8').digest('hex')
+      createHash('sha256').update(entrySpotId, 'utf8').digest('hex')
     }`;
     const entryClaim = await fixture.client.hGetAll(entryClaimKey);
     const entryClaimFixture =
@@ -928,7 +926,7 @@ test('redis routing-id slot allocation is atomic, idempotent, configured, and fe
   }
 });
 
-test('redis resolver rejects an Actor row after the same SPOT RID is recreated', async (t) => {
+test('redis resolver rejects an Actor row after the same Spot ID is recreated', async (t) => {
   const fixture = await redisFixture();
   if (fixture === undefined) {
     t.skip('Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT or run Redis on 127.0.0.1:16379/6379.');
@@ -1381,7 +1379,7 @@ function peer(ownerId, nodeRid) {
 function spot(ownerId, _generation, spotId, nodeRid) {
   return {
     meshName: 'play',
-    spotId: rid(spotId),
+    spotId,
     spotType: 'game',
     spotGeneration: 3n,
     ownerNodeRid: rid(nodeRid),
@@ -1400,7 +1398,7 @@ function actor(ownerId, nodeRid) {
     actorRef: { nodeRid: rid(nodeRid), actorId: 'actor-1', generation: 1n },
     ownerNodeRid: rid(nodeRid),
     ownerNodeGeneration: 7n,
-    spotId: rid(nodeRid),
+    spotId: `${nodeRid}-entry-123e4567-e89b-42d3-a456-426614174000`,
     spotGeneration: 7n,
     membershipEpoch: 1n,
     spotKind: framework.ZLinkSpotKind.Entry,
@@ -1568,7 +1566,7 @@ function exactActorLocation() {
     actorRef: { nodeRid: rid('game-a'), actorId: 'actor-1', generation: 11n },
     ownerNodeRid: rid('game-a'),
     ownerNodeGeneration: 7n,
-    spotId: rid('spot-1'),
+    spotId: 'spot-1',
     spotGeneration: 3n,
     spotKind: framework.ZLinkSpotKind.User,
     membershipEpoch: 4n,

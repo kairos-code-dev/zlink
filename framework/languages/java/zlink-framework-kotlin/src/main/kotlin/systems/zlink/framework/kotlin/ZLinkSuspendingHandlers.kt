@@ -8,6 +8,7 @@ import kotlinx.coroutines.future.future
 import systems.zlink.framework.actors.ZLinkActor
 import systems.zlink.framework.actors.ZLinkActorContext
 import systems.zlink.framework.actors.ZLinkActorFactory
+import systems.zlink.framework.actors.ZLinkActorJoinCompletion
 import systems.zlink.framework.actors.ZLinkActorTransferAdapter
 import systems.zlink.framework.channels.ZLinkPublishContext
 import systems.zlink.framework.channels.ZLinkRequestContext
@@ -152,6 +153,22 @@ abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
         }
 
     protected abstract suspend fun createActor(actorId: String, context: ZLinkActorContext): ZLinkActor
+}
+
+abstract class ZLinkSuspendingActor : ZLinkActor {
+    abstract val context: ZLinkActorContext
+
+    final override fun context(): ZLinkActorContext = context
+
+    final override fun onJoinCompleted(
+        completion: ZLinkActorJoinCompletion,
+    ): CompletionStage<Void> = coroutineVoidStage {
+        onJoinCompletedSuspending(completion)
+    }
+
+    abstract suspend fun onJoinCompletedSuspending(
+        completion: ZLinkActorJoinCompletion,
+    )
 }
 
 abstract class ZLinkSuspendingActorTransferAdapter<TActor : ZLinkActor> :

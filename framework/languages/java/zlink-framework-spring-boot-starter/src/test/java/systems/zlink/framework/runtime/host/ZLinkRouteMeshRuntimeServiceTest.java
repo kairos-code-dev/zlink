@@ -216,8 +216,6 @@ final class ZLinkRouteMeshRuntimeServiceTest {
             2,
             1,
             64,
-            9,
-            2,
             0,
             10);
 
@@ -323,7 +321,7 @@ final class ZLinkRouteMeshRuntimeServiceTest {
                 @Override
                 public MeshMonitorStatus status() {
                     return new MeshMonitorStatus(
-                        MeshNodeState.READY, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+                        MeshNodeState.READY, 1, 0, 0, 0, 0, 0, 0, 0, 0);
                 }
 
                 @Override

@@ -274,9 +274,10 @@ actor·session을 함께 쓰면 클라이언트 실시간 연결을 SPOT에 참�
 
 Actor는 연결 하나(사용자 하나)를 대표하는 서버 쪽 객체다. 클라이언트가
 stream으로 접속하면 session이 actor를 생성하고, actor는 SPOT에 입장해 상태
-처리에 참여한다. 클라이언트가 끊어질 때 actor 바인딩 해제와 SPOT 퇴장은
-프레임워크가 자동으로 처리하지 않는다 — `on_disconnected`에서 애플리케이션이
-직접 결정한다(재접속 허용 설계라면 actor를 유지할 수도 있다).
+처리에 참여한다. 클라이언트 연결이 끊어지면 Framework가 current binding 전체를 먼저 snapshot하고
+각 binding에 disconnect를 all-settled 방식으로 통지한 뒤 binding tombstone과 local cleanup을 수행한다. 이 통지는
+actor destroy나 SPOT leave가 아니므로 actor와 membership은 유지된다. Application은
+연결이 유지되는 동안 특정 actor에 논리적 disconnect를 알릴 때만 명시적 통지 API를 사용한다.
 
 서버 간에도 actor를 relay할 수 있다 — Session 서버가 인증·연결을 전담하고,
 도메인 서버의 SPOT이 상태를 담당하는 분리 구조에 쓴다.

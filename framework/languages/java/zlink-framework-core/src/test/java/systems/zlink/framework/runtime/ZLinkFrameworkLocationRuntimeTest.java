@@ -21,9 +21,11 @@ import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.actors.ZLinkActorContext;
 import systems.zlink.framework.actors.ZLinkActorFactory;
 import systems.zlink.framework.actors.ZLinkRelocationPolicy;
-import systems.zlink.framework.configuration.ZLinkObjectPlacementOptions;
+import systems.zlink.framework.configuration.ZLinkActorFactoryOptions;
+import systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions;
 import systems.zlink.framework.errors.ZLinkFrameworkErrorKind;
 import systems.zlink.framework.errors.ZLinkFrameworkException;
+import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationFilter;
 import systems.zlink.framework.locations.ZLinkAuthorityMissing;
@@ -61,6 +63,20 @@ import systems.zlink.framework.spots.ZLinkSpotKind;
 
 class ZLinkFrameworkLocationRuntimeTest {
     @Test
+    void userSpotGetOrCreateRejectsReservedEntrySpotIdBeforeSubmit() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(options, new MinimalBackend())) {
+            assertThrows(
+                ZLinkConfigurationException.class,
+                () -> runtime.spotManager().getOrCreate(
+                    "host-entry-00000000-0000-4000-8000-000000000001",
+                    "room"));
+        }
+    }
+
+    @Test
     void configuredLocationStoreStartsLeaseAndCloseRemovesOwnerRows() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
@@ -87,7 +103,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
-            new ZLinkObjectPlacementOptions(null, null),
+            new ZLinkUserSpotFactoryOptions(0),
             ZLinkRelocationPolicy.disabled());
 
         try (ZLinkFrameworkRuntime runtime =
@@ -131,7 +147,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
-            new ZLinkObjectPlacementOptions(null, null),
+            new ZLinkUserSpotFactoryOptions(0),
             ZLinkRelocationPolicy.disabled());
 
         try (ZLinkFrameworkRuntime runtime =
@@ -239,8 +255,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             "player",
             LocationActor.class,
             LocationActorFactory.class,
-            new systems.zlink.framework.configuration
-                .ZLinkObjectPlacementOptions(null, null),
+            new ZLinkActorFactoryOptions(),
             systems.zlink.framework.actors.ZLinkRelocationPolicy
                 .<LocationActor>disabled());
 
@@ -292,8 +307,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             "player",
             LocationActor.class,
             BlockingLocationActorFactory.class,
-            new systems.zlink.framework.configuration
-                .ZLinkObjectPlacementOptions(null, null),
+            new ZLinkActorFactoryOptions(),
             systems.zlink.framework.actors.ZLinkRelocationPolicy
                 .<LocationActor>disabled());
 
@@ -394,7 +408,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
-            new ZLinkObjectPlacementOptions(null, null),
+            new ZLinkUserSpotFactoryOptions(0),
             ZLinkRelocationPolicy.disabled());
 
         try (ZLinkFrameworkRuntime runtime =
@@ -410,26 +424,13 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .get();
             LocationActor actor = LocationActorFactory.last.get();
 
-            actor.context()
-                .joinSpot(spotId, systems.zlink.framework.messaging.ZLinkMessage.empty())
-                .submit()
-                .toCompletableFuture()
-                .get();
-
-            ZLinkActorLocation joined = store.listActorLocations(
-                    new ZLinkActorLocationFilter("player", nodeRid, spotId, ZLinkSpotKind.USER),
-                    ZLinkPageRequest.firstPage())
-                .toCompletableFuture()
-                .get()
-                .items()
-                .get(0);
-            assertEquals("rooms", joined.spotMeshName());
-
-            LocationSpot.last.get()
-                .context()
-                .leaveActor(actor)
-                .toCompletableFuture()
-                .get();
+            assertThrows(
+                systems.zlink.framework.errors.ZLinkFrameworkException.class,
+                () -> actor.context()
+                    .joinSpot(
+                        spotId,
+                        systems.zlink.framework.messaging.ZLinkMessage.empty())
+                    .defer());
 
             ZLinkActorLocation left = store.listActorLocations(
                     new ZLinkActorLocationFilter("player", nodeRid, null, ZLinkSpotKind.ENTRY),

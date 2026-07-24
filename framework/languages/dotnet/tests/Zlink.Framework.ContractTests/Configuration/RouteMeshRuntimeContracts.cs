@@ -1,5 +1,6 @@
 using Systems.Zlink;
 using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Contracts.Locations;
 using Zlink.Framework.ContractTests.Support;
 
 namespace Zlink.Framework.ContractTests.Configuration;
@@ -19,6 +20,12 @@ public sealed class RouteMeshRuntimeContracts
         Assert.True(peer.Ready);
         var channel = Assert.Single(snapshot.Channels);
         Assert.True(channel.Selectable);
+        Assert.Equal(new ZLinkPopulationCapacity(4, 2, 0),
+            snapshot.PopulationCapacity.Actors);
+        Assert.Equal(new ZLinkPopulationCapacity(3, 1, 20),
+            snapshot.PopulationCapacity.Spots);
+        Assert.Equal(new ZLinkActivationConcurrency(2, 8),
+            snapshot.ActivationConcurrency);
 
         Assert.True(meshRuntime.IsReady("orders"));
 
@@ -66,13 +73,25 @@ public sealed class RouteMeshRuntimeContracts
                         LastFailure: null)
                 ],
                 [new ZLinkMeshChannelSnapshot("orders", LocalWeight: 100, ReadyMemberCount: 2, Selectable: true)],
-                new ZLinkLogicalMulticastSnapshot(
-                    0, 0, 0, 0, 0, 0, 0, 0, 0),
                 new ZLinkMeshClaimSnapshot(
                     ApplicationActive: true, 0, InfrastructureActive: true, 0),
                 new ZLinkLocationRuntimeSnapshot("ready", DateTimeOffset.UtcNow, null),
                 new ZLinkMeshDrainSnapshot(
-                    ZLinkMeshNodeState.Serving, null, WorkSealed: false, 0, 0, 0));
+                    ZLinkMeshNodeState.Serving, null, WorkSealed: false, 0, 0, 0))
+            {
+                PopulationCapacity = new ZLinkPlacementCapacity(
+                    new ZLinkPopulationCapacity(4, 2, 0),
+                    new ZLinkPopulationCapacity(3, 1, 20),
+                    [
+                        new ZLinkSpotTypeCapacity(
+                            ZLinkPlacementObjectKind.UserSpot,
+                            "room",
+                            2,
+                            1,
+                            10)
+                    ]),
+                ActivationConcurrency = new ZLinkActivationConcurrency(2, 8)
+            };
         }
 
         public async IAsyncEnumerable<ZLinkMeshRuntimeEvent> ObserveAsync(
@@ -94,12 +113,10 @@ public sealed class RouteMeshRuntimeContracts
                 ChannelName: null,
                 ClaimDomain: null,
                 MessageKind: null,
-                RemoteSnapshotCount: null,
-                RemoteAdmittedCount: null,
-                RemoteDroppedCount: null,
-                LocalSnapshotCount: null,
-                LocalAdmittedCount: null,
-                LocalDroppedCount: null,
+                PlacementOutcome: null,
+                Capacity: null,
+                PopulationCapacity: null,
+                ActivationConcurrency: null,
                 Reason: "ready",
                 State: null);
         }

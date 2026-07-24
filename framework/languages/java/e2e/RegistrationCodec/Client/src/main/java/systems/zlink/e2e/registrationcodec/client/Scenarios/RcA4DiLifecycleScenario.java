@@ -11,7 +11,7 @@ public final class RcA4DiLifecycleScenario {
 
     public static void run(ScenarioContext context) {
         List<Contracts.DiLifecycleRes> replies = List.of(
-            context.server().post("/registration/di-filter-order").async(Contracts.DiLifecycleRes[].class).toCompletableFuture().join().body());
+            context.server().post("/registration/di-filter-order").submit(Contracts.DiLifecycleRes[].class).toCompletableFuture().join().body());
         ScenarioAssert.ensure(replies.stream().map(Contracts.DiLifecycleRes::scopedId).distinct().count() == 3,
             "RC-A4 scoped dependency was not recreated per request: " + replies);
         ScenarioAssert.ensure(replies.stream().map(Contracts.DiLifecycleRes::singletonId).distinct().count() == 1,

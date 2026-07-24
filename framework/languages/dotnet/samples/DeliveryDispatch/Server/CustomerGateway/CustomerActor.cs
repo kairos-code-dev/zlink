@@ -21,7 +21,7 @@ internal sealed class CustomerActor(
                 status.Status,
                 status.CourierId,
                 status.OccurredAt))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 }
 

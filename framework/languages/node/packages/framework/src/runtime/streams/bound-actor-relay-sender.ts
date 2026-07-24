@@ -1,10 +1,12 @@
 import type {
   ZLinkMessage,
   ZLinkMessageSerializer,
-  ZLinkSessionActor,
-  ZLinkSubmitResult
+  ZLinkSessionActor
 } from '../../contracts';
-import { ZLinkSubmitStatus } from '../../contracts';
+import {
+  ZLinkSubmitStatus,
+  type ZLinkSubmitResult
+} from '../messaging/submission-result';
 import type { Message } from '../../contracts/Common/Message';
 import { encodeFrameworkPayloadMessage } from '../messaging/payload-codec';
 import {
@@ -109,5 +111,56 @@ export class ZLinkBoundActorRelaySender {
         this.routes.unbind(actor.actorId, route.context, actor.bindingToken);
       }
     });
+  }
+
+  async notifyPhysicalDisconnect(context: DefaultZLinkSessionContext): Promise<void> {
+    const snapshot = [...context.boundActors];
+    const timeoutMs = this.options.actorBindTimeoutMs ?? 2000;
+    await Promise.allSettled(
+      snapshot.map(async (actor) => {
+        const route = this.routes.route(actor.actorId);
+        if (
+          route === undefined
+          || route.context !== context
+          || route.actor !== actor
+          || route.bindingToken !== actor.bindingToken
+        ) {
+          return;
+        }
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          await Promise.race([
+            this.notifyDisconnected(actor, controller.signal),
+            new Promise<never>((_, reject) => {
+              controller.signal.addEventListener(
+                'abort',
+                () => reject(new Error(
+                  `Actor '${actor.actorId}' disconnect notification exceeded ${timeoutMs} ms.`
+                )),
+                { once: true }
+              );
+            })
+          ]);
+        } finally {
+          clearTimeout(timer);
+          const current = this.routes.route(actor.actorId);
+          if (
+            current !== undefined
+            && current.context === context
+            && current.actor === actor
+            && current.bindingToken === actor.bindingToken
+          ) {
+            try {
+              if (context.stream instanceof ZLinkManagedStream) {
+                await context.stream.unbindActor(actor.actorId, timeoutMs);
+              }
+            } finally {
+              this.routes.unbind(actor.actorId, context, actor.bindingToken);
+            }
+          }
+        }
+      })
+    );
   }
 }

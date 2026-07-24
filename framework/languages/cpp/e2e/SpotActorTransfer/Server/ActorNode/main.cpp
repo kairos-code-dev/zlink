@@ -654,7 +654,7 @@ class transfer_session_t final : public fw::packet_stream_session_t
                   fw::framework_error_kind_t::actor_route_not_found,
                   "actor '" + request.actor_id + "' was not found");
             }
-            auto bound = co_await _actors.bind_or_get (resolved).async ();
+            auto bound = co_await _actors.bind_or_get (resolved).submit ();
             _bound_actor_id = std::string (bound.actor_id ());
             g_evidence->add (request.scenario, request.actor_id, "session_bound", "stream");
             stream
@@ -676,7 +676,7 @@ class transfer_session_t final : public fw::packet_stream_session_t
                                              "bound actor was not found");
         }
         if (dispatch.can_reply ()) {
-            auto reply = co_await actor->relay_request (payload).async ();
+            auto reply = co_await actor->relay_request (payload).submit ();
             stream.reply_packet (reply).submit ();
             co_return;
         }
@@ -822,7 +822,7 @@ class create_actor_handler_t
         if (!actor) {
             throw *actor.error ();
         }
-        auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).async ();
+        auto bound = co_await _actors.bind_or_get (actor.value ().ref ()).submit ();
         auto joined = co_await bound.context ()
                         .join_entry_spot (fw::node_rid_t::from_string (
                                            g_initial_actor_node_rid.empty ()
@@ -912,7 +912,7 @@ class join_actor_handler_t
                                            : std::chrono::seconds (12);
             auto result = co_await _actors.request_to_actor (ref, request)
                             .timeout (request_timeout)
-                            .async<e2e::join_target_res_t> ();
+                            .submit<e2e::join_target_res_t> ();
             _evidence.add (request.scenario, actor_id,
                            result.accepted ? "success_reply" : "reject_reply",
                            request.target_spot_rid);
@@ -959,7 +959,7 @@ class probe_actor_handler_t
         const auto ref = require_actor_ref (_directory, actor_id);
         auto response = co_await _actors.request_to_actor (ref, request)
                           .timeout (std::chrono::seconds (10))
-                          .async<e2e::probe_res_t> ();
+                          .submit<e2e::probe_res_t> ();
         co_return json_response (nlohmann::json (response));
     }
 
@@ -987,7 +987,7 @@ class probe_ref_handler_t
                            .request_to_actor (ref,
                                               e2e::probe_req_t{request.scenario, request.marker})
                            .timeout (std::chrono::milliseconds (request.timeout_ms))
-                           .async<e2e::probe_res_t> ();
+                           .submit<e2e::probe_res_t> ();
             co_return json_response (
               nlohmann::json (e2e::actor_ref_probe_res_t{true, reply, std::string{}}));
         }
@@ -1041,7 +1041,7 @@ class bound_push_handler_t
         const auto ref = require_actor_ref (_directory, actor_id);
         auto response = co_await _actors.request_to_actor (ref, request)
                           .timeout (std::chrono::seconds (10))
-                          .async<e2e::bound_push_res_t> ();
+                          .submit<e2e::bound_push_res_t> ();
         co_return json_response (nlohmann::json (response));
     }
 

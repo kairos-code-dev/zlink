@@ -19,6 +19,7 @@ connector를 사용한다. 아래 표는 정식 시나리오 ID를 한 행씩 �
 | `ST-D1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: location commit 공개 시점. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-D2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: stale generation fencing. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-E1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: transfer 성공 뒤 bound session push. Track A~E 로그: `log/20260710-152609-2661347`. |
+| `ST-E1A` | 미구현 | 새 Actor incarnation과 이전 generation binding event 격리, explicit bind 요구를 검증하는 runner가 없다. |
 | `ST-E2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: transfer 실패 때 기존 session binding 유지. Track A~E 로그: `log/20260710-152609-2661347`. |
 | `ST-F1` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: moving backlog FIFO. Track F 로그: `log/20260710-200221-3864800`. |
 | `ST-F2` | 구현 | 실제 callback, location 또는 stream evidence로 검증한 대상: location publish 전 replay 순서. Track F 로그: `log/20260710-200221-3864800`. |

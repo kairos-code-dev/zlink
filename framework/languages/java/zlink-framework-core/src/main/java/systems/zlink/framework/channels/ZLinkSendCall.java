@@ -12,5 +12,5 @@ public interface ZLinkSendCall {
         throw new UnsupportedOperationException("send metadata is not available");
     }
 
-    CompletionStage<ZLinkSubmitResult> submit();
+    CompletionStage<Void> submit();
 }

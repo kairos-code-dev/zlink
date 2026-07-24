@@ -12,7 +12,7 @@ export interface ZlinkStreamSendCall {
   metadata(metadata: ZlinkStreamMetadata): ZlinkStreamSendCall;
   compress(): ZlinkStreamSendCall;
   flowFrom(flow: ZlinkStreamFlow): ZlinkStreamSendCall;
-  submit(): void;
+  submit(): Promise<void>;
 }
 
 export interface ZlinkStreamRequestCall {

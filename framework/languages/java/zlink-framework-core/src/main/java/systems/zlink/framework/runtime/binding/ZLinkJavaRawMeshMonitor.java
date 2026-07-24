@@ -34,8 +34,6 @@ final class ZLinkJavaRawMeshMonitor implements MeshNodeMonitor {
             0,
             0,
             0,
-            node.multicastSubmitted(),
-            node.multicastDroppedTargets(),
             0,
             node.pendingApplicationMessages(),
             node.pendingInfrastructureMessages(),

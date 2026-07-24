@@ -854,7 +854,12 @@ public sealed class HttpClientContractTests
         Assert.Null(typeof(ZLinkHttpRequestBuilder).GetMethod("Yield"));
         Assert.Null(typeof(ZLinkHttpRequestBuilder).GetMethod("Submit"));
         Assert.NotNull(typeof(ZLinkHttpServerRequestBuilder).GetMethod("Yield"));
-        Assert.NotNull(typeof(ZLinkHttpServerRequestBuilder).GetMethod("Submit"));
+        Assert.Contains(
+            typeof(ZLinkHttpServerRequestBuilder).GetMethods(),
+            method => method.Name == "Async"
+                && !method.IsGenericMethod
+                && method.ReturnType == typeof(ValueTask));
+        Assert.Null(typeof(ZLinkHttpServerRequestBuilder).GetMethod("Submit"));
     }
 
     [Fact]

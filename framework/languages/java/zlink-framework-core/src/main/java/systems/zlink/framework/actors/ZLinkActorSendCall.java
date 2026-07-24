@@ -1,8 +1,9 @@
 package systems.zlink.framework.actors;
 
 import java.util.concurrent.CompletionStage;
-import systems.zlink.framework.channels.ZLinkSubmitResult;
 
 public interface ZLinkActorSendCall {
-    CompletionStage<ZLinkSubmitResult> submit();
+    ZLinkActorSendCall metadata(String key, String value);
+
+    CompletionStage<Void> submit();
 }

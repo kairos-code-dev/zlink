@@ -11,14 +11,18 @@ import type {
   ZLinkActorClient,
   ZLinkActorRequestCall,
   ZLinkActorSendCall,
-  ZLinkMessageSerializer,
-  ZLinkSubmitResult
+  ZLinkMessageSerializer
 } from '../../contracts';
 import {
   ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
-  ZLinkSubmitStatus
+  ZLinkFrameworkException
 } from '../../contracts';
+import {
+  requireOneWayCompletion,
+  throwAlreadySubmitted,
+  ZLinkSubmitStatus,
+  type ZLinkSubmitResult
+} from '../messaging/submission-result';
 import type { Message } from '../../contracts/Common/Message';
 import type {
   ZLinkBackendActorRef,
@@ -46,6 +50,9 @@ import {
 import { ZLinkConfigurationException } from '../configuration';
 import { ZLinkMeshSubmitterRegistry } from '../messaging';
 
+const LEGACY_ACTOR_SEND_TIMEOUT_MS = 1000;
+const LEGACY_ACTOR_SEND_CAPACITY = 4096;
+
 export interface ZLinkActorClientOptions {
   readonly nodeProvider: (meshName: string) => ZLinkBackendMeshNode | undefined;
   readonly completionTableProvider: (meshName: string) => ZLinkMeshCompletionTable | undefined;
@@ -63,13 +70,18 @@ export interface ZLinkActorClientOptions {
   ) => Promise<unknown> | undefined;
   readonly sendErrorReporter?: (error: unknown) => void;
   readonly meshSubmitters?: ZLinkMeshSubmitterRegistry;
+  readonly sendTimeoutMs?: number;
+  readonly sendHighWaterMark?: number;
 }
 
 export class DefaultZLinkActorClient implements ZLinkActorClient {
   private readonly meshSubmitters: ZLinkMeshSubmitterRegistry;
 
   constructor(private readonly options: ZLinkActorClientOptions) {
-    this.meshSubmitters = options.meshSubmitters ?? new ZLinkMeshSubmitterRegistry();
+    this.meshSubmitters = options.meshSubmitters ?? new ZLinkMeshSubmitterRegistry(
+      options.sendTimeoutMs ?? LEGACY_ACTOR_SEND_TIMEOUT_MS,
+      Math.max(1, options.sendHighWaterMark ?? LEGACY_ACTOR_SEND_CAPACITY)
+    );
   }
 
   sendToActor(meshName: string, actor: ActorRef, message: unknown): ZLinkActorSendCall {
@@ -341,13 +353,18 @@ class DefaultZLinkActorSendCall implements ZLinkActorSendCall {
     return this;
   }
 
-  submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
+  async submit(signal?: AbortSignal): Promise<void> {
     ensureSingleSubmit(this.executed);
     this.executed = true;
-    return this.submitter(
+    const result = await this.submitter(
       this.packet ?? resolveFrameworkPacketName(this.message, undefined, 'Actor'),
       this.selectedMetadata,
       signal
+    );
+    requireOneWayCompletion(
+      result,
+      'Actor send',
+      ZLinkFrameworkErrorKind.ActorRouteNotFound
     );
   }
 }
@@ -569,6 +586,6 @@ function actorLocationStale(actorId: string, cause: unknown): ZLinkFrameworkExce
 
 function ensureSingleSubmit(executed: boolean): void {
   if (executed) {
-    throw new Error('Actor client calls can be submitted only once.');
+    throwAlreadySubmitted('Actor client call');
   }
 }

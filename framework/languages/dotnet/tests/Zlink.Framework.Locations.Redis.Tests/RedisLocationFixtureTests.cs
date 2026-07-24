@@ -33,7 +33,11 @@ public sealed class RedisLocationFixtureTests
             LeaseGeneration: 9,
             UpdatedAt: FixtureUpdatedAt)
         {
-            State = ZLinkFrameworkRuntimeState.Serving
+            State = ZLinkFrameworkRuntimeState.Serving,
+            Capacity = new ZLinkPlacementCapacity(
+                new ZLinkPopulationCapacity(0, 0, 10_000),
+                new ZLinkPopulationCapacity(0, 0, 128),
+                Array.Empty<ZLinkSpotTypeCapacity>())
         };
 
         Assert.Equal(
@@ -69,6 +73,102 @@ public sealed class RedisLocationFixtureTests
                 "sha256LowerHex"),
             ZLinkRedisLocationCommands.ImmutableDescriptorDigest(
                 descriptor));
+    }
+
+    [Fact]
+    public void MeshNode_Immutable_Digest_Fences_Entry_And_All_Limits()
+    {
+        var descriptor = new ZLinkMeshNodeDescriptor(
+            "game",
+            RoutingId.From("game-a"),
+            LifecycleGeneration: 7,
+            DescriptorRevision: 3,
+            "tcp://10.0.0.1:7300",
+            new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                ["orders"] = 100
+            },
+            SecurityIdentity: "cluster-a",
+            OwnerId: "mesh-owner-a",
+            LeaseGeneration: 9,
+            UpdatedAt: FixtureUpdatedAt)
+        {
+            State = ZLinkFrameworkRuntimeState.Serving,
+            ObjectRole = ZLinkMeshNodeObjectRole.Server,
+            EntrySpotId =
+                "game-entry-00000000-0000-4000-8000-000000000099",
+            Capacity = new ZLinkPlacementCapacity(
+                new ZLinkPopulationCapacity(1, 2, 10_000),
+                new ZLinkPopulationCapacity(3, 4, 128),
+                Array.Empty<ZLinkSpotTypeCapacity>()),
+            ActivationConcurrency = new ZLinkActivationConcurrency(5, 128)
+        };
+        var digest = ZLinkRedisLocationCommands.ImmutableDescriptorDigest(
+            descriptor);
+
+        Assert.Equal(
+            digest,
+            ZLinkRedisLocationCommands.ImmutableDescriptorDigest(
+                descriptor with
+                {
+                    DescriptorRevision = 4,
+                    ChannelWeights = new Dictionary<string, int>(
+                        StringComparer.Ordinal)
+                    {
+                        ["orders"] = 300
+                    },
+                    PlacementWeight = 200,
+                    Capacity = descriptor.Capacity with
+                    {
+                        Actors = descriptor.Capacity.Actors with
+                        {
+                            Active = 6,
+                            Reserved = 7
+                        },
+                        Spots = descriptor.Capacity.Spots with
+                        {
+                            Active = 8,
+                            Reserved = 9
+                        }
+                    },
+                    ActivationConcurrency =
+                        descriptor.ActivationConcurrency with { Active = 10 }
+                }));
+        Assert.NotEqual(
+            digest,
+            ZLinkRedisLocationCommands.ImmutableDescriptorDigest(
+                descriptor with { EntrySpotId = descriptor.EntrySpotId + "-x" }));
+        Assert.NotEqual(
+            digest,
+            ZLinkRedisLocationCommands.ImmutableDescriptorDigest(
+                descriptor with
+                {
+                    Capacity = descriptor.Capacity with
+                    {
+                        Actors = descriptor.Capacity.Actors with
+                        {
+                            Limit = 9_999
+                        }
+                    }
+                }));
+        Assert.NotEqual(
+            digest,
+            ZLinkRedisLocationCommands.ImmutableDescriptorDigest(
+                descriptor with
+                {
+                    Capacity = descriptor.Capacity with
+                    {
+                        Spots = descriptor.Capacity.Spots with { Limit = 127 }
+                    }
+                }));
+        Assert.NotEqual(
+            digest,
+            ZLinkRedisLocationCommands.ImmutableDescriptorDigest(
+                descriptor with
+                {
+                    ActivationConcurrency =
+                        descriptor.ActivationConcurrency with { Limit = 127 }
+                }));
     }
 
     [Fact]

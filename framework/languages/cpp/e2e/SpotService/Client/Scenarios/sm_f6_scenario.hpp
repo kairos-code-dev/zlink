@@ -40,7 +40,7 @@ inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
     auto target =
       multi_b.post ("/spot/create-user-local")
         .body (create_spot_req_t{.spot_rid = target_spot_rid})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!target || target.value ().status >= 400) {
         throw std::runtime_error ("SM-F6 target spot create failed");
@@ -55,7 +55,7 @@ inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
         .body (spot_only_mesh_req_t{.source_spot_rid = source_spot_rid,
                                     .target_spot_rid = target_spot_rid,
                                     .marker = marker})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!mesh || mesh.value ().status >= 400) {
         throw std::runtime_error (
@@ -74,7 +74,7 @@ inline void run_sm_f6_scenario (const std::string &multi_a_http_endpoint,
         .body (spot_only_join_req_t{.target_spot_rid = target_spot_rid,
                                     .actor_id = actor_id,
                                     .marker = marker})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!join || join.value ().status >= 400) {
         throw std::runtime_error (

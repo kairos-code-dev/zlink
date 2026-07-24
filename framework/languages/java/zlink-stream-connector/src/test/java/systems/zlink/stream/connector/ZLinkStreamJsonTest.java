@@ -296,7 +296,8 @@ final class ZLinkStreamJsonTest {
         }
 
         @Override
-        public void submit() {
+        public CompletionStage<Void> submit() {
+            return CompletableFuture.completedFuture(null);
         }
     }
 

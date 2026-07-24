@@ -206,8 +206,8 @@ class TicTacToeClientScenario {
                     "wins=${milestone.wins} receivingSpotNodeRid=${milestone.receivingSpotNodeRid}",
             )
 
-            hostStream.send(LeaveGameReq(game.roomId)).submit()
-            guestStream.send(LeaveGameReq(game.roomId)).submit()
+            hostStream.send(LeaveGameReq(game.roomId)).await()
+            guestStream.send(LeaveGameReq(game.roomId)).await()
             println("tictactoe completed")
         } finally {
             hostStream.close().await()

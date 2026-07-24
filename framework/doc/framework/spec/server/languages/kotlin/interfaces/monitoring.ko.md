@@ -10,6 +10,8 @@ Topology runtime은 Java `ZLinkFrameworkRuntime`의 `routeMeshRuntime()`, `clien
 `fanoutRuntime()`을 그대로 사용한다. Kotlin wrapper accessor를 추가하지 않으며 Spring에서 주입받은 topology
 bean은 해당 Java accessor의 반환값과 reference identity가 같다.
 Channel, ClientServer와 placement weight는 Java의 signed `int` `0..10000` projection을 그대로 사용한다.
+Java monitoring 계약과 마찬가지로 MeshNode snapshot과 runtime event에는 Logical Multicast 통계,
+publish target 수 또는 target별 수락·실패 field가 없다. Kotlin 전용 projection으로 이를 추가하지 않는다.
 
 ClientServer server 상태는 Java `ZLinkClientServerServerState`, fanout publisher 연결 상태는
 `ZLinkFanoutPublisherConnectionState`를 그대로 사용한다. Host의 `ZLinkFrameworkRuntimeState`나 MeshNode의
@@ -50,6 +52,9 @@ SPOT_MOVING = 33
 RELOCATION_DATA_LOST = 34
 SPOT_ID_CONFLICT = 35
 RUNTIME_SHUTDOWN = 36
+RELOCATION_DISABLED = 37
+RELOCATION_TARGET_UNAVAILABLE = 38
+RELOCATION_FAILED = 39
 ```
 
 `RELOCATION_DATA_LOST`는 Location authority가 공개한 Relocation payload가 영구적으로 없거나 checksum·inventory

@@ -3,6 +3,8 @@
 #include "runtime/stateful/maintenance_runtime.hpp"
 #include "runtime/stateful/public_store_adapters.hpp"
 
+#include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdlib>
 #include <iostream>
@@ -520,6 +522,215 @@ inventory_digest_t digest_with (std::uint8_t value)
     inventory_digest_t digest{};
     digest.fill (value);
     return digest;
+}
+
+void test_generation_barrier_quiesces_yield_spot_and_timer (
+  test_context_t &test)
+{
+    stateful_object_runtime_t objects (16, 8);
+    const auto actor = create_actor (objects, "barrier-actor");
+    const auto spot =
+      create_spot (objects, object_kind_t::user_spot, "barrier-spot");
+    test.require (
+      objects.register_timer (actor, {9, 1000, 1000, 30})
+        == stateful_error_t::none,
+      "barrier test timer must register");
+    test.require (
+      objects.enqueue (
+        actor, turn_domain_t::application, {10, {10}})
+          == stateful_error_t::none
+        && objects.enqueue (
+             actor, turn_domain_t::application, {20, {20}})
+             == stateful_error_t::none
+        && objects.enqueue (
+             spot, turn_domain_t::application, {40, {40}})
+             == stateful_error_t::none,
+      "barrier test turns must enqueue");
+
+    const auto [actor_claim_error, actor_claim] =
+      objects.try_claim (actor, turn_domain_t::application);
+    const auto [spot_claim_error, spot_claim] =
+      objects.try_claim (spot, turn_domain_t::application);
+    test.require (
+      actor_claim_error == stateful_error_t::none && actor_claim
+        && actor_claim->sequence == 10
+        && spot_claim_error == stateful_error_t::none && spot_claim
+        && spot_claim->sequence == 40,
+      "Actor and Spot lanes must both be active before sealing");
+    test.require (
+      objects.yield_claim (actor, {11, {11}})
+        == stateful_error_t::none,
+      "yield must retain the Actor claim until its continuation completes");
+
+    std::atomic<bool> seal_completed = false;
+    stateful_error_t seal_error = stateful_error_t::conflict;
+    aggregate_relocation_seal_t seal;
+    std::thread sealing ([&] {
+        auto result =
+          objects.try_seal_relocation_aggregate ({actor, spot});
+        seal_error = result.first;
+        seal = std::move (result.second);
+        seal_completed.store (true, std::memory_order_release);
+    });
+
+    bool sealed = false;
+    for (int attempt = 0; attempt != 1000; ++attempt) {
+        if (objects.cancel_timer (actor, 999)
+            == stateful_error_t::moving) {
+            sealed = true;
+            break;
+        }
+        std::this_thread::yield ();
+    }
+    test.require (
+      sealed && !seal_completed.load (std::memory_order_acquire),
+      "seal must close timer admission and wait for active lanes");
+    test.require (
+      objects.enqueue_timer_tick (actor, 9, {30})
+        == stateful_error_t::moving,
+      "timer dispatch must not mutate the sealed generation");
+
+    const auto [continuation_error, continuation] =
+      objects.try_claim (actor, turn_domain_t::application);
+    test.require (
+      continuation_error == stateful_error_t::none && continuation
+        && continuation->sequence == 11,
+      "yielded continuation must reacquire its Actor lane while sealed");
+    test.require (
+      objects.complete_claim (actor, turn_domain_t::application)
+          == stateful_error_t::none
+        && !seal_completed.load (std::memory_order_acquire),
+      "Spot lane must also quiesce before capture");
+    test.require (
+      objects.complete_claim (spot, turn_domain_t::application)
+        == stateful_error_t::none,
+      "active Spot lane must complete");
+    sealing.join ();
+
+    test.require (
+      seal_error == stateful_error_t::none
+        && seal.participants.size () == 2
+        && seal.participants[0].pending_application.size () == 1
+        && seal.participants[0].pending_application[0].sequence == 20
+        && seal.participants[0].timers
+             == std::vector<logical_timer_t> ({{9, 1000, 1000, 30}}),
+      "capture must occur after quiescence and preserve queued work and timers");
+
+    test.require (
+      objects.enqueue (
+        actor, turn_domain_t::application, {21, {21}})
+        == stateful_error_t::none,
+      "sealed ingress must be retained for same-generation abort");
+    test.require (
+      objects.abort_relocation (seal.token) == stateful_error_t::none,
+      "same-generation abort must reopen the seal");
+    test.require (
+      objects.commit_relocation_aggregate (seal.token, "node-b").first
+        == stateful_error_t::not_found,
+      "stale commit must not mutate an aborted generation");
+
+    const auto [first_error, first] =
+      objects.try_claim (actor, turn_domain_t::application);
+    test.require (
+      first_error == stateful_error_t::none && first
+        && first->sequence == 20,
+      "abort must restore the captured queue before held ingress");
+    test.require (
+      objects.complete_claim (actor, turn_domain_t::application)
+        == stateful_error_t::none,
+      "restored captured turn must complete");
+    const auto [held_error, held] =
+      objects.try_claim (actor, turn_domain_t::application);
+    test.require (
+      held_error == stateful_error_t::none && held
+        && held->sequence == 21,
+      "abort must restore held ingress in FIFO order");
+    test.require (
+      objects.complete_claim (actor, turn_domain_t::application)
+        == stateful_error_t::none,
+      "restored held turn must complete");
+
+    const auto [second_error, second_seal] =
+      objects.try_seal_relocation_aggregate ({actor, spot});
+    test.require (
+      second_error == stateful_error_t::none
+        && objects.abort_relocation (seal.token)
+             == stateful_error_t::not_found,
+      "stale abort must not reopen a newer generation");
+    const auto [commit_error, committed] =
+      objects.commit_relocation_aggregate (second_seal.token, "node-b");
+    test.require (
+      commit_error == stateful_error_t::none && committed.size () == 2
+        && objects.enqueue (
+             actor, turn_domain_t::application, {22, {22}})
+             == stateful_error_t::generation_stale,
+      "post-commit ingress using the source generation must be fenced");
+}
+
+void test_close_barrier_waits_and_abort_restores_ingress (
+  test_context_t &test)
+{
+    stateful_object_runtime_t objects (8, 4);
+    const auto spot =
+      create_spot (objects, object_kind_t::user_spot, "closing-spot");
+    test.require (
+      objects.enqueue (
+        spot, turn_domain_t::application, {1, {1}})
+        == stateful_error_t::none,
+      "close barrier test turn must enqueue");
+    const auto [claim_error, claim] =
+      objects.try_claim (spot, turn_domain_t::application);
+    test.require (
+      claim_error == stateful_error_t::none && claim
+        && claim->sequence == 1,
+      "Spot lane must be active before close");
+
+    std::atomic<bool> close_completed = false;
+    stateful_error_t close_error = stateful_error_t::conflict;
+    std::optional<spot_close_token_t> close_token;
+    std::thread closing ([&] {
+        auto result = objects.begin_close_spot (spot);
+        close_error = result.first;
+        close_token = std::move (result.second);
+        close_completed.store (true, std::memory_order_release);
+    });
+
+    bool sealed = false;
+    for (int attempt = 0; attempt != 1000; ++attempt) {
+        if (objects.register_timer (spot, {1, 1000, 1000, 1})
+            == stateful_error_t::moving) {
+            sealed = true;
+            break;
+        }
+        std::this_thread::yield ();
+    }
+    test.require (
+      sealed && !close_completed.load (std::memory_order_acquire),
+      "close must seal timer admission and wait for the active Spot lane");
+    test.require (
+      objects.enqueue (
+        spot, turn_domain_t::application, {2, {2}})
+        == stateful_error_t::none,
+      "application ingress during close must be retained");
+    test.require (
+      objects.complete_claim (spot, turn_domain_t::application)
+        == stateful_error_t::none,
+      "active Spot lane must complete before close continues");
+    closing.join ();
+    test.require (
+      close_error == stateful_error_t::none && close_token,
+      "close must return its generation token after quiescence");
+    test.require (
+      objects.abort_close_spot (*close_token) == stateful_error_t::none
+        && objects.commit_close_spot (*close_token)
+             == stateful_error_t::generation_stale,
+      "only the current close generation may reopen or commit");
+    const auto [held_error, held] =
+      objects.try_claim (spot, turn_domain_t::application);
+    test.require (
+      held_error == stateful_error_t::none && held
+        && held->sequence == 2,
+      "close abort must restore held ingress");
 }
 
 void test_envelope_round_trip (test_context_t &test)
@@ -1317,6 +1528,8 @@ void test_public_authority_store_adapter (test_context_t &test)
 int main ()
 {
     test_context_t test;
+    test_generation_barrier_quiesces_yield_spot_and_timer (test);
+    test_close_barrier_waits_and_abort_restores_ingress (test);
     test_envelope_round_trip (test);
     test_aggregate_envelope_and_crash_recovery (test);
     test_publication_and_handoff (test);

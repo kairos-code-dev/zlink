@@ -482,11 +482,10 @@ public interface IZLinkMeshNodeSocketConfig
 `ConfigureSpotPublisher()`는 publish 전용 전달 정책 option을 제공하지 않는다. Logical Multicast의
 publish는 pending queue 없이 bounded I/O executor에 direct handoff한다. 즉시 worker slot을 얻지 못하면
 send timeout까지 capacity를 기다린다. Slot을 얻으면 bindings의 public raw socket call을 정확히 한 번
-실행한다. 각 remote
-target은 MeshNode ROUTER의 HWM과 send timeout을 따르며, public raw socket call이 target별 deadline까지
-수락하지 못한 결과와 route 단절은 monitoring metric과 runtime event에 기록한다. 앞에서 수락된 target은 뒤
-target의 실패 때문에 취소되지 않으며 전체 publish를 자동 재시도하지 않는다. Target snapshot이 0개여도
-정상 완료한다.
+시작한다. 이 시점에 결과값 없는 terminal이 정상 완료한다. 각 remote target은 MeshNode ROUTER의 HWM과
+send timeout을 따르지만 target별 수락·실패 결과를 기다리거나 public monitoring에 집계하지 않는다.
+앞에서 수락된 target은 뒤 target의 실패 때문에 취소되지 않으며 전체 publish를 자동 재시도하지 않는다.
+Target snapshot이 0개여도 정상 완료한다.
 
 `IZLinkRouteMeshRuntimeOptions`는 public DI singleton이다. 등록되지 않은 membership을 조회하면
 `ZLinkConfigurationException`이다. `MailboxMessageBudget`와 `MailboxByteBudget`은 owner별 application

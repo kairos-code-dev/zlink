@@ -1,5 +1,15 @@
 # Kotlin SpotActorTransfer E2E feature map
 
+## Deferred Actor Join Kotlin projection 증거
+
+- `KotlinDeferredActorJoinCompletionTest`는 Java runtime이 복구해 제출한
+  `Accepted` completion을 suspending Actor callback이 같은 `OperationId`, raw reply와
+  `ObjectGeneration`으로 받는지 확인한다.
+- Kotlin은 Java의 동기 `defer()`와 recovery runtime을 그대로 사용하며 별도
+  coroutine terminal이나 별도 completion type을 추가하지 않는다.
+- process 종료를 포함한 실제 cross-node recovery는 Java lane과 같은 Config 10
+  scenario가 활성화된 뒤 E2E 완료로 판정한다.
+
 기준 문서는 [Config 10 — Spot·Actor relocation](../../../../doc/framework/common/e2e/config-10-spot-actor-relocation.ko.md)이다.
 Kotlin lane은 Java와 shared transfer fixture를 사용하더라도 Kotlin client와 server entry point에서
 각 정식 시나리오를 독립적으로 증명해야 한다.
@@ -19,6 +29,7 @@ Kotlin lane은 Java와 shared transfer fixture를 사용하더라도 Kotlin clie
 | `ST-D1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: location commit 공개 시점. |
 | `ST-D2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: stale generation fencing. |
 | `ST-E1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: transfer 성공 뒤 bound session push. |
+| `ST-E1A` | 미구현 | 새 Actor incarnation과 이전 generation binding event 격리, explicit bind 요구를 검증하는 Kotlin runner가 없다. |
 | `ST-E2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: transfer 실패 때 기존 session binding 유지. |
 | `ST-F1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: moving backlog FIFO. |
 | `ST-F2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: location publish 전 replay 순서. |

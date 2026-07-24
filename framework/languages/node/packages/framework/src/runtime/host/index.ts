@@ -19,9 +19,13 @@ import type {
   ZLinkBackendAdapterFactory,
   ZLinkBackendContext
 } from '../backend';
+
+const LEGACY_MESH_SEND_TIMEOUT_MS = 1000;
+const LEGACY_MESH_SEND_CAPACITY = 4096;
 import type { ZLinkFrameworkRegistration } from '../configuration';
 import type {
   ActorRef,
+  RoutingId,
   ZLinkMeshNodeDescriptor,
   ZLinkProviderResolver,
   ZLinkRouteMeshRuntime,
@@ -33,9 +37,9 @@ import {
   ZLinkFrameworkException,
   ZLinkFrameworkRuntimeState,
   ZLinkMessageFlowLogMode,
-  ZLinkSpotCreateState,
-  ZLinkSubmitStatus
+  ZLinkSpotCreateState
 } from '../../contracts';
+import { ZLinkSubmitStatus } from '../messaging/submission-result';
 import {
   ZLinkRuntimeMessageFlowOutcome as ZLinkMessageFlowOutcome,
   ZLinkDispatchErrorSurface,
@@ -177,7 +181,7 @@ export class ZLinkFrameworkRuntimeHost implements
   private readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
   private readonly metrics: ZLinkRuntimeMetrics;
   private readonly admission = new ZLinkRuntimeAdmissionGate();
-  private readonly meshSubmitters = new ZLinkMeshSubmitterRegistry();
+  private readonly meshSubmitters: ZLinkMeshSubmitterRegistry;
   private readonly localMeshRouteInFlight = new Map<string, number>();
   private readonly localMeshRouteCapacity = 4096;
   private readonly allocatedRoutingIdGroupNames: ReadonlySet<string>;
@@ -211,6 +215,16 @@ export class ZLinkFrameworkRuntimeHost implements
   constructor(readonly options: ZLinkFrameworkRuntimeHostOptions, internalOptions?: unknown) {
     this.backendAdapterFactory = resolveBackendAdapterFactory(internalOptions);
     this.lifecycleSink = options.lifecycleSink;
+    this.meshSubmitters = new ZLinkMeshSubmitterRegistry(
+      (meshName) =>
+        options.registration.spotNodes.get(meshName)?.router?.sendTimeoutMs
+        ?? LEGACY_MESH_SEND_TIMEOUT_MS,
+      (meshName) => Math.max(
+        1,
+        options.registration.spotNodes.get(meshName)?.router?.sendHighWaterMark
+        ?? LEGACY_MESH_SEND_CAPACITY
+      )
+    );
     this.runtimeEventPublisher = options.runtimeEventPublisher ?? new DefaultZLinkRuntimeEventPublisher();
     this.metrics = new ZLinkRuntimeMetrics(options.registration.metrics?.meterProvider);
     this.meshRouters = new MeshRouterResolver(options.registration);
@@ -380,6 +394,8 @@ export class ZLinkFrameworkRuntimeHost implements
       meshNames: [...options.registration.spotNodes.keys()],
       meshOptions: options.registration.spotNodes,
       meshNode: (meshName) => this.spotNodeRuntime?.meshNode(meshName),
+      meshNodeDescriptor: (meshName) =>
+        this.spotNodeRuntime?.meshNodeDescriptor(meshName),
       admission: this.admission,
       publishDraining: (meshName, signal) =>
         this.publishMeshDraining(meshName, signal),
@@ -822,8 +838,14 @@ export class ZLinkFrameworkRuntimeHost implements
           );
           if (target === undefined) break;
           try {
-            const result = await actor.context.joinEntrySpot(target, undefined).submit(signal);
-            if (result.status !== 'accepted') break;
+            const context = actor.context as typeof actor.context & {
+              joinEntrySpotForRuntime(
+                nodeRid: RoutingId | undefined,
+                request: unknown,
+                signal?: AbortSignal
+              ): Promise<boolean>;
+            };
+            if (!await context.joinEntrySpotForRuntime(target, undefined, signal)) break;
             moved = true;
             break;
           } catch (error) {

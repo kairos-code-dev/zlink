@@ -19,7 +19,7 @@ import type { ZLinkActorJoinCoordinator, ZLinkActorJoinRuntimeResult } from './a
 import type { ZLinkActorRoutedJoinTransport } from './actor-routed-join-transport';
 import type { ZLinkStoreLocationResolvers } from '../locations';
 import type { ZLinkActorSourceTransfer } from './actor-source-transfer';
-import { ZLinkActorRuntimeState } from './actor-runtime-state';
+import { ZLinkActorRuntimeState, toFrameworkRoutingId } from './actor-runtime-state';
 import { lookupNativeActorRef } from './actor-native-lookup';
 import { ZLinkPostCommitActorLocation } from './post-commit-actor-location';
 import { ZLinkLocalNativeActorJoin } from './actor-local-native-join';
@@ -118,7 +118,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
   async joinEntrySpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
-    nodeRid: RoutingId,
+    nodeRid: RoutingId | undefined,
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
@@ -127,12 +127,13 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     const node = this.node();
     const actorRef = state.nativeActorRef ?? lookupNativeActorRef(node, actor.actorId) ?? node.createActor(actor.actorId);
     state.setNativeActorRef(actorRef as never);
+    const selectedNodeRid = nodeRid ?? state.entryNodeRid ?? toFrameworkRoutingId(node.status().routingId);
     return await this.localJoin.joinEntrySpot(
       node,
       actor,
       state,
       actorRef as never,
-      nodeRid,
+      selectedNodeRid,
       request,
       timeoutMs ?? this.options.actorTransferTimeoutMs
     );

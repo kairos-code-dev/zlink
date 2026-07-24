@@ -1,4 +1,4 @@
-import { ZLinkSpotKind, ZLinkSubmitStatus } from '../../contracts';
+import { ZLinkSpotKind } from '../../contracts';
 import type {
   RoutingId,
   ZLinkChannelClient,
@@ -7,12 +7,17 @@ import type {
   ZLinkRequestCall,
   ZLinkSendCall,
   ZLinkMessageMetadata,
-  ZLinkSubmitResult,
   ZLinkSpotOutbound,
   ZLinkSpotRequestCall,
   ZLinkSpotSendCall,
   ZLinkSpotPublisherClient
 } from '../../contracts';
+import {
+  requireOneWayCompletion,
+  throwAlreadySubmitted,
+  ZLinkSubmitStatus,
+  type ZLinkSubmitResult
+} from '../messaging/submission-result';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import { ZLinkConfigurationException } from '../configuration';
 import {
@@ -250,13 +255,18 @@ function createAddressedSpotSendCall(
       options.initialMeshName = requireAddressValue(meshName, 'Mesh name', 255);
       return this;
     },
-    submit(signal?: AbortSignal) {
+    async submit(signal?: AbortSignal): Promise<void> {
       markSubmitted(options);
-      return serial.execute(() => transport.sendToSpotAddress(
+      const result = await serial.execute(() => transport.sendToSpotAddress(
         spotId,
         message,
         freezeAddressCallOptions(options, signal, sourceSpotProvider?.())
       ));
+      requireOneWayCompletion(
+        result,
+        'Spot send',
+        ZLinkFrameworkErrorKind.SpotRouteNotFound
+      );
     }
   };
 }
@@ -333,7 +343,7 @@ function newAddressCallOptions(): MutableAddressCallOptions {
 
 function selectOnce(options: MutableAddressCallOptions, name: string): void {
   if (options.submitted) {
-    throw new ZLinkConfigurationException('Spot call has already been submitted.');
+    throwAlreadySubmitted('Spot call');
   }
   if (options.selected.has(name)) {
     throw new ZLinkConfigurationException(`Spot call option '${name}' was already selected.`);
@@ -347,7 +357,7 @@ function addMetadata(
   value?: string
 ): void {
   if (options.submitted) {
-    throw new ZLinkConfigurationException('Spot call has already been submitted.');
+    throwAlreadySubmitted('Spot call');
   }
   options.metadataPresent = true;
   if (typeof key === 'string') {
@@ -361,7 +371,7 @@ function addMetadata(
 
 function markSubmitted(options: MutableAddressCallOptions): void {
   if (options.submitted) {
-    throw new ZLinkConfigurationException('Spot call has already been submitted.');
+    throwAlreadySubmitted('Spot call');
   }
   if (!options.instanceSpot && (
     options.instanceSpotType !== undefined
@@ -485,8 +495,8 @@ function wrapRoutedSpotSendCall(
       }
       return this;
     },
-    async submit(signal?: AbortSignal): Promise<ZLinkSubmitResult> {
-      return await serial.execute(async () => {
+    async submit(signal?: AbortSignal): Promise<void> {
+      const result = await serial.execute(async () => {
         return await sendToSpotHandle(
           transport,
           spot,
@@ -499,6 +509,11 @@ function wrapRoutedSpotSendCall(
           }
         );
       });
+      requireOneWayCompletion(
+        result,
+        'Spot send',
+        ZLinkFrameworkErrorKind.SpotRouteNotFound
+      );
     }
   };
 }

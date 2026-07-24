@@ -44,13 +44,17 @@ final class ZLinkAmbientSpotOutbound implements ZLinkSpotOutbound {
     }
 
     @Override
-    public ZLinkSendCall sendToSpot(SpotHandle spot, Object message) {
-        return scope.requireCurrent().sendToSpot(spot, message);
+    public systems.zlink.framework.spots.ZLinkSpotSendCall sendToSpot(
+        String spotId,
+        Object message) {
+        return scope.requireCurrent().sendToSpot(spotId, message);
     }
 
     @Override
-    public ZLinkRequestCall requestToSpot(SpotHandle spot, Object request) {
-        return scope.requireCurrent().requestToSpot(spot, request);
+    public systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(
+        String spotId,
+        Object request) {
+        return scope.requireCurrent().requestToSpot(spotId, request);
     }
 
     @Override

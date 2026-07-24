@@ -64,7 +64,7 @@ inline void run_sm_d11_scenario (const std::string &session_http_endpoint,
       session.post ("/channel/control-ping")
         .body (channel_control_ping_req_t{.target_node_rid = "play-a",
                                           .value = "channel-side"})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!channel_raw || channel_raw.value ().status >= 400) {
         throw std::runtime_error ("SM-D11 channel HTTP request failed");

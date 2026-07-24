@@ -493,7 +493,7 @@ stateful_object_runtime_t::close_spot (const object_ref_t &spot)
 std::pair<stateful_error_t, std::optional<spot_close_token_t>>
 stateful_object_runtime_t::begin_close_spot (const object_ref_t &spot)
 {
-    std::lock_guard lock (_mutex);
+    std::unique_lock lock (_mutex);
     if (_maintenance_inventory_active)
         return {stateful_error_t::moving, std::nullopt};
     stateful_error_t error = stateful_error_t::none;
@@ -518,7 +518,13 @@ stateful_object_runtime_t::begin_close_spot (const object_ref_t &spot)
         return {stateful_error_t::invalid, std::nullopt};
     spot_close_token_t token{_next_spot_close_token++, spot};
     record->state = object_state_t::closing;
+    record->barrier_generation = token.value;
     _spot_closes.emplace (token.value, token);
+    _quiescence.wait (lock, [record] {
+        return !record->queue.application_active
+               && !record->queue.infrastructure_active
+               && !record->queue.yielded_continuation;
+    });
     return {stateful_error_t::none, token};
 }
 
@@ -531,7 +537,8 @@ stateful_error_t stateful_object_runtime_t::commit_close_spot (
     if (closing == _spot_closes.end () || closing->second != token
         || record == _objects.end ()
         || !same_exact_ref (record->second.reference, token.spot)
-        || record->second.state != object_state_t::closing)
+        || record->second.state != object_state_t::closing
+        || record->second.barrier_generation != token.value)
         return stateful_error_t::generation_stale;
     for (auto &candidate : _candidates) {
         if (candidate.mesh_name == record->second.reference.mesh_name
@@ -555,9 +562,16 @@ stateful_error_t stateful_object_runtime_t::abort_close_spot (
     if (closing == _spot_closes.end () || closing->second != token
         || record == _objects.end ()
         || !same_exact_ref (record->second.reference, token.spot)
-        || record->second.state != object_state_t::closing)
+        || record->second.state != object_state_t::closing
+        || record->second.barrier_generation != token.value)
         return stateful_error_t::generation_stale;
+    while (!record->second.queue.held_application.empty ()) {
+        record->second.queue.application.push_back (
+          std::move (record->second.queue.held_application.front ()));
+        record->second.queue.held_application.pop_front ();
+    }
     record->second.state = object_state_t::ready;
+    record->second.barrier_generation = 0;
     _spot_closes.erase (closing);
     return stateful_error_t::none;
 }
@@ -574,7 +588,8 @@ stateful_error_t stateful_object_runtime_t::enqueue (
         return error;
     }
     if ((object->state == object_state_t::moving
-         || object->state == object_state_t::recovering)
+         || object->state == object_state_t::recovering
+         || object->state == object_state_t::closing)
         && domain == turn_domain_t::application) {
         if (object->queue.held_application.size ()
             >= _application_capacity) {
@@ -607,8 +622,17 @@ stateful_object_runtime_t::try_claim (
     if (object == nullptr) {
         return {error, std::nullopt};
     }
-    if (object->state == object_state_t::recovering
-        && domain == turn_domain_t::application) {
+    if (domain == turn_domain_t::application
+        && object->queue.application_active
+        && object->queue.yielded_continuation) {
+        auto continuation =
+          std::move (*object->queue.yielded_continuation);
+        object->queue.yielded_continuation.reset ();
+        return {stateful_error_t::none, std::move (continuation)};
+    }
+    if ((object->state == object_state_t::moving
+         || object->state == object_state_t::recovering
+         || object->state == object_state_t::closing)) {
         return {stateful_error_t::moving, std::nullopt};
     }
     auto &queue = domain == turn_domain_t::application
@@ -636,9 +660,6 @@ stateful_error_t stateful_object_runtime_t::complete_claim (
     if (object == nullptr) {
         return error;
     }
-    if (object->state == object_state_t::recovering
-        && domain == turn_domain_t::application)
-        return stateful_error_t::moving;
     auto &active = domain == turn_domain_t::application
                      ? object->queue.application_active
                      : object->queue.infrastructure_active;
@@ -646,6 +667,7 @@ stateful_error_t stateful_object_runtime_t::complete_claim (
         return stateful_error_t::conflict;
     }
     active = false;
+    _quiescence.notify_all ();
     return stateful_error_t::none;
 }
 
@@ -664,11 +686,10 @@ stateful_error_t stateful_object_runtime_t::yield_claim (
     if (!object->queue.application_active) {
         return stateful_error_t::conflict;
     }
-    if (object->queue.application.size () >= _application_capacity) {
-        return stateful_error_t::backpressured;
-    }
-    object->queue.application_active = false;
-    object->queue.application.push_back (std::move (continuation));
+    if (object->queue.yielded_continuation)
+        return stateful_error_t::conflict;
+    object->queue.yielded_continuation = std::move (continuation);
+    _quiescence.notify_all ();
     return stateful_error_t::none;
 }
 
@@ -702,7 +723,10 @@ stateful_error_t stateful_object_runtime_t::register_timer (
     if (object == nullptr) {
         return error;
     }
-    if (object->state == object_state_t::recovering)
+    if ((object->state == object_state_t::moving
+         && object->barrier_generation != 0)
+        || object->state == object_state_t::recovering
+        || object->state == object_state_t::closing)
         return stateful_error_t::moving;
     if (!object->timers.emplace (timer.timer_id, timer).second) {
         return stateful_error_t::conflict;
@@ -720,7 +744,10 @@ stateful_error_t stateful_object_runtime_t::cancel_timer (
     if (object == nullptr) {
         return error;
     }
-    if (object->state == object_state_t::recovering)
+    if ((object->state == object_state_t::moving
+         && object->barrier_generation != 0)
+        || object->state == object_state_t::recovering
+        || object->state == object_state_t::closing)
         return stateful_error_t::moving;
     return object->timers.erase (timer_id) == 1
              ? stateful_error_t::none
@@ -738,7 +765,10 @@ stateful_error_t stateful_object_runtime_t::enqueue_timer_tick (
     if (object == nullptr) {
         return error;
     }
-    if (object->state == object_state_t::recovering)
+    if ((object->state == object_state_t::moving
+         && object->barrier_generation != 0)
+        || object->state == object_state_t::recovering
+        || object->state == object_state_t::closing)
         return stateful_error_t::moving;
     const auto timer = object->timers.find (timer_id);
     if (timer == object->timers.end ()) {
@@ -835,7 +865,7 @@ stateful_object_runtime_t::try_seal_relocation_aggregate (
 {
     if (participants.empty ())
         return {stateful_error_t::invalid, {}};
-    std::lock_guard lock (_mutex);
+    std::unique_lock lock (_mutex);
     if (_next_relocation_token == 0) {
         return {stateful_error_t::conflict, {}};
     }
@@ -858,13 +888,27 @@ stateful_object_runtime_t::try_seal_relocation_aggregate (
                       : stateful_error_t::conflict,
                     {}};
         }
-        if (object->queue.application_active)
-            return {stateful_error_t::backpressured, {}};
         keys.push_back (key);
         records.push_back (object);
     }
 
     const auto token = _next_relocation_token++;
+    std::vector<object_ref_t> sources;
+    sources.reserve (records.size ());
+    for (auto *object : records) {
+        object->state = object_state_t::moving;
+        object->barrier_generation = token;
+        sources.push_back (object->reference);
+    }
+    _quiescence.wait (lock, [&records] {
+        return std::all_of (
+          records.begin (), records.end (), [] (const auto *object) {
+              return !object->queue.application_active
+                     && !object->queue.infrastructure_active
+                     && !object->queue.yielded_continuation;
+          });
+    });
+
     std::vector<frozen_object_state_t> frozen_participants;
     frozen_participants.reserve (records.size ());
     for (auto *object : records) {
@@ -883,12 +927,12 @@ stateful_object_runtime_t::try_seal_relocation_aggregate (
         frozen.timers.reserve (object->timers.size ());
         for (const auto &[_, timer] : object->timers)
             frozen.timers.push_back (timer);
-        object->state = object_state_t::moving;
         frozen_participants.push_back (std::move (frozen));
     }
     _relocation_seals.emplace (
       token,
-      relocation_seal_state_t{keys, frozen_participants});
+      relocation_seal_state_t{
+        keys, std::move (sources), frozen_participants});
     return {
       stateful_error_t::none,
       aggregate_relocation_seal_t{
@@ -903,10 +947,13 @@ stateful_error_t stateful_object_runtime_t::abort_relocation (
     if (seal == _relocation_seals.end ()) {
         return stateful_error_t::not_found;
     }
-    for (const auto &key : seal->second.keys) {
-        const auto object = _objects.find (key);
+    for (std::size_t index = 0; index != seal->second.keys.size (); ++index) {
+        const auto object = _objects.find (seal->second.keys[index]);
         if (object == _objects.end ()
-            || object->second.state != object_state_t::moving)
+            || object->second.state != object_state_t::moving
+            || object->second.barrier_generation != token
+            || !same_exact_ref (object->second.reference,
+                                seal->second.sources[index]))
             return stateful_error_t::conflict;
     }
     for (std::size_t index = 0; index != seal->second.keys.size (); ++index) {
@@ -920,6 +967,7 @@ stateful_error_t stateful_object_runtime_t::abort_relocation (
             record.queue.held_application.pop_front ();
         }
         record.state = object_state_t::ready;
+        record.barrier_generation = 0;
     }
     _relocation_seals.erase (seal);
     return stateful_error_t::none;
@@ -950,10 +998,13 @@ stateful_object_runtime_t::commit_relocation_aggregate (
     if (seal == _relocation_seals.end ()) {
         return {stateful_error_t::not_found, {}};
     }
-    for (const auto &key : seal->second.keys) {
-        const auto object = _objects.find (key);
+    for (std::size_t index = 0; index != seal->second.keys.size (); ++index) {
+        const auto object = _objects.find (seal->second.keys[index]);
         if (object == _objects.end ()
             || object->second.state != object_state_t::moving
+            || object->second.barrier_generation != token
+            || !same_exact_ref (object->second.reference,
+                                seal->second.sources[index])
             || object->second.reference.authority_owner_generation
                  == std::numeric_limits<std::uint64_t>::max ())
             return {stateful_error_t::conflict, {}};
@@ -973,6 +1024,7 @@ stateful_object_runtime_t::commit_relocation_aggregate (
             record.queue.held_application.pop_front ();
         }
         record.state = object_state_t::ready;
+        record.barrier_generation = 0;
         result.push_back (record.reference);
     }
     _relocation_seals.erase (seal);
@@ -1275,7 +1327,11 @@ stateful_object_runtime_t::find_record_locked (
         return nullptr;
     }
     if (!same_exact_ref (entry->second.reference, reference)) {
-        error = stateful_error_t::conflict;
+        error =
+          entry->second.reference.authority_owner_generation
+              != reference.authority_owner_generation
+            ? stateful_error_t::generation_stale
+            : stateful_error_t::conflict;
         return nullptr;
     }
     error = stateful_error_t::none;
@@ -1298,7 +1354,11 @@ stateful_object_runtime_t::find_record_locked (
         return nullptr;
     }
     if (!same_exact_ref (entry->second.reference, reference)) {
-        error = stateful_error_t::conflict;
+        error =
+          entry->second.reference.authority_owner_generation
+              != reference.authority_owner_generation
+            ? stateful_error_t::generation_stale
+            : stateful_error_t::conflict;
         return nullptr;
     }
     error = stateful_error_t::none;

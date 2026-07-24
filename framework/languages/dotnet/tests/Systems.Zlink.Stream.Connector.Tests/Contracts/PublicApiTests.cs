@@ -89,8 +89,8 @@ public sealed partial class StreamConnectorTests
             typeof(IZlinkStreamSendCall));
         AssertMethod(
             typeof(IZlinkStreamSendCall),
-            nameof(IZlinkStreamSendCall.Submit),
-            typeof(void),
+            nameof(IZlinkStreamSendCall.Async),
+            typeof(ValueTask),
             (typeof(CancellationToken), true));
 
         Assert.Equal(2, typeof(IZlinkStreamRequestCall).GetMethods().Count(
@@ -135,8 +135,8 @@ public sealed partial class StreamConnectorTests
         Assert.Empty(typeof(ZlinkStreamTypedSequenceBuilder<>).GetConstructors());
         AssertMethod(
             typeof(ZlinkStreamTypedSendBuilder),
-            nameof(ZlinkStreamTypedSendBuilder.Submit),
-            typeof(void),
+            nameof(ZlinkStreamTypedSendBuilder.Async),
+            typeof(ValueTask),
             (typeof(CancellationToken), true));
         Assert.Contains(
             typeof(ZlinkStreamTypedRequestBuilder).GetMethods(),

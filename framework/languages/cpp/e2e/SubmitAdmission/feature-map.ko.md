@@ -30,7 +30,7 @@ runner는 성공으로 건너뛰지 않고 종료 코드 3을 반환한다.
 | SA-E2E-10 | 미구현 | ClientServer 역할 process와 DEALER deadline evidence가 없다. RouteMesh Channel로 대체하지 않는다. |
 | SA-E2E-11 | 미구현 | Spot location generation, stale handle과 local·remote mailbox gate를 같은 runner에 연결해야 한다. |
 | SA-E2E-12 | 미구현 | Actor owner generation, stale handle과 local·remote mailbox gate를 같은 runner에 연결해야 한다. |
-| SA-E2E-13 | 미구현 | C++ `logical_multicast_detail_t`는 Core의 `unreachable_remote_target_count`를 `unreachable_remote_node_count`로 투영한다. Executor direct-handoff observer와 `PublishSnapshotBarrier`, target별 process evidence는 아직 없다. |
+| SA-E2E-13 | 미구현 | Logical Multicast는 target별 결과와 publish 전용 monitoring을 제공하지 않는다. Executor direct-handoff barrier, zero-target 정상 완료, partial delivery 뒤 전체 rollback·retry가 없다는 process evidence와 제거된 snapshot·metric·runtime event의 부재 검증이 아직 없다. |
 | SA-E2E-14 | 구현 | Subscriber process를 시작하지 않은 publisher가 public fanout call을 한 번 submit하고 `Submitted` terminal 한 번을 반환한다. |
 | SA-E2E-15 | 미구현 | Bound session·session Actor relay 역할, binding generation과 local·remote gate가 없다. |
 | SA-E2E-16 | 미구현 | Server STREAM session, connector peer와 wire sequence evidence가 없다. |

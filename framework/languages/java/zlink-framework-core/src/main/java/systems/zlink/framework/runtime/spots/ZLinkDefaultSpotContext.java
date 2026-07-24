@@ -9,6 +9,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.function.Supplier;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
+import systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode;
 import systems.zlink.framework.execution.ZLinkAsyncSerialQueue;
 import systems.zlink.framework.execution.ZLinkWorkerPool;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSpot;
@@ -80,7 +81,9 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
             handlerLoader,
             nodeRid,
             backendSpot,
-            dispatchQueue);
+            dispatchQueue,
+            ZLinkUserSpotExecutionMode.PER_ACTOR,
+            false);
         timerContext.setSpot(new ZLinkEntrySpotTimerSurface(this));
         timerContexts.add(timerContext);
         return timerContext.addTimer(name, period, handlerType, options);
@@ -88,14 +91,35 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
 
     void closeTimers() {
         timerContexts.forEach(DefaultSpotContext::closeTimers);
-        timerContexts.clear();
+    }
+
+    void sealTimerAdmission() {
+        timerContexts.forEach(DefaultSpotContext::sealTimerAdmission);
+    }
+
+    CompletionStage<Void> awaitAllLanes() {
+        List<CompletionStage<Void>> lanes = new ArrayList<>();
+        lanes.add(dispatchQueue.awaitQuiescence());
+        timerContexts.forEach(context -> lanes.add(context.awaitAllLanes()));
+        return java.util.concurrent.CompletableFuture.allOf(
+            lanes.stream()
+                .map(CompletionStage::toCompletableFuture)
+                .toArray(java.util.concurrent.CompletableFuture[]::new));
     }
 
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
         return ZLinkSpotQueueMetrics.enqueue(dispatchQueue, "entry",
-            () -> host.runEntryDispatch(this, operation));
+            () -> runApplicationExecution(null, false,
+                () -> host.runEntryDispatch(this, operation)));
+    }
+
+    @Override
+    public CompletionStage<Void> enqueueActorDispatch(
+        String actorId,
+        Supplier<CompletionStage<Void>> operation) {
+        return runApplicationExecution(actorId, false, operation);
     }
 
     @Override
@@ -108,6 +132,28 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
     public <T> ZLinkWorkerCall<T> runIoWorker(ZLinkIoWorkerTask<T> work) {
         Objects.requireNonNull(work, "work");
         return new DefaultZLinkIoWorkerCall<>(workerPool, work);
+    }
+
+    private CompletionStage<Void> runApplicationExecution(
+        String actorId,
+        boolean yieldAllowed,
+        Supplier<CompletionStage<Void>> operation) {
+        var execution = new systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.ApplicationExecution(
+                spotId(),
+                actorId,
+                false,
+                yieldAllowed,
+                ignored -> false);
+        try (var ignored = systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.enterApplicationExecution(execution)) {
+            return systems.zlink.framework.runtime.actors
+                .ZLinkDeferredActorJoinHandlerScope.run(
+                    candidate -> host.isActorAtSpot(candidate, spotId()),
+                    operation);
+        } catch (RuntimeException failure) {
+            return java.util.concurrent.CompletableFuture.failedFuture(failure);
+        }
     }
 
     void closeRegistration() {
@@ -133,6 +179,12 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     private final DefaultSpotOutbound outbound;
     private final ZLinkSpotTimerRegistry timers;
     private final ZLinkAsyncSerialQueue dispatchQueue;
+    private final java.util.concurrent.ConcurrentHashMap<
+        String, ZLinkAsyncSerialQueue> timerQueues =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private final ZLinkUserSpotExecutionMode executionMode;
+    private final boolean instanceSpot;
+    private ZLinkUserSpotRelocationBarrier relocationBarrier;
     private final ZLinkSpotHandlerCatalog handlerCatalog = new ZLinkSpotHandlerCatalog(
         "SPOT handler registration is only allowed while configure is running");
     private ZLinkSpot<?> spot;
@@ -143,7 +195,15 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         ZLinkSpotHandlerLoader handlerLoader,
         RoutingId nodeRid,
         ZLinkBackendSpot backendSpot) {
-        this(host, workerPool, handlerLoader, nodeRid, backendSpot, new ZLinkAsyncSerialQueue());
+        this(
+            host,
+            workerPool,
+            handlerLoader,
+            nodeRid,
+            backendSpot,
+            new ZLinkAsyncSerialQueue(),
+            ZLinkUserSpotExecutionMode.SPOT_WIDE,
+            false);
     }
 
     DefaultSpotContext(
@@ -153,16 +213,40 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         RoutingId nodeRid,
         ZLinkBackendSpot backendSpot,
         ZLinkAsyncSerialQueue dispatchQueue) {
+        this(
+            host,
+            workerPool,
+            handlerLoader,
+            nodeRid,
+            backendSpot,
+            dispatchQueue,
+            ZLinkUserSpotExecutionMode.SPOT_WIDE,
+            false);
+    }
+
+    DefaultSpotContext(
+        ZLinkSpotContextHost host,
+        ZLinkWorkerPool workerPool,
+        ZLinkSpotHandlerLoader handlerLoader,
+        RoutingId nodeRid,
+        ZLinkBackendSpot backendSpot,
+        ZLinkAsyncSerialQueue dispatchQueue,
+        ZLinkUserSpotExecutionMode executionMode,
+        boolean instanceSpot) {
         this.host = host;
         this.workerPool = workerPool;
         this.handlerLoader = handlerLoader;
         this.nodeRid = nodeRid;
         this.backendSpot = backendSpot;
         this.dispatchQueue = dispatchQueue;
+        this.executionMode = Objects.requireNonNull(executionMode, "executionMode");
+        this.instanceSpot = instanceSpot;
         this.outbound = host.createContextOutbound(backendSpot, nodeRid);
         this.timers = host.createTimerRegistry(
             backendSpot.routingId(),
-            operation -> enqueueDispatch(() -> host.runWithOutbound(outbound, operation)));
+            (timerName, operation) -> enqueueTimerDispatch(
+                timerName,
+                () -> host.runWithOutbound(outbound, operation)));
     }
 
     void setSpot(ZLinkSpot<?> spot) {
@@ -200,6 +284,10 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         timers.close();
     }
 
+    void sealTimerAdmission() {
+        timers.freeze();
+    }
+
     byte[] freezeTimerRelocationEnvelope() {
         return ZLinkSpotTimerRelocationEnvelope.encode(timers.freeze());
     }
@@ -218,7 +306,27 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     @Override
     public CompletionStage<Void> enqueueDispatch(
         Supplier<CompletionStage<Void>> operation) {
-        return ZLinkSpotQueueMetrics.enqueue(dispatchQueue, "user", operation);
+        return ZLinkSpotQueueMetrics.enqueue(
+            dispatchQueue,
+            "user",
+            () -> runApplicationExecution(
+                null,
+                sharedSpotGate(),
+                operation));
+    }
+
+    @Override
+    public CompletionStage<Void> enqueueActorDispatch(
+        String actorId,
+        Supplier<CompletionStage<Void>> operation) {
+        Objects.requireNonNull(actorId, "actorId");
+        if (sharedSpotGate()) {
+            return ZLinkSpotQueueMetrics.enqueue(
+                dispatchQueue,
+                "user",
+                () -> runApplicationExecution(actorId, true, operation));
+        }
+        return runApplicationExecution(actorId, false, operation);
     }
 
     CompletionStage<Void> enqueueAcceptedDispatch(
@@ -227,8 +335,76 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         Runnable relocationRelease) {
         return dispatchQueue.enqueueRelocatable(
             acceptedJournalRecord,
-            operation,
+            () -> runApplicationExecution(
+                null,
+                sharedSpotGate(),
+                operation),
             relocationRelease);
+    }
+
+    CompletionStage<Void> enqueueLifecycle(
+        Supplier<CompletionStage<Void>> operation) {
+        CompletionStage<Void> barrier;
+        if (sharedSpotGate() || timerQueues.isEmpty()) {
+            barrier = java.util.concurrent.CompletableFuture.completedFuture(null);
+        } else {
+            barrier = java.util.concurrent.CompletableFuture.allOf(
+                timerQueues.values().stream()
+                    .map(queue -> queue.enqueue(() ->
+                        java.util.concurrent.CompletableFuture.completedFuture(null))
+                        .toCompletableFuture())
+                    .toArray(java.util.concurrent.CompletableFuture[]::new));
+        }
+        return barrier.thenCompose(ignored -> dispatchQueue.enqueue(() ->
+            runApplicationExecution(null, false, operation)));
+    }
+
+    CompletionStage<Void> awaitAllLanes() {
+        List<CompletionStage<Void>> lanes = new ArrayList<>();
+        lanes.add(dispatchQueue.awaitQuiescence());
+        timerQueues.values().forEach(
+            queue -> lanes.add(queue.awaitQuiescence()));
+        return java.util.concurrent.CompletableFuture.allOf(
+            lanes.stream()
+                .map(CompletionStage::toCompletableFuture)
+                .toArray(java.util.concurrent.CompletableFuture[]::new));
+    }
+
+    java.util.Map<String, ZLinkAsyncSerialQueue> relocationLanes() {
+        java.util.LinkedHashMap<String, ZLinkAsyncSerialQueue> lanes =
+            new java.util.LinkedHashMap<>();
+        lanes.put("spot", dispatchQueue);
+        timerQueues.entrySet().stream()
+            .sorted(java.util.Map.Entry.comparingByKey())
+            .forEach(entry -> lanes.put(
+                "timer:" + entry.getKey(), entry.getValue()));
+        return java.util.Collections.unmodifiableMap(lanes);
+    }
+
+    synchronized ZLinkUserSpotRelocationBarrier relocationBarrier(
+        ZLinkActorSessionCoordinator actors) {
+        if (relocationBarrier == null) {
+            relocationBarrier =
+                new ZLinkUserSpotRelocationBarrier(this, actors);
+        }
+        return relocationBarrier;
+    }
+
+    <T> CompletionStage<T> runLifecycleExecution(
+        Supplier<CompletionStage<T>> operation) {
+        var execution = new systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.ApplicationExecution(
+                spotId(),
+                null,
+                sharedSpotGate(),
+                false,
+                candidate -> host.isActorMember(spotId(), candidate));
+        try (var ignored = systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.enterApplicationExecution(execution)) {
+            return Objects.requireNonNull(operation.get(), "operation result");
+        } catch (RuntimeException failure) {
+            return java.util.concurrent.CompletableFuture.failedFuture(failure);
+        }
     }
 
     Optional<ZLinkAsyncSerialQueue.RelocationSeal> trySealRelocation() {
@@ -254,6 +430,55 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
     public <T> ZLinkWorkerCall<T> runIoWorker(ZLinkIoWorkerTask<T> work) {
         Objects.requireNonNull(work, "work");
         return new DefaultZLinkIoWorkerCall<>(workerPool, work);
+    }
+
+    ZLinkUserSpotExecutionMode executionMode() {
+        return executionMode;
+    }
+
+    private CompletionStage<Void> enqueueTimerDispatch(
+        String timerName,
+        Supplier<CompletionStage<Void>> operation) {
+        if (sharedSpotGate()) {
+            return enqueueDispatch(operation);
+        }
+        ZLinkAsyncSerialQueue queue = timerQueues.computeIfAbsent(
+            Objects.requireNonNull(timerName, "timerName"),
+            ignored -> new ZLinkAsyncSerialQueue());
+        return queue.enqueue(() -> runApplicationExecution(
+            null,
+            false,
+            operation));
+    }
+
+    private boolean sharedSpotGate() {
+        return instanceSpot
+            || executionMode == ZLinkUserSpotExecutionMode.SPOT_WIDE;
+    }
+
+    private CompletionStage<Void> runApplicationExecution(
+        String actorId,
+        boolean yieldAllowed,
+        Supplier<CompletionStage<Void>> operation) {
+        var execution = new systems.zlink.framework.runtime.internal.handlers
+            .ZLinkSuspendInvocationContext.ApplicationExecution(
+                spotId(),
+                actorId,
+                sharedSpotGate(),
+                yieldAllowed,
+                candidate -> host.isActorMember(spotId(), candidate));
+        try (var ignored = systems.zlink.framework.runtime.internal.handlers
+                 .ZLinkSuspendInvocationContext.enterApplicationExecution(execution)) {
+            if (instanceSpot) {
+                return Objects.requireNonNull(operation.get(), "operation result");
+            }
+            return systems.zlink.framework.runtime.actors
+                .ZLinkDeferredActorJoinHandlerScope.run(
+                    candidate -> host.isActorMember(spotId(), candidate),
+                    operation);
+        } catch (RuntimeException failure) {
+            return java.util.concurrent.CompletableFuture.failedFuture(failure);
+        }
     }
 
     void closeRegistration() {

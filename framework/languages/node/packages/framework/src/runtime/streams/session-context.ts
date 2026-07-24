@@ -14,9 +14,11 @@ import type {
   ZLinkSessionPacketHandler,
   ZLinkSessionReplyCall,
   ZLinkSessionSendCall,
-  ZLinkSubmitResult,
   ZLinkStream
 } from '../../contracts';
+import { ZLinkFrameworkErrorKind } from '../../contracts';
+import type { ZLinkSubmitResult } from '../messaging/submission-result';
+import { requireOneWayCompletion } from '../messaging/submission-result';
 import type { Message } from '../../contracts/Common/Message';
 import { readZLinkDecoratorMetadata } from '../../contracts/Handlers/Attributes';
 import { throwIfAborted } from '../abort';
@@ -387,11 +389,22 @@ export class DefaultZLinkSessionActor implements ZLinkSessionActor {
     if (ref.actorId !== this.actorId) {
       throw new Error(`Cannot change session actor id from '${this.actorId}' to '${ref.actorId}'.`);
     }
+    if (BigInt(ref.generation) !== BigInt(this.currentRef.generation)) {
+      throw new Error(
+        `Cannot change session actor '${this.actorId}' object generation `
+          + `from ${String(this.currentRef.generation)} to ${String(ref.generation)}.`
+      );
+    }
     this.currentRef = ref;
   }
 
-  relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSubmitResult> {
-    return this.runtime.relay(this, payload, signal);
+  async relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void> {
+    const result = await this.runtime.relay(this, payload, signal);
+    requireOneWayCompletion(
+      result,
+      'Session Actor relay',
+      ZLinkFrameworkErrorKind.ActorSessionNotBound
+    );
   }
 
   notifyDisconnected(signal?: AbortSignal): Promise<void> {

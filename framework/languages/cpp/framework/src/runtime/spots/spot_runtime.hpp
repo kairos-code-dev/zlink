@@ -12,6 +12,7 @@
 #include <zlink/framework/contracts/actors/actor.hpp>
 #include <zlink/framework/contracts/dispatch/execution.hpp>
 #include <zlink/framework/contracts/locations/resolvers.hpp>
+#include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
 
 #include <atomic>
 #include <chrono>
@@ -73,6 +74,7 @@ class spot_node_builder_state_t
     runtime::spot_address_resolver_t *spot_location_resolver = nullptr;
     std::shared_ptr<std::atomic_bool> drain_flag;
     std::shared_ptr<monitoring_runtime_state_t> monitoring;
+    std::chrono::milliseconds one_way_send_timeout{std::chrono::seconds (1)};
     std::atomic_bool stopping{false};
     std::map<std::string, spot_id_t> actor_spot_ids;
     std::map<std::string, std::uint64_t> actor_generations;
@@ -270,6 +272,9 @@ class spot_context_state_t
     node_rid_t node_rid;
     spot_id_t spot_id;
     std::string spot_name;
+    user_spot_execution_mode_t execution_mode =
+      user_spot_execution_mode_t::spot_wide;
+    bool entry_spot = false;
     std::vector<spot_packet_descriptor_t> packets;
     std::vector<spot_handler_descriptor_t> handlers;
     std::vector<spot_handler_registry_t::invoker_t> handler_invokers;

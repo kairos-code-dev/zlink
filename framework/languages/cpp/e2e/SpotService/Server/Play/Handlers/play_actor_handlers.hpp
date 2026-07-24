@@ -69,7 +69,7 @@ class join_spot_handler_t
         }
         auto reply =
           current->relay_request ("JoinReq", zlink::message_t::from_json (request))
-            .async ()
+            .submit ()
             .result ();
         if (!reply) {
             throw zlink::framework::framework_exception_t (
@@ -90,7 +90,7 @@ class join_spot_handler_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "actor create failed");
         }
-        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).submit ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
@@ -188,7 +188,7 @@ class mutate_spot_state_handler_t
         }
         auto reply =
           actor->relay_request ("StateReq", zlink::message_t::from_json (request.state))
-            .async ()
+            .submit ()
             .result ();
         if (!reply) {
             throw zlink::framework::framework_exception_t (
@@ -228,7 +228,7 @@ class complex_actor_handler_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "complex actor create failed");
         }
-        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).submit ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
@@ -255,7 +255,7 @@ class complex_actor_handler_t
         }
         auto join_reply =
           current->relay_request ("JoinReq", zlink::message_t::from_json (request.join))
-            .async ()
+            .submit ()
             .result ();
         if (!join_reply) {
             throw zlink::framework::framework_exception_t (
@@ -265,7 +265,7 @@ class complex_actor_handler_t
         auto complex_reply =
           current->relay_request ("ComplexActorReq",
                                   zlink::message_t::from_json (request.complex))
-            .async ()
+            .submit ()
             .result ();
         if (!complex_reply) {
             throw zlink::framework::framework_exception_t (
@@ -310,7 +310,7 @@ class missing_actor_handler_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "missing actor create failed");
         }
-        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).submit ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
@@ -337,7 +337,7 @@ class missing_actor_handler_t
         }
         auto join_reply =
           current->relay_request ("JoinReq", zlink::message_t::from_json (request.join))
-            .async ()
+            .submit ()
             .result ();
         if (!join_reply) {
             throw zlink::framework::framework_exception_t (
@@ -348,7 +348,7 @@ class missing_actor_handler_t
           current
             ->relay_request (request.packet_name,
                              zlink::message_t::from_json (e2e::state_req_t{"add", 1}))
-            .async ()
+            .submit ()
             .result ();
         const auto failed = !missing.has_value ();
         zlink::framework::http_response_t response;
@@ -398,7 +398,7 @@ class remote_actor_flow_handler_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "remote actor create failed");
         }
-        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).submit ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
@@ -425,7 +425,7 @@ class remote_actor_flow_handler_t
         }
         auto join_reply =
           current->relay_request ("JoinReq", zlink::message_t::from_json (request.join))
-            .async ()
+            .submit ()
             .result ();
         if (!join_reply) {
             throw zlink::framework::framework_exception_t (
@@ -434,7 +434,7 @@ class remote_actor_flow_handler_t
         }
         auto state_reply =
           current->relay_request ("StateReq", zlink::message_t::from_json (request.state))
-            .async ()
+            .submit ()
             .result ();
         if (!state_reply) {
             throw zlink::framework::framework_exception_t (
@@ -518,7 +518,7 @@ class remote_actor_request_handler_t
               actor.error () ? actor.error ()->what () : "remote actor create failed");
         }
         _state.record ("ActorEnsured", request.join.actor_id, {}, request.join.display_name);
-        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).submit ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
@@ -545,7 +545,7 @@ class remote_actor_request_handler_t
         }
         auto join_reply =
           current->relay_request ("JoinReq", zlink::message_t::from_json (request.join))
-            .async ()
+            .submit ()
             .result ();
         if (!join_reply) {
             throw zlink::framework::framework_exception_t (
@@ -556,7 +556,7 @@ class remote_actor_request_handler_t
                        target_node + ":" + std::to_string (request.state.amount));
         auto reply =
           current->relay_request ("StateReq", zlink::message_t::from_json (request.state))
-            .async ()
+            .submit ()
             .result ();
         if (!reply) {
             throw zlink::framework::framework_exception_t (
@@ -627,7 +627,7 @@ class worker_spot_handler_t
         }
         auto reply =
           actor->relay_request ("WorkerReq", zlink::message_t::from_json (request.worker))
-            .async ()
+            .submit ()
             .result ();
         if (!reply) {
             throw zlink::framework::framework_exception_t (

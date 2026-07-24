@@ -8,7 +8,7 @@ public record ZLinkPlacementAllocation(
     String stableType,
     ZLinkMeshNodeDescriptorKey descriptor,
     long descriptorLifecycleGeneration,
-    int capacityDelta) {
+    ZLinkPlacementCapacityBundle capacityBundle) {
     public ZLinkPlacementAllocation {
         Objects.requireNonNull(state, "state");
         Objects.requireNonNull(objectKind, "objectKind");
@@ -22,10 +22,7 @@ public record ZLinkPlacementAllocation(
             throw new IllegalArgumentException(
                 "descriptorLifecycleGeneration must be positive");
         }
-        if (capacityDelta <= 0) {
-            throw new IllegalArgumentException(
-                "capacityDelta must be in 1..Integer.MAX_VALUE");
-        }
+        Objects.requireNonNull(capacityBundle, "capacityBundle");
     }
 
 }

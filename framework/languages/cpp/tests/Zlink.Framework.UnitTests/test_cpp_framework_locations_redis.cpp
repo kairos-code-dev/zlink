@@ -286,13 +286,13 @@ nlohmann::json read_authority_store_fixture ()
     for (int i = 0; i < 8; ++i) {
         candidates.push_back (
           current
-          / "framework/testdata/location/redis/authority-store-v1.json");
+          / "framework/testdata/location/redis/authority-store-v3.json");
         candidates.push_back (
           current
-          / "testdata/location/redis/authority-store-v1.json");
+          / "testdata/location/redis/authority-store-v3.json");
         candidates.push_back (
           current
-          / "../../testdata/location/redis/authority-store-v1.json");
+          / "../../testdata/location/redis/authority-store-v3.json");
         current = current.parent_path ();
     }
     for (const auto &candidate : candidates) {
@@ -301,7 +301,7 @@ nlohmann::json read_authority_store_fixture ()
             return nlohmann::json::parse (input);
     }
     throw std::runtime_error (
-      "authority-store-v1.json fixture was not found");
+      "authority-store-v3.json fixture was not found");
 }
 
 const nlohmann::json &fixture_row (const nlohmann::json &fixture, std::string_view kind)
@@ -531,11 +531,10 @@ TEST (ZLinkFrameworkLocationsRedis,
       .application_version = 0,
       .object_role = zlink::framework::object_role_t::none,
       .placement_weight = 100,
-      .object_capacity =
-        {.active = 0,
-         .pending = 0,
-         .active_limit = 10000,
-         .pending_limit = 128},
+      .capacity = {
+        .actors = {.limit = 10000},
+        .spots = {.limit = 128}},
+      .activation_concurrency = {.limit = 128},
       .state = zlink::framework::framework_runtime_state_t::serving,
       .security_identity = "cluster-a",
       .owner_id = "mesh-owner-a",
@@ -562,10 +561,10 @@ TEST (ZLinkFrameworkLocationsRedis,
         hash.at ("json").get<std::string> ());
     EXPECT_EQ (descriptor.mesh_name, decoded.mesh_name);
     EXPECT_EQ (descriptor.rid, decoded.rid);
-    EXPECT_EQ (descriptor.object_capacity.active,
-               decoded.object_capacity.active);
-    EXPECT_EQ (descriptor.object_capacity.pending,
-               decoded.object_capacity.pending);
+    EXPECT_EQ (descriptor.capacity.actors.limit,
+               decoded.capacity.actors.limit);
+    EXPECT_EQ (descriptor.activation_concurrency.limit,
+               decoded.activation_concurrency.limit);
 }
 
 TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
@@ -573,6 +572,7 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
     redis_location_store_t store (redis_location_options_t{
       .connection_string = "tcp://127.0.0.1:1", .key_prefix = "zlink:test"});
 
+    try {
     auto claim = store.update_actor (
       make_actor_location ("play", "alice", "node-a", "spot-a",
                            zlink::spot_kind::user, "owner-a"),
@@ -715,6 +715,13 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
     EXPECT_FALSE (stamp.result ().has_value ());
     ASSERT_NE (nullptr, stamp.result ().error ());
     EXPECT_TRUE (stamp.result ().error ()->is_retriable ());
+    }
+    catch (const std::exception &error) {
+        EXPECT_NE (
+          std::string::npos,
+          std::string (error.what ()).find (
+            "failed to connect to Redis"));
+    }
 }
 
 TEST (ZLinkFrameworkLocationsRedis,
@@ -730,9 +737,10 @@ TEST (ZLinkFrameworkLocationsRedis,
       .application_version = 1,
       .object_capabilities =
         {{.object_kind = placement_object_kind_t::user_spot,
-          .stable_type = "room"}},
+          .stable_type = "room",
+          .spot_limit = 7}},
       .object_role = object_role_t::server,
-      .placement_capacity =
+      .capacity =
         {.actors = {.active = 2, .reserved = 1, .limit = 10},
          .spots = {.active = 3, .reserved = 2, .limit = 20},
          .spot_types =
@@ -747,26 +755,31 @@ TEST (ZLinkFrameworkLocationsRedis,
       redis_location_row_codec_t::encode_mesh_node (descriptor);
     const auto decoded =
       redis_location_row_codec_t::decode_mesh_node (encoded);
-    ASSERT_EQ (1u, decoded.placement_capacity.spot_types.size ());
+    ASSERT_EQ (1u, decoded.capacity.spot_types.size ());
     EXPECT_EQ (
       3u,
-      decoded.placement_capacity.spot_types.front ().usage.active);
+      decoded.capacity.spot_types.front ().usage.active);
     EXPECT_EQ (
       2u,
-      decoded.placement_capacity.spot_types.front ().usage.reserved);
+      decoded.capacity.spot_types.front ().usage.reserved);
     EXPECT_EQ (
       7,
-      decoded.placement_capacity.spot_types.front ().usage.limit);
+      decoded.capacity.spot_types.front ().usage.limit);
 
     const auto digest =
       redis_location_row_codec_t::mesh_node_immutable_digest (
         descriptor);
-    descriptor.placement_capacity.spot_types.front ().usage.active++;
+    descriptor.capacity.spot_types.front ().usage.active++;
     EXPECT_EQ (
       digest,
       redis_location_row_codec_t::mesh_node_immutable_digest (
         descriptor));
-    descriptor.placement_capacity.spot_types.front ().usage.limit++;
+    descriptor.capacity.spot_types.front ().usage.limit++;
+    EXPECT_EQ (
+      digest,
+      redis_location_row_codec_t::mesh_node_immutable_digest (
+        descriptor));
+    descriptor.object_capabilities.front ().spot_limit++;
     EXPECT_NE (
       digest,
       redis_location_row_codec_t::mesh_node_immutable_digest (
@@ -914,11 +927,18 @@ TEST (ZLinkFrameworkLocationsRedis,
       .object_capabilities =
         {{.object_kind = placement_object_kind_t::actor,
           .stable_type = "player",
-          .policy = maintenance_policy_kind_t::recreate,
-          .pending_limit = 3}},
+          .policy = maintenance_policy_kind_t::recreate},
+         {.object_kind =
+            placement_object_kind_t::user_spot,
+          .stable_type = "room",
+          .policy = maintenance_policy_kind_t::snapshot,
+          .has_snapshot_adapter = true,
+          .spot_limit = 2}},
       .object_role = object_role_t::server,
-      .object_capacity =
-        {.active_limit = 100, .pending_limit = 5},
+      .capacity = {
+        .actors = {.limit = 5},
+        .spots = {.limit = 3}},
+      .activation_concurrency = {.limit = 3},
       .state = framework_runtime_state_t::serving,
       .security_identity = "test",
       .owner_id = token.owner_id,
@@ -999,12 +1019,16 @@ TEST (ZLinkFrameworkLocationsRedis,
     EXPECT_EQ ("2", admission.at ("objectRole"));
     EXPECT_EQ ("1", admission.at ("runtimeState"));
     EXPECT_EQ ("11", admission.at ("applicationVersion"));
-    EXPECT_EQ ("100", admission.at ("nodeActiveLimit"));
-    EXPECT_EQ ("5", admission.at ("nodePendingLimit"));
+    EXPECT_EQ ("5", admission.at ("actorLimit"));
+    EXPECT_EQ ("3", admission.at ("spotLimit"));
+    EXPECT_EQ (
+      "3",
+      admission.at ("activationConcurrencyLimit"));
+    EXPECT_EQ ("", admission.at ("entrySpotId"));
     EXPECT_EQ (64u, admission.at ("immutableDigest").size ());
     const auto capabilities = nlohmann::json::parse (
       admission.at ("capabilities"));
-    ASSERT_EQ (1u, capabilities.size ());
+    ASSERT_EQ (2u, capabilities.size ());
     EXPECT_EQ (
       "actor",
       capabilities.at (0).at ("objectKind"));
@@ -1027,13 +1051,13 @@ TEST (ZLinkFrameworkLocationsRedis,
     ASSERT_EQ (1u, listed.items.size ());
     EXPECT_EQ (7u, listed.items.front ().lifecycle_generation);
     EXPECT_EQ (
-      std::optional<std::uint32_t>{3},
+      0,
       listed.items.front ()
         .object_capabilities.front ()
-        .pending_limit);
+        .spot_limit);
 
     descriptor.descriptor_revision = 2;
-    descriptor.object_capacity.pending_limit = 6;
+    descriptor.capacity.actors.limit = 6;
     EXPECT_EQ (
       location_write_status_t::rejected_conflict,
       store
@@ -1052,7 +1076,8 @@ TEST (ZLinkFrameworkLocationsRedis,
          .node_rid =
            node_rid_t::from_string ("node-descriptor"),
          .node_lifecycle_generation = 7,
-         .owner = token}};
+         .owner = token},
+      .capacity_bundle = {.actor_slots = 1}};
     creation.intent.request_content_reference =
       "inline-v1:00000000:";
     creation.intent.request_sha256[0] =
@@ -1111,7 +1136,7 @@ TEST (ZLinkFrameworkLocationsRedis,
       pending_authority_fields.end ());
     auto pending_fixture_fields =
       read_authority_store_fixture ()
-        .at ("pendingCurrentHashFields")
+        .at ("reservedCurrentHashFields")
         .get<std::vector<std::string>> ();
     std::sort (
       pending_fixture_fields.begin (),
@@ -1131,6 +1156,116 @@ TEST (ZLinkFrameworkLocationsRedis,
     ASSERT_NE (nullptr, committed_value);
     EXPECT_FALSE (
       committed_value->ready.pending_creation.has_value ());
+    object_reserve_request_t spot_creation{
+      .key = {placement_object_kind_t::user_spot,
+              "redis-room"},
+      .intent = {.stable_type = "room"},
+      .target = creation.target,
+      .capacity_bundle = {
+        .spot_slots = 1,
+        .spot_type =
+          spot_type_capacity_delta_t{
+            .object_kind =
+              placement_object_kind_t::user_spot,
+            .stable_type = "room",
+            .slots = 1}}};
+    const auto spot_reserved =
+      std::get<object_reserved_t> (
+        store.reserve (spot_creation)
+          .result ()
+          .value ());
+    const auto actor_bucket =
+      redis_location_key_schema_t::capacity_node_field (
+        "play", "node-descriptor", 7,
+        placement_object_kind_t::actor);
+    const auto spot_bucket =
+      redis_location_key_schema_t::capacity_node_field (
+        "play", "node-descriptor", 7,
+        placement_object_kind_t::user_spot);
+    const auto room_bucket =
+      redis_location_key_schema_t::capacity_type_field (
+        "play", "node-descriptor", 7,
+        placement_object_kind_t::user_spot, "room");
+    EXPECT_EQ (
+      "1",
+      *redis.hget (
+        redis_location_key_schema_t::
+          capacity_node_active_key (
+            options->key_prefix),
+        actor_bucket));
+    EXPECT_EQ (
+      "1",
+      *redis.hget (
+        redis_location_key_schema_t::
+          capacity_spot_reserved_key (
+            options->key_prefix),
+        spot_bucket));
+    EXPECT_EQ (
+      "1",
+      *redis.hget (
+        redis_location_key_schema_t::
+          capacity_type_pending_key (
+            options->key_prefix),
+        room_bucket));
+    EXPECT_NE (
+      nullptr,
+      std::get_if<object_aborted_t> (
+        &store
+           .abort (
+             {spot_creation.key,
+              spot_reserved.fence})
+           .result ()
+           .value ()));
+    EXPECT_FALSE (
+      redis.hget (
+        redis_location_key_schema_t::
+          capacity_spot_reserved_key (
+            options->key_prefix),
+        spot_bucket));
+    EXPECT_FALSE (
+      redis.hget (
+        redis_location_key_schema_t::
+          capacity_type_pending_key (
+            options->key_prefix),
+        room_bucket));
+    const auto spot_reserved_again =
+      std::get<object_reserved_t> (
+        store.reserve (spot_creation)
+          .result ()
+          .value ());
+    const auto spot_ready =
+      std::get<object_committed_t> (
+        store
+          .commit (
+            {spot_creation.key,
+             spot_reserved_again.fence,
+             {std::byte{0x31}}})
+          .result ()
+          .value ());
+    const auto spot_deleted =
+      store
+        .compare_exchange_authority (
+          {"2:redis-room"},
+          spot_ready.ready.store_version,
+          authority_delete_t{})
+        .result ()
+        .value ();
+    ASSERT_NE (
+      nullptr,
+      std::get_if<authority_deleted_t> (
+        &spot_deleted));
+    EXPECT_FALSE (
+      redis.hget (
+        redis_location_key_schema_t::
+          capacity_spot_active_key (
+            options->key_prefix),
+        spot_bucket));
+    EXPECT_FALSE (
+      redis.hget (
+        redis_location_key_schema_t::
+          capacity_type_active_key (
+            options->key_prefix),
+        room_bucket));
     const auto pending_revision =
       revision_hex (
         reserved_value->creating.store_version);
@@ -1254,8 +1389,8 @@ TEST (ZLinkFrameworkLocationsRedis,
         &retry_authority);
     ASSERT_NE (nullptr, retry_ready);
     EXPECT_EQ (
-      placement_capacity_state_t::active,
-      retry_ready->allocation.capacity_state);
+      placement_allocation_state_t::active,
+      retry_ready->allocation.state);
 
     const auto target_token =
       std::get<owner_lease_claimed_t> (
@@ -1272,9 +1407,7 @@ TEST (ZLinkFrameworkLocationsRedis,
     target_descriptor.owner_id = target_token.owner_id;
     target_descriptor.lease_generation =
       target_token.lease_generation;
-    target_descriptor.object_capacity.pending_limit = 1;
-    target_descriptor.object_capabilities.front ().pending_limit =
-      1;
+    target_descriptor.capacity.actors.limit = 2;
     EXPECT_EQ (
       location_write_status_t::stored,
       store
@@ -1299,7 +1432,8 @@ TEST (ZLinkFrameworkLocationsRedis,
         {.mesh_name = "play",
          .node_rid = node_rid_t::from_string ("node-target"),
          .node_lifecycle_generation = 7,
-         .owner = target_token}};
+         .owner = target_token},
+      .capacity_bundle = {.actor_slots = 1}};
     const auto capacity =
       store.reserve_relocation_capacity (relocation)
         .result ()
@@ -1335,6 +1469,13 @@ TEST (ZLinkFrameworkLocationsRedis,
     EXPECT_NE (
       nullptr,
       std::get_if<authority_conflict_t> (&stale_target));
+    EXPECT_EQ (
+      relocation_capacity_abort_result_t::aborted,
+      store
+        .abort_relocation_capacity (
+          capacity_value->fence)
+        .result ()
+        .value ());
 
     target_descriptor.descriptor_revision = 4;
     target_descriptor.state =
@@ -1359,8 +1500,11 @@ TEST (ZLinkFrameworkLocationsRedis,
        {std::byte{0x03}},
        {}}};
     aggregate.target_owner = target_token;
-    aggregate.target_reservations = {
-      capacity_value->fence};
+    aggregate.target_descriptor = {
+      .mesh_name = "play",
+      .rid = zlink::routing_id_t::from ("node-target")};
+    aggregate.target_descriptor_lifecycle_generation = 7;
+    aggregate.capacity_bundle = {.actor_slots = 1};
     const auto prepared =
       store.prepare_aggregate (aggregate)
         .result ()
@@ -1423,7 +1567,8 @@ TEST (ZLinkFrameworkLocationsRedis,
                   std::move (id)},
           .intent = {.stable_type = "player"},
           .target = creation.target,
-          .creating_payload = {marker}};
+          .creating_payload = {marker},
+          .capacity_bundle = {.actor_slots = 1}};
         const auto reserve_result =
           store.reserve (request).result ().value ();
         const auto *reserve_value =
@@ -1447,6 +1592,78 @@ TEST (ZLinkFrameworkLocationsRedis,
       create_for_scan ("scan-b", std::byte{0x12});
     const auto scan_d =
       create_for_scan ("scan-d", std::byte{0x14});
+    auto scan_relocation = relocation;
+    scan_relocation.reservation_id[14] =
+      std::byte{0x46};
+    scan_relocation.reservation_id[15] =
+      std::byte{0x47};
+    scan_relocation.key = {"1:scan-a"};
+    scan_relocation.expected_store_version =
+      scan_a.store_version;
+    const auto scan_capacity =
+      store.reserve_relocation_capacity (
+        scan_relocation)
+        .result ()
+        .value ();
+    const auto *scan_capacity_fence =
+      std::get_if<relocation_capacity_reserved_t> (
+        &scan_capacity);
+    ASSERT_NE (nullptr, scan_capacity_fence);
+    const auto scan_relocated =
+      store
+        .compare_exchange_authority (
+          {"1:scan-a"}, scan_a.store_version,
+          authority_put_t{
+            {std::byte{0x21}},
+            authority_generation_transition_t::new_owner,
+            target_token,
+            scan_capacity_fence->fence})
+        .result ()
+        .value ();
+    ASSERT_NE (
+      nullptr,
+      std::get_if<authority_stored_t> (
+        &scan_relocated));
+    aggregate_prepare_request_t aborted_aggregate;
+    aborted_aggregate.aggregate_id.value[15] =
+      std::byte{0x7b};
+    aborted_aggregate.aggregate_generation = 1;
+    aborted_aggregate.participants = {
+      {{"1:scan-a"},
+       std::get<authority_stored_t> (scan_relocated)
+         .snapshot.store_version,
+       authority_generation_transition_t::new_owner,
+       {std::byte{0x21}}, {}}};
+    aborted_aggregate.target_owner = token;
+    aborted_aggregate.target_descriptor = {
+      .mesh_name = "play",
+      .rid = zlink::routing_id_t::from (
+        "node-descriptor")};
+    aborted_aggregate
+      .target_descriptor_lifecycle_generation = 7;
+    aborted_aggregate.capacity_bundle = {
+      .actor_slots = 1};
+    const auto abort_prepared =
+      store.prepare_aggregate (aborted_aggregate)
+        .result ()
+        .value ();
+    const auto *abort_fence =
+      std::get_if<aggregate_prepared_t> (
+        &abort_prepared);
+    ASSERT_NE (nullptr, abort_fence);
+    EXPECT_EQ (
+      aggregate_abort_result_t::aborted,
+      store.abort_aggregate (abort_fence->fence)
+        .result ()
+        .value ());
+    EXPECT_EQ (
+      std::get<authority_stored_t> (scan_relocated)
+        .snapshot.store_version,
+      std::get<authority_snapshot_t> (
+        store.read_authority ({"1:scan-a"})
+          .result ()
+          .value ())
+        .store_version);
     const auto first_scan =
       std::get<authority_page_t> (
         store.list_authorities (
@@ -1784,7 +2001,7 @@ TEST (ZLinkFrameworkLocationsRedis, LuaScriptsPreserveDotnetAtomicStoreContract)
     EXPECT_NE (
       std::string::npos,
       reserve_relocation.find (
-        "redis.call('HGET', KEYS[9], 'nodePendingLimit')"));
+        "redis.call('HGET', KEYS[9], 'actorLimit')"));
     EXPECT_EQ (
       std::string::npos,
       reserve_relocation.find (
@@ -1812,7 +2029,7 @@ TEST (ZLinkFrameworkLocationsRedis, LuaScriptsPreserveDotnetAtomicStoreContract)
     EXPECT_NE (
       std::string::npos,
       reserve_object.find (
-        "allocationState') == 'pending'"));
+        "allocationState') == 'reserved'"));
 
     const auto read_authority =
       std::string (
@@ -1840,7 +2057,7 @@ TEST (ZLinkFrameworkLocationsRedis, LuaScriptsPreserveDotnetAtomicStoreContract)
 
     const auto prepare_aggregate =
       std::string (
-        redis_location_scripts_t::prepare_aggregate);
+        redis_location_scripts_t::prepare_aggregate_v3);
     EXPECT_NE (
       std::string::npos,
       prepare_aggregate.find (
@@ -1856,15 +2073,19 @@ TEST (ZLinkFrameworkLocationsRedis, LuaScriptsPreserveDotnetAtomicStoreContract)
     EXPECT_NE (
       std::string::npos,
       prepare_aggregate.find (
-        "local keyBase = 5 + (i - 1) * 14"));
+        "local authorityKey = KEYS[10 + i]"));
+    EXPECT_EQ (
+      std::string::npos,
+      prepare_aggregate.find (
+        "relocation_capacity"));
 
     const auto commit_aggregate =
       std::string (
-        redis_location_scripts_t::commit_aggregate);
+        redis_location_scripts_t::commit_aggregate_v3);
     EXPECT_NE (
       std::string::npos,
       commit_aggregate.find (
-        "if not liveLease(KEYS[4], targetGeneration) then"));
+        "not liveLease(KEYS[4], targetGeneration)"));
     EXPECT_NE (
       std::string::npos,
       commit_aggregate.find (
@@ -1905,22 +2126,22 @@ TEST (ZLinkFrameworkLocationsRedis, PhysicalKeysUseCommonRedisSchema)
                           .node_rid = std::nullopt,
                           .endpoint = "tcp://127.0.0.1"});
     EXPECT_EQ ("13:client-server8:api-mesh6:dealer15:tcp://127.0.0.1", peer_key);
-    EXPECT_EQ ("zlink:test:{zlink-location-v1}:row:peer:" + peer_key,
+    EXPECT_EQ ("zlink:test:{zlink-location-v3}:row:peer:" + peer_key,
                redis_location_key_schema_t::row_key ("zlink:test", location_kind_t::peer,
                                                      peer_key));
-    EXPECT_EQ ("zlink:test:{zlink-location-v1}:gen:peer:" + peer_key,
+    EXPECT_EQ ("zlink:test:{zlink-location-v3}:gen:peer:" + peer_key,
                redis_location_key_schema_t::generation_key ("zlink:test", location_kind_t::peer,
                                                             peer_key));
-    EXPECT_EQ ("zlink:test:{zlink-location-v1}:keys:peer",
+    EXPECT_EQ ("zlink:test:{zlink-location-v3}:keys:peer",
                redis_location_key_schema_t::keys_key ("zlink:test", location_kind_t::peer));
-    EXPECT_EQ ("zlink:test:{zlink-location-v1}:own:peer:owner-a",
+    EXPECT_EQ ("zlink:test:{zlink-location-v3}:own:peer:owner-a",
                redis_location_key_schema_t::owner_key ("zlink:test", location_kind_t::peer,
                                                        "owner-a"));
     EXPECT_EQ (
-      "zlink:test:{zlink-location-v1}:owner-lease:"
+      "zlink:test:{zlink-location-v3}:owner-lease:"
       "95256875151043abdcafdd26fd390c650d6311e1d7185df477ce50736b6a5d0b",
                redis_location_key_schema_t::lease_key ("zlink:test", "owner-a"));
-    EXPECT_EQ ("zlink:test:{zlink-location-v1}:stamp:spot:mesh-a",
+    EXPECT_EQ ("zlink:test:{zlink-location-v3}:stamp:spot:mesh-a",
                redis_location_key_schema_t::stamp_key ("zlink:test", location_kind_t::spot,
                                                        std::string_view ("mesh-a")));
     const auto mesh_key =
@@ -1929,12 +2150,12 @@ TEST (ZLinkFrameworkLocationsRedis, PhysicalKeysUseCommonRedisSchema)
          .rid = zlink::routing_id_t::from ("game-a")});
     EXPECT_EQ ("4:game12:67616d652d61", mesh_key);
     EXPECT_EQ (
-      "zlink:test:{zlink-location-v1}:descriptor:mesh:"
+      "zlink:test:{zlink-location-v3}:descriptor:mesh:"
       "d865b668dc208572007a1d65fecd4111be06f76455502ba2939a3661e96c72fa",
       redis_location_key_schema_t::mesh_node_key (
         "zlink:test", "game", "game-a"));
     EXPECT_EQ (
-      "zlink:test:{zlink-location-v1}:descriptor:mesh:index",
+      "zlink:test:{zlink-location-v3}:descriptor:mesh:index",
       redis_location_key_schema_t::mesh_node_keys_key (
         "zlink:test", "game"));
 }
@@ -1962,10 +2183,10 @@ TEST (ZLinkFrameworkLocationsRedis,
       fixture.at ("format").get<std::string> ());
     const auto &actor = fixture_row (fixture, "actor");
     const auto key = actor.at ("key").get<std::string> ();
-    EXPECT_EQ ("zla1:a:4:game:7:actor-1", key);
+    EXPECT_EQ ("zla1:a:7:actor-1", key);
     EXPECT_EQ (
-      "zlink:test:{zlink-location-v1}:authority:current:"
-      "9ee2d523d30641eef7d7ee225877d4b10d3dd2528ca4701e44498b157eaf8a2e",
+      "zlink:test:{zlink-location-v3}:authority:current:"
+      "5ea434456e2e59f97a9dee4d0e66dfddc0615501d5effacbd930a5eddfe55de6",
       redis_location_key_schema_t::authority_key (
         "zlink:test", key));
     const auto &hash = actor.at ("hash");
@@ -1990,11 +2211,11 @@ TEST (ZLinkFrameworkLocationsRedis,
 {
     const auto fixture = read_authority_store_fixture ();
     EXPECT_EQ (
-      "location-authority-hybrid-v1",
+      "location-authority-hybrid-v3",
       fixture.at ("format").get<std::string> ());
     EXPECT_EQ (
-      "P:{zlink-location-v1}:authority:current:"
-      "e1bef6b5eb5acdca14cc552bc25e8f7f33441cbb9bc3e0140ec1504fb2c40985",
+      fixture.at ("keyContract").at ("currentKey")
+        .get<std::string> (),
       redis_location_key_schema_t::authority_key (
         "P", fixture.at ("keyContract").at ("authorityKey")
                .get<std::string> ()));
@@ -2004,7 +2225,7 @@ TEST (ZLinkFrameworkLocationsRedis,
       "objectGeneration", "authorityOwnerGeneration",
       "ownerId", "ownerLeaseGeneration", "allocationState",
       "objectKind", "stableType", "descriptorKey",
-      "descriptorLifecycleGeneration", "capacityDelta"};
+      "descriptorLifecycleGeneration", "capacityBundle"};
     EXPECT_EQ (
       expected_fields,
       fixture.at ("currentHashFields")
@@ -2018,7 +2239,7 @@ TEST (ZLinkFrameworkLocationsRedis,
        "pendingCreationEncodedSize"});
     EXPECT_EQ (
       expected_pending_fields,
-      fixture.at ("pendingCurrentHashFields")
+      fixture.at ("reservedCurrentHashFields")
         .get<std::vector<std::string>> ());
     auto expected_history_fields = expected_fields;
     expected_history_fields.insert (
@@ -2035,7 +2256,7 @@ TEST (ZLinkFrameworkLocationsRedis,
     EXPECT_EQ (
       expected_pending_history_fields,
       fixture.at ("historyEncoding")
-        .at ("pendingFullSnapshotSuffixes")
+        .at ("reservedFullSnapshotSuffixes")
         .get<std::vector<std::string>> ());
     EXPECT_EQ (
       (std::vector<std::string>{
@@ -2047,12 +2268,13 @@ TEST (ZLinkFrameworkLocationsRedis,
     const auto &buckets = fixture.at ("capacityBuckets");
     const auto node = redis_location_key_schema_t::
       capacity_node_field (
-        "game", "game-a", 7);
+        "game", "game-a", 7,
+        zlink::framework::placement_object_kind_t::user_spot);
     const auto type = redis_location_key_schema_t::
       capacity_type_field (
         "game", "game-a", 7,
         zlink::framework::placement_object_kind_t::user_spot,
-        "Game.Session");
+        "room");
     const auto unicode_type = redis_location_key_schema_t::
       capacity_type_field (
         "game", "game-a", 7,
@@ -2061,10 +2283,14 @@ TEST (ZLinkFrameworkLocationsRedis,
     EXPECT_EQ (
       buckets.at ("node").get<std::string> (), node);
     EXPECT_EQ (
-      buckets.at ("type").get<std::string> (), type);
+      buckets.at ("spotType").get<std::string> (), type);
     EXPECT_EQ (
-      buckets.at ("unicodeType").get<std::string> (),
+      buckets.at ("unicodeSpotType").get<std::string> (),
       unicode_type);
+    EXPECT_EQ (
+      "24:zlink-capacity-bundle-v21:31:11:19:user_spot4:room1:1",
+      fixture.at ("capacityBundle").at ("encoded")
+        .get<std::string> ());
 }
 
 TEST (ZLinkFrameworkLocationsRedis, PeerRowJsonUsesDotnetFieldSchema)

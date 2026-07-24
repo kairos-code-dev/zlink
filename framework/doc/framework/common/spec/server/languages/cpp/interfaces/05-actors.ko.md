@@ -1,5 +1,12 @@
 # C++ Actor exact interface
 
+Session에 bind된 Actor를 포함한 Spot relocation은 owner와 membership을 commit한 뒤 필요한 lifecycle
+callback과 accepted journal replay·logical timer 복원을 끝내고 durable source state를 정리한 다음 `Completed`를 commit한다.
+같은 `ObjectGeneration`에 command 44 route update와 command 45 ACK를 교환하고 steady route로
+normalize한 뒤에만 target packet·push를 허용한다. Relocation 자체는 physical·logical disconnect가
+아니므로 Actor disconnect callback을 실행하지 않는다. 다른 Actor의 route와 physical connection은
+변경하지 않는다.
+
 [C++ exact interface 목차](README.ko.md) · [Actor model](../../../../22-actor-model.ko.md) ·
 [Spot·Actor membership](../../../../23-spot-actor.ko.md)
 
@@ -31,13 +38,39 @@ public:
     const node_rid_t &node_rid() const noexcept;
 };
 
+struct actor_join_accepted_t {
+    std::uint64_t operation_id_high;
+    std::uint64_t operation_id_low;
+    actor_ref_t actor;
+    std::optional<message_t> reply;
+};
+
+struct actor_join_rejected_t {
+    std::uint64_t operation_id_high;
+    std::uint64_t operation_id_low;
+    std::optional<message_t> reply;
+};
+
+struct actor_join_failed_t {
+    std::uint64_t operation_id_high;
+    std::uint64_t operation_id_low;
+    framework_error_kind_t error_kind;
+    bool retryable;
+};
+
+using actor_join_completion_t = std::variant<
+  actor_join_accepted_t,
+  actor_join_rejected_t,
+  actor_join_failed_t>;
+
 class actor_t {
 public:
     virtual ~actor_t() = default;
-    const actor_id_t &actor_id() const noexcept;
-    actor_context_t &context() noexcept;
-    const actor_context_t &context() const noexcept;
+    virtual actor_context_t &context() noexcept = 0;
+    virtual const actor_context_t &context() const noexcept = 0;
     virtual void configure() {}
+    virtual task_t<void> on_join_completed(
+      const actor_join_completion_t &completion);
 };
 
 template <typename TActor>
@@ -46,7 +79,6 @@ class actor_factory_t {
 public:
     virtual ~actor_factory_t() = default;
     virtual task_t<std::shared_ptr<TActor>> create(
-      actor_id_t actor_id,
       actor_context_t &context,
       std::stop_token operation_cancellation) = 0;
 };
@@ -83,16 +115,25 @@ public:
 MeshName·NodeRid를 담는 immutable location snapshot이다. 일반 message target으로 사용하지 않는다. 별도
 `actor_ref_snapshot_t`는 제공하지 않는다.
 
-`actor_t`는 ActorId와 Framework가 연결한 `actor_context_t`를 소유하는 typed lifecycle base다. Framework는
-`actor_factory_t<TActor>::create(...)`로 concrete Actor를 만든 뒤 `configure()`를 호출한다. Factory는 전달받은
-ActorId·context와 cancellation을 사용하며 다른 owner RID, relocation phase 또는 Store token을 받지 않는다.
+`actor_t`는 Framework가 연결한 `actor_context_t`를 소유하는 typed lifecycle
+base다. ActorId와 ObjectGeneration은 `context()`에서 읽으며 별도 identity 값을
+독립적으로 저장하지 않는다. Framework는 `actor_factory_t<TActor>::create(...)`로
+concrete Actor를 만든 뒤 `configure()`를 호출한다. Factory는 전달받은 exact
+context와 cancellation만 사용하며 ActorId, 다른 owner RID, relocation phase 또는
+Store token을 중복 입력으로 받지 않는다.
+
+Join completion의 128-bit operation ID는 completion idempotency ID이며
+`RelocationId`, reservation ID나 aggregate commit ID가 아니다. Same-node outcome과
+rejected·commit 전 failed completion retry는 current process lifetime으로
+제한한다. Cross-node commit 뒤 accepted만 Relocation manifest에 operation ID,
+optional reply와 cursor를 보존해 durable at-least-once로 전달한다.
 
 모든 Actor [factory](../../../../01-glossary.ko.md#factory)는 `relocation_policy_t<TActor>`를 명시한다. `snapshot<TAdapter>()`의 `TAdapter`는
 `actor_relocation_adapter_t<TActor>`를 구현해야 하며 다른 adapter type이면 socket bind 전에 configuration error로
 실패한다. Adapter는 application state를 opaque byte vector로만 주고받으며 typed state, 별도 contract identifier,
 message wrapper, authority, relocation reference, relocation phase와 operation ID를 받지 않는다.
 
-Framework는 [Snapshot](../../../../01-glossary.ko.md#snapshot) policy의 cross-node Actor materialization에서만 adapter를 호출한다. 여기에는 maintenance
+Framework는 [Snapshot](../../../../01-glossary.ko.md#relocation-policy) policy의 cross-node Actor materialization에서만 adapter를 호출한다. 여기에는 maintenance
 이관, remote User·Entry Spot join과 whole User Spot relocation의 각 Actor participant가 포함된다. Same-node join과
 relocation에서는 adapter를 호출하지 않으며 Disabled cross-node operation은 `capture(...)` 전에 거부한다. Recreate
 policy도 application payload를 capture하거나 restore하지 않는다. Whole User Spot relocation에서는 Spot root에
@@ -123,7 +164,7 @@ public:
     actor_request_call_t &metadata(std::string key, std::string value);
 
     template <typename TReply>
-    task_t<TReply> async();
+    task_t<TReply> submit();
 
     template <typename TReply>
     task_t<TReply> yield();
@@ -188,6 +229,7 @@ public:
 
     actor_create_call_t &timeout(std::chrono::milliseconds timeout);
     task_t<actor_create_result_t> submit();
+    task_t<actor_create_result_t> yield();
 };
 
 class actor_manager_t {
@@ -276,5 +318,5 @@ generation이 바뀌면 session-not-bound 또는 stale 결과로 끝나며, Fram
 
 이 문서에 선언된 `yield()`와 `yield_message()`는 현재 Actor handler가 `SpotWide` User Spot의 shared
 execution gate에서 실행 중일 때만 유효하다. Entry Spot Actor와 `PerActor` User Spot의 Actor가 호출하면
-operation을 제출하거나 turn을 반환하지 않고 `invalid_configuration`으로 완료한다. `async()`는 모든 Actor
+operation을 제출하거나 turn을 반환하지 않고 `invalid_configuration`으로 완료한다. `submit()`은 모든 Actor
 실행 문맥에서 사용할 수 있다.

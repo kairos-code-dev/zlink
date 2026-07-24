@@ -50,11 +50,15 @@ template <typename TReply> class request_call_t
     using metadata_map_t = std::map<std::string, std::string>;
     using submit_fn_t = std::function<task_t<TReply> (
       const std::string &, std::chrono::milliseconds, const metadata_map_t &)>;
+    using preflight_fn_t = std::function<result_t<void> (bool)>;
 
     explicit request_call_t (result_t<TReply> result) : _immediate (std::move (result)) {}
 
-    request_call_t (std::string packet_name, submit_fn_t submit) :
-        _packet_name (std::move (packet_name)), _submit (std::move (submit))
+    request_call_t (std::string packet_name,
+                    submit_fn_t submit,
+                    preflight_fn_t preflight = {}) :
+        _packet_name (std::move (packet_name)), _submit (std::move (submit)),
+        _preflight (std::move (preflight))
     {
     }
 
@@ -70,13 +74,26 @@ template <typename TReply> class request_call_t
         return *this;
     }
 
-    task_t<TReply> async () { return start (false); }
+    task_t<TReply> submit () { return start (false); }
 
     task_t<TReply> yield () { return start (true); }
 
   private:
     task_t<TReply> start (bool release_turn)
     {
+        if (release_turn && !detail::current_serial_turn_allows_yield ()) {
+            return detail::unsupported_yield_task<TReply> ();
+        }
+        if (_preflight) {
+            const auto admitted = _preflight (release_turn);
+            if (!admitted) {
+                return task_t<TReply> (result_t<TReply>::failure (
+                  admitted.error_kind (),
+                  admitted.error () ? admitted.error ()->what ()
+                                     : "request preflight failed",
+                  admitted.error () && admitted.error ()->is_retriable ()));
+            }
+        }
         if (_immediate) {
             return task_t<TReply> (*_immediate);
         }
@@ -90,7 +107,7 @@ template <typename TReply> class request_call_t
             return _submit (_packet_name, _timeout, _metadata);
         }
         // The transport submit may block its calling thread. It therefore runs
-        // outside the serial executor even when async keeps the logical turn.
+        // outside the serial executor even when submit keeps the logical turn.
         auto source =
           std::make_shared<detail::task_completion_source_t<TReply>> (
             std::move (turn_plan->scheduler));
@@ -116,6 +133,7 @@ template <typename TReply> class request_call_t
     std::chrono::milliseconds _timeout{0};
     metadata_map_t _metadata;
     submit_fn_t _submit;
+    preflight_fn_t _preflight;
 };
 
 class channel_request_call_t
@@ -148,7 +166,7 @@ class channel_request_call_t
         return *this;
     }
 
-    template <typename TReply> task_t<TReply> async ()
+    template <typename TReply> task_t<TReply> submit ()
     {
         co_return co_await start<TReply> (false);
     }
@@ -161,6 +179,9 @@ class channel_request_call_t
   protected:
     template <typename TReply> task_t<TReply> start (bool release_turn)
     {
+        if (release_turn && !detail::current_serial_turn_allows_yield ()) {
+            co_return co_await detail::unsupported_yield_task<TReply> ();
+        }
         if (!_submit) {
             co_return result_t<TReply>::failure (framework_error_kind_t::request_protocol_error,
                                                  "request call is not bound to a channel client");
@@ -244,80 +265,14 @@ class channel_request_call_t
 };
 
 
-enum class submit_status_t
-{
-    submitted,
-    backpressured,
-    timed_out,
-    target_not_found,
-    route_not_connected,
-    shutdown
-};
-
-struct submit_result_t
-{
-    submit_status_t status = submit_status_t::submitted;
-};
-
-struct publish_result_t;
-
 namespace detail
 {
-inline result_t<submit_result_t> one_way_submit_result (const result_t<void> &result)
-{
-    if (result) {
-        return result_t<submit_result_t>::success ({submit_status_t::submitted});
-    }
-
-    const auto *error = result.error ();
-    if (error == nullptr) {
-        return result_t<submit_result_t>::failure (
-          framework_error_kind_t::request_failed, "one-way submit failed");
-    }
-    switch (boundary_state (*error)) {
-        case boundary_error_t::timed_out:
-            return result_t<submit_result_t>::success ({submit_status_t::timed_out});
-        case boundary_error_t::shutdown:
-        case boundary_error_t::closed:
-        case boundary_error_t::cancelled:
-            return result_t<submit_result_t>::success ({submit_status_t::shutdown});
-        case boundary_error_t::disconnected:
-            return result_t<submit_result_t>::success ({submit_status_t::route_not_connected});
-        case boundary_error_t::none:
-        case boundary_error_t::stale_generation:
-            break;
-    }
-    switch (error->kind ()) {
-        case framework_error_kind_t::worker_queue_full:
-            return result_t<submit_result_t>::success ({submit_status_t::backpressured});
-        case framework_error_kind_t::route_not_connected:
-            return result_t<submit_result_t>::success ({submit_status_t::route_not_connected});
-        case framework_error_kind_t::actor_route_not_found:
-        case framework_error_kind_t::spot_route_not_found:
-        case framework_error_kind_t::request_target_not_found:
-            return result_t<submit_result_t>::success ({submit_status_t::target_not_found});
-        default:
-            return result_access_t::failure<submit_result_t> (*error);
-    }
-}
-
-task_t<submit_result_t>
+task_t<void>
 submit_one_way_task (std::function<result_t<void> ()> submit);
 
-task_t<publish_result_t>
-submit_logical_multicast_task (std::function<publish_result_t ()> submit);
-
-inline task_t<submit_result_t> map_one_way_task (task_t<void> task)
-{
-    auto source = std::make_shared<task_completion_source_t<submit_result_t>> ();
-    auto output = source->task ();
-    auto observed = std::make_shared<task_t<void>> (std::move (task));
-    detail::observe_task_completion (
-      *observed, [source, observed] (const result_t<void> &result) {
-          source->complete (one_way_submit_result (result));
-      });
-    return output;
-}
+task_t<void>
+submit_logical_multicast_task (std::function<result_t<void> ()> submit,
+                               std::chrono::milliseconds timeout);
 } // namespace detail
 
 class send_call_t
@@ -340,18 +295,19 @@ class send_call_t
         return *this;
     }
 
-    task_t<submit_result_t> submit ()
+    task_t<void> submit ()
     {
         if (!_submission->try_claim ()) {
-            return task_t<submit_result_t> (result_t<submit_result_t>::failure (
-              framework_error_kind_t::request_protocol_error,
+            return task_t<void> (result_t<void>::failure (
+              framework_error_kind_t::already_submitted,
               "one-way call has already been submitted"));
         }
         if (_immediate) {
-            return task_t<submit_result_t> (detail::one_way_submit_result (*_immediate));
+            return detail::submit_one_way_task (
+              [immediate = *_immediate] { return immediate; });
         }
         if (!_submit) {
-            return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+            return task_t<void> (result_t<void>::failure (
               framework_error_kind_t::request_protocol_error,
               "send call is not bound to a channel client"));
         }
@@ -381,43 +337,23 @@ class send_call_t
       std::make_shared<detail::submit_once_t> ();
 };
 
-struct logical_multicast_detail_t
-{
-    // Counts the immutable remote target snapshot used for this publish.
-    std::uint64_t snapshot_remote_node_count = 0;
-    // Counts remote targets whose source-local outbound transport queue
-    // accepted the publish. It does not wait for a remote Spot queue or handler.
-    std::uint64_t admitted_remote_node_count = 0;
-    std::uint64_t dropped_remote_node_count = 0;
-    std::uint64_t unreachable_remote_node_count = 0;
-    // Counts the immutable local Spot snapshot used for this publish.
-    std::uint64_t snapshot_local_spot_count = 0;
-    // Counts local Spots whose serial queue accepted the publish.
-    // It does not wait for handler execution.
-    std::uint64_t admitted_local_spot_count = 0;
-    std::uint64_t dropped_local_spot_count = 0;
-};
-
-struct publish_result_t
-{
-    // Reports submission through local transport and Spot queue admission only.
-    // Completion never means that a remote queue or application handler ran.
-    submit_status_t status = submit_status_t::submitted;
-    logical_multicast_detail_t detail;
-};
-
 class publish_call_t
 {
   public:
     using metadata_map_t = std::map<std::string, std::string>;
-    using submit_fn_t = std::function<publish_result_t (const metadata_map_t &)>;
+    using submit_fn_t = std::function<result_t<void> (const metadata_map_t &)>;
 
-    explicit publish_call_t (publish_result_t result) :
+    explicit publish_call_t (result_t<void> result) :
         _immediate (std::move (result))
     {
     }
 
-    explicit publish_call_t (submit_fn_t submit) : _submit (std::move (submit)) {}
+    explicit publish_call_t (
+      submit_fn_t submit,
+      std::chrono::milliseconds timeout = std::chrono::seconds (1)) :
+        _submit (std::move (submit)), _timeout (timeout)
+    {
+    }
 
     publish_call_t &metadata (std::string key, std::string value)
     {
@@ -425,16 +361,15 @@ class publish_call_t
         return *this;
     }
 
-    task_t<publish_result_t> submit ()
+    task_t<void> submit ()
     {
         if (!_submission->try_claim ()) {
-            return task_t<publish_result_t> (result_t<publish_result_t>::failure (
-              framework_error_kind_t::request_protocol_error,
+            return task_t<void> (result_t<void>::failure (
+              framework_error_kind_t::already_submitted,
               "logical multicast call has already been submitted"));
         }
         if (_immediate) {
-            return task_t<publish_result_t> (
-              result_t<publish_result_t>::success (*_immediate));
+            return task_t<void> (*_immediate);
         }
         return detail::submit_logical_multicast_task (
           [submit = _submit, metadata = _metadata] () mutable {
@@ -444,13 +379,15 @@ class publish_call_t
                     "logical multicast call is not bound to a publisher");
               }
               return submit (metadata);
-          });
+          },
+          _timeout);
     }
 
   private:
-    std::optional<publish_result_t> _immediate;
+    std::optional<result_t<void>> _immediate;
     metadata_map_t _metadata;
     submit_fn_t _submit;
+    std::chrono::milliseconds _timeout{std::chrono::seconds (1)};
     std::shared_ptr<detail::submit_once_t> _submission =
       std::make_shared<detail::submit_once_t> ();
 };
@@ -466,7 +403,7 @@ class bound_session_send_call_t
         return *this;
     }
 
-    task_t<submit_result_t> submit () { return _call.submit (); }
+    task_t<void> submit () { return _call.submit (); }
 
   private:
     send_call_t _call;
@@ -477,7 +414,7 @@ class fanout_publish_call_t
   public:
     explicit fanout_publish_call_t (send_call_t call) : _call (std::move (call)) {}
 
-    task_t<submit_result_t> submit () { return _call.submit (); }
+    task_t<void> submit () { return _call.submit (); }
 
   private:
     send_call_t _call;
@@ -498,7 +435,7 @@ class stream_write_call_t
 
     stream_write_call_t &metadata (std::string key, std::string value);
     stream_write_call_t &compress ();
-    task_t<submit_result_t> submit ();
+    task_t<void> submit ();
 
   private:
     using submit_fn_t =
@@ -531,7 +468,7 @@ class stream_send_call_t
     stream_send_call_t &metadata (std::string key, std::string value);
     stream_send_call_t &packet_name (std::string packet_name);
     stream_send_call_t &compress ();
-    task_t<submit_result_t> submit ();
+    task_t<void> submit ();
 
   private:
     using submit_fn_t =

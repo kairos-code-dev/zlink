@@ -40,7 +40,7 @@ class authenticate_play_session_handler_t
         const auto authenticate_request = authenticate_player_req_t{request.access_token};
         auto authenticated =
           co_await _client.request (sample_names_t::api_channel, authenticate_request)
-            .async<authenticate_player_res_t> ();
+            .submit<authenticate_player_res_t> ();
         if (!authenticated.accepted || authenticated.player.actor_id.empty ()) {
             co_return result_t<session_actor_t>::failure (framework_error_kind_t::request_failed,
                                                           authenticated.reason.empty ()
@@ -54,7 +54,7 @@ class authenticate_play_session_handler_t
         const auto play_node_rid = node_rid_t::from_string (_topology.selected_play_node_rid ());
         const actor_ref_t actor_ref (play_node_rid, sample_names_t::actor_type, player.actor_id,
                                      ++_generation);
-        auto bound = co_await actors.bind_or_get (actor_ref).async ();
+        auto bound = co_await actors.bind_or_get (actor_ref).submit ();
         auto joined = co_await bound.context ().join_entry_spot (play_node_rid, player).async ();
         if (!std::holds_alternative<
               framework::actor_join_accepted_t<framework::message_t>> (joined)) {

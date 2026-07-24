@@ -258,7 +258,7 @@ class route_orchestrating_handler_t
         co_return co_await _routes
           .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")), request)
           .timeout (std::chrono::milliseconds (500))
-          .async<reply_t> ();
+          .submit<reply_t> ();
     }
 
   private:
@@ -280,7 +280,7 @@ class reentrant_play_route_handler_t
                              "bingo.play", zlink::routing_id_t::from (std::string ("3302")),
                              api_hop_request_t{request.value + 1})
                            .timeout (std::chrono::milliseconds (500))
-                           .async<reply_t> ();
+                           .submit<reply_t> ();
         co_return reply_t{api_reply.value + 1};
     }
 
@@ -305,7 +305,7 @@ class reentrant_api_route_handler_t
             .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
                               inner_route_request_t{request.value + 1})
             .timeout (std::chrono::milliseconds (500))
-            .async<reply_t> ();
+            .submit<reply_t> ();
         co_return reply_t{play_reply.value + 1};
     }
 
@@ -486,7 +486,7 @@ class nested_request_handler_t
         if (request.value == 50) {
             auto nested = co_await _client.request ("hosted-nested", request_t{51})
                             .timeout (std::chrono::milliseconds (2000))
-                            .async<reply_t> ();
+                            .submit<reply_t> ();
             co_return reply_t{nested.value + 1};
         }
         co_return reply_t{request.value + 100};
@@ -775,7 +775,7 @@ int main ()
         .request_to_node ("missing.route", zlink::routing_id_t::from ("missing-node"), request_t{2})
         .metadata ("trace", "default")
         .timeout (std::chrono::milliseconds (25))
-        .async<reply_t> ()
+        .submit<reply_t> ()
         .result ();
     auto default_spot_route_request =
       default_route_client
@@ -784,7 +784,7 @@ int main ()
                               "missing.route", zlink::routing_id_t::from ("missing-node"),
                               zlink::routing_id_t::from ("missing-spot")}),
                           request_t{3})
-        .async<reply_t> ()
+        .submit<reply_t> ()
         .result ();
     if (default_route_request
         || default_route_request.error_kind ()
@@ -852,7 +852,7 @@ int main ()
     if (!outbound_runtime.outbound_calls ().empty ()) {
         return 30;
     }
-    auto request_result = request_call.async<reply_t> ().result ();
+    auto request_result = request_call.submit<reply_t> ().result ();
     if (request_result
         || (request_result.error () != nullptr
          && zlink::framework::detail::boundary_state (*request_result.error ()) != zlink::framework::detail::boundary_error_t::timed_out)) {
@@ -867,7 +867,7 @@ int main ()
     }
 
     auto default_timeout_result =
-      client.request (request_t{10}).async<reply_t> ().result ();
+      client.request (request_t{10}).submit<reply_t> ().result ();
     if (default_timeout_result
         || (default_timeout_result.error () != nullptr
          && zlink::framework::detail::boundary_state (*default_timeout_result.error ()) != zlink::framework::detail::boundary_error_t::timed_out)) {
@@ -916,7 +916,7 @@ int main ()
     full_queue.max_pending (0);
     full_queue.channel ("profile").enable_client ();
     auto queue_full_result =
-      full_queue.message_bus ().request ("profile", request_t{5}).async<reply_t> ().result ();
+      full_queue.message_bus ().request ("profile", request_t{5}).submit<reply_t> ().result ();
     if (queue_full_result
         || queue_full_result.error_kind ()
              != zlink::framework::framework_error_kind_t::request_rejected) {
@@ -1044,7 +1044,7 @@ int main ()
         return 407;
     }
     auto outbound_only_request =
-      outbound_only.message_bus ().request ("client-only", request_t{6}).async<reply_t> ().result ();
+      outbound_only.message_bus ().request ("client-only", request_t{6}).submit<reply_t> ().result ();
     if (outbound_only_request
         || (outbound_only_request.error () != nullptr
          && zlink::framework::detail::boundary_state (*outbound_only_request.error ()) != zlink::framework::detail::boundary_error_t::disconnected)) {
@@ -1064,7 +1064,7 @@ int main ()
         return 408;
     }
     zlink::framework::channel_request_call_t unbound_route_request ("request", nullptr, {});
-    const auto unbound_route_request_result = unbound_route_request.async<reply_t> ().result ();
+    const auto unbound_route_request_result = unbound_route_request.submit<reply_t> ().result ();
     if (unbound_route_request_result
         || unbound_route_request_result.error_kind ()
              != zlink::framework::framework_error_kind_t::request_protocol_error) {
@@ -1093,7 +1093,7 @@ int main ()
     }
     const auto unconfigured_route_request =
       unconfigured_route_client.request_to_node ("game.route", unconfigured_target, request_t{8})
-        .async<reply_t> ()
+        .submit<reply_t> ()
         .result ();
     if (unconfigured_route_request
         || unconfigured_route_request.error_kind ()
@@ -1109,7 +1109,7 @@ int main ()
     const auto unconfigured_spot_request =
       unconfigured_route_client
         .request_to_spot (unconfigured_spot, request_t{10})
-        .async<reply_t> ()
+        .submit<reply_t> ()
         .result ();
     if (unconfigured_spot_request
         || unconfigured_spot_request.error_kind ()
@@ -1525,7 +1525,7 @@ int main ()
     auto native_bus_reply = native_bus_builder.request_client ("native-bus")
                               .request (request_t{27})
                               .timeout (std::chrono::milliseconds (2000))
-                              .async<reply_t> ()
+                              .submit<reply_t> ()
                               .result ();
     if (!native_bus_reply || native_bus_reply.value ().value != 127) {
         return 82;
@@ -1533,7 +1533,7 @@ int main ()
     auto native_bus_missing_reply = native_bus_builder.request_client ("native-bus")
                                       .request (missing_probe_request_t{27})
                                       .timeout (std::chrono::milliseconds (2000))
-                                      .async<reply_t> ()
+                                      .submit<reply_t> ()
                                       .result ();
     if (native_bus_missing_reply
         || native_bus_missing_reply.error_kind ()
@@ -1594,7 +1594,7 @@ int main ()
     auto hosted_reply = hosted_builder.request_client ("hosted")
                           .request (request_t{28})
                           .timeout (std::chrono::milliseconds (2000))
-                          .async<reply_t> ()
+                          .submit<reply_t> ()
                           .result ();
     if (!hosted_reply || hosted_reply.value ().value != 128) {
         hosted_service.stop ();
@@ -1603,7 +1603,7 @@ int main ()
     auto hosted_bus_reply = hosted_builder.message_bus ()
                               .request ("hosted", request_t{29})
                               .timeout (std::chrono::milliseconds (2000))
-                              .async<reply_t> ()
+                              .submit<reply_t> ()
                               .result ();
     if (!hosted_bus_reply || hosted_bus_reply.value ().value != 129) {
         hosted_service.stop ();
@@ -1699,7 +1699,7 @@ int main ()
         auto manual_reply = manual_client_builder.request_client ("hosted-manual")
                               .request (request_t{33})
                               .timeout (std::chrono::milliseconds (500))
-                              .async<reply_t> ()
+                              .submit<reply_t> ()
                               .result ();
         if (manual_reply) {
             manual_reply_value = manual_reply.value ();
@@ -1715,7 +1715,7 @@ int main ()
     auto outage_reply = manual_client_builder.request_client ("hosted-manual")
                           .request (request_t{35})
                           .timeout (std::chrono::milliseconds (1000))
-                          .async<reply_t> ()
+                          .submit<reply_t> ()
                           .result ();
     if (!outage_reply || outage_reply.value ().value != 135) {
         manual_hosted_service.stop ();
@@ -1726,7 +1726,7 @@ int main ()
     auto stale_reply = manual_client_builder.request_client ("hosted-manual")
                          .request (request_t{34})
                          .timeout (std::chrono::milliseconds (100))
-                         .async<reply_t> ()
+                         .submit<reply_t> ()
                          .result ();
     const auto stale_elapsed = std::chrono::steady_clock::now () - stale_start;
     if (stale_reply
@@ -1761,7 +1761,7 @@ int main ()
     auto nested_hosted_reply = nested_hosted_builder.request_client ("hosted-nested")
                                  .request (request_t{50})
                                  .timeout (std::chrono::milliseconds (2000))
-                                 .async<reply_t> ()
+                                 .submit<reply_t> ()
                                  .result ();
     nested_hosted_service.stop ();
     if (!nested_hosted_reply || nested_hosted_reply.value ().value != 152) {
@@ -1792,7 +1792,7 @@ int main ()
     auto scoped_hosted_reply = scoped_hosted_builder.request_client ("hosted-scoped")
                                  .request (request_t{40})
                                  .timeout (std::chrono::milliseconds (2000))
-                                 .async<reply_t> ()
+                                 .submit<reply_t> ()
                                  .result ();
     scoped_hosted_service.stop ();
     if (!scoped_hosted_reply || scoped_hosted_reply.value ().value != 340) {
@@ -2225,7 +2225,7 @@ int main ()
                              "bingo.play", zlink::routing_id_t::from (std::string ("2201")),
                              request_t{value})
                            .timeout (std::chrono::milliseconds (500))
-                           .async<reply_t> ()
+                           .submit<reply_t> ()
                            .result ();
             if (reply) {
                 return reply.value ().value;
@@ -2307,7 +2307,7 @@ int main ()
             .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
                               outer_route_request_t{45})
             .timeout (std::chrono::milliseconds (500))
-            .async<reply_t> ()
+            .submit<reply_t> ()
             .result ();
         if (reply) {
             reentrant_reply = reply.value ().value;
@@ -2383,7 +2383,7 @@ int main ()
             .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
                               request_t{44})
             .timeout (std::chrono::milliseconds (500))
-            .async<reply_t> ()
+            .submit<reply_t> ()
             .result ();
         if (route_ready && route_ready.value ().value == 244) {
             orchestrated_route_ready = true;
@@ -2407,7 +2407,7 @@ int main ()
     auto orchestrated_reply = orchestrated_client_builder.request_client ("bingo.api")
                                 .request (request_t{44})
                                 .timeout (std::chrono::milliseconds (3000))
-                                .async<reply_t> ()
+                                .submit<reply_t> ()
                                 .result ();
     orchestrated_api_channel_service.stop ();
     orchestrated_api_route_service.stop ();
@@ -2838,7 +2838,7 @@ int main ()
                   request_t{41})
         .metadata ("trace-id", "trace-request")
         .timeout (std::chrono::milliseconds (25))
-        .async<reply_t> ()
+        .submit<reply_t> ()
         .result ();
     if (!public_route_request || public_route_request.value ().value != 1
         || public_route.pending_request_count () != 0
@@ -2872,7 +2872,7 @@ int main ()
         .request_to_node ("public.route", zlink::routing_id_t::from (std::string ("target-node")),
                   request_t{50})
         .timeout (std::chrono::milliseconds (10))
-        .async<reply_t> ()
+        .submit<reply_t> ()
         .result ();
     if (missing_peer_reply
         || missing_peer_reply.error_kind ()
@@ -2924,7 +2924,7 @@ int main ()
                   request_t{51})
         .metadata ("trace-id", "trace-typed")
         .timeout (std::chrono::milliseconds (50))
-        .async<reply_t> ()
+        .submit<reply_t> ()
         .result ();
     if (!public_typed_reply || public_typed_reply.value ().value != 351
         || public_route.outbound_packets ().size () != 4
@@ -3018,7 +3018,7 @@ int main ()
                           request_t{52})
         .metadata ("trace-id", "trace-spot-typed")
         .timeout (std::chrono::milliseconds (50))
-        .async<reply_t> ()
+        .submit<reply_t> ()
         .result ();
     if (!public_spot_typed_reply || public_spot_typed_reply.value ().value != 352) {
         return 77;
@@ -3084,7 +3084,7 @@ int main ()
     const auto spot_only_reply = spot_only_client
                                    .request_to_spot (spot_only_ref, request_t{53})
                                    .timeout (std::chrono::milliseconds (75))
-                                   .async<reply_t> ()
+                                   .submit<reply_t> ()
                                    .result ();
     if (spot_only_send_count != 2 || !spot_only_reply || !spot_only_request_called
         || spot_only_reply.value ().value != 353) {
@@ -3146,7 +3146,7 @@ int main ()
       });
     const auto retried_reply = retry_client.request_to_spot (stale_handle, request_t{54})
                                  .timeout (std::chrono::milliseconds (75))
-                                 .async<reply_t> ()
+                                 .submit<reply_t> ()
                                  .result ();
     if (!retried_reply || retried_reply.value ().value != 454 || retry_refresh_calls.load () != 1
         || retry_stale_attempts.load () != 1 || retry_fresh_attempts.load () != 1) {
@@ -3211,7 +3211,7 @@ int main ()
     retry_stale_attempts.store (0);
     const auto exhausted_reply = retry_client.request_to_spot (second_stale_handle, request_t{55})
                                    .timeout (std::chrono::milliseconds (75))
-                                   .async<reply_t> ()
+                                   .submit<reply_t> ()
                                    .result ();
     if (exhausted_reply
         || exhausted_reply.error_kind ()
@@ -3246,7 +3246,7 @@ int main ()
         .request_to_node ("public.route", zlink::routing_id_t::from (std::string ("target-node")),
                   request_t{52})
         .timeout (std::chrono::milliseconds (50))
-        .async<reply_t> ();
+        .submit<reply_t> ();
     zlink::framework::detail::observe_task_completion (
       delayed_task, [&delayed_completed] (const zlink::framework::result_t<reply_t> &) {
           delayed_completed = true;
@@ -3272,7 +3272,7 @@ int main ()
     zlink::framework::detail::actor_gateway_runtime_t actor_gateway;
     auto actor_ref = zlink::framework::actor_ref_t (
       zlink::framework::node_rid_t::from_string ("play-node"), "PlayerActor", "observer", 3);
-    auto bound_actor = actor_gateway.manager ().bind (actor_ref).async ().result ();
+    auto bound_actor = actor_gateway.manager ().bind (actor_ref).submit ().result ();
     if (!bound_actor) {
         return 66;
     }
@@ -3345,10 +3345,7 @@ int main ()
           return zlink::framework::result_t<void>::success ();
       });
     auto copied_route = one_shot_route;
-    if (one_shot_route.submit ().result ().value ().status
-        != zlink::framework::submit_status_t::submitted) {
-        return 148;
-    }
+    one_shot_route.submit ().result ().value ();
     bool copied_route_rejected = false;
     try {
         (void) copied_route.submit ().result ().value ();

@@ -75,7 +75,10 @@ public enum ZLinkFrameworkErrorKind
     SpotMoving = 33,
     RelocationDataLost = 34,
     SpotIdConflict = 35,
-    RuntimeShutdown = 36
+    RuntimeShutdown = 36,
+    RelocationDisabled = 37,
+    RelocationTargetUnavailable = 38,
+    RelocationFailed = 39
 }
 
 public sealed class ZLinkFrameworkException : Exception
@@ -100,6 +103,10 @@ public sealed class ZLinkConfigurationException : InvalidOperationException
 없거나 checksum·inventory digest가 일치하지 않을 때 반환하는 non-retriable 오류다. Runtime은 이 오류에서
 이전 owner로 rollback하지 않는다. Remote framework error는 `ZLinkFrameworkException`으로 전달한다.
 `RuntimeShutdown`은 runtime이 신규 admission을 받지 않는 terminal state에서 사용한다.
+`RelocationDisabled`는 object policy가 cross-node 이동을 허용하지 않을 때,
+`RelocationTargetUnavailable`은 호환 target을 확보하지 못했을 때,
+`RelocationFailed`는 admission callback exception이나 capture·factory·restore·staging
+실패가 발생했을 때 사용한다.
 
 `RoutingIdConflict`는 transport RID claim 충돌이고 `SpotIdConflict`는 global Spot ID claim 충돌이다.
 ## 7. Eventing과 metric identity

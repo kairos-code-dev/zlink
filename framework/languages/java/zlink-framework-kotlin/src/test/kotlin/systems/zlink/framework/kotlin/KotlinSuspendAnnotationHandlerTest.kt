@@ -689,9 +689,11 @@ class PlayerActor(private val id: String) : ZLinkActor {
     override fun context(): ZLinkActorContext = object : ZLinkActorContext {
         override fun spotId() = java.util.Optional.empty<String>()
         override fun boundSession() = null
+        override fun joinSpot(spotId: String) = unsupportedJoinCall()
         override fun joinSpot(spotId: String, request: Any) =
             unsupportedJoinCall()
-        override fun joinEntrySpot(spotNodeRid: RoutingId, request: Any) = unsupportedJoinCall()
+        override fun joinEntrySpot() = unsupportedJoinCall()
+        override fun joinEntrySpot(request: Any) = unsupportedJoinCall()
     }
 
     private fun unsupportedJoinCall(): systems.zlink.framework.actors.ZLinkActorJoinCall =

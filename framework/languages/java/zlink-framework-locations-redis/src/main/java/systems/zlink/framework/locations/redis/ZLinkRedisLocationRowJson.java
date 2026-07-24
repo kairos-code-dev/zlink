@@ -105,6 +105,11 @@ final class ZLinkRedisLocationRowJson {
         }
         node.put("State", row.state().wireValue());
         node.put("ObjectRole", row.objectRole().value());
+        if (row.entrySpotId().isPresent()) {
+            node.put("EntrySpotId", row.entrySpotId().orElseThrow());
+        } else {
+            node.putNull("EntrySpotId");
+        }
         node.put("PlacementWeight", row.placementWeight());
         ObjectNode capacity = JSON.createObjectNode();
         capacity.set("Actors", serializeCapacityUsage(
@@ -127,6 +132,14 @@ final class ZLinkRedisLocationRowJson {
             });
         capacity.set("SpotTypes", spotTypes);
         node.set("Capacity", capacity);
+        ObjectNode activation = JSON.createObjectNode();
+        activation.put(
+            "Active",
+            row.activationConcurrency().active());
+        activation.put(
+            "Limit",
+            row.activationConcurrency().limit());
+        node.set("ActivationConcurrency", activation);
         return write(node);
     }
 
@@ -286,7 +299,7 @@ final class ZLinkRedisLocationRowJson {
         StringBuilder preimage = new StringBuilder();
         appendImmutableSegment(
             preimage,
-            "zlink-mesh-node-immutable-v1");
+            "zlink-mesh-node-immutable-v2");
         appendImmutableSegment(preimage, row.meshName());
         appendImmutableSegment(
             preimage,
@@ -316,10 +329,19 @@ final class ZLinkRedisLocationRowJson {
                 java.util.Locale.ROOT));
         appendImmutableSegment(
             preimage,
+            row.entrySpotId().isPresent() ? "1" : "0");
+        row.entrySpotId().ifPresent(
+            value -> appendImmutableSegment(preimage, value));
+        appendImmutableSegment(
+            preimage,
             Integer.toString(row.capacity().actors().limit()));
         appendImmutableSegment(
             preimage,
             Integer.toString(row.capacity().spots().limit()));
+        appendImmutableSegment(
+            preimage,
+            Integer.toString(
+                row.activationConcurrency().limit()));
 
         List<ZLinkObjectCapability> capabilities = new ArrayList<>(
             row.objectCapabilities());
@@ -348,7 +370,10 @@ final class ZLinkRedisLocationRowJson {
                 capability.hasSnapshotAdapter() ? "1" : "0");
             appendImmutableSegment(
                 preimage,
-                Integer.toString(capability.spotLimit()));
+                capability.objectKind()
+                    == ZLinkPlacementObjectKind.ACTOR
+                    ? ""
+                    : Integer.toString(capability.spotLimit()));
         }
         return preimage.toString();
     }
@@ -458,6 +483,7 @@ final class ZLinkRedisLocationRowJson {
             node.path("ApplicationVersion").asLong(),
             capabilities,
             objectRole(node.path("ObjectRole").asInt()),
+            Optional.ofNullable(nullableText(node, "EntrySpotId")),
             node.path("PlacementWeight").asInt(),
             new ZLinkPlacementCapacity(
                 deserializeCapacityUsage(
@@ -465,6 +491,12 @@ final class ZLinkRedisLocationRowJson {
                 deserializeCapacityUsage(
                     encodedCapacity.path("Spots")),
                 spotTypes),
+            new systems.zlink.framework.locations
+                .ZLinkActivationConcurrency(
+                    node.path("ActivationConcurrency")
+                        .path("Active").asInt(),
+                    node.path("ActivationConcurrency")
+                        .path("Limit").asInt()),
             Optional.ofNullable(
                 nullableText(node, "MaintenanceWave")),
             runtimeState(node.path("State").asInt()),

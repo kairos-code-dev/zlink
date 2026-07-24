@@ -15,24 +15,13 @@ internal sealed class ZLinkSpotOutboundTransport(
         return _submitter.DisposeAsync();
     }
 
-    /// <summary>Performs the first non-blocking publish admission attempt.
-    /// Logical multicast reports this attempt without a send-ready retry.</summary>
-    public MeshPublishResult TryPublishCurrentOnce(
-        string channelName,
-        string topic,
-        IReadOnlyList<Message> parts,
-        ReadOnlyMemory<byte> metadata)
-    {
-        return nativeSpot.Publish(channelName, topic, parts, SendFlags.DontWait, metadata);
-    }
-
-    internal MeshPublishResult PublishCurrentBlocking(
+    internal void PublishCurrent(
         string channelName,
         string topic,
         IReadOnlyList<Message> parts,
         ReadOnlyMemory<byte> metadata = default)
     {
-        return nativeSpot.Publish(channelName, topic, parts, SendFlags.None, metadata);
+        nativeSpot.Publish(channelName, topic, parts, SendFlags.None, metadata);
     }
 
     /// <summary>Performs the first non-blocking spot-send admission attempt.
@@ -62,7 +51,7 @@ internal sealed class ZLinkSpotOutboundTransport(
             $"SPOT '{targetSpotId}' on node '{targetNodeRid}'");
     }
 
-    public ValueTask<ZLinkSubmitResult> SendToSpotAsync(
+    public ValueTask<ZLinkOneWaySubmitResult> SendToSpotAsync(
         RoutingId targetNodeRid,
         string targetSpotId,
         ulong targetSpotGeneration,
@@ -121,7 +110,7 @@ internal sealed class ZLinkSpotOutboundTransport(
             $"channel '{channelName}'");
     }
 
-    public ValueTask<ZLinkSubmitResult> SendToChannelAsync(
+    public ValueTask<ZLinkOneWaySubmitResult> SendToChannelAsync(
         string channelName,
         IReadOnlyList<Message> parts,
         CancellationToken cancellationToken,

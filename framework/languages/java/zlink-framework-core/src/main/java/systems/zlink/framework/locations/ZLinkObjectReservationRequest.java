@@ -13,7 +13,7 @@ public record ZLinkObjectReservationRequest(
     long targetDescriptorLifecycleGeneration,
     ZLinkLocationOwnerToken targetOwner,
     byte[] creatingPayload,
-    int pendingCapacityDelta) {
+    ZLinkPlacementCapacityBundle capacityBundle) {
     public ZLinkObjectReservationRequest {
         Objects.requireNonNull(objectKind, "objectKind");
         Objects.requireNonNull(authorityKey, "authorityKey");
@@ -41,10 +41,7 @@ public record ZLinkObjectReservationRequest(
         creatingPayload = Objects.requireNonNull(
             creatingPayload,
             "creatingPayload").clone();
-        if (pendingCapacityDelta <= 0) {
-            throw new IllegalArgumentException(
-                "pendingCapacityDelta must be in 1..Integer.MAX_VALUE");
-        }
+        Objects.requireNonNull(capacityBundle, "capacityBundle");
     }
 
     @Override

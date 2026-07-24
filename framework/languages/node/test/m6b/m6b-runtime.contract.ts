@@ -113,9 +113,11 @@ import type {
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
-  ZLinkMessageMetadataEmpty,
-  ZLinkSubmitStatus
+  ZLinkMessageMetadataEmpty
 } from '../../packages/framework/src/contracts';
+import {
+  ZLinkSubmitStatus
+} from '../../packages/framework/src/runtime/messaging/submission-result';
 
 test('M6B command and flag constants match the generated service wire schema', () => {
   for (const name of Object.keys(M6bServiceWireCommand) as Array<keyof typeof M6bServiceWireCommand>) {
@@ -2201,9 +2203,7 @@ test('raw backend dispatches Spot requests and Actor sends through M6B owners', 
 
     targetSpot.setSubscription('events', 'room-*');
     const publisher = backend.createPublisher();
-    const detail = publisher.publish('events', 'room-42', Buffer.from('multicast'));
-    assert.equal(detail.snapshotLocalSpotCount, 1);
-    assert.equal(detail.admittedLocalSpotCount, 1);
+    publisher.publish('events', 'room-42', Buffer.from('multicast'));
     const multicast = await drainOne(backend, ReadyDomain.Application);
     assert.equal(multicast.kind, ReceiveKind.SpotMulticast);
     assert.equal(multicast.channelName, 'events');
@@ -2329,13 +2329,12 @@ test('public SpotId call reaches production host Missing Instance placement with
   class Notice {
     readonly text = 'hello';
   }
-  const result = await outbound.sendToSpot('instance-42', new Notice())
+  await outbound.sendToSpot('instance-42', new Notice())
     .metadata('trace', 'abc')
     .instanceSpot('chat-room')
     .inMesh('mesh')
     .submit();
 
-  assert.equal(result.status, ZLinkSubmitStatus.Submitted);
   assert.equal(submissions.length, 1);
   assert.deepEqual(submissions[0]?.target, {
     targetNodeRid: 'node-b',

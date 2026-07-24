@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
+import systems.zlink.framework.locations.ZLinkActivationConcurrency;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
@@ -72,24 +73,24 @@ class ZLinkRedisLocationRowJsonTest {
                 .setKeyPrefix("bad:{caller-tag}"));
         var keys = new ZLinkRedisLocationKeys("app");
         assertEquals(
-            "app:{zlink-location-v1}:schema",
+            "app:{zlink-location-v3}:schema",
             keys.schemaKey());
         assertEquals(
-            "app:{zlink-location-v1}:counter",
+            "app:{zlink-location-v3}:counter",
             keys.counterKey());
         assertEquals(
-            "app:{zlink-location-v1}:authority:key-index",
+            "app:{zlink-location-v3}:authority:key-index",
             keys.authorityIndexKey());
         assertEquals(
-            "app:{zlink-location-v1}:membership:current",
+            "app:{zlink-location-v3}:membership:current",
             keys.authorityMembershipsKey());
         String current = keys.authorityRowKey(
             "zla1:a:4:game:7:actor-1");
         assertTrue(current.matches(
-            "app:\\{zlink-location-v1}:authority:current:"
+            "app:\\{zlink-location-v3}:authority:current:"
                 + "[0-9a-f]{64}"));
         assertTrue(keys.leaseKey("owner-a").matches(
-            "app:\\{zlink-location-v1}:owner-lease:"
+            "app:\\{zlink-location-v3}:owner-lease:"
                 + "[0-9a-f]{64}"));
     }
 
@@ -215,7 +216,7 @@ class ZLinkRedisLocationRowJsonTest {
                 JSON.getTypeFactory().constructCollectionType(List.class, String.class)));
         JsonNode row = root.path("row");
         assertEquals("actor", row.path("kind").asText());
-        assertEquals("zla1:a:4:game:7:actor-1", row.path("key").asText());
+        assertEquals("zla1:a:7:actor-1", row.path("key").asText());
         JsonNode hash = row.path("hash");
         assertEquals("opaque-actor-authority-v1", hash.path("payload").asText());
         assertEquals("101", hash.path("storeVersion").asText());
@@ -242,6 +243,7 @@ class ZLinkRedisLocationRowJsonTest {
                 0,
                 List.of(),
                 ZLinkMeshNodeObjectRole.NONE,
+                Optional.empty(),
                 100,
                 new ZLinkPlacementCapacity(
                     new systems.zlink.framework.locations
@@ -249,6 +251,7 @@ class ZLinkRedisLocationRowJsonTest {
                     new systems.zlink.framework.locations
                         .ZLinkCapacityUsage(0, 0, 128),
                     List.of()),
+                new ZLinkActivationConcurrency(0, 128),
                 Optional.empty(),
                 ZLinkFrameworkRuntimeState.SERVING,
                 "cluster-a",

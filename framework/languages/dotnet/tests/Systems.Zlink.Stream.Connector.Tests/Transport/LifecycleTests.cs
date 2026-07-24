@@ -929,7 +929,7 @@ public sealed partial class StreamConnectorTests
     }
 
     [Fact]
-    public async Task OneWaySubmit_Accepts_Into_A_Bounded_Queue_And_Rejects_Full_Synchronously()
+    public async Task OneWayAsync_Waits_For_Bounded_Queue_Admission()
     {
         var connection = new BlockingWriteConnection();
         await using var connector = new ZlinkStreamConnector(
@@ -942,24 +942,24 @@ public sealed partial class StreamConnectorTests
             _ => ValueTask.FromResult<IZlinkStreamConnection>(connection));
         await connector.Connect.Async();
 
-        Submit(0);
+        await Submit(0);
         await connection.WriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        for (var index = 1; index <= 4096; index++) Submit(index);
+        for (var index = 1; index <= 4096; index++) await Submit(index);
 
-        var full = Assert.Throws<ZlinkStreamException>(() => Submit(4097));
-        Assert.Equal(ZlinkStreamErrorCode.SendFailed, full.Error.Code);
-        Assert.Contains("queue is full", full.Error.Message, StringComparison.Ordinal);
+        var pending = Submit(4097);
+        Assert.False(pending.IsCompleted);
 
         connection.ReleaseWrite.TrySetResult();
-        return;
+        await pending.WaitAsync(TimeSpan.FromSeconds(5));
 
-        void Submit(int value)
+        Task Submit(int value)
         {
-            connector.Send(new ZlinkStreamEncodedPayload(
+            return connector.Send(new ZlinkStreamEncodedPayload(
                     ZlinkStreamCodec.Raw,
                     BitConverter.GetBytes(value)))
                 .PacketName("bounded.send")
-                .Submit();
+                .Async()
+                .AsTask();
         }
     }
 
@@ -987,7 +987,7 @@ public sealed partial class StreamConnectorTests
                 await releaseFirst.Task;
             });
 
-        queue.Submit(
+        await queue.SubmitAsync(
             new ZlinkStreamOutboundFrame(ReadOnlyMemory<byte>.Empty, new byte[] { 1 }),
             CancellationToken.None);
         await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));

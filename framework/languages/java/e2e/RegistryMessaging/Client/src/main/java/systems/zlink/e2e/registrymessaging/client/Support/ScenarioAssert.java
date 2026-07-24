@@ -25,13 +25,13 @@ public final class ScenarioAssert {
     }
 
     public static String[] evidence(ZLinkHttpClient role) {
-        return role.get("/evidence").async(String[].class).toCompletableFuture().join().body();
+        return role.get("/evidence").submit(String[].class).toCompletableFuture().join().body();
     }
 
     public static String[] waitEvidence(ZLinkHttpClient role, String contains) {
         return role.post("/evidence/wait")
             .body(new Contracts.EvidenceWaitReq(contains))
-            .async(String[].class).toCompletableFuture().join().body();
+            .submit(String[].class).toCompletableFuture().join().body();
     }
 
     public static Contracts.ProfileRes requestProfileEventually(
@@ -43,7 +43,7 @@ public final class ScenarioAssert {
             try {
                 return role.post("/profile/request")
                     .body(new Contracts.ProfileReq(marker))
-                    .async(Contracts.ProfileRes.class).toCompletableFuture().join().body();
+                    .submit(Contracts.ProfileRes.class).toCompletableFuture().join().body();
             } catch (RuntimeException error) {
                 lastError = error;
                 sleep(100);

@@ -144,8 +144,6 @@ final class EntrySpotActorDispatchTest {
         options.addHandlersFromPackageOf(EntrySpotActorDispatchTest.class);
         var node = options.addSpotMesh("entry-actor-dispatch");
         node.enableRouter("inproc://entry-actor-dispatch-router");
-        var entry = node.configureEntrySpot();
-        entry.setRoutingId(RoutingId.from("entry-actor-dispatch-entry"));
         node.addEntrySpot(EntryActorDispatchSpot.class);
         node.addActorFactory("player", PlayerActorFactory.class);
         return options;

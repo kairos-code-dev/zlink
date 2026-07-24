@@ -14,7 +14,7 @@ import type {
 
 class ShoppingMallClientScenario {
   async run(apiA: ZLinkHttpClient, apiB: ZLinkHttpClient, signal?: AbortSignal): Promise<void> {
-    const seeded = await apiA.post('/self-check/seed').asyncRaw();
+    const seeded = await apiA.post('/self-check/seed').submitRaw();
     zlinkStreamAssert.ensure(seeded.status >= 200 && seeded.status < 300, 'Sample scenario assertion failed.');
 
     const successReq = startOrderReq('cart-success', 'addr-home', 'pm-ok', 'order-success-001');
@@ -53,7 +53,7 @@ class ShoppingMallClientScenario {
     const pendingReq = startOrderReq('cart-success', 'addr-office', 'pm-ok', 'order-pending-001');
     const pendingHook = await apiA.post('/self-check/idempotency/pending')
       .body({ idempotencyKey: pendingReq.idempotencyKey, orderId: 'order-pending-0001', ownerInstanceId: 'api-a' })
-      .asyncRaw();
+      .submitRaw();
     zlinkStreamAssert.ensure(pendingHook.status >= 200 && pendingHook.status < 300, 'Sample scenario assertion failed.');
     const pending = await apiB.post('/orders/start').body(pendingReq).fetch<StartOrderRes>();
     zlinkStreamAssert.ensure(pending.orderId === 'order-pending-0001', 'Sample scenario assertion failed.');
@@ -104,13 +104,13 @@ class ShoppingMallClientScenario {
     zlinkStreamAssert.ensure(paymentFailed.reason?.toLowerCase().includes('payment') === true, 'Sample scenario assertion failed.');
     console.log('shoppingmall-payment-failure=completed');
 
-    const deleteProjection = await apiA.post(`/self-check/projection/${success.orderId}/delete`).asyncRaw();
+    const deleteProjection = await apiA.post(`/self-check/projection/${success.orderId}/delete`).submitRaw();
     zlinkStreamAssert.ensure(deleteProjection.status >= 200 && deleteProjection.status < 300, 'Sample scenario assertion failed.');
     const healedByContinue = await apiB.post(`/self-check/workflow/${success.orderId}/continue`)
       .fetch<ContinueOrderWorkflowRes>();
     zlinkStreamAssert.ensure(healedByContinue.state.status === OrderStatuses.Confirmed, 'Sample scenario assertion failed.');
 
-    const deleteProjectionAgain = await apiA.post(`/self-check/projection/${success.orderId}/delete`).asyncRaw();
+    const deleteProjectionAgain = await apiA.post(`/self-check/projection/${success.orderId}/delete`).submitRaw();
     zlinkStreamAssert.ensure(deleteProjectionAgain.status >= 200 && deleteProjectionAgain.status < 300, 'Sample scenario assertion failed.');
     const rebuilt = await apiA.post(`/self-check/projection/${success.orderId}/rebuild`)
       .fetch<RebuildOrderProjectionRes>();

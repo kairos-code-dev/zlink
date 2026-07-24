@@ -301,13 +301,20 @@ User Spot과 member Actor relocation은 non-zero 128-bit aggregate ID와 exact p
 Participant는 최대 1024개이고 encoded aggregate는 최대 1 MiB다. Target offer는 Spot과 member Actor의 global
 identity, ObjectGeneration, kind와 capacity reservation을 고정한다. `Committed` CAS는 aggregate owner와 membership
 visibility를 원자적으로 바꾼다. Target은 commit 전에 factory·restore와 journal validation·staging을 끝낸다.
-Commit 뒤 joined callback, frozen message·journal replay와 Framework timer 자동 복원을 실행한다. Seal 뒤 source
+Commit 뒤 joined callback과 source leave callback을 실행하고 frozen message·journal replay와 Framework timer
+자동 복원을 이어서 실행한다. Seal 뒤 source
 ingress hold는 precommit abort에서 source queue로 돌아가고 commit 뒤에는 original operation identity와 fence를
-보존해 target으로 relay한다. Source는 leave callback과 old membership cleanup을 durable하게 끝낸다.
+보존해 target으로 relay한다. Replay 뒤 source는 old membership과 나머지 source resource cleanup을 durable하게 끝낸다.
 
 `Activated`는 Ready가 아니다. Target application admission은 durable source cleanup, `Completed` CAS, bound-session
 route ACK와 steady authority normalization이 모두 끝날 때까지 닫혀 있다. Abort도 source route ACK와 steady source
 normalization이 끝난 뒤 admission을 복원한다.
+
+Session owner는 Bind 때 Actor별 exact route와 lease fence를 저장한다. Relay·request relay와 disconnect는
+message마다 Location Store를 조회하지 않는다. Physical disconnect는 current binding snapshot 전체에
+all-settled 통지하며 exact binding identity마다 callback을 최대 한 번 실행한다. Route update는 같은
+ObjectGeneration에만 적용한다. Command 44·45는 `Completed` 이후 route switch·ACK에만 사용하며 이 계약을
+위해 새 command를 추가하지 않는다.
 
 ## 11. Request terminal identity
 

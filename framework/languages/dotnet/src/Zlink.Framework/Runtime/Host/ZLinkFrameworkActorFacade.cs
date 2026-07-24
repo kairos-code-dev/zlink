@@ -30,6 +30,22 @@ internal sealed class ZLinkFrameworkActorFacade(
         ZLinkMessage request,
         CancellationToken cancellationToken = default)
     {
+        return await JoinActorAsync(
+                spotId,
+                actor,
+                request,
+                operationId: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async ValueTask<ZLinkActorJoinResult> JoinActorAsync(
+        string spotId,
+        IZLinkActor actor,
+        ZLinkMessage request,
+        ZLinkActorJoinOperationId? operationId,
+        CancellationToken cancellationToken)
+    {
         var state = getState();
         var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
         var node = getActorSpotNode();
@@ -45,6 +61,7 @@ internal sealed class ZLinkFrameworkActorFacade(
                 actorRef,
                 node,
                 request,
+                operationId,
                 cancellationToken).ConfigureAwait(false);
 
         ZLinkSpotActorJoinResult joinResult;

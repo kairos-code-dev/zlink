@@ -1,9 +1,9 @@
 import type { ZLinkLocationOptionOverrides } from '../../contracts/Locations/Options';
 import type {
   RoutingId,
-  ZLinkSubmitResult,
   ZLinkProviderResolver
 } from '../../contracts';
+import type { ZLinkSubmitResult } from '../messaging/submission-result';
 import type { ZLinkSpotRouteTarget } from '../spots/spot-routing-internal';
 import type { ZLinkMessageFlowModeCell } from '../diagnostics';
 import type { Message } from '@zlink-systems/zlink';

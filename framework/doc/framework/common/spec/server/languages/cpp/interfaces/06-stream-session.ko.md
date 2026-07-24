@@ -168,6 +168,15 @@ public:
 };
 ```
 
+Bind 뒤 relay·request relay와 `notify_disconnected()`는 Actor별 저장 route를 사용하며 message마다 Location
+Store를 조회하지 않는다. Physical disconnect는 Framework가 current binding 전체에 automatic all-settled
+통지를 수행하고 exact binding identity마다 Spot callback을 최대 한 번 실행한다.
+`notify_disconnected()`는 connection이 유지된 상태의 logical notification이며 callback terminal까지
+기다린다. Relocation route update는 같은 ObjectGeneration에만 허용하고 callback·journal replay,
+durable source cleanup과 `Completed` 뒤 해당 Actor route만 바꾼다. Command 44·45 routed ACK와 steady
+normalization 전에는 target session packet·push admission을 열지 않으며 같은 Session의 다른 Actor
+route와 physical STREAM connection은 유지한다.
+
 `bound_session_t`, `session_actor_t`와 `session_actor_manager_t`의 exact Actor 연동 member는
 [Actor interface](05-actors.ko.md)가 소유한다. `stream_send_call_t`와 `stream_write_call_t`의
 metadata·compression·`submit()` member는 [Channel messaging](03-channel-messaging.ko.md)의 call family와

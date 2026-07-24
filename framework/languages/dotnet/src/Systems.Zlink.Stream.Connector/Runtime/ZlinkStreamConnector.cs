@@ -225,12 +225,12 @@ internal sealed class ZlinkStreamConnector : IZlinkStreamConnectorInternal
         }
     }
 
-    void IZlinkStreamConnectorInternal.SubmitFrame(
+    ValueTask IZlinkStreamConnectorInternal.SubmitFrameAsync(
         ZlinkStreamOutboundFrame frame,
         CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
-        _oneWaySubmits.Submit(frame, cancellationToken);
+        return _oneWaySubmits.SubmitAsync(frame, cancellationToken);
     }
 
     async ValueTask<ZlinkStreamEncodedPayload> IZlinkStreamConnectorInternal.RequestEncodedAsync(

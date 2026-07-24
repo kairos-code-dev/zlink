@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/foundation/operation_registry.hpp"
+#include "runtime/execution/actor_execution_context.hpp"
 #include "runtime/mesh/raw_mesh_node_owner.hpp"
 #include "runtime/locations/in_memory_location_store.hpp"
 #include "runtime/locations/sha256.hpp"
@@ -10,6 +11,7 @@
 #include "runtime/stateful/stateful_object_runtime.hpp"
 #include "runtime/stateful/stream_session_registry.hpp"
 
+#include <atomic>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
@@ -30,6 +32,48 @@ using namespace std::chrono_literals;
 
 namespace
 {
+
+class execution_mode_spot_t final : public zlink::framework::spot_t
+{
+};
+
+class recording_actor_client_t final : public zlink::framework::actor_client_t
+{
+  public:
+    std::atomic_int request_submissions{0};
+
+  protected:
+    zlink::framework::task_t<void> send_to_actor_erased (
+      zlink::framework::actor_ref_t,
+      std::string,
+      zlink::framework::message_t,
+      const zlink::framework::actor_send_call_t::metadata_map_t &) override
+    {
+        return zlink::framework::task_t<void> (
+          zlink::framework::result_t<void>::success ());
+    }
+
+    zlink::framework::task_t<zlink::framework::message_t>
+    request_to_actor_erased (
+      zlink::framework::actor_ref_t,
+      std::string,
+      zlink::framework::message_t,
+      std::optional<std::chrono::milliseconds>) override
+    {
+        request_submissions.fetch_add (1);
+        return zlink::framework::task_t<zlink::framework::message_t> (
+          zlink::framework::result_t<zlink::framework::message_t>::success (
+            zlink::framework::message_t{}));
+    }
+
+    zlink::framework::serializer_registry_t &actor_client_serializers () override
+    {
+        return serializers;
+    }
+
+  private:
+    zlink::framework::serializer_registry_t serializers;
+};
 
 void verify_spot_id_contract ()
 {
@@ -66,6 +110,69 @@ void verify_spot_id_contract ()
     assert (rejected);
 }
 
+void verify_user_spot_execution_mode_registration ()
+{
+    using namespace zlink::framework;
+
+    spot_node_builder_t builder;
+    builder.add_spot<execution_mode_spot_t> ("wide");
+    builder.add_spot<execution_mode_spot_t> (
+      "actors", user_spot_execution_mode_t::per_actor);
+
+    const auto snapshot = builder.snapshot ();
+    assert (
+      snapshot.spot_execution_modes.at ("wide")
+      == user_spot_execution_mode_t::spot_wide);
+    assert (
+      snapshot.spot_execution_modes.at ("actors")
+      == user_spot_execution_mode_t::per_actor);
+}
+
+void verify_self_actor_request_rejected_before_submission ()
+{
+    using namespace zlink::framework;
+
+    recording_actor_client_t actor_client;
+    const actor_ref_t actor (
+      node_rid_t::from_string ("node"), "player", "actor-1", 1);
+    runtime::actor_execution_scope_t scope (
+      "player:actor-1", "spot-1");
+    actor_request_call_t request (
+      actor_client, actor, "SelfRequest", message_t{});
+
+    const auto result = request.submit_message ().result ();
+    assert (!result);
+    assert (
+      result.error_kind ()
+      == framework_error_kind_t::invalid_configuration);
+    assert (actor_client.request_submissions.load () == 0);
+}
+
+void verify_same_gate_request_rejected_before_submission ()
+{
+    using namespace zlink::framework;
+
+    std::atomic_int submissions = 0;
+    request_call_t<int> request (
+      "SameGate",
+      [&submissions] (const auto &, auto, const auto &) {
+          submissions.fetch_add (1);
+          return task_t<int> (result_t<int>::success (1));
+      },
+      [] (bool) {
+          return result_t<void>::failure (
+            framework_error_kind_t::invalid_configuration,
+            "awaited request requires the current Spot execution gate");
+      });
+
+    const auto result = request.submit ().result ();
+    assert (!result);
+    assert (
+      result.error_kind ()
+      == framework_error_kind_t::invalid_configuration);
+    assert (submissions.load () == 0);
+}
+
 void verify_creation_terminal_operation_isolation ()
 {
     using namespace zlink::framework;
@@ -90,8 +197,7 @@ void verify_creation_terminal_operation_isolation ()
         {{.object_kind = placement_object_kind_t::actor,
           .stable_type = "player"}},
       .object_role = object_role_t::server,
-      .object_capacity =
-        {.active_limit = 8, .pending_limit = 8},
+      .capacity = {.actors = {.limit = 8}},
       .state = framework_runtime_state_t::serving,
       .security_identity = "terminal",
       .owner_id = claimed.token.owner_id,
@@ -110,7 +216,8 @@ void verify_creation_terminal_operation_isolation ()
         {.mesh_name = "m6b-mesh",
          .node_rid = node_rid_t::from_string ("terminal-target"),
          .node_lifecycle_generation = 1,
-         .owner = claimed.token}};
+         .owner = claimed.token},
+      .capacity_bundle = {.actor_slots = 1}};
     const auto reserved =
       std::get<object_reserved_t> (
         store->reserve (request).result ().value ());
@@ -177,9 +284,7 @@ void verify_typed_capacity_retry_uses_second_candidate ()
             {{.object_kind = placement_object_kind_t::user_spot,
               .stable_type = "room"}},
           .object_role = object_role_t::server,
-          .object_capacity =
-            {.active_limit = 32, .pending_limit = 32},
-          .placement_capacity =
+          .capacity =
             {.spots = {.limit = 32},
              .spot_types =
                {{.object_kind =
@@ -208,7 +313,12 @@ void verify_typed_capacity_retry_uses_second_candidate ()
       .key = {placement_object_kind_t::user_spot, "occupied"},
       .intent = {.stable_type = "room"},
       .target = target ("capacity-node-a", first_owner),
-      .pending_capacity_delta = 1};
+      .capacity_bundle = {
+        .spot_slots = 1,
+        .spot_type = spot_type_capacity_delta_t{
+          .object_kind = placement_object_kind_t::user_spot,
+          .stable_type = "room",
+          .slots = 1}}};
     assert (std::holds_alternative<object_reserved_t> (
       store->reserve (occupied).result ().value ()));
 
@@ -216,7 +326,12 @@ void verify_typed_capacity_retry_uses_second_candidate ()
       .key = {placement_object_kind_t::user_spot, "retry-room"},
       .intent = {.stable_type = "room"},
       .target = target ("capacity-node-a", first_owner),
-      .pending_capacity_delta = 1};
+      .capacity_bundle = {
+        .spot_slots = 1,
+        .spot_type = spot_type_capacity_delta_t{
+          .object_kind = placement_object_kind_t::user_spot,
+          .stable_type = "room",
+          .slots = 1}}};
     assert (std::holds_alternative<
       object_placement_capacity_exhausted_t> (
       store->reserve (request).result ().value ()));
@@ -377,14 +492,14 @@ void verify_membership_turns_and_independent_infrastructure ()
     const auto [second_error, second] = runtime.try_claim (
       moved_actor, stateful::turn_domain_t::application);
     assert (second_error == stateful::stateful_error_t::none);
-    assert (second && second->sequence == 2);
+    assert (second && second->sequence == 3);
     assert (runtime.complete_claim (
               moved_actor, stateful::turn_domain_t::application)
             == stateful::stateful_error_t::none);
     const auto [continuation_error, continuation] = runtime.try_claim (
       moved_actor, stateful::turn_domain_t::application);
     assert (continuation_error == stateful::stateful_error_t::none);
-    assert (continuation && continuation->sequence == 3);
+    assert (continuation && continuation->sequence == 2);
     assert (runtime.complete_claim (
               moved_actor, stateful::turn_domain_t::application)
             == stateful::stateful_error_t::none);
@@ -444,18 +559,40 @@ void verify_session_binding_and_terminal_once ()
        {},
        false,
        false});
+    const auto second_actor = create_ready (
+      runtime,
+      {stateful::object_kind_t::actor,
+       "session-actor-2",
+       "player",
+       std::nullopt,
+       {},
+       false,
+       false});
 
+    std::size_t authority_reads = 0;
     stateful::stream_session_registry_t sessions (
       [&] (const std::string &actor_id) {
+          ++authority_reads;
           return runtime.find (stateful::object_kind_t::actor, actor_id);
       });
     const auto connection = sessions.open ("stream-rid");
     const auto [bind_error, binding] = sessions.bind (connection, actor);
     assert (bind_error == stateful::stateful_error_t::none);
+    const auto [second_bind_error, second_binding] =
+      sessions.bind (connection, second_actor);
+    assert (second_bind_error == stateful::stateful_error_t::none);
+    assert (sessions.is_current (binding));
+    assert (sessions.is_current (second_binding));
+    assert (authority_reads == 2);
     const auto [dispatch_error, dispatch] =
       sessions.admit_inbound (binding);
     assert (dispatch_error == stateful::stateful_error_t::none);
     assert (dispatch && dispatch->inbound_sequence == 1);
+    const auto [second_dispatch_error, second_dispatch] =
+      sessions.admit_inbound (second_binding);
+    assert (second_dispatch_error == stateful::stateful_error_t::none);
+    assert (second_dispatch && second_dispatch->inbound_sequence == 2);
+    assert (authority_reads == 2);
 
     const auto reconnect = sessions.open ("stream-rid");
     assert (reconnect.connection_generation
@@ -463,6 +600,7 @@ void verify_session_binding_and_terminal_once ()
     assert (!sessions.is_current (binding));
     assert (sessions.admit_inbound (binding).first
             == stateful::stateful_error_t::conflict);
+    assert (!sessions.is_current (second_binding));
 
     foundation::operation_registry_t operations (1);
     foundation::operation_id_t id{};
@@ -681,8 +819,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
           .stable_type = "room",
           .policy = maintenance_policy_kind_t::recreate}},
       .object_role = object_role_t::server,
-      .object_capacity =
-        {.active_limit = 100, .pending_limit = 100},
+      .capacity = {.spots = {.limit = 100}},
       .state = framework_runtime_state_t::serving,
       .security_identity = "test",
       .owner_id = owner->token.owner_id,
@@ -714,7 +851,12 @@ void verify_remote_user_spot_create_close_terminal_once ()
          .node_lifecycle_generation = 1,
          .owner = owner->token},
       .creating_payload = {std::byte{0x7f}},
-      .pending_capacity_delta = 1};
+      .capacity_bundle = {
+        .spot_slots = 1,
+        .spot_type = spot_type_capacity_delta_t{
+          .object_kind = placement_object_kind_t::user_spot,
+          .stable_type = "room",
+          .slots = 1}}};
     const auto reserved =
       store->reserve (reserve).result ().value ();
     const auto *reservation =
@@ -845,7 +987,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
        reservation->fence.target.owner.owner_id,
        static_cast<std::uint64_t> (
          reservation->fence.target.owner.lease_generation),
-       reservation->fence.pending_capacity_delta},
+       reservation->fence.capacity_bundle.spot_slots},
       unix_deadline};
     auto invalid_create = create;
     invalid_create.operation = {98, 1};
@@ -866,7 +1008,7 @@ void verify_remote_user_spot_create_close_terminal_once ()
       invalid_reservation->fence.target.owner.owner_id,
       static_cast<std::uint64_t> (
         invalid_reservation->fence.target.owner.lease_generation),
-      invalid_reservation->fence.pending_capacity_delta};
+      invalid_reservation->fence.capacity_bundle.spot_slots};
     std::optional<protocol::user_spot_create_reply_t>
       invalid_reply;
     assert (source->create_user_spot_remote (
@@ -997,8 +1139,8 @@ void verify_remote_user_spot_create_close_terminal_once ()
         &committed_authority);
     assert (
       committed_snapshot
-      && committed_snapshot->allocation.capacity_state
-           == placement_capacity_state_t::active);
+      && committed_snapshot->allocation.state
+           == placement_allocation_state_t::active);
     std::optional<protocol::user_spot_create_reply_t>
       replayed_create_reply;
     assert (source->create_user_spot_remote (
@@ -1078,8 +1220,8 @@ void verify_remote_user_spot_create_close_terminal_once ()
     const auto *ready =
       std::get_if<authority_snapshot_t> (&authority);
     assert (ready);
-    assert (ready->allocation.capacity_state
-            == placement_capacity_state_t::active);
+    assert (ready->allocation.state
+            == placement_allocation_state_t::active);
     protocol::user_spot_close_header_t close{
       1,
       {99, 2},
@@ -1129,6 +1271,9 @@ void verify_remote_user_spot_create_close_terminal_once ()
 int main ()
 {
     verify_spot_id_contract ();
+    verify_user_spot_execution_mode_registration ();
+    verify_self_actor_request_rejected_before_submission ();
+    verify_same_gate_request_rejected_before_submission ();
     verify_creation_terminal_operation_isolation ();
     verify_typed_capacity_retry_uses_second_candidate ();
     verify_global_identity_remote_create_and_generation_fence ();

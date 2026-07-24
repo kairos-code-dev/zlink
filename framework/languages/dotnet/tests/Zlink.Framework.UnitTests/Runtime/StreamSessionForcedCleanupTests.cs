@@ -832,7 +832,7 @@ public sealed class StreamSessionForcedCleanupTests
             CancellationToken cancellationToken)
         {
             await Context.Client.Reply(new StreamFlowReply("reply"))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
             lifetime.ReplyCompleted.TrySetResult();
         }
     }

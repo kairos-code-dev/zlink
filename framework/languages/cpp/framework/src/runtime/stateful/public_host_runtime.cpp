@@ -233,7 +233,8 @@ std::uint64_t unix_milliseconds_now ()
 
 zlink::framework::object_reservation_fence_t public_fence (
   const protocol::user_spot_reservation_fence_t &wire,
-  const std::string &mesh_name)
+  const std::string &mesh_name,
+  const std::string &stable_type)
 {
     if (wire.target_owner_lease_generation
         > static_cast<std::uint64_t> (
@@ -254,7 +255,12 @@ zlink::framework::object_reservation_fence_t public_fence (
        {wire.target_owner_id,
         static_cast<std::int64_t> (
           wire.target_owner_lease_generation)}},
-      wire.pending_capacity_delta};
+      {0,
+       wire.pending_capacity_delta,
+       spot_type_capacity_delta_t{
+         placement_object_kind_t::user_spot,
+         stable_type,
+         wire.pending_capacity_delta}}};
 }
 
 } // namespace
@@ -365,39 +371,21 @@ zlink::submit_result_t spot_handle_t::publish (
   const std::string &,
   const std::vector<zlink::message_t> &parts,
   zlink::send_flags_t,
-  std::span<const std::uint8_t> metadata,
-  publish_detail_t *detail)
+  std::span<const std::uint8_t> metadata)
 {
     if (!_host)
         return zlink::submit_result_t::invalid_handle;
     const auto targets =
       _host->transport ().topology ().multicast_targets (
         channel_name);
-    if (detail)
-        detail->snapshot_remote_target_count =
-          static_cast<std::uint64_t> (targets.size ());
-    if (targets.empty ())
-        return zlink::submit_result_t::not_connected;
     const auto encoded =
       _host->encode_application (parts, metadata);
-    std::uint64_t admitted = 0;
-    std::uint64_t unreachable = 0;
     for (const auto &target : targets) {
-        if (_host->transport ().send_to_node (
-              target.descriptor.node_routing_id,
-              encoded))
-            ++admitted;
-        else
-            ++unreachable;
+        (void) _host->transport ().send_to_node (
+          target.descriptor.node_routing_id,
+          encoded);
     }
-    if (detail) {
-        detail->admitted_remote_target_count = admitted;
-        detail->unreachable_remote_target_count =
-          unreachable;
-    }
-    return admitted != 0
-             ? zlink::submit_result_t::ok
-             : zlink::submit_result_t::not_connected;
+    return zlink::submit_result_t::ok;
 }
 
 void spot_handle_t::set_subscription (const std::string &,
@@ -1202,18 +1190,18 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                                 user_spot
                       && snapshot->allocation.stable_type
                            == request.stable_type
-                      && snapshot->allocation.node_rid.value ()
+                      && snapshot->allocation.target.node_rid.value ()
                            == node_rid_t::from_string (
                                 zlink::routing_id_t::from (
                                   reservation
                                     .target_node_routing_id)
                                   .to_string ())
                                 .value ()
-                      && snapshot->allocation
+                      && snapshot->allocation.target
                            .node_lifecycle_generation
                            == reservation
                                 .target_node_generation
-                      && snapshot->allocation.capacity_delta
+                      && snapshot->allocation.capacity_bundle.spot_slots
                            == reservation
                                 .pending_capacity_delta;
                     if (!exact) {
@@ -1250,7 +1238,8 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                     const auto fence =
                       public_fence (
                         reservation,
-                        snapshot->allocation.mesh_name);
+                        snapshot->allocation.target.mesh_name,
+                        request.stable_type);
                     const auto &pending =
                       snapshot->pending_creation;
                     if (!pending
@@ -1289,11 +1278,11 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                       request.spot_id,
                       reservation.object_generation,
                       reservation.authority_owner_generation,
-                      snapshot->allocation.mesh_name,
+                      snapshot->allocation.target.mesh_name,
                       std::string (
-                        snapshot->allocation.node_rid.value ())};
-                    if (snapshot->allocation.capacity_state
-                        == placement_capacity_state_t::active) {
+                        snapshot->allocation.target.node_rid.value ())};
+                    if (snapshot->allocation.state
+                        == placement_allocation_state_t::active) {
                         const auto existing = _objects.find (
                           stateful::object_kind_t::user_spot,
                           exact_ref.key);
@@ -1390,7 +1379,8 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                               global_id},
                              public_fence (
                                reservation,
-                               snapshot->allocation.mesh_name)})
+                               snapshot->allocation.target.mesh_name,
+                               request.stable_type)})
                           .result ();
                         terminal (
                           105,
@@ -1653,16 +1643,16 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                          != target.expected_store_version
                     || snapshot->allocation.object_kind
                          != placement_object_kind_t::user_spot
-                    || snapshot->allocation.capacity_state
-                         != placement_capacity_state_t::active
-                    || snapshot->allocation.node_rid.value ()
+                    || snapshot->allocation.state
+                         != placement_allocation_state_t::active
+                    || snapshot->allocation.target.node_rid.value ()
                          != node_rid_t::from_string (
                               zlink::routing_id_t::from (
                                 target
                                   .target_node_routing_id)
                                 .to_string ())
                               .value ()
-                    || snapshot->allocation
+                    || snapshot->allocation.target
                          .node_lifecycle_generation
                          != target.target_node_generation) {
                     terminal (
@@ -1677,9 +1667,9 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                   target.spot_id,
                   target.object_generation,
                   target.authority_owner_generation,
-                  snapshot->allocation.mesh_name,
+                  snapshot->allocation.target.mesh_name,
                   std::string (
-                    snapshot->allocation.node_rid.value ())};
+                    snapshot->allocation.target.node_rid.value ())};
                 if (snapshot->payload
                     != ready_user_spot_authority_payload (
                       exact_ref, snapshot->allocation.stable_type)) {

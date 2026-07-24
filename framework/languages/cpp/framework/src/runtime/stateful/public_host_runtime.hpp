@@ -182,17 +182,6 @@ struct spot_status_t
     std::uint64_t lifecycle_generation () const noexcept;
 };
 
-struct publish_detail_t
-{
-    std::uint64_t snapshot_remote_target_count = 0;
-    std::uint64_t admitted_remote_target_count = 0;
-    std::uint64_t dropped_remote_target_count = 0;
-    std::uint64_t unreachable_remote_target_count = 0;
-    std::uint64_t snapshot_local_spot_count = 0;
-    std::uint64_t admitted_local_spot_count = 0;
-    std::uint64_t dropped_local_spot_count = 0;
-};
-
 struct host_options_t
 {
     mesh::raw_mesh_node_options_t mesh;
@@ -293,8 +282,7 @@ class spot_handle_t
       const std::string &topic,
       const std::vector<zlink::message_t> &parts,
       zlink::send_flags_t flags = zlink::send_flags_t::none,
-      std::span<const std::uint8_t> metadata = {},
-      publish_detail_t *detail = nullptr);
+      std::span<const std::uint8_t> metadata = {});
     void set_subscription (const std::string &channel_name,
                            const std::string &topic);
     void unset_subscription (const std::string &channel_name,

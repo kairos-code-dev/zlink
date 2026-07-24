@@ -73,16 +73,7 @@ inline int run_service_host (int argc, char **argv)
         mesh.add_spot<monitoring_spot_t> (spot_channel);
         mesh.add_spot<monitoring_subject_spot_t> (
           monitoring_subject_spot,
-          [evidence_ptr] {
-              return std::make_shared<monitoring_subject_spot_t> (
-                *evidence_ptr);
-          });
-        mesh.add_spot<monitoring_slow_spot_t> (
-          monitoring_slow_spot,
-          [evidence_ptr, gate_ptr] {
-              return std::make_shared<monitoring_slow_spot_t> (
-                *evidence_ptr, *gate_ptr);
-          });
+          [] { return std::make_shared<monitoring_subject_spot_t> (); });
         for (const auto &endpoint : options.mesh_peer_endpoints)
             mesh.peer_connections ().connect (endpoint);
         auto &monitoring = framework.monitoring ();
@@ -118,12 +109,10 @@ inline int run_service_host (int argc, char **argv)
               .map_post<create_spot_handler_t> ("/spot/create")
               .map_post<create_subject_handler_t> (
                 "/admin/subject/create")
-              .map_post<create_slow_subject_handler_t> (
-                "/admin/slow-subject/create")
               .map_post<close_subject_handler_t> (
                 "/admin/subject/close")
-              .map_post<publish_until_handler_t> ("/spot/publish-until")
-              .map_post<local_drop_handler_t> ("/spot/local-drop")
+              .map_post<publish_probe_handler_t> (
+                "/runtime/publish")
               .map_post<runtime_observe_handler_t> ("/runtime/observe")
               .map_post<runtime_observe_isolation_handler_t> (
                 "/runtime/observe-isolation")

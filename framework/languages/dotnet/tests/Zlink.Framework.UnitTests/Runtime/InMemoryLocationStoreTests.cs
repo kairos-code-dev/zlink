@@ -254,8 +254,8 @@ public sealed class InMemoryLocationStoreTests
         Assert.Equal(3, removed);
         Assert.DoesNotContain(await store.ListMeshNodesAsync("play"), row => row.OwnerId == OwnerA);
         Assert.Contains(await store.ListMeshNodesAsync("play"), row => row.OwnerId == OwnerB);
-        Assert.Null(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("play", RoutingId.From("spot-a"))));
-        Assert.NotNull(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("play", RoutingId.From("spot-b"))));
+        Assert.Null(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("spot-a")));
+        Assert.NotNull(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("spot-b")));
         Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-a")));
         Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-b")));
     }
@@ -339,7 +339,7 @@ public sealed class InMemoryLocationStoreTests
 
     internal static ZLinkSpotLocation Spot(string ownerId, string spotId) => new(
         "play",
-        RoutingId.From(spotId),
+        spotId,
         SpotGeneration: 0,
         OwnerNodeRid: RoutingId.From("node-1"),
         OwnerNodeGeneration: 0,

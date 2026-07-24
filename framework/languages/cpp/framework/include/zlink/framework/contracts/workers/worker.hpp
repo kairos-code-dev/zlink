@@ -76,13 +76,16 @@ template <typename TResult> class worker_call_t
         return *this;
     }
 
-    task_t<TResult> async () { return start (false); }
+    task_t<TResult> submit () { return start (false); }
 
     task_t<TResult> yield () { return start (true); }
 
   private:
     task_t<TResult> start (bool release_turn)
     {
+        if (release_turn && !detail::current_serial_turn_allows_yield ()) {
+            return detail::unsupported_yield_task<TResult> ();
+        }
         if (!try_start ()) {
             return task_t<TResult> (
               result_t<TResult>::failure (framework_error_kind_t::request_protocol_error,

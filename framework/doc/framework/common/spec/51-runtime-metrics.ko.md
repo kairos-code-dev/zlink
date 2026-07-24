@@ -43,23 +43,17 @@
 `selected|no_member|not_ready|draining`, `surface`는
 `node|channel|spot|instance_spot|actor`의 닫힌 값이다.
 
-### 3.2 Logical Multicast와 drop
+### 3.2 One-way message drop
 
 | 계기 | 종류 | 단위 | Label | 의미 |
 |---|---|---|---|---|
-| `zlink.mesh_node.multicast.submits` | counter | `{operation}` | `mesh_name`, `channel_name`, `outcome` | Publish operation의 결과를 누적한다. |
-| `zlink.mesh_node.multicast.targets` | histogram | `{target}` | `mesh_name`, `channel_name` | Operation마다 선택한 remote [MeshNode](01-glossary.ko.md#meshnode) 수를 기록한다. |
-| `zlink.mesh_node.multicast.pending` | updown | `{operation}` | `mesh_name`, `channel_name` | 현재 admission을 기다리는 operation 수를 제공한다. |
-| `zlink.mesh_node.multicast.backpressures` | counter | `{operation}` | `mesh_name`, `channel_name`, `reason` | Remote ROUTER의 용량 부족 또는 send timeout 발생 횟수를 누적한다. |
-| `zlink.mesh_node.multicast.drops` | counter | `{target}` | `mesh_name`, `channel_name`, `reason` | Local 또는 remote target별 drop 발생 횟수를 누적한다. |
 | `zlink.mesh_node.messages.dropped` | counter | `{message}` | `mesh_name`, `surface`, `message_kind`, `reason` | Framework가 원인을 확인한 one-way drop 횟수를 누적한다. |
 
-multicast `outcome`은 `accepted|backpressured|timed_out|shutdown`, `reason`은
-`backpressure|send_timeout|target_closed|shutdown`의 닫힌 값이다. message drop `reason`은
+Message drop `reason`은
 `no_handler|decode_error|backpressure|stale_target|shutdown`의 닫힌 값이다.
 
-Logical Multicast의 `targets`는 remote node 수만 기록한다. local matching [Spot](01-glossary.ko.md#spot) 수와 topic별 수를 label로
-분해하지 않는다.
+Logical Multicast와 classic fanout publish는 이 counter에서 제외한다. Publish
+target 수, target별 수락·실패와 backpressure를 전용 metric으로 기록하지 않는다.
 
 ### 3.3 Mailbox와 turn
 
@@ -126,7 +120,7 @@ Activation `outcome`은 `ready|rejected|conflict|timed_out|shutdown|store_failur
 `stopped|blocked|force_stopped`의 닫힌 값이다. Reason은
 [54 Host retirement와 shutdown](54-graceful-drain-handoff.ko.md)의 termination reason을 그대로 사용한다.
 
-## 6. Location과 classic fanout 계기
+## 6. Location과 observability 계기
 
 | 계기 | 종류 | 단위 | Label | 의미 |
 |---|---|---|---|---|
@@ -134,17 +128,15 @@ Activation `outcome`은 `ready|rejected|conflict|timed_out|shutdown|store_failur
 | `zlink.location.store.errors` | counter | `{error}` | `operation` | Redis read·write·lease failure 횟수를 누적한다. |
 | `zlink.location.owner_lease.renew.failures` | counter | `{failure}` | `scope_kind`, `scope_name` | Owner lease renew failure 횟수를 누적한다. |
 | `zlink.location.owner_lease.renew.lateness` | histogram | `s` | `scope_kind`, `scope_name` | 예정 시각보다 [owner lease](01-glossary.ko.md#owner-lease) renew가 늦어진 시간을 기록한다. |
-| `zlink.fanout.published` | counter | `{message}` | `channel_name` | Classic fanout publish 횟수를 누적한다. |
-| `zlink.fanout.received` | counter | `{message}` | `channel_name` | [Classic fanout](01-glossary.ko.md#classic-fanout) receive 횟수를 누적한다. |
-| `zlink.fanout.dropped` | counter | `{message}` | `channel_name`, `reason` | Framework가 원인을 확인한 classic fanout drop 횟수를 누적한다. |
 | `zlink.observability.events.overflow` | counter | `{event}` | `source` | Monitoring·trace observer queue overflow 횟수를 누적한다. |
 
 `record_kind`는 `mesh_node_descriptor|client_server_server_descriptor|fanout_publisher_descriptor|spot|instance_spot|actor`,
 `scope_kind`는 `mesh|channel`의 닫힌 값이다. MeshNode·Spot·Actor record는 `mesh`와 MeshName을,
 ClientServer server·fanout publisher descriptor는 `channel`과 ChannelName을 `scope_name`에 기록한다.
-`operation`은 `read|compare_exchange|relocation_put|relocation_get|relocation_delete|lease_renew|release`, fanout
-`reason`은 `backpressure|target_closed|shutdown`이다. classic fanout의 packet name과 내부 transport
-filter 값은 metric label로 기록하지 않는다.
+`operation`은
+`read|compare_exchange|relocation_put|relocation_get|relocation_delete|lease_renew|release`다.
+Logical Multicast와 classic fanout publish의 전송 수·수신 수·drop 수는 Framework metric으로
+집계하지 않는다.
 
 ## 7. Label cardinality
 
@@ -176,7 +168,6 @@ metric은 언어 표준 meter 또는 registry에 연결하며 특정 exporter를
 ## 9. 구현 및 contract test 검증 요구
 
 - 계기 이름, 종류, 단위와 닫힌 label value가 모든 언어에서 같다.
-- publish operation의 backpressure와 target별 drop이 별도 counter에 기록된다.
 - application·infrastructure mailbox backlog를 domain별로 관찰할 수 있다.
 - topic, Actor ID, [Spot ID](01-glossary.ko.md#spot-id), RID, endpoint, correlation ID와 flow ID가 어떤 metric label에도 나타나지 않는다.
 - observer overflow와 metric reader failure가 message dispatch와 host termination 결과를 바꾸지 않는다.

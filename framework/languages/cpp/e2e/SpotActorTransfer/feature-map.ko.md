@@ -24,6 +24,7 @@ context는 HTTP·connector 연결과 반복되는 evidence 조회만 제공한�
 | ST-D1 | `implemented` | local·remote location은 joined 완료 전 기존 ref를 유지하고 완료 뒤 committed ref로 바뀌며, local 지연 중 packet이 target handler에 먼저 도달하지 않고 commit 뒤 target에서 처리되는지 검사한다. |
 | ST-D2 | `implemented` | commit 뒤 source cleanup queue가 stale owner release를 실행하기 전후에 target packet과 generation snapshot이 유지되는지 검사한다. |
 | ST-E1 | `implemented` | transfer 전후 같은 connector의 bound push 수신을 검사한다. |
+| ST-E1A | `not implemented` | 새 Actor incarnation과 이전 generation binding event 격리, explicit bind 요구를 검증하는 runner가 없다. |
 | ST-E2 | `implemented` | transfer-out adapter 실패로 commit 전 transfer를 거절하고, source의 기존 bound session이 follow-up notify를 받으며 target에는 `bound_push`·`joined` evidence가 없는지 검사한다. |
 | ST-F1 | `implemented` | source `handoff_backlog`와 target `backlog_enqueued`를 같은 transfer correlation으로 검사한다. target은 prepare 뒤 받은 전체 backlog를 queue에 넣은 다음 location을 공개하며 P1→P2→P3 처리 순서도 확인한다. |
 | ST-F2 | `implemented` | moving 중 B1/B2를 보내고 target의 `backlog_enqueued`가 `location_committed`보다 앞서는지 검사한다. location 공개 직후 D1을 보내 join caller가 완료를 읽기 전에 B1→B2→D1 순서가 유지되는지도 확인한다. |

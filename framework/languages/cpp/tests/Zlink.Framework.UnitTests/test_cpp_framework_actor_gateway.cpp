@@ -2,8 +2,11 @@
 
 #include "runtime/actors/actor_gateway_runtime.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
+#include <string>
+#include <vector>
 
 namespace
 {
@@ -102,9 +105,7 @@ int actor_send_is_one_shot ()
       actor_ref_t (node_rid_t::from_string ("actor-node"), "player", "actor-2", 1),
       "message", message_t{});
     auto copied = call;
-    if (call.submit ().result ().value ().status != submit_status_t::submitted) {
-        return 1;
-    }
+    call.submit ().result ().value ();
     bool rejected = false;
     try {
         (void) copied.submit ().result ().value ();
@@ -115,6 +116,71 @@ int actor_send_is_one_shot ()
     return rejected && client.attempts.load () == 1 ? 0 : 2;
 }
 
+int session_disconnect_is_all_settled_and_token_fenced ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    auto state = std::make_shared<actor_gateway_state_t> ();
+    actor_gateway_runtime_t gateway (state);
+    auto manager = gateway.manager ();
+    session_actor_manager_access_t::attach (manager, stream_t{});
+    const actor_ref_t first (
+      node_rid_t::from_string ("actor-node"), "player", "actor-a", 1);
+    const actor_ref_t second (
+      node_rid_t::from_string ("actor-node"), "player", "actor-b", 1);
+
+    auto stale = manager.bind (first).submit ().result ().value ();
+    auto current = manager.bind (first).submit ().result ().value ();
+    (void) manager.bind (second).submit ().result ().value ();
+    if (stale.notify_disconnected ().result ().error_kind ()
+        != framework_error_kind_t::actor_session_not_bound) {
+        return 1;
+    }
+
+    std::vector<std::string> disconnected;
+    gateway.on_disconnect (
+      [&] (const actor_ref_t &actor) {
+          disconnected.emplace_back (actor.actor_id ());
+          return actor.actor_id () == "actor-a"
+                   ? result_t<void>::failure (
+                       framework_error_kind_t::actor_dispatch_handler_not_found,
+                       "actor-a callback failed")
+                   : result_t<void>::success ();
+      });
+    session_actor_manager_access_t::disconnect (manager);
+    std::sort (disconnected.begin (), disconnected.end ());
+    if (disconnected != std::vector<std::string>{"actor-a", "actor-b"}
+        || !gateway.actor_disconnected ("actor-a")
+        || !gateway.actor_disconnected ("actor-b")) {
+        return 2;
+    }
+    if (current.notify_disconnected ().result ())
+        return 3;
+    return 0;
+}
+
+int route_update_preserves_object_generation ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    actor_gateway_runtime_t gateway;
+    auto manager = gateway.manager ();
+    const actor_ref_t original (
+      node_rid_t::from_string ("actor-node-a"), "player", "actor-route", 7);
+    (void) manager.bind (original).submit ().result ().value ();
+
+    const actor_ref_t relocated (
+      node_rid_t::from_string ("actor-node-b"), "player", "actor-route", 7);
+    if (!gateway.update_actor_ref (relocated))
+        return 1;
+    const actor_ref_t new_incarnation (
+      node_rid_t::from_string ("actor-node-c"), "player", "actor-route", 8);
+    const auto rejected = gateway.update_actor_ref (new_incarnation);
+    return !rejected ? 0 : 2;
+}
+
 } // namespace
 
 int main ()
@@ -123,5 +189,12 @@ int main ()
         return stale;
     }
     const auto one_shot = actor_send_is_one_shot ();
-    return one_shot == 0 ? 0 : 10 + one_shot;
+    if (one_shot != 0)
+        return 10 + one_shot;
+    const auto disconnected =
+      session_disconnect_is_all_settled_and_token_fenced ();
+    if (disconnected != 0)
+        return 20 + disconnected;
+    const auto route = route_update_preserves_object_generation ();
+    return route == 0 ? 0 : 30 + route;
 }

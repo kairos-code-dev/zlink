@@ -12,7 +12,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.PublishDetail;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEvent;
@@ -33,7 +32,8 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalAsyncSpotDi
  * Framework-owned local Spot mailbox. Raw bindings provide transport only;
  * Spot identity, lifecycle and turn dispatch stay in the Framework runtime.
  */
-final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
+final class ZLinkJavaRawSpot
+    implements ZLinkBackendSpot, ZLinkJavaAdmissionBacked {
     private final ZLinkJavaRawSpotNode owner;
     private final long lifecycleGeneration;
     private final Queue<ZLinkBackendReceived> routes =
@@ -133,17 +133,6 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
         List<Message> parts,
         SendFlags flags) {
         return owner.publish(this, channelName, topic, metadata, parts);
-    }
-
-    @Override
-    public PublishDetail publishDetailed(
-        String channelName,
-        String topic,
-        byte[] metadata,
-        List<Message> parts,
-        SendFlags flags) {
-        return owner.publishDetailed(
-            this, channelName, topic, metadata, parts);
     }
 
     @Override

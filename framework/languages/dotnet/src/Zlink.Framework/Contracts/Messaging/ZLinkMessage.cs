@@ -71,6 +71,24 @@ public sealed class ZLinkMessage
             ZLinkEncodedPayload.From(_payload.Span));
     }
 
+    internal ZLinkMessage Snapshot(ZLinkCodecRegistryBuilder codecs)
+    {
+        var encoded = Encode(codecs);
+        return new ZLinkMessage(
+            encoded.Payload.Bytes.ToArray(),
+            encoded.ContentType,
+            null,
+            codecs.Snapshot());
+    }
+
+    internal static ZLinkMessage FromEncoded(
+        string contentType,
+        ReadOnlyMemory<byte> payload,
+        ZLinkCodecRegistryBuilder codecs)
+    {
+        return new ZLinkMessage(payload.ToArray(), contentType, null, codecs.Snapshot());
+    }
+
     internal Message ToRawMessage(ZLinkCodecRegistryBuilder codecs)
     {
         return Message.From(Encode(codecs).Payload.Bytes.Span);

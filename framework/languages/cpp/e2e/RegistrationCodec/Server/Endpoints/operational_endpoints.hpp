@@ -21,7 +21,7 @@ inline TReply request_channel_with_retry (zlink::framework::channel_client_t &ch
     std::string last_error = "channel request failed";
     while (std::chrono::steady_clock::now () < deadline) {
         auto call =
-          channels.request (api_channel, request).timeout (std::chrono::seconds (5)).template async<TReply> ();
+          channels.request (api_channel, request).timeout (std::chrono::seconds (5)).template submit<TReply> ();
         const auto &reply = call.result ();
         if (reply) {
             return reply.value ();
@@ -290,7 +290,7 @@ class codec_mismatch_handler_t
         auto mismatched =
           _channels.request (api_channel, protobuf_roundtrip_req_t{.value = "json-only"})
             .timeout (std::chrono::seconds (5))
-            .async<protobuf_roundtrip_res_t> ()
+            .submit<protobuf_roundtrip_res_t> ()
             .result ();
         if (mismatched) {
             throw std::runtime_error ("RC-B5 expected the JSON-only peer to reject a protobuf "

@@ -14,6 +14,7 @@
 #include "runtime/diagnostics/runtime_metrics.hpp"
 #include "runtime/diagnostics/message_flow_tracer.hpp"
 #include "runtime/dispatch/offload_executor.hpp"
+#include "runtime/execution/actor_execution_context.hpp"
 #include "runtime/execution/serial_execution_queue.hpp"
 #include "runtime/locations/live_location_reader.hpp"
 #include "runtime/mesh/mesh_node_runtime.hpp"
@@ -75,24 +76,31 @@ framework_error_kind_t submit_result_error_kind (zlink::submit_result_t result)
     }
 }
 
-submit_status_t publish_submit_status (zlink::submit_result_t result)
+result_t<void> logical_multicast_submit_result (zlink::submit_result_t result)
 {
     switch (result) {
         case zlink::submit_result_t::ok:
-            return submit_status_t::submitted;
         case zlink::submit_result_t::backpressured:
-            return submit_status_t::backpressured;
         case zlink::submit_result_t::not_found:
         case zlink::submit_result_t::not_admitted:
-            return submit_status_t::target_not_found;
         case zlink::submit_result_t::not_connected:
-            return submit_status_t::route_not_connected;
+            // Once the publish transaction starts, target-specific admission
+            // failures are monitoring data and do not fail the public call.
+            return result_t<void>::success ();
         case zlink::submit_result_t::terminated:
+            return result_t<void>::failure (
+              framework_error_kind_t::runtime_shutdown,
+              "logical multicast runtime is stopped");
         case zlink::submit_result_t::invalid_handle:
         case zlink::submit_result_t::invalid_state:
-            return submit_status_t::shutdown;
+        case zlink::submit_result_t::invalid_argument:
+            return result_t<void>::failure (
+              framework_error_kind_t::request_protocol_error,
+              "logical multicast rejected an invalid call");
         default:
-            return submit_status_t::shutdown;
+            return result_t<void>::failure (
+              framework_error_kind_t::request_failed,
+              "logical multicast was not submitted");
     }
 }
 
@@ -161,7 +169,11 @@ void configure_spot_execution (const std::shared_ptr<detail::spot_context_state_
     state->serial_executor =
       std::make_shared<runtime::offload_executor_t> (2, 4096, "zlink-spot-ser");
     state->serial_queue =
-      std::make_shared<runtime::serial_execution_queue_t> (*state->serial_executor);
+      std::make_shared<runtime::serial_execution_queue_t> (
+        *state->serial_executor, 4096,
+        runtime::serial_execution_queue_t::error_handler_t{},
+        !state->entry_spot
+          && state->execution_mode == user_spot_execution_mode_t::spot_wide);
     state->worker_scheduler = make_spot_worker_scheduler (state);
 }
 
@@ -176,6 +188,13 @@ void drain_spot_node_executors (spot_node_builder_state_t &node)
 {
     for (auto &[_, context] : node.spot_contexts_by_id) {
         auto state = context._state;
+        if (state) {
+            for (auto &timer : state->timers) {
+                if (timer && timer->lane) {
+                    timer->lane->cancel_pending ();
+                }
+            }
+        }
         if (state && state->serial_queue) {
             state->serial_queue->cancel_pending ();
         }
@@ -187,6 +206,12 @@ void drain_spot_node_executors (spot_node_builder_state_t &node)
     for (auto &[_, context] : node.spot_contexts_by_id) {
         auto state = context._state;
         if (state && state->serial_executor) {
+            for (auto &timer : state->timers) {
+                if (timer && timer->lane) {
+                    timer->lane->drain ();
+                    timer->lane.reset ();
+                }
+            }
             if (state->serial_queue) {
                 state->serial_queue->cancel_pending ();
                 state->serial_queue->drain ();
@@ -1103,8 +1128,10 @@ spot_context_t::erased_request_call_t::erased_request_call_t (
   std::function<task_t<zlink::message_t> (const std::string &,
                                           std::chrono::milliseconds,
                                           const request_call_t<zlink::message_t>::metadata_map_t &)>
-    submit) :
-    _packet_name (std::move (packet_name)), _serializers (serializers), _submit (std::move (submit))
+    submit,
+  request_call_t<zlink::message_t>::preflight_fn_t preflight) :
+    _packet_name (std::move (packet_name)), _serializers (serializers),
+    _submit (std::move (submit)), _preflight (std::move (preflight))
 {
 }
 
@@ -1567,31 +1594,6 @@ send_call_t spot_context_t::publish_erased (std::string topic,
                   return result_t<void>::failure (framework_error_kind_t::request_failed,
                                                   error.what ());
               }
-              if (state->node) {
-                  detail::message_flow_tracer_t (state->node->dispatch)
-                    .trace (message_flow_outcome_t::sent, [&] {
-                        return message_flow_event_t{message_flow_outcome_t::sent,
-                                                    dispatch_error_surface_t::spot_subscription,
-                                                    dispatch_message_kind_t::publish,
-                                                    submitted_packet_name,
-                                                    std::nullopt,
-                                                    topic,
-                                                    std::nullopt,
-                                                    std::nullopt,
-                                                    std::string (state->spot_id),
-                                                    std::nullopt,
-                                                    std::nullopt};
-                    });
-                  if (state->node->monitoring) {
-                      runtime::runtime_metrics_t metrics (state->node->monitoring);
-                      if (metrics.enabled ()) {
-                          /* Declared topics are a closed set (runtime-metrics
-                           * §4.4b/§5); dynamic topics would drop the label. */
-                          metrics.counter ("zlink.fanout.published", "{message}", 1,
-                                           {{"topic", topic}});
-                      }
-                  }
-              }
           }
           return result_t<void>::success ();
       });
@@ -1696,6 +1698,7 @@ spot_context_t::erased_request_call_t spot_context_t::request_to_erased (node_ri
           framework_error_kind_t::spot_route_not_found, "target spot route is empty"));
     }
     auto state = _state;
+    const auto target_spot_id = spot_id;
     return erased_request_call_t (
       std::move (packet_name), serializer_registry (),
       [state, node_rid = std::move (node_rid), spot_id = std::move (spot_id),
@@ -1765,6 +1768,16 @@ spot_context_t::erased_request_call_t spot_context_t::request_to_erased (node_ri
           catch (const framework_exception_t &error) {
               return task_t<zlink::message_t> (detail::result_access_t::failure<zlink::message_t> (error));
           }
+      },
+      [state, target_spot_id] (bool release_turn) {
+          if (!release_turn && state
+              && state->spot_id == target_spot_id
+              && state->owns_current_serial_turn ()) {
+              return result_t<void>::failure (
+                framework_error_kind_t::invalid_configuration,
+                "awaited request requires the current Spot execution gate");
+          }
+          return result_t<void>::success ();
       });
 }
 
@@ -1881,7 +1894,9 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
                                         serializer_registry_t &serializers,
                                         const zlink::message_t &message,
                                         spot_actor_message_metadata_t metadata,
-                                        bool serial_dispatch) const
+                                        bool serial_dispatch,
+                                        std::string actor_execution_key,
+                                        std::string actor_execution_spot_id) const
 {
     for (std::size_t index = 0; index < _state->handlers.size (); ++index) {
         const auto &descriptor = _state->handlers[index];
@@ -1894,6 +1909,9 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
             if (!serial_dispatch) {
                 state->enter_callback ();
                 try {
+                    runtime::actor_execution_scope_t actor_execution (
+                      std::move (actor_execution_key),
+                      std::move (actor_execution_spot_id));
                     auto handler_task = state->handler_invokers[handler_index](
                       spot, actor, services, serializers, message, std::move (metadata));
                     detail::observe_task_completion (
@@ -1934,8 +1952,14 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
               "spot-handler",
               [state, handler_index, spot, actor, &services, &serializers,
                owned_message = std::move (owned_message), metadata = std::move (metadata),
-               completion, dispatch_flow = std::move (dispatch_flow)] (auto complete) mutable {
+               completion, dispatch_flow = std::move (dispatch_flow),
+               actor_execution_key = std::move (actor_execution_key),
+               actor_execution_spot_id = std::move (actor_execution_spot_id)] (
+                auto complete) mutable {
                   runtime::flow_context_t::scope_t callback_flow (std::move (dispatch_flow));
+                  runtime::actor_execution_scope_t actor_execution (
+                    std::move (actor_execution_key),
+                    std::move (actor_execution_spot_id));
                   state->enter_callback ();
                   auto turn = detail::capture_current_serial_turn ();
                   try {
@@ -2062,8 +2086,14 @@ spot_node_builder_t::accept_implicit_route_mesh (std::string route_channel_name,
 
 spot_node_builder_t &spot_node_builder_t::add_spot_factory (std::string spot_name,
                                                             std::type_index spot_type,
-                                                            bool entry_spot)
+                                                            bool entry_spot,
+                                                            user_spot_execution_mode_t execution_mode)
 {
+    if (entry_spot && execution_mode != user_spot_execution_mode_t::spot_wide) {
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Entry Spot execution mode is fixed by the Framework");
+    }
     const auto [_, inserted] = _state->spot_factories.emplace (spot_name, spot_type);
     if (!inserted) {
         throw framework_exception_t (framework_error_kind_t::request_protocol_error,
@@ -2076,6 +2106,7 @@ spot_node_builder_t &spot_node_builder_t::add_spot_factory (std::string spot_nam
         }
         _state->snapshot.entry_spot_name = spot_name;
     }
+    _state->snapshot.spot_execution_modes.emplace (spot_name, execution_mode);
     _state->snapshot.spot_names.push_back (std::move (spot_name));
     return *this;
 }
@@ -2421,15 +2452,21 @@ publish_call_t spot_publisher_client_t::publish_raw (std::string channel_name,
 {
     if (!_serializers) {
         return publish_call_t (
-          publish_result_t{.status = submit_status_t::shutdown});
+          result_t<void>::failure (
+            framework_error_kind_t::invalid_configuration,
+            "logical multicast has no serializer registry"));
     }
     if (channel_name.empty () || is_blank (channel_name)) {
         return publish_call_t (
-          publish_result_t{.status = submit_status_t::target_not_found});
+          result_t<void>::failure (
+            framework_error_kind_t::request_target_not_found,
+            "logical multicast channel is not found"));
     }
     if (topic.empty ()) {
         return publish_call_t (
-          publish_result_t{.status = submit_status_t::target_not_found});
+          result_t<void>::failure (
+            framework_error_kind_t::request_target_not_found,
+            "logical multicast topic is not found"));
     }
 
     std::shared_ptr<service::mesh_node_t> native_node;
@@ -2439,7 +2476,9 @@ publish_call_t spot_publisher_client_t::publish_raw (std::string channel_name,
     }
     if (!native_node) {
         return publish_call_t (
-          publish_result_t{.status = submit_status_t::route_not_connected});
+          result_t<void>::failure (
+            framework_error_kind_t::route_not_connected,
+            "logical multicast route is not connected", true));
     }
 
     const bool capture_enabled =
@@ -2457,29 +2496,12 @@ publish_call_t spot_publisher_client_t::publish_raw (std::string channel_name,
           auto publisher = native_node->entry_spot ();
           const auto encoded_metadata =
             detail::mesh_metadata_codec_t::encode (metadata);
-          service::publish_detail_t native_detail;
           const auto submitted = publisher.publish (
             channel_name, topic, parts, zlink::send_flags_t::none,
-            encoded_metadata, &native_detail);
-          return publish_result_t{
-            .status = publish_submit_status (submitted),
-            .detail =
-              logical_multicast_detail_t{
-                .snapshot_remote_node_count =
-                  native_detail.snapshot_remote_target_count,
-                .admitted_remote_node_count =
-                  native_detail.admitted_remote_target_count,
-                .dropped_remote_node_count =
-                  native_detail.dropped_remote_target_count,
-                .unreachable_remote_node_count =
-                  native_detail.unreachable_remote_target_count,
-                .snapshot_local_spot_count =
-                  native_detail.snapshot_local_spot_count,
-                .admitted_local_spot_count =
-                  native_detail.admitted_local_spot_count,
-                .dropped_local_spot_count =
-                  native_detail.dropped_local_spot_count}};
-      });
+            encoded_metadata);
+          return logical_multicast_submit_result (submitted);
+      },
+      _manager._state->one_way_send_timeout);
 }
 
 } // namespace zlink::framework
@@ -3938,6 +3960,10 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
         dispatch_on_spot_serial = entry_id == _state->spot_ids_by_name.end ()
                                   || entry_id->second != current_spot_id;
     }
+    if (context->_state->execution_mode
+        == user_spot_execution_mode_t::per_actor) {
+        dispatch_on_spot_serial = false;
+    }
 
     const auto handler_kind = message_kind == stream_message_kind_t::send
                                 ? spot_handler_kind_t::actor_send
@@ -4011,7 +4037,8 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
       spot_handler_registry_t (context->_state)
         .invoke_erased (handler_kind, packet_name, {}, found_factory->second.actor_type,
                         context->_state->spot_instance.get (), actor_instance.get (), services,
-                        serializers, message, std::move (metadata), dispatch_on_spot_serial)
+                        serializers, message, std::move (metadata), dispatch_on_spot_serial,
+                        key, current_spot_id)
         .result ();
     if (!reply) {
         if (!dedup_request_id.empty ()) {
@@ -4175,6 +4202,13 @@ local_spot_create_result_t spot_node_runtime_t::create_spot_context_unlocked (
       node_rid_t::from_string (detail::effective_spot_node_rid (_state->snapshot));
     context_state->spot_id = spot_id;
     context_state->spot_name = spot_name;
+    context_state->entry_spot =
+      _state->snapshot.entry_spot_name
+      && *_state->snapshot.entry_spot_name == spot_name;
+    if (const auto mode = _state->snapshot.spot_execution_modes.find (spot_name);
+        mode != _state->snapshot.spot_execution_modes.end ()) {
+        context_state->execution_mode = mode->second;
+    }
     context_state->lifecycle = lifecycle;
     configure_spot_execution (context_state);
     spot_context_t context (context_state);
@@ -5820,9 +5854,6 @@ spot_node_runtime_t::dispatch_subscription (const spot_context_t &context,
     auto flow_scope = runtime::flow_context_t::enter (std::move (flow_id), flow_origin,
                                                       capture_enabled, flow_origin_t::inbound);
     const auto &message = body;
-    report_spot_dispatch_trace (
-      _state, message_flow_outcome_t::received, dispatch_error_surface_t::spot_subscription,
-      dispatch_message_kind_t::publish, {}, topic, context._state->spot_id);
     bool handler_found = false;
     for (const auto &descriptor : context._state->handlers) {
         if (packet_name && descriptor.kind == spot_handler_kind_t::subscription
@@ -5855,15 +5886,6 @@ spot_node_runtime_t::dispatch_subscription (const spot_context_t &context,
           *packet_name, topic, std::string (context._state->spot_id), std::nullopt,
           std::make_exception_ptr (exception));
         return detail::result_access_t::failure<void> (exception);
-    }
-    report_spot_dispatch_trace (
-      _state, message_flow_outcome_t::dispatched, dispatch_error_surface_t::spot_subscription,
-      dispatch_message_kind_t::publish, *packet_name, topic, context._state->spot_id);
-    if (_state->monitoring) {
-        runtime::runtime_metrics_t metrics (_state->monitoring);
-        if (metrics.enabled ()) {
-            metrics.counter ("zlink.fanout.received", "{message}", 1, {{"topic", topic}});
-        }
     }
     return result_t<void>::success ();
 }

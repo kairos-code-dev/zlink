@@ -5,10 +5,12 @@ import {
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
-  ZLinkSubmitStatus,
-  type RoutingId,
-  type ZLinkSubmitResult
+  type RoutingId
 } from '../../contracts';
+import {
+  ZLinkSubmitStatus,
+  type ZLinkSubmitResult
+} from '../messaging/submission-result';
 import { ZLinkSpotKind } from '../../contracts';
 import type { ZLinkBackendMeshNode } from '../backend/contracts';
 import {

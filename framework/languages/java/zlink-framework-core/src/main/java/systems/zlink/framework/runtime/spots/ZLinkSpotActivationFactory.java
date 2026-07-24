@@ -12,10 +12,12 @@ import systems.zlink.framework.runtime.internal.backend.ZLinkInternalAsyncSpotDi
 import systems.zlink.framework.runtime.internal.handlers.ZLinkHandlerActivator;
 import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.spots.ZLinkEntrySpot;
+import systems.zlink.framework.spots.ZLinkInstanceSpot;
 import systems.zlink.framework.spots.ZLinkEntrySpotContext;
 import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
+import systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode;
 
 final class ZLinkSpotActivationFactory {
     private final ZLinkSpotRuntime host;
@@ -23,18 +25,23 @@ final class ZLinkSpotActivationFactory {
     private final ZLinkSpotHandlerLoader handlerLoader;
     private final ZLinkSpotHandlerInvoker handlerInvoker;
     private final ZLinkHandlerActivator handlerFactory;
+    private final java.util.Map<
+        Class<? extends ZLinkSpot<?>>, ZLinkUserSpotExecutionMode> executionModes;
 
     ZLinkSpotActivationFactory(
         ZLinkSpotRuntime host,
         ZLinkWorkerPool workerPool,
         ZLinkSpotHandlerLoader handlerLoader,
         ZLinkSpotHandlerInvoker handlerInvoker,
-        ZLinkHandlerActivator handlerFactory) {
+        ZLinkHandlerActivator handlerFactory,
+        java.util.Map<
+            Class<? extends ZLinkSpot<?>>, ZLinkUserSpotExecutionMode> executionModes) {
         this.host = host;
         this.workerPool = workerPool;
         this.handlerLoader = handlerLoader;
         this.handlerInvoker = handlerInvoker;
         this.handlerFactory = handlerFactory;
+        this.executionModes = java.util.Map.copyOf(executionModes);
     }
 
     CompletionStage<SpotActivationCreateResult> activate(
@@ -47,7 +54,12 @@ final class ZLinkSpotActivationFactory {
             workerPool,
             handlerLoader,
             host.primaryNode().routingId(),
-            backendSpot);
+            backendSpot,
+            new systems.zlink.framework.execution.ZLinkAsyncSerialQueue(),
+            executionModes.getOrDefault(
+                spotType,
+                ZLinkUserSpotExecutionMode.SPOT_WIDE),
+            ZLinkInstanceSpot.class.isAssignableFrom(spotType));
         ZLinkSpot<?> spot = createSpot(spotType, context);
         if (spot == null) {
             return CompletableFuture.completedFuture(new SpotActivationCreateResult(
@@ -58,8 +70,10 @@ final class ZLinkSpotActivationFactory {
         spot.configure();
         context.closeRegistration();
         context.bindSubscriptions(backendSpot);
-        return host.runWithOutbound(context.dispatchOutbound(), () ->
-                ZLinkHandlerStages.fromStageSupplier(() -> spot.onCreate(effectiveRequest)))
+        return context.runLifecycleExecution(() ->
+                host.runWithOutbound(context.dispatchOutbound(), () ->
+                    ZLinkHandlerStages.fromStageSupplier(
+                        () -> spot.onCreate(effectiveRequest))))
             .thenCompose(response -> initializeAcceptedSpot(
                 spot,
                 backendSpot,
@@ -134,9 +148,9 @@ final class ZLinkSpotActivationFactory {
             return CompletableFuture.completedFuture(
                 new SpotActivationCreateResult(null, effectiveResponse));
         }
-        return host.runWithOutbound(
+        return context.runLifecycleExecution(() -> host.runWithOutbound(
                 context.dispatchOutbound(),
-                () -> ZLinkHandlerStages.fromStageSupplier(spot::onInitialize))
+                () -> ZLinkHandlerStages.fromStageSupplier(spot::onInitialize)))
             .thenApply(ignored -> {
                 SpotActivation activation = new SpotActivation(
                     host,

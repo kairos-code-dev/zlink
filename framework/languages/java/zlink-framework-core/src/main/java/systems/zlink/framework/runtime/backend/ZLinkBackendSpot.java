@@ -4,7 +4,6 @@ import java.time.Duration;
 import java.util.List;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
-import systems.zlink.contracts.service.spot.PublishDetail;
 import systems.zlink.contracts.sockets.SendFlags;
 
 public interface ZLinkBackendSpot extends ZLinkBackendObject {
@@ -45,17 +44,6 @@ public interface ZLinkBackendSpot extends ZLinkBackendObject {
             return publish(channelName, topic, parts, flags);
         }
         throw new UnsupportedOperationException("Spot publish metadata is unavailable");
-    }
-
-    default PublishDetail publishDetailed(
-        String channelName,
-        String topic,
-        byte[] metadata,
-        List<Message> parts,
-        SendFlags flags) {
-        return publish(channelName, topic, metadata, parts, flags)
-            ? new PublishDetail(0, 0, 0, 0, 0, 0, 0)
-            : null;
     }
 
     boolean sendToSpot(

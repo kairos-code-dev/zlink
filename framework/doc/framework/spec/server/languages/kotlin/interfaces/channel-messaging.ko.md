@@ -17,27 +17,31 @@ activation의 fluent state를 유지한다. Kotlin의 Spot 전용 wrapper와 exa
 
 ```kotlin
 interface ZLinkSuspendingRequestHandler<TRequest, TReply> {
-    suspend fun handle(request: TRequest, context: ZLinkRequestContext): TReply
+    suspend fun handle(request: TRequest, context: ZLinkMessageContext): TReply
 }
 
 interface ZLinkSuspendingSendHandler<TMessage> {
-    suspend fun handle(message: TMessage, context: ZLinkSendContext)
+    suspend fun handle(message: TMessage, context: ZLinkMessageContext)
 }
 
 interface ZLinkSuspendingPublishHandler<TMessage> {
-    suspend fun handle(message: TMessage, context: ZLinkPublishContext)
+    suspend fun handle(message: TMessage, context: ZLinkPublishMessageContext)
 }
 
 interface ZLinkSuspendingRouteRequestHandler<TRequest, TReply> {
-    suspend fun handle(request: TRequest, context: ZLinkRouteRequestContext): TReply
+    suspend fun handle(request: TRequest, context: ZLinkRouteMessageContext): TReply
 }
 
 interface ZLinkSuspendingRouteSendHandler<TMessage> {
-    suspend fun handle(message: TMessage, context: ZLinkRouteSendContext)
+    suspend fun handle(message: TMessage, context: ZLinkRouteMessageContext)
 }
 
 interface ZLinkKotlinMessageSendCall {
     fun metadata(key: String, value: String): ZLinkKotlinMessageSendCall
+    suspend fun await()
+}
+
+interface ZLinkKotlinSubmissionCall {
     suspend fun await()
 }
 
@@ -72,11 +76,11 @@ interface ZLinkKotlinFanoutClient {
         channelName: String,
         topic: String,
         event: Any,
-    ): ZLinkKotlinMessageSendCall
+    ): ZLinkKotlinSubmissionCall
     fun publish(
         channelName: String,
         event: Any,
-    ): ZLinkKotlinMessageSendCall
+    ): ZLinkKotlinSubmissionCall
 }
 
 interface ZLinkKotlinRouteClient {
@@ -148,7 +152,7 @@ RouteMesh Channel Server와 ClientServer Server weight는 Java builder의 signed
 configuration error다.
 Logical Multicast의 remote target은 source에서 고정한 MeshNode route의 local transport queue에 한 번씩
 제출하고 local target은 일치하는 local Spot queue에 한 번씩 제출한다. Target별 성공·drop·unreachable
-개수는 monitoring에서만 관찰하며 `await()`의 결과로 반환하지 않는다. Remote Spot queue 수락과
+결과는 `await()`의 결과로 반환하거나 public monitoring에 집계하지 않는다. Remote Spot queue 수락과
 remote·local handler 실행 또는 완료는 coroutine bridge 완료 조건이 아니다.
 
 ```kotlin
@@ -192,22 +196,25 @@ public final class systems.zlink.framework.kotlin.ZLinkRouteMeshExtensionsKt {
 public final class systems.zlink.framework.kotlin.ZLinkSuspendingHandlersKt {
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingPublishHandler<TMessage> {
-  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.channels.ZLinkPublishContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.channels.ZLinkPublishMessageContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingRequestHandler<TRequest, TReply> {
-  public abstract java.lang.Object handle(TRequest, systems.zlink.framework.channels.ZLinkRequestContext, kotlin.coroutines.Continuation<? super TReply>);
+  public abstract java.lang.Object handle(TRequest, systems.zlink.framework.ZLinkMessageContext, kotlin.coroutines.Continuation<? super TReply>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingRouteRequestHandler<TRequest, TReply> {
-  public abstract java.lang.Object handle(TRequest, systems.zlink.framework.channels.ZLinkRouteRequestContext, kotlin.coroutines.Continuation<? super TReply>);
+  public abstract java.lang.Object handle(TRequest, systems.zlink.framework.channels.ZLinkRouteMessageContext, kotlin.coroutines.Continuation<? super TReply>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingRouteSendHandler<TMessage> {
-  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.channels.ZLinkRouteSendContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.channels.ZLinkRouteMessageContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkSuspendingSendHandler<TMessage> {
-  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.channels.ZLinkSendContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TMessage, systems.zlink.framework.ZLinkMessageContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall {
   public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall metadata(java.lang.String, java.lang.String);
+  public abstract java.lang.Object await(kotlin.coroutines.Continuation<? super kotlin.Unit>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall {
   public abstract java.lang.Object await(kotlin.coroutines.Continuation<? super kotlin.Unit>);
 }
 public interface systems.zlink.framework.kotlin.ZLinkKotlinRequestCall<TReply> {
@@ -219,6 +226,10 @@ public interface systems.zlink.framework.kotlin.ZLinkKotlinRequestCall<TReply> {
 public interface systems.zlink.framework.kotlin.ZLinkKotlinClient {
   public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall sendToChannel(java.lang.String, java.lang.Object);
   public abstract <TReply> systems.zlink.framework.kotlin.ZLinkKotlinRequestCall<TReply> requestToChannel(java.lang.String, java.lang.Object, kotlin.reflect.KClass<TReply>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkKotlinFanoutClient {
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall publish(java.lang.String, java.lang.String, java.lang.Object);
+  public abstract systems.zlink.framework.kotlin.ZLinkKotlinSubmissionCall publish(java.lang.String, java.lang.Object);
 }
 public interface systems.zlink.framework.kotlin.ZLinkKotlinRouteClient {
   public abstract systems.zlink.framework.kotlin.ZLinkKotlinMessageSendCall sendToNode(java.lang.String, systems.zlink.contracts.core.RoutingId, java.lang.Object);

@@ -20,7 +20,7 @@ inline nlohmann::json runtime_snapshot (const std::string &base_url)
                   .timeout (std::chrono::milliseconds (3000))
                   .build ();
     return http.get ("/runtime/snapshot")
-      .async<nlohmann::json> ()
+      .submit<nlohmann::json> ()
       .result ()
       .value ()
       .body;
@@ -32,7 +32,7 @@ inline void run_mon_a1_socket_events_scenario (const client_options_t &options)
                   .base_url (options.service_url)
                   .timeout (std::chrono::milliseconds (3000))
                   .build ();
-    const auto observing = http.post ("/runtime/observe").async_raw ().result ();
+    const auto observing = http.post ("/runtime/observe").submit_raw ().result ();
     ensure (observing && observing.value ().status < 400,
             "MON-A1 public runtime observer did not start");
 
@@ -46,7 +46,7 @@ inline void run_mon_a1_socket_events_scenario (const client_options_t &options)
               && first.contains ("endpoint")
               && first.contains ("descriptorSources")
               && first.contains ("peers") && first.contains ("channels")
-              && first.contains ("multicast") && first.contains ("claims")
+              && first.contains ("claims")
               && first.contains ("location") && first.contains ("drain"),
             "MON-A1 full snapshot fields missing");
     ensure (second.at ("sequence").get<std::uint64_t> ()

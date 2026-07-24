@@ -28,7 +28,7 @@ internal sealed class ConversationNotificationPublisher
         var state = ConversationContracts.ToState(snapshot);
         await roster.Context.BoundSession
             .Send(new ConversationAssignedNotify(state.ConversationId, state))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
     }
 
     private async ValueTask PublishAsync(
@@ -55,7 +55,7 @@ internal sealed class ConversationNotificationPublisher
                     {
                         await actor.Context.BoundSession
                             .Send(new ConversationIdleNotify(state.ConversationId, state))
-                            .SubmitAsync(cancellationToken);
+                            .Async(cancellationToken);
                     });
                 break;
             case ConversationEventKind.Closed:
@@ -71,7 +71,7 @@ internal sealed class ConversationNotificationPublisher
                     {
                         await actor.Context.BoundSession
                             .Send(new ConversationClosedNotify(state.ConversationId, state))
-                            .SubmitAsync(cancellationToken);
+                            .Async(cancellationToken);
                     });
                 break;
             default:
@@ -97,7 +97,7 @@ internal sealed class ConversationNotificationPublisher
                     conversationEvent.ActorId,
                     ConversationContracts.ToRole(conversationEvent.Role.Value),
                     state))
-                .SubmitAsync(cancellationToken);
+                .Async(cancellationToken);
     }
 
     private static async ValueTask PublishMessageAsync(
@@ -115,7 +115,7 @@ internal sealed class ConversationNotificationPublisher
             {
                 await actor.Context.BoundSession
                     .Send(new ChatMessageNotify(state.ConversationId, chatMessage, state))
-                    .SubmitAsync(cancellationToken);
+                    .Async(cancellationToken);
             });
     }
 
@@ -138,7 +138,7 @@ internal sealed class ConversationNotificationPublisher
                         conversationEvent.ActorId,
                         conversationEvent.IsTyping.Value,
                         state))
-                    .SubmitAsync(cancellationToken);
+                    .Async(cancellationToken);
             });
     }
 

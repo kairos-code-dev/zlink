@@ -30,6 +30,11 @@ final class ZLinkActorDispatchSerials {
             queues.computeIfAbsent(actorId, ignored -> new ZLinkAsyncSerialQueue(false)));
     }
 
+    synchronized ZLinkAsyncSerialQueue relocationLane(String actorId) {
+        return queues.computeIfAbsent(
+            actorId, ignored -> new ZLinkAsyncSerialQueue(false));
+    }
+
     void remove(String actorId) {
         queues.remove(actorId);
         activeActorIds.remove(actorId);
@@ -63,12 +68,21 @@ final class ZLinkActorDispatchSerials {
                 turnOperation);
     }
 
+    CompletionStage<Void> enqueueBarrier(
+        String actorId,
+        Supplier<CompletionStage<Void>> operation) {
+        ZLinkAsyncSerialQueue queue;
+        synchronized (this) {
+            queue = queues.computeIfAbsent(
+                actorId,
+                ignored -> new ZLinkAsyncSerialQueue(false));
+        }
+        return queue.enqueueBarrierNext(() -> runTurn(actorId, operation));
+    }
+
     synchronized Optional<ZLinkAsyncSerialQueue.RelocationSeal> trySeal(
         String actorId) {
-        ZLinkAsyncSerialQueue queue = queues.get(actorId);
-        return queue == null
-            ? Optional.empty()
-            : queue.trySealRelocation();
+        return relocationLane(actorId).trySealRelocation();
     }
 
     synchronized boolean abort(
@@ -87,14 +101,39 @@ final class ZLinkActorDispatchSerials {
             : queue.commitRelocation(seal);
     }
 
+    synchronized CompletionStage<Void> awaitQuiescence() {
+        CompletableFuture<?>[] barriers = queues.values().stream()
+            .map(ZLinkAsyncSerialQueue::awaitQuiescence)
+            .map(CompletionStage::toCompletableFuture)
+            .toArray(CompletableFuture[]::new);
+        return CompletableFuture.allOf(barriers);
+    }
+
     <T> CompletionStage<T> runTurn(
         String actorId,
         Supplier<CompletionStage<T>> operation) {
         try (systems.zlink.framework.runtime.internal.handlers
                  .ZLinkSuspendInvocationContext.Scope ignored =
                  systems.zlink.framework.runtime.internal.handlers
-                     .ZLinkSuspendInvocationContext.enterActorDispatch(actorId)) {
-            return operation.get();
+                     .ZLinkSuspendInvocationContext.enterActorDispatch(actorId);
+             ZLinkDeferredActorJoinScope.Scope joins =
+                 ZLinkDeferredActorJoinScope.enter(actorId)) {
+            CompletionStage<T> handler = operation.get();
+            CompletableFuture<T> completed = new CompletableFuture<>();
+            joins.finish(handler, null).whenComplete((nothing, error) -> {
+                if (error != null) {
+                    completed.completeExceptionally(error);
+                    return;
+                }
+                handler.whenComplete((value, handlerError) -> {
+                    if (handlerError != null) {
+                        completed.completeExceptionally(handlerError);
+                    } else {
+                        completed.complete(value);
+                    }
+                });
+            });
+            return completed;
         } catch (RuntimeException ex) {
             return CompletableFuture.failedFuture(ex);
         }

@@ -54,7 +54,7 @@ internal sealed class OpsReportAdapter(
         await channels
             .SendToChannel(ZoneWorldNames.MeshName, ZoneWorldNames.ReportChannel,
                 new ReportSpotEventMsg(maintenance.OwnNodeId, kind, detail, occurredAt.ToString("O")))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
 
     public async ValueTask ReportNodeStatusAsync(
         string nodeRid,
@@ -70,7 +70,7 @@ internal sealed class OpsReportAdapter(
                     zones,
                     playerCount,
                     maintenanceEnabled))
-            .SubmitAsync(cancellationToken);
+            .Async(cancellationToken);
 }
 
 /// <summary>Reports this node's status every second so Ops can fill in PlayerCount (§8.1).</summary>

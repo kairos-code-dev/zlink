@@ -16,7 +16,7 @@
 | node direct request | 같은 MeshName의 RID 하나 | reply, timeout 또는 route 오류 |
 | channel send | ChannelName에 등록된 RouteMesh 또는 ClientServer 송신 경로의 ready target 하나 | message submit 결과 |
 | channel request | ChannelName에 등록된 RouteMesh 또는 ClientServer 송신 경로의 ready target 하나 | reply, timeout 또는 route 오류 |
-| Logical Multicast | ChannelName의 remote member와 local Spot match | publish admission 결과 |
+| Logical Multicast | ChannelName의 remote member와 local Spot match | bounded worker와 source-local capacity를 확보한 publish transaction 시작 |
 | Spot message | global Spot ID | current Ready authority의 submit 또는 reply 결과 |
 | Actor message | global Actor ID | current Ready authority의 submit 또는 reply 결과 |
 | Object create·get-or-create | global ID·stable type과 optional placement intent | exact ActorRef·SpotRef 또는 typed creation 오류 |
@@ -97,17 +97,18 @@ MeshNode와 local Spot match를 snapshot한다.
 
 Framework service runtime은 bounded I/O executor에 publish transaction을 제출한다. 즉시 사용할 capacity가
 없으면 send timeout까지 기다리며, timeout·cancellation·shutdown 중 먼저 확정된 예외로 완료한다.
-Transaction이 시작되면 각 remote target을 한 번 제출하고 local Spot queue도 한 번 시도한다. Transaction
+Transaction이 시작되면 public terminal은 반환 데이터 없이 정상 완료하고, runtime은 각 remote target과
+local Spot queue의 제출을 내부에서 계속한다. Transaction
 시작이 snapshot operation의 commit point이므로 cancellation이나 shutdown으로 남은 target 제출을 중단하지
 않는다.
 앞에서 수락된 remote target과 local Spot queue는 뒤 target의 실패 때문에 취소되지 않는다.
 
 Snapshot target이 0개여도 정상 완료한다. Transaction 시작 뒤 remote 연결 불가, capacity 실패와 local
-Spot queue drop은 public 반환값이나 전체 publish 예외로 바꾸지 않고 monitoring metric·runtime event에
-snapshot·admitted·dropped·unreachable count로 기록한다.
+Spot queue drop은 public 반환값이나 전체 publish 예외로 바꾸지 않는다. Target 수와 target별 수락·실패
+결과를 publish 전용 monitoring 값으로 집계하지 않는다.
 
-Publish 정상 완료는 Spot handler 실행, subscriber 수신 또는 remote ROUTER가 수락한 뒤 수신 MeshNode의
-local Spot queue 수락을 보장하지 않는다.
+Publish 정상 완료는 transaction을 시작했다는 뜻이다. 고정한 snapshot의 target 제출, Spot handler 실행,
+subscriber 수신 또는 remote ROUTER가 수락한 뒤 수신 MeshNode의 local Spot queue 수락을 보장하지 않는다.
 
 ## 6. Classic fanout
 

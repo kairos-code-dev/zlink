@@ -288,22 +288,22 @@ final class ZLinkSpotLifecycle {
 
     void sealApplicationAdmission() {
         for (EntrySpotActivation activation : entrySpots) {
-            activation.context.closeTimers();
+            activation.context.sealTimerAdmission();
         }
         for (SpotActivation activation : spots.values()) {
-            activation.context.closeTimers();
+            activation.context.sealTimerAdmission();
         }
     }
 
     CompletionStage<Void> awaitApplicationTurns() {
         List<CompletableFuture<Void>> barriers = new java.util.ArrayList<>();
         for (EntrySpotActivation activation : entrySpots) {
-            barriers.add(activation.context.enqueueDispatch(
-                () -> CompletableFuture.completedFuture(null)).toCompletableFuture());
+            barriers.add(
+                activation.context.awaitAllLanes().toCompletableFuture());
         }
         for (SpotActivation activation : spots.values()) {
-            barriers.add(activation.context.enqueueDispatch(
-                () -> CompletableFuture.completedFuture(null)).toCompletableFuture());
+            barriers.add(
+                activation.context.awaitAllLanes().toCompletableFuture());
         }
         return CompletableFuture.allOf(barriers.toArray(CompletableFuture[]::new));
     }
@@ -334,6 +334,17 @@ final class ZLinkSpotLifecycle {
             }
         }
         return null;
+    }
+
+    ZLinkUserSpotRelocationBarrier relocationBarrier(
+        String spotId,
+        ZLinkActorSessionCoordinator actors) {
+        SpotActivation activation = spots.get(spotId);
+        if (activation == null) {
+            throw new ZLinkConfigurationException(
+                "User Spot is not active locally: " + spotId);
+        }
+        return activation.context.relocationBarrier(actors);
     }
 
     boolean hasUserSpot(String spotId) {

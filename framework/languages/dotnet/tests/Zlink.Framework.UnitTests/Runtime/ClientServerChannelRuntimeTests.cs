@@ -49,10 +49,9 @@ public sealed class ClientServerChannelRuntimeTests
                     $"clientAck={clientTransport.LivenessAckCount}, clientProbe={clientTransport.ReceivedLivenessProbeCount}, clientSent={clientTransport.SentLivenessProbeCount}, serverAck={serverIdentity.LivenessAckCount}, serverProbe={serverIdentity.LivenessProbeCount}, serverReceived={serverIdentity.ReceivedLivenessProbeCount}, peers={serverIdentity.AdmittedPeerCount}, {clientTransport.AdmissionDiagnostics}",
                     exception);
             }
-            var sent = await client.GetRequiredService<IZLinkRouteClient>()
+            await client.GetRequiredService<IZLinkRouteClient>()
                 .SendToChannel("work", new EchoSend("queued"))
-                .SubmitAsync();
-            Assert.Equal(ZLinkSubmitStatus.Submitted, sent.Status);
+                .Async();
             Assert.Equal(
                 "queued",
                 await server.GetRequiredService<EchoProbe>().Received.Task
@@ -166,10 +165,11 @@ public sealed class ClientServerChannelRuntimeTests
                 () => transport.AdmissionCompletedCount == 1,
                 TimeSpan.FromSeconds(5));
             Assert.Equal(0, transport.ReadyCount);
-            var result = await provider.GetRequiredService<IZLinkRouteClient>()
-                .SendToChannel("work", new EchoSend("excluded"))
-                .SubmitAsync();
-            Assert.Equal(ZLinkSubmitStatus.TargetNotFound, result.Status);
+            var error = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+                await provider.GetRequiredService<IZLinkRouteClient>()
+                    .SendToChannel("work", new EchoSend("excluded"))
+                    .Async());
+            Assert.Equal(ZLinkFrameworkErrorKind.RequestTargetNotFound, error.Kind);
         }
         finally
         {

@@ -1,10 +1,13 @@
 import { Message as ZLinkBindingMessage } from '@zlink-systems/zlink';
-import type { ActorRef, ZLinkSubmitResult } from '../../contracts';
+import type { ActorRef } from '../../contracts';
 import {
   ZLinkFrameworkErrorKind,
-  ZLinkFrameworkException,
-  ZLinkSubmitStatus
+  ZLinkFrameworkException
 } from '../../contracts';
+import {
+  ZLinkSubmitStatus,
+  type ZLinkSubmitResult
+} from '../messaging/submission-result';
 import type { Message } from '../../contracts/Common/Message';
 import { throwIfAborted } from '../abort';
 import type {
@@ -38,6 +41,8 @@ import {
 import { ZLinkMeshSubmitterRegistry } from '../messaging';
 
 const ZLINK_SEND_DONT_WAIT = 1;
+const LEGACY_BOUND_SESSION_SEND_TIMEOUT_MS = 1000;
+const LEGACY_BOUND_SESSION_SEND_CAPACITY = 4096;
 
 type ZLinkStreamActorSessionRoute = ZLinkActorSessionRoute<DefaultZLinkSessionContext, DefaultZLinkSessionActor>;
 
@@ -62,6 +67,8 @@ export interface ZLinkBoundSessionServiceOptions {
   readonly transport?: ZLinkBoundSessionTransport;
   readonly actorBindTimeoutMs?: number;
   readonly meshSubmitters?: ZLinkMeshSubmitterRegistry;
+  readonly sendTimeoutMs?: number;
+  readonly sendHighWaterMark?: number;
   readonly nativeActorMeshNameProvider?: () => string | undefined;
 }
 
@@ -73,7 +80,10 @@ export class ZLinkBoundSessionService {
     private readonly frameMessages: ZLinkStreamFrameMessageFactory,
     private readonly options: ZLinkBoundSessionServiceOptions = {}
   ) {
-    this.meshSubmitters = options.meshSubmitters ?? new ZLinkMeshSubmitterRegistry();
+    this.meshSubmitters = options.meshSubmitters ?? new ZLinkMeshSubmitterRegistry(
+      options.sendTimeoutMs ?? LEGACY_BOUND_SESSION_SEND_TIMEOUT_MS,
+      Math.max(1, options.sendHighWaterMark ?? LEGACY_BOUND_SESSION_SEND_CAPACITY)
+    );
   }
 
   async sendBoundSession(

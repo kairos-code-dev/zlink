@@ -32,7 +32,7 @@ public sealed class RedisAuthorityRelocationTests(
                 "allocationState",
                 "authorityKey",
                 "authorityOwnerGeneration",
-                "capacityDelta",
+                "capacityBundle",
                 "descriptorKey",
                 "descriptorLifecycleGeneration",
                 "objectGeneration",
@@ -49,6 +49,9 @@ public sealed class RedisAuthorityRelocationTests(
             },
             current.Keys.Order(StringComparer.Ordinal));
         Assert.Equal("actor", current["objectKind"]);
+        Assert.Equal(
+            "24:zlink-capacity-bundle-v21:11:01:0",
+            current["capacityBundle"]);
         Assert.Equal(key.Value, current["authorityKey"]);
         var pending = Assert.IsType<ZLinkAuthorityReadResult.Found>(
             await store.ReadAuthorityAsync(key)).Snapshot.PendingCreation;
@@ -96,19 +99,12 @@ public sealed class RedisAuthorityRelocationTests(
             descriptorKey,
             1,
             ZLinkPlacementObjectKind.Actor);
-        var typeBucket = ZLinkRedisLocationKeys.HybridCapacityTypeBucket(
-            descriptorKey,
-            1,
-            ZLinkPlacementObjectKind.Actor,
-            "Game.Actor");
         var typeActive = await fixture.HashGetAllAsync(
             keys.HybridCapacityKey(type: true, pending: false).ToString());
         var nodeActive = await fixture.HashGetAllAsync(
             keys.HybridCapacityKey(type: false, pending: false).ToString());
-        Assert.Equal("1", typeActive[typeBucket]);
-        Assert.DoesNotContain(nodeBucket, typeActive.Keys);
+        Assert.Empty(typeActive);
         Assert.Equal("1", nodeActive[nodeBucket]);
-        Assert.DoesNotContain(typeBucket, nodeActive.Keys);
 
         var schema = await fixture.HashGetAllAsync(
             keys.HybridSchemaKey().ToString());
@@ -372,31 +368,6 @@ public sealed class RedisAuthorityRelocationTests(
         }
 
         var aggregateId = Guid.NewGuid();
-        var capacityFences = new List<ZLinkRelocationCapacityFence>();
-        for (var index = 0; index < keys.Length; index++)
-        {
-            var capacity = Assert.IsType<
-                ZLinkRelocationCapacityReserveResult.Reserved>(
-                await store.ReserveRelocationCapacityAsync(
-                    new ZLinkRelocationCapacityReservationRequest(
-                        Guid.NewGuid(),
-                        keys[index],
-                        snapshots[index].StoreVersion,
-                        ZLinkPlacementObjectKind.Actor,
-                        "Game.Actor",
-                        new ZLinkMeshNodeDescriptorKey(
-                            "game",
-                            RoutingId.From(source.OwnerId)),
-                        1,
-                        source,
-                        new ZLinkMeshNodeDescriptorKey(
-                            "game",
-                            RoutingId.From("target")),
-                        1,
-                        target,
-                        1)));
-            capacityFences.Add(capacity.Fence);
-        }
         var request = new ZLinkAggregatePrepareRequest(
             aggregateId,
             1,
@@ -411,7 +382,11 @@ public sealed class RedisAuthorityRelocationTests(
                         $"membership-{index}")))
                 .ToArray(),
             SHA256.HashData("inventory"u8),
-            capacityFences,
+            new ZLinkMeshNodeDescriptorKey(
+                "game",
+                RoutingId.From("target")),
+            1,
+            new ZLinkCapacityVector(keys.Length, 0, null),
             target);
         var prepare = Assert.IsType<ZLinkAggregatePrepareResult.Prepared>(
             await store.PrepareAggregateAsync(request));
@@ -429,25 +404,23 @@ public sealed class RedisAuthorityRelocationTests(
         var sourceDescriptor = new ZLinkMeshNodeDescriptorKey(
                 "game",
                 RoutingId.From(source.OwnerId));
-        var sourceBucket = ZLinkRedisLocationKeys.HybridCapacityTypeBucket(
+        var sourceBucket = ZLinkRedisLocationKeys.HybridCapacityPopulationBucket(
             ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(sourceDescriptor),
             1,
-            ZLinkPlacementObjectKind.Actor,
-            "Game.Actor");
+            ZLinkPlacementObjectKind.Actor);
         var targetDescriptor = new ZLinkMeshNodeDescriptorKey(
                 "game",
                 RoutingId.From("target"));
-        var targetBucket = ZLinkRedisLocationKeys.HybridCapacityTypeBucket(
+        var targetBucket = ZLinkRedisLocationKeys.HybridCapacityPopulationBucket(
             ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(targetDescriptor),
             1,
-            ZLinkPlacementObjectKind.Actor,
-            "Game.Actor");
+            ZLinkPlacementObjectKind.Actor);
         var physicalKeys = new ZLinkRedisLocationKeys(keyPrefix);
         var activeCapacityKey = physicalKeys
-            .HybridCapacityKey(type: true, pending: false)
+            .HybridCapacityKey(type: false, pending: false)
             .ToString();
         var pendingCapacityKey = physicalKeys
-            .HybridCapacityKey(type: true, pending: true)
+            .HybridCapacityKey(type: false, pending: true)
             .ToString();
         Assert.Equal(
             2,
@@ -488,32 +461,6 @@ public sealed class RedisAuthorityRelocationTests(
             movedSnapshots.Add(
                 Assert.IsType<ZLinkAuthorityReadResult.Found>(
                     await store.ReadAuthorityAsync(key)).Snapshot);
-        var reverseReservations =
-            new List<ZLinkRelocationCapacityFence>();
-        for (var index = 0; index < keys.Length; index++)
-        {
-            var reverse = Assert.IsType<
-                ZLinkRelocationCapacityReserveResult.Reserved>(
-                await store.ReserveRelocationCapacityAsync(
-                    new ZLinkRelocationCapacityReservationRequest(
-                        Guid.NewGuid(),
-                        keys[index],
-                        movedSnapshots[index].StoreVersion,
-                        ZLinkPlacementObjectKind.Actor,
-                        "Game.Actor",
-                        new ZLinkMeshNodeDescriptorKey(
-                            "game",
-                            RoutingId.From("target")),
-                        1,
-                        target,
-                        new ZLinkMeshNodeDescriptorKey(
-                            "game",
-                            RoutingId.From(source.OwnerId)),
-                        1,
-                        source,
-                        1)));
-            reverseReservations.Add(reverse.Fence);
-        }
         var reverseRequest = new ZLinkAggregatePrepareRequest(
             Guid.NewGuid(),
             1,
@@ -528,7 +475,11 @@ public sealed class RedisAuthorityRelocationTests(
                         $"reverse-membership-{index}")))
                 .ToArray(),
             SHA256.HashData("reverse-inventory"u8),
-            reverseReservations,
+            new ZLinkMeshNodeDescriptorKey(
+                "game",
+                RoutingId.From(source.OwnerId)),
+            1,
+            new ZLinkCapacityVector(keys.Length, 0, null),
             source);
         var reversePrepared =
             Assert.IsType<ZLinkAggregatePrepareResult.Prepared>(
@@ -709,6 +660,77 @@ public sealed class RedisAuthorityRelocationTests(
                 relocation with { ReservationId = Guid.NewGuid() }));
     }
 
+    [SkippableFact]
+    public async Task UserSpot_Capacity_Vector_Tracks_Population_And_Stable_Type()
+    {
+        Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
+        await using var store = fixture.CreateStore(out var keyPrefix);
+        await store.RenewOwnerLeaseAsync(
+            "spot-capacity-owner",
+            RoutingId.From("spot-capacity-node"),
+            TimeSpan.FromMinutes(1));
+        var owner = new ZLinkLocationOwnerToken("spot-capacity-owner", 1);
+        var descriptor = SpotDescriptor(owner, RoutingId.From("spot-capacity-node"));
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await store.UpdateMeshNodeAsync(
+                descriptor,
+                ZLinkLocationWriteIntent.NewClaim)).Status);
+        var descriptorKey = new ZLinkMeshNodeDescriptorKey(
+            descriptor.MeshName,
+            descriptor.Rid);
+        var firstKey = new ZLinkAuthorityKey("zla1:s:spot-capacity-1");
+        var first = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                SpotRequest(firstKey, owner, descriptorKey, "room")));
+
+        var keys = new ZLinkRedisLocationKeys(keyPrefix);
+        var encodedDescriptor =
+            ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(descriptorKey);
+        var populationBucket =
+            ZLinkRedisLocationKeys.HybridCapacityPopulationBucket(
+                encodedDescriptor,
+                1,
+                ZLinkPlacementObjectKind.UserSpot);
+        var typeBucket = ZLinkRedisLocationKeys.HybridCapacityTypeBucket(
+            encodedDescriptor,
+            1,
+            ZLinkPlacementObjectKind.UserSpot,
+            "room");
+        Assert.Equal(
+            1,
+            await fixture.HashGetInt64Async(
+                keys.HybridCapacityKey(type: false, pending: true).ToString(),
+                populationBucket));
+        Assert.Equal(
+            1,
+            await fixture.HashGetInt64Async(
+                keys.HybridCapacityKey(type: true, pending: true).ToString(),
+                typeBucket));
+
+        var committed = Assert.IsType<ZLinkObjectCommitResult.Committed>(
+            await store.CommitAsync(first.Reservation, "ready"u8.ToArray()));
+        Assert.IsType<ZLinkObjectReserveResult.PlacementCapacityExhausted>(
+            await store.ReserveAsync(
+                SpotRequest(
+                    new ZLinkAuthorityKey("zla1:s:spot-capacity-2"),
+                    owner,
+                    descriptorKey,
+                    "room")));
+        Assert.IsType<ZLinkAuthorityCompareExchangeResult.Deleted>(
+            await store.CompareExchangeAuthorityAsync(
+                firstKey,
+                committed.Snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Delete()));
+        Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(
+                SpotRequest(
+                    new ZLinkAuthorityKey("zla1:s:spot-capacity-2"),
+                    owner,
+                    descriptorKey,
+                    "room")));
+    }
+
     private static ZLinkObjectReservationRequest Request(
         ZLinkAuthorityKey key,
         ZLinkLocationOwnerToken owner,
@@ -727,7 +749,32 @@ public sealed class RedisAuthorityRelocationTests(
             1,
             owner,
             System.Text.Encoding.UTF8.GetBytes($"creating:{identity}"),
-            1);
+            new ZLinkCapacityVector(1, 0, null));
+
+    private static ZLinkObjectReservationRequest SpotRequest(
+        ZLinkAuthorityKey key,
+        ZLinkLocationOwnerToken owner,
+        ZLinkMeshNodeDescriptorKey descriptor,
+        string stableType) =>
+        new(
+            ZLinkPlacementObjectKind.UserSpot,
+            key,
+            stableType,
+            InlineReference(
+                System.Text.Encoding.UTF8.GetBytes(key.Value)),
+            SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(key.Value)),
+            key.Value.Length,
+            descriptor,
+            1,
+            owner,
+            System.Text.Encoding.UTF8.GetBytes($"creating:{key.Value}"),
+            new ZLinkCapacityVector(
+                0,
+                1,
+                new ZLinkSpotTypeCapacityDelta(
+                    ZLinkPlacementObjectKind.UserSpot,
+                    stableType,
+                    1)));
 
     private static string InlineReference(ReadOnlySpan<byte> payload)
     {
@@ -829,6 +876,47 @@ public sealed class RedisAuthorityRelocationTests(
                 Array.Empty<ZLinkSpotTypeCapacity>())
         };
 
+    private static ZLinkMeshNodeDescriptor SpotDescriptor(
+        ZLinkLocationOwnerToken owner,
+        RoutingId rid) =>
+        new(
+            "game",
+            rid,
+            1,
+            1,
+            "tcp://127.0.0.1:5556",
+            new Dictionary<string, int>(),
+            "test",
+            owner.OwnerId,
+            owner.LeaseGeneration,
+            DateTimeOffset.UnixEpoch)
+        {
+            ObjectRole = ZLinkMeshNodeObjectRole.Server,
+            EntrySpotId =
+                "game-entry-00000000-0000-4000-8000-000000000002",
+            ObjectCapabilities =
+            [
+                new ZLinkObjectCapability(
+                    ZLinkPlacementObjectKind.UserSpot,
+                    "room",
+                    ZLinkObjectMaintenancePolicyKind.Recreate,
+                    HasSnapshotAdapter: false,
+                    Limit: 1)
+            ],
+            State = ZLinkFrameworkRuntimeState.Serving,
+            Capacity = new(
+                new ZLinkPopulationCapacity(0, 0, 0),
+                new ZLinkPopulationCapacity(0, 0, 2),
+                [
+                    new ZLinkSpotTypeCapacity(
+                        ZLinkPlacementObjectKind.UserSpot,
+                        "room",
+                        0,
+                        0,
+                        1)
+                ])
+        };
+
     private static ZLinkRelocationCapacityReservationRequest RelocationRequest(
         ZLinkAuthoritySnapshot source,
         ZLinkLocationOwnerToken sourceOwner,
@@ -849,5 +937,5 @@ public sealed class RedisAuthorityRelocationTests(
                 RoutingId.From(targetOwner.OwnerId)),
             1,
             targetOwner,
-            source.Allocation.CapacityDelta);
+            source.Allocation.Capacity);
 }

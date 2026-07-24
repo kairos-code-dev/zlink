@@ -16,8 +16,13 @@ template <typename T> class immediate_call_state_t
 
     void set_timeout (std::chrono::milliseconds) {}
 
-    task_t<T> async () { return task_t<T> (_result); }
-    task_t<T> yield () { return task_t<T> (_result); }
+    task_t<T> submit () { return task_t<T> (_result); }
+    task_t<T> yield ()
+    {
+        return current_serial_turn_allows_yield ()
+                 ? task_t<T> (_result)
+                 : unsupported_yield_task<T> ();
+    }
 
   private:
     result_t<T> _result;
@@ -30,8 +35,13 @@ template <> class immediate_call_state_t<void>
 
     void set_timeout (std::chrono::milliseconds) {}
 
-    task_t<void> async () { return task_t<void> (_result); }
-    task_t<void> yield () { return task_t<void> (_result); }
+    task_t<void> submit () { return task_t<void> (_result); }
+    task_t<void> yield ()
+    {
+        return current_serial_turn_allows_yield ()
+                 ? task_t<void> (_result)
+                 : unsupported_yield_task<void> ();
+    }
 
   private:
     result_t<void> _result;
@@ -46,7 +56,7 @@ template <typename TDerived, typename TResult> class call_facade_t
         return static_cast<TDerived &> (*this);
     }
 
-    task_t<TResult> async () { return _state.async (); }
+    task_t<TResult> submit () { return _state.submit (); }
     task_t<TResult> yield () { return _state.yield (); }
 
   protected:

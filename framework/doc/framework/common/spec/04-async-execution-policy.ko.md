@@ -17,13 +17,13 @@ Stream Connector Send·Request·Wait와 HTTP request가 포함된다. Network to
 Host·runtime·client 설정, handler·Channel membership·codec·security·retry 등록과 object lifecycle
 builder에는 적용하지 않는다. `RelayAsync(...)`처럼 builder를 반환하지 않는 직접 method도 대상이 아니다.
 
-Call object는 operation 종류에 맞는 terminator만 제공하며 같은 call에서 terminator를 두 번 실행할 수 없다.
-같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal을 두 번 실행하면 `AlreadySubmitted`로 끝난다.
+Call object는 operation 종류에 맞는 terminator만 제공한다. Single-use 여부, 같은 option을 반복했을 때의
+처리와 terminal 재호출 오류는 각 operation의 exact interface가 정의한다.
 
 | terminator | 수락 뒤 완료 의미 | owner turn |
 |---|---|---|
 | one-way 비동기 terminal | Source-local admission이 성공하면 반환 데이터 없이 완료하고 실패하면 예외로 완료한다 | await하지 않으면 현재 turn을 기다리게 하지 않는다 |
-| 일반 비동기 terminal | Request, join, worker 또는 create의 application 결과가 terminal 상태가 될 때까지 기다린다 | 완료 continuation이 끝날 때까지 현재 [owner](01-glossary.ko.md#owner) turn을 유지한다 |
+| 일반 비동기 terminal | Request, worker 또는 create의 application 결과가 terminal 상태가 될 때까지 기다린다 | 완료 continuation이 끝날 때까지 현재 [owner](01-glossary.ko.md#owner) turn을 유지한다 |
 | `Yield` | Operation을 제출한 뒤 shared Spot turn을 반납하고 application 결과를 기다린다 | 완료 continuation은 같은 Spot gate를 다시 얻어 새 turn에서 재개한다 |
 
 언어별 일반 비동기 terminal 이름은 .NET `Async`, Java·Node.js·C++ `submit`, Kotlin 전용 wrapper의
@@ -40,6 +40,12 @@ Actor join, send, publish, timer 등록, close와 destroy에는 제공하지 않
 Actor의 다음 record는 실행하지 않지만 다른 member Actor·Spot handler·timer는 진행할 수 있다. Continuation은
 같은 gate를 다시 얻은 뒤 현재 Actor record를 끝내고 Actor claim을 해제한다. 대기 전에 읽은 mutable state는
 다른 handler가 변경했을 수 있으므로 다시 확인해야 한다.
+
+Actor Join은 Messaging·Worker terminator naming 대상이 아니다. Handler 안에서 동기 `Defer`를 한 번
+호출해 handler terminal 뒤 실행할 barrier를 등록한다. `Defer`는 target I/O를 시작하지 않고 Spot gate와
+Actor FIFO claim을 반납하지 않는다. SpotWide handler가 먼저 `Yield`했다면 continuation이 gate를 다시 얻고
+최종 종료한 시점이 barrier terminal이다. PerActor와 Entry에서 Yield가 금지되는 기존 규칙도 바뀌지 않는다.
+Join call에는 일반 비동기 terminal, `Yield`와 one-way terminal을 제공하지 않는다.
 
 ### 1.2 Worker offload
 
@@ -63,7 +69,9 @@ STREAM은 해당 socket queue가 admission boundary다. Global Spot·Actor send�
 Queue capacity가 부족하면 Framework는 해당 family의 send timeout까지 send-ready 또는 local capacity를
 기다린다. `Backpressured`는 public terminal result가 아니다. Capacity가 먼저 확보되면 message를 정확히
 한 번 제출하고 정상 완료한다. Timeout, cancellation 또는 runtime shutdown이 먼저 확정되면 late admission
-없이 예외로 한 번 완료한다.
+없이 예외로 한 번 완료한다. 내부 bounded waiter capacity까지 모두 사용 중이면 새 payload를 보관하지
+않고 `DeadlineExceeded`로 즉시 완료한다. 이 hard overload boundary에서도 `Backpressured` status를
+공개하거나 나중에 message를 제출하지 않는다.
 
 | 실패 | 오류 분류 |
 |---|---|
@@ -82,9 +90,10 @@ Send-ready signal 뒤 다른 logical target으로 바꾸지 않는다. RouteMesh
 
 [Logical Multicast](01-glossary.ko.md#logical-multicast)는 operation을 시작할 때 target snapshot을 고정하고
 각 target을 한 번씩 시도한다. Operation 자체를 local executor에 제출하지 못하면 send timeout까지
-기다린다. Transaction이 시작된 뒤 개별 target 실패는 전체 publish를 rollback하거나 exceptional completion으로
-바꾸지 않는다. Target별 snapshot·admitted·dropped·unreachable count는 public 반환값이 아니라 monitoring
-metric과 runtime event에 기록한다. Target이 0개여도 정상 완료한다.
+기다린다. Bounded worker와 source-local capacity를 확보해 transaction이 시작되면 public terminal은
+반환 데이터 없이 정상 완료하고 target별 제출은 내부에서 계속한다. 시작된 뒤 개별 target 실패는 전체 publish를 rollback하거나 exceptional completion으로
+바꾸지 않는다. Target별 수락·실패 결과는 public 반환값이나 publish 전용 monitoring 값으로 만들지 않는다.
+Target이 0개여도 정상 완료한다.
 
 [Classic fanout](01-glossary.ko.md#classic-fanout)은 subscriber가 없어도 publisher socket queue가 message를
 수락하면 정상 완료한다. Subscriber 수와 수신 완료를 public result로 만들지 않는다.
@@ -175,6 +184,38 @@ barrier를 연다.
 Handler가 예외를 반환하면 send handler는 오류 observer와 metric에 기록한다. Request handler는 같은
 request의 framework 오류 reply를 생성한다. 오류 observer의 실패는 원래 dispatch 결과를 바꾸지 않는다.
 
+### 3.1 Actor Join의 deferred terminal
+
+Actor membership Join의 `Defer()`는 비동기 operation을 즉시 시작하는 API가 아니다.
+현재 handler가 정상적으로 끝난 뒤 Join을 실행하도록 intent와 비활성 queue
+barrier를 등록하는 동기 terminal이다. 모든 언어에서 결과가 없는 일반 함수이며
+awaitable, promise나 coroutine을 반환하지 않는다.
+
+`Defer()`와 `Yield`는 다음과 같이 실행 경계가 다르다.
+
+| 기능 | 호출했을 때 하는 일 | 현재 실행권 |
+|---|---|---|
+| `Yield` | 비동기 operation을 제출하고 결과를 기다리는 동안 shared Spot gate를 반납한다. | Actor queue claim은 유지하지만 허용된 `SpotWide` gate는 반납한다. |
+| `Defer()` | Target 조회나 Store I/O 없이 현재 handler에 Join intent와 비활성 barrier만 등록한다. | Spot gate와 Actor claim을 모두 유지하며 현재 handler를 계속 실행한다. |
+
+Handler가 `Yield` 전에 또는 `Yield` 뒤 continuation에서 Join을 등록할 수는 있다.
+이 경우에도 마지막 awaited continuation이 정상적으로 끝난 시점에만 barrier를
+활성화한다. Handler가 exception, cancellation 또는 reply encoding 실패로 끝나면
+그 handler가 등록한 비활성 barrier를 모두 폐기한다. Join 결과는 원래 handler를
+재개하는 값으로 반환하지 않고 이동 대상 Actor의 completion callback으로 전달한다.
+
+Framework는 handler가 열어 둔 registration scope 안에서만 `Defer()`를 허용한다.
+Scope가 닫힌 뒤 호출하면 `InvalidConfiguration`이다. Handler가 시작했지만 기다리지
+않은 detached task에서 호출하는 것은 application contract 위반이며, Framework가
+모든 언어에서 이 오용을 scope가 닫히기 전에 검출한다고 보장하지 않는다.
+
+One-way terminal과 `Defer()`는 모두 single-use지만 완료 시점은 다르다. One-way
+terminal은 source-local outbound admission을 기다린다. `Defer()`는 local
+registration 검증이 끝나면 즉시 반환한다. 잘못된 실행 문맥, 제한 초과와 같은
+registration 오류는 target I/O 전에 동기적으로 발생한다. Target을 찾지 못한
+경우, capacity 부족, relocation policy와 callback 실패는 handler가 끝난 뒤 Actor
+completion으로 전달한다.
+
 ## 4. Cancellation과 shutdown
 
 Cancellation은 협력적 요청이다. 이미 완료된 결과를 cancellation으로 바꾸지 않으며, 이미 수락한 one-way
@@ -199,8 +240,8 @@ Cancellation은 exceptional completion이다. Admission을 시작한 뒤 cancell
 
 Logical Multicast는 executor direct handoff와 publish transaction 시작이 원자적으로 확정되기 전에만 cancellation이
 operation 시작을 막을 수 있다. Publish transaction이 시작된 뒤의 cancellation은 commit된 snapshot
-operation을 중단하지 않으며 underlying operation은 target별 결과를 monitoring에 기록하고 반환 데이터 없이
-완료한다. .NET `ValueTask`와 Node.js `Promise`는 commit 뒤 cancellation 신호로 완료를 바꾸지 않는다.
+operation을 중단하지 않으며 target별 관측 정보를 반환하거나 publish 전용 monitoring 값으로 만들지 않는다.
+.NET `ValueTask`와 Node.js `Promise`는 commit 뒤 cancellation 신호로 완료를 바꾸지 않는다.
 Java stage의 `cancel(false)`와 Kotlin의
 연결된 stage cancellation은 `false`를 반환하고 underlying operation을 취소하지 않는다. Kotlin에서는 이미
 취소된 caller coroutine이
@@ -242,13 +283,25 @@ Framework scheduler에 wakeup 신호를 보내면 scheduler가 만료 record를 
 공통 계약은 특정 async type 이름을 강제하지 않는다. 완료 순서, cancellation과 오류 의미는 이 문서가
 소유하며, 각 언어의 정확한 반환 type과 오류 표현은 다음 exact interface가 소유한다.
 
-| 언어 | exact interface owner |
-|---|---|
-| `.NET` | [exact interface 목차](server/languages/dotnet/interfaces/README.ko.md) |
-| Java | [Channel messaging](server/languages/java/interfaces/channel-messaging.ko.md) |
-| Kotlin | [Channel messaging](server/languages/kotlin/interfaces/channel-messaging.ko.md) |
-| Node.js | [인터페이스 목차](server/languages/node/interfaces/README.ko.md) |
-| C++ | [framework 인터페이스](server/languages/cpp/interfaces/README.ko.md) |
+| 언어 | 일반 비동기 완료 | Spot turn 반납 | exact interface owner |
+|---|---|---|---|
+| .NET | `Async(...)`가 `ValueTask` 또는 `ValueTask<T>`를 반환한다 | `Yield(...)` | [exact interface 목차](server/languages/dotnet/interfaces/README.ko.md) |
+| Java | `submit(...)`이 `CompletionStage<T>`를 반환한다 | `yield(...)` | [Channel messaging](server/languages/java/interfaces/channel-messaging.ko.md) |
+| Kotlin | 전용 call wrapper의 suspending `await()`를 사용한다 | 전용 wrapper의 `yield()` | [Channel messaging](server/languages/kotlin/interfaces/channel-messaging.ko.md) |
+| Node.js | `submit(...)`이 `Promise<T>`를 반환한다 | `yield(...)` | [인터페이스 목차](server/languages/node/interfaces/README.ko.md) |
+| C++ | `submit(...)`이 `task_t<T>`를 반환한다 | `yield(...)` | [framework 인터페이스](server/languages/cpp/interfaces/README.ko.md) |
 
 각 exact interface는 terminator별 return type, cancellation 인자, callback 또는 coroutine 표현을 고정한다.
 언어 표준 표현이 달라도 같은 operation의 완료 시점, ordering과 오류 분류는 달라지지 않는다.
+
+C++ `task_t`는 호출할 때 operation을 시작하므로 `submit()`을 결과 사용 여부에 따라 다음과 같이 사용할 수
+있다. 아래 두 줄은 서로 다른 single-use call을 보여 준다.
+
+```cpp
+sendCall.submit();                      // 결과 없이 operation만 시작한다.
+auto reply = co_await requestCall.submit(); // 비동기 application reply를 기다린다.
+```
+
+반환형만 다른 overload는 만들지 않는다. C++ Messaging call wrapper는 같은 인자의 blocking `submit()`과
+coroutine terminal을 함께 제공하지 않고 `task_t<T> submit()` 하나를 제공한다. Callback overload는
+parameter list가 다르므로 `submit(callback)`으로 제공할 수 있다.

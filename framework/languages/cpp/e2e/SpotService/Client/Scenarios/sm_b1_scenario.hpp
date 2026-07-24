@@ -28,7 +28,7 @@ inline void run_sm_b1_scenario (const std::string &play_http_endpoint)
                           .display_name = "SM-B1 Local",
                           .level = 1,
                           .tags = {"local", "actor"}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!joined) {
         throw std::runtime_error (joined.error () ? joined.error ()->what ()
@@ -49,7 +49,7 @@ inline void run_sm_b1_scenario (const std::string &play_http_endpoint)
       play_a.post ("/spot/state")
         .body (spot_state_req_t{.actor_id = actor_id,
                                 .state = state_req_t{.op = "add", .amount = 1}})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!state) {
         throw std::runtime_error (state.error () ? state.error ()->what ()

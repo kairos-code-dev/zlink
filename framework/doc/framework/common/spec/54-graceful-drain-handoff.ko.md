@@ -225,9 +225,12 @@ Coordinator는 ready unit을 한꺼번에 seal하지 않고 permit이 허용하�
    factory와 필요한 `Restore`를 완료한다. Accepted journal과 timer state는 실행하지 않은 채 staging한다.
 5. `Prepared` CAS 뒤 owner·membership을 target으로 commit한다. Source ingress hold에 도착한 message는 original
    operation identity와 generation을 유지해 committed target으로 relay한다.
-6. Standalone Actor는 target lifecycle callback과 old Entry membership의 durable cleanup을 완료한 뒤
-   accepted message·journal을 replay한다. Framework timer를 자동 복원하고, replay 뒤 남은 source resource
-   cleanup, `Completed`, bound STREAM route ACK와 steady normalization을 끝낸 뒤 target admission을 연다.
+6. Standalone Actor는 target lifecycle callback과 accepted message·journal replay를 완료하고 Framework timer를
+   자동 복원한다. 그 뒤 old Entry membership과 남은 source resource의 durable cleanup,
+   `Completed`를 마친다. 같은 ObjectGeneration의 Actor가 Session에 bind되어 있으면
+   command 44·45로 Session owner가 보관한 해당 Actor의 binding route만 target owner로
+   갱신하고 routed ACK를 받는다. 같은 Session의 다른 Actor route와 physical STREAM
+   connection은 유지하며 steady normalization 뒤 target packet·push admission을 연다.
 7. Unit의 outbound·inbound·callback·byte permit을 반환하고 다음 ready unit을 진행한다.
 
 Process별 기본 상한은 active outbound relocation unit 64개, active inbound relocation unit 64개, encoded payload
@@ -373,8 +376,13 @@ Standalone Actor, User Spot aggregate와 Instance Spot relocation은
   없는 일반 message와 find는 existing authority만 사용하며 hidden create를 시작하지 않는다. `Retire` target
   materialization은 cold activation과 다른 maintenance transaction이다.
 
-Bound STREAM connection 자체는 이동하지 않는다. Actor owner commit 뒤 session relay authority와 binding
-generation을 갱신하고 stale packet과 reply를 거부한다. Runtime timer handle과 callback continuation도
+Bound STREAM connection 자체는 이동하지 않는다. Actor owner·membership commit 뒤
+callback·journal replay와 durable source cleanup, `Completed`를 끝낸 다음 같은
+ObjectGeneration을 검증한다. 그 뒤 Framework는 command 44·45로 Session owner가 보관한
+해당 Actor의 binding route, session relay authority와 binding generation만 target owner
+기준으로 갱신하고 routed ACK를 받는다. 같은 Session의 다른 Actor route는 바꾸지
+않으며 steady normalization 전에는 target의 session packet·push admission을 열지
+않는다. Stale packet과 reply는 거부한다. Runtime timer handle과 callback continuation도
 이동하지 않는다. Framework는 seal 시점의 timer logical registration, 다음 실행 시각과 이미 발생했지만 실행하지
 않은 pending tick을 relocation payload에 기록한다. Target은 `Restore` 뒤 이 registration을 자동으로 복원하고 pending
 tick을 accepted queue 순서에 맞춰 dispatch한다. Application은 `Capture` payload에 Framework timer를 중복 저장하거나

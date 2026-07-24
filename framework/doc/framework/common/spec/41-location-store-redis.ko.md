@@ -372,6 +372,14 @@ AuthorityOwnerGeneration, membership index와 aggregate commit generation을 한
 aborted로 닫는다. 같은 aggregate generation의
 duplicate operation은 idempotent하고 다른 generation은 stale다.
 
+이 transaction은 Session binding route를 저장하거나 갱신하지 않는다. Actor가
+Session에 bind되어 있으면 Framework runtime이 owner·membership commit,
+callback·journal replay, durable source cleanup과 `Completed`를 끝낸 뒤 같은
+ObjectGeneration을 검증하고 command 44·45로 Session owner가 보관한 해당 Actor의
+binding route만 target owner로 갱신한다. Routed ACK와 steady normalization 전에는
+target session packet·push admission을 열지 않는다. Session socket과 binding route는
+Location Store record에 넣지 않는다.
+
 Expectation 하나라도 맞지 않으면 participant row, membership index, reservation, aggregate record와 counter를
 변경하지 않는다. Commit 전에는 target owner나 membership 일부를 authority read와 index scan에 공개하지 않는다.
 Commit 뒤에는 source participant 일부로 rollback하지 않으며 exact aggregate record를 사용해 target 전체 recovery를
@@ -468,13 +476,41 @@ Automatic RID의 uniqueness는 descriptor owner CAS가 `(MeshName, RID)` active 
 기록하고, renew·update·release는 같은 token을 비교한다.
 
 Active conflict는 기존 descriptor를 덮어쓰지 않는다. Framework는 새 UUID나 두 번째 claim을 만들지 않고
-`SpotIdConflict`로 startup을 즉시 실패한다. Replacement lifecycle은 새 UUID 기반 Spot ID로 새 claim을 수행한다.
+`RoutingIdConflict`로 startup을 즉시 실패한다. Replacement lifecycle은 startup 전에
+새 UUID v4 RID를 발급하지만, 그 lifecycle의 claim이 충돌해도 다시 생성하지 않고
+실패한다.
 
-Entry Spot ID는 global Spot authority namespace에서 충돌을 확인한다. Framework는
-`<prefix>-entry-<lowercase-canonical-uuid-v4>` candidate를 만든다. Active conflict가 확인되면 새 UUID나
-reservation을 만들지 않는다. Provider는 prefix, marker나 UUID를 해석하지 않는다. Claim에 성공한 exact
-RID는 MeshNode descriptor의 같은 lifecycle mapping에 기록한다. Caller가 지정한 User·Instance Spot ID가
-예약 형식과 일치하는지는 Framework가 Store operation 전에 검사한다.
+### 7.1 Entry Spot global identity claim
+
+Object Server lifecycle의 Entry Spot ID는 MeshNode RID와 별도로 생성한 RFC 4122
+UUID v4 component를 사용한다. UUID는 lowercase canonical `8-4-4-4-12` 형식이다.
+Framework는 provider를 호출하기 전에 UUID 형식·version·variant와 전체 Spot ID의
+UTF-8 길이를 검증한다. Redis provider는 전체 Spot ID를 opaque bytes로 취급하며
+prefix, marker와 UUID를 해석하지 않는다.
+
+Object Server MeshNode descriptor의 새 claim은 별도 public Entry claim method를
+호출하지 않는다. 같은 server-side transaction에서 다음 항목을 모두 확인하고
+기록한다.
+
+1. 현재 host owner lease와 descriptor lifecycle이 정확히 일치하는지 확인한다.
+2. 같은 `(MeshName, MeshNode RID)`를 사용 중인 descriptor가 있는지 확인한다.
+3. 같은 Entry Spot ID를 claim한 record나 User·Instance Spot authority가 있는지
+   확인한다.
+4. Public descriptor, admission metadata, descriptor index·owner index와 Entry
+   claim을 함께 생성한다.
+
+RID나 Entry Spot ID가 충돌하면 descriptor, claim, index와 counter를 하나도
+변경하지 않는다. 같은 descriptor bytes, lifecycle, owner token과 Entry claim
+field를 다시 전달한 exact duplicate만 idempotent하게 성공한다. 다른 active
+claim과 충돌하면 `RoutingIdConflict`로 끝내며 Framework는 다른 Entry Spot ID로
+재시도하지 않는다.
+
+Framework는 descriptor key, Entry claim key와 같은 Spot ID의 authority key를
+모두 Redis script의 `KEYS`로 전달한다. Provider가 descriptor JSON이나 RID를
+해석하여 key를 만들지 않는다. Descriptor를 제거할 때는 저장된 owner lease,
+lifecycle과 연결된 Entry claim을 함께 검증한 뒤 descriptor, index와 claim을 같은
+transaction에서 삭제한다. 이전 lifecycle의 cleanup은 successor lifecycle이
+claim한 descriptor와 Entry claim을 변경할 수 없다.
 
 ## 8. Store 장애와 recovery
 

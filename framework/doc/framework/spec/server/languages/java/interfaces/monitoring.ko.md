@@ -333,21 +333,6 @@ public final class systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapsh
   public java.util.Optional<java.time.Instant> lastSuccessAt();
   public java.util.Optional<java.time.Instant> lastFailureAt();
 }
-public final class systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot extends java.lang.Record {
-  public systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot(long, long, long, long, long, long, long, long, long);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public long submitted();
-  public long backpressured();
-  public long dropped();
-  public long remoteSnapshotCount();
-  public long remoteAdmittedCount();
-  public long remoteDroppedCount();
-  public long localSnapshotCount();
-  public long localAdmittedCount();
-  public long localDroppedCount();
-}
 public final class systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot extends java.lang.Record {
   public systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot(java.lang.String, int, long, boolean);
   public final java.lang.String toString();
@@ -369,7 +354,7 @@ public final class systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot ext
   public long pendingInfrastructureWork();
 }
 public final class systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot extends java.lang.Record {
-  public systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, systems.zlink.framework.monitoring.ZLinkMeshNodeState, long, java.time.Instant, java.util.List<java.lang.String>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot>, systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot, java.util.List<systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot>, systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot, systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot, systems.zlink.framework.locations.ZLinkMeshNodeObjectRole, int, systems.zlink.framework.locations.ZLinkPlacementCapacity, systems.zlink.framework.monitoring.ZLinkActivationConcurrency, java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability>, long, java.util.Optional<java.lang.String>);
+  public systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, systems.zlink.framework.monitoring.ZLinkMeshNodeState, long, java.time.Instant, java.util.List<java.lang.String>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot>, java.util.List<systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot>, systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot, systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot, systems.zlink.framework.locations.ZLinkMeshNodeObjectRole, int, systems.zlink.framework.locations.ZLinkPlacementCapacity, systems.zlink.framework.monitoring.ZLinkActivationConcurrency, java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability>, long, java.util.Optional<java.lang.String>);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -384,7 +369,6 @@ public final class systems.zlink.framework.monitoring.ZLinkMeshNodeSnapshot exte
   public java.util.List<java.lang.String> descriptorSources();
   public java.util.List<systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot> peers();
   public java.util.List<systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot> channels();
-  public systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot multicast();
   public java.util.List<systems.zlink.framework.monitoring.ZLinkInstanceSpotTypeSnapshot> instanceSpots();
   public systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot claims();
   public systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot location();
@@ -420,7 +404,7 @@ public final class systems.zlink.framework.monitoring.ZLinkMeshPeerSnapshot exte
   public java.util.Optional<java.lang.String> lastFailure();
 }
 public final class systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent extends java.lang.Record {
-  public systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent(java.lang.String, long, java.time.Instant, java.lang.String, systems.zlink.contracts.core.RoutingId, java.util.Optional<systems.zlink.contracts.core.RoutingId>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.String>, java.util.Optional<systems.zlink.framework.monitoring.ZLinkMeshNodeState>);
+  public systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent(java.lang.String, long, java.time.Instant, java.lang.String, systems.zlink.contracts.core.RoutingId, java.util.Optional<systems.zlink.contracts.core.RoutingId>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.Long>, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.String>, java.util.Optional<systems.zlink.framework.monitoring.ZLinkMeshNodeState>);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -435,12 +419,6 @@ public final class systems.zlink.framework.monitoring.ZLinkMeshRuntimeEvent exte
   public java.util.Optional<java.lang.String> channelName();
   public java.util.Optional<java.lang.String> claimDomain();
   public java.util.Optional<java.lang.String> messageKind();
-  public java.util.Optional<java.lang.Long> remoteSnapshotCount();
-  public java.util.Optional<java.lang.Long> remoteAdmittedCount();
-  public java.util.Optional<java.lang.Long> remoteDroppedCount();
-  public java.util.Optional<java.lang.Long> localSnapshotCount();
-  public java.util.Optional<java.lang.Long> localAdmittedCount();
-  public java.util.Optional<java.lang.Long> localDroppedCount();
   public java.util.Optional<java.lang.String> reason();
   public java.util.Optional<systems.zlink.framework.monitoring.ZLinkMeshNodeState> state();
 }

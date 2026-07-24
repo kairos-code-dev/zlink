@@ -203,6 +203,19 @@ current [binding generation](01-glossary.ko.md#binding-generation)의 tombstone�
 전달 계약은 [Session–Actor dispatch §4](31-session-actor-dispatch.ko.md#4-binding-authority)가
 정의한다.
 
+Physical disconnect 때 Framework는 current binding snapshot의 모든 Actor에 저장 route로 자동 통지한다.
+Application callback은 bound 목록을 순회하지 않는다. 한 Actor의 실패는 다른 Actor 통지와 cleanup을
+막지 않으며 exact binding identity마다 Spot disconnect callback을 최대 한 번 실행한다. Public
+`NotifyDisconnected`는 connection이 유지되는 동안 application이 보내는 논리적 통지로 유지한다.
+
+Bound Actor가 relocation되면 physical STREAM socket과 Session object는 그대로
+유지한다. Owner·membership commit 뒤 callback·journal replay와 durable source cleanup,
+`Completed` CAS를 완료하고 command 44·45로 Framework가 Session owner에 저장된 해당
+Actor binding route만 target owner로 갱신한다. 같은 Session의 다른 Actor route는
+바꾸지 않으며 routed ACK와 steady normalization 전에는 target Actor의 session
+packet·push admission을 열지 않는다. Route update는 같은 ObjectGeneration에만
+허용하고 새 incarnation은 explicit bind가 필요하다.
+
 ## 9. 구현 및 contract test 검증 요구
 
 | 항목 | 검증 |

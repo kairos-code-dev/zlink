@@ -49,7 +49,7 @@ inline e2e::state_res_t request_multi_node_state (zlink::framework::route_client
     auto reply = routes
                    .request_to_spot (*handle, e2e::state_req_t{.op = "add", .amount = delta})
                    .timeout (std::chrono::milliseconds (3000))
-                   .async<e2e::state_res_t> ()
+                   .submit<e2e::state_res_t> ()
                    .result ();
     if (reply) {
         return reply.value ();
@@ -101,7 +101,7 @@ class multi_node_route_ping_proxy_handler_t
             .request_to_node (multi_node_route_channel_for (_state.node_rid),
                               zlink::routing_id_t::from (request.target_node_rid), request)
             .timeout (std::chrono::milliseconds (3000))
-            .async<e2e::channel_control_ping_res_t> ()
+            .submit<e2e::channel_control_ping_res_t> ()
             .result ();
         if (!reply) {
             throw zlink::framework::framework_exception_t (
@@ -225,7 +225,7 @@ class multi_node_state_route_handler_t
                        .request_to_node (multi_node_route_channel_for (_state.node_rid),
                                          zlink::routing_id_t::from (_state.node_rid), request)
                        .timeout (std::chrono::milliseconds (5000))
-                       .async<e2e::state_res_t> ()
+                       .submit<e2e::state_res_t> ()
                        .result ();
         if (reply) {
             return reply.value ();
@@ -359,7 +359,7 @@ class multi_node_spot_only_join_handler_t
               actor.error_kind (),
               actor.error () ? actor.error ()->what () : "spot-only actor create failed");
         }
-        auto bound = _actors.bind_or_get (actor.value ().ref ()).async ().result ();
+        auto bound = _actors.bind_or_get (actor.value ().ref ()).submit ().result ();
         if (!bound) {
             throw zlink::framework::framework_exception_t (
               bound.error_kind (),
@@ -387,7 +387,7 @@ class multi_node_spot_only_join_handler_t
         auto reply = current
                        ->relay_request ("SpotOnlyJoinReq",
                                         zlink::message_t::from_json (request))
-                       .async ()
+                       .submit ()
                        .result ();
         if (!reply) {
             throw zlink::framework::framework_exception_t (

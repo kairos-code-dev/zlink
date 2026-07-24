@@ -83,12 +83,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
     private final Map<String, SessionState> sessions = new HashMap<>();
     private final ScheduledExecutorService livenessExecutor;
     private volatile boolean draining;
-    private systems.zlink.framework.actors.ZLinkActorDirectory actorDirectory;
-
-    public void setActorDirectory(
-        systems.zlink.framework.actors.ZLinkActorDirectory actorDirectory) {
-        this.actorDirectory = actorDirectory;
-    }
+    private final ZLinkOneWayCalls oneWayCalls;
 
     public ZLinkStreamRuntime(
         ZLinkBackendAdapterProvider backendFactory,
@@ -154,6 +149,46 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
         ZLinkRuntimeEventDispatcher eventDispatcher,
         ZLinkBackendContext context,
         boolean ownsContext) {
+        this(
+            backendFactory,
+            adapterOptions,
+            registration,
+            spotNodes,
+            meshNodes,
+            serializer,
+            actors,
+            handlerFactory,
+            sessionRelayRouteReady,
+            spots,
+            eventDispatcher,
+            context,
+            ownsContext,
+            (ignoredBackend, ignoredKey) -> (ignoredSubmission, ignoredCleanup) ->
+                CompletableFuture.failedFuture(new IllegalStateException(
+                    "one-way admission factory is required")));
+    }
+
+    public ZLinkStreamRuntime(
+        ZLinkBackendAdapterProvider backendFactory,
+        ZLinkBackendAdapterOptions adapterOptions,
+        ZLinkFrameworkRegistration registration,
+        Map<String, ZLinkInternalSpotNode> spotNodes,
+        Map<String, ZLinkInternalMeshNode> meshNodes,
+        ZLinkMessageSerializer serializer,
+        ZLinkActorRuntime actors,
+        ZLinkHandlerActivator handlerFactory,
+        Predicate<RoutingId> sessionRelayRouteReady,
+        ZLinkSpotRuntime spots,
+        ZLinkRuntimeEventDispatcher eventDispatcher,
+        ZLinkBackendContext context,
+        boolean ownsContext,
+        java.util.function.BiFunction<
+            ZLinkBackendObject,
+            ZLinkBackendAdmissionKey,
+            java.util.function.BiFunction<
+                java.util.function.Supplier<Boolean>,
+                Runnable,
+                CompletionStage<Void>>> admission) {
         if (registration.streamNodes().isEmpty()) {
             throw new ZLinkConfigurationException("at least one stream node is required");
         }
@@ -172,6 +207,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             sessionRelayRouteReady == null ? ignored -> true : sessionRelayRouteReady;
         this.localActorDispatcher = spots == null ? null : spots::dispatchLocalSessionActor;
         this.metadataPolicy = registration.metadataPolicy();
+        this.oneWayCalls = new ZLinkOneWayCalls(admission);
         this.livenessExecutor = Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "zlink-stream-liveness");
             thread.setDaemon(true);
@@ -243,8 +279,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             flow)
             .metadataPolicy(
                 metadataPolicy.sessionToActorKeys(),
-                metadataPolicy.actorToSessionKeys())
-            .actorDirectory(actorDirectory);
+                metadataPolicy.actorToSessionKeys());
     }
 
     private void dispatchToSession(
@@ -473,8 +508,7 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
                     flow)
                     .metadataPolicy(
                         metadataPolicy.sessionToActorKeys(),
-                        metadataPolicy.actorToSessionKeys())
-                    .actorDirectory(actorDirectory),
+                        metadataPolicy.actorToSessionKeys()),
             serializer,
             defaultCodec,
             compressionCodec,
@@ -482,7 +516,8 @@ public final class ZLinkStreamRuntime implements AutoCloseable {
             () -> {
                 sendSessionClosing(stream, routingId);
                 return CompletableFuture.completedFuture(null);
-            });
+            },
+            oneWayCalls);
         ZLinkSessionPacketDispatcher<ZLinkSessionContext> dispatcher =
             new ZLinkSessionPacketDispatcherRuntime<>(
                 streamNode.sessionPacketHandlers(),

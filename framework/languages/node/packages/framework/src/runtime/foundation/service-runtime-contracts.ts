@@ -215,8 +215,6 @@ export interface MeshNodeStatus {
   readonly pendingApplicationMessages: bigint;
   readonly pendingInfrastructureMessages: bigint;
   readonly pendingBytes: bigint;
-  readonly multicastSubmitted: bigint;
-  readonly multicastDroppedTargets: bigint;
   readonly lastError: number;
   readonly lastChangedMs: bigint;
 }
@@ -232,16 +230,6 @@ export interface MeshPeerEntry {
   readonly channelCount: number;
   readonly lastError: number;
   readonly lastChangedMs: bigint;
-}
-
-export interface MeshPublishDetail {
-  readonly snapshotRemoteTargetCount: number;
-  readonly admittedRemoteTargetCount: number;
-  readonly droppedRemoteTargetCount: number;
-  readonly unreachableRemoteTargetCount: number;
-  readonly snapshotLocalSpotCount: number;
-  readonly admittedLocalSpotCount: number;
-  readonly droppedLocalSpotCount: number;
 }
 
 export interface StreamSessionStatus {
@@ -286,14 +274,14 @@ export interface MeshPublisher {
     topic: string,
     parts: MessageLike | readonly MessageLike[],
     options?: { flags?: number }
-  ): MeshPublishDetail;
+  ): void;
   publishAsync(
     channelName: string,
     topic: string,
     parts: MessageLike | readonly MessageLike[],
     options?: { flags?: number },
     signal?: AbortSignal
-  ): Promise<{ readonly result: SubmitResult; readonly detail: MeshPublishDetail }>;
+  ): Promise<void>;
   close(): void;
 }
 
@@ -329,7 +317,7 @@ export interface ServiceSpot {
     topic: string,
     parts: MessageLike | readonly MessageLike[],
     options?: { flags?: number }
-  ): MeshPublishDetail;
+  ): void;
   setSubscription(channelName: string, topicFilter: string, kind?: number): void;
   unsetSubscription(channelName: string, topicFilter: string, kind?: number): void;
   close(): void;

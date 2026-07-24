@@ -15,13 +15,23 @@ public enum ZLinkPlacementAllocationState
     Active = 2
 }
 
+public sealed record ZLinkSpotTypeCapacityDelta(
+    ZLinkPlacementObjectKind ObjectKind,
+    string StableType,
+    int Count);
+
+public sealed record ZLinkCapacityVector(
+    int Actors,
+    int Spots,
+    ZLinkSpotTypeCapacityDelta? SpotType);
+
 public sealed record ZLinkPlacementAllocation(
     ZLinkPlacementAllocationState State,
     ZLinkPlacementObjectKind ObjectKind,
     string StableType,
     ZLinkMeshNodeDescriptorKey Descriptor,
     ulong DescriptorLifecycleGeneration,
-    int CapacityDelta);
+    ZLinkCapacityVector Capacity);
 
 public sealed record ZLinkPendingObjectCreation(
     string ReservationId,
@@ -139,7 +149,7 @@ public sealed record ZLinkObjectReservationRequest(
     ulong TargetNodeLifecycleGeneration,
     ZLinkLocationOwnerToken TargetOwner,
     ReadOnlyMemory<byte> CreatingPayload,
-    int PendingCapacityDelta);
+    ZLinkCapacityVector Capacity);
 
 public sealed record ZLinkObjectReservation(
     ZLinkAuthorityKey Key,
@@ -302,7 +312,7 @@ public sealed record ZLinkRelocationCapacityReservationRequest(
     ZLinkMeshNodeDescriptorKey TargetDescriptor,
     ulong TargetNodeLifecycleGeneration,
     ZLinkLocationOwnerToken TargetOwner,
-    int CapacityDelta);
+    ZLinkCapacityVector Capacity);
 
 public abstract record ZLinkRelocationCapacityReserveResult
 {
@@ -344,7 +354,9 @@ public sealed record ZLinkAggregatePrepareRequest(
     ulong AggregateGeneration,
     IReadOnlyList<ZLinkAggregateParticipant> Participants,
     ReadOnlyMemory<byte> InventoryDigest,
-    IReadOnlyList<ZLinkRelocationCapacityFence> TargetReservations,
+    ZLinkMeshNodeDescriptorKey TargetDescriptor,
+    ulong TargetDescriptorLifecycleGeneration,
+    ZLinkCapacityVector Capacity,
     ZLinkLocationOwnerToken TargetOwner);
 
 public readonly record struct ZLinkAggregateFence(

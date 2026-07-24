@@ -42,12 +42,19 @@ Public generation, revision, epoch와 sequence ordinal은 Java 계약의 양수 
 Kotlin exact interface는 Java와 같은 global ActorId·SpotId, immutable `ActorRef`·`SpotRef`, ID-only 일반
 messaging과 exact-ref mutation·session bind를 사용한다. Actor와 User Spot의 create/get-or-create는 single-use
 fluent operation이다. Spot manager는 User Spot 전용이며 Instance Spot creation member를 제공하지 않는다.
+Kotlin extension의 `ZLinkActorManager.create(actorId, actorType)`와
+`ZLinkSpotManager.create(spotType)`은 Java manager가 반환하는 single-use call을 coroutine 친화적인
+`ZLinkKotlinActorCreateCall`과 `ZLinkKotlinSpotCreateCall`로 투영한다.
 Missing Instance Spot의 cold activation은 Spot 전용 send/request call에서 `instanceSpot()` 또는
 `instanceSpot(stableType)`을 명시한 경우에만 시작한다. Marker가 없으면 not-found이고, marker만 사용한 cold
 activation은 selected Mesh의 distinct serving Instance type이 하나일 때만 type을 자동 선택한다. Existing
 authority는 등록 type 수와 관계없이 저장된 type을 사용한다. Mesh object role은 None, Client, Server로
 구분한다. 모든 server factory는 명시적인 relocation policy와 object 종류별 factory option을 받는다. Kotlin extension은
 이 계약을 축약하거나 local fallback을 추가하지 않는다.
+
+Instance Spot intent는 Java base가 반환한 `ZLinkSpotSendCall` 또는 `ZLinkSpotRequestCall`을
+Kotlin wrapper로 감싼 뒤 설정한다. `instanceSpot()`이나 `instanceSpot(stableType)`을 호출한 call만
+cold activation을 허용하며, serving Instance type이 distinct value 하나일 때만 그 type을 자동 선택한다.
 
 Global ref의 JSON field는 `actorId` 또는 `spotId`, `objectGeneration`, `meshName`, `nodeRid`다.
 `objectGeneration`은 decimal string이며 unknown field는 무시하지만 duplicate field, required field 누락,

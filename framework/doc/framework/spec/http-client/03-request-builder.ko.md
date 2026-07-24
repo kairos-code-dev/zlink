@@ -58,6 +58,6 @@ client.post("/games")
       .query("region", "kr")
       .body(create_game_req)     // typed JSON
       .timeout(3s)
-      .submit<create_game_res>() // C++·Java·Node의 typed response terminator
-                                 // 언어별 이름은 language-interfaces §1.4 참조
+      .submit<create_game_res>() // C++·Java의 typed response terminator
+                                 // Node는 async<create_game_res>() 사용
 ```

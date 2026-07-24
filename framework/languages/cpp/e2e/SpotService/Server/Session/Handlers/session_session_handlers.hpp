@@ -8,7 +8,6 @@
 #include <zlink/framework.hpp>
 
 #include <map>
-#include <set>
 #include <string>
 
 namespace
@@ -37,19 +36,9 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
 
     zlink::framework::task_t<void> on_disconnected (zlink::framework::stream_t &) override
     {
-        for (const auto &[actor_id, _] : _bound_actors) {
-            if (_notify_on_disconnect.contains (actor_id)) {
-                if (auto actor = _bound_session_actors.find (actor_id);
-                    actor != _bound_session_actors.end ()) {
-                    co_await actor->second.notify_disconnected ();
-                    _state.record ("StreamDisconnectNotified", actor_id);
-                }
-            }
-            _state.record ("StreamUnbound", actor_id);
-        }
-        _bound_actors.clear ();
-        _bound_session_actors.clear ();
-        _notify_on_disconnect.clear ();
+        // Framework가 disconnect 시점의 exact binding snapshot 전체에 통지한다.
+        // Application callback은 Actor 목록을 순회하거나 통지를 다시 제출하지 않는다.
+        _state.record ("StreamDisconnected");
         co_return;
     }
 
@@ -75,7 +64,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                   "stream auth target or actor ref is invalid");
             }
             _state.record ("StreamAuthEnsured", request.actor_id, {}, request.target_node_rid);
-            auto bound_result = _actors.bind_or_get (to_actor_ref (request.actor)).async ().result ();
+            auto bound_result = _actors.bind_or_get (to_actor_ref (request.actor)).submit ().result ();
             if (!bound_result) {
                 throw zlink::framework::framework_exception_t (
                   bound_result.error_kind (),
@@ -87,9 +76,6 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             _state.record ("StreamAuthActorBound", actor_id, {}, request.target_node_rid);
             _bound_actors[actor_id] = request.target_node_rid;
             _bound_session_actors[actor_id] = bound;
-            if (actor_id.find ("disconnect-d5-notified") != std::string::npos) {
-                _notify_on_disconnect.insert (actor_id);
-            }
             _state.record ("StreamAuthSessionBound", actor_id, {}, request.target_node_rid);
             _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
@@ -119,7 +105,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                 .request_to_node (e2e::route_channel, zlink::routing_id_t::from (request.target_node_rid),
                           e2e::ensure_actor_req_t{.actor_id = request.actor_id,
                                                   .display_name = request.display_name})
-                .async<e2e::ensure_actor_res_t> ()
+                .submit<e2e::ensure_actor_res_t> ()
                 .result ();
             if (!ensured_result) {
                 throw zlink::framework::framework_exception_t (
@@ -128,7 +114,7 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
                                          : "stream ensure auth ensure actor failed");
             }
             const auto ensured = ensured_result.value ();
-            auto bound_result = _actors.bind_or_get (to_actor_ref (ensured.actor)).async ().result ();
+            auto bound_result = _actors.bind_or_get (to_actor_ref (ensured.actor)).submit ().result ();
             if (!bound_result) {
                 throw zlink::framework::framework_exception_t (
                   bound_result.error_kind (),
@@ -139,9 +125,6 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
             const auto actor_id = std::string (bound.actor_id ());
             _bound_actors[actor_id] = request.target_node_rid;
             _bound_session_actors[actor_id] = bound;
-            if (actor_id.find ("disconnect-d5-notified") != std::string::npos) {
-                _notify_on_disconnect.insert (actor_id);
-            }
             _state.record ("StreamBound", actor_id, {},
                            request.target_node_rid + ":" + stream.session_id ());
             if (!dispatch.can_reply ()) {
@@ -164,11 +147,11 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
               actor.error () ? actor.error ()->what () : "bound actor route is not found");
         }
         if (dispatch.can_reply ()) {
-            auto reply = co_await actor.value ().relay_request (payload).async ();
+            auto reply = co_await actor.value ().relay_request (payload).submit ();
             if (dispatch.packet_name () == "JoinReq") {
                 const auto joined = reply.parse_json<e2e::join_res_t> ();
                 auto rebound_result =
-                  _actors.bind_or_get (to_actor_ref (joined.actor)).async ().result ();
+                  _actors.bind_or_get (to_actor_ref (joined.actor)).submit ().result ();
                 if (!rebound_result) {
                     throw zlink::framework::framework_exception_t (
                       rebound_result.error_kind (),
@@ -225,7 +208,6 @@ class stream_session_t final : public zlink::framework::packet_stream_session_t
     zlink::framework::session_actor_manager_t &_actors;
     std::map<std::string, std::string> _bound_actors;
     std::map<std::string, zlink::framework::session_actor_t> _bound_session_actors;
-    std::set<std::string> _notify_on_disconnect;
 };
 
 } // namespace

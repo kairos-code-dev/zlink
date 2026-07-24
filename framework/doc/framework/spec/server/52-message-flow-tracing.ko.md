@@ -46,13 +46,11 @@ remote handler completion을 뜻하지 않는다.
 
 | 필드 | 닫힌 값 |
 |---|---|
-| `surface` | `node`, `channel`, `spot`, `instance_spot`, `logical_multicast`, `actor`, `stream`, `classic_fanout`, `actor_relocation` |
-| `message_kind` | `send`, `request`, `response`, `error`, `publish`, `control` |
+| `surface` | `node`, `channel`, `spot`, `instance_spot`, `actor`, `stream`, `actor_relocation` |
+| `message_kind` | `send`, `request`, `response`, `error`, `control` |
 | `flow_origin` | `inbound`, `timer`, `application`, `lifecycle` |
 
-Logical Multicast operation은 origin event 하나와 remote MeshNode target event를 기록할 수 있다. 같은 node의
-local Spot delivery를 payload 수만큼 encode한 별도 outbound event로 표현하지 않는다. local match 수와
-remote target 수를 count 필드로 기록한다.
+Logical Multicast와 classic fanout publish는 message-flow event를 만들지 않는다.
 
 ## 4. Event fields
 
@@ -79,9 +77,6 @@ remote target 수를 count 필드로 기록한다.
 | `instance_spot_type`, `activation_state` | Instance Spot에서 조건부 | startup 등록 type과 `activating`, `ready`, `closing` state |
 | `correlation_id` | 조건부 | request와 terminal reply의 operation key |
 | `flow_id`, `flow_origin` | 조건부 pair | causal flow와 최초 origin |
-| `remote_snapshot_count`, `remote_admitted_count`, `remote_dropped_count` | 조건부 | Logical Multicast remote target의 snapshot·admission·drop count |
-| `local_snapshot_count`, `local_admitted_count`, `local_dropped_count` | 조건부 | Logical Multicast local Spot의 snapshot·admission·drop count |
-| `target_count`, `drop_count` | 조건부 | classic fanout 등 다른 fan-out 표면의 집계 count |
 | `message_size_bytes` | verbose에서만 | payload를 포함한 관찰 대상 message 크기 |
 | `duration_seconds` | terminal event에서 선택 | operation 또는 handler 경과 시간 |
 
@@ -141,8 +136,8 @@ Framework 기본 structured logger가 있으면 해당 logger로 출력한다. l
 fallback text를 제공할 때 prefix는 `zlink flow:`이고 key는 다음 문자열을 사용한다.
 
 `event`, `phase`, `surface`, `kind`, `mesh`, `channel`, `channel_route`, `source_rid`, `target_rid`, `server_rid`, `packet`, `topic`,
-`spot`, `instance_type`, `activation_state`, `actor`, `corr`, `flow`, `origin`, `outcome`, `reason`, `remote_snapshot`, `remote_admitted`,
-`remote_dropped`, `local_snapshot`, `local_admitted`, `local_dropped`, `targets`, `drops`, `size`.
+`spot`, `instance_type`, `activation_state`, `actor`, `corr`, `flow`, `origin`,
+`outcome`, `reason`, `size`.
 
 ## 6. Observer
 
@@ -164,7 +159,7 @@ sink callback 실패는 bounded fallback logger에만 기록하고 다시 runtim
 
 ## 7. Sampling
 
-정상 flow sampling은 `flow_id` hash로 일관되게 결정한다. 같은 flow는 모든 hop과 Logical Multicast branch가
+정상 flow sampling은 `flow_id` hash로 일관되게 결정한다. 같은 flow의 모든 hop은
 함께 남거나 함께 빠져야 한다. `zlink.dispatch_error`, `backpressured`와 `dropped` event는 sampling을
 우회한다.
 
@@ -179,10 +174,8 @@ sink callback 실패는 bounded fallback logger에만 기록하고 다시 runtim
 - Spot direct application queue admission과 handler completion
 - Instance Spot source resolve·activation-envelope submit, target-owned claim·activation barrier, application
   admission과 post-submit one-way drop
-- Logical Multicast origin admission, remote target submit, local match와 target drop
 - Actor queue admission, handler completion과 relocation terminal result
 - STREAM session receive, Actor dispatch, reply와 bound-session send
-- classic fanout publish·receive와 Framework가 원인을 확인한 drop
 - request timeout, cancellation, shutdown과 dispatch error
 
 같은 operation을 wrapper와 하위 transport에서 중복 terminal event로 기록하지 않는다. 각 request에는
@@ -192,13 +185,13 @@ surface별 terminal event가 하나만 있어야 한다.
 
 - event identifier, phase, surface, message kind, outcome, dispatch reason·action과 field key가 모든
   언어에서 같다.
-- publish operation의 backpressure와 target별 loss는 서로 다른 event로 구분되며 같은 operation에 함께 나타날 수 있다.
 - Actor payload trace가 Spot dispatch phase로 기록되지 않는다.
 - observer·logger failure가 message dispatch와 reply를 바꾸지 않는다.
 - observer failure는 `observer_failed`/`message_flow_observer` runtime error event 하나로 보고되고
   sink 실패는 재귀 event를 만들지 않는다.
-- flow sampling이 Logical Multicast branch 전체에 일관되게 적용된다.
 - payload와 application metadata value가 event나 fallback log에 나타나지 않는다.
+- Logical Multicast와 classic fanout publish가 message-flow event, publish 전용
+  metric 또는 runtime event를 만들지 않는다.
 - 각 request surface가 terminal event를 정확히 한 번 기록한다.
 - Instance one-way activation 실패가 `surface=instance_spot`, `phase=dropped`로 한 번 기록되고 숨은 request나
   replay event를 만들지 않는다.

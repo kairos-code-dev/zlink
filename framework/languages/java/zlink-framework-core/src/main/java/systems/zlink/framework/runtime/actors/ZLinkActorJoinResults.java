@@ -3,51 +3,29 @@ package systems.zlink.framework.runtime.actors;
 import java.util.List;
 import systems.zlink.contracts.messaging.Message;
 import systems.zlink.framework.ZLinkMessageSerializer;
-import systems.zlink.framework.actors.ZLinkActorJoinResult;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
-import systems.zlink.framework.runtime.messaging.ZLinkMessagePayloads;
+import systems.zlink.framework.ZLinkEncodedPayload;
+import systems.zlink.framework.messaging.ZLinkMessage;
 
 final class ZLinkActorJoinResults {
     private ZLinkActorJoinResults() {
     }
 
-    static <TReply> ZLinkActorJoinResult<TReply> withReply(
+    static ZLinkActorJoinOutcome decode(
         ZLinkMessageSerializer serializer,
-        int joinResultCode,
-        ZLinkBackendActorRef actor,
-        List<Message> replyParts,
-        Class<TReply> replyType) {
-        Message emptyReply = null;
-        try {
-            if (joinResultCode != 0
-                && (replyParts.isEmpty() || replyParts.get(0).size() == 0)) {
-                return new ZLinkActorJoinResult.Rejected<>(null);
-            }
-            Message firstReply = replyParts.isEmpty()
-                ? (emptyReply = Message.from(new byte[0]))
-                : replyParts.get(0);
-            TReply reply = ZLinkMessagePayloads.deserialize(serializer, firstReply, replyType);
-            return joinResultCode == 0
-                ? new ZLinkActorJoinResult.Accepted<>(
-                    ZLinkActorRuntime.toPublicActorRef(actor), reply)
-                : new ZLinkActorJoinResult.Rejected<>(reply);
-        } finally {
-            if (emptyReply != null) {
-                emptyReply.close();
-            }
-            closeReplyParts(replyParts);
-        }
-    }
-
-    static ZLinkActorJoinResult<Void> withoutReply(
         int joinResultCode,
         ZLinkBackendActorRef actor,
         List<Message> replyParts) {
         try {
+            ZLinkMessage reply = replyParts.isEmpty() || replyParts.get(0).size() == 0
+                ? ZLinkMessage.empty()
+                : ZLinkMessage.fromEncoded(
+                    ZLinkEncodedPayload.from(replyParts.get(0).toByteArray()),
+                    serializer);
             return joinResultCode == 0
-                ? new ZLinkActorJoinResult.Accepted<>(
-                    ZLinkActorRuntime.toPublicActorRef(actor), null)
-                : new ZLinkActorJoinResult.Rejected<>(null);
+                ? new ZLinkActorJoinOutcome.Accepted(
+                    ZLinkActorRuntime.toPublicActorRef(actor), reply)
+                : new ZLinkActorJoinOutcome.Rejected(reply);
         } finally {
             closeReplyParts(replyParts);
         }

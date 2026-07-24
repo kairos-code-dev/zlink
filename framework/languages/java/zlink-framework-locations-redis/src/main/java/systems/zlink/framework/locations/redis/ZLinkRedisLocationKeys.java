@@ -104,6 +104,71 @@ final class ZLinkRedisLocationKeys {
             + sha256Hex(authorityKey);
     }
 
+    String entrySpotIdentityClaimKey(String spotId) {
+        return domainBase() + ":entry-spot-id:"
+            + sha256Hex(spotId);
+    }
+
+    String entrySpotIdentityClaimKeyFromAuthority(String authorityKey) {
+        if (authorityKey == null || !authorityKey.startsWith("zla1:s:")) {
+            throw new IllegalArgumentException(
+                "Entry Spot authority key is invalid");
+        }
+        int lengthEnd = authorityKey.indexOf(':', "zla1:s:".length());
+        if (lengthEnd < 0) {
+            throw new IllegalArgumentException(
+                "Entry Spot authority key is invalid");
+        }
+        int expectedLength;
+        try {
+            expectedLength = Integer.parseInt(
+                authorityKey.substring("zla1:s:".length(), lengthEnd));
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException(
+                "Entry Spot authority key is invalid",
+                error);
+        }
+        var decoded = new java.io.ByteArrayOutputStream(expectedLength);
+        String encoded = authorityKey.substring(lengthEnd + 1);
+        for (int index = 0; index < encoded.length();) {
+            char item = encoded.charAt(index);
+            if (item == '%') {
+                if (index + 2 >= encoded.length()) {
+                    throw new IllegalArgumentException(
+                        "Entry Spot authority key is invalid");
+                }
+                int high = Character.digit(encoded.charAt(index + 1), 16);
+                int low = Character.digit(encoded.charAt(index + 2), 16);
+                if (high < 0 || low < 0) {
+                    throw new IllegalArgumentException(
+                        "Entry Spot authority key is invalid");
+                }
+                decoded.write((high << 4) | low);
+                index += 3;
+            } else {
+                if (item > 0x7f) {
+                    throw new IllegalArgumentException(
+                        "Entry Spot authority key is invalid");
+                }
+                decoded.write(item);
+                index++;
+            }
+        }
+        byte[] bytes = decoded.toByteArray();
+        if (bytes.length != expectedLength) {
+            throw new IllegalArgumentException(
+                "Entry Spot authority key is invalid");
+        }
+        String spotId = new String(bytes, StandardCharsets.UTF_8);
+        if (!systems.zlink.framework.runtime.locations
+            .ZLinkAuthorityKeyCodec.spot(spotId)
+            .equals(authorityKey)) {
+            throw new IllegalArgumentException(
+                "Entry Spot authority key is invalid");
+        }
+        return entrySpotIdentityClaimKey(spotId);
+    }
+
     String authorityRowKeyPrefix() {
         return domainBase() + ":authority:current:";
     }
@@ -158,7 +223,7 @@ final class ZLinkRedisLocationKeys {
     }
 
     String placementCapacityStateKey() {
-        return domainBase() + ":capacity:type:active";
+        return capacitySpotTypeActiveKey();
     }
 
     String authorityMembershipsKey() {
@@ -303,19 +368,43 @@ final class ZLinkRedisLocationKeys {
     }
 
     String capacityNodeActiveKey() {
-        return domainBase() + ":capacity:node:active";
+        return capacityActorActiveKey();
     }
 
     String capacityNodePendingKey() {
-        return domainBase() + ":capacity:node:pending";
+        return capacityActorReservedKey();
     }
 
     String capacityTypeActiveKey() {
-        return domainBase() + ":capacity:type:active";
+        return capacitySpotTypeActiveKey();
     }
 
     String capacityTypePendingKey() {
-        return domainBase() + ":capacity:type:pending";
+        return capacitySpotTypeReservedKey();
+    }
+
+    String capacityActorActiveKey() {
+        return domainBase() + ":capacity:actor:active";
+    }
+
+    String capacityActorReservedKey() {
+        return domainBase() + ":capacity:actor:reserved";
+    }
+
+    String capacitySpotActiveKey() {
+        return domainBase() + ":capacity:spot:active";
+    }
+
+    String capacitySpotReservedKey() {
+        return domainBase() + ":capacity:spot:reserved";
+    }
+
+    String capacitySpotTypeActiveKey() {
+        return domainBase() + ":capacity:spot-type:active";
+    }
+
+    String capacitySpotTypeReservedKey() {
+        return domainBase() + ":capacity:spot-type:reserved";
     }
 
     String scanKey(java.util.UUID scanId) {
@@ -331,7 +420,7 @@ final class ZLinkRedisLocationKeys {
     }
 
     private String domainBase() {
-        return prefix + ":{zlink-location-v1}";
+        return prefix + ":{zlink-location-v3}";
     }
 
     private static String encode(String value) {

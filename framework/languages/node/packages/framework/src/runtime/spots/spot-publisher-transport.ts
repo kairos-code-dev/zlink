@@ -1,7 +1,10 @@
 import type { Message } from '../../contracts/Common/Message';
-import type { ZLinkPublishResult } from '../../contracts';
-import { ZLinkConfigurationException } from '../configuration';
+import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException
+} from '../../contracts';
 import type { ZLinkSpotPublisherClientTransport } from '../channels';
+import type { ZLinkSubmitResult } from '../messaging/submission-result';
 
 interface ZLinkRuntimeSpotPublisherManager {
   tryPublish(
@@ -11,7 +14,7 @@ interface ZLinkRuntimeSpotPublisherManager {
     packetName: string | undefined,
     event: Message,
     metadata?: ReadonlyMap<string, string>
-  ): ZLinkPublishResult;
+  ): ZLinkSubmitResult;
   publish(
     meshName: string,
     channelName: string,
@@ -20,7 +23,7 @@ interface ZLinkRuntimeSpotPublisherManager {
     event: Message,
     signal?: AbortSignal,
     metadata?: ReadonlyMap<string, string>
-  ): Promise<ZLinkPublishResult>;
+  ): Promise<ZLinkSubmitResult>;
 }
 
 export class ZLinkRuntimeSpotPublisherTransport implements ZLinkSpotPublisherClientTransport {
@@ -33,10 +36,10 @@ export class ZLinkRuntimeSpotPublisherTransport implements ZLinkSpotPublisherCli
     packetName: string | undefined,
     event: Message,
     metadata?: ReadonlyMap<string, string>
-  ): ZLinkPublishResult {
+  ): ZLinkSubmitResult {
     const manager = this.manager();
     if (manager === undefined) {
-      throw new ZLinkConfigurationException('SPOT publisher runtime is not started.');
+      throw publisherRuntimeShutdown();
     }
     return manager.tryPublish(meshName, channelName, topic, packetName, event, metadata);
   }
@@ -49,11 +52,18 @@ export class ZLinkRuntimeSpotPublisherTransport implements ZLinkSpotPublisherCli
     event: Message,
     signal?: AbortSignal,
     metadata?: ReadonlyMap<string, string>
-  ): Promise<ZLinkPublishResult> {
+  ): Promise<ZLinkSubmitResult> {
     const manager = this.manager();
     if (manager === undefined) {
-      throw new ZLinkConfigurationException('SPOT publisher runtime is not started.');
+      throw publisherRuntimeShutdown();
     }
     return manager.publish(meshName, channelName, topic, packetName, event, signal, metadata);
   }
+}
+
+function publisherRuntimeShutdown(): ZLinkFrameworkException {
+  return new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.RuntimeShutdown,
+    'SPOT publisher runtime is not available because the runtime is not started or is shutting down.'
+  );
 }

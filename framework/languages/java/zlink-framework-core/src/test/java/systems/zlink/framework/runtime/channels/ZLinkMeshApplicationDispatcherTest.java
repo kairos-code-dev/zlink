@@ -22,7 +22,7 @@ import systems.zlink.framework.channels.ZLinkRouteSendContext;
 import systems.zlink.framework.channels.ZLinkRouteSendHandler;
 import systems.zlink.framework.channels.ZLinkSendContext;
 import systems.zlink.framework.channels.ZLinkSendHandler;
-import systems.zlink.framework.channels.ZLinkSubmitStatus;
+
 import systems.zlink.framework.handlers.ZLinkHandlerGroup;
 import systems.zlink.framework.runtime.configuration.ZLinkFrameworkRegistration;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
@@ -140,11 +140,11 @@ final class ZLinkMeshApplicationDispatcherTest {
             Message.from("String".getBytes(StandardCharsets.UTF_8)),
             Message.from("owned-value".getBytes(StandardCharsets.UTF_8)));
 
-        ZLinkSubmitStatus status = dispatcher.submitLocalNodeSend(
+        Integer status = dispatcher.submitLocalNodeSend(
             RoutingId.from("source-node"), new byte[0], parts);
         parts.forEach(Message::close);
 
-        assertEquals(ZLinkSubmitStatus.SUBMITTED, status);
+        assertEquals(0, status);
         assertEquals("owned-value@source-node",
             GatedNodeHandler.started.get(2, TimeUnit.SECONDS));
         assertFalse(GatedNodeHandler.release.isDone());
@@ -166,21 +166,21 @@ final class ZLinkMeshApplicationDispatcherTest {
         dispatcher.setLocalNodeReadyHandler(() -> capacityAvailable.complete(null));
 
         assertEquals(
-            ZLinkSubmitStatus.SUBMITTED,
+            0,
             submitLocal(dispatcher, "String", "active"));
         GatedNodeHandler.started.get(2, TimeUnit.SECONDS);
         assertEquals(
-            ZLinkSubmitStatus.SUBMITTED,
+            0,
             submitLocal(dispatcher, "String", "pending"));
         assertEquals(
-            ZLinkSubmitStatus.BACKPRESSURED,
+            1,
             submitLocal(dispatcher, "String", "rejected"));
 
         GatedNodeHandler.release.complete(null);
 
         capacityAvailable.get(2, TimeUnit.SECONDS);
         assertEquals(
-            ZLinkSubmitStatus.SUBMITTED,
+            0,
             submitLocal(dispatcher, "String", "after-ready"));
     }
 
@@ -190,7 +190,7 @@ final class ZLinkMeshApplicationDispatcherTest {
         missingMesh.listen("inproc://mesh-local-node-missing");
         ZLinkMeshApplicationDispatcher missing = dispatcher(missingMesh);
         assertEquals(
-            ZLinkSubmitStatus.TARGET_NOT_FOUND,
+            4,
             submitLocal(missing, "String", "missing"));
 
         MeshNodeRegistration sealedMesh = new MeshNodeRegistration("sealed");
@@ -207,7 +207,7 @@ final class ZLinkMeshApplicationDispatcherTest {
             drains);
 
         assertEquals(
-            ZLinkSubmitStatus.SHUTDOWN,
+            5,
             submitLocal(sealed, "String", "sealed"));
         assertFalse(GatedNodeHandler.started.isDone());
     }
@@ -227,14 +227,14 @@ final class ZLinkMeshApplicationDispatcherTest {
             drains);
 
         assertEquals(
-            ZLinkSubmitStatus.SUBMITTED,
+            0,
             submitLocal(dispatcher, "String", "failure"));
 
         drains.sealAndAwaitZero("game").toCompletableFuture().get(2, TimeUnit.SECONDS);
         assertTrue(drains.awaitZero("game").toCompletableFuture().isDone());
     }
 
-    private static ZLinkSubmitStatus submitLocal(
+    private static Integer submitLocal(
         ZLinkMeshApplicationDispatcher dispatcher,
         String packetName,
         String value) {

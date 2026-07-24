@@ -129,7 +129,7 @@ class create_game_http_handler_t
         auto room = co_await _client
                       .request ("tictactoe.application", sample_names_t::play_channel,
                                 create_game_req_t{request.game_name})
-                      .async<create_game_res_t> ();
+                      .submit<create_game_res_t> ();
         co_return create_game_http_res_t{room.room_id,
                                          room.game_name,
                                          room.owner_play_endpoint,

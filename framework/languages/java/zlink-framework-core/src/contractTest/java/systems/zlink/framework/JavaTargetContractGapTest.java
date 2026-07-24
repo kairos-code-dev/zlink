@@ -20,8 +20,6 @@ import java.util.Arrays;
 import java.util.Optional;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
-import systems.zlink.framework.channels.ZLinkSubmitResult;
-
 final class JavaTargetContractGapTest {
     @Test
     void handlersFactoriesAndLifecycleExposeCompletionStages() throws Exception {
@@ -32,7 +30,7 @@ final class JavaTargetContractGapTest {
     }
 
     @Test
-    void oneWayCallsExposeOnlyAsyncAdmissionResults() throws Exception {
+    void oneWayCallsExposeOnlyAsyncAdmissionCompletion() throws Exception {
         assertClassAbsent("systems.zlink.framework.ZLinkSubmitStage");
         assertClassAbsent("systems.zlink.framework.ZLinkAwait");
         assertClassAbsent("systems.zlink.framework.channels.ZLinkYieldRequestCall");
@@ -43,7 +41,10 @@ final class JavaTargetContractGapTest {
         assertNamedMethodsReturnStage("systems.zlink.framework.actors.ZLinkBoundSessionSendCall", "submit");
         assertNamedMethodsReturnStage("systems.zlink.framework.streams.ZLinkSessionSendCall", "submit");
         assertNamedMethodsReturnStage("systems.zlink.framework.streams.ZLinkSessionReplyCall", "submit");
-        assertPublicMethodReturnsStageOf("systems.zlink.framework.streams.ZLinkSessionActor", "relay", ZLinkSubmitResult.class);
+        assertPublicMethodReturnsStageOf(
+            "systems.zlink.framework.streams.ZLinkSessionActor",
+            "relay",
+            Void.class);
         assertNoPublicMethodNamed("systems.zlink.framework.channels.ZLinkSendCall", "await");
         assertNoPublicMethodNamed("systems.zlink.framework.channels.ZLinkRequestCall", "await");
         assertNoPublicMethodNamed("systems.zlink.framework.actors.ZLinkActorSendCall", "await");
@@ -63,9 +64,14 @@ final class JavaTargetContractGapTest {
         assertNoPublicMethodNamed(context, "getSpot");
         Method spotId = context.getMethod("spotId");
         assertEquals(Optional.class, spotId.getReturnType());
-        assertNotNull(Class.forName("systems.zlink.framework.actors.ZLinkActorJoinCall"));
-        Class<?> result = Class.forName("systems.zlink.framework.actors.ZLinkActorJoinResult");
-        assertTrue(result.isSealed(), "actor join result must be sealed");
+        Class<?> call =
+            Class.forName("systems.zlink.framework.actors.ZLinkActorJoinCall");
+        assertEquals(void.class, call.getMethod("defer").getReturnType());
+        assertNoPublicMethodNamed(call, "submit");
+        assertClassAbsent("systems.zlink.framework.actors.ZLinkActorJoinResult");
+        Class<?> completion =
+            Class.forName("systems.zlink.framework.actors.ZLinkActorJoinCompletion");
+        assertTrue(completion.isSealed(), "actor join completion must be sealed");
     }
 
     @Test

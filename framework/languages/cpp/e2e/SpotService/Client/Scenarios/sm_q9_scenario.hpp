@@ -18,7 +18,7 @@ inline multi_node_create_spot_res_t post_sm_q9_create (
   const multi_node_create_spot_req_t &request,
   const std::string &label)
 {
-    auto raw = client.post ("/spot/create-local").body (request).async_raw ().result ();
+    auto raw = client.post ("/spot/create-local").body (request).submit_raw ().result ();
     if (!raw || raw.value ().status >= 400) {
         const auto error = raw ? raw.value ().body
                                : (raw.error () ? raw.error ()->what () : "HTTP failed");
@@ -34,7 +34,7 @@ inline state_res_t request_sm_q9_state (zlink::http_client::client_t &client,
 {
     auto raw = client.post ("/spot/state/request")
                  .body (multi_node_state_route_req_t{.spot_rid = spot_rid, .delta = delta})
-                 .async_raw ()
+                 .submit_raw ()
                  .result ();
     if (raw && raw.value ().status < 400) {
         return nlohmann::json::parse (raw.value ().body).get<state_res_t> ();
@@ -47,7 +47,7 @@ inline state_res_t request_sm_q9_state (zlink::http_client::client_t &client,
 inline evidence_snapshot_t fetch_sm_q9_evidence (zlink::http_client::client_t &client,
                                                  const std::string &label)
 {
-    auto raw = client.get ("/evidence").async_raw ().result ();
+    auto raw = client.get ("/evidence").submit_raw ().result ();
     if (!raw || raw.value ().status >= 400) {
         const auto error = raw ? raw.value ().body
                                : (raw.error () ? raw.error ()->what () : "HTTP failed");

@@ -193,7 +193,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
         long deadline = System.nanoTime() + ROUTE_SETTLE_TIMEOUT.toNanos();
         Map<String, Object>[] latest = new Map[0];
         while (System.nanoTime() < deadline) {
-            latest = consumer.get("/locations/peers").async(Map[].class).toCompletableFuture().join().body();
+            latest = consumer.get("/locations/peers").submit(Map[].class).toCompletableFuture().join().body();
             if (predicate.test(latest)) {
                 return;
             }
@@ -294,7 +294,7 @@ public final class DynamicClusterLauncher implements AutoCloseable {
                 .build()) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> response = drainClient.post("/admin/drain")
-                    .async(Map.class).toCompletableFuture().join().body();
+                    .submit(Map.class).toCompletableFuture().join().body();
                 String result = String.valueOf(response.get("result"));
                 stop();
                 return result;

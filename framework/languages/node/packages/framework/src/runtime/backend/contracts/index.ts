@@ -21,9 +21,9 @@ import type {
   StreamSessionService
 } from '../../foundation/service-runtime-contracts';
 import type {
-  RoutingId,
-  ZLinkSubmitResult
+  RoutingId
 } from '../../../contracts';
+import type { ZLinkSubmitResult } from '../../messaging/submission-result';
 import type { Message } from '../../../contracts/Common/Message';
 import type {
   ServiceUserSpotOperationHandler,
@@ -431,6 +431,7 @@ export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
 }
 
 export interface ZLinkBackendPublisherSocket extends ZLinkBackendSocket {
+  sendHighWaterMark: number;
   onSendReady(handler: () => void): void;
   publish(topic: string, message: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
 }
@@ -447,6 +448,7 @@ export interface ZLinkBackendReadablePoller {
 
 export interface ZLinkBackendStreamSocket extends ZLinkBackendSocket {
   readonly sendTimeoutMs: number;
+  readonly sendHighWaterMark: number;
   onSendReady(handler: () => void): void;
   setTlsServer(cert: string, key: string, requireClientCert?: boolean): void;
   onFramedPacket(handler: (peer: string, header: Message, payload: Message) => void): void;

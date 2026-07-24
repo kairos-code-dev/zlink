@@ -527,25 +527,47 @@ final class DefaultZLinkFrameworkOptionsTest {
     }
 
     @Test
-    void entrySpotRoutingIdMutatesRegistrationModel() {
+    void entrySpotIdIsFrameworkIssuedAndStableForTheLifecycle() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        RoutingId entryRid =
-            RoutingId.from("entry-spot");
 
         { var mesh = options.addSpotMesh("game"); { var node = mesh;
-                node.enableRouter("inproc://entry-router");
-                var entry = node.configureEntrySpot(); entry.setRoutingId(entryRid); }; };
+                node.enableRouter("inproc://entry-router"); }; };
 
         options.validate();
-        assertEquals(entryRid, options.registration().spotNodes().get(0).entrySpotRoutingId());
+        String first =
+            options.registration().spotNodes().get(0).entrySpotId();
+        String second =
+            options.registration().spotNodes().get(0).entrySpotId();
+        assertEquals(first, second);
+        assertTrue(first.matches(
+            "game-entry-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}"
+                + "-[89ab][0-9a-f]{3}-[0-9a-f]{12}"));
     }
 
     @Test
-    void entrySpotRoutingIdRejectsNull() {
-        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+    void entrySpotIdDiffersAcrossRegistrations() {
+        DefaultZLinkFrameworkOptions first = new DefaultZLinkFrameworkOptions();
+        DefaultZLinkFrameworkOptions second = new DefaultZLinkFrameworkOptions();
+        first.addSpotMesh("game");
+        second.addSpotMesh("game");
 
-        assertThrows(ZLinkConfigurationException.class, () ->
-            { var mesh = options.addSpotMesh("game"); { var node = mesh; var entry = node.configureEntrySpot(); entry.setRoutingId(null); }; });
+        assertTrue(!first.registration().spotNodes().get(0).entrySpotId()
+            .equals(second.registration().spotNodes().get(0).entrySpotId()));
+    }
+
+    @Test
+    void objectServerEntrySpotIdUsesConfiguredRoutingIdPrefix() {
+        var registration =
+            new systems.zlink.framework.runtime.mesh.MeshNodeRegistration(
+                "game");
+        registration.objects().server();
+        registration.setRoutingIdPrefix("host-a");
+
+        String entrySpotId = registration.entrySpotId();
+        assertTrue(entrySpotId.matches(
+            "host-a-entry-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}"
+                + "-[89ab][0-9a-f]{3}-[0-9a-f]{12}"));
+        assertEquals(entrySpotId, registration.entrySpotId());
     }
 
     @Test

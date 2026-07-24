@@ -31,7 +31,7 @@ public sealed class ActorTransferTests
                 "player",
                 "handoff-1",
                 DateTimeOffset.UtcNow.AddSeconds(1),
-                RoutingId.From("source-spot"),
+                "source-spot",
                 RoutingId.From("source-node"),
                 ZLinkMessage.From("admission"),
                 codecs);
@@ -44,7 +44,7 @@ public sealed class ActorTransferTests
                 "actor-1",
                 "player",
                 "handoff-1",
-                RoutingId.From("source-spot"),
+                "source-spot",
                 RoutingId.From("source-node"),
                 null,
                 default,
@@ -151,7 +151,7 @@ public sealed class ActorTransferTests
             "actor-1",
             "player",
             "handoff-1",
-            RoutingId.From("source-spot"),
+            "source-spot",
             RoutingId.From("source-node"),
             RoutingId.From("source-node"),
             RoutingId.From("session-1"),
@@ -180,15 +180,25 @@ public sealed class ActorTransferTests
             header,
             "actor-1",
             "handoff-1",
-            RoutingId.From("source-spot"),
+            "source-spot",
             RoutingId.From("source-node"),
-            RoutingId.From("target-spot"),
+            "target-spot",
+            new ZLinkActorJoinOperationId(11, 29),
+            new ZLinkRemoteActorAdmissionReply(
+                true,
+                ZLinkEnvelopeCodec.DefaultContentType,
+                [1, 2, 3],
+                0),
             []);
         try
         {
             var decoded = ZLinkEnvelopeCodec.DecodeHeader(parts);
             Assert.Equal(expected.FlowId, decoded.FlowId);
             Assert.Equal(expected.Origin, decoded.FlowOrigin);
+            var completion = ZLinkRemoteActorJoinPackets.DecodeHandoffCompletionRequest(parts);
+            Assert.Equal((ulong)11, completion.OperationIdHigh);
+            Assert.Equal((ulong)29, completion.OperationIdLow);
+            Assert.Equal([1, 2, 3], completion.Reply);
         }
         finally
         {
@@ -208,7 +218,7 @@ public sealed class ActorTransferTests
         return new ZLinkBackendRouteReceived(
             owned,
             sourceNodeRid: RoutingId.From("transfer-source"),
-            spotId: RoutingId.From("transfer-target"),
+            spotId: "transfer-target",
             requestSeq: null,
             reply: null);
     }
@@ -248,6 +258,10 @@ public sealed class ActorTransferTests
 
     private sealed class TestActorContext : IZLinkActorContext
     {
+        public string ActorId => "actor-1";
+
+        public ulong ObjectGeneration => 1;
+
         public string MeshName => "play";
 
         public string? SpotId => null;

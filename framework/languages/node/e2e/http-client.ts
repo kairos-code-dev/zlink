@@ -56,7 +56,7 @@ export async function postStatus(url: string, timeoutMs = defaultTimeoutMs): Pro
 async function rawRequest(method: 'GET' | 'POST', url: string, timeoutMs: number): Promise<RawHttpResponse> {
   const target = requestTarget(url);
   const client = ZLinkHttpClient.create(target.origin).timeout(timeoutMs);
-  return await (method === 'GET' ? client.get(target.path) : client.post(target.path)).asyncRaw();
+  return await (method === 'GET' ? client.get(target.path) : client.post(target.path)).submitRaw();
 }
 
 function requestTarget(baseUrl: string, path?: string): { readonly origin: string; readonly path: string } {

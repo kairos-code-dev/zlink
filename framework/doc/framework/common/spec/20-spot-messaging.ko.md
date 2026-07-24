@@ -687,28 +687,30 @@ Logical Multicast는 publish 전용 전달 정책 option을 제공하지 않는�
 Framework는 동시에 처리할 수 있는 publish 작업 수를 제한한다. 모든 worker가
 사용 중이면 유한한 send timeout까지 worker와 source-local outbound capacity를 기다린다.
 그 안에 확보하지 못하면 어떤 target에도 message를 보내지 않고 `DeadlineExceeded`로 실패한다.
+Publish를 시작하기 전에 cancellation이나 runtime shutdown이 확정되면 각각 기존 typed cancellation
+또는 `RuntimeShutdown` 오류로 완료한다.
 
 Worker가 작업을 받으면 다음 처리를 시작한다.
 
 - 처음에 고정한 각 remote target에 message를 한 번 제출한다.
-- 각 remote target에 send timeout을 따로 적용한다.
 - 일치한 local Spot queue에는 target별로 즉시 제출한다.
 
-Local Spot queue에 용량이 없으면 기다리지 않는다. 해당 target을 수락하지 못한
-수에 포함하고 다음 target을 처리한다.
+Local Spot queue에 용량이 없으면 기다리지 않고 다음 target을 처리한다. 이 실패를
+publish 전용 결과나 monitoring 값으로 집계하지 않는다.
 
 ### 4.4 Publish가 시작된 이후의 처리
 
-Worker가 처음에 고정한 대상 목록을 처리하기 시작하면 publish가 시작된 것으로
-확정한다. 그 뒤 cancellation이나 shutdown이 발생해도 목록에 남은 target 처리를
-중단하지 않는다. 나중에 처리한 target의 queue에 여유가 없어도 앞에서 성공한
-제출을 취소하지 않는다.
+Worker와 source-local outbound capacity를 확보하여 대상 목록 처리를 넘기면 publish가
+시작된 것으로 확정한다. Terminal call은 이 시점에 결과값 없이 정상 완료하며 target별
+수락 결과를 기다리지 않는다. 그 뒤 cancellation이나 shutdown이 발생해도 이미 시작한
+작업을 전체 실패로 바꾸지 않는다. 나중에 처리한 target의 queue에 여유가 없어도 앞에서
+성공한 제출을 취소하지 않는다.
 
 따라서 Logical Multicast는 여러 source-local 제출 대상 중 일부에만 제출될 수 있다. 이미 local outbound
-transport queue 또는 local Spot queue가 수락한 제출은 유지하며 실패한 제출은 target별 결과에 기록한다.
+transport queue 또는 local Spot queue가 수락한 제출은 유지한다. 수락하지 못한 target은 public 결과로
+반환하거나 publish 전용 monitoring 정보로 집계하지 않는다.
 
-다음 다이어그램은 publish를 시작하는 단계와 source에서 각 queue 제출 결과를 확정하는 단계가 서로 다르다는
-점을 보여준다.
+다음 다이어그램은 publish terminal과 target별 전달 처리가 서로 다른 경계임을 보여준다.
 
 ```mermaid
 sequenceDiagram
@@ -723,47 +725,40 @@ sequenceDiagram
         Executor-->>Caller: target 처리 없이 DeadlineExceeded
     else 사용 가능한 worker 있음
         Executor->>Runtime: 고정한 target 목록 처리 시작
+        Executor-->>Caller: 결과값 없이 정상 완료
         par Remote target마다
             Runtime->>Runtime: local outbound transport queue 제출
         and 일치하는 local Spot마다
             Runtime->>Local: 즉시 수락 요청
-            Local-->>Runtime: 수락 또는 용량 부족 결과
         end
         Note over Runtime: Cancellation이 남은 target 처리를 중단하지 않음
-        Runtime-->>Caller: 결과값 없이 정상 완료
     end
 ```
 
-사용할 worker가 없어 publish 자체를 시작하지 못한 경우와, publish를 시작한 뒤 일부 source-local queue가
-제출을 수락하지 못한 경우를 구분해야 한다. Publish를 시작한 뒤에는 이미 수락된 제출을 취소하지 않으며
-각 target의 source-local 제출 결과를 따로 남긴다.
+사용할 worker가 없어 publish 자체를 시작하지 못하면 caller에게 실패를 알린다. Publish를 시작한 뒤에는
+이미 수락된 제출을 취소하지 않으며 각 target의 수락 여부를 caller에게 반환하거나 monitoring에 집계하지
+않는다.
 
 ### 4.5 Publish 완료
 
 처음에 고정한 remote target과 일치하는 local Spot이 모두 `0`이어도 publish는 정상 완료한다. Publish
 transaction이 시작된 뒤 일부 target의 queue 용량이 부족하거나 연결할 수 없어도 전체 작업을 rollback하거나
-retry하지 않는다. 다음 결과는 public 반환값이 아니라 monitoring metric과 event에 기록한다.
+retry하지 않는다. Remote target 연결 실패와 local Spot queue 용량 부족을 publish 전용 결과나 monitoring
+값으로 만들지 않는다.
 
-- Remote target 연결 실패
-- Local Spot queue 용량 부족
+### 4.6 Publish 완료의 의미
 
-### 4.6 Publish 결과의 의미
-
-Publish 수락은 subscriber handler가 실행되었거나 업무 처리가 끝났다는 확인이 아니다. Remote admitted는
-source MeshNode의 local outbound transport queue가 제출을 수락했다는 뜻이며, 수신 MeshNode의 Spot queue
-제출이나 handler 실행·완료를 기다리지 않는다. Local admitted만 origin MeshNode에서 일치한 local Spot
-application queue가 제출을 수락했다는 뜻이다. Publish는 다음 전달 보장도 제공하지 않는다.
+Publish 완료는 subscriber handler가 실행되었거나 업무 처리가 끝났다는 확인이 아니다. Source runtime이
+필요한 worker와 source-local capacity를 확보하여 publish 작업을 시작했음을 뜻한다. 수신 MeshNode의
+Spot queue 제출이나 handler 실행·완료를 기다리지 않는다. Publish는 다음 전달 보장도 제공하지 않는다.
 
 - Process가 종료되어도 message가 남는 durable 저장
 - 나중에 같은 message를 다시 보내는 replay
 - 같은 message를 반드시 한 번만 처리하는 exactly-once 전달
 
-Monitoring은 다음 수를 remote와 local로 나누어 제공한다.
-
-| 범위 | 결과에 포함하는 수 |
-|---|---|
-| Remote target | 처음에 선택한 수([`snapshot`](01-glossary.ko.md#snapshot)), source local outbound transport queue가 수락한 수(`admitted`), 해당 queue 용량 부족으로 수락하지 못한 수(`dropped`), 연결할 수 없는 수([`unreachable`](01-glossary.ko.md#publish-result-counts)) |
-| Local Spot | 처음에 일치한 수(`snapshot`), 수락한 수(`admitted`), 용량 부족으로 수락하지 못한 수(`dropped`) |
+Framework는 publish마다 remote·local target 수와 target별 수락·실패 결과를 계산하여
+monitoring snapshot, metric 또는 runtime event로 제공하지 않는다. 전체 transport와 mailbox 상태는
+publish와 무관한 공통 runtime monitoring으로 확인한다.
 
 #### 비규범적 .NET 예시
 
@@ -783,9 +778,6 @@ static async ValueTask PublishAsync<TEvent>(
         .Async(cancellationToken); // 정상 완료는 handler 실행 완료를 뜻하지 않는다.
 }
 ```
-
-Monitoring metric과 event는 remote target과 local Spot에 대해 처음 선택한 수, 수락한 수, 용량 부족으로
-수락하지 못한 수와 연결할 수 없는 수를 구분한다. 이 값은 publish terminal 반환 계약이 아니다.
 
 ## 5. Subscription 등록과 message 전달
 
@@ -940,12 +932,11 @@ snapshot을 사용한다. Metadata를 누가 보유하는지, 허용하는 크�
 | Current owner의 `MeshName` | 현재 Spot이 어느 Mesh에 있는지 나타낸다. |
 | `ChannelName` | 어떤 Channel 범위의 message인지 나타낸다. |
 | Origin RID | Message를 시작한 source를 식별한다. |
-| Remote target 수 | 다른 node에 전달하려고 선택한 target 수다. |
-| Local match 수 | 현재 node에서 subscription이 일치한 Spot 수다. |
 | 수락 대기와 실패 | 송신 경로나 queue가 message를 받을 때까지 기다린 시간과 실패를 나타낸다. |
 | 용량 부족 | Queue에 여유가 없어 수락하지 못한 message를 나타낸다. |
 | Spot 전달 결과 | Spot queue와 handler에 message를 전달한 결과를 나타낸다. |
 
+Logical Multicast의 remote·local target 수와 target별 결과는 publish 전용 관측 정보로 집계하지 않는다.
 `topic`과 Spot ID는 metric을 분류하는 label로 사용하지 않는다.
 
 ## 8. 검증 요구
@@ -993,8 +984,8 @@ snapshot을 사용한다. Metadata를 누가 보유하는지, 허용하는 크�
 - Publish가 시작된 뒤 cancellation이 발생해도 처음에 고정한 나머지 target 처리를
   중단하지 않는다.
 - 같은 node의 여러 target Spot이 복사본을 만들지 않고 같은 message data를 공유한다.
-- Local과 remote target에 대해 처음 선택한 수, 수락한 수, 용량 부족으로 수락하지
-  못한 수와 연결할 수 없는 수를 구분하여 집계한다.
+- Local과 remote target의 선택 수, 수락 수, drop 수 또는 unreachable 수를 publish
+  전용 monitoring 값으로 집계하지 않는다.
 
 ### 8.5 Spot과 Actor message 전달
 

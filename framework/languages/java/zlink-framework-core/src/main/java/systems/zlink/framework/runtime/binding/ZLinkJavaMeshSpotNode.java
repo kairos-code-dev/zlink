@@ -17,7 +17,6 @@ import systems.zlink.contracts.service.spot.ActorRef;
 import systems.zlink.contracts.service.spot.ActorTransferPrepare;
 import systems.zlink.contracts.service.spot.ActorTransferToken;
 import systems.zlink.contracts.service.spot.PrepareActorTransferResult;
-import systems.zlink.contracts.service.spot.PublishDetail;
 import systems.zlink.contracts.service.spot.MeshNode;
 import systems.zlink.contracts.service.spot.MeshDestinationKind;
 import systems.zlink.contracts.service.spot.MeshSendReadyData;
@@ -40,9 +39,10 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSpotRouteBridge;
 import systems.zlink.framework.runtime.internal.backend.ZLinkInternalSpotNode;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshDispatchRecord;
 import systems.zlink.framework.runtime.internal.backend.ZLinkMeshApplicationReceiver;
-import systems.zlink.framework.channels.ZLinkSubmitStatus;
 
-final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
+
+final class ZLinkJavaMeshSpotNode
+    implements ZLinkInternalSpotNode, ZLinkJavaAdmissionBacked {
 
     private final ZLinkJavaMeshNode owner;
     private final MeshNode node;
@@ -65,9 +65,7 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
     private volatile Runnable admissionShutdownHandler = () -> { };
     private volatile ZLinkMeshApplicationReceiver applicationReceiver;
     private volatile Duration admissionTimeout = Duration.ofSeconds(1);
-    private volatile int admissionPendingCapacity =
-        systems.zlink.framework.runtime.backend.ZLinkBackendObject
-            .DEFAULT_PENDING_ADMISSION_CAPACITY;
+    private volatile int admissionPendingCapacity = 4096;
 
     ZLinkJavaMeshSpotNode(ZLinkJavaMeshNode owner) {
         this.owner = owner;
@@ -153,7 +151,7 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
     }
 
     @Override
-    public Optional<ZLinkSubmitStatus> submitLocalNodeSend(
+    public Optional<Integer> submitLocalNodeSend(
         RoutingId targetNodeRid,
         byte[] metadata,
         List<Message> parts) {
@@ -162,13 +160,13 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
         }
         ZLinkMeshApplicationReceiver receiver = applicationReceiver;
         if (receiver == null) {
-            return Optional.of(ZLinkSubmitStatus.TARGET_NOT_FOUND);
+            return Optional.of(ZLinkOneWayCalls.TARGET_NOT_FOUND);
         }
         return Optional.of(receiver.submitLocalNodeSend(routingId(), metadata, parts));
     }
 
     @Override
-    public Optional<ZLinkSubmitStatus> classifyNodeSendTarget(RoutingId targetNodeRid) {
+    public Optional<Integer> classifyNodeSendTarget(RoutingId targetNodeRid) {
         boolean admitted = node.peers().stream()
             .anyMatch(peer -> peer.routingId().equals(targetNodeRid));
         boolean hasAuthority = !expectedPeerRids.isEmpty() || !ownerExpectedPeerRids.isEmpty();
@@ -178,7 +176,7 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
             || ownerExpectedPeerRids.contains(targetNodeRid)) {
             return Optional.empty();
         }
-        return Optional.of(ZLinkSubmitStatus.TARGET_NOT_FOUND);
+        return Optional.of(ZLinkOneWayCalls.TARGET_NOT_FOUND);
     }
 
     void updateOwnerPeerCatalog(
@@ -322,25 +320,25 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
     }
 
     @Override
-    public PublishDetail publishDetailed(
+    public void publish(
         String channelName,
         String topic,
         List<Message> parts,
         SendFlags flags) {
         try (var publisher = node.createPublisher()) {
-            return publisher.publishDetailed(channelName, topic, parts, flags);
+            publisher.publish(channelName, topic, parts, flags);
         }
     }
 
     @Override
-    public PublishDetail publishDetailed(
+    public void publish(
         String channelName,
         String topic,
         byte[] metadata,
         List<Message> parts,
         SendFlags flags) {
         try (var publisher = node.createPublisher()) {
-            return publisher.publishDetailed(
+            publisher.publish(
                 channelName, topic, metadata, parts, flags);
         }
     }

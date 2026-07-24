@@ -9,6 +9,8 @@ internal sealed partial class ZLinkEntrySpotActivation :
     IZLinkSpotHandlerRegistrySink,
     IAsyncDisposable
 {
+    ZLinkUserSpotExecutionMode IZLinkCurrentSpotActivation.ExecutionMode
+        => ZLinkUserSpotExecutionMode.PerActor;
     private static readonly AsyncLocal<ZLinkEntrySpotActivation?> Current = new();
     private readonly ZLinkSpotActorHandlerRegistry _actorHandlers;
     private readonly SemaphoreSlim _actorJoinDrainGate = new(1, 1);

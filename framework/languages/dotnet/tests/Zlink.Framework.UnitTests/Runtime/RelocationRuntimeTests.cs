@@ -37,8 +37,6 @@ public sealed class RelocationRuntimeTests
                     ZLinkPlacementObjectKind.Actor,
                     key,
                     "Game.Actor",
-                    null,
-                    null,
                     "intent-1",
                     SHA256.HashData("intent-1"u8),
                     8,
@@ -48,7 +46,7 @@ public sealed class RelocationRuntimeTests
                     1,
                     source.Token,
                     creating,
-                    1)));
+                    ActorCapacity())));
         var committed = Assert.IsType<ZLinkObjectCommitResult.Committed>(
             await store.CommitAsync(reservation.Reservation, ready));
         Assert.Equal(ready, committed.Snapshot.Payload.ToArray());
@@ -81,7 +79,7 @@ public sealed class RelocationRuntimeTests
                         RoutingId.From("target")),
                     1,
                     target.Token,
-                    1)));
+                    ActorCapacity())));
         Assert.Equal(
             (1L, 0L),
             store.GetPlacementCapacityUsage(
@@ -151,9 +149,9 @@ public sealed class RelocationRuntimeTests
                     "actor:mesh:aborted",
                     descriptor,
                     owner.Token,
-                    capacityDelta: 3)));
+                    capacityDelta: 1)));
         Assert.Equal(
-            (3L, 0L),
+            (1L, 0L),
             store.GetPlacementCapacityUsage(
                 descriptor,
                 1,
@@ -175,13 +173,13 @@ public sealed class RelocationRuntimeTests
                     "actor:mesh:deleted",
                     descriptor,
                     owner.Token,
-                    capacityDelta: 5)));
+                    capacityDelta: 1)));
         var committed = Assert.IsType<ZLinkObjectCommitResult.Committed>(
             await store.CommitAsync(
                 committedReservation.Reservation,
                 new byte[] { 0x44 }));
         Assert.Equal(
-            (0L, 5L),
+            (0L, 1L),
             store.GetPlacementCapacityUsage(
                 descriptor,
                 1,
@@ -416,27 +414,11 @@ public sealed class RelocationRuntimeTests
                     key.Value,
                     sourceDescriptor,
                     source.Token,
-                    capacityDelta: 7)));
+                    capacityDelta: 1)));
         var ready = Assert.IsType<ZLinkObjectCommitResult.Committed>(
             await store.CommitAsync(
                 creation.Reservation,
                 new byte[] { 0x01 }));
-        var capacity = Assert.IsType<
-            ZLinkRelocationCapacityReserveResult.Reserved>(
-            await store.ReserveRelocationCapacityAsync(
-                new ZLinkRelocationCapacityReservationRequest(
-                    Guid.NewGuid(),
-                    key,
-                    ready.Snapshot.StoreVersion,
-                    ZLinkPlacementObjectKind.Actor,
-                    "Game.Actor",
-                    sourceDescriptor,
-                    1,
-                    source.Token,
-                    targetDescriptor,
-                    1,
-                    target.Token,
-                    7)));
         var participant = new ZLinkAggregateParticipant(
             key,
             ready.Snapshot.StoreVersion,
@@ -448,7 +430,9 @@ public sealed class RelocationRuntimeTests
             1,
             [participant],
             Enumerable.Repeat((byte)0x5a, 32).ToArray(),
-            [capacity.Fence],
+            targetDescriptor,
+            1,
+            ActorCapacity(),
             target.Token);
 
         var prepared = Assert.IsType<ZLinkAggregatePrepareResult.Prepared>(
@@ -467,8 +451,7 @@ public sealed class RelocationRuntimeTests
                                 participant.MembershipMutation.ToArray()
                         }
                     ],
-                    InventoryDigest = request.InventoryDigest.ToArray(),
-                    TargetReservations = request.TargetReservations.ToArray()
+                    InventoryDigest = request.InventoryDigest.ToArray()
                 }));
         Assert.IsType<ZLinkAggregatePrepareResult.Conflict>(
             await store.PrepareAggregateAsync(
@@ -494,7 +477,7 @@ public sealed class RelocationRuntimeTests
                 ZLinkPlacementObjectKind.Actor,
                 "Game.Actor"));
         Assert.Equal(
-            (0L, 7L),
+            (0L, 1L),
             store.GetPlacementCapacityUsage(
                 targetDescriptor,
                 1,
@@ -627,7 +610,7 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
-    public void ObjectServerRegistrationKeepsPlacementPolicyAndAdapterTogether()
+    public void ObjectServerRegistrationKeepsExecutionModePolicyAndAdapterTogether()
     {
         var registration = new ZLinkSpotNodeRegistration
         {
@@ -637,10 +620,10 @@ public sealed class RelocationRuntimeTests
 
         builder.AddSpotFactory<TestRelocatableSpot>(
             "room",
-            new ZLinkObjectPlacementOptions
+            new ZLinkUserSpotFactoryOptions
             {
-                MaxActiveObjects = 100,
-                MaxPendingActivations = 10
+                StableTypeLimit = 100,
+                ExecutionMode = ZLinkUserSpotExecutionMode.PerActor
             },
             ZLinkRelocationPolicy<TestRelocatableSpot>
                 .Snapshot<TestSpotRelocationAdapter>());
@@ -650,7 +633,9 @@ public sealed class RelocationRuntimeTests
         Assert.Equal((byte)2, relocation.PolicyKind);
         Assert.Equal(typeof(TestSpotRelocationAdapter), relocation.AdapterType);
         Assert.Equal(100, relocation.Placement.MaxActiveObjects);
-        Assert.Equal(10, relocation.Placement.MaxPendingActivations);
+        var factoryOptions = registration.UserSpotFactoryOptions[typeof(TestRelocatableSpot)];
+        Assert.Equal(100, factoryOptions.StableTypeLimit);
+        Assert.Equal(ZLinkUserSpotExecutionMode.PerActor, factoryOptions.ExecutionMode);
     }
 
     [Fact]
@@ -751,7 +736,7 @@ public sealed class RelocationRuntimeTests
                 new Message((ReadOnlySpan<byte>)new byte[] { 3 })
             ],
             RoutingId.From("source-node"),
-            RoutingId.From("spot-7"),
+            "spot-7",
             44,
             reply: null,
             metadata: new ZLinkMessageMetadata(
@@ -764,7 +749,7 @@ public sealed class RelocationRuntimeTests
             ZLinkSpotAcceptedJournal.Encode(received));
 
         Assert.Equal(RoutingId.From("source-node"), restored.SourceNodeRid);
-        Assert.Equal(RoutingId.From("spot-7"), restored.SpotId);
+        Assert.Equal("spot-7", restored.SpotId);
         Assert.Equal<ulong?>(44, restored.RequestSequence);
         Assert.Equal("abc", restored.Metadata.Find("trace"));
         Assert.Equal(new byte[] { 1, 2 }, restored.Parts[0].ToArray());
@@ -872,7 +857,17 @@ public sealed class RelocationRuntimeTests
                         new byte[] { 6 },
                         new byte[] { 7 }))
                 .ToArray(),
-            [],
+            new ZLinkMeshNodeDescriptorKey(
+                "mesh",
+                RoutingId.From("aggregate-target")),
+            1,
+            new ZLinkCapacityVector(
+                1,
+                1,
+                new ZLinkSpotTypeCapacityDelta(
+                    ZLinkPlacementObjectKind.UserSpot,
+                    "room",
+                    1)),
             new ZLinkLocationOwnerToken("aggregate-target", 17));
 
         var published = await coordinator.PublishAsync(request);
@@ -912,7 +907,17 @@ public sealed class RelocationRuntimeTests
                         ReadOnlyMemory<byte>.Empty,
                         ReadOnlyMemory<byte>.Empty))
                 .ToArray(),
-            [],
+            new ZLinkMeshNodeDescriptorKey(
+                "mesh",
+                RoutingId.From("aggregate-target")),
+            1,
+            new ZLinkCapacityVector(
+                1,
+                1,
+                new ZLinkSpotTypeCapacityDelta(
+                    ZLinkPlacementObjectKind.UserSpot,
+                    "room",
+                    1)),
             new ZLinkLocationOwnerToken("aggregate-target", 17));
 
         await Assert.ThrowsAsync<InvalidOperationException>(
@@ -1028,7 +1033,7 @@ public sealed class RelocationRuntimeTests
                 "mesh",
                 RoutingId.From("target")),
             1,
-            1);
+            ActorCapacity());
 
     private static ZLinkObjectReservationRequest ObjectReservation(
         string authorityKey,
@@ -1048,7 +1053,7 @@ public sealed class RelocationRuntimeTests
             1,
             owner,
             new byte[] { 0x10 },
-            capacityDelta);
+            new ZLinkCapacityVector(capacityDelta, 0, null));
 
     private static ZLinkMeshNodeDescriptor AuthorityDescriptor(
         string rid,
@@ -1110,7 +1115,10 @@ public sealed class RelocationRuntimeTests
             targetDescriptor,
             1,
             targetOwner,
-            source.Allocation.CapacityDelta);
+            source.Allocation.Capacity);
+
+    private static ZLinkCapacityVector ActorCapacity() =>
+        new(1, 0, null);
 
     private static ZLinkManagedMeshNode NewNode(
         IContext context,

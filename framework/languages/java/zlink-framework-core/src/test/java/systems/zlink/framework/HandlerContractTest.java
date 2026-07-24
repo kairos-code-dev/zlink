@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.annotation.Repeatable;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -230,16 +231,43 @@ final class HandlerContractTest {
 
     @Test
     void actorJoinContractsSupportDtoAndNoReplyJoins() throws NoSuchMethodException {
+        ZLinkActorContext.class.getMethod("joinSpot", String.class);
         ZLinkActorContext.class.getMethod("joinSpot", String.class, Object.class);
-        ZLinkActorContext.class.getMethod("joinEntrySpot", RoutingId.class, Object.class);
+        ZLinkActorContext.class.getMethod("joinEntrySpot");
+        ZLinkActorContext.class.getMethod("joinEntrySpot", Object.class);
         ZLinkActorJoinCall.class.getMethod("timeout", java.time.Duration.class);
-        ZLinkActorJoinCall.class.getMethod("submit");
-        ZLinkActorJoinCall.class.getMethod("submit", Class.class);
-        ZLinkActorJoinCall.class.getMethod("yield");
-        ZLinkActorJoinCall.class.getMethod("yield", Class.class);
+        ZLinkActorJoinCall.class.getMethod("defer");
+        assertFalse(hasMethod(ZLinkActorJoinCall.class, "submit"));
+        assertFalse(hasMethod(ZLinkActorJoinCall.class, "yield"));
         assertFalse(hasMethod(ZLinkActorContext.class, "isJoined"));
         assertFalse(hasMethod(ZLinkActorContext.class, "getSpot"));
         assertFalse(hasMethod(ZLinkActorJoinCall.class, "await"));
+    }
+
+    @Test
+    void executionTerminatorsAndUserSpotOptionsMatchExactContract() throws Exception {
+        assertTrue(Modifier.isAbstract(
+            ZLinkRequestCall.class.getMethod("yield", Class.class).getModifiers()));
+        assertTrue(Modifier.isAbstract(
+            systems.zlink.framework.actors.ZLinkActorRequestCall.class
+                .getMethod("yield", Class.class)
+                .getModifiers()));
+        assertTrue(Modifier.isAbstract(
+            systems.zlink.framework.spots.ZLinkWorkerCall.class
+                .getMethod("yield")
+                .getModifiers()));
+        assertFalse(hasMethod(ZLinkActorJoinCall.class, "yield"));
+
+        var defaults = new systems.zlink.framework.configuration
+            .ZLinkUserSpotFactoryOptions(0);
+        assertEquals(
+            systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode
+                .SPOT_WIDE,
+            defaults.executionMode());
+        assertEquals(
+            1,
+            systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode
+                .PER_ACTOR.value());
     }
 
     @Test

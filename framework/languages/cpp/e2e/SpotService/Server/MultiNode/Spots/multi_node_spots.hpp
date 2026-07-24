@@ -89,7 +89,7 @@ template <const char *NodeName> class multi_node_spot_t : public zlink::framewor
                                  multi_node_target_rid (command->target_spot_rid),
                                  e2e::state_req_t{.op = "add", .amount = 7})
                                .timeout (std::chrono::milliseconds (3000))
-                               .async ();
+                               .submit ();
                 _context
                   .send_to (multi_node_target_rid (target_node),
                             multi_node_target_rid (command->target_spot_rid),

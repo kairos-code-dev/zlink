@@ -255,13 +255,14 @@ test('actor join and one-way calls expose only their target terminators', () => 
   const actorJoinSpotCall = declarationBody(actorContracts, 'ZLinkActorJoinSpotCall');
   const actorJoinEntrySpotCall = declarationBody(actorContracts, 'ZLinkActorJoinEntrySpotCall');
 
-  assert.equal(actorJoinCall.includes('submit<TReply'), true);
-  assert.match(actorJoinCall, /yield<TReply = unknown>\(signal\?: AbortSignal\): Promise<ZLinkActorJoinResult<TReply>>/);
+  assert.match(actorJoinCall, /defer\(\): void/);
+  assert.equal(actorJoinCall.includes('submit'), false);
+  assert.equal(actorJoinCall.includes('yield'), false);
   assert.equal(actorContracts.includes('ZLinkActorYieldJoinCall'), false);
   assert.equal(interfaceExtends(actorJoinSpotCall, 'ZLinkActorJoinCall'), true);
   assert.equal(interfaceExtends(actorJoinEntrySpotCall, 'ZLinkActorJoinCall'), true);
   const boundSessionSendCall = declarationBody(boundSessionContracts, 'ZLinkBoundSessionSendCall');
-  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
+  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
   assert.equal(boundSessionSendCall.includes('yield('), false);
 });
 
@@ -419,7 +420,8 @@ test('framework error kind values and retriable defaults match the shared table'
     ['SpotGenerationStale', 'spotGenerationStale', 32, false],
     ['SpotMoving', 'spotMoving', 33, true],
     ['RelocationDataLost', 'relocationDataLost', 34, false],
-    ['SpotIdConflict', 'spotIdConflict', 35, false]
+    ['SpotIdConflict', 'spotIdConflict', 35, false],
+    ['RuntimeShutdown', 'runtimeShutdown', 36, false]
   ];
 
   assert.equal(Object.keys(framework.ZLinkFrameworkErrorKind).length, expected.length);
@@ -492,7 +494,7 @@ test('location contract declarations fix store resolver runtime query watch and 
   assert.match(actorLocation, /readonly actorRef: ActorRef/);
   assert.match(actorLocation, /readonly ownerNodeRid: RoutingId/);
   assert.match(actorLocation, /readonly ownerNodeGeneration: bigint/);
-  assert.match(actorLocation, /readonly spotId: RoutingId/);
+  assert.match(actorLocation, /readonly spotId: SpotId/);
   assert.match(actorLocation, /readonly spotGeneration: bigint/);
   assert.match(actorLocation, /readonly spotKind: ZLinkSpotKind/);
   assert.match(actorLocation, /readonly membershipEpoch: bigint/);
@@ -519,7 +521,7 @@ test('actor convenience declarations expose fluent manager snapshot and bind-or-
   assert.match(actorClient, /requestToActor\(meshName: string, actor: ActorRef, request: unknown\): ZLinkActorRequestCall/);
   assert.equal(actorClient.includes('actorId: string'), false);
   assert.match(actorSendCall, /metadata\(key: string, value: string\): this/);
-  assert.match(actorSendCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
+  assert.match(actorSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
   assert.equal(actorSendCall.includes('packetName('), false);
   assert.match(actorRequestCall, /metadata\(key: string, value: string\): this/);
   assert.equal(actorRequestCall.includes('packetName('), false);
@@ -546,7 +548,7 @@ test('actor convenience declarations expose fluent manager snapshot and bind-or-
   assert.match(sessionActors, /bindOrGet\(actor: ActorRef, signal\?: AbortSignal\): Promise<ZLinkSessionActor>/);
 });
 
-test('one-way call declarations expose async admission results only', () => {
+test('one-way call declarations complete without exposing transport admission results', () => {
   const declarations = readTree(declarationsRoot);
   const sendCall = declarationBody(declarations, 'ZLinkSendCall');
   const fanoutPublishCall = declarationBody(declarations, 'ZLinkFanoutPublishCall');
@@ -557,17 +559,38 @@ test('one-way call declarations expose async admission results only', () => {
   const sessionReplyCall = declarationBody(declarations, 'ZLinkSessionReplyCall');
   const sessionActor = declarationBody(declarations, 'ZLinkSessionActor');
 
-  assert.match(sendCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
-  assert.match(fanoutPublishCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
-  assert.match(publishCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkPublishResult>/);
-  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
-  assert.match(sessionSendCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
-  assert.match(sessionReplyCall, /submit\(signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
-  assert.match(sessionActor, /relay\(payload: ZLinkMessage, signal\?: AbortSignal\): Promise<ZLinkSubmitResult>/);
+  assert.match(sendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
+  assert.match(fanoutPublishCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
+  assert.match(publishCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
+  assert.match(boundSessionSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
+  assert.match(sessionSendCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
+  assert.match(sessionReplyCall, /submit\(signal\?: AbortSignal\): Promise<void>/);
+  assert.match(sessionActor, /relay\(payload: ZLinkMessage, signal\?: AbortSignal\): Promise<void>/);
+  assert.doesNotMatch(declarations, /ZLinkSubmitResult|ZLinkPublishResult|ZLinkSubmitStatus|ZLinkLogicalMulticastDetail/);
   for (const call of [sendCall, fanoutPublishCall, publishCall, actorSendCall,
     boundSessionSendCall, sessionSendCall, sessionReplyCall]) {
     assert.doesNotMatch(call, new RegExp(['try', 'Submit'].join('')));
   }
+});
+
+test('stream connector and server HTTP one-way calls expose Promise<void>', () => {
+  const streamCalls = fs.readFileSync(
+    path.join(workspaceRoot, 'packages', 'stream-connector', 'dist', 'Contracts', 'Calls', 'ZlinkStreamCalls.d.ts'),
+    'utf8'
+  );
+  const serverHttp = fs.readFileSync(
+    path.join(workspaceRoot, 'packages', 'nestjs', 'dist', 'http-client-module.d.ts'),
+    'utf8'
+  );
+
+  assert.match(
+    declarationBody(streamCalls, 'ZlinkStreamSendCall'),
+    /submit\(\): Promise<void>/
+  );
+  assert.match(
+    declarationBody(serverHttp, 'ZLinkServerHttpRequestBuilder'),
+    /submit\(\): Promise<void>/
+  );
 });
 
 test('route client surface scopes node routing by MeshName and resolves channels globally', () => {

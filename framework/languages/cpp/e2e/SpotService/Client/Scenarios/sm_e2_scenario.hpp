@@ -25,7 +25,7 @@ inline void run_sm_e2_scenario (const std::string &play_http_endpoint)
     auto created =
       play_a.post ("/spot/create")
         .body (create_spot_req_t{.spot_rid = spot_rid})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!created) {
         throw std::runtime_error (created.error () ? created.error ()->what ()
@@ -47,7 +47,7 @@ inline void run_sm_e2_scenario (const std::string &play_http_endpoint)
         .body (evidence_wait_req_t{
           .contains_all = {"SpotTimerTick", spot_rid, "sm-e2-tick:1"},
           .timeout_milliseconds = 5000})
-        .async_raw ()
+        .submit_raw ()
         .result ();
     if (!observed) {
         throw std::runtime_error (observed.error () ? observed.error ()->what ()

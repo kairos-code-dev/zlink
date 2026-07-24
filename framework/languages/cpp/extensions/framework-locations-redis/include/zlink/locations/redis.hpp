@@ -117,8 +117,10 @@ redis.call('HSET', KEYS[4],
     'runtimeState', ARGV[12],
     'applicationVersion', ARGV[13],
     'capabilities', ARGV[14],
-    'nodeActiveLimit', ARGV[15],
-    'nodePendingLimit', ARGV[16],
+    'actorLimit', ARGV[15],
+    'spotLimit', ARGV[16],
+    'activationConcurrencyLimit', ARGV[17],
+    'entrySpotId', ARGV[18],
     'immutableDigest', ARGV[6])
 redis.call('SADD', KEYS[2], ARGV[9])
 redis.call('SADD', KEYS[5], ARGV[9])
@@ -553,7 +555,7 @@ return {'found',
     redis.call('HGET', KEYS[1], 'descriptorKey') or '',
     '',
     redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration') or '0',
-    redis.call('HGET', KEYS[1], 'capacityDelta') or '0',
+    redis.call('HGET', KEYS[1], 'capacityBundle') or '',
     redis.call('HGET', KEYS[1], 'pendingCreationReservationId') or '',
     redis.call('HGET', KEYS[1], 'pendingCreationReference') or '',
     redis.call('HGET', KEYS[1], 'pendingCreationSha256') or '',
@@ -616,6 +618,52 @@ local function limitOr(value, fallback)
     if value == nil or value == cjson.null then return fallback end
     return tonumber(value)
 end
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
+end
 
 local function snapshot(status)
     if redis.call('EXISTS', KEYS[1]) == 0 then
@@ -635,7 +683,7 @@ local function snapshot(status)
         redis.call('HGET', KEYS[1], 'descriptorKey') or '',
         '',
         redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration') or '0',
-        redis.call('HGET', KEYS[1], 'capacityDelta') or '0',
+        redis.call('HGET', KEYS[1], 'capacityBundle') or '',
         tostring(nowMs)}
 end
 
@@ -645,7 +693,7 @@ local function archiveCurrent()
         'objectGeneration', 'authorityOwnerGeneration',
         'ownerId', 'ownerLeaseGeneration', 'allocationState',
         'objectKind', 'stableType', 'descriptorKey',
-        'descriptorLifecycleGeneration', 'capacityDelta',
+        'descriptorLifecycleGeneration', 'capacityBundle',
         'pendingCreationReservationId', 'pendingCreationReference',
         'pendingCreationSha256', 'pendingCreationEncodedSize'
     }
@@ -685,12 +733,18 @@ if ARGV[4] == 'delete' then
 	        or not liveLease(KEYS[6], ownerId, leaseGeneration) then
 	        return snapshot('conflict')
 	    end
-	    local delta = tonumber(redis.call('HGET', KEYS[1], 'capacityDelta') or '0')
-	    local nodeActive =
+	    local vector = capacityBundle(
+            redis.call('HGET', KEYS[1], 'capacityBundle') or '')
+	    local actorActive =
 	        tonumber(redis.call('HGET', KEYS[9], ARGV[11]) or '0')
 	    local typeActive =
 	        tonumber(redis.call('HGET', KEYS[10], ARGV[12]) or '0')
-	    if nodeActive < delta or typeActive < delta then
+        local spotActive =
+            tonumber(redis.call('HGET', KEYS[22], ARGV[16]) or '0')
+	    if not vector
+            or actorActive < vector.actors
+            or spotActive < vector.spots
+            or (vector.spotType and typeActive < vector.spotType.slots) then
 	        return snapshot('conflict')
 	    end
 	    if atMax(KEYS[3], 'storeRevision') then
@@ -700,8 +754,11 @@ if ARGV[4] == 'delete' then
 	    redis.call('HINCRBY', KEYS[3], 'storeRevision', 1)
 	    local version =
 	        redis.call('HGET', KEYS[3], 'storeRevision')
-	    redis.call('HINCRBY', KEYS[9], ARGV[11], -delta)
-	    redis.call('HINCRBY', KEYS[10], ARGV[12], -delta)
+	    capacityAdd(KEYS[9], ARGV[11], -vector.actors)
+        capacityAdd(KEYS[22], ARGV[16], -vector.spots)
+        if vector.spotType then
+            capacityAdd(KEYS[10], ARGV[12], -vector.spotType.slots)
+        end
     redis.call('DEL', KEYS[1])
     redis.call('HDEL', KEYS[19], ARGV[10])
     redis.call('HSET', KEYS[18], ARGV[10], version)
@@ -746,8 +803,8 @@ if transition == 'new_owner' then
             ~= redis.call('HGET', KEYS[1], 'descriptorKey')
         or redis.call('HGET', KEYS[8], 'sourceLifecycleGeneration')
             ~= redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration')
-        or redis.call('HGET', KEYS[8], 'capacityDelta')
-            ~= redis.call('HGET', KEYS[1], 'capacityDelta')
+        or redis.call('HGET', KEYS[8], 'capacityBundle')
+            ~= redis.call('HGET', KEYS[1], 'capacityBundle')
         or redis.call('HGET', KEYS[8], 'targetOwnerId') ~= ARGV[7]
         or redis.call('HGET', KEYS[8], 'targetLeaseGeneration') ~= ARGV[8]
         or redis.call('EXISTS', KEYS[15]) == 0
@@ -762,30 +819,28 @@ if transition == 'new_owner' then
         or not targetCapability then
 	        return snapshot('conflict')
 	    end
-	    local delta =
-	        tonumber(redis.call('HGET', KEYS[8], 'capacityDelta') or '0')
-	    local sourceNodeActive =
+	    local vector = capacityBundle(
+            redis.call('HGET', KEYS[8], 'capacityBundle') or '')
+	    local sourceActorActive =
 	        tonumber(redis.call('HGET', KEYS[9], ARGV[11]) or '0')
 	    local sourceTypeActive =
 	        tonumber(redis.call('HGET', KEYS[10], ARGV[12]) or '0')
-	    local targetNodePending =
+	    local targetActorReserved =
 	        tonumber(redis.call('HGET', KEYS[11], ARGV[13]) or '0')
-	    local targetTypePending =
+	    local targetTypeReserved =
 	        tonumber(redis.call('HGET', KEYS[12], ARGV[14]) or '0')
-	    local targetNodeActive =
-	        tonumber(redis.call('HGET', KEYS[13], ARGV[13]) or '0')
-	    local targetTypeActive =
-	        tonumber(redis.call('HGET', KEYS[14], ARGV[14]) or '0')
-	    local targetNodeActiveLimit = tonumber(redis.call(
-	        'HGET', KEYS[15], 'nodeActiveLimit') or '0')
-	    local targetTypeActiveLimit =
-	        limitOr(targetCapability.activeLimit, targetNodeActiveLimit)
-	    if sourceNodeActive < delta or sourceTypeActive < delta
-	        or targetNodePending < delta or targetTypePending < delta
-	        or delta > targetNodeActiveLimit
-	        or targetNodeActive > targetNodeActiveLimit - delta
-	        or delta > targetTypeActiveLimit
-	        or targetTypeActive > targetTypeActiveLimit - delta then
+        local sourceSpotActive =
+            tonumber(redis.call('HGET', KEYS[22], ARGV[16]) or '0')
+        local targetSpotReserved =
+            tonumber(redis.call('HGET', KEYS[23], ARGV[17]) or '0')
+	    if not vector
+            or sourceActorActive < vector.actors
+            or sourceSpotActive < vector.spots
+            or targetActorReserved < vector.actors
+            or targetSpotReserved < vector.spots
+            or (vector.spotType
+                and (sourceTypeActive < vector.spotType.slots
+                    or targetTypeReserved < vector.spotType.slots)) then
 	        return snapshot('conflict')
 	    end
     if atMax(KEYS[3], 'storeRevision')
@@ -834,13 +889,19 @@ redis.call('HSET', KEYS[1],
     'ownerLeaseGeneration', leaseGeneration)
 redis.call('ZADD', KEYS[2], 0, ARGV[10])
 if transition == 'new_owner' then
-    local delta = tonumber(redis.call('HGET', KEYS[8], 'capacityDelta') or '0')
-    redis.call('HINCRBY', KEYS[9], ARGV[11], -delta)
-    redis.call('HINCRBY', KEYS[10], ARGV[12], -delta)
-    redis.call('HINCRBY', KEYS[11], ARGV[13], -delta)
-    redis.call('HINCRBY', KEYS[12], ARGV[14], -delta)
-    redis.call('HINCRBY', KEYS[13], ARGV[13], delta)
-    redis.call('HINCRBY', KEYS[14], ARGV[14], delta)
+    local vector = capacityBundle(
+        redis.call('HGET', KEYS[8], 'capacityBundle') or '')
+    capacityAdd(KEYS[9], ARGV[11], -vector.actors)
+    capacityAdd(KEYS[11], ARGV[13], -vector.actors)
+    capacityAdd(KEYS[13], ARGV[13], vector.actors)
+    capacityAdd(KEYS[22], ARGV[16], -vector.spots)
+    capacityAdd(KEYS[23], ARGV[17], -vector.spots)
+    capacityAdd(KEYS[24], ARGV[17], vector.spots)
+    if vector.spotType then
+        capacityAdd(KEYS[10], ARGV[12], -vector.spotType.slots)
+        capacityAdd(KEYS[12], ARGV[14], -vector.spotType.slots)
+        capacityAdd(KEYS[14], ARGV[14], vector.spotType.slots)
+    end
     redis.call('HSET', KEYS[8], 'status', 'committed')
     redis.call('HSET', KEYS[1],
         'allocationState', 'active',
@@ -849,7 +910,7 @@ if transition == 'new_owner' then
         'descriptorKey', redis.call('HGET', KEYS[8], 'targetDescriptorKey'),
         'descriptorLifecycleGeneration',
             redis.call('HGET', KEYS[8], 'targetLifecycleGeneration'),
-        'capacityDelta', redis.call('HGET', KEYS[8], 'capacityDelta'))
+        'capacityBundle', redis.call('HGET', KEYS[8], 'capacityBundle'))
 end
 return {'stored', 'found', version, ARGV[6],
     objectGeneration, ownerGeneration, ownerId,
@@ -860,7 +921,7 @@ return {'stored', 'found', version, ARGV[6],
     redis.call('HGET', KEYS[1], 'descriptorKey') or '',
     '',
     redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration') or '0',
-    redis.call('HGET', KEYS[1], 'capacityDelta') or '0',
+    redis.call('HGET', KEYS[1], 'capacityBundle') or '',
     tostring(nowMs)}
 )";
 
@@ -884,6 +945,52 @@ local function limitOr(value, fallback)
     if value == nil or value == cjson.null then return fallback end
     return tonumber(value)
 end
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
+end
 
 if redis.call('EXISTS', KEYS[4]) == 1 then
     if redis.call('HGET', KEYS[4], 'requestFingerprint') == ARGV[1] then
@@ -900,7 +1007,7 @@ if redis.call('EXISTS', KEYS[1]) == 0
     or redis.call('HGET', KEYS[1], 'stableType') ~= ARGV[6]
     or redis.call('HGET', KEYS[1], 'descriptorKey') ~= ARGV[22]
     or redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration') ~= ARGV[7]
-    or redis.call('HGET', KEYS[1], 'capacityDelta') ~= ARGV[13] then
+    or redis.call('HGET', KEYS[1], 'capacityBundle') ~= ARGV[13] then
     return {'conflict', ''}
 end
 local capability = findCapability(KEYS[9], ARGV[5], ARGV[6])
@@ -915,41 +1022,39 @@ if not liveLease(KEYS[3], ARGV[12])
     or not capability then
     return {'unavailable', ''}
 end
-local nodePending =
+local actorReserved =
     tonumber(redis.call('HGET', KEYS[5], ARGV[20]) or '0')
-local typePending =
+local typeReserved =
     tonumber(redis.call('HGET', KEYS[6], ARGV[21]) or '0')
-local nodeActive =
+local actorActive =
     tonumber(redis.call('HGET', KEYS[7], ARGV[20]) or '0')
 local typeActive =
     tonumber(redis.call('HGET', KEYS[8], ARGV[21]) or '0')
-local delta = tonumber(ARGV[13])
-local nodePendingLimit =
-    tonumber(redis.call('HGET', KEYS[9], 'nodePendingLimit') or '0')
-local nodeActiveLimit =
-    tonumber(redis.call('HGET', KEYS[9], 'nodeActiveLimit') or '0')
-local typePendingLimit =
-    limitOr(capability.pendingLimit, nodePendingLimit)
-local typeActiveLimit =
-    limitOr(capability.activeLimit, nodeActiveLimit)
-local stableTypeLimit =
-    tonumber(capability.capacityLimit or '0')
-if delta <= 0
-    or delta > nodePendingLimit
-    or nodePending > nodePendingLimit - delta
-    or delta > typePendingLimit
-    or typePending > typePendingLimit - delta
-    or delta > nodeActiveLimit
-    or nodeActive > nodeActiveLimit - delta
-    or delta > typeActiveLimit
-    or typeActive > typeActiveLimit - delta
-    or (ARGV[11] ~= 'actor' and stableTypeLimit > 0
-        and typeActive + typePending
-              > stableTypeLimit - delta) then
+local spotReserved =
+    tonumber(redis.call('HGET', KEYS[10], ARGV[24]) or '0')
+local spotActive =
+    tonumber(redis.call('HGET', KEYS[11], ARGV[24]) or '0')
+local vector = capacityBundle(ARGV[13])
+local actorLimit =
+    tonumber(redis.call('HGET', KEYS[9], 'actorLimit') or '0')
+local spotLimit =
+    tonumber(redis.call('HGET', KEYS[9], 'spotLimit') or '0')
+local typeLimit = vector and vector.spotType
+    and tonumber(capability.limit or '0') or 0
+if not vector
+    or (actorLimit > 0
+        and actorActive + actorReserved + vector.actors > actorLimit)
+    or (spotLimit > 0
+        and spotActive + spotReserved + vector.spots > spotLimit)
+    or (vector.spotType and typeLimit > 0
+        and typeActive + typeReserved + vector.spotType.slots > typeLimit) then
     return {'exhausted', ''}
 end
-redis.call('HINCRBY', KEYS[5], ARGV[20], delta)
-redis.call('HINCRBY', KEYS[6], ARGV[21], delta)
+capacityAdd(KEYS[5], ARGV[20], vector.actors)
+capacityAdd(KEYS[10], ARGV[24], vector.spots)
+if vector.spotType then
+    capacityAdd(KEYS[6], ARGV[21], vector.spotType.slots)
+end
 redis.call('HSET', KEYS[4],
     'status', 'reserved',
     'fence', ARGV[2],
@@ -970,27 +1075,82 @@ redis.call('HSET', KEYS[4],
 	    'targetNode', ARGV[17],
 	    'targetDescriptorKey', ARGV[23],
 	    'targetLifecycleGeneration', ARGV[10],
-	    'capacityDelta', ARGV[13])
+	    'capacityBundle', ARGV[13])
 return {'reserved', ARGV[2]}
 )";
 
     static constexpr std::string_view abort_relocation_capacity = R"(
 if redis.replicate_commands then redis.replicate_commands() end
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
+end
 if redis.call('EXISTS', KEYS[1]) == 0 then return 'stale' end
 local status = redis.call('HGET', KEYS[1], 'status')
 if status == 'committed' then return 'already_committed' end
 if status == 'aborted' then return 'already_aborted' end
 if status ~= 'reserved' then return 'stale' end
-local delta = tonumber(redis.call('HGET', KEYS[1], 'capacityDelta') or '0')
-local nodePending =
+local vector = capacityBundle(
+    redis.call('HGET', KEYS[1], 'capacityBundle') or '')
+local actorReserved =
     tonumber(redis.call('HGET', KEYS[2], ARGV[1]) or '0')
-local typePending =
+local typeReserved =
     tonumber(redis.call('HGET', KEYS[3], ARGV[2]) or '0')
-if nodePending < delta or typePending < delta then
+local spotReserved =
+    tonumber(redis.call('HGET', KEYS[4], ARGV[3]) or '0')
+if not vector
+    or actorReserved < vector.actors
+    or spotReserved < vector.spots
+    or (vector.spotType and typeReserved < vector.spotType.slots) then
     return 'stale'
 end
-redis.call('HINCRBY', KEYS[2], ARGV[1], -delta)
-redis.call('HINCRBY', KEYS[3], ARGV[2], -delta)
+capacityAdd(KEYS[2], ARGV[1], -vector.actors)
+capacityAdd(KEYS[4], ARGV[3], -vector.spots)
+if vector.spotType then
+    capacityAdd(KEYS[3], ARGV[2], -vector.spotType.slots)
+end
 redis.call('HSET', KEYS[1], 'status', 'aborted')
 return 'aborted'
 )";
@@ -1025,6 +1185,98 @@ local function limitOr(value, fallback)
     end
     return tonumber(value)
 end
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
+end
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
+end
 local function snapshot(status)
     return {status,
         redis.call('HGET', KEYS[1], 'storeVersion') or '',
@@ -1039,7 +1291,7 @@ local function snapshot(status)
         redis.call('HGET', KEYS[1], 'descriptorKey') or '',
         '',
         redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration') or '0',
-        redis.call('HGET', KEYS[1], 'capacityDelta') or '0',
+        redis.call('HGET', KEYS[1], 'capacityBundle') or '',
         redis.call('HGET', KEYS[1], 'pendingCreationReservationId') or '',
         redis.call('HGET', KEYS[1], 'pendingCreationReference') or '',
         redis.call('HGET', KEYS[1], 'pendingCreationSha256') or '',
@@ -1050,7 +1302,7 @@ if redis.call('EXISTS', KEYS[1]) == 1 then
     if redis.call('HGET', KEYS[1], 'stableType') ~= ARGV[3] then
         return snapshot('type_mismatch')
     end
-    if redis.call('HGET', KEYS[1], 'allocationState') == 'pending' then
+    if redis.call('HGET', KEYS[1], 'allocationState') == 'reserved' then
         return snapshot('conflict')
     end
     return snapshot('already_exists')
@@ -1069,32 +1321,32 @@ if not liveLease(KEYS[6], ARGV[5])
         '', '0', '', '', '', '0', '0', '', '', '', '0',
         tostring(nowMs)}
 end
-local nodePending =
+local actorReserved =
     tonumber(redis.call('HGET', KEYS[7], ARGV[17]) or '0')
 local typePending =
     tonumber(redis.call('HGET', KEYS[8], ARGV[18]) or '0')
-local nodeActive =
+local actorActive =
     tonumber(redis.call('HGET', KEYS[9], ARGV[17]) or '0')
 local typeActive =
     tonumber(redis.call('HGET', KEYS[10], ARGV[18]) or '0')
-local delta = tonumber(ARGV[7])
-local nodePendingLimit =
-    tonumber(redis.call('HGET', KEYS[12], 'nodePendingLimit') or '0')
-local nodeActiveLimit =
-    tonumber(redis.call('HGET', KEYS[12], 'nodeActiveLimit') or '0')
-local typePendingLimit =
-    limitOr(capability.pendingLimit, nodePendingLimit)
-local typeActiveLimit =
-    limitOr(capability.activeLimit, nodeActiveLimit)
-if delta <= 0
-    or delta > nodePendingLimit
-    or nodePending > nodePendingLimit - delta
-    or delta > typePendingLimit
-    or typePending > typePendingLimit - delta
-    or delta > nodeActiveLimit
-    or nodeActive > nodeActiveLimit - delta
-    or delta > typeActiveLimit
-    or typeActive > typeActiveLimit - delta then
+local spotReserved =
+    tonumber(redis.call('HGET', KEYS[14], ARGV[23]) or '0')
+local spotActive =
+    tonumber(redis.call('HGET', KEYS[15], ARGV[23]) or '0')
+local vector = capacityBundle(ARGV[7])
+local actorLimit =
+    tonumber(redis.call('HGET', KEYS[12], 'actorLimit') or '0')
+local spotLimit =
+    tonumber(redis.call('HGET', KEYS[12], 'spotLimit') or '0')
+local typeLimit = vector and vector.spotType
+    and tonumber(capability.limit or '0') or 0
+if not vector
+    or (actorLimit > 0
+        and actorActive + actorReserved + vector.actors > actorLimit)
+    or (spotLimit > 0
+        and spotActive + spotReserved + vector.spots > spotLimit)
+    or (vector.spotType and typeLimit > 0
+        and typeActive + typePending + vector.spotType.slots > typeLimit) then
     return {'capacity', '', '', '0', '0', '', '0',
         '', '0', '', '', '', '0', '0', '', '', '', '0',
         tostring(nowMs)}
@@ -1124,20 +1376,23 @@ redis.call('HSET', KEYS[1],
     'authorityOwnerGeneration', ownerGeneration,
     'ownerId', ARGV[4],
     'ownerLeaseGeneration', ARGV[5],
-    'allocationState', 'pending',
+    'allocationState', 'reserved',
     'objectKind', ARGV[11],
     'stableType', ARGV[3],
     'descriptorKey', ARGV[19],
     'descriptorLifecycleGeneration', ARGV[10],
-    'capacityDelta', ARGV[7],
+    'capacityBundle', ARGV[7],
     'pendingCreationReservationId', ARGV[16],
     'pendingCreationReference', ARGV[20],
     'pendingCreationSha256', ARGV[21],
     'pendingCreationEncodedSize', ARGV[22])
 redis.call('ZADD', KEYS[2], 0, ARGV[15])
 redis.call('HDEL', KEYS[13], ARGV[15])
-redis.call('HINCRBY', KEYS[7], ARGV[17], delta)
-redis.call('HINCRBY', KEYS[8], ARGV[18], delta)
+capacityAdd(KEYS[7], ARGV[17], vector.actors)
+capacityAdd(KEYS[14], ARGV[23], vector.spots)
+if vector.spotType then
+    capacityAdd(KEYS[8], ARGV[18], vector.spotType.slots)
+end
 redis.call('HSET', KEYS[11],
     'status', 'prepared',
     'requestFingerprint', ARGV[2],
@@ -1153,13 +1408,13 @@ redis.call('HSET', KEYS[11],
     'targetLeaseGeneration', ARGV[5],
     'objectKind', ARGV[11],
     'stableType', ARGV[3],
-    'capacityDelta', ARGV[7],
+    'capacityBundle', ARGV[7],
     'contentReference', ARGV[20],
     'requestSha256', ARGV[21],
     'requestEncodedSize', ARGV[22])
 return {'reserved', version, ARGV[6], objectGeneration,
     ownerGeneration, ARGV[4], ARGV[5],
-    'pending', ARGV[11], ARGV[3], ARGV[19], '',
+    'reserved', ARGV[11], ARGV[3], ARGV[19], '',
     ARGV[10], ARGV[7], ARGV[16], ARGV[20], ARGV[21],
     ARGV[22], tostring(nowMs)}
 )";
@@ -1184,6 +1439,52 @@ local function limitOr(value, fallback)
     end
     return tonumber(value)
 end
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
+end
 local function snapshot(status)
     if redis.call('EXISTS', KEYS[1]) == 0 then
         return {status, 'missing', '', '', '0', '0', '', '0',
@@ -1202,7 +1503,7 @@ local function snapshot(status)
         redis.call('HGET', KEYS[1], 'descriptorKey') or '',
         '',
         redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration') or '0',
-        redis.call('HGET', KEYS[1], 'capacityDelta') or '0',
+        redis.call('HGET', KEYS[1], 'capacityBundle') or '',
         tostring(nowMs)}
 end
 local function archiveCurrent()
@@ -1211,7 +1512,7 @@ local function archiveCurrent()
         'objectGeneration', 'authorityOwnerGeneration',
         'ownerId', 'ownerLeaseGeneration', 'allocationState',
         'objectKind', 'stableType', 'descriptorKey',
-        'descriptorLifecycleGeneration', 'capacityDelta',
+        'descriptorLifecycleGeneration', 'capacityBundle',
         'pendingCreationReservationId', 'pendingCreationReference',
         'pendingCreationSha256', 'pendingCreationEncodedSize'
     }
@@ -1244,7 +1545,7 @@ if redis.call('EXISTS', KEYS[2]) == 0
     or redis.call('HGET', KEYS[2], 'targetLifecycleGeneration') ~= ARGV[7]
     or redis.call('HGET', KEYS[2], 'targetOwnerId') ~= ARGV[8]
     or redis.call('HGET', KEYS[2], 'targetLeaseGeneration') ~= ARGV[9]
-    or redis.call('HGET', KEYS[2], 'capacityDelta') ~= ARGV[10] then
+    or redis.call('HGET', KEYS[2], 'capacityBundle') ~= ARGV[10] then
     return snapshot('stale')
 end
 local status = redis.call('HGET', KEYS[2], 'status')
@@ -1279,24 +1580,24 @@ end
 local current =
     redis.call('HGET', KEYS[3], 'storeRevision') or '0'
 if current == '9223372036854775807' then return snapshot('exhausted') end
-local delta = tonumber(redis.call('HGET', KEYS[2], 'capacityDelta') or '0')
-local nodePending =
+local vector = capacityBundle(
+    redis.call('HGET', KEYS[2], 'capacityBundle') or '')
+local actorReserved =
     tonumber(redis.call('HGET', KEYS[5], ARGV[14]) or '0')
 local typePending =
     tonumber(redis.call('HGET', KEYS[6], ARGV[15]) or '0')
-local nodeActive =
+local actorActive =
     tonumber(redis.call('HGET', KEYS[7], ARGV[14]) or '0')
 local typeActive =
     tonumber(redis.call('HGET', KEYS[8], ARGV[15]) or '0')
-local nodeActiveLimit =
-    tonumber(redis.call('HGET', KEYS[9], 'nodeActiveLimit') or '0')
-local typeActiveLimit =
-    limitOr(capability.activeLimit, nodeActiveLimit)
-if nodePending < delta or typePending < delta
-    or delta > nodeActiveLimit
-    or nodeActive > nodeActiveLimit - delta
-    or delta > typeActiveLimit
-    or typeActive > typeActiveLimit - delta then
+local spotReserved =
+    tonumber(redis.call('HGET', KEYS[16], ARGV[18]) or '0')
+local spotActive =
+    tonumber(redis.call('HGET', KEYS[17], ARGV[18]) or '0')
+if not vector
+    or actorReserved < vector.actors
+    or spotReserved < vector.spots
+    or (vector.spotType and typePending < vector.spotType.slots) then
     return snapshot('conflict')
 end
 archiveCurrent()
@@ -1309,10 +1610,14 @@ redis.call('HSET', KEYS[1],
 redis.call('HDEL', KEYS[1],
     'pendingCreationReservationId', 'pendingCreationReference',
     'pendingCreationSha256', 'pendingCreationEncodedSize')
-redis.call('HINCRBY', KEYS[5], ARGV[14], -delta)
-redis.call('HINCRBY', KEYS[6], ARGV[15], -delta)
-redis.call('HINCRBY', KEYS[7], ARGV[14], delta)
-redis.call('HINCRBY', KEYS[8], ARGV[15], delta)
+capacityAdd(KEYS[5], ARGV[14], -vector.actors)
+capacityAdd(KEYS[7], ARGV[14], vector.actors)
+capacityAdd(KEYS[16], ARGV[18], -vector.spots)
+capacityAdd(KEYS[17], ARGV[18], vector.spots)
+if vector.spotType then
+    capacityAdd(KEYS[6], ARGV[15], -vector.spotType.slots)
+    capacityAdd(KEYS[8], ARGV[15], vector.spotType.slots)
+end
 redis.call('HSET', KEYS[2], 'status', 'committed')
 return snapshot('committed')
 )";
@@ -1342,6 +1647,52 @@ local function revisionHex(value)
     until digits == '0'
     return string.rep('0', 16 - string.len(out)) .. out
 end
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
+end
 local function snapshot(status)
     if redis.call('EXISTS', KEYS[1]) == 0 then
         return {status, 'missing', '', '', '0', '0', '', '0',
@@ -1360,7 +1711,7 @@ local function snapshot(status)
         redis.call('HGET', KEYS[1], 'descriptorKey') or '',
         '',
         redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration') or '0',
-        redis.call('HGET', KEYS[1], 'capacityDelta') or '0',
+        redis.call('HGET', KEYS[1], 'capacityBundle') or '',
         tostring(nowMs)}
 end
 local function archiveCurrent()
@@ -1369,7 +1720,7 @@ local function archiveCurrent()
         'objectGeneration', 'authorityOwnerGeneration',
         'ownerId', 'ownerLeaseGeneration', 'allocationState',
         'objectKind', 'stableType', 'descriptorKey',
-        'descriptorLifecycleGeneration', 'capacityDelta',
+        'descriptorLifecycleGeneration', 'capacityBundle',
         'pendingCreationReservationId', 'pendingCreationReference',
         'pendingCreationSha256', 'pendingCreationEncodedSize'
     }
@@ -1402,7 +1753,7 @@ if redis.call('EXISTS', KEYS[2]) == 0
     or redis.call('HGET', KEYS[2], 'targetLifecycleGeneration') ~= ARGV[7]
     or redis.call('HGET', KEYS[2], 'targetOwnerId') ~= ARGV[8]
     or redis.call('HGET', KEYS[2], 'targetLeaseGeneration') ~= ARGV[9]
-    or redis.call('HGET', KEYS[2], 'capacityDelta') ~= ARGV[10] then
+    or redis.call('HGET', KEYS[2], 'capacityBundle') ~= ARGV[10] then
     return snapshot('stale')
 end
 local status = redis.call('HGET', KEYS[2], 'status')
@@ -1413,12 +1764,18 @@ if redis.call('EXISTS', KEYS[1]) == 0
         ~= redis.call('HGET', KEYS[2], 'expectedVersion') then
     return snapshot('conflict')
 end
-local delta = tonumber(redis.call('HGET', KEYS[2], 'capacityDelta') or '0')
-local nodePending =
+local vector = capacityBundle(
+    redis.call('HGET', KEYS[2], 'capacityBundle') or '')
+local actorReserved =
     tonumber(redis.call('HGET', KEYS[4], ARGV[13]) or '0')
 local typePending =
     tonumber(redis.call('HGET', KEYS[5], ARGV[14]) or '0')
-if nodePending < delta or typePending < delta then
+local spotReserved =
+    tonumber(redis.call('HGET', KEYS[13], ARGV[16]) or '0')
+if not vector
+    or actorReserved < vector.actors
+    or spotReserved < vector.spots
+    or (vector.spotType and typePending < vector.spotType.slots) then
     return snapshot('conflict')
 end
 local storeRevision =
@@ -1429,8 +1786,11 @@ end
 archiveCurrent()
 local deleteVersion =
     redis.call('HINCRBY', KEYS[6], 'storeRevision', 1)
-redis.call('HINCRBY', KEYS[4], ARGV[13], -delta)
-redis.call('HINCRBY', KEYS[5], ARGV[14], -delta)
+capacityAdd(KEYS[4], ARGV[13], -vector.actors)
+capacityAdd(KEYS[13], ARGV[16], -vector.spots)
+if vector.spotType then
+    capacityAdd(KEYS[5], ARGV[14], -vector.spotType.slots)
+end
 redis.call('DEL', KEYS[1])
 redis.call('HDEL', KEYS[10], ARGV[12])
 redis.call('HSET', KEYS[9], ARGV[12], deleteVersion)
@@ -1473,7 +1833,7 @@ return {'found',
     redis.call('HGET', KEYS[1], 'targetLifecycleGeneration') or '0',
     redis.call('HGET', KEYS[1], 'targetOwnerId') or '',
     redis.call('HGET', KEYS[1], 'targetLeaseGeneration') or '0',
-    redis.call('HGET', KEYS[1], 'capacityDelta') or '0',
+    redis.call('HGET', KEYS[1], 'capacityBundle') or '',
     redis.call('HGET', KEYS[1], 'state') or '0',
     redis.call('HGET', KEYS[1], 'envelope') or '',
     redis.call('HGET', KEYS[1], 'sha256') or '',
@@ -1484,6 +1844,52 @@ return {'found',
 if redis.replicate_commands then redis.replicate_commands() end
 local time = redis.call('TIME')
 local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
+end
 local expiresAt = tonumber(ARGV[24])
 if expiresAt <= nowMs then return 'expired' end
 if redis.call('EXISTS', KEYS[1]) == 1 then
@@ -1501,19 +1907,25 @@ if redis.call('EXISTS', KEYS[3]) == 0
     or redis.call('HGET', KEYS[3], 'targetLifecycleGeneration') ~= ARGV[7]
     or redis.call('HGET', KEYS[3], 'targetOwnerId') ~= ARGV[8]
     or redis.call('HGET', KEYS[3], 'targetLeaseGeneration') ~= ARGV[9]
-    or redis.call('HGET', KEYS[3], 'capacityDelta') ~= ARGV[10]
+    or redis.call('HGET', KEYS[3], 'capacityBundle') ~= ARGV[10]
     or redis.call('HGET', KEYS[3], 'status') ~= 'prepared' then
     return 'stale'
 end
 if redis.call('EXISTS', KEYS[2]) == 0
     or redis.call('HGET', KEYS[2], 'storeVersion') ~= ARGV[2]
-    or redis.call('HGET', KEYS[2], 'allocationState') ~= 'pending' then
+    or redis.call('HGET', KEYS[2], 'allocationState') ~= 'reserved' then
     return 'conflict'
 end
-local delta = tonumber(ARGV[10])
-local nodePending = tonumber(redis.call('HGET', KEYS[6], ARGV[11]) or '0')
-local typePending = tonumber(redis.call('HGET', KEYS[7], ARGV[12]) or '0')
-if nodePending < delta or typePending < delta then return 'conflict' end
+local vector = capacityBundle(ARGV[10])
+local actorReserved = tonumber(redis.call('HGET', KEYS[6], ARGV[11]) or '0')
+local typeReserved = tonumber(redis.call('HGET', KEYS[7], ARGV[12]) or '0')
+local spotReserved = tonumber(redis.call('HGET', KEYS[12], ARGV[25]) or '0')
+if not vector
+    or actorReserved < vector.actors
+    or spotReserved < vector.spots
+    or (vector.spotType and typeReserved < vector.spotType.slots) then
+    return 'conflict'
+end
 if ARGV[13] == '1' then
     if redis.call('PTTL', KEYS[10]) <= 0
         or redis.call('HGET', KEYS[10], 'generation') ~= ARGV[9]
@@ -1536,16 +1948,23 @@ if ARGV[13] == '1' then
     redis.call('HDEL', KEYS[2],
         'pendingCreationReservationId', 'pendingCreationReference',
         'pendingCreationSha256', 'pendingCreationEncodedSize')
-    redis.call('HINCRBY', KEYS[6], ARGV[11], -delta)
-    redis.call('HINCRBY', KEYS[7], ARGV[12], -delta)
-    redis.call('HINCRBY', KEYS[8], ARGV[11], delta)
-    redis.call('HINCRBY', KEYS[9], ARGV[12], delta)
+    capacityAdd(KEYS[6], ARGV[11], -vector.actors)
+    capacityAdd(KEYS[8], ARGV[11], vector.actors)
+    capacityAdd(KEYS[12], ARGV[25], -vector.spots)
+    capacityAdd(KEYS[13], ARGV[25], vector.spots)
+    if vector.spotType then
+        capacityAdd(KEYS[7], ARGV[12], -vector.spotType.slots)
+        capacityAdd(KEYS[9], ARGV[12], vector.spotType.slots)
+    end
     redis.call('HSET', KEYS[3], 'status', 'committed')
 else
     redis.call('DEL', KEYS[2])
     redis.call('ZREM', KEYS[5], ARGV[15])
-    redis.call('HINCRBY', KEYS[6], ARGV[11], -delta)
-    redis.call('HINCRBY', KEYS[7], ARGV[12], -delta)
+    capacityAdd(KEYS[6], ARGV[11], -vector.actors)
+    capacityAdd(KEYS[12], ARGV[25], -vector.spots)
+    if vector.spotType then
+        capacityAdd(KEYS[7], ARGV[12], -vector.spotType.slots)
+    end
     redis.call('HSET', KEYS[3], 'status', 'aborted')
 end
 redis.call('HSET', KEYS[1],
@@ -1564,7 +1983,7 @@ redis.call('HSET', KEYS[1],
     'targetLifecycleGeneration', ARGV[7],
     'targetOwnerId', ARGV[8],
     'targetLeaseGeneration', ARGV[9],
-    'capacityDelta', ARGV[10],
+    'capacityBundle', ARGV[10],
     'state', ARGV[13],
     'envelope', ARGV[22],
     'sha256', ARGV[23],
@@ -1573,21 +1992,57 @@ redis.call('PEXPIREAT', KEYS[1], expiresAt)
 return 'completed'
 )";
 
-    static constexpr std::string_view prepare_aggregate = R"(
+    static constexpr std::string_view prepare_aggregate_v3 = R"(
 if redis.replicate_commands then redis.replicate_commands() end
 local function liveLease(key, generation)
-    if redis.call('PTTL', key) <= 0 then return false end
-    return redis.call('HGET', key, 'generation') == tostring(generation)
+    return redis.call('PTTL', key) > 0
+        and redis.call('HGET', key, 'generation') == tostring(generation)
 end
-local function findCapability(key, objectKind, stableType)
-    for _, candidate in ipairs(cjson.decode(
-        redis.call('HGET', key, 'capabilities') or '[]')) do
-        if candidate.objectKind == objectKind
-            and candidate.stableType == stableType then
-            return candidate
-        end
-    end
-    return nil
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
 end
 if redis.call('EXISTS', KEYS[1]) == 1 then
     if redis.call('HGET', KEYS[1], 'fingerprint') == ARGV[1] then
@@ -1596,162 +2051,160 @@ if redis.call('EXISTS', KEYS[1]) == 1 then
     return 'stale'
 end
 local count = tonumber(ARGV[6])
-if count <= 0 or count > 1024 or not liveLease(KEYS[4], ARGV[5]) then
+local requested = capacityBundle(ARGV[12])
+if not requested or count <= 0 or count > 1024
+    or not liveLease(KEYS[2], ARGV[5])
+    or redis.call('EXISTS', KEYS[3]) == 0
+    or redis.call('HGET', KEYS[3], 'descriptorKey') ~= ARGV[8]
+    or redis.call('HGET', KEYS[3], 'lifecycleGeneration') ~= ARGV[9]
+    or redis.call('HGET', KEYS[3], 'ownerId') ~= ARGV[4]
+    or redis.call('HGET', KEYS[3], 'ownerLeaseGeneration') ~= ARGV[5]
+    or redis.call('HGET', KEYS[3], 'runtimeState') ~= '1'
+    or redis.call('HGET', KEYS[3], 'objectRole') ~= '2' then
     return 'conflict'
 end
-local ownerTransitionCount = 0
-for i = 1, count do
-    local keyBase = 5 + (i - 1) * 14
-    local argBase = 8 + (i - 1) * 11
-    local authorityKey = KEYS[keyBase]
-    local reservationKey = KEYS[keyBase + 1]
-    local authorityName = ARGV[argBase]
-    local expectedVersion = ARGV[argBase + 1]
-    local transition = ARGV[argBase + 2]
-    local fence = ARGV[argBase + 5]
+local actors = 0
+local spots = 0
+local typeSlots = 0
+for i = 0, count - 1 do
+    local authorityKey = KEYS[10 + i]
+    local argBase = 14 + i * 9
     if redis.call('EXISTS', authorityKey) == 0
-        or redis.call('HGET', authorityKey, 'storeVersion') ~= expectedVersion then
+        or redis.call('HGET', authorityKey, 'storeVersion') ~= ARGV[argBase + 1]
+        or redis.call('HGET', authorityKey, 'allocationState') ~= 'active' then
         return 'conflict'
     end
-    if transition == 'new_owner' then
-        ownerTransitionCount = ownerTransitionCount + 1
-        local sourceOwner = redis.call('HGET', authorityKey, 'ownerId') or ''
-        local sourceGeneration =
-            redis.call('HGET', authorityKey, 'ownerLeaseGeneration') or ''
-        local targetCapability = findCapability(
-            KEYS[keyBase + 8],
-            redis.call('HGET', reservationKey, 'objectKind'),
-            redis.call('HGET', reservationKey, 'stableType'))
-        if redis.call('EXISTS', reservationKey) == 0
-            or redis.call('HGET', reservationKey, 'status') ~= 'reserved'
-            or redis.call('HGET', reservationKey, 'fence') ~= fence
-            or redis.call('HGET', reservationKey, 'authorityKey') ~= authorityName
-            or redis.call('HGET', reservationKey, 'expectedVersion') ~= expectedVersion
-            or redis.call('HGET', reservationKey, 'sourceOwnerId') ~= sourceOwner
-            or redis.call('HGET', reservationKey, 'sourceLeaseGeneration') ~= sourceGeneration
-            or redis.call('HGET', reservationKey, 'objectKind')
-                ~= redis.call('HGET', authorityKey, 'objectKind')
-            or redis.call('HGET', reservationKey, 'stableType')
-                ~= redis.call('HGET', authorityKey, 'stableType')
-            or redis.call('HGET', reservationKey, 'sourceDescriptorKey')
-                ~= redis.call('HGET', authorityKey, 'descriptorKey')
-            or redis.call('HGET', reservationKey, 'sourceLifecycleGeneration')
-                ~= redis.call('HGET', authorityKey, 'descriptorLifecycleGeneration')
-            or redis.call('HGET', reservationKey, 'capacityDelta')
-                ~= redis.call('HGET', authorityKey, 'capacityDelta')
-            or redis.call('HGET', authorityKey, 'allocationState') ~= 'active'
-            or redis.call('HGET', reservationKey, 'targetOwnerId') ~= ARGV[4]
-            or redis.call('HGET', reservationKey, 'targetLeaseGeneration') ~= ARGV[5]
-            or redis.call('EXISTS', KEYS[keyBase + 8]) == 0
-            or redis.call('HGET', KEYS[keyBase + 8], 'descriptorKey')
-                ~= redis.call('HGET', reservationKey, 'targetDescriptorKey')
-            or redis.call('HGET', KEYS[keyBase + 8], 'lifecycleGeneration')
-                ~= redis.call('HGET', reservationKey, 'targetLifecycleGeneration')
-            or redis.call('HGET', KEYS[keyBase + 8], 'ownerId') ~= ARGV[4]
-            or redis.call('HGET', KEYS[keyBase + 8], 'ownerLeaseGeneration') ~= ARGV[5]
-            or redis.call('HGET', KEYS[keyBase + 8], 'runtimeState') ~= '1'
-            or redis.call('HGET', KEYS[keyBase + 8], 'objectRole') ~= '2'
-            or not targetCapability then
+    local vector = capacityBundle(
+        redis.call('HGET', authorityKey, 'capacityBundle') or '')
+    if not vector then return 'conflict' end
+    actors = actors + vector.actors
+    spots = spots + vector.spots
+    if vector.spotType then
+        if not requested.spotType
+            or vector.spotType.kind ~= requested.spotType.kind
+            or vector.spotType.stableType ~= requested.spotType.stableType then
             return 'conflict'
         end
-        local delta = tonumber(
-            redis.call('HGET', reservationKey, 'capacityDelta') or '0')
-        local sourceNodeActive = tonumber(
-            redis.call('HGET', KEYS[keyBase + 2], ARGV[argBase + 6]) or '0')
-        local sourceTypeActive = tonumber(
-            redis.call('HGET', KEYS[keyBase + 3], ARGV[argBase + 7]) or '0')
-        local targetNodePending = tonumber(
-            redis.call('HGET', KEYS[keyBase + 4], ARGV[argBase + 8]) or '0')
-        local targetTypePending = tonumber(
-            redis.call('HGET', KEYS[keyBase + 5], ARGV[argBase + 9]) or '0')
-        if sourceNodeActive < delta or sourceTypeActive < delta
-            or targetNodePending < delta
-            or targetTypePending < delta then
-            return 'conflict'
-        end
-    elseif fence ~= '' then
-        return 'conflict'
+        typeSlots = typeSlots + vector.spotType.slots
     end
+end
+if actors ~= requested.actors or spots ~= requested.spots
+    or ((requested.spotType and typeSlots ~= requested.spotType.slots)
+        or (not requested.spotType and typeSlots ~= 0)) then
+    return 'conflict'
+end
+local actorActive = tonumber(redis.call('HGET', KEYS[4], ARGV[10]) or '0')
+local actorReserved = tonumber(redis.call('HGET', KEYS[5], ARGV[10]) or '0')
+local spotActive = tonumber(redis.call('HGET', KEYS[6], ARGV[11]) or '0')
+local spotReserved = tonumber(redis.call('HGET', KEYS[7], ARGV[11]) or '0')
+local typeActive = tonumber(redis.call('HGET', KEYS[8], ARGV[13]) or '0')
+local typeReserved = tonumber(redis.call('HGET', KEYS[9], ARGV[13]) or '0')
+local actorLimit = tonumber(redis.call('HGET', KEYS[3], 'actorLimit') or '0')
+local spotLimit = tonumber(redis.call('HGET', KEYS[3], 'spotLimit') or '0')
+if (actorLimit > 0 and actorActive + actorReserved + actors > actorLimit)
+    or (spotLimit > 0 and spotActive + spotReserved + spots > spotLimit) then
+    return 'conflict'
+end
+capacityAdd(KEYS[5], ARGV[10], actors)
+capacityAdd(KEYS[7], ARGV[11], spots)
+if requested.spotType then
+    capacityAdd(KEYS[9], ARGV[13], typeSlots)
 end
 redis.call('HSET', KEYS[1],
     'status', 'prepared', 'fingerprint', ARGV[1],
     'aggregateId', ARGV[2], 'aggregateGeneration', ARGV[3],
     'targetOwnerId', ARGV[4], 'targetLeaseGeneration', ARGV[5],
-    'participantCount', ARGV[6],
-    'ownerTransitionCount', tostring(ownerTransitionCount),
-    'inventoryDigest', ARGV[7])
-for i = 1, count do
-    local keyBase = 5 + (i - 1) * 14
-    local argBase = 8 + (i - 1) * 11
-    local prefix = 'p:' .. (i - 1) .. ':'
+    'participantCount', ARGV[6], 'inventoryDigest', ARGV[7],
+    'targetDescriptorKey', ARGV[8],
+    'targetLifecycleGeneration', ARGV[9],
+    'targetActorBucket', ARGV[10], 'targetSpotBucket', ARGV[11],
+    'capacityBundle', ARGV[12], 'targetTypeBucket', ARGV[13])
+for i = 0, count - 1 do
+    local argBase = 14 + i * 9
+    local prefix = 'p:' .. i .. ':'
     redis.call('HSET', KEYS[1],
         prefix .. 'authorityKey', ARGV[argBase],
         prefix .. 'expectedVersion', ARGV[argBase + 1],
         prefix .. 'transition', ARGV[argBase + 2],
         prefix .. 'payload', ARGV[argBase + 3],
         prefix .. 'membership', ARGV[argBase + 4],
-        prefix .. 'fence', ARGV[argBase + 5],
-        prefix .. 'sourceNodeField', ARGV[argBase + 6],
-        prefix .. 'sourceTypeField', ARGV[argBase + 7],
-        prefix .. 'targetNodeField', ARGV[argBase + 8],
-        prefix .. 'targetTypeField', ARGV[argBase + 9],
-        prefix .. 'expectedRevisionHex', ARGV[argBase + 10])
-    if ARGV[argBase + 2] == 'new_owner' then
-        redis.call('HSET', KEYS[keyBase + 1],
-            'status', 'prepared',
-            'aggregateId', ARGV[2],
-            'aggregateGeneration', ARGV[3])
-    end
+        prefix .. 'sourceActorBucket', ARGV[argBase + 5],
+        prefix .. 'sourceSpotBucket', ARGV[argBase + 6],
+        prefix .. 'sourceTypeBucket', ARGV[argBase + 7],
+        prefix .. 'expectedRevisionHex', ARGV[argBase + 8])
 end
 return 'prepared'
 )";
 
-    static constexpr std::string_view commit_aggregate = R"(
+    static constexpr std::string_view commit_aggregate_v3 = R"(
 if redis.replicate_commands then redis.replicate_commands() end
 local time = redis.call('TIME')
 local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
-local maxValue = '9223372036854775807'
-local function subtractSmall(value, count)
-    local digits = {}
-    local borrow = count
-    for index = string.len(value), 1, -1 do
-        local digit = string.byte(value, index) - string.byte('0')
-        local subtract = borrow % 10
-        borrow = math.floor(borrow / 10)
-        digit = digit - subtract
-        if digit < 0 then
-            digit = digit + 10
-            borrow = borrow + 1
-        end
-        table.insert(digits, 1, string.char(string.byte('0') + digit))
-    end
-    return table.concat(digits)
-end
-local function remaining(key, field, count)
-    local value = redis.call('HGET', key, field) or '0'
-    value = string.gsub(value, '^0+', '')
-    if value == '' then value = '0' end
-    local limit = subtractSmall(maxValue, count)
-    return string.len(value) < string.len(limit)
-        or (string.len(value) == string.len(limit) and value <= limit)
-end
+local MAX = '9223372036854775807'
 local function liveLease(key, generation)
-    if redis.call('PTTL', key) <= 0 then return false end
-    return redis.call('HGET', key, 'generation') == tostring(generation)
+    return redis.call('PTTL', key) > 0
+        and redis.call('HGET', key, 'generation') == tostring(generation)
 end
-local function findCapability(key, objectKind, stableType)
-    for _, candidate in ipairs(cjson.decode(
-        redis.call('HGET', key, 'capabilities') or '[]')) do
-        if candidate.objectKind == objectKind
-            and candidate.stableType == stableType then
-            return candidate
-        end
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
+end
+local function archive(authorityKey, historyKey, revisionsKey, revision)
+    local fields = {
+        'authorityKey', 'storeVersion', 'payload',
+        'objectGeneration', 'authorityOwnerGeneration',
+        'ownerId', 'ownerLeaseGeneration', 'allocationState',
+        'objectKind', 'stableType', 'descriptorKey',
+        'descriptorLifecycleGeneration', 'capacityBundle'
+    }
+    for _, field in ipairs(fields) do
+        local value = redis.call('HGET', authorityKey, field)
+        if value then redis.call('HSET', historyKey, revision .. ':' .. field, value) end
     end
-    return nil
-end
-local function limitOr(value, fallback)
-    if value == nil or value == cjson.null then return fallback end
-    return tonumber(value)
+    redis.call('HSET', historyKey, revision .. ':deleted', '0')
+    redis.call('ZADD', revisionsKey, 0, revision)
 end
 if redis.call('EXISTS', KEYS[1]) == 0 then return 'stale' end
 local status = redis.call('HGET', KEYS[1], 'status')
@@ -1761,242 +2214,194 @@ if status ~= 'prepared'
     return 'stale'
 end
 local count = tonumber(redis.call('HGET', KEYS[1], 'participantCount') or '0')
-local ownerTransitionCount =
-    tonumber(redis.call('HGET', KEYS[1], 'ownerTransitionCount') or '0')
 local targetGeneration =
     redis.call('HGET', KEYS[1], 'targetLeaseGeneration') or ''
-if not liveLease(KEYS[4], targetGeneration) then
+local aggregateVector = capacityBundle(
+    redis.call('HGET', KEYS[1], 'capacityBundle') or '')
+if not aggregateVector or not liveLease(KEYS[4], targetGeneration) then
     return 'stale'
 end
-if not remaining(KEYS[2], 'storeRevision', count)
-    or not remaining(
-        KEYS[3], 'authorityOwnerGeneration',
-        ownerTransitionCount) then
+if redis.call('HGET', KEYS[2], 'storeRevision') == MAX
+    or redis.call('HGET', KEYS[3], 'authorityOwnerGeneration') == MAX then
     return 'generation_exhausted'
 end
 for i = 0, count - 1 do
     local prefix = 'p:' .. i .. ':'
-    local keyBase = 5 + i * 14
+    local keyBase = 11 + i * 6
     local authorityKey = KEYS[keyBase]
-    local reservationKey = KEYS[keyBase + 1]
-    local expectedVersion = redis.call('HGET', KEYS[1], prefix .. 'expectedVersion')
-    local transition = redis.call('HGET', KEYS[1], prefix .. 'transition')
+    local expectedVersion =
+        redis.call('HGET', KEYS[1], prefix .. 'expectedVersion') or ''
+    local vector = capacityBundle(
+        redis.call('HGET', authorityKey, 'capacityBundle') or '')
     if redis.call('EXISTS', authorityKey) == 0
-        or redis.call('HGET', authorityKey, 'storeVersion') ~= expectedVersion then
+        or redis.call('HGET', authorityKey, 'storeVersion') ~= expectedVersion
+        or redis.call('HGET', authorityKey, 'allocationState') ~= 'active'
+        or not vector then
         return 'stale'
     end
-    if transition == 'new_owner' then
-        local sourceOwner = redis.call('HGET', authorityKey, 'ownerId') or ''
-        local sourceGeneration =
-            redis.call('HGET', authorityKey, 'ownerLeaseGeneration') or ''
-        local targetDescriptorKey = KEYS[keyBase + 8]
-        local targetCapability = findCapability(
-            targetDescriptorKey,
-            redis.call('HGET', reservationKey, 'objectKind'),
-            redis.call('HGET', reservationKey, 'stableType'))
-        if redis.call('HGET', reservationKey, 'status') ~= 'prepared'
-            or redis.call('HGET', reservationKey, 'aggregateId')
-                ~= redis.call('HGET', KEYS[1], 'aggregateId')
-            or redis.call('HGET', reservationKey, 'aggregateGeneration')
-                ~= redis.call('HGET', KEYS[1], 'aggregateGeneration')
-            or redis.call('HGET', reservationKey, 'sourceOwnerId') ~= sourceOwner
-            or redis.call('HGET', reservationKey, 'sourceLeaseGeneration') ~= sourceGeneration
-            or redis.call('HGET', reservationKey, 'objectKind')
-                ~= redis.call('HGET', authorityKey, 'objectKind')
-            or redis.call('HGET', reservationKey, 'stableType')
-                ~= redis.call('HGET', authorityKey, 'stableType')
-            or redis.call('HGET', reservationKey, 'sourceDescriptorKey')
-                ~= redis.call('HGET', authorityKey, 'descriptorKey')
-            or redis.call('HGET', reservationKey, 'sourceLifecycleGeneration')
-                ~= redis.call('HGET', authorityKey, 'descriptorLifecycleGeneration')
-            or redis.call('HGET', reservationKey, 'capacityDelta')
-                ~= redis.call('HGET', authorityKey, 'capacityDelta')
-            or redis.call('HGET', authorityKey, 'allocationState') ~= 'active'
-            or redis.call('EXISTS', targetDescriptorKey) == 0
-            or redis.call('HGET', targetDescriptorKey, 'descriptorKey')
-                ~= redis.call('HGET', reservationKey, 'targetDescriptorKey')
-            or redis.call('HGET', targetDescriptorKey, 'lifecycleGeneration')
-                ~= redis.call('HGET', reservationKey, 'targetLifecycleGeneration')
-            or redis.call('HGET', targetDescriptorKey, 'ownerId')
-                ~= redis.call('HGET', KEYS[1], 'targetOwnerId')
-            or redis.call('HGET', targetDescriptorKey, 'ownerLeaseGeneration')
-                ~= targetGeneration
-            or redis.call('HGET', targetDescriptorKey, 'runtimeState') ~= '1'
-            or redis.call('HGET', targetDescriptorKey, 'objectRole') ~= '2'
-            or not targetCapability then
-	            return 'stale'
-	        end
-	        local delta =
-	            tonumber(redis.call('HGET', reservationKey, 'capacityDelta') or '0')
-	        local sourceNodeField =
-	            redis.call('HGET', KEYS[1], prefix .. 'sourceNodeField')
-	        local sourceTypeField =
-	            redis.call('HGET', KEYS[1], prefix .. 'sourceTypeField')
-	        local targetNodeField =
-	            redis.call('HGET', KEYS[1], prefix .. 'targetNodeField')
-	        local targetTypeField =
-	            redis.call('HGET', KEYS[1], prefix .. 'targetTypeField')
-	        local sourceNodeActive = tonumber(
-	            redis.call('HGET', KEYS[keyBase + 2], sourceNodeField) or '0')
-	        local sourceTypeActive = tonumber(
-	            redis.call('HGET', KEYS[keyBase + 3], sourceTypeField) or '0')
-	        local targetNodePending = tonumber(
-	            redis.call('HGET', KEYS[keyBase + 4], targetNodeField) or '0')
-	        local targetTypePending = tonumber(
-	            redis.call('HGET', KEYS[keyBase + 5], targetTypeField) or '0')
-	        local targetNodeActive = tonumber(
-	            redis.call('HGET', KEYS[keyBase + 6], targetNodeField) or '0')
-	        local targetTypeActive = tonumber(
-	            redis.call('HGET', KEYS[keyBase + 7], targetTypeField) or '0')
-	        local nodeActiveLimit = tonumber(
-	            redis.call('HGET', targetDescriptorKey, 'nodeActiveLimit') or '0')
-	        local typeActiveLimit =
-	            limitOr(targetCapability.activeLimit, nodeActiveLimit)
-	        if sourceNodeActive < delta or sourceTypeActive < delta
-	            or targetNodePending < delta or targetTypePending < delta
-	            or delta > nodeActiveLimit
-	            or targetNodeActive > nodeActiveLimit - delta
-	            or delta > typeActiveLimit
-	            or targetTypeActive > typeActiveLimit - delta then
-	            return 'stale'
-	        end
-	    end
+    local sourceActorBucket =
+        redis.call('HGET', KEYS[1], prefix .. 'sourceActorBucket') or ''
+    local sourceSpotBucket =
+        redis.call('HGET', KEYS[1], prefix .. 'sourceSpotBucket') or ''
+    local sourceTypeBucket =
+        redis.call('HGET', KEYS[1], prefix .. 'sourceTypeBucket') or ''
+    if tonumber(redis.call('HGET', KEYS[5], sourceActorBucket) or '0')
+            < vector.actors
+        or tonumber(redis.call('HGET', KEYS[7], sourceSpotBucket) or '0')
+            < vector.spots
+        or (vector.spotType
+            and tonumber(redis.call('HGET', KEYS[9], sourceTypeBucket) or '0')
+                < vector.spotType.slots) then
+        return 'stale'
+    end
 end
 for i = 0, count - 1 do
     local prefix = 'p:' .. i .. ':'
-    local keyBase = 5 + i * 14
+    local keyBase = 11 + i * 6
     local authorityKey = KEYS[keyBase]
-    local transition = redis.call('HGET', KEYS[1], prefix .. 'transition')
-    local revisionHex =
-        redis.call('HGET', KEYS[1], prefix .. 'expectedRevisionHex')
-    local fields = {
-        'authorityKey', 'payload', 'storeVersion',
-        'objectGeneration', 'authorityOwnerGeneration',
-        'ownerId', 'ownerLeaseGeneration', 'allocationState',
-        'objectKind', 'stableType', 'descriptorKey',
-        'descriptorLifecycleGeneration', 'capacityDelta',
-        'pendingCreationReservationId', 'pendingCreationReference',
-        'pendingCreationSha256', 'pendingCreationEncodedSize'
-    }
-    for _, field in ipairs(fields) do
-        local value = redis.call('HGET', authorityKey, field)
-        if value then
-            redis.call(
-                'HSET', KEYS[keyBase + 9],
-                revisionHex .. ':' .. field, value)
-        end
+    local revision =
+        redis.call('HGET', KEYS[1], prefix .. 'expectedRevisionHex') or ''
+    local vector = capacityBundle(
+        redis.call('HGET', authorityKey, 'capacityBundle') or '')
+    archive(authorityKey, KEYS[keyBase + 1], KEYS[keyBase + 2], revision)
+    capacityAdd(KEYS[5],
+        redis.call('HGET', KEYS[1], prefix .. 'sourceActorBucket') or '',
+        -vector.actors)
+    capacityAdd(KEYS[7],
+        redis.call('HGET', KEYS[1], prefix .. 'sourceSpotBucket') or '',
+        -vector.spots)
+    if vector.spotType then
+        capacityAdd(KEYS[9],
+            redis.call('HGET', KEYS[1], prefix .. 'sourceTypeBucket') or '',
+            -vector.spotType.slots)
     end
-    redis.call(
-        'HSET', KEYS[keyBase + 9],
-        revisionHex .. ':deleted', '0')
-    redis.call('ZADD', KEYS[keyBase + 10], 0, revisionHex)
-    local authorityName =
-        redis.call('HGET', KEYS[1], prefix .. 'authorityKey')
-    local oldMembership =
-        redis.call('HGET', KEYS[keyBase + 11], authorityName)
-    if oldMembership then
-        redis.call(
-            'HSET', KEYS[keyBase + 12],
-            revisionHex, oldMembership)
-        redis.call(
-            'ZADD', KEYS[keyBase + 13], 0, revisionHex)
-    end
-    redis.call('HINCRBY', KEYS[2], 'storeRevision', 1)
-    local version =
-        redis.call('HGET', KEYS[2], 'storeRevision')
+    local storeVersion = redis.call('HINCRBY', KEYS[2], 'storeRevision', 1)
     local ownerGeneration =
-        redis.call('HGET', authorityKey, 'authorityOwnerGeneration') or '0'
-    if transition == 'new_owner' then
-        redis.call(
-            'HINCRBY', KEYS[3],
-            'authorityOwnerGeneration', 1)
-        ownerGeneration =
-            redis.call(
-                'HGET', KEYS[3],
-                'authorityOwnerGeneration')
-    end
+        redis.call('HINCRBY', KEYS[3], 'authorityOwnerGeneration', 1)
     redis.call('HSET', authorityKey,
-        'storeVersion', version,
+        'storeVersion', storeVersion,
         'payload', redis.call('HGET', KEYS[1], prefix .. 'payload') or '',
-        'authorityOwnerGeneration', ownerGeneration)
-    redis.call(
-        'HSET', KEYS[keyBase + 11], authorityName,
-        redis.call('HGET', KEYS[1], prefix .. 'membership') or '')
-    if transition == 'new_owner' then
-        local reservationKey = KEYS[keyBase + 1]
-        local delta = tonumber(redis.call('HGET', reservationKey, 'capacityDelta') or '0')
-        local sourceNodeField =
-            redis.call('HGET', KEYS[1], prefix .. 'sourceNodeField')
-        local sourceTypeField =
-            redis.call('HGET', KEYS[1], prefix .. 'sourceTypeField')
-        local targetNodeField =
-            redis.call('HGET', KEYS[1], prefix .. 'targetNodeField')
-        local targetTypeField =
-            redis.call('HGET', KEYS[1], prefix .. 'targetTypeField')
-        redis.call('HINCRBY', KEYS[keyBase + 2], sourceNodeField, -delta)
-        redis.call('HINCRBY', KEYS[keyBase + 3], sourceTypeField, -delta)
-        redis.call('HINCRBY', KEYS[keyBase + 4], targetNodeField, -delta)
-        redis.call('HINCRBY', KEYS[keyBase + 5], targetTypeField, -delta)
-        redis.call('HINCRBY', KEYS[keyBase + 6], targetNodeField, delta)
-        redis.call('HINCRBY', KEYS[keyBase + 7], targetTypeField, delta)
-        redis.call('HSET', reservationKey, 'status', 'committed')
-        redis.call('HSET', authorityKey,
-            'ownerId', redis.call('HGET', KEYS[1], 'targetOwnerId'),
-            'ownerLeaseGeneration', targetGeneration,
-            'allocationState', 'active',
-            'objectKind', redis.call('HGET', reservationKey, 'objectKind'),
-            'stableType', redis.call('HGET', reservationKey, 'stableType'),
-            'descriptorKey', redis.call('HGET', reservationKey, 'targetDescriptorKey'),
-            'descriptorLifecycleGeneration',
-                redis.call('HGET', reservationKey, 'targetLifecycleGeneration'),
-            'capacityDelta', redis.call('HGET', reservationKey, 'capacityDelta'))
+        'authorityOwnerGeneration', ownerGeneration,
+        'ownerId', redis.call('HGET', KEYS[1], 'targetOwnerId') or '',
+        'ownerLeaseGeneration', targetGeneration,
+        'descriptorKey', redis.call('HGET', KEYS[1], 'targetDescriptorKey') or '',
+        'descriptorLifecycleGeneration',
+            redis.call('HGET', KEYS[1], 'targetLifecycleGeneration') or '0')
+    local membership =
+        redis.call('HGET', KEYS[1], prefix .. 'membership') or ''
+    if membership ~= '' then
+        local current = redis.call('HGET', KEYS[keyBase + 3],
+            redis.call('HGET', KEYS[1], prefix .. 'authorityKey') or '')
+        if current then
+            redis.call('HSET', KEYS[keyBase + 4], revision, current)
+            redis.call('ZADD', KEYS[keyBase + 5], 0, revision)
+        end
+        redis.call('HSET', KEYS[keyBase + 3],
+            redis.call('HGET', KEYS[1], prefix .. 'authorityKey') or '',
+            membership)
     end
 end
-redis.call('HSET', KEYS[1], 'status', 'committed')
+local targetActorBucket =
+    redis.call('HGET', KEYS[1], 'targetActorBucket') or ''
+local targetSpotBucket =
+    redis.call('HGET', KEYS[1], 'targetSpotBucket') or ''
+local targetTypeBucket =
+    redis.call('HGET', KEYS[1], 'targetTypeBucket') or ''
+capacityAdd(KEYS[6], targetActorBucket, -aggregateVector.actors)
+capacityAdd(KEYS[5], targetActorBucket, aggregateVector.actors)
+capacityAdd(KEYS[8], targetSpotBucket, -aggregateVector.spots)
+capacityAdd(KEYS[7], targetSpotBucket, aggregateVector.spots)
+if aggregateVector.spotType then
+    capacityAdd(KEYS[10], targetTypeBucket, -aggregateVector.spotType.slots)
+    capacityAdd(KEYS[9], targetTypeBucket, aggregateVector.spotType.slots)
+end
+redis.call('HSET', KEYS[1], 'status', 'committed', 'committedAtMs', nowMs)
 return 'committed'
 )";
 
-    static constexpr std::string_view abort_aggregate = R"(
+    static constexpr std::string_view abort_aggregate_v3 = R"(
 if redis.replicate_commands then redis.replicate_commands() end
+local function readSegment(value, offset)
+    local colon = string.find(value, ':', offset, true)
+    if not colon then return nil end
+    local size = tonumber(string.sub(value, offset, colon - 1))
+    if not size then return nil end
+    local first = colon + 1
+    local last = first + size - 1
+    if last > string.len(value) then return nil end
+    return string.sub(value, first, last), last + 1
+end
+local function capacityBundle(value)
+    local domain, offset = readSegment(value, 1)
+    local actors
+    actors, offset = readSegment(value, offset or 1)
+    local spots
+    spots, offset = readSegment(value, offset or 1)
+    local presence
+    presence, offset = readSegment(value, offset or 1)
+    actors = tonumber(actors)
+    spots = tonumber(spots)
+    if domain ~= 'zlink-capacity-bundle-v2'
+        or not actors or not spots or not presence then return nil end
+    local result = {actors = actors, spots = spots}
+    if presence == '1' then
+        local kind
+        kind, offset = readSegment(value, offset)
+        local stableType
+        stableType, offset = readSegment(value, offset or 1)
+        local slots
+        slots, offset = readSegment(value, offset or 1)
+        slots = tonumber(slots)
+        if not kind or not stableType or not slots then return nil end
+        result.spotType = {kind = kind, stableType = stableType, slots = slots}
+    elseif presence ~= '0' then return nil end
+    if offset ~= string.len(value) + 1 then return nil end
+    return result
+end
+local function capacityAdd(key, bucket, delta)
+    if delta == 0 then return true end
+    local current = tonumber(redis.call('HGET', key, bucket) or '0')
+    local nextValue = current + delta
+    if nextValue < 0 or nextValue > 2147483647 then return false end
+    if nextValue == 0 then redis.call('HDEL', key, bucket)
+    else redis.call('HSET', key, bucket, nextValue) end
+    return true
+end
 if redis.call('EXISTS', KEYS[1]) == 0 then return 'stale' end
 local status = redis.call('HGET', KEYS[1], 'status')
+if status == 'committed' then return 'already_committed' end
 if status == 'aborted' then return 'already_aborted' end
-if status == 'committed' then return 'stale' end
 if status ~= 'prepared'
     or redis.call('HGET', KEYS[1], 'aggregateGeneration') ~= ARGV[1] then
     return 'stale'
 end
-local count = tonumber(redis.call('HGET', KEYS[1], 'participantCount') or '0')
-for i = 0, count - 1 do
-    local prefix = 'p:' .. i .. ':'
-    local keyBase = 2 + i * 3
-    local reservationKey = KEYS[keyBase]
-    if reservationKey and reservationKey ~= ''
-        and redis.call('HGET', reservationKey, 'status') == 'prepared'
-        and redis.call('HGET', reservationKey, 'aggregateId')
-            == redis.call('HGET', KEYS[1], 'aggregateId')
-        and redis.call('HGET', reservationKey, 'aggregateGeneration')
-            == redis.call('HGET', KEYS[1], 'aggregateGeneration') then
-        local delta = tonumber(redis.call('HGET', reservationKey, 'capacityDelta') or '0')
-        local targetNodeField =
-            redis.call('HGET', KEYS[1], prefix .. 'targetNodeField')
-        local targetTypeField =
-            redis.call('HGET', KEYS[1], prefix .. 'targetTypeField')
-        local nodePending = tonumber(
-            redis.call('HGET', KEYS[keyBase + 1], targetNodeField) or '0')
-        local typePending = tonumber(
-            redis.call('HGET', KEYS[keyBase + 2], targetTypeField) or '0')
-        if nodePending < delta or typePending < delta then
-            return 'stale'
-        end
-        redis.call('HINCRBY', KEYS[keyBase + 1], targetNodeField, -delta)
-        redis.call('HINCRBY', KEYS[keyBase + 2], targetTypeField, -delta)
-        redis.call('HSET', reservationKey, 'status', 'aborted')
-    end
+local vector = capacityBundle(
+    redis.call('HGET', KEYS[1], 'capacityBundle') or '')
+local actorBucket =
+    redis.call('HGET', KEYS[1], 'targetActorBucket') or ''
+local spotBucket =
+    redis.call('HGET', KEYS[1], 'targetSpotBucket') or ''
+local typeBucket =
+    redis.call('HGET', KEYS[1], 'targetTypeBucket') or ''
+if not vector
+    or tonumber(redis.call('HGET', KEYS[2], actorBucket) or '0')
+        < vector.actors
+    or tonumber(redis.call('HGET', KEYS[3], spotBucket) or '0')
+        < vector.spots
+    or (vector.spotType
+        and tonumber(redis.call('HGET', KEYS[4], typeBucket) or '0')
+            < vector.spotType.slots) then
+    return 'stale'
+end
+capacityAdd(KEYS[2], actorBucket, -vector.actors)
+capacityAdd(KEYS[3], spotBucket, -vector.spots)
+if vector.spotType then
+    capacityAdd(KEYS[4], typeBucket, -vector.spotType.slots)
 end
 redis.call('HSET', KEYS[1], 'status', 'aborted')
 return 'aborted'
 )";
+
 };
 
 class redis_location_script_result_t
@@ -2518,34 +2923,49 @@ class redis_location_key_schema_t
       std::string_view prefix)
     {
         return join (
-          domain_prefix (prefix), "capacity", "node", "active");
+          domain_prefix (prefix), "capacity", "actor", "active");
     }
 
     static std::string capacity_node_pending_key (
       std::string_view prefix)
     {
         return join (
-          domain_prefix (prefix), "capacity", "node", "pending");
+          domain_prefix (prefix), "capacity", "actor", "reserved");
     }
 
     static std::string capacity_type_active_key (
       std::string_view prefix)
     {
         return join (
-          domain_prefix (prefix), "capacity", "type", "active");
+          domain_prefix (prefix), "capacity", "spot-type", "active");
     }
 
     static std::string capacity_type_pending_key (
       std::string_view prefix)
     {
         return join (
-          domain_prefix (prefix), "capacity", "type", "pending");
+          domain_prefix (prefix), "capacity", "spot-type", "reserved");
+    }
+
+    static std::string capacity_spot_active_key (
+      std::string_view prefix)
+    {
+        return join (
+          domain_prefix (prefix), "capacity", "spot", "active");
+    }
+
+    static std::string capacity_spot_reserved_key (
+      std::string_view prefix)
+    {
+        return join (
+          domain_prefix (prefix), "capacity", "spot", "reserved");
     }
 
     static std::string capacity_node_field (
       std::string_view mesh_name,
       std::string_view node_rid,
-      std::uint64_t lifecycle_generation)
+      std::uint64_t lifecycle_generation,
+      placement_object_kind_t object_kind)
     {
         const auto descriptor_key = encode (
           mesh_name,
@@ -2554,7 +2974,10 @@ class redis_location_key_schema_t
             .to_hex ());
         return encode (
           descriptor_key,
-          std::to_string (lifecycle_generation));
+          std::to_string (lifecycle_generation),
+          object_kind == placement_object_kind_t::actor
+            ? "actor"
+            : "spot");
     }
 
     static std::string capacity_type_field (
@@ -2572,6 +2995,7 @@ class redis_location_key_schema_t
         return encode (
           descriptor_key,
           std::to_string (lifecycle_generation),
+          "spot",
           object_kind_token (object_kind),
           stable_type);
     }
@@ -2927,10 +3351,6 @@ class redis_location_row_codec_t
         json["DescriptorRevision"] =
           row.descriptor_revision;
         json["Endpoint"] = row.endpoint;
-        json["EntrySpotId"] =
-          row.entry_spot_id
-            ? nlohmann::json (*row.entry_spot_id)
-            : nlohmann::json (nullptr);
         json["ChannelWeights"] = row.channel_weights;
         json["SecurityIdentity"] = row.security_identity;
         json["OwnerId"] = row.owner_id;
@@ -2949,14 +3369,7 @@ class redis_location_row_codec_t
               static_cast<int> (capability.policy);
             value["HasSnapshotAdapter"] =
               capability.has_snapshot_adapter;
-            value["ActiveLimit"] =
-              capability.active_limit
-                ? nlohmann::json (*capability.active_limit)
-                : nlohmann::json (nullptr);
-            value["PendingLimit"] =
-              capability.pending_limit
-                ? nlohmann::json (*capability.pending_limit)
-                : nlohmann::json (nullptr);
+            value["SpotLimit"] = capability.spot_limit;
             capabilities.push_back (std::move (value));
         }
         json["ObjectCapabilities"] = std::move (capabilities);
@@ -2966,16 +3379,15 @@ class redis_location_row_codec_t
             : nlohmann::json (nullptr);
         json["State"] = static_cast<int> (row.state);
         json["ObjectRole"] = static_cast<int> (row.object_role);
+        json["EntrySpotId"] =
+          row.entry_spot_id
+            ? nlohmann::json (*row.entry_spot_id)
+            : nlohmann::json (nullptr);
         json["PlacementWeight"] = row.placement_weight;
-        json["Capacity"] = {
-          {"Active", row.object_capacity.active},
-          {"Pending", row.object_capacity.pending},
-          {"ActiveLimit", row.object_capacity.active_limit},
-          {"PendingLimit", row.object_capacity.pending_limit}};
         nlohmann::ordered_json spot_types =
           nlohmann::ordered_json::array ();
         for (const auto &typed :
-             row.placement_capacity.spot_types) {
+             row.capacity.spot_types) {
             spot_types.push_back ({
               {"ObjectKind", static_cast<int> (typed.object_kind)},
               {"StableType", typed.stable_type},
@@ -2983,16 +3395,19 @@ class redis_location_row_codec_t
               {"Reserved", typed.usage.reserved},
               {"Limit", typed.usage.limit}});
         }
-        json["PlacementCapacity"] = {
+        json["Capacity"] = {
           {"Actors",
-           {{"Active", row.placement_capacity.actors.active},
-            {"Reserved", row.placement_capacity.actors.reserved},
-            {"Limit", row.placement_capacity.actors.limit}}},
+           {{"Active", row.capacity.actors.active},
+            {"Reserved", row.capacity.actors.reserved},
+            {"Limit", row.capacity.actors.limit}}},
           {"Spots",
-           {{"Active", row.placement_capacity.spots.active},
-            {"Reserved", row.placement_capacity.spots.reserved},
-            {"Limit", row.placement_capacity.spots.limit}}},
+           {{"Active", row.capacity.spots.active},
+            {"Reserved", row.capacity.spots.reserved},
+            {"Limit", row.capacity.spots.limit}}},
           {"SpotTypes", std::move (spot_types)}};
+        json["ActivationConcurrency"] = {
+          {"Active", row.activation_concurrency.active},
+          {"Limit", row.activation_concurrency.limit}};
         return json.dump ();
     }
 
@@ -3040,14 +3455,8 @@ class redis_location_row_codec_t
                 item.at ("Policy").get<int> ());
             capability.has_snapshot_adapter =
               item.at ("HasSnapshotAdapter").get<bool> ();
-            if (!item.at ("ActiveLimit").is_null ())
-                capability.active_limit =
-                  item.at ("ActiveLimit")
-                    .get<std::uint32_t> ();
-            if (!item.at ("PendingLimit").is_null ())
-                capability.pending_limit =
-                  item.at ("PendingLimit")
-                    .get<std::uint32_t> ();
+            capability.spot_limit =
+              item.at ("SpotLimit").get<std::int32_t> ();
             row.object_capabilities.push_back (
               std::move (capability));
         }
@@ -3056,18 +3465,9 @@ class redis_location_row_codec_t
             json.at ("ObjectRole").get<int> ());
         row.placement_weight =
           json.at ("PlacementWeight").get<int> ();
-        const auto &capacity = json.at ("Capacity");
-        row.object_capacity.active =
-          capacity.at ("Active").get<std::uint32_t> ();
-        row.object_capacity.pending =
-          capacity.at ("Pending").get<std::uint32_t> ();
-        row.object_capacity.active_limit =
-          capacity.at ("ActiveLimit").get<std::uint32_t> ();
-        row.object_capacity.pending_limit =
-          capacity.at ("PendingLimit").get<std::uint32_t> ();
-        if (json.contains ("PlacementCapacity")) {
+        if (json.contains ("Capacity")) {
             const auto &placement =
-              json.at ("PlacementCapacity");
+              json.at ("Capacity");
             const auto decode_usage =
               [] (const nlohmann::json &usage) {
                   return capacity_usage_t{
@@ -3075,13 +3475,13 @@ class redis_location_row_codec_t
                     usage.at ("Reserved").get<std::uint64_t> (),
                     usage.at ("Limit").get<std::int32_t> ()};
               };
-            row.placement_capacity.actors =
+            row.capacity.actors =
               decode_usage (placement.at ("Actors"));
-            row.placement_capacity.spots =
+            row.capacity.spots =
               decode_usage (placement.at ("Spots"));
             for (const auto &typed :
                  placement.at ("SpotTypes"))
-                row.placement_capacity.spot_types.push_back ({
+                row.capacity.spot_types.push_back ({
                   static_cast<placement_object_kind_t> (
                     typed.at ("ObjectKind").get<int> ()),
                   typed.at ("StableType").get<std::string> (),
@@ -3089,6 +3489,12 @@ class redis_location_row_codec_t
                    typed.at ("Reserved").get<std::uint64_t> (),
                    typed.at ("Limit").get<std::int32_t> ()}});
         }
+        const auto &activation =
+          json.at ("ActivationConcurrency");
+        row.activation_concurrency.active =
+          activation.at ("Active").get<std::uint32_t> ();
+        row.activation_concurrency.limit =
+          activation.at ("Limit").get<std::int32_t> ();
         if (!json.at ("MaintenanceWave").is_null ())
             row.maintenance_wave =
               json.at ("MaintenanceWave").get<std::string> ();
@@ -3133,9 +3539,9 @@ class redis_location_row_codec_t
       const mesh_node_descriptor_t &row)
     {
         std::vector<std::string> segments{
-          "zlink-mesh-node-immutable-v1", row.mesh_name,
+          "zlink-mesh-node-immutable-v2", row.mesh_name,
           row.rid.to_hex (), std::to_string (row.lifecycle_generation),
-          row.endpoint, row.entry_spot_id.value_or (std::string{})};
+          row.endpoint};
         std::vector<std::string> channels;
         channels.reserve (row.channel_weights.size ());
         for (const auto &[name, _] : row.channel_weights)
@@ -3148,33 +3554,15 @@ class redis_location_row_codec_t
         segments.push_back (row.security_identity);
         segments.push_back (std::to_string (row.application_version));
         segments.push_back (object_role_token (row.object_role));
+        segments.push_back (row.entry_spot_id ? "1" : "0");
+        if (row.entry_spot_id)
+            segments.push_back (*row.entry_spot_id);
         segments.push_back (
-          std::to_string (row.object_capacity.active_limit));
+          std::to_string (row.capacity.actors.limit));
         segments.push_back (
-          std::to_string (row.object_capacity.pending_limit));
+          std::to_string (row.capacity.spots.limit));
         segments.push_back (
-          std::to_string (row.placement_capacity.actors.limit));
-        segments.push_back (
-          std::to_string (row.placement_capacity.spots.limit));
-        auto spot_types = row.placement_capacity.spot_types;
-        std::sort (
-          spot_types.begin (), spot_types.end (),
-          [] (const spot_type_capacity_t &left,
-              const spot_type_capacity_t &right) {
-              if (left.object_kind != right.object_kind)
-                  return left.object_kind < right.object_kind;
-              return unsigned_utf8_less (
-                left.stable_type, right.stable_type);
-          });
-        segments.push_back (std::to_string (spot_types.size ()));
-        for (const auto &typed : spot_types) {
-            segments.push_back (
-              redis_location_key_schema_t::object_kind_token (
-                typed.object_kind));
-            segments.push_back (typed.stable_type);
-            segments.push_back (
-              std::to_string (typed.usage.limit));
-        }
+          std::to_string (row.activation_concurrency.limit));
         auto capabilities = row.object_capabilities;
         std::sort (
           capabilities.begin (), capabilities.end (),
@@ -3201,13 +3589,10 @@ class redis_location_row_codec_t
             segments.push_back (
               capability.has_snapshot_adapter ? "1" : "0");
             segments.push_back (
-              capability.active_limit
-                ? std::to_string (*capability.active_limit)
-                : std::string{});
-            segments.push_back (
-              capability.pending_limit
-                ? std::to_string (*capability.pending_limit)
-                : std::string{});
+              capability.object_kind
+                    == placement_object_kind_t::actor
+                ? std::string{}
+                : std::to_string (capability.spot_limit));
         }
         std::string preimage;
         for (const auto &segment : segments) {
@@ -3255,27 +3640,11 @@ class redis_location_row_codec_t
             value["policy"] = policy_token (capability.policy);
             value["hasSnapshotAdapter"] =
               capability.has_snapshot_adapter;
-            value["activeLimit"] =
-              capability.active_limit
-                ? nlohmann::json (*capability.active_limit)
-                : nlohmann::json (nullptr);
-            value["pendingLimit"] =
-              capability.pending_limit
-                ? nlohmann::json (*capability.pending_limit)
-                : nlohmann::json (nullptr);
-            const auto typed = std::find_if (
-              row.placement_capacity.spot_types.begin (),
-              row.placement_capacity.spot_types.end (),
-              [&] (const spot_type_capacity_t &candidate) {
-                  return candidate.object_kind
-                           == capability.object_kind
-                         && candidate.stable_type
-                              == capability.stable_type;
-              });
-            value["capacityLimit"] =
-              typed == row.placement_capacity.spot_types.end ()
-                ? 0
-                : typed->usage.limit;
+            value["limit"] =
+              capability.object_kind
+                    == placement_object_kind_t::actor
+                ? nlohmann::json (nullptr)
+                : nlohmann::json (capability.spot_limit);
             json.push_back (std::move (value));
         }
         return json.dump ();
@@ -3939,11 +4308,13 @@ class redis_location_store_t final : public location_store_t,
                       encode_mesh_node_admission_capabilities (
                         descriptor),
                     std::to_string (
-                      descriptor.object_capacity
-                        .active_limit),
+                      descriptor.capacity.actors.limit),
                     std::to_string (
-                      descriptor.object_capacity
-                        .pending_limit)};
+                      descriptor.capacity.spots.limit),
+                    std::to_string (
+                      descriptor.activation_concurrency.limit),
+                    descriptor.entry_spot_id.value_or (
+                      std::string{})};
                   const auto result = redis_get (
                     client ().eval<std::tuple<
                       std::string,
@@ -4120,10 +4491,10 @@ class redis_location_store_t final : public location_store_t,
                           auto descriptor =
                             detail::redis_location_row_codec_t::
                               decode_mesh_node (*json);
-                          descriptor.placement_capacity.actors.active = 0;
-                          descriptor.placement_capacity.actors.reserved = 0;
-                          descriptor.placement_capacity.spots.active = 0;
-                          descriptor.placement_capacity.spots.reserved = 0;
+                          descriptor.capacity.actors.active = 0;
+                          descriptor.capacity.actors.reserved = 0;
+                          descriptor.capacity.spots.active = 0;
+                          descriptor.capacity.spots.reserved = 0;
                           const auto active_key =
                             detail::redis_location_key_schema_t::
                               capacity_type_active_key (
@@ -4159,19 +4530,19 @@ class redis_location_store_t final : public location_store_t,
                                   : 0;
                               if (capability.object_kind
                                   == placement_object_kind_t::actor) {
-                                  descriptor.placement_capacity.actors.active
+                                  descriptor.capacity.actors.active
                                     += active_count;
-                                  descriptor.placement_capacity.actors.reserved
+                                  descriptor.capacity.actors.reserved
                                     += reserved_count;
                                   continue;
                               }
-                              descriptor.placement_capacity.spots.active
+                              descriptor.capacity.spots.active
                                 += active_count;
-                              descriptor.placement_capacity.spots.reserved
+                              descriptor.capacity.spots.reserved
                                 += reserved_count;
                               const auto typed = std::find_if (
-                                descriptor.placement_capacity.spot_types.begin (),
-                                descriptor.placement_capacity.spot_types.end (),
+                                descriptor.capacity.spot_types.begin (),
+                                descriptor.capacity.spot_types.end (),
                                 [&] (const spot_type_capacity_t &candidate) {
                                     return candidate.object_kind
                                              == capability.object_kind
@@ -4179,7 +4550,7 @@ class redis_location_store_t final : public location_store_t,
                                                 == capability.stable_type;
                                 });
                               if (typed
-                                  != descriptor.placement_capacity.spot_types.end ()) {
+                                  != descriptor.capacity.spot_types.end ()) {
                                   typed->usage.active = active_count;
                                   typed->usage.reserved = reserved_count;
                               }
@@ -5286,13 +5657,13 @@ class redis_location_store_t final : public location_store_t,
                       ? snapshot->allocation
                       : placement_allocation_t{};
                   auto target_mesh =
-                    source_allocation.mesh_name;
+                    source_allocation.target.mesh_name;
                   auto target_node =
                     std::string (
-                      source_allocation.node_rid.value ());
+                      source_allocation.target.node_rid.value ());
                   auto target_lifecycle =
                     source_allocation
-                      .node_lifecycle_generation;
+                      .target.node_lifecycle_generation;
                   auto target_kind =
                     source_allocation.object_kind;
                   auto target_type =
@@ -5397,7 +5768,16 @@ class redis_location_store_t final : public location_store_t,
                         _options.key_prefix, key.value),
                     detail::redis_location_key_schema_t::
                       membership_history_revisions_key (
-                        _options.key_prefix, key.value)};
+                        _options.key_prefix, key.value),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_active_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_reserved_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_active_key (
+                        _options.key_prefix)};
                   std::string mutation_name = "delete";
                   std::string transition = "preserve";
                   std::string payload;
@@ -5422,29 +5802,42 @@ class redis_location_store_t final : public location_store_t,
                       authority_index_member (key.value),
                     detail::redis_location_key_schema_t::
                       capacity_node_field (
-                        source_allocation.mesh_name,
-                        source_allocation.node_rid.value (),
+                        source_allocation.target.mesh_name,
+                        source_allocation.target.node_rid.value (),
                         source_allocation
-                          .node_lifecycle_generation),
+                          .target.node_lifecycle_generation,
+                        source_allocation.object_kind),
                     detail::redis_location_key_schema_t::
                       capacity_type_field (
-                        source_allocation.mesh_name,
-                        source_allocation.node_rid.value (),
+                        source_allocation.target.mesh_name,
+                        source_allocation.target.node_rid.value (),
                         source_allocation
-                          .node_lifecycle_generation,
+                          .target.node_lifecycle_generation,
                         source_allocation.object_kind,
                         source_allocation.stable_type),
                     detail::redis_location_key_schema_t::
                       capacity_node_field (
                         target_mesh, target_node,
-                        target_lifecycle),
+                        target_lifecycle, target_kind),
                     detail::redis_location_key_schema_t::
                       capacity_type_field (
                         target_mesh, target_node,
                         target_lifecycle, target_kind,
                         target_type),
                     revision_lower_hex (
-                      expected_store_version)};
+                      expected_store_version),
+                    detail::redis_location_key_schema_t::
+                      capacity_node_field (
+                        source_allocation.target.mesh_name,
+                        source_allocation.target.node_rid.value (),
+                        source_allocation
+                          .target.node_lifecycle_generation,
+                        placement_object_kind_t::user_spot),
+                    detail::redis_location_key_schema_t::
+                      capacity_node_field (
+                        target_mesh, target_node,
+                        target_lifecycle,
+                        placement_object_kind_t::user_spot)};
                   const auto result = redis_get (
                     client ().eval<std::vector<std::string>> (
                       std::string (
@@ -5728,8 +6121,10 @@ class redis_location_store_t final : public location_store_t,
             || request.key.value.empty ()
             || request.expected_store_version.empty ()
             || request.stable_type.empty ()
-            || request.capacity_delta == 0
-            || request.capacity_delta
+            || scalar_capacity_delta (
+                 request.capacity_bundle) == 0
+            || scalar_capacity_delta (
+                 request.capacity_bundle)
                  > static_cast<std::uint32_t> (
                    std::numeric_limits<std::int32_t>::max ()))
             throw std::invalid_argument (
@@ -5774,7 +6169,13 @@ class redis_location_store_t final : public location_store_t,
                       mesh_node_admission_key (
                         _options.key_prefix,
                         request.target.mesh_name,
-                        request.target.node_rid.value ())};
+                        request.target.node_rid.value ()),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_reserved_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_active_key (
+                        _options.key_prefix)};
                   const auto args = std::vector<std::string>{
                     relocation_capacity_fingerprint (request),
                     fence,
@@ -5798,8 +6199,8 @@ class redis_location_store_t final : public location_store_t,
                     std::to_string (
                       request.target.owner
                         .lease_generation),
-                    std::to_string (
-                      request.capacity_delta),
+                    encode_capacity_bundle (
+                      request.capacity_bundle),
                     request.source.mesh_name,
                     std::string (
                       request.source.node_rid.value ()),
@@ -5813,7 +6214,8 @@ class redis_location_store_t final : public location_store_t,
                         request.target.mesh_name,
                         request.target.node_rid.value (),
                         request.target
-                          .node_lifecycle_generation),
+                          .node_lifecycle_generation,
+                        request.object_kind),
                     detail::redis_location_key_schema_t::
                       capacity_type_field (
                         request.target.mesh_name,
@@ -5833,7 +6235,14 @@ class redis_location_store_t final : public location_store_t,
                         {request.target.mesh_name,
                          zlink::routing_id_t::from (
                            std::string (
-                             request.target.node_rid.value ()))})};
+                             request.target.node_rid.value ()))}),
+                    detail::redis_location_key_schema_t::
+                      capacity_node_field (
+                        request.target.mesh_name,
+                        request.target.node_rid.value (),
+                        request.target
+                          .node_lifecycle_generation,
+                        placement_object_kind_t::user_spot)};
                   const auto result = redis_get (
                     client ().eval<
                       std::tuple<std::string, std::string>> (
@@ -5999,7 +6408,8 @@ class redis_location_store_t final : public location_store_t,
                         request.fence.target.mesh_name,
                         request.fence.target.node_rid.value (),
                         request.fence.target
-                          .node_lifecycle_generation);
+                          .node_lifecycle_generation,
+                        request.key.kind);
                   const auto type_field =
                     detail::redis_location_key_schema_t::
                       capacity_type_field (
@@ -6047,7 +6457,13 @@ class redis_location_store_t final : public location_store_t,
                       mesh_node_admission_key (
                         _options.key_prefix,
                         request.fence.target.mesh_name,
-                        request.fence.target.node_rid.value ())};
+                        request.fence.target.node_rid.value ()),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_reserved_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_active_key (
+                        _options.key_prefix)};
                   auto args = object_fence_args (
                     request.fence);
                   args.push_back (node_field);
@@ -6073,6 +6489,14 @@ class redis_location_store_t final : public location_store_t,
                   args.push_back (digest);
                   args.push_back (
                     std::to_string (expires_at_ms));
+                  args.push_back (
+                    detail::redis_location_key_schema_t::
+                      capacity_node_field (
+                        request.fence.target.mesh_name,
+                        request.fence.target.node_rid.value (),
+                        request.fence.target
+                          .node_lifecycle_generation,
+                        placement_object_kind_t::user_spot));
                   const auto status = redis_get (
                     client ().eval<std::string> (
                       std::string (
@@ -6165,8 +6589,10 @@ class redis_location_store_t final : public location_store_t,
         if (request.creating_payload.size () > 1024u * 1024u
             || request.intent.request_encoded_size
                  > 1024u * 1024u
-            || request.pending_capacity_delta == 0
-            || request.pending_capacity_delta
+            || scalar_capacity_delta (
+                 request.capacity_bundle) == 0
+            || scalar_capacity_delta (
+                 request.capacity_bundle)
                  > static_cast<std::uint32_t> (
                    std::numeric_limits<std::int32_t>::max ()))
             throw std::invalid_argument (
@@ -6219,6 +6645,12 @@ class redis_location_store_t final : public location_store_t,
                         request.target.node_rid.value ()),
                     detail::redis_location_key_schema_t::
                       authority_index_gc_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_reserved_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_active_key (
                         _options.key_prefix)};
                   const auto args = std::vector<std::string>{
                     key,
@@ -6229,8 +6661,8 @@ class redis_location_store_t final : public location_store_t,
                       request.target.owner.lease_generation),
                     bytes_to_string (
                       request.creating_payload),
-                    std::to_string (
-                      request.pending_capacity_delta),
+                    encode_capacity_bundle (
+                      request.capacity_bundle),
                     request.target.mesh_name,
                     std::string (
                       request.target.node_rid.value ()),
@@ -6251,7 +6683,8 @@ class redis_location_store_t final : public location_store_t,
                         request.target.mesh_name,
                         request.target.node_rid.value (),
                         request.target
-                          .node_lifecycle_generation),
+                          .node_lifecycle_generation,
+                        request.key.kind),
                     detail::redis_location_key_schema_t::
                       capacity_type_field (
                         request.target.mesh_name,
@@ -6270,7 +6703,14 @@ class redis_location_store_t final : public location_store_t,
                     byte_array_key (
                       request.intent.request_sha256),
                     std::to_string (
-                      request.intent.request_encoded_size)};
+                      request.intent.request_encoded_size),
+                    detail::redis_location_key_schema_t::
+                      capacity_node_field (
+                        request.target.mesh_name,
+                        request.target.node_rid.value (),
+                        request.target
+                          .node_lifecycle_generation,
+                        placement_object_kind_t::user_spot)};
                   const auto result = redis_get (
                     client ().eval<std::vector<std::string>> (
                       std::string (
@@ -6314,7 +6754,7 @@ class redis_location_store_t final : public location_store_t,
                     std::stoull (result[3]),
                     std::stoull (result[4]),
                     request.target,
-                    request.pending_capacity_delta};
+                    request.capacity_bundle};
                   return object_reserve_result_t{
                     object_reserved_t{
                       std::move (fence), snapshot}};
@@ -6404,7 +6844,13 @@ class redis_location_store_t final : public location_store_t,
                         _options.key_prefix, key),
                     detail::redis_location_key_schema_t::
                       membership_history_revisions_key (
-                        _options.key_prefix, key)};
+                        _options.key_prefix, key),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_reserved_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_active_key (
+                        _options.key_prefix)};
                   auto args = object_fence_args (
                     request.fence);
                   args.push_back (
@@ -6420,7 +6866,8 @@ class redis_location_store_t final : public location_store_t,
                         request.fence.target.mesh_name,
                         request.fence.target.node_rid.value (),
                         request.fence.target
-                          .node_lifecycle_generation));
+                          .node_lifecycle_generation,
+                        request.key.kind));
                   args.push_back (
                     detail::redis_location_key_schema_t::
                       capacity_type_field (
@@ -6435,6 +6882,14 @@ class redis_location_store_t final : public location_store_t,
                   args.push_back (
                     detail::redis_location_key_schema_t::
                       authority_index_member (key));
+                  args.push_back (
+                    detail::redis_location_key_schema_t::
+                      capacity_node_field (
+                        request.fence.target.mesh_name,
+                        request.fence.target.node_rid.value (),
+                        request.fence.target
+                          .node_lifecycle_generation,
+                        placement_object_kind_t::user_spot));
                   const auto result = redis_get (
                     client ().eval<std::vector<std::string>> (
                       std::string (
@@ -6535,7 +6990,10 @@ class redis_location_store_t final : public location_store_t,
                         _options.key_prefix, key),
                     detail::redis_location_key_schema_t::
                       membership_history_revisions_key (
-                        _options.key_prefix, key)};
+                        _options.key_prefix, key),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_reserved_key (
+                        _options.key_prefix)};
                   auto args = object_fence_args (
                     request.fence);
                   args.push_back (key);
@@ -6548,7 +7006,8 @@ class redis_location_store_t final : public location_store_t,
                         request.fence.target.mesh_name,
                         request.fence.target.node_rid.value (),
                         request.fence.target
-                          .node_lifecycle_generation));
+                          .node_lifecycle_generation,
+                        request.key.kind));
                   args.push_back (
                     detail::redis_location_key_schema_t::
                       capacity_type_field (
@@ -6560,6 +7019,14 @@ class redis_location_store_t final : public location_store_t,
                   args.push_back (
                     revision_lower_hex (
                       request.fence.expected_store_version));
+                  args.push_back (
+                    detail::redis_location_key_schema_t::
+                      capacity_node_field (
+                        request.fence.target.mesh_name,
+                        request.fence.target.node_rid.value (),
+                        request.fence.target
+                          .node_lifecycle_generation,
+                        placement_object_kind_t::user_spot));
                   const auto result = redis_get (
                     client ().eval<std::vector<std::string>> (
                       std::string (
@@ -6613,42 +7080,67 @@ class redis_location_store_t final : public location_store_t,
                   const auto aggregate_id =
                     byte_array_key (
                       request.aggregate_id.value);
-                  std::map<std::string, std::string>
-                    fence_by_authority;
-                  for (const auto &fence :
-                       request.target_reservations) {
-                      const auto reservation_key =
-                        detail::redis_location_key_schema_t::
-                          relocation_capacity_reservation_key (
-                            _options.key_prefix, fence.value);
-                      const auto authority = redis_get (
-                        client ().hget (
-                          reservation_key,
-                          "authorityKey"));
-                      if (!authority
-                          || !fence_by_authority
-                                .emplace (
-                                  *authority, fence.value)
-                                .second)
-                          return aggregate_prepare_result_t{
-                            aggregate_prepare_conflict_t{}};
-                  }
-                  std::size_t new_owner_count = 0;
                   auto keys = std::vector<std::string>{
                     detail::redis_location_key_schema_t::
                       aggregate_key (
                         _options.key_prefix, aggregate_id,
                         request.aggregate_generation),
                     detail::redis_location_key_schema_t::
-                      authority_store_revision_key (
-                        _options.key_prefix),
-                    detail::redis_location_key_schema_t::
-                      authority_owner_generation_key (
-                        _options.key_prefix),
-                    detail::redis_location_key_schema_t::
                       lease_key (
                         _options.key_prefix,
-                        request.target_owner.owner_id)};
+                        request.target_owner.owner_id),
+                    detail::redis_location_key_schema_t::
+                      mesh_node_admission_key (
+                        _options.key_prefix,
+                        request.target_descriptor.mesh_name,
+                        request.target_descriptor.rid.to_string ()),
+                    detail::redis_location_key_schema_t::
+                      capacity_node_active_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_node_pending_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_active_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_reserved_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_type_active_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_type_pending_key (
+                        _options.key_prefix)};
+                  const auto target_actor_bucket =
+                    detail::redis_location_key_schema_t::
+                      capacity_node_field (
+                        request.target_descriptor.mesh_name,
+                        request.target_descriptor.rid.to_string (),
+                        request
+                          .target_descriptor_lifecycle_generation,
+                        placement_object_kind_t::actor);
+                  const auto target_spot_bucket =
+                    detail::redis_location_key_schema_t::
+                      capacity_node_field (
+                        request.target_descriptor.mesh_name,
+                        request.target_descriptor.rid.to_string (),
+                        request
+                          .target_descriptor_lifecycle_generation,
+                        placement_object_kind_t::user_spot);
+                  const auto target_type_bucket =
+                    request.capacity_bundle.spot_type
+                      ? detail::redis_location_key_schema_t::
+                          capacity_type_field (
+                            request.target_descriptor.mesh_name,
+                            request.target_descriptor.rid.to_string (),
+                            request
+                              .target_descriptor_lifecycle_generation,
+                            request.capacity_bundle.spot_type
+                              ->object_kind,
+                            request.capacity_bundle.spot_type
+                              ->stable_type)
+                      : std::string{};
                   auto args = std::vector<std::string>{
                     aggregate_fingerprint (request),
                     aggregate_id,
@@ -6660,7 +7152,18 @@ class redis_location_store_t final : public location_store_t,
                     std::to_string (
                       request.participants.size ()),
                     byte_array_key (
-                      request.inventory_digest.value)};
+                      request.inventory_digest.value),
+                    detail::redis_location_key_schema_t::
+                      encode_mesh_node_key (
+                        request.target_descriptor),
+                    std::to_string (
+                      request
+                        .target_descriptor_lifecycle_generation),
+                    target_actor_bucket,
+                    target_spot_bucket,
+                    encode_capacity_bundle (
+                      request.capacity_bundle),
+                    target_type_bucket};
                   for (const auto &participant :
                        request.participants) {
                       const auto authority_key =
@@ -6679,11 +7182,6 @@ class redis_location_store_t final : public location_store_t,
                            "descriptorLifecycleGeneration",
                            "objectKind",
                            "stableType"}));
-                      const auto owner_id =
-                        !current_owner.empty ()
-                            && current_owner[0]
-                          ? *current_owner[0]
-                          : std::string{};
                       const auto source_descriptor =
                         current_owner.size () > 2
                             && current_owner[2]
@@ -6718,126 +7216,7 @@ class redis_location_store_t final : public location_store_t,
                             && current_owner[5]
                           ? *current_owner[5]
                           : std::string{};
-                      std::string fence;
-                      auto target_mesh = source_mesh;
-                      auto target_node = source_node;
-                      auto target_lifecycle =
-                        source_lifecycle;
-                      auto target_kind = source_kind;
-                      auto target_type = source_type;
-                      if (participant.owner_transition
-                          == authority_generation_transition_t::
-                               new_owner) {
-                          ++new_owner_count;
-                          const auto found =
-                            fence_by_authority.find (
-                              participant.key.value);
-                          if (found
-                              == fence_by_authority.end ())
-                              return aggregate_prepare_result_t{
-                                aggregate_prepare_conflict_t{}};
-                          fence = found->second;
-                          const auto reservation_fields =
-                            redis_get (
-                              client ().hmget<
-                                std::vector<
-                                  sw::redis::OptionalString>> (
-                                detail::
-                                  redis_location_key_schema_t::
-                                    relocation_capacity_reservation_key (
-                                      _options.key_prefix,
-                                      fence),
-                                {"targetMesh",
-                                 "targetNode",
-                                 "targetLifecycleGeneration",
-                                 "objectKind",
-                                 "stableType"}));
-                          if (reservation_fields.size ()
-                                != 5
-                              || std::any_of (
-                                reservation_fields.begin (),
-                                reservation_fields.end (),
-                                [] (const auto &value) {
-                                    return !static_cast<bool> (
-                                      value);
-                                }))
-                              return aggregate_prepare_result_t{
-                                aggregate_prepare_conflict_t{}};
-                          target_mesh =
-                            *reservation_fields[0];
-                          target_node =
-                            *reservation_fields[1];
-                          target_lifecycle =
-                            std::stoull (
-                              *reservation_fields[2]);
-                          target_kind =
-                            detail::
-                              redis_location_key_schema_t::
-                                parse_object_kind_token (
-                                  *reservation_fields[3]);
-                          target_type =
-                            *reservation_fields[4];
-                      }
-                      const auto reservation_key =
-                        detail::redis_location_key_schema_t::
-                          relocation_capacity_reservation_key (
-                            _options.key_prefix, fence);
                       keys.push_back (authority_key);
-                      keys.push_back (reservation_key);
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_node_active_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_type_active_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_node_pending_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_type_pending_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_node_active_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_type_active_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          mesh_node_admission_key (
-                            _options.key_prefix,
-                            target_mesh,
-                            target_node));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          authority_history_key (
-                            _options.key_prefix,
-                            participant.key.value));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          authority_history_revisions_key (
-                            _options.key_prefix,
-                            participant.key.value));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          membership_current_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          membership_history_key (
-                            _options.key_prefix,
-                            participant.key.value));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          membership_history_revisions_key (
-                            _options.key_prefix,
-                            participant.key.value));
                       args.push_back (participant.key.value);
                       args.push_back (
                         participant.expected_store_version);
@@ -6847,42 +7226,38 @@ class redis_location_store_t final : public location_store_t,
                         participant.authority_payload));
                       args.push_back (bytes_to_string (
                         participant.membership_mutation));
-                      args.push_back (fence);
                       args.push_back (
                         detail::redis_location_key_schema_t::
                           capacity_node_field (
                             source_mesh, source_node,
-                            source_lifecycle));
-                      args.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_type_field (
-                            source_mesh, source_node,
-                            source_lifecycle, source_kind,
-                            source_type));
+                            source_lifecycle,
+                            source_kind));
                       args.push_back (
                         detail::redis_location_key_schema_t::
                           capacity_node_field (
-                            target_mesh, target_node,
-                            target_lifecycle));
+                            source_mesh, source_node,
+                            source_lifecycle,
+                            placement_object_kind_t::
+                              user_spot));
                       args.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_type_field (
-                            target_mesh, target_node,
-                            target_lifecycle, target_kind,
-                            target_type));
+                        source_kind
+                            == placement_object_kind_t::actor
+                          ? std::string{}
+                          : detail::
+                              redis_location_key_schema_t::
+                                capacity_type_field (
+                                  source_mesh, source_node,
+                                  source_lifecycle,
+                                  source_kind, source_type));
                       args.push_back (
                         revision_lower_hex (
                           participant.expected_store_version));
                   }
-                  if (new_owner_count
-                      != request.target_reservations.size ())
-                      return aggregate_prepare_result_t{
-                        aggregate_prepare_conflict_t{}};
                   const auto status = redis_get (
                     client ().eval<std::string> (
                       std::string (
                         detail::redis_location_scripts_t::
-                          prepare_aggregate),
+                          prepare_aggregate_v3),
                       keys.begin (), keys.end (), args.begin (),
                       args.end ()));
                   const aggregate_fence_t fence{
@@ -6955,7 +7330,25 @@ class redis_location_store_t final : public location_store_t,
                     detail::redis_location_key_schema_t::
                       lease_key (
                         _options.key_prefix,
-                        target_owner)};
+                        target_owner),
+                    detail::redis_location_key_schema_t::
+                      capacity_node_active_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_node_pending_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_active_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_reserved_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_type_active_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_type_pending_key (
+                        _options.key_prefix)};
                   for (std::size_t index = 0;
                        index < participant_count; ++index) {
                       const auto prefix =
@@ -6965,72 +7358,15 @@ class redis_location_store_t final : public location_store_t,
                           std::vector<
                             sw::redis::OptionalString>> (
                           aggregate_key,
-                          {prefix + "authorityKey",
-                           prefix + "fence"}));
+                          {prefix + "authorityKey"}));
                       const auto authority =
                         fields.size () > 0 && fields[0]
                           ? *fields[0]
                           : std::string{};
-                      const auto reservation =
-                        fields.size () > 1 && fields[1]
-                          ? *fields[1]
-                          : std::string{};
-                      auto target_mesh = std::string{};
-                      auto target_node = std::string{};
-                      if (!reservation.empty ()) {
-                          const auto target = redis_get (
-                            client ().hmget<
-                              std::vector<
-                                sw::redis::OptionalString>> (
-                              detail::
-                                redis_location_key_schema_t::
-                                  relocation_capacity_reservation_key (
-                                    _options.key_prefix,
-                                    reservation),
-                              {"targetMesh", "targetNode"}));
-                          if (target.size () == 2
-                              && target[0] && target[1]) {
-                              target_mesh = *target[0];
-                              target_node = *target[1];
-                          }
-                      }
                       keys.push_back (
                         detail::redis_location_key_schema_t::
                           authority_key (
                             _options.key_prefix, authority));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          relocation_capacity_reservation_key (
-                            _options.key_prefix, reservation));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_node_active_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_type_active_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_node_pending_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_type_pending_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_node_active_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_type_active_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          mesh_node_admission_key (
-                            _options.key_prefix,
-                            target_mesh, target_node));
                       keys.push_back (
                         detail::redis_location_key_schema_t::
                           authority_history_key (
@@ -7059,7 +7395,7 @@ class redis_location_store_t final : public location_store_t,
                     client ().eval<std::string> (
                       std::string (
                         detail::redis_location_scripts_t::
-                          commit_aggregate),
+                          commit_aggregate_v3),
                       keys.begin (), keys.end (), args.begin (),
                       args.end ()));
                   if (status == "committed")
@@ -7101,35 +7437,18 @@ class redis_location_store_t final : public location_store_t,
                         byte_array_key (
                           fence.aggregate_id.value),
                         fence.aggregate_generation);
-                  const auto count = redis_get (
-                    client ().hget (
-                      aggregate_key, "participantCount"));
-                  const auto participant_count =
-                    count ? std::stoull (*count) : 0;
-                  auto keys =
-                    std::vector<std::string>{aggregate_key};
-                  for (std::size_t index = 0;
-                       index < participant_count; ++index) {
-                      const auto fence_value = redis_get (
-                        client ().hget (
-                          aggregate_key,
-                          "p:" + std::to_string (index)
-                            + ":fence"));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          relocation_capacity_reservation_key (
-                            _options.key_prefix,
-                            fence_value ? *fence_value
-                                        : std::string{}));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_node_pending_key (
-                            _options.key_prefix));
-                      keys.push_back (
-                        detail::redis_location_key_schema_t::
-                          capacity_type_pending_key (
-                            _options.key_prefix));
-                  }
+                  const auto keys =
+                    std::vector<std::string>{
+                      aggregate_key,
+                      detail::redis_location_key_schema_t::
+                        capacity_node_pending_key (
+                          _options.key_prefix),
+                      detail::redis_location_key_schema_t::
+                        capacity_spot_reserved_key (
+                          _options.key_prefix),
+                      detail::redis_location_key_schema_t::
+                        capacity_type_pending_key (
+                          _options.key_prefix)};
                   const auto args = std::vector<std::string>{
                     std::to_string (
                       fence.aggregate_generation)};
@@ -7137,7 +7456,7 @@ class redis_location_store_t final : public location_store_t,
                     client ().eval<std::string> (
                       std::string (
                         detail::redis_location_scripts_t::
-                          abort_aggregate),
+                          abort_aggregate_v3),
                       keys.begin (), keys.end (), args.begin (),
                       args.end ()));
                   if (status == "aborted")
@@ -7201,38 +7520,45 @@ class redis_location_store_t final : public location_store_t,
                         _options.key_prefix),
                     detail::redis_location_key_schema_t::
                       capacity_type_pending_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_spot_reserved_key (
                         _options.key_prefix)};
                   const auto node_field =
-                    detail::redis_location_key_schema_t::
-                      capacity_node_field (
-                        has_target ? *target[0]
-                                   : std::string{},
-                        has_target ? *target[1]
-                                   : std::string{},
-                        has_target
-                          ? std::stoull (*target[2])
-                          : 0);
-                  const auto type_field =
-                    detail::redis_location_key_schema_t::
-                      capacity_type_field (
-                        has_target ? *target[0]
-                                   : std::string{},
-                        has_target ? *target[1]
-                                   : std::string{},
-                        has_target
-                          ? std::stoull (*target[2])
-                          : 0,
-                        has_target
-                          ? detail::
+                    has_target
+                      ? detail::redis_location_key_schema_t::
+                          capacity_node_field (
+                            *target[0], *target[1],
+                            std::stoull (*target[2]),
+                            detail::
                               redis_location_key_schema_t::
                                 parse_object_kind_token (
-                                  *target[3])
-                          : placement_object_kind_t::actor,
-                        has_target ? *target[4]
-                                   : std::string{});
+                                  *target[3]))
+                      : std::string{};
+                  const auto type_field =
+                    has_target
+                      ? detail::redis_location_key_schema_t::
+                          capacity_type_field (
+                            *target[0], *target[1],
+                            std::stoull (*target[2]),
+                            detail::
+                              redis_location_key_schema_t::
+                                parse_object_kind_token (
+                                  *target[3]),
+                            *target[4])
+                      : std::string{};
                   const auto args =
                     std::vector<std::string>{
-                      node_field, type_field};
+                      node_field, type_field,
+                      has_target
+                        ? detail::
+                            redis_location_key_schema_t::
+                              capacity_node_field (
+                                *target[0], *target[1],
+                                std::stoull (*target[2]),
+                                placement_object_kind_t::
+                                  user_spot)
+                        : std::string{}};
                   const auto status = redis_get (
                     client ().eval<std::string> (
                       std::string (
@@ -7743,21 +8069,13 @@ class redis_location_store_t final : public location_store_t,
             || descriptor.application_version < 0
             || descriptor.placement_weight < 0
             || descriptor.placement_weight > 10000
-            || descriptor.object_capacity.active
-                 > descriptor.object_capacity.active_limit
-            || descriptor.object_capacity.pending
-                 > descriptor.object_capacity.pending_limit
-            || descriptor.object_capacity.active_limit == 0
-            || descriptor.object_capacity.pending_limit == 0
-            || descriptor.object_capacity.active_limit
+            || descriptor.activation_concurrency.limit <= 0
+            || descriptor.activation_concurrency.active
                  > static_cast<std::uint32_t> (
-                   std::numeric_limits<std::int32_t>::max ())
-            || descriptor.object_capacity.pending_limit
-                 > static_cast<std::uint32_t> (
-                   std::numeric_limits<std::int32_t>::max ())
-            || descriptor.placement_capacity.actors.limit < 0
-            || descriptor.placement_capacity.spots.limit < 0
-            || descriptor.placement_capacity.spot_types.size ()
+                     descriptor.activation_concurrency.limit)
+            || descriptor.capacity.actors.limit < 0
+            || descriptor.capacity.spots.limit < 0
+            || descriptor.capacity.spot_types.size ()
                  > 1024
             || descriptor.security_identity.empty ()
             || descriptor.owner_id.empty ()
@@ -7780,18 +8098,10 @@ class redis_location_store_t final : public location_store_t,
                 || ((capability.policy
                        == maintenance_policy_kind_t::snapshot)
                     != capability.has_snapshot_adapter)
-                || (capability.active_limit
-                    && (*capability.active_limit == 0
-                        || *capability.active_limit
-                             > static_cast<std::uint32_t> (
-                               std::numeric_limits<
-                                 std::int32_t>::max ())))
-                || (capability.pending_limit
-                    && (*capability.pending_limit == 0
-                        || *capability.pending_limit
-                             > static_cast<std::uint32_t> (
-                               std::numeric_limits<
-                                 std::int32_t>::max ()))))
+                || capability.spot_limit < 0
+                || (capability.object_kind
+                      == placement_object_kind_t::actor
+                    && capability.spot_limit != 0))
                 return false;
             const auto key = std::make_pair (
               static_cast<int> (capability.object_kind),
@@ -7804,7 +8114,7 @@ class redis_location_store_t final : public location_store_t,
         std::pair<int, std::string> previous_capacity;
         first = true;
         for (const auto &typed :
-             descriptor.placement_capacity.spot_types) {
+             descriptor.capacity.spot_types) {
             if (typed.stable_type.empty ()
                 || typed.object_kind
                      == placement_object_kind_t::actor
@@ -7962,6 +8272,90 @@ class redis_location_store_t final : public location_store_t,
         return result;
     }
 
+    static std::uint32_t scalar_capacity_delta (
+      const placement_capacity_bundle_t &bundle)
+    {
+        return bundle.actor_slots + bundle.spot_slots;
+    }
+
+    static std::string encode_capacity_bundle (
+      const placement_capacity_bundle_t &bundle)
+    {
+        std::vector<std::string> segments{
+          "zlink-capacity-bundle-v2",
+          std::to_string (bundle.actor_slots),
+          std::to_string (bundle.spot_slots),
+          bundle.spot_type ? "1" : "0"};
+        if (bundle.spot_type) {
+            segments.push_back (
+              detail::redis_location_key_schema_t::
+                object_kind_token (
+                  bundle.spot_type->object_kind));
+            segments.push_back (
+              bundle.spot_type->stable_type);
+            segments.push_back (
+              std::to_string (bundle.spot_type->slots));
+        }
+        std::string encoded;
+        for (const auto &segment : segments)
+            encoded += std::to_string (segment.size ())
+                       + ":" + segment;
+        return encoded;
+    }
+
+    static placement_capacity_bundle_t decode_capacity_bundle (
+      std::string_view encoded)
+    {
+        std::size_t offset = 0;
+        const auto segment = [&] () {
+            const auto colon = encoded.find (':', offset);
+            if (colon == std::string_view::npos)
+                throw std::invalid_argument (
+                  "capacity bundle segment is incomplete");
+            const auto size = static_cast<std::size_t> (
+              std::stoull (std::string (
+                encoded.substr (offset, colon - offset))));
+            const auto first = colon + 1;
+            if (first + size > encoded.size ())
+                throw std::invalid_argument (
+                  "capacity bundle segment exceeds input");
+            offset = first + size;
+            return std::string (
+              encoded.substr (first, size));
+        };
+        if (segment () != "zlink-capacity-bundle-v2")
+            throw std::invalid_argument (
+              "capacity bundle domain is invalid");
+        placement_capacity_bundle_t bundle;
+        bundle.actor_slots =
+          static_cast<std::uint32_t> (
+            std::stoul (segment ()));
+        bundle.spot_slots =
+          static_cast<std::uint32_t> (
+            std::stoul (segment ()));
+        const auto presence = segment ();
+        if (presence == "1") {
+            const auto object_kind = segment ();
+            const auto stable_type = segment ();
+            const auto slots = segment ();
+            bundle.spot_type = spot_type_capacity_delta_t{
+              .object_kind =
+                detail::redis_location_key_schema_t::
+                  parse_object_kind_token (object_kind),
+              .stable_type = stable_type,
+              .slots =
+                static_cast<std::uint32_t> (
+                  std::stoul (slots))};
+        }
+        else if (presence != "0")
+            throw std::invalid_argument (
+              "capacity bundle presence is invalid");
+        if (offset != encoded.size ())
+            throw std::invalid_argument (
+              "capacity bundle has trailing input");
+        return bundle;
+    }
+
     static std::string relocation_capacity_fingerprint (
       const relocation_capacity_reserve_request_t &request)
     {
@@ -7992,7 +8386,8 @@ class redis_location_store_t final : public location_store_t,
           {"owner", request.target.owner.owner_id},
           {"lease",
            request.target.owner.lease_generation}};
-        value["capacityDelta"] = request.capacity_delta;
+        value["capacityBundle"] =
+          encode_capacity_bundle (request.capacity_bundle);
         return value.dump ();
     }
 
@@ -8042,8 +8437,7 @@ class redis_location_store_t final : public location_store_t,
             node_rid_t::from_string (result[12]),
             std::stoull (result[13]),
             {result[14], std::stoll (result[15])}},
-          static_cast<std::uint32_t> (
-            std::stoul (result[16]))};
+          decode_capacity_bundle (result[16])};
         return {
           operation, object, reservation,
           static_cast<creation_terminal_state_t> (
@@ -8093,8 +8487,8 @@ class redis_location_store_t final : public location_store_t,
           {"owner", request.target.owner.owner_id},
           {"lease",
            request.target.owner.lease_generation}};
-        value["capacityDelta"] =
-          request.pending_capacity_delta;
+        value["capacityBundle"] =
+          encode_capacity_bundle (request.capacity_bundle);
         value["creatingPayload"] =
           bytes_to_hex (request.creating_payload);
         return value.dump ();
@@ -8116,8 +8510,8 @@ class redis_location_store_t final : public location_store_t,
           fence.target.owner.owner_id,
           std::to_string (
             fence.target.owner.lease_generation),
-          std::to_string (
-            fence.pending_capacity_delta)};
+          encode_capacity_bundle (
+            fence.capacity_bundle)};
     }
 
     static authority_snapshot_t parse_object_snapshot_result (
@@ -8239,12 +8633,13 @@ class redis_location_store_t final : public location_store_t,
               {"membership",
                bytes_to_hex (
                  participant.membership_mutation)}});
-        value["reservations"] =
-          nlohmann::ordered_json::array ();
-        for (const auto &fence :
-             request.target_reservations)
-            value["reservations"].push_back (
-              fence.value);
+        value["targetDescriptor"] = {
+          {"mesh", request.target_descriptor.mesh_name},
+          {"rid", request.target_descriptor.rid.to_hex ()},
+          {"lifecycle",
+           request.target_descriptor_lifecycle_generation}};
+        value["capacityBundle"] =
+          encode_capacity_bundle (request.capacity_bundle);
         return value.dump ();
     }
 
@@ -8340,7 +8735,7 @@ class redis_location_store_t final : public location_store_t,
             "ownerLeaseGeneration", "allocationState",
             "objectKind", "stableType", "descriptorKey",
             "descriptorLifecycleGeneration",
-            "capacityDelta", "pendingCreationReservationId",
+            "capacityBundle", "pendingCreationReservationId",
             "pendingCreationReference", "pendingCreationSha256",
             "pendingCreationEncodedSize"};
         std::vector<std::string> names;
@@ -8541,17 +8936,20 @@ class redis_location_store_t final : public location_store_t,
         if (!node_value.empty ())
             node = node_rid_t::from_string (
               node_value);
-        return {
+        placement_allocation_t allocation;
+        allocation.state =
           result[offset] == "active"
-            ? placement_capacity_state_t::active
-            : placement_capacity_state_t::pending,
-          object_kind,
-          result[offset + 2],
-          std::move (mesh),
-          std::move (node),
-          std::stoull (result[offset + 5]),
-          static_cast<std::uint32_t> (
-            std::stoul (result[offset + 6]))};
+            ? placement_allocation_state_t::active
+            : placement_allocation_state_t::reserved;
+        allocation.object_kind = object_kind;
+        allocation.stable_type = result[offset + 2];
+        allocation.target.mesh_name = mesh;
+        allocation.target.node_rid = node;
+        allocation.target.node_lifecycle_generation =
+          std::stoull (result[offset + 5]);
+        allocation.capacity_bundle =
+          decode_capacity_bundle (result[offset + 6]);
+        return allocation;
     }
 
     static bool parse_authority_cursor (

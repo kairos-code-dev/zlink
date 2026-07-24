@@ -18,7 +18,6 @@ import systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkMeshNodeRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.framework.monitoring.ZLinkLocationRuntimeSnapshot;
-import systems.zlink.framework.monitoring.ZLinkLogicalMulticastSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshChannelSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshClaimSnapshot;
 import systems.zlink.framework.monitoring.ZLinkMeshDrainSnapshot;
@@ -95,7 +94,6 @@ final class RuntimeMonitoringContractTest {
             sources,
             List.of(),
             channels,
-            new ZLinkLogicalMulticastSnapshot(0, 0, 0, 0, 0, 0, 0, 0, 0),
             new ZLinkMeshClaimSnapshot(true, 0, true, 0),
             new ZLinkLocationRuntimeSnapshot(
                 "ready", Optional.empty(), Optional.empty()),

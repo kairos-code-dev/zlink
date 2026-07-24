@@ -1019,28 +1019,38 @@ let ledgerExecutionCardCount = 0;
 let ledgerFinalUnreachableCount = 0;
 if (typeof consolidation.directory !== 'string'
     || !Array.isArray(consolidation.allowed_documents)
+    || !Array.isArray(consolidation.temporary_review_documents)
     || !Array.isArray(consolidation.ledger_required_fragments)
     || !Array.isArray(consolidation.allowed_profiles)
     || !Array.isArray(consolidation.required_parallel_review_rows)
-    || !Array.isArray(consolidation.required_xhigh_review_rows)
+    || !Array.isArray(consolidation.required_high_review_rows)
     || !Array.isArray(consolidation.forbidden_fragments)
     || !Array.isArray(consolidation.required_semantic_owners)
     || !Array.isArray(consolidation.forbidden_legacy_documents)) {
   fail('v11 plan_consolidation has an invalid schema');
 } else {
   const allowedDocuments = consolidation.allowed_documents;
-  const allowedSet = new Set(allowedDocuments);
-  if (allowedDocuments.length !== 3 || allowedSet.size !== allowedDocuments.length
+  const stableSet = new Set(allowedDocuments);
+  const temporaryDocuments = consolidation.temporary_review_documents;
+  const temporarySet = new Set(temporaryDocuments);
+  const allowedSet = new Set([...allowedDocuments, ...temporaryDocuments]);
+  if (allowedDocuments.length !== 3 || stableSet.size !== allowedDocuments.length
       || allowedDocuments.some(relative => typeof relative !== 'string'
         || relative.length === 0 || path.posix.isAbsolute(relative)
         || relative.split('/').includes('..'))) {
     fail('v11 consolidated plan must declare 3 unique safe relative document paths');
   }
+  if (temporarySet.size !== temporaryDocuments.length
+      || temporaryDocuments.some(relative => typeof relative !== 'string'
+        || relative.length === 0 || path.posix.isAbsolute(relative)
+        || relative.split('/').includes('..') || stableSet.has(relative))) {
+    fail('v11 temporary review documents must be unique safe paths outside the stable set');
+  }
   const actualDocuments = filesUnder(consolidation.directory)
     .map(relative => path.posix.relative(consolidation.directory, relative));
   planDocumentCount = actualDocuments.length;
   const actualSet = new Set(actualDocuments);
-  for (const relativeName of allowedDocuments) {
+  for (const relativeName of allowedSet) {
     if (!actualSet.has(relativeName)) {
       fail(`v11 consolidated plan document is missing: ${relativeName}`);
     }
@@ -1062,11 +1072,11 @@ if (typeof consolidation.directory !== 'string'
       || consolidation.required_parallel_review_rows.some(id => !/^V11-R[A-Z0-9-]*$/u.test(id))) {
     fail('v11 consolidation must declare 12 unique parallel review row IDs');
   }
-  const xhighReviewRows = new Set(consolidation.required_xhigh_review_rows);
-  if (consolidation.required_xhigh_review_rows.length !== 3
-      || xhighReviewRows.size !== consolidation.required_xhigh_review_rows.length
-      || consolidation.required_xhigh_review_rows.some(id => !parallelReviewRows.has(id))) {
-    fail('v11 consolidation must declare 3 unique xhigh parallel review row IDs');
+  const highReviewRows = new Set(consolidation.required_high_review_rows);
+  if (consolidation.required_high_review_rows.length !== 3
+      || highReviewRows.size !== consolidation.required_high_review_rows.length
+      || consolidation.required_high_review_rows.some(id => !parallelReviewRows.has(id))) {
+    fail('v11 consolidation must declare 3 unique high parallel review row IDs');
   }
   if (consolidation.forbidden_fragments.length === 0
       || consolidation.forbidden_fragments.some(fragment => typeof fragment !== 'string'
@@ -1212,9 +1222,10 @@ if (typeof consolidation.directory !== 'string'
         fail(`v11 execution ledger parallel review row is missing: ${id}`);
         continue;
       }
-      const expectedProfile = xhighReviewRows.has(id) ? '`P-XHIGH`' : '`P-DEEP`';
+      const expectedProfile = highReviewRows.has(id) ? '`P-HIGH`' : '`P-DEEP`';
+      const rowLine = ledgerLines[row.line - 1] || '';
       if (!row.assignmentCell.includes(expectedProfile)
-          || !row.assignmentCell.includes('Claude `claude-sonnet-5` 병렬 reviewer')) {
+          || !rowLine.includes('Claude `claude-sonnet-5` 병렬 reviewer')) {
         fail(`v11 execution ledger parallel review assignment differs: ${id}`);
         continue;
       }
@@ -1233,8 +1244,10 @@ if (typeof consolidation.directory !== 'string'
       }
     }
     for (const row of rows.values()) {
+      const rowLine = ledgerLines[row.line - 1] || '';
       if (!parallelReviewRows.has(row.id)
-          && row.assignmentCell.includes('claude-sonnet-5')) {
+          && !/-REVIEW$/u.test(row.id)
+          && rowLine.includes('claude-sonnet-5')) {
         fail(`v11 execution ledger assigns the parallel reviewer outside a review row: ${row.id}`);
       }
     }
@@ -2064,7 +2077,12 @@ for (const [name, format] of redisFixtures) {
       .update(Buffer.from(
         `${payload.OwnerId}\u0000${payload.LeaseGeneration}`, 'utf8'))
       .digest('hex');
-    const physicalBase = 'P:{zlink-location-v1}';
+    const physicalBase = 'P:{zlink-location-v3}';
+    const entrySpotId = fixture.entrySpotIdentityClaim?.hash?.spotId;
+    const entrySpotDigest = typeof entrySpotId === 'string'
+      ? crypto.createHash('sha256')
+        .update(Buffer.from(entrySpotId, 'utf8')).digest('hex')
+      : null;
     if (fixture.physicalKeys?.descriptorKeySha256 !== descriptorDigest
         || fixture.physicalKeys?.ownerTokenSha256 !== ownerTokenDigest
         || fixture.physicalKeys?.descriptor
@@ -2077,14 +2095,32 @@ for (const [name, format] of redisFixtures) {
           !== `${physicalBase}:descriptor:mesh:owner:${ownerTokenDigest}`
         || fixture.physicalKeys?.ownerLease
           !== `${physicalBase}:owner-lease:${ownerDigest}`
+        || !entrySpotDigest
+        || fixture.physicalKeys?.entrySpotIdentityClaim
+          !== `${physicalBase}:entry-spot-id:${entrySpotDigest}`
         || JSON.stringify(fixture.ownerLeaseHashFields)
           !== JSON.stringify(['ownerId', 'generation', 'expiresAt'])
         || JSON.stringify(fixture.admissionHashFields) !== JSON.stringify([
           'descriptorKey', 'descriptorRevision', 'lifecycleGeneration',
           'ownerId', 'ownerLeaseGeneration', 'objectRole', 'runtimeState',
           'applicationVersion', 'capabilities', 'actorLimit',
-          'spotLimit', 'immutableDigest',
-        ])) {
+          'spotLimit', 'activationConcurrencyLimit', 'entrySpotId',
+          'immutableDigest',
+        ])
+        || JSON.stringify(fixture.entrySpotIdentityClaim?.hashFields)
+          !== JSON.stringify([
+            'state', 'spotId', 'descriptorKey',
+            'descriptorLifecycleGeneration', 'ownerId',
+            'ownerLeaseGeneration',
+          ])
+        || fixture.entrySpotIdentityClaim?.hash?.state !== 'Claimed'
+        || fixture.entrySpotIdentityClaim?.hash?.descriptorKey
+          !== fixture.row.key
+        || fixture.entrySpotIdentityClaim?.hash?.descriptorLifecycleGeneration
+          !== String(payload.LifecycleGeneration)
+        || fixture.entrySpotIdentityClaim?.hash?.ownerId !== payload.OwnerId
+        || fixture.entrySpotIdentityClaim?.hash?.ownerLeaseGeneration
+          !== String(payload.LeaseGeneration)) {
       fail('MeshNode descriptor hybrid physical schema differs');
     }
   }

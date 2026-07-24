@@ -301,7 +301,6 @@
   "allowed_duplicate_declaration_owners": {
     "kotlin": {
       "systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt": [
-        "framework/doc/framework/spec/server/languages/kotlin/interfaces/actors.ko.md",
         "framework/doc/framework/spec/server/languages/kotlin/interfaces/configuration-host.ko.md",
         "framework/doc/framework/spec/server/languages/kotlin/interfaces/spots.ko.md",
         "framework/doc/framework/spec/server/languages/kotlin/interfaces/stream-session.ko.md"
@@ -395,6 +394,10 @@
       "route-mesh-11.0.0-contract-amendment-impact.json",
       "route-mesh-11.0.0-execution-ledger.ko.md"
     ],
+    "temporary_review_documents": [
+      "actor-join-deferred-execution-contract-change-request.ko.md",
+      "one-way-submission-contract-change-request.ko.md"
+    ],
     "ledger_required_fragments": [
       "진행 문서는 이 ledger 하나만 유지한다",
       "public declaration owner를 member 단위 trace에 연결한다",
@@ -409,7 +412,7 @@
     ],
     "allowed_profiles": [
       "P-DEEP",
-      "P-XHIGH",
+      "P-HIGH",
       "P-DELIVERY",
       "P-SCAN"
     ],
@@ -427,7 +430,7 @@
       "V11-R6",
       "V11-R7"
     ],
-    "required_xhigh_review_rows": [
+    "required_high_review_rows": [
       "V11-R4A",
       "V11-R4B",
       "V11-R5D"
@@ -469,13 +472,13 @@
         "required_fragments": [
           "## 3. Codex profile과 병렬 lane",
           "| `P-DEEP` | `gpt-5.6 high` |",
-          "| `P-XHIGH` | `gpt-5.6-sol xhigh` |",
+          "| `P-HIGH` | `gpt-5.6-sol high` |",
           "| `P-DELIVERY` | `gpt-5.6 medium` |",
           "| `P-SCAN` | `gpt-5.6-terra low` 또는 `gpt-5.6-terra medium` |",
-          "`xhigh`는 재현되지 않은 race",
-          "`P-XHIGH`는 `V11-R4A`, `V11-R4B`와 `V11-R5D`에서 의무적으로 사용한다.",
-          "그 밖의 row에서 `xhigh`를 임의로 사용하는 경우",
-          "임의로 사용하는 경우 상향 이유와 조정 범위는",
+          "향후 독립 review는 `P-HIGH`를 사용한다.",
+          "이미 완료된 row의 `xhigh` evidence는 당시 실제 실행 이력이므로",
+          "별도 상향",
+          "사유와 검토 범위를 해당 행의 증거 칸에 기록한다.",
           "실제 사용한 model,",
           "Java와 Kotlin은 Java binding과 JVM service runtime 하나를 공유한다."
         ]

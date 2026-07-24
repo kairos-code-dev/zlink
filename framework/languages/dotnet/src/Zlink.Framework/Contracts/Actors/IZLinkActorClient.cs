@@ -15,7 +15,7 @@ public interface IZLinkActorClient
 
 public interface IZLinkActorSendCall : IZLinkMetadataCall<IZLinkActorSendCall>
 {
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 

@@ -11,6 +11,7 @@ import {
   tryDecodeStreamWireFrame,
   utf8Encode
 } from '@zlink-systems/stream-wire';
+import { throwAlreadySubmitted } from '../messaging/submission-result';
 
 export { utf8Decode, utf8Encode } from '@zlink-systems/stream-wire';
 
@@ -83,7 +84,7 @@ export function resolvePacketName(message: unknown, explicitPacketName: string |
 
 export function ensureSingleSubmit(executed: boolean): void {
   if (executed) {
-    throw new Error('Stream send builders can be executed only once.');
+    throwAlreadySubmitted('Stream send call');
   }
 }
 

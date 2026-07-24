@@ -4,6 +4,7 @@
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/locations/values.hpp>
 #include <zlink/framework/contracts/locations/writes.hpp>
+#include <zlink/framework/contracts/locations/rows.hpp>
 #include <zlink/framework/contracts/placement.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
 
@@ -26,23 +27,44 @@ struct authority_key_t
     std::string value;
 };
 
-enum class placement_capacity_state_t : std::uint8_t
+struct object_creation_target_t
 {
-    pending = 1,
+    std::string mesh_name;
+    node_rid_t node_rid;
+    std::uint64_t node_lifecycle_generation = 0;
+    location_owner_token_t owner;
+};
+
+enum class placement_allocation_state_t : std::uint8_t
+{
+    reserved = 1,
     active = 2
+};
+
+struct spot_type_capacity_delta_t
+{
+    placement_object_kind_t object_kind =
+      placement_object_kind_t::user_spot;
+    std::string stable_type;
+    std::uint32_t slots = 0;
+};
+
+struct placement_capacity_bundle_t
+{
+    std::uint32_t actor_slots = 0;
+    std::uint32_t spot_slots = 0;
+    std::optional<spot_type_capacity_delta_t> spot_type;
 };
 
 struct placement_allocation_t
 {
-    placement_capacity_state_t capacity_state =
-      placement_capacity_state_t::pending;
+    placement_allocation_state_t state =
+      placement_allocation_state_t::reserved;
     placement_object_kind_t object_kind =
       placement_object_kind_t::actor;
     std::string stable_type;
-    std::string mesh_name;
-    node_rid_t node_rid;
-    std::uint64_t node_lifecycle_generation = 0;
-    std::uint32_t capacity_delta = 0;
+    object_creation_target_t target;
+    placement_capacity_bundle_t capacity_bundle;
 };
 
 struct pending_object_creation_t
@@ -180,13 +202,6 @@ struct object_creation_key_t
     placement_object_kind_t kind = placement_object_kind_t::actor;
     std::string global_id;
 };
-struct object_creation_target_t
-{
-    std::string mesh_name;
-    node_rid_t node_rid;
-    std::uint64_t node_lifecycle_generation = 0;
-    location_owner_token_t owner;
-};
 struct object_creation_intent_t
 {
     std::string stable_type;
@@ -214,7 +229,7 @@ struct object_reserve_request_t
     object_creation_intent_t intent;
     object_creation_target_t target;
     std::vector<std::byte> creating_payload;
-    std::uint32_t pending_capacity_delta = 1;
+    placement_capacity_bundle_t capacity_bundle;
 };
 struct object_reservation_fence_t
 {
@@ -223,7 +238,7 @@ struct object_reservation_fence_t
     std::uint64_t object_generation = 0;
     std::uint64_t authority_owner_generation = 0;
     object_creation_target_t target;
-    std::uint32_t pending_capacity_delta = 0;
+    placement_capacity_bundle_t capacity_bundle;
 };
 struct object_reserved_t
 {
@@ -392,7 +407,7 @@ struct relocation_capacity_reserve_request_t
     std::string stable_type;
     object_creation_target_t source;
     object_creation_target_t target;
-    std::uint32_t capacity_delta = 1;
+    placement_capacity_bundle_t capacity_bundle;
 };
 struct relocation_capacity_reserved_t
 {
@@ -464,7 +479,9 @@ struct aggregate_prepare_request_t
     std::uint64_t aggregate_generation = 0;
     std::vector<aggregate_participant_t> participants;
     inventory_digest_t inventory_digest;
-    std::vector<relocation_capacity_fence_t> target_reservations;
+    mesh_node_descriptor_key_t target_descriptor;
+    std::uint64_t target_descriptor_lifecycle_generation = 0;
+    placement_capacity_bundle_t capacity_bundle;
     location_owner_token_t target_owner;
 };
 struct aggregate_fence_t

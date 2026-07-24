@@ -129,5 +129,5 @@ public sealed class OpsConsoleRegistry
         IZLinkSessionContext context,
         TMessage message,
         CancellationToken cancellationToken) =>
-        await context.Client.Send(message).SubmitAsync(cancellationToken);
+        await context.Client.Send(message).Async(cancellationToken);
 }

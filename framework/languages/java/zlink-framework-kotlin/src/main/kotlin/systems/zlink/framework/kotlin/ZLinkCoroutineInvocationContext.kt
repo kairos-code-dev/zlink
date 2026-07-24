@@ -15,5 +15,13 @@ internal object ZLinkCoroutineInvocationContext {
                 .asContextElement(ZLinkSuspendInvocationContext.currentSpotOutbound()) +
             ZLinkSuspendInvocationContext.actorDispatchThreadLocal()
                 .asContextElement(ZLinkSuspendInvocationContext.currentActorDispatch()) +
+            ZLinkSuspendInvocationContext.deferredActorJoinThreadLocal()
+                .asContextElement(
+                    ZLinkSuspendInvocationContext.currentDeferredActorJoin(),
+                ) +
+            ZLinkSuspendInvocationContext.serialExecutionTurnThreadLocal()
+                .asContextElement(ZLinkSuspendInvocationContext.currentSerialExecutionTurn()) +
+            ZLinkSuspendInvocationContext.applicationExecutionThreadLocal()
+                .asContextElement(ZLinkSuspendInvocationContext.currentApplicationExecution()) +
             ZLinkFlowContext.threadLocal().asContextElement(ZLinkFlowContext.current())
 }

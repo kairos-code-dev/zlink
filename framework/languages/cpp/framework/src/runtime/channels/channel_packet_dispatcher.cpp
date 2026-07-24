@@ -44,19 +44,21 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
     auto flow_scope = runtime::flow_context_t::enter (
       header.value ().flow_id, header.value ().flow_origin, flow.capture_enabled (),
       flow_origin_t::inbound);
-    flow.trace (message_flow_outcome_t::received, [&] {
-        return message_flow_event_t{message_flow_outcome_t::received,
-                                    dispatch_error_surface_t::channel,
-                                    inbound_kind,
-                                    header.value ().message_name,
-                                    channel_name,
-                                    header.value ().topic,
-                                    header.value ().correlation_id,
-                                    std::nullopt,
-                                    std::nullopt,
-                                    std::nullopt,
-                                    std::nullopt};
-    });
+    if (inbound_kind != dispatch_message_kind_t::publish) {
+        flow.trace (message_flow_outcome_t::received, [&] {
+            return message_flow_event_t{message_flow_outcome_t::received,
+                                        dispatch_error_surface_t::channel,
+                                        inbound_kind,
+                                        header.value ().message_name,
+                                        channel_name,
+                                        header.value ().topic,
+                                        header.value ().correlation_id,
+                                        std::nullopt,
+                                        std::nullopt,
+                                        std::nullopt,
+                                        std::nullopt};
+        });
+    }
 
     auto body = codec.decode_body (parts);
     if (!body) {
@@ -141,19 +143,24 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
             return result_t<runtime::messaging::message_parts_t>::success (
               runtime::messaging::message_parts_t{});
         }
-        flow.trace (message_flow_outcome_t::dispatched, [&] {
-            return message_flow_event_t{message_flow_outcome_t::dispatched,
-                                        dispatch_error_surface_t::channel,
-                                        inbound_kind,
-                                        header.value ().message_name,
-                                        channel_name,
-                                        header.value ().topic,
-                                        header.value ().correlation_id,
-                                        std::nullopt,
-                                        std::nullopt,
-                                        std::nullopt,
-                                        std::nullopt};
-        });
+        if (inbound_kind == dispatch_message_kind_t::publish) {
+            _runtime.record_fanout_received (header.value ().topic.value_or (""));
+        }
+        if (inbound_kind != dispatch_message_kind_t::publish) {
+            flow.trace (message_flow_outcome_t::dispatched, [&] {
+                return message_flow_event_t{message_flow_outcome_t::dispatched,
+                                            dispatch_error_surface_t::channel,
+                                            inbound_kind,
+                                            header.value ().message_name,
+                                            channel_name,
+                                            header.value ().topic,
+                                            header.value ().correlation_id,
+                                            std::nullopt,
+                                            std::nullopt,
+                                            std::nullopt,
+                                            std::nullopt};
+            });
+        }
         return result_t<runtime::messaging::message_parts_t>::success (
           runtime::messaging::message_parts_t{});
     }

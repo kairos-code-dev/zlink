@@ -155,6 +155,10 @@ Host `Retire`가 standalone Actor를 다른 node의 Entry Spot으로 옮기는 �
 application join callback을 사용하지 않는다. Framework는 target에서 Actor state를
 복원하고 Actor owner와 target Entry Spot membership을 commit한 뒤 target Entry
 Spot의 `OnActorRelocatedAsync`와 source Entry Spot의 `OnLeaveActorAsync`를 실행한다.
+이 Actor가 Session에 bind되어 있으면 Framework는 owner·membership commit 뒤
+Session owner가 보관한 해당 Actor의 binding route를 target owner로 갱신한다. 같은
+Session에 bind된 다른 Actor의 route는 바꾸지 않는다. Session owner의 route 갱신
+ACK 전에는 target Actor의 session packet·push admission을 열지 않는다.
 두 callback과 기존 Entry membership의 durable cleanup이 끝나기 전에는 accepted
 journal을 replay하거나 target Actor dispatch를 열지 않는다.
 
@@ -221,6 +225,11 @@ membership을 그대로 유지한다. 따라서 member Actor에 대해 Entry Spo
 Spot의 `OnActorJoinAsync`, `OnJoinedActorAsync`, `OnLeaveActorAsync`,
 `OnActorRelocatedAsync`를 호출하지 않는다. Source User Spot instance를 정리할
 때는 `RelocationOut` 이유로 `OnClosingAsync`를 호출한다.
+
+Member Actor가 Session에 bind되어 있으면 aggregate owner commit 뒤 각 Actor의
+binding route를 target owner로 갱신한다. 같은 Session에 bind되어 있지만 이
+aggregate에 포함되지 않은 Actor의 route는 바꾸지 않는다. 모든 route 갱신 ACK 전에는
+target User Spot과 member Actor의 session packet·push admission을 열지 않는다.
 
 ## 6. Instance Spot
 

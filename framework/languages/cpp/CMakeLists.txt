@@ -1093,6 +1093,12 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.UnitTests/test_cpp_framework_async_task.cpp
     "framework-unit;framework-regression;async")
   add_zlink_framework_test(
+    test_cpp_framework_execution
+    tests/Zlink.Framework.UnitTests/test_cpp_framework_execution.cpp
+    "framework-unit;framework-regression;execution;spot;yield")
+  target_include_directories(test_cpp_framework_execution PRIVATE
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
+  add_zlink_framework_test(
     test_cpp_framework_serializer_registry
     tests/Zlink.Framework.UnitTests/test_cpp_framework_serializer_registry.cpp
     "framework-unit;serializer")

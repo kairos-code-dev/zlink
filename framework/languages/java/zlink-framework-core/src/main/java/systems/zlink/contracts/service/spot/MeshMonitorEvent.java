@@ -20,13 +20,6 @@ public record MeshMonitorEvent(
     ActorRef actor,
     String channelName,
     OperationId operationId,
-    int snapshotRemoteTargetCount,
-    int admittedRemoteTargetCount,
-    int droppedRemoteTargetCount,
-    int unreachableRemoteTargetCount,
-    int snapshotLocalSpotCount,
-    int admittedLocalSpotCount,
-    int droppedLocalSpotCount,
     int resultCode,
     int failureErrno) {
 }

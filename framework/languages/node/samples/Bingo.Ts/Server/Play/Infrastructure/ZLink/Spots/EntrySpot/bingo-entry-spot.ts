@@ -66,7 +66,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
   async onDisconnectActor(_actor: ZLinkActorMembership): Promise<void> {}
 
   scheduleDestroy(actor: PlayerActor): void {
-    void this.context.runIoWorker(async () => true).async().then(async () => {
+    void this.context.runIoWorker(async () => true).submit().then(async () => {
       console.error(`bingo-lifecycle entry-destroy-start actor=${actor.actorId}`);
       await this.context.destroyActor(actor);
       console.error(`bingo-lifecycle entry-destroy-complete actor=${actor.actorId}`);

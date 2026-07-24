@@ -36,8 +36,8 @@ target owner fence를 고정한다. Aggregate commit은 Actor owner, AuthorityOw
 Connection-bound source에서 수락한 request는 capture 전에 terminal drain하고 durable journal로 이동하지 않는다.
 Deadline 안에 끝나지 않으면 pre-capture abort로 source binding과 admission을 복원한다. Target factory·restore와
 journal staging은 owner commit 전에 끝내고, commit 뒤 membership callback과 replay, source ingress hold relay와
-durable cleanup을 완료한 다음 route command를 보낸다.
-Route ACK와 steady normalization 전에는 target application admission을 열지 않는다.
+durable cleanup, `Completed` CAS를 차례로 완료한 다음 command 44 route switch를 보낸다.
+Command 45 routed ACK와 steady normalization 전에는 target application admission을 열지 않는다.
 
 ## 4. Abort와 reconnect
 
@@ -48,7 +48,18 @@ Physical connection이 끊기면 해당 aggregate와 pending waiter를 terminal 
 authority와 exact ref를 caller 계약에 따라 다시 bind하고 새 binding generation을 발급한다. 이전 connection의
 reply, ACK와 timer는 새 connection state를 변경하지 않는다.
 
-## 5. 검증 기준
+## 5. Stored route와 disconnect fan-out
+
+Bind 성공 뒤 connection aggregate는 Actor별 exact owner route와 lease deadline을 보관한다. Relay,
+request relay와 disconnect는 이 값만 사용하며 message마다 Location Store를 조회하지 않는다. Physical
+disconnect는 current binding snapshot 전체를 infrastructure queue에 fan out한다. 각 callback은 exact
+binding identity로 dedupe하고 all-settled로 수집한 뒤 tombstone과 local connection cleanup을 진행한다.
+
+Relocation은 owner·membership commit, callback·journal replay, durable source cleanup과 `Completed` CAS 뒤
+같은 ObjectGeneration인 해당 Actor binding route만 바꾼다. Routed ACK와 steady normalization 뒤 target
+admission을 연다. 새 incarnation은 route update가 아니라 explicit bind로 등록한다.
+
+## 6. 검증 기준
 
 - Connection ID, binding generation, exact ActorRef와 authority fence가 모두 일치할 때만 callback을 시작한다.
 - Stale·moving ActorRef bind가 fresh incarnation으로 hidden retry되지 않는다.

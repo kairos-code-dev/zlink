@@ -8,13 +8,136 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.Test;
 import systems.zlink.framework.configuration.ZLinkFlowOrigin;
 import systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext;
 
 final class ZLinkAsyncSerialQueueTest {
+    @Test
+    void lifecycleBarrierRunsAfterActiveTurnAndBeforeQueuedApplicationTurns()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> activeGate = new CompletableFuture<>();
+        CompletableFuture<Void> activeStarted = new CompletableFuture<>();
+        List<String> order = new CopyOnWriteArrayList<>();
+
+        queue.enqueue(() -> {
+            order.add("active");
+            activeStarted.complete(null);
+            return activeGate;
+        });
+        activeStarted.get(3, TimeUnit.SECONDS);
+        CompletionStage<Void> queued = queue.enqueue(() -> {
+            order.add("queued");
+            return CompletableFuture.completedFuture(null);
+        });
+        CompletionStage<Void> barrier = queue.enqueueBarrierNext(() -> {
+            order.add("barrier");
+            return CompletableFuture.completedFuture(null);
+        });
+
+        activeGate.complete(null);
+        CompletableFuture.allOf(
+            queued.toCompletableFuture(),
+            barrier.toCompletableFuture()).get(3, TimeUnit.SECONDS);
+
+        assertEquals(List.of("active", "barrier", "queued"), order);
+    }
+
+    @Test
+    void spotWideYieldReleasesSpotGateButRetainsActorClaim() throws Exception {
+        ZLinkAsyncSerialQueue actorLane = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue spotGate = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> remote = new CompletableFuture<>();
+        CompletableFuture<Void> actorStarted = new CompletableFuture<>();
+        CompletableFuture<Void> spotProbe = new CompletableFuture<>();
+        CompletableFuture<Void> actorSecond = new CompletableFuture<>();
+        List<String> events = new CopyOnWriteArrayList<>();
+
+        CompletableFuture<Void> first = actorLane.enqueue(() ->
+            spotGate.enqueue(() -> {
+                var execution = new systems.zlink.framework.runtime.internal.handlers
+                    .ZLinkSuspendInvocationContext.ApplicationExecution(
+                        "room-1", "actor-a", true, true, ignored -> false);
+                try (var ignored = systems.zlink.framework.runtime.internal.handlers
+                         .ZLinkSuspendInvocationContext.enterApplicationExecution(execution)) {
+                    events.add("actor-start");
+                    actorStarted.complete(null);
+                    return ZLinkAsyncSerialQueue.yieldCurrent(remote)
+                        .thenRun(() -> events.add("actor-resume"));
+                }
+            })).toCompletableFuture();
+        actorLane.enqueue(() -> {
+            events.add("actor-next");
+            actorSecond.complete(null);
+            return CompletableFuture.completedFuture(null);
+        });
+
+        actorStarted.get(3, TimeUnit.SECONDS);
+        spotGate.enqueue(() -> {
+            events.add("spot-probe");
+            spotProbe.complete(null);
+            return CompletableFuture.completedFuture(null);
+        });
+
+        spotProbe.get(3, TimeUnit.SECONDS);
+        assertFalse(actorSecond.isDone());
+        assertEquals(List.of("actor-start", "spot-probe"), events);
+
+        remote.complete(null);
+        first.get(3, TimeUnit.SECONDS);
+        actorSecond.get(3, TimeUnit.SECONDS);
+        assertEquals(
+            List.of("actor-start", "spot-probe", "actor-resume", "actor-next"),
+            events);
+    }
+
+    @Test
+    void perActorSpotAndTimerLanesRunIndependentlyAndKeepOwnFifo() throws Exception {
+        ZLinkAsyncSerialQueue actorA = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue actorB = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue spot = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue timerA = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue timerB = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> actorAGate = new CompletableFuture<>();
+        CompletableFuture<Void> timerAGate = new CompletableFuture<>();
+        CompletableFuture<Void> actorAStarted = new CompletableFuture<>();
+        CompletableFuture<Void> actorASecond = new CompletableFuture<>();
+        CompletableFuture<Void> timerAStarted = new CompletableFuture<>();
+
+        actorA.enqueue(() -> {
+            actorAStarted.complete(null);
+            return actorAGate;
+        });
+        actorA.enqueue(() -> {
+            actorASecond.complete(null);
+            return CompletableFuture.completedFuture(null);
+        });
+        timerA.enqueue(() -> {
+            timerAStarted.complete(null);
+            return timerAGate;
+        });
+
+        actorAStarted.get(3, TimeUnit.SECONDS);
+        timerAStarted.get(3, TimeUnit.SECONDS);
+        CompletableFuture.allOf(
+            actorB.enqueue(() -> CompletableFuture.completedFuture(null))
+                .toCompletableFuture(),
+            spot.enqueue(() -> CompletableFuture.completedFuture(null))
+                .toCompletableFuture(),
+            timerB.enqueue(() -> CompletableFuture.completedFuture(null))
+                .toCompletableFuture()).get(3, TimeUnit.SECONDS);
+        assertFalse(actorASecond.isDone());
+
+        actorAGate.complete(null);
+        actorASecond.get(3, TimeUnit.SECONDS);
+        timerAGate.complete(null);
+    }
+
     @Test
     void submitKeepsTurnUntilIncompleteStageCompletes() throws Exception {
         ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
@@ -250,14 +373,14 @@ final class ZLinkAsyncSerialQueueTest {
             handled.add("infrastructure");
             return CompletableFuture.completedFuture(null);
         }).toCompletableFuture();
-        infrastructure.get(3, TimeUnit.SECONDS);
-        assertEquals(List.of("infrastructure"), handled);
+        assertFalse(infrastructure.isDone());
+        assertEquals(List.of(), handled);
         assertEquals(2, seal.captured().size());
 
         assertTrue(queue.abortRelocation(seal));
         waitForSize(handled, 4);
         assertEquals(
-            List.of("infrastructure", "one", "two", "three"),
+            List.of("one", "two", "three", "infrastructure"),
             handled);
     }
 
@@ -329,6 +452,124 @@ final class ZLinkAsyncSerialQueueTest {
         held.get(3, TimeUnit.SECONDS);
         assertTrue(released.get());
         assertFalse(ran.get());
+    }
+
+    @Test
+    void relocationSealWaitsForYieldedContinuationToQuiesce()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> remote = new CompletableFuture<>();
+        CompletableFuture<Void> yieldRegistered = new CompletableFuture<>();
+        CompletableFuture<Void> continuationFinished =
+            new CompletableFuture<>();
+
+        CompletableFuture<Void> dispatch = queue.enqueue(() -> {
+            CompletionStage<Void> yielded =
+                ZLinkAsyncSerialQueue.yieldCurrent(remote);
+            yieldRegistered.complete(null);
+            return yielded.thenRun(() -> continuationFinished.complete(null));
+        })
+            .toCompletableFuture();
+
+        yieldRegistered.get(3, TimeUnit.SECONDS);
+        assertTrue(queue.trySealRelocation().isEmpty());
+        remote.complete(null);
+        continuationFinished.get(3, TimeUnit.SECONDS);
+        dispatch.get(3, TimeUnit.SECONDS);
+
+        assertTrue(queue.trySealRelocation().isPresent());
+    }
+
+    @Test
+    void quiescenceBarrierWaitsForYieldedTerminalContinuation()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> remote = new CompletableFuture<>();
+        CompletableFuture<Void> yielded = new CompletableFuture<>();
+
+        CompletableFuture<Void> dispatch = queue.enqueue(() -> {
+            CompletionStage<Void> continuation =
+                ZLinkAsyncSerialQueue.yieldCurrent(remote);
+            yielded.complete(null);
+            return continuation;
+        }).toCompletableFuture();
+
+        yielded.get(3, TimeUnit.SECONDS);
+        CompletableFuture<Void> barrier =
+            queue.awaitQuiescence().toCompletableFuture();
+        assertFalse(barrier.isDone());
+
+        remote.complete(null);
+        dispatch.get(3, TimeUnit.SECONDS);
+        barrier.get(3, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void quiescenceBarrierWaitsForEveryAcceptedTurn() throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> active = new CompletableFuture<>();
+        CompletableFuture<Void> started = new CompletableFuture<>();
+
+        queue.enqueue(() -> {
+            started.complete(null);
+            return active;
+        });
+        CompletableFuture<Void> queued = queue.enqueue(
+            () -> CompletableFuture.completedFuture(null))
+            .toCompletableFuture();
+
+        started.get(3, TimeUnit.SECONDS);
+        CompletableFuture<Void> barrier =
+            queue.awaitQuiescence().toCompletableFuture();
+        assertFalse(barrier.isDone());
+
+        active.complete(null);
+        queued.get(3, TimeUnit.SECONDS);
+        barrier.get(3, TimeUnit.SECONDS);
+    }
+
+    @Test
+    void queuedRelocationIntentCannotRacePastYieldRegistration()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        CompletableFuture<Void> remote = new CompletableFuture<>();
+        CompletableFuture<Boolean> sealed =
+            new CompletableFuture<>();
+
+        CompletableFuture<Void> dispatch = queue.enqueue(() ->
+            ZLinkAsyncSerialQueue.yieldCurrent(remote))
+            .toCompletableFuture();
+        queue.enqueue(() -> {
+            sealed.complete(queue.trySealRelocation().isPresent());
+            return CompletableFuture.completedFuture(null);
+        });
+
+        assertFalse(sealed.get(3, TimeUnit.SECONDS));
+        remote.complete(null);
+        dispatch.get(3, TimeUnit.SECONDS);
+        queue.enqueue(() -> CompletableFuture.completedFuture(null))
+            .toCompletableFuture()
+            .get(3, TimeUnit.SECONDS);
+        assertTrue(queue.trySealRelocation().isPresent());
+    }
+
+    @Test
+    void relocationAbortRequiresTheExactSealReferenceAndGeneration()
+        throws Exception {
+        ZLinkAsyncSerialQueue queue = new ZLinkAsyncSerialQueue();
+        ZLinkAsyncSerialQueue.RelocationSeal first =
+            queue.trySealRelocation().orElseThrow();
+        var forged = new ZLinkAsyncSerialQueue.RelocationSeal(
+            first.serial(),
+            first.captured());
+
+        assertFalse(queue.abortRelocation(forged));
+        assertTrue(queue.abortRelocation(first));
+
+        ZLinkAsyncSerialQueue.RelocationSeal second =
+            queue.trySealRelocation().orElseThrow();
+        assertFalse(queue.abortRelocation(first));
+        assertTrue(queue.abortRelocation(second));
     }
 
     private static void waitForSize(

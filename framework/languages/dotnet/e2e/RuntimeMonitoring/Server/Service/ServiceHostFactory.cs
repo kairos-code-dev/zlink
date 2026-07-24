@@ -81,11 +81,7 @@ internal static class ServiceHostFactory
             spotMesh.Listen(Require(options.SpotRouterEndpoint, "SpotRouterEndpoint"))
                 .SetRoutingId(RoutingId.From(options.Rid))
                 .AddEntrySpot<MonitoringEntrySpot>()
-                .AddSpotFactory<MonitoringSubjectSpot>()
-                .AddSpotFactory<MonitoringSlowSpot>();
-            var publisher = spotMesh.ConfigureSpotPublisher();
-            publisher.SendHighWaterMark = 1;
-            publisher.SendTimeout = TimeSpan.FromMilliseconds(250);
+                .AddSpotFactory<MonitoringSubjectSpot>();
             var spotRouter = spotMesh.ConfigureRouterSocket();
             spotRouter.SendHighWaterMark = 1;
             spotRouter.SendTimeout = TimeSpan.FromMilliseconds(250);
@@ -199,6 +195,20 @@ internal static class ServiceHostFactory
                 .Async<ProfileRes>(cancellationToken);
             return Results.Ok(response);
         });
+        app.MapPost("/spot/publish/{topic}", async (
+            string topic,
+            ProfileReq request,
+            [FromServices] IZLinkSpotPublisherClient publisher,
+            CancellationToken cancellationToken) =>
+        {
+            await publisher.Publish(
+                    RuntimeMonitoringNames.SpotChannel,
+                    RuntimeMonitoringNames.SpotChannel,
+                    topic,
+                    request)
+                .Async(cancellationToken);
+            return Results.Ok();
+        });
         app.MapPost("/admin/application-gate/reset", (
             [FromServices] ApplicationDispatchGate gate) =>
         {
@@ -229,107 +239,6 @@ internal static class ServiceHostFactory
                 RoutingId.From(spotRid),
                 cancellationToken);
             return Results.Ok(new { status = "created", spotRid });
-        });
-        app.MapPost("/admin/slow-subject/create/{spotRid}", async (
-            string spotRid,
-            [FromServices] IZLinkSpotManager spots,
-            CancellationToken cancellationToken) =>
-        {
-            await spots.GetOrCreateAsync<MonitoringSlowSpot>(
-                RoutingId.From(spotRid),
-                cancellationToken);
-            return Results.Ok(new { status = "created", spotRid });
-        });
-        app.MapPost("/spot/publish-until", async (
-            MulticastPublishReq request,
-            [FromServices] IZLinkSpotPublisherClient publisher,
-            [FromServices] IZLinkRouteMeshRuntime runtime,
-            CancellationToken cancellationToken) =>
-        {
-            var payload = new string('x', Math.Clamp(request.PayloadBytes, 1, 1024 * 1024));
-            var attempts = Math.Clamp(request.MaxAttempts, 1, 50000);
-            for (var sequence = 1; sequence <= attempts; sequence++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var call = publisher.Publish(
-                    RuntimeMonitoringNames.SpotChannel,
-                    RuntimeMonitoringNames.SpotChannel,
-                    "monitor.multicast",
-                    new MulticastProbe(request.Marker, sequence, payload));
-                var result = await call.SubmitAsync(cancellationToken);
-                var detail = result.Detail;
-                if ((!request.ExpectedRemoteDropped.HasValue
-                     || detail.DroppedRemoteNodeCount == request.ExpectedRemoteDropped.Value)
-                    && (!request.ExpectedLocalDropped.HasValue
-                        || detail.DroppedLocalSpotCount == request.ExpectedLocalDropped.Value))
-                {
-                    var snapshot = runtime.Snapshot(RuntimeMonitoringNames.SpotChannel);
-                    return Results.Ok(new MulticastPublishRes(
-                        result.Status.ToString(),
-                        sequence,
-                        detail.SnapshotRemoteNodeCount,
-                        detail.AdmittedRemoteNodeCount,
-                        detail.DroppedRemoteNodeCount,
-                        detail.SnapshotLocalSpotCount,
-                        detail.AdmittedLocalSpotCount,
-                        detail.DroppedLocalSpotCount,
-                        snapshot.Multicast.Submitted,
-                        snapshot.Multicast.Backpressured,
-                        snapshot.Multicast.Dropped));
-                }
-                if (!request.Blocking)
-                    await Task.Yield();
-            }
-            return Results.Problem(
-                "Logical Multicast did not reach the requested target result.",
-                statusCode: StatusCodes.Status504GatewayTimeout);
-        });
-        app.MapPost("/spot/local-drop", async (
-            MulticastPublishReq request,
-            [FromServices] IZLinkSpotPublisherClient publisher,
-            [FromServices] IZLinkRouteMeshRuntime runtime,
-            CancellationToken cancellationToken) =>
-        {
-            var payload = new string('x', Math.Clamp(request.PayloadBytes, 1, 1024 * 1024));
-            var attempts = Math.Clamp(request.MaxAttempts, 1, 50000);
-            for (var sequence = 1; sequence <= attempts; sequence++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await publisher.Publish(
-                        RuntimeMonitoringNames.SpotChannel,
-                        RuntimeMonitoringNames.SpotChannel,
-                        "monitor.prefill",
-                        new MulticastProbe(request.Marker, sequence, payload))
-                    .SubmitAsync(cancellationToken);
-                var result = await publisher.Publish(
-                        RuntimeMonitoringNames.SpotChannel,
-                        RuntimeMonitoringNames.SpotChannel,
-                        "monitor.multicast",
-                        new MulticastProbe(request.Marker, sequence, payload))
-                    .SubmitAsync(cancellationToken);
-                var detail = result.Detail;
-                if (detail.SnapshotLocalSpotCount == 2
-                    && detail.AdmittedLocalSpotCount == 1
-                    && detail.DroppedLocalSpotCount == 1)
-                {
-                    var snapshot = runtime.Snapshot(RuntimeMonitoringNames.SpotChannel);
-                    return Results.Ok(new MulticastPublishRes(
-                        result.Status.ToString(),
-                        sequence,
-                        detail.SnapshotRemoteNodeCount,
-                        detail.AdmittedRemoteNodeCount,
-                        detail.DroppedRemoteNodeCount,
-                        detail.SnapshotLocalSpotCount,
-                        detail.AdmittedLocalSpotCount,
-                        detail.DroppedLocalSpotCount,
-                        snapshot.Multicast.Submitted,
-                        snapshot.Multicast.Backpressured,
-                        snapshot.Multicast.Dropped));
-                }
-            }
-            return Results.Problem(
-                "Logical Multicast did not produce one accepted and one dropped local target.",
-                statusCode: StatusCodes.Status504GatewayTimeout);
         });
         app.MapPost("/admin/subject/close", async (
             [FromServices] IZLinkSpotManager spots,
@@ -474,16 +383,6 @@ internal static class ServiceHostFactory
                 channel.LocalWeight,
                 channel.ReadyMemberCount,
                 channel.Selectable)).ToArray(),
-            new MeshRuntimeMulticastRes(
-                snapshot.Multicast.Submitted,
-                snapshot.Multicast.Backpressured,
-                snapshot.Multicast.Dropped,
-                snapshot.Multicast.RemoteSnapshotCount,
-                snapshot.Multicast.RemoteAdmittedCount,
-                snapshot.Multicast.RemoteDroppedCount,
-                snapshot.Multicast.LocalSnapshotCount,
-                snapshot.Multicast.LocalAdmittedCount,
-                snapshot.Multicast.LocalDroppedCount),
             new MeshRuntimeClaimsRes(
                 snapshot.Claims.ApplicationActive,
                 snapshot.Claims.PendingApplicationWork,

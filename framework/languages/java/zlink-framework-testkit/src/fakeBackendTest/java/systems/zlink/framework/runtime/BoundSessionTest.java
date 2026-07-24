@@ -170,8 +170,6 @@ final class BoundSessionTest {
         options.addHandlersFromPackageOf(BoundSessionTest.class);
         var node = options.addSpotMesh("game");
         node.enableRouter("inproc://bound-session-entry-node");
-        node.configureEntrySpot()
-            .setRoutingId(RoutingId.from("entry-spot"));
         node.addEntrySpot(BoundSessionEntrySpot.class);
         node.addActorFactory("player", RemoteSessionRelayTest.PlayerActorFactory.class);
         var stream = options.addStreamNode("gateway");

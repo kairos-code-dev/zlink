@@ -8,7 +8,6 @@
 #include <map>
 #include <mutex>
 #include <optional>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -79,9 +78,9 @@ class stream_session_registry_t
         stream_connection_t connection;
         std::uint64_t next_binding_generation = 1;
         std::uint64_t next_inbound_sequence = 1;
-        std::optional<stream_binding_t> binding;
-        std::set<std::uint64_t> active_inbound;
-        std::optional<std::uint64_t> barrier_token;
+        std::map<std::string, stream_binding_t> bindings;
+        std::map<std::uint64_t, std::string> active_inbound;
+        std::map<std::string, std::uint64_t> barrier_tokens;
     };
 
     static bool exact_actor (const object_ref_t &left,
@@ -91,6 +90,7 @@ class stream_session_registry_t
     mutable std::mutex _mutex;
     std::map<std::string, connection_state_t> _connections;
     std::map<std::string, std::uint64_t> _last_connection_generation;
+    std::map<std::string, stream_binding_t> _actor_bindings;
     std::map<std::uint64_t, object_ref_t> _barriers;
     std::uint64_t _next_barrier_token = 1;
     bool _all_sealed = false;

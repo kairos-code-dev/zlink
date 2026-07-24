@@ -58,7 +58,7 @@ export class CounterAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeSpo
     if (request.terminator === 'yield') {
       await call.yield();
     } else {
-      await call.async();
+      await call.submit();
     }
     spot.writeCounter(observed + 1);
     this.evidence.add(
@@ -147,7 +147,7 @@ export class IoWorkerBatchHandler implements ZLinkSpotRequestHandler<AwaitProbeS
       );
       return { operationId, call };
     });
-    const pending = calls.map(({ call }, index) => index === calls.length - 1 ? call.yield() : call.async());
+    const pending = calls.map(({ call }, index) => index === calls.length - 1 ? call.yield() : call.submit());
     const results = await Promise.all(calls.map(async ({ operationId }, index) => {
       const result = await pending[index];
       this.evidence.add(
@@ -182,7 +182,7 @@ export class CpuWorkerAwaitHandler implements ZLinkSpotPacketHandler<AwaitProbeS
       `cpu-worker-${request.terminator}-${request.terminator === 'yield' ? 'released' : 'held'}`
       + `|rid=${this.evidence.rid}|spot=${spot.context.spotRid}|request=${request.requestId}`
     );
-    const workerThread = request.terminator === 'yield' ? await call.yield() : await call.async();
+    const workerThread = request.terminator === 'yield' ? await call.yield() : await call.submit();
     this.evidence.add(
       `cpu-worker-${request.terminator}-completed|rid=${this.evidence.rid}|spot=${spot.context.spotRid}`
       + `|request=${request.requestId}|worker-thread=${workerThread}`

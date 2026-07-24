@@ -79,6 +79,17 @@ internal static class ZLinkActorAuthorityPayloadCodec
         ReadOnlySpan<byte> encoded,
         out ZLinkActorAuthorityPayload value)
     {
+        if (ZLinkRelocationAuthorityPayloadCodec.TryDecode(
+                encoded,
+                out var relocation))
+            encoded = relocation.ApplicationPayload.Span;
+        return TryDecodeDirect(encoded, out value);
+    }
+
+    internal static bool TryDecodeDirect(
+        ReadOnlySpan<byte> encoded,
+        out ZLinkActorAuthorityPayload value)
+    {
         value = null!;
         try
         {

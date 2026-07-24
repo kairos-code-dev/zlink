@@ -84,7 +84,7 @@ zlink::http_client::client_t make_http (const std::string &base_url)
 template <typename TReply, typename TRequest>
 TReply post_json (const std::string &base_url, const std::string &path, const TRequest &request)
 {
-    auto raw = make_http (base_url).post (path).body (request).async_raw ().result ();
+    auto raw = make_http (base_url).post (path).body (request).submit_raw ().result ();
     if (!raw || raw.value ().status >= 400) {
         const auto error = raw ? raw.value ().body
                                : (raw.error () ? raw.error ()->what () : "HTTP failed");
@@ -118,7 +118,7 @@ e2e::join_res_t ensure_f_spot (const std::string &play_http_endpoint)
                                                 .spot_rid = response.join.spot_rid,
                                                 .value = "f-setup-ready",
                                                 .source_actor_id = "external-client"})
-            .async_raw ()
+            .submit_raw ()
             .result ();
         if (visible && visible.value ().status < 400) {
             break;

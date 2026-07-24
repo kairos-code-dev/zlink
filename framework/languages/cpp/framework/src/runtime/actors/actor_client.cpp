@@ -4,6 +4,7 @@
 
 #include "runtime/mesh/mesh_node_runtime.hpp"
 #include "runtime/actors/actor_manager_access.hpp"
+#include "runtime/execution/actor_execution_context.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
@@ -230,15 +231,15 @@ actor_send_call_t &actor_send_call_t::metadata (std::string key, std::string val
     return *this;
 }
 
-task_t<submit_result_t> actor_send_call_t::submit ()
+task_t<void> actor_send_call_t::submit ()
 {
     if (!_submission->try_claim ()) {
-        return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+        return task_t<void> (result_t<void>::failure (
           framework_error_kind_t::request_protocol_error,
           "actor send call has already been submitted"));
     }
     if (_client == nullptr) {
-        return task_t<submit_result_t> (result_t<submit_result_t>::failure (
+        return task_t<void> (result_t<void>::failure (
           framework_error_kind_t::request_protocol_error,
           "actor send call is not bound to an actor client"));
     }
@@ -267,7 +268,7 @@ actor_request_call_t &actor_request_call_t::timeout (std::chrono::milliseconds t
     return *this;
 }
 
-task_t<message_t> actor_request_call_t::async_message ()
+task_t<message_t> actor_request_call_t::submit_message ()
 {
     return start (false);
 }
@@ -279,6 +280,17 @@ task_t<message_t> actor_request_call_t::yield_message ()
 
 task_t<message_t> actor_request_call_t::start (bool release_turn)
 {
+    if (release_turn && !detail::current_serial_turn_allows_yield ()) {
+        return detail::unsupported_yield_task<message_t> ();
+    }
+    const auto target_key = std::string (_actor_ref.actor_type ())
+                            + ":" + std::string (_actor_ref.actor_id ());
+    if (!runtime::current_actor_execution.actor_key.empty ()
+        && runtime::current_actor_execution.actor_key == target_key) {
+        return task_t<message_t> (result_t<message_t>::failure (
+          framework_error_kind_t::invalid_configuration,
+          "awaited request to the current Actor cannot complete while its FIFO claim is held"));
+    }
     auto task = _client->request_to_actor_erased (std::move (_actor_ref), std::move (_packet_name),
                                                   std::move (_request), _timeout);
     auto turn_plan = detail::prepare_serial_turn_await (release_turn);
@@ -385,6 +397,19 @@ class actor_client_impl_t final : public actor_client_t
       message_t request,
       std::optional<std::chrono::milliseconds> timeout) override
     {
+        if (detail::current_serial_turn_allows_yield ()
+            && !runtime::current_actor_execution.spot_id.empty ()) {
+            const auto target =
+              resolve_actor (std::string (actor_ref.actor_id ()),
+                             stale_policy_t::route_not_found);
+            if (target
+                && target.value ().spot_id
+                     == runtime::current_actor_execution.spot_id) {
+                co_return result_t<message_t>::failure (
+                  framework_error_kind_t::invalid_configuration,
+                  "awaited request requires the current Spot execution gate");
+            }
+        }
         // In-flight handoff (spot-actor.ko.md 10.2-5): a request that lands
         // while the actor is moving fails fast as retriable, and the sender
         // re-resolves and retries. The caller's timeout keeps running across

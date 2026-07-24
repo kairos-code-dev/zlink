@@ -9,6 +9,50 @@ import systems.zlink.framework.runtime.backend.ZLinkSpotBackendAdapter;
 import systems.zlink.framework.runtime.backend.ZLinkStreamBackendAdapter;
 
 public final class ZLinkJavaBackendAdapterFactory implements ZLinkBackendAdapterProvider {
+    private static ZLinkJavaAdmissionBacked admission(
+        systems.zlink.framework.runtime.backend.ZLinkBackendObject backend) {
+        return (ZLinkJavaAdmissionBacked) backend;
+    }
+
+    @Override
+    public java.util.function.Function<
+        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+        systems.zlink.framework.runtime.backend.ZLinkBackendObject> admissionSource() {
+        return backend -> admission(backend).admissionSource();
+    }
+
+    @Override
+    public java.util.function.Function<
+        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+        java.time.Duration> admissionTimeout() {
+        return backend -> admission(backend).admissionTimeout();
+    }
+
+    @Override
+    public java.util.function.ToIntFunction<
+        systems.zlink.framework.runtime.backend.ZLinkBackendObject>
+        admissionPendingCapacity() {
+        return backend -> admission(backend).admissionPendingCapacity();
+    }
+
+    @Override
+    public java.util.function.BiConsumer<
+        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+        java.util.function.Consumer<
+            systems.zlink.framework.runtime.backend.ZLinkBackendAdmissionKey>>
+        admissionReadyRegistrar() {
+        return (backend, handler) ->
+            admission(backend).setAdmissionReadyHandler(handler);
+    }
+
+    @Override
+    public java.util.function.BiConsumer<
+        systems.zlink.framework.runtime.backend.ZLinkBackendObject,
+        Runnable> admissionShutdownRegistrar() {
+        return (backend, handler) ->
+            admission(backend).setAdmissionShutdownHandler(handler);
+    }
+
     @Override
     public ZLinkChannelBackendAdapter createChannelAdapter(ZLinkBackendAdapterOptions options) {
         return new ZLinkJavaChannelBackendAdapter();

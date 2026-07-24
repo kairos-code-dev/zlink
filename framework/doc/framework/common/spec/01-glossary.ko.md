@@ -217,8 +217,10 @@ Instance Spot을 새로 준비할 때 어떤 factory를 사용할지 결정하�
 <a id="objectgeneration"></a>
 ### ObjectGeneration
 
-같은 Spot ID로 Spot이 다시 생성되었을 때 이전 Spot과 새 Spot을 구분하는 번호다. 이전
-generation에 늦게 도착한 message나 reply를 새 Spot에 전달하지 않도록 사용한다.
+같은 ActorId 또는 Spot ID의 서로 다른 logical incarnation을 구분하는 번호다. 이전
+generation에 늦게 도착한 message나 reply를 새 incarnation에 전달하지 않도록
+사용한다. Relocation 중 target에서 `Recreate` policy로 application 객체를 다시
+만들어도 같은 logical incarnation을 계속 실행하므로 이 값은 유지한다.
 
 | 항목 | 내용 |
 |---|---|
@@ -226,7 +228,7 @@ generation에 늦게 도착한 message나 reply를 새 Spot에 전달하지 않�
 | .NET 표기 | `ulong` |
 | 공개 구성 | `1..long.MaxValue` 범위의 정수 하나다. JSON에서는 decimal string으로 표현한다. |
 | 생성·관리 | Location Store provider의 transaction domain global counter가 발급한다. |
-| 수명 | 같은 object incarnation 동안 유지되고 delete 뒤 다시 만들 때 새 값을 발급한다. 최대값 뒤에는 wrap하지 않고 `GenerationExhausted`로 실패한다. |
+| 수명 | 같은 logical incarnation 동안 유지된다. Same-node Join, cross-node relocation과 `Recreate`에서도 바꾸지 않는다. Logical incarnation을 종료한 뒤 새 object를 만들 때 새 값을 발급한다. 최대값 뒤에는 wrap하지 않고 `GenerationExhausted`로 실패한다. |
 
 <a id="owner"></a>
 ### Owner
@@ -470,6 +472,74 @@ Retry나 중복 전달이 같은 작업에서 나온 것인지 구분하는 값�
 | 공개 구성 | 단일 opaque 값이다. 길이와 내부 encoding은 공개 계약이 아니다. |
 | 생성·관리 | Framework가 terminal-once operation을 시작할 때 생성하고 redirect·recovery에서도 같은 값을 유지한다. |
 | 수명 | 해당 operation의 terminal completion과 중복 판정에 필요한 기간 동안 유효하다. Application이 생성하거나 해석하지 않는다. |
+
+<a id="actor-join-operation-id"></a>
+### Actor Join OperationId
+
+Actor Join completion callback이 같은 결과를 다시 전달한 것인지 application이
+구분할 수 있게 하는 0이 아닌 128-bit 값이다. Relocation 실행 자체를 식별하는
+`RelocationId`, placement reservation ID와 bounded aggregate commit ID는 각각
+다른 목적의 내부 ID이며 이 값을 대신 사용하지 않는다.
+
+```csharp
+public readonly record struct ZLinkActorJoinOperationId(
+    ulong High, // 128-bit ID의 상위 64 bits
+    ulong Low); // 128-bit ID의 하위 64 bits
+```
+
+| 항목 | 내용 |
+|---|---|
+| 형태 | 두 개의 `ulong`으로 구성한 non-zero 128-bit value |
+| .NET 표기 | `ZLinkActorJoinOperationId` |
+| 공개 구성 | `High`와 `Low`를 함께 비교해야 한다. Application이 각 field에 별도 의미를 부여하지 않는다. |
+| 생성·관리 | Framework가 Actor Join registration에서 생성하고 모든 completion retry에 같은 값을 전달한다. |
+| 전달 | `Accepted`, `Rejected`, `Failed` Actor Join completion에 포함한다. Cross-node `Accepted`에서는 Relocation manifest의 별도 field에도 저장한다. |
+| 수명 | Same-node outcome, `Rejected`와 commit 전 `Failed`는 current process lifetime까지만 retry를 보장한다. Cross-node `Accepted`는 manifest가 유지되는 동안 durable at-least-once completion에 사용한다. |
+
+<a id="deferred-join-barrier"></a>
+### Deferred Join barrier
+
+현재 handler가 정상적으로 끝난 뒤 Actor Join을 실행하고, 뒤에 들어온 Actor
+message가 Join을 앞지르지 못하게 하는 process-local queue 경계다. `Defer()`를
+호출한 시점에는 비활성 상태로 등록하며 target 조회나 Store I/O를 시작하지 않는다.
+
+| 항목 | 내용 |
+|---|---|
+| 형태 | Framework 내부의 handler-scoped queue barrier |
+| .NET 표기 | Public type 없음 |
+| 공개 구성 | Current Actor identity·`ObjectGeneration`·membership, immutable join request snapshot, absolute deadline과 Actor Join `OperationId`에 결합한다. 내부 encoding은 공개 계약이 아니다. |
+| 생성·관리 | 열린 handler registration scope에서 `Defer()`가 등록한다. Handler가 정상 종료하면 활성화하고 exception·cancellation·reply encoding failure이면 폐기한다. |
+| 수명 | Registration부터 Join terminal과 completion ordering이 끝날 때까지 유지한다. Location commit 전 process가 종료되면 이 barrier 자체를 replay하지 않는다. |
+
+<a id="bounded-aggregate-commit"></a>
+### Bounded aggregate commit
+
+Cross-node Actor Join처럼 서로 연관된 위치정보 여러 항목을 제한된 하나의 Store
+transaction으로 함께 확정하는 commit 경계다. Actor owner만 먼저 바꾸고 membership
+이나 capacity를 나중에 바꾸는 부분 상태를 공개하지 않는다.
+
+| 항목 | 내용 |
+|---|---|
+| 형태 | Location Store의 bounded multi-record atomic transaction |
+| .NET 표기 | 독립 public type 없음 |
+| 공개 구성 | Actor authority, source·target membership, capacity와 aggregate generation을 함께 검증하고 변경한다. |
+| 생성·관리 | Framework relocation coordinator가 target staging을 끝낸 뒤 한 번 실행한다. |
+| 수명 | 성공한 commit이 logical relocation의 확정점이다. Callback, relay와 cleanup 완료를 기록하려고 같은 aggregate를 두 번째로 commit하지 않는다. |
+
+<a id="relocation-ingress-hold"></a>
+### Relocation ingress hold
+
+Source Actor의 message 수락을 seal한 뒤에도 이전 source route로 도착한 message를
+잃지 않도록 임시로 보관하는 크기가 제한된 queue다. `Defer()` 뒤 seal 전까지
+도착한 message는 이 hold가 아니라 deferred Join barrier 뒤의 Actor queue에 둔다.
+
+| 항목 | 내용 |
+|---|---|
+| 형태 | Framework가 관리하는 bounded message hold |
+| .NET 표기 | Public type 없음 |
+| 공개 구성 | Message payload와 original operation identity, `ObjectGeneration`과 queue ordering에 필요한 Framework metadata를 유지한다. 내부 storage 형식은 공개하지 않는다. |
+| 생성·관리 | Source runtime이 relocation seal 뒤 도착한 message를 보관한다. Capacity가 가득 차면 일반 messaging backpressure와 timeout을 적용한다. |
+| 수명 | Commit 전 abort에서는 source queue로 원래 순서에 맞춰 되돌리고, commit 성공 뒤에는 target queue로 relay한 뒤 제거한다. |
 
 <a id="reply-correlation"></a>
 ### Reply correlation
@@ -760,7 +830,7 @@ ChannelName과 topic으로 같은 Channel의 여러 Spot에 message 하나를 �
 | 형태 | Multi-target publish surface |
 | .NET 표기 | `IZLinkSpotPublisherClient.Publish<T>()`, `IZLinkPublishCall` |
 | 공개 구성 | ChannelName, topic, typed payload와 optional metadata를 입력으로 받고 결과값 없이 완료한다. |
-| 수명 | 한 publish transaction의 immutable target snapshot과 admission 집계가 끝날 때까지 유지된다. |
+| 수명 | 한 publish transaction에서 고정한 target에 제출을 시도하는 동안 유지된다. |
 
 <a id="subscription"></a>
 ### Subscription
@@ -777,7 +847,7 @@ Spot이 특정 ChannelName, topic과 packet name에 해당하는 message를 받�
 | 수명 | Spot handler registry lifecycle 동안 유지되며 같은 Spot에서 exact key를 중복 등록할 수 없다. |
 
 <a id="snapshot"></a>
-### Snapshot
+### Publish target snapshot
 
 Publish를 시작할 때 고정한 remote target 목록과 source node에서 일치한 local Spot
 목록이다. Publish 도중 참여 node가 바뀌어도 이미 시작한 작업의 snapshot은 바꾸지
@@ -791,20 +861,21 @@ Publish를 시작할 때 고정한 remote target 목록과 source node에서 일
 | 생성·관리 | Framework가 publish transaction을 시작할 때 한 번 고정한다. |
 | 수명 | 해당 publish의 target 제출이 끝날 때까지 유지되며 중간 membership 변경으로 바뀌지 않는다. |
 
-<a id="publish-result-counts"></a>
-### Snapshot, admitted, dropped와 unreachable
+<a id="relocation-policy"></a>
+### Relocation policy
 
-- `snapshot`은 publish를 시작할 때 선택하거나 일치한 target 수다.
-- `admitted`는 message를 수락한 target 수다.
-- `dropped`는 queue 용량 부족으로 수락하지 못한 target 수다.
-- `unreachable`은 송신 경로가 없어 연결할 수 없는 remote target 수다.
+Actor나 Spot을 다른 node에서 계속 실행해야 할 때 application state를 어떻게
+처리할지 factory registration에서 고정하는 정책이다.
 
-| 항목 | 내용 |
+| Policy | Target에서 유지하는 내용 |
 |---|---|
-| 형태 | Monitoring metric·runtime event count |
-| .NET 표기 | Public publish result type 없음 |
-| 생성·관리 | Framework가 고정한 publish snapshot의 target별 admission 결과를 집계한다. |
-| 수명 | Publish transaction 관측 record의 retention 동안 유지된다. |
+| `Disabled` | Cross-node relocation을 허용하지 않는다. Source owner와 application admission을 유지한다. |
+| `Recreate` | Target factory로 application 객체를 다시 만든다. Framework queue·timer는 유지하지만 application state는 복원하지 않는다. 같은 logical incarnation이므로 `ObjectGeneration`은 유지한다. |
+| `Snapshot` | Handler가 정상 종료한 경계의 application state를 relocation adapter의 opaque byte sequence로 capture·restore한다. Framework queue·timer도 함께 유지한다. |
+
+`Snapshot` relocation policy는 위의 publish target snapshot과 이름만 같고 서로 다른
+계약이다. Application은 operation마다 policy를 바꾸지 못하며 startup 뒤
+registration도 변경할 수 없다.
 
 <a id="classic-fanout"></a>
 ### Classic fanout
@@ -1651,6 +1722,20 @@ session 작업을 구분하는 값이다.
 | 공개 구성 | 단일 opaque token이다. 내부 encoding은 공개 계약이 아니다. Binding 관계는 exact `ActorRef`, current authority·lease generation, session identity와 binding generation을 함께 검증한다. |
 | 생성·관리 | Current Actor owner가 bind 또는 rebind 성공 시 새 token을 발급한다. |
 | 수명 | Rebind, unbind, session close 또는 generation 변경으로 무효화된다. 이전 token은 dispatch·reply·push·close에 사용할 수 없다. |
+
+<a id="binding-route"></a>
+### Binding route
+
+Session owner가 특정 Actor binding에 보관하는 현재 Actor owner 전달 경로다. Bind가
+성공하면 검증한 `ActorRef` 위치로 만든 route를 저장하고, relay·disconnect 통지와
+Actor push는 이 저장된 route를 사용한다. Message마다 Location Store를 다시 조회해
+route를 선택하지 않는다.
+
+Actor relocation에서 owner·membership commit이 끝나면 Framework runtime이 이동한
+Actor의 binding route만 target owner로 갱신한다. 같은 Session에 bind된 다른 Actor의
+route와 physical STREAM connection은 유지한다. Location Store와 Relocation Store는
+이 route를 저장하거나 갱신하지 않으며, Session owner의 route 갱신 ACK 전에는 target
+Actor의 session packet·push admission을 열지 않는다.
 
 <a id="binding-generation"></a>
 ### Binding generation

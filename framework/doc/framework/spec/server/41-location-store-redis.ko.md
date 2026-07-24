@@ -10,6 +10,9 @@
 placement reservation과 aggregate commit을 저장하는 규칙을 정의한다. Provider는 object lifecycle, authority
 payload와 relocation phase를 해석하지 않는다. Framework가 schema에 따라 bytes를 encode·decode하고 Redis는 key,
 generation, StoreVersion과 atomic CAS만 관리한다.
+Session socket, Actor binding token과 per-Actor route는 Location Store key나 transaction에 포함하지 않는다.
+Framework session owner가 Bind 때 저장하고 같은 ObjectGeneration relocation의 `Completed` 이후 route
+switch를 수행한다.
 
 Redis server time이 lease 만료의 기준이다. Application host의 wall clock은 authority 판단에 사용하지 않는다.
 

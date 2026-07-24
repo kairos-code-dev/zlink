@@ -184,7 +184,7 @@ class request_handler_t
                                                            request.actor_id);
             auto reply = co_await _actors.request_to_actor (actor_ref, ask)
                            .timeout (std::chrono::seconds (5))
-                           .async<e2e::actor_reply_t> ();
+                           .submit<e2e::actor_reply_t> ();
             co_return e2e::actor_call_response_t{
               request.scenario, request.actor_id, reply.value, ""};
         }
@@ -285,7 +285,7 @@ class request_captured_handler_t
                                               e2e::actor_ask_t{request.scenario,
                                                                request.actor_id, request.value})
                            .timeout (std::chrono::seconds (5))
-                           .async<e2e::actor_reply_t> ();
+                           .submit<e2e::actor_reply_t> ();
             co_return e2e::actor_call_response_t{request.scenario, request.actor_id, reply.value,
                                                  ""};
         }

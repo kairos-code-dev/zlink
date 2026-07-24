@@ -194,7 +194,7 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
                         target.LifecycleGeneration,
                         owner,
                         creating,
-                        1),
+                        new ZLinkCapacityVector(1, 0, null)),
                     deadline.Token)
                 .ConfigureAwait(false);
             if (reserve is ZLinkObjectReserveResult.PlacementCapacityExhausted)

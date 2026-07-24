@@ -58,6 +58,7 @@ final class ZLinkChannelCallRuntime {
     private final ZLinkChannelReplyDecoder replyDecoder;
     private final SpotSend spotSend;
     private final SpotRequest spotRequest;
+    private final ZLinkOneWayCalls oneWayCalls;
     private final Set<CompletableFuture<?>> pendingRequests = ConcurrentHashMap.newKeySet();
     private final ExecutorService oneWayExecutor = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "zlink-java-channel-one-way-submit");
@@ -71,7 +72,8 @@ final class ZLinkChannelCallRuntime {
         Duration defaultTimeout,
         ZLinkChannelReplyDecoder replyDecoder,
         SpotSend spotSend,
-        SpotRequest spotRequest) {
+        SpotRequest spotRequest,
+        ZLinkOneWayCalls oneWayCalls) {
         this.flow = flow;
         this.timeoutExecutor = timeoutExecutor;
         this.requestSubmitter = new ZLinkChannelRequestSubmitter(
@@ -80,6 +82,11 @@ final class ZLinkChannelCallRuntime {
         this.replyDecoder = replyDecoder;
         this.spotSend = spotSend;
         this.spotRequest = spotRequest;
+        this.oneWayCalls = oneWayCalls;
+    }
+
+    ZLinkOneWayCalls oneWayCalls() {
+        return oneWayCalls;
     }
 
     ZLinkMessageFlowTracer flow() {

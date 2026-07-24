@@ -6,6 +6,8 @@ internal interface IZLinkCurrentSpotActivation
 
     string SpotId { get; }
 
+    ZLinkUserSpotExecutionMode ExecutionMode { get; }
+
     TimeSpan DefaultRequestTimeout { get; }
 
     ZLinkCodecRegistryBuilder Codecs { get; }

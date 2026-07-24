@@ -32,10 +32,10 @@ public final class TicTacToeClientScenario {
         try (ZLinkHttpClient api = ZLinkHttpClient.create(options.apiUrl()).build()) {
             game = api.post("/games")
                 .body(new CreateGameHttpReq(options.gameName()))
-                .async(CreateGameHttpRes.class).toCompletableFuture().join().body();
+                .submit(CreateGameHttpRes.class).toCompletableFuture().join().body();
             nextGame = api.post("/games")
                 .body(new CreateGameHttpReq(options.gameName() + "-round-robin"))
-                .async(CreateGameHttpRes.class).toCompletableFuture().join().body();
+                .submit(CreateGameHttpRes.class).toCompletableFuture().join().body();
         }
         String observerEndpoint = nonOwnerEndpoint(game);
         ZLinkStreamConnector host = playerConnector(game.ownerPlayEndpoint(), "host");

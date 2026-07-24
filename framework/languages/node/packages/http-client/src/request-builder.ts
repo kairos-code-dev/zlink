@@ -170,7 +170,7 @@ export class ZLinkHttpRequestBuilder {
   }
 
   /** Executes the request and returns the raw response while retaining the current turn. */
-  async asyncRaw(): Promise<RawHttpResponse> {
+  async submitRaw(): Promise<RawHttpResponse> {
     const request = this.makeRequest(undefined);
     const client = this.resolveClient();
     try {
@@ -214,7 +214,7 @@ export class ZLinkHttpRequestBuilder {
   }
 
   protected async executeTyped<T>(): Promise<HttpResponse<T>> {
-    const raw = await this.asyncRaw();
+    const raw = await this.submitRaw();
     if (raw.status >= 400) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.RequestFailed,
@@ -343,15 +343,14 @@ export class ZLinkHttpRequestBuilder {
 
 class ZLinkFrameworkHttpRequestBuilder extends ZLinkHttpRequestBuilder {
   /** Starts a server-side one-way request and ignores its response body. */
-  submit(): void {
-    const scheduler = this.executionScheduler;
-    if (scheduler === undefined) {
+  async submit(): Promise<void> {
+    if (this.executionScheduler === undefined) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.RequestProtocolError,
         'HTTP submit requires a framework server client'
       );
     }
-    void this.asyncRaw().catch((error) => scheduler.reportError(error));
+    await this.submitRaw();
   }
 
   /** Executes a typed request while yielding the current Spot turn. */

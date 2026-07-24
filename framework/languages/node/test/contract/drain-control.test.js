@@ -121,7 +121,9 @@ test('multi-mesh drain fails before global owner cleanup can mutate another mesh
     meshNode: () => node,
     admission: gate,
     publishDraining: async () => { published += 1; },
+    publishHostDraining: async () => {},
     drainResources: async () => { cleaned += 1; },
+    cleanupHostResources: async () => {},
     forceStopResources: async () => {}
   });
 
@@ -139,6 +141,40 @@ test('multi-mesh drain fails before global owner cleanup can mutate another mesh
   assert.equal(gate.accepts('game-b'), true);
 });
 
+test('host drain seals every mesh, drains each resource set, and cleans the shared owner once', async () => {
+  const gate = new framework.ZLinkRuntimeAdmissionGate();
+  const order = [];
+  const node = fakeMeshNode();
+  const runtime = new framework.ZLinkRouteMeshRuntimeCoordinator({
+    meshNames: ['game-a', 'game-b'],
+    meshOptions: new Map([['game-a', {}], ['game-b', {}]]),
+    meshNode: () => node,
+    admission: gate,
+    publishDraining: async (meshName) => { order.push(`publish:${meshName}`); },
+    publishHostDraining: async () => { order.push('publish:host'); },
+    drainResources: async (meshName) => { order.push(`drain:${meshName}`); },
+    cleanupHostResources: async () => { order.push('cleanup'); },
+    forceStopResources: async () => {}
+  });
+  runtime.markServing();
+
+  assert.deepEqual(await runtime.drainHost(), { kind: 'drained' });
+  assert.equal(gate.accepts('game-a'), false);
+  assert.equal(gate.accepts('game-b'), false);
+  assert.equal(runtime.snapshot('game-a').state, framework.ZLinkMeshNodeState.Drained);
+  assert.equal(runtime.snapshot('game-b').state, framework.ZLinkMeshNodeState.Drained);
+  assert.equal(order.filter((entry) => entry === 'cleanup').length, 1);
+  assert.equal(order.filter((entry) => entry === 'publish:host').length, 1);
+  assert.deepEqual(
+    new Set(order.filter((entry) => entry === 'publish:game-a' || entry === 'publish:game-b')),
+    new Set(['publish:game-a', 'publish:game-b'])
+  );
+  assert.deepEqual(
+    new Set(order.filter((entry) => entry.startsWith('drain:'))),
+    new Set(['drain:game-a', 'drain:game-b'])
+  );
+});
+
 function createRuntime(gate, overrides = {}) {
   const node = fakeMeshNode();
   return new framework.ZLinkRouteMeshRuntimeCoordinator({
@@ -147,7 +183,9 @@ function createRuntime(gate, overrides = {}) {
     meshNode: (meshName) => meshName === 'game' ? node : undefined,
     admission: gate,
     publishDraining: overrides.publishDraining ?? (async () => {}),
+    publishHostDraining: overrides.publishHostDraining ?? (async () => {}),
     drainResources: overrides.drainResources ?? (async () => {}),
+    cleanupHostResources: overrides.cleanupHostResources ?? (async () => {}),
     forceStopResources: overrides.forceStopResources ?? (async () => {})
   });
 }

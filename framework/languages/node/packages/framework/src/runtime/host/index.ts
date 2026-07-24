@@ -376,8 +376,10 @@ export class ZLinkFrameworkRuntimeHost implements
       meshOptions: options.registration.spotNodes,
       meshNode: (meshName) => this.spotNodeRuntime?.meshNode(meshName),
       admission: this.admission,
-      publishDraining: (meshName, signal) => this.publishDraining(meshName, signal),
+      publishDraining: (meshName) => this.publishMeshDraining(meshName),
+      publishHostDraining: (signal) => this.publishHostDraining(signal),
       drainResources: (meshName, signal) => this.performMeshDrain(meshName, signal),
+      cleanupHostResources: (signal) => this.cleanupOwnerForDrain(signal),
       forceStopResources: (meshName) => this.forceStopMesh(meshName)
     });
     this.routeMeshRuntime = this.routeMeshCoordinator;
@@ -681,8 +683,8 @@ export class ZLinkFrameworkRuntimeHost implements
 
   async onApplicationShutdown(): Promise<void> {
     const meshNames = [...this.options.registration.spotNodes.keys()];
-    if (meshNames.length === 1) {
-      await this.routeMeshRuntime.drain(meshNames[0]!);
+    if (meshNames.length > 0) {
+      await this.routeMeshCoordinator.drainHost();
     }
     await this.stop();
   }
@@ -698,16 +700,18 @@ export class ZLinkFrameworkRuntimeHost implements
     }
     await this.streamRuntime?.notifyServerDrain(meshName);
     await this.drainSpots(meshName, signal);
-    await this.cleanupOwnerForDrain(signal);
   }
 
-  private async publishDraining(meshName: string, signal: AbortSignal): Promise<void> {
+  private async publishMeshDraining(meshName: string): Promise<void> {
     const node = this.spotNodeRuntime?.meshNode(meshName);
     for (const channelName of Object.keys(
       this.options.registration.spotNodes.get(meshName)?.meshChannels ?? {}
     )) {
       node?.setChannelWeight(channelName, 0);
     }
+  }
+
+  private async publishHostDraining(signal: AbortSignal): Promise<void> {
     try {
       const runtime = this.locationOwner.currentRuntime;
       while (runtime !== undefined && !await runtime.publishDraining(signal)) {

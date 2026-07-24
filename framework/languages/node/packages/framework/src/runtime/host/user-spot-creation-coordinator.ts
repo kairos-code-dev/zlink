@@ -210,32 +210,58 @@ export class ZLinkUserSpotCreationCoordinator {
         );
       }
       if (current.allocation.state === 'pending' && !target.isLocal) {
-        const result = await this.remoteCreate(
-          request,
-          current,
-          target.nodeRid,
-          target.nodeGeneration,
-          deadlineUnixMs
-        );
-        deadline.close();
-        return result;
+        try {
+          return await this.remoteCreate(
+            request,
+            current,
+            target.nodeRid,
+            target.nodeGeneration,
+            deadlineUnixMs
+          );
+        } finally {
+          deadline.close();
+        }
       }
       if (current.allocation.state === 'pending' && target.isLocal) {
-        const result = await this.handleLocalCreate(
-          localCreationRecord(request, current, target.nodeRid, target.nodeGeneration, deadlineUnixMs),
-          (_payload, localSignal) => materialize(target, localSignal),
-          discard,
-          signal
-        );
-        deadline.close();
-        return result;
+        const pending = current.pendingCreation;
+        const admitted = pending === undefined
+          ? undefined
+          : this.localCreations.get(pending.reservationId);
+        if (admitted === undefined) {
+          try {
+            const spot = await this.awaitReady(request, signal);
+            return {
+              result: { spot, state: ZLinkSpotCreateState.Existing },
+              spot
+            };
+          } finally {
+            deadline.close();
+          }
+        }
+        try {
+          const result = await admitted;
+          return result.result.state === ZLinkSpotCreateState.Created
+            ? {
+                result: {
+                  ...result.result,
+                  state: ZLinkSpotCreateState.Existing
+                },
+                spot: result.spot
+              }
+            : result;
+        } finally {
+          deadline.close();
+        }
       }
-      const spot = await this.awaitReady(request, signal);
-      deadline.close();
-      return {
-        result: { spot, state: ZLinkSpotCreateState.Existing },
-        spot
-      };
+      try {
+        const spot = await this.awaitReady(request, signal);
+        return {
+          result: { spot, state: ZLinkSpotCreateState.Existing },
+          spot
+        };
+      } finally {
+        deadline.close();
+      }
     }
     if (reserved.kind === 'typeMismatch') {
       deadline.close();
@@ -262,28 +288,30 @@ export class ZLinkUserSpotCreationCoordinator {
       );
     }
 
-    const result = target.isLocal
-      ? await this.handleLocalCreate(
-          localCreationRecord(
+    try {
+      return target.isLocal
+        ? await this.handleLocalCreate(
+            localCreationRecord(
+              request,
+              reserved.creating,
+              target.nodeRid,
+              target.nodeGeneration,
+              deadlineUnixMs
+            ),
+            (_payload, localSignal) => materialize(target, localSignal),
+            discard,
+            signal
+          )
+        : await this.remoteCreate(
             request,
             reserved.creating,
             target.nodeRid,
             target.nodeGeneration,
             deadlineUnixMs
-          ),
-          (_payload, localSignal) => materialize(target, localSignal),
-          discard,
-          signal
-        )
-      : await this.remoteCreate(
-          request,
-          reserved.creating,
-          target.nodeRid,
-          target.nodeGeneration,
-          deadlineUnixMs
-        );
-    deadline.close();
-    return result;
+          );
+    } finally {
+      deadline.close();
+    }
   }
 
   async close(
@@ -512,30 +540,40 @@ export class ZLinkUserSpotCreationCoordinator {
           spot
         };
       }
-      const committed = await this.options.store.commit({
-        key: { kind: 'user_spot', globalId: record.spotRid },
-        reservationId: pending.reservationId,
-        expectedStoreVersion: current.storeVersion.value,
-        target: {
-          meshName: current.allocation.descriptor.meshName,
-          nodeRid: current.allocation.descriptor.rid,
-          nodeLifecycleGeneration: current.allocation.descriptorLifecycleGeneration,
-          owner: {
+      let committed;
+      try {
+        committed = await this.options.store.commit({
+          key: { kind: 'user_spot', globalId: record.spotRid },
+          reservationId: pending.reservationId,
+          expectedStoreVersion: current.storeVersion.value,
+          target: {
+            meshName: current.allocation.descriptor.meshName,
+            nodeRid: current.allocation.descriptor.rid,
+            nodeLifecycleGeneration: current.allocation.descriptorLifecycleGeneration,
+            owner: {
+              ownerId: current.ownerId,
+              leaseGeneration: current.ownerLeaseGeneration
+            }
+          },
+          readyPayload: encodeServiceUserSpotAuthorityPayload({
+            state: 'ready',
+            stableType: record.stableType,
+            spotRid: record.spotRid,
             ownerId: current.ownerId,
-            leaseGeneration: current.ownerLeaseGeneration
-          }
-        },
-        readyPayload: encodeServiceUserSpotAuthorityPayload({
-          state: 'ready',
-          stableType: record.stableType,
-          spotRid: record.spotRid,
-          ownerId: current.ownerId,
-          ownerLeaseGeneration: current.ownerLeaseGeneration,
-          ownerMeshName: current.allocation.descriptor.meshName,
-          ownerNodeRid: String(current.allocation.descriptor.rid),
-          ownerNodeGeneration: current.allocation.descriptorLifecycleGeneration
-        })
-      }, signal);
+            ownerLeaseGeneration: current.ownerLeaseGeneration,
+            ownerMeshName: current.allocation.descriptor.meshName,
+            ownerNodeRid: String(current.allocation.descriptor.rid),
+            ownerNodeGeneration: current.allocation.descriptorLifecycleGeneration
+          })
+        }, signal);
+      } catch (error) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.RequestFailed,
+          'User Spot Ready commit Store operation failed.',
+          false,
+          error
+        );
+      }
       if (committed.kind !== 'committed' && committed.kind !== 'alreadyCommitted') {
         throw new ZLinkFrameworkException(
           ZLinkFrameworkErrorKind.RequestFailed,
@@ -553,8 +591,10 @@ export class ZLinkUserSpotCreationCoordinator {
       };
     } catch (error) {
       local?.publication?.abort();
+      const cleanupDeadline = createDeadline(this.options.cleanupTimeoutMs ?? 1_000);
+      const cleanupSignal = cleanupDeadline.signal;
       const cleanup = await Promise.allSettled([
-        this.options.store.abort({
+        waitForAbort(this.options.store.abort({
           key: { kind: 'user_spot', globalId: record.spotRid },
           reservationId: pending.reservationId,
           expectedStoreVersion: current.storeVersion.value,
@@ -567,9 +607,10 @@ export class ZLinkUserSpotCreationCoordinator {
               leaseGeneration: current.ownerLeaseGeneration
             }
           }
-        }, signal),
-        discard?.(signal) ?? Promise.resolve()
+        }, cleanupSignal), cleanupSignal),
+        waitForAbort(discard?.(cleanupSignal) ?? Promise.resolve(), cleanupSignal)
       ]);
+      cleanupDeadline.close();
       const cleanupErrors = cleanup
         .filter((item): item is PromiseRejectedResult => item.status === 'rejected')
         .map(item => item.reason);
@@ -1018,5 +1059,23 @@ function wait(delayMs: number, signal?: AbortSignal): Promise<void> {
       reject(signal?.reason);
     };
     signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+
+function waitForAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    operation.then(
+      value => {
+        signal.removeEventListener('abort', abort);
+        resolve(value);
+      },
+      error => {
+        signal.removeEventListener('abort', abort);
+        reject(error);
+      }
+    );
   });
 }

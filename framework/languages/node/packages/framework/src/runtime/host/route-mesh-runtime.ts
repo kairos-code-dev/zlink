@@ -19,7 +19,9 @@ export interface ZLinkRouteMeshRuntimeCoordinatorOptions {
   readonly meshNode: (meshName: string) => ZLinkBackendMeshNode | undefined;
   readonly admission: ZLinkRuntimeAdmissionGate;
   readonly publishDraining: (meshName: string, signal: AbortSignal) => Promise<void>;
+  readonly publishHostDraining: (signal: AbortSignal) => Promise<void>;
   readonly drainResources: (meshName: string, signal: AbortSignal) => Promise<void>;
+  readonly cleanupHostResources: (signal: AbortSignal) => Promise<void>;
   readonly forceStopResources: (meshName: string) => Promise<void>;
 }
 
@@ -35,6 +37,7 @@ interface ZLinkMeshDrainState {
 
 export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
   private readonly states = new Map<string, ZLinkMeshDrainState>();
+  private hostOperation?: Promise<ZLinkMeshDrainResult>;
 
   constructor(private readonly options: ZLinkRouteMeshRuntimeCoordinatorOptions) {
     for (const meshName of options.meshNames) {
@@ -157,6 +160,19 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     return waitForOperation(operation, signal);
   }
 
+  drainHost(deadlineMs = 30_000, signal?: AbortSignal): Promise<ZLinkMeshDrainResult> {
+    if (!Number.isFinite(deadlineMs) || deadlineMs <= 0) {
+      return Promise.reject(new TypeError('Drain deadlineMs must be greater than zero.'));
+    }
+    if (this.hostOperation === undefined) {
+      const onlyState = this.states.size === 1 ? this.states.values().next().value : undefined;
+      const operation = onlyState?.operation ?? this.performHostDrain(deadlineMs);
+      this.hostOperation = operation;
+      for (const state of this.states.values()) state.operation ??= operation;
+    }
+    return waitForOperation(this.hostOperation, signal);
+  }
+
   private async performDrain(
     meshName: string,
     state: ZLinkMeshDrainState,
@@ -170,8 +186,10 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     let result: ZLinkMeshDrainResult;
     try {
       await this.options.publishDraining(meshName, deadline.signal);
+      await this.options.publishHostDraining(deadline.signal);
       await this.options.admission.awaitZero(meshName, deadline.signal);
       await this.options.drainResources(meshName, deadline.signal);
+      await this.options.cleanupHostResources(deadline.signal);
       result = { kind: 'drained' };
       this.transition(meshName, state, ZLinkMeshNodeState.Drained);
     } catch (error) {
@@ -187,6 +205,52 @@ export class ZLinkRouteMeshRuntimeCoordinator implements ZLinkRouteMeshRuntime {
     }
     state.result = result;
     for (const resolve of state.waiters.splice(0)) resolve(result);
+    return result;
+  }
+
+  private async performHostDrain(deadlineMs: number): Promise<ZLinkMeshDrainResult> {
+    const entries = [...this.states.entries()];
+    if (entries.length === 0) return { kind: 'drained' };
+    const deadlineAt = new Date(Date.now() + deadlineMs);
+    for (const [meshName, state] of entries) {
+      state.deadline = deadlineAt;
+      this.options.admission.seal(meshName);
+      this.transition(meshName, state, ZLinkMeshNodeState.Draining);
+    }
+    const deadline = new AbortController();
+    const timer = setTimeout(() => deadline.abort(new Error('Drain deadline exceeded.')), deadlineMs);
+    let result: ZLinkMeshDrainResult;
+    try {
+      await Promise.all(entries.map(([meshName]) =>
+        this.options.publishDraining(meshName, deadline.signal)));
+      await this.options.publishHostDraining(deadline.signal);
+      await Promise.all(entries.map(([meshName]) =>
+        this.options.admission.awaitZero(meshName, deadline.signal)));
+      await Promise.all(entries.map(([meshName]) =>
+        this.options.drainResources(meshName, deadline.signal)));
+      await this.options.cleanupHostResources(deadline.signal);
+      result = { kind: 'drained' };
+      for (const [meshName, state] of entries) {
+        this.transition(meshName, state, ZLinkMeshNodeState.Drained);
+      }
+    } catch (error) {
+      const classified = drainFailureReason(error);
+      const reason: ZLinkDrainForceReason = classified !== 'teardown_failed'
+        ? classified
+        : deadline.signal.aborted ? 'deadline_exceeded' : classified;
+      await Promise.all(entries.map(([meshName]) =>
+        this.options.forceStopResources(meshName).catch(() => undefined)));
+      result = { kind: 'forceStopped', reason };
+      for (const [meshName, state] of entries) {
+        this.transition(meshName, state, ZLinkMeshNodeState.ForceStopping, reason);
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+    for (const [, state] of entries) {
+      state.result = result;
+      for (const resolve of state.waiters.splice(0)) resolve(result);
+    }
     return result;
   }
 

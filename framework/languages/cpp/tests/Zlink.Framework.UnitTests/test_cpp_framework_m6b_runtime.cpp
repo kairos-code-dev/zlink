@@ -525,6 +525,14 @@ void verify_remote_user_spot_create_close_terminal_once ()
     const auto *reservation =
       std::get_if<object_reserved_t> (&reserved);
     assert (reservation);
+    assert (reservation->creating.pending_creation);
+    assert (
+      reservation->creating.pending_creation->reservation_id
+      == reservation->fence.reservation_id);
+    assert (
+      reservation->creating.pending_creation
+        ->request_content_reference
+      == reserve.intent.request_content_reference);
     const auto invalid_spot_rid =
       zlink::routing_id_t::from ("remote-room-invalid");
     auto invalid_reserve = reserve;

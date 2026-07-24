@@ -45,6 +45,14 @@ struct placement_allocation_t
     std::uint32_t capacity_delta = 0;
 };
 
+struct pending_object_creation_t
+{
+    std::string reservation_id;
+    std::string request_content_reference;
+    std::array<std::byte, 32> request_sha256{};
+    std::uint32_t request_encoded_size = 0;
+};
+
 struct authority_snapshot_t
 {
     std::string store_version;
@@ -54,6 +62,7 @@ struct authority_snapshot_t
     location_owner_token_t owner;
     std::chrono::system_clock::time_point store_now;
     placement_allocation_t allocation;
+    std::optional<pending_object_creation_t> pending_creation;
 };
 
 struct authority_missing_t

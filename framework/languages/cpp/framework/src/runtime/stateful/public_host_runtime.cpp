@@ -1218,21 +1218,11 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                       public_fence (
                         reservation,
                         snapshot->allocation.mesh_name);
-                    auto *projection_provider =
-                      dynamic_cast<
-                        runtime::
-                          pending_creation_projection_provider_t *> (
-                        store.get ());
-                    const auto pending =
-                      projection_provider
-                        ? projection_provider
-                            ->read_verified_pending_creation (
-                              {placement_object_kind_t::
-                                 user_spot,
-                               global_id},
-                              fence)
-                        : std::nullopt;
-                    if (!pending) {
+                    const auto &pending =
+                      snapshot->pending_creation;
+                    if (!pending
+                        || pending->reservation_id
+                             != fence.reservation_id) {
                         terminal (
                           105,
                           static_cast<std::uint32_t> (
@@ -1245,11 +1235,11 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                     }
                     const auto creation_payload =
                       runtime::decode_inline_creation_content (
-                        pending->intent.request_content_reference);
+                        pending->request_content_reference);
                     if (!creation_payload
-                        || pending->intent.request_encoded_size
+                        || pending->request_encoded_size
                              != creation_payload->size ()
-                        || pending->intent.request_sha256
+                        || pending->request_sha256
                              != runtime::sha256 (*creation_payload)) {
                         terminal (
                           105,

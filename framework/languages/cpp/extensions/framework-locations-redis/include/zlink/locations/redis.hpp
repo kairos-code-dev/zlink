@@ -536,7 +536,8 @@ local time = redis.call('TIME')
 local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
 if redis.call('EXISTS', KEYS[1]) == 0 then
     return {'missing', '', '', '0', '0', '', '0',
-        '', '0', '', '', '', '0', '0', tostring(nowMs)}
+        '', '0', '', '', '', '0', '0', '', '', '', '0',
+        tostring(nowMs)}
 end
 return {'found',
     redis.call('HGET', KEYS[1], 'storeVersion') or '',
@@ -552,6 +553,10 @@ return {'found',
     '',
     redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration') or '0',
     redis.call('HGET', KEYS[1], 'capacityDelta') or '0',
+    redis.call('HGET', KEYS[1], 'pendingCreationReservationId') or '',
+    redis.call('HGET', KEYS[1], 'pendingCreationReference') or '',
+    redis.call('HGET', KEYS[1], 'pendingCreationSha256') or '',
+    redis.call('HGET', KEYS[1], 'pendingCreationEncodedSize') or '0',
     tostring(nowMs)}
 )";
 
@@ -639,7 +644,9 @@ local function archiveCurrent()
         'objectGeneration', 'authorityOwnerGeneration',
         'ownerId', 'ownerLeaseGeneration', 'allocationState',
         'objectKind', 'stableType', 'descriptorKey',
-        'descriptorLifecycleGeneration', 'capacityDelta'
+        'descriptorLifecycleGeneration', 'capacityDelta',
+        'pendingCreationReservationId', 'pendingCreationReference',
+        'pendingCreationSha256', 'pendingCreationEncodedSize'
     }
     for _, field in ipairs(fields) do
         local value = redis.call('HGET', KEYS[1], field)
@@ -1027,11 +1034,18 @@ local function snapshot(status)
         '',
         redis.call('HGET', KEYS[1], 'descriptorLifecycleGeneration') or '0',
         redis.call('HGET', KEYS[1], 'capacityDelta') or '0',
+        redis.call('HGET', KEYS[1], 'pendingCreationReservationId') or '',
+        redis.call('HGET', KEYS[1], 'pendingCreationReference') or '',
+        redis.call('HGET', KEYS[1], 'pendingCreationSha256') or '',
+        redis.call('HGET', KEYS[1], 'pendingCreationEncodedSize') or '0',
         tostring(nowMs)}
 end
 if redis.call('EXISTS', KEYS[1]) == 1 then
     if redis.call('HGET', KEYS[1], 'stableType') ~= ARGV[3] then
         return snapshot('type_mismatch')
+    end
+    if redis.call('HGET', KEYS[1], 'allocationState') == 'pending' then
+        return snapshot('conflict')
     end
     return snapshot('already_exists')
 end
@@ -1056,7 +1070,8 @@ if not liveLease(KEYS[6], ARGV[5])
     or not capability
     or not profileFound then
     return {'conflict', '', '', '0', '0', '', '0',
-        '', '0', '', '', '', '0', '0', tostring(nowMs)}
+        '', '0', '', '', '', '0', '0', '', '', '', '0',
+        tostring(nowMs)}
 end
 local nodePending =
     tonumber(redis.call('HGET', KEYS[7], ARGV[17]) or '0')
@@ -1085,13 +1100,15 @@ if delta <= 0
     or delta > typeActiveLimit
     or typeActive > typeActiveLimit - delta then
     return {'capacity', '', '', '0', '0', '', '0',
-        '', '0', '', '', '', '0', '0', tostring(nowMs)}
+        '', '0', '', '', '', '0', '0', '', '', '', '0',
+        tostring(nowMs)}
 end
 if atMax(KEYS[3], 'storeRevision')
     or atMax(KEYS[4], 'objectGeneration')
     or atMax(KEYS[5], 'authorityOwnerGeneration') then
     return {'exhausted', '', '', '0', '0', '', '0',
-        '', '0', '', '', '', '0', '0', tostring(nowMs)}
+        '', '0', '', '', '', '0', '0', '', '', '', '0',
+        tostring(nowMs)}
 end
 redis.call('HINCRBY', KEYS[3], 'storeRevision', 1)
 redis.call('HINCRBY', KEYS[4], 'objectGeneration', 1)
@@ -1116,7 +1133,11 @@ redis.call('HSET', KEYS[1],
     'stableType', ARGV[3],
     'descriptorKey', ARGV[19],
     'descriptorLifecycleGeneration', ARGV[10],
-    'capacityDelta', ARGV[7])
+    'capacityDelta', ARGV[7],
+    'pendingCreationReservationId', ARGV[16],
+    'pendingCreationReference', ARGV[20],
+    'pendingCreationSha256', ARGV[21],
+    'pendingCreationEncodedSize', ARGV[22])
 redis.call('ZADD', KEYS[2], 0, ARGV[15])
 redis.call('HDEL', KEYS[13], ARGV[15])
 redis.call('HINCRBY', KEYS[7], ARGV[17], delta)
@@ -1136,11 +1157,15 @@ redis.call('HSET', KEYS[11],
     'targetLeaseGeneration', ARGV[5],
     'objectKind', ARGV[11],
     'stableType', ARGV[3],
-    'capacityDelta', ARGV[7])
+    'capacityDelta', ARGV[7],
+    'contentReference', ARGV[20],
+    'requestSha256', ARGV[21],
+    'requestEncodedSize', ARGV[22])
 return {'reserved', version, ARGV[6], objectGeneration,
     ownerGeneration, ARGV[4], ARGV[5],
     'pending', ARGV[11], ARGV[3], ARGV[19], '',
-    ARGV[10], ARGV[7], tostring(nowMs)}
+    ARGV[10], ARGV[7], ARGV[16], ARGV[20], ARGV[21],
+    ARGV[22], tostring(nowMs)}
 )";
 
     static constexpr std::string_view commit_object = R"(
@@ -1190,7 +1215,9 @@ local function archiveCurrent()
         'objectGeneration', 'authorityOwnerGeneration',
         'ownerId', 'ownerLeaseGeneration', 'allocationState',
         'objectKind', 'stableType', 'descriptorKey',
-        'descriptorLifecycleGeneration', 'capacityDelta'
+        'descriptorLifecycleGeneration', 'capacityDelta',
+        'pendingCreationReservationId', 'pendingCreationReference',
+        'pendingCreationSha256', 'pendingCreationEncodedSize'
     }
     for _, field in ipairs(fields) do
         local value = redis.call('HGET', KEYS[1], field)
@@ -1283,6 +1310,9 @@ local version =
 redis.call('HSET', KEYS[1],
     'storeVersion', version, 'payload', ARGV[11],
     'allocationState', 'active')
+redis.call('HDEL', KEYS[1],
+    'pendingCreationReservationId', 'pendingCreationReference',
+    'pendingCreationSha256', 'pendingCreationEncodedSize')
 redis.call('HINCRBY', KEYS[5], ARGV[14], -delta)
 redis.call('HINCRBY', KEYS[6], ARGV[15], -delta)
 redis.call('HINCRBY', KEYS[7], ARGV[14], delta)
@@ -1343,7 +1373,9 @@ local function archiveCurrent()
         'objectGeneration', 'authorityOwnerGeneration',
         'ownerId', 'ownerLeaseGeneration', 'allocationState',
         'objectKind', 'stableType', 'descriptorKey',
-        'descriptorLifecycleGeneration', 'capacityDelta'
+        'descriptorLifecycleGeneration', 'capacityDelta',
+        'pendingCreationReservationId', 'pendingCreationReference',
+        'pendingCreationSha256', 'pendingCreationEncodedSize'
     }
     for _, field in ipairs(fields) do
         local value = redis.call('HGET', KEYS[1], field)
@@ -1718,7 +1750,9 @@ for i = 0, count - 1 do
         'objectGeneration', 'authorityOwnerGeneration',
         'ownerId', 'ownerLeaseGeneration', 'allocationState',
         'objectKind', 'stableType', 'descriptorKey',
-        'descriptorLifecycleGeneration', 'capacityDelta'
+        'descriptorLifecycleGeneration', 'capacityDelta',
+        'pendingCreationReservationId', 'pendingCreationReference',
+        'pendingCreationSha256', 'pendingCreationEncodedSize'
     }
     for _, field in ipairs(fields) do
         local value = redis.call('HGET', authorityKey, field)
@@ -5666,7 +5700,12 @@ class redis_location_store_t final : public location_store_t,
                         {request.target.mesh_name,
                          zlink::routing_id_t::from (
                            std::string (
-                             request.target.node_rid.value ()))})};
+                             request.target.node_rid.value ()))}),
+                    request.intent.request_content_reference,
+                    byte_array_key (
+                      request.intent.request_sha256),
+                    std::to_string (
+                      request.intent.request_encoded_size)};
                   const auto result = redis_get (
                     client ().eval<std::vector<std::string>> (
                       std::string (
@@ -5674,7 +5713,7 @@ class redis_location_store_t final : public location_store_t,
                           reserve_object),
                       keys.begin (), keys.end (), args.begin (),
                       args.end ()));
-                  if (result.size () != 15)
+                  if (result.size () != 19)
                       throw sw::redis::Error (
                         "invalid object reserve result");
                   const auto snapshot =
@@ -5688,6 +5727,11 @@ class redis_location_store_t final : public location_store_t,
                   if (result[0] == "capacity")
                       return object_reserve_result_t{
                         object_placement_capacity_exhausted_t{}};
+                  if (result[0] == "conflict"
+                      && !result[1].empty ())
+                      return object_reserve_result_t{
+                        object_reserve_conflict_t{
+                          snapshot}};
                   if (result[0] == "conflict")
                       return object_reserve_result_t{
                         object_reserve_conflict_t{
@@ -7452,8 +7496,55 @@ class redis_location_store_t final : public location_store_t,
           std::stoull (result[4]),
           {result[5], std::stoll (result[6])},
           detail::redis_location_script_result_t::
-            from_unix_ms (std::stoll (result[14])),
-          parse_allocation (result, 7)};
+            from_unix_ms (std::stoll (result[18])),
+          parse_allocation (result, 7),
+          parse_pending_creation (result, 14)};
+    }
+
+    static std::optional<pending_object_creation_t>
+    parse_pending_creation (
+      const std::vector<std::string> &result,
+      std::size_t offset)
+    {
+        if (result[offset].empty ()
+            && result[offset + 1].empty ()
+            && result[offset + 2].empty ()
+            && (result[offset + 3].empty ()
+                || result[offset + 3] == "0"))
+            return std::nullopt;
+        if (result[offset].empty ()
+            || result[offset + 2].size () != 64)
+            throw std::invalid_argument (
+              "Pending creation projection is incomplete");
+        std::array<std::byte, 32> sha256{};
+        const auto hex_value = [] (char value) -> unsigned {
+            if (value >= '0' && value <= '9')
+                return static_cast<unsigned> (value - '0');
+            if (value >= 'a' && value <= 'f')
+                return static_cast<unsigned> (
+                  value - 'a' + 10);
+            if (value >= 'A' && value <= 'F')
+                return static_cast<unsigned> (
+                  value - 'A' + 10);
+            throw std::invalid_argument (
+              "Pending creation SHA-256 is not hexadecimal");
+        };
+        for (std::size_t index = 0; index < sha256.size ();
+             ++index)
+            sha256[index] = static_cast<std::byte> (
+              (hex_value (result[offset + 2][index * 2]) << 4u)
+              | hex_value (
+                result[offset + 2][index * 2 + 1]));
+        const auto encoded_size =
+          std::stoull (result[offset + 3]);
+        if (encoded_size > 1024u * 1024u)
+            throw std::invalid_argument (
+              "Pending creation encoded size exceeds 1 MiB");
+        return pending_object_creation_t{
+          result[offset],
+          result[offset + 1],
+          sha256,
+          static_cast<std::uint32_t> (encoded_size)};
     }
 
     static void validate_aggregate_prepare_request (
@@ -7545,12 +7636,12 @@ class redis_location_store_t final : public location_store_t,
               detail::redis_location_scripts_t::read_authority),
             keys.begin (), keys.end (), args.begin (),
             args.end ()));
-        if (result.size () != 15)
+        if (result.size () != 19)
             throw sw::redis::Error (
               "invalid authority read result");
         const auto now =
           detail::redis_location_script_result_t::from_unix_ms (
-            std::stoll (result[14]));
+            std::stoll (result[18]));
         if (result[0] == "missing")
             return authority_missing_t{now};
         if (result[0] != "found")
@@ -7563,7 +7654,8 @@ class redis_location_store_t final : public location_store_t,
           std::stoull (result[4]),
           {result[5], std::stoll (result[6])},
           now,
-          parse_allocation (result, 7)};
+          parse_allocation (result, 7),
+          parse_pending_creation (result, 14)};
     }
 
     authority_read_result_t read_authority_at_sync (
@@ -7607,14 +7699,16 @@ class redis_location_store_t final : public location_store_t,
         if (revisions.empty ())
             return authority_missing_t{store_now};
         const auto &revision = revisions.front ();
-        static constexpr std::array<std::string_view, 12>
+        static constexpr std::array<std::string_view, 16>
           fields{
             "storeVersion", "payload", "objectGeneration",
             "authorityOwnerGeneration", "ownerId",
             "ownerLeaseGeneration", "allocationState",
             "objectKind", "stableType", "descriptorKey",
             "descriptorLifecycleGeneration",
-            "capacityDelta"};
+            "capacityDelta", "pendingCreationReservationId",
+            "pendingCreationReference", "pendingCreationSha256",
+            "pendingCreationEncodedSize"};
         std::vector<std::string> names;
         names.reserve (fields.size ());
         for (const auto field : fields)
@@ -7629,7 +7723,7 @@ class redis_location_store_t final : public location_store_t,
             names.begin (), names.end ()));
         if (values.size () != fields.size ()
             || std::any_of (
-              values.begin (), values.end (),
+              values.begin (), values.begin () + 12,
               [] (const auto &value) {
                   return !static_cast<bool> (value);
               }))
@@ -7638,7 +7732,11 @@ class redis_location_store_t final : public location_store_t,
           *values[0], *values[1], *values[2], *values[3],
           *values[4], *values[5], *values[6], *values[7],
           *values[8], *values[9], std::string{},
-          *values[10], *values[11]};
+          *values[10], *values[11],
+          values[12] ? *values[12] : std::string{},
+          values[13] ? *values[13] : std::string{},
+          values[14] ? *values[14] : std::string{},
+          values[15] ? *values[15] : std::string{"0"}};
         return authority_snapshot_t{
           encoded[0],
           string_to_bytes (encoded[1]),
@@ -7646,7 +7744,8 @@ class redis_location_store_t final : public location_store_t,
           std::stoull (encoded[3]),
           {encoded[4], std::stoll (encoded[5])},
           store_now,
-          parse_allocation (encoded, 6)};
+          parse_allocation (encoded, 6),
+          parse_pending_creation (encoded, 13)};
     }
 
     std::int64_t redis_time_ms_sync ()

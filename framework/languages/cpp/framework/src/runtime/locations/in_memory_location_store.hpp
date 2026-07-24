@@ -17,8 +17,7 @@ namespace zlink::framework::runtime
 class in_memory_location_store_t final : public location_store_t,
                                          public client_server_location_store_t,
                                          public fanout_location_store_t,
-                                         public location_change_stamp_store_t,
-                                         public pending_creation_projection_provider_t
+                                         public location_change_stamp_store_t
 {
   public:
     in_memory_location_store_t () = default;
@@ -27,36 +26,6 @@ class in_memory_location_store_t final : public location_store_t,
       std::uint64_t initial_store_revision) :
         _store_revision (initial_store_revision)
     {
-    }
-
-    std::optional<pending_creation_projection_t>
-    read_pending_creation (object_creation_key_t key) override
-    {
-        std::lock_guard lock (_gate);
-        const auto found = _reservations.find (object_key (key));
-        if (found == _reservations.end ()
-            || found->second.status != reservation_status_t::prepared)
-            return std::nullopt;
-        return pending_creation_projection_t{
-          found->second.request.intent, found->second.fence};
-    }
-
-    std::optional<pending_creation_projection_t>
-    read_verified_pending_creation (
-      object_creation_key_t key,
-      const object_reservation_fence_t &fence) override
-    {
-        std::lock_guard lock (_gate);
-        const auto found = _reservations.find (object_key (key));
-        if (found == _reservations.end ()
-            || found->second.status != reservation_status_t::prepared
-            || !same_fence (found->second.fence, fence))
-            return std::nullopt;
-        const auto &request = found->second.request;
-        if (request.intent.request_content_reference.empty ())
-            return std::nullopt;
-        return pending_creation_projection_t{
-          request.intent, found->second.fence};
     }
 
     task_t<location_write_result_t> update_mesh_node (
@@ -1017,7 +986,13 @@ class in_memory_location_store_t final : public location_store_t,
            request.target.mesh_name,
            request.target.node_rid,
            request.target.node_lifecycle_generation,
-           request.pending_capacity_delta}};
+           request.pending_capacity_delta},
+          pending_object_creation_t{
+            fence.reservation_id,
+            request.intent.request_content_reference,
+            request.intent.request_sha256,
+            static_cast<std::uint32_t> (
+              request.intent.request_encoded_size)}};
         reservation_state_t reservation{
           request, fence, creating, reservation_status_t::prepared};
         _authorities[key] = creating;

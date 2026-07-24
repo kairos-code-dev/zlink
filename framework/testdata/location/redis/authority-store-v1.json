@@ -51,6 +51,25 @@
     "descriptorLifecycleGeneration",
     "capacityDelta"
   ],
+  "pendingCurrentHashFields": [
+    "authorityKey",
+    "payload",
+    "storeVersion",
+    "objectGeneration",
+    "authorityOwnerGeneration",
+    "ownerId",
+    "ownerLeaseGeneration",
+    "allocationState",
+    "objectKind",
+    "stableType",
+    "descriptorKey",
+    "descriptorLifecycleGeneration",
+    "capacityDelta",
+    "pendingCreationReservationId",
+    "pendingCreationReference",
+    "pendingCreationSha256",
+    "pendingCreationEncodedSize"
+  ],
   "capacityBuckets": {
     "segmentLengthUnit": "UTF-8 bytes",
     "descriptorKey": "4:game12:67616d652d61",
@@ -82,6 +101,26 @@
       "descriptorLifecycleGeneration",
       "capacityDelta"
     ],
+    "pendingFullSnapshotSuffixes": [
+      "deleted",
+      "authorityKey",
+      "payload",
+      "storeVersion",
+      "objectGeneration",
+      "authorityOwnerGeneration",
+      "ownerId",
+      "ownerLeaseGeneration",
+      "allocationState",
+      "objectKind",
+      "stableType",
+      "descriptorKey",
+      "descriptorLifecycleGeneration",
+      "capacityDelta",
+      "pendingCreationReservationId",
+      "pendingCreationReference",
+      "pendingCreationSha256",
+      "pendingCreationEncodedSize"
+    ],
     "tombstoneSuffixes": [
       "deleted",
       "authorityKey"
@@ -109,7 +148,11 @@
       "stableType": "Game.Session",
       "descriptorKey": "4:game12:67616d652d61",
       "descriptorLifecycleGeneration": "7",
-      "capacityDelta": "1"
+      "capacityDelta": "1",
+      "pendingCreationReservationId": "00112233445566778899aabbccddeeff",
+      "pendingCreationReference": "inline-v1:00000000:",
+      "pendingCreationSha256": "5a00000000000000000000000000000000000000000000000000000000000000",
+      "pendingCreationEncodedSize": "0"
     },
     "storeNowMs": "1721001600000"
   },

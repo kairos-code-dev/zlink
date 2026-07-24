@@ -272,19 +272,22 @@ mesh_node_host_service_t::create_user_spot (
                  std::get_if<object_reserve_conflict_t> (&reserved)) {
         const auto *snapshot =
           std::get_if<authority_snapshot_t> (&conflict->current);
-        auto *projection =
-          dynamic_cast<pending_creation_projection_provider_t *> (
-            _location_store.get ());
-        const auto pending = projection
-          ? projection->read_pending_creation (key)
-          : std::nullopt;
-        if (!snapshot || !pending
+        if (!snapshot || !snapshot->pending_creation
             || snapshot->allocation.stable_type != stable_type)
             return task_t<spot_create_result_t> (
               result_t<spot_create_result_t>::failure (
                 framework_error_kind_t::request_failed,
                 "User Spot Creating attempt cannot be joined"));
-        fence = pending->fence;
+        fence = {
+          snapshot->pending_creation->reservation_id,
+          snapshot->store_version,
+          snapshot->object_generation,
+          snapshot->authority_owner_generation,
+          {snapshot->allocation.mesh_name,
+           snapshot->allocation.node_rid,
+           snapshot->allocation.node_lifecycle_generation,
+           snapshot->owner},
+          snapshot->allocation.capacity_delta};
         target.mesh_name = fence.target.mesh_name;
         target.rid = zlink::routing_id_t::from (
           std::string (fence.target.node_rid.value ()));

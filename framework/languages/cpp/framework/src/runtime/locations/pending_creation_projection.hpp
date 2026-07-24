@@ -53,12 +53,6 @@ inline std::string encode_inline_creation_content (
     return result;
 }
 
-struct pending_creation_projection_t
-{
-    object_creation_intent_t intent;
-    object_reservation_fence_t fence;
-};
-
 inline std::optional<std::vector<std::byte>>
 decode_inline_creation_content (std::string_view reference)
 {
@@ -116,23 +110,5 @@ decode_inline_creation_content (std::string_view reference)
         return std::nullopt;
     return payload;
 }
-
-// Internal capability used by an operation target to obtain the immutable
-// creation content that belongs to an exact reservation fence. Implementations
-// return the exact reservation intent. The operation target decodes and checks
-// the application content reference before invoking application lifecycle code.
-class pending_creation_projection_provider_t
-{
-  public:
-    virtual ~pending_creation_projection_provider_t () = default;
-
-    virtual std::optional<pending_creation_projection_t>
-    read_pending_creation (object_creation_key_t key) = 0;
-
-    virtual std::optional<pending_creation_projection_t>
-    read_verified_pending_creation (
-      object_creation_key_t key,
-      const object_reservation_fence_t &fence) = 0;
-};
 
 } // namespace zlink::framework::runtime

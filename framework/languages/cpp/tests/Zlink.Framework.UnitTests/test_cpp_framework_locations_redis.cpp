@@ -976,11 +976,72 @@ TEST (ZLinkFrameworkLocationsRedis,
     creation.key.global_id = "redis-profiled";
     creation.intent.placement_profile =
       placement_profile_t{"standard"};
+    creation.intent.request_content_reference =
+      "inline-v1:00000000:";
+    creation.intent.request_sha256[0] =
+      std::byte{0x5a};
+    creation.intent.request_encoded_size = 0;
     const auto reserved =
       store.reserve (creation).result ().value ();
     const auto *reserved_value =
       std::get_if<object_reserved_t> (&reserved);
     ASSERT_NE (nullptr, reserved_value);
+    ASSERT_TRUE (
+      reserved_value->creating.pending_creation.has_value ());
+    EXPECT_EQ (
+      reserved_value->fence.reservation_id,
+      reserved_value->creating.pending_creation
+        ->reservation_id);
+    EXPECT_EQ (
+      creation.intent.request_content_reference,
+      reserved_value->creating.pending_creation
+        ->request_content_reference);
+    EXPECT_EQ (
+      creation.intent.request_sha256,
+      reserved_value->creating.pending_creation
+        ->request_sha256);
+    const auto pending_read =
+      std::get<authority_snapshot_t> (
+        store.read_authority (
+          {"1:redis-profiled"})
+          .result ()
+          .value ());
+    ASSERT_TRUE (pending_read.pending_creation.has_value ());
+    EXPECT_EQ (
+      reserved_value->fence.reservation_id,
+      pending_read.pending_creation->reservation_id);
+    const auto joined =
+      store.reserve (creation).result ().value ();
+    const auto *joined_conflict =
+      std::get_if<object_reserve_conflict_t> (&joined);
+    ASSERT_NE (nullptr, joined_conflict);
+    const auto *joined_snapshot =
+      std::get_if<authority_snapshot_t> (
+        &joined_conflict->current);
+    ASSERT_NE (nullptr, joined_snapshot);
+    ASSERT_TRUE (
+      joined_snapshot->pending_creation.has_value ());
+    EXPECT_EQ (
+      reserved_value->fence.reservation_id,
+      joined_snapshot->pending_creation->reservation_id);
+    std::vector<std::string> pending_authority_fields;
+    redis.hkeys (
+      redis_location_key_schema_t::authority_key (
+        options->key_prefix, "1:redis-profiled"),
+      std::back_inserter (pending_authority_fields));
+    std::sort (
+      pending_authority_fields.begin (),
+      pending_authority_fields.end ());
+    auto pending_fixture_fields =
+      read_authority_store_fixture ()
+        .at ("pendingCurrentHashFields")
+        .get<std::vector<std::string>> ();
+    std::sort (
+      pending_fixture_fields.begin (),
+      pending_fixture_fields.end ());
+    EXPECT_EQ (
+      pending_fixture_fields,
+      pending_authority_fields);
     const auto committed =
       store
         .commit (
@@ -991,6 +1052,30 @@ TEST (ZLinkFrameworkLocationsRedis,
     const auto *committed_value =
       std::get_if<object_committed_t> (&committed);
     ASSERT_NE (nullptr, committed_value);
+    EXPECT_FALSE (
+      committed_value->ready.pending_creation.has_value ());
+    const auto pending_revision =
+      revision_hex (
+        reserved_value->creating.store_version);
+    const auto history_key =
+      redis_location_key_schema_t::authority_history_key (
+        options->key_prefix, "1:redis-profiled");
+    const auto history_reservation =
+      redis.hget (
+        history_key,
+        pending_revision + ":pendingCreationReservationId");
+    ASSERT_TRUE (history_reservation);
+    EXPECT_EQ (
+      reserved_value->fence.reservation_id,
+      *history_reservation);
+    const auto history_reference =
+      redis.hget (
+        history_key,
+        pending_revision + ":pendingCreationReference");
+    ASSERT_TRUE (history_reference);
+    EXPECT_EQ (
+      creation.intent.request_content_reference,
+      *history_reference);
     std::vector<std::string> authority_fields;
     redis.hkeys (
       redis_location_key_schema_t::authority_key (
@@ -1551,6 +1636,54 @@ TEST (ZLinkFrameworkLocationsRedis, LuaScriptsPreserveDotnetAtomicStoreContract)
       reserve_relocation.find (
         "liveLease(KEYS[2], ARGV[9])"));
 
+    const auto reserve_object =
+      std::string (
+        redis_location_scripts_t::reserve_object);
+    EXPECT_NE (
+      std::string::npos,
+      reserve_object.find (
+        "'pendingCreationReservationId', ARGV[16]"));
+    EXPECT_NE (
+      std::string::npos,
+      reserve_object.find (
+        "'pendingCreationReference', ARGV[20]"));
+    EXPECT_NE (
+      std::string::npos,
+      reserve_object.find (
+        "'pendingCreationSha256', ARGV[21]"));
+    EXPECT_NE (
+      std::string::npos,
+      reserve_object.find (
+        "'pendingCreationEncodedSize', ARGV[22]"));
+    EXPECT_NE (
+      std::string::npos,
+      reserve_object.find (
+        "allocationState') == 'pending'"));
+
+    const auto read_authority =
+      std::string (
+        redis_location_scripts_t::read_authority);
+    EXPECT_NE (
+      std::string::npos,
+      read_authority.find (
+        "'pendingCreationReservationId'"));
+    EXPECT_NE (
+      std::string::npos,
+      read_authority.find (
+        "'pendingCreationReference'"));
+
+    const auto commit_object =
+      std::string (
+        redis_location_scripts_t::commit_object);
+    EXPECT_NE (
+      std::string::npos,
+      commit_object.find (
+        "redis.call('HDEL', KEYS[1]"));
+    EXPECT_NE (
+      std::string::npos,
+      commit_object.find (
+        "'pendingCreationEncodedSize'"));
+
     const auto prepare_aggregate =
       std::string (
         redis_location_scripts_t::prepare_aggregate);
@@ -1723,6 +1856,17 @@ TEST (ZLinkFrameworkLocationsRedis,
       expected_fields,
       fixture.at ("currentHashFields")
         .get<std::vector<std::string>> ());
+    auto expected_pending_fields = expected_fields;
+    expected_pending_fields.insert (
+      expected_pending_fields.end (),
+      {"pendingCreationReservationId",
+       "pendingCreationReference",
+       "pendingCreationSha256",
+       "pendingCreationEncodedSize"});
+    EXPECT_EQ (
+      expected_pending_fields,
+      fixture.at ("pendingCurrentHashFields")
+        .get<std::vector<std::string>> ());
     auto expected_history_fields = expected_fields;
     expected_history_fields.insert (
       expected_history_fields.begin (), "deleted");
@@ -1730,6 +1874,15 @@ TEST (ZLinkFrameworkLocationsRedis,
       expected_history_fields,
       fixture.at ("historyEncoding")
         .at ("fullSnapshotSuffixes")
+        .get<std::vector<std::string>> ());
+    auto expected_pending_history_fields =
+      expected_pending_fields;
+    expected_pending_history_fields.insert (
+      expected_pending_history_fields.begin (), "deleted");
+    EXPECT_EQ (
+      expected_pending_history_fields,
+      fixture.at ("historyEncoding")
+        .at ("pendingFullSnapshotSuffixes")
         .get<std::vector<std::string>> ());
     EXPECT_EQ (
       (std::vector<std::string>{

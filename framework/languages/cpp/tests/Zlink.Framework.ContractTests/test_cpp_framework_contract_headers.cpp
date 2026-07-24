@@ -538,6 +538,12 @@ static_assert (std::is_base_of_v<zlink::framework::route_location_store_t,
 static_assert (std::is_base_of_v<zlink::framework::owner_lease_store_t,
                                  zlink::framework::location_store_t>);
 static_assert (
+  std::is_same_v<
+    decltype (std::declval<zlink::framework::authority_snapshot_t> ()
+                .pending_creation),
+    std::optional<
+      zlink::framework::pending_object_creation_t>>);
+static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::location_store_t &> ()
                              .remove_all_by_owner (
                                std::declval<zlink::framework::

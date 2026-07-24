@@ -59,7 +59,9 @@ final class HostTest {
     static class ProfileChannelConfig {
         @Bean
         ZLinkFrameworkConfigurer profileChannelConfigurer() {
-            return options -> { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
+            return options -> options.addClientServerChannel("profile")
+                .client()
+                .connect("inproc://profile-server");
         }
     }
 

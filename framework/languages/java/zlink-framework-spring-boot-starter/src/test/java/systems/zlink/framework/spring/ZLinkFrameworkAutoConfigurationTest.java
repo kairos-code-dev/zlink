@@ -675,7 +675,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class TestConfig {
         @Bean
         ZLinkFrameworkConfigurer profileChannelConfigurer() {
-            return options -> { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
+            return options -> options.addClientServerChannel("profile")
+                .client()
+                .connect("inproc://profile-server");
         }
     }
 
@@ -715,7 +717,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
     static class EnabledTestConfig {
         @Bean
         ZLinkFrameworkConfigurer profileChannelConfigurer() {
-            return options -> { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
+            return options -> options.addClientServerChannel("profile")
+                .client()
+                .connect("inproc://profile-server");
         }
     }
 
@@ -908,9 +912,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer scannedHandlerConfigurer(String springAnnotatedEndpoint) {
             return options -> {
                 options.addHandlersFromPackageOf(ScannedHandlerConfig.class);
-                { var channel = options.addClientServerChannel("profile").enableServer(springAnnotatedEndpoint);
-            channel.enableClient(springAnnotatedEndpoint);
-                    channel.addHandlerGroup("spring-scanned"); };
+                var channel = options.addClientServerChannel("profile");
+                channel.client().connect(springAnnotatedEndpoint);
+                channel.server().listen().addHandlerGroup("spring-scanned");
             };
         }
     }
@@ -928,9 +932,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
             String autoRegisteredEndpoint) {
             return options -> {
                 options.addHandlersFromPackageOf(AutoRegisteredHandlerConfig.class);
-                { var channel = options.addClientServerChannel("profile").enableServer(autoRegisteredEndpoint);
-            channel.enableClient(autoRegisteredEndpoint);
-                    channel.addHandlerGroup("spring-auto-registered"); };
+                var channel = options.addClientServerChannel("profile");
+                channel.client().connect(autoRegisteredEndpoint);
+                channel.server().listen().addHandlerGroup("spring-auto-registered");
             };
         }
     }
@@ -948,9 +952,9 @@ final class ZLinkFrameworkAutoConfigurationTest {
             String autoRegisteredSetEndpoint) {
             return options -> {
                 options.addHandlersFromPackageOf(AutoRegisteredSetHandlerConfig.class);
-                { var channel = options.addClientServerChannel("profile").enableServer(autoRegisteredSetEndpoint);
-            channel.enableClient(autoRegisteredSetEndpoint);
-                    channel.addHandlerGroup("spring-auto-registered-set"); };
+                var channel = options.addClientServerChannel("profile");
+                channel.client().connect(autoRegisteredSetEndpoint);
+                channel.server().listen().addHandlerGroup("spring-auto-registered-set");
             };
         }
     }
@@ -977,13 +981,12 @@ final class ZLinkFrameworkAutoConfigurationTest {
         ZLinkFrameworkConfigurer filteredHandlerConfigurer(String filteredEndpoint) {
             return options -> {
                 options.useFilter(SpringInjectedReplyFilter.class);
-                { var channel = options.addClientServerChannel("profile").enableServer(filteredEndpoint);
-            channel.enableClient(filteredEndpoint);
-                    channel.addRequestHandler(
+                var channel = options.addClientServerChannel("profile");
+                channel.client().connect(filteredEndpoint);
+                channel.server().listen().addRequestHandler(
                         InjectedProfileRequestHandler.class,
                         FilteredProfileRequest.class,
-                        ProfileReply.class,
-                        "FilteredProfile"); };
+                        ProfileReply.class);
             };
         }
     }

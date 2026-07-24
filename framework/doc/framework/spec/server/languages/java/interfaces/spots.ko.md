@@ -107,18 +107,25 @@ Factory registration의 정확한 builder member는 [구성과 host](configurati
 Actor·User Spot·Instance Spot factory는 explicit relocation policy를 받으며 생략 overload는 제공하지 않는다.
 Spot manager는 User Spot 전용이다. `create(spotType)`과 `getOrCreate(spotId, spotType)`만 User Spot의
 creation intent를 만들며 Instance Spot create/get-or-create member와 kind marker를 제공하지 않는다.
-Caller가 `<prefix>-entry-<uuid-v4>` reserved pattern의 RID를 User Spot get-or-create 또는 Instance Spot
+Caller가 `<prefix>-entry-<uuid-v4>` reserved pattern의 SpotId를 User Spot get-or-create 또는 Instance Spot
 address로 제시하면 Location Store를 읽거나 mutation하기 전에 `InvalidConfiguration`으로 거부한다.
 `<uuid-v4>`는 RFC 4122 UUID v4의 lowercase canonical 36-character `8-4-4-4-12` 표현이다. Entry mapping은
-descriptor의 exact RID를 사용하며 문자열 parsing으로 소유 MeshNode를 찾지 않는다.
-`create(spotType)`의 RID는 UUID v4 random identity다. 첫 active authority 충돌은 기존 record를 변경하지
+descriptor의 exact SpotId를 사용하며 문자열 parsing으로 소유 MeshNode를 찾지 않는다.
+`create(spotType)`의 SpotId는 UUID v4 random identity다. 첫 active authority 충돌은 기존 record를 변경하지
 않고 `SpotIdConflict`로 즉시 끝나며 UUID 생성과 reservation은 각각 1건, factory 실행은 0건이다.
 두 번째 UUID나 reservation을 만들지 않는다.
+
+User Spot create와 get-or-create는 `submit()`에서 `ZLinkSpotCreateResult`를 유지한다. `yield()`도 같은
+결과를 반환하지만 `SPOT_WIDE` User Spot과 Instance Spot application callback에서만 현재 Spot gate를
+반납한다. 다른 문맥에서는 reservation, factory 실행과 queue 변경 전에 `InvalidConfiguration`으로 끝낸다.
+Spot send에는 `yield()`를 제공하지 않으며 상위 `ZLinkSendCall.submit()`의 반환은
+`CompletionStage<Void>`다.
 
 일반 Spot send/request의 address는 global SpotId 하나다. 두 operation은 각각 `ZLinkSpotSendCall`과
 `ZLinkSpotRequestCall`을 반환한다. `instanceSpot()` 또는 `instanceSpot(stableType)`을 호출한 operation만
 Missing Instance Spot의 cold activation을 시작할 수 있다. Marker가 없는 operation은 Missing authority를
-`TARGET_NOT_FOUND` 또는 request target-not-found 오류로 끝내며 creation intent를 만들지 않는다.
+send에서는 `SPOT_ROUTE_NOT_FOUND`, request에서는 `REQUEST_TARGET_NOT_FOUND`로 끝내며 creation intent를
+만들지 않는다.
 
 `instanceSpot()`은 existing authority가 있으면 등록된 Instance type 수와 관계없이 authority에 저장된 stable
 type을 사용한다. Missing authority라면 placement가 선택한 Mesh에서 serving 가능한 distinct Instance type이
@@ -258,7 +265,7 @@ Ref JSON의 unknown property는 무시하고 duplicate property, required proper
 
 ```java
 public final class systems.zlink.framework.spots.SpotRef extends java.lang.Record {
-  public systems.zlink.framework.spots.SpotRef(systems.zlink.contracts.core.RoutingId, long, java.lang.String, systems.zlink.contracts.core.RoutingId);
+  public systems.zlink.framework.spots.SpotRef(java.lang.String, long, java.lang.String, systems.zlink.contracts.core.RoutingId);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -427,8 +434,8 @@ public final class systems.zlink.framework.spots.ZLinkSpotKind extends java.lang
 }
 public interface systems.zlink.framework.spots.ZLinkSpotManager {
   public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall create(java.lang.String);
-  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall getOrCreate(systems.zlink.contracts.core.RoutingId, java.lang.String);
-  public abstract java.util.concurrent.CompletionStage<java.util.Optional<systems.zlink.framework.spots.SpotRef>> find(systems.zlink.contracts.core.RoutingId);
+  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall getOrCreate(java.lang.String, java.lang.String);
+  public abstract java.util.concurrent.CompletionStage<java.util.Optional<systems.zlink.framework.spots.SpotRef>> find(java.lang.String);
   public abstract java.util.concurrent.CompletionStage<java.lang.Boolean> close(systems.zlink.framework.spots.SpotRef);
 }
 public interface systems.zlink.framework.spots.ZLinkSpotCreateCall {
@@ -437,6 +444,7 @@ public interface systems.zlink.framework.spots.ZLinkSpotCreateCall {
   public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
   public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall timeout(java.time.Duration);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> submit();
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> yield();
 }
 public interface systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall {
   public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall inMesh(java.lang.String);
@@ -444,6 +452,7 @@ public interface systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall {
   public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
   public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall timeout(java.time.Duration);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> submit();
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> yield();
 }
 public interface systems.zlink.framework.spots.ZLinkSpotRequestCall extends systems.zlink.framework.channels.ZLinkRequestCall {
   public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall instanceSpot();

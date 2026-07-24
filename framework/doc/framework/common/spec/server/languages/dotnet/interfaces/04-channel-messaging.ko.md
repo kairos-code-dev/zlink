@@ -122,7 +122,7 @@ public interface IZLinkRouteClient
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestToChannel<TRequest>(
+    IZLinkChannelRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 }
@@ -167,6 +167,6 @@ public interface IZLinkFanoutHandler<in TEvent>
 overload를 사용한다. Topic을 생략하면 Framework가 event의 [packet name](../../../../01-glossary.ko.md#packet-name)을 topic으로 사용한다. 반환한 전용
 call을 만들 때 topic이 내부 liveness용 exact byte `01 5A 4C 46 31`이면 transport를 시작하지 않고
 `ArgumentException`을 발생시킨다. 반환한 전용
-call은 local publisher transport의 bounded admission만 `ZLinkSubmitResult`로 알린다. `IZLinkPublishCall`과
-`ZLinkPublishResult`는 Logical Multicast의 target별 집계를 위한 별도 계약이며 [classic fanout](../../../../01-glossary.ko.md#classic-fanout)에 사용하지
-않는다.
+call의 `Async(...)`는 local publisher transport가 event를 수락하면 정상 완료한다. Subscriber 수와 수신
+완료는 반환하지 않는다. `IZLinkPublishCall`은 Logical Multicast 전용 call이며
+[classic fanout](../../../../01-glossary.ko.md#classic-fanout)에 사용하지 않는다.

@@ -77,6 +77,7 @@ export interface ZLinkActorCreateCall {
     request(request: unknown): this;
     timeout(timeoutMs: number): this;
     submit(signal?: AbortSignal): Promise<ZLinkActorCreateResult>;
+    yield(signal?: AbortSignal): Promise<ZLinkActorCreateResult>;
 }
 
 export interface ZLinkActorGetOrCreateCall {
@@ -84,6 +85,7 @@ export interface ZLinkActorGetOrCreateCall {
     request(request: unknown): this;
     timeout(timeoutMs: number): this;
     submit(signal?: AbortSignal): Promise<ZLinkActorCreateResult>;
+    yield(signal?: AbortSignal): Promise<ZLinkActorCreateResult>;
 }
 
 export type ZLinkActorCreateResult =
@@ -104,12 +106,15 @@ export interface ZLinkActorRequestCall {
 
 export interface ZLinkActorSendCall {
     metadata(key: string, value: string): this;
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 ```
 
 `create`와 `getOrCreate`가 반환하는 call은 single-use다. 같은 option을 두 번 설정하면
-`InvalidConfiguration`, terminal `submit(...)`을 두 번 호출하면 `AlreadySubmitted`다. `inMesh(...)`를
+`InvalidConfiguration`, terminal `submit(...)` 또는 `yield(...)`를 두 번 호출하면 `AlreadySubmitted`다. 두
+terminal은 같은 `ZLinkActorCreateResult`를 반환한다. `yield(...)`는 `SpotWide` User Spot 또는 Instance Spot
+application callback에서만 현재 Spot gate를 반납하며, 다른 문맥에서는 reservation과 factory 실행 전에
+`InvalidConfiguration`으로 완료한다. `inMesh(...)`를
 생략했는데 eligible Mesh가 둘 이상이면 `MeshSelectionRequired`, object-role Mesh가 하나도 없으면
 `ObjectClientNotConfigured`다. 명시한 Mesh가 없으면 `MeshNotFound`다.
 Target RID나 predicate를 지정하는 최초 배치 option은 공개하지 않는다.

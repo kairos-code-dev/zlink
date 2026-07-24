@@ -50,7 +50,8 @@ export declare enum ZLinkFrameworkErrorKind {
     SpotGenerationStale = "spotGenerationStale",
     SpotMoving = "spotMoving",
     RelocationDataLost = "relocationDataLost",
-    SpotIdConflict = "spotIdConflict"
+    SpotIdConflict = "spotIdConflict",
+    RuntimeShutdown = "runtimeShutdown"
 }
 
 export declare const ZLINK_FRAMEWORK_ERROR_KIND_VALUES:
@@ -137,10 +138,12 @@ export declare enum ZLinkLocationAutoConnectType {
 `MeshNotFound=24`, `InvalidConfiguration=25`, `AlreadySubmitted=26`,
 `ActorGenerationStale=27`, `ActorMoving=28`, `DeadlineExceeded=29`,
 `PlacementCapacityExhausted=30`, `RoutingIdConflict=31`, `SpotGenerationStale=32`,
-`SpotMoving=33`, `RelocationDataLost=34`, `SpotIdConflict=35`를 반환한다. `RelocationDataLost`는 Location authority가 공개한 Relocation
+`SpotMoving=33`, `RelocationDataLost=34`, `SpotIdConflict=35`, `RuntimeShutdown=36`을 반환한다.
+`RelocationDataLost`는 Location authority가 공개한 Relocation
 payload가 영구적으로 없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 이전 owner로 rollback하지
 않는다. 기본 retriable kind는 `RouteNotConnected`, `ActorLocationStale`,
 `ActorMoving`, `DeadlineExceeded`, `PlacementCapacityExhausted`, `SpotMoving`이다.
+`RuntimeShutdown`은 runtime이 신규 admission을 받지 않는 terminal state에서 사용한다.
 
 ## 2. Location change
 
@@ -413,6 +416,7 @@ export interface ZLinkMessageFlowEvent {
     readonly remoteSnapshotCount?: bigint;
     readonly remoteAdmittedCount?: bigint;
     readonly remoteDroppedCount?: bigint;
+    readonly remoteUnreachableCount?: bigint;
     readonly localSnapshotCount?: bigint;
     readonly localAdmittedCount?: bigint;
     readonly localDroppedCount?: bigint;
@@ -587,6 +591,7 @@ export interface ZLinkLogicalMulticastSnapshot {
     readonly remoteSnapshotCount: bigint;
     readonly remoteAdmittedCount: bigint;
     readonly remoteDroppedCount: bigint;
+    readonly remoteUnreachableCount: bigint;
     readonly localSnapshotCount: bigint;
     readonly localAdmittedCount: bigint;
     readonly localDroppedCount: bigint;
@@ -697,6 +702,7 @@ export interface ZLinkMeshRuntimeEvent {
     readonly remoteSnapshotCount?: bigint;
     readonly remoteAdmittedCount?: bigint;
     readonly remoteDroppedCount?: bigint;
+    readonly remoteUnreachableCount?: bigint;
     readonly localSnapshotCount?: bigint;
     readonly localAdmittedCount?: bigint;
     readonly localDroppedCount?: bigint;

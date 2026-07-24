@@ -149,15 +149,15 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
 
 우선순위: `P0`
 
-**검증 질문:** remote ROUTER target이 송신을 수락할 수 없을 때 backpressure 결과와 target 집계가
+**검증 질문:** remote ROUTER target이 송신을 수락할 수 없을 때 public publish 결과와 분리된 target 집계가
 함께 관찰되는가.
 
 - 절차: `svc-b` 방향 ROUTER 송신 HWM에 도달하도록 수신을 막고 Logical Multicast를 짧은 send
   timeout으로 제출한다. 다른 remote target은 수락 가능한 상태로 둔다.
-- 검증: operation은 성공으로 가장하지 않고 backpressure 또는 timeout terminal result를 반환한다.
-  `zlink.runtime.mesh_node.multicast_backpressured` event가 발생하며 후속 snapshot에서 submitted,
-  backpressured와 remote·local snapshot/admitted/dropped 수가 실제 target 결과와 일치한다. 앞에서
-  수락된 target의 payload는 취소되지 않는다.
+- 검증: Publish operation은 고정 snapshot을 한 번 처리한 뒤 반환 데이터 없이 정상 완료한다.
+  `zlink.runtime.mesh_node.multicast_backpressured` event가 발생하며 후속 snapshot의
+  published·backpressured와 remote·local snapshot/admitted/dropped 수가 실제 target 결과와 일치한다.
+  앞에서 수락된 target의 payload는 취소되지 않고 전체 publish를 rollback하거나 자동 재시도하지 않는다.
 - 세부 동작: [Spot Messaging §4.1](../../spec/server/20-spot-messaging.ko.md#41-target별-수락)과
   [Runtime Monitoring §3](../../spec/server/50-runtime-monitoring.ko.md#3-event-identifiers)의
   target별 제출 계약.

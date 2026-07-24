@@ -48,7 +48,7 @@ client.post("/games")               // operation
       .query("region", "kr")
       .body(createGameReq)
       .timeout(3s)
-      .async<CreateGameRes>()       // terminator
+      .submit<CreateGameRes>()      // C++·Java·Node의 response completion terminator
 ```
 
 - verb 7종: `get` / `post` / `put` / `delete` / `patch` / `head` / `options`.
@@ -58,30 +58,30 @@ client.post("/games")               // operation
 builder의 세부 계약(path 형식, percent-encoding, body 소스별 retry 가능 여부 등)은
 [03 Request builder](03-request-builder.ko.md)가 소유한다.
 
-## 3. 실행 terminator — framework와 같은 세 축 (+ callback)
+## 3. 실행 terminator — one-way와 response completion (+ callback)
 
-HTTP client의 완료 표면은 `submit`, `async`와 callback이다. Shared Spot gate를 반납하는 `Yield`는
-서버 request와 worker allowlist가 소유하며 HTTP request builder에는 포함하지 않는다
+HTTP client의 완료 표면은 one-way submission, response completion과 callback이다. 정확한 이름은
+.NET `Async`, Kotlin wrapper `await`, Java·Node·C++ `submit`이다. Shared Spot gate를 반납하는
+`Yield`는 서버 request와 worker allowlist가 소유하며 HTTP request builder에는 포함하지 않는다
 ([04 §1.1](../04-async-execution-policy.ko.md)).
 
-| terminator | 완료를 기다리나 | Spot 실행 줄 |
+| 실행 방식 | 무엇을 기다리나 | Spot 실행 줄 |
 |---|---|---|
-| **submit** | 아니오 | 그대로 진행. 응답을 쓰지 않는 fire 경로(telemetry beacon 등) |
-| **async** | 예 | **turn을 유지한다.** handler는 하나의 turn이다 |
+| **one-way submission** | queue admission 완료 | **turn을 유지한다.** 정상 완료 값은 없다 |
+| **response completion** | HTTP response | **turn을 유지한다.** handler는 하나의 turn이다 |
 
-**callback은 terminator가 아니다.** HTTP client의 terminator는 `submit`과 `async`다. Callback은
-**awaitable을 쓰지 않는 호출자**(CLI,
+**callback은 awaitable을 쓰지 않는 호출자**(CLI,
 이벤트 루프 기반 client)를 위한 **별도 완료 경로**다. HTTP client는 그 경로도 함께 제공한다.
 
-Spot 실행 문맥에서 callback을 쓰면 **`submit`과 같다** — 호출은 turn을 잡지 않고 그대로 진행하고,
-완료 callback은 그 Spot 실행 줄의 **새 turn**으로 큐에 들어간다. 완료 값으로 그 turn의 판단을
-이어가야 하면 callback이 아니라 `async`를 쓴다.
+Spot 실행 문맥에서 callback을 쓰면 호출은 기다리지 않고 그대로 진행하며, 완료 callback은 그 Spot
+실행 줄의 **새 turn**으로 큐에 들어간다. 완료 값으로 같은 turn의 판단을 이어가야 하면 callback 대신
+언어별 response completion terminator를 쓴다.
 
 ### 3.1 외부 HTTP를 기다리면서 Spot gate를 반납하는 방법
 
 HTTP client call 자체는 shared Spot gate를 반납하지 않는다. Actor 입·퇴장 중 외부 API를 기다리면서
-다른 Spot 작업을 진행해야 하면 I/O worker에서 HTTP client의 `async`를 실행하고 worker call의 `Yield`로
-기다린다.
+다른 Spot 작업을 진행해야 하면 I/O worker에서 HTTP client의 response completion terminator를
+실행하고 worker call의 `Yield`로 기다린다.
 
 ```
 var profile = await Context
@@ -102,7 +102,8 @@ worker call이 소유하므로 HTTP package가 Spot execution context를 판정�
   어디서 재개할지 정한다.
 - **framework는 DI 등록 시 callback completion scheduler를 주입한다.** callback은 원래 Spot 실행 줄의
   새 turn으로 들어간다.
-- DI와 단독 사용 모두 HTTP request builder에 `yield`를 노출하지 않는다. `async`와 callback만 쓴다.
+- DI와 단독 사용 모두 HTTP request builder에 `yield`를 노출하지 않는다. 언어별 response
+  completion terminator와 callback만 쓴다.
 
 C++ HTTP client는 같은 scheduler seam을 `coroutines(resume_scheduler)`와
 `framework_resume_scheduler_t`로 표현한다.
@@ -126,8 +127,8 @@ handler 안에서 client를 만들지 않는다 — 연결 pool과 turn seam을 
 
 | 표면 | 누가 쓰나 | terminator |
 |------|-----------|------------|
-| 정적 팩토리 | CLI · client 시나리오 | `async` / callback |
-| **DI 주입 client** | **Spot handler · 서버 코드** | `submit` / `async` / callback |
+| 정적 팩토리 | CLI · client 시나리오 | response completion / callback |
+| **DI 주입 client** | **Spot handler · 서버 코드** | one-way / response completion / callback |
 
 ## 5. Codec
 
@@ -156,9 +157,9 @@ typed body의 encode/decode는 그 registry가 담당한다. raw body API는 reg
 
 | 항목 | 검증 |
 |---|---|
-| terminator 축 | `submit` / `async`와 callback 완료 경로가 있고, blocking 언래핑 terminator와 HTTP `yield`가 **없다** |
-| turn 유지 | Spot handler가 `async`로 기다리는 동안 같은 Spot의 다른 callback이 시작하지 않는다 |
-| turn 반납 | HTTP `async`를 `RunIoWorker` 안에서 실행하고 worker `Yield`로 기다릴 때만 shared Spot gate를 반납한다 |
+| terminator 축 | one-way와 response completion 및 callback 완료 경로가 있고, blocking 언래핑 terminator와 HTTP `yield`가 **없다** |
+| turn 유지 | Spot handler가 response completion을 기다리는 동안 같은 Spot의 다른 callback이 시작하지 않는다 |
+| turn 반납 | HTTP response completion을 `RunIoWorker` 안에서 실행하고 worker `Yield`로 기다릴 때만 shared Spot gate를 반납한다 |
 | 표면 제한 | DI와 단독 사용 모두 HTTP request builder에 `yield`를 노출하지 않는다 |
 | 등록 | 서버 표면이 DI 주입으로만 얻어지고, handler 안에서 정적 팩토리로 client를 만들지 않는다 |
 | 오류 kind | HTTP client 전용 kind가 없고 framework 공용 kind만 쓴다 |

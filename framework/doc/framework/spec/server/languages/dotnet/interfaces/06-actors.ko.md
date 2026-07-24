@@ -137,6 +137,7 @@ public interface IZLinkActorCreateCall
     IZLinkActorCreateCall Request<TRequest>(TRequest request);
     IZLinkActorCreateCall Timeout(TimeSpan timeout);
     ValueTask<ZLinkActorCreateResult> Async(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorCreateResult> Yield(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorGetOrCreateCall
@@ -146,6 +147,7 @@ public interface IZLinkActorGetOrCreateCall
     IZLinkActorGetOrCreateCall Request<TRequest>(TRequest request);
     IZLinkActorGetOrCreateCall Timeout(TimeSpan timeout);
     ValueTask<ZLinkActorCreateResult> Async(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorCreateResult> Yield(CancellationToken cancellationToken = default);
 }
 
 public abstract record ZLinkActorCreateResult
@@ -167,7 +169,7 @@ public abstract record ZLinkActorCreateResult
 
 public interface IZLinkActorSendCall : IZLinkMetadataCall<IZLinkActorSendCall>
 {
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 
@@ -303,7 +305,10 @@ Actor factory와 relocation policy는
 등록한다. Policy를 생략하는 overload는 제공하지 않는다.
 
 Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal
-`Async(...)`를 두 번 호출하면 `AlreadySubmitted`다. Terminal 호출 시 resolve, reservation, factory와 Ready
+`Async(...)` 또는 `Yield(...)`를 두 번 호출하면 `AlreadySubmitted`다. 두 terminal은 같은
+`ZLinkActorCreateResult`를 반환한다. `Yield(...)`는 `SpotWide` User Spot 또는 Instance Spot application
+callback에서만 현재 Spot gate를 반납하며, 다른 문맥에서는 reservation과 factory 실행 전에
+`InvalidConfiguration`으로 완료한다. Terminal 호출 시 resolve, reservation, factory와 Ready
 barrier 전체에 적용할 deadline 하나를 확정한다. `InMesh(...)`를 생략했을 때 object-role Mesh가 하나이면
 그 Mesh를 사용하고, 0개이면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`다. 명시한 Mesh가
 없으면 `MeshNotFound`다. Target RID, predicate와

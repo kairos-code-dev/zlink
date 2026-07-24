@@ -53,11 +53,13 @@ authority에는 Location Store가 보유한 kind·type과 current Mesh를 사용
 
 Spot direct send는 비동기 submit 하나만 제공한다. Immediate-only 동기 terminator는 제공하지 않으며, queue가
 일시적으로 가득 차면 owner MeshNode ROUTER의 유한한 send timeout까지 admission을 기다린다. 완료 결과는
-local outbound admission만 나타내고 target Spot handler 실행은 기다리지 않는다. `Submitted`,
-`Backpressured`, `TimedOut`, `TargetNotFound`, `RouteNotConnected`, `Shutdown`의 의미와 cancellation·local
-오류 경계는 [04 비동기 실행 정책 §1.3](../04-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
-Cold activation을 포함하는 submit도 source가 activation envelope를 선택한 target transport에 수락시킨 시점에
-같은 결과를 완료하며 target의 reservation, factory, Ready commit과 application handler 실행을 기다리지 않는다.
+반환하지 않는다. 정상 완료는 source-local outbound queue가 operation을 수락했다는 뜻이며 target Spot
+handler 실행은 기다리지 않는다. Capacity가 즉시 부족하면 유한한 send timeout까지 기다리고, 그 안에
+수락하지 못하면 `DeadlineExceeded`로 실패한다. Target·route 부재, cancellation과 runtime shutdown도
+operation-specific exception으로 완료한다. 자세한 경계는
+[04 비동기 실행 정책 §1.3](../04-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
+Cold activation을 포함하는 submit도 source가 activation envelope를 선택한 target transport에 수락시킨
+시점에 정상 완료하며 target의 reservation, factory, Ready commit과 application handler 실행을 기다리지 않는다.
 Activation envelope는 최초 application message와 operation identity·reply correlation·deadline, source
 node RID·lifecycle generation·optional source Spot ID, global Spot ID, 선택한 Mesh·stable type과 target
 descriptor fence를 함께 보존한다. Target은 이 전체 envelope를 Relocation Store에 immutable activation recovery
@@ -123,20 +125,16 @@ send를 반복해서 Logical Multicast를 구성하는 방식은 공통 계약�
 ### 4.1 Target별 수락
 
 Logical Multicast는 publish 전용 전달 정책 option을 제공하지 않는다. Framework의 bounded I/O executor는
-대기 queue 없이 worker slot을 direct handoff한다. 즉시 사용할 slot이 없으면 publish transaction을 시작하지
-않고 `Backpressured`로 완료한다. Handoff에 성공하면 service runtime은 snapshot의 각 remote target에 한 번
-제출하고 target별 send timeout을 적용한다. Local Spot queue는 target별로 즉시 수락하며, 용량이 없으면 해당
-target을 drop 수에 기록하고 기다리지 않는다.
+유한한 send timeout 안에서 worker slot과 source-local outbound capacity를 기다린다. Handoff에 성공하면
+service runtime은 snapshot의 각 remote target에 한 번 제출한다. Local Spot queue는 target별로 즉시
+수락하며, 용량이 없으면 해당 target을 drop 수에 기록하고 기다리지 않는다.
 
 Publish transaction이 시작되면 snapshot operation은 commit된 것이다. 이후 cancellation이나 shutdown으로
 남은 target 제출을 중단하지 않는다. 뒤 target에서 backpressure가 발생해도 앞에서 성공한 제출을 취소하지 않는다.
-Executor direct handoff가 성공하지 못했거나 remote target으로 향하는 source-local outbound transport
-queue의 capacity가 부족하면 `Backpressured`,
-snapshot target이 모두 0이면 `TargetNotFound`다. Target별 send timeout 뒤의 용량 실패는 `TimedOut`으로
-다시 분류하지 않는다. Remote 연결 불가와 local Spot queue drop은 top-level status를 바꾸지 않고 publish
-detail에 기록한다. Remote target이 모두 연결 불가여서 admitted count가 0이어도 source-local transport
-queue의 capacity drop이
-없으면 `Submitted`다.
+Executor handoff나 source-local outbound capacity를 send timeout까지 확보하지 못하면
+`DeadlineExceeded`로 실패한다. Snapshot target이 0인 publish는 정상 완료한다. Transaction이 시작된 뒤
+remote 연결 불가와 local Spot queue drop이 발생해도 이미 수락된 target을 rollback하거나 전체 publish를
+retry하지 않으며 terminal call은 정상 완료한다.
 
 publish 수락은 subscriber handler 실행이나 업무 처리를 확인하는 acknowledgement가 아니다. Remote count의
 admitted는 source MeshNode의 local outbound transport queue가 제출을 수락했다는 뜻이다. Framework는 수신
@@ -144,9 +142,9 @@ MeshNode의 Spot queue 제출이나 handler 실행·완료를 기다리지 않�
 MeshNode에서 일치한 local Spot application queue가 제출을 수락했다는 뜻이다. 어느 경우에도 durable
 저장·재생·exactly-once 전달을 뜻하지 않는다.
 
-publish 결과는 remote target의 snapshot, admitted, dropped, unreachable 수와 local Spot match의 snapshot,
-admitted, dropped 수를 제공한다. remote target 하나 이상이 용량 때문에 수락되지 않으면 backpressure
-결과를 반환하되 이미 수락된 target은 유지한다.
+remote target의 snapshot, admitted, dropped, unreachable 수와 local Spot match의 snapshot, admitted,
+dropped 수는 public 반환값이 아니라 monitoring metric과 event로 기록한다. 이 집계는 관측 정보이며
+subscriber ACK나 handler 완료 결과가 아니다.
 
 ## 5. Subscription과 dispatch
 

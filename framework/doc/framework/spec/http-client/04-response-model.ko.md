@@ -6,13 +6,15 @@
 
 | 형태 | 공통 개념명 | 반환 | 실패 조건 |
 | --- | --- | --- | --- |
-| raw | `submitRaw()` | `RawHttpResponse` | 전송 실패만. **status는 실패 아님**(4xx/5xx도 성공 반환) |
-| typed | `submit<T>()` | `HttpResponse<T>` | 전송 실패 + **status ≥ 400** + 디코드 실패 |
+| raw | 언어별 raw response terminator | `RawHttpResponse` | 전송 실패만. **status는 실패 아님**(4xx/5xx도 성공 반환) |
+| typed | 언어별 typed response terminator | `HttpResponse<T>` | 전송 실패 + **status ≥ 400** + 디코드 실패 |
 | 다운로드 | `download(sink)` | `RawHttpResponse`(body 빈 값) | 전송 실패. status는 raw와 동일 취급 |
 
 - typed 제출의 status ≥ 400은 `requestFailed`로 보고한다. 현행 계약에서는
-  이때 응답 body가 노출되지 않는다 — 에러 페이로드가 필요하면 `submitRaw()`를
+  이때 응답 body가 노출되지 않는다 — 에러 페이로드가 필요하면 언어별 raw response terminator를
   쓴다(개정 후보 [R1](10-revision-candidates.ko.md)).
+- 정확한 이름은 .NET `AsyncRaw`/`Async<T>`, Kotlin `awaitRaw`/`await<T>`,
+  Java·Node `submitRaw`/`submit<T>`, C++ `submit_raw`/`submit<T>`다.
 - 완료 값을 동기로 언래핑하는 public terminator는 두지 않는다. typed response의 body만
   필요하면 비동기 typed terminator를 완료한 뒤 호출자가 body를 선택한다
   ([5장](05-execution-model.ko.md)).

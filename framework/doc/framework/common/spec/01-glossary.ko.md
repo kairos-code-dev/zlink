@@ -676,81 +676,47 @@ Actor별 lane과 timer별 lane을 분리하므로 서로 다른 gate의 turn은 
 | 공개 구성 | 둘 다 같은 request 결과를 반환한다. `Yield`는 `SpotWide` User Spot과 Instance Spot에서만 유효하며 Channel·Spot·Actor request와 CPU·I/O worker call에만 제공한다. |
 | 수명 | 한 fluent request call에서 terminal method 하나만 실행할 수 있다. |
 
-Actor join, Actor·Spot create·get-or-create, send, publish, timer 등록, close와 destroy에는 `Yield`를 제공하지
-않는다. `SpotWide` member Actor가 `Yield`하면 shared User Spot gate만 반환하고
-[Actor queue claim](#actor-queue-claim)은 현재 job이 끝날 때까지 유지한다.
+Actor·Spot create·get-or-create는 request와 같은 결과를 반환하는 제한된 `Yield`를 제공한다. Actor join,
+send, publish, timer 등록, close와 destroy에는 `Yield`를 제공하지 않는다. `SpotWide` member Actor가
+`Yield`하면 shared User Spot gate만 반환하고 [Actor queue claim](#actor-queue-claim)은 현재 job이 끝날
+때까지 유지한다.
 
 <a id="submitted"></a>
-### Submitted
+### One-way 정상 완료
 
-One-way direct call에서는 송신 경로가 message를 수락했다는 결과다. Logical
-Multicast에서는 처음에 고정한 target 처리를 remote queue 용량 부족 없이
-끝냈다는 결과다. 어느 경우에도 target handler가 실행되었거나 업무 처리가
-끝났다는 뜻은 아니다.
-
-| 항목 | 내용 |
-|---|---|
-| 형태 | Closed submit status |
-| .NET 표기 | `ZLinkSubmitStatus.Submitted`이며 `ZLinkSubmitResult.Status` 또는 `ZLinkPublishResult.Status`로 반환한다. |
-| 공개 구성 | Enum 값 `0` 하나다. Handler 완료 여부나 remote reply를 포함하지 않는다. |
+One-way call의 정상 완료는 source-local outbound admission이 operation을 수락했다는 뜻이다. Public
+status나 result 값을 반환하지 않으며 target handler 실행이나 remote queue 수락을 확인하지 않는다.
 
 <a id="backpressured"></a>
 ### Backpressured
 
-One-way direct call에서는 송신 경로나 queue의 용량이 부족하고 기다리는 작업을
-보관할 공간도 없어 대기를 시작하지 못했다는 결과다. Logical Multicast에서는
-publish worker를 즉시 사용할 수 없거나 하나 이상의 remote target이 queue 용량
-때문에 message를 수락하지 못한 경우에도 사용한다.
-
-| 항목 | 내용 |
-|---|---|
-| 형태 | Closed submit status |
-| .NET 표기 | `ZLinkSubmitStatus.Backpressured` |
-| 공개 구성 | Enum 값 `1` 하나다. Logical Multicast의 target별 수치는 `ZLinkPublishResult.Detail`에서 별도로 확인한다. |
+송신 경로나 queue의 capacity가 일시적으로 부족한 내부 상태다. Public terminal result가 아니며 Framework는
+family별 send timeout까지 capacity를 기다린다. Logical Multicast transaction이 시작된 뒤 target별 capacity
+부족은 monitoring metric과 event에 기록한다.
 
 <a id="timed-out"></a>
-### TimedOut
+### DeadlineExceeded
 
-허용된 send timeout까지 송신 경로나 queue가 message를 수락하지 못했다는 결과다.
-
-| 항목 | 내용 |
-|---|---|
-| 형태 | Closed submit status |
-| .NET 표기 | `ZLinkSubmitStatus.TimedOut` |
-| 공개 구성 | Enum 값 `2` 하나다. Request handler 실행 timeout과 같은 terminal reply 결과가 아니다. |
+허용된 send timeout까지 송신 경로나 queue가 message를 수락하지 못했을 때 발생하는 Framework exception이다.
+Public submit status가 아니며 request handler 실행 timeout과 같은 terminal reply도 아니다.
 
 <a id="target-not-found"></a>
 ### TargetNotFound
 
-조건에 맞는 logical target을 찾거나 새로 준비할 수 없다는 결과다.
-
-| 항목 | 내용 |
-|---|---|
-| 형태 | Closed submit status |
-| .NET 표기 | `ZLinkSubmitStatus.TargetNotFound` |
-| 공개 구성 | Enum 값 `3` 하나다. Target RID나 탐색 과정은 결과에 포함하지 않는다. |
+조건에 맞는 logical target을 찾거나 새로 준비할 수 없을 때 operation family가 발생시키는 오류 범주다.
+Actor·Spot·Node·Channel은 각 계약의 기존 route-not-found·Mesh-not-found error kind를 사용한다.
 
 <a id="route-not-connected"></a>
 ### RouteNotConnected
 
-Logical target은 확인했지만 현재 사용할 수 있는 송신 경로가 없다는 결과다.
-
-| 항목 | 내용 |
-|---|---|
-| 형태 | Closed submit status |
-| .NET 표기 | `ZLinkSubmitStatus.RouteNotConnected` |
-| 공개 구성 | Enum 값 `4` 하나다. Endpoint나 transport 오류 세부 정보는 이 status에 포함하지 않는다. |
+Logical target은 확인했지만 현재 사용할 수 있는 송신 경로가 없을 때 발생하는 Framework exception이다.
 
 <a id="shutdown"></a>
 ### Shutdown
 
-Runtime이 종료를 진행하고 있어 새로운 message를 받을 수 없다는 결과다.
-
-| 항목 | 내용 |
-|---|---|
-| 형태 | Closed submit status |
-| .NET 표기 | `ZLinkSubmitStatus.Shutdown` |
-| 공개 구성 | Enum 값 `5` 하나다. Runtime termination reason과 outcome은 별도 lifecycle 결과가 소유한다. |
+Runtime이 종료를 진행하고 있어 새로운 operation admission을 받을 수 없는 상태다. 새 one-way call은
+`RuntimeShutdown` exception으로 완료한다. Runtime termination reason과 outcome은 별도 lifecycle 결과가
+소유한다.
 
 ## 4. Channel과 Logical Multicast
 
@@ -792,8 +758,8 @@ ChannelName과 topic으로 같은 Channel의 여러 Spot에 message 하나를 �
 | 항목 | 내용 |
 |---|---|
 | 형태 | Multi-target publish surface |
-| .NET 표기 | `IZLinkSpotPublisherClient.Publish<T>()`, `IZLinkPublishCall`, `ZLinkPublishResult` |
-| 공개 구성 | ChannelName, topic, typed payload와 optional metadata를 입력으로 받고 target count와 submit status를 반환한다. |
+| .NET 표기 | `IZLinkSpotPublisherClient.Publish<T>()`, `IZLinkPublishCall` |
+| 공개 구성 | ChannelName, topic, typed payload와 optional metadata를 입력으로 받고 결과값 없이 완료한다. |
 | 수명 | 한 publish transaction의 immutable target snapshot과 admission 집계가 끝날 때까지 유지된다. |
 
 <a id="subscription"></a>
@@ -820,7 +786,7 @@ Publish를 시작할 때 고정한 remote target 목록과 source node에서 일
 | 항목 | 내용 |
 |---|---|
 | 형태 | Publish 시작 시 고정하는 target 집합 |
-| .NET 표기 | Target identity 목록은 public으로 노출하지 않고 결과는 `ZLinkLogicalMulticastDetail`의 count로만 반환한다. |
+| .NET 표기 | Target identity와 count는 public 반환값으로 노출하지 않는다. |
 | 공개 구성 | Positive-weight ready remote MeshNode 집합과 source node에서 일치한 local Spot 집합이다. |
 | 생성·관리 | Framework가 publish transaction을 시작할 때 한 번 고정한다. |
 | 수명 | 해당 publish의 target 제출이 끝날 때까지 유지되며 중간 membership 변경으로 바뀌지 않는다. |
@@ -835,27 +801,10 @@ Publish를 시작할 때 고정한 remote target 목록과 source node에서 일
 
 | 항목 | 내용 |
 |---|---|
-| 형태 | 복합 publish result count record |
-| .NET 표기 | `ZLinkLogicalMulticastDetail`, `ZLinkPublishResult` |
+| 형태 | Monitoring metric·runtime event count |
+| .NET 표기 | Public publish result type 없음 |
 | 생성·관리 | Framework가 고정한 publish snapshot의 target별 admission 결과를 집계한다. |
-| 수명 | `SubmitAsync()`가 반환하는 immutable value다. |
-
-`ZLinkPublishResult`는 다음 두 field로 결과 종류와 상세 집계를 함께 반환한다.
-
-```csharp
-public readonly record struct ZLinkLogicalMulticastDetail(
-    ulong SnapshotRemoteNodeCount,    // 처음 고정한 remote MeshNode 수
-    ulong AdmittedRemoteNodeCount,    // Message를 수락한 remote node 수
-    ulong DroppedRemoteNodeCount,     // Queue 용량 부족으로 수락하지 못한 remote node 수
-    ulong UnreachableRemoteNodeCount, // 송신 경로가 없었던 remote node 수
-    ulong SnapshotLocalSpotCount,     // Source node에서 처음 일치한 local Spot 수
-    ulong AdmittedLocalSpotCount,     // Message를 수락한 local Spot 수
-    ulong DroppedLocalSpotCount);     // Queue 용량 부족으로 수락하지 못한 local Spot 수
-
-public readonly record struct ZLinkPublishResult(
-    ZLinkSubmitStatus Status,             // Publish 전체의 admission 결과
-    ZLinkLogicalMulticastDetail Detail);  // Target별 상세 집계
-```
+| 수명 | Publish transaction 관측 record의 retention 동안 유지된다. |
 
 <a id="classic-fanout"></a>
 ### Classic fanout

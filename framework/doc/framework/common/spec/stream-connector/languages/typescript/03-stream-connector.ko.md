@@ -104,7 +104,7 @@ interface ZlinkStreamSendCall {
   metadata(metadata: ZlinkStreamMetadata): ZlinkStreamSendCall;
   compress(): ZlinkStreamSendCall;
   flowFrom(flow: ZlinkStreamFlow): ZlinkStreamSendCall;
-  submit(): void;
+  submit(): Promise<void>;
 }
 
 interface ZlinkStreamRequestCall {
@@ -321,7 +321,8 @@ connector 생성은 `zlinkStreamConnectorFactory.create(options)`를 사용한�
 - **event 구독은 `Disposable`을 반환한다.** 해제는 그 `Disposable`로 한다.
 - `send`·`request`·`waitFor`는 즉시 실행하지 않고 **call builder를 반환한다.** builder에
   `packetName(...)`·`metadata(...)`·`timeout(...)`·`compress()`를 붙인 뒤 `submit()`으로 제출한다.
-  `send`의 `submit()`은 응답을 기다리지 않는다.
+  `send`의 `submit()`은 응답을 기다리지 않으며 전송 결과나 admission status 없이 비동기 완료와 실패만
+  전달한다.
 - inbound handler가 시작한 관련 outbound에는 `flowFrom(message)`를 호출한다. 이 메서드는 message의
   `flowId`와 `flowOrigin`을 한 쌍으로 복사한다. 호출하지 않은 outbound는 `origin=application`인 새
   flow를 시작한다. 자세한 비동기 문맥 경계는 [flow correlation §6](../../../53-flow-correlation.ko.md#6-async-context)를

@@ -58,6 +58,6 @@ client.post("/games")
       .query("region", "kr")
       .body(create_game_req)     // typed JSON
       .timeout(3s)
-      .async<create_game_res>()  // typed response를 비동기로 기다리는 terminator
+      .submit<create_game_res>() // C++·Java·Node의 typed response terminator
                                  // 언어별 이름은 language-interfaces §1.4 참조
 ```

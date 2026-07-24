@@ -39,6 +39,8 @@ DSL과 확장은 `systems.zlink.httpclient.kotlin` 패키지의 top-level 함수
 - `suspend inline fun <reified T> ZLinkHttpRequestBuilder.fetch(): T` — `await<T>().body()` 편의.
 - `suspend ZLinkHttpRequestBuilder.awaitDownload(sink: (ByteArray) -> Unit): RawHttpResponse`
 - `suspend ZLinkHttpServerRequestBuilder.await(type)` / `await<T>()` — 현재 Spot turn을 유지한다.
+- `suspend ZLinkHttpServerRequestBuilder.await(): Unit` — one-way 전송의 비동기 완료와 실패만
+  전달한다. 전송 결과나 admission status는 반환하지 않는다.
 
 request 구성(`get/post/put/delete/patch/head/options`, `header`, `query`, `timeout`,
 `body`, `bodyStream`, `form`, `multipart`, `multipartFile`)과 응답 타입

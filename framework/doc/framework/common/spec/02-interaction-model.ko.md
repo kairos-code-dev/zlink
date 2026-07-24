@@ -112,7 +112,7 @@ public interface IZLinkSessionClient
 }
 ```
 
-`Send...` call은 `SubmitAsync()`로 local outbound admission 결과를 받는다. `Request...` call은
+`Send...` call은 `Async()`로 local outbound admission까지 기다리고 결과값 없이 완료한다. `Request...` call은
 `Async<TReply>()`로 reply를 기다린다. `Yield<TReply>()`가 선언된 언어에서도 이 operation은
 `SpotWide` User Spot 또는 Instance Spot의 shared turn에서만 사용할 수 있다.
 
@@ -163,10 +163,11 @@ object의 creation intent를 기본적으로 만들지 않는다. Spot 전용 fl
 [Spot ID](01-glossary.ko.md#spot-id)만 받으며 optional [stable type](01-glossary.ko.md#stable-type)과 initial Mesh는 fluent call의
 [cold activation](01-glossary.ko.md#cold-activation) option이다.
 
-유효한 one-way call은 `Submitted`, `Backpressured`, `TimedOut`, `TargetNotFound`, `RouteNotConnected`,
-`Shutdown` 가운데 하나로 완료한다. 잘못된 argument·handle·state와 중복 submit은 local exceptional
-completion이다. Cancellation은 별도 status가 아니며 언어별 cancelled awaitable로 표현한다. 어느 terminal
-결과 뒤에도 Framework가 operation을 자동으로 다시 제출하지 않는다.
+유효한 one-way call은 source-local admission이 성공하면 결과값 없이 완료한다. Send timeout까지 capacity를
+확보하지 못하면 `DeadlineExceeded`, target·route 부재와 runtime shutdown은 operation-specific exception으로
+완료한다. 잘못된 argument·handle·state와 중복 submit도 local exceptional completion이다. Cancellation은
+언어별 cancelled awaitable로 표현한다. 어느 terminal 완료 뒤에도 Framework가 operation을 자동으로 다시
+제출하지 않는다.
 
 `request`는 선택한 송신 경로에 reply correlation을 만들고 terminal 결과를 정확히 한 번 전달한다. request timeout은 reply를
 기다리는 시간이다. 전송 단계의 backpressure는 send timeout이 담당한다. route 오류나 timeout으로 끝난
@@ -190,18 +191,17 @@ Logical Multicast publish는 target ChannelName, [topic](01-glossary.ko.md#topic
 - 같은 node의 일치하는 Spot queue는 immutable payload storage의 reference를 공유한다.
 - 다른 MeshNode로 relay하거나 과거 event를 replay하지 않는다.
 
-Framework service runtime은 대기 queue가 없는 bounded I/O executor에 publish transaction을 direct handoff한다.
-즉시 사용할 worker slot이 없으면 transaction을 시작하지 않고 `Backpressured`로 완료한다. Handoff에 성공해
+Framework service runtime은 bounded I/O executor에 publish transaction을 제출한다. Send timeout까지
+worker slot을 확보하지 못하면 transaction을 시작하지 않고 `DeadlineExceeded`로 실패한다. Handoff에 성공해
 transaction이 시작되면 각 remote target을 해당 send timeout까지 제출하고 local Spot queue는 즉시 판단한다.
 Transaction 시작이 [snapshot](01-glossary.ko.md#snapshot) operation의 commit point이므로 cancellation이나 shutdown으로 남은 target 제출을
 중단하지 않는다.
 앞에서 수락된 remote target과 local Spot queue는 뒤 target의 실패 때문에 취소되지 않는다.
 
-Executor direct handoff가 성공하지 못했거나 remote target 하나 이상이 용량 때문에 실패하면
-`Backpressured`다. Snapshot target이 모두 0이면 `TargetNotFound`다. Target별 send timeout 뒤의 용량 실패를
-`TimedOut`으로 다시 분류하지 않는다. 그 밖의 remote 연결 불가와 local Spot queue drop은 top-level status를
-바꾸지 않고 publish detail에 기록한다. Remote target이 모두 연결 불가여서 admitted count가 0이어도
-remote capacity drop이 없으면 `Submitted`다.
+Snapshot target이 모두 0이어도 정상 완료한다. Transaction이 시작된 뒤 발생한 remote 연결 불가, outbound
+capacity 부족과 local Spot queue drop은 이미 수락된 target을 rollback하거나 전체 publish를 retry하지 않는다.
+Target별 snapshot·admitted·dropped·unreachable 수는 public 결과가 아니라 monitoring metric과 event에
+기록한다.
 
 publish 성공은 Spot handler의 실행 완료를 뜻하지 않는다. snapshot target에 대한 제출 결과가 집계되었다는
 뜻이며, remote ROUTER가 수락한 뒤 수신 MeshNode의 local Spot queue에서 발생한 drop까지 보장하지 않는다.
@@ -213,8 +213,8 @@ publish 성공은 Spot handler의 실행 완료를 뜻하지 않는다. snapshot
 않고, 다시 연결된 뒤 replay하지 않는다.
 
 Publisher call은 publisher socket send timeout까지 local admission을 기다리는 비동기 terminator 하나만
-제공한다. Subscriber가 0이어도 local publisher queue가 event를 수락하면 `Submitted`다. 이 결과는 subscriber
-수신이나 handler 완료를 뜻하지 않는다.
+제공한다. Subscriber가 0이어도 local publisher queue가 event를 수락하면 결과값 없이 정상 완료한다. 이
+완료는 subscriber 수신이나 handler 완료를 뜻하지 않는다.
 
 Publish의 공통 입력은 ChannelName, topic과 typed event다. Typed event의 packet name을 topic으로
 사용하는 편의 호출도 같은 operation을 만든다. 두 호출은 같은 publisher transport, timeout과
@@ -282,9 +282,9 @@ local exceptional completion으로 끝난다. 유효한 첫 reply terminator는 
 
 ```csharp
 // Node direct: application이 "world" Mesh의 exact node RID를 지정한다.
-ZLinkSubmitResult direct = await routes
+await routes
     .SendToNode("world", targetNodeRid, new ReloadConfig())
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 // Channel select-one: Framework가 "game" Channel의 ready server 하나를 선택한다.
 MatchFound match = await routes
@@ -338,38 +338,36 @@ ZLinkActorCreateResult actorCreation = await actorManager
 
 ```csharp
 // Logical Multicast: 조건에 맞는 remote node와 local Spot subscription에 함께 게시한다.
-ZLinkPublishResult multicast = await spotPublisher
+await spotPublisher
     .Publish("world-events", "zone.7", new WeatherChanged("rain"))
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
-// Detail은 publish 시점의 snapshot 대상과 실제 admission 수를 구분한다.
-Observe(multicast.Detail.AdmittedRemoteNodeCount);
-Observe(multicast.Detail.AdmittedLocalSpotCount);
+// Snapshot 대상과 실제 admission 수는 monitoring metric과 event에서 관찰한다.
 
 // Classic fanout: 독립 publisher transport에 현재 연결된 subscriber를 대상으로 한다.
-ZLinkSubmitResult fanoutResult = await fanout
+await fanout
     .Publish("telemetry", "server.health", new HealthSample(cpu, memory))
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 ```
 
-두 publish 모두 handler 완료를 기다리지 않는다. Logical Multicast 결과는 target별 제출을 집계하지만,
-Classic fanout 결과는 local publisher transport의 admission만 나타낸다.
+두 publish 모두 handler 완료를 기다리지 않는다. Logical Multicast의 target별 제출 수는 monitoring이
+집계하며 Classic fanout도 public admission 결과를 반환하지 않는다.
 
 ### 9.4 STREAM session
 
 ```csharp
 // 현재 session FIFO에 server-initiated one-way packet을 제출한다.
-ZLinkSubmitResult sent = await sessionClient
+await sessionClient
     .Send(new ServerNotice("maintenance"))
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 // STREAM request handler에서만 현재 request의 reply capability를 정확히 한 번 소비한다.
-ZLinkSubmitResult replied = await sessionClient
+await sessionClient
     .Reply(new LoginAccepted(playerId))
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 // Binding된 Actor relay는 현재 session binding을 사용해 Actor mailbox에 제출한다.
-ZLinkSubmitResult relayed = await sessionActor
+await sessionActor
     .RelayAsync(
         ZLinkMessage.From(new ClientInput(sequence, command)),
         cancellationToken);

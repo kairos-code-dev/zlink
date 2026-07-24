@@ -114,7 +114,7 @@ namespace zlink::framework {
 class actor_send_call_t {
 public:
     actor_send_call_t &metadata(std::string key, std::string value);
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class actor_request_call_t {
@@ -242,8 +242,8 @@ namespace zlink::framework {
 class session_actor_t {
 public:
     const actor_ref_t &ref() const noexcept;
-    task_t<submit_result_t> relay(const message_t &payload);
-    task_t<submit_result_t> relay(
+    task_t<void> relay(const message_t &payload);
+    task_t<void> relay(
       const stream_dispatch_context_t &dispatch,
       const message_t &payload);
     task_t<void> notify_disconnected();

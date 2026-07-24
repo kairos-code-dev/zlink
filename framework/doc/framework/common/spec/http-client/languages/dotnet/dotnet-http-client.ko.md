@@ -45,9 +45,11 @@ server runtime assembly를 함께 배포하지 않아도 같은 오류·codec �
 - `ZLinkHttpRequestBuilder` — standalone 표면. `Header`, `Query`, `Timeout`, `Body<T>`,
   `Body(content, contentType)`, `BodyStream`, `Form`, `Multipart`, `MultipartFile`,
   `AsyncRaw`, `DownloadAsync`, `Async<T>`와 callback overload를 제공한다.
-- `ZLinkHttpServerRequestBuilder` — standalone 표면을 포함하고 `Submit`, `Yield<T>`를 추가한다.
+- `ZLinkHttpServerRequestBuilder` — standalone 표면을 포함하고 one-way
+  `ValueTask Async(CancellationToken cancellationToken = default)`를 추가한다. 반환된
+  `ValueTask`는 비동기 완료와 실패만 전달하며 전송 결과나 admission status를 포함하지 않는다.
 - `IZLinkHttpExecutionScheduler` / `IZLinkHttpExecutionTurn` — DI 통합이 현재 Spot turn을
-  캡처하고 callback 완료와 `Yield<T>` 재개를 원래 실행 줄에 배치하는 공개 주입점이다.
+  캡처하고 callback 완료를 원래 실행 줄의 새 turn에 배치하는 공개 주입점이다.
 - `RawHttpResponse` { `Status`, `Headers`, `Body` }.
 - `HttpResponse<T>` { `Status`, `Headers`, `Body`, `RawBody` }.
 - `ZLinkHttpMethod` enum.
@@ -63,10 +65,9 @@ public delegate void ZLinkHttpCallback<T>(
 
 ## 4. 실행 모델
 
-- `Async<T>`는 `ValueTask<HttpResponse<T>>`를 반환하며 [Spot turn](../../../01-glossary.ko.md#spot-turn)을 유지한다.
-- `Yield<T>`는 DI server client가 `SpotWide` User Spot 또는 Instance Spot의 shared turn에서 호출될 때만
-  유효하다. 대기 중 [Spot](../../../01-glossary.ko.md#spot) turn을 반납하고 완료 뒤 원래 실행 줄의 큐에서
-  continuation을 재개한다.
+- `Async<T>`는 `ValueTask<HttpResponse<T>>`를 반환하며 Spot turn을 유지한다.
+- HTTP request builder에는 `Yield<T>`를 제공하지 않는다. Shared Spot gate를 반납하려면
+  `RunIoWorker(...)` 안에서 `Async<T>`를 호출하고 Worker call의 `Yield`로 기다린다.
 - callback overload는 awaitable을 반환하지 않는다. 완료 callback은 요청을 만든 Spot turn의
   실행 줄에 새 turn으로 배치한다. standalone client에서는 비동기 완료 문맥에서 직접 호출한다.
 - 완료 값을 동기로 꺼내는 blocking terminator는 제공하지 않는다.

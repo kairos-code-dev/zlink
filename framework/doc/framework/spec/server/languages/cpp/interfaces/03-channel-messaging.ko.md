@@ -205,6 +205,7 @@ struct logical_multicast_snapshot_t {
     std::uint64_t remote_snapshot_count;
     std::uint64_t remote_admitted_count;
     std::uint64_t remote_dropped_count;
+    std::uint64_t remote_unreachable_count;
     std::uint64_t local_snapshot_count;
     std::uint64_t local_admitted_count;
     std::uint64_t local_dropped_count;
@@ -280,6 +281,7 @@ struct mesh_runtime_event_t {
     std::optional<std::uint64_t> remote_snapshot_count;
     std::optional<std::uint64_t> remote_admitted_count;
     std::optional<std::uint64_t> remote_dropped_count;
+    std::optional<std::uint64_t> remote_unreachable_count;
     std::optional<std::uint64_t> local_snapshot_count;
     std::optional<std::uint64_t> local_admitted_count;
     std::optional<std::uint64_t> local_dropped_count;
@@ -712,19 +714,6 @@ public:
     task_t<typed_actor_join_result_t<TReply>> async();
 };
 
-enum class submit_status_t {
-    submitted,
-    backpressured,
-    timed_out,
-    target_not_found,
-    route_not_connected,
-    shutdown
-};
-
-struct submit_result_t {
-    submit_status_t status;
-};
-
 // 숫자 값은 관측·진단 데이터의 안정 키이므로 고정한다(framework API §13).
 enum class framework_error_kind_t {
     actor_route_not_found = 0,
@@ -761,15 +750,17 @@ enum class framework_error_kind_t {
     routing_id_conflict = 31,
     spot_generation_stale = 32,
     spot_moving = 33,                  // retriable
-    relocation_data_lost = 34            // non-retriable
+    relocation_data_lost = 34,         // non-retriable
+    spot_id_conflict = 35,
+    runtime_shutdown = 36
 };
 
 class framework_exception_t : public std::exception {
 public:
     framework_error_kind_t kind() const noexcept;
     bool is_retriable() const noexcept;
-    // 경계 상태(timed_out, shutdown, disconnected, closed, cancelled)는
-    // public enum 값이 아니라 이 error_code로 노출한다(common runtime §7.4).
+    // timeout과 runtime shutdown은 각각 deadline_exceeded와 runtime_shutdown kind를 사용한다.
+    // transport의 disconnected, closed, cancelled 세부 상태는 error_code로 노출한다(common runtime §7.4).
     // ID-only route stale과 exact-ref generation stale은 서로 다른 kind다.
     std::error_code code() const noexcept;
     const char *what() const noexcept override;
@@ -799,13 +790,13 @@ public:
 class send_call_t {
 public:
     send_call_t &metadata(std::string key, std::string value);
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class bound_session_send_call_t {
 public:
     bound_session_send_call_t &metadata(std::string key, std::string value);
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class stream_send_call_t {
@@ -819,7 +810,7 @@ public:
     stream_send_call_t &metadata(std::string key, std::string value);
     stream_send_call_t &packet_name(std::string packet_name);
     stream_send_call_t &compress();
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class stream_write_call_t {
@@ -834,7 +825,7 @@ public:
 
     stream_write_call_t &metadata(std::string key, std::string value);
     stream_write_call_t &compress();
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 template <typename TActor>
@@ -1041,7 +1032,7 @@ public:
 class route_send_call_t {
 public:
     route_send_call_t &metadata(std::string key, std::string value);
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class spot_send_call_t {
@@ -1050,7 +1041,7 @@ public:
     spot_send_call_t &instance_spot();
     spot_send_call_t &instance_spot(std::string stable_type);
     spot_send_call_t &in_mesh(std::string mesh_name);
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class spot_request_call_t {
@@ -1070,28 +1061,13 @@ public:
 
 class fanout_publish_call_t {
 public:
-    task_t<submit_result_t> submit();
-};
-
-struct logical_multicast_detail_t {
-    std::uint64_t snapshot_remote_node_count = 0;
-    std::uint64_t admitted_remote_node_count = 0;
-    std::uint64_t dropped_remote_node_count = 0;
-    std::uint64_t unreachable_remote_node_count = 0;
-    std::uint64_t snapshot_local_spot_count = 0;
-    std::uint64_t admitted_local_spot_count = 0;
-    std::uint64_t dropped_local_spot_count = 0;
-};
-
-struct publish_result_t {
-    submit_status_t status = submit_status_t::submitted;
-    logical_multicast_detail_t detail;
+    task_t<void> submit();
 };
 
 class publish_call_t {
 public:
     publish_call_t &metadata(std::string key, std::string value);
-    task_t<publish_result_t> submit();
+    task_t<void> submit();
 };
 
 } // namespace zlink::framework
@@ -1113,7 +1089,8 @@ Spot timer와 모든 member Actor handler가 하나의 Spot gate를 공유한다
 lifecycle callback을 Spot lane에서 실행하고 각 Actor handler를 Actor별 lane에서 실행한다. Timer는 같은
 timer의 callback만 직렬화하는 timer별 lane을 사용한다. Entry Spot과 Instance Spot에는 이 option을 제공하지 않는다.
 
-`yield()`는 Channel request, Spot request, Actor request와 worker call에만 제공하며 Actor join에는 제공하지
+`yield()`는 Channel request, Spot request, Actor request, worker call과 Actor·Spot create·get-or-create에
+제공하며 Actor join에는 제공하지
 않는다. 이 terminal은 현재 callback이 `spot_wide` User Spot 또는 Instance Spot에 속할 때만 사용할 수 있다.
 `spot_wide` member Actor의 `yield()`는 Spot gate만 반납하고 Actor FIFO claim은 유지한다. `per_actor`,
 Entry Spot, Node, Channel 또는 실행 문맥 밖에서 호출하면 operation을 admission queue에 제출하기 전에
@@ -1128,26 +1105,24 @@ Public API는 transport 종류와 무관하게 channel name과 typed payload를 
 명시하는 호출을 함께 제공한다. 두 호출 모두 classic fanout에 사용하며 Framework가 codec을 결정한다.
 명시한 topic이 내부 liveness용 exact byte `01 5A 4C 46 31`이면 transport를 시작하지 않고
 `framework_exception_t`를 발생시킨다.
-`fanout_publish_call_t`는 local publisher transport의 bounded admission을
-`submit_result_t`로 반환한다. `publish_call_t`와 `publish_result_t`는 Logical Multicast target 집계를
-위한 별도 계약이다. Subscriber가 0개여도 publisher local queue가 event를 수락하면
-`submit_status_t::submitted`다.
+`fanout_publish_call_t::submit()`은 local publisher transport가 event를 수락하면 정상 완료한다.
+Subscriber 수와 수신 완료는 반환하지 않는다. `publish_call_t`는 Logical Multicast 전용이다. Subscriber가
+0개여도 publisher local queue가 event를 수락하면 정상 완료한다.
 
-모든 server one-way call의 `submit()`과 session Actor `relay(...)`는 local outbound admission 결과를
-`task_t`로 반환한다. 유효한 call은 pending 공간을 확인하기 전에 해당 family가 실제로 사용하는 admission
-primitive를 non-blocking 방식으로 정확히 한 번 호출한다. Remote 경로는 transport submit을 사용하고, local
-경로는 mailbox 또는 relay queue admission을 사용한다. 이 첫 시도가 즉시 성공하면 pending 공간이 차 있어도
-준비된 task가 `submitted`로 바로 완료될 수 있다. Core가 capacity 부족(`EAGAIN`)을 반환하거나 local admission
-capacity가 부족할 때만 해당 operation family의 send timeout까지 기다린다. 첫 시도 뒤 bounded pending 공간도
-가득 차 있으면 `backpressured`, deadline까지 수락되지 않으면 `timed_out`으로 완료한다. Local 경로가 즉시
-수락할 수 있는데 pending 공간만 가득 찼다는 이유로 `backpressured`를 반환하면 안 된다. `submitted`는 remote
-handler나 subscriber가 실행을 마쳤다는 뜻이 아니다. C++ server call에는 별도 cancellation 인자가 없다.
+모든 server one-way call의 `submit()`과 session Actor `relay(...)`는 정상 완료 값을 만들지 않는다. 정상
+완료는 operation family가 정의한 source-local queue가 message를 수락했다는 뜻이다. Remote handler 실행,
+subscriber 수신, remote Spot queue 수락과 application callback 완료는 기다리지 않는다. Queue capacity가
+부족하면 해당 family의 send timeout까지 capacity signal을 기다리고, deadline 안에 공간이 생기면 message를
+정확히 한 번 제출한다. `backpressured`는 public terminal result나 즉시 발생하는 application exception이
+아니다. Timeout은 `deadline_exceeded`, route 단절은 `route_not_connected`, runtime 종료는
+`runtime_shutdown` kind의 `framework_exception_t`로 완료한다. Actor·Spot·Mesh·session target 부재는 operation
+family가 정의한 기존 error kind를 사용한다. C++ server call에는 별도 cancellation 인자가 없다.
 반환된 task를 보관하지 않거나 파괴해도 operation이 취소된다고 보장하지 않으며 timeout이나 shutdown 뒤에
 같은 operation을 자동으로 다시 제출하지 않는다. 잘못된 argument·state와 중복 submit은
-`submit_status_t`가 아니라 `framework_exception_t`로 완료한다. STREAM reply의 유효한 첫 terminator는
+`framework_exception_t`로 완료한다. STREAM reply의 유효한 첫 terminator는
 transport를 시작하기 전에 one-shot reply token을 원자적으로
 claim하고 소비한다. 같은 token에서 만든 두 call이 경쟁하면 claim에 실패한 call은 transport를 시도하지 않고
-`framework_exception_t`로 완료한다. Token을 소비한 call이 timeout 또는 `backpressured`로 끝나도 token을
+`framework_exception_t`로 완료한다. Token을 소비한 call이 `deadline_exceeded`로 끝나도 token을
 다시 사용할 수 없으며 이미 사용한 token도 exceptional completion으로 처리한다. STREAM reply는 client
 request timeout을 전달받지 않으며 해당 STREAM socket의 send timeout만 사용한다.
 
@@ -1159,21 +1134,15 @@ per-call `timeout(...)`을 두지 않는다. Socket 또는 MeshNode 설정이 �
 범위만 허용한다. `0`, 음수와 상한 초과는 설정 시점 또는 늦어도 startup에서 configuration error로
 거부하며 기본값으로 바꾸지 않는다.
 
-Logical Multicast의 `publish_call_t::submit()`은 예외다. Framework는 pending queue 없이 bounded I/O executor에
-direct handoff한다. 즉시 worker slot을 얻지 못하면 raw transport call을 시작하지 않고
-`backpressured`를 반환한다. Slot을 얻으면 raw binding publish를 정확히 한 번 호출한다.
-이 call이 시작된 시점이 operation commit barrier다. Framework RouteMesh runtime은 snapshot의
-remote target마다 MeshNode ROUTER send timeout까지 기다리고 local Spot mailbox는 즉시 판단한다.
-Target별 timeout 뒤에 raw binding이 반환한 capacity
-실패는 `backpressured`와 partial detail로 유지하며 `timed_out`으로 바꾸거나 전체 publish를 다시 실행하지
-않는다. Snapshot target이 모두 0이면 `target_not_found`다. Remote capacity drop이 없고 모든 remote target의
-route가 준비되지 않은 경우에는 `submitted`와 unreachable detail을 반환할 수 있다. Local Spot drop은
-top-level status를 바꾸지 않고 detail에만 반영한다.
-Remote count는 `snapshot_remote_node_count == admitted_remote_node_count + dropped_remote_node_count +
-unreachable_remote_node_count`를 만족한다.
-Remote admitted count는 source의 local outbound transport queue 제출만 집계한다. Local admitted count는
-origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과 remote·local handler
-실행 또는 완료는 `task_t<publish_result_t>` 완료 조건이 아니다.
+Logical Multicast의 `publish_call_t::submit()`은 bounded I/O executor에 direct handoff한다. 즉시 worker slot을
+얻지 못하면 send timeout까지 capacity를 기다린다. Slot을 얻으면 raw binding publish를 정확히 한 번 호출한다.
+이 call이 시작된 시점이 operation commit barrier다. Transaction이 시작된 뒤 개별 target 실패는 이미 수락한
+target을 rollback하거나 전체 publish를 자동 재시도하지 않는다. Remote transport와 local Spot queue의
+snapshot·admitted·dropped·unreachable count는 `logical_multicast_snapshot_t`, metric,
+`mesh_runtime_event_t`와 `message_flow_event_t`에 기록한다. Target snapshot이 0개여도 정상 완료한다. Remote
+admitted count는 source의 local outbound transport queue 제출만 집계하고 local admitted count는 origin node의
+local Spot application queue 제출만 집계한다. Remote Spot queue 제출과 remote·local handler 실행 또는 완료는
+`task_t<void>` 완료 조건이 아니다.
 
 framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성하지 않고 DI에서
 주입받아 사용할 수 있다.

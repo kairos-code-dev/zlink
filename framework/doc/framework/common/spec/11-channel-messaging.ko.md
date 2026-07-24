@@ -70,7 +70,7 @@ await routeClient
         "game-mesh",        // RID가 속한 물리 RouteMesh를 지정한다.
         targetNodeRid,      // Framework가 다른 RID로 바꾸지 않는다.
         nodeCommand)
-    .SubmitAsync(cancellationToken);
+    .Async(cancellationToken);
 
 MatchReply reply = await routeClient
     .RequestToChannel(
@@ -321,9 +321,9 @@ Classic fanout은 ChannelName request처럼 Server 하나를 선택하지 않는
 Subscriber마다 등록된 typed fanout handler가 event를 처리한다.
 
 다음 .NET interface 발췌에서 `Publish`는 전용
-`IZLinkFanoutPublishCall`을 반환한다. 이 call의 `SubmitAsync`는 local publisher
-transport가 event를 받아들인 결과만 반환하며, subscriber handler의 실행 완료를
-기다리지 않는다.
+`IZLinkFanoutPublishCall`을 반환한다. 이 call의 `Async`는 local publisher
+transport가 event를 받아들일 때까지 기다리며, subscriber handler의 실행 완료를
+기다리지 않는다. 정상 완료에는 public 결과값이 없다.
 
 ```csharp
 public interface IZLinkFanoutClient
@@ -340,7 +340,7 @@ public interface IZLinkFanoutClient
 
 public interface IZLinkFanoutPublishCall
 {
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 
@@ -365,9 +365,9 @@ fanout
     .AddHandler<SystemNoticeHandler, SystemNotice>(
         packetName: "system.notice"); // 받은 event를 처리할 typed handler를 등록한다.
 
-var result = await fanoutClient
+await fanoutClient
     .Publish("system-events", new SystemNotice("점검 시작"))
-    .SubmitAsync(cancellationToken); // subscriber 완료가 아니라 local 송신 수락을 기다린다.
+    .Async(cancellationToken); // subscriber 완료가 아니라 local 송신 수락을 기다린다.
 ```
 
 Topic을 직접 지정해야 하면 `Publish(channelName, topic, message)` overload를 사용한다.
@@ -431,7 +431,7 @@ public interface IZLinkMetadataCall<TSelf>
 
 public interface IZLinkSendCall : IZLinkMetadataCall<IZLinkSendCall>
 {
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 

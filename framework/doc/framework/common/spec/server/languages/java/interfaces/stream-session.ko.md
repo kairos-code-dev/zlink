@@ -37,8 +37,8 @@ public interface systems.zlink.framework.streams.ZLinkSession {
 public interface systems.zlink.framework.streams.ZLinkSessionActor {
   public abstract java.lang.String actorId();
   public abstract systems.zlink.framework.actors.ActorRef ref();
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> relay(systems.zlink.framework.messaging.ZLinkMessage);
-  public default java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> relay(systems.zlink.framework.streams.ZLinkSessionDispatchContext, systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> relay(systems.zlink.framework.messaging.ZLinkMessage);
+  public default java.util.concurrent.CompletionStage<java.lang.Void> relay(systems.zlink.framework.streams.ZLinkSessionDispatchContext, systems.zlink.framework.messaging.ZLinkMessage);
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> notifyDisconnected();
 }
 public interface systems.zlink.framework.streams.ZLinkSessionActors {
@@ -65,12 +65,12 @@ public interface systems.zlink.framework.streams.ZLinkSessionPacketDispatcher<TS
 }
 public interface systems.zlink.framework.streams.ZLinkSessionReplyCall {
   public abstract systems.zlink.framework.streams.ZLinkSessionReplyCall compress();
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 public interface systems.zlink.framework.streams.ZLinkSessionSendCall {
   public abstract systems.zlink.framework.streams.ZLinkSessionSendCall metadata(java.lang.String, java.lang.String);
   public abstract systems.zlink.framework.streams.ZLinkSessionSendCall compress();
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 public interface systems.zlink.framework.streams.ZLinkStreamCompressionCodec {
   public abstract byte[] compress(byte[]);

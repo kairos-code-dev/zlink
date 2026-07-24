@@ -559,11 +559,12 @@ Entry callback 순서, User Spot aggregate commit, precommit source 복원, boun
 ### 12.43 전 언어 one-way async-only admission 계약 미적용
 
 [비동기 실행 정책 §1.3](04-async-execution-policy.ko.md#13-one-way-submit)은 Framework public one-way call을
-비동기 submit 하나로 고정한다. Queue가 일시적으로 가득 차면 operation family가 소유한 유한한 send
-timeout까지 기다리고, bounded pending 공간까지 가득 찬 경우에만 즉시 `Backpressured`로 완료해야 한다.
+결과값 없는 비동기 terminator 하나로 고정한다. Queue가 일시적으로 가득 차면 operation family가 소유한
+유한한 send timeout까지 기다리고, 그 안에 수락하지 못하면 `DeadlineExceeded` exception으로 완료해야 한다.
 
-다섯 언어의 공개 one-way call과 사용처에는 동기 `TrySubmit` 계열과 결과를 버리는 `void` wrapper가 없다.
-공개 계약 검사도 모든 terminator가 비동기 admission 결과를 반환하는지 확인한다. 현재 남은 구현 차이는
+다섯 언어의 공개 one-way call과 사용처에는 동기 `TrySubmit` 계열이나 public admission status가 없어야 한다.
+공개 계약 검사도 모든 terminator가 비동기 void 완료와 exceptional completion을 제공하는지 확인한다. 현재
+남은 구현 차이는
 다음과 같다.
 
 - C++ Node direct는 현재 Core의 admitted pipe 결과만 사용한다. Config 13 process topology에는 Location Store의
@@ -572,20 +573,21 @@ timeout까지 기다리고, bounded pending 공간까지 가득 찬 경우에만
   판단할 기준 데이터를 조회해야 두 상태를 구분할 수 있다.
 - Node.js는 expected RID를 모두 명시한 manual peer registry에서는 unknown RID를 `TargetNotFound`로 분류하고,
   registry에 남아 있지만 ready route가 없는 RID는 `RouteNotConnected`로 분류한다. Self RID direct submit도
-  기존 node-direct dispatcher의 local admission을 사용해 `Submitted`로 완료한다. Discovery mode나 expected
+  기존 node-direct dispatcher의 local admission을 사용해 결과값 없이 완료한다. Discovery mode나 expected
   RID가 없는 manual endpoint가 섞인 구성에는 unknown RID와 이전에 연결됐던 disconnected RID를 구분할
   target이 논리적으로 존재하는지 판단할 기준 데이터가 없다. 이 구성은 Core의 pipe 결과만 사용하므로 두
   상태를 완전히 구분하지 못한다.
 - JVM은 expected RID를 모두 명시한 manual peer registry에서 unknown RID를 `TargetNotFound`로 분류하고,
   registry에 남아 있지만 ready route가 없는 RID는 `RouteNotConnected`로 분류한다. Self RID direct submit은
-  기존 Mesh application dispatcher와 drain claim을 사용하는 local admission으로 `Submitted`를 반환한다.
+  기존 Mesh application dispatcher와 drain claim을 사용하는 local admission으로 결과값 없이 완료한다.
   Discovery mode나 expected RID가 없는 manual endpoint가 섞인 구성에는 target이 논리적으로 존재하는지 판단할
   기준 데이터가 없으므로 두 상태를 완전히 구분하지 못한다. JVM Config 13은 Node direct·ChannelName·classic
   fanout의 일부 process 시나리오만 검증하며 Spot·Actor·session·STREAM과 drain·shutdown 경합 evidence는 없다.
 
 .NET, C++와 JVM에서는 일반 signal admission이 동작한다. .NET과 Node.js에서는 queue가 없는 Logical
 Multicast direct handoff와 commit barrier도 동작하며, Node.js binding은 Core call을 event loop 밖에서
-실행하고 partial detail을 보존한다. 네 runtime의 Config 13 runner와 feature map은 존재하지만,
+실행한다. Target별 partial detail은 public 결과가 아니라 monitoring metric·event로 옮겨야 한다. 네 runtime의
+Config 13 runner와 feature map은 존재하지만,
 .NET·C++·JVM·Node.js도 현재
 구현한 일부 process 시나리오만 검증한다. Family 전체의 pending waiter, queue reservation, transport attempt,
 commit과 cleanup counter가 timeout·cancellation·shutdown 경쟁 뒤 0인지 확인하는 process evidence가 남아 있다.

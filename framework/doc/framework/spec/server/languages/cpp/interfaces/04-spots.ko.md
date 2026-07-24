@@ -642,8 +642,8 @@ raw payload 처리는 framework 내부 invoker가 맡으며 application public a
 
 호출 실행 표면은 공통 비동기 call 계약을 C++ coroutine 관례로 표현한다. `request(...)`, `send(...)`,
 `join_spot(...)`과 `join_entry_spot(...)`은 call object를 반환한다. One-way call의 `submit()`은 send timeout까지
-bounded admission 결과를 담은 `task_t`를 반환한다. Session Actor `relay(...)`는 별도 call object를 만들지 않고
-같은 admission 결과를 `task_t<submit_result_t>`로 직접 반환한다. Request와 join은 `async()`가 reply 완료를
+source-local queue admission을 기다리는 `task_t<void>`를 반환한다. Session Actor `relay(...)`는 별도 call
+object를 만들지 않고 같은 admission 경계를 `task_t<void>`로 직접 반환한다. Request와 join은 `async()`가 reply 완료를
 기다리는 지점이다.
 일반 channel `request_call_t`는 metadata와 request timeout을, `send_call_t`는 metadata만 submit 전에 모으고,
 submit 시점에 framework envelope 정책으로 넘긴다. typed packet name은 registration
@@ -750,6 +750,7 @@ public:
 
     spot_create_call_t &timeout(std::chrono::milliseconds timeout);
     task_t<spot_create_result_t> submit();
+    task_t<spot_create_result_t> yield();
 };
 
 class spot_manager_t {
@@ -781,8 +782,11 @@ Location Store read·reservation, target 선택과 factory 실행 전에 `invali
 Entry Spot을 선택할 때는 `mesh_node_descriptor_t::entry_spot_id`와 lifecycle generation의 exact mapping을
 사용하며 RID 문자열을 parse하지 않는다.
 
-Terminal `submit()`은 exact `spot_ref_t`, `existing`·`created`·`rejected` state와 creation callback reply를
-`spot_create_result_t` 하나로 반환한다.
+Terminal `submit()`과 `yield()`는 exact `spot_ref_t`, `existing`·`created`·`rejected` state와 creation
+callback reply를 같은 `spot_create_result_t`로 반환한다. Call object는 single-use이며 두 terminal 가운데
+하나만 한 번 호출할 수 있다. `yield()`는 `spot_wide` User Spot 또는 Instance Spot application callback에서만
+현재 Spot gate를 반납한다. 다른 문맥에서는 reservation과 factory 실행 전에 `invalid_configuration`으로
+완료한다.
 
 `Find`는 current Ready User SpotRef만 반환하고 생성하지 않는다. Instance authority는 manager의 `Find` 결과에
 포함하지 않는다. `Close`는 User Spot의 exact SpotRef만 변경한다. Instance Spot은

@@ -254,7 +254,7 @@ public interface systems.zlink.framework.actors.ZLinkActorRequestCall {
   public default <TReply> java.util.concurrent.CompletionStage<TReply> yield(java.lang.Class<TReply>);
 }
 public interface systems.zlink.framework.actors.ZLinkActorSendCall {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 public interface systems.zlink.framework.actors.ZLinkBoundSession {
   public abstract systems.zlink.framework.actors.ZLinkBoundSessionSendCall send(java.lang.Object);
@@ -262,7 +262,7 @@ public interface systems.zlink.framework.actors.ZLinkBoundSession {
 }
 public interface systems.zlink.framework.actors.ZLinkBoundSessionSendCall {
   public abstract systems.zlink.framework.actors.ZLinkBoundSessionSendCall metadata(java.lang.String, java.lang.String);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 ```
 

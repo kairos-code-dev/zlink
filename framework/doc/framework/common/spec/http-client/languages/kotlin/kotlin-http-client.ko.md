@@ -39,10 +39,8 @@ DSL과 확장은 `systems.zlink.httpclient.kotlin` 패키지의 top-level 함수
 - `suspend inline fun <reified T> ZLinkHttpRequestBuilder.fetch(): T` — `await<T>().body()` 편의.
 - `suspend ZLinkHttpRequestBuilder.awaitDownload(sink: (ByteArray) -> Unit): RawHttpResponse`
 - `suspend ZLinkHttpServerRequestBuilder.await(type)` / `await<T>()` — 현재 Spot turn을 유지한다.
-- `suspend ZLinkHttpServerRequestBuilder.yieldAwait(type)` / `yieldAwait<T>()` — `SpotWide` User Spot 또는
-  Instance Spot에서만 HTTP 대기 중 shared [Spot turn](../../../01-glossary.ko.md#spot-turn)을 반환하고 Spot
-  실행 queue에서 새 turn으로 재개한다. 다른 실행 문맥에서는 HTTP operation을 제출하거나 turn을
-  반환하지 않고 `InvalidConfiguration`으로 완료한다.
+- `suspend ZLinkHttpServerRequestBuilder.await(): Unit` — one-way 전송의 비동기 완료와 실패만
+  전달한다. 전송 결과나 admission status는 반환하지 않는다.
 
 request 구성(`get/post/put/delete/patch/head/options`, `header`, `query`, `timeout`,
 `body`, `bodyStream`, `form`, `multipart`, `multipartFile`)과 응답 타입
@@ -57,8 +55,9 @@ request 구성(`get/post/put/delete/patch/head/options`, `header`, `query`, `tim
   전용이다.
 - continuation은 호출한 coroutine의 dispatcher에서 재개된다. 재개 위치는 `withContext`로
   바꾼다.
-- 서버 전용 `await`와 `yieldAwait`는 Java server client의 execution turn을 통하므로 각각 turn
-  유지와 반납 의미를 보존한다.
+- 서버 전용 `await`는 Java server client의 execution turn을 유지한다. HTTP builder에는
+  `yieldAwait`를 제공하지 않는다. Shared Spot gate를 반납하려면 `runIoWorker(...)` 안에서 `await`를
+  호출하고 Worker call의 `yield()`로 기다린다.
 
 ## 5. 전송 의미론
 

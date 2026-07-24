@@ -74,7 +74,7 @@ export interface ZLinkFanoutClient {
 }
 
 export interface ZLinkFanoutPublishCall {
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 ```
 
@@ -102,10 +102,10 @@ relocation에서는 membership이 유지되므로 member Actor에 대한 Entry S
 모두 호출하지 않는다. Disabled operation에서도 `onActorRelocated(...)`를 호출하지 않는다.
 
 `ZLinkFanoutClient.publish(...)`는 typed event의 packet name을 topic으로 사용하는 호출과 topic을 명시하는
-호출을 함께 제공한다. `ZLinkFanoutPublishCall`은 local publisher transport의 bounded admission만
-`ZLinkSubmitResult`로 반환한다. Logical Multicast의 `ZLinkPublishCall`과 target count를 포함한
-`ZLinkPublishResult`는 classic fanout에 사용하지 않는다. Subscriber가 0개여도 publisher local queue가
-event를 수락하면 `Submitted`다.
+호출을 함께 제공한다. `ZLinkFanoutPublishCall.submit(...)`은 local publisher transport가 event를 수락하면
+정상 완료한다. Subscriber 수와 수신 완료는 반환하지 않는다. `ZLinkPublishCall`은 Logical Multicast 전용이며
+classic fanout에 사용하지 않는다. Subscriber가 0개여도 publisher local queue가 event를 수락하면 정상
+완료한다.
 
 Topic을 명시하는 overload에 내부 liveness용 exact byte `01 5A 4C 46 31`을 전달하면 transport를 시작하지
 않고 `ZLinkConfigurationException`을 발생시킨다. Topic을 생략한 overload는 typed event의 packet name을
@@ -238,22 +238,7 @@ export declare function ZLinkPublish(packetName?: string): MethodDecorator;
 export interface ZLinkPublishCall {
     metadata(key: string, value: string): this;
     metadata(metadata: ZLinkMessageMetadata): this;
-    submit(signal?: AbortSignal): Promise<ZLinkPublishResult>;
-}
-
-export interface ZLinkLogicalMulticastDetail {
-    readonly snapshotRemoteNodeCount: bigint;
-    readonly admittedRemoteNodeCount: bigint;
-    readonly droppedRemoteNodeCount: bigint;
-    readonly unreachableRemoteNodeCount: bigint;
-    readonly snapshotLocalSpotCount: bigint;
-    readonly admittedLocalSpotCount: bigint;
-    readonly droppedLocalSpotCount: bigint;
-}
-
-export interface ZLinkPublishResult {
-    readonly status: ZLinkSubmitStatus;
-    readonly detail: ZLinkLogicalMulticastDetail;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkPublishContext extends ZLinkHandlerContext {
@@ -360,8 +345,8 @@ export interface ZLinkMeshChannelRuntimeOptions {
 configuration error로 거부한다. 성공한 변경은 descriptor revision을 증가시키고 이후 target 선택에만
 적용한다.
 
-`yield(...)`는 channel, Spot, Actor request와 I/O·CPU worker call에만 제공한다. Node direct request와
-Actor join에는 제공하지 않는다. Runtime은 operation submit 전에 current execution context를 확인하며
+`yield(...)`는 channel, Spot, Actor request, I/O·CPU worker와 Actor·Spot create·get-or-create call에만
+제공한다. Node direct request와 Actor join에는 제공하지 않는다. Runtime은 operation submit 전에 current execution context를 확인하며
 `SpotWide` User Spot 또는 Instance Spot application handler가 아니면 outbound admission, queue 변경과 gate
 반환 없이 `InvalidConfiguration`으로 완료한다.
 
@@ -410,20 +395,7 @@ export declare function ZLinkSend(packetName?: string): MethodDecorator;
 export interface ZLinkSendCall {
     metadata(key: string, value: string): this;
     metadata(metadata: ZLinkMessageMetadata): this;
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
-}
-
-export declare enum ZLinkSubmitStatus {
-    Submitted = "submitted",
-    Backpressured = "backpressured",
-    TimedOut = "timedOut",
-    TargetNotFound = "targetNotFound",
-    RouteNotConnected = "routeNotConnected",
-    Shutdown = "shutdown"
-}
-
-export interface ZLinkSubmitResult {
-    readonly status: ZLinkSubmitStatus;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSendContext extends ZLinkHandlerContext {
@@ -435,24 +407,22 @@ export interface ZLinkSendHandler<TMessage> {
 }
 ```
 
-모든 server one-way call의 `submit(signal?)`과 session Actor `relay(...)`는 local outbound admission 결과를
-`Promise`로 반환한다. 유효한 call은 pending 공간을 확인하기 전에 해당 family가 실제로 사용하는 admission
-primitive를 non-blocking 방식으로 정확히 한 번 호출한다. Remote 경로는 transport submit을 사용하고, local
-경로는 mailbox 또는 relay queue admission을 사용한다. 이 첫 시도가 즉시 성공하면 pending 공간이 차 있어도
-이미 완료된 `Promise`로 `Submitted`를 반환할 수 있다. Remote transport의 capacity가 부족하거나 local
-admission capacity가 부족할 때만 해당 operation family의 send timeout까지 기다린다. 첫 시도 뒤 bounded
-pending 공간도 가득 차 있으면 `Backpressured`, deadline까지 수락되지 않으면 `TimedOut`으로 완료한다. Local
-경로가 즉시 수락할 수 있는데 pending 공간만 가득 찼다는 이유로 `Backpressured`를 반환하면 안 된다.
-`Submitted`는 remote handler나 subscriber가 실행을 마쳤다는 뜻이 아니다.
+모든 server one-way call의 `submit(signal?)`과 session Actor `relay(...)`는 정상 완료 값을 만들지 않는다.
+정상 완료는 operation family가 정의한 source-local queue가 message를 수락했다는 뜻이다. Remote handler 실행,
+subscriber 수신, remote Spot queue 수락과 application callback 완료는 기다리지 않는다. Queue capacity가
+부족하면 해당 family의 send timeout까지 capacity signal을 기다리고, deadline 안에 공간이 생기면 message를
+정확히 한 번 제출한다. `Backpressured`는 public terminal result나 즉시 발생하는 application exception이
+아니다. Timeout은 `DeadlineExceeded`, route 단절은 `RouteNotConnected`, runtime 종료는
+`RuntimeShutdown`으로 Promise를 reject한다. Actor·Spot·Mesh·session target 부재는 operation family가 정의한
+기존 오류 kind를 사용한다.
 
 `AbortSignal`이 `submit(...)` 또는 `relay(...)` 전에 이미 abort 상태이면 runtime admission을 시작하지 않고
 `AbortError`로 reject한다.
 Admission이 시작된 뒤에는 abort, timeout, shutdown과 수락 중 먼저 확정된 terminal 결과만 남기며, abort나
-timeout 뒤에 같은 operation을 다시 제출하지 않는다. Cancellation은 `ZLinkSubmitStatus`에 값을 추가하지
-않는다. 잘못된 argument·handle·state와 중복 submit은 result status가 아니라 exceptional completion으로
+timeout 뒤에 같은 operation을 다시 제출하지 않는다. 잘못된 argument·handle·state와 중복 submit은 exceptional completion으로
 처리한다. STREAM reply의 유효한 첫 terminator는 transport를 시작하기 전에 one-shot reply token을 원자적으로
 claim하고 소비한다. 같은 token에서 만든 두 call이 경쟁하면 claim에 실패한 call은 transport를 시도하지 않고
-exceptional completion으로 끝난다. Token을 소비한 call이 timeout, `Backpressured` 또는 abort로 끝나도 token을
+exceptional completion으로 끝난다. Token을 소비한 call이 `DeadlineExceeded` 또는 abort로 끝나도 token을
 다시 사용할 수 없다. 이미 사용한 token도 exceptional completion으로 처리한다. STREAM reply는 client request
 timeout을 전달받지 않으며 해당 STREAM socket의 send timeout만 사용한다.
 
@@ -463,21 +433,13 @@ local·remote Actor route가 바뀌어도 framework socket send timeout 하나�
 허용한다. `undefined`는 기본값을 선택하며 `0`, 음수, 정수가 아닌 값과 상한 초과는
 `ZLinkConfigurationError`로 거부한다.
 
-Logical Multicast의 `ZLinkPublishCall.submit(...)`은 예외다. Framework는 pending queue 없이 bounded I/O
-executor에 direct handoff한다. 즉시 worker slot을 얻지 못하면 blocking publish attempt를 시작하지 않고
-`Backpressured`를 반환한다. Slot을 얻은 뒤 publish attempt가 시작되기 전에는 abort와 shutdown이 operation
-시작을 막을 수 있다. Publish attempt를 시작한 시점이 operation commit barrier이며, 그 뒤의 abort는 이미 확정한 snapshot
-operation을 중단하지 않는다. 이때
-`Promise`는 Framework runtime이 확정한 최종 `ZLinkPublishResult`로 완료한다. Target별 send timeout 뒤에
-확정된 capacity 실패는 `Backpressured`와 partial detail로 유지하며 `TimedOut`으로 바꾸거나 전체 publish를 다시 실행하지
-않는다. Snapshot target이 모두 0이면 `TargetNotFound`다. Remote capacity drop이 없고 모든 remote target의
-route가 준비되지 않은 경우에는 `Submitted`와 unreachable detail을 반환할 수 있다. Local Spot drop은
-top-level status를 바꾸지 않고 detail에만 반영한다. Remote count는
-`snapshotRemoteNodeCount === admittedRemoteNodeCount + droppedRemoteNodeCount + unreachableRemoteNodeCount`를
-만족한다.
-Remote admitted count는 source의 local outbound transport queue 제출만 집계한다. Local admitted count는
-origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과 remote·local handler
-실행 또는 완료는 `Promise` 완료 조건이 아니다.
+Logical Multicast의 `ZLinkPublishCall.submit(...)`은 bounded I/O executor에 direct handoff한다. 즉시 worker
+slot을 얻지 못하면 send timeout까지 capacity를 기다린다. Slot을 얻은 뒤 publish attempt가 시작되기 전에는
+abort와 shutdown이 operation 시작을 막을 수 있다. Publish attempt를 시작한 시점이 operation commit
+barrier이며, 그 뒤의 abort는 이미 확정한 snapshot operation을 중단하지 않는다. Transaction이 시작된 뒤
+개별 target 실패는 이미 수락한 target을 rollback하거나 전체 publish를 자동 재시도하지 않는다. Remote
+transport와 local Spot queue의 snapshot·admitted·dropped·unreachable count는 monitoring snapshot, metric과
+runtime event에 기록한다. Target snapshot이 0개여도 정상 완료한다.
 
 ## 6. Serializer와 STREAM session
 
@@ -502,9 +464,9 @@ export interface ZLinkSession {
 export interface ZLinkSessionActor {
     readonly actorId: ActorId;
     readonly ref: ActorRef;
-    relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
     relay(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage,
-        signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+        signal?: AbortSignal): Promise<void>;
     notifyDisconnected(signal?: AbortSignal): Promise<void>;
 }
 
@@ -552,19 +514,19 @@ export interface ZLinkSessionPacketHandler<TSessionContext, TMessage = ZLinkMess
 
 export interface ZLinkSessionReplyCall {
     compress(enabled?: boolean): this;
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSessionSendCall {
     metadata(key: string, value: string): this;
     metadata(metadata: ZLinkMessageMetadata): this;
     compress(enabled?: boolean): this;
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 ```
 
-Payload만 받는 `relay(...)`는 one-way admission이다. Dispatch context를 받는 overload는 explicit current
-STREAM request reply capability를 호출 즉시 runtime에 이전한다. Submitted면 Actor typed reply가 original
-STREAM correlation을 terminal-once로 완료하고 admission failure면 Framework가 같은 correlation을 typed
-failure로 완료한다. Caller는 별도 reply·retry를 하지 않는다. One-way dispatch context는 reply
-capability가 없으므로 admission만 반환한다.
+Payload만 받는 `relay(...)`는 local relay queue가 operation을 수락하면 정상 완료하는 one-way admission이다.
+Dispatch context를 받는 overload는 explicit current STREAM request reply capability를 호출 즉시 runtime에
+이전한다. Admission에 성공하면 Actor typed reply가 original STREAM correlation을 terminal-once로 완료하고
+admission failure면 Framework가 같은 correlation을 typed failure로 완료한다. Caller는 별도 reply·retry를
+하지 않는다. One-way dispatch context는 reply capability가 없으므로 local admission까지만 기다린다.

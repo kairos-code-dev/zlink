@@ -63,6 +63,8 @@ response parser, SSL stream, SSL context 타입을 노출하지 않는다.
   chunked streaming `body_stream(provider, content_type)`,
   `form(name, value)`(x-www-form-urlencoded), `multipart(...)`/`multipart_file(...)`
 - `submit<T>()`, `submit_raw()`, blocking `fetch<T>()`(typed body 직접 반환, 실패 시 throw)
+- server request builder의 one-way `submit()`은 `task_t<void>`를 반환한다. 이 task는 비동기
+  완료와 실패만 전달하며 전송 결과나 admission status를 포함하지 않는다.
 - `download(sink)`: 응답 body를 버퍼링 없이 chunk 단위로 streaming
 - connection keep-alive pool: 같은 origin(+proxy) 연결을 재사용하고 죽은 pooled 연결은
   fresh 연결로 1회 자동 재시도한다

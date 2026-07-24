@@ -492,7 +492,7 @@ public interface IZLinkSpotSendCall : IZLinkMetadataCall<IZLinkSpotSendCall>
     IZLinkSpotSendCall InstanceSpot();
     IZLinkSpotSendCall InstanceSpot(string instanceSpotType);
     IZLinkSpotSendCall InMesh(string meshName);
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 
@@ -541,6 +541,7 @@ public interface IZLinkSpotCreateCall
     IZLinkSpotCreateCall Request<TRequest>(TRequest request);
     IZLinkSpotCreateCall Timeout(TimeSpan timeout);
     ValueTask<ZLinkSpotCreateResult> Async(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkSpotCreateResult> Yield(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSpotGetOrCreateCall
@@ -550,6 +551,7 @@ public interface IZLinkSpotGetOrCreateCall
     IZLinkSpotGetOrCreateCall Request<TRequest>(TRequest request);
     IZLinkSpotGetOrCreateCall Timeout(TimeSpan timeout);
     ValueTask<ZLinkSpotCreateResult> Async(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkSpotCreateResult> Yield(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSpotPublisherClient
@@ -589,7 +591,7 @@ type을 사용한다. 등록 type이 여러 개면 `InstanceSpot(instanceSpotTyp
 이동시키지 않는다. Option을 사용해도 target node나 endpoint를 지정할 수는 없다. Request
 `Timeout`은 resolve, cold activation, handler와 reply 전체의 deadline을 고정한다. One-way call은 선택한
 MeshNode의 send deadline에 resolve, cold activation과 outbound admission을 포함한다. Metadata와 terminal
-소유권은 각 call이 계속 유지하며, send는 `SubmitAsync`, request는 `Async<TReply>` 또는
+소유권은 각 call이 계속 유지하며, send는 `Async`, request는 `Async<TReply>` 또는
 `Yield<TReply>`로 한 번만 제출한다. Instance marker와 각 option은 한 번만 설정할 수 있다.
 
 `IZLinkInstanceSpot`은 `IZLinkSpot`을 상속하지 않는 actor-free lifecycle interface다. Direct packet과 timer
@@ -638,7 +640,10 @@ Spot kind를 선택하는 인자나 Instance Spot create·get-or-create overload
 구현이 자신의 lifecycle을 종료하는 `IZLinkInstanceSpotContext.CloseAsync()`는 남긴다.
 
 User Spot Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal
-`Async(...)`를 두 번 호출하면 `AlreadySubmitted`다. `InMesh(...)` 선택과 오류 및 전체
+`Async(...)` 또는 `Yield(...)`를 두 번 호출하면 `AlreadySubmitted`다. 두 terminal은 같은
+`ZLinkSpotCreateResult`를 반환한다. `Yield(...)`는 `SpotWide` User Spot 또는 Instance Spot application
+callback에서만 현재 Spot gate를 반납하며, 다른 문맥에서는 reservation과 factory 실행 전에
+`InvalidConfiguration`으로 완료한다. `InMesh(...)` 선택과 오류 및 전체
 deadline 규칙은 Actor create와 같다. `Create`는 Framework가 새 global RID를 발급한다. `GetOrCreate`는 같은
 User Spot stable type의 Ready 또는 Creating attempt에 합류하고 CAS loser가 별도 factory를 실행하지
 않는다. Kind나 type이 다르면 `SpotTypeMismatch`, deadline 안에 terminal state가 되지 않으면
@@ -666,6 +671,6 @@ index가 owner MeshNode를 선택하며 caller는 MeshName을 추가로 넘기�
 각 remote target은 MeshNode ROUTER의 송신 규칙을 따르며, 같은 node의 일치하는 Spot queue는 immutable
 message storage를 공유한다. 정확한 설정 표면은
 [Topology configuration §5](03-configuration-topology.ko.md#5-publisher와-runtime-option)가 소유한다.
-`ZLinkPublishResult.Detail`의 remote admitted는 source의 local outbound transport queue 제출만 집계한다.
-Local admitted는 origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과
-remote·local handler 실행 또는 완료는 기다리거나 결과에 포함하지 않는다.
+Remote target의 source-local transport admission과 local Spot queue admission은 monitoring metric과 runtime
+event에 snapshot·admitted·dropped·unreachable count로 기록한다. Remote Spot queue 제출과 remote·local
+handler 실행 또는 완료는 기다리지 않는다.

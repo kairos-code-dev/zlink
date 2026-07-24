@@ -127,7 +127,7 @@ public interface IZLinkSpotOutbound
     IZLinkSendCall SendToChannel<TMessage>(
         string channelName,
         TMessage message);
-    IZLinkRequestCall RequestToChannel<TRequest>(
+    IZLinkChannelRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 }
@@ -482,7 +482,7 @@ public interface IZLinkSpotSendCall : IZLinkMetadataCall<IZLinkSpotSendCall>
     IZLinkSpotSendCall InstanceSpot();
     IZLinkSpotSendCall InstanceSpot(string instanceSpotType);
     IZLinkSpotSendCall InMesh(string meshName);
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 
@@ -531,6 +531,7 @@ public interface IZLinkSpotCreateCall
     IZLinkSpotCreateCall Request<TRequest>(TRequest request);
     IZLinkSpotCreateCall Timeout(TimeSpan timeout);
     ValueTask<ZLinkSpotCreateResult> Async(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkSpotCreateResult> Yield(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSpotGetOrCreateCall
@@ -540,6 +541,7 @@ public interface IZLinkSpotGetOrCreateCall
     IZLinkSpotGetOrCreateCall Request<TRequest>(TRequest request);
     IZLinkSpotGetOrCreateCall Timeout(TimeSpan timeout);
     ValueTask<ZLinkSpotCreateResult> Async(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkSpotCreateResult> Yield(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSpotPublisherClient
@@ -577,7 +579,7 @@ marker가 있는 call에서만 유효하며 marker 없이 사용하면
 이동시키지 않는다. Option을 사용해도 target node나 endpoint를 지정할 수는 없다. Request
 `Timeout`은 resolve, cold activation, handler와 reply 전체의 deadline을 고정한다. One-way call은 선택한
 MeshNode의 send deadline에 resolve, cold activation과 outbound admission을 포함한다. Metadata와 terminal
-소유권은 각 call이 계속 유지하며, send는 `SubmitAsync`, request는 `Async<TReply>` 또는
+소유권은 각 call이 계속 유지하며, send는 `Async`, request는 `Async<TReply>` 또는
 `Yield<TReply>`로 한 번만 제출한다. Instance marker와 각 option은 한 번만 설정할 수 있다.
 `Yield<TReply>`는 `SpotWide` User Spot 또는 Instance Spot callback에서만 유효하다. Entry Spot,
 `PerActor` User Spot, Entry Spot Actor, Node·Channel handler와 owner turn 밖의 client에서 호출하면
@@ -668,6 +670,6 @@ index가 owner [MeshNode](../../../../01-glossary.ko.md#meshnode)를 선택하�
 각 remote target은 MeshNode ROUTER의 송신 규칙을 따르며, 같은 node의 일치하는 Spot queue는 immutable
 message storage를 공유한다. 정확한 설정 표면은
 [Topology configuration §5](03-configuration-topology.ko.md#5-publisher와-runtime-option)가 소유한다.
-`ZLinkPublishResult.Detail`의 remote admitted는 source의 local outbound transport queue 제출만 집계한다.
-Local admitted는 origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과
-remote·local handler 실행 또는 완료는 기다리거나 결과에 포함하지 않는다.
+Remote transport와 local Spot queue의 snapshot·admitted·dropped·unreachable count는 public 반환값이
+아니라 monitoring metric과 runtime event에 기록한다. Remote Spot queue 제출과 remote·local handler 실행
+또는 완료는 기다리지 않는다.

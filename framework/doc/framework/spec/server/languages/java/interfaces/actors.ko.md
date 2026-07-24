@@ -198,7 +198,7 @@ public interface systems.zlink.framework.actors.ZLinkActorContext {
   public abstract java.lang.String meshName();
   public abstract java.util.Optional<java.lang.String> spotId();
   public abstract systems.zlink.framework.actors.ZLinkBoundSession boundSession();
-  public abstract systems.zlink.framework.actors.ZLinkActorJoinCall joinSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
+  public abstract systems.zlink.framework.actors.ZLinkActorJoinCall joinSpot(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.actors.ZLinkActorJoinCall joinEntrySpot(java.lang.Object);
 }
 public interface systems.zlink.framework.actors.ZLinkActorJoinCall {
@@ -239,6 +239,7 @@ public interface systems.zlink.framework.actors.ZLinkActorCreateCall {
   public abstract systems.zlink.framework.actors.ZLinkActorCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
   public abstract systems.zlink.framework.actors.ZLinkActorCreateCall timeout(java.time.Duration);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult> submit();
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult> yield();
 }
 public interface systems.zlink.framework.actors.ZLinkActorGetOrCreateCall {
   public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall inMesh(java.lang.String);
@@ -246,6 +247,7 @@ public interface systems.zlink.framework.actors.ZLinkActorGetOrCreateCall {
   public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
   public abstract systems.zlink.framework.actors.ZLinkActorGetOrCreateCall timeout(java.time.Duration);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult> submit();
+  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult> yield();
 }
 public sealed interface systems.zlink.framework.actors.ZLinkActorCreateResult
     permits systems.zlink.framework.actors.ZLinkActorCreateResult.Existing,
@@ -258,7 +260,7 @@ public interface systems.zlink.framework.actors.ZLinkActorRequestCall {
   public abstract <TReply> java.util.concurrent.CompletionStage<TReply> yield(java.lang.Class<TReply>);
 }
 public interface systems.zlink.framework.actors.ZLinkActorSendCall {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 public interface systems.zlink.framework.actors.ZLinkBoundSession {
   public abstract systems.zlink.framework.actors.ZLinkBoundSessionSendCall send(java.lang.Object);
@@ -266,7 +268,7 @@ public interface systems.zlink.framework.actors.ZLinkBoundSession {
 }
 public interface systems.zlink.framework.actors.ZLinkBoundSessionSendCall {
   public abstract systems.zlink.framework.actors.ZLinkBoundSessionSendCall metadata(java.lang.String, java.lang.String);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 ```
 
@@ -279,6 +281,11 @@ Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하�
 `OBJECT_CLIENT_NOT_CONFIGURED`, 둘 이상이면 `MESH_SELECTION_REQUIRED`다. 명시한 Mesh가 없으면
 `MESH_NOT_FOUND`다. Target RID나 callback을 받지
 않는다. `find`와 `findSpot`은 current Ready ref만 반환하며 directory와 resolver를 제공하지 않는다.
+
+Create와 GetOrCreate의 `submit()`은 `ZLinkActorCreateResult`를 유지한다. `yield()`도 같은 결과를 반환하지만
+`SPOT_WIDE` User Spot과 Instance Spot application callback에서만 현재 Spot gate를 반납한다. 다른 문맥에서는
+reservation, factory 실행과 queue 변경 전에 `INVALID_CONFIGURATION`으로 끝낸다. Send에는 `yield()`를
+제공하지 않으며 정상 `submit()`은 `CompletionStage<Void>`로 local queue admission만 기다린다.
 
 `create`는 Ready Actor가 있으면 `ACTOR_ALREADY_EXISTS`이며 새 attempt에서 `Created` 또는 `Rejected`를
 반환한다. `getOrCreate`는 같은 type의 Ready Actor에서 callback 없이 `Existing`을 반환한다. Creating

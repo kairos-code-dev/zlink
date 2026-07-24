@@ -114,7 +114,7 @@ namespace zlink::framework {
 class actor_send_call_t {
 public:
     actor_send_call_t &metadata(std::string key, std::string value);
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class actor_request_call_t {
@@ -188,6 +188,7 @@ public:
 
     actor_create_call_t &timeout(std::chrono::milliseconds timeout);
     task_t<actor_create_result_t> submit();
+    task_t<actor_create_result_t> yield();
 };
 
 class actor_manager_t {
@@ -206,8 +207,11 @@ public:
 } // namespace zlink::framework
 ```
 
-Call object는 option마다 최대 한 번 설정하고 `submit()`도 한 번만 호출한다. Duplicate option은
-`invalid_configuration`, 두 번째 submit은 `already_submitted`다. `in_mesh`를 생략했을 때 object role Mesh가
+Call object는 option마다 최대 한 번 설정하고 `submit()` 또는 `yield()` 가운데 하나만 한 번 호출한다. Duplicate
+option은 `invalid_configuration`, 두 번째 terminal 호출은 `already_submitted`다. 두 terminal은 같은
+`actor_create_result_t`를 반환한다. `yield()`는 `spot_wide` User Spot 또는 Instance Spot application
+callback에서만 현재 Spot gate를 반납한다. 다른 문맥에서는 reservation과 factory 실행 전에
+`invalid_configuration`으로 완료한다. `in_mesh`를 생략했을 때 object role Mesh가
 하나면 자동 선택하고, 0개면 `object_client_not_configured`, 여러 개면 `mesh_selection_required`다. Unknown
 Mesh는 `mesh_not_found`다.
 
@@ -245,8 +249,8 @@ namespace zlink::framework {
 class session_actor_t {
 public:
     const actor_ref_t &ref() const noexcept;
-    task_t<submit_result_t> relay(const message_t &payload);
-    task_t<submit_result_t> relay(
+    task_t<void> relay(const message_t &payload);
+    task_t<void> relay(
       const stream_dispatch_context_t &dispatch,
       const message_t &payload);
     task_t<void> notify_disconnected();

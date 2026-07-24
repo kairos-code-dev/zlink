@@ -22,6 +22,13 @@ JVM backend socket close는 remote unbind completion을 bounded lifecycle deadli
 terminal failure를 무시하지 않고 close failure로 반환하며, 성공·실패와 관계없이 local binding과 raw STREAM
 socket을 정리한다. 이 동작을 위한 추가 public member는 제공하지 않는다.
 
+Session send·reply, bound session send와 Session Actor relay는 `CompletionStage<Void>`로 STREAM socket
+queue admission만 기다린다. Queue가 가득 차면 send timeout까지 기다리며 timeout, cancellation, route
+단절과 runtime 종료는 exceptional completion으로 전달한다. Bound session이나 Session Actor mapping이 없으면
+`ACTOR_SESSION_NOT_BOUND`를 사용하고 runtime 종료에는 `RUNTIME_SHUTDOWN=36`을 사용한다. Remote session
+handler 실행이나 Actor relay
+handler 완료는 정상 completion 조건이 아니다.
+
 ## Exact public member inventory
 
 아래 선언은 이 category의 Java public type과 member를 고정한다.
@@ -37,8 +44,8 @@ public interface systems.zlink.framework.streams.ZLinkSession {
 public interface systems.zlink.framework.streams.ZLinkSessionActor {
   public abstract java.lang.String actorId();
   public abstract systems.zlink.framework.actors.ActorRef ref();
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> relay(systems.zlink.framework.messaging.ZLinkMessage);
-  public default java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> relay(systems.zlink.framework.streams.ZLinkSessionDispatchContext, systems.zlink.framework.messaging.ZLinkMessage);
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> relay(systems.zlink.framework.messaging.ZLinkMessage);
+  public default java.util.concurrent.CompletionStage<java.lang.Void> relay(systems.zlink.framework.streams.ZLinkSessionDispatchContext, systems.zlink.framework.messaging.ZLinkMessage);
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> notifyDisconnected();
 }
 public interface systems.zlink.framework.streams.ZLinkSessionActors {
@@ -65,12 +72,12 @@ public interface systems.zlink.framework.streams.ZLinkSessionPacketDispatcher<TS
 }
 public interface systems.zlink.framework.streams.ZLinkSessionReplyCall {
   public abstract systems.zlink.framework.streams.ZLinkSessionReplyCall compress();
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 public interface systems.zlink.framework.streams.ZLinkSessionSendCall {
   public abstract systems.zlink.framework.streams.ZLinkSessionSendCall metadata(java.lang.String, java.lang.String);
   public abstract systems.zlink.framework.streams.ZLinkSessionSendCall compress();
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 public interface systems.zlink.framework.streams.ZLinkStreamCompressionCodec {
   public abstract byte[] compress(byte[]);

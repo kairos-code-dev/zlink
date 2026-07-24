@@ -4,7 +4,8 @@
 
 ChannelName은 process 안의 송신 경로를 선택한다. RouteMesh·ClientServer·fanout builder와 typed handler,
 client call의 정확한 payload type은 공통 계약의 역할 구분을 Java generic으로 투영한다. One-way operation은
-`submit()` 하나를 제공하고, request operation의 `submit(...)`은 terminal reply까지 기다린다.
+`CompletionStage<Void> submit()` 하나를 제공하고, request operation의 `submit(...)`은 terminal reply까지
+기다린다. One-way stage의 정상 완료는 local queue admission 완료를 뜻하며 별도 결과를 만들지 않는다.
 
 ```java
 public interface ZLinkMeshChannelBuilder {
@@ -121,9 +122,18 @@ Runtime 변경은 descriptor revision으로 순서화하고 이미 제출했거�
 적용하지 않는다. Readiness, drain과 capacity를 먼저 적용한 뒤 positive weight 합계를 최소 64-bit integer로
 계산한다. Logical Multicast는 positive RouteMesh member를 각각 한 번만 포함하며 weight 크기로 제출 횟수를
 늘리지 않는다.
-`ZLinkLogicalMulticastDetail`의 remote admitted는 source의 local outbound transport queue 제출만 집계한다.
-Local admitted는 origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과
-remote·local handler 실행 또는 완료는 `CompletionStage` 완료 조건이 아니다.
+Logical Multicast의 remote target은 source에서 고정한 MeshNode route의 local transport queue에 한 번씩
+제출하고, local target은 일치하는 local Spot queue에 한 번씩 제출한다. Target별 성공·drop·unreachable
+개수는 monitoring metric과 runtime event로 기록하며 public 결과로 반환하지 않는다. Remote Spot queue
+수락과 remote·local handler 실행 또는 완료는 `CompletionStage` 완료 조건이 아니다.
+
+Queue가 가득 차면 operation family의 send timeout까지 공간을 기다린다. Timeout, cancellation,
+`ROUTE_NOT_CONNECTED`와 runtime 종료는 exceptional completion으로 전달한다. Target 부재는 operation별
+기존 kind를 사용한다. Actor는 `ACTOR_ROUTE_NOT_FOUND`, Spot은 `SPOT_ROUTE_NOT_FOUND`, Mesh는
+`MESH_NOT_FOUND`, request는 `REQUEST_TARGET_NOT_FOUND`, bound session과 Session Actor mapping은
+`ACTOR_SESSION_NOT_BOUND`를 사용한다. Runtime
+종료는 모든 one-way operation에서 `RUNTIME_SHUTDOWN=36`이다. `Backpressured`는 내부 대기 상태이며 public
+terminal 결과가 아니다.
 
 ClientServer의 local Server도 listener와 service admission을 마친 뒤 remote Server와 같은 candidate
 집합에 포함한다. Ready, positive weight, non-draining 조건을 동일하게 적용하며 local 우선순위나 remote
@@ -192,20 +202,7 @@ public interface systems.zlink.framework.channels.ZLinkFanoutClient {
   public abstract systems.zlink.framework.channels.ZLinkFanoutPublishCall publish(java.lang.String, java.lang.Object);
 }
 public interface systems.zlink.framework.channels.ZLinkFanoutPublishCall {
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit();
-}
-public final class systems.zlink.framework.channels.ZLinkLogicalMulticastDetail extends java.lang.Record {
-  public systems.zlink.framework.channels.ZLinkLogicalMulticastDetail(long, long, long, long, long, long, long);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public long snapshotRemoteNodeCount();
-  public long admittedRemoteNodeCount();
-  public long droppedRemoteNodeCount();
-  public long unreachableRemoteNodeCount();
-  public long snapshotLocalSpotCount();
-  public long admittedLocalSpotCount();
-  public long droppedLocalSpotCount();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 public interface systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions {
   public abstract int weight();
@@ -214,7 +211,7 @@ public interface systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions
 public interface systems.zlink.framework.channels.ZLinkPublishCall {
   public default systems.zlink.framework.channels.ZLinkPublishCall metadata(java.lang.String, java.lang.String);
   public default systems.zlink.framework.channels.ZLinkPublishCall metadata(java.util.Map<java.lang.String, java.lang.String>);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkPublishResult> submit();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 public interface systems.zlink.framework.channels.ZLinkPublishContext extends systems.zlink.framework.ZLinkHandlerContext {
   public abstract java.lang.String topic();
@@ -222,14 +219,6 @@ public interface systems.zlink.framework.channels.ZLinkPublishContext extends sy
 }
 public interface systems.zlink.framework.channels.ZLinkPublishHandler<TMessage> {
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TMessage, systems.zlink.framework.channels.ZLinkPublishContext);
-}
-public final class systems.zlink.framework.channels.ZLinkPublishResult extends java.lang.Record {
-  public systems.zlink.framework.channels.ZLinkPublishResult(systems.zlink.framework.channels.ZLinkSubmitStatus, systems.zlink.framework.channels.ZLinkLogicalMulticastDetail);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public systems.zlink.framework.channels.ZLinkSubmitStatus status();
-  public systems.zlink.framework.channels.ZLinkLogicalMulticastDetail detail();
 }
 public interface systems.zlink.framework.channels.ZLinkRequestCall {
   public default systems.zlink.framework.channels.ZLinkRequestCall metadata(java.lang.String, java.lang.String);
@@ -276,29 +265,12 @@ public interface systems.zlink.framework.channels.ZLinkRouteSendHandler<TMessage
 public interface systems.zlink.framework.channels.ZLinkSendCall {
   public default systems.zlink.framework.channels.ZLinkSendCall metadata(java.lang.String, java.lang.String);
   public default systems.zlink.framework.channels.ZLinkSendCall metadata(java.util.Map<java.lang.String, java.lang.String>);
-  public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submit();
+  public abstract java.util.concurrent.CompletionStage<java.lang.Void> submit();
 }
 public interface systems.zlink.framework.channels.ZLinkSendContext extends systems.zlink.framework.ZLinkHandlerContext {
 }
 public interface systems.zlink.framework.channels.ZLinkSendHandler<TMessage> {
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TMessage, systems.zlink.framework.channels.ZLinkSendContext);
-}
-public final class systems.zlink.framework.channels.ZLinkSubmitResult extends java.lang.Record {
-  public systems.zlink.framework.channels.ZLinkSubmitResult(systems.zlink.framework.channels.ZLinkSubmitStatus);
-  public final java.lang.String toString();
-  public final int hashCode();
-  public final boolean equals(java.lang.Object);
-  public systems.zlink.framework.channels.ZLinkSubmitStatus status();
-}
-public final class systems.zlink.framework.channels.ZLinkSubmitStatus extends java.lang.Enum<systems.zlink.framework.channels.ZLinkSubmitStatus> {
-  public static final systems.zlink.framework.channels.ZLinkSubmitStatus SUBMITTED;
-  public static final systems.zlink.framework.channels.ZLinkSubmitStatus BACKPRESSURED;
-  public static final systems.zlink.framework.channels.ZLinkSubmitStatus TIMED_OUT;
-  public static final systems.zlink.framework.channels.ZLinkSubmitStatus TARGET_NOT_FOUND;
-  public static final systems.zlink.framework.channels.ZLinkSubmitStatus ROUTE_NOT_CONNECTED;
-  public static final systems.zlink.framework.channels.ZLinkSubmitStatus SHUTDOWN;
-  public static systems.zlink.framework.channels.ZLinkSubmitStatus[] values();
-  public static systems.zlink.framework.channels.ZLinkSubmitStatus valueOf(java.lang.String);
 }
 public interface systems.zlink.framework.handlers.ZLinkHandlerGroup extends java.lang.annotation.Annotation {
   public abstract java.lang.String value();

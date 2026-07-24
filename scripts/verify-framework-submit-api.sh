@@ -42,16 +42,20 @@ if (mode === '--contract') {
   for (const [source, owner, fragments] of [
     [asyncPolicy, 'async policy', [
       '동기 `TrySubmit` 계열을 제공하지 않는다',
-      '비동기 submit terminator 하나만 제공하고',
-      'remote handler 완료는 기다리지 않는다']],
+      '반환 데이터 없이 완료',
+      '`DeadlineExceeded`',
+      '`RuntimeShutdown`']],
     [frameworkApi, 'Framework API', [
-      '`Submitted`', '`Backpressured`', '`TimedOut`',
-      'outbound admission', 'exceptional completion']],
+      '반환 데이터 없이 정상 완료',
+      'monitoring metric과 runtime event',
+      '`RuntimeShutdown`']],
     [spotMessaging, 'Spot messaging', [
-      'local outbound admission만 나타내고 target Spot handler 실행은 기다리지 않는다']],
+      '정상 완료는 source-local outbound queue가 operation을 수락했다는 뜻',
+      'public 반환값이 아니라 monitoring metric과 event']],
     [scenario, 'Config 13', [
-      'Submit 완료는 원격 handler 실행 완료가 아니다',
-      'Timeout을 늘리거나 반복 submit해서 성공시키는 절차는 허용하지 않는다']]
+      '원격 handler 실행 완료가 아니다',
+      'timeout 예외',
+      'shutdown']]
   ]) {
     for (const fragment of fragments) {
       if (!source.includes(fragment)) fail(`${owner} is missing submit semantic: ${fragment}`);
@@ -62,11 +66,11 @@ if (mode === '--contract') {
     language, readExactContract(root, language, tags[language]),
   ]));
   const submitPatterns = {
-    dotnet: /ValueTask<ZLinkSubmitResult>\s+SubmitAsync\s*\(/,
-    cpp: /task_t<submit_result_t>\s+submit\s*\(\s*\)/,
-    java: /CompletionStage<[^>\n]*ZLinkSubmitResult>\s+submit\s*\(/,
-    kotlin: /CompletionStage<T>\.await\(\): T/,
-    node: /submit\([^)]*\): Promise<ZLinkSubmitResult>/,
+    dotnet: /ValueTask\s+Async\s*\(/,
+    cpp: /task_t<void>\s+submit\s*\(\s*\)/,
+    java: /CompletionStage<Void>\s+submit\s*\(/,
+    kotlin: /suspend\s+fun\s+await\s*\(\s*\)(?:\s*:\s*Unit)?/,
+    node: /submit\([^)]*\): Promise<void>/,
   };
   for (const language of languages) {
     const contract = contracts.get(language);
@@ -75,6 +79,12 @@ if (mode === '--contract') {
     }
     if (/\b(?:TrySubmit|trySubmit|try_submit)\s*(?:<[^>]*>)?\s*\(/.test(contract.code)) {
       fail(`${language} exact public declarations expose a synchronous TrySubmit terminator`);
+    }
+    if (/\b(?:ZLinkSubmitStatus|ZLinkSubmitResult|ZLinkPublishResult|ZLinkLogicalMulticastDetail|submit_status_t|submit_result_t|publish_result_t|logical_multicast_detail_t)\b/.test(contract.code)) {
+      fail(`${language} exact public declarations expose a removed one-way result type`);
+    }
+    if (language === 'dotnet' && /\bSubmitAsync\s*\(/.test(contract.code)) {
+      fail('dotnet exact public declarations retain SubmitAsync');
     }
     if (/\b(?:ActorRelocationTimeout|actorRelocationTimeout|actor_relocation_timeout)\b/.test(contract.code)) {
       fail(`${language} exact public declarations expose an Actor-specific relocation timeout`);
@@ -109,14 +119,14 @@ if (mode === '--contract') {
   }
 
   const multicastFragments = {
-    dotnet: 'UnreachableRemoteNodeCount',
-    cpp: 'unreachable_remote_node_count',
-    java: 'unreachableRemoteNodeCount',
-    node: 'unreachableRemoteNodeCount',
+    dotnet: 'unreachable count',
+    cpp: 'remote_unreachable_count',
+    java: 'unreachable',
+    node: 'remoteUnreachableCount',
   };
   for (const [language, fragment] of Object.entries(multicastFragments)) {
     if (!contracts.get(language).source.includes(fragment)) {
-      fail(`${language} Logical Multicast result omits unreachable remote targets`);
+      fail(`${language} Logical Multicast monitoring omits unreachable remote targets`);
     }
   }
 
@@ -155,8 +165,8 @@ if (mode === '--contract') {
       /publish\(\s*String channelName,\s*String topic,\s*Object event\)/s,
     ],
     kotlin: [
-      /publishToTopic\(\s*channelName: String,\s*message: TEvent/s,
-      /publishToTopic\(\s*channelName: String,\s*topic: String,\s*message: TEvent/s,
+      /fun publish\(\s*channelName: String,\s*event: Any/s,
+      /fun publish\(\s*channelName: String,\s*topic: String,\s*event: Any/s,
     ],
     node: [
       /publish\(channelName: string, event: unknown\): ZLinkFanoutPublishCall/,
@@ -169,24 +179,28 @@ if (mode === '--contract') {
     if (!patterns[1].test(source)) fail(`${language} classic fanout explicit-topic overload is missing`);
   }
 
-  const headings = [...scenario.matchAll(/^###\s+(SA-(?:E2E|REG)-\d{2})\b/gm)]
-    .map(match => match[1]);
-  const expected = [];
-  for (let index = 1; index <= 20; index += 1) {
-    expected.push(`SA-E2E-${String(index).padStart(2, '0')}`);
-  }
-  for (let index = 1; index <= 4; index += 1) {
-    expected.push(`SA-REG-${String(index).padStart(2, '0')}`);
-  }
-  if (JSON.stringify(headings) !== JSON.stringify(expected)) {
-    fail(`Config 13 scenario heading schema differs: expected=${expected.length} actual=${headings.length}`);
+  for (const fragment of [
+    '즉시 수락',
+    'capacity 대기',
+    'timeout 예외',
+    'cancellation',
+    'shutdown',
+    'target',
+    'route',
+    'target이 0개',
+    'partial',
+    'monitoring',
+  ]) {
+    if (!scenario.toLowerCase().includes(fragment.toLowerCase())) {
+      fail(`Config 13 is missing one-way scenario coverage: ${fragment}`);
+    }
   }
 
   if (failures.length) {
     process.stderr.write(`${failures.map(message => `[submit-api] FAIL: ${message}`).join('\n')}\n`);
     process.exit(1);
   }
-  process.stdout.write(`[submit-api] contract CLEAN languages=${languages.length} scenarios=20 regressions=4 fanout_overloads=10\n`);
+  process.stdout.write(`[submit-api] contract CLEAN languages=${languages.length} result_free=1 fanout_overloads=10\n`);
   process.exit(0);
 }
 
@@ -225,6 +239,12 @@ for (const [language, relative, extensions] of publicRoots) {
       : /\b(?:TrySubmit|trySubmit|try_submit)\s*(?:<[^>]*>)?\s*\(/.test(source);
     if (exposesRemovedTerminator) {
       fail(`${language} public source retains TrySubmit: ${path.relative(root, file)}`);
+    }
+    if (/\b(?:ZLinkSubmitStatus|ZLinkSubmitResult|ZLinkPublishResult|ZLinkLogicalMulticastDetail|submit_status_t|publish_result_t|logical_multicast_detail_t)\b/.test(source)) {
+      fail(`${language} public source retains a removed one-way result type: ${path.relative(root, file)}`);
+    }
+    if (language === 'dotnet' && /\bSubmitAsync\s*\(/.test(source)) {
+      fail(`dotnet public source retains SubmitAsync: ${path.relative(root, file)}`);
     }
   }
 }

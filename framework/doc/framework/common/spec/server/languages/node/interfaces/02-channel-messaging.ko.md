@@ -71,7 +71,7 @@ export interface ZLinkFanoutClient {
 }
 
 export interface ZLinkFanoutPublishCall {
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 ```
 
@@ -230,7 +230,7 @@ export declare function ZLinkPublish(packetName?: string): MethodDecorator;
 export interface ZLinkPublishCall {
     metadata(key: string, value: string): this;
     metadata(metadata: ZLinkMessageMetadata): this;
-    submit(signal?: AbortSignal): Promise<ZLinkPublishResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkLogicalMulticastDetail {
@@ -391,7 +391,7 @@ export declare function ZLinkSend(packetName?: string): MethodDecorator;
 export interface ZLinkSendCall {
     metadata(key: string, value: string): this;
     metadata(metadata: ZLinkMessageMetadata): this;
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 
 export declare enum ZLinkSubmitStatus {
@@ -483,9 +483,9 @@ export interface ZLinkSession {
 export interface ZLinkSessionActor {
     readonly actorId: ActorId;
     readonly ref: ActorRef;
-    relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    relay(payload: ZLinkMessage, signal?: AbortSignal): Promise<void>;
     relay(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage,
-        signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+        signal?: AbortSignal): Promise<void>;
     notifyDisconnected(signal?: AbortSignal): Promise<void>;
 }
 
@@ -533,14 +533,14 @@ export interface ZLinkSessionPacketHandler<TSessionContext, TMessage = ZLinkMess
 
 export interface ZLinkSessionReplyCall {
     compress(enabled?: boolean): this;
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSessionSendCall {
     metadata(key: string, value: string): this;
     metadata(metadata: ZLinkMessageMetadata): this;
     compress(enabled?: boolean): this;
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 ```
 

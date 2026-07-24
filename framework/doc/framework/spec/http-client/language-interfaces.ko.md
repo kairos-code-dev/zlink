@@ -46,23 +46,25 @@
 
 ### 1.4 terminator (목표 계약)
 
-**HTTP client는 `submit`/`async` terminator를 갖고, awaitable을 쓰지 않는
+**HTTP client는 언어 관용에 맞는 비동기 terminator와, awaitable을 쓰지 않는
 호출자를 위한 callback 완료 경로를 함께 제공한다**([12 HTTP client](12-http-client.ko.md)).
 아래는 **목표 계약**이며 현재 구현과의 차이는
 [구현 차이 §12.22](../90-implementation-gap.ko.md)가 소유한다.
 
 | 개념 | cpp | dotnet | java | kotlin | node |
 | --- | --- | --- | --- | --- | --- |
-| **async** (raw) | `async_raw()` → `task_t<raw_http_response_t>` | `AsyncRaw(ct?)` → `ValueTask<RawHttpResponse>` | `asyncRaw()` → `CompletionStage<RawHttpResponse>` | `awaitRaw()` (suspend) | `asyncRaw()` → `Promise<RawHttpResponse>` |
-| **async** (typed) | `async<T>()` → `task_t<http_response_t<T>>` | `Async<T>(ct?)` | `async(Class<T>)` | `await(type)` / `await<T>()` (reified) | `async<T>()` |
-| **async** (download) | `download(sink)` | `DownloadAsync(sink, ct?)` | `download(Consumer<byte[]>)` | `awaitDownload(sink)` | `download(sink)` |
-| **submit** (one-way) | `submit()` | `Submit(ct?)` | `submit()` | `submit()` | `submit()` |
-| **callback** | `async<T>(callback)` | `Async<T>(callback)` | `async(Class<T>, callback)` | (suspend로 대체) | `async<T>(callback)` |
+| **response** (raw) | `submit_raw()` → `task_t<raw_http_response_t>` | `AsyncRaw(ct?)` → `ValueTask<RawHttpResponse>` | `submitRaw()` → `CompletionStage<RawHttpResponse>` | `awaitRaw()` (suspend) | `submitRaw()` → `Promise<RawHttpResponse>` |
+| **response** (typed) | `submit<T>()` → `task_t<http_response_t<T>>` | `Async<T>(ct?)` | `submit(Class<T>)` | `await(type)` / `await<T>()` (reified) | `submit<T>()` |
+| **download** | `download(sink)` | `DownloadAsync(sink, ct?)` | `download(Consumer<byte[]>)` | `awaitDownload(sink)` | `download(sink)` |
+| **one-way** | `submit()` → `task_t<void>` | `Async(ct?)` → `ValueTask` | `submit()` → `CompletionStage<Void>` | `await()` → `Unit` (suspend) | `submit()` → `Promise<void>` |
+| **callback** | `submit<T>(callback)` | `Async<T>(callback)` | `submit(Class<T>, callback)` | (suspend로 대체) | `submit<T>(callback)` |
 | blocking 언래핑 | **두지 않는다** | **두지 않는다** | **두지 않는다** | **두지 않는다** | **두지 않는다** |
 
 - HTTP request builder는 DI 여부와 관계없이 `yield`를 노출하지 않는다. Shared Spot gate를 반납해야 하는
-  서버 코드는 HTTP `async`를 언어별 I/O worker에 넣고 worker `Yield`로 기다린다.
-- `.NET`은 `SubmitAsync`처럼 submit 동사를 반복하지 않는다 — `Submit`은 one-way 전용이다.
+  서버 코드는 언어별 response completion terminator를 I/O worker에 넣고 worker `Yield`로 기다린다.
+- one-way 완료 값은 전송 결과나 admission status를 포함하지 않는다. 반환형은 비동기 완료와
+  실패만 전달한다.
+- `.NET`의 비동기 종결자는 `Async`, Kotlin wrapper는 `await`, cpp·java·node는 `submit`을 쓴다.
 - kotlin의 `fetch<T>()`는 suspend 함수이며 blocking이 아니다. body만 돌려주는 편의 확장이다.
 
 ### 1.5 응답/보조 타입

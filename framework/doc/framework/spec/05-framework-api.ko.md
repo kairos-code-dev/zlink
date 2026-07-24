@@ -194,21 +194,18 @@ Metadata는 Framework가 검증한 immutable snapshot으로 handler에 전달한
 마지막 값이 사용된다. metadata 전체의 UTF-8 encoded 크기는 1024 bytes를 넘을 수 없다. reply는 request
 metadata를 자동 복사하지 않는다.
 
-## 7. Logical Multicast 결과
+## 7. Logical Multicast 관측
 
 MeshNode와 Spot publish API는 publish 전용 전달 정책 option을 제공하지 않는다. Framework의 bounded I/O
-executor는 대기 queue 없이 worker slot을 direct handoff한다. 즉시 사용할 slot이 없으면 transport 제출을
-시작하지 않고 `Backpressured`로 완료한다. Handoff에 성공하면 runtime은 확정한 target snapshot을 정확히
-한 번 처리한다. 각 remote target에는 ROUTER send timeout을 적용하며 local Spot queue는 독립적으로
-수락하거나 drop한다. Snapshot 처리가 시작된 뒤에는 cancellation이나 shutdown으로 나머지 target 제출을
+executor는 publish operation을 send timeout까지 admission한다. Timeout 전에 시작하지 못하면
+`DeadlineExceeded`, cancellation 또는 `RuntimeShutdown` 중 먼저 확정된 예외로 완료한다. 시작한 뒤에는
+확정한 target snapshot을 정확히 한 번 처리하며 cancellation이나 shutdown으로 나머지 target 제출을
 중단하지 않는다.
 
-Publish 결과는 remote와 local 각각의 snapshot, admitted, dropped 수와 remote unreachable 수를 제공한다.
-Remote capacity
-실패는 top-level `Backpressured`, snapshot target이 모두 0이면 `TargetNotFound`로 완료한다. 그 밖의 remote
-연결 불가와 local Spot queue drop은 top-level status를 바꾸지 않고 detail에 기록한다. 앞에서 수락한 target은
-뒤 target의 실패 때문에 취소하지 않는다. Remote target이 모두 연결 불가여서 admitted count가 0이어도
-remote capacity drop이 없으면 `Submitted`다.
+Remote와 local 각각의 snapshot, admitted, dropped 수와 remote unreachable 수는 public publish 결과가
+아니라 monitoring metric과 runtime event로 제공한다. Snapshot target이 0개여도 정상 완료한다. Transaction
+시작 뒤 remote capacity·연결 실패와 local Spot queue drop은 전체 publish를 rollback하거나 exceptional
+completion으로 바꾸지 않는다. 앞에서 수락한 target은 뒤 target의 실패 때문에 취소하지 않는다.
 
 ## 8. Handler 등록과 dispatch
 
@@ -367,10 +364,9 @@ Classic fanout publish의 공통 입력은 ChannelName, topic과 typed event다.
 topic을 명시하는 호출과 topic을 생략하는 typed 편의 호출을 함께 제공한다. 편의 호출은
 Framework가 결정한 packet name을 topic으로 사용하며, 명시적 topic 호출을 제거하거나 의미를
 바꾸지 않는다. Framework는 typed message 등록에서 packet name과 codec을 결정한다. 발행 호출은 publisher socket의
-유한한 send timeout까지 admission을 기다리는 비동기 terminator 하나만 제공한다. 결과는 공통 one-way
-submit status이며 remote·local target별 count를 집계하는 Logical Multicast publish result가 아니다.
-Subscriber가 0이어도 local publisher queue가 event를 수락하면 `Submitted`다. 결과에는 subscriber 수,
-수신 또는 handler 완료 정보를 포함하지 않는다.
+유한한 send timeout까지 admission을 기다리는 비동기 terminal 하나만 제공한다. 정상 완료 값은 없으며
+Subscriber가 0이어도 local publisher queue가 event를 수락하면 정상 완료한다. Subscriber 수, 수신 또는
+handler 완료 정보는 public 반환값으로 제공하지 않는다.
 
 ## 12. Spot, Actor와 STREAM owner
 
@@ -499,6 +495,7 @@ Actor egress는 bound session FIFO를 사용한다. Actor dispatch capability를
 | 33 | `SpotMoving` | yes |
 | 34 | `RelocationDataLost` | no |
 | 35 | `SpotIdConflict` | no |
+| 36 | `RuntimeShutdown` | no |
 
 `RouteNotConnected`는 알려진 target의 pipe가 준비되지 않은 상태이고, `RequestTargetNotFound`는 등록한
 송신 경로에 현재 선택 가능한 target snapshot이 없거나 ChannelName 송신 경로 자체가 없는 상태다.
@@ -510,7 +507,7 @@ rollback하지 않으며 같은 reference를 다시 시도해 복구 가능한 �
 `RoutingIdConflict`는 MeshNode transport RID owner claim 충돌이고, `SpotIdConflict`는 global Spot
 namespace의 Entry·User·Instance Spot ID claim 충돌이다.
 
-### 13.1 Operation 결과 변환
+### 13.1 Operation 완료 변환
 
 Framework는 target selection과 transport admission 결과를 다음 공통 결과로 변환한다. Node direct call은
 Node RID를, Spot·Actor message는 global ID를, session binding은 exact object generation과 binding token을
@@ -520,17 +517,17 @@ RouteMesh·ClientServer select-one ChannelName은 성공한 admission 전까지 
 
 | 관찰한 조건 | Framework 결과 |
 |---|---|
-| 해당 operation family의 source outbound admission이 operation을 수락함 | one-way send·publish는 `Submitted`, request는 pending completion으로 전환 |
-| 일반 one-way의 첫 submit이 backpressured임 | send-ready를 기다린다. Pending admission 공간도 가득 차면 `Backpressured`, send timeout까지 수락되지 않으면 `TimedOut` |
-| Logical Multicast snapshot 처리 중 remote capacity가 부족함 | `Backpressured`와 partial detail을 반환 |
+| 해당 operation family의 source outbound admission이 operation을 수락함 | one-way send·publish는 반환 데이터 없이 정상 완료하고 request는 pending reply completion으로 전환 |
+| 일반 one-way의 첫 submit이 backpressured임 | send timeout까지 send-ready를 기다린다. Timeout 전 capacity가 생기면 한 번 제출하고, deadline이 먼저 끝나면 `DeadlineExceeded` exception으로 완료 |
+| Logical Multicast transaction 시작 뒤 remote capacity가 부족함 | 앞에서 수락한 target은 유지하고 target별 실패를 monitoring metric·event에 기록한다. Public result나 전체 rollback은 만들지 않음 |
 | 알려진 direct target의 route가 준비되지 않음 | `RouteNotConnected` |
-| Node·Channel 송신 경로나 eligible target snapshot이 없음 | one-way는 `TargetNotFound`, request는 `RequestTargetNotFound` |
+| Actor·Spot authority 또는 Node·Channel 송신 경로가 없음 | operation별 기존 route-not-found·`MeshNotFound`·`RequestTargetNotFound` exception |
 | target admission seal 또는 application policy가 거부함 | `RequestRejected` 또는 해당 one-way rejection 결과 |
-| host shutdown으로 신규 admission이 닫힘 | one-way는 `Shutdown`, request는 shutdown 오류 |
+| host shutdown으로 신규 admission이 닫힘 | `RuntimeShutdown` exception |
 | invalid argument·state, 지원하지 않는 operation 또는 내부 불변 조건 위반 | 언어별 local call 오류. remote error reply로 바꾸지 않음 |
 
-`TimedOut`은 일반 one-way admission waiter가 family별 send timeout까지 수락되지 않았을 때 Framework가 만드는
-결과다. Cancellation은 submit status가 아니며 해당 언어의 cancelled awaitable로 표현한다. Invalid
+`DeadlineExceeded`는 일반 one-way admission waiter가 family별 send timeout까지 수락되지 않았을 때
+Framework가 만드는 exception이다. Cancellation은 해당 언어의 cancelled awaitable로 표현한다. Invalid
 argument·handle·state, 이미 사용한 reply token과 중복 terminator 실행은 exceptional completion이다.
 STREAM reply의 유효한 첫 terminator는 transport 시도 전에 one-shot token을 원자적으로 소비한다.
 Backpressure, timeout 또는 cancellation으로 완료되어도 해당 token을 다시 사용할 수 없다. 같은
@@ -545,9 +542,9 @@ Global object message의 missing·route·exact-incarnation 결과는 다음처�
 
 | Operation | missing authority | route unavailable | exact ref generation mismatch | pre-commit seal |
 |---|---|---|---|---|
-| Actor one-way | `TargetNotFound` | `RouteNotConnected` | 해당 없음 | 해당 없음 |
+| Actor one-way | `ActorRouteNotFound` | `RouteNotConnected` | 해당 없음 | 해당 없음 |
 | Actor request | `ActorRouteNotFound` | `RouteNotConnected` | 해당 없음 | 해당 없음 |
-| Spot one-way | `TargetNotFound` | `RouteNotConnected` | 해당 없음 | 해당 없음 |
+| Spot one-way | `SpotRouteNotFound` | `RouteNotConnected` | 해당 없음 | 해당 없음 |
 | Spot request | `SpotRouteNotFound` | `RouteNotConnected` | 해당 없음 | 해당 없음 |
 | exact ActorRef session bind | `ActorRouteNotFound` | `RouteNotConnected` | `ActorGenerationStale` | `ActorMoving` |
 | exact ActorRef destroy | idempotent `false` | `RouteNotConnected` | `ActorGenerationStale` | `ActorMoving` |
@@ -561,8 +558,8 @@ stale authority fence와 application admission 거부는 `RequestRejected`로 �
 
 이 request 실패는 확인 시점과 관계없이 해당 error kind로 한 번만 완료한다. One-way send는 source의 local
 outbound admission 전에 실패를 확인했을 때만 위 kind의 exceptional completion을 반환할 수 있다. Source가
-record를 수락해 `Submitted`로 완료한 뒤 remote activation이나 admission 실패를 확인한 경우에는 이미 반환한
-결과를 바꾸지 않는다. 이 실패는 drop metric과 message-flow event로 관측하며 error reply를 만들거나 다른
+record를 수락해 반환 데이터 없이 완료한 뒤 remote activation이나 admission 실패를 확인한 경우에는 이미
+완료된 call을 바꾸지 않는다. 이 실패는 drop metric과 message-flow event로 관측하며 error reply를 만들거나 다른
 owner에게 replay하지 않는다.
 
 Request admission 뒤에는 typed reply, typed Framework error, timeout, cancellation, shutdown 또는 protocol

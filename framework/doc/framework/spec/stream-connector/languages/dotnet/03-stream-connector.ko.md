@@ -91,7 +91,7 @@ public interface IZlinkStreamSendCall
     IZlinkStreamSendCall Metadata(string key, string value);
     IZlinkStreamSendCall Metadata(ZlinkStreamMetadata metadata);
     IZlinkStreamSendCall Compress();
-    void Submit(CancellationToken cancellationToken = default);   // 완료 대기 없음
+    ValueTask Async(CancellationToken cancellationToken = default); // 비동기 완료와 실패만 전달한다.
 }
 
 public interface IZlinkStreamRequestCall
@@ -113,7 +113,8 @@ public interface IZlinkStreamWaitCall
 }
 ```
 
-- **`Send`는 fire-and-forget이다.** `Submit()`은 **local bounded queue 수락만 확인한다**(§6).
+- **`Send`는 reply를 기다리지 않는 one-way 전송이다.** `Async()`의 완료 값에는 전송 결과나
+  admission status가 없으며, 비동기 완료와 실패만 전달한다(§6).
   응답이 필요하면 `Request`를 쓴다.
 - **`Timeout(...)`은 그 operation에만 적용한다.**
 - **`On(...)`은 지속적인 push handler, `WaitFor(...)`는 한 번성 대기**다. production의 push 처리는
@@ -315,7 +316,7 @@ property로 표현한다.
 | `StreamConnectorTests.DisconnectEventCarriesTheFrozenCloseReasonContract` | disconnect event의 닫힌 종료 사유를 고정한다. |
 | `StreamConnectorTests.SessionClosingPublishesServerDrainReasonAfterDisconnectedState` | session-closing frame을 `ServerDrain` 사유로 변환한다. |
 | `StreamConnectorTests.SharedCloseFaultIsObservedByRepeatedCloseAndDispose` | 반복 close와 dispose가 같은 실패를 관찰한다. |
-| `StreamConnectorTests.OneWaySubmit_Accepts_Into_A_Bounded_Queue_And_Rejects_Full_Synchronously` | one-way submit은 bounded queue 수락 또는 동기 거부로 끝난다. |
+| `StreamConnectorTests.OneWayAsync_CompletesWithoutResult_AndFailsWhenQueueIsFull` | one-way `Async`는 결과 값 없이 완료되며 queue가 가득 차면 비동기 실패로 끝난다. |
 | `StreamConnectorTests.RequestQueueWaitsForEarlierAcceptedOneWaySend` | 먼저 수락된 one-way send와 뒤 request의 wire 전송 순서를 보존한다. |
 | `StreamConnectorTests.CallerCancellationDoesNotInterruptAnInProgressFrameWrite` | frame write가 시작된 뒤에는 caller cancellation이 partial frame을 만들지 않는다. |
 | `StreamConnectorTests.InboundObserverRegistrationIsRejectedAfterConnectAndStopsAfterDispose` | observer 등록 시점과 해제 의미를 고정한다. |

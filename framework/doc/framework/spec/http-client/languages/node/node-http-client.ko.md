@@ -38,6 +38,8 @@ core의 기본 의존성은 아니다(단방향 의존).
 - `ZLinkHttpRequestBuilder` — `header`, `query`, `timeout`, `body`(JSON/raw 오버로드),
   `bodyStream`, `form`, `multipart`, `multipartFile`, `submitRaw`, `download`, `submit<T>`,
   `fetch<T>`(`Promise<T>`, body만 반환).
+- `ZLinkHttpServerRequestBuilder` — standalone 표면과 one-way
+  `submit(): Promise<void>`를 제공한다. one-way 완료에는 전송 결과나 admission status가 없다.
 - `RawHttpResponse` { `status`, `headers`, `body` }.
 - `HttpResponse<T>` { `status`, `headers`, `body`, `rawBody` }.
 - `ZLinkHttpMethod`, `BodyChunkProvider`(`() => Uint8Array | null`), `DownloadSink`.

@@ -45,7 +45,9 @@ server runtime assembly를 함께 배포하지 않아도 같은 오류·codec �
 - `ZLinkHttpRequestBuilder` — standalone 표면. `Header`, `Query`, `Timeout`, `Body<T>`,
   `Body(content, contentType)`, `BodyStream`, `Form`, `Multipart`, `MultipartFile`,
   `AsyncRaw`, `DownloadAsync`, `Async<T>`와 callback overload를 제공한다.
-- `ZLinkHttpServerRequestBuilder` — standalone 표면을 포함하고 one-way `Submit`을 추가한다.
+- `ZLinkHttpServerRequestBuilder` — standalone 표면을 포함하고 one-way
+  `ValueTask Async(CancellationToken cancellationToken = default)`를 추가한다. 반환된
+  `ValueTask`는 비동기 완료와 실패만 전달하며 전송 결과나 admission status를 포함하지 않는다.
 - `IZLinkHttpExecutionScheduler` / `IZLinkHttpExecutionTurn` — DI 통합이 현재 Spot turn을
   캡처하고 callback 완료를 원래 실행 줄의 새 turn에 배치하는 공개 주입점이다.
 - `RawHttpResponse` { `Status`, `Headers`, `Body` }.

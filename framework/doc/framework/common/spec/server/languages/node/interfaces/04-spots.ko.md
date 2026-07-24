@@ -140,7 +140,7 @@ export interface ZLinkSpotSendCall {
     instanceSpot(): this;
     instanceSpot(instanceSpotType: string): this;
     inMesh(meshName: string): this;
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSpotRequestCall {

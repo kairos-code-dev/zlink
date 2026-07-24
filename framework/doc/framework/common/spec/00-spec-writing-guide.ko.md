@@ -113,7 +113,7 @@
 이름은 유지하되 바로 옆에서 의미를 쉬운 문장으로 설명한다.
 
 ```text
-`Backpressured`: 기다리는 작업을 보관할 공간까지 가득 차서 대기를 시작하지 못했다.
+`RuntimeShutdown`: runtime이 새 admission을 받지 않아 operation이 예외로 완료되었다.
 ```
 
 ### 2.4 Domain에 따라 의미가 좁아지는 용어는 구체적인 이름으로 쓴다
@@ -592,8 +592,9 @@ handler interface와 최소 등록 예제를 나란히 보여준다. 이때 “A
 
 ## 9. 완료와 실패를 설명하는 방법
 
-`SubmitAsync` 반환과 handler 실행 완료를 구분한다. Request라면 transport 수락과
-reply 완료도 구분한다.
+One-way 비동기 terminal의 정상 완료와 handler 실행 완료를 구분한다. 언어별 이름은
+.NET `Async`, Kotlin wrapper `await`, Java·Node.js·C++ `submit`을 사용한다. Request라면
+transport 수락과 reply 완료도 구분한다.
 
 다음 질문에 각각 답한다.
 
@@ -604,7 +605,9 @@ reply 완료도 구분한다.
 - Cancellation 뒤 remote handler가 이미 시작한 작업을 취소하는가?
 - 일부 target만 수락한 경우 이미 성공한 제출을 유지하는가?
 
-Status는 이름만 나열하지 않고 caller가 관찰하는 조건을 표로 설명한다.
+정상 완료에는 반환 데이터가 없고 실패는 exception으로 전달한다. 오류 kind는 이름만
+나열하지 않고 caller가 관찰하는 조건을 표로 설명한다. Logical Multicast의 target별
+수치는 public result가 아니라 monitoring metric·event임을 같은 위치에서 설명한다.
 
 ## 10. 이전 계약을 옮기고 대조하는 방법
 

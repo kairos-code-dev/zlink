@@ -33,8 +33,8 @@ public enum ZLinkSocketEventKind
 }
 ```
 
-Request와 lifecycle operation의 framework 실패는 다음 exception으로 전달한다. One-way submit은 §2의
-`ZLinkSubmitResult`를 반환하며 잘못된 public 인자는 .NET 표준 `ArgumentException` 계열로 거부한다.
+Request, lifecycle과 one-way operation의 framework 실패는 다음 exception으로 전달한다. One-way operation은
+정상 완료 값을 반환하지 않는다. 잘못된 public 인자는 .NET 표준 `ArgumentException` 계열로 거부한다.
 
 ```csharp
 public enum ZLinkFrameworkErrorKind
@@ -73,7 +73,9 @@ public enum ZLinkFrameworkErrorKind
     RoutingIdConflict = 31,
     SpotGenerationStale = 32,
     SpotMoving = 33,
-    RelocationDataLost = 34
+    RelocationDataLost = 34,
+    SpotIdConflict = 35,
+    RuntimeShutdown = 36
 }
 
 public sealed class ZLinkFrameworkException : Exception
@@ -97,6 +99,8 @@ public sealed class ZLinkConfigurationException : InvalidOperationException
 같다. `RelocationDataLost`는 Location authority가 공개한 Relocation reference의 payload를 영구적으로 찾을 수
 없거나 checksum·inventory digest가 일치하지 않을 때 반환하는 non-retriable 오류다. Runtime은 이 오류에서
 이전 owner로 rollback하지 않는다. Remote framework error는 `ZLinkFrameworkException`으로 전달한다.
+`RuntimeShutdown`은 runtime이 신규 admission을 받지 않는 terminal state에서 사용한다.
+
 ## 7. Eventing과 metric identity
 
 ```csharp

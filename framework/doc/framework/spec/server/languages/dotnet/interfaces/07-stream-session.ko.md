@@ -67,14 +67,14 @@ public interface IZLinkSessionSendCall
     : IZLinkMetadataCall<IZLinkSessionSendCall>
 {
     IZLinkSessionSendCall Compress();
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSessionReplyCall
 {
     IZLinkSessionReplyCall Compress();
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 
@@ -94,10 +94,10 @@ public interface IZLinkSessionActor
 {
     string ActorId => Ref.ActorId;
     ActorRef Ref { get; }
-    ValueTask<ZLinkSubmitResult> RelayAsync(
+    ValueTask RelayAsync(
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkSubmitResult> RelayAsync(
+    ValueTask RelayAsync(
         ZLinkSessionDispatchContext dispatch,
         ZLinkMessage payload,
         CancellationToken cancellationToken = default);
@@ -135,16 +135,16 @@ public sealed class ZLinkSessionDispatchContext
 terminator는 transport를 시작하기 전에 token을 원자적으로 claim하고 소비한다. 같은 token에서 만든 두 call이
 경쟁하면 claim에 실패한 call은 transport를 시도하지 않고 exceptional completion으로 끝난다. Send packet에서
 만든 reply, 이미 사용한 token과 중복 submit도 같은 방식으로 거부한다. Token을 소비한 call이 timeout,
-`Backpressured` 또는 cancellation로 끝나도 token을 다시 사용할 수 없다. 유효한 reply는 STREAM socket send
+`DeadlineExceeded` 또는 cancellation로 끝나도 token을 다시 사용할 수 없다. 유효한 reply는 STREAM socket send
 timeout만 admission deadline으로 사용한다. Caller request timeout은 wire로 전달되지 않으므로 reply deadline으로
 사용하지 않으며, timeout이나 cancellation 뒤에는 late reply를 보내지 않는다.
 
-Payload만 받는 `RelayAsync(...)`는 local relay queue가 operation을 수락했는지만
-`ZLinkSubmitResult`로 반환하는 one-way admission이다. Dispatch context를 받는 overload는 explicit
-current STREAM request reply capability를 호출 즉시 runtime에 이전한다. Submitted면 Actor typed reply가
-original STREAM correlation을 terminal-once로 완료하고 admission failure면 Framework가 같은 correlation을
-typed failure로 완료한다. Caller는 별도 reply·retry를 하지 않는다. One-way dispatch context는 reply
-capability가 없으므로 admission만 반환한다.
+Payload만 받는 `RelayAsync(...)`는 local relay queue가 operation을 수락하면 정상 완료하는 one-way
+admission이다. Dispatch context를 받는 overload는 explicit current STREAM request reply capability를 호출 즉시
+runtime에 이전한다. Admission에 성공하면 Actor typed reply가 original STREAM correlation을 terminal-once로
+완료하고 admission failure면 Framework가 같은 correlation을 typed failure로 완료한다. Caller는 별도
+reply·retry를 하지 않는다. One-way dispatch context는 reply capability가 없으므로 local admission까지만
+기다린다.
 
 같은 session의 packet과 lifecycle callback은 직렬로 실행한다. Handshake와 node 범위 오류는 runtime
 monitoring으로 보고하며 `OnErrorAsync(...)`에 전달하지 않는다.

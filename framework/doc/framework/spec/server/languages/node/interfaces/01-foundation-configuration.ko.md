@@ -126,7 +126,7 @@ export interface ZLinkBoundSession {
 
 export interface ZLinkBoundSessionSendCall {
     metadata(key: string, value: string): this;
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkChannelClient {

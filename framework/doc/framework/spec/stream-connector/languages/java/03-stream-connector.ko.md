@@ -111,8 +111,10 @@ options의 `waitTimeout()` 값을 사용한다. `waitFor(...)`는 두 dispatch m
 않은 수신 packet을 직접 소비하므로 `MANUAL`에서도 `dispatch().submit()`이 필요하지 않다.
 `dispatch().submit()`은 등록된 push handler, error·disconnect handler와 request callback을 실행한다.
 
-Java API에서 `submit(...)`은 비동기 작업을 시작한다. **one-way send의 `submit()`은 완료 객체를
-반환하지 않고**(`void`), request·wait·lifecycle의 `submit()`만 `CompletionStage`를 반환한다
+Java API에서 `submit(...)`은 비동기 작업을 시작한다. **one-way send의 `submit()`은
+`CompletionStage<Void>`를 반환한다.** 이 stage는 완료와 실패만 전달하며 전송 결과나 admission
+status를 포함하지 않는다. request·wait·lifecycle의 `submit()`은 각 작업의 결과를 담은
+`CompletionStage`를 반환한다
 ([04 §1](../../../04-async-execution-policy.ko.md)).
 Java connector는 같은 작업을 현재 thread에서 기다리는 별도 blocking terminator를 제공하지 않는다.
 lifecycle도 `connect().submit()`, `dispatch().submit()`처럼 같은 call builder 규칙을 따른다.
@@ -221,7 +223,7 @@ public interface ZLinkStreamSendCall {
     ZLinkStreamSendCall metadata(String key, String value);
     ZLinkStreamSendCall metadata(Map<String, String> metadata);
     ZLinkStreamSendCall compress();
-    void submit();
+    CompletionStage<Void> submit();
 }
 
 public interface ZLinkStreamRequestCall {
@@ -239,7 +241,7 @@ public interface ZLinkTypedStreamSendCall {
     ZLinkTypedStreamSendCall metadata(String key, String value);
     ZLinkTypedStreamSendCall metadata(Map<String, String> metadata);
     ZLinkTypedStreamSendCall compress();
-    void submit();
+    CompletionStage<Void> submit();
 }
 
 public interface ZLinkTypedStreamRequestCall {
@@ -428,8 +430,8 @@ wrapper도 Java connector와 같은 registry를 사용한다. Registry 또는 li
 
 Kotlin module은 Java connector 위의 thin wrapper다. lifecycle과 request처럼 완료값이
 있는 작업은 Kotlin wrapper의 suspend `await()`로 기다린다. 이 `await()`는 Java
-`CompletionStage`를 coroutine suspension으로 기다린다. one-way send는 완료 객체를
-만들지 않고 `submit()`으로 local queue에 맡긴다.
+`CompletionStage`를 coroutine suspension으로 기다린다. one-way send도 `await()`로 완료와
+실패를 기다리지만 전송 결과나 admission status는 받지 않는다.
 
 ```kotlin
 fun ZLinkStreamConnector.kotlin(): ZLinkKotlinStreamConnector
@@ -462,7 +464,7 @@ class ZLinkKotlinLifecycleCall {
 }
 
 class ZLinkKotlinSendCall {
-    fun submit()
+    suspend fun await(): Unit
 }
 
 suspend fun ZLinkStreamRequestCall.await(): ZLinkStreamEncodedPayload

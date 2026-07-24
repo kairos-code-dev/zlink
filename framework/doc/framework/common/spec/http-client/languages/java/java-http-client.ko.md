@@ -10,7 +10,7 @@
 
 `zlink-http-client`는 Java에서 HTTP request를 보내기 위한 별도 client-side 산출물이다.
 JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder 스타일로
-`java.net.http`의 낮은 수준 설정을 흡수한다. typed JSON 경로(`body(dto)`/`async(Type)`)는
+`java.net.http`의 낮은 수준 설정을 흡수한다. typed JSON 경로(`body(dto)`/`submit(Type)`)는
 그 위에 얹은 편의 계층이다.
 
 `zlink-framework-core`의 에러 모델(`ZLinkFrameworkException`)에 의존하지만 framework core의
@@ -40,9 +40,10 @@ JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder �
   `build`, `buildServer(executionTurn)`, 그리고 단발 verb shortcut.
 - `ZLinkHttpRequestBuilder` — `header`, `query`, `timeout`, `body(Object)`(JSON),
   `body(String, String)`(raw), `bodyStream(Supplier<byte[]>, String)`, `form`, `multipart`,
-  `multipartFile`, `asyncRaw`, `download(Consumer<byte[]>)`, `async(Class<T>)`, callback.
-- `ZLinkHttpServerRequestBuilder` — request 구성에 `submit`, `async`, `yield`, callback 완료 방식을
-  추가한다. 완료 값을 동기로 꺼내는 메서드는 없다.
+  `multipartFile`, `submitRaw`, `download(Consumer<byte[]>)`, `submit(Class<T>)`, callback.
+- `ZLinkHttpServerRequestBuilder` — standalone 표면과 one-way
+  `CompletionStage<Void> submit()`을 제공한다. One-way 완료에는 전송 결과나 admission status가
+  없으며, 완료 값을 동기로 꺼내는 method도 없다.
 - `ZLinkHttpExecutionTurn` — framework가 현재 Spot 실행 turn의 유지·반납을 연결하는 주입점이다.
 - `RawHttpResponse`(record) { `status`, `headers`, `body` }.
 - `HttpResponse<T>`(record) { `status`, `headers`, `body`, `rawBody` }.
@@ -50,13 +51,12 @@ JSON 전용 client가 아니라 일반 HTTP client이며 zlink fluent builder �
 
 ## 4. 실행 모델
 
-- `asyncRaw`/`async`/`download`는 `CompletionStage`를 돌려준다. `java.net.http`의 NIO
+- `submitRaw`/`submit`/`download`는 `CompletionStage`를 돌려준다. `java.net.http`의 NIO
   비동기 I/O로 네트워크 대기 중 호출 스레드는 점유되지 않는다. redirect/retry 루프도
   `CompletionStage` 체인으로 합성된다.
-- 서버 request의 `async`는 현재 turn을 유지한다. `yield`는 `SpotWide` User Spot 또는 Instance Spot의
-  shared turn에서만 대기 중 turn을 반환한 뒤 [Spot](../../../01-glossary.ko.md#spot) 실행 queue에서 새 turn으로
-  재개한다. 다른 실행 문맥에서는 HTTP operation을 제출하거나 turn을 반환하지 않고
-  `InvalidConfiguration`으로 완료한다. callback도 새 turn으로 실행 queue에 들어간다.
+- 서버 request의 응답을 기다리는 `submit`은 현재 Spot turn을 유지하고 callback은 새 turn으로 실행 queue에
+  들어간다. HTTP request builder에는 `yield`가 없다. Shared Spot gate를 반납하려면
+  `runIoWorker(...)` 안에서 `submit`을 호출하고 Worker call의 `yield()`로 기다린다.
 - handler 경로는 `CompletionStage` 합성만 쓰고 `.get()`/`.join()`은 금지한다.
 - continuation 재개 위치는 `CompletableFuture.*Async(fn, executor)` 조합으로 지정.
 

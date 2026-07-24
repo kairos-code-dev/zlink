@@ -154,6 +154,8 @@ public interface IZLinkActorCreateCall
     IZLinkActorCreateCall Timeout(TimeSpan timeout);
     ValueTask<ZLinkActorCreateResult> Async(
         CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorCreateResult> Yield(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorGetOrCreateCall
@@ -164,11 +166,13 @@ public interface IZLinkActorGetOrCreateCall
     IZLinkActorGetOrCreateCall Timeout(TimeSpan timeout);
     ValueTask<ZLinkActorCreateResult> Async(
         CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorCreateResult> Yield(
+        CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorSendCall : IZLinkMetadataCall<IZLinkActorSendCall>
 {
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 

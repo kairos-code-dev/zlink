@@ -83,8 +83,8 @@ public interface IZLinkSpotSendCall
     // 후보 Mesh가 둘 이상인데 생략하면 MeshSelectionRequired로 끝난다.
     IZLinkSpotSendCall InMesh(string meshName);
 
-    // 송신 경로가 message를 수락했는지 반환하며 target handler 실행은 기다리지 않는다.
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    // 송신 경로가 message를 수락할 때까지 기다리며 target handler 실행은 기다리지 않는다.
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 
@@ -113,8 +113,8 @@ public interface IZLinkSpotRequestCall
 
 public interface IZLinkSendCall : IZLinkMetadataCall<IZLinkSendCall>
 {
-    // Channel one-way message를 송신 경로가 수락했는지 반환한다.
-    ValueTask<ZLinkSubmitResult> SubmitAsync(
+    // Channel one-way message를 송신 경로가 수락할 때까지 기다린다.
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
 
@@ -155,7 +155,7 @@ public interface IZLinkSpotOutbound
 }
 ```
 
-Logical Multicast의 subscription, publish와 결과는 다음 interface로 연결된다.
+Logical Multicast의 subscription과 publish는 다음 interface로 연결된다.
 
 ```csharp
 public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
@@ -182,37 +182,11 @@ public interface IZLinkSpotPublisherClient
 public interface IZLinkPublishCall
     : IZLinkMetadataCall<IZLinkPublishCall>
 {
-    // 고정한 remote route의 transport queue와 local Spot queue에 제출한 결과를 집계한다.
+    // 고정한 remote route의 transport queue와 local Spot queue에 제출한다.
     // Remote Spot queue 수락이나 subscriber handler 실행 완료를 기다리지 않는다.
-    ValueTask<ZLinkPublishResult> SubmitAsync(
+    ValueTask Async(
         CancellationToken cancellationToken = default);
 }
-
-public enum ZLinkSubmitStatus
-{
-    Submitted = 0,
-    Backpressured = 1,
-    TimedOut = 2,
-    TargetNotFound = 3,
-    RouteNotConnected = 4,
-    Shutdown = 5
-}
-
-public readonly record struct ZLinkSubmitResult(
-    ZLinkSubmitStatus Status);
-
-public readonly record struct ZLinkLogicalMulticastDetail(
-    ulong SnapshotRemoteNodeCount,
-    ulong AdmittedRemoteNodeCount,
-    ulong DroppedRemoteNodeCount,
-    ulong UnreachableRemoteNodeCount,
-    ulong SnapshotLocalSpotCount,
-    ulong AdmittedLocalSpotCount,
-    ulong DroppedLocalSpotCount);
-
-public readonly record struct ZLinkPublishResult(
-    ZLinkSubmitStatus Status,
-    ZLinkLogicalMulticastDetail Detail);
 ```
 
 위 코드는 interface 관계를 문서 안에서 바로 이해하기 위한 발췌다. Metadata builder와
@@ -482,28 +456,18 @@ node-wide placement weight를 적용해 target을 결정한다. `InstanceSpot(..
 
 ### 3.3 Spot direct send의 완료 의미
 
-Spot direct send는 `SubmitAsync(...)`만 제공한다. 비동기 call을 만들지 않고 즉시
-결과를 반환하는 별도 API는 제공하지 않는다.
+Spot direct send는 `Async(...)`만 제공한다. 비동기 call을 만들지 않고 즉시
+완료를 반환하는 별도 API는 제공하지 않는다.
 
 Owner MeshNode의 ROUTER queue가 일시적으로 가득 차면 유한한 send timeout 동안
 queue가 message를 받을 수 있을 때까지 기다린다.
 
 Ready Spot에 보내는 일반 direct send는 source의 송신 경로가 message를 수락하면
-완료된다. 이 결과는 target Spot의 handler가 실행되었다는 뜻이 아니다.
-
-결과 status는 다음 의미를 가진다. Cancellation과 caller process에서 발생한 오류의
-자세한 경계는
-[04 비동기 실행 정책 §1.3](04-async-execution-policy.ko.md#13-one-way-submit)을
-따른다.
-
-| Status | 의미 |
-|---|---|
-| `Submitted` | 송신 경로가 message를 수락했다. |
-| `Backpressured` | 기다리는 작업을 보관할 공간까지 가득 차서 대기를 시작하지 못했다. |
-| `TimedOut` | Send timeout까지 queue가 message를 수락하지 못했다. |
-| `TargetNotFound` | 조건에 맞는 Spot을 찾거나 새로 준비할 수 없다. |
-| `RouteNotConnected` | Target은 확인했지만 사용할 수 있는 송신 경로가 없다. |
-| `Shutdown` | 종료 중이어서 새로운 message를 받을 수 없다. |
+결과값 없이 완료된다. 이 완료는 target Spot의 handler가 실행되었다는 뜻이 아니다.
+Send timeout까지 수락하지 못하면 `DeadlineExceeded`, Spot이나 route가 없으면
+operation-specific not-found 오류, runtime이 종료 중이면 `RuntimeShutdown`으로 실패한다.
+Cancellation과 caller process에서 발생한 오류의 자세한 경계는
+[04 비동기 실행 정책 §1.3](04-async-execution-policy.ko.md#13-one-way-submit)을 따른다.
 
 Cold activation이 필요한 submit도 선택한 target으로 보내는 송신 경로가 activation
 envelope를 수락하면 완료한다. Target이 생성 권한을 확보하고 factory를 실행하여
@@ -721,11 +685,8 @@ Multicast를 직접 구현하는 방식은 공통 계약에 포함하지 않는�
 Logical Multicast는 publish 전용 전달 정책 option을 제공하지 않는다.
 
 Framework는 동시에 처리할 수 있는 publish 작업 수를 제한한다. 모든 worker가
-사용 중일 때 작업을 쌓아 둘 대기 queue는 두지 않는다. 호출 시점에 사용할 수 있는
-worker가 있을 때만 publish를 시작한다.
-
-즉시 사용할 worker가 없으면 어떤 target에도 message를 보내지 않고
-[`Backpressured`](01-glossary.ko.md#backpressured)로 완료한다.
+사용 중이면 유한한 send timeout까지 worker와 source-local outbound capacity를 기다린다.
+그 안에 확보하지 못하면 어떤 target에도 message를 보내지 않고 `DeadlineExceeded`로 실패한다.
 
 Worker가 작업을 받으면 다음 처리를 시작한다.
 
@@ -759,7 +720,7 @@ sequenceDiagram
 
     Caller->>Executor: publish 제출
     alt 사용 가능한 worker 없음
-        Executor-->>Caller: target 처리 없이 Backpressured
+        Executor-->>Caller: target 처리 없이 DeadlineExceeded
     else 사용 가능한 worker 있음
         Executor->>Runtime: 고정한 target 목록 처리 시작
         par Remote target마다
@@ -769,7 +730,7 @@ sequenceDiagram
             Local-->>Runtime: 수락 또는 용량 부족 결과
         end
         Note over Runtime: Cancellation이 남은 target 처리를 중단하지 않음
-        Runtime-->>Caller: 전체 status와 target별 결과 반환
+        Runtime-->>Caller: 결과값 없이 정상 완료
     end
 ```
 
@@ -777,27 +738,14 @@ sequenceDiagram
 제출을 수락하지 못한 경우를 구분해야 한다. Publish를 시작한 뒤에는 이미 수락된 제출을 취소하지 않으며
 각 target의 source-local 제출 결과를 따로 남긴다.
 
-### 4.5 Publish 전체 status
+### 4.5 Publish 완료
 
-Publish 전체 status는 다음 규칙으로 결정한다.
-
-| 조건 | Status |
-|---|---|
-| Publish를 처리할 worker가 없다. | `Backpressured` |
-| 하나 이상의 remote target queue에 여유가 없다. | `Backpressured` |
-| 처음에 고정한 remote target과 일치하는 local Spot이 모두 `0`이다. | `TargetNotFound` |
-| Remote target에 모두 연결할 수 없지만 queue 용량 부족은 없다. | `Submitted` |
-
-Target별 send timeout이 지난 뒤 queue 용량 부족이 확인되어도 결과를 `TimedOut`으로
-바꾸지 않는다.
-
-다음 실패는 전체 status를 바꾸지 않고 target별 결과에 기록한다.
+처음에 고정한 remote target과 일치하는 local Spot이 모두 `0`이어도 publish는 정상 완료한다. Publish
+transaction이 시작된 뒤 일부 target의 queue 용량이 부족하거나 연결할 수 없어도 전체 작업을 rollback하거나
+retry하지 않는다. 다음 결과는 public 반환값이 아니라 monitoring metric과 event에 기록한다.
 
 - Remote target 연결 실패
 - Local Spot queue 용량 부족
-
-Remote target에 모두 연결할 수 없어 수락된 remote target이 `0`이어도 queue 용량
-부족이 없으면 전체 status는 `Submitted`다.
 
 ### 4.6 Publish 결과의 의미
 
@@ -810,40 +758,34 @@ application queue가 제출을 수락했다는 뜻이다. Publish는 다음 전�
 - 나중에 같은 message를 다시 보내는 replay
 - 같은 message를 반드시 한 번만 처리하는 exactly-once 전달
 
-Publish 결과는 다음 수를 remote와 local로 나누어 제공한다.
+Monitoring은 다음 수를 remote와 local로 나누어 제공한다.
 
 | 범위 | 결과에 포함하는 수 |
 |---|---|
 | Remote target | 처음에 선택한 수([`snapshot`](01-glossary.ko.md#snapshot)), source local outbound transport queue가 수락한 수(`admitted`), 해당 queue 용량 부족으로 수락하지 못한 수(`dropped`), 연결할 수 없는 수([`unreachable`](01-glossary.ko.md#publish-result-counts)) |
 | Local Spot | 처음에 일치한 수(`snapshot`), 수락한 수(`admitted`), 용량 부족으로 수락하지 못한 수(`dropped`) |
 
-Remote target 하나 이상이 queue 용량 부족으로 수락되지 않으면 backpressure 결과를
-반환한다. 이 경우에도 이미 수락된 target은 취소하지 않는다.
-
 #### 비규범적 .NET 예시
 
-Publish 결과는 handler 실행 결과가 아니라 source에서 각 target 경로의 queue 제출을 수락했는지를 나타낸다.
+Publish 완료는 handler 실행 결과가 아니라 source-local admission 경계만 나타낸다.
 
 ```csharp
-static async ValueTask<ZLinkPublishResult> PublishAsync<TEvent>(
+static async ValueTask PublishAsync<TEvent>(
     IZLinkSpotPublisherClient publisher,
     TEvent message,
     CancellationToken cancellationToken)
 {
-    return await publisher
+    await publisher
         .Publish(
             "workflow",          // ChannelName으로 message를 받을 RouteMesh node를 선택한다.
             "projection.updated", // Topic으로 각 node의 local subscription을 검사한다.
             message)
-        .SubmitAsync(cancellationToken); // Submitted는 handler 실행 완료를 뜻하지 않는다.
+        .Async(cancellationToken); // 정상 완료는 handler 실행 완료를 뜻하지 않는다.
 }
 ```
 
-`ZLinkPublishResult.Detail`은 remote target과 local Spot에 대해 처음 선택한 수,
-수락한 수, 용량 부족으로 수락하지 못한 수와 연결할 수 없는 수를 구분한다.
-정확한 field 이름과 result type은
-[.NET 공통 runtime 인터페이스](server/languages/dotnet/interfaces/01-common-runtime.ko.md)가
-정의한다.
+Monitoring metric과 event는 remote target과 local Spot에 대해 처음 선택한 수, 수락한 수, 용량 부족으로
+수락하지 못한 수와 연결할 수 없는 수를 구분한다. 이 값은 publish terminal 반환 계약이 아니다.
 
 ## 5. Subscription 등록과 message 전달
 

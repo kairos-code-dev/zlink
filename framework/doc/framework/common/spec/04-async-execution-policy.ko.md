@@ -7,122 +7,87 @@
 cancellation과 timer 계약을 정의한다. 대상 독자는 언어별 비동기 API와 scheduler adapter를 구현하는
 개발자다.
 
-## 1. Operation terminator
+## 1. Messaging·Worker call terminator
 
 ### 1.1 Submit, Async와 Yield
 
+이 절의 naming 규칙은 Messaging call builder와 `RunCpuWorker`·`RunIoWorker`가 반환하는 Worker call
+builder에 적용한다. Messaging call에는 Framework Send·Request·Publish·Reply, Spot·Actor Send·Request,
+Stream Connector Send·Request·Wait와 HTTP request가 포함된다. Network topology·endpoint·MeshNode 연결,
+Host·runtime·client 설정, handler·Channel membership·codec·security·retry 등록과 object lifecycle
+builder에는 적용하지 않는다. `RelayAsync(...)`처럼 builder를 반환하지 않는 직접 method도 대상이 아니다.
+
 Call object는 operation 종류에 맞는 terminator만 제공하며 같은 call에서 terminator를 두 번 실행할 수 없다.
-Object create·get-or-create fluent call도 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`,
-terminal submit을 두 번 실행하면 `AlreadySubmitted`로 끝난다. Terminal submit을 시작할 때 resolve, durable
-request, reservation, factory와 Ready barrier 전체에 적용할 하나의 end-to-end deadline을 고정한다.
+같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal을 두 번 실행하면 `AlreadySubmitted`로 끝난다.
 
 | terminator | 수락 뒤 완료 의미 | owner turn |
 |---|---|---|
-| one-way submit | local outbound admission 결과가 확정되면 비동기 결과를 완료한다. remote handler 완료는 기다리지 않는다 | await하지 않으면 현재 turn을 기다리게 하지 않는다 |
-| `Async` | request, join 또는 worker 결과가 terminal 상태가 될 때까지 기다린다 | 완료 continuation이 끝날 때까지 현재 [owner](01-glossary.ko.md#owner) turn을 유지한다 |
-| `Yield` | operation을 제출한 뒤 shared Spot turn을 반납하고 terminal 결과를 기다린다 | `SpotWide` User Spot 또는 Instance Spot의 다음 application record를 실행할 수 있으며, 완료 continuation은 같은 Spot queue에 들어가 새 turn에서 재개한다 |
+| one-way 비동기 terminal | Source-local admission이 성공하면 반환 데이터 없이 완료하고 실패하면 예외로 완료한다 | await하지 않으면 현재 turn을 기다리게 하지 않는다 |
+| 일반 비동기 terminal | Request, join, worker 또는 create의 application 결과가 terminal 상태가 될 때까지 기다린다 | 완료 continuation이 끝날 때까지 현재 [owner](01-glossary.ko.md#owner) turn을 유지한다 |
+| `Yield` | Operation을 제출한 뒤 shared Spot turn을 반납하고 application 결과를 기다린다 | 완료 continuation은 같은 Spot gate를 다시 얻어 새 turn에서 재개한다 |
 
-`Yield`는 `SpotWide` User Spot과 Instance Spot에서만 사용할 수 있다. `SpotWide` User Spot에서는 Spot·member
-Actor·timer·lifecycle handler가 같은 공통 execution gate를 사용하므로 handler 종류와 관계없이 허용한다.
-Entry Spot, `PerActor` User Spot, Entry Spot Actor, Node·Channel handler와 owner turn 밖의 client에서는
-사용할 수 없다. 지원하지 않는 문맥의 호출은 operation을 제출하거나 turn을 반납하지 않고
-`InvalidConfiguration`으로 완료한다.
+언어별 일반 비동기 terminal 이름은 .NET `Async`, Java·Node.js·C++ `submit`, Kotlin 전용 wrapper의
+`await`다. 비동기 완료를 반환하지 않는 즉시 제출은 `Submit`·`submit`을 사용한다. 실제 shared Spot
+gate를 반납하는 terminal만 `Yield`·`yield`라는 이름을 사용한다.
 
-`Yield` 뒤에는 같은 Spot의 다른 handler가 상태를 바꿀 수 있으므로 호출자는 대기 전에 읽은 mutable state를
-그대로 신뢰하지 않는다. One-way call은 비동기 submit terminator 하나만 제공하고, 즉시 한 번만 시도하는
-동기 `TrySubmit` 계열을 제공하지 않는다. 언어별 API는 `submit`, `async`, `yield`, `await`처럼 자연스러운
-이름을 사용할 수 있지만 위 세 완료 의미를 섞지 않는다.
+`Yield`는 `SpotWide` User Spot과 Instance Spot에서 실행하는 Channel·Spot·Actor request, CPU·I/O worker와
+Actor·Spot create·get-or-create call에만 제공한다. Create·get-or-create의 `Yield`는 naming 적용 범위를
+넓히는 규칙이 아니라 별도 object execution 특례다. Entry Spot, `PerActor`, Entry Actor, Node·Channel
+handler와 owner turn 밖에서는 operation submission과 queue 변경 전에 `InvalidConfiguration`으로 끝난다.
+Actor join, send, publish, timer 등록, close와 destroy에는 제공하지 않는다.
 
-`Yield` terminator는 Channel request, Spot request, Actor request, CPU worker와 I/O worker call에만
-제공한다. Actor join, Actor·Spot create와 get-or-create, send, publish, timer 등록, close와 destroy에는
-제공하지 않는다. 이 operation은 각 call이 정한 submit 또는 `Async` 완료 의미만 사용한다.
+`SpotWide` member Actor가 `Yield`하면 Actor FIFO claim은 유지하고 shared Spot gate만 반납한다. 따라서 같은
+Actor의 다음 record는 실행하지 않지만 다른 member Actor·Spot handler·timer는 진행할 수 있다. Continuation은
+같은 gate를 다시 얻은 뒤 현재 Actor record를 끝내고 Actor claim을 해제한다. 대기 전에 읽은 mutable state는
+다른 handler가 변경했을 수 있으므로 다시 확인해야 한다.
 
 ### 1.2 Worker offload
 
-CPU 작업과 비동기 I/O 작업은 Framework가 소유한 bounded worker scheduler에 제출할 수 있다. CPU 작업은
-동기 함수, I/O 작업은 해당 언어의 비동기 함수로 받으며 둘 다 cancellation 신호를 전달한다. Application은
-scheduler thread, queue storage 또는 실행 executor를 선택하지 않는다.
-
-Worker call은 timeout을 설정하고 `Submit` 또는 `Async`로 끝낸다. `SpotWide` User Spot과 Instance Spot의
-실행 문맥에서는 `Yield`로도 끝낼 수 있다. Queue가 가득 차면
-`WorkerQueueFull`, [deadline](01-glossary.ko.md#deadline)을 넘으면 `WorkerTimedOut`, 작업이 실패하면 `WorkerFailed`로 완료한다. Timeout이나
-cancellation 뒤 늦게 끝난 작업은 두 번째 terminal 결과를 만들지 않는다. Worker pool의 최소·최대 동시성,
-idle timeout과 queue 상한은 root configuration에서 host start 전에만 바꿀 수 있다.
+CPU 작업과 비동기 I/O 작업은 Framework가 소유한 bounded worker scheduler에 제출한다. Worker call이
+계산한 application 결과 type은 유지하고, 허용된 `SpotWide`·Instance 문맥에서는 같은 결과를 `Yield`로
+기다릴 수 있다. Queue가 가득 차면 `WorkerQueueFull`, [deadline](01-glossary.ko.md#deadline)을 넘으면
+`WorkerTimedOut`, 작업이 실패하면 `WorkerFailed`로 완료한다. Timeout이나 cancellation 뒤 늦게 끝난
+작업은 두 번째 terminal 결과를 만들지 않는다.
 
 ### 1.3 One-way submit
 
-Send, publish, bound session send, session Actor relay와 명시적인 STREAM send·reply는 비동기 submit 하나로 local outbound
-admission 결과를 반환한다. 원격 handler 실행, subscriber 수신 또는 application callback 완료는 기다리지
-않는다. 즉시 수락할 수 있으면 Framework scheduler나 별도 work queue에 추가하지 않고 해당 언어의
-이미 완료되었거나 resolved된 awaitable을 반환한다. Promise continuation 같은 언어 runtime의 표준
-microtask는 Framework scheduler hop으로 계산하지 않는다. Queue 용량이 일시적으로 부족하면
-해당 operation family의 유한한 admission deadline까지 send-ready 또는 local capacity signal을 기다린다.
-Pending admission을 보관하는 bounded 공간까지 가득 차면 기다림을 시작하지 않고 `Backpressured`로
-완료한다.
+Send, publish, bound session send, session Actor relay와 명시적인 STREAM send·reply는 비동기 terminal
+하나만 제공한다. 정상 완료 값은 없으며 operation family가 정의한 source-local admission boundary가
+message를 수락했다는 뜻이다. Remote handler 실행, subscriber 수신, remote Spot queue 수락 또는 application
+callback 완료는 기다리지 않는다.
 
-Global Spot·Actor send도 같은 async-only terminator를 사용한다. Cache된 `Ready` route가 있는 경우에도 별도
-동기 terminator를 제공하지 않는다. Caller가 관찰하는 submit 대기는 current [Ready](01-glossary.ko.md#ready) authority resolve부터 source
-local outbound admission까지만 포함한다. 그 뒤 remote handler 실행은 submit 완료 조건이 아니다.
+Remote target은 local transport queue, local target은 해당 mailbox 또는 relay queue, classic fanout과
+STREAM은 해당 socket queue가 admission boundary다. Global Spot·Actor send는 current
+[Ready](01-glossary.ko.md#ready) authority resolve부터 이 source-local admission까지 기다린다.
 
-유효한 call은 pending 공간을 확인하기 전에 해당 family가 실제로 사용하는 admission primitive를
-non-blocking 방식으로 정확히 한 번 호출한다. Remote 경로는 transport submit을 사용하고, local 경로는
-mailbox 또는 relay queue admission을 사용한다. 이 첫 시도가 즉시 성공하면 pending 공간이 차 있어도
-`Submitted`다. 첫 시도가 transport 또는 local capacity 부족으로 끝났을 때만 waiter 공간을 확인하며,
-공간이 없으면 첫 시도 뒤 `Backpressured`로 완료한다. Local 경로가 즉시 수락할 수 있는데 pending 공간만
-가득 찼다는 이유로 `Backpressured`를 반환하면 안 된다.
+Queue capacity가 부족하면 Framework는 해당 family의 send timeout까지 send-ready 또는 local capacity를
+기다린다. `Backpressured`는 public terminal result가 아니다. Capacity가 먼저 확보되면 message를 정확히
+한 번 제출하고 정상 완료한다. Timeout, cancellation 또는 runtime shutdown이 먼저 확정되면 late admission
+없이 예외로 한 번 완료한다.
 
-여기서 STREAM은 server package가 handler context에 노출하는 session call을 뜻한다. 별도 stream connector
-package의 send builder는 해당 package 계약을 따른다. Request handler가 typed 값을 반환해 만드는 reply,
-request·join call, worker submit과 lifecycle submit도 이 one-way call 계약의 대상이 아니다.
-
-유효한 one-way operation은 다음 여섯 상태 중 하나로 완료한다.
-
-| 상태 | 의미 |
+| 실패 | 오류 분류 |
 |---|---|
-| `Submitted` | operation family가 정의한 outbound admission boundary가 operation을 수락했다 |
-| `Backpressured` | bounded pending admission 공간까지 가득 차서 기다림을 시작하지 못했다 |
-| `TimedOut` | admission deadline까지 queue가 operation을 수락하지 못했다 |
-| `TargetNotFound` | 선택할 수 있는 논리 target이 없다 |
-| `RouteNotConnected` | target은 확인했지만 사용할 수 있는 route가 없다 |
-| `Shutdown` | drain 또는 shutdown 때문에 새 admission을 받을 수 없다 |
+| Actor authority 없음 | `ActorRouteNotFound` |
+| Spot authority 없음 | `SpotRouteNotFound` |
+| Mesh나 선택 가능한 Server 없음 | 기존 `MeshNotFound` 또는 operation별 target-not-found kind |
+| 사용할 route가 없음 | `RouteNotConnected` |
+| admission deadline 만료 | `DeadlineExceeded` |
+| runtime이 새 admission을 받지 않음 | `RuntimeShutdown`(`36`) |
+| 같은 call의 terminal을 두 번 실행 | `AlreadySubmitted` |
 
-잘못된 handle·argument·state, 이미 사용한 reply token과 같은 call의 중복 terminator 실행은 submit status가
-아니다. 각 언어의 local exception 또는 exceptional completion으로 처리한다. Timeout, cancellation 또는
-[shutdown](01-glossary.ko.md#shutdown) 뒤에는 operation을 자동으로 다시 제출하지 않는다.
+Pending admission은 caller가 지정한 Node RID, global Spot·Actor ID와 session binding token을 유지한다.
+Send-ready signal 뒤 다른 logical target으로 바꾸지 않는다. RouteMesh·ClientServer select-one Channel은
+성공한 admission 전까지 같은 [ChannelName](01-glossary.ko.md#channelname)의 현재 eligible member를 다시
+선택할 수 있고 transport queue가 수락한 시점에 target이 확정된다. 완료 뒤에는 자동 재제출하지 않는다.
 
-Direct pending admission은 Node direct RID, global [Spot](01-glossary.ko.md#spot)·Actor ID와 session binding token처럼 호출자가 지정한
-논리 target identity를 유지한다. 물리 peer lifecycle generation은 public commitment가 아니다. Send-ready 또는
-peer lifecycle signal 뒤 재시도할 때는 그 identity의 current [authority](01-glossary.ko.md#authority) route만 사용하며 다른 RID·global ID나
-[binding token](01-glossary.ko.md#binding-token)으로 전환하지 않는다. Target authority가 없으면 `TargetNotFound`, 재시도 시점에 route가 없으면
-`RouteNotConnected`로 한 번 완료한다. Route는 유지되지만 capacity가 deadline까지 회복되지
-않은 경우만 `TimedOut`이다.
+[Logical Multicast](01-glossary.ko.md#logical-multicast)는 operation을 시작할 때 target snapshot을 고정하고
+각 target을 한 번씩 시도한다. Operation 자체를 local executor에 제출하지 못하면 send timeout까지
+기다린다. Transaction이 시작된 뒤 개별 target 실패는 전체 publish를 rollback하거나 exceptional completion으로
+바꾸지 않는다. Target별 snapshot·admitted·dropped·unreachable count는 public 반환값이 아니라 monitoring
+metric과 runtime event에 기록한다. Target이 0개여도 정상 완료한다.
 
-RouteMesh·ClientServer select-one ChannelName의 첫 capacity rejection은 target commitment가 아니다. Framework
-service runtime은 성공한 admission 전까지 같은 [ChannelName](01-glossary.ko.md#channelname)의 현재 eligible member를 다시 선택할 수 있고,
-transport queue가 수락한
-시점에 target이 확정된다. 수락된 뒤나 terminal 결과가 확정된 뒤에는 어떤 family도 같은
-operation을 다시 제출하지 않는다.
-
-Logical Multicast는 partial admission 뒤 전체 publish를 재시도할 수 없으므로 일반 send-ready waiter를
-사용하지 않는다. Framework는 대기 queue가 없는 bounded I/O executor direct handoff를 사용한다.
-즉시 사용할 worker slot이 없으면 publish transaction을 시작하지 않고 `Backpressured`로 완료한다. Handoff에
-성공하면 service runtime이 snapshot의 remote target마다 MeshNode send timeout까지 한 번 제출하고 local Spot
-queue는 즉시 수락 여부를 판단한다. Transaction이 시작되면 publish는 commit된 것이다. 이후 cancellation
-또는 shutdown으로 이미 수락한 target을 취소하거나 남은 target 제출을 중단하지 않는다.
-
-Executor direct handoff가 즉시 성공하지 못하면 `Backpressured`로 완료한다. Publish transaction이 시작된
-뒤 remote target 하나 이상이 용량 때문에 수락되지 않아도 결과는 `Backpressured`이고, 이미 수락한 target은
-유지한다. Target별 send timeout 뒤의 capacity rejection도 `TimedOut`으로 다시 분류하지 않는다. [Snapshot](01-glossary.ko.md#snapshot) target이
-없으면 `TargetNotFound`를 사용한다. 그 밖의 연결 불가 target은 별도 top-level status로 바꾸지 않고 remote
-unreachable detail에 기록한다. Local Spot queue drop도 top-level status를 바꾸지 않는다. 그 밖의 결과는
-`Submitted`와 detail로 완료한다. [Logical Multicast](01-glossary.ko.md#logical-multicast)의 `Submitted`는 remote capacity drop 없이 snapshot
-처리를 완료했다는 뜻이므로, remote target이 모두 연결 불가여서 admitted count가 0이어도 사용한다.
-Publish 결과는 remote와 local 각각의 snapshot, admitted, dropped와 remote
-unreachable detail을 보존한다. Remote target이 여러 개면 publish transaction의 전체 시간은 target별 send
-timeout의 합까지 늘어날 수 있다.
-
-Classic fanout은 subscriber가 없어도 publisher의 local queue가 event를 수락하면 `Submitted`다. Logical
-Multicast의 target별 detail 결과를 [classic fanout](01-glossary.ko.md#classic-fanout) 결과에 추가하지 않는다.
+[Classic fanout](01-glossary.ko.md#classic-fanout)은 subscriber가 없어도 publisher socket queue가 message를
+수락하면 정상 완료한다. Subscriber 수와 수신 완료를 public result로 만들지 않는다.
 
 ### 1.4 Admission deadline
 
@@ -146,7 +111,7 @@ Framework public send timeout은 millisecond로 올림한 값이 `1..INT_MAX` �
 Bound session과 session Actor relay는 local relay가 수락한 뒤 발생한 remote 실패를 같은 submit의 실패로
 되돌리거나 자동 replay하지 않는다. STREAM reply는 request sequence와 one-shot [reply token](01-glossary.ko.md#reply-token)을 call을
 만들 때 보존한다. 유효한 첫 terminator invocation이 transport admission 시도 전에 token을 원자적으로
-claim하고 소비한다. 그 terminator가 `Backpressured`, `TimedOut` 또는 cancellation으로 완료되어도 token은
+claim하고 소비한다. 그 terminator가 `DeadlineExceeded`, cancellation 또는 runtime shutdown 예외로 완료되어도 token은
 다시 사용할 수 없다. 같은 token에서 만든 두 call이 경쟁하면 claim에 성공한 하나만 transport
 admission을 시작하고 나머지는 transport 시도 없이 exceptional completion으로 끝난다. Caller request timeout은
 reply wire에 전달되지 않으므로 STREAM reply의 admission deadline으로 사용하지 않는다. 늦게 수락된 reply가
@@ -228,20 +193,21 @@ Java `cancel(false)`나 그 stage를 기다리는 Kotlin coroutine cancellation�
 pending 상태이면 이 cancellation이 이후 admission과 경쟁하고 send-ready waiter, queue reservation과 payload
 reservation을 정리한다. 따라서 JVM 경로는 pre-cancellation에 따른 transport attempt 0을 보장하지 않는다.
 
-Cancellation을 submit status로 추가하지 않는다. Admission을 시작한 뒤 cancellation, timeout, shutdown과
-수락이 경쟁하면 원자 terminal state를 먼저 확정한 하나만 결과를 완료한다. 취소된 pending admission은 나중에
+Cancellation은 exceptional completion이다. Admission을 시작한 뒤 cancellation, timeout, shutdown과
+수락이 경쟁하면 원자 terminal state를 먼저 확정한 하나만 call을 완료한다. 취소된 pending admission은 나중에
 수락되면 안 된다. Logical Multicast cancellation은 아래의 direct handoff와 commit 경계를 따른다.
 
 Logical Multicast는 executor direct handoff와 publish transaction 시작이 원자적으로 확정되기 전에만 cancellation이
 operation 시작을 막을 수 있다. Publish transaction이 시작된 뒤의 cancellation은 commit된 snapshot
-operation을 중단하지 않으며,
-underlying operation은 service runtime이 집계한 최종 publish 결과로 완료한다. .NET `ValueTask`와 Node.js `Promise`는
-commit 뒤 cancellation 신호로 결과를 바꾸지 않는다. Java stage의 `cancel(false)`와 Kotlin의
+operation을 중단하지 않으며 underlying operation은 target별 결과를 monitoring에 기록하고 반환 데이터 없이
+완료한다. .NET `ValueTask`와 Node.js `Promise`는 commit 뒤 cancellation 신호로 완료를 바꾸지 않는다.
+Java stage의 `cancel(false)`와 Kotlin의
 연결된 stage cancellation은 `false`를 반환하고 underlying operation을 취소하지 않는다. Kotlin에서는 이미
 취소된 caller coroutine이
 cancellation 상태를 유지하지만 공유 `CompletionStage`와 runtime operation evidence는 최종
-`ZLinkPublishResult`로 완료한다. 이는 operation cancellation이 아니다. Drain·shutdown도 시작된 transaction의
-결과를 기다리며, host drain deadline을 넘긴 경우에만 전체 runtime의 bounded force stop 규칙을 따른다.
+normal completion과 monitoring event를 기록한다. 이는 operation cancellation이 아니다. Drain·shutdown도
+시작된 transaction의 완료를 기다리며, host drain deadline을 넘긴 경우에만 전체 runtime의 bounded force
+stop 규칙을 따른다.
 
 MeshNode가 `Retiring`으로 전환되면 새 ChannelName 선택과 Logical Multicast target에서 제외된다. Relocation permit을
 얻지 못한 unit의 application claim은 계속 진행하고, permit을 얻은 queue turn 경계에서만 해당 unit을 seal한다.

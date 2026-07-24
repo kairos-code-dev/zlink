@@ -786,13 +786,13 @@ public:
 class send_call_t {
 public:
     send_call_t &metadata(std::string key, std::string value);
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class bound_session_send_call_t {
 public:
     bound_session_send_call_t &metadata(std::string key, std::string value);
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class stream_send_call_t {
@@ -806,7 +806,7 @@ public:
     stream_send_call_t &metadata(std::string key, std::string value);
     stream_send_call_t &packet_name(std::string packet_name);
     stream_send_call_t &compress();
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class stream_write_call_t {
@@ -821,7 +821,7 @@ public:
 
     stream_write_call_t &metadata(std::string key, std::string value);
     stream_write_call_t &compress();
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 template <typename TActor>
@@ -1028,7 +1028,7 @@ public:
 class route_send_call_t {
 public:
     route_send_call_t &metadata(std::string key, std::string value);
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class spot_send_call_t {
@@ -1037,7 +1037,7 @@ public:
     spot_send_call_t &instance_spot();
     spot_send_call_t &instance_spot(std::string stable_type);
     spot_send_call_t &in_mesh(std::string mesh_name);
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 class spot_request_call_t {
@@ -1057,7 +1057,7 @@ public:
 
 class fanout_publish_call_t {
 public:
-    task_t<submit_result_t> submit();
+    task_t<void> submit();
 };
 
 struct logical_multicast_detail_t {
@@ -1078,7 +1078,7 @@ struct publish_result_t {
 class publish_call_t {
 public:
     publish_call_t &metadata(std::string key, std::string value);
-    task_t<publish_result_t> submit();
+    task_t<void> submit();
 };
 
 } // namespace zlink::framework
@@ -1145,7 +1145,7 @@ Remote count는 `snapshot_remote_node_count == admitted_remote_node_count + drop
 unreachable_remote_node_count`를 만족한다.
 Remote admitted count는 source의 local outbound transport queue 제출만 집계한다. Local admitted count는
 origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과 remote·local handler
-실행 또는 완료는 `task_t<publish_result_t>` 완료 조건이 아니다.
+실행 또는 완료는 `task_t<void>` 완료 조건이 아니다.
 
 framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성하지 않고 DI에서
 주입받아 사용할 수 있다.

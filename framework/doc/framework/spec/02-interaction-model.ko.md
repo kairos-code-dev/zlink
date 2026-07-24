@@ -55,11 +55,11 @@ routing과 runtime monitoring에서만 관측한다.
 
 ## 4. Send와 request
 
-`send`는 reply가 없는 one-way operation이다. Public call은 비동기 submit 하나만 제공하며, 즉시 한 번만
-시도하는 동기 terminator는 제공하지 않는다. 반환은 destination handler가 실행되었다는 확인이 아니라
-Framework가 message를 local outbound queue에 받아들였는지를 나타낸다. Queue가 일시적으로 가득 차면
-유한한 send timeout까지 admission을 기다린다. 이미 수락한 뒤 발생한 one-way 오류는 runtime error sink와
-monitoring으로 보고한다.
+`send`는 reply가 없는 one-way operation이다. Public call은 비동기 terminal 하나만 제공하며 정상 완료
+값은 없다. 정상 완료는 destination handler 실행이 아니라 Framework가 message를 source-local outbound
+queue에 받아들였다는 뜻이다. Queue가 일시적으로 가득 차면 유한한 send timeout까지 admission을 기다리고,
+timeout·cancellation·route 오류와 runtime shutdown은 exceptional completion으로 전달한다. 이미 수락한 뒤
+발생한 오류는 runtime error sink와 monitoring으로 보고한다.
 
 Global Spot·Actor send도 같은 비동기 terminator를 사용한다. Source는 current Ready authority를 resolve하고
 local outbound admission으로 submit을 완료한다. Cache hit도 같은 public 의미를 유지하므로 cache 상태에 따라
@@ -68,10 +68,10 @@ object의 creation intent를 기본적으로 만들지 않는다. Spot 전용 fl
 경우에만 Missing Spot의 cold activation을 같은 terminal operation 안에서 시작한다. 시작 method는 계속 global
 Spot ID만 받으며 optional stable type과 initial Mesh는 fluent call의 cold activation option이다.
 
-유효한 one-way call은 `Submitted`, `Backpressured`, `TimedOut`, `TargetNotFound`, `RouteNotConnected`,
-`Shutdown` 가운데 하나로 완료한다. 잘못된 argument·handle·state와 중복 submit은 local exceptional
-completion이다. Cancellation은 별도 status가 아니며 언어별 cancelled awaitable로 표현한다. 어느 terminal
-결과 뒤에도 Framework가 operation을 자동으로 다시 제출하지 않는다.
+`Backpressured`는 public result가 아니라 send-ready를 기다리는 중간 상태다. Capacity가 timeout 전에
+확보되면 한 번 제출하고 반환 데이터 없이 완료한다. Timeout, target 부재, route 단절, cancellation 또는
+shutdown이 먼저 확정되면 late admission 없이 operation별 Framework exception으로 한 번 완료한다.
+어느 terminal 결과 뒤에도 Framework가 operation을 자동으로 다시 제출하지 않는다.
 
 `request`는 선택한 송신 경로에 reply correlation을 만들고 terminal 결과를 정확히 한 번 전달한다. request timeout은 reply를
 기다리는 시간이다. 전송 단계의 backpressure는 send timeout이 담당한다. route 오류나 timeout으로 끝난
@@ -95,21 +95,19 @@ MeshNode와 local Spot match를 snapshot한다.
 - 같은 node의 일치하는 Spot queue는 immutable payload storage의 reference를 공유한다.
 - 다른 MeshNode로 relay하거나 과거 event를 replay하지 않는다.
 
-Framework service runtime은 대기 queue가 없는 bounded I/O executor에 publish transaction을 direct handoff한다.
-즉시 사용할 worker slot이 없으면 transaction을 시작하지 않고 `Backpressured`로 완료한다. Handoff에 성공해
-transaction이 시작되면 각 remote target을 해당 send timeout까지 제출하고 local Spot queue는 즉시 판단한다.
-Transaction 시작이 snapshot operation의 commit point이므로 cancellation이나 shutdown으로 남은 target 제출을
-중단하지 않는다.
+Framework service runtime은 bounded I/O executor에 publish transaction을 제출한다. 즉시 사용할 capacity가
+없으면 send timeout까지 기다리며, timeout·cancellation·shutdown 중 먼저 확정된 예외로 완료한다.
+Transaction이 시작되면 각 remote target을 한 번 제출하고 local Spot queue도 한 번 시도한다. Transaction
+시작이 snapshot operation의 commit point이므로 cancellation이나 shutdown으로 남은 target 제출을 중단하지
+않는다.
 앞에서 수락된 remote target과 local Spot queue는 뒤 target의 실패 때문에 취소되지 않는다.
 
-Executor direct handoff가 성공하지 못했거나 remote target 하나 이상이 용량 때문에 실패하면
-`Backpressured`다. Snapshot target이 모두 0이면 `TargetNotFound`다. Target별 send timeout 뒤의 용량 실패를
-`TimedOut`으로 다시 분류하지 않는다. 그 밖의 remote 연결 불가와 local Spot queue drop은 top-level status를
-바꾸지 않고 publish detail에 기록한다. Remote target이 모두 연결 불가여서 admitted count가 0이어도
-remote capacity drop이 없으면 `Submitted`다.
+Snapshot target이 0개여도 정상 완료한다. Transaction 시작 뒤 remote 연결 불가, capacity 실패와 local
+Spot queue drop은 public 반환값이나 전체 publish 예외로 바꾸지 않고 monitoring metric·runtime event에
+snapshot·admitted·dropped·unreachable count로 기록한다.
 
-publish 성공은 Spot handler의 실행 완료를 뜻하지 않는다. snapshot target에 대한 제출 결과가 집계되었다는
-뜻이며, remote ROUTER가 수락한 뒤 수신 MeshNode의 local Spot queue에서 발생한 drop까지 보장하지 않는다.
+Publish 정상 완료는 Spot handler 실행, subscriber 수신 또는 remote ROUTER가 수락한 뒤 수신 MeshNode의
+local Spot queue 수락을 보장하지 않는다.
 
 ## 6. Classic fanout
 
@@ -117,13 +115,13 @@ Classic fanout은 MeshNode와 독립된 publisher/subscriber channel이다. 현�
 완료된 subscriber에게만 새 event를 전달한다. publisher는 연결 전 또는 연결 단절 중 event를 저장하지
 않고, 다시 연결된 뒤 replay하지 않는다.
 
-Publisher call은 publisher socket send timeout까지 local admission을 기다리는 비동기 terminator 하나만
-제공한다. Subscriber가 0이어도 local publisher queue가 event를 수락하면 `Submitted`다. 이 결과는 subscriber
-수신이나 handler 완료를 뜻하지 않는다.
+Publisher call은 publisher socket send timeout까지 local admission을 기다리는 비동기 terminal 하나만
+제공한다. Subscriber가 0이어도 local publisher queue가 event를 수락하면 반환 데이터 없이 정상 완료한다.
+이는 subscriber 수신이나 handler 완료를 뜻하지 않는다.
 
 Publish의 공통 입력은 ChannelName, topic과 typed event다. Typed event의 packet name을 topic으로
 사용하는 편의 호출도 같은 operation을 만든다. 두 호출은 같은 publisher transport, timeout과
-submit 결과를 사용하며 subscriber dispatch는 packet name으로 handler를 선택하고 topic을 handler
+같은 exceptional completion 계약을 사용하며 subscriber dispatch는 packet name으로 handler를 선택하고 topic을 handler
 context에 보존한다.
 
 Publisher는 전용 location descriptor에 ChannelName과 실제 endpoint를 게시한다. Automatic subscriber는

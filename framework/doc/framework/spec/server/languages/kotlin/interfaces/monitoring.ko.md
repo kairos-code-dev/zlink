@@ -49,12 +49,15 @@ SPOT_GENERATION_STALE = 32
 SPOT_MOVING = 33
 RELOCATION_DATA_LOST = 34
 SPOT_ID_CONFLICT = 35
+RUNTIME_SHUTDOWN = 36
 ```
 
 `RELOCATION_DATA_LOST`는 Location authority가 공개한 Relocation payload가 영구적으로 없거나 checksum·inventory
 digest가 일치하지 않을 때 반환하는 non-retriable 오류다. Runtime은 이전 owner로 rollback하지 않는다.
 `ROUTING_ID_CONFLICT`는 MeshNode RID 충돌에만 사용한다. Spot·Entry Spot identity 충돌은
 `SPOT_ID_CONFLICT`로 반환한다.
+One-way operation의 target 부재는 Actor·Spot·Mesh·request·session별 기존 not-found kind를 사용하며
+runtime 종료만 `RUNTIME_SHUTDOWN`으로 투영한다.
 Remote framework error는 `ZLinkFrameworkException`으로 전달한다. Public argument validation은 JVM 표준
 `IllegalArgumentException`, startup 구성 충돌은 `ZLinkConfigurationException`을 사용한다.
 

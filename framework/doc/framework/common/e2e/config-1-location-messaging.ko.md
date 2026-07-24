@@ -342,22 +342,22 @@ member를 더 자주 선택하는가.
 우선순위: `P2`
 
 **검증 질문:** provider가 느려 send 처리 backlog가 쌓여도 one-way send 호출자가
-admission 결과를 유한 시간 안에 관찰하고, 적체 해소 뒤 연결과 후속 request가 정상으로
+결과 데이터 없는 정상 완료나 실패를 유한 시간 안에 관찰하고, 적체 해소 뒤 연결과 후속 request가 정상으로
 남는가.
 
 - 절차: provider handler를 느리게 두고, client가 처리 속도보다 빠르게 다량 request/send를 보내
   송신 큐를 HWM까지 채운다. 이 상태에서 public asynchronous submit을 실행하고 MeshNode send timeout과
   caller cancellation을 각각 경쟁시킨다.
-- 검증: Asynchronous submit은 admission 성공, 정해진 timeout/backpressure 또는 cancellation 결과로 유한
-  시간 안에 끝난다. 별도 동기 `TrySubmit`이나 즉시 한 번만 시도하는 public path는 사용하지 않는다.
-  `submitted`는 remote handler 완료가
-  아니라 송신 큐 admission을 뜻한다. 연결이 깨지거나 다른 정상 트래픽이 오염되지
+- 검증: 비동기 terminal은 queue admission 뒤 반환 데이터 없이 정상 완료하거나 timeout·cancellation 중
+  먼저 확정된 실패로 유한 시간 안에 끝난다. Backpressure는 send timeout까지 기다리는 내부 상태이며
+  public status로 반환하지 않는다. 별도 동기 `TrySubmit`이나 즉시 한 번만 시도하는 public path는 사용하지
+  않는다. 정상 완료는 remote handler 완료가 아니라 송신 큐 admission을 뜻한다. 연결이 깨지거나 다른 정상 트래픽이 오염되지
   않고, 적체가 풀리면 follow-up request와 provider evidence가 정상으로 회복된다.
 - 세부 동작: 송신 HWM 포화 시 backpressure 계약.
 
-> 주의: send는 one-way operation이므로 public submit 결과는 admission까지만 보장하고 remote
+> 주의: send는 one-way operation이므로 public 비동기 terminal은 admission까지만 보장하고 remote
 > handler 완료를 보고하지 않는다. 호출자는 send-ready 재시도, peer queue와 transport 정책을
-> 알 필요 없이 정식 submit result만 처리한다.
+> 알 필요 없이 정상 완료 또는 예외만 처리한다.
 
 #### RM-C10 descriptor registration bound
 

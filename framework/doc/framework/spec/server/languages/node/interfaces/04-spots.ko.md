@@ -149,7 +149,7 @@ export interface ZLinkSpotSendCall {
     instanceSpot(): this;
     instanceSpot(instanceSpotType: string): this;
     inMesh(meshName: string): this;
-    submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
+    submit(signal?: AbortSignal): Promise<void>;
 }
 
 export interface ZLinkSpotRequestCall {
@@ -216,6 +216,7 @@ export interface ZLinkSpotCreateCall {
     request(request: unknown): this;
     timeout(timeoutMs: number): this;
     submit(signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+    yield(signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
 }
 
 export interface ZLinkSpotGetOrCreateCall {
@@ -223,6 +224,7 @@ export interface ZLinkSpotGetOrCreateCall {
     request(request: unknown): this;
     timeout(timeoutMs: number): this;
     submit(signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
+    yield(signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
 }
 ```
 
@@ -239,7 +241,10 @@ target 선택과 factory 실행 전에 `InvalidConfiguration`으로 완료한다
 `ZLinkMeshNodeDescriptor.entrySpotId`의 exact mapping을 사용하며 Spot ID 문자열을 parse하지 않는다.
 
 Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal
-`submit(...)`을 두 번 호출하면 `AlreadySubmitted`다. User Spot `create`는 Framework가 lowercase canonical
+`submit(...)` 또는 `yield(...)`를 두 번 호출하면 `AlreadySubmitted`다. 두 terminal은 같은
+`ZLinkSpotCreateResult`를 반환한다. `yield(...)`는 `SpotWide` User Spot 또는 Instance Spot application
+callback에서만 현재 Spot gate를 반납하며, 다른 문맥에서는 reservation과 factory 실행 전에
+`InvalidConfiguration`으로 완료한다. User Spot `create`는 Framework가 lowercase canonical
 UUID v4 문자열의 새 global Spot ID를 발급한다.
 `getOrCreate`는 같은 User kind·stable type의 ready 또는 creating attempt에 합류한다. Kind나 type이 다르면
 `SpotTypeMismatch`, deadline 안에 terminal state가 되지 않으면 `DeadlineExceeded`다.

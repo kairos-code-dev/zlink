@@ -72,7 +72,7 @@ send_call_t& packet_name(std::string name); // 외부 protocol과 연동할 때 
 send_call_t& metadata(std::string key, std::string value);
 send_call_t& metadata(metadata_t metadata);
 send_call_t& compress();
-void submit();                              // connector의 전송 queue에 전달하며 reply를 기다리지 않는다.
+task_t<void> submit(); // reply나 status 없이 비동기 완료와 실패만 전달한다.
 
 request_call_t& packet_name(std::string name);
 request_call_t& metadata(std::string key, std::string value);
@@ -95,8 +95,8 @@ result_t<TMessage> submit(); // 일치하는 unread packet 하나를 소비하�
 void submit(std::function<void(result_t<TMessage>)> callback);
 ```
 
-core 공개 header는 coroutine 타입에 의존하지 않는다. callback 방식이 비동기 완료 계약이며,
-서버 E2E용 coroutine adapter는 별도 target `zlink::stream_e2e_client`가 제공한다.
+one-way `submit()`은 `task_t<void>`로 비동기 완료와 실패만 전달한다. Request와 wait는 기존
+결과형을 유지하며 callback 완료 경로도 함께 제공한다.
 
 Typed `send`, `request`, `on`과 `wait_for`는 `connector_options_t::typed_codec`에 넣은 codec 하나를
 함께 사용한다. 값을 지정하지 않으면 JSON codec을 사용한다. Protobuf, MessagePack과 사용자 codec

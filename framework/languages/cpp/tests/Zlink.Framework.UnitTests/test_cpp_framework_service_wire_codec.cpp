@@ -159,6 +159,40 @@ int main ()
             protocol::framework_error_code::spotGenerationStale),
           protocol::user_spot_create_result_t::rejected, {}, 0));
     assert (stale_create_reply.header.failure_code == 33);
+    const auto type_mismatch_create_reply =
+      protocol::decode_user_spot_create_reply (
+        protocol::encode_user_spot_create_reply (
+          correlation, 107,
+          static_cast<std::uint32_t> (
+            protocol::framework_error_code::spotTypeMismatch),
+          protocol::user_spot_create_result_t::rejected, {}, 0));
+    assert (
+      type_mismatch_create_reply.header.failure_code
+      == static_cast<std::uint32_t> (
+        protocol::framework_error_code::spotTypeMismatch));
+    const auto moving_close_reply =
+      protocol::decode_user_spot_close_reply (
+        protocol::encode_user_spot_close_reply (
+          correlation, 107,
+          static_cast<std::uint32_t> (
+            protocol::framework_error_code::spotMoving),
+          false));
+    assert (
+      moving_close_reply.header.failure_code
+      == static_cast<std::uint32_t> (
+        protocol::framework_error_code::spotMoving));
+    const auto deadline_create_reply =
+      protocol::decode_user_spot_create_reply (
+        protocol::encode_user_spot_create_reply (
+          correlation, 101, 0,
+          protocol::user_spot_create_result_t::rejected, {}, 0));
+    assert (deadline_create_reply.header.terminal_result == 101);
+    const auto busy_create_reply =
+      protocol::decode_user_spot_create_reply (
+        protocol::encode_user_spot_create_reply (
+          correlation, 108, 0,
+          protocol::user_spot_create_result_t::rejected, {}, 0));
+    assert (busy_create_reply.header.terminal_result == 108);
     auto trailing_user_spot_create =
       protocol::encode_user_spot_create_header (
         user_spot_create);

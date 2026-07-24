@@ -5,6 +5,7 @@
 #include "runtime/channels/route_handler_registry.hpp"
 #include "runtime/channels/channel_reply_writer.hpp"
 #include "runtime/mesh/mesh_record_dispatcher.hpp"
+#include "runtime/mesh/user_spot_terminal_mapping.hpp"
 #include "runtime/messaging/envelope_codec.hpp"
 #include "runtime/locations/pending_creation_projection.hpp"
 #include "runtime/locations/location_runtime.hpp"
@@ -370,7 +371,9 @@ mesh_node_host_service_t::create_user_spot (
                 || reply.header.terminal_result != 0) {
                 completion->complete (
                   result_t<spot_create_result_t>::failure (
-                    framework_error_kind_t::request_failed,
+                    user_spot_terminal::
+                      map_user_spot_operation_failure (
+                      terminal, reply.header, true),
                     "Remote User Spot creation failed"));
                 return;
             }
@@ -402,7 +405,7 @@ mesh_node_host_service_t::create_user_spot (
     if (!accepted)
         completion->complete (
           result_t<spot_create_result_t>::failure (
-            framework_error_kind_t::request_failed,
+            framework_error_kind_t::request_rejected,
             "User Spot create operation was not admitted"));
     return output;
 }
@@ -519,7 +522,9 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
                 || reply.header.terminal_result != 0) {
                 completion->complete (
                   result_t<bool>::failure (
-                    framework_error_kind_t::request_failed,
+                    user_spot_terminal::
+                      map_user_spot_operation_failure (
+                      terminal, reply.header, false),
                     "Remote User Spot close failed"));
                 return;
             }
@@ -529,7 +534,7 @@ task_t<bool> mesh_node_host_service_t::close_user_spot (
     if (!accepted)
         completion->complete (
           result_t<bool>::failure (
-            framework_error_kind_t::request_failed,
+            framework_error_kind_t::request_rejected,
             "User Spot close operation was not admitted"));
     return output;
 }

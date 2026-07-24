@@ -290,12 +290,14 @@
     },
     {
       "kind": "instance-placement-authority-fence",
-      "routeType": "instance-route-fence-v1",
+      "routeType": "instance-route-v1",
       "requestBoundFields": [
         "targetNodeRid",
         "targetNodeGeneration",
         "targetSpotRid",
-        "authority"
+        "ready.authority-or-coldActivation.stableType-and-targetDescriptorVersion",
+        "coldActivation.placementProfile-and-affinityKey",
+        "coldActivation.deadlineUnixMs"
       ],
       "targetComparison": "exact-current-authority-before-mailbox-admission",
       "sourceOrder": "resolve-select-target-and-submit-complete-first-message-activation-envelope-without-owner-claim-or-reservation",
@@ -1895,6 +1897,15 @@
       ]
     },
     {
+      "name": "instance-route-kind",
+      "kind": "enum",
+      "encoding": "u8",
+      "values": [
+        { "name": "ready", "value": 1 },
+        { "name": "coldActivation", "value": 2 }
+      ]
+    },
+    {
       "name": "user-spot-create-result",
       "kind": "enum",
       "encoding": "u8",
@@ -2133,6 +2144,8 @@
         { "name": "targetNodeRid", "$ref": "rid" },
         { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "targetDescriptorVersion", "$ref": "text8" },
+        { "name": "placementProfile", "$ref": "optional-text8" },
+        { "name": "affinityKey", "$ref": "optional-text8" },
         { "name": "sourceNodeRid", "$ref": "rid" },
         { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "sourceSpotRid", "$ref": "optional-rid" },
@@ -3372,7 +3385,7 @@
         {
           "when": { "recordKind": "instanceSpotActivation" },
           "fields": [
-            { "name": "route", "$ref": "instance-route-fence-v1" },
+            { "name": "route", "$ref": "instance-route-v1" },
             { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
             { "name": "operationKind", "$ref": "instance-operation-kind" },
             { "name": "payload", "$ref": "application-payload-envelope-v1" }
@@ -3480,22 +3493,39 @@
       "trailingBytes": "forbidden"
     },
     {
-      "name": "instance-route-fence-v1",
-      "kind": "versioned-length-delimited",
-      "version": {
-        "$ref": "u8",
-        "constant": 1
-      },
-      "length": {
-        "$ref": "u16",
-        "covers": "body"
-      },
-      "body": [
-        { "name": "targetNodeRid", "$ref": "rid" },
-        { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
-        { "name": "targetSpotRid", "$ref": "rid" },
-        { "name": "authority", "$ref": "authority-generation-fence" }
+      "name": "instance-route-v1",
+      "kind": "conditional-union",
+      "discriminators": [
+        { "name": "routeKind", "source": "wire", "$ref": "instance-route-kind" }
       ],
+      "bodyLengthType": { "$ref": "u16" },
+      "bodyLengthCovers": "selected-case",
+      "cases": [
+        {
+          "when": { "routeKind": "ready" },
+          "fields": [
+            { "name": "targetNodeRid", "$ref": "rid" },
+            { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
+            { "name": "targetSpotRid", "$ref": "rid" },
+            { "name": "authority", "$ref": "authority-generation-fence" }
+          ]
+        },
+        {
+          "when": { "routeKind": "coldActivation" },
+          "fields": [
+            { "name": "targetNodeRid", "$ref": "rid" },
+            { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
+            { "name": "targetSpotRid", "$ref": "rid" },
+            { "name": "targetMeshName", "$ref": "text8" },
+            { "name": "stableType", "$ref": "text8" },
+            { "name": "targetDescriptorVersion", "$ref": "text8" },
+            { "name": "placementProfile", "$ref": "optional-text8" },
+            { "name": "affinityKey", "$ref": "optional-text8" },
+            { "name": "deadlineUnixMs", "$ref": "nonzero-u64" }
+          ]
+        }
+      ],
+      "otherwise": "protocol-error",
       "trailingBytes": "forbidden"
     },
     {
@@ -4316,13 +4346,19 @@
       "allowedFlags": ["metadata"],
       "requiredFlags": [],
       "body": [
-        { "name": "route", "$ref": "instance-route-fence-v1" },
+        { "name": "route", "$ref": "instance-route-v1" },
         { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "sourceNodeRid", "$ref": "rid" },
         { "name": "sourceSpotRid", "$ref": "optional-rid" },
         { "name": "operationKind", "$ref": "instance-operation-kind" },
         { "name": "operation", "$ref": "operation-id" },
         { "name": "replyRoute", "$ref": "instance-reply-route" }
+      ],
+      "semanticConstraints": [
+        "ready-send-operation-id-zero",
+        "ready-request-operation-id-nonzero",
+        "cold-activation-operation-id-nonzero-for-send-and-request",
+        "cold-activation-target-does-not-contain-authority-generation-fence"
       ],
       "payload": "required",
       "payloadType": { "$ref": "application-payload-envelope-v1" }

@@ -138,6 +138,40 @@ internal sealed record UserSpotCreateCompletion(
 
 internal sealed record UserSpotCloseCompletion(bool Closed) : MeshRecordPayload;
 
+internal readonly record struct InstanceSpotActivationTarget(
+    string MeshName,
+    RoutingId TargetNodeRid,
+    ulong TargetNodeGeneration,
+    RoutingId TargetSpotRid,
+    string StableType,
+    string DescriptorVersion,
+    string? PlacementProfile,
+    string? AffinityKey);
+
+internal readonly record struct InstanceSpotActivationOperation(
+    InstanceSpotActivationTarget Target,
+    RoutingId SourceNodeRid,
+    ulong SourceNodeGeneration,
+    RoutingId SourceSpotRid,
+    MeshOperationId OperationId,
+    bool IsRequest,
+    ulong ReplyRouteId,
+    ulong DeadlineUnixMs);
+
+internal sealed record InstanceSpotActivationTerminal(
+    RequestResult Result,
+    ServiceWireConstants.FrameworkErrorCode FailureCode,
+    IReadOnlyList<ReadOnlyMemory<byte>> ReplyParts);
+
+internal interface IInstanceSpotActivationTarget
+{
+    ValueTask<InstanceSpotActivationTerminal> ActivateAsync(
+        InstanceSpotActivationOperation operation,
+        ReadOnlyMemory<byte>? metadata,
+        IReadOnlyList<ReadOnlyMemory<byte>> payload,
+        CancellationToken cancellationToken);
+}
+
 internal sealed record UserSpotOperationTerminal(
     RequestResult Result,
     ServiceWireConstants.FrameworkErrorCode FailureCode,
@@ -392,6 +426,17 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     void ActivateActorTransfer(ActorTransferToken token);
     void AbortActorTransfer(ActorTransferToken token);
     void SetUserSpotOperationTarget(IUserSpotOperationTarget target);
+    void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target);
+    SubmitResult ActivateInstanceSpot(
+        InstanceSpotActivationTarget target,
+        RoutingId sourceSpotRid,
+        IReadOnlyList<Message> parts,
+        bool request,
+        out MeshOperationId operationId,
+        ulong deadlineUnixMs,
+        TimeSpan timeout = default,
+        SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default);
     SubmitResult CreateUserSpot(
         RoutingId targetNodeRid,
         RoutingId spotRid,

@@ -173,6 +173,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         _node.SetUserSpotOperationTarget(target);
     }
 
+    public void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target)
+    {
+        _node.SetInstanceSpotActivationTarget(target);
+    }
+
     public async ValueTask<(
         UserSpotCreateCompletion Completion,
         IReadOnlyList<Message> Reply)> CreateUserSpotAsync(

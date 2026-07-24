@@ -202,6 +202,14 @@ Normal Instance send·request는 global SpotRid만 포함하며 create command�
 command 39의 optional metadata presence·frame까지 보존한 complete `instance-activation-recovery-v1` envelope를
 Relocation Store에 저장하고 receipt를 Reserve에 연결한다. 이 format과 durable activation inbox는 target-owned
 Instance cold activation에만 사용하며 Actor·User Spot generic create에는 사용하지 않는다. Target host는 startup
+Command 39 route는 첫 byte와 `u16` body length로 닫힌 union을 이룬다. Kind `1`은 기존 Ready authority의
+object·owner·lease generation과 StoreVersion을 포함하므로 이전 wire와 byte-compatible하다. Kind `2`는 Missing
+cold activation 전용이며 target Mesh·node RID·lifecycle, Spot RID, stable type, descriptor version,
+placement profile·affinity key와 deadline을 포함하고 authority fence를 금지한다. Kind `2` route와 ZLIA의
+placement profile·affinity key·deadline, operation identity와 metadata presence·bytes가 다르면 reservation 전에
+protocol error로 거부한다.
+
+Target host는 startup
 initial scan과 bounded background scan에서 자신이 소유한 Pending projection 또는 Ready Instance activation
 recovery root를 재개한다. Scan과 late control record는 object key, object·owner generation과 owner lease로 key를
 정한 local barrier 하나로 수렴한다. Ready 전 durable inbox first record를 확정하고 handler는 barrier로 막으며,

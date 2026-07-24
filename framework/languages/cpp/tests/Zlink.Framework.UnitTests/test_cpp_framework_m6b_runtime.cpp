@@ -657,6 +657,64 @@ void verify_remote_user_spot_create_close_terminal_once ()
     assert (invalid_reply->header.terminal_result == 105);
     assert (materialize_count == 0);
     std::this_thread::sleep_for (80ms);
+    auto mismatch_create = create;
+    mismatch_create.operation = {97, 1};
+    mismatch_create.stable_type = "other-room";
+    mismatch_create.deadline_unix_ms =
+      static_cast<std::uint64_t> (
+        std::chrono::duration_cast<std::chrono::milliseconds> (
+          std::chrono::system_clock::now ().time_since_epoch ()
+          + 100ms)
+          .count ());
+    std::optional<protocol::user_spot_create_reply_t>
+      mismatch_reply;
+    assert (source->create_user_spot_remote (
+      target->status ().routing_id (), mismatch_create, 5s,
+      [&] (foundation::operation_terminal_t terminal,
+           protocol::user_spot_create_reply_t reply,
+           std::optional<protocol::application_payload_t>) {
+          assert (
+            terminal
+            == foundation::operation_terminal_t::completed);
+          mismatch_reply = std::move (reply);
+      }));
+    while (!mismatch_reply
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (mismatch_reply);
+    assert (mismatch_reply->header.terminal_result == 107);
+    assert (
+      mismatch_reply->header.failure_code
+      == static_cast<std::uint32_t> (
+        protocol::framework_error_code::spotTypeMismatch));
+    std::optional<protocol::user_spot_create_reply_t>
+      replayed_mismatch_reply;
+    assert (source->create_user_spot_remote (
+      target->status ().routing_id (), mismatch_create, 5s,
+      [&] (foundation::operation_terminal_t terminal,
+           protocol::user_spot_create_reply_t reply,
+           std::optional<protocol::application_payload_t>) {
+          assert (
+            terminal
+            == foundation::operation_terminal_t::completed);
+          replayed_mismatch_reply = std::move (reply);
+      }));
+    while (!replayed_mismatch_reply
+           && std::chrono::steady_clock::now () < deadline) {
+        (void) target->dispatch_ready (dispatch);
+        (void) source->dispatch_ready (dispatch);
+        std::this_thread::sleep_for (1ms);
+    }
+    assert (replayed_mismatch_reply);
+    assert (
+      replayed_mismatch_reply->header.failure_code
+      == static_cast<std::uint32_t> (
+        protocol::framework_error_code::spotTypeMismatch));
+    assert (materialize_count == 0);
+    std::this_thread::sleep_for (200ms);
     create.deadline_unix_ms =
       static_cast<std::uint64_t> (
         std::chrono::duration_cast<std::chrono::milliseconds> (

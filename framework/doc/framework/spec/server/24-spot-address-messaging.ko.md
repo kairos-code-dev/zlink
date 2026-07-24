@@ -117,6 +117,12 @@ Terminal call은 별도 check와 send로 나누지 않고 다음 순서로 resol
    generation·optional source Spot RID, operation identity·reply correlation·deadline, command 39의 optional
    metadata presence·frame 및 최초 application message를 하나의 activation envelope에 넣어 선택한 target으로
    전송한다. Source는 target transport 전 owner claim이나 `Creating` authority를 만들지 않는다.
+   Command 39의 route kind `1`은 이미 Ready인 authority의 exact generation fence를 사용한다. Missing cold
+   activation은 route kind `2`를 사용하며 target Mesh·node RID·lifecycle, Spot RID, stable type, descriptor
+   version, placement profile·affinity key와 deadline만 전달하고 아직 존재하지 않는 authority generation은
+   포함하지 않는다. Route kind `2`의 placement profile·affinity key·deadline은 Relocation Store에 쓰는
+   `instance-activation-recovery-v1`의 값과 byte 단위로 같아야 한다. Cold activation send와 request는 모두
+   중복 실행을 막는 nonzero operation identity를 사용하며 metadata flag와 ZLIA metadata presence도 같아야 한다.
 8. Target runtime은 current authority와 local Instance registry를 함께 확인한다. Ready authority가 자신과
    local exact instance를 가리키면 기존 queue에 envelope message를 제출한다. Local instance만 있고 current
    authority가 다르면 stale local instance로 fence하며 dispatch하지 않는다.

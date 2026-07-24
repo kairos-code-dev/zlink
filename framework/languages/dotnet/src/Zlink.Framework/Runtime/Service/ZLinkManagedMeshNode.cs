@@ -50,6 +50,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private Task? _receiveLoop;
     private Func<MeshReadyDomains, MeshReadyDomains>? _readyHandler;
     private IUserSpotOperationTarget? _userSpotOperationTarget;
+    private IInstanceSpotActivationTarget? _instanceSpotActivationTarget;
     private RoutingId _routingId;
     private string _bindEndpoint = string.Empty;
     private MeshNodeState _state = MeshNodeState.Created;
@@ -254,6 +255,124 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     "A User Spot operation target is already registered.");
             _userSpotOperationTarget = target;
         }
+    }
+
+    public void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_instanceSpotActivationTarget is not null
+                && !ReferenceEquals(_instanceSpotActivationTarget, target))
+                throw new InvalidOperationException(
+                    "An Instance Spot activation target is already registered.");
+            _instanceSpotActivationTarget = target;
+        }
+    }
+
+    public SubmitResult ActivateInstanceSpot(
+        InstanceSpotActivationTarget target,
+        RoutingId sourceSpotRid,
+        IReadOnlyList<Message> parts,
+        bool request,
+        out MeshOperationId operationId,
+        ulong deadlineUnixMs,
+        TimeSpan timeout = default,
+        SendFlags flags = SendFlags.None,
+        ReadOnlyMemory<byte> metadata = default)
+    {
+        ArgumentNullException.ThrowIfNull(parts);
+        if (parts.Count == 0)
+            throw new ArgumentException(
+                "The first Instance Spot message is required.",
+                nameof(parts));
+        if (target.TargetNodeRid == _routingId)
+            throw new ArgumentException(
+                "Command 39 cold activation is reserved for a remote target.",
+                nameof(target));
+
+        Peer? peer;
+        lock (_gate)
+            _peersByRid.TryGetValue(target.TargetNodeRid, out peer);
+        if (peer is null
+            || !peer.Admitted
+            || peer.LifecycleGeneration != target.TargetNodeGeneration)
+        {
+            operationId = default;
+            return SubmitResult.NotConnected;
+        }
+
+        PendingOperation? pending = null;
+        ulong replyRouteId = 0;
+        if (request)
+        {
+            if (!TryCreateOperation(
+                    MeshOperationKind.InstanceSpotRequest,
+                    out replyRouteId,
+                    out pending))
+            {
+                operationId = default;
+                Publish(
+                    MeshMonitorEventKind.Backpressured,
+                    peerRid: target.TargetNodeRid);
+                return SubmitResult.Backpressured;
+            }
+            operationId = pending.OperationId;
+        }
+        else
+        {
+            lock (_operationGate)
+            {
+                var low = ++_nextOperation;
+                if (low == 0)
+                    throw new InvalidOperationException(
+                        "The operation id space was exhausted.");
+                operationId = new MeshOperationId(_lifecycleGeneration, low);
+            }
+        }
+
+        var operation = new InstanceSpotActivationOperation(
+            target,
+            _routingId,
+            _lifecycleGeneration,
+            sourceSpotRid,
+            operationId,
+            request,
+            replyRouteId,
+            deadlineUnixMs);
+        var head = ZLinkServiceWireCodec.EncodeInstanceSpotActivation(
+            operation,
+            !metadata.IsEmpty);
+        var wireParts = new List<ReadOnlyMemory<byte>>(parts.Count + 2) { head };
+        if (!metadata.IsEmpty)
+            wireParts.Add(metadata);
+        foreach (var part in parts)
+            wireParts.Add(part.ToArray());
+
+        if (!TrySend(peer.PhysicalRoutingId, wireParts, flags))
+        {
+            if (pending is not null)
+            {
+                TryRemoveOperation(replyRouteId, out _);
+                pending.Cancel();
+            }
+            operationId = default;
+            Publish(
+                MeshMonitorEventKind.Backpressured,
+                peerRid: target.TargetNodeRid);
+            return SubmitResult.Backpressured;
+        }
+
+        if (pending is not null)
+            _ = ExpireOperationAsync(
+                replyRouteId,
+                pending,
+                timeout <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : timeout);
+        Publish(
+            MeshMonitorEventKind.MessageSubmitted,
+            peerRid: target.TargetNodeRid);
+        return SubmitResult.Ok;
     }
 
     public SubmitResult CreateUserSpot(
@@ -1813,6 +1932,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             ProcessStateful(sourceRid, stateful, received);
             return;
         }
+        if (ZLinkServiceWireCodec.TryDecodeInstanceSpotActivation(
+                head,
+                out var instanceActivation,
+                out _))
+        {
+            ProcessInstanceSpotActivation(sourceRid, instanceActivation, received);
+            return;
+        }
         if (ZLinkServiceWireCodec.TryDecodeUserSpotOperation(
                 head,
                 out var userSpotOperation,
@@ -1882,6 +2009,128 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 null,
                 replyHandler),
             parts);
+    }
+
+    private void ProcessInstanceSpotActivation(
+        RoutingId sourceRid,
+        ZLinkServiceWireCodec.InstanceSpotActivationRecord record,
+        Received received)
+    {
+        Peer? peer;
+        IInstanceSpotActivationTarget? target;
+        lock (_gate)
+        {
+            _peersByRid.TryGetValue(sourceRid, out peer);
+            target = _instanceSpotActivationTarget;
+        }
+
+        var operation = record.Operation;
+        var request = operation.IsRequest;
+        if (peer is null
+            || !peer.Admitted
+            || operation.SourceNodeRid != sourceRid
+            || operation.SourceNodeGeneration != peer.LifecycleGeneration
+            || operation.Target.TargetNodeRid != _routingId
+            || operation.Target.TargetNodeGeneration != _lifecycleGeneration)
+        {
+            if (request)
+                SendTerminalReply(
+                    sourceRid,
+                    operation.ReplyRouteId,
+                    RequestResult.Conflict,
+                    (uint)ServiceWireConstants.FrameworkErrorCode.SpotGenerationStale,
+                    Array.Empty<Message>(),
+                    SendFlags.DontWait);
+            return;
+        }
+
+        var payloadOffset = record.HasMetadata ? 2 : 1;
+        if (received.Parts.Count <= payloadOffset || target is null)
+        {
+            if (request)
+                SendTerminalReply(
+                    sourceRid,
+                    operation.ReplyRouteId,
+                    target is null ? RequestResult.InvalidState : RequestResult.ProtocolError,
+                    (uint)(target is null
+                        ? ServiceWireConstants.FrameworkErrorCode.RequestFailed
+                        : ServiceWireConstants.FrameworkErrorCode.RequestProtocolError),
+                    Array.Empty<Message>(),
+                    SendFlags.DontWait);
+            return;
+        }
+
+        var metadata = record.HasMetadata
+            ? received.Parts[1].ToArray()
+            : (ReadOnlyMemory<byte>?)null;
+        var payload = received.Parts
+            .Skip(payloadOffset)
+            .Select(static part => (ReadOnlyMemory<byte>)part.ToArray())
+            .ToArray();
+        _ = CompleteInstanceSpotActivationAsync(
+            sourceRid, operation, target, metadata, payload);
+    }
+
+    private async Task CompleteInstanceSpotActivationAsync(
+        RoutingId sourceRid,
+        InstanceSpotActivationOperation operation,
+        IInstanceSpotActivationTarget target,
+        ReadOnlyMemory<byte>? metadata,
+        IReadOnlyList<ReadOnlyMemory<byte>> payload)
+    {
+        var remaining = checked((long)operation.DeadlineUnixMs)
+                        - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        InstanceSpotActivationTerminal terminal;
+        if (remaining <= 0)
+        {
+            terminal = new InstanceSpotActivationTerminal(
+                RequestResult.TimedOut,
+                ServiceWireConstants.FrameworkErrorCode.WorkerTimedOut,
+                Array.Empty<ReadOnlyMemory<byte>>());
+        }
+        else
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(
+                _stop?.Token ?? CancellationToken.None);
+            deadline.CancelAfter(TimeSpan.FromMilliseconds(remaining));
+            try
+            {
+                terminal = await target.ActivateAsync(
+                        operation, metadata, payload, deadline.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+            {
+                terminal = new InstanceSpotActivationTerminal(
+                    RequestResult.TimedOut,
+                    ServiceWireConstants.FrameworkErrorCode.WorkerTimedOut,
+                    Array.Empty<ReadOnlyMemory<byte>>());
+            }
+            catch
+            {
+                terminal = new InstanceSpotActivationTerminal(
+                    RequestResult.InternalError,
+                    ServiceWireConstants.FrameworkErrorCode.RequestFailed,
+                    Array.Empty<ReadOnlyMemory<byte>>());
+            }
+        }
+
+        if (!operation.IsRequest) return;
+        var reply = terminal.ReplyParts.Select(Message.From).ToArray();
+        try
+        {
+            SendTerminalReply(
+                sourceRid,
+                operation.ReplyRouteId,
+                terminal.Result,
+                (uint)terminal.FailureCode,
+                reply,
+                SendFlags.DontWait);
+        }
+        finally
+        {
+            DisposeParts(reply);
+        }
     }
 
     private void ProcessStateful(

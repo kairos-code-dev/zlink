@@ -444,6 +444,13 @@ owner에게 일반 message를 보내고, Missing이면 target을 선택해 SpotR
 message를 포함한 activation envelope를 보낸다. Source는 creation reservation을 만들지 않는다. 이 envelope는
 CAS 전에 target으로 보낼 수 있는 Framework infrastructure message이며 application handler로 dispatch하지 않는다.
 
+Command 39 route kind `1`은 Ready authority의 exact generation fence를 사용한다. Missing cold activation은
+route kind `2`로 target Mesh·node RID·lifecycle, Spot RID, stable type, descriptor version, placement
+profile·affinity key와 deadline을 전달하며 authority fence를 포함하지 않는다. Kind `2` route와
+`instance-activation-recovery-v1`의 placement profile·affinity key·deadline, operation identity와 metadata
+presence·frame은 byte 단위로 같아야 한다. Cold activation send와 request는 모두 nonzero operation identity를
+사용한다.
+
 Target runtime은 metadata presence·frame을 포함한 complete envelope를 Relocation Store에 immutable recovery root로 먼저 저장한다. Local exact
 instance가 없을 때만 자신을 owner로 generic Store Reserve를 수행하며 Pending snapshot은 provider가 발급한
 reservation fence와 recovery root receipt를 반환한다. CAS winner가 factory, initialize와 durable inbox first

@@ -51,6 +51,10 @@ internal static class ZLinkServiceWireCodec
         UserSpotCreateOperation Create,
         UserSpotCloseOperation Close);
 
+    internal readonly record struct InstanceSpotActivationRecord(
+        InstanceSpotActivationOperation Operation,
+        bool HasMetadata);
+
     internal readonly record struct AdmissionRecord(
         string MeshName,
         string SecurityIdentity,
@@ -616,6 +620,140 @@ internal static class ZLinkServiceWireCodec
         return true;
     }
 
+    internal static byte[] EncodeInstanceSpotActivation(
+        InstanceSpotActivationOperation operation,
+        bool hasMetadata)
+    {
+        ValidateInstanceActivation(operation);
+        var target = operation.Target;
+        var route = new WireWriter();
+        route.Rid(target.TargetNodeRid);
+        route.U64(target.TargetNodeGeneration);
+        route.Rid(target.TargetSpotRid);
+        route.Text8(target.MeshName);
+        route.Text8(target.StableType);
+        route.Text8(target.DescriptorVersion);
+        WriteOptionalText8(route, target.PlacementProfile);
+        WriteOptionalText8(route, target.AffinityKey);
+        route.U64(operation.DeadlineUnixMs);
+
+        var body = new WireWriter();
+        body.U8(2);
+        body.U16(checked((ushort)route.Count));
+        body.Bytes(route.ToArray());
+        body.U64(operation.SourceNodeGeneration);
+        body.Rid(operation.SourceNodeRid);
+        WriteOptionalRid(body, operation.SourceSpotRid);
+        body.U8(operation.IsRequest ? (byte)2 : (byte)1);
+        WriteOperationId(body, operation.OperationId);
+        if (operation.IsRequest)
+            body.U64(operation.ReplyRouteId);
+
+        var result = Prefix(
+            ServiceWireConstants.Command.InstanceSpot,
+            hasMetadata
+                ? ServiceWireConstants.Flag.Metadata
+                : ServiceWireConstants.Flag.None,
+            body.Count);
+        body.CopyTo(result.AsSpan(5));
+        return result;
+    }
+
+    internal static bool TryDecodeInstanceSpotActivation(
+        ReadOnlySpan<byte> bytes,
+        out InstanceSpotActivationRecord record,
+        out DecodeError error)
+    {
+        record = default;
+        if (!TryDecodePrefix(bytes, out var command, out var flags, out error))
+            return false;
+        if (command != ServiceWireConstants.Command.InstanceSpot)
+        {
+            error = DecodeError.UnknownCommand;
+            return false;
+        }
+        if ((flags & ~ServiceWireConstants.Flag.Metadata) != 0)
+        {
+            error = DecodeError.ForbiddenFlag;
+            return false;
+        }
+
+        var reader = new WireReader(bytes[5..]);
+        if (!reader.TryU8(out var version)
+            || version != 2
+            || !reader.TryU16(out var routeLength)
+            || !reader.TrySlice(routeLength, out var routeBytes))
+        {
+            error = reader.Truncated
+                ? DecodeError.TruncatedField
+                : DecodeError.InvalidField;
+            return false;
+        }
+        var route = new WireReader(routeBytes);
+        if (!route.TryRid(out var targetNodeRid)
+            || !route.TryU64(out var targetNodeGeneration)
+            || targetNodeGeneration == 0
+            || !route.TryRid(out var targetSpotRid)
+            || !route.TryText8(out var meshName)
+            || !route.TryText8(out var stableType)
+            || !route.TryText8(out var descriptorVersion)
+            || !TryReadOptionalText8(ref route, out var placementProfile)
+            || !TryReadOptionalText8(ref route, out var affinityKey)
+            || !route.TryU64(out var deadlineUnixMs)
+            || deadlineUnixMs is 0 or > long.MaxValue
+            || route.Remaining != 0
+            || !reader.TryU64(out var sourceNodeGeneration)
+            || sourceNodeGeneration == 0
+            || !reader.TryRid(out var sourceNodeRid)
+            || !TryReadOptionalRid(ref reader, out var sourceSpotRid)
+            || !reader.TryU8(out var operationKind)
+            || operationKind is not (1 or 2)
+            || !TryReadOperationId(ref reader, out var operationId))
+        {
+            error = reader.Truncated || route.Truncated
+                ? DecodeError.TruncatedField
+                : route.Remaining != 0
+                    ? DecodeError.TrailingByte
+                    : DecodeError.InvalidField;
+            return false;
+        }
+        var request = operationKind == 2;
+        ulong replyRouteId = 0;
+        if (request
+            && (!reader.TryU64(out replyRouteId) || replyRouteId == 0)
+            || reader.Remaining != 0)
+        {
+            error = reader.Truncated
+                ? DecodeError.TruncatedField
+                : reader.Remaining != 0
+                    ? DecodeError.TrailingByte
+                    : DecodeError.InvalidField;
+            return false;
+        }
+
+        record = new InstanceSpotActivationRecord(
+            new InstanceSpotActivationOperation(
+                new InstanceSpotActivationTarget(
+                    meshName,
+                    targetNodeRid,
+                    targetNodeGeneration,
+                    targetSpotRid,
+                    stableType,
+                    descriptorVersion,
+                    placementProfile,
+                    affinityKey),
+                sourceNodeRid,
+                sourceNodeGeneration,
+                sourceSpotRid,
+                operationId,
+                request,
+                replyRouteId,
+                deadlineUnixMs),
+            (flags & ServiceWireConstants.Flag.Metadata) != 0);
+        error = DecodeError.None;
+        return true;
+    }
+
     internal static byte[] EncodeUserSpotCreate(UserSpotCreateOperation operation)
     {
         ValidateOperationIdentity(
@@ -1041,6 +1179,70 @@ internal static class ZLinkServiceWireCodec
         writer.Text8(reservation.TargetOwnerId);
         writer.U64(reservation.TargetOwnerLeaseGeneration);
         writer.U32(reservation.PendingCapacityDelta);
+    }
+
+    private static void ValidateInstanceActivation(
+        InstanceSpotActivationOperation operation)
+    {
+        var target = operation.Target;
+        if (target.TargetNodeRid.IsEmpty
+            || target.TargetNodeGeneration == 0
+            || target.TargetSpotRid.IsEmpty
+            || string.IsNullOrWhiteSpace(target.MeshName)
+            || string.IsNullOrWhiteSpace(target.StableType)
+            || string.IsNullOrWhiteSpace(target.DescriptorVersion)
+            || operation.SourceNodeRid.IsEmpty
+            || operation.SourceNodeGeneration == 0
+            || operation.OperationId == default
+            || operation.DeadlineUnixMs is 0 or > long.MaxValue
+            || operation.IsRequest != (operation.ReplyRouteId != 0))
+            throw new ArgumentOutOfRangeException(nameof(operation));
+    }
+
+    private static void WriteOptionalText8(WireWriter writer, string? value)
+    {
+        if (value is null)
+        {
+            writer.U8(0);
+            return;
+        }
+        writer.U8(1);
+        writer.Text8(value);
+    }
+
+    private static void WriteOptionalRid(WireWriter writer, RoutingId value)
+    {
+        if (value.IsEmpty)
+        {
+            writer.U8(0);
+            return;
+        }
+        writer.Rid(value);
+    }
+
+    private static bool TryReadOptionalRid(
+        ref WireReader reader,
+        out RoutingId value)
+    {
+        value = default;
+        if (!reader.TryU8(out var length))
+            return false;
+        if (length == 0) return true;
+        if (!reader.TrySlice(length, out var encoded))
+            return false;
+        value = RoutingId.From(encoded);
+        return true;
+    }
+
+    private static bool TryReadOptionalText8(
+        ref WireReader reader,
+        out string? value)
+    {
+        value = null;
+        if (!reader.TryU8(out var present) || present > 1)
+            return false;
+        if (present == 0) return true;
+        return reader.TryText8(out value);
     }
 
     private static bool TryReadReservation(

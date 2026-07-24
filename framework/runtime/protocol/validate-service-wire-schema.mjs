@@ -1222,12 +1222,14 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       replyRoute: "request-only",
     }],
     ["instance-placement-authority-fence", {
-      routeType: "instance-route-fence-v1",
+      routeType: "instance-route-v1",
       requestBoundFields: [
         "targetNodeRid",
         "targetNodeGeneration",
         "targetSpotRid",
-        "authority",
+        "ready.authority-or-coldActivation.stableType-and-targetDescriptorVersion",
+        "coldActivation.placementProfile-and-affinityKey",
+        "coldActivation.deadlineUnixMs",
       ],
       targetComparison: "exact-current-authority-before-mailbox-admission",
       sourceOrder: "resolve-select-target-and-submit-complete-first-message-activation-envelope-without-owner-claim-or-reservation",
@@ -2608,6 +2610,20 @@ function decodeGoldenBody(formatName, bytes) {
     const targetNodeRidUtf8Fixture = reader.text8();
     const targetNodeGeneration = reader.u64();
     const targetDescriptorVersion = reader.text8();
+    const hasPlacementProfile = reader.u8();
+    let placementProfile = null;
+    if (hasPlacementProfile === 1) {
+      placementProfile = reader.text8();
+    } else if (hasPlacementProfile !== 0) {
+      throw new Error("Instance activation placement profile presence flag is invalid");
+    }
+    const hasAffinityKey = reader.u8();
+    let affinityKey = null;
+    if (hasAffinityKey === 1) {
+      affinityKey = reader.text8();
+    } else if (hasAffinityKey !== 0) {
+      throw new Error("Instance activation affinity key presence flag is invalid");
+    }
     const sourceNodeRidUtf8Fixture = reader.text8();
     const sourceNodeGeneration = reader.u64();
     const hasSourceSpot = reader.u8();
@@ -2658,6 +2674,8 @@ function decodeGoldenBody(formatName, bytes) {
       targetNodeRidUtf8Fixture,
       targetNodeGeneration,
       targetDescriptorVersion,
+      placementProfile,
+      affinityKey,
       sourceNodeRidUtf8Fixture,
       sourceNodeGeneration,
       sourceSpotRidUtf8Fixture,
@@ -3009,8 +3027,18 @@ function encodeGoldenBody(formatName, decoded) {
       .text8(decoded.targetMeshName)
       .text8(decoded.targetNodeRidUtf8Fixture)
       .u64(decoded.targetNodeGeneration)
-      .text8(decoded.targetDescriptorVersion)
-      .text8(decoded.sourceNodeRidUtf8Fixture)
+      .text8(decoded.targetDescriptorVersion);
+    if (decoded.placementProfile === null) {
+      writer.u8(0);
+    } else {
+      writer.u8(1).text8(decoded.placementProfile);
+    }
+    if (decoded.affinityKey === null) {
+      writer.u8(0);
+    } else {
+      writer.u8(1).text8(decoded.affinityKey);
+    }
+    writer.text8(decoded.sourceNodeRidUtf8Fixture)
       .u64(decoded.sourceNodeGeneration);
     if (decoded.sourceSpotRidUtf8Fixture === null) {
       writer.u8(0);
@@ -4213,21 +4241,37 @@ function validateServiceInvariants(schema, types, fail) {
       || envelopeRuntimeBound?.absoluteMaximum?.$bound !== "wireU32CompleteMessageBytes") {
     fail("$.types", "application envelope must use negotiated runtime and absolute u32 bounds");
   }
-  requireFields(types.get("instance-route-fence-v1")?.body, [
+  const instanceRoute = types.get("instance-route-v1");
+  const readyInstanceRoute = instanceRoute?.cases?.find(
+    (entry) => entry.when?.routeKind === "ready");
+  const coldInstanceRoute = instanceRoute?.cases?.find(
+    (entry) => entry.when?.routeKind === "coldActivation");
+  requireFields(readyInstanceRoute?.fields, [
     { name: "targetNodeRid", $ref: "rid" },
     { name: "targetNodeGeneration", $ref: "nonzero-u64" },
     { name: "targetSpotRid", $ref: "rid" },
     { name: "authority", $ref: "authority-generation-fence" },
-  ], "$.types", "Instance route must carry the exact internal authority fence without creation intent");
+  ], "$.types", "Ready Instance route must carry the exact current authority fence");
+  requireFields(coldInstanceRoute?.fields, [
+    { name: "targetNodeRid", $ref: "rid" },
+    { name: "targetNodeGeneration", $ref: "nonzero-u64" },
+    { name: "targetSpotRid", $ref: "rid" },
+    { name: "targetMeshName", $ref: "text8" },
+    { name: "stableType", $ref: "text8" },
+    { name: "targetDescriptorVersion", $ref: "text8" },
+    { name: "placementProfile", $ref: "optional-text8" },
+    { name: "affinityKey", $ref: "optional-text8" },
+    { name: "deadlineUnixMs", $ref: "nonzero-u64" },
+  ], "$.types", "Cold Instance route must carry descriptor-fenced placement intent without authority generations");
   requireFields(commands.get("instanceSpot")?.body, [
-    { name: "route", $ref: "instance-route-fence-v1" },
+    { name: "route", $ref: "instance-route-v1" },
     { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
     { name: "sourceNodeRid", $ref: "rid" },
     { name: "sourceSpotRid", $ref: "optional-rid" },
     { name: "operationKind", $ref: "instance-operation-kind" },
     { name: "operation", $ref: "operation-id" },
     { name: "replyRoute", $ref: "instance-reply-route" },
-  ], "$.commands", "normal Instance operation must carry exact route and no creation intent");
+  ], "$.commands", "Instance operation must use the closed Ready-or-cold-activation route union");
 
   const creationIntent = types.get("object-creation-intent-v1");
   requireFields(creationIntent?.body, [
@@ -4378,6 +4422,8 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "targetNodeRid", $ref: "rid" },
     { name: "targetNodeGeneration", $ref: "nonzero-u64" },
     { name: "targetDescriptorVersion", $ref: "text8" },
+    { name: "placementProfile", $ref: "optional-text8" },
+    { name: "affinityKey", $ref: "optional-text8" },
     { name: "sourceNodeRid", $ref: "rid" },
     { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
     { name: "sourceSpotRid", $ref: "optional-rid" },
@@ -6173,8 +6219,23 @@ function runSelfTests(schema) {
       envelope.body.splice(2, 0, { name: "codecIdentity", $ref: "serializer-identity" });
     }],
     ["Instance message contract restored", (candidate) => {
-      const route = candidate.types.find((type) => type.name === "instance-route-fence-v1");
-      route.body.push({ name: "messageContractId", $ref: "text8" });
+      const route = candidate.types.find((type) => type.name === "instance-route-v1");
+      route.cases.find((entry) => entry.when.routeKind === "ready")
+        .fields.push({ name: "messageContractId", $ref: "text8" });
+    }],
+    ["Instance routeKind accepts an unknown value", (candidate) => {
+      const routeKind = candidate.types.find((type) => type.name === "instance-route-kind");
+      routeKind.values.push({ name: "unknown", value: 3 });
+    }],
+    ["Ready Instance route carries cold-activation fields", (candidate) => {
+      const route = candidate.types.find((type) => type.name === "instance-route-v1");
+      route.cases.find((entry) => entry.when.routeKind === "ready")
+        .fields.push({ name: "stableType", $ref: "text8" });
+    }],
+    ["Cold Instance route carries an authority fence", (candidate) => {
+      const route = candidate.types.find((type) => type.name === "instance-route-v1");
+      route.cases.find((entry) => entry.when.routeKind === "coldActivation")
+        .fields.push({ name: "authority", $ref: "authority-generation-fence" });
     }],
     ["participant progress ordering removed", (candidate) => {
       const progress = candidate.types.find((type) => type.name === "participant-progress-vector");
@@ -6260,6 +6321,13 @@ function runSelfTests(schema) {
       );
       recovery.fields = recovery.fields.filter((field) => field.name !== "metadata");
     }],
+    ["Cold Instance route and ZLIA placement intent diverge", (candidate) => {
+      const recovery = candidate.types.find(
+        (type) => type.name === "instance-activation-recovery-v1",
+      );
+      recovery.fields.find((field) => field.name === "placementProfile").name =
+        "recoveryPlacementProfile";
+    }],
     ["creation intent bound widened", (candidate) => {
       const bound = candidate.bounds.find((entry) => entry.name === "creationIntentBytes");
       bound.value += 1;
@@ -6285,9 +6353,10 @@ function runSelfTests(schema) {
       intent.body.find((field) => field.name === "requestContentReference").$ref =
         "relocation-reference";
     }],
-    ["normal Instance operation carries stable type", (candidate) => {
-      const command = candidate.commands.find((entry) => entry.name === "instanceSpot");
-      command.body.splice(1, 0, { name: "stableType", $ref: "text8" });
+    ["cold Instance operation loses descriptor version", (candidate) => {
+      const route = candidate.types.find((entry) => entry.name === "instance-route-v1");
+      const cold = route.cases.find((entry) => entry.when.routeKind === "coldActivation");
+      cold.fields = cold.fields.filter((field) => field.name !== "targetDescriptorVersion");
     }],
     ["generic reservation loses capacity fence", (candidate) => {
       const fence = candidate.types.find((type) => type.name === "object-reservation-fence");

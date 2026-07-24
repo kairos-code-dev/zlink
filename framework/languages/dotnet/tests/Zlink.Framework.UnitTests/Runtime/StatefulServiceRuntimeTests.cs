@@ -36,6 +36,54 @@ public sealed class StatefulServiceRuntimeTests
     }
 
     [Fact]
+    public void InstanceSpotColdActivationWirePreservesDescriptorPlacementAndDeadline()
+    {
+        var operation = new InstanceSpotActivationOperation(
+            new InstanceSpotActivationTarget(
+                "target-mesh",
+                RoutingId.From("target-node"),
+                17,
+                RoutingId.From("instance-spot"),
+                "Sample.InstanceSpot",
+                "descriptor-23",
+                "latency",
+                "tenant-7"),
+            RoutingId.From("source-node"),
+            29,
+            RoutingId.From("source-spot"),
+            new MeshOperationId(31, 37),
+            IsRequest: true,
+            ReplyRouteId: 41,
+            DeadlineUnixMs: 4_102_444_800_000);
+
+        var encoded = ZLinkServiceWireCodec.EncodeInstanceSpotActivation(
+            operation,
+            hasMetadata: true);
+
+        Assert.True(ZLinkServiceWireCodec.TryDecodeInstanceSpotActivation(
+            encoded,
+            out var decoded,
+            out var error));
+        Assert.Equal(ZLinkServiceWireCodec.DecodeError.None, error);
+        Assert.True(decoded.HasMetadata);
+        Assert.Equal(operation, decoded.Operation);
+
+        var invalidRouteKind = encoded.ToArray();
+        invalidRouteKind[5] = 3;
+        Assert.False(ZLinkServiceWireCodec.TryDecodeInstanceSpotActivation(
+            invalidRouteKind,
+            out _,
+            out var routeKindError));
+        Assert.Equal(ZLinkServiceWireCodec.DecodeError.InvalidField, routeKindError);
+
+        Assert.False(ZLinkServiceWireCodec.TryDecodeInstanceSpotActivation(
+            [.. encoded, 0],
+            out _,
+            out var trailingError));
+        Assert.Equal(ZLinkServiceWireCodec.DecodeError.TrailingByte, trailingError);
+    }
+
+    [Fact]
     public void UserSpotOperationWireRoundTripsExactReservationCloseAndReplyTails()
     {
         var sourceRid = RoutingId.From("create-source");
@@ -1183,6 +1231,72 @@ public sealed class StatefulServiceRuntimeTests
     }
 
     [Fact]
+    public async Task RemoteInstanceSpotColdActivationDispatchesFirstMessageThroughCommand39()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = NewNode(context, "instance-source");
+        await using var target = NewNode(context, "instance-target");
+        var suffix = Guid.NewGuid().ToString("N");
+        var sourceEndpoint = $"inproc://instance-source-{suffix}";
+        var targetEndpoint = $"inproc://instance-target-{suffix}";
+        source.SetBind(sourceEndpoint);
+        target.SetBind(targetEndpoint);
+        source.ConnectPeer(targetEndpoint, target.RoutingId);
+        target.ConnectPeer(sourceEndpoint, source.RoutingId);
+        var activationTarget = new RecordingInstanceSpotActivationTarget();
+        target.SetInstanceSpotActivationTarget(activationTarget);
+        source.Start();
+        target.Start();
+        await WaitUntilAsync(
+            () => source.Status().AdmittedPeerCount == 1
+                  && target.Status().AdmittedPeerCount == 1);
+
+        using var firstMessage = Message.From([1, 2, 3]);
+        var activation = new InstanceSpotActivationTarget(
+            "objects",
+            target.RoutingId,
+            target.Status().LifecycleGeneration,
+            RoutingId.From("cold-instance"),
+            "Sample.InstanceSpot",
+            "descriptor-1",
+            "latency",
+            "tenant-7");
+        var deadline = checked(
+            (ulong)DateTimeOffset.UtcNow.AddSeconds(5).ToUnixTimeMilliseconds());
+
+        Assert.Equal(
+            SubmitResult.Ok,
+            source.ActivateInstanceSpot(
+                activation,
+                RoutingId.From("caller-spot"),
+                [firstMessage],
+                request: true,
+                out var operationId,
+                deadline,
+                TimeSpan.FromSeconds(3),
+                metadata: new byte[] { 9, 8 }));
+
+        await WaitUntilAsync(() =>
+            source.Status().PendingInfrastructureMessages > 0);
+        var completion = DrainCompletion(source, operationId);
+        try
+        {
+            Assert.Equal(MeshOperationKind.InstanceSpotRequest, completion.Record.OperationKind);
+            Assert.Equal((int)RequestResult.Ok, completion.Record.TerminalResult);
+            Assert.Equal([7, 6], completion.Parts.Single().ToArray());
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(completion.Parts);
+        }
+
+        Assert.Equal(1, activationTarget.Count);
+        Assert.Equal(activation, activationTarget.LastOperation.Target);
+        Assert.Equal([9, 8], activationTarget.LastMetadata.ToArray());
+        Assert.Equal([1, 2, 3], activationTarget.LastPayload.Single().ToArray());
+    }
+
+    [Fact]
     public async Task RemoteUserSpotTerminalReplaysAfterDeadlineAndExpiresWithoutReexecution()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();
@@ -1395,6 +1509,35 @@ public sealed class StatefulServiceRuntimeTests
                 RequestResult.Ok,
                 ServiceWireConstants.FrameworkErrorCode.None,
                 new UserSpotCloseCompletion(true)));
+        }
+    }
+
+    private sealed class RecordingInstanceSpotActivationTarget
+        : IInstanceSpotActivationTarget
+    {
+        private int _count;
+
+        internal int Count => Volatile.Read(ref _count);
+        internal InstanceSpotActivationOperation LastOperation { get; private set; }
+        internal ReadOnlyMemory<byte> LastMetadata { get; private set; }
+        internal IReadOnlyList<ReadOnlyMemory<byte>> LastPayload { get; private set; } =
+            Array.Empty<ReadOnlyMemory<byte>>();
+
+        public ValueTask<InstanceSpotActivationTerminal> ActivateAsync(
+            InstanceSpotActivationOperation operation,
+            ReadOnlyMemory<byte>? metadata,
+            IReadOnlyList<ReadOnlyMemory<byte>> payload,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LastOperation = operation;
+            LastMetadata = metadata ?? ReadOnlyMemory<byte>.Empty;
+            LastPayload = payload;
+            Interlocked.Increment(ref _count);
+            return ValueTask.FromResult(new InstanceSpotActivationTerminal(
+                RequestResult.Ok,
+                ServiceWireConstants.FrameworkErrorCode.None,
+                [new byte[] { 7, 6 }]));
         }
     }
 

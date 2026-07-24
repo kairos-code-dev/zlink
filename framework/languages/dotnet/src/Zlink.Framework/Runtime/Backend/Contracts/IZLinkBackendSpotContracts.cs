@@ -214,6 +214,10 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
         throw new NotSupportedException(
             "This MeshNode backend does not support User Spot service operations.");
 
+    void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target) =>
+        throw new NotSupportedException(
+            "This MeshNode backend does not support Instance Spot activation.");
+
     ValueTask<(UserSpotCreateCompletion Completion, IReadOnlyList<Message> Reply)>
         CreateUserSpotAsync(
             RoutingId targetNodeRid,

@@ -8,6 +8,7 @@
 #include "runtime/channels/channel_runtime_manager.hpp"
 #include "runtime/channels/channel_runtime.hpp"
 #include "runtime/client_server/client_server_location_runtime.hpp"
+#include "runtime/mesh/user_spot_terminal_mapping.hpp"
 #include "runtime/streams/stream_runtime.hpp"
 
 #include <gtest/gtest.h>
@@ -1882,8 +1883,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     auto store = std::make_shared<in_memory_location_store_t> ();
     auto app = zlink::framework::app_t::create ();
     auto_connect_request_client_t *client = nullptr;
-    const auto endpoint =
-      std::string ("tcp://127.0.0.1:") + std::to_string (bindable_loopback_port (29700));
+    const auto port = bindable_loopback_port (29700);
 
     app.add_zlink_framework ([&] (zlink::framework::zlink_framework_options_t &options) {
         options.add_location_store (store);
@@ -1891,10 +1891,11 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
           .group ("orders")
           .add<auto_connect_request_handler_t> ();
         options.add_client_server_channel ("orders")
-          .set_routing_id (zlink::routing_id_t::from ("orders-router"))
-          .enable_server (endpoint)
-          .use_handler_group ("orders");
-        options.add_client_server_channel ("orders").enable_client ();
+          .server ()
+          .set_bind_host ("127.0.0.1")
+          .listen (port)
+          .add_handler_group ("orders");
+        options.add_client_server_channel ("orders").client ();
     });
     auto service = std::make_unique<auto_connect_request_client_t> (app);
     client = service.get ();
@@ -1911,21 +1912,21 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
 {
     auto app = zlink::framework::app_t::create ();
     auto_connect_request_client_t *client = nullptr;
-    const auto endpoint =
-      std::string ("tcp://127.0.0.1:")
-      + std::to_string (bindable_loopback_port (29701));
 
     app.add_zlink_framework ([&] (
                                zlink::framework::zlink_framework_options_t &options) {
         options.handlers ()
           .group ("orders")
           .add<auto_connect_request_handler_t> ();
-        options.add_client_server_channel ("orders")
-          .set_routing_id (
-            zlink::routing_id_t::from ("orders-local-router"))
-          .enable_server (endpoint)
-          .enable_client ()
-          .use_handler_group ("orders");
+        auto channel =
+          options.add_client_server_channel ("orders");
+        channel.server ()
+          .set_bind_host ("127.0.0.1")
+          .set_advertise_host ("127.0.0.1")
+          .set_weight (7)
+          .listen ()
+          .add_handler_group ("orders");
+        channel.client ();
     });
     auto service =
       std::make_unique<auto_connect_request_client_t> (app);
@@ -1997,6 +1998,79 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,
+      UserSpotTerminalMappingPreservesExactPublicErrors)
+{
+    using zlink::framework::framework_error_kind_t;
+    using zlink::framework::runtime::user_spot_terminal::
+      map_user_spot_operation_failure;
+    using zlink::framework::runtime::foundation::
+      operation_terminal_t;
+    using zlink::framework::runtime::protocol::
+      reply_header_t;
+
+    EXPECT_EQ (
+      framework_error_kind_t::deadline_exceeded,
+      map_user_spot_operation_failure (
+        operation_terminal_t::timed_out, {}, true));
+    EXPECT_EQ (
+      framework_error_kind_t::spot_generation_stale,
+      map_user_spot_operation_failure (
+        operation_terminal_t::completed, {1, 107, 33},
+        true));
+    EXPECT_EQ (
+      framework_error_kind_t::spot_moving,
+      map_user_spot_operation_failure (
+        operation_terminal_t::completed, {1, 107, 34},
+        false));
+    EXPECT_EQ (
+      framework_error_kind_t::spot_type_mismatch,
+      map_user_spot_operation_failure (
+        operation_terminal_t::completed, {1, 107, 7},
+        true));
+    EXPECT_EQ (
+      framework_error_kind_t::placement_capacity_exhausted,
+      map_user_spot_operation_failure (
+        operation_terminal_t::completed, {1, 108, 0},
+        true));
+    EXPECT_EQ (
+      framework_error_kind_t::request_rejected,
+      map_user_spot_operation_failure (
+        operation_terminal_t::completed, {1, 106, 15},
+        true));
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      ClientServerPortZeroPublishesAdvertiseHostWithBoundPort)
+{
+    namespace client_server =
+      zlink::framework::runtime::client_server;
+    namespace protocol = zlink::framework::runtime::protocol;
+    namespace mesh = zlink::framework::runtime::mesh;
+
+    client_server::raw_client_server_server_t server (
+      client_server::raw_client_server_server_options_t{
+        protocol::client_server_server_admission_t{
+          .channel_name = "orders",
+          .server_routing_id = {'o', 'r', 'd', 'e', 'r', 's'},
+          .lifecycle_generation = 1,
+          .weight = 100,
+          .state = mesh::service_node_state_t::preparing,
+          .security_identity = "test",
+          .effective_max_message_bytes = 1024,
+          .advertised_endpoint = "tcp://127.0.0.1:*"},
+        std::string ("service.example")});
+    server.start ();
+    const auto endpoint = server.endpoint ();
+    EXPECT_TRUE (endpoint.starts_with (
+      "tcp://service.example:"));
+    EXPECT_EQ (std::string::npos, endpoint.find ('*'));
+    EXPECT_GT (
+      std::stoi (endpoint.substr (endpoint.rfind (':') + 1)),
+      0);
+    server.close ();
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
       ClientServerDuplicateRoleRegistrationFailsBeforeSocketBind)
 {
     EXPECT_THROW (
@@ -2005,8 +2079,10 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
           app.add_zlink_framework (
             [] (zlink::framework::zlink_framework_options_t &options) {
                 auto channel = options.add_client_server_channel ("orders");
-                channel.enable_client ("tcp://127.0.0.1:29711");
-                channel.enable_client ("tcp://127.0.0.1:29712");
+                channel.client ().connect (
+                  "tcp://127.0.0.1:29711");
+                channel.client ().connect (
+                  "tcp://127.0.0.1:29712");
             });
       },
       zlink::framework::framework_exception_t);
@@ -2020,12 +2096,55 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
                   .group ("orders")
                   .add<auto_connect_request_handler_t> ();
                 auto channel = options.add_client_server_channel ("orders");
-                channel.enable_server ("tcp://127.0.0.1:29713");
-                channel.enable_server ("tcp://127.0.0.1:29714");
-                channel.use_handler_group ("orders");
+                channel.server ()
+                  .set_bind_host ("127.0.0.1")
+                  .listen (29713)
+                  .add_handler_group ("orders");
+                channel.server ()
+                  .set_bind_host ("127.0.0.1")
+                  .listen (29714);
             });
       },
       zlink::framework::framework_exception_t);
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      ClientServerAllowsSameRoleOnDifferentChannelNames)
+{
+    EXPECT_NO_THROW (
+      {
+          auto app = zlink::framework::app_t::create ();
+          app.add_zlink_framework (
+            [] (zlink::framework::zlink_framework_options_t &options) {
+                options.add_client_server_channel ("orders")
+                  .client ()
+                  .connect ("tcp://127.0.0.1:29721");
+                options.add_client_server_channel ("billing")
+                  .client ()
+                  .connect ("tcp://127.0.0.1:29722");
+            });
+      });
+
+    EXPECT_NO_THROW (
+      {
+          auto app = zlink::framework::app_t::create ();
+          app.add_zlink_framework (
+            [] (zlink::framework::zlink_framework_options_t &options) {
+                options.handlers ()
+                  .group ("orders")
+                  .add<auto_connect_request_handler_t> ();
+                options.add_client_server_channel ("orders")
+                  .server ()
+                  .set_bind_host ("127.0.0.1")
+                  .listen (29723)
+                  .add_handler_group ("orders");
+                options.add_client_server_channel ("billing")
+                  .server ()
+                  .set_bind_host ("127.0.0.1")
+                  .listen (29724)
+                  .add_handler_group ("orders");
+            });
+      });
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,
@@ -2037,8 +2156,9 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
           app.add_zlink_framework (
             [] (zlink::framework::zlink_framework_options_t &options) {
                 options.add_route_mesh ("mesh-a").channel_name ("orders");
-                options.add_client_server_channel ("orders").enable_client (
-                  "tcp://127.0.0.1:29715");
+                options.add_client_server_channel ("orders")
+                  .client ()
+                  .connect ("tcp://127.0.0.1:29715");
             });
       },
       zlink::framework::framework_exception_t);

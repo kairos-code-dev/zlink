@@ -1201,14 +1201,26 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                           && snapshot->object_generation
                                != reservation
                                     .object_generation;
+                        const auto type_mismatch =
+                          snapshot
+                          && snapshot->allocation.object_kind
+                               == placement_object_kind_t::
+                                    user_spot
+                          && snapshot->allocation.stable_type
+                               != request.stable_type;
                         terminal (
                           107,
                           static_cast<std::uint32_t> (
                             stale
                               ? protocol::framework_error_code::
                                   spotGenerationStale
-                              : protocol::framework_error_code::
-                                  requestFailed),
+                              : type_mismatch
+                                ? protocol::
+                                    framework_error_code::
+                                      spotTypeMismatch
+                                : protocol::
+                                    framework_error_code::
+                                      spotMoving),
                           protocol::user_spot_create_result_t::
                             rejected,
                           {}, 0);
@@ -1224,10 +1236,10 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                         || pending->reservation_id
                              != fence.reservation_id) {
                         terminal (
-                          105,
+                          107,
                           static_cast<std::uint32_t> (
                             protocol::framework_error_code::
-                              requestFailed),
+                              spotMoving),
                           protocol::user_spot_create_result_t::
                             rejected,
                           {}, 0);
@@ -1417,7 +1429,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                           107,
                           static_cast<std::uint32_t> (
                             protocol::framework_error_code::
-                              requestFailed),
+                              spotMoving),
                           protocol::user_spot_create_result_t::
                             rejected,
                           {}, 0);
@@ -1457,7 +1469,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                           105,
                           static_cast<std::uint32_t> (
                             protocol::framework_error_code::
-                              requestFailed),
+                              spotCreateFailed),
                           protocol::user_spot_create_result_t::
                             rejected,
                           {}, 0);

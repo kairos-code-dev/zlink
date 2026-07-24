@@ -54,24 +54,10 @@ public:
     std::string_view message() const noexcept;
 };
 
-class stream_metadata_t {
-public:
-    stream_metadata_t() = default;
-    explicit stream_metadata_t(
-      std::map<std::string, std::string> values);
-
-    stream_metadata_t &with(std::string key, std::string value);
-    std::optional<std::string_view> find(std::string_view key) const;
-    bool empty() const noexcept;
-    const std::map<std::string, std::string> &values() const noexcept;
-};
-
-class stream_dispatch_context_t {
-public:
-    stream_dispatch_context_t();
-    std::string_view packet_name() const noexcept;
-    const stream_metadata_t &metadata() const noexcept;
-    bool can_reply() const noexcept;
+struct session_message_context_t {
+    std::string packet_name;
+    message_metadata_t metadata;
+    bool can_reply;
 };
 
 class stream_t {
@@ -105,7 +91,7 @@ public:
       const stream_error_t &error) = 0;
     virtual task_t<void> on_packet(
       stream_t &stream,
-      const stream_dispatch_context_t &dispatch,
+      const session_message_context_t &context,
       const zlink::framework::message_t &payload);
 };
 
@@ -182,6 +168,9 @@ metadata·compression·`submit()` member는 [Channel messaging](03-channel-messa
 같은 admission 계약을 유지한다.
 STREAM application callback, send·reply와 compression extension은 binding message가 아니라
 `zlink::framework::message_t`를 사용한다. Framework codec registry가 typed payload와 이 message 경계를 변환한다.
+Packet callback은 packet name과 immutable metadata를 가진 `session_message_context_t`를 받는다. Reply 가능 여부는
+이 Session specialization의 `can_reply`가 제공한다. Connection 종료와 operation cancellation은 `stream_t` lifecycle과
+각 call의 completion으로 처리하며 universal `message_context_t`에 cancellation 상태를 추가하지 않는다.
 `stream_t`의 optional routing ID와 local·remote address는 handshake가 확인한 session identity snapshot이며 packet
 dispatch까지 보존한다.
 Session callback은 받은 `stream_t`의 `actors()`로 해당 session의 Actor binding manager에 접근한다.

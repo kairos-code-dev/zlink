@@ -226,6 +226,18 @@ Actor handler namespace에 같은 key를 두 번 등록하면 startup 오류다.
 
 Handler type과 signature는 언어별 공개 interface 문서가 정의한다.
 
+Actor와 Actor Context는 composition 관계다. Framework는 factory를 호출하기 전에 `ActorId`,
+`ObjectGeneration`, current `MeshName`, nullable current `SpotId`와 bound-session capability를 가진 exact
+Context를 만든다. Factory는 ID를 별도 인자로 받지 않고 이 Context만 받으며, 반환한 Actor는 전달받은
+Context를 read-only member로 그대로 노출해야 한다. 다른 Context를 반환하면 staging Actor를 Ready로
+공개하지 않는다.
+
+Same-node Join은 Actor instance와 Context를 유지하고 membership commit에서 `SpotId`만 바꾼다. Cross-node
+Join은 Actor ID와 ObjectGeneration을 유지하되 target owner와 membership에 결합한 새 Context를 target
+factory에 전달한다. Commit 뒤 source Context의 identity는 source leave callback까지 읽을 수 있지만 새
+send/request/session mutation/Join은 typed stale·moving failure로 끝나며 current target으로 자동 전달하지
+않는다.
+
 ## 6. Actor lifecycle
 
 ### 6.1 Factory와 relocation policy 등록

@@ -252,7 +252,6 @@ Node direct handler context에는 다음 물리 route 정보도 제공한다.
 
 - MeshName
 - Source node RID
-- Target node RID
 
 RouteMesh 또는 ClientServer 종류, endpoint와 선택 결과처럼 handler가 업무 처리에
 필요하지 않은 물리 정보는 monitoring에 남긴다.

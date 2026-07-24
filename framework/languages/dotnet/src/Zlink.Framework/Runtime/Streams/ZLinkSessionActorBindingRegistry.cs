@@ -55,7 +55,18 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
             runtime.UnbindActorSession(replaced.ActorId, replaced.BindingToken);
         }
 
-        runtime.BindSessionActor(actorId, context, binding.BindingToken, actorRef);
+        var replacedGlobalBindings = runtime.BindSessionActor(
+            actorId,
+            context,
+            binding.BindingToken,
+            actorRef);
+        foreach (var replaced in replacedGlobalBindings)
+        {
+            replaced.Context.ActorCoordinator.RemoveReplacedBinding(
+                actorId,
+                replaced.BindingToken);
+            runtime.UnbindActorSession(actorId, replaced.BindingToken);
+        }
         runtime.BindActorSession(
             actorId,
             runtime.GetActorSpotNode()?.RoutingId ?? sessionRid,
@@ -75,6 +86,17 @@ internal sealed class ZLinkSessionActorBindingRegistry(ZLinkFrameworkRuntime run
         }
 
         return null;
+    }
+
+    internal void RemoveReplacedBinding(string actorId, string bindingToken)
+    {
+        lock (_bindings)
+        {
+            _bindings.Remove(BuildBindingKey(actorId, bindingToken));
+            if (_actorsById.TryGetValue(actorId, out var current)
+                && string.Equals(current.BindingToken, bindingToken, StringComparison.Ordinal))
+                _actorsById.Remove(actorId);
+        }
     }
 
     public ValueTask ReleaseAsync(

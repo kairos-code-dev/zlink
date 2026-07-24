@@ -90,15 +90,20 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   각각 request/reply와 push를 처리하며 actor id와 spot rid가 유지되는지 비교한다.
 - `SM-D4`: 한 stream session에 actor 두 개를 bind한 뒤 `actor-id` metadata로 request와 push target이
   분리되고, metadata가 없는 actor request는 실패하는지 확인한다.
-- `SM-D4A` (미구현): 같은 Actor의 Session A→B rebind 뒤 Session A stale relay·late disconnect가
-  새 binding과 다른 bound Actor에 영향을 주지 않는 focused runner가 없다.
-- `SM-D4B` (미구현): bind 뒤 Location Store read를 차단하고 valid stored route, single-forward stale
-  mapping과 typed stale 결과를 함께 검증하는 focused runner가 없다.
+- `SM-D4A` (runtime contract 구현): `ZLinkSessionActorBindingContractTest`가 같은 Actor의
+  Session A→B replacement 뒤 stale binding의 late disconnect를 차단한다. 새 incarnation은
+  explicit bind를 거쳐야 하며 이전 generation binding은 새 binding을 해제하지 못한다.
+- `SM-D4B` (runtime contract 구현): 같은 test가 bind 횟수를 고정한 뒤 relay에서 hidden bind를
+  수행하지 않는지 확인한다. stale stored route는 한 번만 제출되고 typed
+  `REQUEST_TARGET_NOT_FOUND`로 끝난다.
 - `SM-D5`: physical stream disconnect 때 Framework가 고정한 모든 bound Actor에 disconnect를
   자동 통지하는지 확인한다. application은 Actor 목록을 순회하지 않으며, 명시적
   `notifyDisconnected`는 별도 logical notification에만 사용한다.
-- `SM-D5A` (미구현): physical connection을 유지한 public logical disconnect가 선택 Actor callback
-  완료만 기다리고 다른 Actor에 영향을 주지 않는 focused runner가 없다.
+- `SM-D5A` (runtime contract 구현): 같은 test가 physical connection을 닫지 않은 상태에서
+  선택 Actor만 logical disconnect하고 다른 Actor binding을 유지하는지 확인한다.
+
+`SM-D4A`·`SM-D4B`·`SM-D5`·`SM-D5A`의 process 간 transport orchestration은 SpotService
+E2E runner에 아직 추가되지 않았다. 현재 증거는 JVM runtime의 focused contract test다.
 - `SM-D6`: bound session과 shadow session을 각각 만들고, actor push가 request를 보낸 bound
   session에만 도착하며 shadow session에는 전달되지 않는지 확인한다.
 - `SM-D7`: stream session auth 전 actor packet dispatch가 실패하고, auth 뒤 단일 bound actor

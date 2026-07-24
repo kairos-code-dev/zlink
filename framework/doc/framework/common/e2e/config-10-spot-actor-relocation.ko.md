@@ -545,13 +545,17 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
 
 우선순위: `P0`
 
-- 절차: Actor·User·Entry·Instance Spot factory에 전달한 Context와 생성 object의 `Context` accessor를
-  reference identity로 비교한다. Same-node Join과 cross-node Join·Spot relocation을 각각 실행한다.
+- 절차: Actor·User·Entry·Instance Spot factory에 전달한 Context와 생성 object의 `Context` accessor가 같은
+  Context identity를 가리키는지 비교한다. Reference identity를 제공하는 언어는 같은 reference를 확인하고,
+  C++은 factory parameter를 application member로 move한 뒤에도 같은 내부 handle identity인지 확인한다.
+  Same-node Join과 cross-node Join·Spot relocation을 각각 실행한다.
 - 검증: Factory는 ID를 중복 인자로 받지 않는다. Same-node Actor Join은 같은 Actor·Context 객체에서
   membership만 commit 시점에 바꾼다. Cross-node Actor는 같은 ObjectGeneration을 유지한 새 target Context를
   사용한다. Spot relocation도 ObjectGeneration을 유지하고 새 AuthorityOwnerGeneration과 target owner에
   결합한 Context를 사용한다. Commit 뒤 source Context의 operation은 fence되고 current target으로 자동
-  전달되지 않는다. Snapshot은 handler tail의 application state와 Framework queue·timer를 복원한다.
+  전달되지 않는다. 별도 반복에서는 Actor·User·Entry·Instance Spot factory가 전달받은 것과 다른 Context를
+  노출하게 하고 factory completion 뒤 initialize, Ready authority, message admission과 active capacity가
+  모두 0건임을 확인한다. Snapshot은 handler tail의 application state와 Framework queue·timer를 복원한다.
   Recreate는 ObjectGeneration을 유지한 새 instance에 Framework queue·timer만 복원하고 application state는
   capture하지 않는다.
 - 세부 동작: Context composition, generation 유지와 source fencing.
@@ -602,7 +606,12 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
   Send·Request·SpotActor marker context와 Actor request reply option이 없다. 실제 dispatch에서는
   MeshName·ChannelName·PacketName·ContentType·Metadata·nullable CorrelationId가 원본 envelope와 일치하고,
   Route source RID, Publish topic·source와 Session `CanReply`도 operation kind에 맞는 값을 제공한다.
-  Actor handler는 containing Spot, Actor, MessageContext와 payload를 받으며 다섯 언어가 같은 정보를 제공한다.
+  Send와 request, Mesh 소속 여부, ContentType·CorrelationId 유무를 각각 바꿔 nullable field의 실제 null과
+  non-null 경로를 모두 확인한다. Handler가 Metadata snapshot을 변경할 수 없으며 보관하려면 복사해야 한다.
+  Universal MessageContext에는 reply operation과 connection cancellation이 없고, 둘은 Session specialization
+  또는 언어별 cancellation 인자에서만 확인한다. `HandlerInvocation`은 current MessageContext, descriptor,
+  payload와 chain을 제공하며 MessageContext field를 별도 복제하지 않는다. Actor handler는 containing Spot,
+  Actor, MessageContext와 payload를 받으며 다섯 언어가 같은 정보를 제공한다.
 - 세부 동작: public context naming과 handler information parity.
 
 ## 5. 완료 기준

@@ -43,12 +43,27 @@ export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>
     onActorRelocated?(actor: TActor): Promise<void>;
 }
 
-export interface ZLinkEntrySpotActorRequestHandler<TActor extends ZLinkActor, TRequest, TReply> {
-    handle(actor: TActor, context: ZLinkMessageContext, request: TRequest): Promise<TReply>;
+export interface ZLinkEntrySpotActorRequestHandler<
+    TEntrySpot extends ZLinkEntrySpot<TActor>,
+    TActor extends ZLinkActor,
+    TRequest,
+    TReply> {
+    handle(
+        spot: TEntrySpot,
+        actor: TActor,
+        context: ZLinkMessageContext,
+        request: TRequest): Promise<TReply>;
 }
 
-export interface ZLinkEntrySpotActorSendHandler<TActor extends ZLinkActor, TMessage> {
-    handle(actor: TActor, context: ZLinkMessageContext, message: TMessage): Promise<void>;
+export interface ZLinkEntrySpotActorSendHandler<
+    TEntrySpot extends ZLinkEntrySpot<TActor>,
+    TActor extends ZLinkActor,
+    TMessage> {
+    handle(
+        spot: TEntrySpot,
+        actor: TActor,
+        context: ZLinkMessageContext,
+        message: TMessage): Promise<void>;
 }
 
 export interface ZLinkEntrySpotContext<TActor extends ZLinkActor = ZLinkActor, TEntrySpot extends ZLinkEntrySpot<TActor> = ZLinkEntrySpot<TActor>> extends ZLinkSpotCommonContext<TEntrySpot> {

@@ -1,4 +1,3 @@
-using Systems.Zlink;
 using Zlink.Framework.Contracts.Errors;
 using Zlink.Framework.Contracts.Locations;
 
@@ -19,7 +18,7 @@ public static class SpotAddressRouting
     {
         return await locator.ResolveSpotHandleAsync(
                    meshName,
-                   RoutingId.From(spotRid),
+                   spotRid,
                    cancellationToken)
                ?? throw new ZLinkFrameworkException(
                    ZLinkFrameworkErrorKind.SpotRouteNotFound,

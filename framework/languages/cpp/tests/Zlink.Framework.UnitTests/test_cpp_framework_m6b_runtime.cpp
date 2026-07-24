@@ -594,6 +594,19 @@ void verify_session_binding_and_terminal_once ()
     assert (second_dispatch && second_dispatch->inbound_sequence == 2);
     assert (authority_reads == 2);
 
+    const auto replacement_connection = sessions.open ("stream-rid-b");
+    const auto [replacement_error, replacement] =
+      sessions.bind (replacement_connection, actor);
+    assert (replacement_error == stateful::stateful_error_t::none);
+    assert (authority_reads == 3);
+    assert (!sessions.is_current (binding));
+    assert (sessions.is_current (replacement));
+    assert (sessions.admit_inbound (binding).first
+            == stateful::stateful_error_t::conflict);
+    assert (sessions.close (connection));
+    assert (sessions.is_current (replacement));
+    assert (authority_reads == 3);
+
     const auto reconnect = sessions.open ("stream-rid");
     assert (reconnect.connection_generation
             == connection.connection_generation + 1);

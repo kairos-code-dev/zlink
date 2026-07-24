@@ -145,13 +145,15 @@ test('application metadata exposes an immutable copied snapshot', () => {
 
 test('one-way clients reject when their registered runtime is not started', async () => {
   const registration = framework.createFrameworkRegistration({
-    spotNodes: { mesh: { router: { bind: 'inproc://contract-mesh' }, meshChannels: { api: {} } } },
-    channels: { events: { publisher: { bind: 'inproc://events' } } },
+    channels: {
+      api: { client: { manualConnections: ['inproc://api'] } },
+      events: { publisher: { bind: 'inproc://events' } }
+    },
     routeChannels: [{ routerChannelId: 'route', manualConnections: ['inproc://route'] }]
   });
 
   await assert.rejects(
-    () => new framework.DefaultZLinkChannelClient(registration).sendToChannel('mesh', 'api', typedPacket('Ping')).submit(),
+    () => new framework.DefaultZLinkChannelClient(registration).sendToChannel('api', typedPacket('Ping')).submit(),
     /runtime is not started/i
   );
   await assert.rejects(

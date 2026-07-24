@@ -185,20 +185,20 @@ async function handleRequest(
 
   const submit = body as SubmitRequest;
   if (request.method === 'POST' && url.pathname === '/submit/node') {
-    const result = await route
+    await route
       .sendToNode(meshName, requireValue(submit.targetRid, 'targetRid'), new AdmissionMessage(submit.operationId))
       .submit();
-    return { status: 200, body: terminal(submit.operationId, result.status) };
+    return { status: 200, body: terminal(submit.operationId, 'Submitted') };
   }
   if (request.method === 'POST' && url.pathname === '/submit/channel') {
-    const result = await route
-      .sendToChannel(meshName, channelName, new AdmissionMessage(submit.operationId))
+    await route
+      .sendToChannel(channelName, new AdmissionMessage(submit.operationId))
       .submit();
-    return { status: 200, body: terminal(submit.operationId, result.status) };
+    return { status: 200, body: terminal(submit.operationId, 'Submitted') };
   }
   if (request.method === 'POST' && url.pathname === '/submit/fanout') {
-    const result = await fanout.publish(fanoutName, new AdmissionMessage(submit.operationId)).submit();
-    return { status: 200, body: terminal(submit.operationId, result.status) };
+    await fanout.publish(fanoutName, new AdmissionMessage(submit.operationId)).submit();
+    return { status: 200, body: terminal(submit.operationId, 'Submitted') };
   }
   return { status: 404, body: { error: 'not found' } };
 }

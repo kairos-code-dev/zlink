@@ -172,6 +172,11 @@ internal sealed class ZLinkSessionActorCoordinator(
         return _bindings.FindActor(actorId);
     }
 
+    internal void RemoveReplacedBinding(string actorId, string bindingToken)
+    {
+        _bindings.RemoveReplacedBinding(actorId, bindingToken);
+    }
+
     public async ValueTask RelayToActorAsync(
         IZLinkSessionActor actor,
         ZlinkStreamHeader header,
@@ -181,6 +186,16 @@ internal sealed class ZLinkSessionActorCoordinator(
     {
         if (actor is not ZLinkSessionActor actorRef)
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
+
+        if (!runtime.TryGetSessionActorContext(
+                actorRef.ActorId,
+                actorRef.BindingToken,
+                out var currentContext)
+            || !ReferenceEquals(currentContext, actorRef.Context))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorSessionNotBound,
+                $"Actor '{actorRef.ActorId}' session binding is stale.",
+                true);
 
         if (stream is ZLinkManagedStream managedStream)
         {

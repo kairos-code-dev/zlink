@@ -99,9 +99,7 @@ Handler filter의 exact extension 경계는 다음과 같다.
 public sealed class ZLinkHandlerInvocation
 {
     public string OwnerKind { get; }
-    public string? ChannelName { get; }
-    public string PacketName { get; }
-    public ZLinkMessageMetadata Metadata { get; }
+    public IZLinkMessageContext MessageContext { get; }
 }
 
 public delegate ValueTask ZLinkHandlerFilterNext();

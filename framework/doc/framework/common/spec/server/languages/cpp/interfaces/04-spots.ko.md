@@ -186,12 +186,11 @@ public:
 
 class spot_context_t : public spot_common_context_t {
 public:
-    spot_context_t();
     ~spot_context_t();
     spot_context_t(spot_context_t &&) noexcept;
-    spot_context_t &operator=(spot_context_t &&) noexcept;
-    spot_context_t(const spot_context_t &) = default;
-    spot_context_t &operator=(const spot_context_t &) = default;
+    spot_context_t &operator=(spot_context_t &&) = delete;
+    spot_context_t(const spot_context_t &) = delete;
+    spot_context_t &operator=(const spot_context_t &) = delete;
 
     spot_handler_registry_t handlers();
 
@@ -203,12 +202,11 @@ public:
 
 class entry_spot_context_t : public spot_common_context_t {
 public:
-    entry_spot_context_t();
     ~entry_spot_context_t();
     entry_spot_context_t(entry_spot_context_t &&) noexcept;
-    entry_spot_context_t &operator=(entry_spot_context_t &&) noexcept;
-    entry_spot_context_t(const entry_spot_context_t &) = default;
-    entry_spot_context_t &operator=(const entry_spot_context_t &) = default;
+    entry_spot_context_t &operator=(entry_spot_context_t &&) = delete;
+    entry_spot_context_t(const entry_spot_context_t &) = delete;
+    entry_spot_context_t &operator=(const entry_spot_context_t &) = delete;
     spot_handler_registry_t handlers();
 
     template <typename TActor>
@@ -219,12 +217,11 @@ public:
 
 class instance_spot_context_t : public spot_common_context_t {
 public:
-    instance_spot_context_t();
     ~instance_spot_context_t();
     instance_spot_context_t(instance_spot_context_t &&) noexcept;
-    instance_spot_context_t &operator=(instance_spot_context_t &&) noexcept;
-    instance_spot_context_t(const instance_spot_context_t &) = default;
-    instance_spot_context_t &operator=(const instance_spot_context_t &) = default;
+    instance_spot_context_t &operator=(instance_spot_context_t &&) = delete;
+    instance_spot_context_t(const instance_spot_context_t &) = delete;
+    instance_spot_context_t &operator=(const instance_spot_context_t &) = delete;
 
     instance_spot_handler_registry_t handlers();
     task_t<bool> close();
@@ -274,23 +271,6 @@ struct spot_create_result_t {
     spot_ref_t spot;
     spot_create_state_t state = spot_create_state_t::created;
     std::optional<zlink::framework::message_t> reply;
-};
-
-struct spot_actor_message_metadata_t {
-    std::optional<std::string_view> find(std::string_view key) const;
-    bool contains(std::string_view key) const;
-    bool empty() const noexcept;
-    std::string content_type = "application/json";
-    std::map<std::string, std::string> values;
-};
-
-struct spot_packet_context_t {
-    std::string packet_name;
-    std::string content_type;
-    spot_actor_message_metadata_t metadata;
-    bool cancellation_requested = false;
-
-    bool is_cancellation_requested() const noexcept;
 };
 
 class spot_handler_registry_t {
@@ -417,8 +397,10 @@ failed task로 끝나면 durable abort와 source normalization 뒤 admission을 
 external side effect에 exactly-once를 보장하지 않는다.
 
 C++의 일반 Spot packet과 Actor payload handler는 `spot_context_t::handlers()`가 등록한다. Actor handler는
-mutable Actor와 읽기 전용 handler context만 받으며 mutable Spot을 함께 받지 않는다. Spot 상태 변경 message는
-global `spot_id_t` direct call로 제출한다. Actor lifecycle은 registry 등록 표면이 아니다. User Spot과 Entry
+containing Spot의 member이며 호출 대상 Spot instance를 `this`로 사용하고, mutable Actor,
+읽기 전용 `message_context_t`와 payload를 인자로 받는다. 다른 Spot의 상태를 바꾸는 message는 global
+`spot_id_t` direct call로 제출한다. Actor lifecycle은 registry 등록 표면이 아니다.
+User Spot과 Entry
 Spot은 actor ID와 join request를 받는 `on_actor_join(...)`에서 accept 또는 reject를 반환한다. Commit 이후
 callback은 해당 factory가 만든 concrete Actor reference를 직접 받는다. 따라서 별도 membership DTO를
 lifecycle callback에 끼워 넣지 않는다. Joined, leave와 disconnect callback은 `task_t<void>`를 반환하며
@@ -568,15 +550,16 @@ public:
     zlink::framework::task_t<void> on_disconnect_actor(
       player_actor_t &actor) override;
 
+    start_bingo_game_res_t start_game(
+      player_actor_t &actor,
+      const zlink::framework::message_context_t &message_context,
+      const start_bingo_game_req_t &request);
+
 private:
     zlink::framework::spot_context_t context_;
 };
 
 class player_actor_t : public zlink::framework::actor_t {
-public:
-    start_bingo_game_res_t start_game(
-      const zlink::framework::message_context_t &message_context,
-      const start_bingo_game_req_t &request);
 };
 
 class bingo_entry_spot_t
@@ -602,6 +585,10 @@ private:
 };
 ```
 
+세 Context는 Framework만 만들 수 있는 move-only handle이다. Factory는 전달받은 handle을 application
+object의 read-only member로 move하고 `context()`에서 그 handle을 반환한다. Default construction, copy와
+assignment로 identity를 만들거나 교체할 수 없다.
+
 `route_mesh_runtime_options_t`는 public DI singleton이다. 등록되지 않은 [ChannelName](../../../../01-glossary.ko.md#channelname)을 조회하면 구성
 오류로 실패한다. 실행 중에는 ChannelName weight만 변경할 수 있다. 최대 메시지 크기는 startup 뒤
 변경할 수 없다. [Weight](../../../../01-glossary.ko.md#weight)는 0부터 10000까지이고 기본값은 100이다. 범위
@@ -613,7 +600,8 @@ Spot과 Entry Spot은 activation scope가 수명을 소유한다. 기본 생성 
 overload로 등록한다. factory는 Spot을 활성화할 때 framework가 호출하며, 반환한 instance의
 수명도 같은 activation scope에서 관리한다.
 
-일반 Spot packet member와 subscription member는 payload 하나를 받는다.
+일반 Spot packet member는 payload와 `message_context_t`를 받고, subscription member는 payload와
+`publish_message_context_t`를 받는다.
 actor join admission을 처리하는 member는 `std::string_view actor_id`와
 `zlink::framework::message_t` request를 받으며,
 `spot_actor_join_response_t`로 accepted 여부와 optional reply `zlink::framework::message_t`를 반환한다.
@@ -640,18 +628,19 @@ membership gate와 구분한다.
 commit 뒤 호출한다. Whole User Spot aggregate relocation에서는 membership이 유지되므로 member Actor에 대한 Entry
 Spot 또는 User Spot membership callback을 모두 호출하지 않는다. Disabled operation에서도
 `on_actor_relocated(...)`를 호출하지 않는다.
-actor packet member는 `message_context_t`, mutable Actor와 DTO를
-받는다. actor disconnected callback도 같은 concrete Actor reference를 받는다.
+actor packet member는 containing Spot에 선언하며 mutable Actor, `message_context_t`, DTO 순서로 받는다.
+호출 대상인 containing Spot은 member function의 `this`다. actor disconnected callback도 같은 concrete
+Actor reference를 받는다.
 Runtime의 private dispatch가 `message_t`를 DTO로 바꾸고 현재 Spot instance와 Actor를 찾아 typed member
 function을 호출한다. Application은 invoker, service provider, serializer registry와 [descriptor](../../../../01-glossary.ko.md#descriptor) 조회 표면을
 받지 않는다. 샘플도 public registration과 call 경로를 통과해야 framework 동작을 확인했다고 볼 수 있다.
 Entry Spot membership 상태에서도 actor packet은 일반 Spot packet으로 등록하지 않는다.
 `spot_context_t::handlers()`에서 `add_actor_request<Method>()` 또는 `add_actor_send<Method>()`로 등록하며,
-member는 handler context, concrete Actor와 DTO를 받는다.
+member는 mutable Actor, message context와 DTO를 받는다.
 stream header metadata 전체를 actor handler에 그대로 노출하지 않는다. 사용자는
 `options.metadata().allow_session_to_actor("trace-id")`처럼 application metadata forwarding 정책을 선언하고,
-framework는 허용된 key만 `spot_actor_message_metadata_t`로 project해서 actor context에 넣는다.
-handler는 `find(...)` 또는 `contains(...)`로 값을 조회한다. `values`는 단순 반복을 제공하고,
+framework는 허용된 key만 `message_context_t::metadata`에 넣는다.
+handler는 `metadata.find(...)` 또는 `metadata.contains(...)`로 값을 조회한다. `values()`는 단순 반복을 제공하고,
 `find(...)`와 `contains(...)`는 handler code가 `std::map` 구조에 직접 묶이지 않게 한다. 빈 metadata
 key와 공백만 있는 key는 의미가 모호하므로 두 방향의 allowlist method 모두 이런 key를 거부한다.
 이 정책은 stream frame 구조나 ActorGateway 내부 frame을 public handler 표면에 드러내지 않기

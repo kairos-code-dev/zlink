@@ -29,7 +29,7 @@ Kotlin lane은 Java와 shared transfer fixture를 사용하더라도 Kotlin clie
 | `ST-D1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: location commit 공개 시점. |
 | `ST-D2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: stale generation fencing. |
 | `ST-E1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: transfer 성공 뒤 bound session push. |
-| `ST-E1A` | 미구현 | 새 Actor incarnation과 이전 generation binding event 격리, explicit bind 요구를 검증하는 Kotlin runner가 없다. |
+| `ST-E1A` | runtime contract 구현 | 공용 JVM runtime test와 Kotlin projection test가 이전 generation binding event 격리와 exact generation logical notification을 검증한다. Process 간 relocation E2E는 아직 필요하다. |
 | `ST-E2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: transfer 실패 때 기존 session binding 유지. |
 | `ST-F1` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: moving backlog FIFO. |
 | `ST-F2` | 전환 필요 | MeshNode topology와 공개 API로 검증할 대상: location publish 전 replay 순서. |

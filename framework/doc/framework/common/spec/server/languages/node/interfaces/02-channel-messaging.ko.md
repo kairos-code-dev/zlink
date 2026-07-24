@@ -29,14 +29,17 @@ export interface ZLinkEndpointConnections {
     listConnections(): readonly string[];
 }
 
-export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkSpotActorLifecycle<TActor> {
+export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>
+    extends ZLinkSpotActorMembershipLifecycle<TActor> {
     readonly context: ZLinkEntrySpotContext<TActor>;
     configure?(): void;
     onInitialize?(): Promise<void>;
     onClosing?(
         context: ZLinkSpotClosingContext,
         cleanupSignal: AbortSignal): Promise<void>;
-    onCreateActor?(actor: TActor, createRequest: ZLinkMessage): Promise<void>;
+    onCreateActor?(
+        actor: TActor,
+        createRequest: ZLinkMessage): Promise<ZLinkActorCreateResponse>;
     onActorRelocated?(actor: TActor): Promise<void>;
 }
 

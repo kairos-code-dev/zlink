@@ -2226,6 +2226,210 @@ test('bound session send and disconnect use current binding token and stale toke
   assert.equal(runtime.find('actor-a'), undefined);
 });
 
+test('session A to B rebind fences stale relay and late disconnect without touching other actors', async () => {
+  const notified = [];
+  const relayCalls = [];
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory(),
+    async relay(actor) {
+      relayCalls.push(actor.actorId);
+      return true;
+    },
+    async notifyDisconnected(actor) {
+      notified.push(actor.actorId);
+    }
+  });
+  const sessionA = runtime.createSessionContext(fakeStream('session-a', 'rid-a'));
+  const sessionB = runtime.createSessionContext(fakeStream('session-b', 'rid-b'));
+  const actorRef = { nodeRid: 'node-a', actorId: 'actor-x', generation: 7n };
+  const stale = await sessionA.actors.bind(actorRef);
+  const actorA = await sessionA.actors.bind({
+    nodeRid: 'node-a',
+    actorId: 'actor-a',
+    generation: 1n
+  });
+  const actorB = await sessionB.actors.bind({
+    nodeRid: 'node-b',
+    actorId: 'actor-b',
+    generation: 1n
+  });
+  const current = await sessionB.actors.bind(actorRef);
+  sessionA.enterDispatch({
+    kind: connector.ZlinkStreamMessageKind.Send,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.None,
+    name: 'StaleRelay',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  });
+  try {
+    await assert.rejects(
+      () => stale.relay(framework.ZLinkMessage.fromEncoded(
+        framework.ZLinkEncodedPayload.from(new TextEncoder().encode('{"stale":true}'))
+      )),
+      { kind: framework.ZLinkFrameworkErrorKind.ActorSessionNotBound }
+    );
+  } finally {
+    sessionA.exitDispatch();
+  }
+
+  await assert.rejects(
+    () => stale.notifyDisconnected(),
+    { kind: framework.ZLinkFrameworkErrorKind.ActorSessionNotBound }
+  );
+
+  assert.deepEqual(relayCalls, []);
+  assert.deepEqual(notified, []);
+  assert.equal(sessionA.actors.find(actorRef.actorId), undefined);
+  assert.equal(sessionA.actors.find(actorA.actorId), actorA);
+  assert.equal(sessionB.actors.find(actorB.actorId), actorB);
+  assert.equal(sessionB.actors.find(actorRef.actorId), current);
+  assert.equal(runtime.find(actorRef.actorId), current);
+  assert.equal(current.ref.generation, 7n);
+});
+
+test('stored actor route relays once without actor ref lookup or hidden retry', async () => {
+  let actorRefLookups = 0;
+  let relayAttempts = 0;
+  let acceptRelay = true;
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    messageFactory: binaryMessageFactory(),
+    actorRefResolver() {
+      actorRefLookups += 1;
+      throw new Error('Actor ref lookup is forbidden after bind.');
+    },
+    async relay() {
+      relayAttempts += 1;
+      return acceptRelay;
+    }
+  });
+  const context = runtime.createSessionContext(fakeStream('session-route', 'route-rid'));
+  const actor = await context.actors.bind({
+    nodeRid: 'node-a',
+    actorId: 'actor-route',
+    generation: 1n
+  });
+  context.enterDispatch({
+    kind: connector.ZlinkStreamMessageKind.Send,
+    codec: connector.ZlinkStreamCodec.Json,
+    flags: connector.ZlinkStreamHeaderFlags.None,
+    name: 'StoredRoute',
+    metadata: connector.ZlinkStreamMetadataMap.empty
+  });
+  try {
+    await actor.relay(framework.ZLinkMessage.fromEncoded(
+      framework.ZLinkEncodedPayload.from(new TextEncoder().encode('{"route":"current"}'))
+    ));
+
+    acceptRelay = false;
+    await assert.rejects(
+      () => actor.relay(framework.ZLinkMessage.fromEncoded(
+        framework.ZLinkEncodedPayload.from(new TextEncoder().encode('{"route":"stale"}'))
+      )),
+      { kind: framework.ZLinkFrameworkErrorKind.ActorSessionNotBound }
+    );
+  } finally {
+    context.exitDispatch();
+  }
+
+  assert.equal(relayAttempts, 2);
+  assert.equal(actorRefLookups, 0);
+});
+
+test('logical actor disconnect waits for one callback and keeps the physical connection and other binding', async () => {
+  const notified = [];
+  let releaseSelected;
+  const selectedCanFinish = new Promise((resolve) => { releaseSelected = resolve; });
+  let selectedStarted;
+  const selectedDidStart = new Promise((resolve) => { selectedStarted = resolve; });
+  let closeCalls = 0;
+  const stream = {
+    ...fakeStream('session-logical', 'logical-rid'),
+    async close() { closeCalls += 1; }
+  };
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    async notifyDisconnected(actor) {
+      notified.push(actor.actorId);
+      if (actor.actorId === 'actor-selected') {
+        selectedStarted();
+        await selectedCanFinish;
+      }
+    }
+  });
+  const context = runtime.createSessionContext(stream);
+  const selected = await context.actors.bind({
+    nodeRid: 'node-a',
+    actorId: 'actor-selected',
+    generation: 1n
+  });
+  const other = await context.actors.bind({
+    nodeRid: 'node-a',
+    actorId: 'actor-other',
+    generation: 1n
+  });
+
+  let completed = false;
+  const notification = selected.notifyDisconnected().then(() => { completed = true; });
+  await selectedDidStart;
+  assert.equal(completed, false);
+  assert.equal(context.actors.find(other.actorId), other);
+  assert.equal(closeCalls, 0);
+
+  releaseSelected();
+  await notification;
+
+  assert.equal(completed, true);
+  assert.deepEqual(notified, ['actor-selected']);
+  assert.equal(context.actors.find(selected.actorId), undefined);
+  assert.equal(context.actors.find(other.actorId), other);
+  assert.equal(closeCalls, 0);
+});
+
+test('physical disconnect dedupes a racing logical notification and retains actor state inputs', async () => {
+  const callbacks = [];
+  const memberships = new Set(['actor-selected', 'actor-other']);
+  let releaseSelected;
+  const selectedCanFinish = new Promise((resolve) => { releaseSelected = resolve; });
+  let selectedStarted;
+  const selectedDidStart = new Promise((resolve) => { selectedStarted = resolve; });
+  const runtime = new framework.ZLinkStreamBindingRuntime({
+    actorBindTimeoutMs: 1000,
+    async notifyDisconnected(actor) {
+      callbacks.push(actor.actorId);
+      if (actor.actorId === 'actor-selected') {
+        selectedStarted();
+        await selectedCanFinish;
+      }
+      if (actor.actorId === 'actor-other') {
+        throw new Error('callback failure');
+      }
+    }
+  });
+  const context = runtime.createSessionContext(fakeStream('session-race', 'race-rid'));
+  const selected = await context.actors.bind({
+    nodeRid: 'node-a',
+    actorId: 'actor-selected',
+    generation: 11n
+  });
+  await context.actors.bind({
+    nodeRid: 'node-b',
+    actorId: 'actor-other',
+    generation: 13n
+  });
+
+  const logical = selected.notifyDisconnected();
+  await selectedDidStart;
+  const physical = runtime.cleanup(context);
+  releaseSelected();
+  await Promise.allSettled([logical, physical]);
+
+  assert.equal(callbacks.filter((actorId) => actorId === 'actor-selected').length, 1);
+  assert.equal(callbacks.filter((actorId) => actorId === 'actor-other').length, 1);
+  assert.equal(runtime.find('actor-selected'), undefined);
+  assert.equal(runtime.find('actor-other'), undefined);
+  assert.deepEqual([...memberships].sort(), ['actor-other', 'actor-selected']);
+  assert.equal(selected.ref.generation, 11n);
+});
+
 test('stream binding runtime can remove actor binding during actor destroy cleanup', async () => {
   const runtime = new framework.ZLinkStreamBindingRuntime();
   const context = runtime.createSessionContext(fakeStream('session-destroy', 'rid-destroy'));

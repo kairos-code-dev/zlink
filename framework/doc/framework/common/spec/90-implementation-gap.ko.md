@@ -782,14 +782,15 @@ E2E gate는 실제 application과 runtime이 만든 값을 검증해야 한다. 
 
 [Actor model](22-actor-model.ko.md), [Spot·Actor membership](23-spot-actor.ko.md)과
 [비동기 실행 정책](04-async-execution-policy.ko.md)은 목표 계약을 먼저 고정한다.
-현재 다섯 언어 runtime은 아래 계약을 아직 구현하지 않았으므로 정식 interface가
-존재한다는 사실만으로 구현이 완료되었다고 판단하면 안 된다.
+Runtime에는 handler-scoped `Defer`와 기본 barrier가 들어갔지만 아래 production
+연결과 cross-language 검증이 남아 있다. 정식 interface가 존재한다는 사실만으로
+구현이 완료되었다고 판단하면 안 된다.
 
 | ID | 목표 계약과 현재 구현 차이 | 대상 |
 |---|---|---|
-| **IMP-JOIN-1** | Join call은 handler 안에서 동기 `Defer`로만 등록하고 process-local handler terminal 뒤 barrier를 활성화해야 한다. 현재 구현에는 deferred barrier, handler failure cleanup, handler당 64 Join·8 MiB 제한과 Actor queue boundary가 없다. | .NET · Java · Kotlin · Node.js · C++ |
-| **IMP-JOIN-2** | Accepted·Rejected·Failed 결과를 별도 128-bit completion operation ID와 함께 Actor callback에 전달해야 한다. Same-node·Rejected·commit 전 Failed는 process lifetime, cross-node Accepted만 manifest를 통한 durable at-least-once 범위다. | .NET · Java · Kotlin · Node.js · C++ |
-| **IMP-JOIN-3** | `Defer`는 Spot gate와 Actor FIFO claim을 반납하지 않는다. `SpotWide`에서 `Yield`한 마지막 continuation의 terminal이 barrier 기준이며 `PerActor`와 Entry의 Yield 금지도 유지해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-JOIN-1** | Actor handler의 process-local `Defer`, failure cleanup, 64 Join·8 MiB 제한과 Actor queue boundary는 네 runtime에 들어갔다. .NET·Node.js·C++에는 User·Entry Spot과 timer handler가 여러 member Actor intent를 같은 handler terminal에 묶는 production dispatch 연결과 직접 E2E가 남아 있다. | .NET · Node.js · C++ |
+| **IMP-JOIN-2** | Cross-node Accepted durable completion이 완전하지 않다. .NET은 target Actor materialization 뒤 cursor recovery는 제공하지만 application state·queue·timer의 aggregate materialization이 남아 있다. Java·Kotlin은 routed User Spot 경로만 완료되어 Core-native `JoinEntrySpot`·Spot 경로가 남고, Node.js·C++는 cross-node Accepted manifest와 target Actor mailbox callback 연결이 남아 있다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-JOIN-3** | `Defer`가 Spot gate·Actor claim을 유지하고 `SpotWide`의 마지막 Yield continuation terminal을 barrier로 사용하는 focused 구현은 존재한다. `PerActor`·Entry Yield 금지, awaited cycle과 transition race를 실제 public dispatch로 검증하는 다섯 언어 E2E runner가 아직 없다. | .NET · Java · Kotlin · Node.js · C++ |
 | **IMP-CTX-1** | Actor·User·Entry·Instance Spot은 factory에서 받은 exact Context를 보관하고 ID 중복 factory 인자를 제거해야 한다. Same-node는 Context를 유지하고 cross-node는 ObjectGeneration을 유지한 새 owner Context를 사용하며 source Context를 fence해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
 | **IMP-CTX-2** | 공통 inbound 타입은 `MessageContext`, Route·Publish·Session은 specialized MessageContext여야 한다. Send·Request·Spot Actor marker context, Actor request reply option과 이전 filter invocation 이름을 제거해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
 | **IMP-CTX-3** | Actor handler는 containing Spot, Actor, MessageContext와 payload를 받아야 한다. `PerActor`·Entry에서 공유 Spot state를 직렬화하려면 명시적인 Spot send/request를 사용해야 한다. | .NET · Java · Kotlin · Node.js · C++ |
@@ -808,10 +809,8 @@ all-settled 통지를 수행하도록 요구한다.
 
 | ID | 목표 계약과 현재 구현 차이 | 대상 |
 |---|---|---|
-| **IMP-SA-1** | Physical disconnect automatic all-bound 통지, exact binding identity dedupe와 한 Actor 실패 뒤 나머지 통지 계속이 언어마다 다르거나 없다 | .NET · Java · Kotlin · Node.js · C++ |
-| **IMP-SA-2** | Relay와 disconnect는 Bind 때 저장한 route를 owner lease·local admission deadline 안에서 사용해야 한다. .NET과 Java는 relay 과정에서 directory·Location Store lookup과 rebind를 수행한다 | .NET · Java · Kotlin |
-| **IMP-SA-3** | Route update는 같은 ObjectGeneration의 relocation에만 허용하고 새 incarnation은 explicit bind해야 한다. 일부 runtime은 다른 generation을 current binding으로 교체한다 | .NET · Java · Kotlin · C++ |
-| **IMP-SA-4** | `Completed` 뒤 command 44·45 route switch·ACK, steady normalization 뒤 target admission을 열어야 한다. Runtime·contract test의 전 언어 parity 증거가 아직 없다 | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-SA-1** | 다섯 runtime의 focused contract는 Bind 때 저장한 route 사용, hidden rebind 금지, physical disconnect all-settled·dedupe·failure cleanup과 same-generation route fence를 검증한다. 그러나 실제 process connection을 끊어 여러 binding callback, no-Store relay와 stale token 거부를 함께 관측하는 E2E는 아직 없다. | .NET · Java · Kotlin · Node.js · C++ |
+| **IMP-SA-2** | Relocation의 durable `Completed` 뒤 command 44·45 route switch·ACK, steady normalization 뒤 target admission을 여는 순서를 실제 process relocation과 Store 상태로 검증하지 못했다. 새 incarnation이 explicit bind 없이 기존 binding을 교체하지 않는다는 부정 assertion도 같은 E2E에 남아 있다. | .NET · Java · Kotlin · Node.js · C++ |
 
 ## 16. 언어별 구현 차이 연결
 

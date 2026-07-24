@@ -31,10 +31,10 @@
 | SM-D2 | 구현 | remote actor session bind/relay marker가 있다. |
 | SM-D3 | 구현 | entry spot bind와 user spot bind를 각각 stream session에 연결하고 relay/push marker를 확인한다. |
 | SM-D4 | 구현 | multiple actor bind marker가 있다. |
-| SM-D4A | 미구현 | 같은 Actor의 Session A→B rebind 뒤 Session A stale relay·late disconnect가 새 binding과 다른 bound Actor에 영향을 주지 않는 focused runner가 없다. |
-| SM-D4B | 미구현 | bind 뒤 Location Store read 차단, valid stored route와 single-forward stale mapping을 함께 검증하는 focused runner가 없다. |
-| SM-D5 | 구현 | physical stream disconnect에서 application이 Actor 목록을 순회하지 않아도 Framework가 고정한 모든 bound Actor에 disconnect를 자동 통지한다. explicit `NotifyDisconnectedAsync`는 별도 logical notification으로 유지한다. |
-| SM-D5A | 미구현 | physical connection을 유지한 public logical disconnect가 선택 Actor callback 완료만 기다리고 다른 Actor에 영향을 주지 않는 focused runner가 없다. |
+| SM-D4A | 구현 | `Rebind_Fences_Stale_Relay_And_Late_Disconnect_Without_Affecting_Other_Actors`가 같은 generation의 Session A→B rebind, stale relay의 `ActorSessionNotBound`, late disconnect 무효화와 다른 Actor binding 유지를 검증한다. Focused PASS: 12/12. |
+| SM-D4B | 구현 | `Bound_Actor_Relay_Does_Not_Resolve_The_Location_Store_Per_Message`와 exact route test가 bind 뒤 Store read 0과 hidden refresh 부재를 검증한다. `ActorHandoffTests`는 active forwarding과 expiry 뒤 stale 판정을 검증한다. Focused PASS: Session 12/12, handoff 30/30. |
+| SM-D5 | 구현 | physical stream disconnect에서 application이 Actor 목록을 순회하지 않아도 Framework가 fixed snapshot 전체에 자동 통지한다. `Physical_Disconnect_Uses_A_Fixed_AllSettled_Snapshot_And_Cleans_Every_Binding`과 cleanup suite가 all-settled cleanup 및 Actor state 유지를 검증한다. Focused PASS: Session 12/12, cleanup 13/13. |
+| SM-D5A | 실행 대기 | `sm-d5a` process runner를 추가했다. 같은 connection에 두 Actor를 bind하고 public `NotifyDisconnectedAsync` reply 뒤 선택 Actor callback 1회와 다른 Actor request 생존을 검증한다. 현재 SpotService의 선행 SpotId·terminal API 전환 gap 38개로 compile되지 않아 PASS log는 아직 없다. |
 | SM-D6 | 구현 | bound session push targeting marker가 있다. |
 | SM-D7 | 구현 | stream auth and dispatch marker가 있다. |
 | SM-D8 | 구현 | stream 연결 종료 중 pending request 실패를 확인하고 새 session에서 reauth/rebind 후 messaging 재개 marker를 확인한다. |

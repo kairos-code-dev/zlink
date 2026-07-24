@@ -199,6 +199,10 @@ public sealed record MultiBindReq(string FirstActorId, string SecondActorId, str
 
 public sealed record MultiBindRes(int BoundCount);
 
+public sealed record NotifyBoundActorDisconnectedReq(string ActorId);
+
+public sealed record NotifyBoundActorDisconnectedRes(string ActorId, bool Completed);
+
 public sealed record LeaveReq(string ActorId);
 
 public sealed record LeaveRes(string ActorId, bool Accepted);

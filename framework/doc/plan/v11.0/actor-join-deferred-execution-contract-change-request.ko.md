@@ -1,12 +1,12 @@
 # Actor Join deferred execution, object Context composition과 message context 통합 계약 변경 요청
 
-> 이 문서는 구현 전 변경 요청이다. 현재 Framework 공개 계약을 설명하지 않는다.
-> 정식 spec과 다섯 언어 exact interface가 이 요청을 채택하기 전까지 기존
-> `JoinSpot(...).Async()`·`JoinEntrySpot(...).Async()` 계약이 유효하다.
+> 이 문서는 변경 요청의 추적 자료이며 현재 Framework 공개 계약을 설명하지 않는다.
+> `Defer()` 기반 목표 계약은 정식 spec과 다섯 언어 exact interface에 흡수됐다.
+> 이 문서는 독립 review와 정식 문서 흡수 확인이 끝날 때까지만 유지한다.
 
 ## 1. 변경 목적
 
-현재 Actor Join은 Actor handler가 `JoinSpot(...).Async()` 또는
+변경 전 Actor Join은 Actor handler가 `JoinSpot(...).Async()` 또는
 `JoinEntrySpot(...).Async()`를 호출하여 최종 승인 결과를 기다리는 형태다. Target
 Spot이 다른 node에 있으면 같은 operation 안에서 Actor owner와 membership을
 target node로 옮기고 target factory가 만든 새 Actor instance에 state를 복원한다.

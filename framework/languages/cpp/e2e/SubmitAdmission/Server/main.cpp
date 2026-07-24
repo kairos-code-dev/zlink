@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <barrier>
 #include <chrono>
+#include <cstdint>
 #include <exception>
 #include <iostream>
 #include <memory>
@@ -66,6 +67,19 @@ role_options_t read_options (zlink::framework::app_t &app, int argc, char **argv
     return app.config ().bind_required<role_options_t> ("e2e");
 }
 
+std::uint16_t endpoint_port (const std::string &endpoint)
+{
+    const auto separator = endpoint.rfind (':');
+    if (separator == std::string::npos || separator + 1 >= endpoint.size ()) {
+        throw std::runtime_error ("TCP endpoint must end with a port: " + endpoint);
+    }
+    const auto port = std::stoul (endpoint.substr (separator + 1));
+    if (port == 0 || port > 65535) {
+        throw std::runtime_error ("TCP endpoint port is out of range: " + endpoint);
+    }
+    return static_cast<std::uint16_t> (port);
+}
+
 std::string terminal_name (const zlink::framework::result_t<void> &result)
 {
     using error_kind_t = zlink::framework::framework_error_kind_t;
@@ -97,6 +111,22 @@ sa::submit_response_t response_from (
             .status = terminal_name (result),
             .public_invocation_count = 1,
             .terminal_count = 1};
+}
+
+zlink::framework::task_t<sa::submit_response_t> response_after_submit (
+  std::string operation_id,
+  zlink::framework::task_t<void> submission)
+{
+    try {
+        co_await submission;
+        co_return response_from (
+          operation_id, zlink::framework::result_t<void>::success ());
+    }
+    catch (const zlink::framework::framework_exception_t &error) {
+        co_return response_from (
+          operation_id,
+          zlink::framework::result_t<void>::failure (error.kind (), error.what ()));
+    }
 }
 
 class admission_handler_t
@@ -133,11 +163,13 @@ class node_submit_handler_t
 
     explicit node_submit_handler_t (zlink::framework::route_client_t &routes) : _routes (routes) {}
 
-    sa::submit_response_t handle (const sa::node_submit_request_t &request)
+    zlink::framework::task_t<sa::submit_response_t>
+    handle (const sa::node_submit_request_t &request)
     {
         auto operation = _routes.send_to_node (
           sa::mesh_name, zlink::routing_id_t::from (request.target_rid), request.message);
-        return response_from (request.message.operation_id, operation.submit ().result ());
+        return response_after_submit (
+          request.message.operation_id, operation.submit ());
     }
 
   private:
@@ -157,10 +189,11 @@ class channel_submit_handler_t
     {
     }
 
-    sa::submit_response_t handle (const sa::admission_message_t &message)
+    zlink::framework::task_t<sa::submit_response_t>
+    handle (const sa::admission_message_t &message)
     {
         auto operation = _routes.send_to_channel (sa::channel_name, message);
-        return response_from (message.operation_id, operation.submit ().result ());
+        return response_after_submit (message.operation_id, operation.submit ());
     }
 
   private:
@@ -180,12 +213,12 @@ class fanout_submit_handler_t
     {
     }
 
-    sa::submit_response_t handle (const sa::admission_message_t &message)
+    zlink::framework::task_t<sa::submit_response_t>
+    handle (const sa::admission_message_t &message)
     {
-        const auto result = _publisher.publish (sa::fanout_channel, "admission", message)
-                              .submit ()
-                              .result ();
-        return response_from (message.operation_id, result);
+        return response_after_submit (
+          message.operation_id,
+          _publisher.publish (sa::fanout_channel, "admission", message).submit ());
     }
 
   private:
@@ -230,10 +263,11 @@ class client_server_submit_handler_t
     {
     }
 
-    sa::submit_response_t handle (const sa::admission_message_t &message)
+    zlink::framework::task_t<sa::submit_response_t>
+    handle (const sa::admission_message_t &message)
     {
         auto operation = _channels.send (sa::client_server_channel, message);
-        return response_from (message.operation_id, operation.submit ().result ());
+        return response_after_submit (message.operation_id, operation.submit ());
     }
 
   private:
@@ -418,11 +452,6 @@ class stream_gateway_state_t
 
 inline constexpr const char *admission_actor_type = "submit-admission-actor";
 
-struct actor_node_identity_t
-{
-    std::string rid;
-};
-
 class admission_actor_t
 {
   public:
@@ -474,14 +503,13 @@ class ensure_actor_handler_t
 {
   public:
     using dependency_types =
-      zlink::framework::dependency_list_t<zlink::framework::session_actor_manager_t,
-                                          actor_node_identity_t>;
+      zlink::framework::dependency_list_t<zlink::framework::session_actor_manager_t>;
     using request_type = sa::actor_target_t;
     using reply_type = sa::actor_target_t;
 
-    ensure_actor_handler_t (zlink::framework::session_actor_manager_t &actors,
-                            actor_node_identity_t &identity) :
-        _actors (actors), _identity (identity)
+    explicit ensure_actor_handler_t (
+      zlink::framework::session_actor_manager_t &actors) :
+        _actors (actors)
     {
     }
 
@@ -496,16 +524,10 @@ class ensure_actor_handler_t
         if (!bound) {
             throw *bound.error ();
         }
-        auto joined = bound.value ()
-                        .context ()
-                        .join_entry_spot (
-                          zlink::framework::node_rid_t::from_string (_identity.rid),
-                          zlink::framework::message_t {})
-                        .async ()
-                        .result ();
-        if (!joined) {
-            throw *joined.error ();
-        }
+        bound.value ()
+          .context ()
+          .join_entry_spot (zlink::framework::message_t {})
+          .defer ();
         const auto &ref = bound.value ().ref ();
         return {.operation_id = request.operation_id,
                 .actor_id = std::string (ref.actor_id ()),
@@ -515,7 +537,6 @@ class ensure_actor_handler_t
 
   private:
     zlink::framework::session_actor_manager_t &_actors;
-    actor_node_identity_t &_identity;
 };
 
 class bound_session_submit_handler_t
@@ -530,7 +551,8 @@ class bound_session_submit_handler_t
     {
     }
 
-    sa::submit_response_t handle (const sa::actor_relay_request_t &request)
+    zlink::framework::task_t<sa::submit_response_t>
+    handle (const sa::actor_relay_request_t &request)
     {
         const auto actor = _actors.find (request.actor_id);
         if (!actor) {
@@ -539,7 +561,8 @@ class bound_session_submit_handler_t
               "bound session actor was not found");
         }
         auto operation = actor->bound_session ().send (request.message);
-        return response_from (request.message.operation_id, operation.submit ().result ());
+        return response_after_submit (
+          request.message.operation_id, operation.submit ());
     }
 
   private:
@@ -681,7 +704,8 @@ class stream_send_handler_t
 
     explicit stream_send_handler_t (stream_gateway_state_t &state) : _state (state) {}
 
-    sa::submit_response_t handle (const sa::admission_message_t &message)
+    zlink::framework::task_t<sa::submit_response_t>
+    handle (const sa::admission_message_t &message)
     {
         auto stream = _state.stream ();
         if (!stream) {
@@ -691,7 +715,7 @@ class stream_send_handler_t
         }
         auto operation = stream->write_packet (zlink::message_t::from_json (message));
         operation.packet_name ("admission");
-        return response_from (message.operation_id, operation.submit ().result ());
+        return response_after_submit (message.operation_id, operation.submit ());
     }
 
   private:
@@ -973,14 +997,11 @@ void configure_client_server_target_role (
                                          sa::handler_gate_t,
                                          sa::evidence_store_t> ();
     framework.add_client_server_channel (sa::client_server_channel)
-      .enable_server (options.client_server_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (options.rid))
-      .server_send_high_water_mark (zlink::message_count_t::value (1))
-      .server_receive_high_water_mark (zlink::message_count_t::value (1))
-      .use_handler_group (sa::client_server_handler_group);
-    framework.handlers ()
-      .group (sa::client_server_handler_group)
-      .add_send<client_server_admission_handler_t> ();
+      .server ()
+      .set_bind_host ("127.0.0.1")
+      .listen (endpoint_port (options.client_server_endpoint))
+      .add_send_handler<client_server_admission_handler_t,
+                        sa::admission_message_t> ();
     framework.http ()
       .listen (options.http_endpoint)
       .map_health ("/health")
@@ -994,11 +1015,10 @@ void configure_client_server_caller_role (
   const role_options_t &options)
 {
     auto channel = framework.add_client_server_channel (sa::client_server_channel);
-    channel.enable_client (options.client_server_endpoint)
-      .client_send_high_water_mark (zlink::message_count_t::value (1))
-      .client_receive_high_water_mark (zlink::message_count_t::value (1));
+    auto client = channel.client ();
+    client.connect (options.client_server_endpoint);
     if (!options.client_server_peer_endpoint.empty ()) {
-        channel.client_connections ().connect (options.client_server_peer_endpoint);
+        client.connect (options.client_server_peer_endpoint);
     }
     framework.http ()
       .listen (options.http_endpoint)
@@ -1013,8 +1033,6 @@ void configure_stream_gateway_role (zlink::framework::zlink_framework_options_t 
     auto evidence = std::make_unique<sa::evidence_store_t> ();
     auto *evidence_ptr = evidence.get ();
     framework.services ().add_singleton<sa::evidence_store_t> (std::move (evidence));
-    framework.services ().add_singleton<actor_node_identity_t> (
-      std::make_unique<actor_node_identity_t> (actor_node_identity_t{options.rid}));
     auto mesh = framework.add_route_mesh (sa::mesh_name + std::string (".actors"));
     mesh.listen (options.mesh_endpoint)
       .set_routing_id (zlink::routing_id_t::from (options.rid))
@@ -1045,8 +1063,6 @@ void configure_actor_target_role (zlink::framework::zlink_framework_options_t &f
     auto evidence = std::make_unique<sa::evidence_store_t> ();
     auto *evidence_ptr = evidence.get ();
     framework.services ().add_singleton<sa::evidence_store_t> (std::move (evidence));
-    framework.services ().add_singleton<actor_node_identity_t> (
-      std::make_unique<actor_node_identity_t> (actor_node_identity_t{options.rid}));
     auto mesh = framework.add_route_mesh (sa::mesh_name + std::string (".actors"));
     mesh.listen (options.mesh_endpoint)
       .set_routing_id (zlink::routing_id_t::from (options.rid))

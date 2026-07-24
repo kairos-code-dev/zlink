@@ -349,10 +349,16 @@ terminator가 정하는가.
 
 우선순위: `P0`
 
-- 절차: handler가 Join을 `Defer()`한 뒤 예외 또는 cancellation로 끝나게 한다.
-- 검증: target admission, Location Store mutation, source seal과 completion callback이 모두 0건이다.
-  같은 Actor의 후속 작업은 기존 membership에서 정상 처리된다.
-- 세부 동작: handler terminal과 deferred barrier cleanup.
+- 절차: User Spot handler가 서로 다른 member Actor A·B의 Join을 차례로 `Defer()`한다. 같은 설정에서
+  정상 terminal, exception terminal, cancellation terminal의 세 반복을 각각 실행한다.
+- 검증: 정상 반복에서는 handler terminal 전 두 Join 모두 target admission, Location Store mutation과
+  source seal이 0건이고 terminal 뒤 두 barrier가 함께 활성화된다. Exception 반복과 cancellation 반복은
+  각각 두 Actor 모두 target admission, Location Store mutation, source seal과 completion callback이
+  0건임을 검증한다. 어느 반복에서도 한 Actor의 barrier만 활성화하거나 남기는 partial activation이 없다.
+  Exception과 cancellation 반복에서만 두 Actor의 후속 작업이 기존 membership에서 정상 처리됨을 확인한다.
+  정상 terminal로 활성화된 뒤 발생한 Actor별 admission 결과는 서로 독립이며 한 Join의 거절이 다른 Join을
+  rollback하지 않는다.
+- 세부 동작: 여러 Actor intent의 process-local all-or-none handler terminal과 deferred barrier cleanup.
 
 #### TD-E3 반대 방향 join 두 개가 동시에 진행된다
 

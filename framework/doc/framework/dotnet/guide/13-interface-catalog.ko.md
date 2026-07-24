@@ -430,9 +430,9 @@ public sealed class RoomSpot(IZLinkSpotContext context) : IZLinkSpot<PlayerActor
 | `IZLinkSpot` | user spot 인스턴스. `Context` + lifecycle(`Configure`/`OnCreateAsync`/`OnInitializeAsync`/`OnClosingAsync`) |
 | `IZLinkSpot<TActor>` | 지정한 Actor type을 받는 user spot. `OnActorJoinAsync`/`OnJoinedActorAsync`/`OnLeaveActorAsync`/`OnDisconnectActorAsync` lifecycle을 추가한다 |
 | `IZLinkEntrySpot` | Entry Spot 인스턴스. `IZLinkEntrySpotContext` + lifecycle |
-| `IZLinkEntrySpot<TActor>` | actor를 받는 Entry Spot. `OnCreateActorAsync`/`OnActorJoinAsync`/`OnJoinedActorAsync`/`OnLeaveActorAsync`/`OnDisconnectActorAsync` lifecycle을 추가한다 |
-| `IZLinkSpotContext` | user spot context. handler registry + outbound + `MeshName`/`SpotRid`/`NodeRid` + `LeaveActorAsync` + `CloseAsync` + `AddTimer` + `RunWorker` |
-| `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `MeshName`/`SpotRid`/`NodeRid` + `DestroyActorAsync` + `AddTimer` + `RunWorker` |
+| `IZLinkEntrySpot<TActor>` | Actor를 받는 Entry Spot. `OnCreateActorAsync`/`OnJoinedActorAsync`/`OnLeaveActorAsync`/`OnDisconnectActorAsync` lifecycle을 추가한다 |
+| `IZLinkSpotContext` | User Spot context. handler registry + outbound + `MeshName`/`SpotId`/`NodeRid` + `LeaveActorAsync` + `CloseAsync` + `AddTimer` + `RunWorker` |
+| `IZLinkEntrySpotContext` | Entry Spot context. handler registry + outbound + `MeshName`/`SpotId`/`NodeRid` + `DestroyActorAsync` + `AddTimer` + `RunWorker` |
 | `IZLinkSpotHandlerRegistry` | spot packet과 subscription handler를 등록한다(`AddPacket`, `AddSubscribe`) |
 | `IZLinkSpotOutbound` | spot 안 outbound. `SendToSpot(SpotHandle, msg)`/`RequestToSpot(SpotHandle, req)`(§3.2) + `Publish(channelName, topic, msg)`/`SendToChannel`/`RequestToChannel` |
 | `IZLinkTimer` | 등록된 timer 핸들. `CancelAsync()` / `DisposeAsync()` (§8도 참조) |
@@ -522,9 +522,9 @@ ActorRef resolved = await manager.ResolveAsync(
 | 인터페이스 | 역할 |
 |------------|------|
 | `IZLinkActor` | ID로 식별되는 상태 보유 actor. `ActorId`, `Context` |
-| `IZLinkActorContext` | actor의 상태와 동작 표면. `SpotRid?`, `BoundSession`, `JoinSpot`, `JoinEntrySpot`을 제공한다. |
-| `IZLinkActorJoinSpotCall` | `JoinSpot(...)` 종결자(`Timeout` → `Async`). 결과는 승인 또는 거절 variant와 reply `ZLinkMessage`를 제공한다. |
-| `IZLinkActorJoinEntrySpotCall` | `JoinEntrySpot(..., request)` 종결자(`Timeout` → `Async`). 결과는 승인 또는 거절 variant와 reply `ZLinkMessage`를 제공한다. |
+| `IZLinkActorContext` | Actor의 상태와 동작 표면. `SpotId?`, `BoundSession`, `JoinSpot`, `JoinEntrySpot`을 제공한다. |
+| `IZLinkActorJoinSpotCall` | User Spot join intent를 현재 handler에 등록하는 종결자(`Timeout` → `Defer`). |
+| `IZLinkActorJoinEntrySpotCall` | Entry Spot join intent를 현재 handler에 등록하는 종결자(`Timeout` → `Defer`). |
 | `IZLinkActorFactory` | `actorType` 별 actor 생성(`CreateAsync(actorId, context, ct)`) |
 | `IZLinkActorRelocationAdapter<TActor>` | `Snapshot` relocation에서 actor state를 opaque bytes로 capture하고 factory가 만든 target actor에 restore한다 |
 | `IZLinkActorManager` | MeshName을 명시하는 actor 생성·조회·삭제(`CreateAsync`, `ResolveAsync`, `DestroyAsync`) |
@@ -743,7 +743,7 @@ var loc = options.ConfigureLocations();
 loc.OwnerLeaseTtl = TimeSpan.FromSeconds(15);
 
 ActorRef? actor = await actorManager.FindAsync("player-1", ct); // current Ready Actor ref만 조회한다.
-SpotRef? spot = await spotManager.FindAsync(spotRid, ct);       // current Ready User Spot ref만 조회한다.
+SpotRef? spot = await spotManager.FindAsync(spotId, ct);        // current Ready User Spot ref만 조회한다.
 ```
 
 | 인터페이스 | 역할 |

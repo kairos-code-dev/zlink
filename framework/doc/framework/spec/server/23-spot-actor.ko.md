@@ -61,6 +61,14 @@ intent에 기록한다. Ready 또는 fenced failure cleanup까지 유지하며 C
 initialize는 `(logical key, ObjectGeneration, attempt)` 기준 at-least-once로 실행될 수 있으므로 retry-safe해야
 한다.
 
+Framework는 Spot factory를 호출하기 전에 `MeshName`, `SpotId`, `ObjectGeneration`, `NodeRid`와 owner fence를
+가진 exact Context를 만든다. User·Entry·Instance Spot은 factory에 전달된 Context를 read-only member로
+그대로 반환해야 한다. Factory가 다른 Context를 노출한 instance를 반환하면 initialize와 Ready publication을
+시작하지 않고 exact reservation을 abort한다. Same-node operation은 Spot instance와 Context를 유지한다.
+Cross-node relocation은 SpotId와 ObjectGeneration을 유지하되 target owner generation에 결합한 새 Context를
+target factory에 전달하며, commit 뒤 source Context의 새 operation은 typed stale·moving failure로 끝나고
+target으로 자동 전달되지 않는다.
+
 Actor creation에서는 factory가 만든 staging Actor를 Entry Spot creation callback에 전달한다. Callback은
 승인 여부와 optional reply를 반환한다. 승인은 initial Entry membership·Ready authority·active capacity와
 `Created` terminal record를 함께 공개하고, 거절은 Ready와 message admission을 열지 않은 채 Creating

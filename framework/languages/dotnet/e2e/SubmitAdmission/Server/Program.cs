@@ -97,14 +97,14 @@ if (options.Role == "caller")
         const string family = "node-direct";
         evidence.Invocation(message.OperationId, family, targetRid);
         evidence.BindCurrentTrace(message.OperationId);
-        var result = await routes.SendToNode(
+        await routes.SendToNode(
                 SubmitAdmissionNames.Mesh,
                 RoutingId.From(targetRid),
                 message)
             .Metadata("scenario", message.OperationId)
-            .SubmitAsync(cancellationToken);
-        evidence.Terminal(message.OperationId, family, targetRid, result.Status.ToString());
-        return Results.Ok(new SubmitResponse(message.OperationId, family, result.Status.ToString(), 1, 1));
+            .Async(cancellationToken);
+        evidence.Terminal(message.OperationId, family, targetRid, "Submitted");
+        return Results.Ok(new SubmitResponse(message.OperationId, family, "Submitted", 1, 1));
     });
 
     app.MapPost("/submit/fill/node/{targetRid}", async (
@@ -132,7 +132,7 @@ if (options.Role == "caller")
                     cancellations)
                 .ConfigureAwait(false);
             if (candidate.Pending
-                || candidate.TerminalStatus != ZLinkSubmitStatus.Submitted.ToString())
+                || candidate.TerminalStatus != "Submitted")
                 return Results.Ok(new FillResponse(
                     candidate.OperationId,
                     candidate.Pending,
@@ -156,13 +156,12 @@ if (options.Role == "caller")
     {
         const string family = "channel";
         evidence.Invocation(message.OperationId, family, SubmitAdmissionNames.Channel);
-        var result = await routes.SendToChannel(
-                SubmitAdmissionNames.Mesh,
+        await routes.SendToChannel(
                 SubmitAdmissionNames.Channel,
                 message)
-            .SubmitAsync(cancellationToken);
-        evidence.Terminal(message.OperationId, family, SubmitAdmissionNames.Channel, result.Status.ToString());
-        return Results.Ok(new SubmitResponse(message.OperationId, family, result.Status.ToString(), 1, 1));
+            .Async(cancellationToken);
+        evidence.Terminal(message.OperationId, family, SubmitAdmissionNames.Channel, "Submitted");
+        return Results.Ok(new SubmitResponse(message.OperationId, family, "Submitted", 1, 1));
     });
 
     app.MapPost("/submit/pre-cancelled/{targetRid}", async (
@@ -177,15 +176,15 @@ if (options.Role == "caller")
         cancellation.Cancel();
         try
         {
-            var result = await routes.SendToNode(
+            await routes.SendToNode(
                     SubmitAdmissionNames.Mesh,
                     RoutingId.From(targetRid),
                     message)
                 .Metadata("scenario", message.OperationId)
-                .SubmitAsync(cancellation.Token);
-            evidence.Terminal(message.OperationId, family, targetRid, result.Status.ToString());
+                .Async(cancellation.Token);
+            evidence.Terminal(message.OperationId, family, targetRid, "Submitted");
             return Results.Ok(new CancellationResponse(
-                message.OperationId, result.Status.ToString(), string.Empty, 1, 0, 1));
+                message.OperationId, "Submitted", string.Empty, 1, 0, 1));
         }
         catch (OperationCanceledException exception)
         {
@@ -207,14 +206,14 @@ if (options.Role == "caller")
         cancellation.Cancel();
         try
         {
-            var result = await routes.SendToNode<AdmissionMessage>(
+            await routes.SendToNode<AdmissionMessage>(
                     SubmitAdmissionNames.Mesh,
                     RoutingId.From(targetRid),
                     null!)
-                .SubmitAsync(cancellation.Token);
-            evidence.Terminal(operationId, family, targetRid, result.Status.ToString());
+                .Async(cancellation.Token);
+            evidence.Terminal(operationId, family, targetRid, "Submitted");
             return Results.Ok(new CancellationResponse(
-                operationId, result.Status.ToString(), string.Empty, 1, 1, 1));
+                operationId, "Submitted", string.Empty, 1, 1, 1));
         }
         catch (Exception exception)
         {
@@ -258,13 +257,13 @@ if (options.Role == "publisher")
     {
         const string family = "fanout";
         evidence.Invocation(message.OperationId, family, "subscriber-zero");
-        var result = await fanout.Publish(
+        await fanout.Publish(
                 SubmitAdmissionNames.Fanout,
                 "admission",
                 message)
-            .SubmitAsync(cancellationToken);
-        evidence.Terminal(message.OperationId, family, "subscriber-zero", result.Status.ToString());
-        return Results.Ok(new SubmitResponse(message.OperationId, family, result.Status.ToString(), 1, 1));
+            .Async(cancellationToken);
+        evidence.Terminal(message.OperationId, family, "subscriber-zero", "Submitted");
+        return Results.Ok(new SubmitResponse(message.OperationId, family, "Submitted", 1, 1));
     });
 }
 
@@ -276,7 +275,7 @@ static string Require(string? value, string name) =>
         : value;
 
 static async Task RecordTerminalAsync(
-    Task<ZLinkSubmitResult> terminal,
+    Task terminal,
     string operationId,
     string family,
     string targetRid,
@@ -285,8 +284,8 @@ static async Task RecordTerminalAsync(
 {
     try
     {
-        var result = await terminal.ConfigureAwait(false);
-        evidence.Terminal(operationId, family, targetRid, result.Status.ToString());
+        await terminal.ConfigureAwait(false);
+        evidence.Terminal(operationId, family, targetRid, "Submitted");
     }
     catch (Exception exception)
     {
@@ -327,7 +326,7 @@ static async Task<FillCandidate> StartFillCandidateAsync(
             RoutingId.From(targetRid),
             message)
         .Metadata("scenario", message.OperationId)
-        .SubmitAsync(cancellation?.Token ?? CancellationToken.None)
+        .Async(cancellation?.Token ?? CancellationToken.None)
         .AsTask();
     if (!terminal.IsCompleted)
     {
@@ -351,10 +350,10 @@ static async Task<FillCandidate> StartFillCandidateAsync(
         }
     }
 
-    var result = await terminal.ConfigureAwait(false);
+    await terminal.ConfigureAwait(false);
     cancellation?.Dispose();
-    evidence.Terminal(message.OperationId, family, targetRid, result.Status.ToString());
-    return new FillCandidate(message.OperationId, false, result.Status.ToString());
+    evidence.Terminal(message.OperationId, family, targetRid, "Submitted");
+    return new FillCandidate(message.OperationId, false, "Submitted");
 }
 
 internal sealed record FillCandidate(

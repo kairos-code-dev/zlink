@@ -68,7 +68,11 @@ internal sealed class ZLinkActorBoundSessionCoordinator
         return written ? RemotePushDelivery.Delivered : RemotePushDelivery.Backpressured;
     }
 
-    public void BindSessionActor(string actorId, ZLinkSessionContext context, string bindingToken, ZLinkSessionActor actorRef) =>
+    public ZLinkSessionBindingEntry[] BindSessionActor(
+        string actorId,
+        ZLinkSessionContext context,
+        string bindingToken,
+        ZLinkSessionActor actorRef) =>
         _sessionBindings.Bind(actorId, context, bindingToken, actorRef);
 
     public void UnbindSessionActor(string actorId, ZLinkSessionContext context, string bindingToken)

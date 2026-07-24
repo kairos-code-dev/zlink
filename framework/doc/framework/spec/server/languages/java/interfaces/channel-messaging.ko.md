@@ -247,7 +247,6 @@ public interface systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptio
   public abstract void setPlacementWeight(int);
 }
 public interface systems.zlink.framework.channels.ZLinkRouteMessageContext extends systems.zlink.framework.ZLinkMessageContext {
-  public abstract java.lang.String meshName();
   public abstract systems.zlink.contracts.core.RoutingId sourceNodeRid();
 }
 public interface systems.zlink.framework.channels.ZLinkRouteRequestHandler<TRequest, TReply> {

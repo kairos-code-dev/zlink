@@ -290,7 +290,7 @@ public:
     const actor_ref_t &ref() const noexcept;
     task_t<void> relay(const message_t &payload);
     task_t<void> relay(
-      const stream_dispatch_context_t &dispatch,
+      const session_message_context_t &context,
       const message_t &payload);
     task_t<void> notify_disconnected();
 };

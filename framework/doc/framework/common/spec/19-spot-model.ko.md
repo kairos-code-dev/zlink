@@ -289,7 +289,12 @@ IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
     where TSpot : class, IZLinkInstanceSpot;
 ```
 
-세 context는 공통 identity, outbound call, timer와 worker 기능을 공유한다.
+세 Context는 공통 identity, outbound call, timer와 worker 기능을 공유한다. Framework는 factory를 호출하기
+전에 `MeshName`, `SpotId`, `ObjectGeneration`, `NodeRid`와 owner fence가 결합된 exact Context를 만든다.
+Factory가 반환한 User·Entry·Instance Spot은 전달받은 Context를 read-only member로 그대로 노출해야 하며,
+다른 Context를 반환하면 staging Spot을 Ready로 공개하지 않는다. Same-node operation은 Spot instance와
+Context를 유지한다. Cross-node relocation은 SpotId와 ObjectGeneration을 유지하고 target owner generation에
+결합한 새 Context를 target factory에 전달하며 commit 뒤 source Context의 새 operation을 fence한다.
 User Spot에는 Actor leave와 close가 있고 Instance Spot에는 close만 있다.
 
 ```csharp
@@ -297,6 +302,7 @@ public interface IZLinkSpotCommonContext
 {
     string MeshName { get; }
     string SpotId { get; }
+    ulong ObjectGeneration { get; }
     RoutingId NodeRid { get; }
     IZLinkSpotOutbound Outbound { get; }
 

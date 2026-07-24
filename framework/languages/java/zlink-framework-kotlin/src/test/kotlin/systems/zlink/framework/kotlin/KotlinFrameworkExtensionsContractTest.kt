@@ -38,6 +38,7 @@ import systems.zlink.framework.spots.ZLinkSpotCreateResult
 import systems.zlink.framework.spots.ZLinkSpotCreateState
 import systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall
 import systems.zlink.framework.spots.ZLinkSpotManager
+import systems.zlink.framework.streams.ZLinkSessionActor
 
 class KotlinFrameworkExtensionsContractTest {
     @Test
@@ -157,6 +158,24 @@ class KotlinFrameworkExtensionsContractTest {
 
         assertEquals(ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE, error.kind())
         assertTrue(error.retriable())
+    }
+
+    @Test
+    fun `session actor logical disconnect awaits only the selected exact binding`() = runBlocking {
+        val oldBinding = RecordingSessionActor(
+            ActorRef(NODE_RID, "actor-a", 7),
+        )
+        val newIncarnation = RecordingSessionActor(
+            ActorRef(NODE_RID, "actor-a", 8),
+        )
+
+        awaitFrameworkStage(oldBinding.notifyDisconnected())
+        awaitFrameworkStage(oldBinding.notifyDisconnected())
+
+        assertEquals(1, oldBinding.disconnects)
+        assertEquals(0, newIncarnation.disconnects)
+        assertEquals(7, oldBinding.ref().generation())
+        assertEquals(8, newIncarnation.ref().generation())
     }
 
     private data class CreateActor(val value: String)
@@ -283,6 +302,28 @@ class KotlinFrameworkExtensionsContractTest {
 
         override fun context(): ZLinkActorContext =
             throw UnsupportedOperationException("test actor has no runtime context")
+    }
+
+    private class RecordingSessionActor(
+        private val actorRef: ActorRef,
+    ) : ZLinkSessionActor {
+        private var disconnect: CompletableFuture<Void>? = null
+        var disconnects = 0
+
+        override fun actorId(): String = actorRef.actorId()
+
+        override fun ref(): ActorRef = actorRef
+
+        override fun relay(payload: ZLinkMessage): CompletionStage<Void> =
+            CompletableFuture.completedFuture(null)
+
+        override fun notifyDisconnected(): CompletionStage<Void> {
+            disconnect?.let { return it }
+            disconnects++
+            return CompletableFuture.completedFuture<Void>(null).also {
+                disconnect = it
+            }
+        }
     }
 
     private class RecordingStableSpotManager : ZLinkSpotManager {

@@ -66,11 +66,15 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   검증한다.
 - `SM-D4`: 한 stream session에 두 actor를 bind하고 `actor-id` metadata로 각각 다른 actor에
   relay/push가 전달되며, metadata 없는 request가 실패하는지 검증한다.
-- `SM-D4A` (미구현): 같은 Actor의 Session A→B rebind 뒤 stale relay·late disconnect 격리 runner가 없다.
-- `SM-D4B` (미구현): bind 뒤 no-Store stored route와 single-forward stale mapping runner가 없다.
-- `SM-D5` (재검증 필요): application의 selected Actor notify loop를 제거했고 runner assertion을
-  Framework automatic all-bound notification으로 바꿨다. 최신 runtime focused 실행 증거가 필요하다.
-- `SM-D5A` (미구현): physical connection을 유지한 선택 Actor logical disconnect runner가 없다.
+- `SM-D4A` (runtime contract 구현): `test_cpp_framework_m6b_runtime`이 같은 Actor를
+  Session A에서 B로 bind한 뒤 stale binding admission과 late close가 current binding에
+  영향을 주지 않는지 검증한다.
+- `SM-D4B` (runtime contract 구현): 같은 runner가 bind 이후 inbound admission 동안 authority
+  resolver read count가 증가하지 않는지 검증한다.
+- `SM-D5` (runtime contract 구현): `test_cpp_framework_actor_gateway`가 exact binding snapshot의
+  all-settled callback과 callback failure 이후 cleanup, Actor record 유지를 검증한다.
+- `SM-D5A` (runtime contract 구현): 같은 runner가 physical connection을 유지하면서 선택
+  Actor만 logical disconnect하고 다른 Actor binding을 유지하는지 검증한다.
 - `SM-D6`: actor push가 bound stream session으로만 전달되고, 연결만 하고 bind하지 않은 consumer는
   같은 push를 받지 않는지 검증한다.
 - `SM-D7`: stream auth 전 packet dispatch가 실패하고, 잘못된 auth request가 public error로
@@ -146,4 +150,6 @@ spot route 요청은 server HTTP endpoint 뒤에서 public framework API로 수�
   current binding snapshot 전체를 처리하고 개별 callback failure 뒤에도 나머지 callback과
   cleanup을 계속한다.
 - `SA-MOVE-06`: internal Actor route update는 같은 `ObjectGeneration`에서만 허용한다.
+- `SA-LOGICAL-01`: `test_cpp_framework_actor_gateway`가 live Session의 선택 Actor logical
+  disconnect와 다른 binding 유지를 검증한다.
   공통 E2E scenario의 실제 process 간 검증은 새 scenario porting 뒤 별도 PASS log로 갱신한다.

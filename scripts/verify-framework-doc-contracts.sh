@@ -2243,8 +2243,22 @@ if (!nodeInstanceSpot || /ZLinkActor|ActorLifecycle/u.test(nodeInstanceSpot)) {
 const kotlinExactSource = markdownDocumentsUnder(
   'framework/doc/framework/spec/server/languages/kotlin/interfaces')
   .map(relative => fs.readFileSync(path.join(root, relative), 'utf8')).join('\n');
-if (/ZLinkSuspendingInstanceSpot|ZLinkInstanceSpotActor/u.test(kotlinExactSource)) {
+if (/ZLinkSuspendingInstanceSpot\s*</u.test(kotlinExactSource)
+    || /ZLinkInstanceSpotActor/u.test(kotlinExactSource)) {
   fail('Kotlin exact contract adds an actor-bearing Instance Spot wrapper');
+}
+
+const removedMessageContextDeclaration = new RegExp(
+  String.raw`(?:class|interface|struct|record|data\s+class)\s+(?:ZLinkSendContext|ZLinkRequestContext|ZLinkPublishContext|ZLinkSpotActorMessageContext|spot_packet_context_t|stream_dispatch_context_t)\b`,
+  'u');
+for (const language of ['dotnet', 'java', 'kotlin', 'node', 'cpp']) {
+  const directory = path.posix.join(
+    'framework/doc/framework/spec/server/languages', language, 'interfaces');
+  const source = markdownDocumentsUnder(directory)
+    .map(relative => fs.readFileSync(path.join(root, relative), 'utf8')).join('\n');
+  if (removedMessageContextDeclaration.test(source)) {
+    fail(`${language} exact contract declares a removed message marker context`);
+  }
 }
 
 if (failures.length) {

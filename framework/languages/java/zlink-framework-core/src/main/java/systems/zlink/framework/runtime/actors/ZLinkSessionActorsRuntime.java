@@ -278,6 +278,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     () -> isCurrentBinding(binding.get()),
                     metadataPolicy);
                 binding.set(actor);
+                actor.setUnbindListener(() -> bound.remove(actor));
                 replaceBinding(actor);
                 return actor;
             })
@@ -361,6 +362,7 @@ public final class ZLinkSessionActorsRuntime implements ZLinkSessionActors {
                     metadataPolicy);
                 binding.set(boundActor);
                 boundSession.setUnbindListener(() -> bound.remove(boundActor));
+                boundActor.setUnbindListener(() -> bound.remove(boundActor));
                 boundSession.setRebindListener(boundActor::rebindNativeActor);
                 replaceBinding(boundActor);
                 return boundActor;

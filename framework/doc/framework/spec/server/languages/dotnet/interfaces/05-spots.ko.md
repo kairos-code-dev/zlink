@@ -408,6 +408,7 @@ public interface IZLinkSpotSubscriptionHandler<TSpot, in TEvent>
     ValueTask HandleAsync(
         TSpot spot,
         TEvent message,
+        ZLinkPublishMessageContext context,
         CancellationToken cancellationToken);
 }
 

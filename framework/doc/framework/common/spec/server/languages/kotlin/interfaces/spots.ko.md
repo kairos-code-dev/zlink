@@ -165,7 +165,8 @@ interface ZLinkSuspendingSpotTimerHandler<TSpot : Any> {
 // Relocation은 logical timer와 pending tick을 Framework payload로 복원한다.
 
 abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
-    abstract override fun context(): ZLinkSpotContext
+    abstract val context: ZLinkSpotContext
+    final override fun context(): ZLinkSpotContext = context
     protected open suspend fun onCreateSuspending(
         request: ZLinkMessage,
     ): ZLinkSpotCreateResponse
@@ -184,7 +185,8 @@ abstract class ZLinkSuspendingSpot<TActor : ZLinkActor> : ZLinkSpot<TActor> {
 
 abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
     ZLinkEntrySpot<TActor> {
-    abstract override fun context(): ZLinkEntrySpotContext
+    abstract val context: ZLinkEntrySpotContext
+    final override fun context(): ZLinkEntrySpotContext = context
     protected open suspend fun onInitializeSuspending()
     protected open suspend fun onClosingSuspending(
         context: ZLinkSpotClosingContext,
@@ -197,6 +199,15 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
     protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
     protected open suspend fun onDisconnectActorSuspending(actor: TActor)
     protected open suspend fun onActorRelocatedSuspending(actor: TActor)
+}
+
+abstract class ZLinkSuspendingInstanceSpot : ZLinkInstanceSpot {
+    abstract val context: ZLinkInstanceSpotContext
+    final override fun context(): ZLinkInstanceSpotContext = context
+    protected open suspend fun onInitializeSuspending()
+    protected open suspend fun onClosingSuspending(
+        context: ZLinkSpotClosingContext,
+    )
 }
 
 inline fun <reified THandler : Any> ZLinkSpotHandlerRegistry.addHandler()
@@ -258,13 +269,28 @@ public final class systems.zlink.framework.kotlin.ZLinkSpotHandlerRegistryExtens
   public static final <THandler> void addHandler(systems.zlink.framework.spots.ZLinkSpotHandlerRegistry);
   public static final void addTypedHandler(systems.zlink.framework.spots.ZLinkSpotHandlerRegistry, java.lang.Class<?>);
 }
+public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotPacketHandler<TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>, TMessage> {
+  public abstract java.lang.Object handle(TSpot, TMessage, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TSpot, TMessage, systems.zlink.framework.messaging.ZLinkMessageContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotRequestHandler<TSpot, TRequest, TReply> {
+  public abstract java.lang.Object handle(TSpot, TRequest, kotlin.coroutines.Continuation<? super TReply>);
+  public abstract java.lang.Object handle(TSpot, TRequest, systems.zlink.framework.messaging.ZLinkMessageContext, kotlin.coroutines.Continuation<? super TReply>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotSubscriptionHandler<TSpot, TEvent> {
+  public abstract java.lang.Object handle(TSpot, TEvent, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+  public abstract java.lang.Object handle(TSpot, TEvent, systems.zlink.framework.messaging.ZLinkPublishMessageContext, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+}
+public interface systems.zlink.framework.kotlin.ZLinkSuspendingSpotTimerHandler<TSpot> {
+  public abstract java.lang.Object handle(TSpot, systems.zlink.framework.spots.ZLinkTimerTick, kotlin.coroutines.Continuation<? super kotlin.Unit>);
+}
 public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot<TActor extends systems.zlink.framework.actors.ZLinkActor> implements systems.zlink.framework.spots.ZLinkEntrySpot<TActor> {
   public systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot();
-  public abstract systems.zlink.framework.spots.ZLinkEntrySpotContext context();
+  public abstract systems.zlink.framework.spots.ZLinkEntrySpotContext getContext();
+  public final systems.zlink.framework.spots.ZLinkEntrySpotContext context();
   public final java.util.concurrent.CompletionStage<java.lang.Void> onInitialize();
   public final java.util.concurrent.CompletionStage<java.lang.Void> onClosing(systems.zlink.framework.spots.ZLinkSpotClosingContext);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onCreateActor(TActor, systems.zlink.framework.messaging.ZLinkMessage);
-  public final java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onJoinedActor(TActor);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onLeaveActor(TActor);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onDisconnectActor(TActor);
@@ -272,7 +298,8 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingEntrySpot<TA
 }
 public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingSpot<TActor extends systems.zlink.framework.actors.ZLinkActor> implements systems.zlink.framework.spots.ZLinkSpot<TActor> {
   public systems.zlink.framework.kotlin.ZLinkSuspendingSpot();
-  public abstract systems.zlink.framework.spots.ZLinkSpotContext context();
+  public abstract systems.zlink.framework.spots.ZLinkSpotContext getContext();
+  public final systems.zlink.framework.spots.ZLinkSpotContext context();
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResponse> onCreate(systems.zlink.framework.messaging.ZLinkMessage);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onInitialize();
   public final java.util.concurrent.CompletionStage<java.lang.Void> onClosing(systems.zlink.framework.spots.ZLinkSpotClosingContext);
@@ -280,6 +307,13 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingSpot<TActor 
   public final java.util.concurrent.CompletionStage<java.lang.Void> onJoinedActor(TActor);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onLeaveActor(TActor);
   public final java.util.concurrent.CompletionStage<java.lang.Void> onDisconnectActor(TActor);
+}
+public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingInstanceSpot implements systems.zlink.framework.spots.ZLinkInstanceSpot {
+  public systems.zlink.framework.kotlin.ZLinkSuspendingInstanceSpot();
+  public abstract systems.zlink.framework.spots.ZLinkInstanceSpotContext getContext();
+  public final systems.zlink.framework.spots.ZLinkInstanceSpotContext context();
+  public final java.util.concurrent.CompletionStage<java.lang.Void> onInitialize();
+  public final java.util.concurrent.CompletionStage<java.lang.Void> onClosing(systems.zlink.framework.spots.ZLinkSpotClosingContext);
 }
 public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
   public static final systems.zlink.framework.kotlin.ZLinkKotlinSpotSendCall sendToSpot(systems.zlink.framework.kotlin.ZLinkKotlinRouteClient, java.lang.String, java.lang.Object);

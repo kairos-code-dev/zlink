@@ -94,17 +94,23 @@ draft/spec 검토 대상으로 분리한다. 공통 E2E 문서는 누락을 찾�
   분기되는지 확인한다. `actor-id` 없이 보내는 request는 다중 bind 상태에서 실패해야 한다.
   `logs/focused-actor-session-20260630-021110-2323861`에서 `SM-D4` marker, 두 actor의
   `ActorSessionBound`, `ActorEntryRequest` evidence를 확인했다.
-- `SM-D4A` (미구현): 같은 Actor의 Session A→B rebind 뒤 Session A stale relay·late disconnect가
-  새 binding과 다른 bound Actor에 영향을 주지 않는 Kotlin focused runner가 없다.
-- `SM-D4B` (미구현): bind 뒤 Location Store read 차단과 stored route stale mapping을 검증하는
-  Kotlin focused runner가 없다.
+- `SM-D4A` (runtime contract 구현): 공용 JVM runtime의
+  `ZLinkSessionActorBindingContractTest`가 Session replacement와 stale binding token을 검증한다.
+  `KotlinFrameworkExtensionsContractTest`는 exact generation의 logical disconnect stage를
+  coroutine 경계에서 기다린다.
+- `SM-D4B` (runtime contract 구현): 공용 JVM runtime test가 bind 이후 hidden bind 없이 저장한
+  route로 한 번만 relay하고 stale 결과를 typed failure로 전달하는지 검증한다.
 - `SM-D5`: physical stream disconnect 때 Framework가 고정한 모든 bound Actor에 disconnect를
   자동 통지하고 entry spot의 callback evidence가 남는지 확인한다. session handler는 Actor 목록을
   순회하지 않으며, public `ZLinkSessionActor.notifyDisconnected`는 별도 logical notification에만
   사용한다. `logs/focused-actor-session-20260630-021110-2323861`에서 `SM-D5` marker,
   `ActorDisconnectNotified`, `ActorEntryDisconnected` evidence를 확인했다.
-- `SM-D5A` (미구현): physical connection을 유지한 public logical disconnect가 선택 Actor callback
-  완료만 기다리고 다른 Actor에 영향을 주지 않는 Kotlin focused runner가 없다.
+- `SM-D5A` (runtime contract 구현): Kotlin projection test가 선택한 exact binding의
+  `notifyDisconnected` 완료만 기다리고 다른 generation binding에 영향을 주지 않는지 확인한다.
+
+`SM-D4A`·`SM-D4B`·`SM-D5`·`SM-D5A`의 process 간 transport orchestration은 Kotlin
+SpotService E2E runner에 아직 추가되지 않았다. 현재 증거는 공용 JVM runtime과 Kotlin
+projection의 focused contract test다.
 - `SM-D6`: `session-a`와 `session-b`에 각각 연결한 stream session 중 request를 보낸 actor의 bound
   session에만 public `ZLinkSessionActor.boundSession().send` push가 전달되고, 다른 gateway의 session에는
   `ActorPushNotify`가 전달되지 않는지 확인한다. `logs/focused-actor-session-20260630-031506-2451994`에서

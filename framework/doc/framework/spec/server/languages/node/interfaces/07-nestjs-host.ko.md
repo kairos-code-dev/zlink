@@ -179,8 +179,8 @@ export type ZLinkNestHandlerKind = 'request' | 'send' | 'publish';
 
 export interface ZLinkNestHandlerOptions {
     readonly methodName?: string;
-    readonly decodePayload?: (payload: Buffer, context: ZLinkRequestContext | ZLinkSendContext | ZLinkRouteRequestContext | ZLinkRouteSendContext | ZLinkPublishContext) => unknown;
-    readonly encodeResult?: (result: unknown, context: ZLinkRequestContext | ZLinkRouteRequestContext) => unknown;
+    readonly decodePayload?: (payload: Buffer, context: ZLinkMessageContext | ZLinkRouteMessageContext | ZLinkPublishMessageContext) => unknown;
+    readonly encodeResult?: (result: unknown, context: ZLinkMessageContext | ZLinkRouteMessageContext) => unknown;
 }
 
 export interface ZLinkNestModuleMetadata extends ModuleMetadata {

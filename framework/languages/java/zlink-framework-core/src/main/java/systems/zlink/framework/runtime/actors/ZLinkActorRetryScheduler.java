@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import systems.zlink.contracts.errors.ZlinkSubmitException;
+import systems.zlink.contracts.sockets.SubmitResult;
 
 final class ZLinkActorRetryScheduler {
     private static final Duration RELAY_RETRY_DELAY = Duration.ofMillis(10);
@@ -91,6 +92,20 @@ final class ZLinkActorRetryScheduler {
         SubmitAttempt submit,
         Supplier<? extends Throwable> timeoutError) {
         return submitUntilAccepted(timeout, submit, timeoutError, RetryDelay.RELAY, false);
+    }
+
+    static CompletionStage<Void> submitStoredRelayUntilAccepted(
+        Duration timeout,
+        SubmitAttempt submit,
+        Supplier<? extends Throwable> timeoutError) {
+        return submitUntilAccepted(
+            timeout,
+            submit,
+            timeoutError,
+            attempt -> schedule(attempt, RetryDelay.RELAY.delay),
+            false,
+            result -> result == SubmitResult.BACKPRESSURED
+                || result == SubmitResult.NOT_ADMITTED);
     }
 
     static CompletionStage<Void> submitRelayUntilAcceptedAfterRetry(
@@ -207,6 +222,22 @@ final class ZLinkActorRetryScheduler {
         Supplier<? extends Throwable> timeoutError,
         Consumer<Runnable> retry,
         boolean executeFirstAttempt) {
+        return submitUntilAccepted(
+            timeout,
+            submit,
+            timeoutError,
+            retry,
+            executeFirstAttempt,
+            ZLinkActorSubmitFaults::retryableSubmitResult);
+    }
+
+    private static CompletionStage<Void> submitUntilAccepted(
+        Duration timeout,
+        SubmitAttempt submit,
+        Supplier<? extends Throwable> timeoutError,
+        Consumer<Runnable> retry,
+        boolean executeFirstAttempt,
+        Predicate<SubmitResult> retryable) {
         CompletableFuture<Void> result = new CompletableFuture<>();
         long deadline = System.nanoTime() + timeout.toNanos();
         class Attempt implements Runnable {
@@ -221,7 +252,7 @@ final class ZLinkActorRetryScheduler {
                         return;
                     }
                 } catch (ZlinkSubmitException ex) {
-                    if (!ZLinkActorSubmitFaults.retryableSubmitResult(ex.getResult())) {
+                    if (!retryable.test(ex.getResult())) {
                         result.completeExceptionally(ex);
                         return;
                     }

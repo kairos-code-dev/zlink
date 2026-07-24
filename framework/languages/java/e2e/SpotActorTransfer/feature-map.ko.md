@@ -37,7 +37,7 @@
 | ST-D1 | 구현 | joined callback 대기 중에는 target location이 공개되지 않고 callback 완료 뒤 target owner로 바뀌는지 확인한다. |
 | ST-D2 | 구현 | stale source release가 새 generation의 target location을 제거하지 못하는지 확인한다. |
 | ST-E1 | 구현 | remote transfer 전후 bound session push가 source에서 target으로 이어지는지 확인한다. |
-| ST-E1A | 미구현 | 새 Actor incarnation에 이전 generation binding event가 영향을 주지 않고 explicit bind가 필요한지 검증하는 runner가 없다. |
+| ST-E1A | runtime contract 구현 | `ZLinkSessionActorBindingContractTest`가 same-generation route replacement와 stale binding 격리, 새 generation의 explicit bind를 검증한다. Process 간 relocation E2E는 아직 필요하다. |
 | ST-E2 | 구현 | 실패한 transfer 뒤 bound session push가 기존 source actor로 전달되는지 확인한다. |
 | ST-F1 | 구현 | moving 중 packet을 target backlog에 적재하고 arrival index 순서대로 handler에서 다시 처리하는지 확인한다. target `backlog_enqueued` evidence 뒤 replay되는 경로까지 검증한다. |
 | ST-F2 | 구현 | handoff backlog를 location publish 전에 target에 적재하고, target direct packet보다 먼저 처리하는지 확인한다. |

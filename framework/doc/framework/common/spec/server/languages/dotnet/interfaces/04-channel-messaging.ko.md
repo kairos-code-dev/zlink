@@ -27,7 +27,18 @@ public sealed class ZLinkRouteMessageContext : IZLinkMessageContext
     public ZLinkMessageMetadata Metadata { get; }
     public string? CorrelationId { get; }
     public RoutingId SourceNodeRid { get; }
-    public RoutingId TargetNodeRid { get; }
+}
+
+public sealed class ZLinkPublishMessageContext : IZLinkMessageContext
+{
+    public string? MeshName { get; }
+    public string? ChannelName { get; }
+    public string PacketName { get; }
+    public string? ContentType { get; }
+    public ZLinkMessageMetadata Metadata { get; }
+    public string? CorrelationId { get; }
+    public string Topic { get; }
+    public string? Source { get; }
 }
 
 public interface IZLinkSendHandler<in TMessage>
@@ -104,9 +115,9 @@ cancellation, correlation과 terminal completion을 우회하지 않는다.
 
 `IZLinkMessageContext`는 nullable MeshName과 ChannelName을 제공한다. RouteMesh·Spot·Actor handler의
 MeshName은 non-null이고 ClientServer·STREAM handler에서는 null이다. Channel handler의 ChannelName은
-non-null이며 Node direct 전용 context만
-Node direct 전용 context만 [MeshName](../../../../01-glossary.ko.md#meshname)과 source·target RID를 추가로 제공한다. Correlation ID는 request에서 non-null이고
-send에서 null이며 Framework가 reply route와 함께 보존한다.
+non-null이며 Node direct 전용 context만 [MeshName](../../../../01-glossary.ko.md#meshname)과 source RID를 추가로 제공한다.
+Logical Multicast subscription은 topic과 nullable source를 추가한 `ZLinkPublishMessageContext`를 사용한다.
+Correlation ID는 request에서 non-null이고 send에서 null이며 Framework가 reply route와 함께 보존한다.
 
 Classic fanout handler는 독립 fanout channel에서 받은 typed event만 처리한다.
 

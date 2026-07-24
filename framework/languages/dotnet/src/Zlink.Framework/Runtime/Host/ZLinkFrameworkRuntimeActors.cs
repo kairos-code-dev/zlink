@@ -1094,13 +1094,17 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     internal ZLinkLocationLifecycle? LocationLifecycle => _locationLifecycle;
 
-    internal void BindSessionActor(
+    internal ZLinkSessionBindingEntry[] BindSessionActor(
         string actorId,
         ZLinkSessionContext context,
         string bindingToken,
         ZLinkSessionActor actorRef)
     {
-        _actorBoundSessionCoordinator.BindSessionActor(actorId, context, bindingToken, actorRef);
+        return _actorBoundSessionCoordinator.BindSessionActor(
+            actorId,
+            context,
+            bindingToken,
+            actorRef);
     }
 
     internal void UnbindSessionActor(

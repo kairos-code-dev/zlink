@@ -47,10 +47,10 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
 | SM-D2 | 구현 | Session HTTP endpoint가 control RouteMesh로 `play-b` readiness를 확인하고, stream auth로 bind한 remote actor에 `ActorPushReq`를 relay한다. `play-b` actor handler가 public bound session push로 `ActorPushNotify`를 보내고 reply node가 `play-b`인지 검증한다. 선택 PASS: `logs/20260629-212246-1563843`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D3 | 구현 | entry actor stream bind 뒤 `ActorPushReq` reply와 bound session push를 검증한다. user spot bind는 `UserSpotAuthReq`로 spot/actor join marker를 남기고 `UserActorPingReq`/`UserActorPushReq` relay reply, user spot rid, push payload, `actor-pingMsg` evidence를 검증한다. 선택 PASS: `logs/20260629-212739-1577626`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D4 | 구현 | `MultiBindReq`가 한 stream session에 두 actor를 bind하고, subsequent request가 stream metadata `actor-id`로 대상 actor를 선택한다. 각 actor request/reply, actor push, id 없는 request 실패를 검증한다. 선택 PASS: `logs/20260629-213206-1588322`; `all` PASS: `logs/20260630-074201-3148526` |
-| SM-D4A | 미구현 | 같은 Actor를 Session A에서 Session B로 rebind한 뒤 Session A의 stale relay·late disconnect가 새 binding과 다른 bound Actor에 영향을 주지 않는 focused runner가 없다. |
-| SM-D4B | 미구현 | bind 뒤 Location Store read를 차단하고 valid stored route, single-forward stale mapping과 typed stale 결과를 함께 검증하는 runner가 없다. |
-| SM-D5 | 재검증 필요 | application `onDisconnected`의 selected Actor loop를 제거했다. Framework automatic all-bound notification과 all-settled cleanup은 최신 runtime focused runner로 다시 증명해야 한다. |
-| SM-D5A | 미구현 | physical connection을 유지한 public logical disconnect가 선택 Actor callback 완료만 기다리고 다른 Actor에 영향을 주지 않는 focused runner가 없다. |
+| SM-D4A | 구현 | `session A to B rebind fences stale relay and late disconnect without touching other actors`가 same-generation rebind, stale typed error, late disconnect 무효화와 다른 Actor binding 유지를 검증한다. |
+| SM-D4B | 구현 | `stored actor route relays once without actor ref lookup or hidden retry`가 bind 뒤 resolver call 0, valid stored route 1회와 stale route single attempt를 검증한다. |
+| SM-D5 | 구현 | `physical disconnect dedupes a racing logical notification and retains actor state inputs`와 stream-session automatic disconnect test가 fixed snapshot, exact callback 1회, all-settled failure cleanup과 Actor state 입력 유지를 검증한다. |
+| SM-D5A | 구현 | `logical actor disconnect waits for one callback and keeps the physical connection and other binding`이 선택 callback terminal 대기, 다른 Actor 무영향과 connection 유지를 검증한다. |
 | SM-D6 | 구현 | bound consumer와 별도 consumer를 각각 `session-a`, `session-b` stream session에 연결하고, `ActorPushReq`로 발생한 `ActorPushNotify`가 target actor에 bind된 consumer에게만 전달되는지 검증한다. 별도 consumer는 다른 actor에 bind되어 있으며 target actor push count가 0인지 확인한다. 선택 PASS: `logs/20260629-213945-1613927`; `all` PASS: `logs/20260702-064908-43303` |
 | SM-D7 | 구현 | stream connector가 `AuthReq`로 actor bind를 완료하고, 같은 stream의 `ActorPingReq`가 bound actor로 dispatch되어 reply payload가 유지되는지 검증한다. 선택 PASS: `logs/20260629-214310-1624231`; `all` PASS: `logs/20260630-074201-3148526` |
 | SM-D8 | 구현 | slow actor request가 pending인 상태에서 stream connector를 close하면 pending request가 실패하고 자동 재전송되지 않는지 확인한다. 이후 새 stream connector가 같은 actor id로 다시 auth/rebind하고 `ActorPingReq`가 정상 reply되는지 검증한다. 선택 PASS: `logs/20260629-214843-1639970`; `all` PASS: `logs/20260630-074201-3148526` |
@@ -160,4 +160,7 @@ SM-F4는 존재하지 않는 location의 request 실패를 선택 scenario로 �
   current binding snapshot 전체를 deadline 안에서 all-settled로 통지하고 callback 실패와
   관계없이 binding cleanup을 완료한다. Focused contract test는
   `physical stream disconnect automatically notifies every captured actor and always cleans up`이다.
+- CA-D78 focused runner 5개는
+  `node --test --test-name-pattern="session A to B|stored actor route|logical actor disconnect|physical disconnect dedupes|internal route refresh preserves" test/contract/stream-runtime.test.js`
+  실행에서 5/5 PASS했다. Node workspace build도 PASS했다.
 - 공통 E2E scenario의 실제 process 간 검증은 새 scenario porting 뒤 별도 PASS log로 갱신한다.

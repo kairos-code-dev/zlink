@@ -13,7 +13,7 @@ internal sealed class ZLinkSessionActorBindingTable
 {
     private readonly Dictionary<ZLinkSessionBindingKey, ZLinkSessionBindingEntry> _entries = new();
 
-    public void Bind(
+    public ZLinkSessionBindingEntry[] Bind(
         string actorId,
         ZLinkSessionContext context,
         string bindingToken,
@@ -21,10 +21,18 @@ internal sealed class ZLinkSessionActorBindingTable
     {
         lock (_entries)
         {
+            var replaced = _entries
+                .Where(entry => string.Equals(entry.Key.ActorId, actorId, StringComparison.Ordinal))
+                .Select(entry => entry.Value)
+                .ToArray();
+            foreach (var entry in replaced)
+                _entries.Remove(new ZLinkSessionBindingKey(actorId, entry.BindingToken));
+
             _entries[new ZLinkSessionBindingKey(actorId, bindingToken)] = new ZLinkSessionBindingEntry(
                 context,
                 bindingToken,
                 actorRef);
+            return replaced;
         }
     }
 

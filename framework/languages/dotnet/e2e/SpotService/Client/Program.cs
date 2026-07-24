@@ -59,6 +59,7 @@ await (options.OperationGroup switch
     "sm-d3" => SmD3EntryAndUserSpotSessionRelayScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-d4" => SmD4MultipleActorBindingScenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-d5" => SmD5ExplicitDisconnectNotificationScenario.RunAsync(playA, sessionA, options.SessionAStreamEndpoint),
+    "sm-d5a" => SmD5ALogicalDisconnectScenario.RunAsync(playA, options.SessionAStreamEndpoint),
     "sm-d6" => SmD6BoundSessionPushTargetingScenario.RunAsync(options.SessionAStreamEndpoint, options.SessionBStreamEndpoint),
     "sm-d7" => SmD7StreamAuthenticationDispatchScenario.RunAsync(options.SessionAStreamEndpoint),
     "sm-d8" => SmD8StreamReconnectRecoveryScenario.RunAsync(playA, options.SessionAStreamEndpoint),

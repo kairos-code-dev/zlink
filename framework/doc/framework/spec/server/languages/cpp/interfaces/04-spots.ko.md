@@ -184,12 +184,11 @@ public:
 
 class spot_context_t : public spot_common_context_t {
 public:
-    spot_context_t();
     ~spot_context_t();
     spot_context_t(spot_context_t &&) noexcept;
-    spot_context_t &operator=(spot_context_t &&) noexcept;
-    spot_context_t(const spot_context_t &) = default;
-    spot_context_t &operator=(const spot_context_t &) = default;
+    spot_context_t &operator=(spot_context_t &&) = delete;
+    spot_context_t(const spot_context_t &) = delete;
+    spot_context_t &operator=(const spot_context_t &) = delete;
 
     spot_handler_registry_t handlers();
 
@@ -201,12 +200,11 @@ public:
 
 class entry_spot_context_t : public spot_common_context_t {
 public:
-    entry_spot_context_t();
     ~entry_spot_context_t();
     entry_spot_context_t(entry_spot_context_t &&) noexcept;
-    entry_spot_context_t &operator=(entry_spot_context_t &&) noexcept;
-    entry_spot_context_t(const entry_spot_context_t &) = default;
-    entry_spot_context_t &operator=(const entry_spot_context_t &) = default;
+    entry_spot_context_t &operator=(entry_spot_context_t &&) = delete;
+    entry_spot_context_t(const entry_spot_context_t &) = delete;
+    entry_spot_context_t &operator=(const entry_spot_context_t &) = delete;
     spot_handler_registry_t handlers();
 
     template <typename TActor>
@@ -217,12 +215,11 @@ public:
 
 class instance_spot_context_t : public spot_common_context_t {
 public:
-    instance_spot_context_t();
     ~instance_spot_context_t();
     instance_spot_context_t(instance_spot_context_t &&) noexcept;
-    instance_spot_context_t &operator=(instance_spot_context_t &&) noexcept;
-    instance_spot_context_t(const instance_spot_context_t &) = default;
-    instance_spot_context_t &operator=(const instance_spot_context_t &) = default;
+    instance_spot_context_t &operator=(instance_spot_context_t &&) = delete;
+    instance_spot_context_t(const instance_spot_context_t &) = delete;
+    instance_spot_context_t &operator=(const instance_spot_context_t &) = delete;
 
     instance_spot_handler_registry_t handlers();
     task_t<bool> close();
@@ -289,23 +286,6 @@ struct spot_create_result_t {
     spot_ref_t spot;
     spot_create_state_t state = spot_create_state_t::created;
     std::optional<zlink::framework::message_t> reply;
-};
-
-struct spot_actor_message_metadata_t {
-    std::optional<std::string_view> find(std::string_view key) const;
-    bool contains(std::string_view key) const;
-    bool empty() const noexcept;
-    std::string content_type = "application/json";
-    std::map<std::string, std::string> values;
-};
-
-struct spot_packet_context_t {
-    std::string packet_name;
-    std::string content_type;
-    spot_actor_message_metadata_t metadata;
-    bool cancellation_requested = false;
-
-    bool is_cancellation_requested() const noexcept;
 };
 
 class spot_handler_registry_t {
@@ -424,8 +404,10 @@ lane과 timer별 lane이 독립적으로 실행될 수 있다. Close, relocation
 capture하지 않으며 precommit 실패 시 모든 lane과 held ingress를 함께 복원한다.
 
 C++의 일반 Spot packet과 Actor payload handler는 `spot_context_t::handlers()`가 등록한다. Actor handler는
-mutable Actor와 읽기 전용 handler context만 받으며 mutable Spot을 함께 받지 않는다. Spot 상태 변경 message는
-global `spot_id_t` direct call로 제출한다. Actor lifecycle은 registry 등록 표면이 아니다. User Spot과 Entry
+containing Spot의 member이며 호출 대상 Spot instance를 `this`로 사용하고, mutable Actor,
+읽기 전용 `message_context_t`와 payload를 인자로 받는다. 다른 Spot의 상태를 바꾸는 message는 global
+`spot_id_t` direct call로 제출한다. Actor lifecycle은 registry 등록 표면이 아니다.
+User Spot과 Entry
 Spot은 actor ID와 join request를 받는 `on_actor_join(...)`에서 accept 또는 reject를 반환한다. Commit 이후
 callback은 해당 factory가 만든 concrete Actor reference를 직접 받는다. 따라서 별도 membership DTO를
 lifecycle callback에 끼워 넣지 않는다. Joined, leave와 disconnect callback은 `task_t<void>`를 반환하며
@@ -545,13 +527,14 @@ public:
 
     zlink::framework::task_t<void> on_disconnect_actor(
       player_actor_t &actor) override;
+
+    start_bingo_game_res_t start_game(
+      player_actor_t &actor,
+      const zlink::framework::message_context_t &message_context,
+      const start_bingo_game_req_t &request);
 };
 
 class player_actor_t : public zlink::framework::actor_t {
-public:
-    start_bingo_game_res_t start_game(
-      const zlink::framework::message_context_t &message_context,
-      const start_bingo_game_req_t &request);
 };
 
 class bingo_entry_spot_t
@@ -560,6 +543,10 @@ public:
     void configure() override;
 };
 ```
+
+세 Context는 Framework만 만들 수 있는 move-only handle이다. Factory는 전달받은 handle을 application
+object의 read-only member로 move하고 `context()`에서 그 handle을 반환한다. Default construction, copy와
+assignment로 identity를 만들거나 교체할 수 없다.
 
 `route_mesh_runtime_options_t`는 public DI singleton이다. 등록되지 않은 ChannelName을 조회하면 구성
 오류로 실패한다. 실행 중에는 node placement weight와 ChannelName weight만 변경할 수 있다. 최대 메시지 크기는 startup 뒤
@@ -572,7 +559,8 @@ Spot과 Entry Spot은 activation scope가 수명을 소유한다. 기본 생성 
 overload로 등록한다. factory는 Spot을 활성화할 때 framework가 호출하며, 반환한 instance의
 수명도 같은 activation scope에서 관리한다.
 
-일반 Spot packet member와 subscription member는 payload 하나를 받는다.
+일반 Spot packet member는 payload와 `message_context_t`를 받고, subscription member는 payload와
+`publish_message_context_t`를 받는다.
 actor join admission을 처리하는 member는 `std::string_view actor_id`와
 `zlink::framework::message_t` request를 받으며,
 `spot_actor_join_response_t`로 accepted 여부와 optional reply `zlink::framework::message_t`를 반환한다.
@@ -603,18 +591,19 @@ membership gate와 구분한다.
 commit 뒤 호출한다. Whole User Spot aggregate relocation에서는 membership이 유지되므로 member Actor에 대한 Entry
 Spot 또는 User Spot membership callback을 모두 호출하지 않는다. Disabled operation에서도
 `on_actor_relocated(...)`를 호출하지 않는다.
-actor packet member는 `message_context_t`, mutable Actor와 DTO를 받는다. actor disconnected callback도
-같은 concrete Actor reference를 받는다.
+actor packet member는 containing Spot에 선언하며 mutable Actor, `message_context_t`, DTO 순서로 받는다.
+호출 대상인 containing Spot은 member function의 `this`다. actor disconnected callback도 같은 concrete
+Actor reference를 받는다.
 Runtime의 private dispatch가 `message_t`를 DTO로 바꾸고 현재 Spot instance와 Actor를 찾아 typed member
 function을 호출한다. Application은 invoker, service provider, serializer registry와 descriptor 조회 표면을
 받지 않는다. 샘플도 public registration과 call 경로를 통과해야 framework 동작을 확인했다고 볼 수 있다.
 Entry Spot membership 상태에서도 actor packet은 일반 Spot packet으로 등록하지 않는다.
 `spot_context_t::handlers()`에서 `add_actor_request<Method>()` 또는 `add_actor_send<Method>()`로 등록하며,
-member는 handler context, concrete Actor와 DTO를 받는다.
+member는 mutable Actor, message context와 DTO를 받는다.
 stream header metadata 전체를 actor handler에 그대로 노출하지 않는다. 사용자는
 `options.metadata().allow_session_to_actor("trace-id")`처럼 application metadata forwarding 정책을 선언하고,
-framework는 허용된 key만 `spot_actor_message_metadata_t`로 project해서 actor context에 넣는다.
-handler는 `find(...)` 또는 `contains(...)`로 값을 조회한다. `values`는 단순 반복을 제공하고,
+framework는 허용된 key만 `message_context_t::metadata`에 넣는다.
+handler는 `metadata.find(...)` 또는 `metadata.contains(...)`로 값을 조회한다. `values()`는 단순 반복을 제공하고,
 `find(...)`와 `contains(...)`는 handler code가 `std::map` 구조에 직접 묶이지 않게 한다. 빈 metadata
 key와 공백만 있는 key는 의미가 모호하므로 두 방향의 allowlist method 모두 이런 key를 거부한다.
 이 정책은 stream frame 구조나 ActorGateway 내부 frame을 public handler 표면에 드러내지 않기
@@ -640,19 +629,23 @@ raw payload 처리는 framework 내부 invoker가 맡으며 application public a
 호출 실행 표면은 공통 비동기 call 계약을 C++ coroutine 관례로 표현한다. `request(...)`, `send(...)`,
 `join_spot(...)`과 `join_entry_spot(...)`은 call object를 반환한다. One-way call의 `submit()`은 send timeout까지
 source-local queue admission을 기다리는 `task_t<void>`를 반환한다. Session Actor `relay(...)`는 별도 call
-object를 만들지 않고 같은 admission 경계를 `task_t<void>`로 직접 반환한다. Request의 `submit()`과
-Join은 handler 안에서 동기 `defer()`로 등록하며 현재 handler에서 결과를 기다리지 않는다.
+object를 만들지 않고 같은 admission 경계를 `task_t<void>`로 직접 반환한다. Request의 `submit()`은 terminal
+reply까지 현재 claim과 gate를 유지한다.
 일반 channel `request_call_t`는 metadata와 request timeout을, `send_call_t`는 metadata만 submit 전에 모으고,
 submit 시점에 framework envelope 정책으로 넘긴다. typed packet name은 registration
-descriptor가 결정한다. Request의 `submit()`은 terminal reply까지 현재 claim과 gate를 유지한다.
-Actor Join의 `defer()`는 gate나 Actor FIFO claim을 반납하지 않으며 Join에는 `submit()`, `async()`와
-`yield()`를 제공하지 않는다. Request와 worker의 `yield()`는 `SpotWide` User
+descriptor가 결정한다.
+
+Actor Join의 `defer()`는 target을 조회하거나 Store I/O를 시작하지 않고 현재 handler에 immutable Join
+intent와 비활성 queue barrier만 등록한다. Handler가 정상 종료하면 barrier를 활성화하고, exception이나
+cancellation으로 끝나면 같은 handler가 등록한 intent를 모두 폐기한다. `defer()`는 값을 반환하지 않으며
+Join에는 `submit()`, `async()`와 `yield()`를 제공하지 않는다. Request와 worker의 `yield()`는 `SpotWide` User
 Spot과 Instance Spot callback에서만 Spot gate를 반납하며,
 `SpotWide` Actor의 FIFO claim은 유지한다. 같은 gate에서만 완료할 수 있는 request를 `submit()`으로
 기다리거나 self request를 기다리면 operation을 제출하기 전에 `invalid_configuration`으로 실패한다.
 One-way self send는 FIFO로 제출할 수 있지만 inline 또는 reentrant dispatch는 허용하지 않는다.
-`SpotWide` member Actor가 현재 User Spot을 떠나는 Join도 `defer()`만 등록하고 handler의 마지막
-continuation이 끝난 뒤 실행한다. Join callback을 inline 또는 reentrant하게 호출하지 않는다.
+`SpotWide` member Actor가 현재 User Spot을 떠나는 Join도 handler의 마지막 continuation이 끝난 뒤
+실행한다. Join 결과는 나중에 `actor_t::on_join_completed(...)`로 전달하며 callback을 inline 또는
+reentrant하게 호출하지 않는다.
 Request 없는 overload는 empty `message_t`를 고정한다. Timeout 기본값은 5초이고 명시 값은 millisecond
 올림 기준 finite `1..INT_MAX` ms다. `defer()`에서 monotonic absolute deadline을 고정한다.
 Worker call에도 같은 실행 문맥 검사를 적용한다. CPU worker는 동기 작업, I/O worker는 `task_t<TResult>`를 반환하는
@@ -670,7 +663,7 @@ public framework async 표면에 `std::future`를 사용하지 않는다. blocki
 timer, STREAM session callback, actor relay 경로에서 허용하지 않는다.
 
 오류 종류는 `.NET` framework의 `ZLinkFrameworkErrorKind`를 C++ naming으로 투영한다.
-`submit()`과 join의 `async()`는 실패 시 같은 정보를 가진 `framework_exception_t`를 throw한다.
+`submit()`은 실패 시 같은 정보를 가진 `framework_exception_t`를 throw한다.
 
 ## 3. Timer
 

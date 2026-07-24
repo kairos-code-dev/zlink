@@ -137,14 +137,16 @@ public:
       requires std::derived_from<
         TEntrySpot, entry_spot_t<typename TEntrySpot::actor_type>>
     mesh_node_builder_t &add_entry_spot(
-      std::function<std::shared_ptr<TEntrySpot>()> factory);
+      std::function<std::shared_ptr<TEntrySpot>(
+        class entry_spot_context_t)> factory);
 
     template <typename TSpot>
       requires std::derived_from<
         TSpot, spot_t<typename TSpot::actor_type>>
     mesh_node_builder_t &add_spot_factory(
       std::string stable_type,
-      std::function<std::shared_ptr<TSpot>()> factory,
+      std::function<std::shared_ptr<TSpot>(
+        class spot_context_t)> factory,
       relocation_policy_t<TSpot> relocation,
       spot_placement_options_t placement,
       user_spot_execution_mode_t execution_mode =
@@ -154,7 +156,8 @@ public:
       requires std::derived_from<TSpot, instance_spot_t>
     mesh_node_builder_t &add_instance_spot_factory(
       std::string stable_type,
-      std::function<std::shared_ptr<TSpot>()> factory,
+      std::function<std::shared_ptr<TSpot>(
+        class instance_spot_context_t)> factory,
       relocation_policy_t<TSpot> relocation,
       spot_placement_options_t placement);
 
@@ -816,7 +819,7 @@ struct message_context_t {
 
 struct publish_message_context_t : message_context_t {
     std::string topic;
-    std::string source;
+    std::optional<std::string> source;
 };
 
 struct handler_invocation_t {
@@ -829,6 +832,9 @@ using handler_next_t = std::function<task_t<zlink::message_t>()>;
 
 } // namespace zlink::framework
 ```
+
+`message_context_t`는 inbound message 정보만 제공하며 cancellation 상태를 포함하지 않는다. Request reply 대기
+cancellation은 call object가 처리하고 STREAM connection 종료와 cancellation은 session lifecycle이 처리한다.
 
 handler owner 타입은 service collection에서 resolve한다. 일반 application은
 `add_zlink_framework(...)` 안에서 handler와 service를 함께 등록한다.
@@ -851,9 +857,9 @@ serializer를 통해 typed payload로 변환하고, DI에서 owner를 resolve한
 
 handler method는 payload만 받을 수도 있고, payload 뒤에 typed context를 함께 받을 수도
 있다. request와 send handler는 `message_context_t`, event/publish handler는
-`publish_message_context_t`를 받는다. Channel context는 ChannelName, packet name, content type, immutable
-metadata와 correlation ID를 제공한다. Node direct context는 MeshName, source·target RID와 같은 metadata·correlation
-정보를 제공한다. Raw multipart header나 dispatch table은 public context로 노출하지 않는다.
+`publish_message_context_t`를 받는다. Channel context는 nullable ChannelName, packet name, nullable content
+type, immutable metadata와 correlation ID를 제공한다. Node direct context는 이 공통 정보에 source RID만
+추가한다. Raw multipart header나 dispatch table은 public context로 노출하지 않는다.
 
 handler filter는 `.NET`의 handler filter처럼 handler 호출 앞뒤의 공통 처리를 맡는다.
 일반 application 설정에서는 `options.use_filter<TFilter>()`로 등록한다. filter 타입은
@@ -1114,14 +1120,8 @@ framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성
 ## 5. Channel 표면
 
 ```cpp
-struct route_message_context_t {
-    std::string mesh_name;
+struct route_message_context_t : message_context_t {
     zlink::routing_id_t source_node_rid;
-    zlink::routing_id_t target_node_rid;
-    std::string packet_name;
-    std::string content_type;
-    message_metadata_t metadata;
-    std::optional<std::string> correlation_id;
 };
 class channel_client_t {
 public:
@@ -1136,6 +1136,11 @@ public:
       TMessage message);
 };
 ```
+
+인자 없는 `add_entry_spot<TEntrySpot>()`은 `TEntrySpot(entry_spot_context_t)` constructor를 사용한다.
+명시 factory도 Framework가 먼저 만든 Context를 값으로 받아 application object에 move한다. User·Instance
+Spot factory도 각각 정확한 Context를 받아야 하며 생성 뒤 Context를 주입하거나 교체하는 overload는
+제공하지 않는다.
 
 ## 6. Handler
 

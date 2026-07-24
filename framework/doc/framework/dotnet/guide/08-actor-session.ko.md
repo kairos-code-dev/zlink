@@ -347,8 +347,8 @@ meshName, actorId)`를 쓴다. location store를 읽어 지정한 MeshName에서
 [10-location §4](10-location.ko.md)). 반면 **actor↔session binding은 framework 내부 상태**라
 조회용 public 표면이 없다 — actor가 client로 push 할 때는 `Context.BoundSession`을 쓰면 된다.
 
-spot rid → 주소 변환을 기본(location store) 대신 직접 구현으로 바꾸고 싶을 때만
-`AddLocationStore(...)`를 등록한다. `JoinSpot(spotRid, ...)`가 MeshNode 경계를 넘을 때
+Spot ID → 주소 변환을 기본 Location Store 대신 직접 구현으로 바꾸고 싶을 때만
+`AddLocationStore(...)`를 등록한다. `JoinSpot(spotId, ...)`가 MeshNode 경계를 넘을 때
 이 변환이 쓰인다.
 
 ## 5. 오류 처리 — `ZLinkFrameworkException`

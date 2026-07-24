@@ -17,7 +17,7 @@
 | ST-D1 | 구현 | target commit 전후 location row의 owner와 generation 전환 시점을 검증한다. |
 | ST-D2 | 구현 | stale source release가 새 generation location을 제거하지 못함을 검증한다. |
 | ST-E1 | 구현 | remote transfer 뒤 bound session push가 새 owner에서 계속 전달됨을 검증한다. |
-| ST-E1A | 미구현 | 새 Actor incarnation을 만든 뒤 이전 generation의 binding token·disconnect·relay가 새 incarnation에 영향을 주지 않고 explicit bind 전에는 route가 생기지 않는 runner가 없다. |
+| ST-E1A | 부분 구현 | `New_Object_Generation_Requires_An_Explicit_Bind`와 SM-D4A focused test가 새 generation은 explicit bind로만 교체되고 이전 token의 relay·disconnect가 current binding에 영향을 주지 않음을 검증한다. Completed 뒤 same-generation route switch 순서를 실제 relocation command로 검증하는 process runner는 아직 없다. |
 | ST-E2 | 구현 | 실패한 transfer가 기존 bound session route를 바꾸지 않음을 검증한다. |
 | ST-F1 | 구현 | handoff 중 도착한 packet의 순서와 target replay를 검증한다. |
 | ST-F2 | 구현 | direct packet이 handoff backlog를 추월하지 않음을 검증한다. |

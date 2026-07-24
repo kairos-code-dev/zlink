@@ -486,18 +486,18 @@ public interface systems.zlink.framework.spots.ZLinkSpotOutbound {
 }
 public interface systems.zlink.framework.spots.ZLinkSpotPacketHandler<TSpot, TMessage> {
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TMessage);
-  public default java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TMessage, systems.zlink.framework.channels.ZLinkSendContext);
+  public default java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TMessage, systems.zlink.framework.ZLinkMessageContext);
 }
 public interface systems.zlink.framework.spots.ZLinkSpotPublisherClient {
   public abstract systems.zlink.framework.channels.ZLinkPublishCall publish(java.lang.String, java.lang.String, java.lang.Object);
 }
 public interface systems.zlink.framework.spots.ZLinkSpotRequestHandler<TSpot, TRequest, TReply> {
   public abstract java.util.concurrent.CompletionStage<TReply> handle(TSpot, TRequest);
-  public default java.util.concurrent.CompletionStage<TReply> handle(TSpot, TRequest, systems.zlink.framework.channels.ZLinkRequestContext);
+  public default java.util.concurrent.CompletionStage<TReply> handle(TSpot, TRequest, systems.zlink.framework.ZLinkMessageContext);
 }
 public interface systems.zlink.framework.spots.ZLinkSpotSubscriptionHandler<TSpot, TEvent> {
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TEvent);
-  public default java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TEvent, systems.zlink.framework.channels.ZLinkPublishContext);
+  public default java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TEvent, systems.zlink.framework.channels.ZLinkPublishMessageContext);
 }
 public interface systems.zlink.framework.spots.ZLinkSpotTimerHandler<TSpot> {
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, systems.zlink.framework.spots.ZLinkTimerTick);

@@ -276,14 +276,14 @@ public class SubmitAdmissionRole {
             String targetRid = query.getOrDefault("targetRid", "missing-target");
             int sequence = Integer.parseInt(query.getOrDefault("sequence", "0"));
             try {
-                var result = routes.sendToNode(
+                routes.sendToNode(
                         MESH, RoutingId.from(targetRid), new Probe(operationId, sequence))
                     .submit().toCompletableFuture().get(2, TimeUnit.SECONDS);
                 state.record("submit_terminal", Map.of(
                     "family", "node",
                     "operationId", operationId,
-                    "status", result.status().name()));
-                respond(exchange, 200, result.status().name());
+                    "status", "Submitted"));
+                respond(exchange, 200, "Submitted");
             } catch (Exception failure) {
                 respond(exchange, 500, failure.toString());
             }
@@ -294,13 +294,13 @@ public class SubmitAdmissionRole {
             String operationId = query.getOrDefault("operationId", "missing-operation");
             int sequence = Integer.parseInt(query.getOrDefault("sequence", "0"));
             try {
-                var result = routes.sendToChannel(CHANNEL, new Probe(operationId, sequence))
+                routes.sendToChannel(CHANNEL, new Probe(operationId, sequence))
                     .submit().toCompletableFuture().get(2, TimeUnit.SECONDS);
                 state.record("submit_terminal", Map.of(
                     "family", "channel",
                     "operationId", operationId,
-                    "status", result.status().name()));
-                respond(exchange, 200, result.status().name());
+                    "status", "Submitted"));
+                respond(exchange, 200, "Submitted");
             } catch (Exception failure) {
                 respond(exchange, 500, failure.toString());
             }
@@ -311,13 +311,13 @@ public class SubmitAdmissionRole {
             String operationId = query.getOrDefault("operationId", "missing-operation");
             int sequence = Integer.parseInt(query.getOrDefault("sequence", "0"));
             try {
-                var result = fanout.publish(FANOUT, new Probe(operationId, sequence))
+                fanout.publish(FANOUT, new Probe(operationId, sequence))
                     .submit().toCompletableFuture().get(2, TimeUnit.SECONDS);
                 state.record("submit_terminal", Map.of(
                     "family", "fanout",
                     "operationId", operationId,
-                    "status", result.status().name()));
-                respond(exchange, 200, result.status().name());
+                    "status", "Submitted"));
+                respond(exchange, 200, "Submitted");
             } catch (Exception failure) {
                 respond(exchange, 500, failure.toString());
             }

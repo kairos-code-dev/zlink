@@ -212,6 +212,123 @@ public sealed class SessionActorCoordinatorTests
     }
 
     [Fact]
+    public async Task Rebind_Fences_Stale_Relay_And_Late_Disconnect_Without_Affecting_Other_Actors()
+    {
+        var runtime = CreateRuntime();
+        var sessionA = CreateSessionContext(runtime, "session-a");
+        var sessionB = CreateSessionContext(runtime, "session-b");
+        var actorX = new ActorRef(RoutingId.From("actor-node"), "actor-x", 7);
+        var actorA = new ActorRef(RoutingId.From("actor-node"), "actor-a", 1);
+        var actorB = new ActorRef(RoutingId.From("actor-node"), "actor-b", 1);
+        var stale = await sessionA.ActorCoordinator.BindOrGetActorAsync(
+            sessionA,
+            actorX,
+            CancellationToken.None);
+        _ = await sessionA.ActorCoordinator.BindOrGetActorAsync(
+            sessionA,
+            actorA,
+            CancellationToken.None);
+        _ = await sessionB.ActorCoordinator.BindOrGetActorAsync(
+            sessionB,
+            actorB,
+            CancellationToken.None);
+        var current = await sessionB.ActorCoordinator.BindOrGetActorAsync(
+            sessionB,
+            actorX,
+            CancellationToken.None);
+        using var payload = Message.From(new byte[] { 1, 2, 3 });
+        var header = new ZlinkStreamHeader(
+            ZlinkStreamMessageKind.Send,
+            ZlinkStreamCodec.Raw,
+            ZlinkStreamHeaderFlags.None,
+            null,
+            "ActorPing",
+            ZlinkStreamMetadata.Empty);
+
+        var staleRelay = await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
+            await sessionA.ActorCoordinator.RelayToActorAsync(
+                stale,
+                header,
+                payload,
+                static (_, _, _) => ValueTask.CompletedTask,
+                CancellationToken.None));
+        Assert.Equal(ZLinkFrameworkErrorKind.ActorSessionNotBound, staleRelay.Kind);
+
+        await stale.NotifyDisconnectedAsync();
+
+        Assert.Null(sessionA.ActorCoordinator.FindActor(actorX.ActorId));
+        Assert.Same(current, sessionB.ActorCoordinator.FindActor(actorX.ActorId));
+        Assert.NotNull(sessionA.ActorCoordinator.FindActor(actorA.ActorId));
+        Assert.NotNull(sessionB.ActorCoordinator.FindActor(actorB.ActorId));
+        Assert.True(runtime.TryGetActorBoundSession(actorX.ActorId, out var currentBinding));
+        Assert.True(runtime.TryGetSessionActorContext(
+            actorX.ActorId,
+            currentBinding.BindingToken,
+            out var currentContext));
+        Assert.Same(sessionB, currentContext);
+        Assert.Equal(actorX.Generation, current.Ref.Generation);
+    }
+
+    [Fact]
+    public async Task Physical_Disconnect_Uses_A_Fixed_AllSettled_Snapshot_And_Cleans_Every_Binding()
+    {
+        var runtime = CreateRuntime();
+        var context = CreateSessionContext(runtime, "session-physical-disconnect");
+        var actorA = new ActorRef(RoutingId.From("actor-node"), "actor-a", 3);
+        var actorB = new ActorRef(RoutingId.From("actor-node"), "actor-b", 5);
+        _ = await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            actorA,
+            CancellationToken.None);
+        _ = await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            actorB,
+            CancellationToken.None);
+        var actorAState = runtime.GetOrCreateActorState(actorA.ActorId);
+        var actorBState = runtime.GetOrCreateActorState(actorB.ActorId);
+
+        await context.ActorCoordinator.CleanupAsync(context, CancellationToken.None);
+
+        Assert.Empty(context.Actors.Bound);
+        Assert.False(runtime.TryGetActorBoundSession(actorA.ActorId, out _));
+        Assert.False(runtime.TryGetActorBoundSession(actorB.ActorId, out _));
+        Assert.Same(actorAState, runtime.GetOrCreateActorState(actorA.ActorId));
+        Assert.Same(actorBState, runtime.GetOrCreateActorState(actorB.ActorId));
+    }
+
+    [Fact]
+    public async Task New_Object_Generation_Requires_An_Explicit_Bind()
+    {
+        var runtime = CreateRuntime();
+        var context = CreateSessionContext(runtime, "session-generation-fence");
+        var generationOne = new ActorRef(
+            RoutingId.From("actor-node-a"),
+            "actor-generation",
+            1);
+        var generationTwo = new ActorRef(
+            RoutingId.From("actor-node-b"),
+            "actor-generation",
+            2);
+        var original = await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            generationOne,
+            CancellationToken.None);
+
+        var explicitReplacement = await context.ActorCoordinator.BindOrGetActorAsync(
+            context,
+            generationTwo,
+            CancellationToken.None);
+
+        Assert.NotSame(original, explicitReplacement);
+        Assert.Equal((ulong)2, explicitReplacement.Ref.Generation);
+        Assert.Null(context.Actors.Bound.SingleOrDefault(actor =>
+            ReferenceEquals(actor, original)));
+        Assert.Same(
+            explicitReplacement,
+            Assert.Single(context.Actors.Bound));
+    }
+
+    [Fact]
     public async Task Bound_Actor_Relay_Does_Not_Resolve_The_Location_Store_Per_Message()
     {
         var directory = new MissingActorDirectory();

@@ -29,7 +29,7 @@ export interface ZLinkSpotRequestHandler<TSpot, TRequest, TReply> {
 export declare function ZLinkSpotSubscription(channelName: string, topic: string): MethodDecorator;
 
 export interface ZLinkSpotSubscriptionHandler<TSpot, TEvent> {
-    handle(spot: TSpot, event: TEvent, context: ZLinkPublishContext): Promise<void>;
+    handle(spot: TSpot, event: TEvent, context: ZLinkPublishMessageContext): Promise<void>;
 }
 
 export interface ZLinkSpotTimerDiagnostic {
@@ -168,7 +168,8 @@ export interface ZLinkWorkerOptions {
 }
 ```
 
-Request와 join의 result-bearing `submit()`은 terminal reply 또는 결과까지 현재 owner turn을 유지한다.
+Request의 result-bearing `submit()`은 terminal reply가 나올 때까지 현재 owner turn을 유지한다.
+Actor Join은 별도의 `defer()`로 등록하고 현재 handler가 정상 종료한 뒤 실행한다.
 Worker call의 `submit()`도 Worker 결과가 나올 때까지 현재 turn을 유지한다. `yield()`는 `SpotWide` User Spot
 또는 Instance Spot의 shared turn에서만 그 turn을 반환한다. 다른 실행 문맥에서는 worker를 제출하거나
 turn을 반환하지 않고 `InvalidConfiguration`으로 완료한다.

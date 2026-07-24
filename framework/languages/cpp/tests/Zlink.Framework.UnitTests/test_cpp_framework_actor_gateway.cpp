@@ -155,8 +155,58 @@ int session_disconnect_is_all_settled_and_token_fenced ()
         || !gateway.actor_disconnected ("actor-b")) {
         return 2;
     }
+    {
+        const std::lock_guard lock (state->mutex);
+        if (!state->actors_by_id.contains ("actor-a")
+            || !state->actors_by_id.contains ("actor-b")) {
+            return 3;
+        }
+    }
     if (current.notify_disconnected ().result ())
+        return 4;
+    return 0;
+}
+
+int logical_disconnect_is_selected_and_keeps_session_live ()
+{
+    using namespace zlink::framework;
+    using namespace zlink::framework::detail;
+
+    auto state = std::make_shared<actor_gateway_state_t> ();
+    actor_gateway_runtime_t gateway (state);
+    auto manager = gateway.manager ();
+    session_actor_manager_access_t::attach (manager, stream_t{});
+    const actor_ref_t first (
+      node_rid_t::from_string ("actor-node"), "player", "actor-a", 1);
+    const actor_ref_t second (
+      node_rid_t::from_string ("actor-node"), "player", "actor-b", 1);
+    auto first_binding = manager.bind (first).submit ().result ().value ();
+    auto second_binding = manager.bind (second).submit ().result ().value ();
+    std::vector<std::string> disconnected;
+    gateway.on_disconnect (
+      [&] (const actor_ref_t &actor) {
+          disconnected.emplace_back (actor.actor_id ());
+          return result_t<void>::success ();
+      });
+
+    if (!first_binding.notify_disconnected ().result ()) {
+        return 1;
+    }
+    if (disconnected != std::vector<std::string>{"actor-a"})
+        return 4;
+    {
+        const std::lock_guard lock (state->mutex);
+        const auto second_record = state->actors_by_id.find ("actor-b");
+        if (second_record == state->actors_by_id.end ()
+            || second_record->second.binding_token == 0) {
+            return 2;
+        }
+    }
+    if (!second_binding.notify_disconnected ().result ()
+        || disconnected
+             != std::vector<std::string>{"actor-a", "actor-b"}) {
         return 3;
+    }
     return 0;
 }
 
@@ -167,9 +217,11 @@ int route_update_preserves_object_generation ()
 
     actor_gateway_runtime_t gateway;
     auto manager = gateway.manager ();
+    session_actor_manager_access_t::attach (manager, stream_t{});
     const actor_ref_t original (
       node_rid_t::from_string ("actor-node-a"), "player", "actor-route", 7);
-    (void) manager.bind (original).submit ().result ().value ();
+    auto original_binding =
+      manager.bind (original).submit ().result ().value ();
 
     const actor_ref_t relocated (
       node_rid_t::from_string ("actor-node-b"), "player", "actor-route", 7);
@@ -178,7 +230,20 @@ int route_update_preserves_object_generation ()
     const actor_ref_t new_incarnation (
       node_rid_t::from_string ("actor-node-c"), "player", "actor-route", 8);
     const auto rejected = gateway.update_actor_ref (new_incarnation);
-    return !rejected ? 0 : 2;
+    if (rejected)
+        return 2;
+    auto explicit_binding =
+      manager.bind (new_incarnation).submit ().result ().value ();
+    if (explicit_binding.ref ().generation () != 8)
+        return 3;
+    const auto stale = original_binding.notify_disconnected ().result ();
+    if (stale
+        || stale.error_kind ()
+             != framework_error_kind_t::actor_session_not_bound
+        || !gateway.actor_bound ("actor-route")) {
+        return 4;
+    }
+    return 0;
 }
 
 } // namespace
@@ -195,6 +260,10 @@ int main ()
       session_disconnect_is_all_settled_and_token_fenced ();
     if (disconnected != 0)
         return 20 + disconnected;
+    const auto logical =
+      logical_disconnect_is_selected_and_keeps_session_live ();
+    if (logical != 0)
+        return 30 + logical;
     const auto route = route_update_preserves_object_generation ();
-    return route == 0 ? 0 : 30 + route;
+    return route == 0 ? 0 : 40 + route;
 }

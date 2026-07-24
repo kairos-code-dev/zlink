@@ -1,6 +1,5 @@
 package systems.zlink.framework.runtime.actors;
 
-import java.time.Duration;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -49,6 +48,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
     private final ZLinkMessageFlowTracer flow;
     private final BooleanSupplier currentBinding;
     private final ZLinkRelayMetadataPolicy metadataPolicy;
+    private Runnable unbindListener = () -> {};
     private volatile boolean nativeRebound;
     private CompletableFuture<Void> disconnect;
 
@@ -113,6 +113,10 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         nativeRebound = true;
     }
 
+    void setUnbindListener(Runnable unbindListener) {
+        this.unbindListener = unbindListener == null ? () -> {} : unbindListener;
+    }
+
     @Override
     public CompletionStage<Void> relay(
         ZLinkMessage payload) {
@@ -145,8 +149,8 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
         if (managedActor.isPresent() && localActorDispatcher != null && !nativeRebound) {
             return ZLinkOneWayCalls.adaptOneWay(relayLocal(header, payloadBytes));
         }
-        return ZLinkOneWayCalls.adaptOneWay(ensureNativeBinding()
-            .thenCompose(ignored -> relayWithRetry(header, payloadBytes)));
+        return ZLinkOneWayCalls.adaptOneWay(
+            relayUsingStoredBinding(header, payloadBytes));
     }
 
     private void traceRelay(ZLinkStreamHeader header) {
@@ -233,10 +237,10 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
             () -> routeReady.test(ref.nodeRid()));
     }
 
-    private CompletionStage<Void> relayWithRetry(
+    private CompletionStage<Void> relayUsingStoredBinding(
         ZLinkStreamHeader header,
         byte[] payloadBytes) {
-        return ZLinkActorRetryScheduler.submitRelayUntilAcceptedAfterRetry(
+        return ZLinkActorRetryScheduler.submitStoredRelayUntilAccepted(
             ZLinkSessionActorsRuntime.RELAY_SUBMIT_TIMEOUT,
             () -> {
                 try (Message payloadPart = Message.from(payloadBytes)) {
@@ -248,26 +252,9 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
                         SendFlags.DONT_WAIT);
                 }
             },
-            this::retryAfterNativeBinding,
             () -> new TimeoutException(
                 "session relay route was not ready before timeout: "
                     + ref.actorId()));
-    }
-
-    private void retryAfterNativeBinding(Runnable attempt) {
-        stream.bindActor(sessionRid, ref)
-            .submit(Duration.ofSeconds(2))
-            .whenComplete((ignored, error) ->
-                ZLinkActorRetryScheduler.scheduleRelay(attempt));
-    }
-
-    private CompletionStage<Void> ensureNativeBinding() {
-        return ZLinkActorRetryScheduler.bindRelayUntilAccepted(
-            ZLinkSessionActorsRuntime.RELAY_SUBMIT_TIMEOUT,
-            () -> stream.bindActor(sessionRid, ref)
-                .submit(Duration.ofSeconds(2)),
-            ZLinkActorSubmitFaults::alreadyBound,
-            ZLinkActorSubmitFaults::retryableSessionActorBindFailure);
     }
 
     @Override
@@ -302,6 +289,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
                     return null;
                 }))
             .whenComplete((ignored, error) -> {
+                unbindListener.run();
                 if (error == null) {
                     disconnect.complete(null);
                 } else {
@@ -322,8 +310,7 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
             Optional.empty(),
             ZLinkActorSpotRoutePackets.SESSION_DISCONNECTED_PACKET_NAME,
             Map.of());
-        return ensureNativeBinding()
-            .thenCompose(ignored -> relayWithRetry(header, new byte[0]));
+        return relayUsingStoredBinding(header, new byte[0]);
     }
 
     CompletionStage<Void> notifyRemoteBoundSession() {
@@ -337,7 +324,6 @@ final class ZLinkBoundActor implements ZLinkSessionActor {
             Optional.empty(),
             ZLinkBoundSessionRuntime.REMOTE_BOUND_SESSION_BIND_PACKET_NAME,
             Map.of());
-        return ensureNativeBinding()
-            .thenCompose(ignored -> relayWithRetry(header, new byte[0]));
+        return relayUsingStoredBinding(header, new byte[0]);
     }
 }

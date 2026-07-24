@@ -19,6 +19,7 @@ internal sealed class ScenarioSession(
         Context.Handlers.AddHandler<AuthSessionHandler>();
         Context.Handlers.AddHandler<MultiBindSessionHandler>();
         Context.Handlers.AddHandler<UserSpotAuthSessionHandler>();
+        Context.Handlers.AddHandler<NotifyBoundActorDisconnectedSessionHandler>();
     }
 
     public ValueTask OnConnectedAsync(CancellationToken cancellationToken)
@@ -69,6 +70,26 @@ internal sealed class ScenarioSession(
             0 => throw new InvalidOperationException("No actor is bound."),
             _ => throw new InvalidOperationException("ActorRouteNotFound: actor-id metadata is required.")
         };
+    }
+}
+
+internal sealed class NotifyBoundActorDisconnectedSessionHandler
+    : IZLinkSessionPacketHandler<IZLinkSessionContext, NotifyBoundActorDisconnectedReq>
+{
+    public async ValueTask HandleAsync(
+        IZLinkSessionContext context,
+        ZLinkSessionDispatchContext dispatch,
+        NotifyBoundActorDisconnectedReq request,
+        CancellationToken cancellationToken)
+    {
+        _ = dispatch;
+        var actor = context.Actors.Find(request.ActorId)
+                    ?? throw new InvalidOperationException(
+                        $"Actor route not found: {request.ActorId}");
+        await actor.NotifyDisconnectedAsync(cancellationToken);
+        await context.Client
+            .Reply(new NotifyBoundActorDisconnectedRes(request.ActorId, true))
+            .Async(cancellationToken);
     }
 }
 

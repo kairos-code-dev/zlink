@@ -140,7 +140,7 @@ public interface IZLinkMeshObjectServerBuilder
         where TEntrySpot : class, IZLinkEntrySpot;
     IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkActorFactoryOptions? options,
         ZLinkRelocationPolicy<TActor> relocation)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>;
@@ -156,7 +156,7 @@ mesh.Objects()
     .Server()
     .AddActorFactory<PlayerActor, PlayerActorFactory>(
         "player",
-        placement: null,
+        options: null,
         relocation: ZLinkRelocationPolicy<PlayerActor>.Recreate);
         // Stable type, factory와 relocation policy를 한 등록에 함께 고정한다.
 ```
@@ -231,7 +231,7 @@ capacity를 중복 사용하지 않게 한다. Application에 target RID나 owne
 Framework는 MeshNode를 다음 순서로 시작한다.
 
 1. `MeshName`, object role, routing mode, endpoint, Channel set, factory, stable type,
-   relocation policy, placement option과 capacity를 검증한다.
+   relocation policy, factory option과 capacity를 검증한다.
 2. Location Store가 필요한 role이면 host [owner lease](01-glossary.ko.md#owner-lease)를 확보하고 automatic RID의
    MeshNode descriptor owner CAS를 완료한다.
 3. ROUTER를 bind한 뒤 다른 peer에 게시할 실제 endpoint를 확정한다.

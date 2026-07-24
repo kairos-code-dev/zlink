@@ -144,11 +144,11 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
   async findSpot(actorId: string, signal?: AbortSignal): Promise<SpotRef | undefined> {
     throwIfAborted(signal);
     const state = this.states.get(actorId);
-    if (state?.actor === undefined || state.spotRid === undefined) return undefined;
-    const spotId = state.spotRid;
+    if (state?.actor === undefined || state.spotId === undefined) return undefined;
+    const spotId = state.spotId;
     const actorRef = this.actorRefForState(state);
     return {
-      spotRid: spotId,
+      spotId: spotId,
       objectGeneration: state.locationGeneration ?? 0n,
       meshName: this.actorMeshNames.get(actorId) ?? '',
       nodeRid: actorRef.nodeRid

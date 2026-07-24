@@ -21,7 +21,7 @@ import { lookupNativeActorRef } from './actor-native-lookup';
 export interface ZLinkRemoteBoundSessionTarget {
   readonly routerChannelId: string;
   readonly targetNodeRid: RoutingId;
-  readonly spotRid: RoutingId;
+  readonly spotId: RoutingId;
   readonly sessionNodeRid?: RoutingId;
   readonly sessionRid?: RoutingId;
 }
@@ -29,7 +29,7 @@ export interface ZLinkRemoteBoundSessionTarget {
 export interface ZLinkRemoteActorPacketTarget {
   readonly routerChannelId: string;
   readonly targetNodeRid: RoutingId;
-  readonly spotRid: RoutingId;
+  readonly spotId: RoutingId;
   readonly spotKind?: ZLinkSpotKind;
 }
 
@@ -56,7 +56,7 @@ export class ZLinkActorRuntimeState {
   private actorTypeValue: string | undefined;
   private actorValue: ZLinkActor | undefined;
   private spotValue: ZLinkSpot | undefined;
-  private spotRidValue: RoutingId | undefined;
+  private spotIdValue: RoutingId | undefined;
   private spotMembershipEpochValue = 0n;
   private nativeActorRefValue: ZLinkBackendActorRef | undefined;
   private boundSessionBindingGenerationValue = 0n;
@@ -83,8 +83,8 @@ export class ZLinkActorRuntimeState {
     return this.spotValue;
   }
 
-  get spotRid(): RoutingId | undefined {
-    return this.spotRidValue;
+  get spotId(): RoutingId | undefined {
+    return this.spotIdValue;
   }
 
   get spotMembershipEpoch(): bigint {
@@ -116,7 +116,7 @@ export class ZLinkActorRuntimeState {
   }
 
   get isJoined(): boolean {
-    return this.spotRidValue !== undefined;
+    return this.spotIdValue !== undefined;
   }
 
   get ownsLocation(): boolean {
@@ -313,7 +313,7 @@ export class ZLinkActorRuntimeState {
       current?.sessionNodeRid === undefined ||
       current.routerChannelId !== target.routerChannelId ||
       !routingIdsEqual(current.targetNodeRid, target.targetNodeRid) ||
-      !routingIdsEqual(current.spotRid, target.spotRid)
+      current.spotId !== target.spotId
       ? target
       : {
           ...target,
@@ -330,14 +330,14 @@ export class ZLinkActorRuntimeState {
     this.createRequestPayloadValue = Buffer.from(payload);
   }
 
-  setJoinedSpot(spotRid: RoutingId, spot?: ZLinkSpot, membershipEpoch = 0n): void {
-    this.spotRidValue = spotRid;
+  setJoinedSpot(spotId: RoutingId, spot?: ZLinkSpot, membershipEpoch = 0n): void {
+    this.spotIdValue = spotId;
     this.spotValue = spot;
     this.spotMembershipEpochValue = membershipEpoch;
   }
 
   clearJoinedSpot(): void {
-    this.spotRidValue = undefined;
+    this.spotIdValue = undefined;
     this.spotValue = undefined;
     this.spotMembershipEpochValue = 0n;
   }
@@ -349,7 +349,7 @@ export class ZLinkActorRuntimeState {
     this.actorTypeValue = undefined;
     this.actorValue = undefined;
     this.spotValue = undefined;
-    this.spotRidValue = undefined;
+    this.spotIdValue = undefined;
     this.spotMembershipEpochValue = 0n;
     this.nativeActorRefValue = undefined;
     this.boundSessionBindingGenerationValue = 0n;
@@ -370,7 +370,7 @@ export class ZLinkActorRuntimeState {
     this.actorTypeValue = undefined;
     this.actorValue = undefined;
     this.spotValue = undefined;
-    this.spotRidValue = undefined;
+    this.spotIdValue = undefined;
     this.nativeActorRefValue = undefined;
     this.boundSessionBindingGenerationValue = 0n;
     this.remoteBoundSessionTargetValue = undefined;

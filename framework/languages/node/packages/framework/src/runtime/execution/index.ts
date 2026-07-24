@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { ZLinkConfigurationException } from '../configuration';
 
 export interface ZLinkRuntimeTaskFailure {
   readonly taskName: string;
@@ -24,7 +25,10 @@ export class ZLinkSpotSerialTurn {
   private suspendSignaled = false;
   private owner: Promise<unknown> | undefined;
 
-  constructor(private readonly postResume: (turn: ZLinkSpotSerialTurn, resume: () => void) => boolean) {}
+  constructor(
+    private readonly postResume: (turn: ZLinkSpotSerialTurn, resume: () => void) => boolean,
+    readonly yieldAllowed: boolean
+  ) {}
 
   get suspended(): Promise<void> {
     if (this.suspendSignaled) {
@@ -47,6 +51,11 @@ export class ZLinkSpotSerialTurn {
   }
 
   async yieldPromise<T>(pending: Promise<T>): Promise<T> {
+    if (!this.yieldAllowed) {
+      throw new ZLinkConfigurationException(
+        'yield requires a SpotWide User Spot or Instance Spot application handler.'
+      );
+    }
     this.signalSuspended();
     const result = await pending;
     await this.awaitResumePermit();
@@ -106,6 +115,18 @@ export function captureZLinkSpotSerialTurn(
   return current.turn;
 }
 
+export function requireZLinkYieldTurn(
+  capturedTurn?: ZLinkSpotSerialTurn
+): ZLinkSpotSerialTurn {
+  const turn = capturedTurn ?? captureZLinkSpotSerialTurn();
+  if (turn === undefined || !turn.yieldAllowed) {
+    throw new ZLinkConfigurationException(
+      'yield requires a SpotWide User Spot or Instance Spot application handler.'
+    );
+  }
+  return turn;
+}
+
 export interface ZLinkCapturedExecutionTurn {
   yieldPromise<T>(pending: Promise<T>): Promise<T>;
   post(callback: () => void): void;
@@ -127,6 +148,122 @@ export function isCurrentZLinkSpotSerialTurn(executor: ZLinkSpotSerialExecutorLi
   return current !== undefined
     && current.executor === executor
     && current.turnId === executor.activeTurnId;
+}
+
+export interface ZLinkExecutionBarrierSeal {
+  readonly generation: bigint;
+}
+
+export interface ZLinkExecutionBarrierClaim {
+  release(): void;
+}
+
+interface ZLinkExecutionBarrierWaiter {
+  readonly resolve: (claim: ZLinkExecutionBarrierClaim) => void;
+  readonly reject: (reason: unknown) => void;
+}
+
+/**
+ * Seals application-lane admission and waits for every active Promise turn to
+ * finish. A seal generation prevents a stale abort from reopening a newer
+ * lifecycle barrier.
+ */
+export class ZLinkExecutionBarrier {
+  private generation = 0n;
+  private activeClaims = 0;
+  private currentSeal: ZLinkExecutionBarrierSeal | undefined;
+  private readonly admissionWaiters: ZLinkExecutionBarrierWaiter[] = [];
+  private readonly quiescenceWaiters = new Set<() => void>();
+  private committed = false;
+
+  async enter(): Promise<ZLinkExecutionBarrierClaim> {
+    if (this.committed) {
+      throw new Error('ZLink execution barrier is committed.');
+    }
+    if (this.currentSeal !== undefined) {
+      return await new Promise<ZLinkExecutionBarrierClaim>((resolve, reject) => {
+        this.admissionWaiters.push({ resolve, reject });
+      });
+    }
+    return this.createClaim();
+  }
+
+  seal(): ZLinkExecutionBarrierSeal {
+    if (this.committed) {
+      throw new Error('ZLink execution barrier is committed.');
+    }
+    if (this.currentSeal !== undefined) {
+      throw new Error('ZLink execution barrier is already sealed.');
+    }
+    const seal = Object.freeze({ generation: ++this.generation });
+    this.currentSeal = seal;
+    return seal;
+  }
+
+  async waitForQuiescence(
+    seal: ZLinkExecutionBarrierSeal,
+    signal?: AbortSignal
+  ): Promise<void> {
+    this.requireCurrent(seal);
+    if (this.activeClaims === 0) return;
+    if (signal?.aborted === true) throw signal.reason;
+    await new Promise<void>((resolve, reject) => {
+      const complete = () => {
+        signal?.removeEventListener('abort', abort);
+        resolve();
+      };
+      const abort = () => {
+        this.quiescenceWaiters.delete(complete);
+        reject(signal?.reason);
+      };
+      this.quiescenceWaiters.add(complete);
+      signal?.addEventListener('abort', abort, { once: true });
+    });
+    this.requireCurrent(seal);
+  }
+
+  abort(seal: ZLinkExecutionBarrierSeal): boolean {
+    if (!this.isCurrent(seal)) return false;
+    this.currentSeal = undefined;
+    const waiters = this.admissionWaiters.splice(0);
+    for (const waiter of waiters) waiter.resolve(this.createClaim());
+    return true;
+  }
+
+  commit(seal: ZLinkExecutionBarrierSeal): boolean {
+    if (!this.isCurrent(seal)) return false;
+    this.currentSeal = undefined;
+    this.committed = true;
+    const error = new Error('ZLink execution barrier is committed.');
+    for (const waiter of this.admissionWaiters.splice(0)) waiter.reject(error);
+    return true;
+  }
+
+  isCurrent(seal: ZLinkExecutionBarrierSeal): boolean {
+    return this.currentSeal?.generation === seal.generation;
+  }
+
+  private createClaim(): ZLinkExecutionBarrierClaim {
+    this.activeClaims++;
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        this.activeClaims--;
+        if (this.activeClaims === 0) {
+          for (const waiter of this.quiescenceWaiters) waiter();
+          this.quiescenceWaiters.clear();
+        }
+      }
+    };
+  }
+
+  private requireCurrent(seal: ZLinkExecutionBarrierSeal): void {
+    if (!this.isCurrent(seal)) {
+      throw new Error(`ZLink execution barrier generation '${seal.generation}' is stale.`);
+    }
+  }
 }
 
 export type ZLinkRuntimeTaskFailureHandler = (failure: ZLinkRuntimeTaskFailure) => void;

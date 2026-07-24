@@ -270,8 +270,8 @@ test('spot manager exposes exact single-use stable-type calls and generation-fen
   const spotManager = declarationBody(declarations, 'ZLinkSpotManager');
 
   assert.match(spotManager, /create\(spotType: string\): ZLinkSpotCreateCall/);
-  assert.match(spotManager, /getOrCreate\(spotRid: SpotRid, spotType: string\): ZLinkSpotGetOrCreateCall/);
-  assert.match(spotManager, /find\(spotRid: SpotRid, signal\?: AbortSignal\): Promise<SpotRef \| undefined>/);
+  assert.match(spotManager, /getOrCreate\(spotId: SpotId, spotType: string\): ZLinkSpotGetOrCreateCall/);
+  assert.match(spotManager, /find\(spotId: SpotId, signal\?: AbortSignal\): Promise<SpotRef \| undefined>/);
   assert.match(spotManager, /close\(spot: SpotRef, signal\?: AbortSignal\): Promise<boolean>/);
   assert.doesNotMatch(spotManager, /Type<TSpot>|meshName: string,\s*spotType/);
 });
@@ -464,7 +464,7 @@ test('location contract declarations fix store resolver runtime query watch and 
   assert.equal(/\blist(?:Peers|Spots|Actors|Routes)\(/.test(runtimeQuery), false);
 
   for (const field of [
-    'meshName', 'spotRid', 'spotGeneration', 'ownerNodeRid',
+    'meshName', 'spotId', 'spotGeneration', 'ownerNodeRid',
     'ownerNodeGeneration', 'spotKind', 'spotType', 'ownerId', 'updatedAt'
   ]) {
     assert.match(spotLocation, new RegExp(`readonly ${field}:`));
@@ -492,12 +492,12 @@ test('location contract declarations fix store resolver runtime query watch and 
   assert.match(actorLocation, /readonly actorRef: ActorRef/);
   assert.match(actorLocation, /readonly ownerNodeRid: RoutingId/);
   assert.match(actorLocation, /readonly ownerNodeGeneration: bigint/);
-  assert.match(actorLocation, /readonly spotRid: RoutingId/);
+  assert.match(actorLocation, /readonly spotId: RoutingId/);
   assert.match(actorLocation, /readonly spotGeneration: bigint/);
   assert.match(actorLocation, /readonly spotKind: ZLinkSpotKind/);
   assert.match(actorLocation, /readonly membershipEpoch: bigint/);
   assert.doesNotMatch(actorLocation, /readonly (?:nodeRid|locationKind|spotMeshName|generation):/);
-  assert.equal(/readonly (?:actorType|actorRef|ownerNodeRid|ownerNodeGeneration|spotRid|spotGeneration|spotKind|membershipEpoch)\?:/.test(actorLocation), false);
+  assert.equal(/readonly (?:actorType|actorRef|ownerNodeRid|ownerNodeGeneration|spotId|spotGeneration|spotKind|membershipEpoch)\?:/.test(actorLocation), false);
   assert.match(actorKey, /readonly meshName: string/);
   assert.match(actorKey, /readonly actorId: string/);
   assert.equal(actorKey.includes('actorType'), false);
@@ -581,15 +581,15 @@ test('route client surface scopes node routing by MeshName and resolves channels
   assert.doesNotMatch(routeClient, /SpotHandle|sendToSpot|requestToSpot/);
 });
 
-test('Spot public declarations use SpotRid calls and keep Instance handlers actor-free', () => {
+test('Spot public declarations use SpotId calls and keep Instance handlers actor-free', () => {
   const declarations = readTree(declarationsRoot);
   const spotOutbound = declarationBody(declarations, 'ZLinkSpotOutbound');
   const instanceContext = declarationBody(declarations, 'ZLinkInstanceSpotContext');
   const instanceHandlers = declarationBody(declarations, 'ZLinkInstanceSpotHandlerRegistry');
   const spotsIndex = fs.readFileSync(path.join(declarationsRoot, 'Spots', 'index.d.ts'), 'utf8');
 
-  assert.match(spotOutbound, /sendToSpot\(spotRid: SpotRid, message: unknown\): ZLinkSpotSendCall/);
-  assert.match(spotOutbound, /requestToSpot\(spotRid: SpotRid, request: unknown\): ZLinkSpotRequestCall/);
+  assert.match(spotOutbound, /sendToSpot\(spotId: SpotId, message: unknown\): ZLinkSpotSendCall/);
+  assert.match(spotOutbound, /requestToSpot\(spotId: SpotId, request: unknown\): ZLinkSpotRequestCall/);
   assert.match(instanceContext, /readonly handlers: ZLinkInstanceSpotHandlerRegistry/);
   assert.match(instanceHandlers, /addPacket<THandler>\(handlerType: Type<THandler>\): this/);
   assert.doesNotMatch(instanceHandlers, /addSubscribe|addActor/);

@@ -109,7 +109,7 @@ function decodeActorReplyFrame(message) {
 
 test('Mesh actor ingress uses the current runtime owner for handoff capture', async () => {
   let fallbackActorRef;
-  const currentSpotRid = zlink.RoutingId.from('current-spot');
+  const currentSpotId = zlink.RoutingId.from('current-spot');
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [],
     actorDispatchOwnerResolver: () => ({
@@ -118,7 +118,7 @@ test('Mesh actor ingress uses the current runtime owner for handoff capture', as
         actorId: 'actor-1',
         generation: 3n
       },
-      spotRid: currentSpotRid
+      spotId: currentSpotId
     }),
     async dispatchEntryActorPacket(_actorId, _parts, _returnResponse, _boundTarget, fallback) {
       fallbackActorRef = fallback;
@@ -127,7 +127,7 @@ test('Mesh actor ingress uses the current runtime owner for handoff capture', as
 
   await manager.dispatchMeshActor('test.mesh',
     {
-      spotRid: null,
+      spotId: null,
       actor: {
         nodeRid: zlink.RoutingId.from('stale-node'),
         actorId: 'actor-1',
@@ -143,7 +143,7 @@ test('Mesh actor ingress uses the current runtime owner for handoff capture', as
   assert.equal(fallbackActorRef.nodeRid, 'current-node');
   assert.equal(fallbackActorRef.generation, 3n);
   assert.equal(fallbackActorRef.handoffForwarded, true);
-  assert.equal(fallbackActorRef.handoffTargetSpotRid, String(currentSpotRid));
+  assert.equal(fallbackActorRef.handoffTargetSpotId, String(currentSpotId));
 });
 
 test('Mesh actor ingress routes the concrete Entry Spot RID to Entry Spot actor dispatch', async () => {
@@ -163,7 +163,7 @@ test('Mesh actor ingress routes the concrete Entry Spot RID to Entry Spot actor 
 
   await manager.dispatchMeshActor('test.mesh',
     {
-      spotRid: entryNodeRid,
+      spotId: entryNodeRid,
       actor: {
         nodeRid: entryNodeRid,
         actorId: 'actor-1',
@@ -195,7 +195,7 @@ test('Mesh actor ingress records the validated bound-session generation before d
 
   await manager.dispatchMeshActor('test.mesh',
     {
-      spotRid: entryNodeRid,
+      spotId: entryNodeRid,
       actor: {
         nodeRid: entryNodeRid,
         actorId: 'actor-1',
@@ -284,13 +284,13 @@ test('ZLinkSpotManager creates lists finds and closes spots with lifecycle order
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
   const created = await manager.create('test.mesh', StageSpot, 'open');
   assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
-  assert.equal(typeof created.spotRid, 'string');
+  assert.equal(typeof created.spotId, 'string');
   assert.deepEqual(events, ['configure', 'onCreate:open', 'onInitialize']);
-  assert.deepEqual(await manager.find('test.mesh', created.spotRid), { spotRid: created.spotRid });
-  assert.deepEqual(await manager.list('test.mesh'), [{ spotRid: created.spotRid }]);
-  assert.equal(await manager.close('test.mesh', created.spotRid), true);
-  assert.equal(await manager.close('test.mesh', created.spotRid), false);
-  assert.equal(await manager.find('test.mesh', created.spotRid), null);
+  assert.deepEqual(await manager.find('test.mesh', created.spotId), { spotId: created.spotId });
+  assert.deepEqual(await manager.list('test.mesh'), [{ spotId: created.spotId }]);
+  assert.equal(await manager.close('test.mesh', created.spotId), true);
+  assert.equal(await manager.close('test.mesh', created.spotId), false);
+  assert.equal(await manager.find('test.mesh', created.spotId), null);
   assert.deepEqual(events, [
     'configure',
     'onCreate:open',
@@ -319,7 +319,7 @@ test('ZLinkSpotManager consumes MeshNode Spot send and request records', async (
   const created = await manager.create('test.mesh', MeshSpot);
   const owner = {
     ownerKind: zlink.ReadyOwnerKind.Spot,
-    spotRid: created.spotRid
+    spotId: created.spotId
   };
   const sendParts = channelProtocol.encodeChannelEnvelopeParts(
     3,
@@ -359,7 +359,7 @@ test('ZLinkSpotManager consumes MeshNode Spot send and request records', async (
     for (const part of sendParts) part.close();
     for (const part of requestParts) part.close();
     for (const part of replyParts ?? []) part.close();
-    await manager.close('test.mesh', created.spotRid);
+    await manager.close('test.mesh', created.spotId);
   }
 });
 
@@ -381,8 +381,8 @@ test('ZLinkSpotManager drain closes every local Spot in the selected mesh', asyn
   const draining = manager.drainForShutdown('test.mesh').then(() => { completed = true; });
   await draining;
   assert.equal(completed, true);
-  assert.equal(await manager.find('test.mesh', recreated.spotRid), null);
-  assert.equal(await manager.find('test.mesh', natural.spotRid), null);
+  assert.equal(await manager.find('test.mesh', recreated.spotId), null);
+  assert.equal(await manager.find('test.mesh', natural.spotId), null);
   assert.deepEqual(closed.sort(), ['natural', 'recreated']);
 });
 
@@ -428,7 +428,7 @@ test('ZLinkSpotManager reports HostShutdown only for shutdown-drained User and I
     shutdownInstanceRid
   );
 
-  assert.equal(await manager.close('test.mesh', explicitUser.spotRid), true);
+  assert.equal(await manager.close('test.mesh', explicitUser.spotId), true);
   assert.equal(await manager.close('test.mesh', explicitInstanceRid), true);
   await manager.drainForShutdown('test.mesh');
 
@@ -505,7 +505,7 @@ test('ZLinkSpotManager claims location before activation and releases on close',
   class StageSpot {
     async onCreate() {
       activatedA++;
-      const row = await store.resolveSpot({ meshName: 'play', spotRid: rid('room-1') });
+      const row = await store.resolveSpot({ meshName: 'play', spotId: rid('room-1') });
       assert.equal(row.ownerId, 'owner-a');
       return { accepted: true };
     }
@@ -527,14 +527,14 @@ test('ZLinkSpotManager claims location before activation and releases on close',
     nodeRid: rid('node-a'),
     nodeGenerationProvider: () => 1n,
     locationLifecycle: nodeA.lifecycle,
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid, 11n)
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId, 11n)
   });
   const managerB = new framework.DefaultZLinkSpotManager({
     spotFactories: [LosingSpot],
     nodeRid: rid('node-b'),
     nodeGenerationProvider: () => 1n,
     locationLifecycle: nodeB.lifecycle,
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid, 12n)
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId, 12n)
   });
 
   const created = await managerA.getOrCreate('play', StageSpot, rid('room-1'));
@@ -547,7 +547,7 @@ test('ZLinkSpotManager claims location before activation and releases on close',
   assert.equal(activatedB, 0);
 
   await managerA.close('play', rid('room-1'));
-  assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('room-1') }), undefined);
+  assert.equal(await store.resolveSpot({ meshName: 'play', spotId: rid('room-1') }), undefined);
 });
 
 test('ZLinkSpotManager scopes identical Spot RIDs and Core Spot creation by MeshName', async () => {
@@ -560,9 +560,9 @@ test('ZLinkSpotManager scopes identical Spot RIDs and Core Spot creation by Mesh
   const createdNativeSpots = [];
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
-    createNativeSpot: (meshName, spotRid) => {
-      createdNativeSpots.push(`${meshName}:${spotRid}`);
-      return formalNativeSpot(spotRid);
+    createNativeSpot: (meshName, spotId) => {
+      createdNativeSpots.push(`${meshName}:${spotId}`);
+      return formalNativeSpot(spotId);
     }
   });
 
@@ -575,12 +575,12 @@ test('ZLinkSpotManager scopes identical Spot RIDs and Core Spot creation by Mesh
     framework.ZLinkSpotCreateState.Created
   );
   assert.deepEqual(createdNativeSpots, ['mesh.a:shared-room', 'mesh.b:shared-room']);
-  assert.deepEqual(await manager.list('mesh.a'), [{ spotRid: 'shared-room' }]);
-  assert.deepEqual(await manager.list('mesh.b'), [{ spotRid: 'shared-room' }]);
+  assert.deepEqual(await manager.list('mesh.a'), [{ spotId: 'shared-room' }]);
+  assert.deepEqual(await manager.list('mesh.b'), [{ spotId: 'shared-room' }]);
 
   assert.equal(await manager.close('mesh.a', 'shared-room'), true);
   assert.equal(await manager.find('mesh.a', 'shared-room'), null);
-  assert.deepEqual(await manager.find('mesh.b', 'shared-room'), { spotRid: 'shared-room' });
+  assert.deepEqual(await manager.find('mesh.b', 'shared-room'), { spotId: 'shared-room' });
   assert.equal(await manager.close('mesh.b', 'shared-room'), true);
 });
 
@@ -605,18 +605,18 @@ test('ZLinkSpotManager rolls location claim back when activation fails or reject
     nodeGenerationProvider: () => 1n,
     locationLifecycle: node.lifecycle,
     locationMeshName: 'play',
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid, 13n)
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId, 13n)
   });
 
   await assert.rejects(
     () => manager.getOrCreate('test.mesh', FailingSpot, rid('fail-room')),
     /spot activation failed/
   );
-  assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('fail-room') }), undefined);
+  assert.equal(await store.resolveSpot({ meshName: 'play', spotId: rid('fail-room') }), undefined);
 
   const rejected = await manager.getOrCreate('test.mesh', RejectingSpot, rid('reject-room'));
   assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
-  assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('reject-room') }), undefined);
+  assert.equal(await store.resolveSpot({ meshName: 'play', spotId: rid('reject-room') }), undefined);
 });
 
 test('ZLinkSpotManager passes dotnet-shaped context into spot constructor', async () => {
@@ -633,7 +633,7 @@ test('ZLinkSpotManager passes dotnet-shaped context into spot constructor', asyn
   });
   const created = await manager.getOrCreate('test.mesh', StageSpot, 'stage-a');
 
-  assert.equal(capturedContext.spotRid, 'stage-a');
+  assert.equal(capturedContext.spotId, 'stage-a');
   assert.equal(capturedContext.routingId, 'stage-a');
   assert.equal(capturedContext.nodeRid, 'node-a');
   assert.equal(typeof capturedContext.addTimer, 'function');
@@ -793,7 +793,7 @@ test('ZLinkSpotManager reports SPOT subscription dispatch errors to global obser
   class StageSpot {}
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid),
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
     dispatchErrors: dispatchErrorReporter(
       DispatchObserver,
       { reportRuntimeTaskException() {} }
@@ -834,7 +834,7 @@ test('ZLinkSpotManager serializes formal MeshNode subscription records that arri
   }
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid, 1n, subscriptions),
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId, 1n, subscriptions),
     spotSubscriptionHandlers: [{
       spotType: StageSpot,
       handlerType: SubscribeHandler,
@@ -884,7 +884,7 @@ test('SPOT subscription dispatch preserves publisher flow origin', async () => {
   class SubscribeHandler { async handle() {} }
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid),
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
     dispatchErrors: dispatchErrorReporter(
       DispatchObserver,
       { reportRuntimeTaskException() {} },
@@ -929,7 +929,7 @@ test('ZLinkSpotManager reports SPOT actor dispatch errors to global observer', a
   class StageSpot {}
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid),
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
     dispatchErrors: dispatchErrorReporter(
       DispatchObserver,
       { reportRuntimeTaskException() {} }
@@ -952,7 +952,7 @@ test('ZLinkSpotManager reports SPOT actor dispatch errors to global observer', a
     assert.equal(dispatchEvents[0].outcome, 'failed');
     assert.equal(dispatchEvents[0].reason, 'invalid_frame');
     assert.equal(dispatchEvents[0].action, 'drop');
-    assert.equal(dispatchEvents[0].spotRid, 'stage-actor');
+    assert.equal(dispatchEvents[0].spotId, 'stage-actor');
     assert.equal(dispatchEvents[0].actorId, 'actor-1');
   } finally {
     badPart.close();
@@ -971,7 +971,7 @@ test('ZLinkSpotManager replies routed actor request dispatch errors', async () =
   class StageSpot {}
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid),
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
     dispatchErrors: dispatchErrorReporter(
       DispatchObserver,
       { reportRuntimeTaskException() {} }
@@ -1043,7 +1043,7 @@ test('ZLinkSpotManager does not bind formal Mesh actor packets as remote session
   }
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid),
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
     nativeSpotNodeProvider: () => nativeNode,
     actorResolver: () => new ProbeActor(),
     spotActorRequestHandlers: [{
@@ -1136,7 +1136,7 @@ test('ZLinkSpotManager replies formal Mesh actor handler exceptions as HandlerEx
   }
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [StageSpot],
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid),
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
     nativeSpotNodeProvider: () => nativeNode,
     actorResolver: () => new ProbeActor(),
     spotActorRequestHandlers: [{
@@ -1208,18 +1208,18 @@ test('ZLinkSpotManager awaits async configure before onInitialize', async () => 
   assert.deepEqual(events, ['configure', 'initialize']);
 });
 
-test('ZLinkSpotManager getOrCreate is keyed by spot type and spotRid', async () => {
+test('ZLinkSpotManager getOrCreate is keyed by spot type and spotId', async () => {
   class StageSpot {}
   class OtherSpot {}
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot, OtherSpot] });
 
   assert.deepEqual(await manager.getOrCreate('test.mesh', StageSpot, 'stage-1'), {
-    spotRid: 'stage-1',
+    spotId: 'stage-1',
     state: framework.ZLinkSpotCreateState.Created,
     reply: undefined
   });
   assert.deepEqual(await manager.getOrCreate('test.mesh', StageSpot, 'stage-1'), {
-    spotRid: 'stage-1',
+    spotId: 'stage-1',
     state: framework.ZLinkSpotCreateState.Existing
   });
   await assert.rejects(
@@ -1239,9 +1239,9 @@ test('ZLinkSpotManager list returns spot infos ordered by routing id', async () 
   await manager.getOrCreate('test.mesh', StageSpot, 'stage-b');
 
   assert.deepEqual(await manager.list('test.mesh'), [
-    { spotRid: 'stage-a' },
-    { spotRid: 'stage-b' },
-    { spotRid: 'stage-c' }
+    { spotId: 'stage-a' },
+    { spotId: 'stage-b' },
+    { spotId: 'stage-c' }
   ]);
 });
 
@@ -1276,7 +1276,7 @@ test('ZLinkSpotManager concurrent getOrCreate initializes once with the first cr
 
   assert.equal(results.filter((result) => result.state === framework.ZLinkSpotCreateState.Created).length, 1);
   assert.equal(results.filter((result) => result.state === framework.ZLinkSpotCreateState.Existing).length, 1);
-  assert.deepEqual(results.map((result) => result.spotRid), ['payload-room', 'payload-room']);
+  assert.deepEqual(results.map((result) => result.spotId), ['payload-room', 'payload-room']);
   assert.deepEqual(payloads, ['first-a']);
 });
 
@@ -1307,7 +1307,7 @@ test('ZLinkSpotManager caller cancellation does not cancel shared getOrCreate ac
   await assert.rejects(canceledCaller, /aborted/);
   const result = await waitingCaller;
   assert.equal(result.state, framework.ZLinkSpotCreateState.Existing);
-  assert.deepEqual(await manager.find('test.mesh', 'shared-cancel-room'), { spotRid: 'shared-cancel-room' });
+  assert.deepEqual(await manager.find('test.mesh', 'shared-cancel-room'), { spotId: 'shared-cancel-room' });
   await manager.close('test.mesh', 'shared-cancel-room');
 });
 
@@ -1377,7 +1377,7 @@ test('ZLinkSpotManager create reject returns rejected state reply and does not r
 
   assert.equal(rejected.state, framework.ZLinkSpotCreateState.Rejected);
   assert.equal(rejected.reply, 'reject:closed');
-  assert.equal(await manager.find('test.mesh', rejected.spotRid), null);
+  assert.equal(await manager.find('test.mesh', rejected.spotId), null);
   assert.deepEqual(await manager.list('test.mesh'), []);
 });
 
@@ -1425,7 +1425,7 @@ test('ZLinkSpotManager rejection disposes native Spot and releases its location 
   assert.equal(locationReleases, 1);
 });
 
-test('ZLinkSpotManager getOrCreate can retry same spotRid after create rejection', async () => {
+test('ZLinkSpotManager getOrCreate can retry same spotId after create rejection', async () => {
   let accepted = false;
   const payloads = [];
   class RetryCreateSpot {
@@ -1447,11 +1447,11 @@ test('ZLinkSpotManager getOrCreate can retry same spotRid after create rejection
   accepted = true;
   const created = await manager.getOrCreate('test.mesh', RetryCreateSpot, 'retry-room', 'second');
   assert.equal(created.state, framework.ZLinkSpotCreateState.Created);
-  assert.deepEqual(await manager.find('test.mesh', 'retry-room'), { spotRid: 'retry-room' });
+  assert.deepEqual(await manager.find('test.mesh', 'retry-room'), { spotId: 'retry-room' });
   assert.deepEqual(payloads, ['first', 'second']);
 });
 
-test('ZLinkSpotManager getOrCreate can retry same spotRid after create lifecycle failure', async () => {
+test('ZLinkSpotManager getOrCreate can retry same spotId after create lifecycle failure', async () => {
   let createThrows = true;
   let initializeThrows = true;
   const events = [];
@@ -1608,14 +1608,14 @@ test('formal Entry Spot LEFT control invokes the Entry Spot lifecycle callback',
   });
 
   await manager.dispatchMeshSpotControl('test.mesh',
-    { spotRid: 'entry-a' },
+    { spotId: 'entry-a' },
     {
       kindData: {
         kind: 'actorControl',
         lifecycleKind: zlink.ActorLifecycleKind.Left,
         previousActor: { actorId: actor.actorId },
         currentActor: null,
-        previousSpotRid: 'entry-a'
+        previousSpotId: 'entry-a'
       }
     }
   );
@@ -1630,14 +1630,14 @@ test('user Spot join runs source leave on the caller turn without target-to-sour
       this.context = context;
     }
     async onActorJoin(actorId) {
-      events.push(`admit:${this.context.spotRid}:${actorId}`);
+      events.push(`admit:${this.context.spotId}:${actorId}`);
       return { accepted: true };
     }
     async onLeaveActor(actor) {
-      events.push(`leave:${this.context.spotRid}:${actor.actorId}`);
+      events.push(`leave:${this.context.spotId}:${actor.actorId}`);
     }
     async onJoinedActor(actor) {
-      events.push(`joined:${this.context.spotRid}:${actor.actorId}`);
+      events.push(`joined:${this.context.spotId}:${actor.actorId}`);
     }
   }
   let manager;
@@ -1645,14 +1645,14 @@ test('user Spot join runs source leave on the caller turn without target-to-sour
     spotFactories: [RoomSpot],
     entrySpotCallbacks: {
       onLeaveActor(actor) {
-        return manager.executeOnSpot(RoomSpot, actor.sourceSpotRid, (source) =>
+        return manager.executeOnSpot(RoomSpot, actor.sourceSpotId, (source) =>
           source.onLeaveActor(actor));
       }
     }
   });
   await manager.getOrCreate('test.mesh', RoomSpot, 'room-a');
   await manager.getOrCreate('test.mesh', RoomSpot, 'room-b');
-  const actor = { actorId: 'alice', sourceSpotRid: 'room-a' };
+  const actor = { actorId: 'alice', sourceSpotId: 'room-a' };
   const request = zlink.Message.from('move');
 
   const move = manager.executeOnSpot(RoomSpot, 'room-a', () =>
@@ -1770,7 +1770,7 @@ test('routed actor transfer separates admission from materialization and commit'
         requestSeq: 1n,
         parts: [part],
         routingId: null,
-        spotRid: 'room-1',
+        spotId: 'room-1',
         reply() {
           return {
             message(message) {
@@ -1925,7 +1925,7 @@ test('spot manager rejects one-phase native remote join without materializing a 
   }
   const manager = new framework.DefaultZLinkSpotManager({
     spotFactories: [RoomSpot],
-    createNativeSpot: (_meshName, spotRid) => formalNativeSpot(spotRid),
+    createNativeSpot: (_meshName, spotId) => formalNativeSpot(spotId),
     actorTransferRuntime: {
       async materializeRoutedActor() {
         materialized = true;
@@ -1938,7 +1938,7 @@ test('spot manager rejects one-phase native remote join without materializing a 
   await manager.dispatchMeshActorJoin('test.mesh',
     {
       ownerKind: zlink.ReadyOwnerKind.Spot,
-      spotRid: zlink.RoutingId.from('room-1'),
+      spotId: zlink.RoutingId.from('room-1'),
       actor: null
     },
     {
@@ -1995,11 +1995,11 @@ test('spot outbound requestToChannel completion runs on the spot serial executor
   });
   const created = await manager.create('test.mesh', StageSpot);
   let outbound;
-  await manager.executeOnSpot(StageSpot, created.spotRid, (spot) => {
+  await manager.executeOnSpot(StageSpot, created.spotId, (spot) => {
     outbound = spot.context.outbound;
   });
 
-  const first = manager.executeOnSpot(StageSpot, created.spotRid, async () => {
+  const first = manager.executeOnSpot(StageSpot, created.spotId, async () => {
     events.push('spot:start');
     await new Promise((resolve) => setTimeout(resolve, 5));
     events.push('spot:end');
@@ -2017,24 +2017,24 @@ test('spot outbound routed send and request use SpotRef targets inside serial ex
   const targetSpotRef = {
     meshName: 'play.route',
     nodeRid: 'node-b',
-    spotRid: 'stage-b',
+    spotId: 'stage-b',
     spotKind: framework.ZLinkSpotKind.User,
     spotGeneration: 9n
   };
   const targetSpot = framework.createSpotHandle(
-    targetSpotRef.spotRid,
+    targetSpotRef.spotId,
     async () => targetSpotRef
   );
   const routedTransport = {
     async sendToSpot(address, message, options) {
       events.push(
-        `send:${address.targetNodeRid}:${address.spotRid}:${address.spotKind}:` +
+        `send:${address.targetNodeRid}:${address.spotId}:${address.spotKind}:` +
         `${address.targetSpotGeneration}:${options.packetName}:${message}`
       );
     },
     async requestToSpot(address, request, options) {
       events.push(
-        `request:${address.routerChannelId}:${address.spotRid}:${address.spotKind}:` +
+        `request:${address.routerChannelId}:${address.spotId}:${address.spotKind}:` +
         `${address.targetSpotGeneration}:${options.timeoutMs}:${request}`
       );
       return 'routed-reply';
@@ -2046,11 +2046,11 @@ test('spot outbound routed send and request use SpotRef targets inside serial ex
   });
   const created = await manager.create('test.mesh', StageSpot);
   let outbound;
-  await manager.executeOnSpot(StageSpot, created.spotRid, (spot) => {
+  await manager.executeOnSpot(StageSpot, created.spotId, (spot) => {
     outbound = spot.context.outbound;
   });
 
-  const first = manager.executeOnSpot(StageSpot, created.spotRid, async () => {
+  const first = manager.executeOnSpot(StageSpot, created.spotId, async () => {
     events.push('spot:start');
     await new Promise((resolve) => setTimeout(resolve, 5));
     events.push('spot:end');
@@ -2076,7 +2076,7 @@ test('spot outbound routed calls require runtime transport', async () => {
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
   const created = await manager.create('test.mesh', StageSpot);
   let outbound;
-  await manager.executeOnSpot(StageSpot, created.spotRid, (spot) => {
+  await manager.executeOnSpot(StageSpot, created.spotId, (spot) => {
     outbound = spot.context.outbound;
   });
 
@@ -2084,21 +2084,21 @@ test('spot outbound routed calls require runtime transport', async () => {
     () => outbound.sendToSpot({
       meshName: 'play.route',
       nodeRid: 'node-b',
-      spotRid: 'stage-b'
+      spotId: 'stage-b'
     }, 'notice'),
     framework.ZLinkConfigurationException
   );
 });
 
-test('SpotRid outbound keeps Missing Instance placement intent behind the public call builder', async () => {
+test('SpotId outbound keeps Missing Instance placement intent behind the public call builder', async () => {
   const calls = [];
   const addressTransport = {
-    async sendToSpotAddress(spotRid, message, options) {
-      calls.push({ kind: 'send', spotRid, message, options });
+    async sendToSpotAddress(spotId, message, options) {
+      calls.push({ kind: 'send', spotId, message, options });
       return { status: framework.ZLinkSubmitStatus.Accepted };
     },
-    async requestToSpotAddress(spotRid, request, options) {
-      calls.push({ kind: 'request', spotRid, request, options });
+    async requestToSpotAddress(spotId, request, options) {
+      calls.push({ kind: 'request', spotId, request, options });
       return 'ready-reply';
     }
   };
@@ -2126,7 +2126,7 @@ test('SpotRid outbound keeps Missing Instance placement intent behind the public
     .submit();
 
   assert.equal(reply, 'ready-reply');
-  assert.equal(calls[0].spotRid, 'instance-42');
+  assert.equal(calls[0].spotId, 'instance-42');
   assert.equal(calls[0].options.instanceSpotType, 'chat-room');
   assert.equal(calls[0].options.initialMeshName, 'target.mesh');
   assert.equal(calls[0].options.metadata.get('trace'), 'abc');
@@ -2148,7 +2148,7 @@ test('spot timer dispatches handler on the spot serial executor with dotnet tick
   class HeartbeatHandler {
     async handle(spot, tick) {
       events.push(`origin:${flowContext.currentOrCreateFlow().flowOrigin}`);
-      events.push(`tick:${tick.deliveryIndex}:${spot.context.spotRid}`);
+      events.push(`tick:${tick.deliveryIndex}:${spot.context.spotId}`);
       firstTick(tick);
     }
   }
@@ -2168,7 +2168,7 @@ test('spot timer dispatches handler on the spot serial executor with dotnet tick
 
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [StageSpot] });
   const created = await manager.create('test.mesh', StageSpot);
-  const blockingTurn = manager.executeOnSpot(StageSpot, created.spotRid, async () => {
+  const blockingTurn = manager.executeOnSpot(StageSpot, created.spotId, async () => {
     events.push('spot:start');
     await new Promise((resolve) => setTimeout(resolve, 5));
     events.push('spot:end');
@@ -2176,7 +2176,7 @@ test('spot timer dispatches handler on the spot serial executor with dotnet tick
 
   const tick = await tickReceived;
   await blockingTurn;
-  await manager.close('test.mesh', created.spotRid);
+  await manager.close('test.mesh', created.spotId);
 
   assert.equal(tick.name, 'heartbeat');
   assert.equal(tick.deliveryIndex, 1n);
@@ -2211,7 +2211,7 @@ test('ZLinkSpotContext close closes current spot after timer callback returns', 
   const manager = new framework.DefaultZLinkSpotManager({ spotFactories: [SelfClosingSpot] });
   const created = await manager.create('test.mesh', SelfClosingSpot);
   await closed.promise;
-  await waitFor(async () => (await manager.find('test.mesh', created.spotRid)) === null);
+  await waitFor(async () => (await manager.find('test.mesh', created.spotId)) === null);
   await waitFor(() => events.includes('closing'));
 
   assert.deepEqual(events, ['tick', 'after-close-request', 'closing']);
@@ -2232,13 +2232,13 @@ test('ZLinkSpotManager close rejects user spot while joined actors remain', asyn
   });
   const created = await manager.create('test.mesh', OccupiedSpot);
 
-  assert.equal(await manager.close('test.mesh', created.spotRid), false);
-  assert.deepEqual(await manager.find('test.mesh', created.spotRid), { spotRid: created.spotRid });
+  assert.equal(await manager.close('test.mesh', created.spotId), false);
+  assert.deepEqual(await manager.find('test.mesh', created.spotId), { spotId: created.spotId });
   assert.deepEqual(events, []);
 
   actorCount = 0;
-  assert.equal(await manager.close('test.mesh', created.spotRid), true);
-  assert.equal(await manager.find('test.mesh', created.spotRid), null);
+  assert.equal(await manager.close('test.mesh', created.spotId), true);
+  assert.equal(await manager.find('test.mesh', created.spotId), null);
   assert.deepEqual(events, ['closing']);
 });
 
@@ -2253,22 +2253,22 @@ test('ZLinkSpotManager close rechecks actor occupancy after earlier serial work'
     actorCountProvider: () => actorCount
   });
   const created = await manager.create('test.mesh', OccupiedSpot);
-  const blockingTurn = manager.executeOnSpot(OccupiedSpot, created.spotRid, async () => {
+  const blockingTurn = manager.executeOnSpot(OccupiedSpot, created.spotId, async () => {
     turnStarted.resolve();
     await releaseTurn.promise;
   });
   await turnStarted.promise;
-  const actorJoin = manager.executeOnSpot(OccupiedSpot, created.spotRid, () => {
+  const actorJoin = manager.executeOnSpot(OccupiedSpot, created.spotId, () => {
     actorCount = 1;
   });
-  const closing = manager.close('test.mesh', created.spotRid);
+  const closing = manager.close('test.mesh', created.spotId);
 
   releaseTurn.resolve();
   await blockingTurn;
   await actorJoin;
 
   assert.equal(await closing, false);
-  assert.deepEqual(await manager.find('test.mesh', created.spotRid), { spotRid: created.spotRid });
+  assert.deepEqual(await manager.find('test.mesh', created.spotId), { spotId: created.spotId });
 });
 
 test('spot timer rejects invalid options', async () => {
@@ -2281,21 +2281,21 @@ test('spot timer rejects invalid options', async () => {
   const created = await manager.create('test.mesh', StageSpot);
 
   await assert.rejects(
-    () => manager.executeOnSpot(StageSpot, created.spotRid, (spot) => spot.context.addTimer('', 1, Handler)),
+    () => manager.executeOnSpot(StageSpot, created.spotId, (spot) => spot.context.addTimer('', 1, Handler)),
     framework.ZLinkConfigurationException
   );
   await assert.rejects(
-    () => manager.executeOnSpot(StageSpot, created.spotRid, (spot) => spot.context.addTimer('bad-period', 0, Handler)),
+    () => manager.executeOnSpot(StageSpot, created.spotId, (spot) => spot.context.addTimer('bad-period', 0, Handler)),
     framework.ZLinkConfigurationException
   );
   await assert.rejects(
-    () => manager.executeOnSpot(StageSpot, created.spotRid, (spot) =>
+    () => manager.executeOnSpot(StageSpot, created.spotId, (spot) =>
       spot.context.addTimer('bad-policy', 1, Handler, { overrunPolicy: 'unsupported' })
     ),
     framework.ZLinkConfigurationException
   );
   await assert.rejects(
-    () => manager.executeOnSpot(StageSpot, created.spotRid, (spot) =>
+    () => manager.executeOnSpot(StageSpot, created.spotId, (spot) =>
       spot.context.addTimer('bad-catchup', 1, Handler, {
         overrunPolicy: framework.ZLinkTimerOverrunPolicy.CatchUpBounded,
         maxCatchUpTicks: 0
@@ -2580,9 +2580,9 @@ function rid(value) {
   return zlink.RoutingId.from(value);
 }
 
-function formalNativeSpot(spotRid, lifecycleGeneration = 1n, subscriptions = []) {
+function formalNativeSpot(spotId, lifecycleGeneration = 1n, subscriptions = []) {
   return {
-    routingId: spotRid,
+    routingId: spotId,
     lifecycleGeneration,
     setDispatchHandler() {},
     setSubscription(channelName, topic) { subscriptions.push({ channelName, topic }); },
@@ -2596,10 +2596,10 @@ function formalNativeSpot(spotRid, lifecycleGeneration = 1n, subscriptions = [])
   };
 }
 
-function meshActorOwner(spotRid, actorId) {
+function meshActorOwner(spotId, actorId) {
   return {
     ownerKind: zlink.ReadyOwnerKind.Actor,
-    spotRid: zlink.RoutingId.from(spotRid),
+    spotId: zlink.RoutingId.from(spotId),
     actor: {
       nodeRid: zlink.RoutingId.from('node-a'),
       actorId,
@@ -2608,11 +2608,11 @@ function meshActorOwner(spotRid, actorId) {
   };
 }
 
-async function dispatchMeshSubscription(manager, spotRid, message) {
+async function dispatchMeshSubscription(manager, spotId, message) {
   await manager.dispatchMeshSpot('test.mesh',
     {
       ownerKind: zlink.ReadyOwnerKind.Spot,
-      spotRid: zlink.RoutingId.from(spotRid),
+      spotId: zlink.RoutingId.from(spotId),
       actor: null
     },
     {

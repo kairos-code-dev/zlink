@@ -775,7 +775,7 @@ Relocation Store에서 payload를 삭제한다. 참조된 payload가 없거나 d
 rollback하지 않는다.
 
 Descriptor의 key, RID, Entry Spot ID, lifecycle generation, endpoint, security identity, owner token, application version,
-ChannelName key set, Spot type set와 object capability의 kind·stable type·policy·Snapshot adapter·profile·limit은
+ChannelName key set, Spot type set와 object capability의 kind·stable type·policy·Snapshot adapter·limit은
 첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight와 placement weight, maintenance wave와 runtime
 state, capacity projection의 active·reserved count만 mutable하다. Capacity projection의 limit은 lifecycle
 동안 바뀌지 않는다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고

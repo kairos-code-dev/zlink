@@ -30,7 +30,7 @@ export class ZLinkSpotRouteBridgeTransport {
       for (;;) {
         try {
           await submitter.submitCommand(
-            () => appendParts(bridge.send(target.routerChannelId, target.targetNodeRid, target.spotRid), parts)
+            () => appendParts(bridge.send(target.routerChannelId, target.targetNodeRid, target.spotId), parts)
               .flags(ZLINK_SEND_DONT_WAIT).submit(),
             signal
           );
@@ -55,7 +55,7 @@ export class ZLinkSpotRouteBridgeTransport {
     const bridge = this.requireBridge(target.routerChannelId);
     return this.sockets.requireSubmitter(this.sockets.routeRouter(target.routerChannelId)).submitRequest(
       (resolve, reject) => {
-        const submitted = appendParts(bridge.request(target.routerChannelId, target.targetNodeRid, target.spotRid), parts)
+        const submitted = appendParts(bridge.request(target.routerChannelId, target.targetNodeRid, target.spotId), parts)
           .timeout(timeoutMs ?? 0).flags(ZLINK_SEND_DONT_WAIT).submit((result, replyParts) => {
             try {
               if (result !== 0) {
@@ -95,7 +95,7 @@ export class ZLinkSpotRouteBridgeTransport {
         const submission = this.sockets.requireSubmitter(this.sockets.routeRouter(target.routerChannelId)).submitRequest<void>(
           (complete, fail) => {
             if (!pending.attachSubmission(complete, fail)) return true;
-            return bridge.request(target.routerChannelId, target.targetNodeRid, target.spotRid)
+            return bridge.request(target.routerChannelId, target.targetNodeRid, target.spotId)
               .message(request).timeout(effectiveTimeoutMs ?? 0).submit((result, replyParts) => {
                 if (result !== 0) {
                   closeMessages(replyParts as readonly Message[]);

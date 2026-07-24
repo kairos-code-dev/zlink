@@ -56,7 +56,7 @@ export interface ServiceBoundSessionSource {
 export interface ServiceInstanceRouteFence {
   readonly targetNodeRid: string;
   readonly targetNodeGeneration: bigint;
-  readonly targetSpotRid: string;
+  readonly targetSpotId: string;
   readonly objectGeneration: bigint;
   readonly ownerId: string;
   readonly authorityOwnerGeneration: bigint;
@@ -67,7 +67,7 @@ export interface ServiceInstanceRouteFence {
 export interface ServiceInstanceActivationTarget {
   readonly targetNodeRid: string;
   readonly targetNodeGeneration: bigint;
-  readonly targetSpotRid: string;
+  readonly targetSpotId: string;
   readonly stableType: string;
   readonly descriptorVersion: string;
 }
@@ -90,7 +90,7 @@ export interface ServiceUserSpotCreateRecord {
   readonly operation: { readonly high: bigint; readonly low: bigint };
   readonly sourceNodeRid: string;
   readonly sourceNodeGeneration: bigint;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly stableType: string;
   readonly reservation: ServiceUserSpotReservationFence;
   readonly deadlineUnixMs: bigint;
@@ -103,7 +103,7 @@ export interface ServiceUserSpotCloseRecord {
   readonly sourceNodeRid: string;
   readonly sourceNodeGeneration: bigint;
   readonly target: {
-    readonly spotRid: string;
+    readonly spotId: string;
     readonly objectGeneration: bigint;
     readonly targetNodeRid: string;
     readonly targetNodeGeneration: bigint;
@@ -121,14 +121,14 @@ export type ServiceStatefulWireRecord =
   | {
       readonly kind: 'spotSend' | 'spotRequest';
       readonly correlation?: bigint;
-      readonly sourceSpotRid: string;
+      readonly sourceSpotId: string;
       readonly target: ServiceSpotRouteFence;
     }
   | {
       readonly kind: 'logicalMulticast';
       readonly channelName: string;
       readonly topic: string;
-      readonly sourceSpotRid: string;
+      readonly sourceSpotId: string;
     }
   | {
       readonly kind: 'actorSend' | 'actorRequest';
@@ -172,7 +172,7 @@ export type ServiceStatefulWireRecord =
       readonly route: ServiceInstanceRouteFence;
       readonly sourceNodeGeneration: bigint;
       readonly sourceNodeRid: string;
-      readonly sourceSpotRid?: string;
+      readonly sourceSpotId?: string;
       readonly operationKind: 'send' | 'request';
       readonly operation: { readonly high: bigint; readonly low: bigint };
       readonly replyRouteId?: bigint;
@@ -183,7 +183,7 @@ export type ServiceStatefulWireRecord =
       readonly target: ServiceInstanceActivationTarget;
       readonly sourceNodeGeneration: bigint;
       readonly sourceNodeRid: string;
-      readonly sourceSpotRid?: string;
+      readonly sourceSpotId?: string;
       readonly operationKind: 'send' | 'request';
       readonly operation: { readonly high: bigint; readonly low: bigint };
       readonly deadlineUnixMs: bigint;
@@ -214,7 +214,7 @@ export type ServiceStatefulReplyTail =
   | {
       readonly kind: 'userSpotCreate';
       readonly createResult: 'existing' | 'created' | 'rejected';
-      readonly spotRid: string;
+      readonly spotId: string;
       readonly objectGeneration: bigint;
     }
   | {
@@ -231,7 +231,7 @@ export interface ServiceStatefulReply {
 
 export function encodeSpotHeader(
   kind: 'spotSend' | 'spotRequest',
-  sourceSpotRid: string,
+  sourceSpotId: string,
   target: ServiceSpotRouteFence,
   correlation?: bigint
 ): Buffer {
@@ -240,7 +240,7 @@ export function encodeSpotHeader(
       ? M6bServiceWireCommand.spotSend
       : M6bServiceWireCommand.spotRequest),
     ...(kind === 'spotRequest' ? [u64(requirePositive(correlation, 'correlation'))] : []),
-    rid(sourceSpotRid, 'sourceSpotRid'),
+    rid(sourceSpotId, 'sourceSpotId'),
     spotFence(target)
   );
 }
@@ -278,13 +278,13 @@ export function encodeActorHeader(
 export function encodeLogicalMulticastHeader(
   channelName: string,
   topic: string,
-  sourceSpotRid: string
+  sourceSpotId: string
 ): Buffer {
   return concat(
     prefix(M6bServiceWireCommand.logicalMulticast),
     text8(channelName, 'channelName'),
     text8(topic, 'topic'),
-    rid(sourceSpotRid, 'sourceSpotRid')
+    rid(sourceSpotId, 'sourceSpotId')
   );
 }
 
@@ -353,7 +353,7 @@ export function encodeInstanceSpotHeader(
   route: ServiceInstanceRouteFence,
   sourceNodeGeneration: bigint,
   sourceNodeRid: string,
-  sourceSpotRid: string | undefined,
+  sourceSpotId: string | undefined,
   operationKind: 'send' | 'request',
   operation: { readonly high: bigint; readonly low: bigint },
   replyRouteId?: bigint,
@@ -362,7 +362,7 @@ export function encodeInstanceSpotHeader(
   const routeBody = concat(
     rid(route.targetNodeRid, 'targetNodeRid'),
     u64(route.targetNodeGeneration),
-    rid(route.targetSpotRid, 'targetSpotRid'),
+    rid(route.targetSpotId, 'targetSpotId'),
     u64(route.objectGeneration),
     text8(route.ownerId, 'ownerId'),
     u64(route.authorityOwnerGeneration),
@@ -388,7 +388,7 @@ export function encodeInstanceSpotHeader(
     routeBody,
     u64Any(sourceNodeGeneration),
     rid(sourceNodeRid, 'sourceNodeRid'),
-    optionalRid(sourceSpotRid),
+    optionalRid(sourceSpotId),
     Buffer.of(operationKind === 'send' ? 1 : 2),
     u64Any(operation.high),
     u64Any(operation.low),
@@ -402,7 +402,7 @@ export function encodeInstanceSpotActivationHeader(
   target: ServiceInstanceActivationTarget,
   sourceNodeGeneration: bigint,
   sourceNodeRid: string,
-  sourceSpotRid: string | undefined,
+  sourceSpotId: string | undefined,
   operationKind: 'send' | 'request',
   operation: { readonly high: bigint; readonly low: bigint },
   deadlineUnixMs: bigint,
@@ -421,7 +421,7 @@ export function encodeInstanceSpotActivationHeader(
   const targetBody = concat(
     rid(target.targetNodeRid, 'targetNodeRid'),
     u64(target.targetNodeGeneration),
-    rid(target.targetSpotRid, 'targetSpotRid'),
+    rid(target.targetSpotId, 'targetSpotId'),
     text16(target.stableType, 'stableType'),
     text16(target.descriptorVersion, 'descriptorVersion')
   );
@@ -435,7 +435,7 @@ export function encodeInstanceSpotActivationHeader(
     targetBody,
     u64Any(sourceNodeGeneration),
     rid(sourceNodeRid, 'sourceNodeRid'),
-    optionalRid(sourceSpotRid),
+    optionalRid(sourceSpotId),
     Buffer.of(operationKind === 'send' ? 1 : 2),
     u64Any(operation.high),
     u64Any(operation.low),
@@ -461,7 +461,7 @@ export function encodeUserSpotCreateHeader(record: Omit<ServiceUserSpotCreateRec
     u64Any(record.operation.low),
     rid(record.sourceNodeRid, 'sourceNodeRid'),
     u64(record.sourceNodeGeneration),
-    rid(record.spotRid, 'spotRid'),
+    rid(record.spotId, 'spotId'),
     text8(record.stableType, 'stableType'),
     text8(fence.reservationId, 'reservationId'),
     text16(fence.expectedStoreVersion, 'expectedStoreVersion'),
@@ -481,7 +481,7 @@ export function encodeUserSpotCloseHeader(record: Omit<ServiceUserSpotCloseRecor
     throw new RangeError('User Spot close requires a non-zero operation identity.');
   }
   const fence = concat(
-    rid(record.target.spotRid, 'spotRid'),
+    rid(record.target.spotId, 'spotId'),
     u64(record.target.objectGeneration),
     rid(record.target.targetNodeRid, 'targetNodeRid'),
     u64(record.target.targetNodeGeneration),
@@ -511,13 +511,13 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
       requireFlags(command.flags, 0);
       const request = command.command === M6bServiceWireCommand.spotRequest;
       const correlation = request ? reader.nonZeroU64('correlation') : undefined;
-      const sourceSpotRid = reader.rid('sourceSpotRid');
+      const sourceSpotId = reader.rid('sourceSpotId');
       const target = reader.spotFence();
       reader.end();
       return {
         kind: request ? 'spotRequest' : 'spotSend',
         ...(correlation === undefined ? {} : { correlation }),
-        sourceSpotRid,
+        sourceSpotId,
         target
       };
     }
@@ -556,7 +556,7 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
         kind: 'logicalMulticast' as const,
         channelName: reader.text8('channelName'),
         topic: reader.text8('topic'),
-        sourceSpotRid: reader.rid('sourceSpotRid')
+        sourceSpotId: reader.rid('sourceSpotId')
       };
       reader.end();
       return result;
@@ -629,7 +629,7 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
       const commonTarget = {
         targetNodeRid: reader.rid('targetNodeRid'),
         targetNodeGeneration: reader.nonZeroU64('targetNodeGeneration'),
-        targetSpotRid: reader.rid('targetSpotRid')
+        targetSpotId: reader.rid('targetSpotId')
       };
       const route: ServiceInstanceRouteFence | undefined = version === 1
         ? {
@@ -651,7 +651,7 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
       if (reader.offset !== routeEnd) fail('Invalid Instance route body length.');
       const sourceNodeGeneration = reader.nonZeroU64('sourceNodeGeneration');
       const sourceNodeRid = reader.rid('sourceNodeRid');
-      const sourceSpotRid = reader.optionalRid('sourceSpotRid');
+      const sourceSpotId = reader.optionalRid('sourceSpotId');
       const operationValue = reader.u8('operationKind');
       if (operationValue !== 1 && operationValue !== 2) fail('Unknown Instance operation kind.');
       const operation = {
@@ -679,7 +679,7 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
         kind: 'instanceSpot' as const,
         sourceNodeGeneration,
         sourceNodeRid,
-        ...(sourceSpotRid === undefined ? {} : { sourceSpotRid }),
+        ...(sourceSpotId === undefined ? {} : { sourceSpotId }),
         operationKind,
         operation,
         ...(replyRouteId === undefined ? {} : { replyRouteId })
@@ -709,7 +709,7 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
         operation,
         sourceNodeRid: reader.rid('sourceNodeRid'),
         sourceNodeGeneration: reader.nonZeroU64('sourceNodeGeneration'),
-        spotRid: reader.rid('spotRid'),
+        spotId: reader.rid('spotId'),
         stableType: reader.text8('stableType'),
         reservation: {
           reservationId: reader.text8('reservationId'),
@@ -747,7 +747,7 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
       const fenceEnd = reader.offset + fenceLength;
       if (fenceEnd > reader.bytes.byteLength) fail('Truncated User Spot close fence.');
       const target = {
-        spotRid: reader.rid('spotRid'),
+        spotId: reader.rid('spotId'),
         objectGeneration: reader.nonZeroU64('objectGeneration'),
         targetNodeRid: reader.rid('targetNodeRid'),
         targetNodeGeneration: reader.nonZeroU64('targetNodeGeneration'),
@@ -808,7 +808,7 @@ export function decodeStatefulReply(
         kind: 'actorLookup',
         actor: reader.actorRef('actor'),
         spot: {
-          spotRid: reader.rid('spotRid'),
+          spotId: reader.rid('spotId'),
           generation: reader.nonZeroU64('spotGeneration')
         },
         membershipEpoch: reader.nonZeroU64('membershipEpoch'),
@@ -846,7 +846,7 @@ export function decodeStatefulReply(
       tail = {
         kind: 'userSpotCreate',
         createResult: (['existing', 'created', 'rejected'] as const)[createResult - 1]!,
-        spotRid: reader.rid('spotRid'),
+        spotId: reader.rid('spotId'),
         objectGeneration: reader.nonZeroU64('objectGeneration')
       };
     } else if (operationKind === 'userSpotClose') {
@@ -886,7 +886,7 @@ function encodeReplyTail(tail: ServiceStatefulReplyTail): Buffer {
     case 'actorLookup':
       return concat(
         actorRef(tail.actor),
-        rid(tail.spot.spotRid, 'spotRid'),
+        rid(tail.spot.spotId, 'spotId'),
         u64(tail.spot.generation),
         u64(tail.membershipEpoch),
         u64(tail.authorityOwnerGeneration)
@@ -913,7 +913,7 @@ function encodeReplyTail(tail: ServiceStatefulReplyTail): Buffer {
     case 'userSpotCreate':
       return concat(
         Buffer.of((['existing', 'created', 'rejected'] as const).indexOf(tail.createResult) + 1),
-        rid(tail.spotRid, 'spotRid'),
+        rid(tail.spotId, 'spotId'),
         u64(tail.objectGeneration)
       );
     case 'userSpotClose':
@@ -954,7 +954,7 @@ function optionalActor(value: ServiceActorRef | undefined): Buffer {
 }
 
 function spotRef(value: ServiceSpotRef): Buffer {
-  return concat(rid(value.spotRid, 'spotRid'), u64(value.generation));
+  return concat(rid(value.spotId, 'spotId'), u64(value.generation));
 }
 
 function rid(value: string, name: string): Buffer {
@@ -974,7 +974,7 @@ function text16(value: string, name: string): Buffer {
 }
 
 function optionalRid(value: string | undefined): Buffer {
-  return value === undefined ? Buffer.of(0) : rid(value, 'sourceSpotRid');
+  return value === undefined ? Buffer.of(0) : rid(value, 'sourceSpotId');
 }
 
 function sized8(value: string, name: string): Buffer {
@@ -1155,7 +1155,7 @@ class Reader {
 
   spotRef(): ServiceSpotRef {
     return {
-      spotRid: this.rid('spotRid'),
+      spotId: this.rid('spotId'),
       generation: this.nonZeroU64('spotGeneration')
     };
   }

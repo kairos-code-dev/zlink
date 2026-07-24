@@ -8,8 +8,8 @@ const redis = require('../../packages/framework-locations-redis/dist/location-fi
 test('in-memory and Redis location stores apply the same filter semantics', () => {
   const nodeRid = rid('node-1');
   const otherNodeRid = rid('node-2');
-  const spotRid = rid('spot-1');
-  const otherSpotRid = rid('spot-2');
+  const spotId = rid('spot-1');
+  const otherSpotId = rid('spot-2');
 
   assertMatcherParity(core.matchesPeerLocation, redis.matchesPeer, {
     autoConnectType: framework.ZLinkLocationAutoConnectType.RouteMesh,
@@ -43,15 +43,15 @@ test('in-memory and Redis location stores apply the same filter semantics', () =
   assertMatcherParity(core.matchesActorLocation, redis.matchesActor, {
     actorType: 'player',
     nodeRid,
-    spotRid,
+    spotId,
     locationKind: framework.ZLinkSpotKind.User
   }, [
     {},
     { actorType: 'player', locationKind: framework.ZLinkSpotKind.User },
     { actorType: 'room' },
     { nodeRid: otherNodeRid },
-    { spotRid },
-    { spotRid: otherSpotRid }
+    { spotId },
+    { spotId: otherSpotId }
   ]);
 
   assertMatcherParity(core.matchesRouteLocation, redis.matchesRoute, {

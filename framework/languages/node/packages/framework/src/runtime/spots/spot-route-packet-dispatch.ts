@@ -42,7 +42,7 @@ import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
 
 interface ZLinkSpotRoutePacketDispatchOptions {
   readonly packetHandlers: ReadonlyMap<string, readonly ZLinkSpotHandlerRegistration[]>;
-  readonly nativeSpotRid: string;
+  readonly nativeSpotId: string;
   readonly serial: ZLinkSpotSerialExecutor;
   readonly getTarget: () => ZLinkSpot;
   readonly providerResolver?: ZLinkProviderResolver;
@@ -103,7 +103,7 @@ export class ZLinkSpotRoutePacketDispatch {
         action,
         packetName: envelope.packetName,
         channelName: envelope.header.channelName,
-        spotRid: this.options.nativeSpotRid,
+        spotId: this.options.nativeSpotId,
         sourceRid: received.routingId === null ? undefined : String(received.routingId),
         correlationId: envelope.header.correlationId ?? received.requestSeq?.toString(),
         flowId: envelope.header.flowId,
@@ -128,7 +128,7 @@ export class ZLinkSpotRoutePacketDispatch {
         action,
         packetName: envelope.packetName,
         channelName: envelope.header.channelName,
-        spotRid: this.options.nativeSpotRid,
+        spotId: this.options.nativeSpotId,
         sourceRid: received.routingId === null ? undefined : String(received.routingId),
         correlationId: envelope.header.correlationId ?? received.requestSeq?.toString(),
         flowId: envelope.header.flowId,
@@ -181,7 +181,7 @@ export class ZLinkSpotRoutePacketDispatch {
         action,
         packetName: envelope.packetName,
         channelName: envelope.header.channelName,
-        spotRid: this.options.nativeSpotRid,
+        spotId: this.options.nativeSpotId,
         sourceRid: received.routingId === null ? undefined : String(received.routingId),
         correlationId: envelope.header.correlationId ?? received.requestSeq?.toString(),
         flowId: envelope.header.flowId,

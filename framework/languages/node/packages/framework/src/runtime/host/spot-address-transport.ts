@@ -51,11 +51,11 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
   constructor(private readonly options: ZLinkHostSpotAddressTransportOptions) {}
 
   async sendToSpotAddress(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     message: unknown,
     call: ZLinkSpotAddressCallOptions
   ): Promise<ZLinkSubmitResult> {
-    const existing = await this.resolveExisting(spotRid, call.signal);
+    const existing = await this.resolveExisting(spotId, call.signal);
     if (existing !== undefined) {
       this.validateExisting(existing, call);
       return await this.options.routed.sendToSpot(existing, message, {
@@ -66,7 +66,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     if (!call.instanceSpot) {
       return { status: ZLinkSubmitStatus.TargetNotFound };
     }
-    const selected = this.selectMissingTarget(spotRid, call);
+    const selected = this.selectMissingTarget(spotId, call);
     if (selected === undefined) {
       return { status: ZLinkSubmitStatus.TargetNotFound };
     }
@@ -82,11 +82,11 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
   }
 
   async requestToSpotAddress<TReply = unknown>(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     request: unknown,
     call: ZLinkSpotAddressCallOptions
   ): Promise<TReply> {
-    const existing = await this.resolveExisting(spotRid, call.signal);
+    const existing = await this.resolveExisting(spotId, call.signal);
     if (existing !== undefined) {
       this.validateExisting(existing, call);
       return await this.options.routed.requestToSpot<TReply>(existing, request, {
@@ -98,14 +98,14 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     if (!call.instanceSpot) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.RequestTargetNotFound,
-        `Spot '${String(spotRid)}' has no Ready authority.`
+        `Spot '${String(spotId)}' has no Ready authority.`
       );
     }
-    const selected = this.selectMissingTarget(spotRid, call);
+    const selected = this.selectMissingTarget(spotId, call);
     if (selected === undefined) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.RequestTargetNotFound,
-        `No eligible Instance Spot target serves '${String(spotRid)}'.`
+        `No eligible Instance Spot target serves '${String(spotId)}'.`
       );
     }
     const timeoutMs = call.timeoutMs ?? this.options.defaultRequestTimeoutMs;
@@ -136,7 +136,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
   }
 
   private async resolveExisting(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     signal?: AbortSignal
   ): Promise<import('../spots/spot-routing-internal').ZLinkSpotRouteTarget | undefined> {
     const resolver = this.options.resolver();
@@ -144,7 +144,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
       throw new Error('Global Spot address resolution requires a Location Store.');
     }
     try {
-      return await resolver.resolve(spotRid, signal);
+      return await resolver.resolve(spotId, signal);
     } catch (error) {
       if (
         error instanceof ZLinkFrameworkException
@@ -157,7 +157,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
   }
 
   private selectMissingTarget(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     call: ZLinkSpotAddressCallOptions
   ): {
     readonly meshName: string;
@@ -165,7 +165,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     readonly target: {
       readonly targetNodeRid: string;
       readonly targetNodeGeneration: bigint;
-      readonly targetSpotRid: string;
+      readonly targetSpotId: string;
       readonly stableType: string;
       readonly descriptorVersion: string;
     };
@@ -223,7 +223,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
           node,
           target: {
             ...placement,
-            targetSpotRid: String(spotRid),
+            targetSpotId: String(spotId),
             stableType
           }
         };
@@ -246,7 +246,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     ) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotTypeMismatch,
-        `Spot '${String(target.spotRid)}' is not the requested Instance Spot type.`
+        `Spot '${String(target.spotId)}' is not the requested Instance Spot type.`
       );
     }
   }

@@ -38,7 +38,7 @@ interface StatefulAuthorityRouteSink {
   ): void;
   registerInstanceIntent(instanceType: string, route: ServiceInstanceRouteFence): void;
   forgetInstanceIntent(
-    spotRid: string,
+    spotId: string,
     authorityOwnerGeneration: bigint,
     storeVersion: string
   ): void;
@@ -70,7 +70,7 @@ interface PendingInstanceActivationRecovery {
   readonly targetNodeRid: string;
   readonly targetNodeGeneration: bigint;
   readonly stableType: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly pending: ServicePendingInstanceActivation;
 }
 
@@ -171,7 +171,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
               ) {
                 const released = await sink.completeRecoveredInstanceActivation(
                   {
-                    targetSpotRid: route.instanceRoute.targetSpotRid,
+                    targetSpotId: route.instanceRoute.targetSpotId,
                     stableType: route.stableType,
                     targetNodeRid: route.instanceRoute.targetNodeRid,
                     targetNodeGeneration: route.instanceRoute.targetNodeGeneration,
@@ -228,7 +228,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
           );
           if (oldRoute.kind === 'instance_spot' && oldRoute.meshName === meshName) {
             sink.forgetInstanceIntent(
-              oldRoute.instanceRoute.targetSpotRid,
+              oldRoute.instanceRoute.targetSpotId,
               oldRoute.instanceRoute.authorityOwnerGeneration,
               oldRoute.instanceRoute.storeVersion
             );
@@ -250,7 +250,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
     if (
       envelope.targetMeshName !== route.meshName
       || envelope.target.stableType !== route.stableType
-      || envelope.target.targetSpotRid !== route.instanceRoute.targetSpotRid
+      || envelope.target.targetSpotId !== route.instanceRoute.targetSpotId
       || envelope.target.targetNodeRid !== route.instanceRoute.targetNodeRid
       || envelope.target.targetNodeGeneration !== route.instanceRoute.targetNodeGeneration
       || envelope.target.descriptorVersion !== status.descriptorRevision.toString()
@@ -280,7 +280,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
     if (
       envelope.targetMeshName !== recovery.targetMeshName
       || envelope.target.stableType !== recovery.stableType
-      || envelope.target.targetSpotRid !== recovery.spotRid
+      || envelope.target.targetSpotId !== recovery.spotId
       || envelope.target.targetNodeRid !== recovery.targetNodeRid
       || envelope.target.targetNodeGeneration !== recovery.targetNodeGeneration
       || envelope.target.descriptorVersion !== status.descriptorRevision.toString()
@@ -293,7 +293,7 @@ export class ZLinkStatefulAuthorityRouteRuntime {
         return;
       }
       const aborted = await creationStore.abort({
-        key: { kind: 'instance_spot', globalId: recovery.spotRid },
+        key: { kind: 'instance_spot', globalId: recovery.spotId },
         reservationId: recovery.pending.reservationId,
         expectedStoreVersion: recovery.pending.storeVersion,
         target: {
@@ -403,7 +403,7 @@ function pendingInstanceActivation(
   const projection = snapshot.pendingCreation;
   const decoded = decodeServiceInstanceAuthorityPayload(snapshot.payload);
   if (
-    allocation.state !== 'pending'
+    allocation.state !== 'reserved'
     || allocation.objectKind !== 'instance_spot'
     || projection === undefined
     || decoded?.state !== 'coldActivating'
@@ -421,7 +421,7 @@ function pendingInstanceActivation(
     targetNodeRid: String(allocation.descriptor.rid),
     targetNodeGeneration: allocation.descriptorLifecycleGeneration,
     stableType: allocation.stableType,
-    spotRid: decoded.spotRid,
+    spotId: decoded.spotId,
     pending: {
       reservationId: projection.reservationId,
       storeVersion: snapshot.storeVersion.value,
@@ -457,10 +457,10 @@ function authorityRoute(snapshot: ZLinkAuthoritySnapshot): AppliedAuthorityRoute
   ) {
     return undefined;
   }
-  const spotRid = decoded.spotRid;
+  const spotId = decoded.spotId;
   const targetNodeRid = String(allocation.descriptor.rid);
   const spotRoute: ServiceSpotRouteFence = {
-    spot: { spotRid, generation: snapshot.objectGeneration },
+    spot: { spotId, generation: snapshot.objectGeneration },
     targetNodeRid,
     targetNodeGeneration: allocation.descriptorLifecycleGeneration,
     authorityOwnerGeneration: snapshot.authorityOwnerGeneration
@@ -473,7 +473,7 @@ function authorityRoute(snapshot: ZLinkAuthoritySnapshot): AppliedAuthorityRoute
     instanceRoute: {
       targetNodeRid,
       targetNodeGeneration: allocation.descriptorLifecycleGeneration,
-      targetSpotRid: spotRid,
+      targetSpotId: spotId,
       objectGeneration: snapshot.objectGeneration,
       ownerId: snapshot.ownerId,
       authorityOwnerGeneration: snapshot.authorityOwnerGeneration,
@@ -487,7 +487,7 @@ function authorityRoute(snapshot: ZLinkAuthoritySnapshot): AppliedAuthorityRoute
 }
 
 function authorityRouteKey(route: AppliedAuthorityRoute): string {
-  return `${route.meshName}\0${route.spotRoute.spot.spotRid}\0`
+  return `${route.meshName}\0${route.spotRoute.spot.spotId}\0`
     + `${route.spotRoute.spot.generation}`;
 }
 

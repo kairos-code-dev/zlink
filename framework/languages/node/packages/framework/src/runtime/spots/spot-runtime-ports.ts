@@ -46,12 +46,12 @@ export interface ZLinkSpotActorTransferRuntime {
   materializeRoutedActor: ZLinkRoutedActorTransferProvider;
   claimNativeActorLocation(
     actor: ZLinkActor,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotMeshName: string
   ): Promise<ZLinkNativeActorJoinSnapshot>;
   claimRoutedActorLocation(
     actor: ZLinkActor,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotMeshName: string,
     joinedLocation?: {
       readonly spotGeneration: bigint;
@@ -60,7 +60,7 @@ export interface ZLinkSpotActorTransferRuntime {
   ): Promise<void>;
   publishRoutedActorOwnership(actor: ZLinkActor): Promise<void>;
   bindRoutedActorRef(actor: ZLinkActor, actorRef: ActorRef): void;
-  commitRoutedActor(actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot): void;
+  commitRoutedActor(actor: ZLinkActor, spotId: RoutingId, spot: ZLinkSpot): void;
   clearRoutedActor(actor: ZLinkActor): void;
   rollbackNativeActorJoin(
     actor: ZLinkActor,
@@ -72,9 +72,9 @@ export interface ZLinkSpotActorTransferRuntime {
 }
 
 export interface ZLinkNativeActorJoinSnapshot {
-  readonly spotRid?: RoutingId;
+  readonly spotId?: RoutingId;
   readonly spot?: ZLinkSpot;
-  readonly locationSpotRid?: RoutingId;
+  readonly locationSpotId?: RoutingId;
   readonly spotMeshName?: string;
   readonly actorRef?: ActorRef;
   readonly spotGeneration?: bigint;

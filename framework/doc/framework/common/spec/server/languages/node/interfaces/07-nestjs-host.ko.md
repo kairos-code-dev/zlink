@@ -233,17 +233,17 @@ export interface ZLinkNestMeshObjectServerBuilder extends ZLinkNestFrameworkOpti
     addSpotFactory<TSpot extends ZLinkSpot>(
         spotType: string,
         implementation: Type<TSpot>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkUserSpotFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TSpot>): this;
     addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
         instanceSpotType: string,
         implementation: Type<TSpot>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkInstanceSpotFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TSpot>): this;
     addActorFactory<TActor extends ZLinkActor>(
         actorType: string,
         factoryType: Type<ZLinkActorFactory<TActor>>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkActorFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TActor>): this;
 }
 

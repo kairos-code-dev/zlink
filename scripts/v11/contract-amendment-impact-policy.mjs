@@ -240,33 +240,33 @@ const rules = [
     decisions: ['CA-D04', 'CA-D10', 'CA-D23'],
     coverage: () => [
       'e2e:add:global-spot-explicit-create',
-      'e2e:add:placement-capacity-weight-affinity',
+      'e2e:add:placement-capacity-weight',
     ],
   },
   {
     id: 'instance-spot-active-capacity',
     matches: value => /instancespotfactoryoptions.*maxactiveinstances/u.test(value),
     decisions: ['CA-D23'],
-    coverage: () => ['e2e:add:placement-capacity-weight-affinity'],
+    coverage: () => ['e2e:add:placement-capacity-weight'],
   },
   {
     id: 'mesh-node-spot-types',
     matches: value => /meshNodeDescriptor.*spotTypes/i.test(value),
     decisions: ['CA-D14'],
-    coverage: () => ['e2e:add:placement-capacity-weight-affinity'],
+    coverage: () => ['e2e:add:placement-capacity-weight'],
   },
   {
     id: 'object-capability-availability',
     matches: value => /objectcapability.*available/u.test(value),
     decisions: ['CA-D23'],
-    coverage: () => ['e2e:add:placement-capacity-weight-affinity'],
+    coverage: () => ['e2e:add:placement-capacity-weight'],
   },
   {
     id: 'placement-policy',
-    matches: value => /placement|affinity|capacity|weight/u.test(value)
+    matches: value => /placement|capacity|weight/u.test(value)
       && !/zlinksocket/u.test(value),
     decisions: ['CA-D14', 'CA-D22', 'CA-D23', 'CA-D70'],
-    coverage: () => ['e2e:add:placement-capacity-weight-affinity'],
+    coverage: () => ['e2e:add:placement-capacity-weight'],
   },
   {
     id: 'reservation-recovery',

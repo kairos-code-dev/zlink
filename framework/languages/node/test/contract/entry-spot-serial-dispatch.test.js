@@ -45,7 +45,7 @@ async function createEntryFixture(entrySpotType, packetHandlers = [], options = 
       return mailboxes.submit(actorId, () => {
         const state = manager.getState(actorId);
         if (state?.actor === undefined) throw new Error(`Actor '${actorId}' is not created.`);
-        return operation({ actor: state.actor, spotRid: state.spotRid });
+        return operation({ actor: state.actor, spotId: state.spotId });
       });
     }
   };
@@ -239,7 +239,7 @@ test('joined user spot actors keep per-actor mailbox dispatch off the entry line
   class IdleEntrySpot {}
   const fixture = await createEntryFixture(IdleEntrySpot);
   await fixture.manager.create('alice', 'player');
-  fixture.manager.getState('alice').setJoinedSpot('stage-1', { context: { spotRid: 'stage-1' } });
+  fixture.manager.getState('alice').setJoinedSpot('stage-1', { context: { spotId: 'stage-1' } });
 
   let releaseEntry;
   const entryGate = new Promise((resolve) => {
@@ -248,7 +248,7 @@ test('joined user spot actors keep per-actor mailbox dispatch off the entry line
   const entryBusy = fixture.activation.serialExecutor.execute(() => entryGate);
 
   // A user-Spot-joined actor must proceed while the Entry Spot line is busy.
-  const joined = await fixture.router.submit('alice', (snapshot) => `spot:${snapshot.spotRid}`);
+  const joined = await fixture.router.submit('alice', (snapshot) => `spot:${snapshot.spotId}`);
   assert.equal(joined, 'spot:stage-1');
   releaseEntry();
   await entryBusy;

@@ -389,7 +389,7 @@ export class ZLinkRemoteBoundSessionRelay {
       {
         routerChannelId: target.routerChannelId,
         targetNodeRid: target.targetNodeRid,
-        spotRid: target.spotRid,
+        spotId: target.spotId,
         spotKind: ZLinkSpotKind.Entry
       },
       payload,

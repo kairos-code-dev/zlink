@@ -10,7 +10,7 @@ export class ZLinkLocalSpotRouteTransport {
 
   async send(
     routerChannelId: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     packetName: string | undefined,
     message: unknown,
     signal?: AbortSignal,
@@ -19,7 +19,7 @@ export class ZLinkLocalSpotRouteTransport {
     if (this.dispatcher === undefined) {
       throw new ZLinkConfigurationException(`Route channel '${routerChannelId}' could not dispatch local SPOT send.`);
     }
-    await this.dispatcher.send(spotRid, packetName, message, {
+    await this.dispatcher.send(spotId, packetName, message, {
       channelName: routerChannelId,
       signal,
       metadata
@@ -28,7 +28,7 @@ export class ZLinkLocalSpotRouteTransport {
 
   request<TReply>(
     routerChannelId: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     packetName: string | undefined,
     request: unknown,
     timeoutMs: number | undefined,
@@ -37,7 +37,7 @@ export class ZLinkLocalSpotRouteTransport {
     if (this.dispatcher === undefined) {
       throw new ZLinkConfigurationException(`Route channel '${routerChannelId}' could not dispatch local SPOT request.`);
     }
-    const pending = this.dispatcher.request<TReply>(spotRid, packetName, request, {
+    const pending = this.dispatcher.request<TReply>(spotId, packetName, request, {
       channelName: routerChannelId,
       signal
     });

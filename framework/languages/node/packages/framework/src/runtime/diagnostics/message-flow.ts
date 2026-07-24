@@ -294,7 +294,7 @@ function toPublicMessageFlowEvent(flow: ZLinkRuntimeMessageFlowEvent): ZLinkMess
     sourceRid: flow.sourceRid,
     flowId: flow.flowId,
     flowOrigin: flow.flowOrigin,
-    spotRid: flow.spotRid,
+    spotId: flow.spotId,
     actorId: flow.actorId,
     messageSizeBytes: flow.messageSize
   };
@@ -394,7 +394,7 @@ export function flowLine(
     field('flow', flow.flowId),
     field('origin', flow.flowOrigin),
     field('src', flow.sourceRid),
-    field('spot', flow.spotRid),
+    field('spot', flow.spotId),
     field('actor', flow.actorId),
     field('errorReason', flow.errorReason),
     field('errorAction', flow.errorAction),
@@ -419,7 +419,7 @@ export function errorLine(event: ZLinkDispatchFailure, label: string | undefined
     field('topic', event.topic),
     field('corr', event.correlationId),
     field('src', event.sourceRid),
-    field('spot', event.spotRid),
+    field('spot', event.spotId),
     field('actor', event.actorId),
     field('errorType', event.errorType),
     field('errorMessage', event.errorMessage)

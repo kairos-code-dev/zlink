@@ -42,7 +42,7 @@ export interface ZLinkActorResponseOptions {
 
 interface ZLinkSpotActorPacketDispatchOptions {
   readonly spot: ZLinkSpot;
-  readonly spotRid: () => string;
+  readonly spotId: () => string;
   readonly registry: ZLinkSpotActorHandlerRegistryRuntime;
   readonly serial?: ZLinkSpotSerialExecutor;
   readonly resolveActor: (actorId: string) => ZLinkActor | undefined;
@@ -184,7 +184,7 @@ export class ZLinkSpotActorPacketDispatch {
       reason: ZLinkDispatchErrorReason.HandlerMissing,
       action,
       packetName: header.name,
-      spotRid: this.options.spotRid(),
+      spotId: this.options.spotId(),
       actorId,
       correlationId: header.correlationId ?? header.requestSeq?.toString()
     });
@@ -226,7 +226,7 @@ export class ZLinkSpotActorPacketDispatch {
         reason: ZLinkDispatchErrorReason.PayloadDecodeFailed,
         action,
         packetName: header.name,
-        spotRid: this.options.spotRid(),
+        spotId: this.options.spotId(),
         actorId,
         correlationId: header.correlationId ?? header.requestSeq?.toString(),
         error
@@ -268,7 +268,7 @@ export class ZLinkSpotActorPacketDispatch {
           reason: ZLinkDispatchErrorReason.InvalidFrame,
           action: ZLinkDispatchErrorAction.Drop,
           packetName: header.name,
-          spotRid: this.options.spotRid(),
+          spotId: this.options.spotId(),
           actorId
         });
         return undefined;
@@ -307,7 +307,7 @@ export class ZLinkSpotActorPacketDispatch {
           : ZLinkDispatchErrorReason.HandlerException,
         action,
         packetName: header.name,
-        spotRid: this.options.spotRid(),
+        spotId: this.options.spotId(),
         actorId,
         correlationId: header.correlationId ?? header.requestSeq?.toString(),
         error
@@ -343,7 +343,7 @@ export class ZLinkSpotActorPacketDispatch {
       messageKind,
       reason: ZLinkDispatchErrorReason.InvalidFrame,
       action: ZLinkDispatchErrorAction.Drop,
-      spotRid: this.options.spotRid(),
+      spotId: this.options.spotId(),
       actorId,
       error
     });
@@ -360,7 +360,7 @@ export class ZLinkSpotActorPacketDispatch {
       surface: ZLinkDispatchErrorSurface.SpotActor,
       messageKind,
       packetName: header.name,
-      spotRid: this.options.spotRid(),
+      spotId: this.options.spotId(),
       actorId,
       correlationId: header.correlationId ?? header.requestSeq?.toString()
     });

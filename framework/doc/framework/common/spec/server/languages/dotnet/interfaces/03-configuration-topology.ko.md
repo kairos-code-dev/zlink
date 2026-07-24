@@ -88,26 +88,42 @@ public interface IZLinkMeshObjectServerBuilder
         where TEntrySpot : class, IZLinkEntrySpot;
     IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
         string spotType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkUserSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkSpot;
     IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkInstanceSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkInstanceSpot;
     IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkActorFactoryOptions? options,
         ZLinkRelocationPolicy<TActor> relocation)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>;
 }
 
-public sealed record ZLinkObjectPlacementOptions
+public enum ZLinkUserSpotExecutionMode
 {
-    public int? MaxActiveObjects { get; init; }
-    public int? MaxPendingActivations { get; init; }
+    SpotWide = 0,
+    PerActor = 1
+}
+
+public sealed record ZLinkActorFactoryOptions
+{
+}
+
+public sealed record ZLinkUserSpotFactoryOptions
+{
+    public int StableTypeLimit { get; init; }
+    public ZLinkUserSpotExecutionMode ExecutionMode { get; init; }
+        = ZLinkUserSpotExecutionMode.SpotWide;
+}
+
+public sealed record ZLinkInstanceSpotFactoryOptions
+{
+    public int StableTypeLimit { get; init; }
 }
 
 public interface IZLinkNetworkOptions
@@ -310,8 +326,8 @@ MeshNode가 이 값을 게시하며 음수는 startup 전에 `ZLinkConfiguration
 client를 제공하지만 placement target이 되지 않는다. `Server()`는 Client capability를 포함하며 Entry Spot과
 factory를 등록한다. 두 role은 Location Store가 필수다. Role은 한 번만 선택할 수 있다.
 
-Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)는 stable type, placement option과 explicit relocation policy를 같은
-registration에서 고정한다. Policy를 생략하는 overload는 없다. [Stable type](../../../../01-glossary.ko.md#stable-type)은 UTF-8
+Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)는 stable type, object 종류별 factory option과 explicit relocation
+policy를 같은 registration에서 고정한다. Policy를 생략하는 overload는 없다. [Stable type](../../../../01-glossary.ko.md#stable-type)은 UTF-8
 1..255 bytes이고 중복 type은 startup 오류다. Entry Spot ID는 Framework가 발급한다.
 
 Node placement weight는 0..10000이고 기본값은 100이다. 범위 밖 값은 startup 설정과 runtime 변경에서

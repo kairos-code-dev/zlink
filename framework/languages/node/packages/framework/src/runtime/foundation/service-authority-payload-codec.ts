@@ -8,7 +8,7 @@ const FATAL_UTF8 = new TextDecoder('utf-8', { fatal: true });
 export interface ServiceReadySpotAuthority {
   readonly kind: 'user_spot' | 'instance_spot';
   readonly stableType: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly ownerId: string;
   readonly ownerLeaseGeneration: bigint;
   readonly ownerMeshName: string;
@@ -34,7 +34,7 @@ export interface ServiceActivationRecoveryState {
 export interface ServiceInstanceAuthorityPayload {
   readonly state: 'coldActivating' | 'ready';
   readonly stableType: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly ownerId: string;
   readonly ownerLeaseGeneration: bigint;
   readonly ownerMeshName: string;
@@ -46,7 +46,7 @@ export interface ServiceInstanceAuthorityPayload {
 export interface ServiceUserSpotAuthorityPayload {
   readonly state: 'creating' | 'ready' | 'closing';
   readonly stableType: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly ownerId: string;
   readonly ownerLeaseGeneration: bigint;
   readonly ownerMeshName: string;
@@ -58,7 +58,7 @@ export function encodeServiceUserSpotAuthorityPayload(
   value: ServiceUserSpotAuthorityPayload
 ): Buffer {
   const spot = conditional(2, concat(
-    rid(value.spotRid, 'spotRid'),
+    rid(value.spotId, 'spotId'),
     text8(value.stableType, 'stableType'),
     Buffer.of(1)
   ));
@@ -92,7 +92,7 @@ export function encodeServiceInstanceAuthorityPayload(
   }
   const instanceBody = concat(
     text8(value.stableType, 'stableType'),
-    rid(value.spotRid, 'spotRid')
+    rid(value.spotId, 'spotId')
   );
   const instance = conditional(
     value.state === 'coldActivating' ? 1 : 2,
@@ -195,10 +195,10 @@ function decodeSpotAuthority(
     let kind: ServiceReadySpotAuthority['kind'];
     let state: number;
     let stableType: string;
-    let spotRid: string;
+    let spotId: string;
     if (spotKind === 2) {
       kind = 'user_spot';
-      spotRid = spot.rid();
+      spotId = spot.rid();
       stableType = spot.text8();
       state = spot.u8();
     } else if (spotKind === 3) {
@@ -206,7 +206,7 @@ function decodeSpotAuthority(
       state = spot.u8();
       const instance = spot.takeReader(spot.u16());
       stableType = instance.text8();
-      spotRid = instance.rid();
+      spotId = instance.rid();
       if (!instance.done) return undefined;
     } else {
       return undefined;
@@ -257,7 +257,7 @@ function decodeSpotAuthority(
         : state === 1 ? 'ready' : 'other',
       operationKind,
       stableType,
-      spotRid,
+      spotId,
       ownerId,
       ownerLeaseGeneration,
       ownerMeshName,

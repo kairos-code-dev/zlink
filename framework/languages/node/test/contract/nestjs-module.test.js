@@ -40,8 +40,8 @@ function fakeSpotRouteBridge(calls, reply) {
     send() {
       return { message() { return this; }, submit() { return true; } };
     },
-    request(channelName, targetNodeRid, spotRid) {
-      calls.push(`bridge:request:${channelName}:${targetNodeRid}:${spotRid}`);
+    request(channelName, targetNodeRid, spotId) {
+      calls.push(`bridge:request:${channelName}:${targetNodeRid}:${spotId}`);
       return {
         message(part) {
           if (part?.value !== undefined) {
@@ -243,7 +243,7 @@ test('ZLinkModule lifecycle registers decorated runtime event handlers with the 
       timestamp: new Date(),
       event: framework.ZLinkSpotEventKind.TimerHandlerFailed,
       timerDiagnostic: {
-        spotRid: 'stage-node',
+        spotId: 'stage-node',
         isEntrySpot: true,
         timerName: 'idle',
         handlerType: 'IdleTimerHandler',
@@ -2093,8 +2093,8 @@ test('framework runtime host attaches stream SessionRelay to registered SpotNode
         }
       };
     },
-    getOrCreateSpot(spotRid) {
-      calls.push(`spot:getOrCreateSpot:${spotRid}`);
+    getOrCreateSpot(spotId) {
+      calls.push(`spot:getOrCreateSpot:${spotId}`);
       return { spot: routeSourceSpot, created: true };
     },
     status() {},
@@ -2424,8 +2424,8 @@ test('framework runtime host lets the formal MeshNode own its accepted route cha
         }
       };
     },
-    getOrCreateSpot(spotRid) {
-      calls.push(`spot:getOrCreateSpot:${spotRid}`);
+    getOrCreateSpot(spotId) {
+      calls.push(`spot:getOrCreateSpot:${spotId}`);
       return { spot: routeSourceSpot, created: true };
     },
     status() {},
@@ -2450,8 +2450,8 @@ test('framework runtime host lets the formal MeshNode own its accepted route cha
       calls.push('spot:createRouteBridge');
       return {
         ...fakeSpotRouteBridge(calls),
-        request(channelName, spotRid) {
-          calls.push(`bridge:request:${channelName}:${spotRid}`);
+        request(channelName, spotId) {
+          calls.push(`bridge:request:${channelName}:${spotId}`);
           return {
             message(part) {
               calls.push(`bridge:message:${part.value}`);
@@ -2597,8 +2597,8 @@ test('framework runtime host drains accepted Spot route channel without route ro
       calls.push('spot:createRouteBridge');
       return {
         ...fakeSpotRouteBridge(calls),
-        request(channelName, spotRid) {
-          calls.push(`bridge:request:${channelName}:${spotRid}`);
+        request(channelName, spotId) {
+          calls.push(`bridge:request:${channelName}:${spotId}`);
           return {
             message(part) {
               calls.push(`bridge:message:${part.value}`);
@@ -2754,8 +2754,8 @@ test('framework route transport sends Spot request through accepted Spot route c
     disconnectPeer() {},
     createPublisher() { return { close() {} }; },
     createSpot() {},
-    getOrCreateSpot(spotRid) {
-      calls.push(`spot:getOrCreateSpot:${spotRid}`);
+    getOrCreateSpot(spotId) {
+      calls.push(`spot:getOrCreateSpot:${spotId}`);
       return { spot: routeSourceSpot, created: true };
     },
     status() {},
@@ -2906,8 +2906,8 @@ test('framework route transport sends Spot request through accepted Spot route c
     disconnectPeer() {},
     createPublisher() { return { close() {} }; },
     createSpot() {},
-    getOrCreateSpot(spotRid) {
-      calls.push(`spot:getOrCreateSpot:${spotRid}`);
+    getOrCreateSpot(spotId) {
+      calls.push(`spot:getOrCreateSpot:${spotId}`);
       return { spot: routeSourceSpot, created: true };
     },
     status() {},
@@ -3027,8 +3027,8 @@ test('framework runtime host starts router-only SessionRelay SpotNode without Di
     disconnectPeer() {},
     createPublisher() { return { close() {} }; },
     createSpot() {},
-    getOrCreateSpot(spotRid) {
-      calls.push(`spot:getOrCreateSpot:${spotRid}`);
+    getOrCreateSpot(spotId) {
+      calls.push(`spot:getOrCreateSpot:${spotId}`);
       return { spot: routeSourceSpot, created: true };
     },
     status() {},
@@ -3264,7 +3264,7 @@ test('framework runtime host defers Entry Spot lifecycle until Core materializes
       entryContext = context;
     }
     configure() {
-      calls.push(`entry:configure:${this.context.spotRid}:${this.context.nodeRid}`);
+      calls.push(`entry:configure:${this.context.spotId}:${this.context.nodeRid}`);
       this.context.handlers.addHandler(GenericHandler);
       this.context.handlers.addPacket(PacketHandler, 'entry.packet');
       this.context.handlers.addSubscribe(SubscribeHandler, 'game', 'entry.topic');

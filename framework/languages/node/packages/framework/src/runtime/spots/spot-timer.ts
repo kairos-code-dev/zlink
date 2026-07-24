@@ -23,6 +23,7 @@ import { throwIfAborted } from '../abort';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { createProviderInstance } from './spot-provider';
 import { createInboundFlow, runWithFlow } from '../diagnostics/flow-context';
+import type { ZLinkExecutionBarrier } from '../execution';
 
 type ZLinkTimerOwnerSpot = ZLinkSpot | ZLinkEntrySpot;
 type ZLinkTimerFailureReporter = (
@@ -49,11 +50,23 @@ export class ZLinkSpotTimerRegistry {
     readonly timer: ZLinkManagedTimer;
   }>();
   private readonly generations = new Map<string, bigint>();
+  private executionBarrier: ZLinkExecutionBarrier | undefined;
 
   constructor(
     private readonly metrics?: import('../diagnostics').ZLinkRuntimeMetrics,
-    private readonly flowCreationEnabled: () => boolean = () => true
+    private readonly flowCreationEnabled: () => boolean = () => true,
+    private readonly executionSerialForTimer?: (
+      name: string,
+      fallback: ZLinkSpotSerialExecutor
+    ) => ZLinkSpotSerialExecutor
   ) {}
+
+  setExecutionBarrier(barrier: ZLinkExecutionBarrier): void {
+    if (this.executionBarrier !== undefined && this.executionBarrier !== barrier) {
+      throw new Error('ZLink timer registry already belongs to another execution barrier.');
+    }
+    this.executionBarrier = barrier;
+  }
 
   async add<TSpot extends ZLinkTimerOwnerSpot, THandler extends ZLinkSpotTimerHandler<TSpot>>(
     name: string,
@@ -76,6 +89,11 @@ export class ZLinkSpotTimerRegistry {
     }
     const generation = (this.generations.get(name) ?? 0n) + 1n;
     this.generations.set(name, generation);
+    const executionSerial =
+      this.executionSerialForTimer?.(name, serial) ?? serial;
+    if (this.executionBarrier !== undefined) {
+      executionSerial.setExecutionBarrier(this.executionBarrier);
+    }
     const timer = new ZLinkManagedTimer(
       name,
       periodMs,
@@ -83,7 +101,7 @@ export class ZLinkSpotTimerRegistry {
       async (tick) => {
         this.metrics?.duration('zlink.spot.timer.tick.lateness', tick.delayMs / 1000);
         const timerFlow = createInboundFlow(undefined, 'Timer', this.flowCreationEnabled());
-        await serial.execute(() => {
+        await executionSerial.execute(() => {
           const current = this.timers.get(name);
           if (current?.generation !== generation || current.timer !== timer) {
             return undefined;
@@ -92,7 +110,7 @@ export class ZLinkSpotTimerRegistry {
         });
       },
       reportFailure,
-      () => !serial.isExecuting
+      () => !executionSerial.isExecuting
     );
     this.timers.set(name, { generation, timer });
     return new ZLinkRegisteredTimer(this, name, generation, timer);
@@ -344,7 +362,7 @@ export class ZLinkManagedTimer implements ZLinkTimer {
 
 export function createTimerDiagnostics(
   sourceName: string,
-  spotRid: RoutingId,
+  spotId: RoutingId,
   isEntrySpot: boolean,
   timerName: string,
   handlerType: Type,
@@ -360,7 +378,7 @@ export function createTimerDiagnostics(
         timestamp: new Date(),
         event,
         timerDiagnostic: {
-          spotRid,
+          spotId,
           isEntrySpot,
           timerName,
           handlerType: handlerType.name,
@@ -423,7 +441,7 @@ export async function addEntrySpotTimerRegistrations(
 export async function addSpotTimerRegistrations(
   timers: ZLinkSpotTimerRegistry,
   spotType: Type<ZLinkSpot>,
-  spotRid: RoutingId,
+  spotId: RoutingId,
   spot: ZLinkSpot,
   serial: ZLinkSpotSerialExecutor,
   registrations: ZLinkUserSpotTimerRegistrationSet,
@@ -445,8 +463,8 @@ export async function addSpotTimerRegistrations(
         options.providerResolver,
         options.signal,
         createTimerDiagnostics(
-          String(spotRid),
-          spotRid,
+          String(spotId),
+          spotId,
           false,
           handler.name,
           handler.handlerType,

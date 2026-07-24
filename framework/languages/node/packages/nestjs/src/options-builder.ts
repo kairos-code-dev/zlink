@@ -13,7 +13,9 @@ import type {
   ZLinkLocationOptions,
   ZLinkRelocationStore,
   ZLinkRelocationPolicy,
-  ZLinkObjectPlacementOptions,
+  ZLinkActorFactoryOptions,
+  ZLinkInstanceSpotFactoryOptions,
+  ZLinkUserSpotFactoryOptions,
   ZLinkMeshNodeSocketConfig,
   ZLinkMeshPeerConnection,
   ZLinkMeshPeerConnections,
@@ -32,6 +34,7 @@ import type {
 } from './framework-integration-contracts';
 import {
   ZLinkMessageFlowLogMode,
+  ZLinkUserSpotExecutionMode,
   ZLinkUnhandledDispatchAction
 } from '@zlink-systems/framework';
 import {
@@ -719,20 +722,36 @@ class DefaultZLinkNestMeshObjectServerBuilder
   addSpotFactory<TSpot extends ZLinkSpot>(
     spotType: string,
     implementation: Type<TSpot>,
-    placement: ZLinkObjectPlacementOptions | undefined,
+    options: ZLinkUserSpotFactoryOptions | undefined,
     relocation: ZLinkRelocationPolicy<TSpot>
   ): this {
     const stableType = validateObjectFactory(
       spotType,
       'User Spot type',
-      placement,
       relocation
     );
+    validateStableTypeLimit(options?.stableTypeLimit);
+    if (
+      options?.executionMode !== undefined
+      && options.executionMode !== ZLinkUserSpotExecutionMode.SpotWide
+      && options.executionMode !== ZLinkUserSpotExecutionMode.PerActor
+    ) {
+      throw new framework.ZLinkConfigurationException(
+        'User Spot executionMode is invalid.'
+      );
+    }
     const registrations = {
       ...(this.node.spotFactoryRegistrations ?? {})
     };
     rejectDuplicateObjectType(registrations, stableType, this.meshName);
-    registrations[stableType] = { implementation, placement, relocation };
+    registrations[stableType] = {
+      implementation,
+      options: {
+        ...options,
+        executionMode: options?.executionMode ?? ZLinkUserSpotExecutionMode.SpotWide
+      },
+      relocation
+    };
     this.node.spotFactoryRegistrations = registrations;
     const factories = [...(this.node.spotFactories ?? [])];
     framework.registerSpotFactory({ spotFactories: factories }, implementation);
@@ -743,15 +762,15 @@ class DefaultZLinkNestMeshObjectServerBuilder
   addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
     instanceSpotType: string,
     implementation: Type<TSpot>,
-    placement: ZLinkObjectPlacementOptions | undefined,
+    options: ZLinkInstanceSpotFactoryOptions | undefined,
     relocation: ZLinkRelocationPolicy<TSpot>
   ): this {
     const stableType = validateObjectFactory(
       instanceSpotType,
       'Instance Spot type',
-      placement,
       relocation
     );
+    validateStableTypeLimit(options?.stableTypeLimit);
     const factories = {
       ...(this.node.instanceSpotFactories ?? {})
     };
@@ -764,7 +783,7 @@ class DefaultZLinkNestMeshObjectServerBuilder
     this.node.instanceSpotFactories = factories;
     this.node.instanceSpotFactoryRegistrations = {
       ...(this.node.instanceSpotFactoryRegistrations ?? {}),
-      [stableType]: { implementation, placement, relocation }
+      [stableType]: { implementation, options, relocation }
     };
     return this;
   }
@@ -772,13 +791,12 @@ class DefaultZLinkNestMeshObjectServerBuilder
   addActorFactory<TActor extends ZLinkActor>(
     actorType: string,
     implementation: Type<ZLinkActorFactory<TActor>>,
-    placement: ZLinkObjectPlacementOptions | undefined,
+    options: ZLinkActorFactoryOptions | undefined,
     relocation: ZLinkRelocationPolicy<TActor>
   ): this {
     const stableType = validateObjectFactory(
       actorType,
       'Actor type',
-      placement,
       relocation
     );
     const registrations = {
@@ -790,7 +808,7 @@ class DefaultZLinkNestMeshObjectServerBuilder
     };
     framework.registerActorFactory({ actorFactories }, stableType, implementation);
     this.node.actorFactories = actorFactories;
-    registrations[stableType] = { implementation, placement, relocation };
+    registrations[stableType] = { implementation, options, relocation };
     this.node.actorFactoryRegistrations = registrations;
     return this;
   }
@@ -799,7 +817,6 @@ class DefaultZLinkNestMeshObjectServerBuilder
 function validateObjectFactory<T>(
   stableType: string,
   label: string,
-  placement: ZLinkObjectPlacementOptions | undefined,
   relocation: ZLinkRelocationPolicy<T>
 ): string {
   if (
@@ -812,22 +829,20 @@ function validateObjectFactory<T>(
       `${label} must contain 1..255 UTF-8 bytes and no NUL.`
     );
   }
-  for (const [name, value] of [
-    ['maxActiveObjects', placement?.maxActiveObjects],
-    ['maxPendingActivations', placement?.maxPendingActivations]
-  ] as const) {
-    if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
-      throw new framework.ZLinkConfigurationException(
-        `${name} must be a positive safe integer.`
-      );
-    }
-  }
   if (relocation.kind === 'snapshot' && typeof relocation.adapterType !== 'function') {
     throw new framework.ZLinkConfigurationException(
       'Snapshot relocation requires an adapter type.'
     );
   }
   return stableType;
+}
+
+function validateStableTypeLimit(value: number | undefined): void {
+  if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+    throw new framework.ZLinkConfigurationException(
+      'stableTypeLimit must be a non-negative safe integer.'
+    );
+  }
 }
 
 function rejectDuplicateObjectType(

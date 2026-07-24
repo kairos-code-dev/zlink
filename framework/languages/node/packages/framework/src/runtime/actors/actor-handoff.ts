@@ -21,7 +21,7 @@ export const DEFAULT_ACTOR_TRANSFER_FORWARD_WINDOW_MS = 5_000;
 export interface ZLinkActorHandoffTarget {
   readonly routerChannelId: string;
   readonly targetNodeRid: string;
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly spotKind?: ZLinkSpotKind;
 }
 
@@ -33,7 +33,7 @@ export interface ZLinkActorHandoffPacket {
   readonly remoteBoundSessionTarget?: {
     readonly routerChannelId: string;
     readonly targetNodeRid: string;
-    readonly spotRid: string;
+    readonly spotId: string;
   };
   readonly fallbackActorRef?: {
     readonly nodeRid: string;
@@ -88,7 +88,7 @@ export interface ZLinkActorHandoffCoordinatorOptions {
     flags: number
   ) => void;
   readonly isStaleActorRef?: (actorId: string, actorRef?: ActorRef) => boolean;
-  readonly isCurrentHandoffTarget?: (actorId: string, spotRid: string) => boolean;
+  readonly isCurrentHandoffTarget?: (actorId: string, spotId: string) => boolean;
 }
 
 /** Owns the packet-order boundary from moving start through forwarding cutoff. */
@@ -169,7 +169,7 @@ export class ZLinkActorHandoffCoordinator {
       (fallbackActorRef as ActorRef & { handoffForwarded?: boolean }).handoffForwarded === true &&
       this.options.isCurrentHandoffTarget?.(
         actorId,
-        (fallbackActorRef as ActorRef & { handoffTargetSpotRid?: string }).handoffTargetSpotRid ?? ''
+        (fallbackActorRef as ActorRef & { handoffTargetSpotId?: string }).handoffTargetSpotId ?? ''
       ) === true
     ) {
       return undefined;
@@ -341,12 +341,12 @@ export class ZLinkActorHandoffCoordinator {
       actorId,
       routerChannelId: packet.remoteBoundSessionTarget?.routerChannelId,
       boundSessionTargetNodeRid: packet.remoteBoundSessionTarget?.targetNodeRid,
-      boundSessionSpotRid: packet.remoteBoundSessionTarget?.spotRid,
+      boundSessionSpotId: packet.remoteBoundSessionTarget?.spotId,
       header: packet.header,
       payload: packet.payload,
       actorNodeRid: String(targetActorRef.nodeRid),
       actorGeneration: targetActorRef.generation.toString(),
-      handoffTargetSpotRid: String(target.spotRid)
+      handoffTargetSpotId: String(target.spotId)
     });
     if (!packet.returnResponse) {
       await this.options.routedTransport.sendToSpot(target, payload, {
@@ -397,7 +397,7 @@ export function decodeHandoffPacket(packet: ZLinkActorHandoffPacket): {
       : {
           routerChannelId: packet.remoteBoundSessionTarget.routerChannelId,
           targetNodeRid: packet.remoteBoundSessionTarget.targetNodeRid,
-          spotRid: packet.remoteBoundSessionTarget.spotRid
+          spotId: packet.remoteBoundSessionTarget.spotId
         },
     fallbackActorRef: packet.fallbackActorRef === undefined
       ? undefined
@@ -461,7 +461,7 @@ function encodePacket(
       : {
           routerChannelId: remoteBoundSessionTarget.routerChannelId,
           targetNodeRid: String(remoteBoundSessionTarget.targetNodeRid),
-          spotRid: String(remoteBoundSessionTarget.spotRid)
+          spotId: String(remoteBoundSessionTarget.spotId)
         },
     fallbackActorRef: fallbackActorRef === undefined
       ? undefined

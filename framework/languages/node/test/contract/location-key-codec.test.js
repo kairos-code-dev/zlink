@@ -6,7 +6,7 @@ const internal = require('../../packages/framework/dist/internal');
 
 test('location key codec matches the dotnet canonical segment format', () => {
   const nodeRid = zlink.RoutingId.from('node-a');
-  const spotRid = zlink.RoutingId.from('room-1');
+  const spotId = '방:room-1';
 
   assert.equal(
     internal.ZLinkLocationKeyCodec.encodePeerKey({
@@ -28,8 +28,8 @@ test('location key codec matches the dotnet canonical segment format', () => {
     '6:fanout6:events3:sub20:tcp://127.0.0.1:7001'
   );
   assert.equal(
-    internal.ZLinkLocationKeyCodec.encodeSpotKey({ meshName: 'game', spotRid }),
-    '4:game12:726f6f6d2d31'
+    internal.ZLinkLocationKeyCodec.encodeSpotKey({ meshName: 'game', spotId }),
+    '4:game10:방:room-1'
   );
   assert.equal(
     internal.ZLinkLocationKeyCodec.encodeActorKey({ meshName: 'play', actorId: 'alice' }),

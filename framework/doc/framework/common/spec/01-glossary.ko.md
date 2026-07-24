@@ -183,7 +183,7 @@ node를 후보로 사용할지도 이 이름으로 지정한다. Spot ID의 일�
 | 형태 | 논리 namespace 이름 |
 | .NET 표기 | `string` |
 | 공개 구성 | 문자열 하나다. Routing ID나 endpoint를 포함하지 않는다. |
-| 생성·관리 | Application이 RouteMesh 등록과 optional 최초 placement option에 지정한다. |
+| 생성·관리 | Application이 RouteMesh 등록과 optional 최초 Mesh 선택에 지정한다. |
 | 수명 | RouteMesh registration 동안 같은 topology 이름으로 유지된다. 최초 placement에 사용한 뒤에도 Spot identity나 current owner의 일부가 되지 않는다. |
 
 <a id="spot-kind"></a>
@@ -527,7 +527,7 @@ target이 동시에 생성하려고 해도 생성 권한을 먼저 확보한 tar
 |---|---|
 | 형태 | Application-provided construction capability |
 | .NET 표기 | Spot은 `AddSpotFactory<TSpot>`·`AddInstanceSpotFactory<TSpot>`, Actor는 `IZLinkActorFactory<TActor>` |
-| 공개 구성 | Stable type, placement option, relocation policy와 concrete instance type을 registration에 결합한다. |
+| 공개 구성 | Stable type, object 종류별 factory option, relocation policy와 concrete instance type을 registration에 결합한다. |
 | 수명 | Object Server registration 동안 유지된다. Creation attempt에서 at-least-once 실행될 수 있으므로 retry-safe해야 한다. |
 
 <a id="activation-barrier"></a>

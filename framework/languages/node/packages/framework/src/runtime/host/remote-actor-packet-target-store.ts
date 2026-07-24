@@ -1,6 +1,7 @@
 import type {
   ActorRef,
   RoutingId,
+  SpotId,
   ZLinkSessionActor
 } from '../../contracts';
 import { ZLinkSpotKind } from '../../contracts';
@@ -89,16 +90,16 @@ export class ZLinkRemoteActorPacketTargetStore {
     const state = this.options.actorManager()?.getState(actorId);
     if (
       state?.remoteActorPacketTarget !== undefined &&
-      (state.spotRid === undefined || routingIdsEqual(state.remoteActorPacketTarget.spotRid, state.spotRid))
+      (state.spotId === undefined || state.remoteActorPacketTarget.spotId === state.spotId)
     ) {
       return state.remoteActorPacketTarget;
     }
-    const spotRid = state?.spotRid;
-    if (spotRid !== undefined && state?.remoteActorPacketTarget !== undefined) {
+    const spotId = state?.spotId;
+    if (spotId !== undefined && state?.remoteActorPacketTarget !== undefined) {
       return {
         routerChannelId: state.remoteActorPacketTarget.routerChannelId,
         targetNodeRid: state.remoteActorPacketTarget.targetNodeRid,
-        spotRid: normalizeRuntimeRoutingId(spotRid),
+        spotId: validateSpotId(spotId),
         spotKind: ZLinkSpotKind.User
       };
     }
@@ -110,20 +111,20 @@ export class ZLinkRemoteActorPacketTargetStore {
       ?? this.options.meshRouters.defaultRouterChannelId();
     const localNodeRid = this.options.primaryNodeRid();
     if (
-      spotRid === undefined &&
+      spotId === undefined &&
       targetNodeRid !== undefined &&
       localNodeRid !== undefined &&
       routingIdsEqual(targetNodeRid, localNodeRid)
     ) {
       return undefined;
     }
-    if (spotRid === undefined || targetNodeRid === undefined || routerChannelId === undefined) {
+    if (spotId === undefined || targetNodeRid === undefined || routerChannelId === undefined) {
       return undefined;
     }
     return {
       routerChannelId,
       targetNodeRid: normalizeRuntimeRoutingId(targetNodeRid),
-      spotRid: normalizeRuntimeRoutingId(spotRid),
+      spotId: validateSpotId(spotId),
       spotKind: ZLinkSpotKind.User
     };
   }
@@ -142,7 +143,7 @@ export class ZLinkRemoteActorPacketTargetStore {
     return {
       routerChannelId,
       targetNodeRid,
-      spotRid: targetNodeRid,
+      spotId: targetNodeRid,
       spotKind: ZLinkSpotKind.Entry
     };
   }
@@ -156,4 +157,12 @@ export class ZLinkRemoteActorPacketTargetStore {
     this.sessionActorPacketTargetsByActor.set(sessionActorPacketTargetKey(actor), target);
     this.sessionActorPacketTargetsByActorId.set(actor.actorId, target);
   }
+}
+
+function validateSpotId(value: string): SpotId {
+  const byteLength = Buffer.byteLength(value, 'utf8');
+  if (byteLength < 1 || byteLength > 255) {
+    throw new TypeError('SpotId must contain between 1 and 255 UTF-8 bytes.');
+  }
+  return value;
 }

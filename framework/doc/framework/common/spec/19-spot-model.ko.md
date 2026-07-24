@@ -260,8 +260,8 @@ relocation 없이 종료하면 `HostShutdown`, relocation commit 뒤 source inst
 ## 7. .NET에서 보이는 차이
 
 다음 코드는 Object Server builder에 선언된 세 registration method의 발췌다.
-Entry Spot은 구현 type만 등록하지만 User·Instance Spot은 stable type, placement
-capability와 relocation policy를 함께 등록한다.
+Entry Spot은 구현 type만 등록하지만 User·Instance Spot은 stable type, object 종류별
+factory option과 relocation policy를 함께 등록한다.
 
 ```csharp
 IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
@@ -269,13 +269,13 @@ IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
 
 IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
     string spotType,
-    ZLinkObjectPlacementOptions? placement,
+    ZLinkUserSpotFactoryOptions? options,
     ZLinkRelocationPolicy<TSpot> relocation)
     where TSpot : class, IZLinkSpot;
 
 IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
     string instanceSpotType,
-    ZLinkObjectPlacementOptions? placement,
+    ZLinkInstanceSpotFactoryOptions? options,
     ZLinkRelocationPolicy<TSpot> relocation)
     where TSpot : class, IZLinkInstanceSpot;
 ```

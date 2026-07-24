@@ -19,7 +19,7 @@ export class ZLinkSpotLocationClaims {
 
   async claim(
     meshName: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotType: string,
     nodeRid: RoutingId,
     spotKind: ZLinkSpotKind,
@@ -29,7 +29,7 @@ export class ZLinkSpotLocationClaims {
   ): Promise<ZLinkLocationWriteStatus> {
     const row: ZLinkSpotLocation = {
       meshName,
-      spotRid,
+      spotId,
       spotType,
       spotGeneration,
       ownerNodeRid: nodeRid,
@@ -41,15 +41,15 @@ export class ZLinkSpotLocationClaims {
     const result = await this.runtime.writeSpot(row, ZLinkLocationWriteIntent.NewClaim);
     if (result.status === ZLinkLocationWriteStatus.Stored) {
       this.spots.set(
-        ZLinkLocationKeyCodec.encodeSpotKey({ meshName, spotRid }),
+        ZLinkLocationKeyCodec.encodeSpotKey({ meshName, spotId }),
         { generation: result.generation, deactivate }
       );
     }
     return result.status;
   }
 
-  async release(meshName: string, spotRid: RoutingId): Promise<void> {
-    const key = { meshName, spotRid };
+  async release(meshName: string, spotId: RoutingId): Promise<void> {
+    const key = { meshName, spotId };
     const canonical = ZLinkLocationKeyCodec.encodeSpotKey(key);
     const tracked = this.spots.get(canonical);
     if (tracked === undefined) {

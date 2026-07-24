@@ -22,6 +22,7 @@ import {
   ZLINK_LOCATION_RUNTIME_QUERY,
   ZLINK_MESSAGE_METADATA_POLICY,
   ZLINK_ROUTE_CLIENT,
+  ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
   ZLINK_RUNTIME_EVENT_PUBLISHER,
   ZLINK_ROUTE_MESH_RUNTIME,
   ZLINK_SPOT_MANAGER,
@@ -128,6 +129,12 @@ interface ConditionalClientProviderSpec {
 }
 
 const CONDITIONAL_CLIENT_PROVIDER_SPECS: readonly ConditionalClientProviderSpec[] = [
+  {
+    token: ZLINK_ROUTE_MESH_RUNTIME_OPTIONS,
+    requiresRuntime: true,
+    isEnabled: (registration) => registration.spotNodes.size > 0,
+    create: (_registration, runtime) => requireRuntime(runtime).routeMeshRuntimeOptions
+  },
   {
     token: ZLINK_ROUTE_MESH_RUNTIME,
     requiresRuntime: true,

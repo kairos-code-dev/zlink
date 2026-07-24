@@ -20,7 +20,7 @@ import type { ZLinkSpotHandlerRegistration } from './spot-handler-registry';
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 
 interface ZLinkRoutedSpotPacketActivation {
-  readonly spotRid: RoutingId;
+  readonly spotId: RoutingId;
   readonly spot: ZLinkSpot;
   readonly serial: ZLinkSpotSerialExecutor;
   readonly handlers: {
@@ -29,7 +29,7 @@ interface ZLinkRoutedSpotPacketActivation {
 }
 
 interface ZLinkRoutedSpotPacketDispatchOptions {
-  readonly resolveActivation: (spotRid: RoutingId) => ZLinkRoutedSpotPacketActivation | undefined;
+  readonly resolveActivation: (spotId: RoutingId) => ZLinkRoutedSpotPacketActivation | undefined;
   readonly providerResolver?: ZLinkProviderResolver;
   readonly dispatchErrors?: ZLinkDispatchErrorReporter;
 }
@@ -38,37 +38,37 @@ export class ZLinkRoutedSpotPacketDispatch {
   constructor(private readonly options: ZLinkRoutedSpotPacketDispatchOptions) {}
 
   async send(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     packetName: string | undefined,
     message: unknown,
     context: { readonly channelName: string; readonly contentType?: string }
   ): Promise<void> {
-    await this.dispatch(spotRid, packetName, message, context, false);
+    await this.dispatch(spotId, packetName, message, context, false);
   }
 
   async request<TReply>(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     packetName: string | undefined,
     request: unknown,
     context: { readonly channelName: string; readonly contentType?: string }
   ): Promise<TReply> {
-    return await this.dispatch(spotRid, packetName, request, context, true) as TReply;
+    return await this.dispatch(spotId, packetName, request, context, true) as TReply;
   }
 
   private async dispatch(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     packetName: string | undefined,
     payload: unknown,
     context: { readonly channelName: string; readonly contentType?: string },
     returnResponse: boolean
   ): Promise<unknown> {
-    const activation = this.options.resolveActivation(spotRid);
+    const activation = this.options.resolveActivation(spotId);
     if (activation === undefined) {
-      this.reportMissing(spotRid, packetName, context, returnResponse);
+      this.reportMissing(spotId, packetName, context, returnResponse);
       if (!returnResponse) {
         return undefined;
       }
-      throw new ZLinkConfigurationException(`Spot '${spotRid}' is not active.`);
+      throw new ZLinkConfigurationException(`Spot '${spotId}' is not active.`);
     }
 
     const registrations = activation.handlers.snapshot().filter((registration) =>
@@ -76,7 +76,7 @@ export class ZLinkRoutedSpotPacketDispatch {
       (registration.packetName ?? registration.handlerType.name) === (packetName ?? '')
     );
     if (registrations.length === 0) {
-      this.reportMissing(spotRid, packetName, context, returnResponse);
+      this.reportMissing(spotId, packetName, context, returnResponse);
       if (!returnResponse) {
         return undefined;
       }
@@ -110,7 +110,7 @@ export class ZLinkRoutedSpotPacketDispatch {
         action: returnResponse ? ZLinkDispatchErrorAction.FailCaller : ZLinkDispatchErrorAction.Drop,
         packetName,
         channelName: context.channelName,
-        spotRid: String(spotRid),
+        spotId: String(spotId),
         error
       });
       throw error;
@@ -119,7 +119,7 @@ export class ZLinkRoutedSpotPacketDispatch {
   }
 
   private reportMissing(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     packetName: string | undefined,
     context: { readonly channelName: string },
     returnResponse: boolean
@@ -131,7 +131,7 @@ export class ZLinkRoutedSpotPacketDispatch {
       action: returnResponse ? ZLinkDispatchErrorAction.FailCaller : ZLinkDispatchErrorAction.Drop,
       packetName,
       channelName: context.channelName,
-      spotRid: String(spotRid)
+      spotId: String(spotId)
     });
   }
 }

@@ -75,14 +75,14 @@ fun ZLinkFrameworkOptions.configureStreamCompression(
 inline fun <reified TActor, reified TFactory>
     ZLinkMeshObjectServerBuilder.actorFactory(
         actorType: String,
-        placement: ZLinkActorFactoryOptions?,
+        options: ZLinkActorFactoryOptions?,
         relocation: ZLinkRelocationPolicy<TActor>,
     ): ZLinkMeshObjectServerBuilder
     where TActor : ZLinkActor,
           TFactory : ZLinkActorFactory
 ```
 
-`placement`은 nullable이지만 `relocation`에는 default가 없다. Actor factory option은 capacity만 가진다.
+`options`는 nullable이지만 `relocation`에는 default가 없다. Actor factory option에는 추가 field가 없다.
 User·Instance Spot factory option은 `stableTypeLimit`을 가지며 `0`은
 별도 stable type limit이 없다는 뜻이다. Node의 Actor 전체·Spot 전체 limit도 기본값 `0`이고 음수는 startup
 configuration error다. Entry Spot은 Spot capacity에서 제외하지만 그 안의 Actor는 Actor capacity에 포함한다.
@@ -114,7 +114,7 @@ Global Spot namespace의 첫 active conflict에서 기존 record를 변경하지
 Reserved Entry pattern을 caller가 User·Instance Spot ID로 제공하면 Store 접근 전에
 `InvalidConfiguration`으로 거부한다.
 
-모든 Actor, User Spot, Instance Spot factory는 stable type, optional typed placement와 명시적인
+모든 Actor, User Spot, Instance Spot factory는 stable type, object 종류별 optional factory option과 명시적인
 `Disabled`·`Recreate`·`Snapshot` policy를 받는다. Policy를 생략하는 Kotlin overload와 `$default` JVM member는
 생성하지 않는다. Snapshot은 Java `ZLinkRelocationPolicy.snapshot(Adapter::class.java)`를 직접 사용한다. Actor
 factory adapter는 `ZLinkActorRelocationAdapter`, User·Instance Spot factory adapter는

@@ -263,7 +263,7 @@ test('GameQuest TypeScript sample registers required sample and provisions playe
     [sessionModule, '.addRouteMesh(SampleNames.playerQuestSpotMesh)'],
     [questModule, '.addSpotFactory(PlayerQuestSpot)'],
     [provisioner, 'ZLINK_SPOT_MANAGER'],
-    [provisioner, 'this.spots.getOrCreate(SampleNames.playerQuestSpotMesh, PlayerQuestSpot, spotRid, { playerId })'],
+    [provisioner, 'this.spots.getOrCreate(SampleNames.playerQuestSpotMesh, PlayerQuestSpot, spotId, { playerId })'],
     [spot, 'private aggregate: PlayerQuestAggregate | undefined'],
     [spot, 'ensureAggregate(load: () => PlayerQuestAggregate)'],
     [spotHandlers, 'this.processor.rehydrate(message.playerId)'],
@@ -655,7 +655,7 @@ test('GameQuest TypeScript sample uses framework channel topology', () => {
   assert.match(playerQuestSpotHandlers, /store\.rebuildProjection\(request\.playerId, request\.questId, this\.events\.read\(request\.playerId\)\)/);
   assert.match(questProcessor, /syncProgress\(request: SyncQuestProgressReq, aggregate: PlayerQuestAggregate\)/);
   assert.match(questOwnerRouter, /routeRid\(playerId: string\)/);
-  assert.match(playerQuestProvisioner, /questMissionSpotRid\(playerId\)/);
+  assert.match(playerQuestProvisioner, /questMissionSpotId\(playerId\)/);
   assert.match(playerQuestProvisioner, /ZLINK_SPOT_MANAGER/);
   assert.match(playerQuestSpot, /private aggregate: PlayerQuestAggregate \| undefined/);
   assert.match(playerQuestSpot, /ensureAggregate\(load: \(\) => PlayerQuestAggregate\)/);

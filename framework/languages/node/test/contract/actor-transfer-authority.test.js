@@ -112,7 +112,7 @@ function actorLocation(actorId) {
     ownerNodeRid: rid('source'),
     ownerNodeGeneration: 3n,
     spotKind: framework.ZLinkSpotKind.User,
-    spotRid: rid('room-a'),
+    spotId: rid('room-a'),
     spotGeneration: 5n,
     membershipEpoch: 11n,
     ownerId: 'source-runtime',

@@ -18,6 +18,11 @@ export interface ZLinkRequestCall {
 export interface ZLinkPublishCall {
   metadata(key: string, value: string): this;
   metadata(metadata: ZLinkMessageMetadata): this;
+  /**
+   * Aggregates submission to the selected remote routes' source-local
+   * transport queues and matching local Spot queues. Completion does not
+   * wait for remote Spot queue admission or subscriber handler execution.
+   */
   submit(signal?: AbortSignal): Promise<ZLinkPublishResult>;
 }
 

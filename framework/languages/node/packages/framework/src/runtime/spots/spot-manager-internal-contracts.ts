@@ -1,7 +1,7 @@
 import type { RoutingId, ZLinkSpotCreateState } from '../../contracts';
 
 export interface ZLinkLocalSpotCreateResult {
-  readonly spotRid: RoutingId;
+  readonly spotId: RoutingId;
   readonly state: ZLinkSpotCreateState;
   readonly reply?: unknown;
   readonly publication?: {

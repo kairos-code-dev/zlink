@@ -9,6 +9,8 @@ import type {
   ZLinkObjectCreationTarget
 } from '../../packages/framework/src/contracts';
 import {
+  ZLinkFrameworkErrorKind,
+  ZLinkFrameworkException,
   ZLinkSpotCloseReason,
   ZLinkSpotCreateState
 } from '../../packages/framework/src/contracts';
@@ -67,7 +69,7 @@ test('generic reservation is the only Missing to Pending to Active path', async 
   const reserved = await store.reserve(reserveRequest('room', target('node-a', 'owner-a')));
   assert.equal(reserved.kind, 'reserved');
   if (reserved.kind !== 'reserved') return;
-  assert.equal(reserved.creating.allocation.state, 'pending');
+  assert.equal(reserved.creating.allocation.state, 'reserved');
   assert.equal(reserved.creating.allocation.stableType, 'room');
   assert.equal(reserved.creating.ownerId, 'owner-a');
   assert.deepEqual(reserved.creating.pendingCreation, {
@@ -114,6 +116,7 @@ test('Actor creation terminal is scoped to the exact source operation and publis
   const actorRequest = {
     ...reserveRequest('actor-a', placement),
     key: { kind: 'actor' as const, globalId: 'actor-a' },
+    capacity: { actors: 1, spots: 0 },
     intent: {
       ...reserveRequest('actor-a', placement).intent,
       stableType: 'player'
@@ -141,7 +144,7 @@ test('Actor creation terminal is scoped to the exact source operation and publis
   }), /completeCreation/);
   const pending = await store.readAuthority(encodeAuthorityKey('actor', 'actor-a'));
   assert.equal(pending.kind, 'snapshot');
-  if (pending.kind === 'snapshot') assert.equal(pending.allocation.state, 'pending');
+  if (pending.kind === 'snapshot') assert.equal(pending.allocation.state, 'reserved');
   const committed = await store.completeCreation({
     key: actorRequest.key,
     reservationId: reserved.reservationId,
@@ -171,6 +174,7 @@ test('Actor rejection removes Creating authority and does not leak its reply to 
   const actorRequest = {
     ...reserveRequest('actor-rejected', placement),
     key: { kind: 'actor' as const, globalId: 'actor-rejected' },
+    capacity: { actors: 1, spots: 0 },
     intent: {
       ...reserveRequest('actor-rejected', placement).intent,
       stableType: 'player'
@@ -233,7 +237,7 @@ test('public User Spot coordinator hides Pending, runs one factory, then publish
   let materializations = 0;
   const request = {
     meshName: 'mesh',
-    spotRid: 'room-42',
+    spotId: 'room-42',
     stableType: 'room',
     requestPayload: Buffer.from('create-room'),
     timeoutMs: 1_000
@@ -242,7 +246,7 @@ test('public User Spot coordinator hides Pending, runs one factory, then publish
     materializations++;
     await initialize;
     return {
-      spotRid: request.spotRid,
+      spotId: request.spotId,
       state: ZLinkSpotCreateState.Created
     };
   });
@@ -250,7 +254,7 @@ test('public User Spot coordinator hides Pending, runs one factory, then publish
   const pending = await store.readAuthority(authorityKey('room-42'));
   assert.equal(pending.kind, 'snapshot');
   if (pending.kind === 'snapshot') {
-    assert.equal(pending.allocation.state, 'pending');
+    assert.equal(pending.allocation.state, 'reserved');
   }
 
   const joined = coordinator.getOrCreate(request, async () => {
@@ -286,12 +290,12 @@ test('User Spot rejection is terminal and aborts the Location reservation withou
   });
   const result = await coordinator.getOrCreate({
     meshName: 'mesh',
-    spotRid: 'rejected-room',
+    spotId: 'rejected-room',
     stableType: 'room',
     requestPayload: Buffer.from('reject-me'),
     timeoutMs: 1_000
   }, async () => ({
-    spotRid: 'rejected-room',
+    spotId: 'rejected-room',
     state: ZLinkSpotCreateState.Rejected,
     reply: { reason: 'closed' }
   }));
@@ -318,7 +322,7 @@ test('User Spot creation applies one deadline signal through factory and abort c
   await assert.rejects(
     () => coordinator.getOrCreate({
       meshName: 'mesh',
-      spotRid: 'deadline-room',
+      spotId: 'deadline-room',
       stableType: 'room',
       requestPayload: Buffer.from('slow'),
       timeoutMs: 5
@@ -353,7 +357,7 @@ test('User Spot reconciliation and abort cleanup stop at their bounded cleanup d
   await assert.rejects(
     () => coordinator.getOrCreate({
       meshName: 'mesh',
-      spotRid: 'cleanup-deadline-room',
+      spotId: 'cleanup-deadline-room',
       stableType: 'room',
       requestPayload: Buffer.from('create'),
       timeoutMs: 1_000
@@ -383,7 +387,7 @@ test('User Spot reservation maps capacity exhaustion and Pending expiry to exact
   await assert.rejects(
     () => exhaustedCoordinator.getOrCreate({
       meshName: 'mesh',
-      spotRid: 'full-room',
+      spotId: 'full-room',
       stableType: 'room',
       requestPayload: Buffer.from('create'),
       timeoutMs: 100
@@ -405,7 +409,7 @@ test('User Spot reservation maps capacity exhaustion and Pending expiry to exact
   await assert.rejects(
     () => pendingCoordinator.getOrCreate({
       meshName: 'mesh',
-      spotRid: 'pending-room',
+      spotId: 'pending-room',
       stableType: 'room',
       requestPayload: Buffer.from('same-request'),
       timeoutMs: 5
@@ -448,12 +452,12 @@ test('User Spot placement excludes a capacity-race loser and reserves the next c
 
   const result = await coordinator.getOrCreate({
     meshName: 'mesh',
-    spotRid: 'capacity-race-room',
+    spotId: 'capacity-race-room',
     stableType: 'room',
     requestPayload: Buffer.from('create'),
     timeoutMs: 1_000
   }, async target => ({
-    spotRid: 'capacity-race-room',
+    spotId: 'capacity-race-room',
     state: ZLinkSpotCreateState.Created,
     target
   }));
@@ -466,7 +470,7 @@ test('User Spot production placement maps no target to retriable capacity exhaus
   const store = authority(new Set(['mesh:node-a:1:owner-a:1']));
   const request = {
     meshName: 'mesh',
-    spotRid: 'placement-room',
+    spotId: 'placement-room',
     stableType: 'room',
     requestPayload: Buffer.from('create'),
     timeoutMs: 100
@@ -558,7 +562,7 @@ test('User Spot creation reserves at the source and materializes exact Pending c
           assert.deepEqual(requestPayload, Buffer.from('create'));
           await initialized;
           return {
-            spotRid: record.spotRid,
+            spotId: record.spotId,
             state: ZLinkSpotCreateState.Created,
             publication: {
               publish: () => { published = true; },
@@ -573,7 +577,7 @@ test('User Spot creation reserves at the source and materializes exact Pending c
         tail: {
           kind: 'userSpotCreate',
           createResult: 'created',
-          spotRid: String(coordinated.spot.spotRid),
+          spotId: String(coordinated.spot.spotId),
           objectGeneration: coordinated.spot.objectGeneration
         }
       };
@@ -581,7 +585,7 @@ test('User Spot creation reserves at the source and materializes exact Pending c
   });
   const create = () => coordinator.getOrCreate({
     meshName: 'mesh',
-    spotRid: 'remote-selected-room',
+    spotId: 'remote-selected-room',
     stableType: 'room',
     requestPayload: Buffer.from('create'),
     timeoutMs: 100
@@ -629,7 +633,7 @@ test('remote User Spot target aborts the exact reservation when materialization 
         /factory failed/
       );
       assert.equal(
-        (await store.readAuthority(authorityKey(record.spotRid))).kind,
+        (await store.readAuthority(authorityKey(record.spotId))).kind,
         'missing'
       );
       throw new Error('remote target rejected creation');
@@ -638,7 +642,7 @@ test('remote User Spot target aborts the exact reservation when materialization 
   await assert.rejects(
     () => coordinator.getOrCreate({
       meshName: 'mesh',
-      spotRid: 'remote-failed-room',
+      spotId: 'remote-failed-room',
       stableType: 'room',
       requestPayload: Buffer.from('create'),
       timeoutMs: 1_000
@@ -668,12 +672,12 @@ test('User Spot Ready commit Store rejection is exposed as RequestFailed with th
   await assert.rejects(
     () => coordinator.getOrCreate({
       meshName: 'mesh',
-      spotRid: 'commit-failed-room',
+      spotId: 'commit-failed-room',
       stableType: 'room',
       requestPayload: Buffer.from('create'),
       timeoutMs: 100
     }, async () => ({
-      spotRid: 'commit-failed-room',
+      spotId: 'commit-failed-room',
       state: ZLinkSpotCreateState.Created
     })),
     (error: unknown) => error instanceof Error
@@ -706,7 +710,7 @@ test('User Spot get-or-create returns an existing Ready remote incarnation witho
   });
   const existing = await coordinator.getOrCreate({
       meshName: 'mesh',
-      spotRid: 'remote-room',
+      spotId: 'remote-room',
       stableType: 'room',
       requestPayload: Buffer.from('create'),
       timeoutMs: 1_000
@@ -737,12 +741,12 @@ test('User Spot close fences the exact generation and deletes authority only aft
   });
   const created = await coordinator.getOrCreate({
     meshName: 'mesh',
-    spotRid: 'close-room',
+    spotId: 'close-room',
     stableType: 'room',
     requestPayload: Buffer.from('create'),
     timeoutMs: 1_000
   }, async () => ({
-    spotRid: 'close-room',
+    spotId: 'close-room',
     state: ZLinkSpotCreateState.Created
   }));
   let ownerClosed = false;
@@ -800,11 +804,11 @@ test('exact User Spot manager call is single-use and returns the committed SpotR
   let published = false;
   const manager = new ZLinkPublicSpotManager({
     local: {
-      async getOrCreate(_mesh: string, _type: typeof RoomSpot, spotRid: string) {
+      async getOrCreate(_mesh: string, _type: typeof RoomSpot, spotId: string) {
         assert.equal(staged, true);
         assert.equal(published, false);
         created++;
-        return { spotRid, state: ZLinkSpotCreateState.Created };
+        return { spotId, state: ZLinkSpotCreateState.Created };
       },
       beginUserSpotPublication() {
         staged = true;
@@ -842,14 +846,14 @@ test('exact User Spot manager call is single-use and returns the committed SpotR
   const result = await call.submit();
   assert.equal(created, 1);
   assert.equal(result.state, ZLinkSpotCreateState.Created);
-  assert.equal(result.spot.spotRid, 'room-7');
+  assert.equal(result.spot.spotId, 'room-7');
   assert.equal(staged, false);
   assert.equal(published, true);
   assert.ok(result.spot.objectGeneration > 0n);
   await assert.rejects(() => call.submit(), /already been submitted/);
 });
 
-test('User Spot create retries a generated RID collision with another stable type within the original deadline', async () => {
+test('User Spot create reports its first generated SpotId collision without another UUID or reservation', async () => {
   class RoomSpot {}
   const store = authority(new Set(['mesh:node-a:1:owner-a:1']));
   const collision = await store.reserve({
@@ -878,13 +882,13 @@ test('User Spot create retries a generated RID collision with another stable typ
       isLocal: true
     })
   });
-  const generated = ['spot-collision', 'spot-fresh'];
+  let generated = 0;
   const materialized: string[] = [];
   const manager = new ZLinkPublicSpotManager({
     local: {
-      async getOrCreate(_mesh: string, _type: typeof RoomSpot, spotRid: string) {
-        materialized.push(spotRid);
-        return { spotRid, state: ZLinkSpotCreateState.Created };
+      async getOrCreate(_mesh: string, _type: typeof RoomSpot, spotId: string) {
+        materialized.push(spotId);
+        return { spotId, state: ZLinkSpotCreateState.Created };
       },
       async close() {
         return true;
@@ -901,15 +905,22 @@ test('User Spot create retries a generated RID collision with another stable typ
     resolver: () => undefined,
     isLocalNode: () => true,
     defaultTimeoutMs: 1_000,
-    ridFactory: () => generated.shift() as never
+    ridFactory: () => {
+      generated++;
+      return generated === 1 ? 'spot-collision' : 'spot-unexpected';
+    }
   });
-  const result = await manager.create('room').inMesh('mesh').submit();
-  assert.equal(result.state, ZLinkSpotCreateState.Created);
-  assert.deepEqual(materialized, ['spot-fresh']);
-  assert.equal(result.spot.spotRid, 'spot-fresh');
+  await assert.rejects(
+    () => manager.create('room').inMesh('mesh').submit(),
+    (error: unknown) =>
+      error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.SpotIdConflict
+  );
+  assert.equal(generated, 1);
+  assert.deepEqual(materialized, []);
 });
 
-test('User Spot create retries a generated remote RID while getOrCreate returns that Ready incarnation', async () => {
+test('User Spot create rejects its first remote SpotId collision while getOrCreate returns that Ready incarnation', async () => {
   class RoomSpot {}
   const store = authority(new Set([
     'mesh:node-a:1:owner-a:1',
@@ -926,13 +937,13 @@ test('User Spot create retries a generated remote RID while getOrCreate returns 
       isLocal: true
     })
   });
-  const generated = ['spot-remote-collision', 'spot-local-fresh'];
+  let generated = 0;
   const materialized: string[] = [];
   const manager = new ZLinkPublicSpotManager({
     local: {
-      async getOrCreate(_mesh: string, _type: typeof RoomSpot, spotRid: string) {
-        materialized.push(spotRid);
-        return { spotRid, state: ZLinkSpotCreateState.Created };
+      async getOrCreate(_mesh: string, _type: typeof RoomSpot, spotId: string) {
+        materialized.push(spotId);
+        return { spotId, state: ZLinkSpotCreateState.Created };
       },
       async close() {
         return true;
@@ -949,12 +960,20 @@ test('User Spot create retries a generated remote RID while getOrCreate returns 
     resolver: () => undefined,
     isLocalNode: () => true,
     defaultTimeoutMs: 1_000,
-    ridFactory: () => generated.shift() as never
+    ridFactory: () => {
+      generated++;
+      return generated === 1 ? 'spot-remote-collision' : 'spot-unexpected';
+    }
   });
 
-  const created = await manager.create('room').inMesh('mesh').submit();
-  assert.equal(created.spot.spotRid, 'spot-local-fresh');
-  assert.deepEqual(materialized, ['spot-local-fresh']);
+  await assert.rejects(
+    () => manager.create('room').inMesh('mesh').submit(),
+    (error: unknown) =>
+      error instanceof ZLinkFrameworkException
+      && error.kind === ZLinkFrameworkErrorKind.SpotIdConflict
+  );
+  assert.equal(generated, 1);
+  assert.deepEqual(materialized, []);
 
   const existing = await manager.getOrCreate('spot-remote-collision', 'room')
     .inMesh('mesh')
@@ -965,7 +984,7 @@ test('User Spot create retries a generated remote RID while getOrCreate returns 
 
 test('User Spot manager close sends the exact authority fence to the remote owner', async () => {
   const current = {
-    spotRid: 'remote-close',
+    spotId: 'remote-close',
     objectGeneration: 1n,
     meshName: 'mesh',
     nodeRid: 'node-b'
@@ -997,7 +1016,7 @@ test('User Spot manager close sends the exact authority fence to the remote owne
       remoteCloseCalled = true;
       assert.equal(targetNodeRid, 'node-b');
       assert.deepEqual(request.target, {
-        spotRid: 'remote-close',
+        spotId: 'remote-close',
         objectGeneration: 1n,
         targetNodeRid: 'node-b',
         targetNodeGeneration: 2n,
@@ -1024,7 +1043,7 @@ test('remote User Spot close remains deleted when the terminal reply is lost', a
     target: async () => undefined
   });
   const spot = {
-    spotRid: 'reply-loss-close',
+    spotId: 'reply-loss-close',
     objectGeneration: ready.objectGeneration,
     meshName: 'mesh',
     nodeRid: 'node-b'
@@ -1073,7 +1092,7 @@ test('relocation matches durable source allocation and only requires the target 
     targetDescriptor: { meshName: 'mesh', rid: 'node-b' },
     targetNodeLifecycleGeneration: 2n,
     targetOwner: owner('owner-b', 2n),
-    capacityDelta: 1
+    capacity: userSpotCapacity('room')
   });
   assert.equal(reservation.kind, 'reserved');
   if (reservation.kind !== 'reserved') return;
@@ -1096,29 +1115,13 @@ test('relocation matches durable source allocation and only requires the target 
   assert.ok(moved.authorityOwnerGeneration > current.authorityOwnerGeneration);
 });
 
-test('aggregate prepare binds relocation fences until aggregate commit or abort', async () => {
+test('aggregate prepare reserves one typed bundle until aggregate commit or abort', async () => {
   const live = new Set([
     'mesh:node-a:1:owner-a:1',
     'mesh:node-b:2:owner-b:2'
   ]);
   const store = authority(live);
   const current = await createActive(store, 'aggregate', target('node-a', 'owner-a'));
-  const capacity = await store.reserveRelocationCapacity({
-    reservationId: '22222222-2222-4222-8222-222222222222',
-    authorityKey: authorityKey('aggregate'),
-    expectedStoreVersion: current.storeVersion,
-    objectKind: 'user_spot',
-    stableType: 'room',
-    sourceDescriptor: { meshName: 'mesh', rid: 'node-a' },
-    sourceNodeLifecycleGeneration: 1n,
-    sourceOwner: owner('owner-a', 1n),
-    targetDescriptor: { meshName: 'mesh', rid: 'node-b' },
-    targetNodeLifecycleGeneration: 2n,
-    targetOwner: owner('owner-b', 2n),
-    capacityDelta: 1
-  });
-  assert.equal(capacity.kind, 'reserved');
-  if (capacity.kind !== 'reserved') return;
   const aggregateId = { value: '33333333-3333-4333-8333-333333333333' } as ZLinkAggregateId;
   const prepared = await store.prepareAggregate({
     aggregateId,
@@ -1131,14 +1134,14 @@ test('aggregate prepare binds relocation fences until aggregate commit or abort'
       membershipMutation: Buffer.from('membership')
     }],
     inventoryDigest: Buffer.alloc(32, 7),
-    targetReservations: [capacity.fence],
+    targetDescriptor: { meshName: 'mesh', rid: 'node-b' },
+    targetDescriptorLifecycleGeneration: 2n,
+    capacity: userSpotCapacity('room'),
     targetOwner: owner('owner-b', 2n)
   });
   assert.equal(prepared.kind, 'prepared');
-  assert.equal(await store.abortRelocationCapacity(capacity.fence), 'stale');
   if (prepared.kind !== 'prepared') return;
   assert.deepEqual(await store.commitAggregate(prepared.fence), { kind: 'committed' });
-  assert.equal(await store.abortRelocationCapacity(capacity.fence), 'alreadyCommitted');
 });
 
 function authority(live: Set<string>): ZLinkInMemoryAuthorityStore {
@@ -1172,7 +1175,19 @@ function reserveRequest(globalId: string, placement: ZLinkObjectCreationTarget) 
     },
     target: placement,
     creatingPayload: Buffer.from('creating'),
-    pendingCapacityDelta: 1
+    capacity: userSpotCapacity('room')
+  };
+}
+
+function userSpotCapacity(stableType: string) {
+  return {
+    actors: 0,
+    spots: 1,
+    spotType: {
+      objectKind: 'user_spot' as const,
+      stableType,
+      count: 1
+    }
   };
 }
 
@@ -1192,7 +1207,7 @@ async function createActive(
     readyPayload: encodeServiceUserSpotAuthorityPayload({
       state: 'ready',
       stableType: 'room',
-      spotRid: globalId,
+      spotId: globalId,
       ownerId: placement.owner.ownerId,
       ownerLeaseGeneration: placement.owner.leaseGeneration,
       ownerMeshName: placement.meshName,

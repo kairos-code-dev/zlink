@@ -1,4 +1,4 @@
-import type { RoutingId } from '../Common';
+import type { RoutingId, SpotId } from '../Common';
 import type {
   ZLinkActorLocation,
   ZLinkActorLocationKey,
@@ -173,7 +173,7 @@ export enum ZLinkSpotEventKind {
 }
 
 export interface ZLinkSpotTimerDiagnostic {
-  readonly spotRid: RoutingId;
+  readonly spotId: SpotId;
   readonly isEntrySpot: boolean;
   readonly timerName: string;
   readonly handlerType: string;

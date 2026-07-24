@@ -8,7 +8,7 @@ export interface PeerKey {
 
 export interface SpotKey {
   readonly meshName: string;
-  readonly spotRid: RoutingId;
+  readonly spotId: SpotId;
 }
 
 export interface MeshNodeKey {
@@ -48,7 +48,7 @@ export function encodePeerKey(key: PeerKey): string {
 }
 
 export function encodeSpotKey(key: SpotKey): string {
-  return encodeKeySegments(key.meshName, routingIdHex(key.spotRid));
+  return encodeKeySegments(key.meshName, requireSpotId(key.spotId));
 }
 
 export function encodeMeshNodeKey(key: MeshNodeKey): string {
@@ -77,6 +77,14 @@ export function encodeKeySegments(...segments: readonly string[]): string {
   return segments.map(
     (segment) => `${Buffer.byteLength(segment, 'utf8')}:${segment}`
   ).join('');
+}
+
+function requireSpotId(value: string): string {
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (bytes < 1 || bytes > 255) {
+    throw new TypeError('SpotId must contain 1..255 UTF-8 bytes.');
+  }
+  return value;
 }
 
 function zlinkLocationAutoConnectTypeName(type: ZLinkLocationAutoConnectType): string {
@@ -109,5 +117,6 @@ import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import {
   ZLinkLocationAutoConnectType,
   ZLinkLocationRole,
-  type RoutingId
+  type RoutingId,
+  type SpotId
 } from '@zlink-systems/framework';

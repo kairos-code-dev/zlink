@@ -117,7 +117,7 @@ interface ZLinkSpotActorJoinDispatchOptions {
 export class ZLinkSpotActorJoinDispatch {
   private draining = false;
   private redrainRequested = false;
-  private readonly nativeSpotRid: string;
+  private readonly nativeSpotId: string;
   private readonly subscriptions: ZLinkSpotSubscriptionDispatch;
   private readonly actorLifecycleDrain: ZLinkSpotActorLifecycleDrain;
   private readonly actorPacketDrain: ZLinkSpotActorPacketDrain;
@@ -129,7 +129,7 @@ export class ZLinkSpotActorJoinDispatch {
     const actors = options.actors;
     const transfer = actors.transfer.kind === 'enabled' ? actors.transfer : undefined;
     this.nativeSpot = options.nativeSpot;
-    this.nativeSpotRid = String(options.nativeSpot.routingId);
+    this.nativeSpotId = String(options.nativeSpot.routingId);
     this.actorLifecycleDrain = new ZLinkSpotActorLifecycleDrain({
       nativeSpot: options.nativeSpot,
       serial: options.serial,
@@ -157,7 +157,7 @@ export class ZLinkSpotActorJoinDispatch {
     });
     this.routedFrames = new ZLinkSpotRoutedFrameDispatch({
       nativeSpot: options.nativeSpot,
-      nativeSpotRid: this.nativeSpotRid,
+      nativeSpotId: this.nativeSpotId,
       serial: options.serial,
       resolveActor: actors.resolveActor,
       getTarget: () => actors.getTarget() as ZLinkActorJoinAdmissionTarget & ZLinkSpot,

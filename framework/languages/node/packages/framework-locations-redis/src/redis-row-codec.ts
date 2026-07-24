@@ -119,7 +119,7 @@ export const kindFanoutPublisher: LocationKind<ZLinkFanoutPublisherDescriptor> =
 
 export const kindSpot: LocationKind<ZLinkSpotLocation> = {
   tag: 'spot',
-  encodeKey: (row) => encodeSpotKey({ meshName: row.meshName, spotRid: row.spotRid }),
+  encodeKey: (row) => encodeSpotKey({ meshName: row.meshName, spotId: row.spotId }),
   meshOf: (row) => row.meshName,
   ownerOf: (row) => row.ownerId,
   generationOf: () => 0n,
@@ -187,11 +187,15 @@ function meshNodeToJson(row: ZLinkMeshNodeDescriptor): unknown {
     DescriptorRevision: requiredUnsignedNumber(row.descriptorRevision, 'DescriptorRevision'),
     Endpoint: row.endpoint,
     ObjectRole: objectRoleToWire(row.objectRole),
+    EntrySpotId: row.entrySpotId ?? null,
     PlacementWeight: row.placementWeight,
-    Capacity: capacityToJson(row.objectCapacity),
+    Capacity: populationCapacityToJson(row.populationCapacity),
+    ActivationConcurrency: {
+      Active: row.activationConcurrency.active,
+      Limit: row.activationConcurrency.limit
+    },
     ChannelWeights: sortedWeights(row.channelWeights),
     ApplicationVersion: requiredUnsignedNumber(row.applicationVersion, 'ApplicationVersion'),
-    SpotTypes: [...row.spotTypes].sort(),
     ObjectCapabilities: capabilitiesToJson(row.objectCapabilities),
     MaintenanceWave: row.maintenanceWave ?? null,
     State: row.state,
@@ -211,11 +215,15 @@ function meshNodeToJsonText(row: ZLinkMeshNodeDescriptor): string {
     `,"DescriptorRevision":${requiredUnsigned(row.descriptorRevision, 'DescriptorRevision')}`,
     `,"Endpoint":${JSON.stringify(row.endpoint)}`,
     `,"ObjectRole":${objectRoleToWire(row.objectRole)}`,
+    `,"EntrySpotId":${JSON.stringify(row.entrySpotId ?? null)}`,
     `,"PlacementWeight":${JSON.stringify(row.placementWeight)}`,
-    `,"Capacity":${JSON.stringify(capacityToJson(row.objectCapacity))}`,
+    `,"Capacity":${JSON.stringify(populationCapacityToJson(row.populationCapacity))}`,
+    `,"ActivationConcurrency":${JSON.stringify({
+      Active: row.activationConcurrency.active,
+      Limit: row.activationConcurrency.limit
+    })}`,
     `,"ChannelWeights":${JSON.stringify(sortedWeights(row.channelWeights))}`,
     `,"ApplicationVersion":${requiredUnsigned(row.applicationVersion, 'ApplicationVersion')}`,
-    `,"SpotTypes":${JSON.stringify([...row.spotTypes].sort())}`,
     `,"ObjectCapabilities":${JSON.stringify(capabilitiesToJson(row.objectCapabilities))}`,
     `,"MaintenanceWave":${JSON.stringify(row.maintenanceWave ?? null)}`,
     `,"State":${JSON.stringify(row.state)}`,
@@ -241,13 +249,19 @@ function meshNodeFromJson(
     descriptorRevision: unsignedBigIntOf(row.DescriptorRevision),
     endpoint: stringOf(row.Endpoint),
     objectRole: objectRoleFromJson(row.ObjectRole),
+    entrySpotId: row.EntrySpotId === null || row.EntrySpotId === undefined
+      ? undefined
+      : stringOf(row.EntrySpotId),
     placementWeight: numberOf(row.PlacementWeight),
-    objectCapacity: capacityOf(row.Capacity ?? row.ObjectCapacity),
+    populationCapacity: populationCapacityOf(row.Capacity),
+    activationConcurrency: activationConcurrencyOf(row.ActivationConcurrency),
     channelWeights: Object.fromEntries(
       Object.entries(weights).map(([name, weight]) => [name, numberOf(weight)])
     ),
     applicationVersion: unsignedBigIntOf(row.ApplicationVersion),
-    spotTypes: stringArrayOf(row.SpotTypes),
+    spotTypes: populationCapacityOf(row.Capacity).spotTypes
+      .map(capacity => capacity.stableType)
+      .sort(),
     objectCapabilities: capabilitiesOf(row.ObjectCapabilities),
     maintenanceWave: row.MaintenanceWave === null || row.MaintenanceWave === undefined
       ? undefined
@@ -426,30 +440,62 @@ function capabilitiesToJson(
     StableType: value.stableType,
     Policy: policyToWire(value.policy),
     HasSnapshotAdapter: value.hasSnapshotAdapter,
-    Active: value.active,
-    Reserved: value.reserved,
-    ActiveLimit: value.activeLimit ?? null,
-    PendingLimit: value.pendingLimit ?? null
+    Limit: value.limit
   }));
 }
 
-function capacityToJson(value: ZLinkMeshNodeDescriptor['objectCapacity']): unknown {
+function populationCapacityToJson(
+  value: ZLinkMeshNodeDescriptor['populationCapacity']
+): unknown {
   return {
-    Active: value.activeObjects,
-    Pending: value.pendingActivations,
-    ActiveLimit: value.maxActiveObjects,
-    PendingLimit: value.maxPendingActivations
+    Actors: populationToJson(value.actors),
+    Spots: populationToJson(value.spots),
+    SpotTypes: value.spotTypes.map(capacity => ({
+      ObjectKind: capacity.objectKind,
+      StableType: capacity.stableType,
+      ...populationToJson(capacity)
+    }))
   };
 }
 
-function capacityOf(value: unknown): ZLinkMeshNodeDescriptor['objectCapacity'] {
+function populationToJson(
+  value: { active: number; reserved: number; limit: number }
+): { Active: number; Reserved: number; Limit: number } {
+  return { Active: value.active, Reserved: value.reserved, Limit: value.limit };
+}
+
+function populationCapacityOf(
+  value: unknown
+): ZLinkMeshNodeDescriptor['populationCapacity'] {
   const row = objectOf(value);
   return {
-    activeObjects: numberOf(row.activeObjects ?? row.ActiveObjects ?? row.Active),
-    pendingActivations: numberOf(row.pendingActivations ?? row.PendingActivations ?? row.Pending),
-    maxActiveObjects: numberOf(row.maxActiveObjects ?? row.MaxActiveObjects ?? row.ActiveLimit),
-    maxPendingActivations: numberOf(row.maxPendingActivations ?? row.MaxPendingActivations ?? row.PendingLimit)
+    actors: populationOf(row.Actors),
+    spots: populationOf(row.Spots),
+    spotTypes: arrayOf(row.SpotTypes).map(value => {
+      const capacity = objectOf(value);
+      return {
+        objectKind: objectKindFromJson(capacity.ObjectKind) as 'user_spot' | 'instance_spot',
+        stableType: stringOf(capacity.StableType),
+        ...populationOf(capacity)
+      };
+    })
   };
+}
+
+function populationOf(value: unknown): { active: number; reserved: number; limit: number } {
+  const row = objectOf(value);
+  return {
+    active: numberOf(row.Active),
+    reserved: numberOf(row.Reserved),
+    limit: numberOf(row.Limit)
+  };
+}
+
+function activationConcurrencyOf(
+  value: unknown
+): ZLinkMeshNodeDescriptor['activationConcurrency'] {
+  const row = objectOf(value);
+  return { active: numberOf(row.Active), limit: numberOf(row.Limit) };
 }
 
 function capabilitiesOf(value: unknown): ZLinkMeshNodeDescriptor['objectCapabilities'] {
@@ -461,10 +507,7 @@ function capabilitiesOf(value: unknown): ZLinkMeshNodeDescriptor['objectCapabili
       stableType: stringOf(row.stableType ?? row.StableType),
       policy: policyFromJson(row.policy ?? row.Policy),
       hasSnapshotAdapter: booleanOf(row.hasSnapshotAdapter ?? row.HasSnapshotAdapter),
-      active: numberOf(row.active ?? row.Active ?? 0),
-      reserved: numberOf(row.reserved ?? row.Reserved ?? 0),
-      activeLimit: optionalNumber(row.activeLimit ?? row.ActiveLimit),
-      pendingLimit: optionalNumber(row.pendingLimit ?? row.PendingLimit)
+      limit: numberOf(row.limit ?? row.Limit)
     };
   });
 }
@@ -554,7 +597,7 @@ function peerFromJson(json: unknown, generation: bigint, updatedAt: Date): ZLink
 function spotToJson(row: ZLinkSpotLocation): unknown {
   return {
     MeshName: row.meshName,
-    SpotRid: routingIdHex(row.spotRid),
+    SpotId: requireSpotId(row.spotId),
     SpotGeneration: requiredUnsignedNumber(row.spotGeneration, 'SpotGeneration'),
     OwnerNodeRid: routingIdHex(row.ownerNodeRid),
     OwnerNodeGeneration: requiredUnsignedNumber(row.ownerNodeGeneration, 'OwnerNodeGeneration'),
@@ -569,7 +612,7 @@ function spotToJsonText(row: ZLinkSpotLocation): string {
   return [
     '{',
     `"MeshName":${JSON.stringify(row.meshName)}`,
-    `,"SpotRid":${JSON.stringify(routingIdHex(row.spotRid))}`,
+    `,"SpotId":${JSON.stringify(requireSpotId(row.spotId))}`,
     `,"SpotGeneration":${requiredUnsigned(row.spotGeneration, 'SpotGeneration')}`,
     `,"OwnerNodeRid":${JSON.stringify(routingIdHex(row.ownerNodeRid))}`,
     `,"OwnerNodeGeneration":${requiredUnsigned(row.ownerNodeGeneration, 'OwnerNodeGeneration')}`,
@@ -586,7 +629,7 @@ function spotFromJson(json: unknown, _generation: bigint, updatedAt: Date): ZLin
   const ownerNodeRid = ridOf(row.OwnerNodeRid);
   return {
     meshName: stringOf(row.MeshName),
-    spotRid: ridOf(row.SpotRid),
+    spotId: spotIdOf(row.SpotId),
     spotGeneration: unsignedBigIntOf(row.SpotGeneration),
     spotType: stringOf(row.SpotType),
     ownerNodeRid,
@@ -605,7 +648,7 @@ function actorToJson(row: ZLinkActorLocation): unknown {
     ActorRef: actorRefToJson(row.actorRef),
     OwnerNodeRid: routingIdHex(row.ownerNodeRid),
     OwnerNodeGeneration: requiredUnsignedNumber(row.ownerNodeGeneration, 'OwnerNodeGeneration'),
-    SpotRid: routingIdHex(row.spotRid),
+    SpotId: requireSpotId(row.spotId),
     SpotGeneration: requiredUnsignedNumber(row.spotGeneration, 'SpotGeneration'),
     SpotKind: zlinkSpotKindToWire(row.spotKind),
     MembershipEpoch: requiredUnsignedNumber(row.membershipEpoch, 'MembershipEpoch'),
@@ -617,7 +660,7 @@ function actorToJson(row: ZLinkActorLocation): unknown {
 function actorToJsonText(row: ZLinkActorLocation): string {
   const actorRef = row.actorRef;
   const ownerNodeGeneration = requiredUnsigned(row.ownerNodeGeneration, 'OwnerNodeGeneration');
-  const spotRid = requiredValue(row.spotRid, 'SpotRid');
+  const spotId = requiredValue(row.spotId, 'SpotId');
   const spotGeneration = requiredUnsigned(row.spotGeneration, 'SpotGeneration');
   const membershipEpoch = requiredUnsigned(row.membershipEpoch, 'MembershipEpoch');
   return [
@@ -632,7 +675,7 @@ function actorToJsonText(row: ZLinkActorLocation): string {
     '}',
     `,"OwnerNodeRid":${JSON.stringify(routingIdHex(row.ownerNodeRid))}`,
     `,"OwnerNodeGeneration":${ownerNodeGeneration}`,
-    `,"SpotRid":${JSON.stringify(routingIdHex(spotRid))}`,
+    `,"SpotId":${JSON.stringify(requireSpotId(spotId))}`,
     `,"SpotGeneration":${spotGeneration}`,
     `,"SpotKind":${zlinkSpotKindToWire(row.spotKind)}`,
     `,"MembershipEpoch":${membershipEpoch}`,
@@ -662,7 +705,7 @@ function actorFromJson(json: unknown, _generation: bigint, updatedAt: Date): ZLi
     ownerNodeRid,
     ownerNodeGeneration: unsignedBigIntOf(row.OwnerNodeGeneration),
     spotKind,
-    spotRid: ridOf(row.SpotRid),
+    spotId: spotIdOf(row.SpotId),
     spotGeneration: unsignedBigIntOf(row.SpotGeneration),
     membershipEpoch: unsignedBigIntOf(row.MembershipEpoch),
     ownerId: stringOf(row.OwnerId),
@@ -849,6 +892,18 @@ function stringOf(value: unknown): string {
   return value;
 }
 
+function spotIdOf(value: unknown): string {
+  return requireSpotId(stringOf(value));
+}
+
+function requireSpotId(value: string): string {
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (bytes < 1 || bytes > 255) {
+    throw new TypeError('SpotId must contain 1..255 UTF-8 bytes.');
+  }
+  return value;
+}
+
 function optionalString(value: unknown): string | undefined {
   return value === null || value === undefined ? undefined : stringOf(value);
 }
@@ -858,10 +913,6 @@ function numberOf(value: unknown): number {
     throw new TypeError('Location row JSON field is not a number.');
   }
   return value;
-}
-
-function optionalNumber(value: unknown): number | undefined {
-  return value === null || value === undefined ? undefined : numberOf(value);
 }
 
 function booleanOf(value: unknown): boolean {
@@ -895,8 +946,9 @@ function optionalStringArray(value: unknown): readonly string[] | undefined {
   return value.map(stringOf);
 }
 
-function stringArrayOf(value: unknown): readonly string[] {
-  const result = optionalStringArray(value);
-  if (result === undefined) throw new TypeError('Location row JSON array is required.');
-  return result;
+function arrayOf(value: unknown): readonly unknown[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError('Location row JSON field is not an array.');
+  }
+  return value;
 }

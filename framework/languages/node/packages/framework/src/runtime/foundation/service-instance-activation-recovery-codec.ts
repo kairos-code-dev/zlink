@@ -18,7 +18,7 @@ export interface ServiceInstanceActivationRecoveryEnvelope {
   readonly targetMeshName: string;
   readonly sourceNodeRid: string;
   readonly sourceNodeGeneration: bigint;
-  readonly sourceSpotRid?: string;
+  readonly sourceSpotId?: string;
   readonly operationKind: 'send' | 'request';
   readonly operation: { readonly high: bigint; readonly low: bigint };
   readonly replyRouteId?: bigint;
@@ -33,7 +33,7 @@ export function encodeInstanceActivationRecoveryEnvelope(
   requireOperation(value);
   const applicationPayload = encodeApplicationPayload(value.applicationPayload);
   const body = concat(
-    text8(value.target.targetSpotRid, 'targetSpotRid'),
+    text8(value.target.targetSpotId, 'targetSpotId'),
     text8(value.target.stableType, 'stableType'),
     text8(value.targetMeshName, 'targetMeshName'),
     text8(value.target.targetNodeRid, 'targetNodeRid'),
@@ -41,7 +41,7 @@ export function encodeInstanceActivationRecoveryEnvelope(
     text8(value.target.descriptorVersion, 'targetDescriptorVersion'),
     text8(value.sourceNodeRid, 'sourceNodeRid'),
     u64(value.sourceNodeGeneration, 'sourceNodeGeneration'),
-    optionalText8(value.sourceSpotRid, 'sourceSpotRid'),
+    optionalText8(value.sourceSpotId, 'sourceSpotId'),
     Buffer.of(value.operationKind === 'send' ? 1 : 2),
     u64Any(value.operation.high, 'operation.high'),
     u64Any(value.operation.low, 'operation.low'),
@@ -85,7 +85,7 @@ export function decodeInstanceActivationRecoveryEnvelope(
   if (!reader.done || crc32c(reader.bytes.subarray(0, checksumOffset)) !== checksum) {
     throw new TypeError('Instance activation recovery envelope checksum is invalid.');
   }
-  const targetSpotRid = body.text8();
+  const targetSpotId = body.text8();
   const stableType = body.text8();
   const targetMeshName = body.text8();
   const targetNodeRid = body.text8();
@@ -93,7 +93,7 @@ export function decodeInstanceActivationRecoveryEnvelope(
   const descriptorVersion = body.text8();
   const sourceNodeRid = body.text8();
   const sourceNodeGeneration = body.nonZeroU64();
-  const sourceSpotRid = body.optionalText8();
+  const sourceSpotId = body.optionalText8();
   const operationDiscriminator = body.u8();
   if (operationDiscriminator !== 1 && operationDiscriminator !== 2) {
     throw new TypeError('Instance activation recovery operation kind is invalid.');
@@ -118,7 +118,7 @@ export function decodeInstanceActivationRecoveryEnvelope(
   }
   return {
     target: {
-      targetSpotRid,
+      targetSpotId,
       stableType,
       targetNodeRid,
       targetNodeGeneration,
@@ -127,7 +127,7 @@ export function decodeInstanceActivationRecoveryEnvelope(
     targetMeshName,
     sourceNodeRid,
     sourceNodeGeneration,
-    ...(sourceSpotRid === undefined ? {} : { sourceSpotRid }),
+    ...(sourceSpotId === undefined ? {} : { sourceSpotId }),
     operationKind,
     operation,
     ...(replyRouteId === undefined ? {} : { replyRouteId }),

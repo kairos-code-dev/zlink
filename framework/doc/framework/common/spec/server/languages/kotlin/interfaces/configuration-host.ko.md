@@ -71,16 +71,14 @@ fun ZLinkFrameworkOptions.configureStreamCompression(
 inline fun <reified TActor, reified TFactory>
     ZLinkMeshObjectServerBuilder.actorFactory(
         actorType: String,
-        placement: ZLinkObjectPlacementOptions?,
+        options: ZLinkActorFactoryOptions?,
         relocation: ZLinkRelocationPolicy<TActor>,
     ): ZLinkMeshObjectServerBuilder
     where TActor : ZLinkActor,
           TFactory : ZLinkActorFactory
 ```
 
-`placement`은 nullable이지만 `relocation`에는 default가 없다. Placement option은 type별
-`maxActiveObjects`, `maxPendingActivations`만 가진다. Node default는 active 10000, pending 128이고
-type override 범위는 1..`Int.MAX_VALUE`다. Effective capacity는 node와 type 값 중 작은 값이다. Node placement
+`options`는 nullable이지만 `relocation`에는 default가 없다. Actor factory option에는 추가 field가 없다. Node placement
 [weight](../../../../01-glossary.ko.md#weight)는 0..10000이고 기본값은 100이다. 범위 밖 값은 startup 설정과
 runtime 변경에서 configuration error다. Channel weight와 별개이며 runtime update와 descriptor
 [snapshot](../../../../01-glossary.ko.md#snapshot)에 같은 값을 사용한다.
@@ -100,7 +98,7 @@ ID가 active owner와 충돌하면 새 UUID로 다시 시도하지 않고 즉시
 실패시킨다. Caller가 지정한 User·Instance Spot ID가 예약 형식과 일치하면 Store와 factory 전에
 `InvalidConfiguration`으로 거부한다.
 
-모든 Actor, User Spot, Instance Spot factory는 stable type, optional typed placement와 명시적인
+모든 Actor, User Spot, Instance Spot factory는 stable type, object 종류별 optional factory option과 명시적인
 `Disabled`·`Recreate`·`Snapshot` policy를 받는다. Policy를 생략하는 Kotlin overload와 `$default` JVM member는
 생성하지 않는다. Snapshot은 Java `ZLinkRelocationPolicy.snapshot(Adapter::class.java)`를 직접 사용한다. Actor
 factory adapter는 `ZLinkActorRelocationAdapter`, User·Instance Spot factory adapter는
@@ -123,7 +121,7 @@ public final class systems.zlink.framework.kotlin.ZLinkDispatchOptionsExtensions
   public static final systems.zlink.framework.configuration.ZLinkDispatchOptions configureDispatch(systems.zlink.framework.configuration.ZLinkFrameworkOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkDispatchOptions, kotlin.Unit>);
 }
 public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
-  public static final <TActor extends systems.zlink.framework.actors.ZLinkActor, TFactory extends systems.zlink.framework.actors.ZLinkActorFactory> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder actorFactory(systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder, java.lang.String, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
+  public static final <TActor extends systems.zlink.framework.actors.ZLinkActor, TFactory extends systems.zlink.framework.actors.ZLinkActorFactory> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder actorFactory(systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder, java.lang.String, systems.zlink.framework.configuration.ZLinkActorFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
   public static final systems.zlink.framework.configuration.ZLinkFrameworkOptions configureStreamCompression(systems.zlink.framework.configuration.ZLinkFrameworkOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder, kotlin.Unit>);
 }
 ```

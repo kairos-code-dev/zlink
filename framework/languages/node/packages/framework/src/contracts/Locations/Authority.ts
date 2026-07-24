@@ -18,7 +18,19 @@ export interface ZLinkAuthorityStoreVersion {
 }
 
 export type ZLinkPlacementObjectKind = 'actor' | 'user_spot' | 'instance_spot';
-export type ZLinkPlacementAllocationState = 'pending' | 'active';
+export type ZLinkPlacementAllocationState = 'reserved' | 'active';
+
+export interface ZLinkSpotTypeCapacityDelta {
+  readonly objectKind: 'user_spot' | 'instance_spot';
+  readonly stableType: string;
+  readonly count: number;
+}
+
+export interface ZLinkCapacityVector {
+  readonly actors: number;
+  readonly spots: number;
+  readonly spotType?: ZLinkSpotTypeCapacityDelta;
+}
 
 export interface ZLinkPlacementAllocation {
   readonly state: ZLinkPlacementAllocationState;
@@ -26,7 +38,7 @@ export interface ZLinkPlacementAllocation {
   readonly stableType: string;
   readonly descriptor: ZLinkMeshNodeDescriptorKey;
   readonly descriptorLifecycleGeneration: bigint;
-  readonly capacityDelta: number;
+  readonly capacity: ZLinkCapacityVector;
 }
 
 export interface ZLinkPendingObjectCreation {
@@ -187,7 +199,7 @@ export interface ZLinkObjectReserveRequest {
   readonly intent: ZLinkObjectCreationIntent;
   readonly target: ZLinkObjectCreationTarget;
   readonly creatingPayload: Uint8Array;
-  readonly pendingCapacityDelta: number;
+  readonly capacity: ZLinkCapacityVector;
 }
 
 export type ZLinkObjectReserveResult =
@@ -272,7 +284,7 @@ export interface ZLinkRelocationCapacityReservationRequest {
   readonly targetDescriptor: ZLinkMeshNodeDescriptorKey;
   readonly targetNodeLifecycleGeneration: bigint;
   readonly targetOwner: ZLinkLocationOwnerToken;
-  readonly capacityDelta: number;
+  readonly capacity: ZLinkCapacityVector;
 }
 
 export type ZLinkRelocationCapacityReserveResult =
@@ -317,7 +329,9 @@ export interface ZLinkAggregatePrepareRequest {
   readonly aggregateGeneration: bigint;
   readonly participants: readonly ZLinkAggregateParticipant[];
   readonly inventoryDigest: Uint8Array;
-  readonly targetReservations: readonly ZLinkRelocationCapacityFence[];
+  readonly targetDescriptor: ZLinkMeshNodeDescriptorKey;
+  readonly targetDescriptorLifecycleGeneration: bigint;
+  readonly capacity: ZLinkCapacityVector;
   readonly targetOwner: ZLinkLocationOwnerToken;
 }
 

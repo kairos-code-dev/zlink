@@ -29,7 +29,7 @@ export function matchesSpot(row: ZLinkSpotLocation, filter: ZLinkSpotLocationFil
 export function matchesActor(row: ZLinkActorLocation, filter: ZLinkActorLocationFilter): boolean {
   return (filter.actorType === undefined || row.actorType === filter.actorType)
     && (filter.nodeRid === undefined || routingIdsEqual(row.ownerNodeRid, filter.nodeRid))
-    && (filter.spotRid === undefined || routingIdsEqual(row.spotRid, filter.spotRid))
+    && (filter.spotId === undefined || row.spotId === filter.spotId)
     && (filter.locationKind === undefined || row.spotKind === filter.locationKind);
 }
 

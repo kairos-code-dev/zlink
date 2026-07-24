@@ -236,7 +236,7 @@ Manager의 `find`와 `close`도 User Spot만 대상으로 한다. Instance Spot�
 `ZLinkInstanceSpotContext.close()`이며 이 context 내부 close 계약은 유지한다.
 
 다음 예제에서 `spotClient`는 `ZLinkSpotOutbound`이고 `cartId`는 호출할 global SpotId다. Instance
-intent를 명시했으므로 Spot이 없을 때만 cold activation에 필요한 placement option을 사용한다.
+intent를 명시했으므로 Spot이 없을 때만 cold activation에 필요한 stable type과 최초 Mesh를 사용한다.
 
 ```java
 CompletionStage<CartReply> reply = spotClient

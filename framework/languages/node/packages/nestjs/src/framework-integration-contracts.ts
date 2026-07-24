@@ -12,7 +12,9 @@ import type {
   ZLinkLocationStore,
   ZLinkRelocationStore,
   ZLinkRelocationPolicy,
-  ZLinkObjectPlacementOptions,
+  ZLinkActorFactoryOptions,
+  ZLinkInstanceSpotFactoryOptions,
+  ZLinkUserSpotFactoryOptions,
   ZLinkInstanceSpot,
   ZLinkMessageSerializer,
   ZLinkMetricsOptions,
@@ -37,6 +39,8 @@ export interface ZLinkWorkerOptions {
 
 export interface ZLinkNestIntegrationRuntimeHost {
   readonly channelRuntimeOptions: unknown;
+  readonly routeMeshRuntimeOptions:
+    import('@zlink-systems/framework').ZLinkRouteMeshRuntimeOptions;
   readonly boundSessionFactory: unknown;
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: unknown;
@@ -224,17 +228,25 @@ export interface ZLinkSpotNodeOptions {
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
   readonly spotFactoryRegistrations?: Readonly<Record<
     string,
-    ZLinkObjectFactoryRegistration<ZLinkSpot>
+    ZLinkObjectFactoryRegistration<ZLinkSpot, ZLinkSpot, ZLinkUserSpotFactoryOptions>
   >>;
   readonly instanceSpotFactories?: Readonly<Record<string, Type<ZLinkInstanceSpot>>>;
   readonly instanceSpotFactoryRegistrations?: Readonly<Record<
     string,
-    ZLinkObjectFactoryRegistration<ZLinkInstanceSpot>
+    ZLinkObjectFactoryRegistration<
+      ZLinkInstanceSpot,
+      ZLinkInstanceSpot,
+      ZLinkInstanceSpotFactoryOptions
+    >
   >>;
   readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
   readonly actorFactoryRegistrations?: Readonly<Record<
     string,
-    ZLinkObjectFactoryRegistration<ZLinkActor, ZLinkActorFactory>
+    ZLinkObjectFactoryRegistration<
+      ZLinkActor,
+      ZLinkActorFactory,
+      ZLinkActorFactoryOptions
+    >
   >>;
   readonly meshChannels?: Readonly<Record<string, ZLinkMeshChannelOptions>>;
   readonly routeSendHandlers?: readonly ZLinkRouteMeshSendHandlerRegistration[];
@@ -257,9 +269,9 @@ export interface ZLinkSpotNodeOptions {
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
 }
 
-interface ZLinkObjectFactoryRegistration<T, TImplementation = T> {
+interface ZLinkObjectFactoryRegistration<T, TImplementation = T, TOptions = unknown> {
   readonly implementation: Type<TImplementation>;
-  readonly placement?: ZLinkObjectPlacementOptions;
+  readonly options?: TOptions;
   readonly relocation: ZLinkRelocationPolicy<T>;
 }
 

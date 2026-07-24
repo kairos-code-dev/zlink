@@ -3,6 +3,7 @@ import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
   type RoutingId,
+  type SpotId,
   type SpotRef,
   type Type,
   type ZLinkSpot,
@@ -17,9 +18,6 @@ import type { ZLinkObjectFactoryRegistration } from '../../contracts/Configurati
 import { ZLinkConfigurationException } from '../configuration';
 import type {
   ZLinkUserSpotCreationCoordinator
-} from '../host/user-spot-creation-coordinator';
-import {
-  ZLinkUserSpotRidCollisionError
 } from '../host/user-spot-creation-coordinator';
 import type { ZLinkSpotRouteResolver } from './spot-routing-internal';
 import type { DefaultZLinkSpotManager } from './index';
@@ -42,7 +40,7 @@ export interface ZLinkPublicSpotManagerOptions {
   readonly isLocalNode: (meshName: string, nodeRid: RoutingId) => boolean;
   readonly defaultTimeoutMs: number;
   readonly messageSerializers?: ReadonlyMap<string, ZLinkMessageSerializer>;
-  readonly ridFactory?: () => RoutingId;
+  readonly ridFactory?: () => SpotId;
   readonly remoteClose?: (
     meshName: string,
     targetNodeRid: string,
@@ -55,29 +53,29 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
   constructor(private readonly options: ZLinkPublicSpotManagerOptions) {}
 
   create(spotType: string): ZLinkSpotCreateCall {
-    return this.call(this.newSpotRid(), spotType, true);
+    return this.call(this.newSpotId(), spotType, true);
   }
 
-  getOrCreate(spotRid: RoutingId, spotType: string): ZLinkSpotGetOrCreateCall {
-    return this.call(spotRid, spotType, false);
+  getOrCreate(spotId: SpotId, spotType: string): ZLinkSpotGetOrCreateCall {
+    return this.call(spotId, spotType, false);
   }
 
-  async find(spotRid: RoutingId, signal?: AbortSignal): Promise<SpotRef | undefined> {
+  async find(spotId: SpotId, signal?: AbortSignal): Promise<SpotRef | undefined> {
     const resolver = this.options.resolver();
     if (resolver === undefined) {
       throw new ZLinkConfigurationException('Spot lookup requires a Location Store.');
     }
     try {
-      const route = await resolver.resolve(spotRid, signal);
+      const route = await resolver.resolve(spotId, signal);
       if (route.spotKind !== ZLinkSpotKind.User) {
         throw new ZLinkFrameworkException(
           ZLinkFrameworkErrorKind.SpotTypeMismatch,
-          `Spot '${String(spotRid)}' is not a User Spot.`
+          `Spot '${String(spotId)}' is not a User Spot.`
         );
       }
       if (route.targetSpotGeneration === undefined) return undefined;
       return {
-        spotRid,
+        spotId,
         objectGeneration: route.targetSpotGeneration,
         meshName: route.routerChannelId,
         nodeRid: route.targetNodeRid
@@ -100,11 +98,11 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
     if (this.options.isLocalNode(current.meshName, current.nodeRid)) {
       return await this.options.coordinator.close(
         spot,
-        (local) => this.options.local.close(local.meshName, local.spotRid, signal),
+        (local) => this.options.local.close(local.meshName, local.spotId, signal),
         signal,
-        (local) => this.options.local.hasActiveSpot(local.spotRid),
+        (local) => this.options.local.hasActiveSpot(local.spotId),
         (local) =>
-          this.options.local.canCloseUserSpot?.(local.meshName, local.spotRid)
+          this.options.local.canCloseUserSpot?.(local.meshName, local.spotId)
           ?? true
       );
     }
@@ -123,7 +121,7 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
         sourceNodeRid: '',
         sourceNodeGeneration: 1n,
         target: {
-          spotRid: String(current.spotRid),
+          spotId: String(current.spotId),
           objectGeneration: current.objectGeneration,
           targetNodeRid: String(current.nodeRid),
           targetNodeGeneration: snapshot.allocation.descriptorLifecycleGeneration,
@@ -156,9 +154,9 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
   }
 
   private call(
-    spotRid: RoutingId,
+    spotId: SpotId,
     stableType: string,
-    retryRidCollision: boolean
+    generatedIdentity: boolean
   ): ZLinkSpotCreateCall {
     requireText(stableType, 'User Spot type');
     const state: MutableCreateCall = {
@@ -185,9 +183,9 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
         return call;
       },
       submit: (signal) => this.submit(
-        spotRid,
+        spotId,
         stableType,
-        retryRidCollision,
+        generatedIdentity,
         state,
         signal
       )
@@ -196,9 +194,9 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
   }
 
   private async submit(
-    spotRid: RoutingId,
+    spotId: SpotId,
     stableType: string,
-    retryRidCollision: boolean,
+    generatedIdentity: boolean,
     state: MutableCreateCall,
     signal?: AbortSignal
   ): Promise<ZLinkSpotCreateResult> {
@@ -217,34 +215,30 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
     encodedRequest.close();
     const timeoutMs = state.timeoutMs ?? this.options.defaultTimeoutMs;
     const deadline = Date.now() + timeoutMs;
-    let candidateRid = spotRid;
-    do {
-      const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.DeadlineExceeded,
-          'User Spot creation exhausted its end-to-end deadline.',
-          true
-        );
-      }
-      let coordinated;
-      try {
-        coordinated = await this.options.coordinator.getOrCreate({
-          meshName: state.meshName,
-          spotRid: candidateRid,
-          stableType,
-          requestPayload: requestBytes,
-          timeoutMs: remainingMs,
-          signal,
-          retryRidCollision
-        }, async (target, deadlineSignal) => {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.DeadlineExceeded,
+        'User Spot creation exhausted its end-to-end deadline.',
+        true
+      );
+    }
+    const coordinated = await this.options.coordinator.getOrCreate({
+      meshName: state.meshName,
+      spotId,
+      stableType,
+      requestPayload: requestBytes,
+      timeoutMs: remainingMs,
+      signal,
+      generatedIdentity
+    }, async (target, deadlineSignal) => {
           const selected = selectFactory(this.options.factories, stableType, target.meshName);
-          this.options.local.beginUserSpotPublication?.(target.meshName, candidateRid);
+          this.options.local.beginUserSpotPublication?.(target.meshName, spotId);
           try {
             const result = await this.options.local.getOrCreate(
               target.meshName,
               selected.registration.implementation as Type<ZLinkSpot>,
-              candidateRid,
+              spotId,
               state.request,
               deadlineSignal
             );
@@ -253,49 +247,30 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
               publication: {
                 publish: () => this.options.local.publishUserSpot?.(
                   target.meshName,
-                  candidateRid
+                  spotId
                 ),
                 abort: () => this.options.local.abortUserSpotPublication?.(
                   target.meshName,
-                  candidateRid
+                  spotId
                 )
               }
             };
           } catch (error) {
-            this.options.local.abortUserSpotPublication?.(target.meshName, candidateRid);
+            this.options.local.abortUserSpotPublication?.(target.meshName, spotId);
             throw error;
           }
         }, async (cleanupSignal) => {
           const meshName = state.meshName ?? [...this.options.factories]
             .find(([, byType]) => byType.has(stableType))?.[0];
           if (meshName !== undefined) {
-            await this.options.local.close(meshName, candidateRid, cleanupSignal);
+            await this.options.local.close(meshName, spotId, cleanupSignal);
           }
         });
-      } catch (error) {
-        if (!retryRidCollision || !(error instanceof ZLinkUserSpotRidCollisionError)) {
-          throw error;
-        }
-        candidateRid = this.newSpotRid();
-        continue;
-      }
-      if (
-        !retryRidCollision
-        || coordinated.result.state !== 'existing'
-      ) {
-        return coordinated.result;
-      }
-      candidateRid = this.newSpotRid();
-    } while (Date.now() < deadline);
-    throw new ZLinkFrameworkException(
-      ZLinkFrameworkErrorKind.DeadlineExceeded,
-      'User Spot creation exhausted its end-to-end deadline.',
-      true
-    );
+    return coordinated.result;
   }
 
-  private newSpotRid(): RoutingId {
-    return this.options.ridFactory?.() ?? `spot-${randomUUID()}` as RoutingId;
+  private newSpotId(): SpotId {
+    return this.options.ridFactory?.() ?? randomUUID();
   }
 }
 

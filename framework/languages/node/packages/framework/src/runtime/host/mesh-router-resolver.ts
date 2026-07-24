@@ -48,7 +48,7 @@ export class MeshRouterResolver {
     return {
       routerChannelId,
       targetNodeRid,
-      spotRid: targetNodeRid
+      spotId: targetNodeRid
     };
   }
 

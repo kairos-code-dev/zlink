@@ -425,14 +425,14 @@
       "quarantineStatus": "pending-disabled-by-contract-amendment"
     },
     {
-      "id": "e2e:add:placement-capacity-weight-affinity",
+      "id": "e2e:add:placement-capacity-weight",
       "kind": "e2e-scenario",
       "language": "common",
       "path": null,
       "disposition": "add",
       "baselineHash": null,
       "approvedHash": null,
-      "acceptanceIntent": "role, capability, profile, affinity, weight와 active·pending capacity 순서를 검증한다.",
+      "acceptanceIntent": "role, stable type capability, node-wide weight와 active·pending capacity 순서를 검증한다.",
       "replacementCoverage": [],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M6A-E2E",
@@ -1577,7 +1577,7 @@
       "activationStage": "V11-M6B-E2E",
       "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "9256025f0490b86156cff7594100bf40005f357f176ecac33217481ad6f79128",
-      "approvedHash": "05e2e40ebab2dffaab6d44ca2616b026b393e931fddab6fe0d9dad257a0faf4c"
+      "approvedHash": "e9c1b46ca16f3b3441857aeb33b07a3ae4540bece5ee596c985d3139aa7efcff"
     },
     {
       "id": "e2e:kotlin:SpotService",
@@ -33146,7 +33146,7 @@
       ],
       "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::instance_spot_factory_options_t.max_active_instances#98c1548f6d472f9f 공개 member 제거를 CA-D23 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:placement-capacity-weight-affinity"
+        "e2e:add:placement-capacity-weight"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -36460,7 +36460,7 @@
       ],
       "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_descriptor_t.spot_types#39be0603d87024a5 공개 member 제거를 CA-D14 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:placement-capacity-weight-affinity"
+        "e2e:add:placement-capacity-weight"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -37607,7 +37607,7 @@
       ],
       "acceptanceIntent": "cpp|zlink-framework-cpp|zlink-framework-cpp::object_capability_t.available#879f8c0ad035ee0f 공개 member 제거를 CA-D23 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:placement-capacity-weight-affinity"
+        "e2e:add:placement-capacity-weight"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -39296,7 +39296,7 @@
       ],
       "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkInstanceSpotFactoryOptions.MaxActiveInstances#6b6cf84bd756c402 공개 member 제거를 CA-D23 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:placement-capacity-weight-affinity"
+        "e2e:add:placement-capacity-weight"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -40952,7 +40952,7 @@
       ],
       "acceptanceIntent": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkMeshNodeDescriptor.SpotTypes#7939caf4af863a5f 공개 member 제거를 CA-D14 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:placement-capacity-weight-affinity"
+        "e2e:add:placement-capacity-weight"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -45408,7 +45408,7 @@
       ],
       "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.locations.ZLinkObjectCapability.available#9c9a571d837d45b0 공개 member 제거를 CA-D23 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:placement-capacity-weight-affinity"
+        "e2e:add:placement-capacity-weight"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -48358,7 +48358,7 @@
       ],
       "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.locations.ZLinkMeshNodeDescriptor.spotTypes#416e640df349182a 공개 member 제거를 CA-D14 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:placement-capacity-weight-affinity"
+        "e2e:add:placement-capacity-weight"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -49443,7 +49443,7 @@
       ],
       "acceptanceIntent": "java|systems.zlink:zlink-framework-core|systems.zlink.framework.spots.ZLinkInstanceSpotFactoryOptions.maxActiveInstances#01b6613a480c8f1b 공개 member 제거를 CA-D23 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:placement-capacity-weight-affinity"
+        "e2e:add:placement-capacity-weight"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -58676,7 +58676,7 @@
       ],
       "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkObjectCapability.available#9b59164f1c1a1716 공개 member 제거를 CA-D23 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:placement-capacity-weight-affinity"
+        "e2e:add:placement-capacity-weight"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",
@@ -58729,7 +58729,7 @@
       ],
       "acceptanceIntent": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkInstanceSpotFactoryOptions.maxActiveInstances#d4667b78d8e0ba40 공개 member 제거를 CA-D23 결정과 reviewed public behavior coverage로 검증한다.",
       "replacementCoverage": [
-        "e2e:add:placement-capacity-weight-affinity"
+        "e2e:add:placement-capacity-weight"
       ],
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M7-CONTRACT",

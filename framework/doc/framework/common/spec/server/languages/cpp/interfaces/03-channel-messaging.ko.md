@@ -99,9 +99,16 @@ struct object_capacity_options_t {
     std::uint32_t pending_limit = 128;
 };
 
-struct object_placement_options_t {
-    std::optional<std::uint32_t> active_limit;
-    std::optional<std::uint32_t> pending_limit;
+struct actor_placement_options_t {
+};
+
+struct spot_placement_options_t {
+    std::int32_t stable_type_limit = 0;
+};
+
+enum class user_spot_execution_mode_t {
+    spot_wide = 0,
+    per_actor = 1
 };
 
 class mesh_node_builder_t {
@@ -115,7 +122,9 @@ public:
     mesh_node_builder_t &set_automatic_routing_id_prefix(std::string prefix);
     mesh_node_builder_t &set_object_role(object_role_t role);
     mesh_node_builder_t &set_placement_weight(int weight);
-    mesh_node_builder_t &set_object_capacity(object_capacity_options_t capacity);
+    mesh_node_builder_t &set_actor_limit(std::int32_t limit);
+    mesh_node_builder_t &set_spot_limit(std::int32_t limit);
+    mesh_node_builder_t &set_activation_concurrency(std::int32_t limit);
     mesh_node_socket_config_t &configure_router_socket();
     mesh_peer_connections_t &peer_connections();
     mesh_node_builder_t &set_default_request_timeout(std::chrono::milliseconds timeout);
@@ -144,7 +153,9 @@ public:
       std::string stable_type,
       std::function<std::shared_ptr<TSpot>()> factory,
       relocation_policy_t<TSpot> relocation,
-      object_placement_options_t placement);
+      spot_placement_options_t placement,
+      user_spot_execution_mode_t execution_mode =
+        user_spot_execution_mode_t::spot_wide);
 
     template <typename TSpot>
       requires std::derived_from<TSpot, instance_spot_t>
@@ -152,7 +163,7 @@ public:
       std::string stable_type,
       std::function<std::shared_ptr<TSpot>()> factory,
       relocation_policy_t<TSpot> relocation,
-      object_placement_options_t placement);
+      spot_placement_options_t placement);
 
     template <typename TActor, typename TActorFactory>
       requires std::derived_from<TActor, actor_t> &&
@@ -161,7 +172,7 @@ public:
       std::string stable_type,
       std::shared_ptr<TActorFactory> factory,
       relocation_policy_t<TActor> relocation,
-      object_placement_options_t placement);
+      actor_placement_options_t placement);
 
 };
 
@@ -484,7 +495,7 @@ Object role `server`는 `client` 기능을 포함한다. `client`와 `server`는
 manager, factory와 hidden local object runtime을 만들지 않는다. Placement [weight](../../../../01-glossary.ko.md#weight)는 `0..10000`, 기본값은 100이고
 0은 새 create·relocation target에서만 제외한다. 범위 밖 값은 startup 설정과 runtime 변경에서
 configuration error다. Capacity 기본값은 active 10000, pending 128이며 type별 limit은
-`1..2147483647`이다. `object_placement_options_t`는 type별 active·pending limit을 등록한다. Capacity를
+`1..2147483647`이다. `spot_placement_options_t::stable_type_limit`은 type별 Spot limit을 등록한다. Capacity를
 생략하면 node-wide 설정을 공유한다.
 Actor·User Spot·Instance Spot [factory](../../../../01-glossary.ko.md#factory)는 relocation policy를 항상 명시하며 이를 생략하는
 overload는 없다. Snapshot Actor factory에는 `actor_relocation_adapter_t<TActor>`, [Snapshot](../../../../01-glossary.ko.md#snapshot) User·[Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)

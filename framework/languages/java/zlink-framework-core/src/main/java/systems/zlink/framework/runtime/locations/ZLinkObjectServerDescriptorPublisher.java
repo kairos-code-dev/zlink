@@ -44,9 +44,7 @@ public final class ZLinkObjectServerDescriptorPublisher {
             : ZLinkLocationWriteIntent.NEW_CLAIM;
         List<CompletionStage<?>> writes = new ArrayList<>();
         for (MeshNodeRegistration configured : registration.meshNodes()) {
-            if (configured.relocatableSpotFactories().isEmpty()
-                && configured.relocatableInstanceSpotFactories().isEmpty()
-                && configured.relocatableActorFactories().isEmpty()) {
+            if (!configured.objectServer()) {
                 continue;
             }
             ZLinkInternalMeshNode node = nodes.get(configured.meshName());
@@ -74,10 +72,7 @@ public final class ZLinkObjectServerDescriptorPublisher {
         List<CompletionStage<?>> removals = new ArrayList<>();
         for (MeshNodeRegistration configured : registration.meshNodes()) {
             ZLinkInternalMeshNode node = nodes.get(configured.meshName());
-            if (node != null
-                && (!configured.relocatableSpotFactories().isEmpty()
-                    || !configured.relocatableInstanceSpotFactories().isEmpty()
-                    || !configured.relocatableActorFactories().isEmpty())) {
+            if (node != null && configured.objectServer()) {
                 removals.add(store.removeMeshNode(
                     new ZLinkMeshNodeDescriptorKey(
                         configured.meshName(),
@@ -98,19 +93,19 @@ public final class ZLinkObjectServerDescriptorPublisher {
             capabilities.add(capability(
                 ZLinkPlacementObjectKind.USER_SPOT,
                 factory.stableType(),
-                factory.placement(),
+                factory.options().stableTypeLimit(),
                 factory.relocationPolicy())));
         configured.relocatableInstanceSpotFactories().values().forEach(factory ->
             capabilities.add(capability(
                 ZLinkPlacementObjectKind.INSTANCE_SPOT,
                 factory.stableType(),
-                factory.placement(),
+                factory.options().stableTypeLimit(),
                 factory.relocationPolicy())));
         configured.relocatableActorFactories().values().forEach(factory ->
             capabilities.add(capability(
                 ZLinkPlacementObjectKind.ACTOR,
                 factory.stableType(),
-                factory.placement(),
+                0,
                 factory.relocationPolicy())));
         return new ZLinkMeshNodeDescriptor(
             configured.meshName(),
@@ -118,14 +113,19 @@ public final class ZLinkObjectServerDescriptorPublisher {
             node.status().lifecycleGeneration(),
             revision.getAndIncrement(),
             configured.bindEndpoint(),
-            configured.channelWeights(),
+            node.channelWeights(),
             0,
             capabilities,
             ZLinkMeshNodeObjectRole.SERVER,
-            state == ZLinkFrameworkRuntimeState.SERVING ? 100 : 0,
+            Optional.of(configured.entrySpotId()),
+            state == ZLinkFrameworkRuntimeState.SERVING
+                ? node.placementWeight()
+                : 0,
             new ZLinkPlacementCapacity(
-                new ZLinkCapacityUsage(0, 0, 0),
-                new ZLinkCapacityUsage(0, 0, 0),
+                new ZLinkCapacityUsage(
+                    0, 0, configured.actorCapacity()),
+                new ZLinkCapacityUsage(
+                    0, 0, configured.spotCapacity()),
                 capabilities.stream()
                     .filter(capability ->
                         capability.objectKind()
@@ -136,6 +136,9 @@ public final class ZLinkObjectServerDescriptorPublisher {
                         new ZLinkCapacityUsage(
                             0, 0, capability.spotLimit())))
                     .toList()),
+            new ZLinkActivationConcurrency(
+                0,
+                configured.activationConcurrency()),
             Optional.empty(),
             state,
             node.status().routingId().toString(),
@@ -147,7 +150,7 @@ public final class ZLinkObjectServerDescriptorPublisher {
     private static ZLinkObjectCapability capability(
         ZLinkPlacementObjectKind kind,
         String stableType,
-        systems.zlink.framework.configuration.ZLinkObjectPlacementOptions placement,
+        int stableTypeLimit,
         ZLinkRelocationPolicy<?> policy) {
         return new ZLinkObjectCapability(
             kind,
@@ -158,10 +161,7 @@ public final class ZLinkObjectServerDescriptorPublisher {
                     ? ZLinkObjectMaintenancePolicyKind.RECREATE
                     : ZLinkObjectMaintenancePolicyKind.DISABLED,
             policy instanceof ZLinkRelocationPolicy.Snapshot<?>,
-            kind == ZLinkPlacementObjectKind.ACTOR
-                || placement.maxActiveObjects() == null
-                ? 0
-                : placement.maxActiveObjects());
+            kind == ZLinkPlacementObjectKind.ACTOR ? 0 : stableTypeLimit);
     }
 
     private static CompletionStage<Void> all(

@@ -74,6 +74,7 @@ import {
   type ZLinkSpotLocationKey
 } from '../../contracts/Locations';
 import { ZLinkInMemoryAuthorityStore } from './in-memory-authority-store';
+import { encodeAuthorityKey } from './authority-key-codec';
 import { ZLinkLocationKeyCodec } from './key-codec';
 import {
   matchesActorLocation,
@@ -98,6 +99,7 @@ export class ZLinkInMemoryLocationStore implements
   private readonly stamps = new Map<string, bigint>();
   private readonly routingIdGroups = new Map<string, InMemoryRoutingIdGroup>();
   private readonly actorTransfers = new Map<string, InMemoryActorTransferSlot>();
+  private readonly entrySpotClaims = new Map<string, InMemoryEntrySpotClaim>();
   private ownerLeaseGeneration = 0n;
   private readonly authority: ZLinkInMemoryAuthorityStore;
 
@@ -116,16 +118,27 @@ export class ZLinkInMemoryLocationStore implements
           && lease.token.leaseGeneration === owner.leaseGeneration
           && lease.leaseExpiresAt.getTime() > this.now().getTime();
       },
-      placementCapacityAvailable: (key, objectKind, stableType, delta, pending, active) => {
+      placementCapacityAvailable: (key, requested, reserved, active) => {
         const descriptor = this.meshNodes.rows.get(meshNodeKey(key.meshName, key.rid));
-        const capability = descriptor?.objectCapabilities.find(candidate =>
-          candidate.objectKind === objectKind && candidate.stableType === stableType);
-        if (descriptor === undefined || capability === undefined) return false;
-        return pending + delta <= descriptor.objectCapacity.maxPendingActivations
-          && active + delta <= descriptor.objectCapacity.maxActiveObjects
-          && (capability.pendingLimit === undefined || pending + delta <= capability.pendingLimit)
-          && (capability.activeLimit === undefined || active + delta <= capability.activeLimit);
-      }
+        if (descriptor === undefined) return false;
+        const spotType = requested.spotType;
+        const typeCapacity = spotType === undefined
+          ? undefined
+          : descriptor.populationCapacity.spotTypes.find(candidate =>
+              candidate.objectKind === spotType.objectKind
+              && candidate.stableType === spotType.stableType);
+        return active.actors + reserved.actors + requested.actors
+            <= descriptor.populationCapacity.actors.limit
+          && active.spots + reserved.spots + requested.spots
+            <= descriptor.populationCapacity.spots.limit
+          && (spotType === undefined
+            || typeCapacity !== undefined
+              && (typeCapacity.limit === 0
+                || (active.spotType?.count ?? 0)
+                  + (reserved.spotType?.count ?? 0)
+                  + spotType.count <= typeCapacity.limit));
+      },
+      identityClaimed: (authorityKey) => this.entrySpotClaims.has(authorityKey)
     }, now);
   }
 
@@ -241,6 +254,7 @@ export class ZLinkInMemoryLocationStore implements
     if (current === undefined) {
       if (intent !== ZLinkLocationWriteIntent.NewClaim
         && intent !== ZLinkLocationWriteIntent.Takeover) return ignoredStale();
+      if (!this.claimEntrySpotIdentity(descriptor, key)) return rejectedConflict();
       this.meshNodes.rows.set(key, { ...descriptor, updatedAt });
       this.meshNodes.generations.set(key, 1n);
       this.bump(ZLinkLocationKind.Peer, descriptor.meshName);
@@ -250,6 +264,8 @@ export class ZLinkInMemoryLocationStore implements
     if ((currentLease === undefined || currentLease.leaseExpiresAt.getTime() <= updatedAt.getTime())
       && (intent === ZLinkLocationWriteIntent.NewClaim
         || intent === ZLinkLocationWriteIntent.Takeover)) {
+      if (!this.claimEntrySpotIdentity(descriptor, key)) return rejectedConflict();
+      this.releaseEntrySpotIdentity(current);
       const next = (this.meshNodes.generations.get(key) ?? 0n) + 1n;
       this.meshNodes.rows.set(key, { ...descriptor, updatedAt });
       this.meshNodes.generations.set(key, next);
@@ -289,6 +305,7 @@ export class ZLinkInMemoryLocationStore implements
       return ZLinkLocationWriteStatus.IgnoredStale;
     }
     this.meshNodes.rows.delete(encoded);
+    this.releaseEntrySpotIdentity(current);
     this.bump(ZLinkLocationKind.Peer, key.meshName);
     return ZLinkLocationWriteStatus.Stored;
   }
@@ -297,27 +314,30 @@ export class ZLinkInMemoryLocationStore implements
     return [...this.meshNodes.rows.values()]
       .filter((row) => row.meshName === meshName)
       .map((row) => {
-        let activeObjects = 0;
-        let pendingActivations = 0;
         const descriptor = { meshName: row.meshName, rid: row.rid };
         const objectCapabilities = row.objectCapabilities.map((capability) => {
+          return { ...capability };
+        });
+        const spotTypes = row.populationCapacity.spotTypes.map(capacity => {
           const usage = this.authority.capacityUsage(
             descriptor,
             row.lifecycleGeneration,
-            capability.objectKind,
-            capability.stableType
+            capacity.objectKind,
+            capacity.stableType
           );
-          activeObjects += usage.active;
-          pendingActivations += usage.reserved;
-          return { ...capability, active: usage.active, reserved: usage.reserved };
+          return { ...capacity, ...usage };
         });
+        const actors = this.authority.capacityUsage(
+          descriptor, row.lifecycleGeneration, 'actor', '');
+        const spots = this.authority.capacityUsage(
+          descriptor, row.lifecycleGeneration, 'spot', '');
         return {
           ...row,
           objectCapabilities,
-          objectCapacity: {
-            ...row.objectCapacity,
-            activeObjects,
-            pendingActivations
+          populationCapacity: {
+            actors: { ...row.populationCapacity.actors, ...actors },
+            spots: { ...row.populationCapacity.spots, ...spots },
+            spotTypes
           }
         };
       });
@@ -627,7 +647,7 @@ export class ZLinkInMemoryLocationStore implements
     spot: ZLinkSpotLocation,
     intent: ZLinkLocationWriteIntent
   ): Promise<ZLinkLocationWriteResult> {
-    const key = ZLinkLocationKeyCodec.encodeSpotKey({ meshName: spot.meshName, spotRid: spot.spotRid });
+    const key = ZLinkLocationKeyCodec.encodeSpotKey({ meshName: spot.meshName, spotId: spot.spotId });
     const updatedAt = this.now();
     const current = this.spots.rows.get(key);
     if (intent === ZLinkLocationWriteIntent.NewClaim
@@ -959,6 +979,13 @@ export class ZLinkInMemoryLocationStore implements
   async removeAllByOwner(owner: ZLinkLocationOwnerToken): Promise<bigint> {
     const ownerId = owner.ownerId;
     let removed = 0;
+    for (const [key, row] of [...this.meshNodes.rows]) {
+      if (row.ownerId !== owner.ownerId || row.leaseGeneration !== owner.leaseGeneration) continue;
+      this.meshNodes.rows.delete(key);
+      this.releaseEntrySpotIdentity(row);
+      this.bump(ZLinkLocationKind.Peer, row.meshName);
+      removed++;
+    }
     removed += this.removeByOwner(this.peers, ownerId, (row) => row.ownerId, ZLinkLocationKind.Peer, (row) => row.meshName);
     removed += this.removeByOwner(this.spots, ownerId, (row) => row.ownerId, ZLinkLocationKind.Spot, (row) => row.meshName);
     removed += this.removeByOwner(this.actors, ownerId, (row) => row.ownerId, ZLinkLocationKind.Actor, () => undefined);
@@ -972,6 +999,37 @@ export class ZLinkInMemoryLocationStore implements
     );
     removed += this.removeFanoutByOwner(owner);
     return BigInt(removed);
+  }
+
+  private claimEntrySpotIdentity(
+    descriptor: ZLinkMeshNodeDescriptor,
+    descriptorKey: string
+  ): boolean {
+    if (descriptor.entrySpotId === undefined) return true;
+    const authorityKey = encodeAuthorityKey('user_spot', descriptor.entrySpotId).value;
+    const current = this.entrySpotClaims.get(authorityKey);
+    if (current !== undefined) return current.descriptorKey === descriptorKey
+      && current.ownerId === descriptor.ownerId
+      && current.leaseGeneration === descriptor.leaseGeneration
+      && current.lifecycleGeneration === descriptor.lifecycleGeneration;
+    this.entrySpotClaims.set(authorityKey, {
+      descriptorKey,
+      ownerId: descriptor.ownerId,
+      leaseGeneration: descriptor.leaseGeneration,
+      lifecycleGeneration: descriptor.lifecycleGeneration
+    });
+    return true;
+  }
+
+  private releaseEntrySpotIdentity(descriptor: ZLinkMeshNodeDescriptor): void {
+    if (descriptor.entrySpotId === undefined) return;
+    const authorityKey = encodeAuthorityKey('user_spot', descriptor.entrySpotId).value;
+    const current = this.entrySpotClaims.get(authorityKey);
+    if (current?.ownerId === descriptor.ownerId
+      && current.leaseGeneration === descriptor.leaseGeneration
+      && current.lifecycleGeneration === descriptor.lifecycleGeneration) {
+      this.entrySpotClaims.delete(authorityKey);
+    }
   }
 
   async getChangeStamp(scope: ZLinkLocationChangeStampScope): Promise<bigint> {
@@ -1126,9 +1184,23 @@ class RowTable<TRow> {
   readonly generations = new Map<string, bigint>();
 }
 
+interface InMemoryEntrySpotClaim {
+  readonly descriptorKey: string;
+  readonly ownerId: string;
+  readonly leaseGeneration: bigint;
+  readonly lifecycleGeneration: bigint;
+}
+
 function validateMeshNodeDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
   if (!validDescriptorText(descriptor.meshName) || !validDescriptorText(descriptor.ownerId)) {
     throw new TypeError('MeshNode descriptor identity is required.');
+  }
+  if (descriptor.objectRole === ZLinkObjectRole.Server) {
+    if (descriptor.entrySpotId !== undefined && !validDescriptorText(descriptor.entrySpotId)) {
+      throw new TypeError('MeshNode Entry Spot ID must contain 1..255 UTF-8 bytes.');
+    }
+  } else if (descriptor.entrySpotId !== undefined) {
+    throw new TypeError('Only Object Server descriptors may publish an Entry Spot ID.');
   }
   const maxGeneration = 0x7fff_ffff_ffff_ffffn;
   if (descriptor.lifecycleGeneration < 1n || descriptor.lifecycleGeneration > maxGeneration
@@ -1137,17 +1209,24 @@ function validateMeshNodeDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
     || descriptor.applicationVersion < 0n || descriptor.applicationVersion > maxGeneration) {
     throw new RangeError('MeshNode descriptor generations are invalid.');
   }
-  const values = [
-    descriptor.objectCapacity.activeObjects,
-    descriptor.objectCapacity.pendingActivations,
-    descriptor.objectCapacity.maxActiveObjects,
-    descriptor.objectCapacity.maxPendingActivations
+  const capacities = [
+    descriptor.populationCapacity.actors,
+    descriptor.populationCapacity.spots,
+    ...descriptor.populationCapacity.spotTypes
   ];
+  const values = capacities.flatMap(capacity =>
+    [capacity.active, capacity.reserved, capacity.limit]);
   if (values.some(value => !Number.isSafeInteger(value) || value < 0)
-    || descriptor.objectCapacity.activeObjects > descriptor.objectCapacity.maxActiveObjects
-    || descriptor.objectCapacity.pendingActivations > descriptor.objectCapacity.maxPendingActivations
-    || descriptor.objectCapacity.maxActiveObjects === 0
-    || descriptor.objectCapacity.maxPendingActivations === 0
+    || capacities.some(capacity =>
+      capacity.active + capacity.reserved > capacity.limit
+      && capacity.limit !== 0)
+    || descriptor.populationCapacity.actors.limit === 0
+    || descriptor.populationCapacity.spots.limit === 0
+    || !Number.isSafeInteger(descriptor.activationConcurrency.active)
+    || descriptor.activationConcurrency.active < 0
+    || !Number.isSafeInteger(descriptor.activationConcurrency.limit)
+    || descriptor.activationConcurrency.limit < 1
+    || descriptor.activationConcurrency.active > descriptor.activationConcurrency.limit
     || descriptor.placementWeight < 0
     || descriptor.placementWeight > 10_000
     || descriptor.objectCapabilities.length > 1024
@@ -1166,14 +1245,9 @@ function validateMeshNodeDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
     if ((capability.policy === 'snapshot') !== capability.hasSnapshotAdapter) {
       throw new TypeError('Snapshot adapter presence does not match the maintenance policy.');
     }
-    for (const limit of [capability.activeLimit, capability.pendingLimit]) {
-      if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
-        throw new RangeError('MeshNode capability limits must be non-negative safe integers.');
-      }
-    }
-    if (!Number.isSafeInteger(capability.active) || capability.active < 0
-      || !Number.isSafeInteger(capability.reserved) || capability.reserved < 0) {
-      throw new RangeError('MeshNode capability usage must be non-negative safe integers.');
+    if (!Number.isSafeInteger(capability.limit) || capability.limit < 0
+      || capability.objectKind === 'actor' && capability.limit !== 0) {
+      throw new RangeError('MeshNode capability limit is invalid.');
     }
   }
 }
@@ -1195,8 +1269,10 @@ function meshNodeImmutableFingerprint(descriptor: ZLinkMeshNodeDescriptor): stri
     lifecycleGeneration: descriptor.lifecycleGeneration.toString(),
     endpoint: descriptor.endpoint,
     objectRole: descriptor.objectRole,
-    maxActiveObjects: descriptor.objectCapacity.maxActiveObjects,
-    maxPendingActivations: descriptor.objectCapacity.maxPendingActivations,
+    entrySpotId: descriptor.entrySpotId ?? null,
+    actorLimit: descriptor.populationCapacity.actors.limit,
+    spotLimit: descriptor.populationCapacity.spots.limit,
+    activationConcurrencyLimit: descriptor.activationConcurrency.limit,
     channelNames: Object.keys(descriptor.channelWeights).sort(),
     applicationVersion: descriptor.applicationVersion.toString(),
     spotTypes: [...descriptor.spotTypes].sort(),
@@ -1212,7 +1288,8 @@ function meshNodeDescriptorFingerprint(descriptor: ZLinkMeshNodeDescriptor): str
     immutable: meshNodeImmutableFingerprint(descriptor),
     descriptorRevision: descriptor.descriptorRevision.toString(),
     placementWeight: descriptor.placementWeight,
-    objectCapacity: descriptor.objectCapacity,
+    populationCapacity: descriptor.populationCapacity,
+    activationConcurrency: descriptor.activationConcurrency,
     channelWeights: Object.fromEntries(
       Object.entries(descriptor.channelWeights).sort(([left], [right]) => left.localeCompare(right))
     ),

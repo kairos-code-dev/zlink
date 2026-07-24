@@ -30,7 +30,7 @@ export class ZLinkSpotNodeRouteTransport {
     try {
       await this.enqueue(target.routerChannelId, () => {
         throwIfAborted(signal);
-        if (!router.sendToSpot(target.targetNodeRid, target.spotRid, parts, 0)) {
+        if (!router.sendToSpot(target.targetNodeRid, target.spotId, parts, 0)) {
           throw this.notReady(target.routerChannelId, 'send');
         }
       });
@@ -59,7 +59,7 @@ export class ZLinkSpotNodeRouteTransport {
         (resolve, reject) => {
           const submitted = router.requestToSpot(
             target.targetNodeRid,
-            target.spotRid,
+            target.spotId,
             parts,
             (result, replyParts) => {
               releasePhysical();
@@ -107,7 +107,7 @@ export class ZLinkSpotNodeRouteTransport {
         (resolve, reject) => {
           const submitted = router.requestToSpot(
             target.targetNodeRid,
-            target.spotRid,
+            target.spotId,
             request,
             (result, replyParts) => {
               releasePhysical();

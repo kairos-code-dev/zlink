@@ -23,7 +23,7 @@ import {
 import type { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 
 interface ZLinkEntrySpotContextOptions {
-  readonly nativeSpotRid: RoutingId;
+  readonly nativeSpotId: RoutingId;
   readonly nodeRid: RoutingId;
   readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
@@ -43,7 +43,7 @@ interface ZLinkEntrySpotContextOptions {
 
 interface ZLinkSpotContextOptions {
   readonly meshName: string;
-  readonly spotRid: RoutingId;
+  readonly spotId: RoutingId;
   readonly handlers: ZLinkSpotHandlerRegistry;
   readonly outbound: ZLinkSpotOutbound;
   readonly timers: ZLinkSpotTimerRegistry;
@@ -60,9 +60,9 @@ interface ZLinkSpotContextOptions {
 export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): ZLinkEntrySpotContext {
   return {
     meshName: options.spotNodeName,
-    spotRid: options.nativeSpotRid,
+    spotId: options.nativeSpotId,
     nodeRid: options.nodeRid,
-    routingId: options.nativeSpotRid,
+    routingId: options.nativeSpotId,
     handlers: options.handlers,
     outbound: options.outbound,
     destroyActor(actor: ZLinkActor, signal?: AbortSignal) {
@@ -111,11 +111,11 @@ export function createEntrySpotContext(options: ZLinkEntrySpotContextOptions): Z
 export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotContext {
   return {
     meshName: options.meshName,
-    spotRid: options.spotRid,
+    spotId: options.spotId,
     get nodeRid() {
       return options.nodeRidProvider?.() ?? options.nodeRid ?? '';
     },
-    routingId: options.spotRid,
+    routingId: options.spotId,
     handlers: options.handlers,
     outbound: options.outbound,
     close: options.close,
@@ -139,7 +139,7 @@ export function createSpotContext(options: ZLinkSpotContextOptions): ZLinkSpotCo
         spot,
         options.providerResolver,
         signal,
-        createTimerDiagnostics(String(options.spotRid), options.spotRid, false, name, handlerType, options.runtimeEventPublisher)
+        createTimerDiagnostics(String(options.spotId), options.spotId, false, name, handlerType, options.runtimeEventPublisher)
       );
     },
     runCpuWorker: <T>(work: (signal: AbortSignal) => T): ZLinkWorkerCall<T> =>

@@ -182,7 +182,7 @@ test('location runtime stamps owner id, reports stale ownership, and removes row
   const leases = await store.listOwnerLeases();
   assert.equal(leases.leases.some((lease) => lease.ownerId === 'owner-a'), false);
   assert.equal((await store.listPeers({ meshName: 'play' })).length, 0);
-  assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
+  assert.equal(await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') }), undefined);
 });
 
 test('location runtime exposes owner cleanup failure instead of completing stop successfully', async () => {
@@ -441,7 +441,7 @@ test('location lifecycle rolls failed activation back and renews actor spot stat
   });
   assert.equal(joined.spotKind, framework.ZLinkSpotKind.User);
   assert.equal(joined.meshName, 'play');
-  assert.equal(joined.spotRid.toHex(), rid('spot-1').toHex());
+  assert.equal(joined.spotId.toHex(), rid('spot-1').toHex());
   assert.equal(joined.spotGeneration, 7n);
   assert.equal(joined.membershipEpoch, 11n);
 
@@ -455,7 +455,7 @@ test('location lifecycle rolls failed activation back and renews actor spot stat
   );
   const left = await store.resolveActor({ meshName: 'play', actorId: 'actor-1' });
   assert.equal(left.spotKind, framework.ZLinkSpotKind.Entry);
-  assert.equal(String(left.spotRid), String(rid('entry-1')));
+  assert.equal(String(left.spotId), String(rid('entry-1')));
   assert.equal(left.spotGeneration, 13n);
   assert.equal(left.membershipEpoch, 17n);
   assert.equal(left.ownerNodeGeneration, 3n);
@@ -523,10 +523,10 @@ test('location lifecycle claims spots and binds actor session routes with takeov
     2n
   );
   assert.equal(spotStatus, framework.ZLinkLocationWriteStatus.Stored);
-  assert.equal((await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') })).ownerId, 'owner-a');
+  assert.equal((await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') })).ownerId, 'owner-a');
 
   await nodeA.lifecycle.releaseSpot('play', rid('spot-1'));
-  assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
+  assert.equal(await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') }), undefined);
 
   const sessionRid = rid('session-1');
   const routeKey = sessionRid.toHex();
@@ -580,7 +580,7 @@ test('store location resolvers seed reusable SpotHandle snapshots from live rows
   );
   await node.lifecycle.notifyActorJoinedSpot('player', 'actor-1', 'play', rid('spot-1'), 7n, 11n, 3n);
   actorAddress = await resolvers.resolveActorSpotHandle('play', 'actor-1');
-  assert.equal(actorAddress.spotRid, String(rid('spot-1')));
+  assert.equal(actorAddress.spotId, String(rid('spot-1')));
   const actorTarget = await internal.resolveSpotHandle(actorAddress);
   assert.equal(actorTarget.meshName, 'play');
   assert.equal(actorTarget.spotKind, framework.ZLinkSpotKind.User);
@@ -591,7 +591,7 @@ test('store location resolvers seed reusable SpotHandle snapshots from live rows
   assert.equal(firstTarget.meshName, 'play');
   assert.equal(firstTarget.nodeRid, String(rid('node-a')));
   assert.equal(firstTarget.spotKind, framework.ZLinkSpotKind.User);
-  assert.equal(secondSpotRef.spotRid, String(rid('spot-1')));
+  assert.equal(secondSpotRef.spotId, String(rid('spot-1')));
   assert.equal(spotResolveCount, 3);
 
   await node.runtime.stop();
@@ -603,13 +603,13 @@ test('actor resolver rejects a stale membership when the same SPOT RID is recrea
   const store = new internal.ZLinkInMemoryLocationStore(() => new Date(Date.UTC(2026, 6, 3, 0, 0, 0)));
   const firstOwner = await lifecycleNode(store, 'owner-a', 'node-a', 'play');
   const successor = await lifecycleNode(store, 'owner-b', 'node-b', 'play');
-  const spotRid = rid('spot-1');
+  const spotId = rid('spot-1');
   const actorId = 'actor-1';
   const resolvers = resolversFor(store);
 
   await firstOwner.lifecycle.claimSpot(
     'play',
-    spotRid,
+    spotId,
     'game',
     rid('node-a'),
     framework.ZLinkSpotKind.User,
@@ -626,14 +626,14 @@ test('actor resolver rejects a stale membership when the same SPOT RID is recrea
     'player',
     actorId,
     'play',
-    spotRid,
+    spotId,
     7n,
     11n,
     3n
   );
   assert.notEqual(await resolvers.resolveActorRef(actorId), undefined);
 
-  const previousSpot = await store.resolveSpot({ meshName: 'play', spotRid });
+  const previousSpot = await store.resolveSpot({ meshName: 'play', spotId });
   await successor.runtime.writeSpot({
     ...previousSpot,
     spotGeneration: 8n,
@@ -649,7 +649,7 @@ test('actor resolver rejects a stale membership when the same SPOT RID is recrea
     actorId,
     { nodeRid: rid('node-b'), actorId, generation: 6n },
     'play',
-    spotRid,
+    spotId,
     8n,
     12n,
     4n
@@ -670,7 +670,7 @@ test('store location resolver returns a live remote ActorRef', async () => {
     actorRef,
     ownerNodeRid: rid('node-b'),
     ownerNodeGeneration: 1n,
-    spotRid: rid('node-b'),
+    spotId: rid('node-b'),
     spotGeneration: 1n,
     membershipEpoch: 1n
   }, framework.ZLinkLocationWriteIntent.NewClaim);
@@ -696,7 +696,7 @@ test('location spot route resolver bridges internal routed transport', async () 
   const address = await resolver.resolve(rid('spot-1'));
   assert.equal(address.routerChannelId, 'play');
   assert.equal(address.targetNodeRid.toHex(), rid('node-a').toHex());
-  assert.equal(address.spotRid.toHex(), rid('spot-1').toHex());
+  assert.equal(address.spotId.toHex(), rid('spot-1').toHex());
   assert.equal(address.spotKind, framework.ZLinkSpotKind.User);
 
   await node.runtime.stop();
@@ -711,7 +711,7 @@ test('location spot route resolver reads a local activation when the store row i
   const local = {
     routerChannelId: 'play',
     targetNodeRid: rid('node-local'),
-    spotRid: rid('spot-local'),
+    spotId: rid('spot-local'),
     spotKind: framework.ZLinkSpotKind.User,
     targetSpotGeneration: 8n
   };
@@ -719,10 +719,10 @@ test('location spot route resolver reads a local activation when the store row i
     resolversFor(store),
     ['play'],
     (meshName) => meshName,
-    (spotRid) => String(spotRid) === String(local.spotRid) ? local : undefined
+    (spotId) => String(spotId) === String(local.spotId) ? local : undefined
   );
 
-  assert.deepEqual(await resolver.resolve(local.spotRid), local);
+  assert.deepEqual(await resolver.resolve(local.spotId), local);
 });
 
 test('location resolvers resolve Entry Spots from live Spot peer rows', async () => {
@@ -759,7 +759,7 @@ test('location resolvers resolve Entry Spots from live Spot peer rows', async ()
   const handleTarget = await internal.resolveSpotHandle(handle);
   assert.equal(handleTarget.meshName, 'play');
   assert.equal(handleTarget.nodeRid, String(rid('node-a')));
-  assert.equal(handleTarget.spotRid, String(rid('node-a')));
+  assert.equal(handleTarget.spotId, String(rid('node-a')));
   assert.equal(handleTarget.spotKind, framework.ZLinkSpotKind.Entry);
 
   const resolver = new internal.ZLinkLocationSpotRouteResolver(resolvers, ['play']);
@@ -767,7 +767,7 @@ test('location resolvers resolve Entry Spots from live Spot peer rows', async ()
   const address = await resolver.resolve(rid('node-a'));
   assert.equal(address.routerChannelId, 'play');
   assert.equal(address.targetNodeRid.toHex(), rid('node-a').toHex());
-  assert.equal(address.spotRid.toHex(), rid('node-a').toHex());
+  assert.equal(address.spotId.toHex(), rid('node-a').toHex());
   assert.equal(address.spotKind, framework.ZLinkSpotKind.Entry);
 
   await runtime.stop();
@@ -833,7 +833,7 @@ function actor(ownerId, _generation) {
     actorRef: { nodeRid: rid('node-1'), actorId: 'actor-1', generation: 1n },
     ownerNodeRid: rid('node-1'),
     ownerNodeGeneration: 1n,
-    spotRid: rid('node-1'),
+    spotId: rid('node-1'),
     spotGeneration: 1n,
     spotKind: framework.ZLinkSpotKind.Entry,
     membershipEpoch: 1n,
@@ -857,10 +857,10 @@ function peer(ownerId) {
   };
 }
 
-function spot(ownerId, spotRid) {
+function spot(ownerId, spotId) {
   return {
     meshName: 'play',
-    spotRid: rid(spotRid),
+    spotId: rid(spotId),
     spotType: 'game',
     spotGeneration: 1n,
     ownerNodeRid: rid('node-a'),

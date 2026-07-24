@@ -13,21 +13,22 @@ const serviceContracts = require(
 const redisLocations = require('../../packages/framework-locations-redis/dist');
 
 test('redis authority fixture fixes the cross-language hybrid encoding', () => {
-  const fixture = redisSemanticFixture('authority-store-v1.json');
+  const fixture = redisSemanticFixture('authority-store-v3.json');
   const capacity = fixture.capacityBuckets;
   const segment = value =>
     `${Buffer.byteLength(String(value), 'utf8')}:${String(value)}`;
   const node = segment(capacity.descriptorKey)
-    + segment(capacity.descriptorLifecycleGeneration);
-  assert.equal(fixture.format, 'location-authority-hybrid-v1');
+    + segment(capacity.descriptorLifecycleGeneration)
+    + segment('spot');
+  assert.equal(fixture.format, 'location-authority-hybrid-v3');
   assert.equal(capacity.segmentLengthUnit, 'UTF-8 bytes');
   assert.equal(capacity.node, node);
   assert.equal(
-    capacity.type,
+    capacity.spotType,
     node + segment(capacity.objectKind) + segment(capacity.stableType)
   );
   assert.equal(
-    capacity.unicodeType,
+    capacity.unicodeSpotType,
     node + segment(capacity.objectKind) + segment(capacity.unicodeStableType)
   );
   const descriptorFixture = redisSemanticFixture('mesh-node-descriptor-v1.json');
@@ -48,6 +49,18 @@ test('redis authority fixture fixes the cross-language hybrid encoding', () => {
     createHash('sha256')
       .update(`${descriptorPayload.OwnerId}\0${descriptorPayload.LeaseGeneration}`, 'utf8')
       .digest('hex')
+  );
+  assert.equal(
+    descriptorFixture.physicalKeys.entrySpotIdentityClaim,
+    `P:{zlink-location-v3}:entry-spot-id:${
+      createHash('sha256')
+        .update(descriptorFixture.entrySpotIdentityClaim.authorityKey, 'utf8')
+        .digest('hex')
+    }`
+  );
+  assert.deepEqual(
+    descriptorFixture.entrySpotIdentityClaim.hashFields.slice().sort(),
+    Object.keys(descriptorFixture.entrySpotIdentityClaim.hash).sort()
   );
   assert.deepEqual(
     [...new Set(fixture.currentHashFields)].sort(),
@@ -92,7 +105,7 @@ test('redis location store matches core write lease and change-stamp contracts',
     assert.equal(renewed.status, framework.ZLinkLocationWriteStatus.Stored);
     assert.equal(renewed.generation, first.generation);
 
-    const resolved = await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') });
+    const resolved = await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') });
     assert.equal(resolved.ownerId, 'owner-a');
     assert.equal('generation' in resolved, false);
     assert.equal(resolved.ownerNodeRid.toHex(), rid('node-a').toHex());
@@ -123,7 +136,7 @@ test('redis location store matches core write lease and change-stamp contracts',
     assert.deepEqual(ownerA.token, renewedOwnerA.token);
 
     assert.equal(await store.removeAllByOwner(renewedOwnerA.token), 4n);
-    assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
+    assert.equal(await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') }), undefined);
 
     const renewedOwnerB = await store.claimOwnerLease('owner-b', 30000);
     assert.equal(renewedOwnerB.kind, 'claimed');
@@ -134,6 +147,43 @@ test('redis location store matches core write lease and change-stamp contracts',
     );
     assert.equal(claimedAfterRemove.status, framework.ZLinkLocationWriteStatus.Stored);
     assert.equal(claimedAfterRemove.generation, 2n);
+  } finally {
+    await store.dispose();
+    await cleanupPrefix(fixture.client, prefix);
+    await fixture.client.quit();
+  }
+});
+
+test('redis location store preserves a Unicode SpotId as exact UTF-8 text', async (t) => {
+  const fixture = await redisFixture();
+  if (fixture === undefined) {
+    t.skip('Redis is not reachable; set ZLINK_REDIS_TEST_ENDPOINT or run Redis on 127.0.0.1:16379/6379.');
+    return;
+  }
+
+  const prefix = `zlink:node-location-unicode-spot:${process.pid}:${Date.now()}`;
+  const store = new redisLocations.ZLinkRedisLocationStore({
+    url: fixture.url,
+    keyPrefix: prefix
+  });
+  const spotId = '로비:α';
+
+  try {
+    await store.claimOwnerLease('unicode-owner', 30000);
+    const write = await store.updateSpot({
+      ...spot('unicode-owner', 0n, 'placeholder', 'node-unicode'),
+      spotId
+    }, framework.ZLinkLocationWriteIntent.NewClaim);
+    assert.equal(write.status, framework.ZLinkLocationWriteStatus.Stored);
+
+    const resolved = await store.resolveSpot({ meshName: 'play', spotId });
+    assert.equal(resolved.spotId, spotId);
+
+    const rowKey = `4:play${Buffer.byteLength(spotId, 'utf8')}:${spotId}`;
+    const stored = JSON.parse(
+      await fixture.client.hGet(`${prefix}:row:spot:${rowKey}`, 'json')
+    );
+    assert.equal(stored.SpotId, spotId);
   } finally {
     await store.dispose();
     await cleanupPrefix(fixture.client, prefix);
@@ -196,6 +246,62 @@ test('redis exact MeshNode descriptor fixture and Actor transfer authority are a
     );
     assert.equal(descriptorClaim.generation, 1n);
     assert.equal((await store.listMeshNodes('game'))[0].lifecycleGeneration, 7n);
+    assert.match(
+      (await store.listMeshNodes('game'))[0].entrySpotId,
+      /^game-a-entry-[0-9a-f-]+$/
+    );
+    const entrySpotId = exactMeshNodeDescriptor().entrySpotId;
+    const entryAuthorityKey =
+      `zla1:s:${Buffer.byteLength(entrySpotId, 'utf8')}:${entrySpotId}`;
+    const entryClaimKey = `${prefix}:{zlink-location-v3}:entry-spot-id:${
+      createHash('sha256').update(entryAuthorityKey, 'utf8').digest('hex')
+    }`;
+    const entryClaim = await fixture.client.hGetAll(entryClaimKey);
+    const entryClaimFixture =
+      redisSemanticFixture('mesh-node-descriptor-v1.json').entrySpotIdentityClaim;
+    assert.deepEqual(
+      Object.keys(entryClaim).sort(),
+      entryClaimFixture.hashFields.slice().sort()
+    );
+    assert.deepEqual(entryClaim, {
+      state: 'Claimed',
+      spotId: entrySpotId,
+      descriptorKey: `4:game${rid('game-a').toHex().toLowerCase().length}:${
+        rid('game-a').toHex().toLowerCase()
+      }`,
+      descriptorLifecycleGeneration: '7',
+      ownerId: 'mesh-owner-a',
+      ownerLeaseGeneration: meshLease.token.leaseGeneration.toString()
+    });
+    const entryCollision = await store.reserve({
+      key: { kind: 'user_spot', globalId: entrySpotId },
+      intent: {
+        stableType: 'room',
+        requestContentReference: 'entry-collision',
+        requestSha256: Buffer.alloc(32, 1),
+        requestEncodedSize: 1n
+      },
+      target: {
+        meshName: 'game',
+        nodeRid: rid('game-a'),
+        nodeLifecycleGeneration: 7n,
+        owner: meshLease.token
+      },
+      creatingPayload: Buffer.from('collision'),
+      capacity: spotCapacity('user_spot', 'room')
+    });
+    assert.equal(entryCollision.kind, 'conflict');
+    const secondLease = await store.claimOwnerLease('mesh-owner-b', 30_000);
+    assert.equal(secondLease.kind, 'claimed');
+    const conflict = await store.updateMeshNode({
+      ...exactMeshNodeDescriptor(
+        'game-b',
+        'mesh-owner-b',
+        secondLease.token.leaseGeneration
+      ),
+      entrySpotId: exactMeshNodeDescriptor().entrySpotId
+    }, framework.ZLinkLocationWriteIntent.NewClaim);
+    assert.equal(conflict.status, framework.ZLinkLocationWriteStatus.RejectedConflict);
 
     const request = actorTransferRequest();
     const prepared = await store.prepareActorTransfer(request);
@@ -223,6 +329,14 @@ test('redis exact MeshNode descriptor fixture and Actor transfer authority are a
     assert.equal(JSON.parse(hash.source).actorId, 'actor-1');
     assert.equal(JSON.parse(hash.target).actorId, 'actor-1');
     assert.ok(Number(hash.recoveryLeaseExpiresAtMs) >= Number(hash.updatedAtMs));
+    assert.equal(
+      await store.removeMeshNode(
+        { meshName: 'game', rid: rid('game-a') },
+        meshLease.token
+      ),
+      framework.ZLinkLocationWriteStatus.Stored
+    );
+    assert.equal(await fixture.client.exists(entryClaimKey), 0);
   } finally {
     await store.dispose();
     await cleanupPrefix(fixture.client, prefix);
@@ -266,12 +380,13 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
         sourceLease.token.leaseGeneration
       ),
       objectRole: framework.ZLinkObjectRole.None,
-      objectCapacity: {
-        activeObjects: 0,
-        pendingActivations: 0,
-        maxActiveObjects: 10_000,
-        maxPendingActivations: 128
+      entrySpotId: undefined,
+      populationCapacity: {
+        actors: { active: 0, reserved: 0, limit: 10_000 },
+        spots: { active: 0, reserved: 0, limit: 128 },
+        spotTypes: []
       },
+      activationConcurrency: { active: 0, limit: 128 },
       applicationVersion: 0n,
       spotTypes: [],
       objectCapabilities: []
@@ -362,7 +477,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
         owner: sourceLease.token
       },
       creatingPayload: Buffer.from('creating'),
-      pendingCapacityDelta: 1
+      capacity: spotCapacity('instance_spot', 'room')
     };
     const reserved = await storeA.reserve(creation);
     assert.equal(reserved.kind, 'reserved');
@@ -383,10 +498,22 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     });
     assert.equal(ready.kind, 'committed');
     assert.equal(ready.ready.pendingCreation, undefined);
+    const authorityFixture = redisSemanticFixture('authority-store-v3.json');
+    const creationRecord = await fixture.client.hGetAll(
+      `${prefix}:{zlink-location-v3}:creation:${
+        reserved.reservationId.replaceAll('-', '').toLowerCase()
+      }`
+    );
+    assert.deepEqual(
+      Object.keys(creationRecord).sort(),
+      authorityFixture.operationRecordFieldSets.creation.slice().sort()
+    );
+    assert.equal(creationRecord.state, 'Committed');
 
     const actorCreation = {
       ...creation,
       key: { kind: 'actor', globalId: 'actor-created' },
+      capacity: { actors: 1, spots: 0 },
       intent: {
         ...creation.intent,
         stableType: 'player',
@@ -449,7 +576,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     })).kind, 'alreadyCompleted');
     assert.equal((await storeA.readAuthority({
       value: 'zla1:a:25:actor-duplicate-operation'
-    })).allocation.state, 'pending');
+    })).allocation.state, 'reserved');
     assert.equal((await storeA.abort({
       key: duplicateOperationCreation.key,
       reservationId: duplicateOperationReserved.reservationId,
@@ -532,7 +659,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
       targetDescriptor: { meshName: 'game', rid: targetDescriptor.rid },
       targetNodeLifecycleGeneration: targetDescriptor.lifecycleGeneration,
       targetOwner: targetLease.token,
-      capacityDelta: 1
+      capacity: spotCapacity('instance_spot', 'room')
     };
     const capacity = await storeA.reserveRelocationCapacity(relocationRequest);
     assert.equal(capacity.kind, 'reserved');
@@ -551,13 +678,17 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     assert.equal(moved.kind, 'stored');
     assert.equal(moved.ownerId, 'target-owner');
     assert.equal(moved.objectGeneration, ready.ready.objectGeneration);
+    const relocationRecord = await fixture.client.hGetAll(
+      `${prefix}:{zlink-location-v3}:relocation:${
+        relocationRequest.reservationId.replaceAll('-', '').toLowerCase()
+      }`
+    );
+    assert.deepEqual(
+      Object.keys(relocationRecord).sort(),
+      authorityFixture.operationRecordFieldSets.standaloneRelocation.slice().sort()
+    );
+    assert.equal(relocationRecord.state, 'Committed');
     const secondKey = { value: 'zla1:s:10:instance-2' };
-    const secondCapacity = await storeA.reserveRelocationCapacity({
-      ...relocationRequest,
-      reservationId: '22222222-2222-4222-8222-222222222222',
-      authorityKey: secondKey,
-      expectedStoreVersion: secondReady.ready.storeVersion
-    });
     const aggregate = await storeA.prepareAggregate({
       aggregateId: { value: '33333333-3333-4333-8333-333333333333' },
       aggregateGeneration: 1n,
@@ -569,12 +700,26 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
         membershipMutation: Buffer.from('membership')
       }],
       inventoryDigest: Buffer.alloc(32, 2),
-      targetReservations: [secondCapacity.fence],
+      targetDescriptor: {
+        meshName: 'game',
+        rid: targetDescriptor.rid
+      },
+      targetDescriptorLifecycleGeneration: targetDescriptor.lifecycleGeneration,
+      capacity: spotCapacity('instance_spot', 'room'),
       targetOwner: targetLease.token
     });
     assert.equal(aggregate.kind, 'prepared');
     assert.equal((await storeB.commitAggregate(aggregate.fence)).kind, 'committed');
     assert.equal((await storeA.commitAggregate(aggregate.fence)).kind, 'alreadyCommitted');
+    const aggregateRecord = await fixture.client.hGetAll(
+      `${prefix}:{zlink-location-v3}:aggregate:`
+      + '33333333333343338333333333333333:1'
+    );
+    assert.deepEqual(
+      Object.keys(aggregateRecord).sort(),
+      authorityFixture.operationRecordFieldSets.aggregate.slice().sort()
+    );
+    assert.equal(aggregateRecord.state, 'Committed');
     const authorityKey = 'zla1:s:10:instance-1';
     const authorityHash = createHash('sha256')
       .update(authorityKey, 'utf8').digest('hex');
@@ -583,7 +728,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     const physicalAuthority = await fixture.client.hGetAll(authorityRedisKey);
     assert.deepEqual(
       Object.keys(physicalAuthority).sort(),
-      redisSemanticFixture('authority-store-v1.json').currentHashFields.sort()
+      redisSemanticFixture('authority-store-v3.json').currentHashFields.sort()
     );
     assert.equal(physicalAuthority.authorityKey, authorityKey);
     assert.equal(physicalAuthority.allocationState, 'active');
@@ -623,7 +768,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     const physicalHistory = await fixture.client.hGetAll(
       `${prefix}:{zlink-location-v3}:authority:history:${secondAuthorityHash}`
     );
-    for (const suffix of redisSemanticFixture('authority-store-v1.json')
+    for (const suffix of redisSemanticFixture('authority-store-v3.json')
       .historyEncoding.fullSnapshotSuffixes) {
       assert.equal(
         Object.hasOwn(physicalHistory, `${historyRevision}:${suffix}`),
@@ -648,21 +793,21 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     );
     const projectedTarget = (await storeA.listMeshNodes('game'))
       .find(node => node.ownerId === 'target-owner');
-    assert.equal(projectedTarget.objectCapacity.activeObjects, 2);
-    assert.equal(projectedTarget.objectCapacity.pendingActivations, 0);
+    assert.equal(projectedTarget.populationCapacity.spots.active, 2);
+    assert.equal(projectedTarget.populationCapacity.spots.reserved, 0);
     const targetNodeBucket =
-      `${Buffer.byteLength(descriptorCanonicalKey, 'utf8')}:${descriptorCanonicalKey}1:7`;
+      `${Buffer.byteLength(descriptorCanonicalKey, 'utf8')}:${descriptorCanonicalKey}1:74:spot`;
     const targetTypeBucket = `${targetNodeBucket}13:instance_spot4:room`;
     assert.equal(
       await fixture.client.hGet(
-        `${prefix}:{zlink-location-v3}:capacity:node:active`,
+        `${prefix}:{zlink-location-v3}:capacity:spot:active`,
         targetNodeBucket
       ),
       '2'
     );
     assert.equal(
       await fixture.client.hGet(
-        `${prefix}:{zlink-location-v3}:capacity:type:active`,
+        `${prefix}:{zlink-location-v3}:capacity:spot-type:active`,
         targetTypeBucket
       ),
       '2'
@@ -1233,10 +1378,10 @@ function peer(ownerId, nodeRid) {
   };
 }
 
-function spot(ownerId, _generation, spotRid, nodeRid) {
+function spot(ownerId, _generation, spotId, nodeRid) {
   return {
     meshName: 'play',
-    spotRid: rid(spotRid),
+    spotId: rid(spotId),
     spotType: 'game',
     spotGeneration: 3n,
     ownerNodeRid: rid(nodeRid),
@@ -1255,7 +1400,7 @@ function actor(ownerId, nodeRid) {
     actorRef: { nodeRid: rid(nodeRid), actorId: 'actor-1', generation: 1n },
     ownerNodeRid: rid(nodeRid),
     ownerNodeGeneration: 7n,
-    spotRid: rid(nodeRid),
+    spotId: rid(nodeRid),
     spotGeneration: 7n,
     membershipEpoch: 1n,
     spotKind: framework.ZLinkSpotKind.Entry,
@@ -1269,7 +1414,7 @@ function unpublishedActor(ownerId, nodeRid) {
     actorType: null,
     actorId: 'actor-2',
     actorRef: null,
-    spotRid: null,
+    spotId: null,
     ownerId,
     updatedAt: new Date(0)
   };
@@ -1322,40 +1467,50 @@ function exactMeshNodeDescriptor(nodeName = 'game-a', ownerId = 'mesh-owner-a', 
     descriptorRevision: 3n,
     endpoint: 'tcp://10.0.0.1:7300',
     objectRole: framework.ZLinkObjectRole.Server,
+    entrySpotId: `${nodeName}-entry-123e4567-e89b-42d3-a456-426614174000`,
     placementWeight: 100,
-    objectCapacity: {
-      activeObjects: 0,
-      pendingActivations: 0,
-      maxActiveObjects: 100,
-      maxPendingActivations: 100
+    populationCapacity: {
+      actors: { active: 0, reserved: 0, limit: 100 },
+      spots: { active: 0, reserved: 0, limit: 100 },
+      spotTypes: [
+        {
+          objectKind: 'instance_spot',
+          stableType: 'room',
+          active: 0,
+          reserved: 0,
+          limit: 100
+        }
+      ]
     },
+    activationConcurrency: { active: 0, limit: 100 },
     channelWeights: { orders: 100, world: 50 },
     applicationVersion: 1n,
-    spotTypes: ['room'],
     objectCapabilities: [{
       objectKind: 'instance_spot',
       stableType: 'room',
       policy: 'recreate',
       hasSnapshotAdapter: false,
-      active: 0,
-      reserved: 0,
-      activeLimit: 100,
-      pendingLimit: 100
+      limit: 100
     }, {
       objectKind: 'actor',
       stableType: 'player',
       policy: 'recreate',
       hasSnapshotAdapter: false,
-      active: 0,
-      reserved: 0,
-      activeLimit: 100,
-      pendingLimit: 100
+      limit: 0
     }],
     state: framework.ZLinkFrameworkRuntimeState.Serving,
     securityIdentity: 'cluster-a',
     ownerId,
     leaseGeneration,
     updatedAt: new Date('2024-07-15T00:00:00.000Z')
+  };
+}
+
+function spotCapacity(objectKind, stableType) {
+  return {
+    actors: 0,
+    spots: 1,
+    spotType: { objectKind, stableType, count: 1 }
   };
 }
 
@@ -1413,7 +1568,7 @@ function exactActorLocation() {
     actorRef: { nodeRid: rid('game-a'), actorId: 'actor-1', generation: 11n },
     ownerNodeRid: rid('game-a'),
     ownerNodeGeneration: 7n,
-    spotRid: rid('spot-1'),
+    spotId: rid('spot-1'),
     spotGeneration: 3n,
     spotKind: framework.ZLinkSpotKind.User,
     membershipEpoch: 4n,

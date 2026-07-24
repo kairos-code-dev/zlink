@@ -189,7 +189,7 @@ test('ZLinkRouteClient sends through SpotHandle snapshots and refreshes one stal
   const oldTarget = {
     meshName: 'play',
     nodeRid: 'node-old',
-    spotRid: 'spot-1',
+    spotId: 'spot-1',
     spotKind: framework.ZLinkSpotKind.User
   };
   const newTarget = { ...oldTarget, nodeRid: 'node-new' };
@@ -245,7 +245,7 @@ test('ZLinkRouteClient refreshes and retries a Spot send that was not admitted o
   const oldTarget = {
     meshName: 'play',
     nodeRid: 'node-old',
-    spotRid: 'spot-1',
+    spotId: 'spot-1',
     spotKind: framework.ZLinkSpotKind.User
   };
   const newTarget = { ...oldTarget, nodeRid: 'node-new' };
@@ -277,7 +277,7 @@ test('ZLinkRouteClient does not refresh or retry an uncertain Spot request failu
   const target = {
     meshName: 'play.route',
     nodeRid: 'node-a',
-    spotRid: 'spot-1',
+    spotId: 'spot-1',
     spotKind: framework.ZLinkSpotKind.User
   };
   let refreshCount = 0;
@@ -769,7 +769,7 @@ test('route raw SPOT requests through SpotNode router are serialized per route c
       maxActive = Math.max(maxActive, active);
       calls.push({
         targetNodeRid,
-        spotRid: targetSpot,
+        spotId: targetSpot,
         request: request.data().toString()
       });
       releases.push(() => {
@@ -802,7 +802,7 @@ test('route raw SPOT requests through SpotNode router are serialized per route c
   const remoteAddress = {
     routerChannelId: 'room.route',
     targetNodeRid: 'session-node',
-    spotRid: 'session-node',
+    spotId: 'session-node',
     spotKind: framework.ZLinkSpotKind.Entry
   };
 
@@ -856,7 +856,7 @@ test('aborted raw SPOT request retains the physical route slot until its late re
   const address = {
     routerChannelId: 'room.route',
     targetNodeRid: 'session-node',
-    spotRid: 'session-node',
+    spotId: 'session-node',
     spotKind: framework.ZLinkSpotKind.Entry
   };
   const abort = new AbortController();
@@ -912,7 +912,7 @@ test('timed-out raw SPOT request closes its late reply before releasing the rout
   const address = {
     routerChannelId: 'room.route',
     targetNodeRid: 'session-node',
-    spotRid: 'session-node',
+    spotId: 'session-node',
     spotKind: framework.ZLinkSpotKind.Entry
   };
   const first = manager.routeRequestRawToSpot(address, zlink.Message.from(Buffer.from('first')));
@@ -992,7 +992,7 @@ test('route raw SPOT request through SpotNode router retries until route is read
     {
       routerChannelId: 'room.route',
       targetNodeRid: 'session-node',
-      spotRid: 'session-node',
+      spotId: 'session-node',
       spotKind: framework.ZLinkSpotKind.Entry
     },
     zlink.Message.from(Buffer.from('request')),
@@ -1025,7 +1025,7 @@ test('route raw SPOT request from a user spot waits for replacement route readin
     {
       routerChannelId: 'room.route',
       targetNodeRid: 'replacement-node',
-      spotRid: 'replacement-room',
+      spotId: 'replacement-room',
       spotKind: framework.ZLinkSpotKind.User
     },
     zlink.Message.from(Buffer.from('request')),
@@ -1065,7 +1065,7 @@ test('route raw SPOT request stops SpotNode readiness retries when aborted', asy
   const pending = manager.routeRequestRawToSpot({
     routerChannelId: 'room.route',
     targetNodeRid: 'session-node',
-    spotRid: 'session-node',
+    spotId: 'session-node',
     spotKind: framework.ZLinkSpotKind.Entry
   }, request, 1000, abort.signal);
 
@@ -1081,7 +1081,7 @@ test('route raw SPOT request stops SpotNode readiness retries when aborted', asy
 test('source Spot raw request aborts after native submission and closes a late reply', async () => {
   let complete;
   const sourceSpot = {
-    requestToSpot(_targetNodeRid, _spotRid, _request, callback) {
+    requestToSpot(_targetNodeRid, _spotId, _request, callback) {
       complete = callback;
       return true;
     }
@@ -1096,7 +1096,7 @@ test('source Spot raw request aborts after native submission and closes a late r
   const pending = manager.routeRequestRawFromSpotToSpot(sourceSpot, {
     routerChannelId: 'room.route',
     targetNodeRid: 'play-node',
-    spotRid: 'room-1'
+    spotId: 'room-1'
   }, request, 1000, abort.signal);
 
   abort.abort();
@@ -1266,13 +1266,13 @@ test('route bridge raw request completes when shared route receive loop observes
   const request = manager.routeRequestRawToSpot({
     routerChannelId: 'room.route',
     targetNodeRid: 'play-node',
-    spotRid: 'room-1'
+    spotId: 'room-1'
   }, zlink.Message.from(Buffer.from('request')), 100);
   await new Promise((resolve) => setImmediate(resolve));
   router.recvQueue.push({
     parts: [zlink.Message.from(Buffer.from(JSON.stringify({ ok: true, response: { value: 'reply' } })))],
     routingId: 'play-node',
-    spotRid: null,
+    spotId: null,
     requestSeq: null,
     close() {
       this.parts.forEach((part) => part.close());
@@ -1320,7 +1320,7 @@ test('channel runtime dispose rejects pending raw Spot route bridge requests', a
   const pending = manager.routeRequestRawToSpot({
     routerChannelId: 'room.route',
     targetNodeRid: 'play-node',
-    spotRid: 'room-1'
+    spotId: 'room-1'
   }, request, undefined);
 
   await new Promise((resolve) => setImmediate(resolve));
@@ -1400,12 +1400,12 @@ test('route bridge queued sends keep each target on its submitted operation', as
   const first = manager.routeSendToSpot({
     routerChannelId: 'room.route',
     targetNodeRid: 'session-node-a',
-    spotRid: 'session-node-a'
+    spotId: 'session-node-a'
   }, 'Notify', { value: 1 });
   const second = manager.routeSendToSpot({
     routerChannelId: 'room.route',
     targetNodeRid: 'session-node-b',
-    spotRid: 'session-node-b'
+    spotId: 'session-node-b'
   }, 'Notify', { value: 2 });
 
   await new Promise((resolve) => setImmediate(resolve));
@@ -1425,8 +1425,8 @@ test('route raw SPOT request uses route bridge before SpotNode router fallback',
     attachRouterChannel(channelName, socket, options) {
       bridgeCalls.push({ kind: 'attach', channelName, socket, options });
     },
-    request(channelName, targetNodeRid, spotRid) {
-      const call = { kind: 'request', channelName, targetNodeRid, spotRid };
+    request(channelName, targetNodeRid, spotId) {
+      const call = { kind: 'request', channelName, targetNodeRid, spotId };
       bridgeCalls.push(call);
       return {
         message(message) {
@@ -1491,7 +1491,7 @@ test('route raw SPOT request uses route bridge before SpotNode router fallback',
     {
       routerChannelId: 'room.route',
       targetNodeRid: 'session-node',
-      spotRid: 'session-node',
+      spotId: 'session-node',
       spotKind: framework.ZLinkSpotKind.Entry
     },
     zlink.Message.from(Buffer.from('bridge-request')),
@@ -1508,7 +1508,7 @@ test('route raw SPOT request uses route bridge before SpotNode router fallback',
     kind: 'request',
     channelName: 'room.route',
     targetNodeRid: 'session-node',
-    spotRid: 'session-node',
+    spotId: 'session-node',
     message: 'bridge-request',
     timeoutMs: 700,
     submitted: true
@@ -1546,7 +1546,7 @@ test('route raw SPOT request prefers the named Spot mesh when route and Spot mes
     },
     entrySpot() {
       return {
-        requestToSpot(_targetNodeRid, _spotRid, _request, callback) {
+        requestToSpot(_targetNodeRid, _spotId, _request, callback) {
           spotRequests += 1;
           callback(0, [zlink.Message.from(Buffer.from('spot-reply'))]);
           return true;
@@ -1563,7 +1563,7 @@ test('route raw SPOT request prefers the named Spot mesh when route and Spot mes
   const reply = await manager.routeRequestRawToSpot({
     routerChannelId: 'delivery-couriers',
     targetNodeRid: 'courier-session',
-    spotRid: 'courier-session',
+    spotId: 'courier-session',
     spotKind: framework.ZLinkSpotKind.Entry
   }, request, 700);
 
@@ -2916,7 +2916,7 @@ test('ZLinkRoutePacketDispatcher forwards SPOT-addressed route frames to local S
   const consumed = await dispatcher.dispatch({
     parts,
     routingId: 'node-b',
-    spotRid: 'room-1',
+    spotId: 'room-1',
     requestSeq: null,
     send() {
       return captureRawMultipart(forwarded);
@@ -2960,7 +2960,7 @@ test('ZLinkRoutePacketDispatcher lets route bridge handle SPOT-addressed bridge 
   await dispatcher.dispatch({
     parts,
     routingId: 'node-b',
-    spotRid: 'room-1',
+    spotId: 'room-1',
     requestSeq: 7n,
     send() {
       throw new Error('direct SPOT delivery must not run for bridge frames');

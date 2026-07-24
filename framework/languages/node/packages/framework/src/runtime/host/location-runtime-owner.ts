@@ -117,7 +117,7 @@ export class ZLinkLocationRuntimeOwner {
   createSpotRouteResolver(
     spotMeshNames: readonly string[],
     spotRouterChannelIdByMesh: (meshName: string) => string,
-    resolveLocalSpot?: (spotRid: RoutingId) => import('../spots/spot-routing-internal').ZLinkSpotRouteTarget | undefined
+    resolveLocalSpot?: (spotId: RoutingId) => import('../spots/spot-routing-internal').ZLinkSpotRouteTarget | undefined
   ): ZLinkSpotRouteResolver | undefined {
     const stores = this.stores;
     if (stores === undefined || spotMeshNames.length === 0) {

@@ -70,6 +70,10 @@ export class RedisStoreKeys {
     return `${this.authorityDomain}:descriptor:mesh:owner:${digest(`${ownerId}\0${leaseGeneration}`)}`;
   }
 
+  entrySpotIdentityClaim(authorityKey: string): string {
+    return `${this.authorityDomain}:entry-spot-id:${digest(authorityKey)}`;
+  }
+
   descriptorClientServer(canonicalKey: string): string {
     return `${this.authorityDomain}:descriptor:client-server:${digest(canonicalKey)}`;
   }
@@ -142,12 +146,16 @@ export class RedisStoreKeys {
     return `${this.authorityDomain}:membership:history-revisions:${digest(authorityKey)}`;
   }
 
-  capacityNode(phase: 'active' | 'pending'): string {
-    return `${this.authorityDomain}:capacity:node:${phase}`;
+  capacityActor(phase: 'active' | 'reserved'): string {
+    return `${this.authorityDomain}:capacity:actor:${phase}`;
   }
 
-  capacityType(phase: 'active' | 'pending'): string {
-    return `${this.authorityDomain}:capacity:type:${phase}`;
+  capacitySpot(phase: 'active' | 'reserved'): string {
+    return `${this.authorityDomain}:capacity:spot:${phase}`;
+  }
+
+  capacitySpotType(phase: 'active' | 'reserved'): string {
+    return `${this.authorityDomain}:capacity:spot-type:${phase}`;
   }
 
   creation(reservationId: string): string {

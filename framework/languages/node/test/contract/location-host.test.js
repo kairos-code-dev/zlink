@@ -107,7 +107,7 @@ test('framework runtime host starts location runtime and injects lifecycle into 
     3n
   );
   assert.notEqual(await store.resolveActor({ meshName: 'play', actorId: 'actor-1' }), undefined);
-  assert.notEqual(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
+  assert.notEqual(await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') }), undefined);
   const routeTarget = await spotOptions.spotRouteResolver.resolve(rid('spot-1'));
   assert.equal(routeTarget.routerChannelId, 'play');
   assert.equal(routeTarget.targetNodeRid.toHex(), nodeRid.toHex());
@@ -116,7 +116,7 @@ test('framework runtime host starts location runtime and injects lifecycle into 
 
   assert.equal((await store.listOwnerLeases()).leases.length, 0);
   assert.equal(await store.resolveActor({ meshName: 'play', actorId: 'actor-1' }), undefined);
-  assert.equal(await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') }), undefined);
+  assert.equal(await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') }), undefined);
   assert.deepEqual(calls, [
     'spot:dispose',
     'peer:remove',

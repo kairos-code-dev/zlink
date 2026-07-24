@@ -90,6 +90,127 @@ test('topology snapshots fence reconnect and exclude retiring placement targets'
   assert.equal(topology.selectPlacement(), undefined);
 });
 
+test('public weights preserve boundaries, descriptor revisions, ratios, and capacity-first selection', () => {
+  const topology = new ServiceTopologyRegistry({
+    ...descriptor('local'),
+    state: 'serving',
+    placementWeight: 0,
+    channels: [{ name: 'alpha', weight: 0 }]
+  });
+  const low = {
+    ...descriptor('low'),
+    state: 'serving' as const,
+    channels: [{ name: 'alpha', weight: 100 }],
+    placementWeight: 100
+  };
+  const high = {
+    ...descriptor('high'),
+    state: 'serving' as const,
+    channels: [{ name: 'alpha', weight: 300 }],
+    placementWeight: 300
+  };
+  const full = {
+    ...descriptor('full'),
+    state: 'serving' as const,
+    channels: [{ name: 'alpha', weight: 0 }],
+    placementWeight: 10_000,
+    activeCapacityUsed: 10_000
+  };
+  assert.equal(topology.admit(low, 'low-1'), 'admitted');
+  assert.equal(topology.admit(high, 'high-1'), 'admitted');
+  assert.equal(topology.admit(full, 'full-1'), 'admitted');
+
+  const channelCounts = new Map<string, number>();
+  const placementCounts = new Map<string, number>();
+  for (let index = 0; index < 400; index++) {
+    const channel = topology.selectChannel('alpha')!.descriptor.nodeRoutingId;
+    channelCounts.set(channel, (channelCounts.get(channel) ?? 0) + 1);
+    const placement = topology.selectPlacement()!.descriptor.nodeRoutingId;
+    placementCounts.set(placement, (placementCounts.get(placement) ?? 0) + 1);
+  }
+  assert.deepEqual(Object.fromEntries(channelCounts), { high: 300, low: 100 });
+  assert.deepEqual(Object.fromEntries(placementCounts), { high: 300, low: 100 });
+  assert.equal(channelCounts.has('full'), false);
+  assert.equal(placementCounts.has('full'), false);
+
+  const disabledHigh = {
+    ...high,
+    descriptorRevision: 2n,
+    channels: [{ name: 'alpha', weight: 0 }],
+    placementWeight: 0
+  };
+  assert.equal(topology.admit(disabledHigh, 'high-1'), 'admitted');
+  assert.equal(topology.selectChannel('alpha')?.descriptor.nodeRoutingId, 'low');
+  assert.equal(topology.selectPlacement()?.descriptor.nodeRoutingId, 'low');
+  assert.throws(
+    () => topology.publishLocal({
+      ...topology.localDescriptor(),
+      descriptorRevision: 2n,
+      placementWeight: -1
+    }),
+    /0\.\.10000/
+  );
+  assert.throws(
+    () => topology.publishLocal({
+      ...topology.localDescriptor(),
+      descriptorRevision: 2n,
+      channels: [{ name: 'alpha', weight: 10_001 }]
+    }),
+    /0\.\.10000/
+  );
+});
+
+test('ClientServer selection uses overflow-safe weights and excludes zero-weight revisions', () => {
+  const discovery = new ServiceDiscoveryRegistry();
+  const add = (serverRoutingId: string, weight: number, descriptorRevision = 1n) =>
+    discovery.admitClientServer({
+      channelName: 'orders',
+      serverRoutingId,
+      lifecycleGeneration: 1n,
+      descriptorRevision,
+      weight,
+      state: 'serving',
+      securityIdentity: 'default',
+      effectiveMaxMessageBytes: 1024,
+      advertisedEndpoint: `tcp://${serverRoutingId}:7001`
+    }, `${serverRoutingId}-${descriptorRevision}`);
+  assert.equal(add('low', 100), true);
+  assert.equal(add('high', 300), true);
+
+  const counts = new Map<string, number>();
+  for (let index = 0; index < 400; index++) {
+    const selected = discovery.selectClientServer('orders')!.serverRoutingId;
+    counts.set(selected, (counts.get(selected) ?? 0) + 1);
+  }
+  assert.deepEqual(Object.fromEntries(counts), { high: 300, low: 100 });
+  assert.equal(add('high', 0, 2n), true);
+  assert.equal(discovery.selectClientServer('orders')?.serverRoutingId, 'low');
+  assert.throws(() => add('invalid-negative', -1), /0\.\.10000/);
+  assert.throws(() => add('invalid-high', 10_001), /0\.\.10000/);
+});
+
+test('runtime weight changes increment the local descriptor revision and preserve public bounds', () => {
+  const runtime = new RawServiceMeshRuntime({
+    descriptor: {
+      ...descriptor('runtime-options'),
+      state: 'serving'
+    }
+  });
+  const initial = runtime.topology.localDescriptor();
+  runtime.updateLocalWeights({ placementWeight: 0 });
+  const placement = runtime.topology.localDescriptor();
+  assert.equal(placement.descriptorRevision, initial.descriptorRevision + 1n);
+  assert.equal(placement.placementWeight, 0);
+
+  runtime.updateLocalWeights({
+    channelName: 'alpha',
+    channelWeight: 10_000
+  });
+  const channel = runtime.topology.localDescriptor();
+  assert.equal(channel.descriptorRevision, placement.descriptorRevision + 1n);
+  assert.equal(channel.channels.find(candidate => candidate.name === 'alpha')?.weight, 10_000);
+});
+
 test('mailbox domains remain bounded and infrastructure claims progress independently', () => {
   const mailbox = new ServiceMailbox({
     applicationMessages: 2,
@@ -240,6 +361,13 @@ test('raw runtime admits peers and completes node/channel requests once', async 
   backend.start();
   try {
     assert.equal(backend.status().state, 2);
+    const initialRevision = backend.status().descriptorRevision;
+    backend.setPlacementWeight(0);
+    assert.equal(backend.status().descriptorRevision, initialRevision + 1n);
+    backend.setChannelWeight('alpha', 0);
+    assert.equal(backend.status().descriptorRevision, initialRevision + 2n);
+    assert.throws(() => backend.setPlacementWeight(-1), /0\.\.10000/);
+    assert.throws(() => backend.setChannelWeight('alpha', 10_001), /0\.\.10000/);
     const publisher = backend.createPublisher();
     const publish = await publisher.publishAsync(
       'alpha',

@@ -2,6 +2,7 @@ import type {
   ActorRef,
   ZLinkRuntimeEventPublisher
 } from '../../contracts';
+import { ZLinkUserSpotExecutionMode } from '../../contracts';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
 import type {
   DefaultZLinkActorManager,
@@ -115,14 +116,14 @@ export class ZLinkSpotRuntimeOptionsFactory {
       runtimeEventPublisher: this.options.runtimeEventPublisher,
       detachedTaskRunner: this.options.detachedTaskRunner,
       locationLifecycle: this.options.locationLifecycle(),
-      createNativeSpot: (meshName, spotRid) => {
+      createNativeSpot: (meshName, spotId) => {
         const node = this.options.spotNodeRuntime()?.meshNode(meshName);
         if (node === undefined) {
           return undefined;
         }
-        const result = node.getOrCreateSpot(BindingRoutingId.from(String(spotRid)));
+        const result = node.getOrCreateSpot(BindingRoutingId.from(String(spotId)));
         return {
-          routingId: spotRid,
+          routingId: spotId,
           lifecycleGeneration: result.spot.status().lifecycleGeneration,
           setSubscription: (channelName: string, topic: string) =>
             result.spot.setSubscription(channelName, topic),
@@ -156,8 +157,17 @@ export class ZLinkSpotRuntimeOptionsFactory {
         }
         return {
           actorRef,
-          spotRid: state.spotRid
+          spotId: state.spotId
         };
+      },
+      userSpotExecutionMode: (meshName, spotType) => {
+        const registrations =
+          this.options.registration.spotNodes.get(meshName)
+            ?.spotFactoryRegistrations ?? {};
+        const registration = Object.values(registrations)
+          .find(candidate => candidate.implementation === spotType);
+        return registration?.options?.executionMode
+          ?? ZLinkUserSpotExecutionMode.SpotWide;
       },
       actorBindingGenerationObserver: (actorId, generation) =>
         this.options.actorManager()?.getState(actorId)?.setBoundSessionBindingGeneration(generation),

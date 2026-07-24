@@ -785,8 +785,9 @@ descriptor admission을 거부한다.
 기존 `updateMeshNode(descriptor, ZLinkLocationWriteIntent.NEW_CLAIM)` operation은 Object Server descriptor의
 `(meshName, rid)` identity와 `entrySpotId` global Spot identity를 exact owner lease·lifecycle로 한
 transaction에서 claim한다. 별도 Entry claim public method는 제공하지 않는다. 어느 identity라도 active
-owner와 충돌하면 descriptor, Entry claim과 index를 바꾸지 않고 첫 claim에서 startup을
-`RoutingIdConflict`로 끝낸다. 두 번째 UUID나 claim은 만들지 않는다.
+owner와 충돌하면 descriptor, Entry claim과 index를 바꾸지 않고 첫 claim에서 startup을 즉시 끝낸다.
+`(meshName, rid)` descriptor identity 충돌은 `RoutingIdConflict`, global Entry Spot identity 충돌은
+`SpotIdConflict`다. 두 번째 UUID나 claim은 만들지 않는다.
 
 `entrySpotId`는 descriptor immutable field와 digest에 포함되며 renew나 mutable update로 바꿀 수 없다.
 Descriptor remove와 `removeAllByOwner`는 exact owner lease·lifecycle이 일치할 때만 Entry claim을 함께
@@ -802,7 +803,7 @@ MeshNode descriptor는 `ZLinkFrameworkRuntimeState` 하나로 lifecycle 상태�
 boolean을 두지 않으므로 서로 모순되는 상태 조합을 만들 수 없다.
 
 Descriptor의 key, RID, lifecycle generation, exact Entry Spot ID mapping, endpoint, security identity, owner token, application version,
-ChannelName key set, Spot type set와 object capability의 kind·type·policy·Snapshot adapter 등록 여부·profile·Spot limit은
+ChannelName key set, Spot type set와 object capability의 kind·type·policy·Snapshot adapter 등록 여부·Spot limit은
 첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight 값, node placement weight, capability capacity,
 maintenance wave와 runtime state만
 mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고

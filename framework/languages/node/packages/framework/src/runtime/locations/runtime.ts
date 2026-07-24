@@ -367,7 +367,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
   ): Promise<ZLinkLocationWriteResult> {
     const stamped = { ...spot, ownerId: this.ownerId };
     const result = await this.guardWrite(() => this.stores.spotStore.updateSpot(stamped, intent, signal));
-    const key = { meshName: spot.meshName, spotRid: spot.spotRid };
+    const key = { meshName: spot.meshName, spotId: spot.spotId };
     if (result.status === ZLinkLocationWriteStatus.Stored) {
       this.events?.spotRowUpdated(key, { ...stamped, updatedAt: result.updatedAt });
     }
@@ -566,7 +566,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
         kind: ZLinkLocationKind.Spot,
         meshName: spot.meshName,
         nodeRid: spot.ownerNodeRid,
-        spotRid: spot.spotRid,
+        spotId: spot.spotId,
         state: ZLinkLocationTopologyState.Discovered,
         desiredCount: 1,
         readyCount: 0,
@@ -579,7 +579,7 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
         kind: ZLinkLocationKind.Actor,
         meshName: actor.meshName,
         nodeRid: actor.ownerNodeRid,
-        spotRid: actor.spotRid,
+        spotId: actor.spotId,
         actorId: actor.actorId,
         state: ZLinkLocationTopologyState.Discovered,
         desiredCount: 1,

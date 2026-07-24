@@ -4,7 +4,9 @@ import type {
   ZLinkAuthorityKey,
   ZLinkAuthorityReadResult,
   ZLinkAuthoritySnapshot,
-  ZLinkAuthorityStoreVersion
+  ZLinkAuthorityStoreVersion,
+  ZLinkLocationOwnerToken,
+  ZLinkRelocationCapacityFence
 } from '../../contracts/Locations';
 
 const RELOCATION_RETENTION_MS = 24 * 60 * 60 * 1_000;
@@ -22,7 +24,9 @@ export interface ServiceAuthorityProvider {
     mutation: {
       readonly kind: 'put';
       readonly payload: Uint8Array;
-      readonly generationTransition: 'preserve';
+      readonly generationTransition: 'preserve' | 'newOwner';
+      readonly targetOwner?: ZLinkLocationOwnerToken;
+      readonly relocationCapacityFence?: ZLinkRelocationCapacityFence;
     },
     signal?: AbortSignal
   ): Awaitable<ZLinkAuthorityCompareExchangeResult>;
@@ -235,6 +239,41 @@ export class ServiceDurableRelocationRuntime {
       );
     }
     return envelope;
+  }
+
+  async commitOwner(
+    key: ZLinkAuthorityKey,
+    expected: ZLinkAuthoritySnapshot,
+    targetOwner: ZLinkLocationOwnerToken,
+    relocationCapacityFence?: ZLinkRelocationCapacityFence,
+    signal?: AbortSignal
+  ): Promise<ZLinkAuthoritySnapshot> {
+    signal?.throwIfAborted();
+    if (this.codec.read(expected.payload) === undefined) {
+      throw new Error('Location authority has no published relocation reference.');
+    }
+    const result = await this.authority.compareExchangeAuthority(
+      key,
+      expected.storeVersion,
+      {
+        kind: 'put',
+        generationTransition: 'newOwner',
+        targetOwner,
+        ...(relocationCapacityFence === undefined ? {} : { relocationCapacityFence }),
+        payload: expected.payload
+      },
+      signal
+    );
+    if (
+      result.kind !== 'stored'
+      || result.objectGeneration !== expected.objectGeneration
+      || result.authorityOwnerGeneration <= expected.authorityOwnerGeneration
+      || result.ownerId !== targetOwner.ownerId
+      || result.ownerLeaseGeneration !== targetOwner.leaseGeneration
+    ) {
+      throw new Error('Location authority rejected relocation owner commit.');
+    }
+    return storedSnapshot(result);
   }
 
   async release(

@@ -3,7 +3,7 @@ import { OperationRegistry, type PendingOperation } from './operation-registry';
 export type ServiceSpotKind = 'entry' | 'user' | 'instance';
 
 export interface ServiceSpotRef {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly generation: bigint;
 }
 
@@ -93,44 +93,44 @@ export class ServiceStatefulRegistry {
     requirePositive(nodeGeneration, 'nodeGeneration');
   }
 
-  createEntrySpot(spotRid = this.nodeRid): ServiceSpotState {
-    return this.createSpot(spotRid, 'entry', 'entry');
+  createEntrySpot(spotId = this.nodeRid): ServiceSpotState {
+    return this.createSpot(spotId, 'entry', 'entry');
   }
 
   createSpot(
-    spotRid: string,
+    spotId: string,
     kind: ServiceSpotKind = 'user',
     stableType: string = kind
   ): ServiceSpotState {
-    requireText(spotRid, 'spotRid');
+    requireText(spotId, 'spotId');
     requireText(stableType, 'stableType');
-    const current = this.spots.get(spotRid);
+    const current = this.spots.get(spotId);
     if (current !== undefined) {
       if (current.kind !== kind || current.stableType !== stableType) {
-        throw new TypeError(`Spot '${spotRid}' is already registered with another kind or type.`);
+        throw new TypeError(`Spot '${spotId}' is already registered with another kind or type.`);
       }
       return current;
     }
-    const assigned = this.spotTypes.get(spotRid);
+    const assigned = this.spotTypes.get(spotId);
     if (assigned !== undefined && (assigned.kind !== kind || assigned.stableType !== stableType)) {
-      throw new TypeError(`Spot '${spotRid}' is assigned to another kind or type.`);
+      throw new TypeError(`Spot '${spotId}' is assigned to another kind or type.`);
     }
-    const generation = (this.spotGenerations.get(spotRid) ?? 0n) + 1n;
-    this.spotGenerations.set(spotRid, generation);
+    const generation = (this.spotGenerations.get(spotId) ?? 0n) + 1n;
+    this.spotGenerations.set(spotId, generation);
     const created: ServiceSpotState = Object.freeze({
-      ref: Object.freeze({ spotRid, generation }),
+      ref: Object.freeze({ spotId, generation }),
       kind,
       stableType,
       authorityOwnerGeneration: generation,
       state: 'ready'
     });
-    this.spotTypes.set(spotRid, Object.freeze({ kind, stableType }));
-    this.spots.set(spotRid, created);
+    this.spotTypes.set(spotId, Object.freeze({ kind, stableType }));
+    this.spots.set(spotId, created);
     return created;
   }
 
-  spot(spotRid: string): ServiceSpotState | undefined {
-    return this.spots.get(spotRid);
+  spot(spotId: string): ServiceSpotState | undefined {
+    return this.spots.get(spotId);
   }
 
   restoreSpot(
@@ -139,17 +139,17 @@ export class ServiceStatefulRegistry {
     stableType: string,
     authorityOwnerGeneration: bigint
   ): ServiceSpotState {
-    requireText(ref.spotRid, 'spotRid');
+    requireText(ref.spotId, 'spotId');
     requirePositive(ref.generation, 'spot.generation');
     requireText(stableType, 'stableType');
     requirePositive(authorityOwnerGeneration, 'authorityOwnerGeneration');
-    const current = this.spots.get(ref.spotRid);
+    const current = this.spots.get(ref.spotId);
     if (current !== undefined && current.ref.generation > ref.generation) {
-      throw new ServiceStaleGenerationError('spot', ref.spotRid);
+      throw new ServiceStaleGenerationError('spot', ref.spotId);
     }
-    const assigned = this.spotTypes.get(ref.spotRid);
+    const assigned = this.spotTypes.get(ref.spotId);
     if (assigned !== undefined && (assigned.kind !== kind || assigned.stableType !== stableType)) {
-      throw new TypeError(`Spot '${ref.spotRid}' is assigned to another kind or type.`);
+      throw new TypeError(`Spot '${ref.spotId}' is assigned to another kind or type.`);
     }
     const restored: ServiceSpotState = Object.freeze({
       ref: Object.freeze({ ...ref }),
@@ -159,18 +159,18 @@ export class ServiceStatefulRegistry {
       state: 'ready'
     });
     this.spotGenerations.set(
-      ref.spotRid,
-      max(this.spotGenerations.get(ref.spotRid) ?? 0n, ref.generation)
+      ref.spotId,
+      max(this.spotGenerations.get(ref.spotId) ?? 0n, ref.generation)
     );
-    this.spotTypes.set(ref.spotRid, Object.freeze({ kind, stableType }));
-    this.spots.set(ref.spotRid, restored);
+    this.spotTypes.set(ref.spotId, Object.freeze({ kind, stableType }));
+    this.spots.set(ref.spotId, restored);
     return restored;
   }
 
   requireSpot(ref: ServiceSpotRef): ServiceSpotState {
-    const current = this.spots.get(ref.spotRid);
+    const current = this.spots.get(ref.spotId);
     if (current === undefined || current.ref.generation !== ref.generation || current.state !== 'ready') {
-      throw new ServiceStaleGenerationError('spot', ref.spotRid);
+      throw new ServiceStaleGenerationError('spot', ref.spotId);
     }
     return current;
   }
@@ -179,14 +179,14 @@ export class ServiceStatefulRegistry {
     const current = this.requireSpot(ref);
     for (const actor of this.actors.values()) {
       if (
-        actor.spot.spotRid === ref.spotRid
+        actor.spot.spotId === ref.spotId
         && actor.spot.generation === ref.generation
       ) {
         return false;
       }
     }
-    this.spots.set(ref.spotRid, Object.freeze({ ...current, state: 'closing' }));
-    this.spots.delete(ref.spotRid);
+    this.spots.set(ref.spotId, Object.freeze({ ...current, state: 'closing' }));
+    this.spots.delete(ref.spotId);
     return true;
   }
 

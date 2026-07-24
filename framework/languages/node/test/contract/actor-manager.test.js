@@ -228,7 +228,7 @@ test('transferred actor materialization injects context without invoking actor c
   manager.getState('alice').setRemoteBoundSessionTarget({
     routerChannelId: 'session-route',
     targetNodeRid: 'session-a',
-    spotRid: 'session-entry'
+    spotId: 'session-entry'
   });
   await manager.rollbackTransferredActor(result.actor);
   assert.equal(manager.getState('alice'), undefined);
@@ -427,7 +427,7 @@ test('remote actor takeover fences a stale source release by location generation
   const targetRow = await store.resolveActor({ meshName: 'play', actorId: 'alice' });
   assert.equal(targetRow.ownerId, 'owner-target');
   assert.equal(targetRow.spotKind, framework.ZLinkSpotKind.User);
-  assert.equal(String(targetRow.spotRid), 'room-target');
+  assert.equal(String(targetRow.spotId), 'room-target');
   assert.equal(takeover.generation > sourceClaim.generation, true);
 
   await source.lifecycle.releaseActor('player', 'alice');
@@ -643,8 +643,8 @@ test('ZLinkActorContext exposes its RouteMesh and delegates leave through the li
       events.push(`mesh:${actorType}`);
       return 'play-mesh';
     },
-    async actorLeaveSpot(meshName, spotRid, actor) {
-      events.push(`leave:${meshName}:${spotRid}:${actor.actorId}`);
+    async actorLeaveSpot(meshName, spotId, actor) {
+      events.push(`leave:${meshName}:${spotId}:${actor.actorId}`);
     }
   });
   const actor = await manager.getOrCreateActor('alice', 'player');
@@ -1038,8 +1038,8 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   }
   const actorRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
   const joinCoordinator = {
-    async joinSpot(actor, state, spotRid, request, timeoutMs) {
-      calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${request.data().toString()}:${timeoutMs}`);
+    async joinSpot(actor, state, spotId, request, timeoutMs) {
+      calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotId}:${request.data().toString()}:${timeoutMs}`);
       return { accepted: true, actor: actorRef, reply: replyMessage };
     },
     async joinEntrySpot(actor, state, nodeRid, request, timeoutMs) {
@@ -1268,8 +1268,8 @@ test('ZLinkActorContext joinSpot uses configured custom serializer without raw r
   }
   const actorRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
   const joinCoordinator = {
-    async joinSpot(actor, state, spotRid, request) {
-      calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${request.getString('utf8')}`);
+    async joinSpot(actor, state, spotId, request) {
+      calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotId}:${request.getString('utf8')}`);
       return { accepted: true, actor: actorRef, reply: replyMessage };
     },
     async joinEntrySpot() {
@@ -1313,9 +1313,9 @@ test('ZLinkActorContext joinSpot uses binary codec extensions without raw reques
     }
     const actorRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
     const joinCoordinator = {
-      async joinSpot(actor, state, spotRid, request) {
+      async joinSpot(actor, state, spotId, request) {
         const decoded = serializer.deserialize(request);
-        calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotRid}:${decoded.text}`);
+        calls.push(`joinSpot:${actor.actorId}:${state.actorId}:${spotId}:${decoded.text}`);
         return { accepted: true, actor: actorRef, reply: replyMessage };
       },
       async joinEntrySpot() {
@@ -1362,13 +1362,13 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
       events.push(`createNative:${actorId}`);
       return createdRef;
     },
-    joinActor(actorRef, targetNodeRid, targetSpotRid, payload, callback, timeoutMs) {
-      events.push(`join:${actorRef.generation}:${targetNodeRid}:${targetSpotRid}:${payload.data().toString()}:${timeoutMs}`);
+    joinActor(actorRef, targetNodeRid, targetSpotId, payload, callback, timeoutMs) {
+      events.push(`join:${actorRef.generation}:${targetNodeRid}:${targetSpotId}:${payload.data().toString()}:${timeoutMs}`);
       callback({
         result: 0,
         joinResultCode: 7,
         actor: joinedRef,
-        joinedSpotRid: targetSpotRid,
+        joinedSpotId: targetSpotId,
         joinEpoch: 3n,
         flags: 0
       }, [zlink.Message.from('native-reply')]);
@@ -1386,11 +1386,11 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
         }
       },
       spotRouteResolver: {
-        async resolve(spotRid) {
+        async resolve(spotId) {
           return {
             routerChannelId: 'play',
             targetNodeRid: rid('node-a'),
-            spotRid: rid(String(spotRid)),
+            spotId: rid(String(spotId)),
             spotKind: framework.ZLinkSpotKind.User,
             targetSpotGeneration: 9n
           };
@@ -1407,7 +1407,7 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   assert.equal(result.actor.actorId, joinedRef.actorId);
   assert.equal(result.actor.generation, joinedRef.generation);
   assert.equal(result.reply, 'native-reply');
-  assert.equal(String(actor.context.spotRid), 'stage-1');
+  assert.equal(String(actor.context.spotId), 'stage-1');
   assert.equal(manager.getState('alice').nativeActorRef, joinedRef);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(locationWrites.length, 1);
@@ -1446,14 +1446,14 @@ test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remot
     createActor() {
       return createdRef;
     },
-    joinActor(actorRef, targetNodeRid, targetSpotRid, request, callback, timeoutMs) {
-      events.push(`joinActor:${actorRef.generation}:${targetNodeRid}:${targetSpotRid}:${request.data().toString()}:${timeoutMs}`);
+    joinActor(actorRef, targetNodeRid, targetSpotId, request, callback, timeoutMs) {
+      events.push(`joinActor:${actorRef.generation}:${targetNodeRid}:${targetSpotId}:${request.data().toString()}:${timeoutMs}`);
       callback({
         result: 0,
         joinResultCode: 0,
         actor: { nodeRid: rid('node-a'), actorId: 'alice', generation: 2n },
         targetNodeRid,
-        joinedSpotRid: targetSpotRid,
+        joinedSpotId: targetSpotId,
         joinEpoch: 3n,
         flags: 0
       }, [zlink.Message.from('remote-reply')]);
@@ -1461,12 +1461,12 @@ test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remot
     }
   });
   const spotRouteResolver = {
-    async resolve(spotRid) {
-      events.push(`resolve:${spotRid}`);
+    async resolve(spotId) {
+      events.push(`resolve:${spotId}`);
       return {
         routerChannelId: 'play-node',
         targetNodeRid: 'node-a',
-        spotRid,
+        spotId,
         spotKind: framework.ZLinkSpotKind.User,
         targetSpotGeneration: 9n
       };
@@ -1533,25 +1533,25 @@ test('ZLinkActorNativeJoinCoordinator keeps remote joins on the formal Core surf
     entrySpot() {
       return { routingId: 'node-b-entry' };
     },
-    joinActor(actorRef, targetNodeRid, targetSpotRid, request, callback) {
-      events.push(`formalJoin:${targetNodeRid}:${targetSpotRid}:${request.data().toString()}`);
+    joinActor(actorRef, targetNodeRid, targetSpotId, request, callback) {
+      events.push(`formalJoin:${targetNodeRid}:${targetSpotId}:${request.data().toString()}`);
       callback({
         result: 0,
         joinResultCode: 0,
         actor: { ...actorRef, nodeRid: targetNodeRid, generation: 2n },
-        joinedSpotRid: targetSpotRid,
+        joinedSpotId: targetSpotId,
         joinEpoch: 3n
       }, [zlink.Message.from('routed-reply')]);
       return true;
     }
   });
   const spotRouteResolver = {
-    async resolve(spotRid) {
-      events.push(`resolve:${spotRid}`);
+    async resolve(spotId) {
+      events.push(`resolve:${spotId}`);
       return {
         routerChannelId: 'play-node',
         targetNodeRid: 'node-a',
-        spotRid,
+        spotId,
         spotKind: framework.ZLinkSpotKind.User,
         targetSpotGeneration: 9n
       };
@@ -1573,7 +1573,7 @@ test('ZLinkActorNativeJoinCoordinator keeps remote joins on the formal Core surf
           return true;
         },
         async request(routerChannelId, targetNodeRid, packetName, payload) {
-          events.push(`routeRequest:${payload.phase}:${routerChannelId}:${targetNodeRid}:${payload.spotRid}:${packetName}:${payload.actorId}:${payload.actorType}:${Buffer.from(payload.request, 'base64').toString()}`);
+          events.push(`routeRequest:${payload.phase}:${routerChannelId}:${targetNodeRid}:${payload.spotId}:${packetName}:${payload.actorId}:${payload.actorType}:${Buffer.from(payload.request, 'base64').toString()}`);
           if (payload.phase === 'admission') {
             assert.equal(typeof payload.transferId, 'string');
             return {
@@ -1675,11 +1675,11 @@ test('remote transfer failures before commit preserve source ownership and never
         node,
         completionTableProvider: () => node.completionTable,
         spotRouteResolver: {
-          async resolve(spotRid) {
+          async resolve(spotId) {
             return {
               routerChannelId: 'play',
               targetNodeRid: rid('node-target'),
-              spotRid,
+              spotId,
               spotKind: framework.ZLinkSpotKind.User,
               targetSpotGeneration: 9n
             };
@@ -1768,12 +1768,12 @@ test('formal remote join rejection rolls back prepared source movement and prese
     routingId: rid('node-source'),
     entrySpot() { return { routingId: rid('entry-source') }; },
     createActor(actorId) { return { nodeRid: rid('node-source'), actorId, generation: 1n }; },
-    joinActor(actorRef, _targetNodeRid, targetSpotRid, _request, callback) {
+    joinActor(actorRef, _targetNodeRid, targetSpotId, _request, callback) {
       callback({
         result: 1,
         joinResultCode: 1,
         actor: actorRef,
-        joinedSpotRid: targetSpotRid,
+        joinedSpotId: targetSpotId,
         joinEpoch: 1n
       }, []);
       return true;
@@ -1787,11 +1787,11 @@ test('formal remote join rejection rolls back prepared source movement and prese
       node,
       completionTableProvider: () => node.completionTable,
       spotRouteResolver: {
-        async resolve(spotRid) {
+        async resolve(spotId) {
           return {
             routerChannelId: 'play',
             targetNodeRid: rid('node-target'),
-            spotRid,
+            spotId,
             spotKind: framework.ZLinkSpotKind.User,
             targetSpotGeneration: 9n
           };
@@ -1855,7 +1855,7 @@ test('target ownership publication failure releases the claimed actor location',
     remoteBoundSessionTarget: {
       routerChannelId: 'session.route',
       targetNodeRid: rid('source-node'),
-      spotRid: rid('source-entry')
+      spotId: rid('source-entry')
     },
     clearAfterDestroy() {},
     setJoinedSpot() {},
@@ -1871,7 +1871,7 @@ test('target ownership publication failure releases the claimed actor location',
       actorId,
       actorRef,
       meshName,
-      spotRid,
+      spotId,
       spotGeneration,
       membershipEpoch,
       ownerNodeGeneration
@@ -1880,7 +1880,7 @@ test('target ownership publication failure releases the claimed actor location',
       assert.equal(actorId, 'alice');
       assert.equal(String(actorRef.nodeRid), 'target-node');
       assert.equal(meshName, 'play');
-      assert.equal(String(spotRid), 'room');
+      assert.equal(String(spotId), 'room');
       assert.equal(spotGeneration, 9n);
       assert.equal(membershipEpoch, 12n);
       assert.equal(ownerNodeGeneration, 4n);
@@ -1902,7 +1902,7 @@ test('target ownership publication failure releases the claimed actor location',
       actorLookup() {
         return {
           actor: state.nativeActorRef,
-          spotRid: rid('room'),
+          spotId: rid('room'),
           spotGeneration: 9n,
           membershipEpoch: 12n
         };
@@ -1946,12 +1946,12 @@ test('transferred actor commit does not duplicate the native session binding res
     remoteBoundSessionTarget: {
       routerChannelId: 'session.route',
       targetNodeRid: sessionNodeRid,
-      spotRid: sessionNodeRid,
+      spotId: sessionNodeRid,
       sessionNodeRid,
       sessionRid
     },
-    setJoinedSpot(spotRid, spot) {
-      this.spotRid = spotRid;
+    setJoinedSpot(spotId, spot) {
+      this.spotId = spotId;
       this.spot = spot;
     }
   };
@@ -1974,7 +1974,7 @@ test('transferred actor commit does not duplicate the native session binding res
   runtime.commitRoutedActor(actor, rid('room'), { name: 'room' });
 
   assert.equal(binds.length, 0);
-  assert.equal(state.spotRid.toHex(), rid('room').toHex());
+  assert.equal(state.spotId.toHex(), rid('room').toHex());
   assert.deepEqual(state.spot, { name: 'room' });
 });
 
@@ -2012,7 +2012,7 @@ test('native actor join rollback restores Entry location without destroying the 
   });
 
   await runtime.rollbackNativeActorJoin(actor, {
-    locationSpotRid: rid('entry'),
+    locationSpotId: rid('entry'),
     spotGeneration: 5n,
     membershipEpoch: 9n,
     ownerNodeGeneration: 3n
@@ -2028,8 +2028,8 @@ test('native actor join rollback restores Entry location without destroying the 
 test('native actor join rollback restores the previous User SPOT location', async () => {
   const actor = { actorId: 'alice' };
   const previousSpot = { name: 'source-room' };
-  const previousSpotRid = rid('source-room');
-  let currentSpotRid = rid('target-room');
+  const previousSpotId = rid('source-room');
+  let currentSpotId = rid('target-room');
   let currentSpot = { name: 'target-room' };
   let restoredLocationRid;
   let generation = 7n;
@@ -2037,7 +2037,7 @@ test('native actor join rollback restores the previous User SPOT location', asyn
     actorType: 'player',
     nativeActorRef: { nodeRid: rid('entry-node'), actorId: 'alice', generation: 4n },
     ownsLocation: true,
-    setJoinedSpot(spotRid, spot) { currentSpotRid = spotRid; currentSpot = spot; },
+    setJoinedSpot(spotId, spot) { currentSpotId = spotId; currentSpot = spot; },
     setLocationGeneration(value) { generation = value; },
     clearAfterDestroy() {}
   };
@@ -2048,9 +2048,9 @@ test('native actor join rollback restores the previous User SPOT location', asyn
     primarySpotNode: () => { throw new Error('not used'); },
     async notifyEntrySpotActorLeft() {},
     locationLifecycle: () => ({
-      async takeoverActorJoinedSpot(_type, _id, _ref, meshName, spotRid) {
+      async takeoverActorJoinedSpot(_type, _id, _ref, meshName, spotId) {
         assert.equal(meshName, 'source-mesh');
-        restoredLocationRid = spotRid;
+        restoredLocationRid = spotId;
         return { status: 'claimed', generation: 8n };
       }
     }),
@@ -2062,7 +2062,7 @@ test('native actor join rollback restores the previous User SPOT location', asyn
   await runtime.rollbackNativeActorJoin(
     actor,
     {
-      spotRid: previousSpotRid,
+      spotId: previousSpotId,
       spot: previousSpot,
       spotMeshName: 'source-mesh',
       actorRef: state.nativeActorRef,
@@ -2071,9 +2071,9 @@ test('native actor join rollback restores the previous User SPOT location', asyn
       ownerNodeGeneration: 3n
     }
   );
-  assert.equal(currentSpotRid.toHex(), previousSpotRid.toHex());
+  assert.equal(currentSpotId.toHex(), previousSpotId.toHex());
   assert.equal(currentSpot, previousSpot);
-  assert.equal(restoredLocationRid.toHex(), previousSpotRid.toHex());
+  assert.equal(restoredLocationRid.toHex(), previousSpotId.toHex());
   assert.equal(generation, 8n);
 });
 
@@ -2081,17 +2081,17 @@ test('Entry actor transaction keeps committed entry state when joined callback r
   const actor = { actorId: 'alice' };
   const previousSpot = { name: 'room' };
   const previousRef = { nodeRid: rid('old-node'), actorId: 'alice', generation: 4n };
-  let spotRid = rid('room-node');
+  let spotId = rid('room-node');
   let spot = previousSpot;
   let nativeActorRef = previousRef;
   let clearedTargets = 0;
   const state = {
     actor,
-    get spotRid() { return spotRid; },
+    get spotId() { return spotId; },
     get spot() { return spot; },
     get nativeActorRef() { return nativeActorRef; },
-    clearJoinedSpot() { spotRid = undefined; spot = undefined; },
-    setJoinedSpot(value, target) { spotRid = value; spot = target; },
+    clearJoinedSpot() { spotId = undefined; spot = undefined; },
+    setJoinedSpot(value, target) { spotId = value; spot = target; },
     setNativeActorRef(value) { nativeActorRef = value; }
   };
   const runtime = new ZLinkEntryActorRuntimeService({
@@ -2110,7 +2110,7 @@ test('Entry actor transaction keeps committed entry state when joined callback r
     () => runtime.commitActorTransaction(actor, async () => { throw new Error('joined failed'); }),
     /joined failed/
   );
-  assert.equal(spotRid, undefined);
+  assert.equal(spotId, undefined);
   assert.equal(spot, undefined);
   assert.equal(nativeActorRef.nodeRid.toHex(), rid('entry-node').toHex());
   assert.equal(clearedTargets, 1);
@@ -2145,7 +2145,7 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
         joinResultCode: 0,
         actor: entryRef,
         targetNodeRid: nodeRid,
-        joinedSpotRid: nodeRid,
+        joinedSpotId: nodeRid,
         joinEpoch: 5n,
         flags: 0
       }, [zlink.Message.from('entry-ok')]);
@@ -2167,7 +2167,7 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
 
   assert.deepEqual(result.actor, { ...entryRef, nodeRid: 'node-b' });
   assert.equal(actor.context.isJoined, false);
-  assert.equal(actor.context.spotRid, undefined);
+  assert.equal(actor.context.spotId, undefined);
   assert.equal(manager.getState('alice').nativeActorRef, entryRef);
   assert.deepEqual(events, ['joinEntry:1:node-b:entry:50']);
 });
@@ -2888,12 +2888,12 @@ test('ZLinkActorNativeJoinCoordinator maps native join failures to framework err
     actorLookup() {
       return { nodeRid: 'node-a', actorId: 'alice', generation: 1n };
     },
-    joinActor(actorRef, targetNodeRid, targetSpotRid, payload, callback) {
+    joinActor(actorRef, targetNodeRid, targetSpotId, payload, callback) {
       callback({
         result: 109,
         joinResultCode: 0,
         actor: actorRef,
-        joinedSpotRid: targetSpotRid,
+        joinedSpotId: targetSpotId,
         joinEpoch: 0n,
         flags: 0
       }, []);
@@ -2906,11 +2906,11 @@ test('ZLinkActorNativeJoinCoordinator maps native join failures to framework err
       node,
       completionTableProvider: () => node.completionTable,
       spotRouteResolver: {
-        async resolve(spotRid) {
+        async resolve(spotId) {
           return {
             routerChannelId: 'play',
             targetNodeRid: rid('node-a'),
-            spotRid: rid(String(spotRid)),
+            spotId: rid(String(spotId)),
             spotKind: framework.ZLinkSpotKind.User,
             targetSpotGeneration: 9n
           };
@@ -3021,7 +3021,7 @@ test('spot actor dispatch rejects malformed JSON as PayloadDecodeFailed before i
   });
   const dispatch = new ZLinkSpotActorPacketDispatch({
     spot: {},
-    spotRid: () => 'room-1',
+    spotId: () => 'room-1',
     registry,
     resolveActor: () => actor,
     onDisconnectActor: async () => {},
@@ -3366,15 +3366,15 @@ function createMockSpotNode(overrides) {
       return completion;
     }
   };
-  node.joinActorSpot ??= (actor, targetNodeRid, targetSpotRid, _targetGeneration, request, timeoutMs) => {
+  node.joinActorSpot ??= (actor, targetNodeRid, targetSpotId, _targetGeneration, request, timeoutMs) => {
     const operationId = { high: 0n, low: nextOperation++ };
     const submitted = node.joinActor(
       actor,
       targetNodeRid,
-      targetSpotRid,
+      targetSpotId,
       zlink.Message.from(request),
       (result, parts) => {
-        completions.set(operationId.low, legacyJoinCompletion(result, parts, targetSpotRid));
+        completions.set(operationId.low, legacyJoinCompletion(result, parts, targetSpotId));
       },
       timeoutMs
     );
@@ -3389,7 +3389,7 @@ function createMockSpotNode(overrides) {
       targetNodeRid,
       zlink.Message.from(request),
       (result, parts) => {
-        completions.set(operationId.low, legacyJoinCompletion(result, parts, result.joinedSpotRid ?? null));
+        completions.set(operationId.low, legacyJoinCompletion(result, parts, result.joinedSpotId ?? null));
       },
       timeoutMs
     );
@@ -3399,7 +3399,7 @@ function createMockSpotNode(overrides) {
   return node;
 }
 
-function legacyJoinCompletion(result, parts, spotRid) {
+function legacyJoinCompletion(result, parts, spotId) {
   return {
     terminalResult: result.result,
     failureErrno: result.result === 0 ? 0 : 1,
@@ -3410,7 +3410,7 @@ function legacyJoinCompletion(result, parts, spotRid) {
       actor: result.actor,
       location: {
         actor: result.actor,
-        spotRid,
+        spotId,
         spotGeneration: 1n,
         membershipEpoch: result.joinEpoch ?? 1n
       }

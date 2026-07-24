@@ -636,7 +636,7 @@ test('Logical Multicast abort after Core start preserves final Core detail', asy
   assert.equal(result.detail.admittedRemoteNodeCount, 1n);
 });
 
-test('Logical Multicast binding commit boundary separates pre-start and post-start abort', async () => {
+test('Logical Multicast binding commit preserves admission after post-start abort', async () => {
   const fixture = path.join(__dirname, 'fixtures', 'logical-multicast-commit-child.js');
   const child = spawn(process.execPath, [fixture], {
     env: { ...process.env, UV_THREADPOOL_SIZE: '1' },

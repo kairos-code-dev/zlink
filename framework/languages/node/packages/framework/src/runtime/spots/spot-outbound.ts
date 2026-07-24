@@ -21,7 +21,9 @@ import {
 } from '../../contracts/Errors/ZLinkFrameworkException';
 import type { ZLinkBackendSpot } from '../backend/contracts';
 import { deliverOnSerial } from '../workers';
-import { captureZLinkExecutionTurn } from '../execution';
+import {
+  requireZLinkYieldTurn
+} from '../execution';
 import { resolveFrameworkPacketName } from '../messaging/packet-name';
 import type { ZLinkSpotRouteTarget } from './spot-routing-internal';
 import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
@@ -46,7 +48,7 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     private readonly addressTransport?: ZLinkSpotAddressTransport
   ) {}
 
-  sendToSpot(spotRid: RoutingId, message: unknown): ZLinkSpotSendCall;
+  sendToSpot(spotId: RoutingId, message: unknown): ZLinkSpotSendCall;
   /** @internal Compatibility path for an already resolved handle. */
   sendToSpot(spot: SpotHandle, message: unknown): ZLinkSendCall;
   sendToSpot(spot: RoutingId | SpotHandle, message: unknown): ZLinkSpotSendCall | ZLinkSendCall {
@@ -69,7 +71,7 @@ export class DefaultZLinkSpotOutbound implements ZLinkSpotOutbound {
     );
   }
 
-  requestToSpot(spotRid: RoutingId, request: unknown): ZLinkSpotRequestCall;
+  requestToSpot(spotId: RoutingId, request: unknown): ZLinkSpotRequestCall;
   /** @internal Compatibility path for an already resolved handle. */
   requestToSpot(spot: SpotHandle, request: unknown): ZLinkRequestCall;
   requestToSpot(spot: RoutingId | SpotHandle, request: unknown): ZLinkSpotRequestCall | ZLinkRequestCall {
@@ -161,12 +163,12 @@ export interface ZLinkSpotAddressCallOptions {
  */
 export interface ZLinkSpotAddressTransport {
   sendToSpotAddress(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     message: unknown,
     options: ZLinkSpotAddressCallOptions
   ): Promise<ZLinkSubmitResult>;
   requestToSpotAddress<TReply = unknown>(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     request: unknown,
     options: ZLinkSpotAddressCallOptions
   ): Promise<TReply>;
@@ -221,7 +223,7 @@ interface MutableAddressCallOptions {
 function createAddressedSpotSendCall(
   serial: ZLinkSpotSerialExecutor,
   transport: ZLinkSpotAddressTransport,
-  spotRid: RoutingId,
+  spotId: RoutingId,
   message: unknown,
   sourceSpotProvider?: () => ZLinkBackendSpot | undefined
 ): ZLinkSpotSendCall {
@@ -251,7 +253,7 @@ function createAddressedSpotSendCall(
     submit(signal?: AbortSignal) {
       markSubmitted(options);
       return serial.execute(() => transport.sendToSpotAddress(
-        spotRid,
+        spotId,
         message,
         freezeAddressCallOptions(options, signal, sourceSpotProvider?.())
       ));
@@ -262,7 +264,7 @@ function createAddressedSpotSendCall(
 function createAddressedSpotRequestCall(
   serial: ZLinkSpotSerialExecutor,
   transport: ZLinkSpotAddressTransport,
-  spotRid: RoutingId,
+  spotId: RoutingId,
   request: unknown,
   sourceSpotProvider?: () => ZLinkBackendSpot | undefined
 ): ZLinkSpotRequestCall {
@@ -271,7 +273,7 @@ function createAddressedSpotRequestCall(
     markSubmitted(options);
     return startRequestOnSerial<TReply>(serial, () => ({
       pending: transport.requestToSpotAddress<TReply>(
-        spotRid,
+        spotId,
         request,
         freezeAddressCallOptions(options, signal, sourceSpotProvider?.())
       )
@@ -312,10 +314,9 @@ function createAddressedSpotRequestCall(
       return serial.isCurrentTurn ? pending : deliverOnSerial(serial, pending);
     },
     yield<TReply>(signal?: AbortSignal) {
+      const turn = requireZLinkYieldTurn();
       const pending = begin<TReply>(signal);
-      const executionTurn = captureZLinkExecutionTurn();
-      return executionTurn?.yieldPromise(pending)
-        ?? (serial.isCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending));
+      return turn.yieldPromise(pending);
     }
   };
 }
@@ -444,10 +445,9 @@ function wrapRequestCall(serial: ZLinkSpotSerialExecutor, inner: ZLinkRequestCal
       return serial.isCurrentTurn ? pending : deliverOnSerial(serial, pending);
     },
     yield<TReply>(signal?: AbortSignal) {
+      const turn = requireZLinkYieldTurn();
       const pending = begin<TReply>(signal);
-      const executionTurn = captureZLinkExecutionTurn();
-      return executionTurn?.yieldPromise(pending)
-        ?? (serial.isCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending));
+      return turn.yieldPromise(pending);
     }
   };
 }
@@ -542,10 +542,9 @@ function wrapRoutedSpotRequestCall(
       return serial.isCurrentTurn ? pending : deliverOnSerial(serial, pending);
     },
     yield<TReply>(signal?: AbortSignal) {
+      const turn = requireZLinkYieldTurn();
       const pending = begin<TReply>(signal);
-      const executionTurn = captureZLinkExecutionTurn();
-      return executionTurn?.yieldPromise(pending)
-        ?? (serial.isCurrentTurn ? serial.yieldPromise(pending) : deliverOnSerial(serial, pending));
+      return turn.yieldPromise(pending);
     }
   };
 }
@@ -634,7 +633,7 @@ export async function requestToSpotHandle<TReply = unknown>(
     if (refreshed === undefined) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotRouteNotFound,
-        `Spot '${spot.spotRid}' has no live location after refresh.`,
+        `Spot '${spot.spotId}' has no live location after refresh.`,
         false,
         error
       );
@@ -659,7 +658,7 @@ function isSafeStaleSpotSubmit(result: unknown): boolean {
 async function requireSpotRef(handle: SpotHandle, signal?: AbortSignal): Promise<ResolvedSpotHandle> {
   const resolved = await resolveSpotHandle(handle, signal);
   if (resolved === undefined) {
-    throw new ZLinkConfigurationException(`Spot '${handle.spotRid}' has no live location.`);
+    throw new ZLinkConfigurationException(`Spot '${handle.spotId}' has no live location.`);
   }
   return resolved;
 }
@@ -671,7 +670,7 @@ function spotRefToSpotRouteTarget(
   return {
     routerChannelId: spotRouterChannelIdForMesh(spot.meshName),
     targetNodeRid: normalizeSpotRefRoutingId(spot.nodeRid),
-    spotRid: normalizeSpotRefRoutingId(spot.spotRid),
+    spotId: normalizeSpotRefRoutingId(spot.spotId),
     spotKind: spot.spotKind ?? ZLinkSpotKind.User,
     targetSpotGeneration: spot.spotGeneration
   };

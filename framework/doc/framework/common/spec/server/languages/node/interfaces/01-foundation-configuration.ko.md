@@ -33,9 +33,21 @@ export declare enum ZLinkObjectRole {
     Server = "server"
 }
 
-export interface ZLinkObjectPlacementOptions {
-    readonly maxActiveObjects?: number;
-    readonly maxPendingActivations?: number;
+export interface ZLinkActorFactoryOptions {
+}
+
+export declare enum ZLinkUserSpotExecutionMode {
+    SpotWide = "spot_wide",
+    PerActor = "per_actor"
+}
+
+export interface ZLinkUserSpotFactoryOptions {
+    readonly stableTypeLimit?: number;
+    readonly executionMode?: ZLinkUserSpotExecutionMode;
+}
+
+export interface ZLinkInstanceSpotFactoryOptions {
+    readonly stableTypeLimit?: number;
 }
 
 export declare function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean;
@@ -197,17 +209,17 @@ export interface ZLinkMeshObjectServerBuilder {
     addSpotFactory<TSpot extends ZLinkSpot>(
         spotType: string,
         implementation: Type<TSpot>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkUserSpotFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TSpot>): this;
     addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
         instanceSpotType: string,
         implementation: Type<TSpot>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkInstanceSpotFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TSpot>): this;
     addActorFactory<TActor extends ZLinkActor>(
         actorType: string,
         factoryType: Type<ZLinkActorFactory<TActor>>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkActorFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TActor>): this;
 }
 

@@ -11,11 +11,12 @@
   "physicalKeys": {
     "descriptorKeySha256": "d865b668dc208572007a1d65fecd4111be06f76455502ba2939a3661e96c72fa",
     "ownerTokenSha256": "b1b7c0df46d5b802be976881fb3bd200c0d40a6e365325151c21acabc4f891bc",
-    "descriptor": "P:{zlink-location-v1}:descriptor:mesh:d865b668dc208572007a1d65fecd4111be06f76455502ba2939a3661e96c72fa",
-    "admission": "P:{zlink-location-v1}:descriptor-admission:mesh:d865b668dc208572007a1d65fecd4111be06f76455502ba2939a3661e96c72fa",
-    "descriptorIndex": "P:{zlink-location-v1}:descriptor:mesh:index",
-    "descriptorOwnerIndex": "P:{zlink-location-v1}:descriptor:mesh:owner:b1b7c0df46d5b802be976881fb3bd200c0d40a6e365325151c21acabc4f891bc",
-    "ownerLease": "P:{zlink-location-v1}:owner-lease:d62b91aa54fc7602607015419048bd12e99caf5982ef3af2d6fdeeaa04056089"
+    "descriptor": "P:{zlink-location-v3}:descriptor:mesh:d865b668dc208572007a1d65fecd4111be06f76455502ba2939a3661e96c72fa",
+    "admission": "P:{zlink-location-v3}:descriptor-admission:mesh:d865b668dc208572007a1d65fecd4111be06f76455502ba2939a3661e96c72fa",
+    "descriptorIndex": "P:{zlink-location-v3}:descriptor:mesh:index",
+    "descriptorOwnerIndex": "P:{zlink-location-v3}:descriptor:mesh:owner:b1b7c0df46d5b802be976881fb3bd200c0d40a6e365325151c21acabc4f891bc",
+    "ownerLease": "P:{zlink-location-v3}:owner-lease:d62b91aa54fc7602607015419048bd12e99caf5982ef3af2d6fdeeaa04056089",
+    "entrySpotIdentityClaim": "P:{zlink-location-v3}:entry-spot-id:fc6007f49d36eb520b96ba773826f056812c29ca2620ec674a0495028305c9d3"
   },
   "ownerLeaseHashFields": [
     "ownerId",
@@ -34,12 +35,33 @@
     "capabilities",
     "actorLimit",
     "spotLimit",
+    "activationConcurrencyLimit",
+    "entrySpotId",
     "immutableDigest"
   ],
+  "entrySpotIdentityClaim": {
+    "authorityKey": "zla1:s:47:game-entry-00000000-0000-4000-8000-000000000099",
+    "hashFields": [
+      "state",
+      "spotId",
+      "descriptorKey",
+      "descriptorLifecycleGeneration",
+      "ownerId",
+      "ownerLeaseGeneration"
+    ],
+    "hash": {
+      "state": "Claimed",
+      "spotId": "game-entry-00000000-0000-4000-8000-000000000099",
+      "descriptorKey": "4:game12:67616d652d61",
+      "descriptorLifecycleGeneration": "7",
+      "ownerId": "mesh-owner-a",
+      "ownerLeaseGeneration": "9"
+    }
+  },
   "immutableDigest": {
-    "domain": "zlink-mesh-node-immutable-v1",
+    "domain": "zlink-mesh-node-immutable-v2",
     "segments": [
-      "zlink-mesh-node-immutable-v1",
+      "zlink-mesh-node-immutable-v2",
       "game",
       "67616d652d61",
       "7",
@@ -51,11 +73,13 @@
       "0",
       "none",
       "0",
-      "0",
+      "10000",
+      "128",
+      "128",
       "0"
     ],
-    "preimage": "28:zlink-mesh-node-immutable-v14:game12:67616d652d611:719:tcp://10.0.0.1:73001:26:orders5:world9:cluster-a1:04:none1:01:01:0",
-    "sha256LowerHex": "a70183abe5f380b64ca36374b09b6bd15a98b0beaba8beacd4a9371dba41d1a6"
+    "preimage": "28:zlink-mesh-node-immutable-v24:game12:67616d652d611:719:tcp://10.0.0.1:73001:26:orders5:world9:cluster-a1:04:none1:05:100003:1283:1281:0",
+    "sha256LowerHex": "fd2eba0bb5af0f5c52cb76ed5c58a1071065be8ef0a9a9363c89d8f260b97596"
   },
   "row": {
     "kind": "mesh",
@@ -63,7 +87,7 @@
     "hash": {
       "owner": "mesh-owner-a",
       "gen": "7",
-      "json": "{\"MeshName\":\"game\",\"Rid\":\"67616d652d61\",\"LifecycleGeneration\":7,\"DescriptorRevision\":3,\"Endpoint\":\"tcp://10.0.0.1:7300\",\"ChannelWeights\":{\"orders\":100,\"world\":50},\"SecurityIdentity\":\"cluster-a\",\"OwnerId\":\"mesh-owner-a\",\"LeaseGeneration\":9,\"UpdatedAt\":\"2024-07-15T00:00:00+00:00\",\"ApplicationVersion\":0,\"ObjectCapabilities\":[],\"MaintenanceWave\":null,\"State\":1,\"ObjectRole\":0,\"EntrySpotId\":null,\"PlacementWeight\":100,\"Capacity\":{\"Actors\":{\"Active\":0,\"Reserved\":0,\"Limit\":0},\"Spots\":{\"Active\":0,\"Reserved\":0,\"Limit\":0},\"SpotTypes\":[]},\"ActivationConcurrency\":{\"Active\":0,\"Limit\":128}}",
+      "json": "{\"MeshName\":\"game\",\"Rid\":\"67616d652d61\",\"LifecycleGeneration\":7,\"DescriptorRevision\":3,\"Endpoint\":\"tcp://10.0.0.1:7300\",\"ChannelWeights\":{\"orders\":100,\"world\":50},\"SecurityIdentity\":\"cluster-a\",\"OwnerId\":\"mesh-owner-a\",\"LeaseGeneration\":9,\"UpdatedAt\":\"2024-07-15T00:00:00+00:00\",\"ApplicationVersion\":0,\"ObjectCapabilities\":[],\"MaintenanceWave\":null,\"State\":1,\"ObjectRole\":0,\"EntrySpotId\":null,\"PlacementWeight\":100,\"Capacity\":{\"Actors\":{\"Active\":0,\"Reserved\":0,\"Limit\":10000},\"Spots\":{\"Active\":0,\"Reserved\":0,\"Limit\":128},\"SpotTypes\":[]},\"ActivationConcurrency\":{\"Active\":0,\"Limit\":128}}",
       "updatedAtMs": "1721001600000",
       "mesh": "game"
     }

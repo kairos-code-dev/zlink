@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   Message as BindingMessage,
   RequestResult,
@@ -133,6 +133,7 @@ import {
   decodeFrameworkPayloadMessage,
   encodeFrameworkPayloadMessage
 } from '../messaging/payload-codec';
+import { DefaultZLinkRouteMeshRuntimeOptions } from './route-mesh-runtime-options';
 
 export interface ZLinkFrameworkRuntime {
   readonly isStarted: boolean;
@@ -196,6 +197,8 @@ export class ZLinkFrameworkRuntimeHost implements
   private readonly preStartErrorSink = new ZLinkRuntimeTaskErrorSink();
   readonly channelTransport = new ZLinkRuntimeChannelTransport(() => this.channelRuntime);
   readonly channelRuntimeOptions = new DefaultZLinkChannelRuntimeOptions(() => this.channelRuntime);
+  readonly routeMeshRuntimeOptions =
+    new DefaultZLinkRouteMeshRuntimeOptions(() => this.spotNodeRuntime);
   readonly routeTransport: ZLinkRuntimeRouteTransport;
   readonly spotAddressTransport: ZLinkHostSpotAddressTransport;
   readonly spotPublisherTransport = new ZLinkRuntimeSpotPublisherTransport(() => this.spotNodeRuntime);
@@ -299,9 +302,9 @@ export class ZLinkFrameworkRuntimeHost implements
           !routingIdsEqual(current.nodeRid, actorRef.nodeRid)
         );
       },
-      isCurrentHandoffTarget: (actorId, spotRid) => {
-        const currentSpotRid = this.actorManager?.getState(actorId)?.spotRid;
-        return routingIdsEqual(currentSpotRid, spotRid);
+      isCurrentHandoffTarget: (actorId, spotId) => {
+        const currentSpotId = this.actorManager?.getState(actorId)?.spotId;
+        return currentSpotId === spotId;
       }
     });
     this.actorTransferRegistry = new ZLinkActorTransferRegistry(
@@ -548,11 +551,11 @@ export class ZLinkFrameworkRuntimeHost implements
                 spotManager.materializeInstance(
                   meshName,
                   target.stableType,
-                  target.targetSpotRid as never,
+                  target.targetSpotId as never,
                   this.state?.abortController.signal
                 ),
               discard: (target) =>
-                spotManager.discardInstance(meshName, target.targetSpotRid as never)
+                spotManager.discardInstance(meshName, target.targetSpotId as never)
             });
           }
           activationNode.registerAsyncInstanceActivationAuthority?.(
@@ -863,11 +866,11 @@ export class ZLinkFrameworkRuntimeHost implements
           spotManager.materializeInstance(
             meshName,
             target.stableType,
-            target.targetSpotRid as never,
+            target.targetSpotId as never,
             this.state?.abortController.signal
           ),
         discard: (target) =>
-          spotManager.discardInstance(meshName, target.targetSpotRid as never)
+          spotManager.discardInstance(meshName, target.targetSpotId as never)
       });
     }
   }
@@ -996,18 +999,20 @@ export class ZLinkFrameworkRuntimeHost implements
             const capability = descriptor.objectCapabilities.find(candidate =>
               candidate.objectKind === 'user_spot'
               && candidate.stableType === request.stableType);
+            const spotTypeCapacity = descriptor.populationCapacity.spotTypes.find(candidate =>
+              candidate.objectKind === 'user_spot'
+              && candidate.stableType === request.stableType);
+            const spots = descriptor.populationCapacity.spots;
             return descriptor.state === 1
               && descriptor.objectRole === 'server'
               && descriptor.placementWeight > 0
               && excludedNodeRids?.has(String(descriptor.rid)) !== true
-              && descriptor.objectCapacity.activeObjects < descriptor.objectCapacity.maxActiveObjects
-              && descriptor.objectCapacity.pendingActivations
-                < descriptor.objectCapacity.maxPendingActivations
+              && spots.active + spots.reserved < spots.limit
               && capability !== undefined
-              && (capability.activeLimit === undefined
-                || capability.active + capability.reserved < capability.activeLimit)
-              && (capability.pendingLimit === undefined
-                || capability.reserved < capability.pendingLimit);
+              && (spotTypeCapacity === undefined
+                || spotTypeCapacity.limit === 0
+                || spotTypeCapacity.active + spotTypeCapacity.reserved
+                  < spotTypeCapacity.limit);
           });
         const selected = selectLocationPlacementDescriptor(descriptors);
         if (selected === undefined) return undefined;
@@ -1057,29 +1062,29 @@ export class ZLinkFrameworkRuntimeHost implements
               } finally {
                 message.close();
               }
-              local.beginUserSpotPublication(meshName, record.spotRid as never);
+              local.beginUserSpotPublication(meshName, record.spotId as never);
               try {
                 const result = await local.getOrCreate(
                   meshName,
                   selected.implementation as never,
-                  record.spotRid as never,
+                  record.spotId as never,
                   request,
                   signal
                 );
                 return {
                   ...result,
                   publication: {
-                    publish: () => local.publishUserSpot(meshName, record.spotRid as never),
-                    abort: () => local.abortUserSpotPublication(meshName, record.spotRid as never)
+                    publish: () => local.publishUserSpot(meshName, record.spotId as never),
+                    abort: () => local.abortUserSpotPublication(meshName, record.spotId as never)
                   }
                 };
               } catch (error) {
-                local.abortUserSpotPublication(meshName, record.spotRid as never);
+                local.abortUserSpotPublication(meshName, record.spotId as never);
                 throw error;
               }
             },
             async cleanupSignal => {
-              await local.close(meshName, record.spotRid as never, cleanupSignal);
+              await local.close(meshName, record.spotId as never, cleanupSignal);
             },
             signal
           );
@@ -1113,21 +1118,21 @@ export class ZLinkFrameworkRuntimeHost implements
                 : coordinated.result.state === ZLinkSpotCreateState.Created
                   ? 'created' as const
                   : 'rejected' as const,
-              spotRid: String(coordinated.spot.spotRid),
+              spotId: String(coordinated.spot.spotId),
               objectGeneration: coordinated.spot.objectGeneration
             },
             ...(payload === undefined ? {} : { payload })
           };
         },
         close: async (record, signal) => {
-          if (!local.hasActiveSpot(record.target.spotRid as never)) {
+          if (!local.hasActiveSpot(record.target.spotId as never)) {
             throw new ZLinkFrameworkException(
               ZLinkFrameworkErrorKind.SpotMoving,
-              `User Spot '${record.target.spotRid}' is not materialized on its authority owner.`,
+              `User Spot '${record.target.spotId}' is not materialized on its authority owner.`,
               true
             );
           }
-          if (!local.canCloseUserSpot(meshName, record.target.spotRid as never)) {
+          if (!local.canCloseUserSpot(meshName, record.target.spotId as never)) {
             return {
               terminalResult: RequestResult.Ok,
               failureCode: 0,
@@ -1146,7 +1151,7 @@ export class ZLinkFrameworkRuntimeHost implements
                 record,
                 (spot, closeSignal) => local.close(
                   spot.meshName,
-                  spot.spotRid,
+                  spot.spotId,
                   closeSignal
                 ),
                 signal
@@ -1513,7 +1518,7 @@ export class ZLinkFrameworkRuntimeHost implements
     const legacy = this.locationOwner.createSpotRouteResolver(
       this.meshRouters.spotLocationMeshNames(),
       this.meshRouters.spotRouterChannelIdByMesh(),
-      (spotRid) => this.spotManager?.resolveLocalSpotRoute(spotRid)
+      (spotId) => this.spotManager?.resolveLocalSpotRoute(spotId)
     );
     const authority = this.locationOwner.currentStores?.locationStore;
     return authority === undefined
@@ -1638,11 +1643,26 @@ function selectLocationPlacementDescriptor(
     0n
   );
   if (total === 0n) return undefined;
-  let point = BigInt(Math.floor(Math.random() * Number(total)));
+  let point = randomBigIntBelow(total);
   for (const descriptor of descriptors) {
     const weight = BigInt(descriptor.placementWeight);
     if (point < weight) return descriptor;
     point -= weight;
   }
   return descriptors.at(-1);
+}
+
+function randomBigIntBelow(exclusiveUpperBound: bigint): bigint {
+  if (exclusiveUpperBound <= 0n) {
+    throw new RangeError('Random selection upper bound must be positive.');
+  }
+  const bitLength = exclusiveUpperBound.toString(2).length;
+  const byteLength = Math.ceil(bitLength / 8);
+  const highBitMask = 0xff >> (byteLength * 8 - bitLength);
+  while (true) {
+    const bytes = randomBytes(byteLength);
+    bytes[0] = bytes[0]! & highBitMask;
+    const value = BigInt(`0x${bytes.toString('hex')}`);
+    if (value < exclusiveUpperBound) return value;
+  }
 }

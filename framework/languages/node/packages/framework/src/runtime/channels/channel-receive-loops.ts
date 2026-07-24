@@ -29,7 +29,7 @@ interface ZLinkChannelRequestDispatchLoop {
     received: {
       readonly parts: readonly Message[];
       readonly routingId: unknown;
-      readonly spotRid?: unknown;
+      readonly spotId?: unknown;
       readonly requestSeq: bigint | null;
       readonly send?: () => ZLinkMultipartOperation<ZLinkMultipartSubmitOperation>;
     },
@@ -49,7 +49,7 @@ interface ZLinkRoutePacketDispatchLoop {
     received: {
       readonly parts: readonly Message[];
       readonly routingId: unknown;
-      readonly spotRid?: unknown;
+      readonly spotId?: unknown;
       readonly requestSeq: bigint | null;
     },
     router: {
@@ -121,7 +121,7 @@ export class ZLinkChannelReceiveLoop {
   private async dispatchAndClose(received: {
     parts: readonly Message[];
     routingId: unknown;
-    spotRid?: unknown;
+    spotId?: unknown;
     requestSeq: bigint | null;
     send?: () => ZLinkMultipartOperation<ZLinkMultipartSubmitOperation>;
     close(): void;
@@ -275,7 +275,7 @@ export class ZLinkRouteReceiveLoop {
   private async dispatchAndClose(received: {
     parts: readonly Message[];
     routingId: unknown;
-    spotRid?: unknown;
+    spotId?: unknown;
     requestSeq: bigint | null;
     close(): void;
   }): Promise<void> {

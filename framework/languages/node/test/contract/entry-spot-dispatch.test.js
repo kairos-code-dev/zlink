@@ -213,7 +213,7 @@ test('Entry Spot routed actor packet records only an explicit remote bound sessi
         return {
           routerChannelId: 'bingo.room.route',
           targetNodeRid: zlink.RoutingId.from('play-node-a'),
-          spotRid: zlink.RoutingId.from('room-1'),
+          spotId: zlink.RoutingId.from('room-1'),
           spotKind: framework.ZLinkSpotKind.User
         };
       }
@@ -238,7 +238,7 @@ test('Entry Spot routed actor packet records only an explicit remote bound sessi
     actorId: 'player-1',
     routerChannelId: 'bingo.room.route',
     boundSessionTargetNodeRid: 'session-node',
-    boundSessionSpotRid: 'session-entry',
+    boundSessionSpotId: 'session-entry',
     header: Buffer.from(header.data()).toString('base64'),
     payload: Buffer.from(payload.data()).toString('base64')
   })));
@@ -248,7 +248,7 @@ test('Entry Spot routed actor packet records only an explicit remote bound sessi
     routed: {
       parts: [relay],
       routingId: 'play-node',
-      spotRid: 'play-entry',
+      spotId: 'play-entry',
       requestSeq: 1n,
       reply() {
         return {
@@ -266,17 +266,16 @@ test('Entry Spot routed actor packet records only an explicit remote bound sessi
   await waitFor(() => capturedTarget !== undefined, 'remote target capture');
   assert.equal(capturedTarget.routerChannelId, 'bingo.room.route');
   assert.equal(String(capturedTarget.targetNodeRid), 'session-node');
-  assert.equal(String(capturedTarget.spotRid), 'session-entry');
+  assert.equal(String(capturedTarget.spotId), 'session-entry');
   assert.equal(typeof capturedTarget.targetNodeRid, 'string');
-  assert.equal(typeof capturedTarget.spotRid, 'string');
+  assert.equal(typeof capturedTarget.spotId, 'string');
   await waitFor(() => replies.length === 1, 'routed actor packet reply');
   const reply = JSON.parse(Buffer.from(replies[0]).toString('utf8'));
   assert.deepEqual(reply.actorPacketTarget, {
     routerChannelId: 'bingo.room.route',
     targetNodeRid: 'play-node-a',
     targetNodeRidHex: zlink.RoutingId.from('play-node-a').toHex(),
-    spotRid: 'room-1',
-    spotRidHex: zlink.RoutingId.from('room-1').toHex(),
+    spotId: 'room-1',
     spotKind: framework.ZLinkSpotKind.User
   });
 
@@ -292,7 +291,7 @@ test('Entry Spot routed actor packet records only an explicit remote bound sessi
     routed: {
       parts: [backendRelay],
       routingId: 'backend-node',
-      spotRid: 'backend-spot',
+      spotId: 'backend-spot',
       requestSeq: 2n,
       reply() {
         return {
@@ -392,7 +391,7 @@ test('Entry Spot materializes a remotely returning actor with its original Entry
       routed: {
         parts: [part],
         routingId: 'play-node-a',
-        spotRid: 'play-node-b-entry',
+        spotId: 'play-node-b-entry',
         requestSeq: 1n,
         reply() {
           return {
@@ -498,7 +497,7 @@ test('Entry Spot routed bound session command decodes registered channel seriali
     routed: {
       parts: [header, payload],
       routingId: 'play-node',
-      spotRid: 'session-entry',
+      spotId: 'session-entry',
       requestSeq: null,
       reply() {
         throw new Error('send command is not replyable');
@@ -529,7 +528,7 @@ test('runtime host reports joined Spot route before stale remote actor packet ta
     getState(actorId) {
       assert.equal(actorId, 'player-2');
       return {
-        spotRid: 'bingo-room-1',
+        spotId: 'bingo-room-1',
         nativeActorRef: {
           nodeRid: 'play-node-1',
           actorId: 'player-2',
@@ -538,7 +537,7 @@ test('runtime host reports joined Spot route before stale remote actor packet ta
         remoteActorPacketTarget: {
           routerChannelId: 'bingo.room.route',
           targetNodeRid: 'play-node-1',
-          spotRid: 'play-entry-spot'
+          spotId: 'play-entry-spot'
         }
       };
     }
@@ -547,7 +546,7 @@ test('runtime host reports joined Spot route before stale remote actor packet ta
   assert.deepEqual(runtime.boundSessionRelay.actorPackets.actorPacketTargetForState('player-2'), {
     routerChannelId: 'bingo.room.route',
     targetNodeRid: 'play-node-1',
-    spotRid: 'bingo-room-1',
+    spotId: 'bingo-room-1',
     spotKind: 'user'
   });
 });
@@ -575,7 +574,7 @@ test('runtime host normalizes remote actor join bound-session route ids', async 
     }
   };
   runtime.spotManager = {
-    async admitActorJoin(_spotRid, joinedActor, request, commit) {
+    async admitActorJoin(_spotId, joinedActor, request, commit) {
       assert.equal(joinedActor, actor);
       assert.equal(request.data().toString(), 'join-request');
       commit({});
@@ -585,7 +584,7 @@ test('runtime host normalizes remote actor join bound-session route ids', async 
 
   const result = await runtime.boundSessionRelay.actorJoins.receive({
     packetName: '__zlink.actor.join_spot.request',
-    spotRid: 'room-1',
+    spotId: 'room-1',
     actorId: 'player-1',
     actorType: 'PlayerActor',
     actorNodeRid: 'play-node',
@@ -600,9 +599,9 @@ test('runtime host normalizes remote actor join bound-session route ids', async 
   assert.equal(result.accepted, true);
   assert.equal(capturedTarget.routerChannelId, 'bingo.room.route');
   assert.equal(String(capturedTarget.targetNodeRid), 'session-node');
-  assert.equal(String(capturedTarget.spotRid), 'session-node');
+  assert.equal(String(capturedTarget.spotId), 'session-node');
   assert.equal(typeof capturedTarget.targetNodeRid, 'string');
-  assert.equal(typeof capturedTarget.spotRid, 'string');
+  assert.equal(typeof capturedTarget.spotId, 'string');
 });
 
 test('runtime host remembers routed packet target for stream-bound actors without actor manager', async () => {
@@ -621,7 +620,7 @@ test('runtime host remembers routed packet target for stream-bound actors withou
       actorPacketTarget: {
         routerChannelId: 'bingo.room.route',
         targetNodeRid: 'play-node-1',
-        spotRid: 'bingo-room-1'
+        spotId: 'bingo-room-1'
       }
     })))];
   };
@@ -661,14 +660,14 @@ test('runtime host keeps routed packet target across stream actor wrappers', asy
     })
   });
   runtime.routeTransport.requestRawToSpot = async (remoteAddress) => {
-    routedTargets.push(`${remoteAddress.routerChannelId}:${remoteAddress.targetNodeRid}:${remoteAddress.spotRid}`);
+    routedTargets.push(`${remoteAddress.routerChannelId}:${remoteAddress.targetNodeRid}:${remoteAddress.spotId}`);
     return [zlink.Message.from(Buffer.from(JSON.stringify({
       ok: true,
       response: { accepted: true },
       actorPacketTarget: {
         routerChannelId: 'bingo.room.route',
         targetNodeRid: 'play-node-a',
-        spotRid: 'room-1',
+        spotId: 'room-1',
         spotKind: framework.ZLinkSpotKind.User
       }
     })))];
@@ -721,7 +720,7 @@ test('runtime host raw actor relay reply updates actor packet target for the nex
   state.setRemoteActorPacketTarget({
     routerChannelId: 'bingo.room.route',
     targetNodeRid: 'bingo-play-node-b',
-    spotRid: 'bingo-play-node-b',
+    spotId: 'bingo-play-node-b',
     spotKind: framework.ZLinkSpotKind.Entry
   });
   runtime.setActorManager({
@@ -731,14 +730,14 @@ test('runtime host raw actor relay reply updates actor packet target for the nex
     }
   });
   runtime.routeTransport.requestRawToSpot = async (remoteAddress) => {
-    routedTargets.push(`${remoteAddress.routerChannelId}:${remoteAddress.targetNodeRid}:${remoteAddress.spotRid}`);
+    routedTargets.push(`${remoteAddress.routerChannelId}:${remoteAddress.targetNodeRid}:${remoteAddress.spotId}`);
     return [zlink.Message.from(Buffer.from(JSON.stringify({
       ok: true,
       response: { accepted: true },
       actorPacketTarget: {
         routerChannelId: 'bingo.room.route',
         targetNodeRid: 'bingo-play-node-a',
-        spotRid: 'bingo-room-1',
+        spotId: 'bingo-room-1',
         spotKind: framework.ZLinkSpotKind.User
       }
     })))];
@@ -778,12 +777,12 @@ test('runtime host raw actor relay reply updates actor packet target for the nex
   assert.deepEqual({
     routerChannelId: state.remoteActorPacketTarget.routerChannelId,
     targetNodeRid: String(state.remoteActorPacketTarget.targetNodeRid),
-    spotRid: String(state.remoteActorPacketTarget.spotRid),
+    spotId: String(state.remoteActorPacketTarget.spotId),
     spotKind: state.remoteActorPacketTarget.spotKind
   }, {
     routerChannelId: 'bingo.room.route',
     targetNodeRid: 'bingo-play-node-a',
-    spotRid: 'bingo-room-1',
+    spotId: 'bingo-room-1',
     spotKind: framework.ZLinkSpotKind.User
   });
 });

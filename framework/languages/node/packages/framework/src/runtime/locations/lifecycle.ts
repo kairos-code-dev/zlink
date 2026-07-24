@@ -83,7 +83,7 @@ export class ZLinkLocationLifecycle {
     actorId: string,
     actorRef: ActorRef,
     spotMeshName: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotGeneration: bigint,
     membershipEpoch: bigint,
     ownerNodeGeneration: bigint,
@@ -94,7 +94,7 @@ export class ZLinkLocationLifecycle {
       actorId,
       actorRef,
       spotMeshName,
-      spotRid,
+      spotId,
       spotGeneration,
       membershipEpoch,
       ownerNodeGeneration,
@@ -106,7 +106,7 @@ export class ZLinkLocationLifecycle {
     actorType: string,
     actorId: string,
     spotMeshName: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotGeneration: bigint,
     membershipEpoch: bigint,
     ownerNodeGeneration: bigint
@@ -115,7 +115,7 @@ export class ZLinkLocationLifecycle {
       actorType,
       actorId,
       spotMeshName,
-      spotRid,
+      spotId,
       spotGeneration,
       membershipEpoch,
       ownerNodeGeneration
@@ -125,7 +125,7 @@ export class ZLinkLocationLifecycle {
   async notifyActorLeftSpot(
     actorType: string,
     actorId: string,
-    entrySpotRid: RoutingId,
+    entrySpotId: RoutingId,
     entrySpotGeneration: bigint,
     membershipEpoch: bigint,
     ownerNodeGeneration: bigint
@@ -133,7 +133,7 @@ export class ZLinkLocationLifecycle {
     await this.actorClaims.notifyLeftSpot(
       actorType,
       actorId,
-      entrySpotRid,
+      entrySpotId,
       entrySpotGeneration,
       membershipEpoch,
       ownerNodeGeneration
@@ -179,7 +179,7 @@ export class ZLinkLocationLifecycle {
 
   async claimSpot(
     meshName: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotType: string,
     nodeRid: RoutingId,
     spotKind: ZLinkSpotKind,
@@ -189,7 +189,7 @@ export class ZLinkLocationLifecycle {
   ): Promise<ZLinkLocationWriteStatus> {
     return await this.spotClaims.claim(
       meshName,
-      spotRid,
+      spotId,
       spotType,
       nodeRid,
       spotKind,
@@ -199,8 +199,8 @@ export class ZLinkLocationLifecycle {
     );
   }
 
-  async releaseSpot(meshName: string, spotRid: RoutingId): Promise<void> {
-    await this.spotClaims.release(meshName, spotRid);
+  async releaseSpot(meshName: string, spotId: RoutingId): Promise<void> {
+    await this.spotClaims.release(meshName, spotId);
   }
 
   async bindActorSessionRoute(sessionRid: RoutingId, actorId: string, ownerNodeRid: RoutingId): Promise<void> {

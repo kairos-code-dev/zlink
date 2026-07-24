@@ -1,4 +1,4 @@
-import type { ActorRef, RoutingId } from '../Common';
+import type { ActorRef, RoutingId, SpotId } from '../Common';
 import type { ZLinkSpotKind } from '../Spots';
 import type { ZLinkLocationAutoConnectType, ZLinkLocationRole, ZLinkRouteKind } from './Values';
 
@@ -23,19 +23,18 @@ export interface ZLinkObjectCapability {
   readonly stableType: string;
   readonly policy: ZLinkObjectMaintenancePolicyKind;
   readonly hasSnapshotAdapter: boolean;
-  /** Current active population for this exact object kind and stable type. */
-  readonly active: number;
-  /** Current reserved population for this exact object kind and stable type. */
-  readonly reserved: number;
-  readonly activeLimit?: number;
-  readonly pendingLimit?: number;
+  readonly limit: number;
 }
 
-export interface ZLinkObjectCapacity {
-  readonly activeObjects: number;
-  readonly pendingActivations: number;
-  readonly maxActiveObjects: number;
-  readonly maxPendingActivations: number;
+export interface ZLinkPopulationCapacity {
+  readonly active: number;
+  readonly reserved: number;
+  readonly limit: number;
+}
+
+export interface ZLinkSpotTypeCapacity extends ZLinkPopulationCapacity {
+  readonly objectKind: 'user_spot' | 'instance_spot';
+  readonly stableType: string;
 }
 
 export interface ZLinkPeerLocation {
@@ -62,8 +61,17 @@ export interface ZLinkMeshNodeDescriptor {
   readonly descriptorRevision: bigint;
   readonly endpoint: string;
   readonly objectRole: ZLinkObjectRole;
+  readonly entrySpotId?: string;
   readonly placementWeight: number;
-  readonly objectCapacity: ZLinkObjectCapacity;
+  readonly populationCapacity: {
+    readonly actors: ZLinkPopulationCapacity;
+    readonly spots: ZLinkPopulationCapacity;
+    readonly spotTypes: readonly ZLinkSpotTypeCapacity[];
+  };
+  readonly activationConcurrency: {
+    readonly active: number;
+    readonly limit: number;
+  };
   readonly channelWeights: Readonly<Record<string, number>>;
   readonly applicationVersion: bigint;
   readonly spotTypes: readonly string[];
@@ -105,7 +113,7 @@ export interface ZLinkFanoutPublisherDescriptor {
 
 export interface ZLinkSpotLocation {
   readonly meshName: string;
-  readonly spotRid: RoutingId;
+  readonly spotId: SpotId;
   /** Core lifecycle generation of the addressed Spot. */
   readonly spotGeneration: bigint;
   readonly spotType: string;
@@ -129,7 +137,7 @@ export interface ZLinkActorLocation {
   readonly ownerNodeGeneration: bigint;
   /** Kind of Spot that currently owns this Actor. */
   readonly spotKind: ZLinkSpotKind;
-  readonly spotRid: RoutingId;
+  readonly spotId: SpotId;
   readonly spotGeneration: bigint;
   readonly membershipEpoch: bigint;
   readonly ownerId: string;

@@ -2,6 +2,7 @@ import type { ZLinkActor } from '../Actors';
 import type { ZLinkPublishCall, ZLinkRequestCall, ZLinkSendCall } from '../Channels';
 import type {
   RoutingId,
+  SpotId,
   Type,
   ZLinkMessage,
   ZLinkMessageMetadata
@@ -41,7 +42,7 @@ export interface ZLinkSpotCommonContext<
   TSpot = ZLinkSpot<TActor>
 > {
   readonly meshName: string;
-  readonly spotRid: RoutingId;
+  readonly spotId: SpotId;
   readonly nodeRid: RoutingId;
   readonly routingId: RoutingId;
   readonly outbound: ZLinkSpotOutbound;
@@ -89,17 +90,15 @@ export interface ZLinkSpotActorReplyOptions {
 }
 
 export interface ZLinkSpotOutbound {
-  sendToSpot(spotRid: SpotRid, message: unknown): ZLinkSpotSendCall;
-  requestToSpot(spotRid: SpotRid, request: unknown): ZLinkSpotRequestCall;
+  sendToSpot(spotId: SpotId, message: unknown): ZLinkSpotSendCall;
+  requestToSpot(spotId: SpotId, request: unknown): ZLinkSpotRequestCall;
   publish(channelName: string, topic: string, event: unknown): ZLinkPublishCall;
   sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
   requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
 }
 
-export type SpotRid = RoutingId;
-
 export interface SpotRef {
-  readonly spotRid: SpotRid;
+  readonly spotId: SpotId;
   readonly objectGeneration: bigint;
   readonly meshName: string;
   readonly nodeRid: RoutingId;
@@ -138,13 +137,13 @@ export interface ZLinkSpotCreateResult {
 }
 
 export interface ZLinkSpotInfo {
-  readonly spotRid: RoutingId;
+  readonly spotId: SpotId;
 }
 
 export interface ZLinkSpotManager {
   create(spotType: string): ZLinkSpotCreateCall;
-  getOrCreate(spotRid: SpotRid, spotType: string): ZLinkSpotGetOrCreateCall;
-  find(spotRid: SpotRid, signal?: AbortSignal): Promise<SpotRef | undefined>;
+  getOrCreate(spotId: SpotId, spotType: string): ZLinkSpotGetOrCreateCall;
+  find(spotId: SpotId, signal?: AbortSignal): Promise<SpotRef | undefined>;
   close(spot: SpotRef, signal?: AbortSignal): Promise<boolean>;
 }
 

@@ -96,13 +96,13 @@ export class ZLinkChannelRequestDispatcher {
   async dispatch(received: {
     parts: readonly Message[];
     routingId: unknown;
-    spotRid?: unknown;
+    spotId?: unknown;
     requestSeq: bigint | null;
     send?: () => ZLinkMultipartOperation<ZLinkMultipartSubmitOperation>;
   }, router: {
     reply(routingId: unknown, requestSeq: bigint): ZLinkMultipartReplyOperation;
   }, signal?: AbortSignal): Promise<boolean | void> {
-    if (received.spotRid !== null && received.spotRid !== undefined) {
+    if (received.spotId !== null && received.spotId !== undefined) {
       if (received.send === undefined) {
         throw new ZLinkConfigurationException('Routed SPOT packet is missing a local SPOT delivery context.');
       }
@@ -358,7 +358,7 @@ export interface ZLinkRoutePacketDispatcherOptions {
   readonly rawBridgeReplyHandler?: (received: {
     readonly parts: readonly Message[];
     readonly routingId: unknown;
-    readonly spotRid?: unknown;
+    readonly spotId?: unknown;
     readonly requestSeq: bigint | null;
   }) => boolean;
 }
@@ -415,7 +415,7 @@ export class ZLinkRoutePacketDispatcher {
   async dispatch(received: {
     parts: readonly Message[];
     routingId: unknown;
-    spotRid?: unknown;
+    spotId?: unknown;
     requestSeq: bigint | null;
     send?: () => ZLinkMultipartOperation<ZLinkMultipartSubmitOperation>;
   }, router: {
@@ -435,7 +435,7 @@ export class ZLinkRoutePacketDispatcher {
         return true;
       }
     }
-    if (received.spotRid !== null && received.spotRid !== undefined) {
+    if (received.spotId !== null && received.spotId !== undefined) {
       if (received.send === undefined) {
         throw new ZLinkConfigurationException('Routed SPOT packet is missing a local SPOT delivery context.');
       }

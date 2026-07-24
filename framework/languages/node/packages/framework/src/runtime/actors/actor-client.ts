@@ -38,7 +38,11 @@ import {
   ZLinkStreamMessageKind
 } from '../streams/protocol';
 import type { ZLinkStoreLocationResolvers } from '../locations';
-import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
+import {
+  captureZLinkSpotSerialTurn,
+  requireZLinkYieldTurn,
+  type ZLinkSpotSerialTurn
+} from '../execution';
 import { ZLinkConfigurationException } from '../configuration';
 import { ZLinkMeshSubmitterRegistry } from '../messaging';
 
@@ -383,8 +387,9 @@ class DefaultZLinkActorRequestCall implements ZLinkActorRequestCall {
   }
 
   yield<TReply>(signal?: AbortSignal): Promise<TReply> {
+    const turn = requireZLinkYieldTurn(this.turn);
     const pending = this.execute<TReply>(signal);
-    return this.turn === undefined ? pending : this.turn.yieldPromise(pending);
+    return turn.yieldPromise(pending);
   }
 
   private execute<TReply>(signal?: AbortSignal): Promise<TReply> {

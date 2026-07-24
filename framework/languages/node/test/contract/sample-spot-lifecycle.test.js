@@ -108,7 +108,7 @@ test('TicTacToe closes a terminal room Spot after every actor leaves', async () 
       });
       let closeCalls = 0;
       spot.context = {
-        spotRid: 'room-1',
+        spotId: 'room-1',
         close: async () => { closeCalls += 1; return true; }
       };
       await spot.onInitialize();

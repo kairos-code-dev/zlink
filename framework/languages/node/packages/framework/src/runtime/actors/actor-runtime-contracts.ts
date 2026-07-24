@@ -29,7 +29,7 @@ export interface ZLinkActorManagerOptions {
   readonly actorMeshNameProvider?: (actorType: string) => string | undefined;
   readonly actorLeaveSpot?: (
     meshName: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     actor: ZLinkActor,
     signal?: AbortSignal
   ) => Promise<void>;
@@ -68,7 +68,7 @@ export interface ZLinkActorJoinCoordinator {
   joinSpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined

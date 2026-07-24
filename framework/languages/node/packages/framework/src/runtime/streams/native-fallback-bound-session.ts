@@ -63,7 +63,7 @@ export class ZLinkNativeFallbackBoundSession implements ZLinkBoundSession {
       const target = {
         routerChannelId: remoteTarget.routerChannelId,
         targetNodeRid: remoteTarget.targetNodeRid,
-        spotRid: remoteTarget.spotRid,
+        spotId: remoteTarget.spotId,
         spotKind: spotKind ?? ZLinkSpotKind.Entry
       };
       if (await tryRequestRoutedJson(
@@ -161,7 +161,7 @@ class ZLinkNativeFallbackBoundSessionSendCall implements ZLinkBoundSessionSendCa
       const target = {
         routerChannelId: remoteTarget.routerChannelId,
         targetNodeRid: remoteTarget.targetNodeRid,
-        spotRid: remoteTarget.spotRid,
+        spotId: remoteTarget.spotId,
         spotKind: ZLinkSpotKind.Entry
       };
       const result = await this.options.routedTransport.sendToSpot(

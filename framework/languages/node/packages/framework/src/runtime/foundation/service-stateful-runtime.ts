@@ -90,7 +90,7 @@ export interface ServiceStatefulMailboxData {
   readonly correlation?: bigint;
   readonly receiveKind: number;
   readonly operationKind: number;
-  readonly sourceSpotRid?: string;
+  readonly sourceSpotId?: string;
   readonly sourceActor?: ServiceActorRef;
   readonly sourceBindingGeneration?: bigint;
   readonly channelName?: string;
@@ -201,7 +201,7 @@ export interface ServiceAsyncInstanceActivationAuthority {
 
 export class ServiceInstanceActivationRedirectError extends Error {
   constructor(readonly route: ServiceInstanceRouteFence) {
-    super(`Instance Spot '${route.targetSpotRid}' is owned by '${route.targetNodeRid}'.`);
+    super(`Instance Spot '${route.targetSpotId}' is owned by '${route.targetNodeRid}'.`);
     this.name = 'ServiceInstanceActivationRedirectError';
   }
 }
@@ -295,21 +295,21 @@ export class ServiceStatefulRuntime {
   }
 
   activateInstanceSpot(
-    spotRid: string,
+    spotId: string,
     instanceType: string,
     attempt: bigint
   ): { readonly spot: ServiceSpotState; readonly created: boolean } {
     this.requireOpen();
-    const result = this.registry.reserve('instanceSpot', spotRid, instanceType, attempt);
+    const result = this.registry.reserve('instanceSpot', spotId, instanceType, attempt);
     if (result.kind === 'existing') {
       if (result.spot === undefined) throw new Error('Instance Spot reservation lost its Spot state.');
       return { spot: result.spot, created: false };
     }
     if (result.kind === 'typeMismatch') {
-      throw new TypeError(`Instance Spot '${spotRid}' is assigned to another type.`);
+      throw new TypeError(`Instance Spot '${spotId}' is assigned to another type.`);
     }
     if (result.kind === 'attemptStale') {
-      throw new ServiceStaleGenerationError('spot', spotRid);
+      throw new ServiceStaleGenerationError('spot', spotId);
     }
     const spot = this.registry.commitReservation(result.reservation);
     if (!('kind' in spot) || spot.kind !== 'instance') {
@@ -320,9 +320,9 @@ export class ServiceStatefulRuntime {
 
   registerInstanceIntent(instanceType: string, route: ServiceInstanceRouteFence): void {
     if (route.targetNodeRid !== this.nodeRid || route.targetNodeGeneration !== this.nodeGeneration) {
-      throw new ServiceStaleGenerationError('spot', route.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', route.targetSpotId);
     }
-    const current = this.instanceIntents.get(route.targetSpotRid);
+    const current = this.instanceIntents.get(route.targetSpotId);
     if (current !== undefined) {
       if (current.route.authorityOwnerGeneration > route.authorityOwnerGeneration) {
         return;
@@ -332,24 +332,24 @@ export class ServiceStatefulRuntime {
           if (current.instanceType === instanceType && sameInstanceRoute(current.route, route)) {
             return;
           }
-          throw new ServiceStaleGenerationError('spot', route.targetSpotRid);
+          throw new ServiceStaleGenerationError('spot', route.targetSpotId);
         }
       }
     }
-    this.instanceIntents.set(route.targetSpotRid, Object.freeze({ instanceType, route: { ...route } }));
+    this.instanceIntents.set(route.targetSpotId, Object.freeze({ instanceType, route: { ...route } }));
   }
 
   forgetInstanceIntent(
-    spotRid: string,
+    spotId: string,
     authorityOwnerGeneration: bigint,
     storeVersion?: string
   ): void {
-    const current = this.instanceIntents.get(spotRid);
+    const current = this.instanceIntents.get(spotId);
     if (
       current?.route.authorityOwnerGeneration === authorityOwnerGeneration
       && (storeVersion === undefined || current.route.storeVersion === storeVersion)
     ) {
-      this.instanceIntents.delete(spotRid);
+      this.instanceIntents.delete(spotId);
     }
   }
 
@@ -456,21 +456,21 @@ export class ServiceStatefulRuntime {
     if (
       target.targetNodeRid !== this.nodeRid
       || target.targetNodeGeneration !== this.nodeGeneration
-      || target.targetSpotRid !== route.targetSpotRid
+      || target.targetSpotId !== route.targetSpotId
       || route.targetNodeRid !== this.nodeRid
       || route.targetNodeGeneration !== this.nodeGeneration
     ) {
-      throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
     const authority = this.asyncInstanceAuthority;
     if (authority === undefined) {
       throw new Error('Async Instance activation authority is not registered.');
     }
     await this.instanceApplicationLifecycle?.materialize(target);
-    const spot = this.registry.spot(target.targetSpotRid)
+    const spot = this.registry.spot(target.targetSpotId)
       ?? this.registry.restoreSpot(
         {
-          spotRid: target.targetSpotRid,
+          spotId: target.targetSpotId,
           generation: route.objectGeneration
         },
         'instance',
@@ -483,7 +483,7 @@ export class ServiceStatefulRuntime {
       || spot.ref.generation !== route.objectGeneration
       || spot.authorityOwnerGeneration !== route.authorityOwnerGeneration
     ) {
-      throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
     this.publishCommittedInstanceRoute(target.stableType, route);
     const record = {
@@ -492,9 +492,9 @@ export class ServiceStatefulRuntime {
       target,
       sourceNodeGeneration: envelope.sourceNodeGeneration,
       sourceNodeRid: envelope.sourceNodeRid,
-      ...(envelope.sourceSpotRid === undefined
+      ...(envelope.sourceSpotId === undefined
         ? {}
-        : { sourceSpotRid: envelope.sourceSpotRid }),
+        : { sourceSpotId: envelope.sourceSpotId }),
       operationKind: envelope.operationKind,
       operation: envelope.operation,
       deadlineUnixMs: envelope.deadlineUnixMs,
@@ -510,7 +510,7 @@ export class ServiceStatefulRuntime {
             target,
             envelope.sourceNodeGeneration,
             envelope.sourceNodeRid,
-            envelope.sourceSpotRid,
+            envelope.sourceSpotId,
             envelope.operationKind,
             envelope.operation,
             envelope.deadlineUnixMs,
@@ -545,7 +545,7 @@ export class ServiceStatefulRuntime {
       || pending.nodeGeneration !== this.nodeGeneration
       || pending.meshName !== envelope.targetMeshName
     ) {
-      throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
     const authority = this.asyncInstanceAuthority;
     if (authority === undefined) {
@@ -555,7 +555,7 @@ export class ServiceStatefulRuntime {
     await this.instanceApplicationLifecycle?.materialize(target);
     const spot = this.registry.restoreSpot(
       {
-        spotRid: target.targetSpotRid,
+        spotId: target.targetSpotId,
         generation: pending.objectGeneration
       },
       'instance',
@@ -607,7 +607,7 @@ export class ServiceStatefulRuntime {
           if (sameSpotRoute(current, route)) {
             return;
           }
-          throw new ServiceStaleGenerationError('spot', route.spot.spotRid);
+          throw new ServiceStaleGenerationError('spot', route.spot.spotId);
         }
       }
     }
@@ -646,34 +646,36 @@ export class ServiceStatefulRuntime {
       throw new Error('Instance Spots do not support logical multicast subscriptions.');
     }
     const key = subscriptionKey(channelName, topicFilter);
-    const subscriptions = this.subscriptions.get(spot.ref.spotRid) ?? new Set<string>();
+    const subscriptions = this.subscriptions.get(spot.ref.spotId) ?? new Set<string>();
     subscriptions.add(key);
-    this.subscriptions.set(spot.ref.spotRid, subscriptions);
+    this.subscriptions.set(spot.ref.spotId, subscriptions);
   }
 
   unsetSubscription(spot: ServiceSpotState, channelName: string, topicFilter: string): void {
-    const subscriptions = this.subscriptions.get(spot.ref.spotRid);
+    const subscriptions = this.subscriptions.get(spot.ref.spotId);
     if (subscriptions === undefined) return;
     subscriptions.delete(subscriptionKey(channelName, topicFilter));
-    if (subscriptions.size === 0) this.subscriptions.delete(spot.ref.spotRid);
+    if (subscriptions.size === 0) this.subscriptions.delete(spot.ref.spotId);
   }
 
-  clearSubscriptions(spotRid: string): void {
-    this.subscriptions.delete(spotRid);
+  clearSubscriptions(spotId: string): void {
+    this.subscriptions.delete(spotId);
   }
 
   publishLogicalMulticast(
     channelName: string,
     topic: string,
     payload: ServiceApplicationPayload,
-    sourceSpotRid = this.nodeRid
+    sourceSpotId = this.nodeRid
   ): ServiceLogicalMulticastDetail {
-    const local = this.enqueueLogicalMulticast(channelName, topic, sourceSpotRid, payload);
+    const local = this.enqueueLogicalMulticast(channelName, topic, sourceSpotId, payload);
     const targets = this.raw.topology.peers()
-      .filter(peer => peer.descriptor.channels.some(channel => channel.name === channelName));
+      .filter(peer => peer.descriptor.channels.some(
+        channel => channel.name === channelName && channel.weight > 0
+      ));
     let admittedRemoteTargetCount = 0;
     let unreachableRemoteTargetCount = 0;
-    const header = encodeLogicalMulticastHeader(channelName, topic, sourceSpotRid);
+    const header = encodeLogicalMulticastHeader(channelName, topic, sourceSpotId);
     const payloadFrame = encodeApplicationPayload(payload);
     for (const target of targets) {
       // Remote admission ends at the source outbound transport queue. The
@@ -696,7 +698,7 @@ export class ServiceStatefulRuntime {
   }
 
   sendToSpot(
-    sourceSpotRid: string,
+    sourceSpotId: string,
     targetNodeRid: string,
     targetSpot: ServiceSpotRef,
     _targetNodeGeneration: bigint,
@@ -705,12 +707,12 @@ export class ServiceStatefulRuntime {
   ): number {
     const target = this.trySpotFence(targetNodeRid, targetSpot);
     if (target === undefined) return SubmitResult.NotFound;
-    const header = encodeSpotHeader('spotSend', sourceSpotRid, target);
+    const header = encodeSpotHeader('spotSend', sourceSpotId, target);
     return this.submitOneWay(targetNodeRid, [header, encodeApplicationPayload(payload)]);
   }
 
   requestToSpot(
-    sourceSpotRid: string,
+    sourceSpotId: string,
     targetNodeRid: string,
     targetSpot: ServiceSpotRef,
     _targetNodeGeneration: bigint,
@@ -727,7 +729,7 @@ export class ServiceStatefulRuntime {
       });
       return pending;
     }
-    const header = encodeSpotHeader('spotRequest', sourceSpotRid, target, pending.id);
+    const header = encodeSpotHeader('spotRequest', sourceSpotId, target, pending.id);
     this.submitRequest(
       pending,
       targetNodeRid,
@@ -806,7 +808,7 @@ export class ServiceStatefulRuntime {
   sendToInstanceSpot(
     route: ServiceInstanceRouteFence,
     payload: ServiceApplicationPayload,
-    sourceSpotRid?: string,
+    sourceSpotId?: string,
     metadataFrame?: Uint8Array
   ): number {
     return this.submitOneWay(route.targetNodeRid, instanceOperationParts([
@@ -814,7 +816,7 @@ export class ServiceStatefulRuntime {
         route,
         this.nodeGeneration,
         this.nodeRid,
-        sourceSpotRid,
+        sourceSpotId,
         'send',
         { high: 0n, low: 0n },
         undefined,
@@ -828,7 +830,7 @@ export class ServiceStatefulRuntime {
     target: ServiceInstanceActivationTarget,
     payload: ServiceApplicationPayload,
     deadlineUnixMs: bigint,
-    sourceSpotRid?: string,
+    sourceSpotId?: string,
     metadataFrame?: Uint8Array
   ): number {
     const operation = { high: this.nodeGeneration, low: this.nextInstanceOperation++ };
@@ -837,7 +839,7 @@ export class ServiceStatefulRuntime {
         target,
         this.nodeGeneration,
         this.nodeRid,
-        sourceSpotRid,
+        sourceSpotId,
         'send',
         operation,
         deadlineUnixMs,
@@ -852,7 +854,7 @@ export class ServiceStatefulRuntime {
     route: ServiceInstanceRouteFence,
     payload: ServiceApplicationPayload,
     timeoutMs: number,
-    sourceSpotRid?: string,
+    sourceSpotId?: string,
     metadataFrame?: Uint8Array
   ): ServiceStatefulPendingOperation {
     const pending = this.operations.reserve(timeoutMs);
@@ -864,7 +866,7 @@ export class ServiceStatefulRuntime {
           route,
           this.nodeGeneration,
           this.nodeRid,
-          sourceSpotRid,
+          sourceSpotId,
           'request',
           { high: 2n, low: pending.id },
           pending.id,
@@ -882,7 +884,7 @@ export class ServiceStatefulRuntime {
     target: ServiceInstanceActivationTarget,
     payload: ServiceApplicationPayload,
     timeoutMs: number,
-    sourceSpotRid?: string,
+    sourceSpotId?: string,
     metadataFrame?: Uint8Array
   ): ServiceStatefulPendingOperation {
     const pending = this.operations.reserve(timeoutMs);
@@ -895,7 +897,7 @@ export class ServiceStatefulRuntime {
           target,
           this.nodeGeneration,
           this.nodeRid,
-          sourceSpotRid,
+          sourceSpotId,
           'request',
           { high: this.nodeGeneration, low: pending.id },
           deadlineUnixMs,
@@ -969,7 +971,7 @@ export class ServiceStatefulRuntime {
     const header = encodeActorJoinHeader(
       pending.id,
       actorRoute,
-      targetSpot.spotRid === targetNodeRid,
+      targetSpot.spotId === targetNodeRid,
       target
     );
     this.submitRequest(
@@ -995,13 +997,13 @@ export class ServiceStatefulRuntime {
     queueMicrotask(() => {
       try {
         const transition = this.registry.leaveActor(actor, expectedMembershipEpoch);
-        this.enqueueActorControl(transition.actor.spot.spotRid, {
+        this.enqueueActorControl(transition.actor.spot.spotId, {
           kind: 'actorControl',
           lifecycleKind: ActorLifecycleKind.Left,
           previousActor: transition.actor.ref,
           currentActor: transition.actor.ref,
-          previousSpotRid: transition.previousSpot.spotRid,
-          currentSpotRid: transition.currentSpot.spotRid,
+          previousSpotId: transition.previousSpot.spotId,
+          currentSpotId: transition.currentSpot.spotId,
           previousSpotGeneration: transition.previousSpot.generation,
           currentSpotGeneration: transition.currentSpot.generation,
           previousMembershipEpoch: transition.previousMembershipEpoch,
@@ -1241,13 +1243,13 @@ export class ServiceStatefulRuntime {
         this.validateSpotFence(record.target);
         return this.enqueueApplication(
           ingress,
-          `spot:${record.target.spot.spotRid}`,
+          `spot:${record.target.spot.spotId}`,
           payload!,
           {
             receiveKind: record.kind === 'spotSend' ? ReceiveKind.SpotSend : ReceiveKind.SpotRequest,
             operationKind: record.kind === 'spotRequest' ? OperationKind.SpotRequest : 0,
             ...(record.correlation === undefined ? {} : { correlation: record.correlation }),
-            sourceSpotRid: record.sourceSpotRid,
+            sourceSpotId: record.sourceSpotId,
             targetSpot: record.target.spot,
             ...(record.kind === 'spotRequest'
               ? { reply: this.replyPort(ingress, record.correlation, 'spotRequest') }
@@ -1281,7 +1283,7 @@ export class ServiceStatefulRuntime {
         this.enqueueLogicalMulticast(
           record.channelName,
           record.topic,
-          record.sourceSpotRid,
+          record.sourceSpotId,
           payload!,
           ingress.sourceRoutingId
         );
@@ -1339,13 +1341,13 @@ export class ServiceStatefulRuntime {
     }
     const result = this.enqueueApplication(
       ingress,
-      `spot:${spot.ref.spotRid}`,
+      `spot:${spot.ref.spotId}`,
       payload,
       {
         receiveKind: ReceiveKind.InstanceSpotActivation,
         operationKind: record.operationKind === 'request' ? OperationKind.InstanceSpotRequest : 0,
         ...(record.operationKind === 'request' ? { correlation: record.replyRouteId } : {}),
-        ...(record.sourceSpotRid === undefined ? {} : { sourceSpotRid: record.sourceSpotRid }),
+        ...(record.sourceSpotId === undefined ? {} : { sourceSpotId: record.sourceSpotId }),
         targetSpot: spot.ref,
         ...(metadataFrame === undefined ? {} : { applicationMetadata: metadataFrame }),
         ...(onTerminalCompletion === undefined ? {} : { onTerminalCompletion }),
@@ -1451,13 +1453,13 @@ export class ServiceStatefulRuntime {
   ): Promise<void> {
     const remainingMs = Number(record.deadlineUnixMs - BigInt(Date.now()));
     if (remainingMs <= 0) {
-      throw new ServiceStaleGenerationError('spot', route.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', route.targetSpotId);
     }
     const redirectedTarget: ServiceInstanceActivationTarget = {
       ...record.target,
       targetNodeRid: route.targetNodeRid,
       targetNodeGeneration: route.targetNodeGeneration,
-      targetSpotRid: route.targetSpotRid
+      targetSpotId: route.targetSpotId
     };
     if (record.operationKind === 'send') {
       const submitted = this.submitOneWay(route.targetNodeRid, instanceOperationParts([
@@ -1465,7 +1467,7 @@ export class ServiceStatefulRuntime {
           redirectedTarget,
           this.nodeGeneration,
           this.nodeRid,
-          record.sourceSpotRid,
+          record.sourceSpotId,
           'send',
           record.operation,
           record.deadlineUnixMs,
@@ -1489,7 +1491,7 @@ export class ServiceStatefulRuntime {
           redirectedTarget,
           this.nodeGeneration,
           this.nodeRid,
-          record.sourceSpotRid,
+          record.sourceSpotId,
           'request',
           record.operation,
           record.deadlineUnixMs,
@@ -1529,16 +1531,16 @@ export class ServiceStatefulRuntime {
       record.route.targetNodeRid !== this.nodeRid
       || record.route.targetNodeGeneration !== this.nodeGeneration
     ) {
-      throw new ServiceStaleGenerationError('spot', record.route.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', record.route.targetSpotId);
     }
-    const intent = this.instanceIntents.get(record.route.targetSpotRid);
+    const intent = this.instanceIntents.get(record.route.targetSpotId);
     if (intent === undefined || !sameInstanceRoute(intent.route, record.route)) {
-      throw new ServiceStaleGenerationError('spot', record.route.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', record.route.targetSpotId);
     }
-    const spot = this.registry.spot(record.route.targetSpotRid)
+    const spot = this.registry.spot(record.route.targetSpotId)
       ?? this.registry.restoreSpot(
         {
-          spotRid: record.route.targetSpotRid,
+          spotId: record.route.targetSpotId,
           generation: record.route.objectGeneration
         },
         'instance',
@@ -1552,7 +1554,7 @@ export class ServiceStatefulRuntime {
       || spot.ref.generation !== record.route.objectGeneration
       || spot.authorityOwnerGeneration !== record.route.authorityOwnerGeneration
     ) {
-      throw new ServiceStaleGenerationError('spot', record.route.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', record.route.targetSpotId);
     }
     return spot;
   }
@@ -1568,8 +1570,8 @@ export class ServiceStatefulRuntime {
       throw new ServiceStaleGenerationError(
         'spot',
         record.activation === 'ready'
-          ? record.route.targetSpotRid
-          : record.target.targetSpotRid
+          ? record.route.targetSpotId
+          : record.target.targetSpotId
       );
     }
   }
@@ -1586,14 +1588,14 @@ export class ServiceStatefulRuntime {
       || target.targetNodeGeneration !== this.nodeGeneration
       || record.deadlineUnixMs < BigInt(Date.now())
     ) {
-      throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
     const authority = this.instanceAuthority;
     if (authority === undefined) {
       throw new Error('Instance activation authority is not registered.');
     }
 
-    const local = this.registry.spot(target.targetSpotRid);
+    const local = this.registry.spot(target.targetSpotId);
     const current = authority.read(target);
     if (local !== undefined) {
       if (
@@ -1602,7 +1604,7 @@ export class ServiceStatefulRuntime {
         || current.kind !== 'ready'
         || !routeMatchesLocal(current.route, local, this.nodeRid, this.nodeGeneration)
       ) {
-        throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+        throw new ServiceStaleGenerationError('spot', target.targetSpotId);
       }
       return local;
     }
@@ -1618,7 +1620,7 @@ export class ServiceStatefulRuntime {
     let activation: { readonly spot: ServiceSpotState; readonly created: boolean };
     try {
       activation = this.activateInstanceSpot(
-        target.targetSpotRid,
+        target.targetSpotId,
         target.stableType,
         reserved.reservation.attempt
       );
@@ -1638,7 +1640,7 @@ export class ServiceStatefulRuntime {
       this.nodeGeneration
     )) {
       if (activation.created) this.registry.closeSpot(activation.spot.ref);
-      throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
     return activation.spot;
   }
@@ -1679,14 +1681,14 @@ export class ServiceStatefulRuntime {
       || target.targetNodeGeneration !== this.nodeGeneration
       || record.deadlineUnixMs < BigInt(Date.now())
     ) {
-      throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
     const authority = this.asyncInstanceAuthority;
     if (authority === undefined) {
       throw new Error('Async Instance activation authority is not registered.');
     }
 
-    const local = this.registry.spot(target.targetSpotRid);
+    const local = this.registry.spot(target.targetSpotId);
     const current = await authority.read(target);
     if (local !== undefined) {
       if (
@@ -1695,7 +1697,7 @@ export class ServiceStatefulRuntime {
         || current.kind !== 'ready'
         || !routeMatchesLocal(current.route, local, this.nodeRid, this.nodeGeneration)
       ) {
-        throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+        throw new ServiceStaleGenerationError('spot', target.targetSpotId);
       }
       return { spot: local, route: current.route };
     }
@@ -1707,7 +1709,7 @@ export class ServiceStatefulRuntime {
       target,
       sourceNodeRid: record.sourceNodeRid,
       sourceNodeGeneration: record.sourceNodeGeneration,
-      ...(record.sourceSpotRid === undefined ? {} : { sourceSpotRid: record.sourceSpotRid }),
+      ...(record.sourceSpotId === undefined ? {} : { sourceSpotId: record.sourceSpotId }),
       operationKind: record.operationKind,
       operation: record.operation,
       ...(record.replyRouteId === undefined ? {} : { replyRouteId: record.replyRouteId }),
@@ -1720,14 +1722,14 @@ export class ServiceStatefulRuntime {
     }
     if (this.closed || record.deadlineUnixMs < BigInt(Date.now())) {
       await authority.abort(target, reserved.reservation);
-      throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
 
     let activation: { readonly spot: ServiceSpotState; readonly created: boolean };
     try {
       await this.instanceApplicationLifecycle?.materialize(target);
       activation = this.activateInstanceSpot(
-        target.targetSpotRid,
+        target.targetSpotId,
         target.stableType,
         reserved.reservation.attempt
       );
@@ -1757,7 +1759,7 @@ export class ServiceStatefulRuntime {
     )) {
       if (activation.created) this.registry.closeSpot(activation.spot.ref);
       await this.instanceApplicationLifecycle?.discard(target);
-      throw new ServiceStaleGenerationError('spot', target.targetSpotRid);
+      throw new ServiceStaleGenerationError('spot', target.targetSpotId);
     }
     this.publishCommittedInstanceRoute(target.stableType, committed.route);
     return { spot: activation.spot, route: committed.route };
@@ -1769,7 +1771,7 @@ export class ServiceStatefulRuntime {
   ): void {
     this.rememberSpotRoute({
       spot: {
-        spotRid: route.targetSpotRid,
+        spotId: route.targetSpotId,
         generation: route.objectGeneration
       },
       targetNodeRid: route.targetNodeRid,
@@ -1795,8 +1797,8 @@ export class ServiceStatefulRuntime {
       lifecycleKind: ActorLifecycleKind.Joined,
       previousActor: current?.ref ?? record.actor.actor,
       currentActor: actor,
-      previousSpotRid: current?.spot.spotRid ?? null,
-      currentSpotRid: record.target.spot.spotRid,
+      previousSpotId: current?.spot.spotId ?? null,
+      currentSpotId: record.target.spot.spotId,
       previousSpotGeneration: current?.spot.generation ?? 0n,
       currentSpotGeneration: record.target.spot.generation,
       previousMembershipEpoch: previousEpoch,
@@ -1806,7 +1808,7 @@ export class ServiceStatefulRuntime {
     const application = payload ?? emptyPayload();
     return this.enqueueApplication(
       ingress,
-      `spot:${record.target.spot.spotRid}`,
+      `spot:${record.target.spot.spotId}`,
       application,
       {
         receiveKind: ReceiveKind.SpotControl,
@@ -1933,7 +1935,7 @@ export class ServiceStatefulRuntime {
   private enqueueLogicalMulticast(
     channelName: string,
     topic: string,
-    sourceSpotRid: string,
+    sourceSpotId: string,
     payload: ServiceApplicationPayload,
     sourceNodeRid = this.nodeRid
   ): { readonly snapshot: number; readonly admitted: number } {
@@ -1943,24 +1945,24 @@ export class ServiceStatefulRuntime {
         return value.slice(0, separator) === channelName
           && topicMatches(value.slice(separator + 1), topic);
       }))
-      .map(([spotRid]) => spotRid)
+      .map(([spotId]) => spotId)
       .sort();
     let admitted = 0;
-    for (const spotRid of targets) {
-      const spot = this.registry.spot(spotRid);
+    for (const spotId of targets) {
+      const spot = this.registry.spot(spotId);
       if (spot === undefined) continue;
       if (this.raw.mailbox.tryEnqueue({
-        owner: `spot:${spotRid}`,
+        owner: `spot:${spotId}`,
         domain: 'application',
         parts: [
-          encodeLogicalMulticastHeader(channelName, topic, sourceSpotRid),
+          encodeLogicalMulticastHeader(channelName, topic, sourceSpotId),
           encodeApplicationPayload(payload)
         ],
         sourceRoutingId: sourceNodeRid,
         stateful: {
           receiveKind: ReceiveKind.SpotMulticast,
           operationKind: 0,
-          sourceSpotRid,
+          sourceSpotId,
           channelName,
           topic,
           targetSpot: spot.ref
@@ -1972,17 +1974,17 @@ export class ServiceStatefulRuntime {
     return { snapshot: targets.length, admitted };
   }
 
-  private enqueueActorControl(spotRid: string, control: ActorControlPayload): void {
+  private enqueueActorControl(spotId: string, control: ActorControlPayload): void {
     const header = Buffer.from([0x5a, 0x4d, 1, M6bServiceWireCommand.actorJoined, 0]);
     this.raw.mailbox.tryEnqueue({
-      owner: `spot:${spotRid}`,
+      owner: `spot:${spotId}`,
       domain: 'application',
       parts: [header],
       sourceRoutingId: this.nodeRid,
       stateful: {
         receiveKind: ReceiveKind.SpotControl,
         operationKind: 0,
-        targetSpot: this.registry.spot(spotRid)?.ref,
+        targetSpot: this.registry.spot(spotId)?.ref,
         kindData: control
       } satisfies ServiceStatefulMailboxData
     });
@@ -2296,13 +2298,13 @@ export class ServiceStatefulRuntime {
       this.validateSpotFence(decoded.target);
       this.enqueueApplication(
         ingress,
-        `spot:${decoded.target.spot.spotRid}`,
+        `spot:${decoded.target.spot.spotId}`,
         payload!,
         {
           receiveKind: ReceiveKind.SpotRequest,
           operationKind: OperationKind.SpotRequest,
           correlation: decoded.correlation,
-          sourceSpotRid: decoded.sourceSpotRid,
+          sourceSpotId: decoded.sourceSpotId,
           targetSpot: decoded.target.spot,
           reply: localReply
         }
@@ -2337,8 +2339,8 @@ export class ServiceStatefulRuntime {
         lifecycleKind: ActorLifecycleKind.Joined,
         previousActor: previous?.ref ?? decoded.actor.actor,
         currentActor: decoded.actor.actor,
-        previousSpotRid: previous?.spot.spotRid ?? null,
-        currentSpotRid: decoded.target.spot.spotRid,
+        previousSpotId: previous?.spot.spotId ?? null,
+        currentSpotId: decoded.target.spot.spotId,
         previousSpotGeneration: previous?.spot.generation ?? 0n,
         currentSpotGeneration: decoded.target.spot.generation,
         previousMembershipEpoch: previous?.membershipEpoch ?? 0n,
@@ -2347,7 +2349,7 @@ export class ServiceStatefulRuntime {
       };
       this.enqueueApplication(
         ingress,
-        `spot:${decoded.target.spot.spotRid}`,
+        `spot:${decoded.target.spot.spotId}`,
         payload ?? emptyPayload(),
         {
           receiveKind: ReceiveKind.SpotControl,
@@ -2404,13 +2406,13 @@ export class ServiceStatefulRuntime {
         const activation = this.requireInstanceActivation(ingress, decoded);
         this.enqueueApplication(
           ingress,
-          `spot:${activation.ref.spotRid}`,
+          `spot:${activation.ref.spotId}`,
           payload!,
           {
             receiveKind: ReceiveKind.InstanceSpotActivation,
             operationKind: OperationKind.InstanceSpotRequest,
             correlation: pending.id,
-            ...(decoded.sourceSpotRid === undefined ? {} : { sourceSpotRid: decoded.sourceSpotRid }),
+            ...(decoded.sourceSpotId === undefined ? {} : { sourceSpotId: decoded.sourceSpotId }),
             targetSpot: activation.ref,
             reply: localReply
           }
@@ -2472,7 +2474,7 @@ export class ServiceStatefulRuntime {
         kind: 'actorLookupCompletion',
         location: {
           actor: resolvedActor,
-          spotRid: tail.spot.spotRid,
+          spotId: tail.spot.spotId,
           spotGeneration: tail.spot.generation,
           membershipEpoch: tail.membershipEpoch
         }
@@ -2486,7 +2488,7 @@ export class ServiceStatefulRuntime {
         actor: joinedActor,
         location: {
           actor: joinedActor,
-          spotRid: spot?.spotRid ?? null,
+          spotId: spot?.spotId ?? null,
           spotGeneration: spot?.generation ?? 0n,
           membershipEpoch: tail.membershipEpoch ?? 1n
         }
@@ -2513,11 +2515,11 @@ export class ServiceStatefulRuntime {
 
   private validateSpotFence(fence: ServiceSpotRouteFence): ServiceSpotState {
     if (fence.targetNodeRid !== this.nodeRid || fence.targetNodeGeneration !== this.nodeGeneration) {
-      throw new ServiceStaleGenerationError('spot', fence.spot.spotRid);
+      throw new ServiceStaleGenerationError('spot', fence.spot.spotId);
     }
     const spot = this.registry.requireSpot(fence.spot);
     if (spot.authorityOwnerGeneration !== fence.authorityOwnerGeneration) {
-      throw new ServiceStaleGenerationError('spot', fence.spot.spotRid);
+      throw new ServiceStaleGenerationError('spot', fence.spot.spotId);
     }
     return spot;
   }
@@ -2545,7 +2547,7 @@ export class ServiceStatefulRuntime {
     targetNodeRid: string,
     spot: ServiceSpotRef
   ): ServiceSpotRouteFence | undefined {
-    const local = targetNodeRid === this.nodeRid ? this.registry.spot(spot.spotRid) : undefined;
+    const local = targetNodeRid === this.nodeRid ? this.registry.spot(spot.spotId) : undefined;
     if (local !== undefined && sameSpotRef(local.ref, spot)) {
       return {
         spot,
@@ -2631,7 +2633,7 @@ function lookupKindData(actor: ServiceActorState): ReceiveKindData {
 function actorLocation(actor: ServiceActorState): ActorLocation {
   return {
     actor: actor.ref,
-    spotRid: actor.spot.spotRid,
+    spotId: actor.spot.spotId,
     spotGeneration: actor.spot.generation,
     membershipEpoch: actor.membershipEpoch
   };
@@ -2667,7 +2669,7 @@ function actorKey(actor: ServiceActorRef): string {
 }
 
 function spotKey(spot: ServiceSpotRef): string {
-  return `${spot.spotRid}\0${spot.generation}`;
+  return `${spot.spotId}\0${spot.generation}`;
 }
 
 function sameActorRef(left: ServiceActorRef, right: ServiceActorRef): boolean {
@@ -2677,7 +2679,7 @@ function sameActorRef(left: ServiceActorRef, right: ServiceActorRef): boolean {
 }
 
 function sameSpotRef(left: ServiceSpotRef, right: ServiceSpotRef): boolean {
-  return left.spotRid === right.spotRid && left.generation === right.generation;
+  return left.spotId === right.spotId && left.generation === right.generation;
 }
 
 function statefulCorrelation(record: ServiceStatefulWireRecord): bigint | undefined {
@@ -2690,7 +2692,7 @@ function statefulCorrelation(record: ServiceStatefulWireRecord): bigint | undefi
 function sameInstanceRoute(left: ServiceInstanceRouteFence, right: ServiceInstanceRouteFence): boolean {
   return left.targetNodeRid === right.targetNodeRid
     && left.targetNodeGeneration === right.targetNodeGeneration
-    && left.targetSpotRid === right.targetSpotRid
+    && left.targetSpotId === right.targetSpotId
     && left.objectGeneration === right.objectGeneration
     && left.ownerId === right.ownerId
     && left.authorityOwnerGeneration === right.authorityOwnerGeneration
@@ -2713,7 +2715,7 @@ function routeMatchesLocal(
 ): boolean {
   return route.targetNodeRid === nodeRid
     && route.targetNodeGeneration === nodeGeneration
-    && route.targetSpotRid === spot.ref.spotRid
+    && route.targetSpotId === spot.ref.spotId
     && route.objectGeneration === spot.ref.generation
     && route.authorityOwnerGeneration === spot.authorityOwnerGeneration;
 }

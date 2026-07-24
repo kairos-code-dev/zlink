@@ -103,59 +103,44 @@ capacity와 새 node의 capacity가 섞이지 않는다.
 Public MeshNode descriptor HASH는 공통 fixture의 `owner`, `gen`, `json`, `updatedAtMs`, `mesh` 다섯
 field만 가진다. Placement admission에 필요한 descriptor revision, owner lease generation, object role,
 runtime state, application version, capability, capacity limit와 immutable digest는 별도 admission HASH에
-저장한다. 두 HASH는 descriptor CAS Lua에서 함께 검증하고 변경한다. Provider가 관리하는 active·pending
+저장한다. 두 HASH는 descriptor CAS Lua에서 함께 검증하고 변경한다. Provider가 관리하는 active·reserved
 count의 권한 원본은 capacity HASH이고 public descriptor의 count는 projection이다.
+Admission HASH는 `descriptorKey`, `descriptorRevision`, `lifecycleGeneration`, `ownerId`,
+`ownerLeaseGeneration`, `objectRole`, `runtimeState`, `applicationVersion`, `capabilities`, `actorLimit`,
+`spotLimit`, `activationConcurrencyLimit`, `entrySpotId`, `immutableDigest` 열네 field만 가진다.
 
 ### 2.2 MeshNode의 변경 불가능한 설정을 검증하는 digest
 
-서로 다른 언어의 provider가 같은 MeshNode 설정을 동일한 값으로 검증하려면 각
-언어의 descriptor serializer 결과를 그대로 hash해서는 안 된다. Admission HASH의
-`immutableDigest`는 아래 값을 정해진 순서와 encoding으로 연결한 canonical
-preimage의 SHA-256 lower-hex다.
+Admission HASH의 `immutableDigest`는 언어별 descriptor serializer 결과가 아니라 다음 canonical
+preimage의 SHA-256 lower-hex다. 모든 segment는 separator 없이 `<UTF-8 byte length>:<value>`로 이어 붙인다.
 
-각 값은 separator 없이 `<UTF-8 byte length>:<value>` 형식으로 이어 붙인다.
+1. Domain `zlink-mesh-node-immutable-v2`
+2. MeshName
+3. Full MeshNode RID
+4. Lifecycle generation의 invariant decimal
+5. Endpoint
+6. ChannelName 개수와 정렬한 각 ChannelName
+7. Security identity
+8. Application version의 invariant decimal
+9. Object role token `none`, `client`, `server` 중 하나
+10. Entry Spot ID presence `0` 또는 `1`, 값이 있으면 full Entry Spot ID
+11. Node Actor limit, Spot limit과 activation concurrency limit의 invariant decimal
+12. Capability 개수와 정렬한 각 capability
 
-| 순서 | Canonical preimage에 넣는 값 |
-|---:|---|
-| 1 | Domain 문자열 `zlink-mesh-node-immutable-v1`을 넣는다. |
-| 2 | MeshName을 넣는다. |
-| 3 | RID를 lowercase hex로 변환하여 넣는다. |
-| 4 | [Lifecycle generation](01-glossary.ko.md#lifecycle-generation)을 invariant decimal로 넣는다. |
-| 5 | Endpoint를 넣는다. |
-| 6 | ChannelName 개수와 unsigned UTF-8 byte 순서로 정렬한 각 [ChannelName](01-glossary.ko.md#channelname)을 넣는다. |
-| 7 | Security identity를 넣는다. |
-| 8 | Application version을 invariant decimal로 넣는다. |
-| 9 | Object role을 `none`, `client`, `server` 중 하나의 token으로 넣는다. |
-| 10 | Node active limit과 pending limit을 invariant decimal로 넣는다. |
-| 11 | Capability 개수와 정해진 순서로 정렬한 각 capability를 넣는다. |
+Capability는 `(objectKind token, stableType)` 순서로 정렬한다. 각 capability는 `objectKind`, `stableType`,
+relocation policy, Snapshot 지원 여부와 Spot type limit을 차례로 segment에 넣는다.
+`objectKind`는 `actor`, `user_spot`, `instance_spot`, relocation policy는 `disabled`, `recreate`, `snapshot`
+token을 사용한다. Snapshot 지원 여부는 `0` 또는 `1`이다. Actor capability의 Spot type limit은 빈
+segment여야 한다. User·Instance Spot capability는 `0..2^31-1`의 invariant decimal segment를 사용하며
+`0`은 별도 type limit이 없다는 뜻이다. Object Server는 Entry Spot ID presence가 `1`이고 Object Client와
+object role `none`은 `0`이어야 한다. Entry Spot ID는 별도의 UUID byte representation으로 바꾸지 않고 full
+Spot ID UTF-8 bytes를 digest에 넣는다.
 
-Capability는 `(objectKind token, stableType)` 순서로 정렬한다. 각 capability에는
-`objectKind`, `stableType`, relocation policy, [Snapshot](01-glossary.ko.md#snapshot) 지원 여부와
-optional type limit을 차례로 넣는다.
-
-| Capability 항목 | Encoding 규칙 |
-|---|---|
-| `objectKind` | `actor`, `user_spot`, `instance_spot` 중 하나를 사용한다. |
-| Relocation policy | `disabled`, `recreate`, `snapshot` 중 하나를 사용한다. |
-| Snapshot 지원 여부 | `0` 또는 `1`을 사용한다. |
-| Type active·pending limit | 값이 없으면 빈 segment를 사용하고, 있으면 invariant decimal segment를 사용한다. |
-
-Capability 항목 목록도 unsigned UTF-8 byte lexical order로 정렬한다. ChannelName,
-capability를 정렬할 때 Unicode normalization을
-적용하지 않는다.
-
-다음 값은 같은 lifecycle 안에서 바뀔 수 있거나 별도의 owner 검증 정보로 확인하므로
-`immutableDigest`에 넣지 않는다.
-
-- `DescriptorRevision`
-- Channel weight와 node placement [weight](01-glossary.ko.md#weight)
-- Maintenance wave와 runtime state
-- OwnerId와 owner lease generation
-- Update 시각
-- Active·pending 사용량
-
-모든 provider의 byte-level contract test는 공식 fixture의 canonical preimage와
-digest를 그대로 검증해야 한다.
+ChannelName과 capability는 Unicode normalization을 수행하지 않고 unsigned UTF-8 byte lexical order로
+정렬한다. `DescriptorRevision`, channel weight 값, node placement weight, maintenance wave, runtime state,
+OwnerId, owner lease generation, update 시각, active·reserved 사용량과 activation active count는 digest에
+포함하지 않는다. 이 값은 같은 lifecycle에서 변경할 수 있거나 owner admission fence가 별도로 검증하기
+때문이다. 공식 fixture의 preimage와 digest를 모든 provider의 byte-level contract test에서 그대로 검증한다.
 
 Host owner lease HASH는 `ownerId`, `generation`, `expiresAt` 세 field만 사용하고 key TTL을 함께 설정한다.
 `expiresAt`은 Redis server time 기준 Unix epoch millisecond다. 문자열 value나 언어별 legacy lease key를

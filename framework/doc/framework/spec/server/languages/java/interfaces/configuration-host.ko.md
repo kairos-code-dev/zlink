@@ -196,7 +196,7 @@ Object Server의 Entry Spot ID는 caller가 설정하지 않고 Framework가
 `<prefix>-entry-<uuid-v4>`로 발급한다. `<uuid-v4>`는 RFC 4122 UUID v4를 lowercase canonical
 36-character `8-4-4-4-12` 형식으로 encode한 값이며 MeshNode RID의 UUID와 독립적으로 발급한다. 같은
 MeshNode lifecycle에서는 유지하고 replacement lifecycle에서는 새 UUID를 발급한다. Global Spot namespace의
-첫 active conflict에서 기존 record를 변경하지 않고 startup을 `RoutingIdConflict`로 실패시킨다. Descriptor는
+첫 active conflict에서 기존 record를 변경하지 않고 startup을 `SpotIdConflict`로 실패시킨다. Descriptor는
 Entry Spot ID와 lifecycle generation의 exact mapping을 게시하고 runtime은 RID 문자열을 parse해 관계를
 추론하지 않는다. Caller가 reserved Entry pattern의 User·Instance Spot ID를 제시하면 Store를 읽거나
 mutation하기 전에 `InvalidConfiguration`으로 거부한다.
@@ -577,16 +577,16 @@ public final class systems.zlink.framework.configuration.ZLinkUserSpotExecutionM
   public int value();
 }
 public final class systems.zlink.framework.configuration.ZLinkActorFactoryOptions extends java.lang.Record {
-  public systems.zlink.framework.configuration.ZLinkActorFactoryOptions(java.util.Set<java.lang.String>);
+  public systems.zlink.framework.configuration.ZLinkActorFactoryOptions();
 }
 public final class systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions extends java.lang.Record {
-  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(java.util.Set<java.lang.String>, int, systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode);
-  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(java.util.Set<java.lang.String>, int);
+  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(int, systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode);
+  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(int);
   public int stableTypeLimit();
   public systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode executionMode();
 }
 public final class systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions extends java.lang.Record {
-  public systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions(java.util.Set<java.lang.String>, int);
+  public systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions(int);
   public int stableTypeLimit();
 }
 public final class systems.zlink.framework.configuration.ZLinkMessageFlowOutcome extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkMessageFlowOutcome> {

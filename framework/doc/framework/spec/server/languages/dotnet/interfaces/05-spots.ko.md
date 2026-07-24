@@ -638,7 +638,7 @@ Spot kind를 선택하는 인자나 Instance Spot create·get-or-create overload
 구현이 자신의 lifecycle을 종료하는 `IZLinkInstanceSpotContext.CloseAsync()`는 남긴다.
 
 User Spot Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal
-`Async(...)`를 두 번 호출하면 `AlreadySubmitted`다. `InMesh(...)` 선택과 오류, placement option 및 전체
+`Async(...)`를 두 번 호출하면 `AlreadySubmitted`다. `InMesh(...)` 선택과 오류 및 전체
 deadline 규칙은 Actor create와 같다. `Create`는 Framework가 새 global RID를 발급한다. `GetOrCreate`는 같은
 User Spot stable type의 Ready 또는 Creating attempt에 합류하고 CAS loser가 별도 factory를 실행하지
 않는다. Kind나 type이 다르면 `SpotTypeMismatch`, deadline 안에 terminal state가 되지 않으면

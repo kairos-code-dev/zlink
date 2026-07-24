@@ -298,10 +298,10 @@ test('single connectPeerRid preserves multipart requests on the reverse learned 
   }
 });
 
-async function requestAndReplyCallback(sender, receiver, targetNodeRid, targetSpotRid, text) {
+async function requestAndReplyCallback(sender, receiver, targetNodeRid, targetSpotId, text) {
   const handled = receiveAndReply(receiver, text);
   const reply = await new Promise((resolve, reject) => {
-    const accepted = sender.requestToSpot(targetNodeRid, targetSpotRid)
+    const accepted = sender.requestToSpot(targetNodeRid, targetSpotId)
       .message(Buffer.from(text))
       .timeout(3000)
       .submit((result, parts) => result === 0 ? resolve(parts) : reject(new Error(`request result ${result}`)));
@@ -315,11 +315,11 @@ async function requestAndReplyCallback(sender, receiver, targetNodeRid, targetSp
   await handled;
 }
 
-async function sendAndReceive(sender, receiver, targetNodeRid, targetSpotRid, text) {
+async function sendAndReceive(sender, receiver, targetNodeRid, targetSpotId, text) {
   const received = receiveOne(receiver, text);
   const deadline = Date.now() + 5000;
   while (Date.now() < deadline) {
-    if (sender.sendToSpot(targetNodeRid, targetSpotRid).message(Buffer.from(text)).submit()) {
+    if (sender.sendToSpot(targetNodeRid, targetSpotId).message(Buffer.from(text)).submit()) {
       await received;
       return;
     }
@@ -346,9 +346,9 @@ async function receiveOne(spot, text) {
   }
 }
 
-async function requestAndReply(sender, receiver, targetNodeRid, targetSpotRid, text) {
+async function requestAndReply(sender, receiver, targetNodeRid, targetSpotId, text) {
   const handled = receiveAndReply(receiver, text);
-  const reply = await sender.requestToSpot(targetNodeRid, targetSpotRid)
+  const reply = await sender.requestToSpot(targetNodeRid, targetSpotId)
     .message(Buffer.from(text))
     .timeout(3000)
     .submit();

@@ -108,7 +108,7 @@ interface ZLinkEntrySpotActivationOptions {
 }
 
 export class ZLinkEntrySpotActivation {
-  private readonly serial = new ZLinkSpotSerialExecutor();
+  private readonly serial = new ZLinkSpotSerialExecutor(undefined, 'entry', false);
   private readonly actorPacketMailboxes: ZLinkActorDispatchMailboxSet;
   private readonly timers: ZLinkSpotTimerRegistry;
   private readonly actorHandlers = new ZLinkSpotActorHandlerRegistryRuntime();
@@ -146,7 +146,7 @@ export class ZLinkEntrySpotActivation {
     this.lifecycleMetrics = new ZLinkSpotLifecycleMetrics(options.metrics);
     this.workerRuntime = options.workerRuntime ?? new ZLinkWorkerRuntime();
     this.context = createEntrySpotContext({
-      nativeSpotRid: options.nativeSpot.routingId,
+      nativeSpotId: options.nativeSpot.routingId,
       nodeRid: options.nodeRid,
       handlers: this.handlers,
       outbound: this.outbound,
@@ -174,9 +174,9 @@ export class ZLinkEntrySpotActivation {
       subscriptionHandlers: options.subscriptionHandlers
     });
     this.packetDispatch = new ZLinkRoutedSpotPacketDispatch({
-      resolveActivation: (spotRid) => routingIdsEqual(spotRid, this.spotRid)
+      resolveActivation: (spotId) => spotId === this.spotId
         ? {
-            spotRid: this.spotRid,
+            spotId: this.spotId,
             spot: this.entrySpot as unknown as ZLinkSpot,
             serial: this.serial,
             handlers: this.handlers
@@ -200,7 +200,7 @@ export class ZLinkEntrySpotActivation {
     return this.options.nodeRid;
   }
 
-  get spotRid(): RoutingId {
+  get spotId(): RoutingId {
     return this.options.nativeSpot.routingId;
   }
 
@@ -224,8 +224,8 @@ export class ZLinkEntrySpotActivation {
     returnResponse: boolean
   ): Promise<unknown> {
     return returnResponse
-      ? this.packetDispatch.request(this.spotRid, packetName, payload, context)
-      : this.packetDispatch.send(this.spotRid, packetName, payload, context);
+      ? this.packetDispatch.request(this.spotId, packetName, payload, context)
+      : this.packetDispatch.send(this.spotId, packetName, payload, context);
   }
 
   async create(): Promise<void> {
@@ -451,7 +451,7 @@ export class ZLinkEntrySpotActivation {
   ): Promise<unknown> {
     return new ZLinkSpotActorPacketDispatch({
       spot: this.entrySpot as unknown as ZLinkSpot,
-      spotRid: () => String(this.options.nativeSpot.routingId),
+      spotId: () => String(this.options.nativeSpot.routingId),
       registry: this.actorHandlers,
       resolveActor: (targetActorId) => this.options.entryActorRuntime?.resolveActor(targetActorId),
       routeBeforeLocal: (

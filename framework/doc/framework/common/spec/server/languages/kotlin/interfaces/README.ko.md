@@ -46,7 +46,7 @@ Missing [Instance Spot](../../../../01-glossary.ko.md#entry-user-instance-spot)�
 `instanceSpot(stableType)`을 명시한 경우에만 시작한다. Marker가 없으면 not-found이고, marker만 사용한 cold
 activation은 selected Mesh의 distinct serving Instance type이 하나일 때만 type을 자동 선택한다. Existing
 [authority](../../../../01-glossary.ko.md#authority)는 등록 type 수와 관계없이 저장된 type을 사용한다. Mesh object role은 None, Client, Server로
-구분한다. 모든 server factory는 명시적인 relocation policy와 typed placement option을 받는다. Kotlin extension은
+구분한다. 모든 server factory는 명시적인 relocation policy와 object 종류별 factory option을 받는다. Kotlin extension은
 이 계약을 축약하거나 local fallback을 추가하지 않는다.
 
 Global ref의 JSON field는 `actorId` 또는 `spotId`, `objectGeneration`, `meshName`, `nodeRid`다.

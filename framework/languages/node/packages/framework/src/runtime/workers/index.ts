@@ -5,7 +5,11 @@ import { ZLinkFrameworkErrorKind, ZLinkFrameworkException } from '../../contract
 import type { ZLinkWorkerOptions } from '../configuration';
 import { ZLinkConfigurationException } from '../configuration';
 import { createAbortError } from '../abort';
-import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
+import {
+  captureZLinkSpotSerialTurn,
+  requireZLinkYieldTurn,
+  type ZLinkSpotSerialTurn
+} from '../execution';
 
 export type ZLinkCpuWorkerWork<T> = (signal: AbortSignal) => T;
 export type ZLinkIoWorkerWork<T> = (signal: AbortSignal) => Promise<T>;
@@ -266,10 +270,9 @@ export class DefaultZLinkWorkerCall<T> implements ZLinkWorkerCall<T> {
   }
 
   yield(signal?: AbortSignal): Promise<T> {
+    const turn = requireZLinkYieldTurn(this.turn);
     const pending = this.begin(signal);
-    return this.turn === undefined
-      ? deliverOnSerial(this.serial, pending)
-      : this.turn.yieldPromise(pending);
+    return turn.yieldPromise(pending);
   }
 
   private begin(signal?: AbortSignal): Promise<T> {

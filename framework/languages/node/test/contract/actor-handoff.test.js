@@ -17,7 +17,7 @@ function target(name = 'target') {
   return {
     routerChannelId: 'mesh',
     targetNodeRid: zlink.RoutingId.from(`${name}-node`),
-    spotRid: zlink.RoutingId.from(`${name}-spot`),
+    spotId: zlink.RoutingId.from(`${name}-spot`),
     spotKind: framework.ZLinkSpotKind.User
   };
 }
@@ -42,7 +42,7 @@ function harness(forwardWindowMs = 30) {
     routedTransport: transport,
     forwardWindowMs,
     isStaleActorRef: (_actorId, ref) => ref.generation !== currentGeneration,
-    isCurrentHandoffTarget: (_actorId, spotRid) => spotRid === 'target-spot',
+    isCurrentHandoffTarget: (_actorId, spotId) => spotId === 'target-spot',
     onMarker: (marker, actorId, index) => markers.push({ marker, actorId, index })
   });
   return {
@@ -100,7 +100,7 @@ test('bound-session packets keep one sequence across snapshot and forwarding act
   const sessionTarget = {
     routerChannelId: 'session-mesh',
     targetNodeRid: zlink.RoutingId.from('session-node'),
-    spotRid: zlink.RoutingId.from('session-spot')
+    spotId: zlink.RoutingId.from('session-spot')
   };
   coordinator.begin('actor-1', 1n);
   for (const value of ['S1', 'S2']) {
@@ -177,7 +177,7 @@ test('a Core-routed packet marked with the current target bypasses stale owner g
 
   const owner = Object.assign(actorRef(1n), {
     handoffForwarded: true,
-    handoffTargetSpotRid: 'target-spot'
+    handoffTargetSpotId: 'target-spot'
   });
   const current = frame('current-target');
   assert.equal(

@@ -112,7 +112,7 @@ address로 제시하면 Location Store를 읽거나 mutation하기 전에 `Inval
 `<uuid-v4>`는 RFC 4122 UUID v4의 lowercase canonical 36-character `8-4-4-4-12` 표현이다. Entry mapping은
 descriptor의 exact RID를 사용하며 문자열 parsing으로 소유 MeshNode를 찾지 않는다.
 `create(spotType)`의 RID는 UUID v4 random identity다. 첫 active authority 충돌은 기존 record를 변경하지
-않고 `RoutingIdConflict`로 즉시 끝나며 UUID 생성과 reservation은 각각 1건, factory 실행은 0건이다.
+않고 `SpotIdConflict`로 즉시 끝나며 UUID 생성과 reservation은 각각 1건, factory 실행은 0건이다.
 두 번째 UUID나 reservation을 만들지 않는다.
 
 일반 Spot send/request의 address는 global SpotId 하나다. 두 operation은 각각 `ZLinkSpotSendCall`과

@@ -4,14 +4,14 @@ declare const spotHandleBrand: unique symbol;
 
 export interface SpotHandle {
   readonly meshName: string;
-  readonly spotRid: RoutingId;
+  readonly spotId: RoutingId;
   readonly [spotHandleBrand]: never;
 }
 
 export interface ZLinkSpotHandleResolver {
   resolveSpotHandle(
     meshName: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     signal?: AbortSignal
   ): Promise<SpotHandle | undefined>;
 }
@@ -27,7 +27,7 @@ export interface ZLinkActorSpotHandleResolver {
 export interface ResolvedSpotHandle {
   readonly meshName: string;
   readonly nodeRid: RoutingId;
-  readonly spotRid: RoutingId;
+  readonly spotId: RoutingId;
   readonly spotKind?: ZLinkSpotKind;
   readonly spotGeneration?: bigint;
 }
@@ -43,20 +43,20 @@ interface SpotHandleState {
 const handleStates = new WeakMap<SpotHandle, SpotHandleState>();
 
 export function createSpotHandle(
-  spotRid: string,
+  spotId: string,
   initial: ResolvedSpotHandle,
   refresh: SpotHandleResolver
 ): SpotHandle;
-export function createSpotHandle(spotRid: string, refresh: SpotHandleResolver): SpotHandle;
+export function createSpotHandle(spotId: string, refresh: SpotHandleResolver): SpotHandle;
 export function createSpotHandle(
-  spotRid: string,
+  spotId: string,
   initialOrRefresh: ResolvedSpotHandle | SpotHandleResolver,
   refresh?: SpotHandleResolver
 ): SpotHandle {
   const initial = typeof initialOrRefresh === 'function' ? undefined : initialOrRefresh;
   const handle = Object.freeze({
     meshName: initial?.meshName ?? '',
-    spotRid
+    spotId
   }) as SpotHandle;
   handleStates.set(handle, typeof initialOrRefresh === 'function'
     ? { current: undefined, refresh: initialOrRefresh }

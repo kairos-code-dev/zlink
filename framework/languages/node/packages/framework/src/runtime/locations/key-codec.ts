@@ -23,7 +23,7 @@ export const ZLinkLocationKeyCodec = Object.freeze({
   },
 
   encodeSpotKey(key: ZLinkSpotLocationKey): string {
-    return encodeSegments(key.meshName, encodeRoutingIdHex(key.spotRid));
+    return encodeSegments(key.meshName, requireSpotId(key.spotId));
   },
 
   encodeActorKey(key: ZLinkActorLocationKey): string {
@@ -47,7 +47,17 @@ function normalizeActorType(actorType: string | undefined): string {
 }
 
 function encodeSegments(...segments: readonly string[]): string {
-  return segments.map((segment) => `${segment.length}:${segment}`).join('');
+  return segments.map(
+    (segment) => `${Buffer.byteLength(segment, 'utf8')}:${segment}`
+  ).join('');
+}
+
+function requireSpotId(value: string): string {
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (bytes < 1 || bytes > 255) {
+    throw new TypeError('SpotId must contain 1..255 UTF-8 bytes.');
+  }
+  return value;
 }
 
 function encodeRoutingIdHex(routingId: RoutingId): string {

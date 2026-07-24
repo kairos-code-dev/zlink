@@ -112,12 +112,10 @@ public enum ZLinkUserSpotExecutionMode
 
 public sealed record ZLinkActorFactoryOptions
 {
-        = Array.Empty<string>();
 }
 
 public sealed record ZLinkUserSpotFactoryOptions
 {
-        = Array.Empty<string>();
     public int StableTypeLimit { get; init; }
     public ZLinkUserSpotExecutionMode ExecutionMode { get; init; }
         = ZLinkUserSpotExecutionMode.SpotWide;
@@ -125,7 +123,6 @@ public sealed record ZLinkUserSpotFactoryOptions
 
 public sealed record ZLinkInstanceSpotFactoryOptions
 {
-        = Array.Empty<string>();
     public int StableTypeLimit { get; init; }
 }
 

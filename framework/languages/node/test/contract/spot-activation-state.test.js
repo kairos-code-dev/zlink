@@ -7,7 +7,7 @@ const {
 
 function createActivation(externalActorCount = () => 0) {
   return new ZLinkSpotActivation({
-    spotRid: 'room-1',
+    spotId: 'room-1',
     spotType: class Room {},
     spot: {},
     serial: {},

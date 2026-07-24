@@ -1,4 +1,4 @@
-import type { RoutingId } from '../Common';
+import type { RoutingId, SpotId } from '../Common';
 import type { ZLinkLocationAutoConnectType, ZLinkLocationKind, ZLinkLocationRole } from './Values';
 
 export interface ZLinkLocationRuntimeStatus {
@@ -33,7 +33,7 @@ export interface ZLinkLocationTopologyEntry {
   readonly meshName?: string;
   readonly role?: ZLinkLocationRole;
   readonly nodeRid?: RoutingId;
-  readonly spotRid?: RoutingId;
+  readonly spotId?: SpotId;
   readonly actorId?: string;
   readonly endpoint?: string;
   readonly state: ZLinkLocationTopologyState;

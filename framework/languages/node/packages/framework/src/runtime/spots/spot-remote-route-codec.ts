@@ -77,7 +77,7 @@ export interface ZLinkRemoteActorPacketRelay {
   readonly actorId: string;
   readonly routerChannelId?: string;
   readonly boundSessionTargetNodeRid?: string;
-  readonly boundSessionSpotRid?: string;
+  readonly boundSessionSpotId?: string;
   readonly header: string;
   readonly payload: string;
   readonly actorRef?: ActorRef;
@@ -195,7 +195,7 @@ export function decodeRemoteActorPacketRelay(
         actorNodeRid: relay.actorNodeRid,
         actorNodeRidHex: relay.actorNodeRidHex,
         actorGeneration: relay.actorGeneration
-      }, relay.handoffTargetSpotRid),
+      }, relay.handoffTargetSpotId),
       bindingActorRef: decodeActorRef({
         actorId: relay.actorId,
         actorNodeRid: relay.bindingActorNodeRid,
@@ -214,12 +214,12 @@ function decodeForwardedActorRef(payload: {
   readonly actorNodeRid?: unknown;
   readonly actorNodeRidHex?: unknown;
   readonly actorGeneration?: unknown;
-}, targetSpotRid: unknown): ActorRef | undefined {
+}, targetSpotId: unknown): ActorRef | undefined {
   const actorRef = decodeActorRef(payload);
   if (actorRef !== undefined) {
     (actorRef as ActorRef & { handoffForwarded?: boolean }).handoffForwarded = true;
-    if (typeof targetSpotRid === 'string') {
-      (actorRef as ActorRef & { handoffTargetSpotRid?: string }).handoffTargetSpotRid = targetSpotRid;
+    if (typeof targetSpotId === 'string') {
+      (actorRef as ActorRef & { handoffTargetSpotId?: string }).handoffTargetSpotId = targetSpotId;
     }
   }
   return actorRef;

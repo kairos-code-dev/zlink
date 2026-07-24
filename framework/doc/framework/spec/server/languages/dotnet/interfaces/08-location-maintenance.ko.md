@@ -314,8 +314,8 @@ public sealed record ZLinkActivationConcurrency(
 
 `ChannelWeights`의 key 집합은 descriptor를 처음 게시하기 전에 고정한 ChannelName membership과 같다.
 Stable type은 UTF-8 byte 순서로 정렬한다.
-`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 stable type, policy, Snapshot adapter 등록 여부와
-profile을 한 항목에 함께 둔다. User·Instance Spot capability의 `Limit`은 stable type별 limit이고 Actor는
+`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 stable type, policy와 Snapshot adapter 등록 여부를
+한 항목에 함께 둔다. User·Instance Spot capability의 `Limit`은 stable type별 limit이고 Actor는
 `0`이다. `HasSnapshotAdapter`는 target에 해당 object kind의 adapter가
 등록되어 있는지만 나타내며 application state의 format, version이나 contract ID를 광고하지 않는다.
 `ApplicationVersion`은 `0..long.MaxValue`이고 Redis JSON에서는 선행 0 없는 10진 integer로 저장한다. `Capacity`는
@@ -327,7 +327,7 @@ MeshNode의 RID와 generation을 함께 보존한다. Resolver는 owner lease와
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
 ChannelName key set, object role, population limit, activation concurrency limit과 object capability의
-kind·type·policy·Snapshot adapter 등록 여부·profile·limit은
+kind·type·policy·Snapshot adapter 등록 여부·limit은
 첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight 값, placement weight,
 active·reserved count, activation active count, maintenance wave와 runtime state만
 mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고

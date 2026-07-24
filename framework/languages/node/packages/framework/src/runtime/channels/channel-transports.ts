@@ -596,12 +596,12 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
       return { status: ZLinkSubmitStatus.Submitted };
     }
     throwIfAborted(options.signal);
-    const operation = `MeshNode '${spotRouteTarget.routerChannelId}' send to Spot '${spotRouteTarget.spotRid}'`;
+    const operation = `MeshNode '${spotRouteTarget.routerChannelId}' send to Spot '${spotRouteTarget.spotId}'`;
     return await this.requireMeshSubmitters().submit(spotRouteTarget.routerChannelId, () => {
       try {
         return mapMeshSubmitResult(node.entrySpot().sendToSpot(
           toBindingRoutingId(spotRouteTarget.targetNodeRid),
-          toBindingRoutingId(spotRouteTarget.spotRid),
+          toBindingRoutingId(spotRouteTarget.spotId),
           spotRouteTarget.targetSpotGeneration ?? 0n,
           this.encodeMessage(
             ZLinkChannelMessageKind.Command,
@@ -667,7 +667,7 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     try {
       operationId = node.entrySpot().requestToSpot(
         toBindingRoutingId(spotRouteTarget.targetNodeRid),
-        toBindingRoutingId(spotRouteTarget.spotRid),
+        toBindingRoutingId(spotRouteTarget.spotId),
         spotRouteTarget.targetSpotGeneration ?? 0n,
         this.encodeMessage(
           ZLinkChannelMessageKind.Request,
@@ -682,7 +682,7 @@ export class ZLinkRuntimeRouteTransport implements ZLinkRouteClientTransport {
     } catch (error) {
       throw mapMeshSubmissionError(
         error,
-        `MeshNode '${meshName}' request to Spot '${spotRouteTarget.spotRid}'`
+        `MeshNode '${meshName}' request to Spot '${spotRouteTarget.spotId}'`
       );
     }
     return this.waitForMeshReply<TReply>(meshName, operationId, options.signal);

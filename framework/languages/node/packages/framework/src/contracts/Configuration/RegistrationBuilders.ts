@@ -32,9 +32,12 @@ import type {
   ZLinkSessionFactory
 } from '../../contracts';
 import type {
-  ZLinkObjectPlacementOptions,
-  ZLinkRelocationPolicy
+  ZLinkActorFactoryOptions,
+  ZLinkInstanceSpotFactoryOptions,
+  ZLinkRelocationPolicy,
+  ZLinkUserSpotFactoryOptions
 } from './ObjectRoles';
+import { ZLinkUserSpotExecutionMode } from './ObjectRoles';
 import type { ZLinkSpotNodeBuilder } from '../Spots/Builders';
 import { readZLinkDecoratorMetadata } from '../../contracts';
 import type { ZLinkCodecRegistryBuilder } from '../Codecs';
@@ -741,14 +744,20 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
     return this;
   }
 
-  setObjectCapacity(maxActiveObjects: number, maxPendingActivations: number): this {
-    this.node.maxActiveObjects = requirePositiveCapacity(
-      maxActiveObjects,
-      'Maximum active objects'
-    );
-    this.node.maxPendingActivations = requirePositiveCapacity(
-      maxPendingActivations,
-      'Maximum pending activations'
+  setActorLimit(limit: number): this {
+    this.node.actorLimit = requirePositiveCapacity(limit, 'Actor limit');
+    return this;
+  }
+
+  setSpotLimit(limit: number): this {
+    this.node.spotLimit = requirePositiveCapacity(limit, 'Spot limit');
+    return this;
+  }
+
+  setActivationConcurrency(limit: number): this {
+    this.node.activationConcurrencyLimit = requirePositiveCapacity(
+      limit,
+      'Activation concurrency limit'
     );
     return this;
   }
@@ -873,17 +882,20 @@ class DefaultMeshObjectServerBuilder implements ZLinkMeshObjectServerBuilder {
   addSpotFactory<TSpot extends ZLinkSpot>(
     spotType: string,
     implementation: Type<TSpot>,
-    placement: ZLinkObjectPlacementOptions | undefined,
+    options: ZLinkUserSpotFactoryOptions | undefined,
     relocation: ZLinkRelocationPolicy<TSpot>
   ): this {
     const stableType = requireStableObjectType(spotType, 'User Spot type');
-    validateObjectPlacement(placement);
+    validateUserSpotFactoryOptions(options);
     validateRelocationPolicy(relocation);
     this.node.spotFactoryRegistrations ??= {};
     rejectDuplicateObjectType(this.node.spotFactoryRegistrations, stableType, this.meshName);
     this.node.spotFactoryRegistrations[stableType] = {
       implementation,
-      placement,
+      options: {
+        ...options,
+        executionMode: options?.executionMode ?? ZLinkUserSpotExecutionMode.SpotWide
+      },
       relocation
     };
     registerSpotFactory(this.node, implementation);
@@ -893,11 +905,11 @@ class DefaultMeshObjectServerBuilder implements ZLinkMeshObjectServerBuilder {
   addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
     instanceSpotType: string,
     implementation: Type<TSpot>,
-    placement: ZLinkObjectPlacementOptions | undefined,
+    options: ZLinkInstanceSpotFactoryOptions | undefined,
     relocation: ZLinkRelocationPolicy<TSpot>
   ): this {
     const stableType = requireStableObjectType(instanceSpotType, 'Instance Spot type');
-    validateObjectPlacement(placement);
+    validateStableTypeLimit(options?.stableTypeLimit);
     validateRelocationPolicy(relocation);
     this.node.instanceSpotFactories ??= {};
     if (Object.hasOwn(this.node.instanceSpotFactories, stableType)) {
@@ -909,7 +921,7 @@ class DefaultMeshObjectServerBuilder implements ZLinkMeshObjectServerBuilder {
     this.node.instanceSpotFactoryRegistrations ??= {};
     this.node.instanceSpotFactoryRegistrations[stableType] = {
       implementation,
-      placement,
+      options,
       relocation
     };
     return this;
@@ -918,18 +930,17 @@ class DefaultMeshObjectServerBuilder implements ZLinkMeshObjectServerBuilder {
   addActorFactory<TActor extends ZLinkActor>(
     actorType: string,
     implementation: Type<ZLinkActorFactory<TActor>>,
-    placement: ZLinkObjectPlacementOptions | undefined,
+    options: ZLinkActorFactoryOptions | undefined,
     relocation: ZLinkRelocationPolicy<TActor>
   ): this {
     const stableType = requireStableObjectType(actorType, 'Actor type');
-    validateObjectPlacement(placement);
     validateRelocationPolicy(relocation);
     this.node.actorFactories = typeMapToRecord(this.node.actorFactories);
     registerActorFactory(this.node, stableType, implementation);
     this.node.actorFactoryRegistrations ??= {};
     this.node.actorFactoryRegistrations[stableType] = {
       implementation,
-      placement,
+      options,
       relocation
     };
     return this;
@@ -1028,15 +1039,24 @@ function requirePublicWeight(value: number, label: string): number {
   return value;
 }
 
-function validateObjectPlacement(options: ZLinkObjectPlacementOptions | undefined): void {
-  if (options === undefined) return;
-  for (const [name, value] of [
-    ['maxActiveObjects', options.maxActiveObjects],
-    ['maxPendingActivations', options.maxPendingActivations]
-  ] as const) {
-    if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
-      throw new ZLinkConfigurationException(`${name} must be a positive safe integer.`);
-    }
+function validateUserSpotFactoryOptions(
+  options: ZLinkUserSpotFactoryOptions | undefined
+): void {
+  validateStableTypeLimit(options?.stableTypeLimit);
+  if (
+    options?.executionMode !== undefined
+    && options.executionMode !== ZLinkUserSpotExecutionMode.SpotWide
+    && options.executionMode !== ZLinkUserSpotExecutionMode.PerActor
+  ) {
+    throw new ZLinkConfigurationException('User Spot executionMode is invalid.');
+  }
+}
+
+function validateStableTypeLimit(value: number | undefined): void {
+  if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+    throw new ZLinkConfigurationException(
+      'stableTypeLimit must be a non-negative safe integer.'
+    );
   }
 }
 
@@ -1139,8 +1159,9 @@ export interface MutableStreamCompressionOptions {
 interface MutableSpotNodeOptions {
   objectRole?: 'client' | 'server';
   placementWeight?: number;
-  maxActiveObjects?: number;
-  maxPendingActivations?: number;
+  actorLimit?: number;
+  spotLimit?: number;
+  activationConcurrencyLimit?: number;
   routingId?: string;
   routingIdAllocation?: MutableRoutingIdAllocationOptions;
   router?: MutableSpotRouterCapabilityOptions;
@@ -1148,16 +1169,28 @@ interface MutableSpotNodeOptions {
   entrySpot?: ZLinkEntrySpotOptions;
   entrySpotType?: Type<ZLinkEntrySpot>;
   spotFactories?: Type<ZLinkSpot>[];
-  spotFactoryRegistrations?: Record<string, MutableObjectFactoryRegistration<ZLinkSpot>>;
+  spotFactoryRegistrations?: Record<string, MutableObjectFactoryRegistration<
+    ZLinkSpot,
+    ZLinkSpot,
+    ZLinkUserSpotFactoryOptions
+  >>;
   instanceSpotFactories?: Record<string, Type<ZLinkInstanceSpot>>;
   instanceSpotFactoryRegistrations?: Record<
     string,
-    MutableObjectFactoryRegistration<ZLinkInstanceSpot>
+    MutableObjectFactoryRegistration<
+      ZLinkInstanceSpot,
+      ZLinkInstanceSpot,
+      ZLinkInstanceSpotFactoryOptions
+    >
   >;
   actorFactories?: Record<string, Type>;
   actorFactoryRegistrations?: Record<
     string,
-    MutableObjectFactoryRegistration<ZLinkActor, ZLinkActorFactory>
+    MutableObjectFactoryRegistration<
+      ZLinkActor,
+      ZLinkActorFactory,
+      ZLinkActorFactoryOptions
+    >
   >;
   meshChannels?: Record<string, MutableMeshChannelOptions>;
   routeSendHandlers?: Array<{ packetName: string; handlerType: Type }>;
@@ -1170,9 +1203,9 @@ interface MutableSpotNodeOptions {
   };
 }
 
-interface MutableObjectFactoryRegistration<T, TImplementation = T> {
+interface MutableObjectFactoryRegistration<T, TImplementation = T, TOptions = unknown> {
   readonly implementation: Type<TImplementation>;
-  readonly placement?: ZLinkObjectPlacementOptions;
+  readonly options?: TOptions;
   readonly relocation: ZLinkRelocationPolicy<T>;
 }
 

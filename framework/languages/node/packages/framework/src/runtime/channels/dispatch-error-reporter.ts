@@ -71,7 +71,7 @@ export class ZLinkDispatchErrorReporter {
       flowId: event.flowId,
       flowOrigin: event.flowOrigin,
       sourceRid: event.sourceRid,
-      spotRid: event.spotRid,
+      spotId: event.spotId,
       actorId: event.actorId,
       errorReason: event.reason,
       errorAction: event.action,

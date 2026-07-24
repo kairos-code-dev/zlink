@@ -382,13 +382,13 @@ export interface ZLinkChannelRuntimeManagerOptions {
   readonly monitoringAdapter?: ZLinkMonitoringBackendAdapter;
   readonly localSpotRouteDispatcher?: {
     send(
-      spotRid: RoutingId,
+      spotId: RoutingId,
       packetName: string | undefined,
       message: unknown,
       context: { readonly channelName: string; readonly signal?: AbortSignal }
     ): Promise<void>;
     request<TReply>(
-      spotRid: RoutingId,
+      spotId: RoutingId,
       packetName: string | undefined,
       request: unknown,
       context: { readonly channelName: string; readonly signal?: AbortSignal }

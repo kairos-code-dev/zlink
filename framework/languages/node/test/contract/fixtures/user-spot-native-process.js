@@ -158,18 +158,18 @@ async function execute(action) {
     }
     case 'getOrCreate': {
       const result = await spotManager
-        .getOrCreate(currentSpot.spotRid, 'RemoteRoom')
+        .getOrCreate(currentSpot.spotId, 'RemoteRoom')
         .inMesh(meshName)
         .timeout(5_000)
         .submit();
       return normalizeResult(result);
     }
     case 'find':
-      return normalizeSpot(await spotManager.find(currentSpot.spotRid));
+      return normalizeSpot(await spotManager.find(currentSpot.spotId));
     case 'close':
       return await spotManager.close(currentSpot);
     case 'findAfterClose':
-      return normalizeSpot(await spotManager.find(currentSpot.spotRid));
+      return normalizeSpot(await spotManager.find(currentSpot.spotId));
     default:
       throw new Error(`Unsupported action '${action}'.`);
   }
@@ -185,7 +185,7 @@ function normalizeResult(result) {
 function normalizeSpot(spot) {
   if (spot === undefined) return null;
   return {
-    spotRid: String(spot.spotRid),
+    spotId: String(spot.spotId),
     objectGeneration: String(spot.objectGeneration),
     meshName: spot.meshName,
     nodeRid: String(spot.nodeRid)

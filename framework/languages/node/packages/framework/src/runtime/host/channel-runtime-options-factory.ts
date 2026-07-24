@@ -30,11 +30,11 @@ export class ZLinkChannelRuntimeOptionsFactory {
       internalRouteSendHandlers: this.internalRouteSendHandlers(),
       internalRouteRequestHandlers: this.internalRouteRequestHandlers(),
       localSpotRouteDispatcher: {
-        send: async (spotRid, packetName, message, routeContext) => {
-          await this.requireSpotManager().dispatchRoutedSpotSend(spotRid, packetName, message, routeContext);
+        send: async (spotId, packetName, message, routeContext) => {
+          await this.requireSpotManager().dispatchRoutedSpotSend(spotId, packetName, message, routeContext);
         },
-        request: async (spotRid, packetName, request, routeContext) =>
-          await this.requireSpotManager().dispatchRoutedSpotRequest(spotRid, packetName, request, routeContext)
+        request: async (spotId, packetName, request, routeContext) =>
+          await this.requireSpotManager().dispatchRoutedSpotRequest(spotId, packetName, request, routeContext)
       }
     };
   }

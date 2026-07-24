@@ -260,6 +260,19 @@ public final class ZLinkFrameworkRuntime
                         this.registration,
                         this.meshNodes.nodesByName())
                 : null;
+        runtimeHandlers.add(
+            systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions.class,
+            new systems.zlink.framework.runtime.channels
+                .ZLinkRouteMeshRuntimeOptionsRuntime(
+                    this.meshNodes.nodesByName(),
+                    () -> {
+                        if (this.objectDescriptors != null) {
+                            this.objectDescriptors
+                                .publish(this.runtimeState.get())
+                                .toCompletableFuture()
+                                .join();
+                        }
+                    }));
 
         ZLinkFrameworkSpotSubsystem spotSubsystem = ZLinkFrameworkSpotSubsystem.create(
             options,

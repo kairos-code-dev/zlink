@@ -53,12 +53,12 @@ export interface ZLinkUserSpotCreationCoordinatorOptions {
 
 export interface ZLinkUserSpotCreationRequest {
   readonly meshName?: string;
-  readonly spotRid: RoutingId;
+  readonly spotId: RoutingId;
   readonly stableType: string;
   readonly requestPayload: Uint8Array;
   readonly timeoutMs: number;
   readonly signal?: AbortSignal;
-  readonly retryRidCollision?: boolean;
+  readonly generatedIdentity?: boolean;
 }
 
 export interface ZLinkUserSpotCreationResult {
@@ -69,16 +69,6 @@ export interface ZLinkUserSpotCreationResult {
 export interface ZLinkUserSpotCloseTarget {
   readonly spot: SpotRef;
   readonly snapshot: ZLinkAuthoritySnapshot;
-}
-
-/**
- * Internal control flow used only when create() generated the colliding RID.
- */
-export class ZLinkUserSpotRidCollisionError extends Error {
-  constructor(readonly spotRid: RoutingId) {
-    super(`Generated User Spot RID '${String(spotRid)}' already exists.`);
-    this.name = 'ZLinkUserSpotRidCollisionError';
-  }
 }
 
 /**
@@ -152,7 +142,7 @@ export class ZLinkUserSpotCreationCoordinator {
       };
       try {
         reserved = await this.options.store.reserve({
-          key: { kind: 'user_spot', globalId: String(request.spotRid) },
+          key: { kind: 'user_spot', globalId: String(request.spotId) },
           intent: {
             stableType: request.stableType,
             requestContentReference: contentReference,
@@ -163,14 +153,22 @@ export class ZLinkUserSpotCreationCoordinator {
           creatingPayload: encodeServiceUserSpotAuthorityPayload({
             state: 'creating',
             stableType: request.stableType,
-            spotRid: String(request.spotRid),
+            spotId: String(request.spotId),
             ownerId: owner.ownerId,
             ownerLeaseGeneration: owner.leaseGeneration,
             ownerMeshName: target.meshName,
             ownerNodeRid: String(target.nodeRid),
             ownerNodeGeneration: target.nodeGeneration
           }),
-          pendingCapacityDelta: 1
+          capacity: {
+            actors: 0,
+            spots: 1,
+            spotType: {
+              objectKind: 'user_spot',
+              stableType: request.stableType,
+              count: 1
+            }
+          }
         }, signal);
       } catch (error) {
         deadline.close();
@@ -201,9 +199,9 @@ export class ZLinkUserSpotCreationCoordinator {
         current.kind === 'snapshot'
         && current.allocation.state === 'active'
       ) {
-        if (request.retryRidCollision === true) {
+        if (request.generatedIdentity) {
           deadline.close();
-          throw new ZLinkUserSpotRidCollisionError(request.spotRid);
+          throw spotIdConflict(request.spotId);
         }
         const spot = spotRef(current, request);
         deadline.close();
@@ -217,15 +215,15 @@ export class ZLinkUserSpotCreationCoordinator {
         || !sameCreationTarget(current, authorityTarget)
       ) {
         deadline.close();
-        if (request.retryRidCollision === true) {
-          throw new ZLinkUserSpotRidCollisionError(request.spotRid);
+        if (request.generatedIdentity) {
+          throw spotIdConflict(request.spotId);
         }
         throw new ZLinkFrameworkException(
           ZLinkFrameworkErrorKind.RequestFailed,
           'User Spot creation requires a remote generation-fenced create operation.'
         );
       }
-      if (current.allocation.state === 'pending' && !target.isLocal) {
+      if (current.allocation.state === 'reserved' && !target.isLocal) {
         try {
           return await this.remoteCreate(
             request,
@@ -238,7 +236,7 @@ export class ZLinkUserSpotCreationCoordinator {
           deadline.close();
         }
       }
-      if (current.allocation.state === 'pending' && target.isLocal) {
+      if (current.allocation.state === 'reserved' && target.isLocal) {
         const pending = current.pendingCreation;
         const admitted = pending === undefined
           ? undefined
@@ -281,12 +279,12 @@ export class ZLinkUserSpotCreationCoordinator {
     }
     if (reserved.kind === 'typeMismatch') {
       deadline.close();
-      if (request.retryRidCollision === true) {
-        throw new ZLinkUserSpotRidCollisionError(request.spotRid);
+      if (request.generatedIdentity) {
+        throw spotIdConflict(request.spotId);
       }
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotTypeMismatch,
-        `User Spot '${String(request.spotRid)}' has another stable type.`
+        `User Spot '${String(request.spotId)}' has another stable type.`
       );
     }
     if (reserved.kind !== 'reserved') {
@@ -333,25 +331,25 @@ export class ZLinkUserSpotCreationCoordinator {
     const resolved = await this.resolveCloseTarget(spot, signal);
     if (resolved === undefined) return false;
     const { spot: currentRef, snapshot: current } = resolved;
-    const key = encodeAuthorityKey('user_spot', String(spot.spotRid));
+    const key = encodeAuthorityKey('user_spot', String(spot.spotId));
     if (ownerPresent?.(currentRef) === false) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotMoving,
-        `User Spot '${String(spot.spotRid)}' is missing from its authority owner.`,
+        `User Spot '${String(spot.spotId)}' is missing from its authority owner.`,
         true
       );
     }
     if (ownerCanClose?.(currentRef) === false) return false;
-    const closing = await this.beginClosing(key, current, String(spot.spotRid), signal);
+    const closing = await this.beginClosing(key, current, String(spot.spotId), signal);
     let closed: boolean;
     try {
       closed = await closeOwner(currentRef, closing);
     } catch (error) {
-      await this.restoreReady(key, closing, String(spot.spotRid), signal);
+      await this.restoreReady(key, closing, String(spot.spotId), signal);
       throw error;
     }
     if (!closed) {
-      await this.restoreReady(key, closing, String(spot.spotRid), signal);
+      await this.restoreReady(key, closing, String(spot.spotId), signal);
       return false;
     }
     const deleted = await this.options.store.compareExchangeAuthority(
@@ -364,13 +362,13 @@ export class ZLinkUserSpotCreationCoordinator {
     if (deleted.kind === 'conflict') {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotMoving,
-        `User Spot '${String(spot.spotRid)}' authority changed while closing.`,
+        `User Spot '${String(spot.spotId)}' authority changed while closing.`,
         true
       );
     }
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.SpotGenerationStale,
-      `User Spot '${String(spot.spotRid)}' generation cannot be closed.`
+      `User Spot '${String(spot.spotId)}' generation cannot be closed.`
     );
   }
 
@@ -378,18 +376,18 @@ export class ZLinkUserSpotCreationCoordinator {
     spot: SpotRef,
     signal?: AbortSignal
   ): Promise<ZLinkUserSpotCloseTarget | undefined> {
-    const key = encodeAuthorityKey('user_spot', String(spot.spotRid));
+    const key = encodeAuthorityKey('user_spot', String(spot.spotId));
     const current = await this.options.store.readAuthority(key, signal);
     if (current.kind === 'missing') return undefined;
     if (current.objectGeneration !== spot.objectGeneration) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotGenerationStale,
-        `User Spot '${String(spot.spotRid)}' generation is stale.`
+        `User Spot '${String(spot.spotId)}' generation is stale.`
       );
     }
     const currentRef = spotRef(current, {
       meshName: current.allocation.descriptor.meshName,
-      spotRid: spot.spotRid,
+      spotId: spot.spotId,
       stableType: current.allocation.stableType,
       requestPayload: Buffer.alloc(0),
       timeoutMs: 1
@@ -400,7 +398,7 @@ export class ZLinkUserSpotCreationCoordinator {
     ) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotGenerationStale,
-        `User Spot '${String(spot.spotRid)}' owner route is stale.`
+        `User Spot '${String(spot.spotId)}' owner route is stale.`
       );
     }
     return { spot: currentRef, snapshot: current };
@@ -415,7 +413,7 @@ export class ZLinkUserSpotCreationCoordinator {
     discard?: (signal?: AbortSignal) => Promise<void>,
     signal?: AbortSignal
   ): Promise<ZLinkUserSpotCreationResult> {
-    const key = `${record.spotRid}\0${record.reservation.reservationId}`;
+    const key = `${record.spotId}\0${record.reservation.reservationId}`;
     const fingerprint = remoteCreationFingerprint(record);
     let admitted = this.remoteCreations.get(key);
     if (admitted !== undefined && admitted.fingerprint !== fingerprint) {
@@ -469,7 +467,7 @@ export class ZLinkUserSpotCreationCoordinator {
     discard?: (signal?: AbortSignal) => Promise<void>,
     signal?: AbortSignal
   ): Promise<ZLinkUserSpotCreationResult> {
-    const key = encodeAuthorityKey('user_spot', record.spotRid);
+    const key = encodeAuthorityKey('user_spot', record.spotId);
     const current = await this.options.store.readAuthority(key, signal);
     const exactIdentity =
       current.kind !== 'snapshot'
@@ -483,7 +481,12 @@ export class ZLinkUserSpotCreationCoordinator {
             === record.reservation.targetNodeGeneration
           && current.ownerId === record.reservation.targetOwnerId
           && current.ownerLeaseGeneration === record.reservation.targetOwnerLeaseGeneration
-          && current.allocation.capacityDelta === record.reservation.pendingCapacityDelta;
+          && current.allocation.capacity.actors === 0
+          && current.allocation.capacity.spots === record.reservation.pendingCapacityDelta
+          && current.allocation.capacity.spotType?.objectKind === 'user_spot'
+          && current.allocation.capacity.spotType.stableType === record.stableType
+          && current.allocation.capacity.spotType.count
+            === record.reservation.pendingCapacityDelta;
     if (!exactIdentity || current.kind !== 'snapshot') {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotMoving,
@@ -491,7 +494,7 @@ export class ZLinkUserSpotCreationCoordinator {
       );
     }
     const spot: SpotRef = {
-      spotRid: record.spotRid as RoutingId,
+      spotId: record.spotId as RoutingId,
       objectGeneration: current.objectGeneration,
       meshName: current.allocation.descriptor.meshName,
       nodeRid: current.allocation.descriptor.rid
@@ -541,7 +544,7 @@ export class ZLinkUserSpotCreationCoordinator {
       if (local.state === ZLinkSpotCreateState.Rejected) {
         local.publication?.abort();
         await this.options.store.abort({
-          key: { kind: 'user_spot', globalId: record.spotRid },
+          key: { kind: 'user_spot', globalId: record.spotId },
           reservationId: pending.reservationId,
           expectedStoreVersion: current.storeVersion.value,
           target: {
@@ -563,7 +566,7 @@ export class ZLinkUserSpotCreationCoordinator {
       let committed;
       try {
         committed = await this.options.store.commit({
-          key: { kind: 'user_spot', globalId: record.spotRid },
+          key: { kind: 'user_spot', globalId: record.spotId },
           reservationId: pending.reservationId,
           expectedStoreVersion: current.storeVersion.value,
           target: {
@@ -578,7 +581,7 @@ export class ZLinkUserSpotCreationCoordinator {
           readyPayload: encodeServiceUserSpotAuthorityPayload({
             state: 'ready',
             stableType: record.stableType,
-            spotRid: record.spotRid,
+            spotId: record.spotId,
             ownerId: current.ownerId,
             ownerLeaseGeneration: current.ownerLeaseGeneration,
             ownerMeshName: current.allocation.descriptor.meshName,
@@ -615,7 +618,7 @@ export class ZLinkUserSpotCreationCoordinator {
       const cleanupSignal = cleanupDeadline.signal;
       const cleanup = await Promise.allSettled([
         waitForAbort(this.options.store.abort({
-          key: { kind: 'user_spot', globalId: record.spotRid },
+          key: { kind: 'user_spot', globalId: record.spotId },
           reservationId: pending.reservationId,
           expectedStoreVersion: current.storeVersion.value,
           target: {
@@ -649,7 +652,7 @@ export class ZLinkUserSpotCreationCoordinator {
     closeOwner: (spot: SpotRef, signal?: AbortSignal) => Promise<boolean>,
     signal?: AbortSignal
   ): Promise<boolean> {
-    const key = encodeAuthorityKey('user_spot', record.target.spotRid);
+    const key = encodeAuthorityKey('user_spot', record.target.spotId);
     const current = await this.options.store.readAuthority(key, signal);
     if (current.kind === 'missing') return false;
     if (
@@ -657,7 +660,7 @@ export class ZLinkUserSpotCreationCoordinator {
     ) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotGenerationStale,
-        `User Spot '${record.target.spotRid}' generation is stale.`
+        `User Spot '${record.target.spotId}' generation is stale.`
       );
     }
     if (
@@ -671,26 +674,26 @@ export class ZLinkUserSpotCreationCoordinator {
     ) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotMoving,
-        `User Spot '${record.target.spotRid}' close authority is moving.`,
+        `User Spot '${record.target.spotId}' close authority is moving.`,
         true
       );
     }
     const spot: SpotRef = {
-      spotRid: record.target.spotRid as RoutingId,
+      spotId: record.target.spotId as RoutingId,
       objectGeneration: current.objectGeneration,
       meshName: current.allocation.descriptor.meshName,
       nodeRid: current.allocation.descriptor.rid
     };
-    const closing = await this.beginClosing(key, current, record.target.spotRid, signal);
+    const closing = await this.beginClosing(key, current, record.target.spotId, signal);
     let closed: boolean;
     try {
       closed = await closeOwner(spot, signal);
     } catch (error) {
-      await this.restoreReady(key, closing, record.target.spotRid, signal);
+      await this.restoreReady(key, closing, record.target.spotId, signal);
       throw error;
     }
     if (!closed) {
-      await this.restoreReady(key, closing, record.target.spotRid, signal);
+      await this.restoreReady(key, closing, record.target.spotId, signal);
       return false;
     }
     const deleted = await this.options.store.compareExchangeAuthority(
@@ -702,7 +705,7 @@ export class ZLinkUserSpotCreationCoordinator {
     if (deleted.kind === 'deleted') return true;
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.SpotMoving,
-      `User Spot '${record.target.spotRid}' authority changed while closing.`,
+      `User Spot '${record.target.spotId}' authority changed while closing.`,
       true
     );
   }
@@ -710,18 +713,18 @@ export class ZLinkUserSpotCreationCoordinator {
   private async beginClosing(
     key: ReturnType<typeof encodeAuthorityKey>,
     current: ZLinkAuthoritySnapshot,
-    spotRid: string,
+    spotId: string,
     signal?: AbortSignal
   ): Promise<ZLinkAuthoritySnapshot> {
     const ready = decodeServiceReadySpotAuthority(current.payload);
     if (
       ready?.kind !== 'user_spot'
-      || ready.spotRid !== spotRid
+      || ready.spotId !== spotId
       || ready.stableType !== current.allocation.stableType
     ) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotMoving,
-        `User Spot '${spotRid}' is not in Framework-owned Ready state.`,
+        `User Spot '${spotId}' is not in Framework-owned Ready state.`,
         true
       );
     }
@@ -730,7 +733,7 @@ export class ZLinkUserSpotCreationCoordinator {
       current.storeVersion,
       {
         kind: 'put',
-        payload: userSpotAuthorityPayload(current, spotRid, 'closing'),
+        payload: userSpotAuthorityPayload(current, spotId, 'closing'),
         generationTransition: 'preserve'
       },
       signal
@@ -749,7 +752,7 @@ export class ZLinkUserSpotCreationCoordinator {
   private async restoreReady(
     key: ReturnType<typeof encodeAuthorityKey>,
     closing: ZLinkAuthoritySnapshot,
-    spotRid: string,
+    spotId: string,
     signal?: AbortSignal
   ): Promise<void> {
     const restored = await this.options.store.compareExchangeAuthority(
@@ -757,7 +760,7 @@ export class ZLinkUserSpotCreationCoordinator {
       closing.storeVersion,
       {
         kind: 'put',
-        payload: userSpotAuthorityPayload(closing, spotRid, 'ready'),
+        payload: userSpotAuthorityPayload(closing, spotId, 'ready'),
         generationTransition: 'preserve'
       },
       signal
@@ -775,7 +778,7 @@ export class ZLinkUserSpotCreationCoordinator {
     request: ZLinkUserSpotCreationRequest,
     signal: AbortSignal
   ): Promise<SpotRef> {
-    const key = encodeAuthorityKey('user_spot', String(request.spotRid));
+    const key = encodeAuthorityKey('user_spot', String(request.spotId));
     for (;;) {
       signal.throwIfAborted();
       const current = await this.options.store.readAuthority(key, signal);
@@ -815,7 +818,7 @@ export class ZLinkUserSpotCreationCoordinator {
       {
         sourceNodeRid: '',
         sourceNodeGeneration: 1n,
-        spotRid: String(request.spotRid),
+        spotId: String(request.spotId),
         stableType: request.stableType,
         reservation: {
           reservationId: pending.reservationId,
@@ -826,7 +829,7 @@ export class ZLinkUserSpotCreationCoordinator {
           targetNodeGeneration,
           targetOwnerId: snapshot.ownerId,
           targetOwnerLeaseGeneration: snapshot.ownerLeaseGeneration,
-          pendingCapacityDelta: snapshot.allocation.capacityDelta
+          pendingCapacityDelta: snapshot.allocation.capacity.spots
         },
         deadlineUnixMs: BigInt(deadlineUnixMs)
       },
@@ -843,7 +846,7 @@ export class ZLinkUserSpotCreationCoordinator {
       );
     }
     const spot: SpotRef = {
-      spotRid: request.spotRid,
+      spotId: request.spotId,
       objectGeneration: result.tail.objectGeneration,
       meshName: snapshot.allocation.descriptor.meshName,
       nodeRid: targetNodeRid
@@ -870,6 +873,13 @@ export class ZLinkUserSpotCreationCoordinator {
 
 }
 
+function spotIdConflict(spotId: RoutingId): ZLinkFrameworkException {
+  return new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.SpotIdConflict,
+    `Generated User Spot ID '${String(spotId)}' is already active.`
+  );
+}
+
 function spotRef(
   snapshot: ZLinkAuthoritySnapshot,
   request: ZLinkUserSpotCreationRequest,
@@ -886,14 +896,14 @@ function spotRef(
         : (
             decoded?.kind !== 'user_spot'
             || decoded.stableType !== request.stableType
-            || decoded.spotRid !== String(request.spotRid)
+            || decoded.spotId !== String(request.spotId)
           )
     )
   ) {
     throw new Error('User Spot Ready authority does not match the requested identity.');
   }
   return {
-    spotRid: request.spotRid,
+    spotId: request.spotId,
     objectGeneration: snapshot.objectGeneration,
     meshName: snapshot.allocation.descriptor.meshName,
     nodeRid: snapshot.allocation.descriptor.rid
@@ -923,7 +933,7 @@ function localCreationRecord(
     },
     sourceNodeRid: String(targetNodeRid),
     sourceNodeGeneration: targetNodeGeneration,
-    spotRid: String(request.spotRid),
+    spotId: String(request.spotId),
     stableType: request.stableType,
     reservation: {
       reservationId: pending.reservationId,
@@ -934,7 +944,7 @@ function localCreationRecord(
       targetNodeGeneration,
       targetOwnerId: snapshot.ownerId,
       targetOwnerLeaseGeneration: snapshot.ownerLeaseGeneration,
-      pendingCapacityDelta: snapshot.allocation.capacityDelta
+      pendingCapacityDelta: snapshot.allocation.capacity.spots
     },
     deadlineUnixMs: BigInt(deadlineUnixMs)
   };
@@ -976,7 +986,7 @@ function sameCreationTarget(
 function remoteCreationFingerprint(record: ServiceUserSpotCreateRecord): string {
   return JSON.stringify(
     {
-      spotRid: record.spotRid,
+      spotId: record.spotId,
       stableType: record.stableType,
       reservation: record.reservation
     },
@@ -986,13 +996,13 @@ function remoteCreationFingerprint(record: ServiceUserSpotCreateRecord): string 
 
 function userSpotAuthorityPayload(
   snapshot: ZLinkAuthoritySnapshot,
-  spotRid: string,
+  spotId: string,
   state: 'ready' | 'closing'
 ): Buffer {
   return encodeServiceUserSpotAuthorityPayload({
     state,
     stableType: snapshot.allocation.stableType,
-    spotRid,
+    spotId,
     ownerId: snapshot.ownerId,
     ownerLeaseGeneration: snapshot.ownerLeaseGeneration,
     ownerMeshName: snapshot.allocation.descriptor.meshName,

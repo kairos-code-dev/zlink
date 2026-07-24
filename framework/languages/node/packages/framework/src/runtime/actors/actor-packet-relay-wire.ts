@@ -37,7 +37,7 @@ export function encodeRemoteActorPacketRelayPayload(input: {
   readonly actorId: string;
   readonly routerChannelId?: string;
   readonly boundSessionTargetNodeRid?: string;
-  readonly boundSessionSpotRid?: string;
+  readonly boundSessionSpotId?: string;
   readonly header: Uint8Array;
   readonly payload: Uint8Array;
   readonly bindingActorRef?: ActorRef;
@@ -47,7 +47,7 @@ export function encodeRemoteActorPacketRelayPayload(input: {
     actorId: input.actorId,
     routerChannelId: input.routerChannelId,
     boundSessionTargetNodeRid: input.boundSessionTargetNodeRid,
-    boundSessionSpotRid: input.boundSessionSpotRid,
+    boundSessionSpotId: input.boundSessionSpotId,
     bindingActorNodeRid: input.bindingActorRef === undefined ? undefined : String(input.bindingActorRef.nodeRid),
     bindingActorNodeRidHex: input.bindingActorRef === undefined
       ? undefined
@@ -62,12 +62,12 @@ export function encodeForwardedRemoteActorPacketRelayPayload(input: {
   readonly actorId: string;
   readonly routerChannelId?: string;
   readonly boundSessionTargetNodeRid?: string;
-  readonly boundSessionSpotRid?: string;
+  readonly boundSessionSpotId?: string;
   readonly header: string;
   readonly payload: string;
   readonly actorNodeRid: string;
   readonly actorGeneration: string;
-  readonly handoffTargetSpotRid: string;
+  readonly handoffTargetSpotId: string;
 }): Record<string, unknown> {
   return { packetName: ZLINK_REMOTE_ACTOR_PACKET_RELAY_PACKET, ...input };
 }
@@ -76,8 +76,7 @@ export interface ZLinkRemoteActorPacketTargetWire {
   readonly routerChannelId: string;
   readonly targetNodeRid: string;
   readonly targetNodeRidHex?: string;
-  readonly spotRid: string;
-  readonly spotRidHex?: string;
+  readonly spotId: string;
   readonly spotKind: ZLinkSpotKind;
 }
 
@@ -91,8 +90,7 @@ export function encodeRemoteActorPacketTarget(
     routerChannelId: target.routerChannelId,
     targetNodeRid: String(target.targetNodeRid),
     targetNodeRidHex: routingIdWireHex(target.targetNodeRid),
-    spotRid: String(target.spotRid),
-    spotRidHex: routingIdWireHex(target.spotRid),
+    spotId: String(target.spotId),
     spotKind: target.spotKind ?? ZLinkSpotKind.User
   };
 }
@@ -103,7 +101,7 @@ export function decodeRemoteActorPacketTarget(value: unknown): ZLinkRemoteActorP
     value === null ||
     typeof (value as { routerChannelId?: unknown }).routerChannelId !== 'string' ||
     typeof (value as { targetNodeRid?: unknown }).targetNodeRid !== 'string' ||
-    typeof (value as { spotRid?: unknown }).spotRid !== 'string'
+    typeof (value as { spotId?: unknown }).spotId !== 'string'
   ) {
     return undefined;
   }
@@ -113,14 +111,19 @@ export function decodeRemoteActorPacketTarget(value: unknown): ZLinkRemoteActorP
       (value as { targetNodeRid: string }).targetNodeRid,
       (value as { targetNodeRidHex?: unknown }).targetNodeRidHex
     ),
-    spotRid: decodeRoutingId(
-      (value as { spotRid: string }).spotRid,
-      (value as { spotRidHex?: unknown }).spotRidHex
-    ),
+    spotId: requireSpotId((value as { spotId: string }).spotId),
     spotKind: (value as { spotKind?: unknown }).spotKind === ZLinkSpotKind.Entry
       ? ZLinkSpotKind.Entry
       : ZLinkSpotKind.User
   };
+}
+
+function requireSpotId(value: string): string {
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (bytes < 1 || bytes > 255) {
+    throw new Error('Actor packet target SpotId must contain 1..255 UTF-8 bytes.');
+  }
+  return value;
 }
 
 export function sessionActorPacketTargetKey(actor: ZLinkSessionActor): string {
@@ -131,13 +134,13 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
   readonly actorId: string;
   readonly routerChannelId?: string;
   readonly boundSessionTargetNodeRid?: string;
-  readonly boundSessionSpotRid?: string;
+  readonly boundSessionSpotId?: string;
   readonly header: string;
   readonly payload: string;
   readonly actorNodeRid?: string;
   readonly actorNodeRidHex?: string;
   readonly actorGeneration?: string;
-  readonly handoffTargetSpotRid?: string;
+  readonly handoffTargetSpotId?: string;
   readonly bindingActorNodeRid?: string;
   readonly bindingActorNodeRidHex?: string;
   readonly bindingActorGeneration?: string;
@@ -156,13 +159,13 @@ export function decodeRemoteActorPacketRelayPayload(payload: unknown): {
     actorId: (payload as { actorId: string }).actorId,
     routerChannelId: optionalString(payload, 'routerChannelId'),
     boundSessionTargetNodeRid: optionalString(payload, 'boundSessionTargetNodeRid'),
-    boundSessionSpotRid: optionalString(payload, 'boundSessionSpotRid'),
+    boundSessionSpotId: optionalString(payload, 'boundSessionSpotId'),
     header: (payload as { header: string }).header,
     payload: (payload as { payload: string }).payload,
     actorNodeRid: optionalString(payload, 'actorNodeRid'),
     actorNodeRidHex: optionalString(payload, 'actorNodeRidHex'),
     actorGeneration: optionalString(payload, 'actorGeneration'),
-    handoffTargetSpotRid: optionalString(payload, 'handoffTargetSpotRid'),
+    handoffTargetSpotId: optionalString(payload, 'handoffTargetSpotId'),
     bindingActorNodeRid: optionalString(payload, 'bindingActorNodeRid'),
     bindingActorNodeRidHex: optionalString(payload, 'bindingActorNodeRidHex'),
     bindingActorGeneration: optionalString(payload, 'bindingActorGeneration')

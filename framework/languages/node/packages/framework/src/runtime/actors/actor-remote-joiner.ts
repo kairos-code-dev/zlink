@@ -92,7 +92,7 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
   async joinSpot(
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     request: Message,
     timeoutMs: number | undefined,
     signal: AbortSignal | undefined
@@ -101,13 +101,13 @@ export class ZLinkActorNativeJoinCoordinator implements ZLinkActorJoinCoordinato
     const node = this.node();
     const actorRef = state.nativeActorRef ?? lookupNativeActorRef(node, actor.actorId) ?? node.createActor(actor.actorId);
     state.setNativeActorRef(actorRef as never);
-    const target = await this.options.spotRouteResolver?.resolve(spotRid, signal);
+    const target = await this.options.spotRouteResolver?.resolve(spotId, signal);
     return await this.localJoin.joinSpot(
       node,
       actor,
       state,
       actorRef as never,
-      spotRid,
+      spotId,
       target,
       request,
       timeoutMs ?? this.options.actorTransferTimeoutMs,

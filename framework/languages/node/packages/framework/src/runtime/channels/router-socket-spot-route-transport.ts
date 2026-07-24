@@ -21,7 +21,7 @@ export class ZLinkRouterSocketSpotRouteTransport {
     const router = this.sockets.routeRouter(target.routerChannelId);
     try {
       await this.sockets.requireSubmitter(router).submitCommand(
-        () => router.sendToSpot(target.targetNodeRid, target.spotRid, parts, flags),
+        () => router.sendToSpot(target.targetNodeRid, target.spotId, parts, flags),
         signal
       );
     } finally {
@@ -42,7 +42,7 @@ export class ZLinkRouterSocketSpotRouteTransport {
       (resolve, reject) => {
         const submitted = router.requestToSpot(
           target.targetNodeRid,
-          target.spotRid,
+          target.spotId,
           parts,
           (result, replyParts) => {
             try {
@@ -83,7 +83,7 @@ export class ZLinkRouterSocketSpotRouteTransport {
       (resolve, reject) => {
         const submitted = router.requestToSpot(
           target.targetNodeRid,
-          target.spotRid,
+          target.spotId,
           [request],
           (result, replyParts) => {
             if (result !== 0) {

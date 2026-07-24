@@ -87,7 +87,7 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       );
     }
 
-    const entrySpotRid = node.entrySpot().routingId;
+    const entrySpotId = node.entrySpot().routingId;
     const boundSessionTarget = state.remoteBoundSessionTarget;
     const transferId = randomUUID();
     const admissionRequest = buildRemoteActorJoinRequestPayload({
@@ -98,9 +98,9 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
       actorCreateRequest: state.createRequestPayload,
       request,
-      targetSpotRid: target.spotRid,
+      targetSpotId: target.spotId,
       routerChannelId: target.routerChannelId,
-      sourceSpotRid: boundSessionTarget?.spotRid ?? entrySpotRid,
+      sourceSpotId: boundSessionTarget?.spotId ?? entrySpotId,
       boundSessionTarget,
       phase: REMOTE_ACTOR_JOIN_ADMISSION,
       transferId
@@ -135,9 +135,9 @@ export class ZLinkRemoteTwoPhaseActorJoin {
       expectedMembershipEpoch: state.spotMembershipEpoch,
       actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
       request,
-      targetSpotRid: target.spotRid,
+      targetSpotId: target.spotId,
       routerChannelId: target.routerChannelId,
-      sourceSpotRid: boundSessionTarget?.spotRid ?? entrySpotRid,
+      sourceSpotId: boundSessionTarget?.spotId ?? entrySpotId,
       boundSessionTarget,
       phase: REMOTE_ACTOR_JOIN_COMMIT,
       transferId,
@@ -198,11 +198,11 @@ export class ZLinkRemoteTwoPhaseActorJoin {
     if (reply.accepted) {
       state.endMove();
       state.setNativeActorRef(resultActor as unknown as ZLinkBackendActorRef);
-      state.setJoinedSpot(target.spotRid);
+      state.setJoinedSpot(target.spotId);
       state.setRemoteActorPacketTarget({
         routerChannelId: target.routerChannelId,
         targetNodeRid: target.targetNodeRid,
-        spotRid: target.spotRid,
+        spotId: target.spotId,
         spotKind: target.spotKind
       });
       if (state.actorType !== undefined && state.ownsLocation) {

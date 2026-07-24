@@ -275,6 +275,16 @@ const forbiddenRules = [
     pattern: /\bZLinkSpotClosingCancellation\b/u,
     sample: 'interface ZLinkSpotClosingCancellation {}',
   },
+  {
+    label: 'removed placement profile selector',
+    pattern: /\b(?:PlacementProfile|placementProfile|placement_profile|ZLinkPlacementProfile)\b/u,
+    sample: 'interface ZLinkPlacementProfile {}',
+  },
+  {
+    label: 'removed affinity key selector',
+    pattern: /\b(?:AffinityKey|affinityKey|affinity_key|ZLinkAffinityKey)\b/u,
+    sample: 'interface ZLinkAffinityKey {}',
+  },
 ];
 
 const contracts = new Map(languages.map(language => [

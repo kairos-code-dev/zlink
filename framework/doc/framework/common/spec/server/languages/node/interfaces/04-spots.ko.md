@@ -312,7 +312,7 @@ context `close(...)`를 호출해 종료한다. 일반 message는 missing RID에
 시작하지 않는다.
 
 다음 예제에서 `spotClient`는 `ZLinkSpotOutbound`이고 `cartId`는 호출할 global SpotId다. Instance
-intent를 명시했으므로 Spot이 없을 때만 cold activation에 필요한 placement option을 사용한다.
+intent를 명시했으므로 Spot이 없을 때만 cold activation에 필요한 stable type과 최초 Mesh를 사용한다.
 
 ```ts
 const reply = await spotClient

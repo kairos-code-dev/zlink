@@ -24,7 +24,7 @@ export class ZLinkSpotLocationClaim {
 
   async claimUserSpot(
     meshName: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotTypeName: string,
     spotGeneration: bigint
   ): Promise<ZLinkSpotLocationClaimResult> {
@@ -34,7 +34,7 @@ export class ZLinkSpotLocationClaim {
     requireMeshName(meshName);
     const status = await this.options.lifecycle.claimSpot(
       meshName,
-      spotRid,
+      spotId,
       spotTypeName,
       this.requireNodeRid(meshName),
       ZLinkSpotKind.User,
@@ -47,7 +47,7 @@ export class ZLinkSpotLocationClaim {
     if (status !== ZLinkLocationWriteStatus.Stored) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotCreateFailed,
-        `Spot '${spotRid}' location claim failed with '${status}'.`
+        `Spot '${spotId}' location claim failed with '${status}'.`
       );
     }
     return { claimed: true, meshName };
@@ -57,11 +57,11 @@ export class ZLinkSpotLocationClaim {
     return this.options.lifecycle !== undefined;
   }
 
-  async release(meshName: string, spotRid: RoutingId): Promise<void> {
+  async release(meshName: string, spotId: RoutingId): Promise<void> {
     if (this.options.lifecycle === undefined) {
       return;
     }
-    await this.options.lifecycle.releaseSpot(meshName, spotRid);
+    await this.options.lifecycle.releaseSpot(meshName, spotId);
   }
 
   private requireNodeRid(meshName: string): RoutingId {

@@ -97,12 +97,12 @@ export interface ZLinkPublishResult {
 }
 
 export interface ZLinkRouteMeshRuntimeOptions {
-  meshNode(meshName: string): ZLinkMeshNodeRuntimeOptions;
-  channel(meshName: string, channelName: string): ZLinkMeshChannelRuntimeOptions;
+  mesh(meshName: string): ZLinkMeshPlacementRuntimeOptions;
+  channel(channelName: string): ZLinkMeshChannelRuntimeOptions;
 }
 
-export interface ZLinkMeshNodeRuntimeOptions {
-  maxMessageSize: number;
+export interface ZLinkMeshPlacementRuntimeOptions {
+  placementWeight: number;
 }
 
 export interface ZLinkMeshChannelRuntimeOptions {

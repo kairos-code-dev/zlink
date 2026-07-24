@@ -1,4 +1,4 @@
-import type { RoutingId } from '../Common';
+import type { RoutingId, SpotId } from '../Common';
 import type { ZLinkSpotKind } from '../Spots';
 import type { ZLinkLocationAutoConnectType, ZLinkLocationKind, ZLinkLocationRole, ZLinkRouteKind } from './Values';
 
@@ -16,7 +16,7 @@ export interface ZLinkPeerLocationKey {
 
 export interface ZLinkSpotLocationKey {
   readonly meshName: string;
-  readonly spotRid: RoutingId;
+  readonly spotId: SpotId;
 }
 
 export interface ZLinkMeshNodeDescriptorKey {
@@ -72,7 +72,7 @@ export interface ZLinkSpotLocationFilter {
 export interface ZLinkActorLocationFilter {
   readonly actorType?: string;
   readonly nodeRid?: RoutingId;
-  readonly spotRid?: RoutingId;
+  readonly spotId?: SpotId;
   readonly locationKind?: ZLinkSpotKind;
 }
 

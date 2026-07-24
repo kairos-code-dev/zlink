@@ -104,21 +104,36 @@ public interface ZLinkMeshObjectServerBuilder {
     ZLinkMeshObjectServerBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotClass);
     <TSpot extends ZLinkSpot> ZLinkMeshObjectServerBuilder addSpotFactory(
         String spotType, Class<TSpot> spotClass,
-        ZLinkObjectPlacementOptions placement, ZLinkRelocationPolicy<TSpot> relocation);
+        ZLinkUserSpotFactoryOptions options, ZLinkRelocationPolicy<TSpot> relocation);
     <TSpot extends ZLinkInstanceSpot> ZLinkMeshObjectServerBuilder addInstanceSpotFactory(
         String instanceSpotType, Class<TSpot> spotClass,
-        ZLinkObjectPlacementOptions placement, ZLinkRelocationPolicy<TSpot> relocation);
+        ZLinkInstanceSpotFactoryOptions options, ZLinkRelocationPolicy<TSpot> relocation);
     <TActor extends ZLinkActor> ZLinkMeshObjectServerBuilder addActorFactory(
         String actorType,
         Class<TActor> actorClass,
         Class<? extends ZLinkActorFactory> factoryClass,
-        ZLinkObjectPlacementOptions placement,
+        ZLinkActorFactoryOptions options,
         ZLinkRelocationPolicy<TActor> relocation);
 }
 
-public record ZLinkObjectPlacementOptions(
-    Integer maxActiveObjects,
-    Integer maxPendingActivations) {}
+public enum ZLinkUserSpotExecutionMode {
+    SPOT_WIDE(0), PER_ACTOR(1);
+    private final int value;
+    ZLinkUserSpotExecutionMode(int value) { this.value = value; }
+    public int value() { return value; }
+}
+
+public record ZLinkActorFactoryOptions() {}
+
+public record ZLinkUserSpotFactoryOptions(
+    int stableTypeLimit,
+    ZLinkUserSpotExecutionMode executionMode) {
+    public ZLinkUserSpotFactoryOptions(int stableTypeLimit) {
+        this(stableTypeLimit, ZLinkUserSpotExecutionMode.SPOT_WIDE);
+    }
+}
+
+public record ZLinkInstanceSpotFactoryOptions(int stableTypeLimit) {}
 
 public interface FanoutChannelBuilder {
     FanoutChannelBuilder enablePublisher(String endpoint);
@@ -558,14 +573,29 @@ public interface systems.zlink.framework.configuration.ZLinkMeshObjectClientBuil
 }
 public interface systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addEntrySpot(java.lang.Class<? extends systems.zlink.framework.spots.ZLinkEntrySpot<?>>);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
-  public abstract <TActor extends systems.zlink.framework.actors.ZLinkActor> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addActorFactory(java.lang.String, java.lang.Class<TActor>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
+  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
+  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
+  public abstract <TActor extends systems.zlink.framework.actors.ZLinkActor> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addActorFactory(java.lang.String, java.lang.Class<TActor>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>, systems.zlink.framework.configuration.ZLinkActorFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
 }
-public final class systems.zlink.framework.configuration.ZLinkObjectPlacementOptions extends java.lang.Record {
-  public systems.zlink.framework.configuration.ZLinkObjectPlacementOptions(java.lang.Integer, java.lang.Integer);
-  public java.lang.Integer maxActiveObjects();
-  public java.lang.Integer maxPendingActivations();
+public final class systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode> {
+  public static final systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode SPOT_WIDE;
+  public static final systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode PER_ACTOR;
+  public static systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode[] values();
+  public static systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode valueOf(java.lang.String);
+  public int value();
+}
+public final class systems.zlink.framework.configuration.ZLinkActorFactoryOptions extends java.lang.Record {
+  public systems.zlink.framework.configuration.ZLinkActorFactoryOptions();
+}
+public final class systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions extends java.lang.Record {
+  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(int, systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode);
+  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(int);
+  public int stableTypeLimit();
+  public systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode executionMode();
+}
+public final class systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions extends java.lang.Record {
+  public systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions(int);
+  public int stableTypeLimit();
 }
 public final class systems.zlink.framework.configuration.ZLinkMessageFlowOutcome extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkMessageFlowOutcome> {
   public static final systems.zlink.framework.configuration.ZLinkMessageFlowOutcome RECEIVED;

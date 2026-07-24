@@ -56,6 +56,7 @@ export interface ZLinkBackendMeshNode {
   close(): void;
   addChannelName(name: string): void;
   setChannelWeight(name: string, weight: number): void;
+  setPlacementWeight(weight: number): void;
   configureObjectPlacement(options: {
     readonly role: 'none' | 'client' | 'server';
     readonly placementWeight: number;
@@ -72,26 +73,26 @@ export interface ZLinkBackendMeshNode {
     target: {
       readonly targetNodeRid: string;
       readonly targetNodeGeneration: bigint;
-      readonly targetSpotRid: string;
+      readonly targetSpotId: string;
       readonly stableType: string;
       readonly descriptorVersion: string;
     },
     parts: MessageLike | readonly MessageLike[],
     deadlineUnixMs: bigint,
-    sourceSpotRid?: string,
+    sourceSpotId?: string,
     metadata?: ReadonlyMap<string, string>
   ): SubmitResult;
   requestToMissingInstanceSpot(
     target: {
       readonly targetNodeRid: string;
       readonly targetNodeGeneration: bigint;
-      readonly targetSpotRid: string;
+      readonly targetSpotId: string;
       readonly stableType: string;
       readonly descriptorVersion: string;
     },
     parts: MessageLike | readonly MessageLike[],
     timeoutMs: number,
-    sourceSpotRid?: string,
+    sourceSpotId?: string,
     metadata?: ReadonlyMap<string, string>
   ): MeshOperationId;
   registerUserSpotOperationHandler(handler: ServiceUserSpotOperationHandler): void;
@@ -144,7 +145,7 @@ export interface ZLinkBackendMeshNode {
   ): ZLinkBackendActorRef;
   actorLookup(actorId: string): {
     readonly actor: ZLinkBackendActorRef;
-    readonly spotRid: unknown;
+    readonly spotId: unknown;
     readonly spotGeneration: bigint;
     readonly membershipEpoch: bigint;
   };
@@ -153,7 +154,7 @@ export interface ZLinkBackendMeshNode {
   joinActorSpot(
     actor: ZLinkBackendActorRef,
     targetNodeRid: unknown,
-    targetSpotRid: unknown,
+    targetSpotId: unknown,
     targetSpotGeneration: bigint,
     parts?: MessageLike | readonly MessageLike[],
     timeoutMs?: number
@@ -248,7 +249,7 @@ export interface ZLinkBackendActorJoinResult {
   readonly result: RequestResult;
   readonly joinResultCode: number;
   readonly actor: ZLinkBackendActorRef;
-  readonly joinedSpotRid: RoutingId;
+  readonly joinedSpotId: RoutingId;
   readonly joinEpoch: bigint;
   readonly flags: number;
 }
@@ -258,7 +259,7 @@ export interface ZLinkBackendActorJoinEntrySpotResult {
   readonly joinResultCode: number;
   readonly actor: ZLinkBackendActorRef;
   readonly targetNodeRid: RoutingId;
-  readonly joinedSpotRid: RoutingId;
+  readonly joinedSpotId: RoutingId;
   readonly joinEpoch: bigint;
   readonly flags: number;
 }
@@ -295,9 +296,9 @@ export interface ZLinkBackendActorJoinInfo {
   readonly sourceActor: ZLinkBackendActorRef;
   readonly targetActor: ZLinkBackendActorRef;
   readonly sourceNodeRid: RoutingId;
-  readonly sourceSpotRid: RoutingId;
+  readonly sourceSpotId: RoutingId;
   readonly targetNodeRid: RoutingId;
-  readonly targetSpotRid: RoutingId;
+  readonly targetSpotId: RoutingId;
   readonly joinEpoch: bigint;
   readonly flags: number;
 }
@@ -412,13 +413,13 @@ export interface ZLinkBackendRouterSocket extends ZLinkBackendConnectableSocket 
   ): boolean;
   sendToSpot(
     targetNodeRid: RoutingId,
-    targetSpotRid: RoutingId,
+    targetSpotId: RoutingId,
     parts: readonly Message[],
     flags: ZLinkBackendSendFlags
   ): boolean;
   requestToSpot(
     targetNodeRid: RoutingId,
-    targetSpotRid: RoutingId,
+    targetSpotId: RoutingId,
     parts: readonly Message[],
     callback: RequestCallback,
     flags: ZLinkBackendSendFlags,
@@ -483,8 +484,8 @@ export interface ZLinkBackendSpotRouteBridge extends ZLinkBackendObject {
     router: ZLinkBackendRouterSocket,
     options?: { readonly capabilities?: number }
   ): void;
-  send(channelName: string, targetNodeRid: RoutingId, targetSpotRid: RoutingId): ZLinkBackendSendOperation;
-  request(channelName: string, targetNodeRid: RoutingId, targetSpotRid: RoutingId): ZLinkBackendRequestOperation;
+  send(channelName: string, targetNodeRid: RoutingId, targetSpotId: RoutingId): ZLinkBackendSendOperation;
+  request(channelName: string, targetNodeRid: RoutingId, targetSpotId: RoutingId): ZLinkBackendRequestOperation;
   handleRouterReceived(
     channelName: string,
     sourceNodeRid: RoutingId,
@@ -506,7 +507,7 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   disconnectPeerRid(targetNodeRid: RoutingId): void;
   disconnectPeer(endpoint: string): void;
   createSpot(): ZLinkBackendSpot;
-  getOrCreateSpot(spotRid: RoutingId): { readonly spot: ZLinkBackendSpot; readonly created: boolean };
+  getOrCreateSpot(spotId: RoutingId): { readonly spot: ZLinkBackendSpot; readonly created: boolean };
   status(): ZLinkBackendMeshNodeStatus;
   peers(): readonly ZLinkBackendMeshPeerEntry[];
   subjects(): readonly unknown[];
@@ -517,7 +518,7 @@ export interface ZLinkBackendSpotNode extends ZLinkBackendObject {
   joinActor(
     actor: ZLinkBackendActorRef,
     destNodeRid: RoutingId,
-    destSpotRid: RoutingId,
+    destSpotId: RoutingId,
     payload: Message | readonly Message[],
     callback: RequestCallback | ZLinkBackendActorJoinCallback,
     timeoutMs?: number
@@ -593,13 +594,13 @@ export interface ZLinkBackendSpot extends ZLinkBackendObject {
   publish(topic: string, payload: Message | readonly Message[], flags: ZLinkBackendSendFlags): boolean;
   sendToSpot(
     targetRid: RoutingId,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     payload: Message | readonly Message[],
     flags: ZLinkBackendSendFlags
   ): boolean;
   requestToSpot(
     targetRid: RoutingId,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     payload: Message | readonly Message[],
     callback: RequestCallback,
     flags: ZLinkBackendSendFlags,

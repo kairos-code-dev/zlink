@@ -165,9 +165,9 @@ end
 local function store(gen)
     redis.call('HSET', KEYS[1],
         'owner', owner, 'gen', gen, 'json', json,
-        'updatedAtMs', nowMs, 'mesh', ARGV[13])
+        'updatedAtMs', nowMs, 'mesh', ARGV[14])
     redis.call('HSET', KEYS[2],
-        'descriptorKey', ARGV[14],
+        'descriptorKey', ARGV[15],
         'lifecycleGeneration', lifecycle,
         'descriptorRevision', revision,
         'immutableDigest', immutable,
@@ -175,19 +175,49 @@ local function store(gen)
         'ownerLeaseGeneration', leaseGeneration,
         'objectRole', ARGV[8],
         'runtimeState', ARGV[9],
-        'applicationVersion', ARGV[15],
+        'applicationVersion', ARGV[16],
         'capabilities', ARGV[10],
-        'nodeActiveLimit', ARGV[11],
-        'nodePendingLimit', ARGV[12])
-    redis.call('SADD', KEYS[3], ARGV[14])
-    redis.call('SADD', KEYS[6], ARGV[14])
+        'actorLimit', ARGV[11],
+        'spotLimit', ARGV[12],
+        'activationConcurrencyLimit', ARGV[13],
+        'entrySpotId', ARGV[18])
+    redis.call('SADD', KEYS[3], ARGV[15])
+    redis.call('SADD', KEYS[6], ARGV[15])
+end
+local function entryIdentityAvailable()
+    return ARGV[17] == '' or redis.call('EXISTS', KEYS[7]) == 0
+end
+local function entryIdentityOwnedByCurrentDescriptor()
+    if ARGV[17] == '' or redis.call('EXISTS', KEYS[7]) == 0 then
+        return false
+    end
+    return redis.call('HGET', KEYS[7], 'descriptorKey') == ARGV[15]
+        and redis.call('HGET', KEYS[7], 'descriptorLifecycleGeneration')
+            == redis.call('HGET', KEYS[2], 'lifecycleGeneration')
+        and redis.call('HGET', KEYS[7], 'ownerId')
+            == redis.call('HGET', KEYS[2], 'ownerId')
+        and redis.call('HGET', KEYS[7], 'ownerLeaseGeneration')
+            == redis.call('HGET', KEYS[2], 'ownerLeaseGeneration')
+end
+local function storeEntryIdentity()
+    if ARGV[17] == '' then return true end
+    redis.call('HSET', KEYS[7],
+        'state', 'Claimed',
+        'spotId', ARGV[18],
+        'descriptorKey', ARGV[15],
+        'descriptorLifecycleGeneration', lifecycle,
+        'ownerId', owner,
+        'ownerLeaseGeneration', leaseGeneration)
+    return true
 end
 if not currentOwner then
     if intent ~= 'new' and intent ~= 'takeover' then
         return {'stale', 0, nowMs}
     end
+    if not entryIdentityAvailable() then return {'conflict', 0, nowMs} end
     local current = redis.call('HGET', KEYS[5], 'descriptorGeneration') or '0'
     if current == '9223372036854775807' then return {'exhausted', 0, nowMs} end
+    if not storeEntryIdentity() then return {'exhausted', 0, nowMs} end
     redis.call('HINCRBY', KEYS[5], 'descriptorGeneration', 1)
     local gen = redis.call('HGET', KEYS[5], 'descriptorGeneration')
     store(gen)
@@ -197,8 +227,16 @@ local storedLeaseGeneration = redis.call('HGET', KEYS[2], 'ownerLeaseGeneration'
 local storedOwner = redis.call('HGET', KEYS[2], 'ownerId')
 if (storedOwner ~= owner or storedLeaseGeneration ~= leaseGeneration)
     and (intent == 'new' or intent == 'takeover') then
+    if redis.call('HGET', KEYS[2], 'entrySpotId') ~= ARGV[18] then
+        return {'stale', 0, nowMs}
+    end
+    if not entryIdentityAvailable()
+        and not entryIdentityOwnedByCurrentDescriptor() then
+        return {'conflict', 0, nowMs}
+    end
     local current = redis.call('HGET', KEYS[5], 'descriptorGeneration') or '0'
     if current == '9223372036854775807' then return {'exhausted', 0, nowMs} end
+    if not storeEntryIdentity() then return {'exhausted', 0, nowMs} end
     redis.call('HINCRBY', KEYS[5], 'descriptorGeneration', 1)
     local gen = redis.call('HGET', KEYS[5], 'descriptorGeneration')
     store(gen)
@@ -233,7 +271,22 @@ if not owner or owner ~= ARGV[1] or leaseGeneration ~= ARGV[2] then
     return {'stale', 0, nowMs}
 end
 local generation = tonumber(redis.call('HGET', KEYS[1], 'gen'))
+local descriptorLifecycle = redis.call('HGET', KEYS[2], 'lifecycleGeneration')
 redis.call('DEL', KEYS[1], KEYS[2])
+if ARGV[4] ~= '' then
+    local entryOwner = redis.call('HGET', KEYS[5], 'ownerId')
+    local entryLease = redis.call('HGET', KEYS[5], 'ownerLeaseGeneration')
+    local entryLifecycle = redis.call(
+        'HGET', KEYS[5], 'descriptorLifecycleGeneration')
+    local entryDescriptorKey = redis.call('HGET', KEYS[5], 'descriptorKey')
+    local entrySpotId = redis.call('HGET', KEYS[5], 'spotId')
+    if entryOwner == ARGV[1] and entryLease == ARGV[2]
+        and entryLifecycle == descriptorLifecycle
+        and entryDescriptorKey == ARGV[3]
+        and entrySpotId == ARGV[4] then
+        redis.call('DEL', KEYS[5])
+    end
+end
 redis.call('SREM', KEYS[3], ARGV[3])
 redis.call('SREM', KEYS[4], ARGV[3])
 return {'stored', generation, nowMs}

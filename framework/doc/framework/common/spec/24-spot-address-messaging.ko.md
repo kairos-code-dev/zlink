@@ -125,11 +125,16 @@ Encoded creation request는 최대 1 MiB다. Framework는 reservation 전에 변
 [authority](01-glossary.ko.md#authority)와 충돌하면 새 UUID나 reservation을 만들지 않고
 `SpotIdConflict`로 terminal completion을 반환한다.
 같은 caller Spot ID의 kind 또는 stable type이 다르면 `SpotTypeMismatch`다.
-`GetOrCreate`는 같은 User Spot type의 Ready object를 사용하거나 진행 중인 같은
-생성 attempt의 완료를 기다린다. 두 경우 모두 같은 incarnation의 `SpotRef`를
-반환한다. 동시에 요청했지만 생성 권한을 얻지 못한 target은 다른 factory를
-시작하지 않는다. [Deadline](01-glossary.ko.md#deadline)까지 같은 attempt가 끝나지 않으면
-`DeadlineExceeded`이며, 다음 call이 Store의 현재 authority를 다시 확인한다.
+`GetOrCreate`는 같은 User Spot type의 Ready object를 `Existing`으로 반환한다. 진행
+중인 Creating attempt를 관찰한 서로 다른 operation은 새 reservation이나 factory를
+시작하지 않고 authority 변경을 기다린다. 앞선 attempt가 Ready로 끝나면
+`Existing`과 그 incarnation의 `SpotRef`를 반환한다. Rejected·failure cleanup으로
+Missing이 되면 남은 deadline 안에서 새 reservation을 경쟁하고, winner가 자신의
+creation request로 factory와 callback을 실행한다. 서로 다른 operation은 앞선
+attempt의 `Rejected` state와 application reply를 공유하지 않는다. 동일한 operation
+ID가 재전달된 경우에만 retained terminal result를 재전송한다. [Deadline](01-glossary.ko.md#deadline)까지
+authority가 Ready 또는 Missing으로 바뀌지 않으면 `DeadlineExceeded`이며, 다음 call은
+Store의 현재 authority를 다시 확인한다.
 
 Terminal result는 해당 attempt의 `SpotRef`, `Existing`·`Created`·`Rejected` state와 optional creation reply를
 함께 반환한다. `Existing`은 같은 stable type의 Ready incarnation을 사용했으며 factory callback을 실행하지

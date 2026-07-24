@@ -23,7 +23,6 @@ import { ZLinkActorRetryDelay } from '../actors/actor-retry-delay';
 import { encodeRemoteActorPacketTarget } from '../actors/actor-packet-relay-wire';
 import { encodeRemoteBoundSessionOwnershipPayload } from '../actors/bound-session-wire';
 import type { ZLinkLocationLifecycle } from '../locations';
-import { routingIdsEqual } from '../routing-id';
 import { wrapFrameworkPayloadMessage } from '../messaging/payload-codec';
 import type { DefaultZLinkSpotManager } from '../spots';
 import type { ZLinkNativeActorJoinSnapshot } from '../spots/spot-runtime-ports';
@@ -78,13 +77,13 @@ export class ZLinkActorTransferRuntime {
 
   private async prepareSourceActorLeave(
     actor: ZLinkActor,
-    sourceSpotRid: RoutingId | undefined,
+    sourceSpotId: RoutingId | undefined,
     signal?: AbortSignal
   ): Promise<void> {
-    if (sourceSpotRid !== undefined) {
+    if (sourceSpotId !== undefined) {
       const manager = this.options.spotManager();
       if (manager !== undefined) {
-        await manager.prepareActorLeaveForTransfer(sourceSpotRid, actor, signal);
+        await manager.prepareActorLeaveForTransfer(sourceSpotId, actor, signal);
         return;
       }
     }
@@ -93,13 +92,13 @@ export class ZLinkActorTransferRuntime {
 
   private async restoreSourceActor(
     actor: ZLinkActor,
-    sourceSpotRid: RoutingId | undefined,
+    sourceSpotId: RoutingId | undefined,
     signal?: AbortSignal
   ): Promise<void> {
-    if (sourceSpotRid !== undefined) {
+    if (sourceSpotId !== undefined) {
       const manager = this.options.spotManager();
       if (manager !== undefined) {
-        await manager.restoreActorAfterFailedTransfer(sourceSpotRid, actor, signal);
+        await manager.restoreActorAfterFailedTransfer(sourceSpotId, actor, signal);
         return;
       }
     }
@@ -110,8 +109,8 @@ export class ZLinkActorTransferRuntime {
     state.beginMove();
     this.options.actorHandoff.begin(actor.actorId, state.nativeActorRef?.generation ?? 0n);
     try {
-      if (state.spotRid !== undefined) {
-        await this.options.spotManager()?.beginActorTransfer(state.spotRid, actor.actorId);
+      if (state.spotId !== undefined) {
+        await this.options.spotManager()?.beginActorTransfer(state.spotId, actor.actorId);
       }
     } catch (error) {
       this.options.actorHandoff.cancel(actor.actorId);
@@ -122,8 +121,8 @@ export class ZLinkActorTransferRuntime {
 
   private async cancelSourceActorMove(actor: ZLinkActor, state: ZLinkActorRuntimeState): Promise<void> {
     try {
-      if (state.spotRid !== undefined) {
-        await this.options.spotManager()?.cancelActorTransfer(state.spotRid, actor.actorId);
+      if (state.spotId !== undefined) {
+        await this.options.spotManager()?.cancelActorTransfer(state.spotId, actor.actorId);
       }
     } finally {
       this.options.actorHandoff.cancel(actor.actorId);
@@ -139,7 +138,7 @@ export class ZLinkActorTransferRuntime {
   ) {
     const transferStarted = process.hrtime.bigint();
     await this.beginSourceActorMove(actor, state);
-    const sourceSpotRid = state.spotRid;
+    const sourceSpotId = state.spotId;
     let sourceLeaveStarted = false;
     try {
       const transfer = await this.options.actorTransferRegistry.transferOut(
@@ -154,7 +153,7 @@ export class ZLinkActorTransferRuntime {
       );
       if (lifecycleAuthority === 'framework') {
         sourceLeaveStarted = true;
-        await this.prepareSourceActorLeave(actor, sourceSpotRid, signal);
+        await this.prepareSourceActorLeave(actor, sourceSpotId, signal);
       }
       const sourceLeaveCompletion = lifecycleAuthority === 'core'
         ? this.beginCoreSourceLeave(actor.actorId)
@@ -189,7 +188,7 @@ export class ZLinkActorTransferRuntime {
           } finally {
             this.scheduleSourceDeparture(
               actor,
-              sourceSpotRid,
+              sourceSpotId,
               lifecycleAuthority === 'core' && releaseLocation
             );
           }
@@ -199,13 +198,13 @@ export class ZLinkActorTransferRuntime {
           phase = 'rolledBack';
           this.coreSourceLeaves.delete(actor.actorId);
           await this.cancelSourceActorMove(actor, state);
-          await this.restoreSourceActor(actor, sourceSpotRid);
+          await this.restoreSourceActor(actor, sourceSpotId);
         }
       };
     } catch (error) {
       try {
         await this.cancelSourceActorMove(actor, state);
-        if (sourceLeaveStarted) await this.restoreSourceActor(actor, sourceSpotRid);
+        if (sourceLeaveStarted) await this.restoreSourceActor(actor, sourceSpotId);
       } catch (rollbackError) {
         throw new AggregateError([error, rollbackError], 'Actor source leave and rollback both failed.');
       }
@@ -240,25 +239,25 @@ export class ZLinkActorTransferRuntime {
 
   private scheduleSourceDeparture(
     actor: ZLinkActor,
-    sourceSpotRid: RoutingId | undefined,
+    sourceSpotId: RoutingId | undefined,
     releaseLocation: boolean
   ): void {
     if (this.sourceDepartureTasks.has(actor.actorId)) return;
-    const task = this.finishSourceDeparture(actor, sourceSpotRid, releaseLocation)
+    const task = this.finishSourceDeparture(actor, sourceSpotId, releaseLocation)
       .finally(() => this.sourceDepartureTasks.delete(actor.actorId));
     this.sourceDepartureTasks.set(actor.actorId, task);
   }
 
   private async finishSourceDeparture(
     actor: ZLinkActor,
-    sourceSpotRid: RoutingId | undefined,
+    sourceSpotId: RoutingId | undefined,
     releaseLocation: boolean
   ): Promise<void> {
     const retry = new ZLinkActorRetryDelay();
     while (this.options.shutdownSignal?.()?.aborted !== true) {
       try {
-        if (sourceSpotRid !== undefined) {
-          await this.options.spotManager()?.commitActorLeaveAfterTransfer(sourceSpotRid, actor.actorId);
+        if (sourceSpotId !== undefined) {
+          await this.options.spotManager()?.commitActorLeaveAfterTransfer(sourceSpotId, actor.actorId);
         }
         if (releaseLocation) {
           const state = this.options.actorManager()?.getState(actor.actorId);
@@ -340,9 +339,9 @@ export class ZLinkActorTransferRuntime {
     };
   }
 
-  commitRoutedActor(actor: ZLinkActor, spotRid: RoutingId, spot: ZLinkSpot): void {
+  commitRoutedActor(actor: ZLinkActor, spotId: RoutingId, spot: ZLinkSpot): void {
     const state = this.options.actorManager()?.getState(actor.actorId);
-    state?.setJoinedSpot(spotRid, spot);
+    state?.setJoinedSpot(spotId, spot);
   }
 
   bindRoutedActorRef(actor: ZLinkActor, actorRef: ActorRef): void {
@@ -362,7 +361,7 @@ export class ZLinkActorTransferRuntime {
 
   async claimRoutedActorLocation(
     actor: ZLinkActor,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotMeshName: string,
     joinedLocation?: {
       readonly spotGeneration: bigint;
@@ -385,8 +384,8 @@ export class ZLinkActorTransferRuntime {
     if (
       joinedLocation === undefined
       && (
-        location.spotRid === null
-        || !routingIdsEqual(location.spotRid as never, spotRid)
+        location.spotId === null
+        || location.spotId !== spotId
       )
     ) {
       throw new Error(`Actor '${actor.actorId}' Core location does not match the committed target SPOT.`);
@@ -403,7 +402,7 @@ export class ZLinkActorTransferRuntime {
         actor.actorId,
         toFrameworkActorRef(state.nativeActorRef ?? location.actor as never),
         spotMeshName,
-        spotRid,
+        spotId,
         spotGeneration,
         membershipEpoch,
         ownerNodeGeneration,
@@ -420,28 +419,28 @@ export class ZLinkActorTransferRuntime {
     if (claim.generation !== undefined) {
       state.setLocationGeneration(claim.generation);
     }
-    state.setJoinedSpot(spotRid, state.spot, membershipEpoch);
+    state.setJoinedSpot(spotId, state.spot, membershipEpoch);
     state.markLocationOwned();
   }
 
   async claimNativeActorLocation(
     actor: ZLinkActor,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotMeshName: string
   ): Promise<ZLinkNativeActorJoinSnapshot> {
     const state = this.options.actorManager()?.getState(actor.actorId);
     const previousLocation = this.options.locationLifecycle()?.actorLocationSnapshot(actor.actorId);
     const snapshot = {
-      spotRid: state?.spotRid,
+      spotId: state?.spotId,
       spot: state?.spot,
-      locationSpotRid: previousLocation?.spotRid,
+      locationSpotId: previousLocation?.spotId,
       spotMeshName: previousLocation?.meshName,
       actorRef: previousLocation?.actorRef,
       spotGeneration: previousLocation?.spotGeneration,
       membershipEpoch: previousLocation?.membershipEpoch,
       ownerNodeGeneration: previousLocation?.ownerNodeGeneration
     };
-    await this.claimRoutedActorLocation(actor, spotRid, spotMeshName);
+    await this.claimRoutedActorLocation(actor, spotId, spotMeshName);
     return snapshot;
   }
 
@@ -455,10 +454,10 @@ export class ZLinkActorTransferRuntime {
       actorRef,
       generation,
       state.remoteBoundSessionTarget,
-      state.spotRid === undefined || state.remoteBoundSessionTarget === undefined ? undefined : {
+      state.spotId === undefined || state.remoteBoundSessionTarget === undefined ? undefined : {
         routerChannelId: state.remoteBoundSessionTarget.routerChannelId,
         targetNodeRid: actorRef.nodeRid,
-        spotRid: state.spotRid,
+        spotId: state.spotId,
         spotKind: ZLinkSpotKind.User
       }
     );
@@ -476,12 +475,12 @@ export class ZLinkActorTransferRuntime {
     const state = this.options.actorManager()?.getState(actor.actorId);
     const actorType = state?.actorType;
     const lifecycle = this.options.locationLifecycle();
-    if (snapshot.spotRid === undefined) state?.clearJoinedSpot();
-    else state?.setJoinedSpot(snapshot.spotRid, snapshot.spot);
+    if (snapshot.spotId === undefined) state?.clearJoinedSpot();
+    else state?.setJoinedSpot(snapshot.spotId, snapshot.spot);
     if (state?.ownsLocation !== true || actorType === undefined || lifecycle === undefined) return;
-    if (snapshot.spotRid === undefined) {
+    if (snapshot.spotId === undefined) {
       if (
-        snapshot.locationSpotRid === undefined
+        snapshot.locationSpotId === undefined
         || snapshot.spotGeneration === undefined
         || snapshot.membershipEpoch === undefined
         || snapshot.ownerNodeGeneration === undefined
@@ -491,7 +490,7 @@ export class ZLinkActorTransferRuntime {
       await lifecycle.notifyActorLeftSpot(
         actorType,
         actor.actorId,
-        snapshot.locationSpotRid,
+        snapshot.locationSpotId,
         snapshot.spotGeneration,
         snapshot.membershipEpoch,
         snapshot.ownerNodeGeneration
@@ -514,7 +513,7 @@ export class ZLinkActorTransferRuntime {
       actor.actorId,
       snapshot.actorRef,
       snapshot.spotMeshName,
-      snapshot.spotRid,
+      snapshot.spotId,
       snapshot.spotGeneration,
       snapshot.membershipEpoch,
       snapshot.ownerNodeGeneration,
@@ -582,7 +581,7 @@ export class ZLinkActorTransferRuntime {
         {
           routerChannelId: target.routerChannelId,
           targetNodeRid: target.targetNodeRid,
-          spotRid: target.spotRid,
+          spotId: target.spotId,
           spotKind: ZLinkSpotKind.Entry
         },
         encodeRemoteBoundSessionOwnershipPayload({

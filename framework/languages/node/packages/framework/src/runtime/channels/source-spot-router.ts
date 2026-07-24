@@ -46,7 +46,7 @@ export class ZLinkSourceSpotRouter {
         void this.submitWhenReady(
           (remainingMs) => sourceSpot.requestToSpot(
             target.targetNodeRid,
-            target.spotRid,
+            target.spotId,
             parts,
             (result, replyParts) => {
               try {
@@ -92,7 +92,7 @@ export class ZLinkSourceSpotRouter {
     )] as readonly Message[];
     try {
       await this.submitWhenReady(
-        () => sourceSpot.sendToSpot(target.targetNodeRid, target.spotRid, parts, 0),
+        () => sourceSpot.sendToSpot(target.targetNodeRid, target.spotId, parts, 0),
         undefined,
         signal,
         this.notReady(target.routerChannelId, 'send')
@@ -132,7 +132,7 @@ export class ZLinkSourceSpotRouter {
         void this.submitWhenReady(
           (remainingMs) => sourceSpot.requestToSpot(
             target.targetNodeRid,
-            target.spotRid,
+            target.spotId,
             request,
             (result, replyParts) => {
               if (result !== 0) {

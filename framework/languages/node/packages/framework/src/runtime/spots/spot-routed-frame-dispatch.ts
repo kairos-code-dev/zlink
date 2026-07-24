@@ -38,7 +38,7 @@ interface ZLinkRoutedFrameAdmissionTarget {
 
 interface ZLinkSpotRoutedFrameDispatchOptions {
   readonly nativeSpot: ZLinkBackendSpot;
-  readonly nativeSpotRid: string;
+  readonly nativeSpotId: string;
   readonly serial: ZLinkSpotSerialExecutor;
   readonly resolveActor: (actorId: string) => ZLinkActor | undefined;
   readonly getTarget: () => ZLinkRoutedFrameAdmissionTarget & ZLinkSpot;
@@ -119,7 +119,7 @@ export class ZLinkSpotRoutedFrameDispatch {
     });
     this.routePacketDispatch = new ZLinkSpotRoutePacketDispatch({
       packetHandlers: this.packetHandlers,
-      nativeSpotRid: options.nativeSpotRid,
+      nativeSpotId: options.nativeSpotId,
       serial: options.serial,
       getTarget: options.getTarget,
       providerResolver: options.providerResolver,

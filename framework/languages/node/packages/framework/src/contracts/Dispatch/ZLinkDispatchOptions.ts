@@ -1,4 +1,4 @@
-import type { RoutingId, Type } from '../Common';
+import type { RoutingId, SpotId, Type } from '../Common';
 import type {
   ZLinkMessageKind,
   ZLinkMessageSurface,
@@ -72,7 +72,7 @@ export interface ZLinkMessageFlowEvent {
   readonly targetRid?: RoutingId;
   readonly flowId?: string;
   readonly flowOrigin?: import('../Eventing/Contracts').ZLinkFlowOrigin;
-  readonly spotRid?: RoutingId;
+  readonly spotId?: SpotId;
   readonly actorId?: string;
   readonly messageSizeBytes?: number;
   readonly durationSeconds?: number;
@@ -108,7 +108,7 @@ export interface ZLinkRuntimeMessageFlowEvent {
   readonly effectiveMode: ZLinkMessageFlowLogMode;
   readonly flowId: string;
   readonly flowOrigin: import('../Eventing/Contracts').ZLinkFlowOrigin;
-  readonly spotRid?: string;
+  readonly spotId?: string;
   readonly actorId?: string;
   readonly messageSize?: number;
   readonly errorReason?: ZLinkDispatchErrorReason;
@@ -138,7 +138,7 @@ export interface ZLinkDispatchFailure {
   readonly packetName?: string;
   readonly channelName?: string;
   readonly topic?: string;
-  readonly spotRid?: string;
+  readonly spotId?: string;
   readonly actorId?: string;
   readonly sourceRid?: string;
   readonly correlationId?: string;

@@ -85,7 +85,7 @@ test('in-memory location store lists filters pages and bumps change stamps', asy
   assert.equal(secondPage.items.length, 1);
   assert.equal(secondPage.continuationToken, undefined);
 
-  const resolvedSpot = await store.resolveSpot({ meshName: 'play', spotRid: rid('spot-1') });
+  const resolvedSpot = await store.resolveSpot({ meshName: 'play', spotId: rid('spot-1') });
   assert.equal(resolvedSpot.spotType, 'game');
 
   const resolvedRoute = await store.resolveRoute({
@@ -140,7 +140,7 @@ test('in-memory location store matches the formal operation trace for core write
   record('spot-claim-2',
     await store.updateSpot(spot('owner-a', 'spot-2'), framework.ZLinkLocationWriteIntent.NewClaim));
   recordStatus('spot-remove-wrong-owner', await store.removeSpot(
-    { meshName: 'play', spotRid: rid('spot-1') },
+    { meshName: 'play', spotId: rid('spot-1') },
     { ownerId: 'owner-b', leaseGeneration: 1n }
   ));
   const routeClaim = await store.updateRoute(route('owner-a'), framework.ZLinkLocationWriteIntent.NewClaim);
@@ -195,6 +195,7 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
     descriptorRevision: 3n,
     endpoint: 'tcp://10.0.0.1:7300',
     objectRole: framework.ZLinkObjectRole.Server,
+    entrySpotId: 'game-entry-123e4567-e89b-42d3-a456-426614174000',
     placementWeight: 100,
     objectCapacity: {
       activeObjects: 0,
@@ -238,6 +239,42 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
     framework.ZLinkLocationWriteStatus.IgnoredStale
   );
 
+  const otherLease = await store.claimOwnerLease('mesh-owner-b', 30_000);
+  assert.equal(otherLease.kind, 'claimed');
+  const conflictingEntryIdentity = await store.updateMeshNode({
+    ...descriptor,
+    rid: rid('game-b'),
+    lifecycleGeneration: 8n,
+    descriptorRevision: 1n,
+    endpoint: 'tcp://10.0.0.2:7300',
+    ownerId: 'mesh-owner-b',
+    leaseGeneration: otherLease.token.leaseGeneration
+  }, framework.ZLinkLocationWriteIntent.NewClaim);
+  assert.equal(
+    conflictingEntryIdentity.status,
+    framework.ZLinkLocationWriteStatus.RejectedConflict
+  );
+  assert.equal((await store.listMeshNodes('game')).length, 1);
+  assert.equal(
+    await store.removeMeshNode(
+      { meshName: 'game', rid: rid('game-a') },
+      meshLease.token
+    ),
+    framework.ZLinkLocationWriteStatus.Stored
+  );
+  assert.equal(
+    (await store.updateMeshNode({
+      ...descriptor,
+      rid: rid('game-b'),
+      lifecycleGeneration: 8n,
+      descriptorRevision: 1n,
+      endpoint: 'tcp://10.0.0.2:7300',
+      ownerId: 'mesh-owner-b',
+      leaseGeneration: otherLease.token.leaseGeneration
+    }, framework.ZLinkLocationWriteIntent.NewClaim)).status,
+    framework.ZLinkLocationWriteStatus.Stored
+  );
+
   const request = actorTransferRequest();
   const prepared = await store.prepareActorTransfer(request);
   assert.equal(prepared.status, 'stored');
@@ -266,6 +303,20 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
   assert.equal(await store.resolveActorTransfer(request.meshName, request.actorId), undefined);
 });
 
+test('Framework-issued Entry Spot IDs are lowercase UUID v4 identities', () => {
+  const ids = new Set();
+  for (let index = 0; index < 128; index++) {
+    const spotId = internal.createFrameworkEntrySpotId('game.node');
+    assert.match(
+      spotId,
+      /^game\.node-entry-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
+    ids.add(spotId);
+  }
+  assert.equal(ids.size, 128);
+  assert.throws(() => internal.createFrameworkEntrySpotId('bad prefix'), /diagnostic prefix/);
+});
+
 function rid(value) {
   return zlink.RoutingId.from(value);
 }
@@ -278,7 +329,7 @@ function actor(ownerId, _generation) {
     actorRef: { nodeRid: rid('node-1'), actorId: 'actor-1', generation: 1n },
     ownerNodeRid: rid('node-1'),
     ownerNodeGeneration: 1n,
-    spotRid: rid('node-1'),
+    spotId: rid('node-1'),
     spotGeneration: 1n,
     spotKind: framework.ZLinkSpotKind.Entry,
     membershipEpoch: 1n,
@@ -319,10 +370,10 @@ function peer(ownerId, nodeRid = 'node-1') {
   };
 }
 
-function spot(ownerId, spotRid) {
+function spot(ownerId, spotId) {
   return {
     meshName: 'play',
-    spotRid: rid(spotRid),
+    spotId: rid(spotId),
     spotType: 'game',
     spotGeneration: 1n,
     ownerNodeRid: rid('node-1'),

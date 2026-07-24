@@ -79,7 +79,7 @@ export const ActorTransferPhase = Object.freeze({
 
 export interface ActorLocation {
   readonly actor: ActorRef;
-  readonly spotRid: RoutingId | null;
+  readonly spotId: RoutingId | null;
   readonly spotGeneration: bigint;
   readonly membershipEpoch: bigint;
 }
@@ -89,8 +89,8 @@ export interface ActorControlPayload {
   readonly lifecycleKind: number;
   readonly previousActor: ActorRef | null;
   readonly currentActor: ActorRef | null;
-  readonly previousSpotRid: RoutingId | null;
-  readonly currentSpotRid: RoutingId | null;
+  readonly previousSpotId: RoutingId | null;
+  readonly currentSpotId: RoutingId | null;
   readonly previousSpotGeneration: bigint;
   readonly currentSpotGeneration: bigint;
   readonly previousMembershipEpoch: bigint;
@@ -114,7 +114,7 @@ export interface SendReadyPayload {
   readonly kind: 'sendReady';
   readonly destinationKind: number;
   readonly targetNodeRid: RoutingId | null;
-  readonly targetSpotRid: RoutingId | null;
+  readonly targetSpotId: RoutingId | null;
   readonly targetActor: ActorRef | null;
   readonly channelName: string | null;
 }
@@ -141,7 +141,7 @@ export type ReceiveKindData =
 export interface ReadyRecord {
   readonly ownerKind: number;
   readonly domain: number;
-  readonly spotRid: RoutingId | null;
+  readonly spotId: RoutingId | null;
   readonly actor: ActorRef | null;
 }
 
@@ -155,7 +155,7 @@ export interface ReceiveRecord {
   readonly kind: number;
   readonly domain: number;
   readonly sourceNodeRid: RoutingId | null;
-  readonly sourceSpotRid: RoutingId | null;
+  readonly sourceSpotId: RoutingId | null;
   readonly sourceBindingGeneration: bigint;
   readonly sourceActor: ActorRef | null;
   readonly operationId: MeshOperationId;
@@ -312,14 +312,14 @@ export interface ServiceSpot {
   ): MeshOperationId;
   sendToSpot(
     targetNodeRid: unknown,
-    targetSpotRid: unknown,
+    targetSpotId: unknown,
     targetSpotGeneration: bigint,
     parts: MessageLike | readonly MessageLike[],
     options?: { flags?: number }
   ): SubmitResult;
   requestToSpot(
     targetNodeRid: unknown,
-    targetSpotRid: unknown,
+    targetSpotId: unknown,
     targetSpotGeneration: bigint,
     parts: MessageLike | readonly MessageLike[],
     options?: { flags?: number; timeoutMs?: number; applicationMetadata?: Buffer }

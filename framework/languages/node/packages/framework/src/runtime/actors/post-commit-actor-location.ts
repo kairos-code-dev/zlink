@@ -18,7 +18,7 @@ export class ZLinkPostCommitActorLocation {
     actorType: string,
     actorId: string,
     meshName: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotGeneration: bigint,
     membershipEpoch: bigint,
     ownerNodeGeneration: bigint
@@ -27,7 +27,7 @@ export class ZLinkPostCommitActorLocation {
       actorType,
       actorId,
       meshName,
-      spotRid,
+      spotId,
       spotGeneration,
       membershipEpoch,
       ownerNodeGeneration
@@ -37,7 +37,7 @@ export class ZLinkPostCommitActorLocation {
   leftEventually(
     actorType: string,
     actorId: string,
-    entrySpotRid: RoutingId,
+    entrySpotId: RoutingId,
     entrySpotGeneration: bigint,
     membershipEpoch: bigint,
     ownerNodeGeneration: bigint
@@ -45,7 +45,7 @@ export class ZLinkPostCommitActorLocation {
     this.enqueue(actorId, () => this.options.lifecycle.notifyActorLeftSpot(
       actorType,
       actorId,
-      entrySpotRid,
+      entrySpotId,
       entrySpotGeneration,
       membershipEpoch,
       ownerNodeGeneration

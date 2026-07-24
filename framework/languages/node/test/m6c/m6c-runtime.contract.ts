@@ -28,6 +28,10 @@ import {
   type ServiceRelocationStorePort
 } from '../../packages/framework/src/runtime/foundation/service-relocation-runtime';
 import {
+  ServiceRelocationCoordinator,
+  ServiceRelocationPostCommitError
+} from '../../packages/framework/src/runtime/foundation/service-relocation-coordinator';
+import {
   ZLinkManagedTimer
 } from '../../packages/framework/src/runtime/spots/spot-timer';
 import { encodeAuthorityKey } from '../../packages/framework/src/runtime/locations/authority-key-codec';
@@ -308,10 +312,147 @@ test('authority response loss reconciles a committed publication without deletin
   assert.equal((await store.get(published.publication.reference)).kind, 'found');
 });
 
+test('target restore stays hidden until owner CAS then replaces session routes before completion release', async () => {
+  const events: string[] = [];
+  const authority = authorityStore();
+  const key = authorityKey('spot:target-restore');
+  const initial = await createAuthority(authority, 'spot:target-restore');
+  const authorityPort = {
+    readAuthority: (...args: Parameters<ZLinkInMemoryAuthorityStore['readAuthority']>) =>
+      authority.readAuthority(...args),
+    compareExchangeAuthority: (
+      ...args: Parameters<ZLinkInMemoryAuthorityStore['compareExchangeAuthority']>
+    ) => {
+      events.push('authority-cas');
+      return authority.compareExchangeAuthority(...args);
+    }
+  };
+  const store = new MemoryRelocationStore(events);
+  const durable = new ServiceDurableRelocationRuntime(authorityPort, store, authorityCodec);
+  const published = await durable.captureAndPublish(key, initial, relocationEnvelope());
+  events.length = 0;
+  const coordinator = new ServiceRelocationCoordinator(durable, {
+    async prepare(envelope) {
+      events.push('target-prepare');
+      assert.equal(envelope.participants.length, 2);
+      return { id: 'staging-room' };
+    },
+    async commit() {
+      events.push('target-publish');
+    },
+    abort() {
+      events.push('target-abort');
+    }
+  }, {
+    async replace() {
+      events.push('session-route-replace');
+    }
+  });
+  const fence = await reserveTarget(authority, key, published.authority, 'target-restore');
+
+  const committed = await coordinator.restoreAndCommit(
+    key,
+    published.authority,
+    owner('owner-b', 2n),
+    fence
+  );
+  assert.deepEqual(events, [
+    'target-prepare',
+    'authority-cas',
+    'target-publish',
+    'session-route-replace'
+  ]);
+  assert.equal(committed.authority.ownerId, 'owner-b');
+  assert.equal(
+    committed.authority.authorityOwnerGeneration,
+    published.authority.authorityOwnerGeneration + 1n
+  );
+
+  events.length = 0;
+  await coordinator.complete(key, committed);
+  assert.deepEqual(events, ['authority-cas', 'payload-delete']);
+});
+
+test('post-commit route replacement failure preserves committed owner and relocation root', async () => {
+  const events: string[] = [];
+  const authority = authorityStore();
+  const key = authorityKey('actor:post-commit');
+  const initial = await createAuthority(authority, 'actor:post-commit');
+  const store = new MemoryRelocationStore(events);
+  const durable = new ServiceDurableRelocationRuntime(authority, store, authorityCodec);
+  const published = await durable.captureAndPublish(key, initial, relocationEnvelope());
+  const fence = await reserveTarget(authority, key, published.authority, 'post-commit');
+  let aborted = 0;
+  const coordinator = new ServiceRelocationCoordinator(durable, {
+    async prepare() {
+      return { id: 'staging-actor' };
+    },
+    async commit() {},
+    abort() {
+      aborted++;
+    }
+  }, {
+    async replace() {
+      throw new Error('session route replacement failed');
+    }
+  });
+
+  await assert.rejects(
+    coordinator.restoreAndCommit(
+      key,
+      published.authority,
+      owner('owner-b', 2n),
+      fence
+    ),
+    ServiceRelocationPostCommitError
+  );
+  assert.equal(aborted, 0);
+  const current = await authority.readAuthority(key);
+  assert.equal(current.kind, 'snapshot');
+  if (current.kind !== 'snapshot') return;
+  assert.equal(current.ownerId, 'owner-b');
+  const publication = authorityCodec.read(current.payload);
+  assert.ok(publication);
+  assert.equal((await store.get(publication.reference)).kind, 'found');
+});
+
 function authorityStore(): ZLinkInMemoryAuthorityStore {
   return new ZLinkInMemoryAuthorityStore({
     isTargetLive: () => true
   }, () => new Date(100));
+}
+
+async function reserveTarget(
+  authority: ZLinkInMemoryAuthorityStore,
+  key: ZLinkAuthorityKey,
+  current: ZLinkAuthoritySnapshot,
+  reservationName: string
+) {
+  const result = await authority.reserveRelocationCapacity({
+    reservationId: reservationName === 'target-restore'
+      ? '11111111-1111-4111-8111-111111111111'
+      : '22222222-2222-4222-8222-222222222222',
+    authorityKey: key,
+    expectedStoreVersion: current.storeVersion,
+    objectKind: 'user_spot',
+    stableType: 'room',
+    sourceDescriptor: current.allocation.descriptor,
+    sourceNodeLifecycleGeneration: current.allocation.descriptorLifecycleGeneration,
+    sourceOwner: owner(current.ownerId, current.ownerLeaseGeneration),
+    targetDescriptor: { meshName: 'mesh', rid: 'node-b' },
+    targetNodeLifecycleGeneration: 2n,
+    targetOwner: owner('owner-b', 2n),
+    capacity: {
+      actors: 0,
+      spots: 1,
+      spotType: { objectKind: 'user_spot', stableType: 'room', count: 1 }
+    }
+  });
+  assert.equal(result.kind, 'reserved');
+  if (result.kind !== 'reserved') {
+    throw new Error('Relocation reservation failed.');
+  }
+  return result.fence;
 }
 
 async function createAuthority(
@@ -334,7 +475,15 @@ async function createAuthority(
     },
     target,
     creatingPayload: Buffer.from('creating'),
-    pendingCapacityDelta: 1
+    capacity: {
+      actors: 0,
+      spots: 1,
+      spotType: {
+        objectKind: 'user_spot',
+        stableType: 'room',
+        count: 1
+      }
+    }
   });
   assert.equal(reserved.kind, 'reserved');
   if (reserved.kind !== 'reserved') throw new Error('Authority reservation failed.');

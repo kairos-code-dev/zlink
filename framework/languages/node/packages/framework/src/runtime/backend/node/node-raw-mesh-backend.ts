@@ -155,14 +155,14 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     target: ServiceInstanceActivationTarget,
     parts: MessageLike | readonly MessageLike[],
     deadlineUnixMs: bigint,
-    sourceSpotRid?: string,
+    sourceSpotId?: string,
     metadata?: ReadonlyMap<string, string>
   ): SubmitResult {
     const result = this.requireStateful().sendToMissingInstanceSpot(
       target,
       encodeMultipart(parts),
       deadlineUnixMs,
-      sourceSpotRid,
+      sourceSpotId,
       metadata === undefined ? undefined : encodeServiceMetadataFrame(metadata)
     );
     return result as SubmitResult;
@@ -172,7 +172,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     target: ServiceInstanceActivationTarget,
     parts: MessageLike | readonly MessageLike[],
     timeoutMs: number,
-    sourceSpotRid?: string,
+    sourceSpotId?: string,
     metadata?: ReadonlyMap<string, string>
   ): MeshOperationId {
     return this.observeStateful(
@@ -181,7 +181,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
         target,
         encodeMultipart(parts),
         timeoutMs,
-        sourceSpotRid,
+        sourceSpotId,
         metadata === undefined ? undefined : encodeServiceMetadataFrame(metadata)
       )
     );
@@ -239,12 +239,21 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   }
 
   setChannelWeight(name: string, weight: number): void {
-    this.requireNotStarted();
     if (!this.channels.has(name)) throw new Error(`Channel '${name}' is not registered.`);
-    if (!Number.isInteger(weight) || weight < 0 || weight > 10_000) {
-      throw new RangeError('Channel weight must be an integer in 0..10000.');
-    }
-    this.channels.set(name, weight);
+    const validated = requirePublicWeight(weight, 'Channel weight');
+    if (this.channels.get(name) === validated) return;
+    this.channels.set(name, validated);
+    this.runtime?.updateLocalWeights({
+      channelName: name,
+      channelWeight: validated
+    });
+  }
+
+  setPlacementWeight(weight: number): void {
+    const validated = requirePublicWeight(weight, 'Placement weight');
+    if (this.placementWeight === validated) return;
+    this.placementWeight = validated;
+    this.runtime?.updateLocalWeights({ placementWeight: validated });
   }
 
   connectPeer(options: { readonly endpoint: string; readonly expectedRid?: unknown }): bigint {
@@ -525,12 +534,12 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   }
 
   forgetInstanceIntent(
-    spotRid: string,
+    spotId: string,
     authorityOwnerGeneration: bigint,
     storeVersion?: string
   ): void {
     this.requireStateful().forgetInstanceIntent(
-      spotRid,
+      spotId,
       authorityOwnerGeneration,
       storeVersion
     );
@@ -552,7 +561,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     route: ServiceInstanceRouteFence,
     parts: MessageLike | readonly MessageLike[],
     timeoutMs = 30_000,
-    sourceSpotRid?: string
+    sourceSpotId?: string
   ): MeshOperationId {
     return this.observeStateful(
       OperationKind.InstanceSpotRequest,
@@ -560,7 +569,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
         route,
         encodeMultipart(parts),
         timeoutMs,
-        sourceSpotRid
+        sourceSpotId
       )
     );
   }
@@ -570,7 +579,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     if (actor === undefined) throw new Error(`Actor '${actorId}' was not found.`);
     return {
       actor: actor.ref,
-      spotRid: actor.spot.spotRid,
+      spotId: actor.spot.spotId,
       spotGeneration: actor.spot.generation,
       membershipEpoch: actor.membershipEpoch
     };
@@ -593,7 +602,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   joinActorSpot(
     actor: ZLinkBackendActorRef,
     targetNodeRid: unknown,
-    targetSpotRid: unknown,
+    targetSpotId: unknown,
     targetSpotGeneration: bigint,
     parts?: MessageLike | readonly MessageLike[],
     timeoutMs = 30_000
@@ -603,7 +612,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       this.requireStateful().joinActor(
         actor,
         String(targetNodeRid),
-        { spotRid: String(targetSpotRid), generation: targetSpotGeneration },
+        { spotId: String(targetSpotId), generation: targetSpotGeneration },
         targetSpotGeneration,
         parts === undefined ? undefined : encodeMultipart(parts),
         timeoutMs
@@ -623,7 +632,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       this.requireStateful().joinActor(
         actor,
         target,
-        { spotRid: target, generation: 1n },
+        { spotId: target, generation: 1n },
         1n,
         parts === undefined ? undefined : encodeMultipart(parts),
         timeoutMs
@@ -747,14 +756,14 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   sendFromSpot(
     source: ServiceSpotState,
     targetNodeRid: string,
-    targetSpotRid: string,
+    targetSpotId: string,
     targetSpotGeneration: bigint,
     parts: MessageLike | readonly MessageLike[]
   ): SubmitResultValue {
     return this.requireStateful().sendToSpot(
-      source.ref.spotRid,
+      source.ref.spotId,
       targetNodeRid,
-      { spotRid: targetSpotRid, generation: targetSpotGeneration },
+      { spotId: targetSpotId, generation: targetSpotGeneration },
       this.peerGeneration(targetNodeRid),
       targetSpotGeneration,
       encodeMultipart(parts)
@@ -764,7 +773,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   requestFromSpot(
     source: ServiceSpotState,
     targetNodeRid: string,
-    targetSpotRid: string,
+    targetSpotId: string,
     targetSpotGeneration: bigint,
     parts: MessageLike | readonly MessageLike[],
     timeoutMs: number
@@ -772,9 +781,9 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     return this.observeStateful(
       OperationKind.SpotRequest,
       this.requireStateful().requestToSpot(
-        source.ref.spotRid,
+        source.ref.spotId,
         targetNodeRid,
-        { spotRid: targetSpotRid, generation: targetSpotGeneration },
+        { spotId: targetSpotId, generation: targetSpotGeneration },
         this.peerGeneration(targetNodeRid),
         targetSpotGeneration,
         encodeMultipart(parts),
@@ -797,7 +806,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
       channelName,
       topic,
       encodeMultipart(parts),
-      state.ref.spotRid
+      state.ref.spotId
     );
   }
 
@@ -818,7 +827,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   }
 
   clearSpotSubscriptions(state: ServiceSpotState): void {
-    this.requireStateful().clearSubscriptions(state.ref.spotRid);
+    this.requireStateful().clearSubscriptions(state.ref.spotId);
   }
 
   private createDescriptor(): ServiceNodeDescriptor {
@@ -942,7 +951,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
         {
           ownerKind: ReadyOwnerKind.Node,
           domain: ReadyDomain.Infrastructure,
-          spotRid: null,
+          spotId: null,
           actor: null
         },
         new CompletionClaim(completion)
@@ -1015,7 +1024,7 @@ class RawServiceSpot implements ServiceSpot {
     private readonly backend: ZLinkNodeRawMeshBackend,
     private readonly state: ServiceSpotState
   ) {
-    this.routingId = state.ref.spotRid;
+    this.routingId = state.ref.spotId;
     this.lifecycleGeneration = state.ref.generation;
   }
 
@@ -1047,7 +1056,7 @@ class RawServiceSpot implements ServiceSpot {
 
   sendToSpot(
     targetNodeRid: unknown,
-    targetSpotRid: unknown,
+    targetSpotId: unknown,
     targetSpotGeneration: bigint,
     parts: MessageLike | readonly MessageLike[]
   ): SubmitResultValue {
@@ -1055,7 +1064,7 @@ class RawServiceSpot implements ServiceSpot {
     return this.backend.sendFromSpot(
       this.state,
       String(targetNodeRid),
-      String(targetSpotRid),
+      String(targetSpotId),
       targetSpotGeneration,
       parts
     );
@@ -1063,7 +1072,7 @@ class RawServiceSpot implements ServiceSpot {
 
   requestToSpot(
     targetNodeRid: unknown,
-    targetSpotRid: unknown,
+    targetSpotId: unknown,
     targetSpotGeneration: bigint,
     parts: MessageLike | readonly MessageLike[],
     options?: { readonly timeoutMs?: number }
@@ -1072,7 +1081,7 @@ class RawServiceSpot implements ServiceSpot {
     return this.backend.requestFromSpot(
       this.state,
       String(targetNodeRid),
-      String(targetSpotRid),
+      String(targetSpotId),
       targetSpotGeneration,
       parts,
       options?.timeoutMs ?? 30_000
@@ -1344,7 +1353,7 @@ class CompletionClaim implements RawClaim {
         kind: ReceiveKind.Completion,
         domain: ReadyDomain.Infrastructure,
         sourceNodeRid: null,
-        sourceSpotRid: null,
+        sourceSpotId: null,
         sourceBindingGeneration: 0n,
         sourceActor: null,
         operationId: this.completion.operationId,
@@ -1399,7 +1408,7 @@ function decodeMultipartRecord(
     kind,
     domain: ReadyDomain.Application,
     sourceNodeRid: record.sourceRoutingId as RoutingId | undefined ?? null,
-    sourceSpotRid: null,
+    sourceSpotId: null,
     sourceBindingGeneration: 0n,
     sourceActor: null,
     operationId,
@@ -1437,7 +1446,7 @@ function decodeStatefulRecord(
     kind: stateful.receiveKind,
     domain: ReadyDomain.Application,
     sourceNodeRid: record.sourceRoutingId as RoutingId | undefined ?? null,
-    sourceSpotRid: stateful.sourceSpotRid as RoutingId | undefined ?? null,
+    sourceSpotId: stateful.sourceSpotId as RoutingId | undefined ?? null,
     sourceBindingGeneration: stateful.sourceBindingGeneration ?? 0n,
     sourceActor: stateful.sourceActor ?? null,
     operationId,
@@ -1501,7 +1510,7 @@ function readyOwner(
     return {
       ownerKind: ReadyOwnerKind.Spot,
       domain: ReadyDomain.Application,
-      spotRid: owner.slice('spot:'.length),
+      spotId: owner.slice('spot:'.length),
       actor: null
     };
   }
@@ -1515,7 +1524,7 @@ function readyOwner(
     return {
       ownerKind: ReadyOwnerKind.Actor,
       domain: ReadyDomain.Application,
-      spotRid: current?.spot.spotRid ?? null,
+      spotId: current?.spot.spotId ?? null,
       actor: current?.ref ?? {
         nodeRid,
         actorId,
@@ -1526,7 +1535,7 @@ function readyOwner(
   return {
     ownerKind: ReadyOwnerKind.Node,
     domain: ReadyDomain.Application,
-    spotRid: null,
+    spotId: null,
     actor: null
   };
 }

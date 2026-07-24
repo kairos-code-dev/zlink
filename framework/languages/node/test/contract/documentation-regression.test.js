@@ -196,10 +196,10 @@ test('node specifications keep key Spot signatures aligned with public declarati
   const requiredSignatures = [
     /create<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
     /create<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
-    /getOrCreate<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*spotRid: RoutingId,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
-    /find\(meshName: string, spotRid: RoutingId, signal\?: AbortSignal\): Promise<ZLinkSpotInfo \| null>/,
+    /getOrCreate<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*spotId: RoutingId,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
+    /find\(meshName: string, spotId: RoutingId, signal\?: AbortSignal\): Promise<ZLinkSpotInfo \| null>/,
     /list\(meshName: string, signal\?: AbortSignal\): Promise<readonly ZLinkSpotInfo\[\]>/,
-    /close\(meshName: string, spotRid: RoutingId, signal\?: AbortSignal\): Promise<boolean>/
+    /close\(meshName: string, spotId: RoutingId, signal\?: AbortSignal\): Promise<boolean>/
   ];
   for (const signature of requiredSignatures) {
     assert.match(interfaceSpec, signature);

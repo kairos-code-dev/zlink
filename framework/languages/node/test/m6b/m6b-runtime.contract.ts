@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
+import './m6b-execution-policy.contract';
 
 import { Message, RequestResult, SubmitResult } from '@zlink-systems/zlink';
 import {
@@ -131,7 +132,7 @@ test('remote User Spot create and close records preserve every generation fence 
     operation: { high: 5n, low: 9n },
     sourceNodeRid: 'source',
     sourceNodeGeneration: 11n,
-    spotRid: 'spot-1',
+    spotId: 'spot-1',
     stableType: 'Room',
     reservation: {
       reservationId: 'reservation-1',
@@ -152,7 +153,7 @@ test('remote User Spot create and close records preserve every generation fence 
     operation: { high: 5n, low: 9n },
     sourceNodeRid: 'source',
     sourceNodeGeneration: 11n,
-    spotRid: 'spot-1',
+    spotId: 'spot-1',
     stableType: 'Room',
     reservation: {
       reservationId: 'reservation-1',
@@ -174,7 +175,7 @@ test('remote User Spot create and close records preserve every generation fence 
     sourceNodeRid: 'source',
     sourceNodeGeneration: 41n,
     target: {
-      spotRid: 'spot-1',
+      spotId: 'spot-1',
       objectGeneration: 43n,
       targetNodeRid: 'target',
       targetNodeGeneration: 47n,
@@ -190,7 +191,7 @@ test('remote User Spot create and close records preserve every generation fence 
     sourceNodeRid: 'source',
     sourceNodeGeneration: 41n,
     target: {
-      spotRid: 'spot-1',
+      spotId: 'spot-1',
       objectGeneration: 43n,
       targetNodeRid: 'target',
       targetNodeGeneration: 47n,
@@ -209,7 +210,7 @@ test('remote User Spot command 20 success tails use operation discriminators 13 
       encodeStatefulReply(79n, RequestResult.Ok, 0, {
         kind: 'userSpotCreate',
         createResult: 'created',
-        spotRid: 'spot-2',
+        spotId: 'spot-2',
         objectGeneration: 83n
       }),
       79n,
@@ -218,7 +219,7 @@ test('remote User Spot command 20 success tails use operation discriminators 13 
     {
       kind: 'userSpotCreate',
       createResult: 'created',
-      spotRid: 'spot-2',
+      spotId: 'spot-2',
       objectGeneration: 83n
     }
   );
@@ -268,7 +269,7 @@ test('remote User Spot target executes once and rewrites correlation on terminal
         tail: {
           kind: 'userSpotCreate',
           createResult: 'created',
-          spotRid: record.spotRid,
+          spotId: record.spotId,
           objectGeneration: record.reservation.objectGeneration
         }
       };
@@ -281,7 +282,7 @@ test('remote User Spot target executes once and rewrites correlation on terminal
     operation: { high: 11n, low: 13n },
     sourceNodeRid: 'source',
     sourceNodeGeneration: 5n,
-    spotRid: 'spot-replay',
+    spotId: 'spot-replay',
     stableType: 'Room',
     reservation: {
       reservationId: 'reservation',
@@ -450,7 +451,7 @@ test('authority keys share the Spot discriminator and preserve colon identities 
 test('authority payload bytes match the schema fixture shape and reject malformed UTF-8', () => {
   const base = {
     stableType: 'TenantWorker',
-    spotRid: 'tenant:42',
+    spotId: 'tenant:42',
     ownerId: 'owner-a',
     ownerLeaseGeneration: 5n,
     ownerMeshName: 'mesh-a',
@@ -500,9 +501,9 @@ test('authority payload bytes match the schema fixture shape and reject malforme
   );
 
   const malformed = Buffer.from(ready);
-  const spotRidOffset = malformed.indexOf(Buffer.from('tenant:42'));
-  assert.notEqual(spotRidOffset, -1);
-  malformed[spotRidOffset] = 0xff;
+  const spotIdOffset = malformed.indexOf(Buffer.from('tenant:42'));
+  assert.notEqual(spotIdOffset, -1);
+  malformed[spotIdOffset] = 0xff;
   malformed.writeUInt32BE(crc32c(malformed.subarray(0, -4)), malformed.byteLength - 4);
   assert.equal(decodeServiceReadySpotAuthority(malformed), undefined);
 
@@ -546,7 +547,7 @@ test('authority payload bytes match the schema fixture shape and reject malforme
 test('Instance activation recovery envelope preserves the complete first operation', () => {
   const input = {
     target: {
-      targetSpotRid: 'tenant:42',
+      targetSpotId: 'tenant:42',
       stableType: 'TenantWorker',
       targetNodeRid: 'node-b',
       targetNodeGeneration: 7n,
@@ -555,7 +556,7 @@ test('Instance activation recovery envelope preserves the complete first operati
     targetMeshName: 'mesh-b',
     sourceNodeRid: 'node-a',
     sourceNodeGeneration: 5n,
-    sourceSpotRid: 'source:spot',
+    sourceSpotId: 'source:spot',
     operationKind: 'request' as const,
     operation: { high: 5n, low: 19n },
     replyRouteId: 23n,
@@ -579,7 +580,7 @@ test('Instance activation recovery envelope preserves the complete first operati
 test('Instance activation recovery envelope matches the cross-language golden bytes', () => {
   const encoded = encodeInstanceActivationRecoveryEnvelope({
     target: {
-      targetSpotRid: 'spot-1',
+      targetSpotId: 'spot-1',
       stableType: 'quest',
       targetNodeRid: 'target',
       targetNodeGeneration: 7n,
@@ -588,7 +589,7 @@ test('Instance activation recovery envelope matches the cross-language golden by
     targetMeshName: 'main',
     sourceNodeRid: 'source',
     sourceNodeGeneration: 3n,
-    sourceSpotRid: 'entry',
+    sourceSpotId: 'entry',
     operationKind: 'request',
     operation: { high: 0n, low: 9n },
     replyRouteId: 11n,
@@ -613,7 +614,7 @@ test('Instance activation recovery envelope matches the cross-language golden by
 
 test('Spot and Actor wire records preserve identity and reject malformed records', () => {
   const spot = {
-    spotRid: 'spot-a',
+    spotId: 'spot-a',
     generation: 7n
   };
   const spotHeader = encodeSpotHeader('spotRequest', 'source', {
@@ -625,7 +626,7 @@ test('Spot and Actor wire records preserve identity and reject malformed records
   assert.deepEqual(decodeStatefulHeader(spotHeader), {
     kind: 'spotRequest',
     correlation: 11n,
-    sourceSpotRid: 'source',
+    sourceSpotId: 'source',
     target: {
       spot,
       targetNodeRid: 'node-b',
@@ -671,7 +672,7 @@ test('stateful replies preserve operation-specific tails', () => {
   const encoded = encodeStatefulReply(17n, RequestResult.Ok, 0, {
     kind: 'actorLookup',
     actor,
-    spot: { spotRid: 'spot-a', generation: 7n },
+    spot: { spotId: 'spot-a', generation: 7n },
     membershipEpoch: 4n,
     authorityOwnerGeneration: 8n
   });
@@ -682,7 +683,7 @@ test('stateful replies preserve operation-specific tails', () => {
     tail: {
       kind: 'actorLookup',
       actor: { nodeRid: '', actorId: 'actor-a', generation: 5n },
-      spot: { spotRid: 'spot-a', generation: 7n },
+      spot: { spotId: 'spot-a', generation: 7n },
       membershipEpoch: 4n,
       authorityOwnerGeneration: 8n
     }
@@ -724,7 +725,7 @@ test('outbound stateful routes use resolved authority generations and never obje
     assert.equal(actorHeader.target.authorityOwnerGeneration, 11n);
   }
 
-  const spot = { spotRid: 'spot-a', generation: 6n };
+  const spot = { spotId: 'spot-a', generation: 6n };
   assert.equal(runtime.sendToSpot('source', 'node-b', spot, 7n, spot.generation, payload), SubmitResult.NotFound);
   runtime.rememberSpotRoute({
     spot,
@@ -777,7 +778,7 @@ test('Instance activation encoding distinguishes absent metadata from explicit e
   const target = {
     targetNodeRid: 'target',
     targetNodeGeneration: 7n,
-    targetSpotRid: 'room',
+    targetSpotId: 'room',
     stableType: 'Room',
     descriptorVersion: '1'
   };
@@ -891,7 +892,7 @@ test('target-owned Instance activation reserves before factory, commits before o
         route: {
           targetNodeRid: 'target',
           targetNodeGeneration: 3n,
-          targetSpotRid: 'tenant-42',
+          targetSpotId: 'tenant-42',
           objectGeneration: spot.ref.generation,
           ownerId: 'target',
           authorityOwnerGeneration: spot.authorityOwnerGeneration,
@@ -911,7 +912,7 @@ test('target-owned Instance activation reserves before factory, commits before o
   const target = {
     targetNodeRid: 'target',
     targetNodeGeneration: 3n,
-    targetSpotRid: 'tenant-42',
+    targetSpotId: 'tenant-42',
     stableType: 'TenantWorker',
     descriptorVersion: 'descriptor-5'
   };
@@ -969,7 +970,7 @@ test('Instance activation CAS loser does not invoke the local factory', () => {
   const winnerRoute = {
     targetNodeRid: 'other-target',
     targetNodeGeneration: 8n,
-    targetSpotRid: 'tenant-42',
+    targetSpotId: 'tenant-42',
     objectGeneration: 2n,
     ownerId: 'other-target',
     authorityOwnerGeneration: 9n,
@@ -986,7 +987,7 @@ test('Instance activation CAS loser does not invoke the local factory', () => {
     {
       targetNodeRid: 'target',
       targetNodeGeneration: 3n,
-      targetSpotRid: 'tenant-42',
+      targetSpotId: 'tenant-42',
       stableType: 'TenantWorker',
       descriptorVersion: 'descriptor-5'
     },
@@ -1047,7 +1048,7 @@ test('Promise authority redirects the retained activation envelope to the Ready 
       route: {
         targetNodeRid: 'winner',
         targetNodeGeneration: 9n,
-        targetSpotRid: 'tenant-redirect',
+        targetSpotId: 'tenant-redirect',
         objectGeneration: 4n,
         ownerId: 'winner-owner',
         authorityOwnerGeneration: 6n,
@@ -1072,7 +1073,7 @@ test('Promise authority redirects the retained activation envelope to the Ready 
         {
           targetNodeRid: 'loser',
           targetNodeGeneration: 3n,
-          targetSpotRid: 'tenant-redirect',
+          targetSpotId: 'tenant-redirect',
           stableType: 'TenantWorker',
           descriptorVersion: 'descriptor-loser'
         },
@@ -1101,7 +1102,7 @@ test('Promise authority redirects the retained activation envelope to the Ready 
   assert.deepEqual(redirectedHeader.operation, operation);
   assert.equal(redirectedHeader.sourceNodeRid, 'loser');
   assert.equal(redirectedHeader.sourceNodeGeneration, 3n);
-  assert.equal(redirectedHeader.sourceSpotRid, 'source-spot');
+  assert.equal(redirectedHeader.sourceSpotId, 'source-spot');
   if (redirectedHeader.activation === 'missing') {
     assert.equal(redirectedHeader.target.targetNodeRid, 'winner');
     assert.equal(redirectedHeader.target.targetNodeGeneration, 9n);
@@ -1163,7 +1164,7 @@ test('Promise authority resumes the retained activation envelope after Store com
         route: {
           targetNodeRid: 'target',
           targetNodeGeneration: 3n,
-          targetSpotRid: 'tenant-async',
+          targetSpotId: 'tenant-async',
           objectGeneration: spot.ref.generation,
           ownerId: 'target',
           authorityOwnerGeneration: spot.authorityOwnerGeneration,
@@ -1191,7 +1192,7 @@ test('Promise authority resumes the retained activation envelope after Store com
     {
       targetNodeRid: 'target',
       targetNodeGeneration: 3n,
-      targetSpotRid: 'tenant-async',
+      targetSpotId: 'tenant-async',
       stableType: 'TenantWorker',
       descriptorVersion: 'descriptor-5'
     },
@@ -1309,14 +1310,14 @@ test('Instance application factory initializes before the first recovered handle
       {
         ownerKind: 2,
         domain: ReadyDomain.Application,
-        spotRid: 'tenant:factory',
+        spotId: 'tenant:factory',
         actor: null
       },
       {
         kind: ReceiveKind.InstanceSpotActivation,
         domain: ReadyDomain.Application,
         sourceNodeRid: null,
-        sourceSpotRid: null,
+        sourceSpotId: null,
         sourceBindingGeneration: 0n,
         sourceActor: null,
         operationId: { high: 1n, low: 1n },
@@ -1433,7 +1434,7 @@ test('bound session transition wire format fences the binding generation', () =>
 
 test('authority reconciliation exact-reads complete scans and publishes only Ready mesh-local routes', async () => {
   const readyV1 = instanceAuthoritySnapshot({
-    spotRid: 'tenant:42',
+    spotId: 'tenant:42',
     meshName: 'mesh-b',
     nodeRid: 'node-b',
     storeVersion: 'store-v1',
@@ -1441,7 +1442,7 @@ test('authority reconciliation exact-reads complete scans and publishes only Rea
     state: 'ready'
   });
   const cold = instanceAuthoritySnapshot({
-    spotRid: 'tenant:cold',
+    spotId: 'tenant:cold',
     meshName: 'mesh-a',
     nodeRid: 'node-a',
     storeVersion: 'store-cold',
@@ -1471,11 +1472,11 @@ test('authority reconciliation exact-reads complete scans and publishes only Rea
   assert.deepEqual(store.readKeys, ['row:tenant:42', 'row:tenant:cold']);
   assert.equal(nodeA.remembered.length, 0);
   assert.equal(nodeB.remembered.length, 1);
-  assert.equal(nodeB.remembered[0]!.route.spot.spotRid, 'tenant:42');
+  assert.equal(nodeB.remembered[0]!.route.spot.spotId, 'tenant:42');
   assert.equal(nodeB.intents[0]!.route.storeVersion, 'store-v1');
 
   const readyV2 = instanceAuthoritySnapshot({
-    spotRid: 'tenant:42',
+    spotId: 'tenant:42',
     meshName: 'mesh-b',
     nodeRid: 'node-b',
     storeVersion: 'store-v2',
@@ -1486,7 +1487,7 @@ test('authority reconciliation exact-reads complete scans and publishes only Rea
   await runtime.reconcile();
   assert.equal(nodeB.intents.at(-1)!.route.storeVersion, 'store-v2');
   assert.deepEqual(nodeB.forgottenIntents.at(-1), {
-    spotRid: 'tenant:42',
+    spotId: 'tenant:42',
     authorityOwnerGeneration: 7n,
     storeVersion: 'store-v1'
   });
@@ -1522,7 +1523,7 @@ test('authority reconciliation refuses startup when the recovery scan expires', 
 test('authority reconciliation restores the durable Instance inbox before startup returns', async () => {
   const recoveryEnvelope = encodeInstanceActivationRecoveryEnvelope({
     target: {
-      targetSpotRid: 'tenant:recover',
+      targetSpotId: 'tenant:recover',
       stableType: 'TenantWorker',
       targetNodeRid: 'node-a',
       targetNodeGeneration: 1n,
@@ -1541,7 +1542,7 @@ test('authority reconciliation restores the durable Instance inbox before startu
     }
   });
   const snapshot = instanceAuthoritySnapshot({
-    spotRid: 'tenant:recover',
+    spotId: 'tenant:recover',
     meshName: 'mesh-a',
     nodeRid: 'node-a',
     storeVersion: 'store-recovery',
@@ -1574,7 +1575,7 @@ test('authority reconciliation restores the durable Instance inbox before startu
 
   await runtime.reconcile(undefined, true);
   assert.equal(node.recovered.length, 1);
-  assert.equal(node.recovered[0]!.envelope.target.targetSpotRid, 'tenant:recover');
+  assert.equal(node.recovered[0]!.envelope.target.targetSpotId, 'tenant:recover');
   assert.equal(node.recovered[0]!.route.storeVersion, 'store-recovery');
 
   const staleDescriptorNode = new RecordingAuthorityNode(
@@ -1606,7 +1607,7 @@ test('authority reconciliation restores the durable Instance inbox before startu
 test('authority reconciliation resumes an exact Pending Instance reservation', async () => {
   const recoveryEnvelope = encodeInstanceActivationRecoveryEnvelope({
     target: {
-      targetSpotRid: 'tenant:pending',
+      targetSpotId: 'tenant:pending',
       stableType: 'TenantWorker',
       targetNodeRid: 'node-a',
       targetNodeGeneration: 1n,
@@ -1626,7 +1627,7 @@ test('authority reconciliation resumes an exact Pending Instance reservation', a
   });
   const requestSha256 = createHash('sha256').update(recoveryEnvelope).digest();
   const snapshot = instanceAuthoritySnapshot({
-    spotRid: 'tenant:pending',
+    spotId: 'tenant:pending',
     meshName: 'mesh-a',
     nodeRid: 'node-a',
     storeVersion: 'store-pending',
@@ -1663,7 +1664,7 @@ test('authority reconciliation resumes an exact Pending Instance reservation', a
     'reservation-pending'
   );
   assert.equal(
-    node.recoveredPending[0]!.envelope.target.targetSpotRid,
+    node.recoveredPending[0]!.envelope.target.targetSpotId,
     'tenant:pending'
   );
 });
@@ -1717,7 +1718,7 @@ test('production Instance authority adapter writes schema ColdActivating then Re
   const target = {
     targetNodeRid: 'node-a',
     targetNodeGeneration: 1n,
-    targetSpotRid: 'tenant:42',
+    targetSpotId: 'tenant:42',
     stableType: 'TenantWorker',
     descriptorVersion: 'descriptor-v1'
   };
@@ -1779,7 +1780,7 @@ test('production Instance authority adapter writes schema ColdActivating then Re
     {
       kind: 'instance',
       stableType: 'TenantWorker',
-      ref: { spotRid: 'tenant:42', generation: reserved.reservation.attempt },
+      ref: { spotId: 'tenant:42', generation: reserved.reservation.attempt },
       authorityOwnerGeneration: creating.authorityOwnerGeneration
     } as never
   );
@@ -1796,7 +1797,7 @@ test('production Instance authority adapter writes schema ColdActivating then Re
   const ready = await resumedAuthority.read(target);
   assert.equal(ready.kind, 'ready');
   if (ready.kind === 'ready') {
-    assert.equal(ready.route.targetSpotRid, 'tenant:42');
+    assert.equal(ready.route.targetSpotId, 'tenant:42');
     assert.equal(ready.route.storeVersion, committed.route.storeVersion);
   }
   await assert.rejects(
@@ -1904,7 +1905,7 @@ test('production Instance Ready commit Store rejection is exposed as RequestFail
   const target = {
     targetNodeRid: 'node-a',
     targetNodeGeneration: 1n,
-    targetSpotRid: 'tenant:commit-fault',
+    targetSpotId: 'tenant:commit-fault',
     stableType: 'TenantWorker',
     descriptorVersion: 'descriptor-v1'
   };
@@ -1924,7 +1925,7 @@ test('production Instance Ready commit Store rejection is exposed as RequestFail
   assert.equal(reserved.kind, 'reserved');
   if (reserved.kind !== 'reserved') return;
   const creating = await store.readAuthority({
-    value: encodeAuthorityKey('instance_spot', target.targetSpotRid).value
+    value: encodeAuthorityKey('instance_spot', target.targetSpotId).value
   } as ZLinkAuthorityKey);
   assert.equal(creating.kind, 'snapshot');
   if (creating.kind !== 'snapshot') return;
@@ -1937,7 +1938,7 @@ test('production Instance Ready commit Store rejection is exposed as RequestFail
       kind: 'instance',
       stableType: target.stableType,
       ref: {
-        spotRid: target.targetSpotRid,
+        spotId: target.targetSpotId,
         generation: reserved.reservation.attempt
       },
       authorityOwnerGeneration: creating.authorityOwnerGeneration
@@ -1993,7 +1994,7 @@ test('concurrent Instance activation CAS loser joins Ready and returns the winne
   const winnerTarget = {
     targetNodeRid: 'winner-node',
     targetNodeGeneration: 3n,
-    targetSpotRid: 'tenant:concurrent',
+    targetSpotId: 'tenant:concurrent',
     stableType: 'TenantWorker',
     descriptorVersion: 'winner-descriptor'
   };
@@ -2028,7 +2029,7 @@ test('concurrent Instance activation CAS loser joins Ready and returns the winne
   });
   await new Promise<void>(resolve => setImmediate(resolve));
   const creating = await store.readAuthority(
-    encodeAuthorityKey('instance_spot', winnerTarget.targetSpotRid)
+    encodeAuthorityKey('instance_spot', winnerTarget.targetSpotId)
   );
   assert.equal(creating.kind, 'snapshot');
   if (creating.kind !== 'snapshot') throw new Error('Winner reservation is missing.');
@@ -2039,7 +2040,7 @@ test('concurrent Instance activation CAS loser joins Ready and returns the winne
       kind: 'instance',
       stableType: winnerTarget.stableType,
       ref: {
-        spotRid: winnerTarget.targetSpotRid,
+        spotId: winnerTarget.targetSpotId,
         generation: winner.reservation.attempt
       },
       authorityOwnerGeneration: creating.authorityOwnerGeneration
@@ -2069,7 +2070,7 @@ test('raw backend dispatches Spot requests and Actor sends through M6B owners', 
   const instanceRoute = {
     targetNodeRid: 'm6b-node',
     targetNodeGeneration: backend.status().lifecycleGeneration,
-    targetSpotRid: 'tenant:42',
+    targetSpotId: 'tenant:42',
     objectGeneration: 1n,
     ownerId: 'owner-a',
     authorityOwnerGeneration: 1n,
@@ -2085,7 +2086,7 @@ test('raw backend dispatches Spot requests and Actor sends through M6B owners', 
         payload: encodeServiceInstanceAuthorityPayload({
           state: 'ready',
           stableType: 'TenantWorker',
-          spotRid: instanceRoute.targetSpotRid,
+          spotId: instanceRoute.targetSpotId,
           ownerId: instanceRoute.ownerId,
           ownerLeaseGeneration: instanceRoute.leaseGeneration,
           ownerMeshName: 'm6b-mesh',
@@ -2105,7 +2106,15 @@ test('raw backend dispatches Spot requests and Actor sends through M6B owners', 
             rid: instanceRoute.targetNodeRid
           },
           descriptorLifecycleGeneration: instanceRoute.targetNodeGeneration,
-          capacityDelta: 1
+          capacity: {
+            actors: 0,
+            spots: 1,
+            spotType: {
+              objectKind: 'instance_spot',
+              stableType: 'TenantWorker',
+              count: 1
+            }
+          }
         },
         storeNow: new Date()
       }
@@ -2130,7 +2139,7 @@ test('raw backend dispatches Spot requests and Actor sends through M6B owners', 
     );
     const receivedSpot = await drainOne(backend, ReadyDomain.Application);
     assert.equal(receivedSpot.kind, ReceiveKind.SpotRequest);
-    assert.equal(String(receivedSpot.sourceSpotRid), 'm6b-node');
+    assert.equal(String(receivedSpot.sourceSpotId), 'm6b-node');
     assert.equal(receivedSpot.parts[0]!.toBytes().toString(), 'spot-request');
     assert.equal(receivedSpot.reply(Buffer.from('spot-reply')), SubmitResult.Ok);
     closeParts(receivedSpot);
@@ -2222,12 +2231,12 @@ test('raw backend dispatches Spot requests and Actor sends through M6B owners', 
   }
 });
 
-test('public SpotRid call reaches production host Missing Instance placement without raw runtime access', async () => {
+test('public SpotId call reaches production host Missing Instance placement without raw runtime access', async () => {
   const submissions: Array<{
     readonly target: {
       readonly targetNodeRid: string;
       readonly targetNodeGeneration: bigint;
-      readonly targetSpotRid: string;
+      readonly targetSpotId: string;
       readonly stableType: string;
       readonly descriptorVersion: string;
     };
@@ -2332,7 +2341,7 @@ test('public SpotRid call reaches production host Missing Instance placement wit
     targetNodeRid: 'node-b',
     targetNodeGeneration: 7n,
     descriptorVersion: '11',
-    targetSpotRid: 'instance-42',
+    targetSpotId: 'instance-42',
     stableType: 'chat-room'
   });
   assert.equal(submissions[0]?.metadata?.get('trace'), 'abc');
@@ -2433,7 +2442,7 @@ test('Ready one-way Spot send forwards application metadata through runtime rout
   const result = await transport.sendToSpot({
     routerChannelId: 'mesh',
     targetNodeRid: 'node-a',
-    spotRid: 'ready-room',
+    spotId: 'ready-room',
     spotKind: 2 as never,
     stableType: 'room',
     targetSpotGeneration: 9n
@@ -2539,7 +2548,7 @@ function singleAuthorityStore(
 }
 
 function instanceAuthoritySnapshot(options: {
-  readonly spotRid: string;
+  readonly spotId: string;
   readonly meshName: string;
   readonly nodeRid: string;
   readonly storeVersion: string;
@@ -2553,7 +2562,7 @@ function instanceAuthoritySnapshot(options: {
   const payload = encodeServiceInstanceAuthorityPayload({
     state: options.state,
     stableType: 'TenantWorker',
-    spotRid: options.spotRid,
+    spotId: options.spotId,
     ownerId: 'owner-a',
     ownerLeaseGeneration: 5n,
     ownerMeshName: options.meshName,
@@ -2564,7 +2573,7 @@ function instanceAuthoritySnapshot(options: {
       : { activationRecovery: options.activationRecovery })
   });
   if (options.state === 'ready') {
-    assert.equal(decodeServiceReadySpotAuthority(payload)?.spotRid, options.spotRid);
+    assert.equal(decodeServiceReadySpotAuthority(payload)?.spotId, options.spotId);
   } else {
     assert.equal(decodeServiceReadySpotAuthority(payload), undefined);
   }
@@ -2578,7 +2587,7 @@ function instanceAuthoritySnapshot(options: {
     ownerLeaseGeneration: 5n,
     allocation: {
       // Active provider allocation alone is not the Framework Ready barrier.
-      state: options.state === 'ready' ? 'active' : 'pending',
+      state: options.state === 'ready' ? 'active' : 'reserved',
       objectKind: 'instance_spot',
       stableType: 'TenantWorker',
       descriptor: {
@@ -2586,7 +2595,15 @@ function instanceAuthoritySnapshot(options: {
         rid: options.nodeRid
       },
       descriptorLifecycleGeneration: 1n,
-      capacityDelta: 1
+      capacity: {
+        actors: 0,
+        spots: 1,
+        spotType: {
+          objectKind: 'instance_spot',
+          stableType: 'TenantWorker',
+          count: 1
+        }
+      }
     },
     ...(options.pendingCreation === undefined
       ? {}
@@ -2664,7 +2681,7 @@ class RecordingAuthorityNode {
     readonly storeVersion: string;
   }> = [];
   readonly forgotten: Array<{
-    readonly spotRid: string;
+    readonly spotId: string;
     readonly authorityOwnerGeneration: bigint;
     readonly storeVersion: string;
   }> = [];
@@ -2673,7 +2690,7 @@ class RecordingAuthorityNode {
     readonly route: Parameters<ZLinkNodeRawMeshBackend['registerInstanceIntent']>[1];
   }> = [];
   readonly forgottenIntents: Array<{
-    readonly spotRid: string;
+    readonly spotId: string;
     readonly authorityOwnerGeneration: bigint;
     readonly storeVersion: string;
   }> = [];
@@ -2713,7 +2730,7 @@ class RecordingAuthorityNode {
     authorityOwnerGeneration: bigint,
     storeVersion: string
   ): void {
-    this.forgotten.push({ spotRid: spot.spotRid, authorityOwnerGeneration, storeVersion });
+    this.forgotten.push({ spotId: spot.spotId, authorityOwnerGeneration, storeVersion });
   }
 
   registerInstanceIntent(
@@ -2749,10 +2766,10 @@ class RecordingAuthorityNode {
   }
 
   forgetInstanceIntent(
-    spotRid: string,
+    spotId: string,
     authorityOwnerGeneration: bigint,
     storeVersion: string
   ): void {
-    this.forgottenIntents.push({ spotRid, authorityOwnerGeneration, storeVersion });
+    this.forgottenIntents.push({ spotId, authorityOwnerGeneration, storeVersion });
   }
 }

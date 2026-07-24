@@ -130,9 +130,8 @@ export function decodeRemoteActorJoinPayload(
           ),
       payload.boundSessionTargetNodeRidHex,
       transferProtocol
-        ? payload.boundSessionSpotRid
-        : payload.boundSessionSpotRid ?? payload.sourceSpotRid,
-      transferProtocol ? payload.boundSessionSpotRidHex : payload.boundSessionSpotRidHex ?? payload.sourceSpotRidHex,
+        ? payload.boundSessionSpotId
+        : payload.boundSessionSpotId ?? payload.sourceSpotId,
       payload.boundSessionNodeRid,
       payload.boundSessionNodeRidHex,
       payload.boundSessionRid,
@@ -178,8 +177,7 @@ function decodeRemoteBoundSessionTarget(
   routerChannelId: unknown,
   targetNodeRid: unknown,
   targetNodeRidHex: unknown,
-  spotRid: unknown,
-  spotRidHex: unknown,
+  spotId: unknown,
   sessionNodeRid: unknown,
   sessionNodeRidHex: unknown,
   sessionRid: unknown,
@@ -188,15 +186,15 @@ function decodeRemoteBoundSessionTarget(
   if (
     typeof routerChannelId !== 'string' ||
     typeof targetNodeRid !== 'string' ||
-    spotRid === undefined ||
-    spotRid === null
+    spotId === undefined ||
+    spotId === null
   ) {
     return undefined;
   }
   return {
     routerChannelId,
     targetNodeRid: decodeWireRoutingId(targetNodeRid, targetNodeRidHex),
-    spotRid: decodeWireRoutingId(String(spotRid), spotRidHex),
+    spotId: requireSpotId(String(spotId)),
     sessionNodeRid: typeof sessionNodeRid === 'string'
       ? decodeWireRoutingId(sessionNodeRid, sessionNodeRidHex)
       : undefined,
@@ -204,4 +202,12 @@ function decodeRemoteBoundSessionTarget(
       ? decodeWireRoutingId(sessionRid, sessionRidHex)
       : undefined
   };
+}
+
+function requireSpotId(value: string): string {
+  const bytes = Buffer.byteLength(value, 'utf8');
+  if (bytes < 1 || bytes > 255) {
+    throw new Error('Remote bound session SpotId must contain 1..255 UTF-8 bytes.');
+  }
+  return value;
 }

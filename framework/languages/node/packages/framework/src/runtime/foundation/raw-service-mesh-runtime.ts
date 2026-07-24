@@ -177,6 +177,29 @@ export class RawServiceMeshRuntime {
     return accepted;
   }
 
+  updateLocalWeights(options: {
+    readonly placementWeight?: number;
+    readonly channelName?: string;
+    readonly channelWeight?: number;
+  }): void {
+    const current = this.topology.localDescriptor();
+    const channels = options.channelName === undefined
+      ? current.channels
+      : current.channels.map(channel =>
+          channel.name === options.channelName
+            ? { ...channel, weight: options.channelWeight! }
+            : channel);
+    const next = {
+      ...current,
+      descriptorRevision: current.descriptorRevision + 1n,
+      placementWeight: options.placementWeight ?? current.placementWeight,
+      channels
+    };
+    this.topology.publishLocal(next);
+    this.descriptor = next;
+    this.announceExpectedPeers();
+  }
+
   sendToNode(targetNodeRoutingId: string, payload: ServiceApplicationPayload): boolean {
     return this.trySend(
       targetNodeRoutingId,

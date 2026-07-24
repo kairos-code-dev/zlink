@@ -112,7 +112,7 @@ adapter 존재 여부와 type별 capacity만 기록한다.
 
 Framework는 다음 순서로 MeshNode를 시작한다.
 
-1. MeshName, object role, routing mode, endpoint, channel set, factory, stable type, policy, placement option과
+1. MeshName, object role, routing mode, endpoint, channel set, factory, stable type, policy, factory option과
    capacity를 검증한다.
 2. Location Store가 필요한 role이면 host owner lease를 확보하고 automatic RID의 descriptor owner CAS를
    완료한다.

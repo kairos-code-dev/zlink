@@ -179,6 +179,9 @@ field만 가진다. Placement admission에 필요한 descriptor revision, owner 
 runtime state, application version, capability, capacity limit와 immutable digest는 별도 admission HASH에
 저장한다. 두 HASH는 descriptor CAS Lua에서 함께 검증하고 변경한다. Provider가 관리하는 active·reserved
 count의 권한 원본은 capacity HASH이고 public descriptor의 count는 projection이다.
+Admission HASH는 `descriptorKey`, `descriptorRevision`, `lifecycleGeneration`, `ownerId`,
+`ownerLeaseGeneration`, `objectRole`, `runtimeState`, `applicationVersion`, `capabilities`, `actorLimit`,
+`spotLimit`, `activationConcurrencyLimit`, `entrySpotId`, `immutableDigest` 열네 field만 가진다.
 
 Admission HASH의 `immutableDigest`는 언어별 descriptor serializer 결과가 아니라 다음 canonical
 preimage의 SHA-256 lower-hex다. 모든 segment는 separator 없이 `<UTF-8 byte length>:<value>`로 이어 붙인다.
@@ -193,7 +196,7 @@ preimage의 SHA-256 lower-hex다. 모든 segment는 separator 없이 `<UTF-8 byt
 8. Application version의 invariant decimal
 9. Object role token `none`, `client`, `server` 중 하나
 10. Entry Spot ID presence `0` 또는 `1`, 값이 있으면 full Entry Spot ID
-11. Node Actor limit과 Spot limit의 invariant decimal
+11. Node Actor limit, Spot limit과 activation concurrency limit의 invariant decimal
 12. Capability 개수와 정렬한 각 capability
 
 Capability는 `(objectKind token, stableType)` 순서로 정렬한다. 각 capability는 `objectKind`, `stableType`,
@@ -207,7 +210,8 @@ Entry Spot ID는 별도의 UUID byte representation으로 바꾸지 않고 full 
 
 ChannelName과 capability는 Unicode normalization을 수행하지 않고 unsigned UTF-8 byte lexical order로
 정렬한다. `DescriptorRevision`, channel weight 값, node placement weight, maintenance wave,
-runtime state, OwnerId, owner lease generation, update 시각과 active·reserved 사용량은 digest에 포함하지 않는다.
+runtime state, OwnerId, owner lease generation, update 시각, active·reserved 사용량과 activation active count는
+digest에 포함하지 않는다.
 이 값은 같은 lifecycle에서 변경할 수 있거나 owner admission fence가 별도로 검증하기 때문이다. 공식
 fixture의 preimage와 digest를 모든 provider의 byte-level contract test에서 그대로 검증한다.
 

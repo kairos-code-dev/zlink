@@ -182,7 +182,7 @@ test('location monitoring event emitter publishes registered row and resolve-mis
       endpoint: 'tcp://127.0.0.1:7001'
     }
   }, peerRow());
-  emitter.spotResolveMiss({ meshName: 'game', spotRid: 'spot-1' });
+  emitter.spotResolveMiss({ meshName: 'game', spotId: 'spot-1' });
   emitter.actorResolveMiss({ actorType: 'GameActor', actorId: 'room-1' });
   emitter.routeRowRemoved({ routeKind: framework.ZLinkRouteKind.FrameworkRoute, routeKey: 'api' });
   await Promise.resolve();
@@ -347,7 +347,7 @@ test('spot timer reports handler failure immediately through runtime publisher',
         timestamp: new Date(),
         event: framework.ZLinkSpotEventKind.TimerHandlerFailed,
         timerDiagnostic: {
-          spotRid: 'stage-node',
+          spotId: 'stage-node',
           isEntrySpot: true,
           timerName: 'idle',
           handlerType: 'IdleTimerHandler',

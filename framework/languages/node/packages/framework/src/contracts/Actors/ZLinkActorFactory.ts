@@ -9,7 +9,6 @@ export type ZLinkActorJoinResult<TReply = unknown> =
 export interface ZLinkActorJoinCall<TSelf> {
   timeout(timeoutMs: number): TSelf;
   submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
-  yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>>;
 }
 
 export interface ZLinkActorJoinSpotCall extends ZLinkActorJoinCall<ZLinkActorJoinSpotCall> {}

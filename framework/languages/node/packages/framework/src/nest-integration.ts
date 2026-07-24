@@ -33,6 +33,7 @@ import type {
   ZLinkProviderResolver,
   ZLinkRouteClient,
   ZLinkRouteMeshRuntime,
+  ZLinkRouteMeshRuntimeOptions,
   ZLinkRuntimeEventPublisher,
   ZLinkSpotManager,
   ZLinkSpotOutbound,
@@ -75,6 +76,7 @@ export {
 
 export interface ZLinkNestIntegrationRuntimeHost {
   readonly channelRuntimeOptions: unknown;
+  readonly routeMeshRuntimeOptions: ZLinkRouteMeshRuntimeOptions;
   readonly boundSessionFactory: ZLinkBoundSessionFactory;
   readonly eventPublisher: ZLinkRuntimeEventPublisher;
   readonly locationRuntimeQuery?: ZLinkLocationRuntimeQuery;

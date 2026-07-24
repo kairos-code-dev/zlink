@@ -31,7 +31,6 @@ import type {
   ZLinkActorBoundSessionFactory,
   ZLinkActorJoinCoordinator
 } from './actor-runtime-contracts';
-import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
 import { ZLinkSpotActorHandlerRegistryRuntime } from './spot-actor-dispatch';
 import type { ZLinkActorManagerOptions } from './actor-runtime-contracts';
 import {
@@ -65,8 +64,8 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
     return meshName;
   }
 
-  get spotRid(): RoutingId | undefined {
-    return this.state.spotRid;
+  get spotId(): RoutingId | undefined {
+    return this.state.spotId;
   }
 
   get isJoined(): boolean {
@@ -106,12 +105,12 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
     return spot;
   }
 
-  joinSpot(spotRid: RoutingId, request?: unknown): ZLinkActorJoinSpotCall {
+  joinSpot(spotId: RoutingId, request?: unknown): ZLinkActorJoinSpotCall {
     return new DefaultZLinkActorJoinSpotCall(
       this.state,
       this.requireActor(),
       this.requireJoinCoordinator(),
-      spotRid,
+      spotId,
       request,
       this.messageSerializers
     );
@@ -129,14 +128,14 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
   }
 
   async leaveSpot(signal?: AbortSignal): Promise<void> {
-    const spotRid = this.state.spotRid;
-    if (spotRid === undefined) {
+    const spotId = this.state.spotId;
+    if (spotId === undefined) {
       throw new ZLinkConfigurationException('Actor has not joined a user SPOT.');
     }
     if (this.leaveSpotRuntime === undefined) {
       throw new ZLinkConfigurationException('Actor Spot lifecycle runtime is not started.');
     }
-    await this.leaveSpotRuntime(this.meshName, spotRid, this.requireActor(), signal);
+    await this.leaveSpotRuntime(this.meshName, spotId, this.requireActor(), signal);
   }
 
   private requireActor(): ZLinkActor {
@@ -156,13 +155,12 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
 
 class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
   private timeoutMs: number | undefined;
-  private readonly turn: ZLinkSpotSerialTurn | undefined = captureZLinkSpotSerialTurn();
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
     private readonly actor: ZLinkActor,
     private readonly coordinator: ZLinkActorJoinCoordinator,
-    private readonly spotRid: RoutingId,
+    private readonly spotId: RoutingId,
     private readonly request: unknown,
     private readonly messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
   ) {
@@ -177,11 +175,6 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
     return await this.execute<TReply>(signal);
   }
 
-  async yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
-    const pending = this.execute<TReply>(signal);
-    return this.turn === undefined ? pending : this.turn.yieldPromise(pending);
-  }
-
   private async execute<TReply>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
     const requestMessage = this.request === undefined
       ? BindingMessage.from(Buffer.alloc(0))
@@ -190,7 +183,7 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
       const result = await this.coordinator.joinSpot(
         this.actor,
         this.state,
-        this.spotRid,
+        this.spotId,
         requestMessage,
         this.timeoutMs,
         signal
@@ -208,7 +201,6 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
 
 class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall {
   private timeoutMs: number | undefined;
-  private readonly turn: ZLinkSpotSerialTurn | undefined = captureZLinkSpotSerialTurn();
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
@@ -227,11 +219,6 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
 
   async submit<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
     return await this.execute<TReply>(signal);
-  }
-
-  async yield<TReply = unknown>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {
-    const pending = this.execute<TReply>(signal);
-    return this.turn === undefined ? pending : this.turn.yieldPromise(pending);
   }
 
   private async execute<TReply>(signal?: AbortSignal): Promise<ZLinkActorJoinResult<TReply>> {

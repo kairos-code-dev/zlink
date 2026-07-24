@@ -98,12 +98,12 @@ export class ZLinkActorRuntimeOptionsFactory {
     const actorTransferRegistry = this.options.actorTransferRegistry;
     return {
       actorMeshNameProvider: this.options.actorMeshName,
-      actorLeaveSpot: (meshName, spotRid, actor, signal) => {
+      actorLeaveSpot: (meshName, spotId, actor, signal) => {
         const spotManager = this.options.spotManager();
         if (spotManager === undefined) {
           throw new Error('Actor Spot lifecycle runtime is not started.');
         }
-        return spotManager.leaveActorInMesh(meshName, spotRid, actor, signal);
+        return spotManager.leaveActorInMesh(meshName, spotId, actor, signal);
       },
       joinCoordinator: new ZLinkActorNativeJoinCoordinator({
         node: this.options.primaryMeshNode,

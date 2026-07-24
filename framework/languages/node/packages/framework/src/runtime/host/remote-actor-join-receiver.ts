@@ -42,16 +42,16 @@ export class ZLinkRemoteActorJoinReceiver {
     state.setRemoteBoundSessionTarget({
       routerChannelId: join.boundSessionRouterChannelId ?? join.routerChannelId ?? routeContext.channelName ?? '',
       targetNodeRid: join.boundSessionTargetNodeRid ?? normalizeRoutingId(routeContext.sourceNodeRid),
-      spotRid: join.boundSessionSpotRid ?? join.sourceSpotRid ?? normalizeRoutingId(routeContext.sourceNodeRid)
+      spotId: join.boundSessionSpotId ?? join.sourceSpotId ?? normalizeRoutingId(routeContext.sourceNodeRid)
     });
     const request = BindingMessage.from(Buffer.from(join.request, 'base64'));
     try {
       const response = await this.requireSpotManager().admitActorJoin(
-        join.spotRid as RoutingId,
+        join.spotId as RoutingId,
         actor,
         request,
         (spot) => {
-          state.setJoinedSpot(join.spotRid as RoutingId, spot);
+          state.setJoinedSpot(join.spotId as RoutingId, spot);
           return () => state.clearJoinedSpot();
         }
       );

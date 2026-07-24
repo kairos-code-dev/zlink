@@ -2,9 +2,20 @@ import type { Type } from '../Common';
 import type { ZLinkActor } from '../Actors';
 import type { ZLinkInstanceSpot, ZLinkSpot } from '../Spots';
 
-export interface ZLinkObjectPlacementOptions {
-  readonly maxActiveObjects?: number;
-  readonly maxPendingActivations?: number;
+export interface ZLinkActorFactoryOptions {}
+
+export enum ZLinkUserSpotExecutionMode {
+  SpotWide = 'spot_wide',
+  PerActor = 'per_actor'
+}
+
+export interface ZLinkUserSpotFactoryOptions {
+  readonly stableTypeLimit?: number;
+  readonly executionMode?: ZLinkUserSpotExecutionMode;
+}
+
+export interface ZLinkInstanceSpotFactoryOptions {
+  readonly stableTypeLimit?: number;
 }
 
 export interface ZLinkActorRelocationAdapter<TActor extends ZLinkActor> {

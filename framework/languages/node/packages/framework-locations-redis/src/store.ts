@@ -93,6 +93,7 @@ import {
   ZLinkAuthorityScanCursor,
   type ZLinkAuthorityScanResult,
   type ZLinkAuthoritySnapshot,
+  type ZLinkCapacityVector,
   type ZLinkAuthorityStoreVersion,
   type ZLinkMeshNodeDescriptor,
   type ZLinkMeshNodeDescriptorKey,
@@ -182,6 +183,12 @@ export class ZLinkRedisLocationStore implements
   ): Promise<ZLinkLocationWriteResult> {
     validateMeshDescriptor(descriptor);
     const rowKey = encodeMeshNodeKey(descriptor);
+    const entryAuthorityKey = descriptor.entrySpotId === undefined
+      ? ''
+      : encodeAuthorityKey('user_spot', descriptor.entrySpotId);
+    const entryIdentityClaimKey = entryAuthorityKey.length === 0
+      ? this.keys.schema()
+      : this.keys.entrySpotIdentityClaim(entryAuthorityKey);
     const raw = asArray(await this.eval(MESH_DESCRIPTOR_WRITE_SCRIPT, [
       this.keys.descriptorMesh(rowKey),
       this.keys.descriptorAdmissionMesh(rowKey),
@@ -191,7 +198,8 @@ export class ZLinkRedisLocationStore implements
       this.keys.descriptorMeshOwnerIndex(
         descriptor.ownerId,
         descriptor.leaseGeneration.toString()
-      )
+      ),
+      entryIdentityClaimKey
     ], [
       intentName(intent),
       descriptor.ownerId,
@@ -203,11 +211,14 @@ export class ZLinkRedisLocationStore implements
       descriptor.objectRole,
       String(descriptor.state),
       JSON.stringify(canonicalObjectCapabilities(descriptor.objectCapabilities)),
-      String(descriptor.objectCapacity.maxActiveObjects),
-      String(descriptor.objectCapacity.maxPendingActivations),
+      String(descriptor.populationCapacity.actors.limit),
+      String(descriptor.populationCapacity.spots.limit),
+      String(descriptor.activationConcurrency.limit),
       descriptor.meshName,
       rowKey,
-      descriptor.applicationVersion.toString()
+      descriptor.applicationVersion.toString(),
+      entryAuthorityKey,
+      descriptor.entrySpotId ?? ''
     ], signal));
     return toWriteResult(raw);
   }
@@ -218,15 +229,30 @@ export class ZLinkRedisLocationStore implements
     signal?: AbortSignal
   ): Promise<ZLinkLocationWriteResult['status']> {
     const rowKey = encodeMeshNodeKey(key);
+    const fields = asArray(await this.command([
+      'HMGET',
+      this.keys.descriptorMesh(rowKey),
+      'json',
+      'gen',
+      'updatedAtMs'
+    ], signal));
+    const descriptor = materialize(kindMeshNode, fields);
+    const entryAuthorityKey = descriptor?.entrySpotId === undefined
+      ? ''
+      : encodeAuthorityKey('user_spot', descriptor.entrySpotId);
     const raw = asArray(await this.eval(MESH_DESCRIPTOR_REMOVE_SCRIPT, [
       this.keys.descriptorMesh(rowKey),
       this.keys.descriptorAdmissionMesh(rowKey),
       this.keys.descriptorMeshIndex(),
-      this.keys.descriptorMeshOwnerIndex(owner.ownerId, owner.leaseGeneration.toString())
+      this.keys.descriptorMeshOwnerIndex(owner.ownerId, owner.leaseGeneration.toString()),
+      entryAuthorityKey.length === 0
+        ? this.keys.schema()
+        : this.keys.entrySpotIdentityClaim(entryAuthorityKey)
     ], [
       owner.ownerId,
       owner.leaseGeneration.toString(),
-      rowKey
+      rowKey,
+      descriptor?.entrySpotId ?? ''
     ], signal));
     return toWriteResult(raw).status;
   }
@@ -238,38 +264,60 @@ export class ZLinkRedisLocationStore implements
     const [rows, projection] = await Promise.all([
       this.loadMeshNodes(signal),
       this.authorityCall('capacityProjection', {}, signal) as Promise<{
-        readonly nodeActive: Readonly<Record<string, number>>;
-        readonly nodePending: Readonly<Record<string, number>>;
+        readonly actorActive: Readonly<Record<string, number>>;
+        readonly actorReserved: Readonly<Record<string, number>>;
+        readonly spotActive: Readonly<Record<string, number>>;
+        readonly spotReserved: Readonly<Record<string, number>>;
         readonly typeActive: Readonly<Record<string, number>>;
-        readonly typePending: Readonly<Record<string, number>>;
+        readonly typeReserved: Readonly<Record<string, number>>;
       }>
     ]);
     return rows
       .filter(row => row.meshName === meshName)
       .map(row => {
-        const key = encodeKeySegments(
-          encodeMeshNodeKey({ meshName: row.meshName, rid: row.rid }),
-          row.lifecycleGeneration.toString()
+        const descriptorKey = encodeMeshNodeKey({
+          meshName: row.meshName,
+          rid: row.rid
+        });
+        const lifecycleGeneration = row.lifecycleGeneration.toString();
+        const actorKey = encodeKeySegments(
+          descriptorKey,
+          lifecycleGeneration,
+          'actor'
         );
-        const objectCapabilities = row.objectCapabilities.map(capability => {
+        const spotKey = encodeKeySegments(
+          descriptorKey,
+          lifecycleGeneration,
+          'spot'
+        );
+        const spotTypes = row.populationCapacity.spotTypes.map(capability => {
           const typeKey = encodeKeySegments(
-            key,
+            descriptorKey,
+            lifecycleGeneration,
+            'spot',
             capability.objectKind,
             capability.stableType
           );
           return {
             ...capability,
             active: Number(projection.typeActive[typeKey] ?? 0),
-            reserved: Number(projection.typePending[typeKey] ?? 0)
+            reserved: Number(projection.typeReserved[typeKey] ?? 0)
           };
         });
         return {
           ...row,
-          objectCapabilities,
-          objectCapacity: {
-            ...row.objectCapacity,
-            activeObjects: Number(projection.nodeActive[key] ?? 0),
-            pendingActivations: Number(projection.nodePending[key] ?? 0)
+          populationCapacity: {
+            actors: {
+              ...row.populationCapacity.actors,
+              active: Number(projection.actorActive[actorKey] ?? 0),
+              reserved: Number(projection.actorReserved[actorKey] ?? 0)
+            },
+            spots: {
+              ...row.populationCapacity.spots,
+              active: Number(projection.spotActive[spotKey] ?? 0),
+              reserved: Number(projection.spotReserved[spotKey] ?? 0)
+            },
+            spotTypes
           }
         };
       });
@@ -722,6 +770,20 @@ export class ZLinkRedisLocationStore implements
     signal?: AbortSignal
   ): Promise<bigint> {
     const ownerId = owner.ownerId;
+    const meshNodeRemoved = await this.removeOwnedServiceDescriptors(
+      kindMeshNode,
+      this.keys.descriptorMeshOwnerIndex(
+        ownerId,
+        owner.leaseGeneration.toString()
+      ),
+      (rowKey) => this.keys.descriptorMesh(rowKey),
+      (_rowKey, descriptor) => this.removeMeshNode(
+        { meshName: descriptor.meshName, rid: descriptor.rid },
+        owner,
+        signal
+      ),
+      signal
+    );
     const removed = toNumber(await this.eval(REMOVE_ALL_BY_OWNER_SCRIPT, [
       this.keys.ownerIndexPrefix(kindMeshNode.tag) + ownerId,
       this.keys.ownerIndexPrefix(kindPeer.tag) + ownerId,
@@ -781,7 +843,7 @@ export class ZLinkRedisLocationStore implements
       ),
       signal
     );
-    return BigInt(removed + clientServerRemoved + fanoutRemoved);
+    return BigInt(meshNodeRemoved + removed + clientServerRemoved + fanoutRemoved);
   }
 
   async getChangeStamp(scope: ZLinkLocationChangeStampScope, signal?: AbortSignal): Promise<bigint> {
@@ -948,11 +1010,12 @@ export class ZLinkRedisLocationStore implements
     const baseKeys = [
       placeholder, placeholder, placeholder, this.keys.counter(),
       this.keys.authorityKeyIndex(), this.keys.membershipCurrent(),
-      this.keys.capacityNode('active'), this.keys.capacityNode('pending'),
-      this.keys.capacityType('active'), this.keys.capacityType('pending'),
+      this.keys.capacityActor('active'), this.keys.capacityActor('reserved'),
+      this.keys.capacitySpotType('active'), this.keys.capacitySpotType('reserved'),
       placeholder, placeholder, placeholder, placeholder, placeholder,
       this.keys.authorityIndexGc(), this.keys.scansExpiry(),
-      this.keys.scansWatermark(), scanKey
+      this.keys.scansWatermark(), scanKey,
+      this.keys.capacitySpot('active'), this.keys.capacitySpot('reserved')
     ];
     if (cursor === undefined) {
       await this.eval(AUTHORITY_HYBRID_SCRIPT, baseKeys, [
@@ -989,7 +1052,7 @@ export class ZLinkRedisLocationStore implements
         retentionMs: 60_000,
         expectedLastHex: decoded.lastHex,
         candidates,
-        dynamicStart: 20
+        dynamicStart: 22
       })
     ], signal))) as {
       readonly kind: 'page' | 'scanExpired';
@@ -1021,7 +1084,7 @@ export class ZLinkRedisLocationStore implements
     request: ZLinkObjectReserveRequest,
     signal?: AbortSignal
   ): Promise<ZLinkObjectReserveResult> {
-    validateCapacityDelta(request.pendingCapacityDelta);
+    validateCapacityVector(request.capacity);
     validateAuthorityPayload(request.creatingPayload);
     requireText(request.intent.requestContentReference, 'creation content reference');
     if (
@@ -1039,12 +1102,13 @@ export class ZLinkRedisLocationStore implements
       ),
       objectKind: request.key.kind,
       stableType: requireText(request.intent.stableType, 'stable type'),
-      capacityDelta: request.pendingCapacityDelta,
+      capacity: capacityJson(request.capacity),
+      capacityBundle: encodeCapacityBundle(request.capacity),
       payload: encodePayload(request.creatingPayload),
       reservationId,
       intent: {
         requestContentReference: request.intent.requestContentReference,
-        requestSha256: encodePayload(request.intent.requestSha256),
+        requestSha256: Buffer.from(request.intent.requestSha256).toString('hex'),
         requestEncodedSize: request.intent.requestEncodedSize.toString()
       },
       target: creationTargetJson(request.target)
@@ -1162,13 +1226,12 @@ export class ZLinkRedisLocationStore implements
     request: ZLinkRelocationCapacityReservationRequest,
     signal?: AbortSignal
   ): Promise<ZLinkRelocationCapacityReserveResult> {
-    validateCapacityDelta(request.capacityDelta);
+    validateCapacityVector(request.capacity);
     requireText(request.reservationId, 'relocation reservation ID');
     const comparable = relocationRequestJson(request);
     const raw = await this.authorityCall('reserveRelocation', {
       ...comparable,
       key: request.authorityKey.value,
-      requestJson: JSON.stringify(comparable),
       target: {
         descriptor: comparable.targetDescriptor,
         descriptorKey: encodeMeshNodeKey(request.targetDescriptor),
@@ -1204,7 +1267,12 @@ export class ZLinkRedisLocationStore implements
       ...comparable,
       aggregateKey,
       fence,
-      requestJson: JSON.stringify(comparable)
+      target: {
+        descriptor: comparable.targetDescriptor,
+        descriptorKey: comparable.targetDescriptorKey,
+        lifecycleGeneration: comparable.targetDescriptorLifecycleGeneration,
+        owner: comparable.targetOwner
+      }
     }, signal);
     return aggregatePrepareResult(raw);
   }
@@ -1570,7 +1638,8 @@ export class ZLinkRedisLocationStore implements
     const target = value.target as {
       descriptorKey?: string;
       descriptor?: { meshName: string; rid: string };
-      owner?: { ownerId: string };
+      lifecycleGeneration?: string;
+      owner?: { ownerId: string; leaseGeneration?: string };
     } | undefined;
     const recordKey = operation === 'reserve' || operation === 'commit'
       || operation === 'completeCreation' || operation === 'abort'
@@ -1588,9 +1657,47 @@ export class ZLinkRedisLocationStore implements
               : placeholder;
     let effectiveTarget = target;
     if (operation === 'cas' && typeof value.fence === 'string') {
-      const stored = asString(await this.command(['HGET', recordKey, 'requestJson'], signal));
-      if (stored.length > 0) {
-        effectiveTarget = (JSON.parse(stored) as Record<string, any>).target;
+      const stored = await this.readHash(recordKey, signal);
+      if (stored.targetDescriptorKey !== undefined) {
+        effectiveTarget = {
+          descriptor: decodeMeshNodeKey(stored.targetDescriptorKey),
+          descriptorKey: stored.targetDescriptorKey,
+          lifecycleGeneration: stored.targetDescriptorLifecycleGeneration,
+          owner: {
+            ownerId: stored.targetOwnerId,
+            leaseGeneration: stored.targetOwnerLeaseGeneration
+          }
+        };
+      }
+    }
+    if ((operation === 'commitAggregate' || operation === 'abortAggregate')
+      && typeof value.aggregateKey === 'string') {
+      const stored = await this.readHash(recordKey, signal);
+      if (stored.targetDescriptorKey !== undefined) {
+        value.participants = JSON.parse(
+          Buffer.from(stored.participants, 'hex').toString('utf8')
+        );
+        value.targetDescriptor = decodeMeshNodeKey(stored.targetDescriptorKey);
+        value.targetDescriptorKey = stored.targetDescriptorKey;
+        value.targetDescriptorLifecycleGeneration =
+          stored.targetDescriptorLifecycleGeneration;
+        value.targetOwner = {
+          ownerId: stored.targetOwnerId,
+          leaseGeneration: stored.targetOwnerLeaseGeneration
+        };
+        value.capacityBundle = stored.capacityBundle;
+        value.target = {
+          descriptor: value.targetDescriptor,
+          descriptorKey: stored.targetDescriptorKey,
+          lifecycleGeneration: stored.targetDescriptorLifecycleGeneration,
+          owner: value.targetOwner
+        };
+        effectiveTarget = {
+          descriptor: value.targetDescriptor,
+          descriptorKey: stored.targetDescriptorKey,
+          lifecycleGeneration: stored.targetDescriptorLifecycleGeneration,
+          owner: value.targetOwner
+        };
       }
     }
     const descriptorKey = effectiveTarget?.descriptorKey
@@ -1623,6 +1730,9 @@ export class ZLinkRedisLocationStore implements
           BigInt(terminalOperation.operationIdHigh),
           BigInt(terminalOperation.operationIdLow)
         );
+    const terminalOrEntryIdentityKey = operation === 'reserve' && authorityKey.length > 0
+      ? this.keys.entrySpotIdentityClaim(authorityKey)
+      : creationTerminalKey;
     const keys = [
       authorityKey.length === 0 ? placeholder : this.keys.authorityCurrent(authorityKey),
       authorityKey.length === 0 ? placeholder : this.keys.authorityHistory(authorityKey),
@@ -1630,10 +1740,10 @@ export class ZLinkRedisLocationStore implements
       this.keys.counter(),
       this.keys.authorityKeyIndex(),
       this.keys.membershipCurrent(),
-      this.keys.capacityNode('active'),
-      this.keys.capacityNode('pending'),
-      this.keys.capacityType('active'),
-      this.keys.capacityType('pending'),
+      this.keys.capacityActor('active'),
+      this.keys.capacityActor('reserved'),
+      this.keys.capacitySpotType('active'),
+      this.keys.capacitySpotType('reserved'),
       descriptorKey === undefined ? placeholder : this.keys.descriptorMesh(descriptorKey),
       descriptorKey === undefined ? placeholder : this.keys.descriptorAdmissionMesh(descriptorKey),
       effectiveTarget?.owner?.ownerId === undefined
@@ -1644,7 +1754,9 @@ export class ZLinkRedisLocationStore implements
       this.keys.authorityIndexGc(),
       this.keys.scansExpiry(),
       this.keys.scansWatermark(),
-      creationTerminalKey
+      terminalOrEntryIdentityKey,
+      this.keys.capacitySpot('active'),
+      this.keys.capacitySpot('reserved')
     ];
     if (operation === 'prepareAggregate'
       || operation === 'commitAggregate'
@@ -1686,18 +1798,13 @@ export class ZLinkRedisLocationStore implements
   private async appendAggregateKeys(
     operation: string,
     value: Record<string, any>,
-    aggregateKey: string,
+    _aggregateKey: string,
     keys: string[],
     signal?: AbortSignal
   ): Promise<void> {
-    let aggregate = value;
-    if (operation !== 'prepareAggregate') {
-      const stored = asString(await this.command(['HGET', aggregateKey, 'requestJson'], signal));
-      if (stored.length === 0) return;
-      aggregate = JSON.parse(stored) as Record<string, any>;
-    }
+    const aggregate = value;
     const participants = aggregate.participants as readonly Record<string, any>[];
-    const fences = aggregate.targetReservations as readonly string[];
+    if (!Array.isArray(participants)) return;
     for (const participant of participants) {
       const key = String(participant.key);
       participant.keyHex = Buffer.from(key, 'utf8').toString('hex');
@@ -1717,15 +1824,6 @@ export class ZLinkRedisLocationStore implements
         keys.push(this.keys.membershipHistoryRevisions(String(participant.key)));
       }
     }
-    const reservationRequests: Record<string, any>[] = [];
-    for (const fence of fences) {
-      const reservationKey = this.keys.relocation(fence);
-      keys.push(reservationKey);
-      const raw = await this.command(['HGET', reservationKey, 'requestJson'], signal);
-      reservationRequests.push(raw === null
-        ? {}
-        : JSON.parse(asString(raw)) as Record<string, any>);
-    }
     if (operation !== 'abortAggregate') {
       for (const participant of participants) {
         const current = await this.readAuthority(
@@ -1736,28 +1834,25 @@ export class ZLinkRedisLocationStore implements
           ? this.keys.lease(current.ownerId)
           : this.keys.schema());
       }
-      for (const reservation of reservationRequests) {
-        const target = reservation.target as Record<string, any> | undefined;
-        const descriptorKey = target?.descriptorKey;
-        keys.push(descriptorKey === undefined
-          ? this.keys.schema()
-          : this.keys.descriptorMesh(String(descriptorKey)));
-      }
-      for (const reservation of reservationRequests) {
-        const target = reservation.target as Record<string, any> | undefined;
-        const descriptorKey = target?.descriptorKey;
-        keys.push(descriptorKey === undefined
-          ? this.keys.schema()
-          : this.keys.descriptorAdmissionMesh(String(descriptorKey)));
-      }
-      for (const reservation of reservationRequests) {
-        const target = reservation.target as Record<string, any> | undefined;
-        const owner = target?.owner as Record<string, any> | undefined;
-        keys.push(owner?.ownerId === undefined
-          ? this.keys.schema()
-          : this.keys.lease(String(owner.ownerId)));
-      }
     }
+  }
+
+  private async readHash(
+    key: string,
+    signal?: AbortSignal
+  ): Promise<Record<string, string>> {
+    const raw = await this.command(['HGETALL', key], signal);
+    if (raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+      return Object.fromEntries(
+        Object.entries(raw).map(([field, value]) => [field, asString(value)])
+      );
+    }
+    const values = asArray(raw);
+    const result: Record<string, string> = {};
+    for (let index = 0; index < values.length; index += 2) {
+      result[asString(values[index])] = asString(values[index + 1]);
+    }
+    return result;
   }
 
   private async command(args: RedisCommandValue[], signal?: AbortSignal): Promise<unknown> {
@@ -1826,12 +1921,20 @@ interface AuthorityJson {
   readonly ownerId: string;
   readonly ownerLeaseGeneration: string;
   readonly allocation: {
-    readonly state: 'pending' | 'active';
+    readonly state: 'reserved' | 'active';
     readonly objectKind: 'actor' | 'user_spot' | 'instance_spot';
     readonly stableType: string;
     readonly descriptor: { readonly meshName: string; readonly rid: string };
     readonly descriptorLifecycleGeneration: string;
-    readonly capacityDelta: number;
+    readonly capacity: {
+      readonly actors: number;
+      readonly spots: number;
+      readonly spotType?: {
+        readonly objectKind: 'user_spot' | 'instance_spot';
+        readonly stableType: string;
+        readonly count: number;
+      };
+    };
   };
   readonly pendingCreation?: {
     readonly reservationId: string;
@@ -1861,11 +1964,11 @@ function authoritySnapshot(value: AuthorityJson, storeNowMs: number): ZLinkAutho
           value.pendingCreation.requestContentReference,
           'creation content reference'
         ),
-        requestSha256: Buffer.from(value.pendingCreation.requestSha256, 'base64'),
+        requestSha256: Buffer.from(value.pendingCreation.requestSha256, 'hex'),
         requestEncodedSize: BigInt(value.pendingCreation.requestEncodedSize)
       };
   if (
-    value.allocation.state === 'pending'
+    value.allocation.state === 'reserved'
       ? pendingCreation === undefined
       : pendingCreation !== undefined
   ) {
@@ -1896,6 +1999,8 @@ function authoritySnapshot(value: AuthorityJson, storeNowMs: number): ZLinkAutho
         rid: ridOf(value.allocation.descriptor.rid)
       },
       descriptorLifecycleGeneration: BigInt(value.allocation.descriptorLifecycleGeneration)
+      ,
+      capacity: cloneCapacityJson(value.allocation.capacity)
     },
     ...(pendingCreation === undefined ? {} : { pendingCreation }),
     storeNow: fromUnixMs(storeNowMs)
@@ -2111,23 +2216,35 @@ function relocationRequestJson(request: ZLinkRelocationCapacityReservationReques
     targetDescriptorKey: encodeMeshNodeKey(request.targetDescriptor),
     targetNodeLifecycleGeneration: request.targetNodeLifecycleGeneration.toString(),
     targetOwner: ownerJson(request.targetOwner),
-    capacityDelta: request.capacityDelta
+    capacity: capacityJson(request.capacity),
+    capacityBundle: encodeCapacityBundle(request.capacity)
   };
 }
 
 function aggregateRequestJson(request: ZLinkAggregatePrepareRequest): Record<string, unknown> {
+  const participants = request.participants.map(participant => ({
+    key: participant.authorityKey.value,
+    expectedStoreVersion: participant.expectedStoreVersion.value,
+    ownerTransition: participant.ownerTransition,
+    authorityPayload: encodePayload(participant.authorityPayload),
+    membershipMutation: encodePayload(participant.membershipMutation)
+  }));
   return {
     aggregateId: request.aggregateId.value,
     aggregateGeneration: request.aggregateGeneration.toString(),
-    participants: request.participants.map(participant => ({
-      key: participant.authorityKey.value,
-      expectedStoreVersion: participant.expectedStoreVersion.value,
-      ownerTransition: participant.ownerTransition,
-      authorityPayload: encodePayload(participant.authorityPayload),
-      membershipMutation: encodePayload(participant.membershipMutation)
-    })),
-    inventoryDigest: encodePayload(request.inventoryDigest),
-    targetReservations: request.targetReservations.map(fence => fence.value),
+    participants,
+    participantsEncoded: Buffer.from(
+      JSON.stringify(participants), 'utf8').toString('hex'),
+    inventoryDigest: Buffer.from(request.inventoryDigest).toString('hex'),
+    targetDescriptor: {
+      meshName: request.targetDescriptor.meshName,
+      rid: routingIdHex(request.targetDescriptor.rid)
+    },
+    targetDescriptorKey: encodeMeshNodeKey(request.targetDescriptor),
+    targetDescriptorLifecycleGeneration:
+      request.targetDescriptorLifecycleGeneration.toString(),
+    capacity: capacityJson(request.capacity),
+    capacityBundle: encodeCapacityBundle(request.capacity),
     targetOwner: ownerJson(request.targetOwner)
   };
 }
@@ -2139,6 +2256,7 @@ function validateAggregate(request: ZLinkAggregatePrepareRequest): void {
   if (request.inventoryDigest.byteLength !== 32) {
     throw new TypeError('Aggregate inventory digest must contain 32 bytes.');
   }
+  validateCapacityVector(request.capacity);
   const keys = request.participants.map(participant => participant.authorityKey.value);
   const sorted = [...keys].sort();
   if (new Set(keys).size !== keys.length || keys.some((key, index) => key !== sorted[index])) {
@@ -2155,10 +2273,64 @@ function validateAuthorityPayload(payload: Uint8Array): void {
   }
 }
 
-function validateCapacityDelta(value: number): void {
-  if (!Number.isInteger(value) || value < 1 || value > 0x7fff_ffff) {
-    throw new RangeError('Placement capacity delta must be in 1..2147483647.');
+function validateCapacityVector(value: ZLinkCapacityVector): void {
+  for (const count of [
+    value.actors,
+    value.spots,
+    value.spotType?.count ?? 0
+  ]) {
+    if (!Number.isInteger(count) || count < 0 || count > 0x7fff_ffff) {
+      throw new RangeError('Placement capacity slots must be in 0..2147483647.');
+    }
   }
+  if (value.actors === 0 && value.spots === 0 && value.spotType === undefined) {
+    throw new RangeError('Placement capacity vector must reserve at least one slot.');
+  }
+  if (value.spotType !== undefined) {
+    requireText(value.spotType.stableType, 'Spot type capacity stable type');
+    if (value.spotType.count < 1) {
+      throw new RangeError('Spot type capacity count must be positive.');
+    }
+  }
+}
+
+function capacityJson(value: ZLinkCapacityVector): Record<string, unknown> {
+  return {
+    actors: value.actors,
+    spots: value.spots,
+    spotType: value.spotType === undefined ? undefined : {
+      objectKind: value.spotType.objectKind,
+      stableType: value.spotType.stableType,
+      count: value.spotType.count
+    }
+  };
+}
+
+function cloneCapacityJson(value: AuthorityJson['allocation']['capacity']): ZLinkCapacityVector {
+  return {
+    actors: value.actors,
+    spots: value.spots,
+    ...(value.spotType === undefined ? {} : { spotType: { ...value.spotType } })
+  };
+}
+
+function encodeCapacityBundle(value: ZLinkCapacityVector): string {
+  validateCapacityVector(value);
+  const segments = [
+    'zlink-capacity-bundle-v2',
+    value.actors.toString(),
+    value.spots.toString(),
+    value.spotType === undefined ? '0' : '1'
+  ];
+  if (value.spotType !== undefined) {
+    segments.push(
+      value.spotType.objectKind,
+      value.spotType.stableType,
+      value.spotType.count.toString()
+    );
+  }
+  return segments.map(segment =>
+    `${Buffer.byteLength(segment, 'utf8')}:${segment}`).join('');
 }
 
 function encodePayload(payload: Uint8Array): string {
@@ -2168,6 +2340,22 @@ function encodePayload(payload: Uint8Array): string {
 function requireText(value: string, field: string): string {
   if (value.trim().length === 0) throw new TypeError(`${field} is required.`);
   return value;
+}
+
+function decodeMeshNodeKey(value: string): { meshName: string; rid: string } {
+  const first = value.indexOf(':');
+  const meshLength = Number(value.slice(0, first));
+  const meshStart = first + 1;
+  const meshName = value.slice(meshStart, meshStart + meshLength);
+  const ridLengthStart = meshStart + meshLength;
+  const second = value.indexOf(':', ridLengthStart);
+  const ridLength = Number(value.slice(ridLengthStart, second));
+  const rid = value.slice(second + 1, second + 1 + ridLength);
+  if (first < 1 || second < ridLengthStart || !Number.isSafeInteger(meshLength)
+    || !Number.isSafeInteger(ridLength)) {
+    throw new Error('Redis descriptor key is invalid.');
+  }
+  return { meshName, rid };
 }
 
 function encodeAuthorityCursor(scanId: string, lastHex: string, prefix: string): string {
@@ -2209,7 +2397,7 @@ function canonicalObjectCapabilities(
 
 function meshDescriptorImmutableFingerprint(descriptor: ZLinkMeshNodeDescriptor): string {
   const segments = [
-    'zlink-mesh-node-immutable-v1',
+    'zlink-mesh-node-immutable-v2',
     descriptor.meshName,
     routingIdHex(descriptor.rid).toLowerCase(),
     descriptor.lifecycleGeneration.toString(),
@@ -2220,9 +2408,14 @@ function meshDescriptorImmutableFingerprint(descriptor: ZLinkMeshNodeDescriptor)
   segments.push(
     descriptor.securityIdentity,
     descriptor.applicationVersion.toString(),
-    descriptor.objectRole,
-    descriptor.objectCapacity.maxActiveObjects.toString(),
-    descriptor.objectCapacity.maxPendingActivations.toString()
+    descriptor.objectRole
+  );
+  segments.push(descriptor.entrySpotId === undefined ? '0' : '1');
+  if (descriptor.entrySpotId !== undefined) segments.push(descriptor.entrySpotId);
+  segments.push(
+    descriptor.populationCapacity.actors.limit.toString(),
+    descriptor.populationCapacity.spots.limit.toString(),
+    descriptor.activationConcurrency.limit.toString()
   );
   const capabilities = canonicalObjectCapabilities(descriptor.objectCapabilities);
   segments.push(capabilities.length.toString());
@@ -2232,8 +2425,7 @@ function meshDescriptorImmutableFingerprint(descriptor: ZLinkMeshNodeDescriptor)
       capability.stableType,
       capability.policy,
       capability.hasSnapshotAdapter ? '1' : '0',
-      capability.activeLimit?.toString() ?? '',
-      capability.pendingLimit?.toString() ?? ''
+      capability.objectKind === 'actor' ? '' : capability.limit.toString()
     );
   }
   const preimage = segments
@@ -2319,6 +2511,13 @@ function decodeDescriptorPageToken(
 function validateMeshDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
   requireDescriptorText(descriptor.meshName, 'mesh name');
   requireDescriptorText(descriptor.ownerId, 'descriptor owner ID');
+  if (descriptor.objectRole === 'server') {
+    if (descriptor.entrySpotId !== undefined) {
+      requireDescriptorText(descriptor.entrySpotId, 'Entry Spot ID');
+    }
+  } else if (descriptor.entrySpotId !== undefined) {
+    throw new TypeError('Only Object Server descriptors may publish an Entry Spot ID.');
+  }
   const maxGeneration = 0x7fff_ffff_ffff_ffffn;
   if (descriptor.lifecycleGeneration < 1n || descriptor.lifecycleGeneration > maxGeneration
     || descriptor.descriptorRevision < 1n || descriptor.descriptorRevision > maxGeneration
@@ -2326,21 +2525,26 @@ function validateMeshDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
     || descriptor.applicationVersion < 0n || descriptor.applicationVersion > maxGeneration) {
     throw new RangeError('MeshNode descriptor generations are invalid.');
   }
-  const capacity = descriptor.objectCapacity;
-  for (const value of [
-    capacity.activeObjects,
-    capacity.pendingActivations,
-    capacity.maxActiveObjects,
-    capacity.maxPendingActivations
-  ]) {
+  const capacities = [
+    descriptor.populationCapacity.actors,
+    descriptor.populationCapacity.spots,
+    ...descriptor.populationCapacity.spotTypes
+  ];
+  for (const value of capacities.flatMap(capacity =>
+    [capacity.active, capacity.reserved, capacity.limit])) {
     if (!Number.isSafeInteger(value) || value < 0) {
       throw new RangeError('MeshNode object capacity must contain non-negative safe integers.');
     }
   }
-  if (capacity.activeObjects > capacity.maxActiveObjects
-    || capacity.pendingActivations > capacity.maxPendingActivations
-    || capacity.maxActiveObjects === 0
-    || capacity.maxPendingActivations === 0
+  if (capacities.some(capacity =>
+      capacity.limit !== 0 && capacity.active + capacity.reserved > capacity.limit)
+    || descriptor.populationCapacity.actors.limit === 0
+    || descriptor.populationCapacity.spots.limit === 0
+    || !Number.isSafeInteger(descriptor.activationConcurrency.active)
+    || descriptor.activationConcurrency.active < 0
+    || !Number.isSafeInteger(descriptor.activationConcurrency.limit)
+    || descriptor.activationConcurrency.limit < 1
+    || descriptor.activationConcurrency.active > descriptor.activationConcurrency.limit
     || descriptor.placementWeight < 0
     || descriptor.placementWeight > 10_000
     || descriptor.objectCapabilities.length > 1024
@@ -2356,14 +2560,9 @@ function validateMeshDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
     if ((capability.policy === 'snapshot') !== capability.hasSnapshotAdapter) {
       throw new TypeError('Snapshot adapter presence does not match the maintenance policy.');
     }
-    if (!Number.isSafeInteger(capability.active) || capability.active < 0
-      || !Number.isSafeInteger(capability.reserved) || capability.reserved < 0) {
-      throw new RangeError('MeshNode capability usage must be non-negative safe integers.');
-    }
-    for (const limit of [capability.activeLimit, capability.pendingLimit]) {
-      if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
-        throw new RangeError('MeshNode capability limits must be non-negative safe integers.');
-      }
+    if (!Number.isSafeInteger(capability.limit) || capability.limit < 0
+      || capability.objectKind === 'actor' && capability.limit !== 0) {
+      throw new RangeError('MeshNode capability limit is invalid.');
     }
   }
 }

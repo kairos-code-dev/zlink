@@ -530,7 +530,7 @@ const plannedAdds = [
   ['e2e:add:global-actor-remote-create', 'e2e-scenario', 'global ActorId concurrent Create와 remote placement가 authority 하나로 수렴한다.', 'V11-M6B-E2E'],
   ['e2e:add:global-spot-explicit-create', 'e2e-scenario', 'global SpotId explicit Create와 stored intent reactivation을 검증한다.', 'V11-M6B-E2E'],
   ['e2e:add:exact-generation-mutation-bind', 'e2e-scenario', 'stale generation의 destroy, close와 session bind가 새 incarnation에 적용되지 않는다.', 'V11-M6B-E2E'],
-  ['e2e:add:placement-capacity-weight-affinity', 'e2e-scenario', 'role, capability, profile, affinity, weight와 active·pending capacity 순서를 검증한다.', 'V11-M6A-E2E'],
+  ['e2e:add:placement-capacity-weight', 'e2e-scenario', 'role, stable type capability, node-wide weight와 active·pending capacity 순서를 검증한다.', 'V11-M6A-E2E'],
   ['e2e:add:automatic-rid-collision', 'e2e-scenario', '128-bit random RID 충돌 8회 뒤 startup이 RoutingIdConflict로 끝난다.', 'V11-M6A-E2E'],
   ['e2e:add:reservation-crash-recovery', 'e2e-scenario', 'generic Reserve·Commit·Abort와 owner lease takeover가 pending capacity를 exact fence로 회수한다.', 'V11-M6C-E2E'],
   ['e2e:add:forwarding-bounds', 'e2e-scenario', 'forwarding 8 hops, 1024 messages와 16 MiB bound에서 typed terminal 결과를 검증한다.', 'V11-M6B-E2E'],

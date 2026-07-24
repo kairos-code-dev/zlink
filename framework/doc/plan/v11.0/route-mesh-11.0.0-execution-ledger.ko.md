@@ -913,16 +913,16 @@ Store, provider와 monitoring 결과는 새 계약을 구현하고 재검증하�
 | `V11-CA-USER-SPOT-E2E-SPEC` | 공통 E2E scenario와 impact disposition 갱신 | E2E coordinator, `P-DELIVERY` | `V11-CA-USER-SPOT-SPEC` | 완료 | Config 1·2·5·6·7·8·9·10·11·12·13·14와 catalog에 실행·capacity·identity·weight scenario, race와 언어 parity 누락 0 | Config 1·2·5·6·7·8·9·10·11·12·13·14와 catalog에 ordering·barrier·typed capacity·UUID collision·descriptor cleanup·weight boundary/revision/selection 검증을 반영했다. |
 | `V11-CA-USER-SPOT-REVIEW` | 정식 흡수 완전성·교차 일관성 review | Codex 5.6 sol xhigh review lane, `P-XHIGH` + Claude Sonnet 병렬 reviewer | `V11-CA-USER-SPOT-CORE-RID`, `V11-CA-USER-SPOT-IFACE-CPP`, `V11-CA-USER-SPOT-IFACE-DN`, `V11-CA-USER-SPOT-IFACE-JVM`, `V11-CA-USER-SPOT-IFACE-NODE`, `V11-CA-USER-SPOT-E2E-SPEC` | 완료 | 원문 23개 항목과 §11 UUID v4·§12 weight 추가 항목의 spec·exact interface·E2E·runtime row 추적 100%, 상충·미소유 0 | Codex 5.6 sol xhigh가 최종 candidate를 `CLEAN`으로 판정했다. Claude Sonnet focused review는 execution·capacity와 identity·weight를 각각 `APPROVE`했다. Broad budget-limited review가 제기한 User Spot automatic UUID 미소유 주장은 `24-spot-address-messaging`과 다섯 Spot exact interface의 명시 계약으로 해소했고, flow tracing ID 제안은 원문 요구가 아니므로 범위에 추가하지 않았다. Trace는 owners 1734, members 6637, unclassified·ambiguous·unknown 0이다. |
 | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 변경 요청 문서 제거 | contract coordinator, `P-DELIVERY` | `V11-CA-USER-SPOT-REVIEW` | 완료 | 요청 문서와 repository link 0, 정식 spec·exact interface·E2E·ledger만으로 구현 가능 | 두 독립 reviewer 결과와 자동 검증을 확보한 뒤 proposal과 README link를 제거했다. 이후 구현은 정식 spec·exact interface·E2E·아래 runtime sub-ID만 사용한다. |
-| `V11-CA-SPOT-ID-SPEC` | SpotId logical identity 정식 계약 통합 | contract coordinator, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 진행 | Entry·User·Instance가 global UTF-8 string SpotId를 사용하고 NodeRid만 RoutingId를 사용하며 network identity 문서의 Spot identity 소유 0 | 공통 Spot·Location·Redis·monitoring·relocation 문서의 `SpotRid` 표면을 `SpotId`로 전환하고 identity 규칙을 `24-spot-address-messaging`으로 이동했다. |
-| `V11-CA-SPOT-ID-WIRE` | SpotId wire·Store schema clean break | protocol·Location contract lane, `P-DEEP` | `V11-CA-SPOT-ID-SPEC` | 진행 | 모든 Spot field가 `text8`·`optional-text8`, generated drift 0, Redis `location-authority-hybrid-v3` fixture와 legacy arbitrary binary 거부 | Service wire target field를 `spotId` 계열과 UTF-8 text로 바꾸고 Redis v3 key·claim field fixture를 작성했다. |
-| `V11-CA-SPOT-ID-IFACE` | 다섯 언어 exact interface SpotId 전환 | public contract lanes, `P-DEEP` | `V11-CA-SPOT-ID-SPEC` | 진행 | .NET·Java·Kotlin·Node는 string, C++는 `std::string`이며 Spot 파생 public member에 RoutingId 사용 0 | 공통 이름을 `SpotId` 계열로 바꾸고 다섯 언어의 SpotRef·messaging·manager·context·Location·monitoring 선언을 string projection으로 전환했다. |
-| `V11-CA-SPOT-ID-E2E` | SpotId E2E 계약과 compatibility negative 갱신 | E2E coordinator, `P-DELIVERY` | `V11-CA-SPOT-ID-SPEC`, `V11-CA-SPOT-ID-WIRE` | 진행 | cross-node global ID, UTF-8 boundary·case exact·no normalization, reserved Entry 형식, legacy binary reject scenario 누락 0 | Common E2E의 Spot 파생 field를 `SpotId`로 전환했다. Boundary와 compatibility scenario의 세부 검증을 추가한다. |
-| `V11-CA-SPOT-ID-REVIEW` | SpotId 흡수 완전성·교차 일관성 review | Codex 5.6 sol xhigh review lane, `P-XHIGH` + Claude Sonnet 병렬 reviewer | `V11-CA-SPOT-ID-WIRE`, `V11-CA-SPOT-ID-IFACE`, `V11-CA-SPOT-ID-E2E` | 대기 | spec·wire·Store·다섯 interface·E2E·runtime owner 추적 100%, 상충·미소유 0, 두 reviewer clean | `<ID>/result.json` |
-| `V11-CA-ACTOR-CREATE-SPEC` | Actor 생성 승인·거절과 Entry Spot lifecycle 정식 계약 | contract coordinator, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 진행 | 최초 생성·User→Entry 복귀·maintenance 복원이 서로 다른 callback을 사용하고 Entry Spot에 admission callback 노출 0 | 변경 요청을 검토해 shared membership lifecycle, User Spot admission lifecycle과 Entry Spot creation·relocation lifecycle을 분리한다. |
-| `V11-CA-ACTOR-CREATE-STORE-WIRE` | Actor creation terminal result와 durable reply | protocol·Location contract lane, `P-DEEP` | `V11-CA-ACTOR-CREATE-SPEC` | 진행 | Created·Rejected terminal result와 opaque reply envelope가 exact source lifecycle·OperationId에 고정되고 Ready publication·rejection cleanup과 원자적으로 닫히며 다른 operation 공유 0 | service wire command 49와 Actor create terminal union을 추가하고 operation-scoped replay와 distinct-operation reservation 재경쟁 의미를 schema에 고정했다. |
-| `V11-CA-ACTOR-CREATE-IFACE` | 다섯 언어 Actor manager·Spot lifecycle exact interface 갱신 | public contract lanes, `P-DEEP` | `V11-CA-ACTOR-CREATE-SPEC` | 대기 | Existing·Created·Rejected union과 callback 분리가 다섯 언어에서 같은 의미를 제공 | `<ID>/result.json` |
-| `V11-CA-ACTOR-CREATE-E2E` | Actor creation rejection·Entry lifecycle E2E 계약 | E2E coordinator, `P-DELIVERY` | `V11-CA-ACTOR-CREATE-SPEC`, `V11-CA-ACTOR-CREATE-STORE-WIRE` | 대기 | Actor별 callback 직렬화, rejection 뒤 독립 request 재시도, 동일 OperationId terminal replay, rejection cleanup, 일반 복귀와 maintenance callback sequence 누락 0 | `<ID>/result.json` |
-| `V11-CA-ACTOR-CREATE-REVIEW` | Actor creation·Entry lifecycle 흡수 완전성 review | Codex 5.6 sol xhigh review lane, `P-XHIGH` + Claude Sonnet 병렬 reviewer | `V11-CA-ACTOR-CREATE-STORE-WIRE`, `V11-CA-ACTOR-CREATE-IFACE`, `V11-CA-ACTOR-CREATE-E2E` | 대기 | spec·Store·wire·다섯 interface·E2E·runtime owner 추적 100%, 상충·미소유 0, 두 reviewer clean | `<ID>/result.json` |
+| `V11-CA-SPOT-ID-SPEC` | SpotId logical identity 정식 계약 통합 | contract coordinator, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | Entry·User·Instance가 global UTF-8 string SpotId를 사용하고 NodeRid만 RoutingId를 사용하며 network identity 문서의 Spot identity 소유 0 | 공통 Spot·Location·Redis·monitoring·relocation 문서의 `SpotRid` 표면을 `SpotId`로 전환하고 identity 규칙을 `24-spot-address-messaging`으로 이동했다. UTF-8 1..255 bytes, case-sensitive exact match, no normalization과 global namespace를 정식 owner에 고정했다. |
+| `V11-CA-SPOT-ID-WIRE` | SpotId wire·Store schema clean break | protocol·Location contract lane, `P-DEEP` | `V11-CA-SPOT-ID-SPEC` | 완료 | 모든 Spot field가 `text8`·`optional-text8`, generated drift 0, Redis `location-authority-hybrid-v3` fixture와 legacy arbitrary binary 거부 | Service wire target field를 `spotId` 계열과 UTF-8 text로 바꾸고 Redis v3 key·claim field fixture를 작성했다. Candidate `342cd38221`에서 WIRE는 40 commands·167 types와 negative self-test 233건을 통과했다. |
+| `V11-CA-SPOT-ID-IFACE` | 다섯 언어 exact interface SpotId 전환 | public contract lanes, `P-DEEP` | `V11-CA-SPOT-ID-SPEC` | 완료 | .NET·Java·Kotlin·Node는 string, C++는 `std::string`이며 Spot 파생 public member에 RoutingId 사용 0 | 공통 이름을 `SpotId` 계열로 바꾸고 다섯 언어의 SpotRef·messaging·manager·context·Location·monitoring 선언을 string projection으로 전환했다. DOC·trace는 exact document 56개, member 6,681개, unclassified·ambiguous·unknown 0으로 통과했다. |
+| `V11-CA-SPOT-ID-E2E` | SpotId E2E 계약과 compatibility negative 갱신 | E2E coordinator, `P-DELIVERY` | `V11-CA-SPOT-ID-SPEC`, `V11-CA-SPOT-ID-WIRE` | 완료 | cross-node global ID, UTF-8 boundary·case exact·no normalization, reserved Entry 형식, legacy binary reject scenario 누락 0 | Common E2E `SM-A13`과 catalog `M93`에 1·255-byte 성공, 256-byte 선거부, case·Unicode exact distinction, reserved Entry 형식과 invalid UTF-8 legacy frame의 side-effect 없는 거부를 고정했다. |
+| `V11-CA-SPOT-ID-REVIEW` | SpotId 흡수 완전성·교차 일관성 review | Codex 5.6 sol xhigh review lane, `P-XHIGH` + Claude Sonnet 병렬 reviewer | `V11-CA-SPOT-ID-WIRE`, `V11-CA-SPOT-ID-IFACE`, `V11-CA-SPOT-ID-E2E` | 완료 | spec·wire·Store·다섯 interface·E2E·runtime owner 추적 100%, 상충·미소유 0, 두 reviewer clean | Candidate `342cd38221`에서 Codex `gpt-5.6-sol xhigh`와 Claude Sonnet focused review가 actionable finding 0으로 `CLEAN`을 반환했다. Runtime 전환은 `V11-M6B-ENTRY-IDENTITY-*`가 소유하며 계약 미소유 항목은 0이다. |
+| `V11-CA-ACTOR-CREATE-SPEC` | Actor 생성 승인·거절과 Entry Spot lifecycle 정식 계약 | contract coordinator, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | 최초 생성·User→Entry 복귀·maintenance 복원이 서로 다른 callback을 사용하고 Entry Spot에 admission callback 노출 0 | Shared membership lifecycle, User Spot admission lifecycle과 Entry Spot creation·relocation lifecycle을 분리했다. 최초 create callback의 `Rejected`는 해당 attempt만 cleanup하고 별도 operation은 새 reservation과 callback을 실행한다. |
+| `V11-CA-ACTOR-CREATE-STORE-WIRE` | Actor creation terminal result와 durable reply | protocol·Location contract lane, `P-DEEP` | `V11-CA-ACTOR-CREATE-SPEC` | 완료 | Created·Rejected terminal result와 opaque reply envelope가 exact source lifecycle·OperationId에 고정되고 Ready publication·rejection cleanup과 원자적으로 닫히며 다른 operation 공유 0 | Service wire command 49와 Actor create terminal union을 추가했다. 같은 source lifecycle·OperationId만 retained semantic terminal을 replay하고 다른 operation은 callback 결과를 공유하지 않도록 Store와 schema에 고정했다. Candidate `342cd38221`의 WIRE 233개 negative self-test가 통과했다. |
+| `V11-CA-ACTOR-CREATE-IFACE` | 다섯 언어 Actor manager·Spot lifecycle exact interface 갱신 | public contract lanes, `P-DEEP` | `V11-CA-ACTOR-CREATE-SPEC` | 완료 | Existing·Created·Rejected union과 callback 분리가 다섯 언어에서 같은 의미를 제공 | C++·.NET·Java·Kotlin·Node exact interface에 single-use Create·GetOrCreate call, Existing·Created·Rejected result와 분리된 Entry/User Spot lifecycle callback을 반영했다. DOC·trace의 unclassified·ambiguous·unknown은 0이다. |
+| `V11-CA-ACTOR-CREATE-E2E` | Actor creation rejection·Entry lifecycle E2E 계약 | E2E coordinator, `P-DELIVERY` | `V11-CA-ACTOR-CREATE-SPEC`, `V11-CA-ACTOR-CREATE-STORE-WIRE` | 완료 | Actor별 callback 직렬화, rejection 뒤 독립 request 재시도, 동일 OperationId terminal replay, rejection cleanup, 일반 복귀와 maintenance callback sequence 누락 0 | Common E2E `SM-A14`와 catalog에 concurrent distinct operation, rejection cleanup·재경쟁, same OperationId replay, Ready visibility와 Entry lifecycle sequence를 추가했다. |
+| `V11-CA-ACTOR-CREATE-REVIEW` | Actor creation·Entry lifecycle 흡수 완전성 review | Codex 5.6 sol xhigh review lane, `P-XHIGH` + Claude Sonnet 병렬 reviewer | `V11-CA-ACTOR-CREATE-STORE-WIRE`, `V11-CA-ACTOR-CREATE-IFACE`, `V11-CA-ACTOR-CREATE-E2E` | 완료 | spec·Store·wire·다섯 interface·E2E·runtime owner 추적 100%, 상충·미소유 0, 두 reviewer clean | Candidate `342cd38221`에서 Codex `gpt-5.6-sol xhigh`와 Claude Sonnet focused review가 command 49, operation-scoped replay, staging visibility, local·remote 동일 후보 규칙과 absolute deadline을 대조해 actionable finding 0으로 `CLEAN`을 반환했다. |
 
 아래 sub-ID는 이 amendment가 추가한 runtime 구현 범위를 독립적으로 할당하고 완료 판정하기 위한
 안정된 작업 단위다. 각 sub-ID가 완료되기 전에는 대응하는 기존 `V11-M6A-*`·`V11-M6B-*`·`V11-M6C-*` row를 완료로
@@ -930,28 +930,28 @@ Store, provider와 monitoring 결과는 새 계약을 구현하고 재검증하�
 
 | ID | 작업 | 담당·profile | 선행 | 상태 | 완료 gate | 증거 |
 |---|---|---|---|---|---|---|
-| `V11-M6B-EXEC-CPP` | C++ User Spot execution mode와 Yield scheduler | C++ runtime lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | SpotWide 이중 claim, PerActor Actor·Spot·timer lane, Yield allowlist와 same-gate 선거부 contract test 통과 | `<ID>/result.json` |
-| `V11-M6B-EXEC-DN` | .NET User Spot execution mode와 Yield scheduler | .NET runtime lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | SpotWide 이중 claim, PerActor Actor·Spot·timer lane, Yield allowlist와 same-gate 선거부 contract test 통과 | `<ID>/result.json` |
-| `V11-M6B-EXEC-JVM` | JVM User Spot execution mode와 Yield scheduler | JVM runtime lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | Java·Kotlin continuation이 같은 claim을 유지하며 실행 mode·Yield·same-gate contract test 통과 | `<ID>/result.json` |
-| `V11-M6B-EXEC-NODE` | Node.js User Spot execution mode와 Yield scheduler | Node.js runtime lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | SpotWide 이중 claim, PerActor Actor·Spot·timer lane, Yield allowlist와 same-gate 선거부 contract test 통과 | `<ID>/result.json` |
+| `V11-M6B-EXEC-CPP` | C++ User Spot execution mode와 Yield scheduler | C++ runtime lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | SpotWide 이중 claim, PerActor Actor·Spot·timer lane, Yield allowlist와 same-gate 선거부 contract test 통과 | `test_cpp_framework_m6b_runtime`, `test_cpp_framework_execution`, `test_cpp_framework_contract_headers`를 root가 clean rebuild 뒤 재실행해 3/3 통과했다. SpotWide Actor FIFO double claim, PerActor Actor·Spot·timer lane, unsupported Yield와 self·same-gate request의 submit 전 거부를 검증했다. |
+| `V11-M6B-EXEC-DN` | .NET User Spot execution mode와 Yield scheduler | .NET runtime lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | SpotWide 이중 claim, PerActor Actor·Spot·timer lane, Yield allowlist와 same-gate 선거부 contract test 통과 | Framework build error·warning 0. `UserSpotExecutionSchedulerTests` 5/5, Worker·serial focused 회귀를 포함해 37/37 통과했고 root 재검증은 execution·worker·serial 15/15를 통과했다. Config 8 E2E는 이 row의 gate가 아니며 `V11-R5D` 뒤 별도 활성화한다. |
+| `V11-M6B-EXEC-JVM` | JVM User Spot execution mode와 Yield scheduler | JVM runtime lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | Java·Kotlin continuation이 같은 claim을 유지하며 실행 mode·Yield·same-gate contract test 통과 | Root가 Java core·Kotlin unit suite를 `--rerun-tasks`로 clean 재실행해 각각 494/494와 46/46을 통과했다. SpotWide double claim, PerActor Actor·Spot·timer lane, Java CompletionStage·Kotlin coroutine continuation claim, exact Yield allowlist와 same-gate 사전 거부를 검증했다. |
+| `V11-M6B-EXEC-NODE` | Node.js User Spot execution mode와 Yield scheduler | Node.js runtime lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | SpotWide 이중 claim, PerActor Actor·Spot·timer lane, Yield allowlist와 same-gate 선거부 contract test 통과 | Root가 `npm run verify:m6b-runtime`을 재실행해 39/39를 통과했고 typecheck와 production·browser build도 통과했다. SpotWide shared gate+Actor claim, PerActor Actor·Spot·timer lane, Promise continuation 유지, unsupported Yield의 worker admission 전 거부와 Actor join Yield surface 제거를 검증했다. |
 | `V11-M6C-BARRIER-CPP` | C++ all-lane lifecycle barrier | C++ maintenance lane, `P-DEEP` | `V11-M6B-EXEC-CPP` | 대기 | yielded continuation과 Actor·Spot·timer lane을 모두 quiesce한 뒤 close·snapshot·relocation을 시작하고 abort가 같은 generation seal만 복원 | `<ID>/result.json` |
 | `V11-M6C-BARRIER-DN` | .NET all-lane lifecycle barrier | .NET maintenance lane, `P-DEEP` | `V11-M6B-EXEC-DN` | 대기 | yielded continuation과 Actor·Spot·timer lane을 모두 quiesce한 뒤 close·snapshot·relocation을 시작하고 abort가 같은 generation seal만 복원 | `<ID>/result.json` |
 | `V11-M6C-BARRIER-JVM` | JVM all-lane lifecycle barrier | JVM maintenance lane, `P-DEEP` | `V11-M6B-EXEC-JVM` | 대기 | coroutine continuation을 포함한 모든 lane의 barrier와 generation-fenced abort contract test 통과 | `<ID>/result.json` |
-| `V11-M6C-BARRIER-NODE` | Node.js all-lane lifecycle barrier | Node.js maintenance lane, `P-DEEP` | `V11-M6B-EXEC-NODE` | 대기 | Promise continuation을 포함한 모든 lane의 barrier와 generation-fenced abort contract test 통과 | `<ID>/result.json` |
-| `V11-M6C-CAPACITY-CPP` | C++ runtime·Redis typed capacity | C++ Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | `<ID>/result.json` |
+| `V11-M6C-BARRIER-NODE` | Node.js all-lane lifecycle barrier | Node.js maintenance lane, `P-DEEP` | `V11-M6B-EXEC-NODE` | 완료 | Promise continuation을 포함한 모든 lane의 barrier와 generation-fenced abort contract test 통과 | Root가 typecheck, production·browser build, M6C 40/40과 M6B 회귀 39/39를 재실행했다. SpotWide Yield continuation은 기존 claim으로 seal 안에서 재개되고 PerActor Actor·Spot·timer lane은 같은 generation barrier에서 quiesce한다. Close·relocation capture는 barrier 뒤에 시작하며 exact-generation abort만 seal과 timer state를 복원하고 stale abort와 commit 이후 turn은 상태를 바꾸지 못한다. |
+| `V11-M6C-CAPACITY-CPP` | C++ runtime·Redis typed capacity | C++ Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | Root가 production target을 재빌드하고 실제 Redis 전체 27건을 실행해 25건 통과, 별도 cross-language fixture 환경이 필요한 2건만 skip임을 확인했다. Creation·terminal·standalone relocation·aggregate direct reserve/commit/abort·destroy가 Actor total·Spot total·Spot stable-type의 여섯 HASH를 단일 v3 bundle로 변경한다. Legacy scalar `capacityDelta`, participant relocation reservation과 비활성 Lua scaffold는 production source에서 0건이다. |
 | `V11-M6C-CAPACITY-DN` | .NET runtime·Redis typed capacity | .NET Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | `<ID>/result.json` |
-| `V11-M6C-CAPACITY-JVM` | JVM runtime·Redis typed capacity | JVM Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | `<ID>/result.json` |
-| `V11-M6C-CAPACITY-NODE` | Node.js runtime·Redis typed capacity | Node.js Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | `<ID>/result.json` |
+| `V11-M6C-CAPACITY-JVM` | JVM runtime·Redis typed capacity | JVM Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | Root가 Core와 Redis module 전체를 `--rerun-tasks`로 재실행해 build 성공을 확인했다. Core 494/494, Redis module 35건 실패 0이며 환경 비대상 2건만 skip했다. Descriptor v2 fixture와 creation·standalone relocation·aggregate·abort·destroy의 Actor total·Spot total·Spot stable-type bundle 원자성을 실제 Redis 7.0.15에서 검증했고 legacy scalar aggregate Lua와 relocation helper는 production source에서 제거했다. |
+| `V11-M6C-CAPACITY-NODE` | Node.js runtime·Redis typed capacity | Node.js Location provider lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | creation·relocation·aggregate·abort·destroy가 단일 typed bundle을 원자적으로 처리하고 cross-language Redis fixture 통과 | Root가 production typecheck·Node/browser build와 실제 Redis filtered 3/3을 재실행했다. Descriptor v2·authority fixture, exact 14-field admission과 creation·standalone relocation·aggregate·abort·destroy의 Actor total·Spot total·Spot stable-type bundle 원자성을 검증했다. 전체 M6C 36건 중 capacity와 무관한 Entry/User Spot collision 정책 2건은 `V11-M6B-ENTRY-IDENTITY-NODE` gap으로 분리한다. |
 | `V11-M6C-CAPACITY-MONITORING` | 다섯 언어 capacity 관측 구현 | monitoring lanes, `P-DELIVERY` | `V11-M6C-CAPACITY-CPP`, `V11-M6C-CAPACITY-DN`, `V11-M6C-CAPACITY-JVM`, `V11-M6C-CAPACITY-NODE` | 대기 | Actor total·Spot total·Spot stable type별 active·reserved·limit, activation active·limit과 unlimited 표현의 parity test 통과 | `<ID>/result.json` |
 | `V11-M6B-ENTRY-IDENTITY-CPP` | C++ global SpotId와 Framework-issued lifecycle identity | C++ runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 대기 | 모든 Spot path가 UTF-8 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | `<ID>/result.json` |
 | `V11-M6B-ENTRY-IDENTITY-DN` | .NET global SpotId와 Framework-issued lifecycle identity | .NET runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 대기 | 모든 Spot path가 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | `<ID>/result.json` |
 | `V11-M6B-ENTRY-IDENTITY-JVM` | JVM global SpotId와 Framework-issued lifecycle identity | JVM runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 대기 | Java·Kotlin 모든 Spot path가 String SpotId를 사용하고 Entry·User UUID v4·v3 provider parity test 통과 | `<ID>/result.json` |
-| `V11-M6B-ENTRY-IDENTITY-NODE` | Node.js global SpotId와 Framework-issued lifecycle identity | Node.js runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 대기 | 모든 Spot path가 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | `<ID>/result.json` |
+| `V11-M6B-ENTRY-IDENTITY-NODE` | Node.js global SpotId와 Framework-issued lifecycle identity | Node.js runtime·Location lane, `P-DEEP` | `V11-CA-SPOT-ID-REVIEW` | 완료 | 모든 Spot path가 string SpotId를 사용하고 Entry·User UUID v4, exact descriptor mapping·v3 provider·cleanup contract test 통과 | Root가 typecheck, production/browser build, M6B 39/39, M6C 36/36과 Unicode Redis SpotId·public contract focused 2/2를 재실행했다. Public/runtime/Location/wire의 Spot identity는 UTF-8 string이고 hex side field·NodeRid==SpotId fallback은 0이다. Entry descriptor exact match, UUID v4 첫 충돌의 즉시 SpotIdConflict와 추가 UUID·reservation 0을 검증했다. |
 | `V11-M6A-CORE-RID-UUID` | Core raw automatic RID regression | Core regression lane, `P-DELIVERY` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | caller가 RID를 지정하지 않은 raw socket의 ID가 exact 16 bytes이고 UUID v4 version·variant bit를 만족하며 caller 지정 binary RID와 STREAM 4-byte RID 계약을 바꾸지 않음 | `.artifacts/v11/evidence/V11-M6A-CORE-RID-UUID/result.json`: targeted build, automatic UUID v4·caller binary contract와 STREAM 4-byte regression 2/2 통과 |
 | `V11-M6A-WEIGHT-CPP` | C++ 공통 public weight 범위와 selection | C++ topology·placement lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | RouteMesh·ClientServer·placement signed 0..10000, runtime revision, 64-bit 합산과 multicast contract test 통과 | `<ID>/result.json` |
 | `V11-M6A-WEIGHT-DN` | .NET 공통 public weight 범위와 selection | .NET topology·placement lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | RouteMesh·ClientServer·placement signed 0..10000, runtime revision, 64-bit 합산과 multicast contract test 통과 | `<ID>/result.json` |
-| `V11-M6A-WEIGHT-JVM` | JVM 공통 public weight 범위와 selection | JVM topology·placement lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | Java·Kotlin RouteMesh·ClientServer·placement weight parity와 overflow-safe selection test 통과 | `<ID>/result.json` |
-| `V11-M6A-WEIGHT-NODE` | Node.js 공통 public weight 범위와 selection | Node.js topology·placement lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 대기 | RouteMesh·ClientServer·placement signed 0..10000, runtime revision, safe-integer 합산과 multicast contract test 통과 | `<ID>/result.json` |
+| `V11-M6A-WEIGHT-JVM` | JVM 공통 public weight 범위와 selection | JVM topology·placement lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | Java·Kotlin RouteMesh·ClientServer·placement weight parity와 overflow-safe selection test 통과 | Root가 누락된 `ZLinkRouteMeshRuntimeOptions` production 구현을 연결해 Mesh·Channel의 live weight 변경을 Framework-owned node와 Location descriptor 새 revision에 함께 반영했다. Weight는 mutation 전에 signed `0..10000`을 검증하고 0은 selection에서 제외하며 topology 합산은 `long`과 `Math.addExact`를 사용한다. RouteMesh M6A 5/5, ClientServer M6A 11/11, live option 3/3과 Core 497/497·Kotlin 46/46 전체 회귀가 통과했다. |
+| `V11-M6A-WEIGHT-NODE` | Node.js 공통 public weight 범위와 selection | Node.js topology·placement lane, `P-DEEP` | `V11-CA-USER-SPOT-DRAFT-RETIRE` | 완료 | RouteMesh·ClientServer·placement signed 0..10000, runtime revision, safe-integer 합산과 multicast contract test 통과 | Root가 M6A 9/9, Logical Multicast focused 6/6과 typecheck를 재실행했다. Public runtime option의 Mesh placement·Channel weight mutation은 `0..10000`을 검증하고 raw descriptor revision과 peer announcement를 동기 갱신한 뒤 Location descriptor republish를 직렬화한다. Weight 0 제외, capacity-first placement, safe-integer 합산, ClientServer selection과 Logical Multicast admission·backpressure 경계를 검증했다. |
 | `V11-CA-USER-SPOT-RUNTIME-JOIN` | execution·capacity·Entry identity·weight runtime amendment 합류 | amendment coordinator, `P-DELIVERY` | `V11-M6B-EXEC-CPP`, `V11-M6B-EXEC-DN`, `V11-M6B-EXEC-JVM`, `V11-M6B-EXEC-NODE`, `V11-M6C-BARRIER-CPP`, `V11-M6C-BARRIER-DN`, `V11-M6C-BARRIER-JVM`, `V11-M6C-BARRIER-NODE`, `V11-M6C-CAPACITY-CPP`, `V11-M6C-CAPACITY-DN`, `V11-M6C-CAPACITY-JVM`, `V11-M6C-CAPACITY-NODE`, `V11-M6C-CAPACITY-MONITORING`, `V11-M6B-ENTRY-IDENTITY-CPP`, `V11-M6B-ENTRY-IDENTITY-DN`, `V11-M6B-ENTRY-IDENTITY-JVM`, `V11-M6B-ENTRY-IDENTITY-NODE`, `V11-M6A-CORE-RID-UUID`, `V11-M6A-WEIGHT-CPP`, `V11-M6A-WEIGHT-DN`, `V11-M6A-WEIGHT-JVM`, `V11-M6A-WEIGHT-NODE` | 대기 | 모든 sub-ID evidence와 대응 `V11-M6A-*`·`V11-M6B-*`·`V11-M6C-*` 상태를 대조해 runtime·provider·monitoring·identity·weight gap 0 | `<ID>/result.json` |
 
 - 이 변경의 runtime contract test가 모두 통과하기 전에는 해당 언어의 M6A·M6B·M6C row와 `V11-R5A`·
@@ -1276,6 +1276,91 @@ Placement option 독립 review checkpoint(2026-07-24):
   local·remote 동일 후보 규칙, capacity race 재선택, 하나의 absolute deadline, reservation·lifecycle
   fence, operation-scoped terminal replay와 staging visibility를 다시 대조해 actionable finding 없이
   `CLEAN`으로 판정했다.
+
+Placement·publish 후속 drift 점검(2026-07-24):
+
+- 정식 spec과 통합 중인 common 사본에서 남아 있던 구형 `ZLinkObjectPlacementOptions`,
+  `object_placement_options_t`와 `placement option` 표현을 Actor·User Spot·Instance Spot별 factory option
+  계약으로 맞췄다. .NET exact interface의 고아 initializer 세 개와 Java `javap`의 제거된
+  `Set<String>` constructor도 정리했다.
+- `PlacementProfile`·`AffinityKey` 계열은 결정 이력을 제외한 Framework spec·public source·wire·test·E2E에서
+  0건이다. Instance Spot verifier에는 두 selector의 재도입을 거부하는 negative mutation을 추가했다.
+- Logical Multicast의 다섯 언어 exact interface와 public source는 remote source-local transport queue와
+  origin local Spot queue 제출만 집계한다. Node binding 제거 뒤 남아 있던 commit fixture를 Framework
+  MeshNode backend로 전환했으며, pre-start cancellation은 mock test, post-start cancellation은 실제 backend
+  test가 각각 소유한다.
+- 검증은 Instance Spot contract 5개 언어·formal 문서 5개·negative 16건, submit API 5개 언어·scenario
+  20개·regression 4건, .NET Logical Multicast 3/3, JVM publish focused test와 Node Logical Multicast
+  7/7이 통과했다. Contract amendment manifest 4,056개도 제거된 affinity scenario 이름 없이 재생성하고
+  write/check를 통과했다.
+- 실제 process E2E `SA-E2E-13`은 .NET·Java·Node·C++ feature map에서 미구현 상태이므로
+  `V11-M6A-E2E` 완료 근거로 사용하지 않는다.
+- 이번 runtime 합류 뒤 root가 Instance Spot verifier를 다시 실행해 언어 5개·formal 문서 5개,
+  required fragment 112개와 forbidden rule 11개가 모두 통과했다. 현재 verifier invocation의
+  optional negative mutation 입력은 0개였으며 이를 이전 16건 실행과 합산하지 않는다.
+
+JVM Entry Spot identity checkpoint(2026-07-24):
+
+- Object Server registration은 caller가 Entry Spot ID를 지정하는 표면을 제거하고
+  `<diagnostic-prefix>-entry-<lowercase-canonical-uuid-v4>`를 발급한다. Descriptor는 exact
+  `entrySpotId`를 immutable digest에 포함하며 In-memory와 Redis provider가 descriptor identity와 global
+  Entry identity를 같은 admission에서 claim하고 exact owner cleanup으로 해제한다.
+- Redis v3 Entry identity HASH를 `state`, `spotId`, `descriptorKey`,
+  `lifecycleGeneration`, `ownerId`, `ownerLeaseGeneration` 여섯 field와 TTL 없음으로
+  고정했다. Real Redis test가 schema, active collision, exact cleanup과 stale cleanup 무효를 검증한다.
+- User Spot `GetOrCreate`는 Framework Entry ID 예약 형식을 call 생성 시점에
+  `InvalidConfiguration`으로 거부하므로 Store read·reservation과 factory 실행 전에 끝난다.
+- Java core 488/488과 Redis provider 35건 중 환경에 따른 2건 skip·실패 0이 clean rebuild에서
+  통과했고 Kotlin runtime source도 다시 compile했다.
+- `V11-M6B-ENTRY-IDENTITY-JVM`은 완료로 전환하지 않는다. Public
+  `ZLinkActorContext.joinEntrySpot(...)`이 아직 caller의 target `RoutingId`를 받고, runtime의 일부
+  Entry join·membership path가 descriptor의 String SpotId mapping 대신 target node RID를 요구한다.
+  Exact `joinEntrySpot(request)`와 eligible Entry descriptor 선택으로 전환하고 Java·Kotlin ABI·runtime
+  test를 통과해야 row를 닫을 수 있다.
+
+Node Weight·Entry identity checkpoint(2026-07-24):
+
+- Placement selection의 합계를 `BigInt`로 계산하고 weight `0`을 Logical Multicast remote target에서
+  제외했다. Boundary, capacity-first와 100:300 deterministic selection을 포함한 M6A runtime 8/8,
+  typecheck와 package build가 통과했다.
+- Framework-issued Entry·User Spot UUID v4, in-memory descriptor·global identity claim, first-conflict
+  무변경과 exact cleanup을 구현했다. Redis v3 provider는 shared fixture의
+  `entry-spot-id:<sha256>` key와 여섯 field만 기록하며 generic User·Instance reservation 충돌도 같은 Lua
+  transaction에서 처리한다. In-memory 5/5와 실제 Redis fixture·claim focused test가 통과했다.
+- `V11-M6A-WEIGHT-NODE`는 runtime `mesh(meshName).placementWeight` mutation과 descriptor republish가
+  아직 없어 완료로 전환하지 않는다. `V11-M6B-ENTRY-IDENTITY-NODE`도 기존 Spot path의
+  `SpotRid`·`RoutingId`가 전부 String `SpotId`로 바뀌지 않아 대기 상태를 유지한다.
+
+.NET capacity parity checkpoint(2026-07-24):
+
+- Redis creation·relocation capacity focused test 4건은 typed Actor·Spot·Spot type bundle의 admission,
+  commit 재검증과 abort cleanup을 통과했다.
+- .NET provider는 descriptor JSON의 `ActivationConcurrency`, admission HASH의 activation concurrency
+  limit·Entry Spot ID와 target `zlink-mesh-node-immutable-v2` digest를 게시한다. Digest는 Entry Spot ID
+  presence·값, Actor·Spot population limit과 activation concurrency limit을 포함하고 mutable active count는
+  제외한다. Shared fixture, 실제 admission HASH, digest fence와 capacity focused test를 함께 실행해
+  7/7이 통과했다.
+- 같은 canonical fixture에 대한 C++·JVM·Node provider parity와 aggregate·destroy까지 포함한 전체 bundle
+  gate는 아직 끝나지 않았다. 따라서 assertion을 약화하지 않고 `V11-M6C-CAPACITY-DN`은 대기 상태를
+  유지한다.
+- 정식 server Redis spec은 v3 typed capacity schema를 소유하지만
+  `framework/common/spec/41-location-store-redis.ko.md`의 나머지 본문에는 v1 active·pending key와 record
+  설명이 남아 있다. Provider parity가 확정되면 공통 문서 전체를 v3 본문으로 통일해야 하며, 현재의
+  digest 단락 수정만으로 문서 gate를 완료 처리하지 않는다.
+
+C++ capacity parity checkpoint(2026-07-24):
+
+- Public maintenance contract와 in-memory provider를 typed capacity bundle로 전환했다. Creation·relocation·
+  aggregate·abort·delete는 Actor total, Spot total과 optional Spot stable-type bucket을 함께 변경하며
+  in-memory focused 14/14가 통과했다.
+- MeshNode descriptor는 population `Capacity`와 별도 `ActivationConcurrency`를 게시한다.
+  `set_actor_limit`, `set_spot_limit`, `set_activation_concurrency`가 descriptor publication까지 연결됐고
+  immutable digest v2·Redis v3 physical key·admission field·shared descriptor fixture focused 5/5,
+  M6B runtime과 contract header compile이 통과했다.
+- C++ Redis Lua의 creation·relocation·aggregate transaction은 아직 scalar counter와 participant별
+  relocation reservation을 사용한다. Exact 여섯 capacity HASH와 하나의 typed bundle로
+  reserve·commit·abort·destroy를 처리하는 실제 Redis gate가 끝나기 전까지
+  `V11-M6C-CAPACITY-CPP`는 대기 상태를 유지한다.
 
 ClientServer dual-role JVM checkpoint(2026-07-24):
 

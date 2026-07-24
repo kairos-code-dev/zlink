@@ -83,14 +83,14 @@ export class ZLinkEntryActorRuntimeService implements ZLinkEntryActorRuntime {
     fallbackActorRef?: ActorRef
   ): Promise<{ readonly handled: boolean; readonly response?: unknown }> {
     const spotManager = this.options.spotManager();
-    const spotRid = this.options.actorManager()?.getState(actorId)?.spotRid;
-    if (spotRid === undefined || spotManager === undefined) {
+    const spotId = this.options.actorManager()?.getState(actorId)?.spotId;
+    if (spotId === undefined || spotManager === undefined) {
       return { handled: false };
     }
     return {
       handled: true,
       response: await spotManager.dispatchRoutedActorPacket(
-        spotRid,
+        spotId,
         actorId,
         parts,
         returnResponse,

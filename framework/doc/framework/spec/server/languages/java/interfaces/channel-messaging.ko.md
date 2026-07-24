@@ -94,7 +94,7 @@ Channel 호출은 process-local ChannelName index만 사용한다. 호출자가 
 지정하므로 첫 인자를 MeshName으로 해석한다.
 
 Spot direct operation은 global SpotId만 address로 받고 Spot 전용 fluent call을 반환한다. 이 call의
-`instanceSpot()` marker와 placement option은 Missing Instance Spot의 cold activation intent를 표현한다. Marker가
+`instanceSpot()` marker와 optional stable type·최초 Mesh는 Missing Instance Spot의 cold activation intent를 표현한다. Marker가
 없으면 Missing authority를 not-found로 끝낸다. Existing authority는 저장된 kind·stable type과 current owner를
 사용하므로 type이나 Mesh를 다시 요구하지 않는다. 세부 member와 cold activation 선택 규칙은
 [Java Spot 인터페이스](spots.ko.md)가 소유한다.

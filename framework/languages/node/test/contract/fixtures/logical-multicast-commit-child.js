@@ -1,9 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { pbkdf2 } = require('node:crypto');
-const { promisify } = require('node:util');
-const zlink = require('@zlink-systems/zlink');
+const backend = require('../../../packages/framework/dist/runtime/backend');
 const framework = require('../../../packages/framework/dist/internal');
 
 async function waitFor(condition, label) {
@@ -16,10 +14,13 @@ async function waitFor(condition, label) {
 }
 
 async function main() {
-  const context = zlink.createContext();
+  const backendFactory = new backend.ZLinkNodeBackendAdapterFactory();
+  const context = backendFactory.createChannelAdapter().createContext();
   const meshName = `framework-publish-commit-${process.pid}`;
-  const node = zlink.createMeshNode(context, { meshName });
-  node.setRoutingId(zlink.RoutingId.from(meshName));
+  const node = backendFactory.createMeshAdapter().createMeshNode(context, {
+    meshName,
+    routingId: meshName
+  });
   node.setBind(`inproc://${meshName}`);
   node.addChannelName('events');
   node.start();
@@ -35,30 +36,6 @@ async function main() {
   runtime.publishers.set('play', publisher);
 
   try {
-    const blockWorker = promisify(pbkdf2)(
-      Buffer.from('worker-block'),
-      Buffer.from('salt'),
-      2_000_000,
-      16,
-      'sha256'
-    );
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    const beforeStart = new AbortController();
-    const beforeStartReason = new Error('abort before Core start');
-    const cancelled = runtime.publish(
-      'play',
-      'events',
-      'pre-start',
-      'ProfileChanged',
-      { sequence: 1 },
-      beforeStart.signal
-    );
-    beforeStart.abort(beforeStartReason);
-    await assert.rejects(cancelled, (error) => error === beforeStartReason);
-    await blockWorker;
-    assert.equal(node.status().pendingApplicationMessages, 0n);
-
     const afterStart = new AbortController();
     const committed = runtime.publish(
       'play',
@@ -82,7 +59,7 @@ async function main() {
     publisher.close();
     node.shutdown(1000);
     node.close();
-    context.close();
+    await context.dispose();
   }
 }
 

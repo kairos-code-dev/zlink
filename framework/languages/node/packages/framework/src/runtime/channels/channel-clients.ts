@@ -23,7 +23,11 @@ import type {
   ZLinkSpotPublisherClientTransport
 } from './channel-transports';
 import { throwIfAborted } from '../abort';
-import { captureZLinkSpotSerialTurn, type ZLinkSpotSerialTurn } from '../execution';
+import {
+  captureZLinkSpotSerialTurn,
+  requireZLinkYieldTurn,
+  type ZLinkSpotSerialTurn
+} from '../execution';
 import {
   requestToSpotHandle,
   sendToSpotHandle,
@@ -406,6 +410,7 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
   }
 
   async yield<TReply>(signal?: AbortSignal): Promise<TReply> {
+    const turn = requireZLinkYieldTurn(this.turn);
     throwIfAborted(signal);
     this.validate();
     const pending = this.submitter<TReply>(
@@ -414,7 +419,7 @@ class DefaultZLinkRequestCall implements ZLinkRequestCall {
       new Map(this.selectedMetadata),
       signal
     );
-    return this.turn === undefined ? pending : this.turn.yieldPromise(pending);
+    return turn.yieldPromise(pending);
   }
 }
 

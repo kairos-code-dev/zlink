@@ -73,12 +73,12 @@ export class ZLinkActorPacketRelay {
   async notifyBoundActorDisconnected(actor: ZLinkSessionActor, signal?: AbortSignal): Promise<void> {
     const state = this.options.actorManager()?.getState(actor.actorId);
     const currentRemoteBoundSessionTarget =
-      state?.spotRid === undefined ? undefined : state.remoteBoundSessionTarget;
+      state?.spotId === undefined ? undefined : state.remoteBoundSessionTarget;
     const currentRemoteActorPacketTarget =
-      state?.spotRid === undefined ? undefined : state.remoteActorPacketTarget;
+      state?.spotId === undefined ? undefined : state.remoteActorPacketTarget;
     const remoteTarget = currentRemoteBoundSessionTarget
       ?? currentRemoteActorPacketTarget
-      ?? (state?.spotRid === undefined ? undefined : this.targets.cachedTargetForActor(actor));
+      ?? (state?.spotId === undefined ? undefined : this.targets.cachedTargetForActor(actor));
     if (remoteTarget !== undefined) {
       await this.notifyRemoteActorDisconnected(actor.actorId, remoteTarget, signal);
       return;
@@ -88,9 +88,9 @@ export class ZLinkActorPacketRelay {
       await this.notifyRemoteActorDisconnected(actor.actorId, actorRefTarget, signal);
       return;
     }
-    if (state?.spotRid !== undefined && state.actor !== undefined) {
+    if (state?.spotId !== undefined && state.actor !== undefined) {
       const handled = await this.requireSpotManager().notifyJoinedSpotActorDisconnected(
-        state.spotRid,
+        state.spotId,
         state.actor,
         signal
       );
@@ -128,9 +128,9 @@ export class ZLinkActorPacketRelay {
 
   async notifyLocalActorDisconnectedById(actorId: string, signal?: AbortSignal): Promise<void> {
     const state = this.options.actorManager()?.getState(actorId);
-    if (state?.spotRid !== undefined && state.actor !== undefined) {
+    if (state?.spotId !== undefined && state.actor !== undefined) {
       const handled = await this.requireSpotManager().notifyJoinedSpotActorDisconnected(
-        state.spotRid,
+        state.spotId,
         state.actor,
         signal
       );
@@ -159,12 +159,12 @@ export class ZLinkActorPacketRelay {
     const remoteBoundSessionTarget: ZLinkRemoteBoundSessionTarget | undefined =
       relay.routerChannelId === undefined ||
       relay.boundSessionTargetNodeRid === undefined ||
-      relay.boundSessionSpotRid === undefined
+      relay.boundSessionSpotId === undefined
         ? undefined
         : {
             routerChannelId: relay.routerChannelId,
             targetNodeRid: normalizeRoutingId(relay.boundSessionTargetNodeRid),
-            spotRid: normalizeRoutingId(relay.boundSessionSpotRid)
+            spotId: normalizeRoutingId(relay.boundSessionSpotId)
           };
     const header = BindingMessage.from(Buffer.from(relay.header, 'base64'));
     const body = BindingMessage.from(Buffer.from(relay.payload, 'base64'));
@@ -193,7 +193,7 @@ export class ZLinkActorPacketRelay {
             : {
                 routerChannelId: relay.routerChannelId,
                 targetNodeRid: sessionNodeRid,
-                spotRid: sessionNodeRid
+                spotId: sessionNodeRid
               });
         if (target === undefined) {
           throw new Error('Remote actor session binding did not declare a return router.');
@@ -213,7 +213,7 @@ export class ZLinkActorPacketRelay {
       }
       const state = this.options.actorManager()?.getState(relay.actorId);
       if (frameHeader.kind === ZLinkStreamMessageKind.Request && frameHeader.requestSeq !== undefined) {
-        const dispatch = state?.spotRid === undefined
+        const dispatch = state?.spotId === undefined
           ? this.requireSpotNodeRuntime().dispatchEntryActorPacket(
               relay.actorId,
               [header, body],
@@ -221,7 +221,7 @@ export class ZLinkActorPacketRelay {
               remoteBoundSessionTarget
             )
           : this.requireSpotManager().dispatchRoutedActorPacket(
-              state.spotRid,
+              state.spotId,
               relay.actorId,
               [header, body],
               false,
@@ -242,7 +242,7 @@ export class ZLinkActorPacketRelay {
           )
         };
       }
-      const response = state?.spotRid === undefined
+      const response = state?.spotId === undefined
         ? await this.requireSpotNodeRuntime().dispatchEntryActorPacket(
             relay.actorId,
             [header, body],
@@ -250,7 +250,7 @@ export class ZLinkActorPacketRelay {
             remoteBoundSessionTarget
           )
         : await this.requireSpotManager().dispatchRoutedActorPacket(
-            state.spotRid,
+            state.spotId,
             relay.actorId,
             [header, body],
             true,
@@ -307,7 +307,7 @@ export class ZLinkActorPacketRelay {
       actorId: actor.actorId,
       routerChannelId: target.routerChannelId,
       boundSessionTargetNodeRid: String(sessionNodeRid),
-      boundSessionSpotRid: String(sessionNodeRid),
+      boundSessionSpotId: String(sessionNodeRid),
       bindingActorRef: actor,
       header,
       payload: encodeRemoteActorSessionBinding({ sessionNodeRid, sessionRid })
@@ -350,14 +350,14 @@ export class ZLinkActorPacketRelay {
       actorId: actor.actorId,
       routerChannelId: remoteTarget.routerChannelId,
       boundSessionTargetNodeRid: localNodeRid === undefined ? undefined : String(localNodeRid),
-      boundSessionSpotRid: localNodeRid === undefined ? undefined : String(localNodeRid),
+      boundSessionSpotId: localNodeRid === undefined ? undefined : String(localNodeRid),
       header: encodeStreamHeader(frameHeader),
       payload: messageToBytes(payload)
     });
     const remoteAddress = {
       routerChannelId: remoteTarget.routerChannelId,
       targetNodeRid: remoteTarget.targetNodeRid,
-      spotRid: remoteTarget.spotRid,
+      spotId: remoteTarget.spotId,
       spotKind: remoteTarget.spotKind ?? ZLinkSpotKind.User
     };
     if (frameHeader.kind === ZLinkStreamMessageKind.Send || frameHeader.requestSeq === undefined) {
@@ -454,7 +454,7 @@ export class ZLinkActorPacketRelay {
       {
         routerChannelId: remoteTarget.routerChannelId,
         targetNodeRid: remoteTarget.targetNodeRid,
-        spotRid: remoteTarget.spotRid,
+        spotId: remoteTarget.spotId,
         spotKind: spotKind ?? ZLinkSpotKind.Entry
       },
       payload,
@@ -474,8 +474,8 @@ export class ZLinkActorPacketRelay {
   ): Promise<boolean> {
     void signal;
     const state = this.options.actorManager()?.getState(actor.actorId);
-    const spotRid = state?.spotRid as RoutingId | undefined;
-    const hasActiveSpot = spotRid !== undefined && this.options.spotManager()?.hasActiveSpot(spotRid) === true;
+    const spotId = state?.spotId as RoutingId | undefined;
+    const hasActiveSpot = spotId !== undefined && this.options.spotManager()?.hasActiveSpot(spotId) === true;
     if (!hasActiveSpot) {
       return false;
     }
@@ -495,7 +495,7 @@ export class ZLinkActorPacketRelay {
       if (frameHeader.kind === ZLinkStreamMessageKind.Request && frameHeader.requestSeq !== undefined) {
         try {
           const response = await this.requireSpotManager().dispatchRoutedActorPacket(
-            spotRid,
+            spotId,
             actor.actorId,
             [header, payload],
             true
@@ -527,7 +527,7 @@ export class ZLinkActorPacketRelay {
         return true;
       }
       await this.requireSpotManager().dispatchRoutedActorPacket(
-        spotRid,
+        spotId,
         actor.actorId,
         [header, payload],
         false

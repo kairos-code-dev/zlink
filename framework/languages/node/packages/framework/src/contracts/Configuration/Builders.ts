@@ -19,7 +19,9 @@ import type { RoutingId, Type } from '../Common';
 import type { ZLinkWorkerOptions } from './RegistrationTypes';
 import type { ZLinkSpotPublisherConfig } from './Configs';
 import type {
-  ZLinkObjectPlacementOptions,
+  ZLinkActorFactoryOptions,
+  ZLinkInstanceSpotFactoryOptions,
+  ZLinkUserSpotFactoryOptions,
   ZLinkRelocationPolicy
 } from './ObjectRoles';
 import type {
@@ -102,7 +104,9 @@ export interface ZLinkMeshNodeBuilder {
   useAllocatedRoutingId(slotCount: number, routingIdPrefix?: string): this;
   setRoutingIdAllocationGroup(groupName: string): this;
   setPlacementWeight(weight: number): this;
-  setObjectCapacity(maxActiveObjects: number, maxPendingActivations: number): this;
+  setActorLimit(limit: number): this;
+  setSpotLimit(limit: number): this;
+  setActivationConcurrency(limit: number): this;
   configureRouterSocket(): ZLinkMeshNodeSocketConfig;
   configureSpotPublisher(): ZLinkSpotPublisherConfig;
   peerConnections(): ZLinkMeshPeerConnections;
@@ -136,19 +140,19 @@ export interface ZLinkMeshObjectServerBuilder {
   addSpotFactory<TSpot extends ZLinkSpot>(
     spotType: string,
     implementation: Type<TSpot>,
-    placement: ZLinkObjectPlacementOptions | undefined,
+    options: ZLinkUserSpotFactoryOptions | undefined,
     relocation: ZLinkRelocationPolicy<TSpot>
   ): this;
   addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
     instanceSpotType: string,
     implementation: Type<TSpot>,
-    placement: ZLinkObjectPlacementOptions | undefined,
+    options: ZLinkInstanceSpotFactoryOptions | undefined,
     relocation: ZLinkRelocationPolicy<TSpot>
   ): this;
   addActorFactory<TActor extends ZLinkActor>(
     actorType: string,
     implementation: Type<ZLinkActorFactory<TActor>>,
-    placement: ZLinkObjectPlacementOptions | undefined,
+    options: ZLinkActorFactoryOptions | undefined,
     relocation: ZLinkRelocationPolicy<TActor>
   ): this;
 }

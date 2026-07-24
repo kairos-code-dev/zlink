@@ -23,7 +23,7 @@ const ZLINK_SEND_DONT_WAIT = 1;
 
 export interface ZLinkLocalSpotRouteDispatcher {
   send(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     packetName: string | undefined,
     message: unknown,
     context: {
@@ -33,7 +33,7 @@ export interface ZLinkLocalSpotRouteDispatcher {
     }
   ): Promise<void>;
   request<TReply>(
-    spotRid: RoutingId,
+    spotId: RoutingId,
     packetName: string | undefined,
     request: unknown,
     context: {
@@ -107,7 +107,7 @@ export class ZLinkSpotRouteDispatchStrategy {
     if (localSpotRouteNode !== undefined) {
       await this.localTransport.send(
         spotRouteTarget.routerChannelId,
-        spotRouteTarget.spotRid,
+        spotRouteTarget.spotId,
         packetName,
         message,
         signal,
@@ -158,7 +158,7 @@ export class ZLinkSpotRouteDispatchStrategy {
     if (localSpotRouteNode !== undefined) {
       return this.localTransport.request<TReply>(
         spotRouteTarget.routerChannelId,
-        spotRouteTarget.spotRid,
+        spotRouteTarget.spotId,
         packetName,
         request,
         timeoutMs,

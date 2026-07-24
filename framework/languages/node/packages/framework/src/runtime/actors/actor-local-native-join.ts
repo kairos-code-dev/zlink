@@ -60,7 +60,7 @@ export class ZLinkLocalNativeActorJoin {
     actor: ZLinkActor,
     state: ZLinkActorRuntimeState,
     actorRef: ActorRef,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotRouteTarget: ZLinkSpotRouteTarget | undefined,
     request: Message,
     timeoutMs: number | undefined,
@@ -68,7 +68,7 @@ export class ZLinkLocalNativeActorJoin {
   ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     if (signal?.aborted === true) throw createAbortError();
     const completions = this.requireCompletions();
-    const target = requireUserSpotRoute(spotRouteTarget, spotRid);
+    const target = requireUserSpotRoute(spotRouteTarget, spotId);
     const remote = !routingIdsEqual(
       toFrameworkRoutingId(node.status().routingId),
       target.targetNodeRid
@@ -94,9 +94,9 @@ export class ZLinkLocalNativeActorJoin {
         actorEntryNodeRid: state.entryNodeRid ?? actorRef.nodeRid as unknown as RoutingId,
         actorCreateRequest: state.createRequestPayload,
         request,
-        targetSpotRid: target.spotRid,
+        targetSpotId: target.spotId,
         routerChannelId: target.routerChannelId,
-        sourceSpotRid: state.spotRid ?? toFrameworkRoutingId(node.entrySpot().routingId),
+        sourceSpotId: state.spotId ?? toFrameworkRoutingId(node.entrySpot().routingId),
         boundSessionTarget: state.remoteBoundSessionTarget,
         phase: REMOTE_ACTOR_JOIN_COMMIT,
         transferId,
@@ -113,7 +113,7 @@ export class ZLinkLocalNativeActorJoin {
         () => node.joinActorSpot(
           normalizeNativeActorRef(actorRef),
           toBindingRoutingId(target.targetNodeRid),
-          toBindingRoutingId(target.spotRid),
+          toBindingRoutingId(target.spotId),
           target.targetSpotGeneration,
           requestPayload,
           timeoutMs
@@ -161,7 +161,7 @@ export class ZLinkLocalNativeActorJoin {
 
     state.setNativeActorRef(control.actor as never);
     state.setJoinedSpot(
-      toFrameworkRoutingId(control.location.spotRid ?? target.spotRid),
+      toFrameworkRoutingId(control.location.spotId ?? target.spotId),
       undefined,
       control.location.membershipEpoch
     );
@@ -212,7 +212,7 @@ export class ZLinkLocalNativeActorJoin {
         state.actorType,
         actor.actorId,
         spotRouteTarget?.routerChannelId ?? '',
-        toFrameworkRoutingId(control.location.spotRid ?? target.spotRid),
+        toFrameworkRoutingId(control.location.spotId ?? target.spotId),
         control.location.spotGeneration,
         control.location.membershipEpoch,
         node.status().lifecycleGeneration
@@ -240,7 +240,7 @@ export class ZLinkLocalNativeActorJoin {
     timeoutMs: number | undefined
   ): Promise<ZLinkActorJoinRuntimeResult<Message>> {
     const completions = this.requireCompletions();
-    if (state.spotRid !== undefined) {
+    if (state.spotId !== undefined) {
       const leaveOperationId = node.leaveActor(
         normalizeNativeActorRef(actorRef),
         state.spotMembershipEpoch,
@@ -284,7 +284,7 @@ export class ZLinkLocalNativeActorJoin {
       this.options.postCommitLocation?.leftEventually(
         state.actorType,
         actor.actorId,
-        toFrameworkRoutingId(control.location.spotRid ?? nodeRid),
+        toFrameworkRoutingId(control.location.spotId ?? nodeRid),
         control.location.spotGeneration,
         control.location.membershipEpoch,
         node.status().lifecycleGeneration
@@ -386,12 +386,12 @@ async function submitJoinWhenConnected<T>(
 
 function requireUserSpotRoute(
   target: ZLinkSpotRouteTarget | undefined,
-  spotRid: RoutingId
+  spotId: RoutingId
 ): ZLinkSpotRouteTarget & { readonly targetSpotGeneration: bigint } {
   if (target?.targetSpotGeneration === undefined || target.targetSpotGeneration <= 0n) {
     throw new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.ActorRouteNotFound,
-      `SPOT '${spotRid}' has no valid Core lifecycle generation.`
+      `SPOT '${spotId}' has no valid Core lifecycle generation.`
     );
   }
   return target as ZLinkSpotRouteTarget & { readonly targetSpotGeneration: bigint };

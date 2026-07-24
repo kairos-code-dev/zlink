@@ -84,7 +84,7 @@ export class ZLinkActorLocationClaims {
       ownerNodeRid: nodeRid,
       ownerNodeGeneration: 0n,
       spotKind: ZLinkSpotKind.Entry,
-      spotRid: nodeRid,
+      spotId: nodeRid,
       spotGeneration: 0n,
       membershipEpoch: 0n,
       ownerId: '',
@@ -126,7 +126,7 @@ export class ZLinkActorLocationClaims {
       actorRef,
       ownerNodeRid: actorRef.nodeRid,
       ownerNodeGeneration,
-      spotRid: row.spotKind === ZLinkSpotKind.Entry ? actorRef.nodeRid : row.spotRid,
+      spotId: row.spotKind === ZLinkSpotKind.Entry ? actorRef.nodeRid : row.spotId,
       spotGeneration: row.spotKind === ZLinkSpotKind.Entry ? ownerNodeGeneration : row.spotGeneration
     }));
   }
@@ -136,7 +136,7 @@ export class ZLinkActorLocationClaims {
     actorId: string,
     actorRef: ActorRef,
     spotMeshName: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotGeneration: bigint,
     membershipEpoch: bigint,
     ownerNodeGeneration: bigint,
@@ -153,7 +153,7 @@ export class ZLinkActorLocationClaims {
       ownerNodeRid: actorRef.nodeRid,
       ownerNodeGeneration,
       spotKind: ZLinkSpotKind.User,
-      spotRid,
+      spotId,
       spotGeneration,
       membershipEpoch,
       ownerId: '',
@@ -189,7 +189,7 @@ export class ZLinkActorLocationClaims {
     actorType: string,
     actorId: string,
     _spotMeshName: string,
-    spotRid: RoutingId,
+    spotId: RoutingId,
     spotGeneration: bigint,
     membershipEpoch: bigint,
     ownerNodeGeneration: bigint
@@ -197,7 +197,7 @@ export class ZLinkActorLocationClaims {
     await this.renew(actorType, actorId, (row) => ({
       ...row,
       spotKind: ZLinkSpotKind.User,
-      spotRid,
+      spotId,
       spotGeneration,
       membershipEpoch,
       ownerNodeGeneration
@@ -207,7 +207,7 @@ export class ZLinkActorLocationClaims {
   async notifyLeftSpot(
     actorType: string,
     actorId: string,
-    entrySpotRid: RoutingId,
+    entrySpotId: RoutingId,
     entrySpotGeneration: bigint,
     membershipEpoch: bigint,
     ownerNodeGeneration: bigint
@@ -215,7 +215,7 @@ export class ZLinkActorLocationClaims {
     await this.renew(actorType, actorId, (row) => ({
       ...row,
       spotKind: ZLinkSpotKind.Entry,
-      spotRid: entrySpotRid,
+      spotId: entrySpotId,
       spotGeneration: entrySpotGeneration,
       membershipEpoch,
       ownerNodeGeneration

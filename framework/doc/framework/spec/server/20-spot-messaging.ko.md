@@ -45,7 +45,7 @@ Spot direct send/request의 시작 method는 global Spot ID만 대상으로 받�
 fence를 target admission에 고정한다. 수신 MeshNode는 target Spot의 application queue에 payload를 제출한다.
 
 Spot 전용 call builder가 Instance intent를 갖지 않으면 Missing Spot에서 target-not-found로 끝난다. Instance
-intent를 명시하면 optional stable type과 최초 Mesh·placement option을 사용해 cold activation할 수 있다. Type을
+intent를 명시하면 optional stable type과 최초 Mesh를 사용해 cold activation할 수 있다. Type을
 생략한 경우 선택한 Mesh에 등록된 distinct Instance type이 하나일 때만 자동 선택한다. 여러 MeshNode가 같은
 type을 등록한 것은 distinct type 하나다. 여러 type이 있으면 caller가 stable type을 명시해야 한다. Existing
 authority에는 Location Store가 보유한 kind·type과 current Mesh를 사용하며 MeshName을 messaging target으로

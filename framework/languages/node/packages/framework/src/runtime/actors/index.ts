@@ -1,10 +1,12 @@
 import type {
   ActorRef,
   RoutingId,
+  SpotRef,
   ZLinkActor,
-  ZLinkActorDirectory,
+  ZLinkActorCreateCall,
+  ZLinkActorCreateResult,
+  ZLinkActorGetOrCreateCall,
   ZLinkActorManager,
-  ZLinkActorPlacement
 } from '../../contracts';
 import {
   ZLinkEncodedPayload,
@@ -15,11 +17,11 @@ import { Message as BindingMessage, RoutingId as BindingRoutingId } from '@zlink
 import { ZLinkMessage } from '../../contracts';
 import { ZLinkConfigurationException } from '../configuration';
 import { throwIfAborted } from '../abort';
-import { routingIdsEqual } from '../routing-id';
 import type {
   ZLinkBackendActorRef,
   ZLinkBackendSpotNode
 } from '../backend/contracts';
+import { closeMeshCompletion } from '../backend/mesh-completion-table';
 
 export {
   DefaultZLinkActorClient,
@@ -57,7 +59,8 @@ export {
 } from './actor-runtime-state';
 import {
   ZLinkActorRuntimeState,
-  toFrameworkActorRef
+  toFrameworkActorRef,
+  type ZLinkActorCreationAttemptResult
 } from './actor-runtime-state';
 export {
   DefaultZLinkSpotActorReplyOptions,
@@ -106,7 +109,7 @@ export {
   type ZLinkActorLifecycleSnapshotSource
 } from './actor-lifecycle-snapshot';
 
-export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDirectory {
+export class DefaultZLinkActorManager implements ZLinkActorManager {
   private readonly states = new Map<string, ZLinkActorRuntimeState>();
   private readonly actorMeshNames = new Map<string, string>();
   private readonly creation: ZLinkActorCreationCoordinator;
@@ -117,95 +120,96 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     this.transferredActorRollback = new ZLinkTransferredActorRollbackCoordinator(this.states, options);
   }
 
-  create(meshName: string, actorId: string, actorType: string, signal?: AbortSignal): Promise<ActorRef>;
-  create(
-    meshName: string,
-    actorId: string,
-    actorType: string,
-    createRequest: unknown,
-    signal?: AbortSignal
-  ): Promise<ActorRef>;
-  async create(
-    meshNameOrActorId: string,
-    actorIdOrActorType: string,
-    actorTypeOrRequest?: string | AbortSignal | unknown,
-    requestOrSignal?: AbortSignal | unknown,
-    signal?: AbortSignal
-  ): Promise<ActorRef> {
-    const legacy = typeof actorTypeOrRequest !== 'string';
-    const actorId = legacy ? meshNameOrActorId : actorIdOrActorType;
-    const actorType = legacy ? actorIdOrActorType : actorTypeOrRequest;
-    const meshName = legacy
-      ? this.options.actorMeshNameProvider?.(actorType) ?? 'legacy-actor-mesh'
-      : meshNameOrActorId;
-    const signalOrRequest = legacy ? actorTypeOrRequest : requestOrSignal;
-    const finalSignal = legacy ? requestOrSignal as AbortSignal | undefined : signal;
-    requireActorMeshName(meshName);
-    this.ensureActorTypeBelongsToMesh(meshName, actorType);
-    this.rememberActorMesh(actorId, meshName);
-    const args = normalizeCreateRequestArgs(signalOrRequest, finalSignal);
-    const result = await this.createOrGet(actorId, actorType, true, args.request, args.signal);
-    return result.actorRef;
+  create(actorId: string, actorType: string): ZLinkActorCreateCall {
+    return new ZLinkActorCreateCallRuntime(
+      (options, signal) => this.submitCreate(actorId, actorType, true, options, signal)
+    );
   }
 
-  find(meshName: string, actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
-  async find(
-    meshNameOrActorId: string,
-    actorIdOrSignal?: string | AbortSignal,
-    signal?: AbortSignal
-  ): Promise<ActorRef | undefined> {
-    const legacy = typeof actorIdOrSignal !== 'string';
-    const actorId = legacy ? meshNameOrActorId : actorIdOrSignal;
-    const meshName = legacy
-      ? this.actorMeshNames.get(actorId) ?? 'legacy-actor-mesh'
-      : meshNameOrActorId;
-    const finalSignal = legacy ? actorIdOrSignal : signal;
-    requireActorMeshName(meshName);
-    return await this.findInMesh(meshName, actorId, finalSignal);
-  }
-
-  async findInMesh(
-    meshName: string,
-    actorId: string,
-    signal?: AbortSignal
-  ): Promise<ActorRef | undefined> {
+  async find(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined> {
     throwIfAborted(signal);
     const state = this.states.get(actorId);
-    if (state?.actor !== undefined && this.stateBelongsToMesh(state, meshName)) {
+    if (state?.actor !== undefined) {
       return this.actorRefForState(state);
     }
-    return await this.options.actorRefResolver?.resolveActorRef(meshName, actorId, signal);
+    return await this.options.actorRefResolver?.resolveActorRef(actorId, signal);
   }
 
-  getOrCreate(meshName: string, actorId: string, actorType: string, signal?: AbortSignal): Promise<ActorRef>;
-  getOrCreate(
-    meshName: string,
-    actorId: string,
-    actorType: string,
-    createRequest: unknown,
-    signal?: AbortSignal
-  ): Promise<ActorRef>;
-  async getOrCreate(
-    meshNameOrActorId: string,
-    actorIdOrActorType: string,
-    actorTypeOrRequest?: string | AbortSignal | unknown,
-    requestOrSignal?: AbortSignal | unknown,
-    signal?: AbortSignal
-  ): Promise<ActorRef> {
-    const legacy = typeof actorTypeOrRequest !== 'string';
-    const actorId = legacy ? meshNameOrActorId : actorIdOrActorType;
-    const actorType = legacy ? actorIdOrActorType : actorTypeOrRequest;
-    const meshName = legacy
-      ? this.options.actorMeshNameProvider?.(actorType) ?? 'legacy-actor-mesh'
-      : meshNameOrActorId;
-    const signalOrRequest = legacy ? actorTypeOrRequest : requestOrSignal;
-    const finalSignal = legacy ? requestOrSignal as AbortSignal | undefined : signal;
-    requireActorMeshName(meshName);
-    this.ensureActorTypeBelongsToMesh(meshName, actorType);
-    this.rememberActorMesh(actorId, meshName);
-    const args = normalizeCreateRequestArgs(signalOrRequest, finalSignal);
-    const result = await this.createOrGet(actorId, actorType, false, args.request, args.signal);
-    return result.actorRef;
+  getOrCreate(actorId: string, actorType: string): ZLinkActorGetOrCreateCall {
+    return new ZLinkActorGetOrCreateCallRuntime(
+      (options, signal) => this.submitCreate(actorId, actorType, false, options, signal)
+    );
+  }
+
+  async findSpot(actorId: string, signal?: AbortSignal): Promise<SpotRef | undefined> {
+    throwIfAborted(signal);
+    const state = this.states.get(actorId);
+    if (state?.actor === undefined || state.spotRid === undefined) return undefined;
+    const spotId = state.spotRid;
+    const actorRef = this.actorRefForState(state);
+    return {
+      spotRid: spotId,
+      objectGeneration: state.locationGeneration ?? 0n,
+      meshName: this.actorMeshNames.get(actorId) ?? '',
+      nodeRid: actorRef.nodeRid
+    };
+  }
+
+  async destroy(actor: ActorRef, signal?: AbortSignal): Promise<boolean> {
+    throwIfAborted(signal);
+    const state = this.states.get(actor.actorId);
+    if (state?.actor === undefined) return false;
+    const current = this.actorRefForState(state);
+    if (current.generation !== actor.generation) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorGenerationStale,
+        `Actor '${actor.actorId}' generation is stale.`
+      );
+    }
+    if (state.isMoving) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorMoving,
+        `Actor '${actor.actorId}' is relocating.`
+      );
+    }
+    const node = this.options.nativeActorNodeProvider?.() ?? this.options.nativeActorNode;
+    const completions = this.options.nativeActorCompletionTableProvider?.();
+    const entryNodeRid = state.entryNodeRid ?? current.nodeRid;
+    if (node === undefined || completions === undefined) return false;
+    const destroyTask = state.getOrStartDestroy(entryNodeRid, async (nativeRef) => {
+      if (nativeRef !== undefined) {
+        const operationId = node.destroyActor(nativeRef, 0);
+        const completion = await completions.wait(operationId, signal);
+        try {
+          if (completion.terminalResult !== 0 || completion.failureErrno !== 0) {
+            throw new ZLinkFrameworkException(
+              ZLinkFrameworkErrorKind.ActorRouteNotFound,
+              `Actor '${actor.actorId}' destroy failed with result '${completion.terminalResult}' and errno '${completion.failureErrno}'.`
+            );
+          }
+        } finally {
+          closeMeshCompletion(completion);
+        }
+        state.markNativeActorDestroyed(nativeRef);
+      }
+      if (state.actorType !== undefined && state.ownsLocation) {
+        await this.options.locationLifecycle?.releaseActor(state.actorType, actor.actorId);
+      }
+      this.options.actorDestroyedCleanup?.(actor.actorId);
+      state.clearAfterDestroy();
+      if (this.states.get(actor.actorId) === state) {
+        this.states.delete(actor.actorId);
+        this.actorMeshNames.delete(actor.actorId);
+      }
+      this.options.metrics?.change('zlink.actor.count', -1);
+    });
+    try {
+      await destroyTask;
+    } catch (error) {
+      state.clearFailedDestroy(destroyTask);
+      throw error;
+    }
+    return true;
   }
 
   async materializeTransferredActor(
@@ -238,7 +242,14 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
       )
     );
     try {
-      const actor = await operation.task;
+      const result = await operation.task;
+      if (result.status !== 'created') {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.ActorCreateRejected,
+          `Transferred Actor '${actorId}' materialization was rejected.`
+        );
+      }
+      const actor = result.actor;
       return { actor, actorRef: this.actorRefForState(state) };
     } catch (error) {
       state.clearFailedCreation(operation.task);
@@ -250,52 +261,57 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     await this.transferredActorRollback.rollback(actor, signal);
   }
 
-  async ensure(
-    meshName: string,
+  private async submitCreate(
     actorId: string,
-    createRequest: unknown,
-    placement?: ZLinkActorPlacement,
+    actorType: string,
+    failIfExists: boolean,
+    options: ZLinkActorCreateCallOptions,
     signal?: AbortSignal
-  ): Promise<ActorRef> {
-    requireActorMeshName(meshName);
-    const existing = await this.findInMesh(meshName, actorId, signal);
-    if (existing !== undefined) {
-      return existing;
+  ): Promise<ZLinkActorCreateResult> {
+    const meshName = options.meshName ?? this.options.actorMeshNameProvider?.(actorType);
+    if (meshName === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ObjectClientNotConfigured,
+        `Actor type '${actorType}' has no configured object-role RouteMesh.`
+      );
     }
-    this.ensurePlacementCanBeHostedHere(placement);
-    const actorType = actorTypeFromCreateRequest(createRequest);
+    requireActorMeshName(meshName);
     this.ensureActorTypeBelongsToMesh(meshName, actorType);
-    this.rememberActorMesh(actorId, meshName);
-    try {
-      const result = await this.createOrGet(actorId, actorType, false, createRequest, signal);
-      return result.actorRef;
-    } catch (error) {
-      if (
-        error instanceof ZLinkFrameworkException &&
-        error.kind === ZLinkFrameworkErrorKind.ActorCreateFailed
-      ) {
-        const raced = await this.findInMesh(meshName, actorId, signal);
-        if (raced !== undefined) {
-          return raced;
-        }
+    const localState = this.states.get(actorId);
+    if (localState?.actorType !== undefined && localState.actorType !== actorType) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.ActorTypeMismatch,
+        `Actor '${actorId}' is registered as type '${localState.actorType}', not '${actorType}'.`
+      );
+    }
+    const existing = await this.find(actorId, signal);
+    if (existing !== undefined) {
+      if (failIfExists) {
         throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.ActorCreateRejected,
-          `Actor '${actorId}' create request was rejected.`,
-          false,
-          error
+          ZLinkFrameworkErrorKind.ActorAlreadyExists,
+          `Actor '${actorId}' already exists.`
         );
       }
-      throw error;
+      return { status: 'existing', actor: existing };
     }
-  }
-
-  private stateBelongsToMesh(state: ZLinkActorRuntimeState, meshName: string): boolean {
-    const rememberedMesh = this.actorMeshNames.get(state.actorId);
-    if (rememberedMesh !== undefined) return rememberedMesh === meshName;
-    const actorType = state.actorType;
-    if (actorType === undefined) return false;
-    const registeredMesh = this.options.actorMeshNameProvider?.(actorType);
-    return registeredMesh === undefined ? meshName.length === 0 : registeredMesh === meshName;
+    this.rememberActorMesh(actorId, meshName);
+    const result = await this.createOrGet(
+      actorId,
+      actorType,
+      failIfExists,
+      options.request,
+      signal,
+      true,
+      options.timeoutMs
+    );
+    if (result.status === 'rejected') {
+      return result.reply === undefined
+        ? { status: 'rejected' }
+        : { status: 'rejected', reply: result.reply };
+    }
+    return result.reply === undefined
+      ? { status: result.status, actor: result.actorRef }
+      : { status: result.status, actor: result.actorRef, reply: result.reply };
   }
 
   private ensureActorTypeBelongsToMesh(meshName: string, actorType: string): void {
@@ -324,18 +340,6 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     }
   }
 
-  private ensurePlacementCanBeHostedHere(placement: ZLinkActorPlacement | undefined): void {
-    const preferred = placement?.preferredNodeRid;
-    if (preferred === undefined) return;
-    const local = this.options.actorCreatedNodeRidProvider?.();
-    if (local === undefined || !routingIdsEqual(local, preferred)) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RouteNotConnected,
-        `Preferred actor node '${preferred}' is not connected to this actor directory.`
-      );
-    }
-  }
-
   async findActor(actorId: string, signal?: AbortSignal): Promise<ZLinkActor | undefined> {
     throwIfAborted(signal);
     return this.states.get(actorId)?.actor;
@@ -344,7 +348,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
   async getOrCreateActor(actorId: string, actorType: string, signal?: AbortSignal): Promise<ZLinkActor> {
     this.rememberActorMeshFromType(actorId, actorType);
     const result = await this.createOrGet(actorId, actorType, false, undefined, signal);
-    return result.actor;
+    return requireCreatedActor(result, actorId);
   }
 
   async getOrCreateWithNativeRef(
@@ -358,7 +362,17 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     const state = this.getOrCreateState(actorId);
     state.setNativeActorRef(actorRef);
     const result = await this.createOrGet(actorId, actorType, false, createRequest, signal, false);
-    return result.actor;
+    return requireCreatedActor(result, actorId);
+  }
+
+  async getOrCreateActorResult(
+    actorId: string,
+    actorType: string,
+    createRequest?: unknown,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorLocalCreateResult> {
+    this.rememberActorMeshFromType(actorId, actorType);
+    return await this.createOrGet(actorId, actorType, false, createRequest, signal);
   }
 
   getState(actorId: string): ZLinkActorRuntimeState | undefined {
@@ -418,43 +432,95 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
     failIfExists: boolean,
     request: unknown,
     signal?: AbortSignal,
-    claimLocation = true
-  ): Promise<{ actor: ZLinkActor; actorRef: ActorRef; created: boolean }> {
-    throwIfAborted(signal);
-    const existingState = this.states.get(actorId);
-    if (existingState?.hasActorOrCreation !== true) {
-      this.options.admission?.requireActorCreate(
-        actorId,
-        this.options.actorMeshNameProvider?.(actorType)
-      );
-    }
-    const state = existingState ?? this.getOrCreateState(actorId);
-    const createRequest = this.createRequestMessage(request);
-    if (request !== undefined && createRequest.nativeRequest !== undefined) {
-      state.setCreateRequestPayload(createRequest.nativeRequest.data());
-    }
-    const operation = state.getOrStartCreation(
-      actorType,
-      failIfExists,
-      () => this.creation.createActor(actorId, actorType, state, createRequest, claimLocation, signal)
-    );
-
-    try {
-      const actor = await operation.task;
-      return { actor, actorRef: this.actorRefForState(state), created: operation.created };
-    } catch (error) {
-      state.clearFailedCreation(operation.task);
-      if (error instanceof ZLinkFrameworkException) {
-        throw error;
+    claimLocation = true,
+    timeoutMs = 30_000
+  ): Promise<ZLinkActorLocalCreateResult> {
+    const deadline = Date.now() + timeoutMs;
+    const requestedMeshName = this.actorMeshNames.get(actorId);
+    for (;;) {
+      throwIfAborted(signal);
+      if (requestedMeshName !== undefined && !this.actorMeshNames.has(actorId)) {
+        this.actorMeshNames.set(actorId, requestedMeshName);
       }
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.ActorCreateFailed,
-        `Actor '${actorId}' creation failed: ${error instanceof Error ? error.message : String(error)}`,
-        false,
-        error
+      const existingState = this.states.get(actorId);
+      if (existingState?.hasActorOrCreation !== true) {
+        this.options.admission?.requireActorCreate(
+          actorId,
+          this.options.actorMeshNameProvider?.(actorType)
+        );
+      }
+      const state = existingState ?? this.getOrCreateState(actorId);
+      const createRequest = this.createRequestMessage(request);
+      if (request !== undefined && createRequest.nativeRequest !== undefined) {
+        state.setCreateRequestPayload(createRequest.nativeRequest.data());
+      }
+      const operation = state.getOrStartCreation(
+        actorType,
+        failIfExists,
+        () => this.creation.createActor(actorId, actorType, state, createRequest, claimLocation, signal)
       );
-    } finally {
-      createRequest.nativeRequest?.close();
+      if (operation.created) {
+        void operation.task.then(
+          (result) => {
+            if (result.status === 'rejected') {
+              this.discardFailedState(actorId, state, operation.task);
+            }
+          },
+          () => this.discardFailedState(actorId, state, operation.task)
+        );
+      }
+
+      try {
+        const result = await operation.task;
+        if (result.status === 'created') {
+          const actorRef = this.actorRefForState(state);
+          return {
+            status: operation.created ? 'created' : 'existing',
+            actor: result.actor,
+            actorRef,
+            reply: operation.created ? result.reply : undefined
+          };
+        }
+        if (operation.created) {
+          return { status: 'rejected', reply: result.reply };
+        }
+      } catch (error) {
+        if (operation.created) {
+          if (error instanceof ZLinkFrameworkException) {
+            throw error;
+          }
+          throw new ZLinkFrameworkException(
+            ZLinkFrameworkErrorKind.ActorCreateFailed,
+            `Actor '${actorId}' creation failed: ${error instanceof Error ? error.message : String(error)}`,
+            false,
+            error
+          );
+        }
+      } finally {
+        createRequest.nativeRequest?.close();
+      }
+
+      if (Date.now() >= deadline) {
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.DeadlineExceeded,
+          `Actor '${actorId}' creation did not reach a terminal state before its deadline.`,
+          true
+        );
+      }
+      await waitForCreationRetry(signal);
+    }
+  }
+
+  private discardFailedState(
+    actorId: string,
+    state: ZLinkActorRuntimeState,
+    task: Promise<ZLinkActorCreationAttemptResult>
+  ): void {
+    if (!state.clearFailedCreation(task)) return;
+    if (this.states.get(actorId) === state) {
+      this.states.delete(actorId);
+      this.actorMeshNames.delete(actorId);
+      this.options.metrics?.change('zlink.actor.count', -1);
     }
   }
 
@@ -499,39 +565,128 @@ export class DefaultZLinkActorManager implements ZLinkActorManager, ZLinkActorDi
 
 }
 
-function normalizeCreateRequestArgs(
-  signalOrRequest: AbortSignal | unknown,
-  signal: AbortSignal | undefined
-): { readonly request: unknown; readonly signal: AbortSignal | undefined } {
-  if (isAbortSignal(signalOrRequest)) {
-    return { request: undefined, signal: signalOrRequest };
+interface ZLinkActorCreateCallOptions {
+  readonly meshName?: string;
+  readonly request?: unknown;
+  readonly timeoutMs: number;
+}
+
+type ZLinkActorCreateSubmit = (
+  options: ZLinkActorCreateCallOptions,
+  signal?: AbortSignal
+) => Promise<ZLinkActorCreateResult>;
+
+class ZLinkActorCreateCallRuntime implements ZLinkActorCreateCall {
+  private meshNameValue: string | undefined;
+  private requestValue: unknown;
+  private requestConfigured = false;
+  private timeoutMsValue = 30_000;
+  private timeoutConfigured = false;
+  private submitted = false;
+
+  constructor(private readonly execute: ZLinkActorCreateSubmit) {}
+
+  inMesh(meshName: string): this {
+    this.requireMutable();
+    if (this.meshNameValue !== undefined) this.throwDuplicateOption('inMesh');
+    requireActorMeshName(meshName);
+    this.meshNameValue = meshName;
+    return this;
   }
-  return { request: signalOrRequest, signal };
-}
 
-function isAbortSignal(value: unknown): value is AbortSignal {
-  return typeof value === 'object'
-    && value !== null
-    && typeof (value as { aborted?: unknown }).aborted === 'boolean'
-    && typeof (value as { addEventListener?: unknown }).addEventListener === 'function';
-}
+  request(request: unknown): this {
+    this.requireMutable();
+    if (this.requestConfigured) this.throwDuplicateOption('request');
+    this.requestConfigured = true;
+    this.requestValue = request;
+    return this;
+  }
 
-function actorTypeFromCreateRequest(createRequest: unknown): string {
-  if (typeof createRequest === 'object' && createRequest !== null) {
-    const actorType = (createRequest as { actorType?: unknown }).actorType;
-    if (typeof actorType === 'string' && actorType.length > 0) {
-      return actorType;
+  timeout(timeoutMs: number): this {
+    this.requireMutable();
+    if (this.timeoutConfigured) this.throwDuplicateOption('timeout');
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.InvalidConfiguration,
+        'Actor create timeout must be a positive finite number.'
+      );
     }
+    this.timeoutConfigured = true;
+    this.timeoutMsValue = timeoutMs;
+    return this;
   }
-  throw new ZLinkConfigurationException(
-    'Actor directory ensure requires createRequest.actorType so actor type is supplied only for creation.'
+
+  submit(signal?: AbortSignal): Promise<ZLinkActorCreateResult> {
+    this.requireMutable();
+    this.submitted = true;
+    return this.execute({
+      ...(this.meshNameValue === undefined ? {} : { meshName: this.meshNameValue }),
+      ...(this.requestConfigured ? { request: this.requestValue } : {}),
+      timeoutMs: this.timeoutMsValue
+    }, signal);
+  }
+
+  private requireMutable(): void {
+    if (!this.submitted) return;
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.AlreadySubmitted,
+      'Actor create call was already submitted.'
+    );
+  }
+
+  private throwDuplicateOption(option: string): never {
+    throw new ZLinkFrameworkException(
+      ZLinkFrameworkErrorKind.InvalidConfiguration,
+      `Actor create option '${option}' was already configured.`
+    );
+  }
+}
+
+class ZLinkActorGetOrCreateCallRuntime
+  extends ZLinkActorCreateCallRuntime
+  implements ZLinkActorGetOrCreateCall {}
+
+export type ZLinkActorLocalCreateResult =
+  | {
+      readonly status: 'existing' | 'created';
+      readonly actor: ZLinkActor;
+      readonly actorRef: ActorRef;
+      readonly reply?: unknown;
+    }
+  | {
+      readonly status: 'rejected';
+      readonly reply?: unknown;
+    };
+
+function requireCreatedActor(result: ZLinkActorLocalCreateResult, actorId: string): ZLinkActor {
+  if (result.status !== 'rejected') return result.actor;
+  throw new ZLinkFrameworkException(
+    ZLinkFrameworkErrorKind.ActorCreateRejected,
+    `Actor '${actorId}' create request was rejected.`
   );
+}
+
+async function waitForCreationRetry(signal?: AbortSignal): Promise<void> {
+  throwIfAborted(signal);
+  await new Promise<void>((resolve, reject) => {
+    const finish = (error?: unknown) => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      if (error === undefined) resolve();
+      else reject(error);
+    };
+    const timer = setTimeout(() => finish(), 5);
+    const onAbort = () => {
+      finish(signal?.reason ?? new Error('Actor creation was aborted.'));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function requireActorMeshName(meshName: string): void {
   if (meshName.length === 0 || meshName !== meshName.trim()) {
     throw new ZLinkConfigurationException(
-      'Actor directory RouteMesh name must not be empty or padded.'
+      'Actor RouteMesh name must not be empty or padded.'
     );
   }
 }

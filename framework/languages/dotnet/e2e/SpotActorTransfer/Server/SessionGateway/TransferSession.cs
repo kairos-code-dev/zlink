@@ -8,7 +8,7 @@ using Zlink.Framework.Contracts.Streams;
 namespace SpotActorTransfer.SessionGateway;
 
 internal sealed class BindActorSessionHandler(
-    IZLinkActorDirectory actors,
+    IZLinkActorManager actors,
     GatewayEvidenceStore evidence) : IZLinkSessionPacketHandler<IZLinkSessionContext, BindActorSessionReq>
 {
     public async ValueTask HandleAsync(

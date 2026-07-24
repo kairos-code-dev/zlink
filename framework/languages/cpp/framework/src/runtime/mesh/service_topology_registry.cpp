@@ -10,6 +10,26 @@
 namespace zlink::framework::runtime::mesh
 {
 
+std::uint64_t
+sum_service_weights (std::span<const int> weights)
+{
+    std::uint64_t total = 0;
+    for (const auto weight : weights) {
+        if (weight < 0 || weight > 10000)
+            throw std::invalid_argument (
+              "service weight must be in range 0..10000");
+        const auto value =
+          static_cast<std::uint64_t> (weight);
+        if (total
+              > std::numeric_limits<std::uint64_t>::max ()
+                  - value)
+            throw std::overflow_error (
+              "service weight sum is exhausted");
+        total += value;
+    }
+    return total;
+}
+
 namespace
 {
 
@@ -19,6 +39,9 @@ bool valid_channels (const std::vector<service_channel_descriptor_t> &channels)
     bool first = true;
     for (const auto &channel : channels) {
         if (channel.name.empty ()) {
+            return false;
+        }
+        if (channel.weight < 0 || channel.weight > 10000) {
             return false;
         }
         if (!first && previous >= channel.name) {
@@ -60,7 +83,8 @@ bool service_topology_registry_t::valid_descriptor (
            && !descriptor.security_identity.empty ()
            && descriptor.effective_max_message_bytes != 0
            && descriptor.application_version >= 0
-           && descriptor.placement_weight <= 100
+           && descriptor.placement_weight >= 0
+           && descriptor.placement_weight <= 10000
            && descriptor.active_capacity_limit != 0
            && descriptor.active_capacity_limit <= 2147483647u
            && descriptor.pending_capacity_limit <= 2147483647u
@@ -200,7 +224,7 @@ service_topology_registry_t::select (const std::string &channel_name)
     }
     std::lock_guard lock (_mutex);
     std::vector<const admitted_peer_t *> eligible;
-    std::uint64_t total_weight = 0;
+    std::vector<int> weights;
     for (const auto &[_, peer] : _peers) {
         if (!selectable (peer.descriptor, channel_name)) {
             continue;
@@ -212,8 +236,10 @@ service_topology_registry_t::select (const std::string &channel_name)
           [] (const service_channel_descriptor_t &entry, const std::string &name) {
               return entry.name < name;
           });
-        total_weight += channel->weight;
+        weights.push_back (channel->weight);
     }
+    const auto total_weight =
+      sum_service_weights (weights);
     if (eligible.empty () || total_weight == 0) {
         return std::nullopt;
     }
@@ -234,6 +260,22 @@ service_topology_registry_t::select (const std::string &channel_name)
         }
     }
     return *eligible.back ();
+}
+
+std::vector<admitted_peer_t>
+service_topology_registry_t::multicast_targets (
+  const std::string &channel_name) const
+{
+    if (channel_name.empty ())
+        return {};
+    std::lock_guard lock (_mutex);
+    std::vector<admitted_peer_t> result;
+    result.reserve (_peers.size ());
+    for (const auto &[_, peer] : _peers) {
+        if (selectable (peer.descriptor, channel_name))
+            result.push_back (peer);
+    }
+    return result;
 }
 
 } // namespace zlink::framework::runtime::mesh

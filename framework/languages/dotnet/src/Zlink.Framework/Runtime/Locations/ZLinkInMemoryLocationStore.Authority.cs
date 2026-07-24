@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 
 namespace Zlink.Framework.Runtime.Locations;
@@ -10,6 +11,8 @@ internal sealed partial class ZLinkInMemoryLocationStore
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, ReservationState> _authorityReservations =
         new(StringComparer.Ordinal);
+    private readonly Dictionary<ZLinkCreationOperationId, ZLinkCreationTerminalRecord>
+        _creationTerminals = [];
     private readonly Dictionary<string, RelocationCapacityState>
         _relocationCapacityReservations = new(StringComparer.Ordinal);
     private readonly Dictionary<ZLinkAggregateFence, AggregateState> _authorityAggregates = [];
@@ -255,6 +258,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
         lock (_gate)
         {
             var now = _time.GetUtcNow();
+            RemoveExpiredCreationTerminals(now);
             if (_authorities.TryGetValue(request.Key.Value, out var existing))
                 return ValueTask.FromResult<ZLinkObjectReserveResult>(
                     new ZLinkObjectReserveResult.AlreadyExists(existing));
@@ -272,7 +276,6 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     request.TargetOwner,
                     request.ObjectKind,
                     request.StableType,
-                    request.PlacementProfile,
                     now,
                     out var targetDescriptor))
                 return ValueTask.FromResult<ZLinkObjectReserveResult>(
@@ -349,10 +352,12 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 || state.Reservation != reservation)
                 return ValueTask.FromResult<ZLinkObjectCommitResult>(
                     new ZLinkObjectCommitResult.Stale());
-            if (state.Status == ReservationStatus.Committed)
+            if (state.Status == ReservationStatus.Created)
                 return ValueTask.FromResult<ZLinkObjectCommitResult>(
                     new ZLinkObjectCommitResult.AlreadyCommitted(state.Snapshot!));
-            if (state.Status == ReservationStatus.Aborted
+            if (state.Status is ReservationStatus.Aborted
+                or ReservationStatus.Rejected
+                or ReservationStatus.Failed
                 || !_authorities.TryGetValue(
                     reservation.Key.Value,
                     out var current)
@@ -393,10 +398,154 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 PlacementCapacityKey.From(stored.Allocation),
                 stored.Allocation.CapacityDelta);
             _authorities[reservation.Key.Value] = stored;
-            state.Status = ReservationStatus.Committed;
+            state.Status = ReservationStatus.Created;
             state.Snapshot = stored;
             return ValueTask.FromResult<ZLinkObjectCommitResult>(
                 new ZLinkObjectCommitResult.Committed(stored));
+        }
+    }
+
+    public ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
+        ZLinkObjectReservation reservation,
+        ZLinkObjectCreationCompletion completion,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reservation);
+        ArgumentNullException.ThrowIfNull(completion);
+        var publication = GetTerminalPublication(completion);
+        ValidateTerminalPublication(reservation, publication);
+        if (completion is ZLinkObjectCreationCompletion.Created created)
+            ValidateAuthorityPayload(created.ReadyPayload);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            RemoveExpiredCreationTerminals(now);
+            if (publication.ExpiresAt <= now)
+                throw new ArgumentOutOfRangeException(
+                    nameof(completion),
+                    "The creation terminal must expire after StoreNow.");
+            if (_creationTerminals.TryGetValue(
+                    publication.Operation,
+                    out var completed))
+                return ValueTask.FromResult<ZLinkObjectCreationCompleteResult>(
+                    new ZLinkObjectCreationCompleteResult.AlreadyCompleted(
+                        completed with { StoreNow = now }));
+            if (!_authorityReservations.TryGetValue(
+                    reservation.ReservationVersion,
+                    out var state)
+                || state.Reservation != reservation)
+                return ValueTask.FromResult<ZLinkObjectCreationCompleteResult>(
+                    new ZLinkObjectCreationCompleteResult.Stale());
+            if (state.Terminal is not null)
+                return ValueTask.FromResult<ZLinkObjectCreationCompleteResult>(
+                    new ZLinkObjectCreationCompleteResult.AlreadyCompleted(
+                        state.Terminal with { StoreNow = now }));
+            if (state.Status == ReservationStatus.Aborted
+                || !_authorities.TryGetValue(
+                    reservation.Key.Value,
+                    out var current)
+                || current.StoreVersion != reservation.StoreVersion
+                || current.Allocation.State
+                != ZLinkPlacementAllocationState.Pending)
+                return ValueTask.FromResult<ZLinkObjectCreationCompleteResult>(
+                    new ZLinkObjectCreationCompleteResult.Stale());
+            if (!MatchesLiveTarget(
+                    reservation.TargetDescriptor,
+                    reservation.TargetNodeLifecycleGeneration,
+                reservation.TargetOwner,
+                    now))
+                return ValueTask.FromResult<ZLinkObjectCreationCompleteResult>(
+                    new ZLinkObjectCreationCompleteResult.Stale());
+            if (!CanIncrement(_authorityRevision))
+                return ValueTask.FromResult<ZLinkObjectCreationCompleteResult>(
+                    new ZLinkObjectCreationCompleteResult.GenerationExhausted());
+
+            var terminalState = completion switch
+            {
+                ZLinkObjectCreationCompletion.Created =>
+                    ZLinkCreationTerminalState.Created,
+                ZLinkObjectCreationCompletion.Rejected =>
+                    ZLinkCreationTerminalState.Rejected,
+                ZLinkObjectCreationCompletion.Failed =>
+                    ZLinkCreationTerminalState.Failed,
+                _ => throw new ArgumentOutOfRangeException(nameof(completion))
+            };
+            var terminal = new ZLinkCreationTerminalRecord(
+                publication.Operation,
+                reservation.ReservationVersion,
+                current.Allocation.ObjectKind,
+                terminalState,
+                publication.TerminalEnvelope.ToArray(),
+                publication.TerminalEnvelopeSha256.ToArray(),
+                publication.ExpiresAt,
+                now);
+
+            ZLinkAuthoritySnapshot? stored = null;
+            if (completion is ZLinkObjectCreationCompletion.Created accepted)
+            {
+                stored = current with
+                {
+                    StoreVersion = Next(ref _authorityRevision).ToString(),
+                    Payload = accepted.ReadyPayload.ToArray(),
+                    Allocation = current.Allocation with
+                    {
+                        State = ZLinkPlacementAllocationState.Active
+                    },
+                    PendingCreation = null,
+                    StoreNow = now
+                };
+                AdjustPlacementCapacity(
+                    _activePlacementCapacity,
+                    PlacementCapacityKey.From(stored.Allocation),
+                    stored.Allocation.CapacityDelta);
+                _authorities[reservation.Key.Value] = stored;
+                state.Status = ReservationStatus.Created;
+                state.Snapshot = stored;
+            }
+            else
+            {
+                _authorities.Remove(reservation.Key.Value);
+                state.Status = completion is ZLinkObjectCreationCompletion.Rejected
+                    ? ReservationStatus.Rejected
+                    : ReservationStatus.Failed;
+            }
+            AdjustPlacementCapacity(
+                _pendingPlacementCapacity,
+                PlacementCapacityKey.From(current.Allocation),
+                -current.Allocation.CapacityDelta);
+            state.Terminal = terminal;
+            _creationTerminals[publication.Operation] = terminal;
+
+            return ValueTask.FromResult<ZLinkObjectCreationCompleteResult>(
+                completion switch
+                {
+                    ZLinkObjectCreationCompletion.Created =>
+                        new ZLinkObjectCreationCompleteResult.Created(stored!, terminal),
+                    ZLinkObjectCreationCompletion.Rejected =>
+                        new ZLinkObjectCreationCompleteResult.Rejected(terminal),
+                    ZLinkObjectCreationCompletion.Failed =>
+                        new ZLinkObjectCreationCompleteResult.Failed(terminal),
+                    _ => throw new ArgumentOutOfRangeException(nameof(completion))
+                });
+        }
+    }
+
+    public ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
+        ZLinkCreationOperationId operation,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateCreationOperation(operation);
+        cancellationToken.ThrowIfCancellationRequested();
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            RemoveExpiredCreationTerminals(now);
+            return ValueTask.FromResult<ZLinkCreationTerminalReadResult>(
+                _creationTerminals.TryGetValue(operation, out var terminal)
+                    ? new ZLinkCreationTerminalReadResult.Found(
+                        terminal with { StoreNow = now })
+                    : new ZLinkCreationTerminalReadResult.Missing(now));
         }
     }
 
@@ -417,7 +566,9 @@ internal sealed partial class ZLinkInMemoryLocationStore
             if (state.Status == ReservationStatus.Aborted)
                 return ValueTask.FromResult<ZLinkObjectAbortResult>(
                     new ZLinkObjectAbortResult.AlreadyAborted());
-            if (state.Status == ReservationStatus.Committed
+            if (state.Status is ReservationStatus.Created
+                or ReservationStatus.Rejected
+                or ReservationStatus.Failed
                 || !_authorities.TryGetValue(
                     reservation.Key.Value,
                     out var current)
@@ -566,7 +717,6 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     request.TargetOwner,
                     request.ObjectKind,
                     request.StableType,
-                    placementProfile: null,
                     _time.GetUtcNow(),
                     out var targetDescriptor))
                 return ValueTask.FromResult<ZLinkRelocationCapacityReserveResult>(
@@ -792,7 +942,6 @@ internal sealed partial class ZLinkInMemoryLocationStore
         ZLinkLocationOwnerToken owner,
         ZLinkPlacementObjectKind objectKind,
         string stableType,
-        string? placementProfile,
         DateTimeOffset now,
         out ZLinkMeshNodeDescriptor descriptor)
     {
@@ -815,11 +964,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                          value.StableType,
                          stableType,
                          StringComparison.Ordinal));
-        return capability is not null
-               && (placementProfile is null
-                   || capability.PlacementProfiles.Contains(
-                       placementProfile,
-                       StringComparer.Ordinal));
+        return capability is not null;
     }
 
     private bool HasPlacementCapacity(
@@ -837,57 +982,65 @@ internal sealed partial class ZLinkInMemoryLocationStore
                          value.StableType,
                          stableType,
                          StringComparison.Ordinal));
-        var nodeActive = PlacementCapacityUsage(
+        var populationKinds = objectKind == ZLinkPlacementObjectKind.Actor
+            ? [ZLinkPlacementObjectKind.Actor]
+            : new[]
+            {
+                ZLinkPlacementObjectKind.UserSpot,
+                ZLinkPlacementObjectKind.InstanceSpot
+            };
+        var populationActive = PlacementCapacityUsage(
             _activePlacementCapacity,
             descriptorKey,
-            descriptor.LifecycleGeneration);
-        var nodePending = PlacementCapacityUsage(
+            descriptor.LifecycleGeneration,
+            populationKinds);
+        var populationReserved = PlacementCapacityUsage(
             _pendingPlacementCapacity,
             descriptorKey,
-            descriptor.LifecycleGeneration);
+            descriptor.LifecycleGeneration,
+            populationKinds);
         var typeKey = new PlacementCapacityKey(
             descriptorKey,
             descriptor.LifecycleGeneration,
             objectKind,
             stableType);
         var typeActive = _activePlacementCapacity.GetValueOrDefault(typeKey);
-        var typePending = _pendingPlacementCapacity.GetValueOrDefault(typeKey);
-        var activeLimit = Math.Min(
-            descriptor.Capacity.ActiveLimit,
-            capability.ActiveLimit ?? descriptor.Capacity.ActiveLimit);
-        var pendingLimit = Math.Min(
-            descriptor.Capacity.PendingLimit,
-            capability.PendingLimit ?? descriptor.Capacity.PendingLimit);
-        return HasCapacity(nodeActive, nodePending, delta,
-                   descriptor.Capacity.ActiveLimit,
-                   descriptor.Capacity.PendingLimit)
-               && HasCapacity(
-                   typeActive,
-                   typePending,
+        var typeReserved = _pendingPlacementCapacity.GetValueOrDefault(typeKey);
+        var populationLimit = objectKind == ZLinkPlacementObjectKind.Actor
+            ? descriptor.Capacity.Actors.Limit
+            : descriptor.Capacity.Spots.Limit;
+        return HasCapacity(
+                   populationActive,
+                   populationReserved,
                    delta,
-                   activeLimit,
-                   pendingLimit);
+                   populationLimit)
+               && (objectKind == ZLinkPlacementObjectKind.Actor
+                   || HasCapacity(
+                       typeActive,
+                       typeReserved,
+                       delta,
+                       capability.Limit));
     }
 
     private static long PlacementCapacityUsage(
         IReadOnlyDictionary<PlacementCapacityKey, long> counters,
         ZLinkMeshNodeDescriptorKey descriptor,
-        ulong lifecycleGeneration) =>
+        ulong lifecycleGeneration,
+        params ZLinkPlacementObjectKind[] objectKinds) =>
         counters
             .Where(pair =>
                 pair.Key.Descriptor == descriptor
                 && pair.Key.DescriptorLifecycleGeneration
-                == lifecycleGeneration)
+                == lifecycleGeneration
+                && objectKinds.Contains(pair.Key.ObjectKind))
             .Sum(static pair => pair.Value);
 
     private static bool HasCapacity(
         long active,
-        long pending,
+        long reserved,
         int delta,
-        int activeLimit,
-        int pendingLimit) =>
-        pending <= pendingLimit - (long)delta
-        && active <= activeLimit - pending - (long)delta;
+        int limit) =>
+        limit == 0 || active + reserved <= limit - (long)delta;
 
     private static bool MatchesSourceAllocation(
         ZLinkPlacementAllocation allocation,
@@ -1081,6 +1234,54 @@ internal sealed partial class ZLinkInMemoryLocationStore
             throw new ArgumentOutOfRangeException(nameof(request));
     }
 
+    private static ZLinkCreationTerminalPublication GetTerminalPublication(
+        ZLinkObjectCreationCompletion completion) =>
+        completion switch
+        {
+            ZLinkObjectCreationCompletion.Created created => created.Terminal,
+            ZLinkObjectCreationCompletion.Rejected rejected => rejected.Terminal,
+            ZLinkObjectCreationCompletion.Failed failed => failed.Terminal,
+            _ => throw new ArgumentOutOfRangeException(nameof(completion))
+        };
+
+    private static void ValidateTerminalPublication(
+        ZLinkObjectReservation reservation,
+        ZLinkCreationTerminalPublication publication)
+    {
+        ArgumentNullException.ThrowIfNull(publication);
+        ValidateCreationOperation(publication.Operation);
+        if (publication.TerminalEnvelope.Length > 1024 * 1024
+            || publication.TerminalEnvelopeSha256.Length != 32)
+            throw new ArgumentException(
+                "The creation terminal publication does not match its reservation.",
+                nameof(publication));
+        Span<byte> digest = stackalloc byte[32];
+        SHA256.HashData(publication.TerminalEnvelope.Span, digest);
+        if (!CryptographicOperations.FixedTimeEquals(
+                digest,
+                publication.TerminalEnvelopeSha256.Span))
+            throw new ArgumentException(
+                "The creation terminal SHA-256 does not match its envelope.",
+                nameof(publication));
+    }
+
+    private static void ValidateCreationOperation(ZLinkCreationOperationId operation)
+    {
+        if (operation.SourceNodeRid.IsEmpty
+            || operation.SourceNodeGeneration == 0
+            || (operation.OperationIdHigh == 0 && operation.OperationIdLow == 0))
+            throw new ArgumentOutOfRangeException(nameof(operation));
+    }
+
+    private void RemoveExpiredCreationTerminals(DateTimeOffset now)
+    {
+        foreach (var operation in _creationTerminals
+                     .Where(pair => pair.Value.ExpiresAt <= now)
+                     .Select(static pair => pair.Key)
+                     .ToArray())
+            _creationTerminals.Remove(operation);
+    }
+
     private static void ValidateAggregateRequest(
         ZLinkAggregatePrepareRequest request)
     {
@@ -1121,6 +1322,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
         internal ZLinkObjectReservation Reservation { get; } = reservation;
         internal ReservationStatus Status { get; set; } = status;
         internal ZLinkAuthoritySnapshot? Snapshot { get; set; }
+        internal ZLinkCreationTerminalRecord? Terminal { get; set; }
     }
 
     private sealed class AggregateState(
@@ -1175,7 +1377,9 @@ internal sealed partial class ZLinkInMemoryLocationStore
     private enum ReservationStatus
     {
         Reserved,
-        Committed,
+        Created,
+        Rejected,
+        Failed,
         Aborted
     }
 

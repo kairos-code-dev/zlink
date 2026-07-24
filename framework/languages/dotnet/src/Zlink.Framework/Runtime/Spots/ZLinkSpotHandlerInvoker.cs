@@ -253,6 +253,30 @@ internal sealed class ZLinkSpotHandlerInvoker(
             .ConfigureAwait(false);
     }
 
+    public async ValueTask<ZLinkActorCreateResponse> InvokeActorCreateAsync(
+        ZLinkSpotActorLifecycleDescriptor descriptor,
+        IZLinkActor actor,
+        ZLinkMessage request,
+        CancellationToken cancellationToken)
+    {
+        EnsureActorType(
+            descriptor.HandlerType,
+            descriptor.ActorType,
+            actor,
+            "Entry Spot actor creation handler");
+        var result = await InvokeAsync(
+                descriptor.HandlerType,
+                descriptor.Invoker,
+                actor,
+                request,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return result is ZLinkActorCreateResponse response
+            ? response
+            : throw new InvalidOperationException(
+                $"Entry Spot actor creation handler '{descriptor.HandlerType}' returned an invalid result.");
+    }
+
     private static void EnsureActorType(
         Type handlerType,
         Type expectedActorType,

@@ -170,8 +170,8 @@ suspend fun ZLinkLocationStore.removeAllByOwner(owner: ZLinkLocationOwnerToken):
 suspend fun ZLinkPeerLocationResolver.listLivePeers(filter: ZLinkPeerLocationFilter): List<ZLinkPeerLocation> =
     awaitFrameworkStage(this.listLivePeers(filter))
 
-suspend fun SpotHandleResolver.resolveSpotHandle(spotRid: RoutingId): SpotHandle? =
-    awaitFrameworkStage(this.resolveSpotHandle(spotRid)).orElse(null)
+suspend fun SpotHandleResolver.resolveSpotHandle(spotId: String): SpotHandle? =
+    awaitFrameworkStage(this.resolveSpotHandle(spotId)).orElse(null)
 
 suspend fun ActorSpotHandleResolver.resolveActorSpotHandle(actorId: String): SpotHandle? =
     awaitFrameworkStage(this.resolveActorSpotHandle(actorId)).orElse(null)

@@ -43,7 +43,7 @@ struct service_descriptor_record_t
     std::uint32_t effective_max_message_bytes = 0;
     mesh::service_node_state_t state =
       mesh::service_node_state_t::preparing;
-    std::uint32_t weight = 100;
+    int weight = 100;
     std::string owner_id;
     std::int64_t owner_lease_generation = 0;
 

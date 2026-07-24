@@ -2,6 +2,9 @@
 
 [.NET exact interface 목차](README.ko.md)
 
+Monitoring의 Channel, ClientServer와 placement weight는 configuration·descriptor와 같은 signed `int`
+`0..10000`을 사용한다.
+
 ## 1. Runtime snapshot, event와 host termination
 
 ```csharp
@@ -175,8 +178,10 @@ public sealed record ZLinkMeshNodeSnapshot(
     public long ApplicationVersion { get; init; }
     public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
     public int PlacementWeight { get; init; }
-    public ZLinkPlacementCapacity ObjectCapacity { get; init; }
-        = new(0, 0, 10_000, 128);
+    public ZLinkPlacementCapacity PopulationCapacity { get; init; }
+        = new(new(0, 0, 0), new(0, 0, 0), Array.Empty<ZLinkSpotTypeCapacity>());
+    public ZLinkActivationConcurrency ActivationConcurrency { get; init; }
+        = new(0, 128);
     public ulong PlacementReservationFailureCount { get; init; }
     public string? LastPlacementReservationFailure { get; init; }
     public IReadOnlyList<ZLinkObjectCapability> ObjectCapabilities { get; init; }
@@ -203,6 +208,10 @@ public sealed record ZLinkMeshRuntimeEvent(
     ulong? LocalSnapshotCount,
     ulong? LocalAdmittedCount,
     ulong? LocalDroppedCount,
+    string? PlacementOutcome,
+    ZLinkCapacityVector? Capacity,
+    ZLinkPlacementCapacity? PopulationCapacity,
+    ZLinkActivationConcurrency? ActivationConcurrency,
     string? Reason,
     ZLinkMeshNodeState? State)
     : Zlink.Framework.Contracts.Eventing.IZLinkRuntimeEvent
@@ -364,11 +373,17 @@ public interface IZLinkFanoutRuntime
 }
 ```
 
+`PopulationCapacity`는 Actor 전체, Spot 전체와 등록한 User·Instance Spot type별
+active·reserved·limit을 구분한다. Limit `0`은 제한 없음이다. Entry Spot 자체는 Spot count에서 제외하고
+Entry Spot의 Actor는 Actor 전체 count에 포함한다. `ActivationConcurrency`의 active·limit은 population
+reservation과 별도로 제공한다. Placement event의 `Capacity`는 해당 operation의 typed vector이고
+`PopulationCapacity`는 관찰 시점의 node aggregate다.
+
 `InstanceSpots`는 이 MeshNode에 startup에서 등록한 Instance type별 immutable 집계다. `ActiveCount`는
 `Ready` 상태에서 업무 message를 처리할 수 있는 수이고, 나머지 count는 `Activating`, `Closing`, activation
 barrier 앞의 pending message와 byte를 각각 나타낸다. `LastActivationOutcome`은 아직 terminal activation을
 관찰하지 않았으면 `null`이고, 값이 있으면 `ready`, `rejected`, `conflict`, `timed_out`, `shutdown`,
-`store_failure`, `fenced` 가운데 하나다. 이 snapshot에는 Spot RID, owner ID, `ObjectGeneration`,
+`store_failure`, `fenced` 가운데 하나다. 이 snapshot에는 Spot ID, owner ID, `ObjectGeneration`,
 `AuthorityOwnerGeneration`, `StoreVersion`과 owner lease fence의 개별 목록을 포함하지 않는다.
 
 `IZLinkFrameworkRuntime`은 host maintenance를 소유하는 singleton이다. `RetireAsync(...)`와
@@ -458,7 +473,7 @@ public sealed record ZLinkRuntimeMessageFlowEvent(
     RoutingId? ServerRid,
     string? PacketName,
     string? Topic,
-    RoutingId? SpotRid,
+    string? SpotId,
     string? InstanceSpotType,
     string? ActivationState,
     string? ActorId,
@@ -551,7 +566,7 @@ Instance activation 계기는 다음 .NET instrument로 투영한다.
 | `zlink.instance_spot.takeovers` | `Counter<long>` | `{takeover}` | `mesh_name`, `instance_spot_type`, `outcome` |
 
 이 계기는 공통 spec의 `mesh_name`, 등록된 `instance_spot_type`, 닫힌 `outcome`·`reason` label만 사용한다.
-Spot RID, owner ID, internal authority fields, endpoint와 correlation ID는 label로 기록하지 않는다. Instance one-way
+Spot ID, owner ID, internal authority fields, endpoint와 correlation ID는 label로 기록하지 않는다. Instance one-way
 activation 실패는 `zlink.mesh_node.messages.dropped`에 `surface=instance_spot`으로 기록하며 완료된 submit
 결과를 바꾸거나 reply를 만들지 않는다.
 ## 3. Dispatch diagnostics
@@ -666,7 +681,7 @@ public sealed record ZLinkMessageFlowEvent(
     string? LocalRid = null,
     string? PeerRid = null,
     string? SocketRole = null,
-    string? SpotRid = null,
+    string? SpotId = null,
     string? ActorId = null,
     long? MessageSize = null,
     ZLinkDispatchErrorReason? ErrorReason = null,

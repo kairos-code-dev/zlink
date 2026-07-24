@@ -23,7 +23,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public async ValueTask<ZLinkRemoteActorAdmissionReply> AdmitAsync(
         ZLinkRemoteActorAdmissionRequest request,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         Func<CancellationToken, ValueTask<ZLinkRemoteActorAdmissionReply>> admit,
         CancellationToken cancellationToken)
     {
@@ -38,7 +38,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
                     _pending.Remove(request.HandoffId);
                 else
                 {
-                    if (!pending.Matches(request, targetSpotRid))
+                    if (!pending.Matches(request, targetSpotId))
                         throw new InvalidOperationException(
                             $"Handoff admission '{request.HandoffId}' was retried with different request data.");
                     return pending.Reply;
@@ -47,13 +47,13 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
             if (_admitting.TryGetValue(request.HandoffId, out execution!))
             {
-                if (!execution.Matches(request, targetSpotRid))
+                if (!execution.Matches(request, targetSpotId))
                     throw new InvalidOperationException(
                         $"Handoff admission '{request.HandoffId}' is already assigned to another request.");
             }
             else
             {
-                execution = new AdmissionExecution(request, targetSpotRid);
+                execution = new AdmissionExecution(request, targetSpotId);
                 _admitting.Add(request.HandoffId, execution);
                 MarkDrainUnsafeLocked();
                 ownsExecution = true;
@@ -66,7 +66,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
         try
         {
             var reply = await admit(cancellationToken).ConfigureAwait(false);
-            Register(request, targetSpotRid, reply);
+            Register(request, targetSpotId, reply);
             execution.Complete(reply);
             return reply;
         }
@@ -89,7 +89,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public bool TryGetReply(
         ZLinkRemoteActorAdmissionRequest request,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         out ZLinkRemoteActorAdmissionReply reply)
     {
         lock (_gate)
@@ -98,7 +98,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
             {
                 if (pending.Deadline <= _timeProvider.GetUtcNow())
                     _pending.Remove(request.HandoffId);
-                else if (pending.Matches(request, targetSpotRid))
+                else if (pending.Matches(request, targetSpotId))
                 {
                     reply = pending.Reply;
                     return true;
@@ -112,7 +112,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public void Register(
         ZLinkRemoteActorAdmissionRequest request,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ZLinkRemoteActorAdmissionReply reply)
     {
         if (string.IsNullOrWhiteSpace(request.HandoffId))
@@ -123,7 +123,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
             throw new TimeoutException(
                 $"Actor '{request.ActorId}' handoff admission deadline has expired.");
 
-        var pending = new PendingAdmission(request, targetSpotRid, deadline, reply);
+        var pending = new PendingAdmission(request, targetSpotId, deadline, reply);
         lock (_gate)
         {
             if (_pending.TryGetValue(request.HandoffId, out var existing))
@@ -134,7 +134,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
                 }
                 else
                 {
-                    if (!existing.Matches(request, targetSpotRid))
+                    if (!existing.Matches(request, targetSpotId))
                         throw new InvalidOperationException(
                             $"Handoff admission '{request.HandoffId}' is already assigned to another actor.");
                     return;
@@ -150,12 +150,12 @@ internal sealed class ZLinkActorHandoffAdmissions(
         _ = ExpireAsync(request.HandoffId, pending, generationToken);
     }
 
-    public void BeginCommit(ZLinkRemoteActorJoinRequest request, RoutingId targetSpotRid)
+    public void BeginCommit(ZLinkRemoteActorJoinRequest request, string targetSpotId)
     {
         lock (_gate)
         {
             if (!_pending.TryGetValue(request.HandoffId, out var pending)
-                || !pending.Matches(request, targetSpotRid))
+                || !pending.Matches(request, targetSpotId))
                 throw new InvalidOperationException(
                     $"Actor '{request.ActorId}' does not have a matching pending handoff admission '{request.HandoffId}'.");
             if (pending.Deadline <= _timeProvider.GetUtcNow())
@@ -193,13 +193,13 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public bool TryGetJoinOutcome(
         ZLinkRemoteActorJoinRequest request,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         out ZLinkRemoteActorJoinReply reply)
     {
         lock (_gate)
         {
             if (_terminal.TryGetValue(request.HandoffId, out var terminal)
-                && terminal.Matches(request, targetSpotRid))
+                && terminal.Matches(request, targetSpotId))
             {
                 reply = terminal.Reply;
                 return true;
@@ -212,7 +212,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public void RecordJoinOutcome(
         ZLinkRemoteActorJoinRequest request,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ZLinkRemoteActorJoinReply reply,
         TimeSpan? preparedCompletionTimeout = null)
     {
@@ -220,7 +220,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
         {
             if (_terminal.TryGetValue(request.HandoffId, out var existing))
             {
-                if (!existing.Matches(request, targetSpotRid))
+                if (!existing.Matches(request, targetSpotId))
                     throw new InvalidOperationException(
                         $"Handoff outcome '{request.HandoffId}' is already assigned to another transaction.");
                 return;
@@ -230,7 +230,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
                 request.HandoffId,
                 new TerminalOutcome(
                     request,
-                    targetSpotRid,
+                    targetSpotId,
                     reply,
                     reply.Accepted && preparedCompletionTimeout is { } timeout
                         ? _timeProvider.GetUtcNow() + timeout
@@ -242,7 +242,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public void RejectPreparedJoinOutcome(
         ZLinkRemoteActorJoinRequest request,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ZLinkRemoteActorJoinReply rejectedReply)
     {
         if (rejectedReply.Accepted)
@@ -254,13 +254,13 @@ internal sealed class ZLinkActorHandoffAdmissions(
             {
                 _terminal.Add(
                     request.HandoffId,
-                    new TerminalOutcome(request, targetSpotRid, rejectedReply, null));
+                    new TerminalOutcome(request, targetSpotId, rejectedReply, null));
                 _terminalOrder.Enqueue(request.HandoffId);
                 TrimTerminalOutcomesLocked();
                 return;
             }
 
-            if (!terminal.Matches(request, targetSpotRid))
+            if (!terminal.Matches(request, targetSpotId))
                 throw new InvalidOperationException(
                     $"Handoff outcome '{request.HandoffId}' is already assigned to another transaction.");
             if (terminal.Phase != ZLinkActorCommitPhase.Prepared)
@@ -275,23 +275,23 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public bool TryBeginCompletion(
         ZLinkRemoteActorHandoffCompletionRequest request,
-        RoutingId targetSpotRid)
+        string targetSpotId)
     {
         lock (_gate)
         {
-            var terminal = ValidateCompletionLocked(request, targetSpotRid);
+            var terminal = ValidateCompletionLocked(request, targetSpotId);
             switch (terminal.Phase)
             {
                 case ZLinkActorCommitPhase.Prepared:
                     if (terminal.Completion is null)
                         terminal.Completion = request;
-                    else if (!terminal.Matches(request, targetSpotRid))
+                    else if (!terminal.Matches(request, targetSpotId))
                         throw new InvalidOperationException(
                             $"Actor '{request.ActorId}' handoff completion '{request.HandoffId}' was retried with different frame data.");
                     terminal.Phase = ZLinkActorCommitPhase.Completing;
                     return true;
                 case ZLinkActorCommitPhase.Completed:
-                    if (!terminal.Matches(request, targetSpotRid))
+                    if (!terminal.Matches(request, targetSpotId))
                         throw new InvalidOperationException(
                             $"Actor '{request.ActorId}' handoff completion '{request.HandoffId}' was retried with different frame data.");
                     return false;
@@ -307,11 +307,11 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public void CancelCompletion(
         ZLinkRemoteActorHandoffCompletionRequest request,
-        RoutingId targetSpotRid)
+        string targetSpotId)
     {
         lock (_gate)
         {
-            var terminal = ValidateCompletionLocked(request, targetSpotRid);
+            var terminal = ValidateCompletionLocked(request, targetSpotId);
             if (terminal.Phase == ZLinkActorCommitPhase.Completing)
                 terminal.Phase = ZLinkActorCommitPhase.Prepared;
         }
@@ -319,13 +319,13 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public bool TryExpirePreparedCommit(
         ZLinkRemoteActorJoinRequest request,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ZLinkRemoteActorJoinReply rejectedReply)
     {
         lock (_gate)
         {
             if (!_terminal.TryGetValue(request.HandoffId, out var terminal)
-                || !terminal.Matches(request, targetSpotRid)
+                || !terminal.Matches(request, targetSpotId)
                 || terminal.Phase != ZLinkActorCommitPhase.Prepared
                 || terminal.PreparedCompletionDeadline is not { } deadline
                 || deadline > _timeProvider.GetUtcNow())
@@ -341,12 +341,12 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public bool IsPreparedCommitPending(
         ZLinkRemoteActorJoinRequest request,
-        RoutingId targetSpotRid)
+        string targetSpotId)
     {
         lock (_gate)
         {
             return _terminal.TryGetValue(request.HandoffId, out var terminal)
-                   && terminal.Matches(request, targetSpotRid)
+                   && terminal.Matches(request, targetSpotId)
                    && terminal.Reply.Accepted
                    && terminal.Phase is ZLinkActorCommitPhase.Prepared
                        or ZLinkActorCommitPhase.Completing;
@@ -355,7 +355,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     public void RecordCompletion(
         ZLinkRemoteActorHandoffCompletionRequest request,
-        RoutingId targetSpotRid)
+        string targetSpotId)
     {
         lock (_gate)
         {
@@ -363,8 +363,8 @@ internal sealed class ZLinkActorHandoffAdmissions(
                 || !string.Equals(terminal.Request.ActorId, request.ActorId, StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     $"Actor '{request.ActorId}' does not have a terminal handoff '{request.HandoffId}'.");
-            if (!terminal.Matches(request, targetSpotRid, requireRecordedCompletion: false)
-                || terminal.Completion is not null && !terminal.Matches(request, targetSpotRid))
+            if (!terminal.Matches(request, targetSpotId, requireRecordedCompletion: false)
+                || terminal.Completion is not null && !terminal.Matches(request, targetSpotId))
                 throw new InvalidOperationException(
                     $"Actor '{request.ActorId}' handoff completion '{request.HandoffId}' conflicts with its terminal result.");
             if (terminal.Phase != ZLinkActorCommitPhase.Completing)
@@ -392,11 +392,11 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     private TerminalOutcome ValidateCompletionLocked(
         ZLinkRemoteActorHandoffCompletionRequest request,
-        RoutingId targetSpotRid)
+        string targetSpotId)
     {
         if (!_terminal.TryGetValue(request.HandoffId, out var terminal)
             || !terminal.Reply.Accepted
-            || !terminal.Matches(request, targetSpotRid, requireRecordedCompletion: false))
+            || !terminal.Matches(request, targetSpotId, requireRecordedCompletion: false))
             // Terminal for the source's completion reconciliation: this
             // target no longer honors the handoff (expired or replaced), so
             // retrying the completion can never succeed.
@@ -486,7 +486,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     private sealed class PendingAdmission(
         ZLinkRemoteActorAdmissionRequest request,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         DateTimeOffset deadline,
         ZLinkRemoteActorAdmissionReply reply)
     {
@@ -498,44 +498,44 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
         public bool Committing { get; set; }
 
-        public bool Matches(ZLinkRemoteActorAdmissionRequest candidate, RoutingId candidateTargetSpotRid)
+        public bool Matches(ZLinkRemoteActorAdmissionRequest candidate, string candidateTargetSpotId)
             => string.Equals(request.ActorId, candidate.ActorId, StringComparison.Ordinal)
                && string.Equals(request.ActorType, candidate.ActorType, StringComparison.Ordinal)
                && string.Equals(request.HandoffId, candidate.HandoffId, StringComparison.Ordinal)
                && request.DeadlineUnixTimeMilliseconds == candidate.DeadlineUnixTimeMilliseconds
                && request.SourceNodeRid.AsSpan().SequenceEqual(candidate.SourceNodeRid)
-               && request.SourceSpotRid.AsSpan().SequenceEqual(candidate.SourceSpotRid)
+               && string.Equals(request.SourceSpotId, candidate.SourceSpotId, StringComparison.Ordinal)
                && string.Equals(request.RequestContentType, candidate.RequestContentType, StringComparison.Ordinal)
                && request.Request.AsSpan().SequenceEqual(candidate.Request)
-               && targetSpotRid == candidateTargetSpotRid;
+               && targetSpotId == candidateTargetSpotId;
 
-        public bool Matches(ZLinkRemoteActorJoinRequest candidate, RoutingId candidateTargetSpotRid)
+        public bool Matches(ZLinkRemoteActorJoinRequest candidate, string candidateTargetSpotId)
             => string.Equals(request.ActorId, candidate.ActorId, StringComparison.Ordinal)
                && string.Equals(request.ActorType, candidate.ActorType, StringComparison.Ordinal)
                && request.SourceNodeRid.AsSpan().SequenceEqual(candidate.SourceNodeRid)
-               && request.SourceSpotRid.AsSpan().SequenceEqual(candidate.SourceSpotRid)
+               && string.Equals(request.SourceSpotId, candidate.SourceSpotId, StringComparison.Ordinal)
                && string.Equals(request.RequestContentType, candidate.RequestContentType, StringComparison.Ordinal)
                && request.Request.AsSpan().SequenceEqual(candidate.Request)
-               && targetSpotRid == candidateTargetSpotRid;
+               && targetSpotId == candidateTargetSpotId;
     }
 
     private sealed class AdmissionExecution(
         ZLinkRemoteActorAdmissionRequest request,
-        RoutingId targetSpotRid)
+        string targetSpotId)
     {
         private readonly TaskCompletionSource<ZLinkRemoteActorAdmissionReply> _result = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<ZLinkRemoteActorAdmissionReply> Task => _result.Task;
 
-        public bool Matches(ZLinkRemoteActorAdmissionRequest candidate, RoutingId candidateTargetSpotRid)
-            => targetSpotRid == candidateTargetSpotRid
+        public bool Matches(ZLinkRemoteActorAdmissionRequest candidate, string candidateTargetSpotId)
+            => targetSpotId == candidateTargetSpotId
                && string.Equals(request.ActorId, candidate.ActorId, StringComparison.Ordinal)
                && string.Equals(request.ActorType, candidate.ActorType, StringComparison.Ordinal)
                && string.Equals(request.HandoffId, candidate.HandoffId, StringComparison.Ordinal)
                && request.DeadlineUnixTimeMilliseconds == candidate.DeadlineUnixTimeMilliseconds
                && request.SourceNodeRid.AsSpan().SequenceEqual(candidate.SourceNodeRid)
-               && request.SourceSpotRid.AsSpan().SequenceEqual(candidate.SourceSpotRid)
+               && string.Equals(request.SourceSpotId, candidate.SourceSpotId, StringComparison.Ordinal)
                && string.Equals(request.RequestContentType, candidate.RequestContentType, StringComparison.Ordinal)
                && request.Request.AsSpan().SequenceEqual(candidate.Request);
 
@@ -546,7 +546,7 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
     private sealed class TerminalOutcome(
         ZLinkRemoteActorJoinRequest request,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ZLinkRemoteActorJoinReply reply,
         DateTimeOffset? preparedCompletionDeadline)
     {
@@ -562,20 +562,20 @@ internal sealed class ZLinkActorHandoffAdmissions(
 
         public ZLinkRemoteActorHandoffCompletionRequest? Completion { get; set; }
 
-        public bool Matches(ZLinkRemoteActorJoinRequest candidate, RoutingId candidateTargetSpotRid)
-            => targetSpotRid == candidateTargetSpotRid
+        public bool Matches(ZLinkRemoteActorJoinRequest candidate, string candidateTargetSpotId)
+            => targetSpotId == candidateTargetSpotId
                && ZLinkActorHandoffRequestIdentity.Matches(Request, candidate);
 
         public bool Matches(
             ZLinkRemoteActorHandoffCompletionRequest candidate,
-            RoutingId candidateTargetSpotRid,
+            string candidateTargetSpotId,
             bool requireRecordedCompletion = true)
             => string.Equals(Request.ActorId, candidate.ActorId, StringComparison.Ordinal)
                && string.Equals(Request.HandoffId, candidate.HandoffId, StringComparison.Ordinal)
-               && Request.SourceSpotRid.AsSpan().SequenceEqual(candidate.SourceSpotRid)
+               && string.Equals(Request.SourceSpotId, candidate.SourceSpotId, StringComparison.Ordinal)
                && Request.SourceNodeRid.AsSpan().SequenceEqual(candidate.SourceNodeRid)
-               && targetSpotRid == candidateTargetSpotRid
-               && RoutingId.From(candidate.TargetSpotRid) == candidateTargetSpotRid
+               && targetSpotId == candidateTargetSpotId
+               && string.Equals(candidate.TargetSpotId, candidateTargetSpotId, StringComparison.Ordinal)
                && (!requireRecordedCompletion
                    || Completion is not null
                    && ZLinkActorHandoffRequestIdentity.FramesEqual(Completion.Frames, candidate.Frames));
@@ -606,7 +606,7 @@ internal static class ZLinkActorHandoffRequestIdentity
                && left.TransferState.AsSpan().SequenceEqual(right.TransferState)
                && string.Equals(left.RequestContentType, right.RequestContentType, StringComparison.Ordinal)
                && left.Request.AsSpan().SequenceEqual(right.Request)
-               && left.SourceSpotRid.AsSpan().SequenceEqual(right.SourceSpotRid)
+               && string.Equals(left.SourceSpotId, right.SourceSpotId, StringComparison.Ordinal)
                && left.SourceNodeRid.AsSpan().SequenceEqual(right.SourceNodeRid)
                && FramesEqual(left.HandoffFrames, right.HandoffFrames);
     }

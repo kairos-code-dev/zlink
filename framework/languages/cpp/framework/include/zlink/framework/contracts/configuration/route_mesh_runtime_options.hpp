@@ -13,6 +13,8 @@ class mesh_node_runtime_options_t
     virtual ~mesh_node_runtime_options_t () = default;
     virtual std::int64_t max_message_size () const = 0;
     virtual void max_message_size (std::int64_t value) = 0;
+    virtual int placement_weight () const = 0;
+    virtual void placement_weight (int value) = 0;
 };
 
 class mesh_channel_runtime_options_t

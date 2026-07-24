@@ -25,12 +25,17 @@
 namespace zlink::framework
 {
 
+using actor_id_t = std::string;
+
 namespace detail
 {
 class actor_gateway_state_t;
 class actor_gateway_runtime_t;
 class session_actor_binding_context_t;
 class session_actor_manager_access_t;
+class actor_manager_access_t;
+class actor_manager_state_t;
+class actor_create_call_state_t;
 class spot_node_runtime_t;
 } // namespace detail
 
@@ -72,12 +77,6 @@ struct actor_ref_snapshot_t
     {
         return actor_ref_t (node_rid, std::move (actor_type), actor_id, generation);
     }
-};
-
-struct actor_placement_t
-{
-    std::optional<node_rid_t> preferred_node_rid;
-    std::optional<std::string> route_mesh;
 };
 
 class actor_client_t;
@@ -187,9 +186,80 @@ class actor_directory_t
   public:
     virtual ~actor_directory_t () = default;
     virtual task_t<std::optional<actor_ref_t>> find (std::string actor_id) = 0;
-    virtual task_t<actor_ref_t> ensure (std::string actor_id,
-                                        message_t create_request,
-                                        actor_placement_t placement = {}) = 0;
+};
+
+struct actor_create_existing_t
+{
+    actor_ref_t actor;
+};
+
+struct actor_create_created_t
+{
+    actor_ref_t actor;
+    std::optional<message_t> reply;
+};
+
+struct actor_create_rejected_t
+{
+    std::optional<message_t> reply;
+};
+
+using actor_create_result_t =
+  std::variant<actor_create_existing_t,
+               actor_create_created_t,
+               actor_create_rejected_t>;
+
+class actor_create_call_t
+{
+  public:
+    actor_create_call_t (actor_create_call_t &&) noexcept;
+    actor_create_call_t &operator= (actor_create_call_t &&) noexcept;
+    actor_create_call_t (const actor_create_call_t &) = delete;
+    actor_create_call_t &operator= (const actor_create_call_t &) = delete;
+    ~actor_create_call_t ();
+
+    actor_create_call_t &in_mesh (std::string mesh_name);
+    actor_create_call_t &creation_request (message_t request);
+    template <typename TCreation>
+    requires (!std::is_same_v<std::remove_cvref_t<TCreation>, zlink::message_t>
+              && !std::is_same_v<std::remove_cvref_t<TCreation>, message_t>)
+    actor_create_call_t &creation_request (TCreation request)
+    {
+        return creation_request (message_t::from (std::move (request)));
+    }
+    actor_create_call_t &timeout (std::chrono::milliseconds timeout);
+    task_t<actor_create_result_t> submit ();
+
+  private:
+    friend class actor_manager_t;
+    explicit actor_create_call_t (
+      std::shared_ptr<detail::actor_create_call_state_t> state);
+    std::shared_ptr<detail::actor_create_call_state_t> _state;
+};
+
+class actor_manager_t
+{
+  public:
+    actor_manager_t ();
+    ~actor_manager_t ();
+    actor_manager_t (actor_manager_t &&) noexcept;
+    actor_manager_t &operator= (actor_manager_t &&) noexcept;
+    actor_manager_t (const actor_manager_t &) = default;
+    actor_manager_t &operator= (const actor_manager_t &) = default;
+
+    actor_create_call_t create (actor_id_t actor_id,
+                                std::string stable_type);
+    actor_create_call_t get_or_create (actor_id_t actor_id,
+                                       std::string stable_type);
+    task_t<std::optional<actor_ref_t>> find (actor_id_t actor_id) const;
+    task_t<std::optional<spot_ref_t>> find_spot (actor_id_t actor_id) const;
+    task_t<bool> destroy (actor_ref_t actor);
+
+  private:
+    friend class detail::actor_manager_access_t;
+    explicit actor_manager_t (
+      std::shared_ptr<detail::actor_manager_state_t> state);
+    std::shared_ptr<detail::actor_manager_state_t> _state;
 };
 
 template <typename TReply> struct actor_join_accepted_t
@@ -421,16 +491,16 @@ class actor_context_t
     actor_context_t &operator= (const actor_context_t &) = default;
 
     const actor_ref_t &actor_ref () const noexcept;
-    std::optional<spot_rid_t> spot_rid () const;
+    std::optional<spot_id_t> spot_id () const;
     bound_session_t bound_session () const;
 
   private:
-    actor_join_call_t join_spot_payload (spot_rid_t spot_rid, const zlink::message_t &request)
+    actor_join_call_t join_spot_payload (spot_id_t spot_id, const zlink::message_t &request)
     {
         return actor_join_call_t (
-          [context = *this, spot_rid = std::move (spot_rid), request] () mutable {
+          [context = *this, spot_id = std::move (spot_id), request] () mutable {
               try {
-                  const auto erased = context.join_spot_erased (std::move (spot_rid), request);
+                  const auto erased = context.join_spot_erased (std::move (spot_id), request);
                   if (!erased) {
                       const auto *error = erased.error ();
                       return result_t<actor_join_result_t>::failure (
@@ -455,7 +525,7 @@ class actor_context_t
     }
 
   public:
-    actor_join_call_t join_spot (spot_rid_t spot_rid, const message_t &request)
+    actor_join_call_t join_spot (spot_id_t spot_id, const message_t &request)
     {
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
@@ -464,7 +534,7 @@ class actor_context_t
               "actor join spot requires a serializer registry"));
         }
         try {
-            return join_spot_payload (std::move (spot_rid), request.to_raw (*serializers));
+            return join_spot_payload (std::move (spot_id), request.to_raw (*serializers));
         }
         catch (const framework_exception_t &error) {
             return actor_join_call_t (detail::result_access_t::failure<actor_join_result_t> (error));
@@ -473,7 +543,7 @@ class actor_context_t
 
     template <typename TRequest>
     requires (!std::is_same_v<std::remove_cvref_t<TRequest>, message_t>) actor_join_call_t
-      join_spot (spot_rid_t spot_rid, const TRequest &request)
+      join_spot (spot_id_t spot_id, const TRequest &request)
     {
         auto *serializers = serializer_registry ();
         if (serializers == nullptr) {
@@ -483,7 +553,7 @@ class actor_context_t
         }
         try {
             return join_spot_payload (
-              std::move (spot_rid),
+              std::move (spot_id),
               detail::encoded_payload_to_raw (serializers->get<TRequest> ().serialize (request)));
         }
         catch (const framework_exception_t &error) {
@@ -544,7 +614,7 @@ class actor_context_t
                               actor_ref_t actor_ref,
                               std::uint64_t source_binding_generation = 0);
 
-    result_t<detail::actor_join_reply_t> join_spot_erased (spot_rid_t spot_rid,
+    result_t<detail::actor_join_reply_t> join_spot_erased (spot_id_t spot_id,
                                                            const zlink::message_t &request);
     serializer_registry_t *serializer_registry () const noexcept;
     std::optional<zlink::message_t> create_payload () const;

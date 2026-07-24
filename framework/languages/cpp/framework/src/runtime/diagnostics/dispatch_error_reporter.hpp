@@ -48,7 +48,7 @@ class dispatch_error_reporter_t
           message_flow_outcome_t::error, event.surface, event.message_kind,
           std::move (event.packet_name), std::move (event.channel_name), std::move (event.topic),
           std::move (event.correlation_id), std::move (event.source_rid),
-          std::move (event.spot_rid), std::move (event.actor_id), std::nullopt, event.reason,
+          std::move (event.spot_id), std::move (event.actor_id), std::nullopt, event.reason,
           event.action, event.exception, event.flow_id, event.flow_origin});
     }
 
@@ -120,8 +120,8 @@ class dispatch_error_reporter_t
             if (event.source_rid) {
                 add ("src", *event.source_rid);
             }
-            if (event.spot_rid) {
-                add ("spot", *event.spot_rid);
+            if (event.spot_id) {
+                add ("spot", *event.spot_id);
             }
             if (event.actor_id) {
                 add ("actor", *event.actor_id);

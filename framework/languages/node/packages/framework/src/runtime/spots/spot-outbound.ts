@@ -11,8 +11,6 @@ import type {
   ZLinkSpotOutbound,
   ZLinkSpotRequestCall,
   ZLinkSpotSendCall,
-  ZLinkPlacementProfile,
-  ZLinkAffinityKey,
   ZLinkSpotPublisherClient
 } from '../../contracts';
 import { RoutingId as BindingRoutingId } from '@zlink-systems/zlink';
@@ -152,8 +150,6 @@ export interface ZLinkSpotAddressCallOptions {
   readonly instanceSpot: boolean;
   readonly instanceSpotType?: string;
   readonly initialMeshName?: string;
-  readonly placementProfile?: ZLinkPlacementProfile;
-  readonly affinityKey?: ZLinkAffinityKey;
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
   readonly sourceSpot?: ZLinkBackendSpot;
@@ -217,8 +213,6 @@ interface MutableAddressCallOptions {
   instanceSpot: boolean;
   instanceSpotType?: string;
   initialMeshName?: string;
-  placementProfile?: ZLinkPlacementProfile;
-  affinityKey?: ZLinkAffinityKey;
   timeoutMs?: number;
   submitted: boolean;
   readonly selected: Set<string>;
@@ -252,20 +246,6 @@ function createAddressedSpotSendCall(
     inMesh(meshName: string) {
       selectOnce(options, 'inMesh');
       options.initialMeshName = requireAddressValue(meshName, 'Mesh name', 255);
-      return this;
-    },
-    placementProfile(placementProfile: ZLinkPlacementProfile) {
-      selectOnce(options, 'placementProfile');
-      options.placementProfile = requireAddressValue(
-        placementProfile,
-        'Placement profile',
-        255
-      );
-      return this;
-    },
-    affinityKey(affinityKey: ZLinkAffinityKey) {
-      selectOnce(options, 'affinityKey');
-      options.affinityKey = requireAddressValue(affinityKey, 'Affinity key', 255);
       return this;
     },
     submit(signal?: AbortSignal) {
@@ -317,20 +297,6 @@ function createAddressedSpotRequestCall(
     inMesh(meshName: string) {
       selectOnce(options, 'inMesh');
       options.initialMeshName = requireAddressValue(meshName, 'Mesh name', 255);
-      return this;
-    },
-    placementProfile(placementProfile: ZLinkPlacementProfile) {
-      selectOnce(options, 'placementProfile');
-      options.placementProfile = requireAddressValue(
-        placementProfile,
-        'Placement profile',
-        255
-      );
-      return this;
-    },
-    affinityKey(affinityKey: ZLinkAffinityKey) {
-      selectOnce(options, 'affinityKey');
-      options.affinityKey = requireAddressValue(affinityKey, 'Affinity key', 255);
       return this;
     },
     timeout(timeoutMs: number) {
@@ -399,11 +365,9 @@ function markSubmitted(options: MutableAddressCallOptions): void {
   if (!options.instanceSpot && (
     options.instanceSpotType !== undefined
     || options.initialMeshName !== undefined
-    || options.placementProfile !== undefined
-    || options.affinityKey !== undefined
   )) {
     throw new ZLinkConfigurationException(
-      'Mesh and placement options require an Instance Spot intent.'
+      'Mesh selection requires an Instance Spot intent.'
     );
   }
   options.submitted = true;
@@ -419,8 +383,6 @@ function freezeAddressCallOptions(
     instanceSpot: options.instanceSpot,
     instanceSpotType: options.instanceSpotType,
     initialMeshName: options.initialMeshName,
-    placementProfile: options.placementProfile,
-    affinityKey: options.affinityKey,
     timeoutMs: options.timeoutMs,
     signal,
     sourceSpot

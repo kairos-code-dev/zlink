@@ -46,7 +46,7 @@
 
 ### 1.4 terminator (목표 계약)
 
-**framework의 세 terminator(`submit`/`async`/`yield`)를 그대로 갖고, awaitable을 쓰지 않는
+**HTTP client는 `submit`/`async` terminator를 갖고, awaitable을 쓰지 않는
 호출자를 위한 callback 완료 경로를 함께 제공한다**([12 HTTP client](12-http-client.ko.md)).
 아래는 **목표 계약**이며 현재 구현과의 차이는
 [구현 차이 §12.22](../90-implementation-gap.ko.md)가 소유한다.
@@ -56,12 +56,12 @@
 | **async** (raw) | `async_raw()` → `task_t<raw_http_response_t>` | `AsyncRaw(ct?)` → `ValueTask<RawHttpResponse>` | `asyncRaw()` → `CompletionStage<RawHttpResponse>` | `awaitRaw()` (suspend) | `asyncRaw()` → `Promise<RawHttpResponse>` |
 | **async** (typed) | `async<T>()` → `task_t<http_response_t<T>>` | `Async<T>(ct?)` | `async(Class<T>)` | `await(type)` / `await<T>()` (reified) | `async<T>()` |
 | **async** (download) | `download(sink)` | `DownloadAsync(sink, ct?)` | `download(Consumer<byte[]>)` | `awaitDownload(sink)` | `download(sink)` |
-| **yield** | `yield<T>()` | `Yield<T>(ct?)` | `yield(Class<T>)` | `yieldAwait<T>()` | `yield<T>()` |
 | **submit** (one-way) | `submit()` | `Submit(ct?)` | `submit()` | `submit()` | `submit()` |
 | **callback** | `async<T>(callback)` | `Async<T>(callback)` | `async(Class<T>, callback)` | (suspend로 대체) | `async<T>(callback)` |
 | blocking 언래핑 | **두지 않는다** | **두지 않는다** | **두지 않는다** | **두지 않는다** | **두지 않는다** |
 
-- `yield`는 **execution scheduler가 주입된 client에서만** 노출된다(§5.3). 단독 사용에서는 없다.
+- HTTP request builder는 DI 여부와 관계없이 `yield`를 노출하지 않는다. Shared Spot gate를 반납해야 하는
+  서버 코드는 HTTP `async`를 언어별 I/O worker에 넣고 worker `Yield`로 기다린다.
 - `.NET`은 `SubmitAsync`처럼 submit 동사를 반복하지 않는다 — `Submit`은 one-way 전용이다.
 - kotlin의 `fetch<T>()`는 suspend 함수이며 blocking이 아니다. body만 돌려주는 편의 확장이다.
 

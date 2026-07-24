@@ -679,6 +679,8 @@ ZLINK_EXPORT zlink_config_result_t zlink_set_routing_id (void *handle_,
 raw socket의 routing ID를 설정한다. 길이는 1..255 bytes이며 값은 binary-safe하다. bind 또는 connect 전에
 설정한다. 다른 handle 종류는
 `ZLINK_CONFIG_NOT_SUPPORTED`, `errno == ENOTSUP`이다.
+Caller가 routing ID를 설정하지 않으면 Core는 socket 생성 시 RFC 4122 UUID v4 bit layout의 16-byte binary
+routing ID를 발급한다. 이 기본값은 UUID 문자열이 아니라 raw 16 bytes다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 
@@ -695,7 +697,7 @@ ZLINK_EXPORT zlink_config_result_t zlink_get_routing_id (void *handle_,
                            zlink_routing_id_t *out_);
 ```
 
-raw socket에 설정된 routing ID를 caller-owned `zlink_routing_id_t`에 복사한다.
+raw socket에 설정되었거나 Core가 자동 발급한 routing ID를 caller-owned `zlink_routing_id_t`에 복사한다.
 
 **반환값:** 성공 시 `ZLINK_CONFIG_OK`, 실패 시 `zlink_config_result_t` 값. `zlink_errno()`는 진단용 내부 errno를 그대로 유지합니다.
 

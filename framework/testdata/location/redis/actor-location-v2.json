@@ -3,9 +3,8 @@
   "format": "actor-location-v2",
   "keyContract": {
     "objectKind": "actor",
-    "meshName": "game",
     "identityHex": "6163746f722d31",
-    "authorityKey": "zla1:a:4:game:7:actor-1"
+    "authorityKey": "zla1:a:7:actor-1"
   },
   "hashFields": [
     "payload",
@@ -17,7 +16,7 @@
   ],
   "row": {
     "kind": "actor",
-    "key": "zla1:a:4:game:7:actor-1",
+    "key": "zla1:a:7:actor-1",
     "hash": {
       "payload": "opaque-actor-authority-v1",
       "storeVersion": "101",

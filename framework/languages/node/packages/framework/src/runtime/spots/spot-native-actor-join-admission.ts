@@ -62,7 +62,7 @@ export class ZLinkSpotNativeActorJoinAdmission {
         const joinRequest = request.message;
         const joinPayload = wrapFrameworkPayloadMessage(joinRequest, this.options.messageSerializers);
         const response: ZLinkSpotActorJoinResponse = await this.options.serial.execute(async () =>
-          target.onActorJoin === undefined
+          this.options.defaultAccept || target.onActorJoin === undefined
             ? { accepted: this.options.defaultAccept }
             : target.onActorJoin(
               createActorJoinRequest(actor, request.info.targetActor, request.info.joinEpoch),

@@ -41,7 +41,7 @@ public record ZLinkServiceNodeDescriptor(
             throw new IllegalArgumentException(
                 "effective message bound or application version is invalid");
         }
-        validatePercent(placementWeight, "placementWeight");
+        validateWeight(placementWeight, "placementWeight");
         validateCapacity(activeCapacityLimit, false, "activeCapacityLimit");
         validateCapacity(pendingCapacityLimit, true, "pendingCapacityLimit");
         validateCapacity(activeCapacityUsed, true, "activeCapacityUsed");
@@ -84,7 +84,7 @@ public record ZLinkServiceNodeDescriptor(
     public record Channel(String name, int weight) {
         public Channel {
             name = requireText(name, "channel.name");
-            validatePercent(weight, "channel.weight");
+            validateWeight(weight, "channel.weight");
         }
     }
 
@@ -122,9 +122,10 @@ public record ZLinkServiceNodeDescriptor(
         return value;
     }
 
-    private static void validatePercent(int value, String field) {
-        if (value < 0 || value > 100) {
-            throw new IllegalArgumentException(field + " must be in the range 0..100");
+    private static void validateWeight(int value, String field) {
+        if (value < 0 || value > 10_000) {
+            throw new IllegalArgumentException(
+                field + " must be in the range 0..10000");
         }
     }
 

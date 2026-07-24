@@ -85,13 +85,6 @@ class store_actor_directory_t final : public actor_directory_t
           result_t<std::optional<actor_ref_t>>::success (row.value ()->actor_ref));
     }
 
-    task_t<actor_ref_t> ensure (std::string, message_t, actor_placement_t) override
-    {
-        return task_t<actor_ref_t> (result_t<actor_ref_t>::failure (
-          framework_error_kind_t::request_failed,
-          "actor_directory_t::ensure is not configured for this framework host"));
-    }
-
   private:
     runtime::live_location_reader_t &_store;
     std::shared_ptr<runtime::actor_location_observer_t> _actor_locations;
@@ -833,6 +826,11 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
           options.dispatch_options ());
         mesh_node_service = mesh_service.get ();
         mesh_nodes = mesh_service->nodes ();
+        if (!_state->services.contains (
+              std::type_index (typeid (actor_manager_t))))
+            _state->services.add_singleton<actor_manager_t> (
+              std::make_unique<actor_manager_t> (
+                mesh_service->actor_manager ()));
         add_hosted_service (std::move (mesh_service));
     }
     if (!mesh_nodes.empty ()
@@ -866,27 +864,26 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
     }
     const auto spot_router_channels = options.location_options ().spot_router_channels;
     for (const auto &mesh : mesh_nodes) {
-        const auto source_spot_rid = zlink::routing_id_t::from (
-          mesh->routing_id ()->to_string () + ":__zlink-route-origin");
-        auto send_to_spot = [mesh, source_spot_rid] (
+        const auto source_spot_id = detail::new_user_spot_id ();
+        auto send_to_spot = [mesh, source_spot_id] (
             const zlink::routing_id_t &target_node,
-            const zlink::routing_id_t &target_spot,
+            const std::string &target_spot,
             std::uint64_t target_spot_generation,
             runtime::messaging::message_parts_t parts) {
               const auto submitted = mesh->send_to_spot (
-                source_spot_rid, target_node, target_spot,
+                source_spot_id, target_node, target_spot,
                 target_spot_generation, parts.items ());
               return one_way_native_submit_result (submitted, "MeshNode Spot send");
           };
-        auto request_to_spot = [mesh, source_spot_rid] (
+        auto request_to_spot = [mesh, source_spot_id] (
             const zlink::routing_id_t &target_node,
-            const zlink::routing_id_t &target_spot,
+            const std::string &target_spot,
             std::uint64_t target_spot_generation,
             runtime::messaging::message_parts_t parts,
             std::chrono::milliseconds timeout) {
               detail::host::operation_id_t operation;
               const auto submitted = mesh->request_to_spot (
-                source_spot_rid, target_node, target_spot, target_spot_generation,
+                source_spot_id, target_node, target_spot, target_spot_generation,
                 parts.items (), operation, timeout);
               if (submitted != zlink::submit_result_t::ok) {
                   return result_t<runtime::messaging::message_parts_t>::failure (
@@ -1038,7 +1035,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
                 .get_required<runtime::live_location_reader_t> (),
            request_timeout] (
             const actor_ref_t &actor,
-            spot_rid_t target_spot,
+            spot_id_t target_spot,
             const zlink::message_t &request) {
               const auto deadline =
                 std::chrono::steady_clock::now () + request_timeout;
@@ -1047,10 +1044,7 @@ app_t &app_t::add_zlink_framework (std::function<void (zlink_framework_options_t
               do {
                   located =
                     live_locations
-                      ->resolve_spot (spot_location_key_t{
-                        application_mesh->mesh_name (),
-                        zlink::routing_id_t::from (
-                          std::string (target_spot.value ()))})
+                      ->resolve_spot (spot_location_key_t{target_spot})
                       .result ();
                   if (located && located.value ())
                       break;

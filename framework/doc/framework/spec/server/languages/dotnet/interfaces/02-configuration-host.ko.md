@@ -62,7 +62,7 @@ Framework를 등록하면 다음 service가 public DI surface로 제공된다.
 | service | lifetime | 책임 |
 |---|---|---|
 | `IZLinkRouteClient` | singleton | Node direct와 ChannelName send/request |
-| `IZLinkSpotClient` | singleton | global SpotRid direct send/request와 명시적 Instance cold activation |
+| `IZLinkSpotClient` | singleton | global SpotId direct send/request와 명시적 Instance cold activation |
 | `IZLinkSpotManager` | singleton | User Spot 생성, resolve와 exact 종료 |
 | `IZLinkSpotPublisherClient` | singleton | Spot Logical Multicast publish |
 | `IZLinkFanoutClient` | singleton | classic fanout ChannelName에 typed event publish |
@@ -126,7 +126,7 @@ Host는 network bind 전에 다음 조건을 검증한다.
 - Spot, Actor와 STREAM factory의 owner 관계
 - Object role의 중복 선택, Client·Server role의 Location Store 등록과 None role의 factory 부재
 - Actor·User Spot·Instance Spot의 stable type·구현 class 중복, explicit relocation policy와 type별 capacity
-- Node placement weight·active/pending capacity와 placement profile 범위
+- Node placement weight, Actor 전체·Spot 전체·Spot type별 population capacity와 activation concurrency
 - Host `ApplicationVersion` 범위와 `MaintenanceWave` 형식
 - `Snapshot` policy의 Actor·Spot adapter type과 factory 대상의 일치 여부
 - `Recreate` 또는 `Snapshot` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있을 때 Relocation

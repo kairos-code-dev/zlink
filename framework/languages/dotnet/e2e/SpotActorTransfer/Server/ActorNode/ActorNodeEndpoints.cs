@@ -66,8 +66,13 @@ internal static class ActorNodeEndpoints
         app.MapPost("/actors", async (ActorCreateReq request, IZLinkActorManager actors,
             CancellationToken cancellationToken) =>
         {
-            var actor = await actors.GetOrCreateAsync(
-                request.ActorId, request.ActorType, request, cancellationToken);
+            var actor = (await actors.GetOrCreate(request.ActorId, request.ActorType)
+                .Request(request).Async(cancellationToken)) switch
+            {
+                ZLinkActorCreateResult.Existing value => value.Actor,
+                ZLinkActorCreateResult.Created value => value.Actor,
+                _ => throw new InvalidOperationException("Actor creation was rejected.")
+            };
             return Results.Ok(new ActorCreateRes(
                 actor.ActorId, request.ActorType, actor.NodeRid.ToString(), checked((long)actor.Generation)));
         });

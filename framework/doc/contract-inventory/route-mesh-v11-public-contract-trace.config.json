@@ -6,18 +6,18 @@
   "baseline": {
     "revision": "86258cb9a3ecbc7db2dfd86a8c18de45a562734a",
     "reviewedV11FirstMembers": {
-      "count": 4367,
-      "sha256": "40a99f2735193c902343d653457da5c3e038647ca8c8ef6118e744dc7b113d30",
+      "count": 4582,
+      "sha256": "f1921ad36d089188352a5f662324056ce2b4de5d5b78246c380055d6514610f8",
       "specReason": "The v11 formal contract and exact interfaces introduce this reviewed member after the frozen 10.x baseline."
     },
     "reviewedV11FirstOwners": {
-      "count": 1000,
-      "sha256": "ea545f28a93075107baf897c404706c5278c2bc541eebb15a761cc647fe0a046",
+      "count": 1072,
+      "sha256": "723031209f89fcee8e29a812301e67652eda2a8300de3ac1362e9eb488067c62",
       "specReason": "The v11 exact interface introduces this reviewed declaration owner after the frozen 10.x baseline."
     },
     "reviewedIntentionalRemovals": {
-      "count": 1188,
-      "sha256": "4343179948912057f5e81c7eb4692726c270c7c85975c25e4284c73af99ffc2d",
+      "count": 1218,
+      "sha256": "fb910eaaf1e36b131a46a90e559d768c627def3d999b6d7fcc5f2568d57b97b3",
       "specReason": "The v11 formal contract intentionally omits this exact frozen-baseline member; the target exact-interface absence and POSD removal policies own the change."
     },
     "overrideReasons": {
@@ -43,16 +43,16 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_spot#22b602cf7e39ecee",
         "baselineSignatureSha256": "22b602cf7e39ecee119ae2bd1385b80a95e2a638b65951c0b0c543140ad20ead",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_spot#579a520aa4ed0f02",
-        "targetSignatureSha256": "579a520aa4ed0f021916a919bc6b5681b550e886c446a4c5e1485732bcd64328",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_spot#0a597f635e8de3cd",
+        "targetSignatureSha256": "0a597f635e8de3cd90250b937ebce24384c070e18fc22f962e2dd69d201e97a2",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_spot#2c2f9e6ed4e9b249",
         "baselineSignatureSha256": "2c2f9e6ed4e9b2497ebc43ad017c791633fb41fc27a7f78819f7b4689623b795",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_spot#73ee82daa689b35f",
-        "targetSignatureSha256": "73ee82daa689b35fea1637a33c4e02b8bf367de25fa8fd2c37363e90d287862a",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::actor_context_t.join_spot#4cfecf92ac53d199",
+        "targetSignatureSha256": "4cfecf92ac53d199acb3a599eb226b8d27027c9749cc69151a13a10dd4255728",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -531,8 +531,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#6815e691e5e6eea7",
         "baselineSignatureSha256": "6815e691e5e6eea72c016364e7442389b2f838a3e093e4b15adf25f16e2dd8a3",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#334101bbce032d7b",
-        "targetSignatureSha256": "334101bbce032d7b42637b384e541a1e7a7c27cf463f888b40bc58027e0ea646",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::mesh_node_builder_t.add_actor_factory#a3c5e35480491193",
+        "targetSignatureSha256": "a3c5e35480491193c6925a99722df493bd056874c0b8ece59011f6a6c99171eb",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -579,8 +579,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::message_flow_event_t.spot_rid#0fd64c1e55c9853b",
         "baselineSignatureSha256": "0fd64c1e55c9853b51353fea6e5ad9367863a929dd774c4e81010a66279b2750",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::message_flow_event_t.spot_rid#a4e5fed5fd36ca23",
-        "targetSignatureSha256": "a4e5fed5fd36ca2352b584784dda03e082efad21ddd95fb6db65d51b0f46cf67",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::message_flow_event_t.spot_id#b6cfb8d8746a209e",
+        "targetSignatureSha256": "b6cfb8d8746a209e41a370728e50e64c029ca1ec31448f8c93dbd7788f813089",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -667,8 +667,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.request_to_spot#dca021b9caff2c29",
         "baselineSignatureSha256": "dca021b9caff2c29a3e45a682585324efd0bb5def8c081c3259f58621d4a4c27",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.request_to_spot#1f6f69a586ecb248",
-        "targetSignatureSha256": "1f6f69a586ecb2480a1e592bfd6be78ccad4c6af32477fdbc98ae5eefb78233b",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.request_to_spot#5063f6cd7b3f3734",
+        "targetSignatureSha256": "5063f6cd7b3f37343419c97824ae369805d035735fdccd12de872e768fedfe94",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -683,8 +683,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.send_to_spot#af93c76a0468de69",
         "baselineSignatureSha256": "af93c76a0468de692df5890b65b7c47f3f7ee12c8fc777b93e32ce841264230a",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.send_to_spot#46e77449d50b2110",
-        "targetSignatureSha256": "46e77449d50b2110f12aeadd0730767987a8892c8acb14454a55b9d670c36bae",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::route_client_t.send_to_spot#b26a42be85986be0",
+        "targetSignatureSha256": "b26a42be85986be02bfbf4167aecb362db7092e19fcac9b123e8642d7ce58c47",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -779,8 +779,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.request_to_spot#474ecba2939b8aeb",
         "baselineSignatureSha256": "474ecba2939b8aebc444889adbc6f08333808cd88ef8452e945636d6d06bfb71",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.request_to_spot#1f6f69a586ecb248",
-        "targetSignatureSha256": "1f6f69a586ecb2480a1e592bfd6be78ccad4c6af32477fdbc98ae5eefb78233b",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.request_to_spot#5063f6cd7b3f3734",
+        "targetSignatureSha256": "5063f6cd7b3f37343419c97824ae369805d035735fdccd12de872e768fedfe94",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -803,8 +803,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.send_to_spot#14914b3e0a554dca",
         "baselineSignatureSha256": "14914b3e0a554dca7574773106b334a4deb7735d3705f92f79bf454d803b9041",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.send_to_spot#06915cef5d78d425",
-        "targetSignatureSha256": "06915cef5d78d425504f258ac6f95a8ee3cb64350ca9b7c8778e778c459b9217",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_common_context_t.send_to_spot#ca84a135c134a35b",
+        "targetSignatureSha256": "ca84a135c134a35b3a5f68d9878bf4ffea983327bcfbb30832284f1d52a30d56",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -859,8 +859,8 @@
       {
         "baselineIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_location_key_t.spot_rid#ace4044ab2e90efe",
         "baselineSignatureSha256": "ace4044ab2e90efe6d72c059ac6eb9a2010d5ae05154244f16f71e2c61ee2b6c",
-        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_location_key_t.spot_rid#7b059f3cef8b5e9c",
-        "targetSignatureSha256": "7b059f3cef8b5e9c16ca2cb22c7aa65a1e40fdf60c40c47016789e190ed70dcd",
+        "targetIdentity": "cpp|zlink-framework-cpp|zlink-framework-cpp::spot_location_key_t.spot_id#f4940852b6329195",
+        "targetSignatureSha256": "f4940852b6329195656a10244e49511f76e878af350545db55223ccff035c10f",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1211,8 +1211,8 @@
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorContext.JoinSpot#432ec18591ca1ce1",
         "baselineSignatureSha256": "432ec18591ca1ce1a14bcdf480958369ab690cb278fe4498e7525157b56f9481",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorContext.JoinSpot#3a63b4d1afbfb45f",
-        "targetSignatureSha256": "3a63b4d1afbfb45f48ffa89df4911601febc96959227c773af2a72439e9ef1dd",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorContext.JoinSpot#c82a645dd3036655",
+        "targetSignatureSha256": "c82a645dd3036655e129e96639821b03d8581aba22fd9f375168a5a407c3ae1c",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1221,14 +1221,6 @@
         "baselineSignatureSha256": "dc6ed7bc97fc0a25ceedcbbcfb7b49412f495c9295ca97dddb6b4a71c96ffebf",
         "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorJoinCall.Async#1c5ce4975d30751a",
         "targetSignatureSha256": "1c5ce4975d30751ae8161e8ccae4240f2ccaf79fce3e44c7a6cdf58f02bce1ad",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorJoinCall.Yield#42ce122f26568696",
-        "baselineSignatureSha256": "42ce122f265686967faf32a235f724c6d8fb82dfcff0645f2f53e73fba4ae76e",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkActorJoinCall.Yield#b444074bca7e60d9",
-        "targetSignatureSha256": "b444074bca7e60d994d25d7133860ff54e35563508b8e2631acc65b69815a5f0",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1323,8 +1315,8 @@
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkRouteClient.RequestToChannel#b13a51172f73bdce",
         "baselineSignatureSha256": "b13a51172f73bdce65e964acd149e705a3d1930a298896d4324f786c9a72f707",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkRouteClient.RequestToChannel#db65239fa8431ab5",
-        "targetSignatureSha256": "db65239fa8431ab51d37c3af3e7e635543670b31b59835ba6c80777e97a3c320",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkRouteClient.RequestToChannel#d7634eb3fda00bc8",
+        "targetSignatureSha256": "d7634eb3fda00bc809032e2a50f0b4afdf96e5d802ad7ddebb458c2887176ca9",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1401,66 +1393,42 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotActorLifecycle.OnActorJoinAsync#5a300fa68f8e9e21",
-        "baselineSignatureSha256": "5a300fa68f8e9e2113122d1b6a00c565222b50265795b16821cff04229a3e39b",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotActorLifecycle.OnActorJoinAsync#e236eb492257b519",
-        "targetSignatureSha256": "e236eb492257b519f0511438c744446e6c3f39f9edfd3c3dcf3a8cdd5a65cb4e",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotActorLifecycle.OnDisconnectActorAsync#d6c89a0f74aed724",
-        "baselineSignatureSha256": "d6c89a0f74aed724edbcc6348370535b79e6297b1c973ce842bcf69719ed8a6f",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotActorLifecycle.OnDisconnectActorAsync#211d12a1322b765e",
-        "targetSignatureSha256": "211d12a1322b765e748e70683f9533281dd8c155593be4edaf8605a226ad5b1d",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotActorLifecycle.OnJoinedActorAsync#a882a0afe955d6d6",
-        "baselineSignatureSha256": "a882a0afe955d6d6ffd6ecbd848e858d0133fd5c35496364251bfb10ffdd8aff",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotActorLifecycle.OnJoinedActorAsync#f35d45acd07226a2",
-        "targetSignatureSha256": "f35d45acd07226a2a55765f2cdc683ae7bbf27cf50583f72f3c85457754ef629",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotActorLifecycle.OnLeaveActorAsync#eac5a43b7f2c1ecd",
-        "baselineSignatureSha256": "eac5a43b7f2c1ecdc19f3a59fcc736d0ce0fc7334288dfac611b06a466ee4844",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotActorLifecycle.OnLeaveActorAsync#aee0f23c8e541154",
-        "targetSignatureSha256": "aee0f23c8e5411541369549aad7706e4b66de97a74e0b56ee3a1a85ba5c4ab59",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.RequestToSpot#8658bdbd4e4d48c0",
         "baselineSignatureSha256": "8658bdbd4e4d48c0dac39b574c86d26207f14de78a0e9e82500466288ce3a9cd",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.RequestToSpot#e83afffaa0913f23",
-        "targetSignatureSha256": "e83afffaa0913f23c6646dbbb7d0e18b413c23e4a9728a9298abd03381774ee1",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.RequestToSpot#f94e758e479bd083",
+        "targetSignatureSha256": "f94e758e479bd083821350417d93c40bfaa3d13f86c635674ef8e71a4838251e",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.SendToSpot#46ffd8f01f7d1689",
         "baselineSignatureSha256": "46ffd8f01f7d1689e7f4db527aeb4af60c1190affb4953f2833db56fcc759a5b",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.SendToSpot#802a45b907904a72",
-        "targetSignatureSha256": "802a45b907904a72adc389f966a7669f3babd0caa3df8f01c863c4a787af4b3c",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotClient.SendToSpot#70cb53ab1205f79a",
+        "targetSignatureSha256": "70cb53ab1205f79a8aa7d7863b9471765ca93f37c15ea57e7ec0899ac118a57f",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.RequestToChannel#db65239fa8431ab5",
+        "baselineSignatureSha256": "db65239fa8431ab51d37c3af3e7e635543670b31b59835ba6c80777e97a3c320",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.RequestToChannel#d7634eb3fda00bc8",
+        "targetSignatureSha256": "d7634eb3fda00bc809032e2a50f0b4afdf96e5d802ad7ddebb458c2887176ca9",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.RequestToSpot#8658bdbd4e4d48c0",
         "baselineSignatureSha256": "8658bdbd4e4d48c0dac39b574c86d26207f14de78a0e9e82500466288ce3a9cd",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.RequestToSpot#e83afffaa0913f23",
-        "targetSignatureSha256": "e83afffaa0913f23c6646dbbb7d0e18b413c23e4a9728a9298abd03381774ee1",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.RequestToSpot#f94e758e479bd083",
+        "targetSignatureSha256": "f94e758e479bd083821350417d93c40bfaa3d13f86c635674ef8e71a4838251e",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.SendToSpot#46ffd8f01f7d1689",
         "baselineSignatureSha256": "46ffd8f01f7d1689e7f4db527aeb4af60c1190affb4953f2833db56fcc759a5b",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.SendToSpot#802a45b907904a72",
-        "targetSignatureSha256": "802a45b907904a72adc389f966a7669f3babd0caa3df8f01c863c4a787af4b3c",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkSpotOutbound.SendToSpot#70cb53ab1205f79a",
+        "targetSignatureSha256": "70cb53ab1205f79a8aa7d7863b9471765ca93f37c15ea57e7ec0899ac118a57f",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1483,8 +1451,8 @@
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkActorLocation.ZLinkActorLocation#2acfa975d5de3f02",
         "baselineSignatureSha256": "2acfa975d5de3f02553a9c875e6b86a33681ec5474530e8733bf775b9ab698b4",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkActorLocation.ZLinkActorLocation#e835e8c894673262",
-        "targetSignatureSha256": "e835e8c894673262dec16eb132f3413d1e684cfa0cffc8f2afaec4e01856e8a4",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkActorLocation.ZLinkActorLocation#7a8b4995814dcfbd",
+        "targetSignatureSha256": "7a8b4995814dcfbdf570a49adbfd6909cda1e7acec1088a7ad524587f429194b",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1537,34 +1505,50 @@
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkMeshRuntimeEvent.ZLinkMeshRuntimeEvent#5d9cb91a70415c85",
+        "baselineSignatureSha256": "5d9cb91a70415c8536f29d84a7d0b6c853c9df0103e14def3dce380e950c1ba3",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkMeshRuntimeEvent.ZLinkMeshRuntimeEvent#6e3e937343d14204",
+        "targetSignatureSha256": "6e3e937343d14204bc9fa7eab96ca7e4be53b009d093547cf9f0799e7b06cc0c",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkMessageFlowEvent.ZLinkMessageFlowEvent#02e2896cf05250d5",
         "baselineSignatureSha256": "02e2896cf05250d5f35236e8e95e0dd906c89f0a01a81ebb1a2d2ea0ff685cc1",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkMessageFlowEvent.ZLinkMessageFlowEvent#38df7ca16c44a4c9",
-        "targetSignatureSha256": "38df7ca16c44a4c959b6227e47ef15502e30dd1e22d9c796c2b7024cc4b65da5",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkMessageFlowEvent.ZLinkMessageFlowEvent#e74adb252f2aedf2",
+        "targetSignatureSha256": "e74adb252f2aedf2289db74956df054d079ddc99f40e11dd51cbc9ca862739ad",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkSpotLocation.ZLinkSpotLocation#b08fe22c959cfb07",
         "baselineSignatureSha256": "b08fe22c959cfb07b95635d531b6b1c2e89aba378eed75cc789cf2790336165c",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkSpotLocation.ZLinkSpotLocation#96b509c89ab09a04",
-        "targetSignatureSha256": "96b509c89ab09a042f34224a82ad6066f1c8c7d003bfbf3688da31d36c650545",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkSpotLocation.ZLinkSpotLocation#76b9ff13208e02bd",
+        "targetSignatureSha256": "76b9ff13208e02bd0485b4bdf9d229c4393c7209e68e32192c5a5ec4c76a8b77",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkSpotLocationKey.ZLinkSpotLocationKey#d6ab4caefd286e66",
         "baselineSignatureSha256": "d6ab4caefd286e663ab87d4cf1d743907cc798c87ddb06a5319d33606fb5504b",
-        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkSpotLocationKey.ZLinkSpotLocationKey#82337bd85bc858b0",
-        "targetSignatureSha256": "82337bd85bc858b060f69d3cc925373ea8bd139d607681468a440f6e4586c297",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkSpotLocationKey.ZLinkSpotLocationKey#d5769f89cdef1cc8",
+        "targetSignatureSha256": "d5769f89cdef1cc8d01460cee33b5e1f878e500d7b3b9b81e1a194831f322082",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkSpotTimerDiagnostic.ZLinkSpotTimerDiagnostic#04d31c802e6aa4e1",
+        "baselineSignatureSha256": "04d31c802e6aa4e1e7cd868c3f1697a81aa510d6a48bf158c6ba9bea30a0c1dd",
+        "targetIdentity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkSpotTimerDiagnostic.ZLinkSpotTimerDiagnostic#f6759e94ea6542a5",
+        "targetSignatureSha256": "f6759e94ea6542a504879b85d334141a68a8c594a4a83ed6832e0e10d05382cb",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkActorLocation.ZLinkActorLocation#e2ee089f6f208dec",
         "baselineSignatureSha256": "e2ee089f6f208dec820fed400852a123cfacbfa846755046998f254777d76e33",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkActorLocation.ZLinkActorLocation#bfe528c1517a7980",
-        "targetSignatureSha256": "bfe528c1517a79809a1c8587a2630715d579ddd05df5708d067339d2acc588ce",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkActorLocation.ZLinkActorLocation#1fb475634d8d3cbc",
+        "targetSignatureSha256": "1fb475634d8d3cbc746794a19a98d31661ebf0d98a40493372cd553af7c03b1a",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1595,8 +1579,8 @@
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#f24a540656544232",
         "baselineSignatureSha256": "f24a540656544232d555d423ba06307116571b552ddc73988c0d43e1d6bb98f8",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#28d721b57b44bbdc",
-        "targetSignatureSha256": "28d721b57b44bbdc0189d8f810cd1eeddd970be08dbb981e8c38e3827e0b6a71",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkMeshNodeDescriptor.ZLinkMeshNodeDescriptor#5dfb5658aa1db680",
+        "targetSignatureSha256": "5dfb5658aa1db680374246019d5b4109ba5c520192922bc22112930b574855e2",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1627,8 +1611,8 @@
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToSpot#8f7f50e026fb4422",
         "baselineSignatureSha256": "8f7f50e026fb44221b6744d9b0108a314a97dc88048bc7a9196786c6ed5bf8be",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToSpot#5861b824c10d4ebb",
-        "targetSignatureSha256": "5861b824c10d4ebb673e1f4c95d614cad5c645398d738948436edef3ca726bc7",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.requestToSpot#1b514764b837e564",
+        "targetSignatureSha256": "1b514764b837e5642f40bc79c497998cb4cb44e7720459af98617284aa60ee6b",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1643,24 +1627,24 @@
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.sendToSpot#d3602cc8ef6f84da",
         "baselineSignatureSha256": "d3602cc8ef6f84da936b709ad3fa3c0ad24f366ebc9505f2d5c4b570ade6b556",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.sendToSpot#873e243d5bd279c6",
-        "targetSignatureSha256": "873e243d5bd279c6fa61bd909fdf59530280337a79bf8310e34ae39f46d13b87",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkRouteClient.sendToSpot#138a4911951c9bec",
+        "targetSignatureSha256": "138a4911951c9bec252e079cc717c9a63700a2170889b1dc87366336dc0958fa",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotLocation.ZLinkSpotLocation#845cb3c860230b39",
         "baselineSignatureSha256": "845cb3c860230b3940cb2a680fb90ddd5f70fbe5300b705360dee731bdd6f6de",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotLocation.ZLinkSpotLocation#17431f658ecaf1df",
-        "targetSignatureSha256": "17431f658ecaf1dfe0aa53772da4a6fcebb161ef46be6b0148ae579ae4f8e3d9",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotLocation.ZLinkSpotLocation#5122ea0b641445c8",
+        "targetSignatureSha256": "5122ea0b641445c85c71b0b111d0b0a81afbf54095714310e1df5e04450ad201",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotLocationKey.ZLinkSpotLocationKey#19a823936849e151",
         "baselineSignatureSha256": "19a823936849e151b20be51d712e27b89552494429b91706ad99ef48d9722d75",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotLocationKey.ZLinkSpotLocationKey#fd1cbcb5feb300ba",
-        "targetSignatureSha256": "fd1cbcb5feb300ba225abdba9b22fa9221a9f116ed2ac725fdfbdf43f34b2154",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotLocationKey.ZLinkSpotLocationKey#f2a535b74e28919b",
+        "targetSignatureSha256": "f2a535b74e28919bcecdd76579a375e8e377b4afe36164f88adaf3a42a272871",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1683,16 +1667,16 @@
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.find#d1e0ae511923c07c",
         "baselineSignatureSha256": "d1e0ae511923c07c281288029f6faa8d142ae8312604af3b24ab9e31267d1ee8",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.find#7d5468559909d30b",
-        "targetSignatureSha256": "7d5468559909d30bb2179f31519168af0264ed2424d42b48c85e95948b7c8283",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.find#bf6c20021cd4a6f5",
+        "targetSignatureSha256": "bf6c20021cd4a6f59efdcd9c839ff13e1b71871e86912483feffd93a32bf0525",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.getOrCreate#250a5c3b8d846fc9",
         "baselineSignatureSha256": "250a5c3b8d846fc9a137aae9f97ad272bd6107ff439ff8d126133ae80b71727c",
-        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.getOrCreate#9dfb4b52d32adfda",
-        "targetSignatureSha256": "9dfb4b52d32adfda5f77c84bb15dae4db664e17dfdf780590ff1a78b9c16cb84",
+        "targetIdentity": "java|systems.zlink:zlink-framework-core|systems.zlink:zlink-framework-core::ZLinkSpotManager.getOrCreate#a0f5c9a006013aee",
+        "targetSignatureSha256": "a0f5c9a006013aeee63edffb9a793b611f9c5ac7e2807db9064e6030c233177b",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1739,8 +1723,8 @@
       {
         "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#e2406c40ce5dc81e",
         "baselineSignatureSha256": "e2406c40ce5dc81ec589fd442cbefd36c587b90cc727602c2e0f2e9798d92e41",
-        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#0e2687c2ddf93e4d",
-        "targetSignatureSha256": "0e2687c2ddf93e4dd7d51c4e2596577e12d73e4d94a7ebde4d9c750f3469d504",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.request#ee821654f10a2638",
+        "targetSignatureSha256": "ee821654f10a263844d3c581c8b89f98d72fbfd51b0e04d594e038e4c423be49",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1763,8 +1747,8 @@
       {
         "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.send#1de1336aaf8b36b6",
         "baselineSignatureSha256": "1de1336aaf8b36b649762cb127b7f28d8adfdd089c97a6e42a5825983e618ad4",
-        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.send#127744bd765a1a85",
-        "targetSignatureSha256": "127744bd765a1a859c246b56c5c7cc11472935357e69def73412fbc425bdc9b5",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.send#5d6e451240fb151a",
+        "targetSignatureSha256": "5d6e451240fb151ace9052117665a7613adadd4bb37d4c40c0058a26ccb22132",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1773,22 +1757,6 @@
         "baselineSignatureSha256": "a31b4fc90620844b863a6ce63719af0abc14b633d1a38810226d1d517db0b1b0",
         "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.send#537f23916fce72b7",
         "targetSignatureSha256": "537f23916fce72b7f88da237ef2956f94094541ec6389257696e9ce1fc7d1f5d",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.yieldJoinReply#4f572496856e3a7b",
-        "baselineSignatureSha256": "4f572496856e3a7b568762dcef7fb2633580cea6328e27aa102e81bdbf8d9dc2",
-        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::<package>.yieldJoinReply#b5eabe4d348b72ca",
-        "targetSignatureSha256": "b5eabe4d348b72ca4a093f876d6fdce82c0ac4c01012dfc5d62b5058ecd89c2c",
-        "disposition": "v11-first-implementation",
-        "specReason": "V11-SIGNATURE-CHANGE"
-      },
-      {
-        "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingEntrySpot.onActorJoinSuspending#e5120df9f1d14abc",
-        "baselineSignatureSha256": "e5120df9f1d14abcce6a5641c15a913f800323c179282fb8082ab13dbe744a71",
-        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingEntrySpot.onActorJoinSuspending#e5a380092632c57a",
-        "targetSignatureSha256": "e5a380092632c57a1ce30aedacd244234a2b0954282ae1be9faf9267cf997939",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1803,8 +1771,8 @@
       {
         "baselineIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingEntrySpot.onCreateActorSuspending#b935b6cd30dc05eb",
         "baselineSignatureSha256": "b935b6cd30dc05eb8c77383a1843355dd347b5aede08c457c3f9523b6fd8f224",
-        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingEntrySpot.onCreateActorSuspending#12eb100f08d1e5b3",
-        "targetSignatureSha256": "12eb100f08d1e5b36eab4f2f547c8e1331a0c8bafcd22f3ac60c9d3c8d76bcaf",
+        "targetIdentity": "kotlin|systems.zlink:zlink-framework-kotlin|systems.zlink:zlink-framework-kotlin::ZLinkSuspendingEntrySpot.onCreateActorSuspending#1eec20db4d9fd759",
+        "targetSignatureSha256": "1eec20db4d9fd7590c2746399230198c7465af79c3b4dc7c66d95df6d2758365",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -1947,16 +1915,16 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.joinSpot#39682c1a51313b3b",
         "baselineSignatureSha256": "39682c1a51313b3bb2134b7aeafa63a69e03b2a9e30ccc811c42968bee42794a",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.joinSpot#53ab65a07e58fda4",
-        "targetSignatureSha256": "53ab65a07e58fda4b68fc314e58e92f5a0626e3b8a898af9b32dcaeec08dd6b1",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.joinSpot#068f765eb2e1ec6a",
+        "targetSignatureSha256": "068f765eb2e1ec6a328eb14d5ec3f16e85fe360b5e4d739c1c042d9105c67618",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.spotRid#55d09055d2589f43",
         "baselineSignatureSha256": "55d09055d2589f43de274c2305deb89e9059300cb30ad80558ef289540bb36fb",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.spotRid#f7c51393a05e05ff",
-        "targetSignatureSha256": "f7c51393a05e05ff3735abe63d92227a22164dc074112c8be37afa616f37bb9d",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkActorContext.spotId#9a76032ff33a1241",
+        "targetSignatureSha256": "9a76032ff33a12415894771f9d9ce560db7762cbad86e35ca80430e5a64bf362",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2019,8 +1987,8 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkChannelClient.requestToChannel#5818e82f0859c947",
         "baselineSignatureSha256": "5818e82f0859c947cc7e5a1403371aff689420bc12eead892d728d0ecef03055",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkChannelClient.requestToChannel#859bb2b3c7acd09f",
-        "targetSignatureSha256": "859bb2b3c7acd09fc03f337efa94da4da7bd0cca2d7ef7a0f582d86104afe4c2",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkChannelClient.requestToChannel#1a076508429c920e",
+        "targetSignatureSha256": "1a076508429c920e20fde423b50c0802db6632b1511e6dd60e81ac240d88a5f1",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2045,6 +2013,14 @@
         "baselineSignatureSha256": "18f473740a2d9413161bc966d6fb3c6ae9774528f3ca0b63aa11f7e3cce9f94b",
         "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkEntrySpot.onClosing#f4a9cdc4a822cae8",
         "targetSignatureSha256": "f4a9cdc4a822cae87b50b3752282dbd0dbea55f342ba2b6bfebb487240140e02",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkEntrySpot.onCreateActor#9a02cddcefd00cd7",
+        "baselineSignatureSha256": "9a02cddcefd00cd70f60858a8bdd4bc6984918d06d28c591144fdac10583e60b",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkEntrySpot.onCreateActor#1f59062b0720c42f",
+        "targetSignatureSha256": "1f59062b0720c42f6daf7db99341cf6a836ad8c3b52db8ea1912dc681cb2f078",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2211,16 +2187,16 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToChannel#5818e82f0859c947",
         "baselineSignatureSha256": "5818e82f0859c947cc7e5a1403371aff689420bc12eead892d728d0ecef03055",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToChannel#859bb2b3c7acd09f",
-        "targetSignatureSha256": "859bb2b3c7acd09fc03f337efa94da4da7bd0cca2d7ef7a0f582d86104afe4c2",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToChannel#1a076508429c920e",
+        "targetSignatureSha256": "1a076508429c920e20fde423b50c0802db6632b1511e6dd60e81ac240d88a5f1",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToSpot#e1c58802115d3e92",
         "baselineSignatureSha256": "e1c58802115d3e921c77c25cec04a2e83b26d4c25940aa7a3ce13a5e334dad3c",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToSpot#ac1adca2a47b6346",
-        "targetSignatureSha256": "ac1adca2a47b63468e7bf3d888048ef75639970f58e2495ba25358b3aa696b0e",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.requestToSpot#87f83143bf43ceed",
+        "targetSignatureSha256": "87f83143bf43ceed8453b00a8117600acd65be7763549e1d0c78cfcfa30818f1",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2235,8 +2211,8 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.sendToSpot#fed98c8705e3e871",
         "baselineSignatureSha256": "fed98c8705e3e8712030d072fbfaa47bf7a31ece77e11440d4f1b575d4683f8c",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.sendToSpot#3eae5a034745b202",
-        "targetSignatureSha256": "3eae5a034745b202d805912255b32fe67068773d74c6d1034e82a2eec59e1bcb",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkRouteClient.sendToSpot#3e2f5635a864a384",
+        "targetSignatureSha256": "3e2f5635a864a3847261bbdc181276dccf1952aca01079310dfb79083031dbc8",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2315,8 +2291,8 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotCommonContext.spotRid#c34da3cbc7d6d188",
         "baselineSignatureSha256": "c34da3cbc7d6d1881d76489a3e22c8c76ebc6ba7797271dd047f24d463067b61",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotCommonContext.spotRid#60a629e93142326f",
-        "targetSignatureSha256": "60a629e93142326f7ff55456b519deb1e84d5f581002575345e86cdef022dcf3",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotCommonContext.spotId#baa8f550bb5259ae",
+        "targetSignatureSha256": "baa8f550bb5259aeed5fdd608d7796e15bdea886cb3143126ff0aec06b6c8217",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2331,8 +2307,8 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotLocationKey.spotRid#c34da3cbc7d6d188",
         "baselineSignatureSha256": "c34da3cbc7d6d1881d76489a3e22c8c76ebc6ba7797271dd047f24d463067b61",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotLocationKey.spotRid#60a629e93142326f",
-        "targetSignatureSha256": "60a629e93142326f7ff55456b519deb1e84d5f581002575345e86cdef022dcf3",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotLocationKey.spotId#baa8f550bb5259ae",
+        "targetSignatureSha256": "baa8f550bb5259aeed5fdd608d7796e15bdea886cb3143126ff0aec06b6c8217",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
@@ -2355,32 +2331,40 @@
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.find#9a633e9ae106ca76",
         "baselineSignatureSha256": "9a633e9ae106ca761844a710d9b01b4b8e6890cb6b551e3c320620de6d01c112",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.find#e32ef02d72dd0c18",
-        "targetSignatureSha256": "e32ef02d72dd0c18fe714f24fa5734a87332e3892129bd51f59db3910a188ecf",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.find#9daca7cd5da8a1d1",
+        "targetSignatureSha256": "9daca7cd5da8a1d18c0b85d2468a399d28f2eda3c5995b50a5f10bd0a78b5af8",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.getOrCreate#248b48c561bc623a",
         "baselineSignatureSha256": "248b48c561bc623a904e9caa6ccb98cb56bdd2e7ac97f3d86b8c191f3ec601b1",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.getOrCreate#2e96603d0afbb855",
-        "targetSignatureSha256": "2e96603d0afbb855ea25c5873764179c40d5ba79c793b71e30cab9f2b1c3e18b",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotManager.getOrCreate#bf3a1dadf86ed179",
+        "targetSignatureSha256": "bf3a1dadf86ed17953bb28252101ac2b881a6c6d2407177cbb8bd73069084c05",
+        "disposition": "v11-first-implementation",
+        "specReason": "V11-SIGNATURE-CHANGE"
+      },
+      {
+        "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.requestToChannel#859bb2b3c7acd09f",
+        "baselineSignatureSha256": "859bb2b3c7acd09fc03f337efa94da4da7bd0cca2d7ef7a0f582d86104afe4c2",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.requestToChannel#1a076508429c920e",
+        "targetSignatureSha256": "1a076508429c920e20fde423b50c0802db6632b1511e6dd60e81ac240d88a5f1",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.requestToSpot#e1c58802115d3e92",
         "baselineSignatureSha256": "e1c58802115d3e921c77c25cec04a2e83b26d4c25940aa7a3ce13a5e334dad3c",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.requestToSpot#ac1adca2a47b6346",
-        "targetSignatureSha256": "ac1adca2a47b63468e7bf3d888048ef75639970f58e2495ba25358b3aa696b0e",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.requestToSpot#87f83143bf43ceed",
+        "targetSignatureSha256": "87f83143bf43ceed8453b00a8117600acd65be7763549e1d0c78cfcfa30818f1",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },
       {
         "baselineIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.sendToSpot#fed98c8705e3e871",
         "baselineSignatureSha256": "fed98c8705e3e8712030d072fbfaa47bf7a31ece77e11440d4f1b575d4683f8c",
-        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.sendToSpot#3eae5a034745b202",
-        "targetSignatureSha256": "3eae5a034745b202d805912255b32fe67068773d74c6d1034e82a2eec59e1bcb",
+        "targetIdentity": "node|@zlink-systems/framework|@zlink-systems/framework::ZLinkSpotOutbound.sendToSpot#3e2f5635a864a384",
+        "targetSignatureSha256": "3e2f5635a864a3847261bbdc181276dccf1952aca01079310dfb79083031dbc8",
         "disposition": "v11-first-implementation",
         "specReason": "V11-SIGNATURE-CHANGE"
       },

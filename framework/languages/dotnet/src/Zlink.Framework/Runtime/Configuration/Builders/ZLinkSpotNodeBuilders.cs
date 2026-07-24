@@ -63,9 +63,7 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
 
     public IZLinkMeshNodeBuilder SetPlacementWeight(int weight)
     {
-        if (weight is < 0 or > 100)
-            throw new ZLinkConfigurationException(
-                "Placement weight must be between 0 and 100.");
+        ZLinkSocketConfig.ValidatePeerWeight(weight);
         registration.PlacementWeight = weight;
         return this;
     }
@@ -157,13 +155,6 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
     }
 
     public IZLinkEntrySpotOptions ConfigureEntrySpot() => registration.EntrySpotOptions;
-
-    public IZLinkMeshNodeBuilder SetEntrySpotRoutingId(RoutingId routingId)
-    {
-        registration.EntrySpotOptions.RoutingId = routingId;
-        registration.HasExplicitEntrySpotRoutingId = true;
-        return this;
-    }
 
     public IZLinkMeshNodeBuilder AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot
@@ -397,14 +388,6 @@ internal sealed class ZLinkMeshNodeBuilder(ZLinkSpotNodeRegistration registratio
         if (placement.MaxPendingActivations is <= 0)
             throw new ZLinkConfigurationException(
                 "MaxPendingActivations must be greater than zero.");
-        foreach (var profile in placement.PlacementProfiles)
-        {
-            if (string.IsNullOrWhiteSpace(profile)
-                || System.Text.Encoding.UTF8.GetByteCount(profile) > 255
-                || profile.Contains('\0'))
-                throw new ZLinkConfigurationException(
-                    "Placement profile names must be 1 to 255 UTF-8 bytes without NUL.");
-        }
     }
 }
 
@@ -487,6 +470,7 @@ internal sealed class ZLinkMeshChannelBuilder(ZLinkMeshChannelMembership members
 {
     public IZLinkMeshChannelBuilder SetWeight(int weight)
     {
+        ZLinkSocketConfig.ValidatePeerWeight(weight);
         membership.Weight = weight;
         return this;
     }

@@ -8,7 +8,7 @@ internal sealed record ZLinkDispatchFailure(
     string? PacketName,
     string? ChannelName = null,
     string? Topic = null,
-    string? SpotRid = null,
+    string? SpotId = null,
     string? ActorId = null,
     string? SourceRid = null,
     string? CorrelationId = null,

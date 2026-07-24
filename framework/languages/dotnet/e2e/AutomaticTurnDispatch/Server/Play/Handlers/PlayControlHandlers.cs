@@ -26,10 +26,13 @@ internal sealed class BindAwaitActorsControlHandler(
         var bindings = new List<AwaitActorBinding>();
         foreach (var actorId in request.ActorIds)
         {
-            var actor = await actors.GetOrCreateAsync(
-                actorId,
-                AutomaticTurnDispatchNames.ActorType,
-                cancellationToken);
+            var actor = (await actors.GetOrCreate(actorId, AutomaticTurnDispatchNames.ActorType)
+                .Async(cancellationToken)) switch
+            {
+                ZLinkActorCreateResult.Existing value => value.Actor,
+                ZLinkActorCreateResult.Created value => value.Actor,
+                _ => throw new InvalidOperationException("Actor creation was rejected.")
+            };
             evidence.Add(
                 $"bind-actor|rid={node.Rid}|spot={request.SpotRid}|actor={actor.ActorId}"
                 + $"|generation={actor.Generation}");

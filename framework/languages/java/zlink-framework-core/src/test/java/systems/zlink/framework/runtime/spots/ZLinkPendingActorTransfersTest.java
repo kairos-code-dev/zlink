@@ -79,7 +79,7 @@ final class ZLinkPendingActorTransfersTest {
             RoutingId.from("source-node"),
             7,
             RoutingId.from("source-entry-node"),
-            RoutingId.from("source-entry"),
+            "source-entry",
             "source-entry-router",
             null,
             null,

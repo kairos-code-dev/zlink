@@ -40,7 +40,7 @@ internal sealed class ZLinkSpotOutboundTransport(
     /// surface as framework exceptions.</summary>
     public bool TrySendToSpotOnce(
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -48,23 +48,23 @@ internal sealed class ZLinkSpotOutboundTransport(
     {
         ObserveSpotAuthority(
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             authorityOwnerGeneration);
         return ZLinkSubmitFailureMapper.AcceptOrThrow(
             nativeSpot.SendToSpot(
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 targetSpotGeneration,
                 parts,
                 SendFlags.DontWait,
                 metadata),
-            $"SPOT '{targetSpotRid}' on node '{targetNodeRid}'");
+            $"SPOT '{targetSpotId}' on node '{targetNodeRid}'");
     }
 
     public ValueTask<ZLinkSubmitResult> SendToSpotAsync(
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -73,7 +73,7 @@ internal sealed class ZLinkSpotOutboundTransport(
     {
         ObserveSpotAuthority(
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             authorityOwnerGeneration);
         return _submitter.SubmitAsync(
@@ -81,18 +81,18 @@ internal sealed class ZLinkSpotOutboundTransport(
             pending => ZLinkSubmitFailureMapper.AcceptOrThrow(
                 nativeSpot.SendToSpot(
                     targetNodeRid,
-                    targetSpotRid,
+                    targetSpotId,
                     targetSpotGeneration,
                     pending,
                     SendFlags.DontWait,
                     metadata),
-                $"SPOT '{targetSpotRid}' on node '{targetNodeRid}'"),
+                $"SPOT '{targetSpotId}' on node '{targetNodeRid}'"),
             cancellationToken);
     }
 
     private void ObserveSpotAuthority(
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration)
     {
@@ -103,7 +103,7 @@ internal sealed class ZLinkSpotOutboundTransport(
                 "The Spot backend does not support authority fencing.");
         observer.ObserveSpotAuthority(
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             authorityOwnerGeneration);
     }
@@ -169,7 +169,7 @@ internal sealed class ZLinkSpotOutboundTransport(
 
     public ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -179,14 +179,14 @@ internal sealed class ZLinkSpotOutboundTransport(
     {
         ObserveSpotAuthority(
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             authorityOwnerGeneration);
         return _submitter.SubmitRequestAsync<IReadOnlyList<Message>>(
             parts,
             (pending, complete, fail) => nativeSpot.RequestToSpot(
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 targetSpotGeneration,
                 pending,
                 (result, reply) =>
@@ -199,7 +199,7 @@ internal sealed class ZLinkSpotOutboundTransport(
 
                     fail(ZLinkRequestFailureMapper.CreateCompletionException(
                         result,
-                        $"SPOT request to '{targetSpotRid}' on node '{targetNodeRid}' failed with result '{result}'."));
+                        $"SPOT request to '{targetSpotId}' on node '{targetNodeRid}' failed with result '{result}'."));
                     ZLinkMessageParts.DisposeAll(reply);
                 },
                 SendFlags.None,

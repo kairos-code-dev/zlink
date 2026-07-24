@@ -199,7 +199,7 @@ bool actor_transfer_coordinator_t::try_add_admission (std::string transfer_id,
 std::optional<pending_actor_admission_t>
 actor_transfer_coordinator_t::begin_commit (const std::string &transfer_id,
                                             const actor_ref_t &source_actor,
-                                            const spot_rid_t &target_spot_rid)
+                                            const spot_id_t &target_spot_id)
 {
     std::lock_guard lock (_mutex);
     const auto found = _admissions.find (transfer_id);
@@ -215,7 +215,7 @@ actor_transfer_coordinator_t::begin_commit (const std::string &transfer_id,
         || found->second.source_actor.actor_type () != source_actor.actor_type ()
         || found->second.source_actor.generation () != source_actor.generation ()
         || found->second.source_actor.node_rid ().value () != source_actor.node_rid ().value ()
-        || found->second.target_spot_rid.value () != target_spot_rid.value ()) {
+        || found->second.target_spot_id != target_spot_id) {
         return std::nullopt;
     }
     auto moving = _moves.find (found->second.actor_key);
@@ -230,7 +230,7 @@ actor_transfer_coordinator_t::begin_commit (const std::string &transfer_id,
 std::optional<pending_actor_admission_t>
 actor_transfer_coordinator_t::pending_commit (const std::string &transfer_id,
                                               const actor_ref_t &source_actor,
-                                              const spot_rid_t &target_spot_rid) const
+                                              const spot_id_t &target_spot_id) const
 {
     std::lock_guard lock (_mutex);
     const auto found = _admissions.find (transfer_id);
@@ -244,7 +244,7 @@ actor_transfer_coordinator_t::pending_commit (const std::string &transfer_id,
         || found->second.source_actor.actor_type () != source_actor.actor_type ()
         || found->second.source_actor.generation () != source_actor.generation ()
         || found->second.source_actor.node_rid ().value () != source_actor.node_rid ().value ()
-        || found->second.target_spot_rid.value () != target_spot_rid.value ()) {
+        || found->second.target_spot_id != target_spot_id) {
         return std::nullopt;
     }
     return found->second;

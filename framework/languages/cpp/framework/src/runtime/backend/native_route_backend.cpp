@@ -166,7 +166,7 @@ native_route_backend_t::native_route_backend_t (zlink::router_socket_t &router,
 
 result_t<void>
 native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
-                                     const std::optional<zlink::routing_id_t> &target_spot_rid,
+                                     const std::optional<std::string> &target_spot_id,
                                      const runtime::messaging::message_parts_t &parts)
 {
     if (_router == nullptr) {
@@ -179,7 +179,7 @@ native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
                                         "native route send requires at least one message part");
     }
     try {
-        if (target_spot_rid) {
+        if (target_spot_id) {
             return result_t<void>::failure (
               framework_error_kind_t::spot_route_not_found,
               "legacy RouteChannel Spot bridge is unavailable; "
@@ -217,7 +217,7 @@ native_route_backend_t::submit_send (const zlink::routing_id_t &target_node_rid,
 
 result_t<runtime::messaging::message_parts_t>
 native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_rid,
-                                        const std::optional<zlink::routing_id_t> &target_spot_rid,
+                                        const std::optional<std::string> &target_spot_id,
                                         const runtime::messaging::message_parts_t &parts,
                                         std::chrono::milliseconds timeout)
 {
@@ -233,7 +233,7 @@ native_route_backend_t::submit_request (const zlink::routing_id_t &target_node_r
           "native route request requires at least one message part");
     }
     try {
-        if (target_spot_rid) {
+        if (target_spot_id) {
             return result_t<runtime::messaging::message_parts_t>::failure (
               framework_error_kind_t::spot_route_not_found,
               "legacy RouteChannel Spot bridge is unavailable; "

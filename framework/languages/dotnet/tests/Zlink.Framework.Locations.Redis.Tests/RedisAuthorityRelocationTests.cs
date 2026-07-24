@@ -92,9 +92,10 @@ public sealed class RedisAuthorityRelocationTests(
             new ZLinkMeshNodeDescriptorKey(
                 "game",
                 RoutingId.From(ownerId)));
-        var nodeBucket = ZLinkRedisLocationKeys.HybridCapacityNodeBucket(
+        var nodeBucket = ZLinkRedisLocationKeys.HybridCapacityPopulationBucket(
             descriptorKey,
-            1);
+            1,
+            ZLinkPlacementObjectKind.Actor);
         var typeBucket = ZLinkRedisLocationKeys.HybridCapacityTypeBucket(
             descriptorKey,
             1,
@@ -111,8 +112,8 @@ public sealed class RedisAuthorityRelocationTests(
 
         var schema = await fixture.HashGetAllAsync(
             keys.HybridSchemaKey().ToString());
-        Assert.Equal("location-authority-hybrid-v1", schema["format"]);
-        Assert.Equal("1", schema["epoch"]);
+        Assert.Equal("location-authority-hybrid-v3", schema["format"]);
+        Assert.Equal("3", schema["epoch"]);
     }
 
     [Fact]
@@ -127,6 +128,52 @@ public sealed class RedisAuthorityRelocationTests(
         Assert.DoesNotContain(
             typeof(IZLinkRelocationStore),
             typeof(ZLinkRedisLocationStore).GetInterfaces());
+    }
+
+    [SkippableFact]
+    public async Task Rejected_Creation_Is_Replayed_Only_For_The_Same_Operation()
+    {
+        Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
+        await using var store = fixture.CreateStore();
+        const string ownerId = "creation-terminal-owner";
+        await store.RenewOwnerLeaseAsync(
+            ownerId,
+            RoutingId.From("node-a"),
+            TimeSpan.FromMinutes(1));
+        var owner = new ZLinkLocationOwnerToken(ownerId, 1);
+        await PublishDescriptorAsync(store, owner, RoutingId.From(ownerId));
+        var key = new ZLinkAuthorityKey("zla1:a:creation-terminal");
+        var reserved = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(Request(key, owner, "first")));
+        var operation = new ZLinkCreationOperationId(
+            RoutingId.From("node-a"),
+            7,
+            0,
+            1);
+        var envelope = Convert.FromHexString(
+            "010000000d00000000000000000103000000");
+        var terminal = new ZLinkCreationTerminalPublication(
+            operation,
+            envelope,
+            SHA256.HashData(envelope),
+            DateTimeOffset.UtcNow.AddMinutes(5));
+
+        Assert.IsType<ZLinkObjectCreationCompleteResult.Rejected>(
+            await store.CompleteCreationAsync(
+                reserved.Reservation,
+                new ZLinkObjectCreationCompletion.Rejected(terminal)));
+        var replay = Assert.IsType<ZLinkCreationTerminalReadResult.Found>(
+            await store.ReadCreationTerminalAsync(operation));
+        Assert.Equal(
+            ZLinkCreationTerminalState.Rejected,
+            replay.Record.State);
+        Assert.Equal(envelope, replay.Record.TerminalEnvelope.ToArray());
+
+        Assert.IsType<ZLinkCreationTerminalReadResult.Missing>(
+            await store.ReadCreationTerminalAsync(
+                operation with { OperationIdLow = 2 }));
+        Assert.IsType<ZLinkObjectReserveResult.Reserved>(
+            await store.ReserveAsync(Request(key, owner, "second")));
     }
 
     [SkippableFact]
@@ -270,8 +317,8 @@ public sealed class RedisAuthorityRelocationTests(
         var pending = Assert.Single(
             await store.ListMeshNodesAsync("game"),
             value => value.Rid == rid);
-        Assert.Equal(0, pending.Capacity.Active);
-        Assert.Equal(1, pending.Capacity.Pending);
+        Assert.Equal(0, pending.Capacity.Actors.Active);
+        Assert.Equal(1, pending.Capacity.Actors.Reserved);
 
         Assert.IsType<ZLinkObjectCommitResult.Committed>(
             await store.CommitAsync(
@@ -280,8 +327,8 @@ public sealed class RedisAuthorityRelocationTests(
         var active = Assert.Single(
             await store.ListMeshNodesAsync("game"),
             value => value.Rid == rid);
-        Assert.Equal(1, active.Capacity.Active);
-        Assert.Equal(0, active.Capacity.Pending);
+        Assert.Equal(1, active.Capacity.Actors.Active);
+        Assert.Equal(0, active.Capacity.Actors.Reserved);
     }
 
     [SkippableFact]
@@ -541,7 +588,7 @@ public sealed class RedisAuthorityRelocationTests(
     }
 
     [SkippableFact]
-    public async Task Creation_Admission_Rejects_Profile_And_Capacity_Overflow()
+    public async Task Creation_Admission_Rejects_Stable_Type_And_Capacity_Overflow()
     {
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
         await using var store = fixture.CreateStore();
@@ -559,10 +606,7 @@ public sealed class RedisAuthorityRelocationTests(
                     rid,
                     lifecycleGeneration: 1,
                     activeLimit: 1,
-                    pendingLimit: 1,
-                    placementProfiles: new HashSet<string>(
-                        ["premium"],
-                        StringComparer.Ordinal)),
+                    pendingLimit: 1),
                 ZLinkLocationWriteIntent.NewClaim)).Status);
 
         Assert.IsType<ZLinkObjectReserveResult.Conflict>(
@@ -571,21 +615,19 @@ public sealed class RedisAuthorityRelocationTests(
                     new ZLinkAuthorityKey("zla1:a:wrong-profile"),
                     owner,
                     "wrong-profile",
-                    placementProfile: "standard")));
+                    stableType: "Other.Actor")));
         var first = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
             await store.ReserveAsync(
                 Request(
                     new ZLinkAuthorityKey("zla1:a:bounded-first"),
                     owner,
-                    "bounded-first",
-                    placementProfile: "premium")));
+                    "bounded-first")));
         Assert.IsType<ZLinkObjectReserveResult.PlacementCapacityExhausted>(
             await store.ReserveAsync(
                 Request(
                     new ZLinkAuthorityKey("zla1:a:pending-overflow"),
                     owner,
-                    "pending-overflow",
-                    placementProfile: "premium")));
+                    "pending-overflow")));
         Assert.IsType<ZLinkObjectCommitResult.Committed>(
             await store.CommitAsync(first.Reservation, "ready"u8.ToArray()));
         Assert.IsType<ZLinkObjectReserveResult.PlacementCapacityExhausted>(
@@ -593,8 +635,7 @@ public sealed class RedisAuthorityRelocationTests(
                 Request(
                     new ZLinkAuthorityKey("zla1:a:active-overflow"),
                     owner,
-                    "active-overflow",
-                    placementProfile: "premium")));
+                    "active-overflow")));
     }
 
     [SkippableFact]
@@ -672,13 +713,11 @@ public sealed class RedisAuthorityRelocationTests(
         ZLinkAuthorityKey key,
         ZLinkLocationOwnerToken owner,
         string identity,
-        string? placementProfile = null) =>
+        string stableType = "Game.Actor") =>
         new(
             ZLinkPlacementObjectKind.Actor,
             key,
-            "Game.Actor",
-            placementProfile,
-            null,
+            stableType,
             InlineReference(System.Text.Encoding.UTF8.GetBytes(identity)),
             SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(identity)),
             identity.Length,
@@ -755,8 +794,7 @@ public sealed class RedisAuthorityRelocationTests(
         ulong lifecycleGeneration,
         string stableType = "Game.Actor",
         int? activeLimit = null,
-        int? pendingLimit = null,
-        IReadOnlySet<string>? placementProfiles = null) =>
+        int? pendingLimit = null) =>
         new(
             "game",
             rid,
@@ -770,6 +808,8 @@ public sealed class RedisAuthorityRelocationTests(
             DateTimeOffset.UnixEpoch)
         {
             ObjectRole = ZLinkMeshNodeObjectRole.Server,
+            EntrySpotId =
+                "game-entry-00000000-0000-4000-8000-000000000001",
             ObjectCapabilities =
             [
                 new ZLinkObjectCapability(
@@ -777,17 +817,16 @@ public sealed class RedisAuthorityRelocationTests(
                     stableType,
                     ZLinkObjectMaintenancePolicyKind.Recreate,
                     HasSnapshotAdapter: false,
-                    placementProfiles
-                    ?? new HashSet<string>(StringComparer.Ordinal),
-                    activeLimit,
-                    pendingLimit)
+                    Limit: 0)
             ],
             State = ZLinkFrameworkRuntimeState.Serving,
             Capacity = new(
-                0,
-                0,
-                activeLimit ?? 10_000,
-                pendingLimit ?? 128)
+                new ZLinkPopulationCapacity(
+                    0,
+                    0,
+                    activeLimit ?? 10_000),
+                new ZLinkPopulationCapacity(0, 0, 0),
+                Array.Empty<ZLinkSpotTypeCapacity>())
         };
 
     private static ZLinkRelocationCapacityReservationRequest RelocationRequest(

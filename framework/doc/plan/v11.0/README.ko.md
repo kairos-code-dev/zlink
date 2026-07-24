@@ -32,14 +32,14 @@ machine inventory가 소유하고, 현재 구현과의 차이, review finding, t
 6. M5 foundation 뒤 global identity와 remote placement contract amendment를 정식 공통·server spec, 다섯 언어
    exact interface와 protocol/schema에 먼저 반영한다. 변경될 E2E·sample·registration과 유지할 regression을
    impact manifest에 분류하고 review한다.
-7. Review가 끝나면 두 임시 변경 제안의 채택 내용을 정식 문서에 모두 흡수했는지 확인하고 제안 문서를
+7. Review가 끝나면 임시 변경 제안의 채택 내용을 정식 문서에 모두 흡수했는지 확인하고 제안 문서를
    삭제한다. 이후 작업은 정식 spec·internals, exact interface, protocol/schema, impact manifest와 execution
    ledger만 참조한다.
 8. E2E·sample source와 registration은 유지한 채 실행 graph에서만 격리하고 C++·.NET·JVM·Node.js runtime을
    같은 계약 snapshot에서 병렬 구현한다. Java와 Kotlin은 JVM runtime과 build 파일을 공유한다. 이 구간은
    internal unit·contract·resource·protocol regression만 실행한다.
 9. 네 runtime과 production placeholder 제거가 끝나면 공통 E2E와 sample spec을 최종 확정한다. Codex
-   `ultra`와 Claude Sonnet이 같은 candidate를 독립 review하고 assertion·coverage·다섯 언어 parity를 승인한
+   Codex 5.6 sol `xhigh`와 Claude Sonnet이 같은 candidate를 독립 review하고 assertion·coverage·다섯 언어 parity를 승인한
    뒤에만 E2E source와 registration을 변경한다.
 10. E2E는 topology, stateful object, maintenance, race·`4 x 4` 순서로 활성화하고 전체 E2E 통과 뒤 sample을
    실행한다.

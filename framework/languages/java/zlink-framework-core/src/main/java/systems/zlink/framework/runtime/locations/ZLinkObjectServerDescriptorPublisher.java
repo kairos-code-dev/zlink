@@ -123,7 +123,19 @@ public final class ZLinkObjectServerDescriptorPublisher {
             capabilities,
             ZLinkMeshNodeObjectRole.SERVER,
             state == ZLinkFrameworkRuntimeState.SERVING ? 100 : 0,
-            new ZLinkPlacementCapacity(0, 0, 10_000, 128),
+            new ZLinkPlacementCapacity(
+                new ZLinkCapacityUsage(0, 0, 0),
+                new ZLinkCapacityUsage(0, 0, 0),
+                capabilities.stream()
+                    .filter(capability ->
+                        capability.objectKind()
+                            != ZLinkPlacementObjectKind.ACTOR)
+                    .map(capability -> new ZLinkSpotTypeCapacity(
+                        capability.objectKind(),
+                        capability.stableType(),
+                        new ZLinkCapacityUsage(
+                            0, 0, capability.spotLimit())))
+                    .toList()),
             Optional.empty(),
             state,
             node.status().routingId().toString(),
@@ -146,9 +158,10 @@ public final class ZLinkObjectServerDescriptorPublisher {
                     ? ZLinkObjectMaintenancePolicyKind.RECREATE
                     : ZLinkObjectMaintenancePolicyKind.DISABLED,
             policy instanceof ZLinkRelocationPolicy.Snapshot<?>,
-            placement.placementProfiles(),
-            placement.maxActiveObjects(),
-            placement.maxPendingActivations());
+            kind == ZLinkPlacementObjectKind.ACTOR
+                || placement.maxActiveObjects() == null
+                ? 0
+                : placement.maxActiveObjects());
     }
 
     private static CompletionStage<Void> all(

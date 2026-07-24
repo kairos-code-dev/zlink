@@ -15,7 +15,7 @@ internal static class ZLinkRemoteActorJoinPackets
         string actorType,
         string handoffId,
         DateTimeOffset deadline,
-        RoutingId sourceSpotRid,
+        string sourceSpotId,
         RoutingId sourceNodeRid,
         ZLinkMessage request,
         ZLinkCodecRegistryBuilder codecs)
@@ -24,7 +24,7 @@ internal static class ZLinkRemoteActorJoinPackets
         var payload = new ZLinkRemoteActorAdmissionRequest(
             actorId,
             actorType,
-            sourceSpotRid.ToBytes().ToArray(),
+            ZLinkSpotId.Require(sourceSpotId, nameof(sourceSpotId)),
             sourceNodeRid.ToBytes().ToArray(),
             encodedRequest.ContentType,
             encodedRequest.Payload.ToArray(),
@@ -43,7 +43,7 @@ internal static class ZLinkRemoteActorJoinPackets
         string actorId,
         string actorType,
         string handoffId,
-        RoutingId sourceSpotRid,
+        string sourceSpotId,
         RoutingId sourceNodeRid,
         RoutingId? boundSessionNodeRid,
         RoutingId boundSessionRid,
@@ -65,7 +65,7 @@ internal static class ZLinkRemoteActorJoinPackets
             encodedRequest.ContentType,
             encodedRequest.Payload.ToArray(),
             handoffFrames,
-            sourceSpotRid.ToBytes().ToArray(),
+            ZLinkSpotId.Require(sourceSpotId, nameof(sourceSpotId)),
             sourceNodeRid.ToBytes().ToArray());
 
         return ZLinkEnvelopeCodec.EncodeParts(
@@ -87,9 +87,9 @@ internal static class ZLinkRemoteActorJoinPackets
         ZLinkEnvelopeHeader header,
         string actorId,
         string handoffId,
-        RoutingId sourceSpotRid,
+        string sourceSpotId,
         RoutingId sourceNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         IReadOnlyList<ZLinkActorHandoffFrame> frames)
     {
         return ZLinkEnvelopeCodec.EncodeParts(
@@ -97,9 +97,9 @@ internal static class ZLinkRemoteActorJoinPackets
             new ZLinkRemoteActorHandoffCompletionRequest(
                 actorId,
                 handoffId,
-                sourceSpotRid.ToBytes().ToArray(),
+                ZLinkSpotId.Require(sourceSpotId, nameof(sourceSpotId)),
                 sourceNodeRid.ToBytes().ToArray(),
-                targetSpotRid.ToBytes().ToArray(),
+                ZLinkSpotId.Require(targetSpotId, nameof(targetSpotId)),
                 frames),
             typeof(ZLinkRemoteActorHandoffCompletionRequest),
             null);
@@ -224,24 +224,24 @@ internal static class ZLinkRemoteActorJoinPackets
     public static ZLinkRemoteActorJoinReply DecodeJoinReplyAndDispose(
         IReadOnlyList<Message> parts,
         string actorId,
-        RoutingId targetSpotRid)
+        string targetSpotId)
     {
         return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorJoinReply>(
             parts,
             "Remote actor join reply was empty.",
-            $"Remote actor join failed for '{actorId}' to SPOT '{targetSpotRid}'.",
+            $"Remote actor join failed for '{actorId}' to SPOT '{targetSpotId}'.",
             null);
     }
 
     public static ZLinkRemoteActorAdmissionReply DecodeAdmissionReplyAndDispose(
         IReadOnlyList<Message> parts,
         string actorId,
-        RoutingId targetSpotRid)
+        string targetSpotId)
     {
         return ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<ZLinkRemoteActorAdmissionReply>(
             parts,
             "Remote actor admission reply was empty.",
-            $"Remote actor admission failed for '{actorId}' to SPOT '{targetSpotRid}'.",
+            $"Remote actor admission failed for '{actorId}' to SPOT '{targetSpotId}'.",
             null);
     }
 
@@ -277,7 +277,7 @@ internal readonly record struct ZLinkRemoteActorBoundSessionRoute(
 internal sealed record ZLinkRemoteActorAdmissionRequest(
     string ActorId,
     string ActorType,
-    byte[] SourceSpotRid,
+    string SourceSpotId,
     byte[] SourceNodeRid,
     string RequestContentType,
     byte[] Request,
@@ -301,7 +301,7 @@ internal sealed record ZLinkRemoteActorJoinRequest(
     string RequestContentType,
     byte[] Request,
     IReadOnlyList<ZLinkActorHandoffFrame> HandoffFrames,
-    byte[] SourceSpotRid,
+    string SourceSpotId,
     byte[] SourceNodeRid);
 
 internal sealed record ZLinkRemoteActorJoinReply(
@@ -313,7 +313,7 @@ internal sealed record ZLinkRemoteActorJoinReply(
 internal sealed record ZLinkRemoteActorHandoffCompletionRequest(
     string ActorId,
     string HandoffId,
-    byte[] SourceSpotRid,
+    string SourceSpotId,
     byte[] SourceNodeRid,
-    byte[] TargetSpotRid,
+    string TargetSpotId,
     IReadOnlyList<ZLinkActorHandoffFrame> Frames);

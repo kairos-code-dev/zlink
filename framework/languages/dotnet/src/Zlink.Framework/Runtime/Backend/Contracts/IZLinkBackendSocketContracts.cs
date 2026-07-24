@@ -119,13 +119,13 @@ internal interface IZLinkBackendRouterSocket : IZLinkBackendConnectableSocket, I
 
     bool SendToSpot(
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         IReadOnlyList<Message> parts,
         SendFlags flags);
 
     bool RequestToSpot(
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,

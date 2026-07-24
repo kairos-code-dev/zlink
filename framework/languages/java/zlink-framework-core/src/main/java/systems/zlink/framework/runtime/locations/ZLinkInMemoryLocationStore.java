@@ -18,6 +18,7 @@ import systems.zlink.framework.errors.ZLinkConfigurationException;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkActorLocationFilter;
 import systems.zlink.framework.locations.ZLinkActorLocationKey;
+import systems.zlink.framework.locations.ZLinkCapacityUsage;
 import systems.zlink.framework.locations.ZLinkFanoutLocationStore;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
@@ -36,6 +37,8 @@ import systems.zlink.framework.locations.ZLinkOwnerLease;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseRenewal;
 import systems.zlink.framework.locations.ZLinkOwnerLeaseSnapshot;
 import systems.zlink.framework.locations.ZLinkPageRequest;
+import systems.zlink.framework.locations.ZLinkPlacementCapacity;
+import systems.zlink.framework.locations.ZLinkPlacementObjectKind;
 import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkPeerLocationFilter;
 import systems.zlink.framework.locations.ZLinkPeerLocationKey;
@@ -55,6 +58,7 @@ import systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocationFilter;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
+import systems.zlink.framework.locations.ZLinkSpotTypeCapacity;
 
 public final class ZLinkInMemoryLocationStore implements
     ZLinkLocationStore,
@@ -132,10 +136,47 @@ public final class ZLinkInMemoryLocationStore implements
     }
 
     @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkObjectCommitResult> commit(
+        systems.zlink.framework.locations.ZLinkObjectReservation reservation,
+        byte[] readyPayload,
+        systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+        systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+        return authority.commit(
+            reservation,
+            readyPayload,
+            terminal,
+            cancellation);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkObjectRejectResult> reject(
+        systems.zlink.framework.locations.ZLinkObjectReservation reservation,
+        systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+        systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+        return authority.reject(reservation, terminal, cancellation);
+    }
+
+    @Override
     public CompletionStage<systems.zlink.framework.locations.ZLinkObjectAbortResult> abort(
         systems.zlink.framework.locations.ZLinkObjectReservation reservation,
         systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
         return authority.abort(reservation, cancellation);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkObjectAbortResult> abort(
+        systems.zlink.framework.locations.ZLinkObjectReservation reservation,
+        systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+        systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+        return authority.abort(reservation, terminal, cancellation);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkCreationTerminalReadResult>
+        readCreationTerminal(
+            systems.zlink.framework.locations.ZLinkCreationOperationIdentity operation,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+        return authority.readCreationTerminal(operation, cancellation);
     }
 
     @Override
@@ -446,7 +487,7 @@ public final class ZLinkInMemoryLocationStore implements
         ZLinkLocationWriteIntent intent) {
         return completed(write(
             spots,
-            ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spot.meshName(), spot.spotRid())),
+            ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spot.spotId())),
             spot,
             intent,
             spot.ownerId(),
@@ -454,7 +495,7 @@ public final class ZLinkInMemoryLocationStore implements
             ZLinkSpotLocation::ownerId,
             ZLinkSpotLocation::generation,
             (row, generation, now) -> new ZLinkSpotLocation(
-                row.meshName(), row.spotRid(), row.spotGeneration(), row.spotType(),
+                row.meshName(), row.spotId(), row.spotGeneration(), row.spotType(),
                 row.nodeRid(), row.spotKind(),
                 row.routeEndpoint(), row.ownerId(), generation, now),
             ZLinkLocationKind.SPOT,
@@ -465,14 +506,20 @@ public final class ZLinkInMemoryLocationStore implements
     public CompletionStage<ZLinkLocationWriteResult> removeSpot(
         ZLinkSpotLocationKey key,
         ZLinkLocationOwnerToken owner) {
-        return completed(remove(
-            spots,
-            ZLinkLocationKeyCodec.encodeSpotKey(key),
-            owner,
-            ZLinkSpotLocation::ownerId,
-            ZLinkSpotLocation::generation,
-            ZLinkLocationKind.SPOT,
-            key.meshName()));
+        synchronized (gate) {
+            String encoded = ZLinkLocationKeyCodec.encodeSpotKey(key);
+            ZLinkSpotLocation current = spots.rows.get(encoded);
+            if (current == null
+                || !Objects.equals(current.ownerId(), owner.ownerId())
+                || current.generation() != owner.leaseGeneration()) {
+                return completed(ZLinkLocationWriteResult.ignoredStale());
+            }
+            spots.rows.remove(encoded);
+            bump(ZLinkLocationKind.SPOT, current.meshName());
+            return completed(ZLinkLocationWriteResult.stored(
+                owner.leaseGeneration(),
+                clock.instant()));
+        }
     }
 
     @Override
@@ -506,7 +553,7 @@ public final class ZLinkInMemoryLocationStore implements
             ZLinkActorLocation::generation,
             (row, generation, now) -> new ZLinkActorLocation(
                 row.actorId(), row.actorType(), row.actorRef(), row.nodeRid(), row.locationKind(),
-                row.spotMeshName(), row.spotRid(), row.ownerId(), generation, now),
+                row.spotMeshName(), row.spotId(), row.ownerId(), generation, now),
             ZLinkLocationKind.ACTOR,
             null));
     }
@@ -1090,16 +1137,31 @@ public final class ZLinkInMemoryLocationStore implements
 
     private ZLinkMeshNodeDescriptor projectCapacity(
         ZLinkMeshNodeDescriptor descriptor) {
-        long active = authority.activeCapacity(
-            new ZLinkMeshNodeDescriptorKey(
-                descriptor.meshName(),
-                descriptor.rid()),
-            descriptor.lifecycleGeneration());
-        long pending = authority.pendingCapacity(
-            new ZLinkMeshNodeDescriptorKey(
-                descriptor.meshName(),
-                descriptor.rid()),
-            descriptor.lifecycleGeneration());
+        var key = new ZLinkMeshNodeDescriptorKey(
+            descriptor.meshName(), descriptor.rid());
+        long[] actors = authority.kindCapacity(
+            key, descriptor.lifecycleGeneration(), true);
+        long[] spots = authority.kindCapacity(
+            key, descriptor.lifecycleGeneration(), false);
+        var spotTypes = descriptor.objectCapabilities().stream()
+            .filter(capability ->
+                capability.objectKind()
+                    != ZLinkPlacementObjectKind.ACTOR)
+            .map(capability -> {
+                long[] usage = authority.typeCapacity(
+                    key,
+                    descriptor.lifecycleGeneration(),
+                    capability.objectKind(),
+                    capability.stableType());
+                return new ZLinkSpotTypeCapacity(
+                    capability.objectKind(),
+                    capability.stableType(),
+                    new ZLinkCapacityUsage(
+                        Math.toIntExact(usage[0]),
+                        Math.toIntExact(usage[1]),
+                        capability.spotLimit()));
+            })
+            .toList();
         return new ZLinkMeshNodeDescriptor(
             descriptor.meshName(),
             descriptor.rid(),
@@ -1111,11 +1173,16 @@ public final class ZLinkInMemoryLocationStore implements
             descriptor.objectCapabilities(),
             descriptor.objectRole(),
             descriptor.placementWeight(),
-            new systems.zlink.framework.locations.ZLinkPlacementCapacity(
-                Math.toIntExact(active),
-                Math.toIntExact(pending),
-                descriptor.capacity().activeLimit(),
-                descriptor.capacity().pendingLimit()),
+            new ZLinkPlacementCapacity(
+                new ZLinkCapacityUsage(
+                    Math.toIntExact(actors[0]),
+                    Math.toIntExact(actors[1]),
+                    descriptor.capacity().actors().limit()),
+                new ZLinkCapacityUsage(
+                    Math.toIntExact(spots[0]),
+                    Math.toIntExact(spots[1]),
+                    descriptor.capacity().spots().limit()),
+                spotTypes),
             descriptor.maintenanceWave(),
             descriptor.state(),
             descriptor.securityIdentity(),
@@ -1140,10 +1207,10 @@ public final class ZLinkInMemoryLocationStore implements
                 current.objectCapabilities(),
                 candidate.objectCapabilities())
             && current.objectRole() == candidate.objectRole()
-            && current.capacity().activeLimit()
-                == candidate.capacity().activeLimit()
-            && current.capacity().pendingLimit()
-                == candidate.capacity().pendingLimit()
+            && current.capacity().actors().limit()
+                == candidate.capacity().actors().limit()
+            && current.capacity().spots().limit()
+                == candidate.capacity().spots().limit()
             && current.securityIdentity().equals(
                 candidate.securityIdentity())
             && current.ownerId().equals(candidate.ownerId())
@@ -1165,14 +1232,7 @@ public final class ZLinkInMemoryLocationStore implements
                 || left.policy() != right.policy()
                 || left.hasSnapshotAdapter()
                     != right.hasSnapshotAdapter()
-                || !left.placementProfiles().equals(
-                    right.placementProfiles())
-                || !Objects.equals(
-                    left.activeLimit(),
-                    right.activeLimit())
-                || !Objects.equals(
-                    left.pendingLimit(),
-                    right.pendingLimit())) {
+                || left.spotLimit() != right.spotLimit()) {
                 return false;
             }
         }
@@ -1239,7 +1299,7 @@ public final class ZLinkInMemoryLocationStore implements
         ZLinkActorLocationFilter safeFilter = filter == null ? ZLinkActorLocationFilter.all() : filter;
         return (safeFilter.actorType() == null || Objects.equals(row.actorType(), safeFilter.actorType()))
             && (safeFilter.nodeRid() == null || Objects.equals(row.nodeRid(), safeFilter.nodeRid()))
-            && (safeFilter.spotRid() == null || Objects.equals(row.spotRid(), safeFilter.spotRid()))
+            && (safeFilter.spotId() == null || Objects.equals(row.spotId(), safeFilter.spotId()))
             && (safeFilter.locationKind() == null || row.locationKind() == safeFilter.locationKind());
     }
 

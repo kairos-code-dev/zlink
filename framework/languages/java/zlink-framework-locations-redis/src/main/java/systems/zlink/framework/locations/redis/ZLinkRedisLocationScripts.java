@@ -144,8 +144,8 @@ final class ZLinkRedisLocationScripts {
             'runtimeState', ARGV[11],
             'applicationVersion', ARGV[12],
             'capabilities', ARGV[14],
-            'nodeActiveLimit', ARGV[15],
-            'nodePendingLimit', ARGV[16],
+            'actorLimit', ARGV[15],
+            'spotLimit', ARGV[16],
             'immutableDigest', ARGV[6])
         redis.call('SADD', KEYS[2], ARGV[8])
         redis.call('SADD', KEYS[5], ARGV[8])

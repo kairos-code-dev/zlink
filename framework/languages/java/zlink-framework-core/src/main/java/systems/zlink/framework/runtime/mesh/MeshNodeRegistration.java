@@ -59,6 +59,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     private String bindEndpoint;
     private RoutingId routingId;
     private RoutingId entrySpotRoutingId;
+    private int placementWeight = 100;
     private Integer allocationSlotCount;
     private String allocationPrefix;
     private String allocationGroup;
@@ -78,6 +79,10 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
 
     public RoutingId routingId() {
         return routingId;
+    }
+
+    public int placementWeight() {
+        return placementWeight;
     }
 
     public Integer allocationSlotCount() {
@@ -236,6 +241,16 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
     @Override
     public ZLinkMeshNodeBuilder setRoutingId(RoutingId value) {
         routingId = Objects.requireNonNull(value, "routingId");
+        return this;
+    }
+
+    @Override
+    public ZLinkMeshNodeBuilder setPlacementWeight(int value) {
+        if (value < 0 || value > 10_000) {
+            throw new ZLinkConfigurationException(
+                "placement weight must be in range 0..10000");
+        }
+        placementWeight = value;
         return this;
     }
 
@@ -532,14 +547,6 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         ZLinkObjectPlacementOptions placement) {
         ZLinkObjectPlacementOptions value =
             Objects.requireNonNull(placement, "placement");
-        for (String profile : value.placementProfiles()) {
-            if (profile == null
-                || profile.isBlank()
-                || profile.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 255) {
-                throw new ZLinkConfigurationException(
-                    "placement profile must contain 1..255 UTF-8 bytes");
-            }
-        }
         validateCapacity(value.maxActiveObjects(), "max active objects");
         validateCapacity(
             value.maxPendingActivations(),
@@ -646,7 +653,7 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
         private final String name;
         private final List<String> handlerGroups = new ArrayList<>();
         private final List<DispatchHandler> handlers = new ArrayList<>();
-        private int weight = 1;
+        private int weight = 100;
 
         private Channel(String name) {
             this.name = name;
@@ -654,9 +661,9 @@ public final class MeshNodeRegistration implements ZLinkMeshNodeBuilder {
 
         @Override
         public ZLinkMeshChannelBuilder setWeight(int value) {
-            if (value < 0 || value > 100) {
+            if (value < 0 || value > 10_000) {
                 throw new ZLinkConfigurationException(
-                    "channel weight must be between 0 and 100");
+                    "channel weight must be in 0..10000");
             }
             weight = value;
             return this;

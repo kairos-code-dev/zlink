@@ -290,6 +290,7 @@ public final class ZLinkFrameworkRuntime
                 && !this.meshNodes.nodesByName().isEmpty()
             ? new ZLinkStatefulAuthorityRouteRuntime(
                 this.locationStores.authorityStore(),
+                this.locationStores.watchStore(),
                 this.meshNodes.nodesByName(),
                 this.registration.locations().options()
                     .pollingInterval(),
@@ -312,7 +313,14 @@ public final class ZLinkFrameworkRuntime
             this.spots,
             this.locationLifecycle,
             this.storeLocationResolvers,
-            spotSubsystem.remoteAddressResolver());
+            spotSubsystem.remoteAddressResolver(),
+            this.locationStores != null
+                && this.locationStores.unifiedStore()
+                    instanceof systems.zlink.framework.locations
+                        .ZLinkLocationStore store
+                ? store
+                : null,
+            this.meshNodes.nodesByName());
         this.actors = actorSubsystem.actors();
         this.actorDirectory = actorSubsystem.actorDirectory();
         this.actorClient = actorSubsystem.actorClient();

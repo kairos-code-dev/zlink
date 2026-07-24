@@ -125,7 +125,7 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   }): void {
     this.requireNotStarted();
     this.objectRole = options.role;
-    this.placementWeight = requirePositivePlacementValue(
+    this.placementWeight = requirePublicWeight(
       options.placementWeight,
       'placementWeight'
     );
@@ -140,12 +140,8 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
     this.objectCapabilities = [...new Set(options.objectCapabilities)].sort();
   }
 
-  selectObjectPlacement(stableType: string, placementProfile?: string, affinityKey?: string) {
-    const descriptor = this.requireRuntime().topology.selectObjectPlacement(
-      stableType,
-      placementProfile,
-      affinityKey
-    );
+  selectObjectPlacement(stableType: string) {
+    const descriptor = this.requireRuntime().topology.selectObjectPlacement(stableType);
     return descriptor === undefined
       ? undefined
       : {
@@ -245,8 +241,8 @@ export class ZLinkNodeRawMeshBackend implements ZLinkBackendMeshNode {
   setChannelWeight(name: string, weight: number): void {
     this.requireNotStarted();
     if (!this.channels.has(name)) throw new Error(`Channel '${name}' is not registered.`);
-    if (!Number.isInteger(weight) || weight < 0 || weight > 100) {
-      throw new RangeError('Channel weight must be in the range 0..100.');
+    if (!Number.isInteger(weight) || weight < 0 || weight > 10_000) {
+      throw new RangeError('Channel weight must be an integer in 0..10000.');
     }
     this.channels.set(name, weight);
   }
@@ -1620,6 +1616,13 @@ function stateCode(state: ServiceNodeDescriptor['state']): number {
 function requirePositivePlacementValue(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value <= 0 || value > 0x7fff_ffff) {
     throw new RangeError(`${name} must be an integer in 1..2147483647.`);
+  }
+  return value;
+}
+
+function requirePublicWeight(value: number, name: string): number {
+  if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+    throw new RangeError(`${name} must be an integer in 0..10000.`);
   }
   return value;
 }

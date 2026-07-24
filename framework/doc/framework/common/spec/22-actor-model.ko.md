@@ -1,0 +1,521 @@
+# Actor 모델
+
+[공통 스펙 목차](README.ko.md) · [MeshNode](21-mesh-node.ko.md) ·
+[Spot Actor](23-spot-actor.ko.md) ·
+[Session Actor Dispatch](31-session-actor-dispatch.ko.md)
+
+## 1. 이 문서가 정의하는 범위
+
+이 문서는 ZLink Framework 11.0.0에서 Actor의 identity, 위치, message queue,
+lifecycle과 session binding을 정의한다.
+
+Actor가 Entry Spot, User Spot 또는 remote MeshNode 중 어디에 있더라도 application
+payload는 Actor 자신의 queue에 제출한다. Queue에 들어온 handler를 실행할 gate는
+현재 Spot membership과 User Spot execution mode가 결정한다.
+
+관련 계약의 소유 문서는 다음과 같다.
+
+| 관련 계약 | 정의하는 문서 |
+|---|---|
+| [MeshNode](01-glossary.ko.md#meshnode) route와 peer admission | [MeshNode](21-mesh-node.ko.md) |
+| [Spot](01-glossary.ko.md#spot) [membership](01-glossary.ko.md#membership) transaction과 relocation | [Spot Actor](23-spot-actor.ko.md) |
+| STREAM session 연동 | [Session Actor Dispatch](31-session-actor-dispatch.ko.md) |
+| Payload와 metadata | [메시지 모델](03-message-model.ko.md) |
+| Callback 실행과 completion | [비동기 실행 정책](04-async-execution-policy.ko.md) |
+
+## 2. Actor identity와 서로 독립적인 상태
+
+### 2.1 ActorId와 stable type
+
+Actor는 Location Store namespace 전체에서 유일한 logical `ActorId`로 식별하는
+stateful object다.
+
+`ActorId`는 UTF-8 `1..255` bytes이며 대소문자를 구분하는 exact value다. Framework는
+Unicode normalization이나 case folding을 적용하지 않는다.
+
+`MeshName`은 Actor를 처음 배치할 곳을 선택할 때 사용하는 속성이며 Actor identity에
+포함되지 않는다. 따라서 같은 `ActorId`를 서로 다른 Mesh마다 중복 생성할 수 없다.
+
+Actor type은 UTF-8 `1..255` bytes의 stable name이다. Actor를 생성할 때 이 이름으로
+factory를 선택한다. 언어의 class 이름이나 generic type 이름을 Store 또는 wire의
+identity로 사용하지 않는다. 같은 server에 같은 stable type을 두 번 등록하면
+startup 오류다.
+
+### 2.2 ActorRef
+
+`ActorRef`는 특정 시점의 Actor 위치를 나타내는 변경할 수 없는 snapshot이다.
+
+| `ActorRef` field | 의미 |
+|---|---|
+| `ActorId` | Logical Actor identity다. |
+| `ObjectGeneration` | 같은 ActorId로 다시 만들어진 incarnation을 구분하는 0이 아닌 unsigned 63-bit 값이다. |
+| 현재 `MeshName` | 현재 owner가 속한 Mesh다. |
+| 현재 `NodeRid` | 현재 [owner](01-glossary.ko.md#owner) node의 RID다. |
+
+`ActorRef`는 Actor message의 target으로 사용하는 값이 아니다. Actor가 이동하거나
+다시 만들어지면 이전 `ActorRef`는 stale할 수 있다.
+
+[`ObjectGeneration`](01-glossary.ko.md#objectgeneration)은 JSON에서 decimal string으로 표현한다. 별도의
+`ActorRefSnapshot` public type은 제공하지 않는다.
+
+### 2.3 Spot membership과 STREAM binding
+
+Actor는 다음 두 상태를 서로 독립적으로 관리한다.
+
+| 상태 축 | 가능한 상태 | 이 상태가 나타내는 것 |
+|---|---|---|
+| Spot membership | [Entry Spot](01-glossary.ko.md#entry-user-instance-spot), user Spot, 이동 중 | Actor의 logical 위치와 Spot membership을 나타낸다. |
+| STREAM binding | unbound, bound | 현재 client session으로 push하거나 session payload를 받을 수 있는지를 나타낸다. |
+
+Actor가 user Spot에 존재하기 위해 bound session이 필요하지 않다. Session bind나
+unbind도 Actor의 현재 Spot을 바꾸지 않는다.
+
+한 Actor는 동시에 session 하나에만 bind할 수 있다. 반대로 session 하나에는 여러
+Actor를 bind할 수 있다.
+
+## 3. Actor queue
+
+모든 Actor application payload는 target Actor의 application queue에 직접 제출한다.
+Actor가 Entry Spot이나 user Spot에 있거나 remote MeshNode에 있어도 같은 규칙을
+적용한다.
+
+- 같은 Actor queue가 수락한 payload는 Actor turn에서 순서대로 처리한다.
+- Entry Spot Actor와 `PerActor` User Spot의 Actor는 Actor별 gate를 사용한다. 서로
+  다른 Actor는 독립적으로 실행할 수 있다.
+- `SpotWide` User Spot의 member Actor는 User Spot 공통 execution gate를 사용한다.
+  같은 User Spot의 Actor·Spot handler·timer·lifecycle callback은 전체에서 한 번에
+  하나만 실행한다.
+- `Yield`는 `SpotWide` User Spot의 공통 gate에서 실행 중일 때만 사용할 수 있다.
+  Entry Spot Actor와 `PerActor` User Spot의 Actor에는 제공하지 않는다.
+- `SpotWide` member Actor가 `Yield`해도 현재 Actor queue head에 대한 claim은 유지한다.
+  다른 Actor·Spot handler·timer는 반납된 User Spot gate를 사용할 수 있지만 같은 Actor의
+  다음 payload는 현재 continuation이 끝날 때까지 시작하지 않는다.
+- Actor send/request, [STREAM session](01-glossary.ko.md#stream-session) relay와 Actor 사이의 호출은 모두 같은 Actor
+  queue로 들어간다.
+- Actor payload를 Spot application queue에 넣거나 Spot callback으로 변환하지 않는다.
+
+User Spot execution mode와 `Yield` continuation의 실행 규칙은
+[비동기 실행 정책](04-async-execution-policy.ko.md#11-submit-async와-yield)이
+정의한다.
+
+Actor join call은 `Async`로만 완료하며 `Yield` terminator를 제공하지 않는다. Join은 Actor queue claim을
+반납하는 기능이 아니며 lifecycle commit 순서를 유지한다.
+
+Actor handler는 Actor 자신의 mutable state를 소유한다. Room, stage 또는 zone처럼
+Spot이 소유한 상태를 읽거나 바꾸려면 Actor handler가 명시적인 Spot send/request를
+제출해야 한다. 이 작업은 target Spot turn에서 실행된다.
+
+Framework는 Actor handler에 mutable Spot object를 직접 제공하지 않는다. Actor와
+Spot의 직렬 실행 경계를 우회할 수 없도록 하기 위한 계약이다.
+
+Actor가 Ready가 되었다는 notification, request 완료, relocation 단계 전환과 session
+binding 진행은 Framework가 전용 queue에서 처리한다. Actor의 업무 handler가
+실행되는 queue와 분리되어 있으므로 application handler가 비동기 작업을 기다리는
+동안에도 계속 처리할 수 있어야 한다.
+
+## 4. Spot이 처리하는 Actor control
+
+Spot은 Actor application payload를 처리하지 않는다. [Spot turn](01-glossary.ko.md#spot-turn)에서 처리하는 Actor
+관련 작업은 membership과 lifecycle control뿐이다.
+
+| Control 작업 | Spot에서 처리하는 내용 |
+|---|---|
+| Join | Actor membership을 허용할지 판단하고 Spot이 소유한 membership을 갱신한다. |
+| Leave | Membership을 해제하고 Spot이 소유한 상태를 정리한다. |
+| Relocation prepare·commit·abort | 이동 transaction에 맞춰 Spot이 소유한 상태를 일관되게 변경한다. |
+| Actor lifecycle notification | Actor 생성·종료 뒤 Spot이 소유한 후속 작업을 실행한다. |
+
+Framework는 이 lifecycle 작업을 target Spot의 전용 queue에 넣는다. 같은 Spot의
+다른 callback과 하나씩 실행하므로 두 callback이 Spot 상태를 동시에 바꾸지 않는다.
+
+Actor가 소유한 상태를 바꾸는 lifecycle 작업도 Actor의 전용 queue에서 하나씩
+실행한다. Actor와 Spot 양쪽 상태를 함께 바꾸는 순서와 오래된 owner의 변경을
+거부하는 규칙은 [Spot Actor](23-spot-actor.ko.md)가 정의한다.
+
+## 5. Actor 메시징
+
+Actor send/request의 target은 global `ActorId`다. Framework는 [Ready](01-glossary.ko.md#ready) 상태인 현재
+incarnation과 [authority](01-glossary.ko.md#authority)가 가리키는 owner route를
+positive route cache 또는 [Location Store](01-glossary.ko.md#location-store)에서 찾는다.
+그 뒤 선택한 `ObjectGeneration`과 owner fence를 target admission에 고정한다.
+
+Local Actor와 remote Actor는 handler 실행과 completion에 같은 의미를 사용한다.
+
+Caller는 다음 값을 Actor message target으로 지정하지 않는다.
+
+- `MeshName`
+- `ActorRef`
+- Owner RID
+- 현재 Spot ID
+
+### 5.1 Route cache와 generation
+
+- Missing, Creating과 Store failure 결과는 negative cache에 저장하지 않는다.
+- Ready 상태인 현재 위치를 보관하는 positive cache도 current owner lease의 local
+  admission deadline과 공개 `RouteCacheMaxAge` 안에서만 사용한다.
+- 더 큰 StoreVersion, stale result 또는 Store recovery event를 확인하면 positive
+  cache를 즉시 무효화한다.
+- Resolve 뒤 Actor가 destroy되고 같은 `ActorId`로 다시 만들어져도 진행 중인 이전
+  generation operation을 새 generation으로 보내지 않는다.
+- Request timeout이나 실행 여부를 알 수 없는 실패가 발생해도 Framework가 자동으로
+  재전송하지 않는다.
+- Actor direct messaging은 session binding을 만들거나 바꾸지 않는다.
+
+### 5.2 Handler 선택
+
+Framework는 Actor type, message kind와 packet name으로 handler를 선택한다. 같은
+Actor handler namespace에 같은 key를 두 번 등록하면 startup 오류다.
+
+Handler type과 signature는 언어별 공개 interface 문서가 정의한다.
+
+## 6. Actor lifecycle
+
+### 6.1 Factory와 relocation policy 등록
+
+Object Server는 다음 값을 함께 등록한다.
+
+- Actor [stable type](01-glossary.ko.md#stable-type)
+- [Factory](01-glossary.ko.md#factory)
+- `Disabled`, `Recreate`, `Snapshot` 중 하나의 relocation policy
+
+Relocation policy를 생략하는 overload나 compatibility default는 제공하지 않는다.
+
+`Snapshot` policy를 선택하면 해당 Actor type에 맞는 `ActorRelocationAdapter`를 같은
+등록에서 제공해야 한다. Adapter는 Actor 상태를 application만 해석하는 byte sequence로
+저장하고 복원한다. Framework는 이 byte sequence의 내용을 해석하지 않으며 별도의
+state contract ID도 관리하지 않는다.
+
+다음 .NET 발췌는 factory와 relocation policy를 함께 등록하는 공통 규칙을 이해하기
+위한 예시다. 다른 언어에 같은 signature를 요구하지 않으며, 정확한 .NET 계약은
+[.NET Actor interface](server/languages/dotnet/interfaces/06-actors.ko.md)가
+정의한다.
+
+```csharp
+public interface IZLinkActorRelocationAdapter<TActor>
+    where TActor : class, IZLinkActor
+{
+    ValueTask<byte[]> CaptureAsync(
+        TActor actor,
+        CancellationToken cancellationToken);
+    ValueTask RestoreAsync(
+        TActor actor,
+        ReadOnlyMemory<byte> payload,
+        CancellationToken cancellationToken);
+}
+
+public abstract class ZLinkRelocationPolicy<TInstance>
+    where TInstance : class
+{
+    public static ZLinkRelocationPolicy<TInstance> Disabled { get; }
+    public static ZLinkRelocationPolicy<TInstance> Recreate { get; }
+    public static ZLinkRelocationPolicy<TInstance> Snapshot<TAdapter>()
+        where TAdapter : class;
+}
+```
+
+### 6.2 Create와 GetOrCreate 입력
+
+Actor manager의 `Create`와 `GetOrCreate`는 한 번만 제출할 수 있는 fluent call이다.
+두 call 모두 다음 required 값을 받는다.
+
+- `ActorId`
+- Stable Actor type
+
+다음 값은 선택 사항이다.
+
+- `InMesh`
+- Encoded creation request
+- Timeout
+
+Caller는 target RID, predicate, factory class 또는 placement callback을 지정할 수
+없다.
+
+같은 option을 두 번 설정하면 `InvalidConfiguration`이다. Terminal submit을 두 번
+실행하면 `AlreadySubmitted`다.
+
+Terminal submit을 시작할 때 end-to-end [deadline](01-glossary.ko.md#deadline) 하나를 고정한다. 이 deadline은
+resolve, reservation, factory 실행과 Ready barrier 전체에 적용된다.
+
+다음 .NET 발췌는 fluent call에서 required 값과 optional 값을 나누는 방법을 보여준다.
+
+```csharp
+public abstract record ZLinkActorCreateResult
+{
+    public sealed record Existing(ActorRef Actor)
+        : ZLinkActorCreateResult;
+
+    public sealed record Created(
+        ActorRef Actor,
+        ZLinkMessage? Reply)
+        : ZLinkActorCreateResult;
+
+    public sealed record Rejected(ZLinkMessage? Reply)
+        : ZLinkActorCreateResult;
+}
+
+public interface IZLinkActorManager
+{
+    IZLinkActorCreateCall Create(string actorId, string actorType);
+    IZLinkActorGetOrCreateCall GetOrCreate(string actorId, string actorType);
+    ValueTask<ActorRef?> FindAsync(
+        string actorId,
+        CancellationToken cancellationToken = default);
+    ValueTask<bool> DestroyAsync(
+        ActorRef actor,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorCreateCall
+{
+    // Actor를 처음 생성할 Mesh를 지정한다.
+    // Object role Mesh가 하나면 생략할 수 있고, 둘 이상인데 생략하면 MeshSelectionRequired다.
+    IZLinkActorCreateCall InMesh(string meshName);
+    IZLinkActorCreateCall Request(ZLinkMessage request);
+    IZLinkActorCreateCall Request<TRequest>(TRequest request);
+    IZLinkActorCreateCall Timeout(TimeSpan timeout); // 전체 생성 deadline을 정한다.
+    ValueTask<ZLinkActorCreateResult> Async(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkActorGetOrCreateCall
+{
+    IZLinkActorGetOrCreateCall InMesh(string meshName);
+    IZLinkActorGetOrCreateCall Request(ZLinkMessage request);
+    IZLinkActorGetOrCreateCall Request<TRequest>(TRequest request);
+    IZLinkActorGetOrCreateCall Timeout(TimeSpan timeout);
+    ValueTask<ZLinkActorCreateResult> Async(
+        CancellationToken cancellationToken = default);
+}
+```
+
+```csharp
+ZLinkActorCreateResult result = await actorManager
+    .Create("player-42", "player") // ActorId와 stable type은 required 값이다.
+    .InMesh("world")
+    .Timeout(TimeSpan.FromSeconds(5))
+    .Async(cancellationToken);     // Created 또는 Rejected를 반환한다.
+```
+
+### 6.3 Mesh와 placement target 선택
+
+`InMesh`를 지정했다면 해당 Mesh를 사용한다. 생략했다면 다음 규칙으로 Mesh를 정한다.
+
+| 조건 | 결과 |
+|---|---|
+| Object `Client` 또는 `Server` role을 가진 Mesh가 하나다. | 그 Mesh를 자동 선택한다. |
+| 후보가 없다. | `ObjectClientNotConfigured`로 끝난다. |
+| 후보가 둘 이상이다. | `MeshSelectionRequired`로 끝난다. |
+| `InMesh`로 지정한 Mesh가 없다. | `MeshNotFound`로 끝난다. |
+
+Framework는 다음 순서로 target 후보를 검사한다.
+
+1. Object role을 확인한다.
+2. 요청한 stable type이 등록되어 있는지 확인한다.
+3. Active·pending capacity가 남아 있는지 확인한다.
+4. 남은 후보에 node-wide placement weight를 적용한다.
+
+Caller는 target node나 endpoint를 선택하지 않는다.
+
+### 6.4 Creation request와 factory 실행
+
+Encoded creation request는 최대 1 MiB다. Framework는 reservation을 시작하기 전에
+내용이 바뀌지 않는 creation request reference와 hash를 durable creation intent에
+기록한다. 이 정보는 Actor가 Ready가 되거나 fence가 적용된 실패 정리를 마칠 때까지
+유지한다.
+
+여러 node가 같은 Actor를 동시에 생성하려고 해도 authority CAS에서 이긴 node만
+creation request를 factory에 전달한다.
+
+Factory는 같은 `(ActorId, ObjectGeneration, [creation attempt](01-glossary.ko.md#creation-attempt))`에 대해 한 번 이상
+실행될 수 있다. 따라서 factory는 같은 attempt가 다시 실행되어도 안전해야 한다.
+
+Factory가 만든 Actor는 아직 외부에 공개되지 않은 staging instance다. Entry Spot의
+`OnCreateActor`가 creation request를 확인하고 `Accepted` 또는 `Rejected`와 optional
+application reply를 반환한다.
+
+- `Accepted`이면 initial Entry membership과 Ready authority를 commit하고 `Created`를
+  publish한다.
+- `Rejected`이면 Ready authority와 message admission을 만들지 않는다. Staging Actor,
+  Creating authority와 reserved capacity를 정리하고 `Rejected`를 publish한다.
+- Callback exception은 application이 선택한 `Rejected`가 아니라 typed creation
+  failure로 처리하고 attempt를 `Aborted`로 끝낸다.
+
+Actor를 Ready로 공개한 뒤 destroy하는 방식으로 거절을 구현하지 않는다. 거절된
+Actor는 `Find`로 조회할 수 없고 message를 받을 수 없으며 active capacity를
+소비하지 않는다.
+
+### 6.5 Create와 GetOrCreate의 차이
+
+Exclusive `Create`를 실행할 때 같은 type의 Ready Actor가 이미 있으면
+`ActorAlreadyExists`로 끝난다. 다른 type의 Actor가 있으면 `ActorTypeMismatch`로
+끝난다.
+
+`GetOrCreate`는 같은 type의 Ready Actor가 있으면 새 reservation과 callback 실행 없이
+현재 incarnation을 `Existing`으로 반환한다. 같은 type의 Actor가 Creating이면 그
+상태가 끝날 때까지 bounded backoff로 authority를 다시 확인한다. 현재 attempt가
+Ready로 끝나면 `Existing`을 반환하고, 거절 또는 실패 정리로 Missing이 되면 남은
+deadline 안에서 새 reservation을 경쟁한다.
+
+동일한 ActorId에 여러 process가 동시에 `GetOrCreate`를 호출해도 Location Store의
+[reservation](01-glossary.ko.md#reservation-id) CAS에 성공한 caller만 생성 실행을
+소유한다. 서로 다른 operation은 앞선 attempt의 terminal state나 application reply를
+공유하지 않는다. 앞선 attempt가 `Rejected` 또는 실패로 끝나면 다음 reservation
+winner가 자신의 creation request로 factory와 callback을 실행한다.
+
+```text
+Missing
+  → Reserved(R1)
+      ├─ Created(R1, ActorRef, ReplyRef?)
+      ├─ Rejected(R1, ReplyRef?)
+      └─ Failed(R1, Failure)
+
+Creating(R1) observed by operation B
+  → Ready: Existing
+  → Missing after cleanup: Reserve(R2) and run B callback
+```
+
+각 상태의 의미는 다음과 같다.
+
+| 상태 | 의미 |
+|---|---|
+| `Created` | Callback이 생성을 승인했고 Actor와 initial Entry membership이 Ready로 commit됐다. |
+| `Rejected` | Callback이 정상적으로 생성 요청을 거절했다. Ready authority와 active capacity는 만들지 않는다. |
+| `Failed` | Node 종료, timeout 또는 callback exception으로 정상적인 application 결과를 만들지 못했다. |
+| `Existing` | 이미 Ready인 Actor를 조회한 결과다. 새 reservation과 callback 실행이 없다. |
+
+Location Store는 `(source Node RID, source lifecycle generation, OperationId)`로
+식별한 operation terminal record를 원래 deadline 뒤 5분까지 유지한다. 같은
+operation의 중복 전달만 이 record를 읽어 이전 결과를 재사용한다. 새 operation은
+retained terminal record를 읽지 않고 current authority를 기준으로 다시 판단한다.
+
+Terminal record에는 request correlation이나 reply route가 없는
+`creation-operation-terminal-v1` semantic envelope와 SHA-256을 저장한다. 같은
+operation을 재처리할 때 Framework는 현재 request의 correlation과 reply route로
+새 command reply를 encode한다. Envelope에는 `Created`·`Rejected`·failure 결과와
+optional application reply를 포함하며 encoded size는 최대 1 MiB다. Actor 생성
+terminal을 보존하기 위해 Relocation Store를 사용하지 않는다.
+
+Creating 상태를 재확인하던 caller가 deadline에 도달하면 해당 caller는
+`DeadlineExceeded`로 끝나지만
+생성 attempt가 실패했다고 간주하지 않는다. 다음 call은 Location Store의 current
+authority와 retained terminal record를 다시 확인한다.
+
+### 6.6 Find
+
+Manager의 `Find(ActorId)`는 Ready 상태인 current authority의 `ActorRef`를 반환한다.
+Actor 생성을 시작하지 않으며 별도의 Actor directory도 제공하지 않는다.
+
+### 6.7 Spot 이동
+
+Actor를 user Spot으로 옮기는 join·leave·relocation은
+[Spot Actor](23-spot-actor.ko.md)의 fencing과 barrier를 따른다.
+
+이동 중에 수락한 payload를 이전 Spot callback으로 보내지 않는다. Payload는 Actor
+queue에서 순서를 유지한다.
+
+### 6.8 종료와 destroy
+
+Actor 종료는 새로운 payload admission을 닫고 session binding과 location ownership을
+정리한다. Bound session의 연결이 종료되었다는 이유만으로 Actor를 자동 종료하거나
+현재 Spot에서 자동 leave하지 않는다.
+
+Lifecycle 종료를 허용하는 정확한 상태와 transaction은
+[Spot Actor](23-spot-actor.ko.md)가 정의한다.
+
+Actor destroy는 exact `ActorRef`를 받는다. Actor가 user Spot에 있으면 먼저 leave
+또는 Entry Spot join을 완료해야 한다.
+
+Destroy는 membership 이동이 아니다. 따라서 성공 과정에서 `OnLeaveActor`를 다시
+호출하지 않는다.
+
+Framework는 다음 순서로 destroy를 진행한다.
+
+1. 새로운 payload admission을 닫는다.
+2. 진행 중인 lifecycle 작업을 정리한다.
+3. Session binding을 제거한다.
+4. Location ownership과 registry entry를 제거한다.
+
+| 상태 | Destroy 결과 |
+|---|---|
+| 같은 incarnation이 이미 없다. | Idempotent `false`를 반환한다. |
+| 같은 ActorId의 다른 generation이 있다. | `ActorGenerationStale`로 끝난다. |
+| Actor가 이동을 위한 seal 상태다. | `ActorMoving`으로 끝난다. |
+
+Framework는 current `ActorRef`를 다시 찾아 새 incarnation을 종료하지 않는다.
+
+## 7. Session binding
+
+Session binding은 Actor와 현재 STREAM session 사이의 runtime 관계다. Binding token은
+재연결과 늦게 도착한 이전 session 작업을 구분한다.
+
+Actor handler는 현재 bound session을 사용해 다음 작업을 할 수 있다.
+
+- Client로 one-way push 전송
+- Session 연결 종료 요청
+
+Session에서 들어와 Actor로 향하는 payload도 Actor queue에 직접 제출한다. Spot
+membership은 route와 lifecycle 검증에 사용할 수 있지만 payload를 Spot callback으로
+보내는 근거로 사용하지 않는다.
+
+Bind, rebind, disconnect와 request correlation은
+[Session Actor Dispatch](31-session-actor-dispatch.ko.md)가 정의한다.
+
+## 8. 실패와 관측
+
+### 8.1 실패
+
+| 조건 | 결과 |
+|---|---|
+| Logical ActorId에 Ready authority가 없다. | Actor target 오류로 끝난다. |
+| Exact-ref operation에서 mapping이 없다. | `ActorLocationStale`로 끝난다. |
+| Exact-ref의 generation이 current generation과 다르다. | `ActorGenerationStale`로 끝난다. |
+| Actor가 commit 전 seal 상태다. | `ActorMoving`으로 끝난다. |
+| Bound session이 필요한 작업에 유효한 binding이 없다. | Session-not-bound 오류로 끝난다. |
+
+Handler가 없거나 decode가 실패하거나 application handler가 예외를 반환하면 request는
+복원 가능한 reply route로 오류를 반환한다. One-way message는 runtime 관측 경로에
+오류를 기록한다.
+
+Drain 중에는 새로운 Actor 생성과 membership 배정을 막는다. 이미 수락한 Actor turn과
+control transaction은 deadline까지 진행한다.
+
+### 8.2 관측 정보
+
+Runtime은 다음 정보를 서로 구분하여 관측할 수 있어야 한다.
+
+- Current `MeshName`과 Actor type
+- Application queue와 control backlog
+- ObjectGeneration
+- Membership state
+- Session-binding state
+- Dispatch 결과
+
+ActorId는 metric label로 사용하지 않는다.
+
+## 9. 구현 및 contract test 검증 요구
+
+- Entry Spot과 user Spot의 Actor payload가 모두 Actor queue로 직접 전달된다.
+- Actor payload가 Spot callback이나 [Spot application queue](01-glossary.ko.md#spot-application-queue)를 거치지 않는다.
+- Spot의 lifecycle 전용 queue에는 join·leave·relocation과 lifecycle control만
+  넣으며 Actor 업무 payload를 넣지 않는다.
+- 같은 Actor의 payload가 ingress 종류와 관계없이 Actor queue 수락 순서대로 실행된다.
+- `SpotWide` member Actor가 `Yield`하면 User Spot gate만 반납하고 Actor queue claim을 유지한다. 이 동안
+  다른 Actor·Spot·timer는 진행하지만 같은 Actor의 다음 job은 진행하지 않는다.
+- 같은 Actor 자신에게 보낸 request가 `Yield` 뒤에도 현재 job을 앞질러 실행하거나 inline으로 재진입하지
+  않는다.
+- Actor join은 `Yield`를 제공하지 않고 `Async`로만 완료한다.
+- Actor handler가 mutable Spot state에 직접 접근하지 않고 명시적인 Spot 호출을 사용한다.
+- Session bind와 Spot membership이 독립적으로 바뀌며 서로를 암묵적으로 변경하지 않는다.
+- 같은 ActorId를 서로 다른 MeshName에 중복 생성하지 않는다.
+- Actor messaging이 ActorId만 받고 [owner route](01-glossary.ko.md#owner-route)와 generation을 application에 요구하지 않는다.
+- 동시에 같은 Actor 생성을 요청해도 생성 권한을 얻지 못한 target은 factory를
+  추가로 실행하지 않고 같은 attempt의 완료를 기다린다.
+- Creating을 관찰한 서로 다른 operation은 Ready 뒤 `Existing`을 받고, rejection·failure
+  cleanup 뒤 새 reservation을 경쟁하며 앞선 application reply를 공유하지 않는다.
+- 같은 source Node RID·lifecycle generation·`OperationId`의 재전송만 correlation-free
+  semantic terminal envelope를 읽고 현재 correlation·reply route로 reply를 다시 encode한다.
+- `Rejected`와 `Aborted`가 Ready authority와 active capacity를 만들지 않고 reserved
+  capacity를 반환한다.
+- Terminal record가 original deadline 뒤 5분 동안 같은 operation의 replay를 허용하고,
+  TTL 뒤 Ready authority가 없으면 새 reservation으로 다시 생성할 수 있다.
+- Destroy가 exact generation을 검사하고 새 incarnation으로 retarget하지 않는다.

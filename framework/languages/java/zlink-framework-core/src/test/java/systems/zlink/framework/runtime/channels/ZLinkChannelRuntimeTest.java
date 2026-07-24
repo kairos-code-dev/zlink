@@ -55,7 +55,7 @@ final class ZLinkChannelRuntimeTest {
                 new SpotTransportAddress(
                     "play.route",
                     RoutingId.from("play-node"),
-                    handle.spotRid(),
+                    handle.spotId(),
                     1L,
                     systems.zlink.framework.spots.ZLinkSpotKind.USER)));
         return ZLinkHandlerActivator.services()
@@ -140,7 +140,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(Message.from("raw-request".getBytes())),
                 Duration.ofMillis(300));
 
@@ -177,7 +177,7 @@ final class ZLinkChannelRuntimeTest {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
 
             TestReply reply = runtime.requestToSpot(
-                    SpotHandles.create(RoutingId.from("room-spot")),
+                    SpotHandles.create("room-spot"),
                     new TestRequest("hello"))
                 .timeout(Duration.ofMillis(300))
                 .submit(TestReply.class).toCompletableFuture().join();
@@ -185,7 +185,7 @@ final class ZLinkChannelRuntimeTest {
             assertEquals("reply", reply.value());
             assertEquals("play.route", backend.bridge.lastChannelName);
             assertEquals(RoutingId.from("play-node"), backend.bridge.lastTargetNodeRid);
-            assertEquals(RoutingId.from("room-spot"), backend.bridge.lastTargetSpotRid);
+            assertEquals("room-spot", backend.bridge.lastTargetSpotId);
             assertEquals("TestRequest", backend.bridge.lastParts.get(0).toUtf8String());
         }
     }
@@ -203,13 +203,13 @@ final class ZLinkChannelRuntimeTest {
             runtime.registerSpotRouteBridgeOwner(() -> backend.spotNode);
 
             runtime.sendToSpot(
-                    SpotHandles.create(RoutingId.from("room-spot")),
+                    SpotHandles.create("room-spot"),
                     new TestRequest("hello"))
                 .submit().toCompletableFuture().join();
 
             assertEquals("play.route", backend.bridge.lastChannelName);
             assertEquals(RoutingId.from("play-node"), backend.bridge.lastTargetNodeRid);
-            assertEquals(RoutingId.from("room-spot"), backend.bridge.lastTargetSpotRid);
+            assertEquals("room-spot", backend.bridge.lastTargetSpotId);
             assertEquals("TestRequest", backend.bridge.lastParts.get(0).toUtf8String());
         }
     }
@@ -404,7 +404,7 @@ final class ZLinkChannelRuntimeTest {
             runtime.registerSpotRouterNode("play.route", backend.spotNode);
 
             TestReply reply = runtime.requestToSpot(
-                    SpotHandles.create(RoutingId.from("room-spot")),
+                    SpotHandles.create("room-spot"),
                     new TestRequest("hello"))
                 .timeout(Duration.ofMillis(300))
                 .submit(TestReply.class).toCompletableFuture().join();
@@ -431,7 +431,7 @@ final class ZLinkChannelRuntimeTest {
             CompletionException error = org.junit.jupiter.api.Assertions.assertThrows(
                 CompletionException.class,
                 () -> runtime.requestToSpot(
-                        SpotHandles.create(RoutingId.from("room-spot")),
+                        SpotHandles.create("room-spot"),
                         new TestRequest("hello"))
                     .timeout(Duration.ofMillis(300))
                     .submit(TestReply.class).toCompletableFuture().join());
@@ -458,7 +458,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(Message.from("raw-request".getBytes())),
                 Duration.ofMillis(300));
 
@@ -496,7 +496,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(
                     Message.from("StateRequest".getBytes()),
                     Message.from("{\"op\":\"ping\"}".getBytes())),
@@ -509,12 +509,12 @@ final class ZLinkChannelRuntimeTest {
                 List.of(
                     Message.from("__zlink.routed_spot.egress.request".getBytes()),
                     Message.from("StateReply".getBytes()),
-                    Message.from("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}".getBytes()))));
+                    Message.from("{\"spotId\":\"room-spot\",\"value\":\"pong\"}".getBytes()))));
 
             List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
             try {
                 assertEquals(1, reply.size());
-                assertEquals("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
+                assertEquals("{\"spotId\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
             } finally {
                 reply.forEach(Message::close);
             }
@@ -533,7 +533,7 @@ final class ZLinkChannelRuntimeTest {
         backend.bridge.requestReplyParts = List.of(
             Message.from("__zlink.routed_spot.egress.request".getBytes()),
             Message.from("StateReply".getBytes()),
-            Message.from("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}".getBytes()));
+            Message.from("{\"spotId\":\"room-spot\",\"value\":\"pong\"}".getBytes()));
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
@@ -542,7 +542,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(
                     Message.from("StateRequest".getBytes()),
                     Message.from("{\"op\":\"ping\"}".getBytes())),
@@ -551,7 +551,7 @@ final class ZLinkChannelRuntimeTest {
             List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
             try {
                 assertEquals(1, reply.size());
-                assertEquals("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
+                assertEquals("{\"spotId\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
             } finally {
                 reply.forEach(Message::close);
             }
@@ -567,7 +567,7 @@ final class ZLinkChannelRuntimeTest {
         FakeChannelBackendAdapter backend = new FakeChannelBackendAdapter();
         backend.bridge.requestReplyParts = List.of(
             Message.from("StateReply".getBytes()),
-            Message.from("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}".getBytes()));
+            Message.from("{\"spotId\":\"room-spot\",\"value\":\"pong\"}".getBytes()));
         try (ZLinkChannelRuntime runtime = new ZLinkChannelRuntime(
             backend,
             options.registration(),
@@ -576,7 +576,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(
                     Message.from("StateRequest".getBytes()),
                     Message.from("{\"op\":\"ping\"}".getBytes())),
@@ -585,7 +585,7 @@ final class ZLinkChannelRuntimeTest {
             List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
             try {
                 assertEquals(1, reply.size());
-                assertEquals("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
+                assertEquals("{\"spotId\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
             } finally {
                 reply.forEach(Message::close);
             }
@@ -610,7 +610,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(
                     Message.from("StateRequest".getBytes()),
                     Message.from("{\"op\":\"ping\"}".getBytes())),
@@ -623,12 +623,12 @@ final class ZLinkChannelRuntimeTest {
                 List.of(
                     Message.from("__zlink.routed_spot.egress.request".getBytes()),
                     Message.from("StateReply".getBytes()),
-                    Message.from("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}".getBytes()))));
+                    Message.from("{\"spotId\":\"room-spot\",\"value\":\"pong\"}".getBytes()))));
 
             List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
             try {
                 assertEquals(1, reply.size());
-                assertEquals("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
+                assertEquals("{\"spotId\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
             } finally {
                 reply.forEach(Message::close);
             }
@@ -651,7 +651,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(
                     Message.from("StateRequest".getBytes()),
                     Message.from("{\"op\":\"ping\"}".getBytes())),
@@ -671,12 +671,12 @@ final class ZLinkChannelRuntimeTest {
                 List.of(
                     Message.from("__zlink.routed_spot.egress.request".getBytes()),
                     Message.from("StateReply".getBytes()),
-                    Message.from("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}".getBytes()))));
+                    Message.from("{\"spotId\":\"room-spot\",\"value\":\"pong\"}".getBytes()))));
 
             List<Message> reply = request.toCompletableFuture().get(1, TimeUnit.SECONDS);
             try {
                 assertEquals(1, reply.size());
-                assertEquals("{\"spotRid\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
+                assertEquals("{\"spotId\":\"room-spot\",\"value\":\"pong\"}", reply.get(0).toUtf8String());
             } finally {
                 reply.forEach(Message::close);
             }
@@ -699,7 +699,7 @@ final class ZLinkChannelRuntimeTest {
             runtime.requestToSpotViaRouterChannel(
                     "play.route",
                     RoutingId.from("play-node"),
-                    RoutingId.from("room-spot"),
+                    "room-spot",
                     List.of(Message.from("raw-request".getBytes())),
                     Duration.ofMillis(300))
                 .toCompletableFuture()
@@ -740,7 +740,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(Message.from("raw-request".getBytes())),
                 Duration.ofMillis(300));
 
@@ -778,7 +778,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(Message.from("raw-request".getBytes())),
                 Duration.ofMillis(300));
 
@@ -850,7 +850,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(Message.from("raw-request".getBytes())),
                 Duration.ofMillis(300));
             assertTrue(backend.bridge.firstDrainFailed.await(1, TimeUnit.SECONDS));
@@ -893,7 +893,7 @@ final class ZLinkChannelRuntimeTest {
             var request = runtime.requestToSpotViaRouterChannel(
                 "play.route",
                 RoutingId.from("play-node"),
-                RoutingId.from("room-spot"),
+                "room-spot",
                 List.of(Message.from("raw-request".getBytes())),
                 Duration.ofMillis(300));
             assertTrue(backend.bridge.firstDrainFailed.await(1, TimeUnit.SECONDS));
@@ -956,8 +956,8 @@ final class ZLinkChannelRuntimeTest {
             assertEquals(100, socket.weight());
             socket.weight(0);
             assertEquals(0, socket.weight());
-            socket.weight(100);
-            assertEquals(100, socket.weight());
+            socket.weight(10_000);
+            assertEquals(10_000, socket.weight());
         }
     }
 
@@ -1086,7 +1086,7 @@ final class ZLinkChannelRuntimeTest {
                 () -> socket.weight(-1));
             org.junit.jupiter.api.Assertions.assertThrows(
                 ZLinkConfigurationException.class,
-                () -> socket.weight(101));
+                () -> socket.weight(10_001));
         }
     }
 
@@ -1468,7 +1468,7 @@ final class ZLinkChannelRuntimeTest {
         List<Message> requestReplyParts = List.of();
         String lastChannelName;
         RoutingId lastTargetNodeRid;
-        RoutingId lastTargetSpotRid;
+        String lastTargetSpotId;
         List<Message> lastParts = List.of();
         int drainFailuresRemaining;
         int noDataDrainsRemaining;
@@ -1476,19 +1476,19 @@ final class ZLinkChannelRuntimeTest {
         CountDownLatch nextDrainAfterFailure;
 
         @Override public void attachRouterChannel(String channelName, ZLinkBackendRouterSocket router) { }
-        @Override public boolean send(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) {
-            recordBridgeCall(channelName, targetNodeRid, targetSpotRid, parts);
+        @Override public boolean send(String channelName, RoutingId targetNodeRid, String targetSpotId, List<Message> parts, SendFlags flags) {
+            recordBridgeCall(channelName, targetNodeRid, targetSpotId, parts);
             return true;
         }
-        @Override public boolean request(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
-            recordBridgeCall(channelName, targetNodeRid, targetSpotRid, parts);
+        @Override public boolean request(String channelName, RoutingId targetNodeRid, String targetSpotId, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            recordBridgeCall(channelName, targetNodeRid, targetSpotId, parts);
             if (!completeRequests) {
                 return true;
             }
             callback.handle(new ZLinkBackendReceived(
                 requestResult,
                 Optional.empty(),
-                Optional.of(targetSpotRid),
+                Optional.of(targetSpotId),
                 Optional.empty(),
                 requestReplyParts));
             return true;
@@ -1496,11 +1496,11 @@ final class ZLinkChannelRuntimeTest {
         private void recordBridgeCall(
             String channelName,
             RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
+            String targetSpotId,
             List<Message> parts) {
             lastChannelName = channelName;
             lastTargetNodeRid = targetNodeRid;
-            lastTargetSpotRid = targetSpotRid;
+            lastTargetSpotId = targetSpotId;
             lastParts.forEach(Message::close);
             lastParts = parts.stream()
                 .map(Message::toByteArray)
@@ -1649,9 +1649,9 @@ final class ZLinkChannelRuntimeTest {
         }
         @Override public ZLinkBackendActorRef createActor(String actorId, Message createRequest) { throw new UnsupportedOperationException(); }
         @Override public ZLinkBackendActorRef actorLookup(String actorId) { throw new UnsupportedOperationException(); }
-        @Override public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, Duration timeout) { throw new UnsupportedOperationException(); }
+        @Override public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, String targetSpotId, List<Message> parts, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Message request, Duration timeout) { throw new UnsupportedOperationException(); }
-        @Override public java.util.concurrent.CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, RoutingId currentSpotRid, Duration timeout) { throw new UnsupportedOperationException(); }
+        @Override public java.util.concurrent.CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, String currentSpotId, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public java.util.concurrent.CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { return false; }
         @Override public void replyActorNoBind(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid, long requestId, int flags, List<Message> parts) { throw new UnsupportedOperationException(); }
@@ -1672,19 +1672,19 @@ final class ZLinkChannelRuntimeTest {
         long lastSpotGeneration;
         List<Message> requestReplyParts = List.of();
 
-        @Override public RoutingId routingId() { return RoutingId.from("entry-spot"); }
-        @Override public void setRoutingId(RoutingId routingId) { }
+        @Override public String routingId() { return "entry-spot"; }
+        @Override public void setRoutingId(String spotId) { }
         @Override public void setSubscription(String topic) { }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }
         @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) { return null; }
         @Override public boolean publish(String channelName, String topic, List<Message> parts, SendFlags flags) { return true; }
-        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, long spotGeneration, List<Message> parts, SendFlags flags) {
+        @Override public boolean sendToSpot(RoutingId targetNodeRid, String spotId, long spotGeneration, List<Message> parts, SendFlags flags) {
             lastSpotGeneration = spotGeneration;
             return true;
         }
         @Override public boolean requestToSpot(
             RoutingId targetNodeRid,
-            RoutingId spotRid,
+            String spotId,
             long spotGeneration,
             List<Message> parts,
             ZLinkBackendRequestCallback callback,
@@ -1700,7 +1700,7 @@ final class ZLinkChannelRuntimeTest {
             callback.handle(new ZLinkBackendReceived(
                 requestResult,
                 Optional.empty(),
-                Optional.of(spotRid),
+                Optional.of(spotId),
                 Optional.empty(),
                 requestReplyParts.stream().map(Message::from).toList()));
             return true;

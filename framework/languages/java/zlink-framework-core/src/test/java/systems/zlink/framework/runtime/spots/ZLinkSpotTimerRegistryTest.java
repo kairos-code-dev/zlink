@@ -33,7 +33,7 @@ final class ZLinkSpotTimerRegistryTest {
         AtomicBoolean enteredDispatch = new AtomicBoolean();
         TimerHandler handler = new TimerHandler(handled, enteredDispatch);
         ZLinkSpotTimerRegistry registry = new ZLinkSpotTimerRegistry(
-            RoutingId.from("spot"),
+            "spot",
             executor,
             ignored -> handler,
             List.of(),
@@ -61,7 +61,7 @@ final class ZLinkSpotTimerRegistryTest {
         CountDownLatch replacementHandled = new CountDownLatch(1);
         AtomicBoolean previousHandled = new AtomicBoolean();
         ZLinkSpotTimerRegistry registry = new ZLinkSpotTimerRegistry(
-            RoutingId.from("spot"),
+            "spot",
             executor,
             type -> type == PreviousTimerHandler.class
                 ? new PreviousTimerHandler(previousHandled)
@@ -104,7 +104,7 @@ final class ZLinkSpotTimerRegistryTest {
         CompletableFuture<Void> queuedCompletion = new CompletableFuture<>();
         AtomicBoolean sourceHandled = new AtomicBoolean();
         ZLinkSpotTimerRegistry source = new ZLinkSpotTimerRegistry(
-            RoutingId.from("source"),
+            "source",
             sourceExecutor,
             ignored -> new PreviousTimerHandler(sourceHandled),
             List.of(),
@@ -148,7 +148,7 @@ final class ZLinkSpotTimerRegistryTest {
         CountDownLatch restored = new CountDownLatch(1);
         AtomicReference<ZLinkTimerTick> restoredTick = new AtomicReference<>();
         ZLinkSpotTimerRegistry target = new ZLinkSpotTimerRegistry(
-            RoutingId.from("target"),
+            "target",
             targetExecutor,
             ignored -> new RestoredTimerHandler(restored, restoredTick),
             List.of(),
@@ -182,7 +182,7 @@ final class ZLinkSpotTimerRegistryTest {
         ScheduledExecutorService executor =
             Executors.newSingleThreadScheduledExecutor();
         ZLinkSpotTimerRegistry registry = new ZLinkSpotTimerRegistry(
-            RoutingId.from("spot"),
+            "spot",
             executor,
             ignored -> new PreviousTimerHandler(new AtomicBoolean()),
             List.of(),
@@ -221,7 +221,7 @@ final class ZLinkSpotTimerRegistryTest {
             Executors.newSingleThreadScheduledExecutor();
         CountDownLatch handled = new CountDownLatch(1);
         ZLinkSpotTimerRegistry registry = new ZLinkSpotTimerRegistry(
-            RoutingId.from("spot"),
+            "spot",
             executor,
             ignored -> new ReplacementTimerHandler(handled),
             List.of(),

@@ -2,68 +2,61 @@ using Zlink.Framework.Runtime.Host;
 
 namespace Zlink.Framework.Runtime.Channels;
 
-// Public DI singleton implementation of IZLinkRouteMeshRuntimeOptions
-// (spec server/languages/dotnet/05-route-mesh §5). MeshNode(meshName) and
-// Channel(meshName, channelName) resolve against the running MeshNode (spot node)
-// registered under meshName; unknown mesh or membership throws
-// ZLinkConfigurationException. Weight applies live via IMeshNode.SetChannelWeight.
+// Public DI singleton implementation of the exact runtime weight surface.
 internal sealed class ZLinkRouteMeshRuntimeOptionsService(ZLinkFrameworkRuntime runtime)
     : IZLinkRouteMeshRuntimeOptions
 {
-    public IZLinkMeshNodeRuntimeOptions MeshNode(string meshName)
+    public IZLinkMeshPlacementRuntimeOptions Mesh(string meshName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
-        return runtime.ResolveMeshNodeRuntimeOptions(meshName);
+        return runtime.ResolveMeshPlacementRuntimeOptions(meshName);
     }
 
-    public IZLinkMeshChannelRuntimeOptions Channel(string meshName, string channelName)
+    public IZLinkMeshChannelRuntimeOptions Channel(string channelName)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
         ArgumentException.ThrowIfNullOrWhiteSpace(channelName);
-        return runtime.ResolveMeshChannelRuntimeOptions(meshName, channelName);
+        return runtime.ResolveMeshChannelRuntimeOptions(channelName);
     }
 }
 
-// Live MeshNode option surface. MaxMessageSize is validated against the spec
-// (negative rejected, zero = no framework limit), applied to the running Core
-// MeshNode, and retained in the registration recipe exposed by the getter.
-internal sealed class ZLinkMeshNodeRuntimeOptions(
+internal sealed class ZLinkMeshPlacementRuntimeOptions(
+    ZLinkFrameworkRuntime runtime,
     ZLinkSpotNodeRegistration registration,
     IZLinkBackendSpotNode node)
-    : IZLinkMeshNodeRuntimeOptions
+    : IZLinkMeshPlacementRuntimeOptions
 {
-    public long MaxMessageSize
+    public int PlacementWeight
     {
-        get => registration.Router?.SocketConfig.MaxMessageSize ?? 0;
+        get => registration.PlacementWeight;
         set
         {
-            if (value < 0)
-                throw new ZLinkConfigurationException(
-                    "MaxMessageSize must not be negative; use 0 for no framework limit.");
-            if (registration.Router is not { } router)
-                throw new ZLinkConfigurationException(
-                    $"MeshNode '{registration.SpotNodeName}' has no ROUTER socket to configure MaxMessageSize.");
-            node.SetMaxMessageSize(value);
-            router.SocketConfig.MaxMessageSize = value;
+            ZLinkSocketConfig.ValidatePeerWeight(value);
+            runtime.SetMeshPlacementWeight(node, registration, value);
         }
     }
 }
 
-// Live channel-weight surface. Weight get reflects the last applied value from the
-// channel membership; set validates the 0..100 range and applies through
-// IMeshNode.SetChannelWeight, which Core turns into a descriptor-revision bump.
 internal sealed class ZLinkMeshChannelRuntimeOptions(
     ZLinkFrameworkRuntime runtime,
-    IZLinkBackendSpotNode node,
-    ZLinkMeshChannelMembership membership) : IZLinkMeshChannelRuntimeOptions
+    IZLinkBackendSpotNode? node,
+    ZLinkMeshChannelMembership? membership,
+    ZLinkChannelServerCapabilityRegistration? clientServer,
+    ZLinkClientServerServerIdentity? clientServerIdentity)
+    : IZLinkMeshChannelRuntimeOptions
 {
     public int Weight
     {
-        get => membership.Weight;
+        get => membership?.Weight ?? clientServer!.SocketConfig.Weight;
         set
         {
             ZLinkSocketConfig.ValidatePeerWeight(value);
-            runtime.SetMeshChannelWeight(node, membership, value);
+            if (membership is not null)
+                runtime.SetMeshChannelWeight(node!, membership, value);
+            else
+                runtime.SetClientServerWeight(
+                    clientServer!,
+                    clientServerIdentity!,
+                    value);
         }
     }
 }

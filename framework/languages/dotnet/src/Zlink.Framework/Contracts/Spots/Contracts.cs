@@ -58,7 +58,7 @@ public readonly record struct ZLinkSpotCreateResponse(bool Accepted, ZLinkMessag
 }
 
 public readonly record struct SpotRef(
-    RoutingId SpotRid,
+    string SpotId,
     ulong ObjectGeneration,
     string MeshName,
     RoutingId NodeRid);
@@ -68,13 +68,13 @@ public readonly record struct ZLinkSpotCreateResult(
     ZLinkSpotCreateState State,
     ZLinkMessage? Reply);
 
-internal readonly record struct ZLinkSpotInfo(RoutingId SpotRid);
+internal readonly record struct ZLinkSpotInfo(string SpotId);
 
 public interface IZLinkSpotManager
 {
     IZLinkSpotCreateCall Create(string spotType);
-    IZLinkSpotGetOrCreateCall GetOrCreate(RoutingId spotRid, string spotType);
-    ValueTask<SpotRef?> FindAsync(RoutingId spotRid,
+    IZLinkSpotGetOrCreateCall GetOrCreate(string spotId, string spotType);
+    ValueTask<SpotRef?> FindAsync(string spotId,
         CancellationToken cancellationToken = default);
     ValueTask<bool> CloseAsync(
         SpotRef spot,
@@ -86,8 +86,6 @@ public interface IZLinkSpotCreateCall
     IZLinkSpotCreateCall InMesh(string meshName);
     IZLinkSpotCreateCall Request(ZLinkMessage request);
     IZLinkSpotCreateCall Request<TRequest>(TRequest request);
-    IZLinkSpotCreateCall PlacementProfile(string placementProfile);
-    IZLinkSpotCreateCall AffinityKey(string affinityKey);
     IZLinkSpotCreateCall Timeout(TimeSpan timeout);
     ValueTask<ZLinkSpotCreateResult> Async(
         CancellationToken cancellationToken = default);
@@ -98,8 +96,6 @@ public interface IZLinkSpotGetOrCreateCall
     IZLinkSpotGetOrCreateCall InMesh(string meshName);
     IZLinkSpotGetOrCreateCall Request(ZLinkMessage request);
     IZLinkSpotGetOrCreateCall Request<TRequest>(TRequest request);
-    IZLinkSpotGetOrCreateCall PlacementProfile(string placementProfile);
-    IZLinkSpotGetOrCreateCall AffinityKey(string affinityKey);
     IZLinkSpotGetOrCreateCall Timeout(TimeSpan timeout);
     ValueTask<ZLinkSpotCreateResult> Async(
         CancellationToken cancellationToken = default);

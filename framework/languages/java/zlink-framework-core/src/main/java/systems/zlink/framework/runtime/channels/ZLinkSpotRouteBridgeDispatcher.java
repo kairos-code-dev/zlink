@@ -24,7 +24,7 @@ final class ZLinkSpotRouteBridgeDispatcher {
         ZLinkBackendSpotRouteBridge bridge,
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<byte[]> payloads,
         Duration timeout,
         ScheduledExecutorService scheduler,
@@ -44,7 +44,7 @@ final class ZLinkSpotRouteBridgeDispatcher {
                     boolean submitted = bridge.send(
                         routerChannelId,
                         targetNodeRid,
-                        targetSpotRid,
+                        targetSpotId,
                         attemptParts,
                         SendFlags.DONT_WAIT);
                     if (submitted) {
@@ -71,7 +71,7 @@ final class ZLinkSpotRouteBridgeDispatcher {
         ZLinkBackendSpotRouteBridge bridge,
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<Message> requestParts,
         Duration timeout,
         Executor executor,
@@ -88,7 +88,7 @@ final class ZLinkSpotRouteBridgeDispatcher {
                 bridge.requestAsync(
                         routerChannelId,
                         targetNodeRid,
-                        targetSpotRid,
+                        targetSpotId,
                         requestParts,
                         SendFlags.NONE,
                         timeout)
@@ -96,7 +96,7 @@ final class ZLinkSpotRouteBridgeDispatcher {
                     if (error != null) {
                         ZLinkChannelRuntime.trace("spot-route bridge-reply-error router=" + routerChannelId
                             + " targetNode=" + targetNodeRid
-                            + " targetSpot=" + targetSpotRid
+                            + " targetSpot=" + targetSpotId
                             + " error=" + ZLinkChannelRuntime.requestErrorSummary(error));
                         result.completeExceptionally(error);
                         return;
@@ -104,7 +104,7 @@ final class ZLinkSpotRouteBridgeDispatcher {
                     try {
                         ZLinkChannelRuntime.trace("spot-route bridge-reply router=" + routerChannelId
                             + " targetNode=" + targetNodeRid
-                            + " targetSpot=" + targetSpotRid
+                            + " targetSpot=" + targetSpotId
                             + " parts=" + ZLinkChannelRuntime.describeTraceParts(reply));
                         if (ZLinkSpotRouteBridgeRawReplies.isEcho(rawReply, reply)) {
                             return;
@@ -131,7 +131,7 @@ final class ZLinkSpotRouteBridgeDispatcher {
             } catch (RuntimeException ex) {
                 ZLinkChannelRuntime.trace("spot-route bridge-submit-error router=" + routerChannelId
                     + " targetNode=" + targetNodeRid
-                    + " targetSpot=" + targetSpotRid
+                    + " targetSpot=" + targetSpotId
                     + " error=" + ex);
                 result.completeExceptionally(ex);
             } finally {

@@ -40,10 +40,11 @@ MeshNode 위의 메시징은 대상 선택 방식으로 구분한다.
 - channel send/request는 ChannelName으로 process-local 송신 경로를 찾고, 그 RouteMesh member 또는
   ClientServer server 가운데 ready target 하나를 선택한다.
 - Spot Logical Multicast는 ChannelName의 remote MeshNode와 node-local Spot subscription을 대상으로 한다.
-- Spot과 Actor message는 global Spot RID 또는 Actor ID를 사용한다. Framework는 current Ready authority를
+- Spot과 Actor message는 global Spot ID 또는 Actor ID를 사용한다. Framework는 current Ready authority를
   resolve하고 owner mailbox로 전달한다.
-- Spot·Actor create와 get-or-create는 manager의 명시적인 operation이다. Framework는 object role, capacity,
-  placement profile과 node-wide weight로 target을 선택하고 Ready barrier 뒤 immutable ref를 반환한다.
+- Spot·Actor create와 get-or-create는 manager의 명시적인 operation이다. Framework는 `Serving` Object
+  Server의 stable type capability와 capacity를 먼저 검사하고 node-wide weight로 target을 선택한 뒤 Ready
+  barrier 뒤 immutable ref를 반환한다.
 
 선택과 submit은 하나의 operation이다. application은 peer 목록이나 선택된 RID를 받아 별도 send를
 반복하지 않는다.

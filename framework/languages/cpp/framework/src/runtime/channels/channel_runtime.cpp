@@ -641,18 +641,21 @@ void channel_runtime_t::publish_socket_event (const std::string &channel_name,
                                               native_event, native_value});
 }
 
-void channel_runtime_t::set_server_peer_weight (const std::string &channel_name,
-                                                zlink::peer_weight_t value)
+void channel_runtime_t::set_server_weight (const std::string &channel_name,
+                                           int value)
 {
+    if (value < 0 || value > 10000)
+        throw std::invalid_argument (
+          "service weight must be in range 0..10000");
     {
         std::lock_guard lock (_state->mutex);
         _state->server_peer_weight_overrides.insert_or_assign (channel_name, value);
     }
     publish_socket_event (channel_name, socket_event_kind_t::peer_admission_changed, {}, {}, 0,
-                          value.value ());
+                          static_cast<std::uint32_t> (value));
 }
 
-std::optional<zlink::peer_weight_t>
+std::optional<int>
 channel_runtime_t::server_peer_weight_override (const std::string &channel_name) const
 {
     std::lock_guard lock (_state->mutex);
@@ -777,6 +780,18 @@ capability_builder_t &capability_builder_t::peer_weight (zlink::peer_weight_t va
     auto &snapshot = capability_snapshot (*_state);
     snapshot.enabled = true;
     snapshot.peer_weight = value;
+    snapshot.service_weight = static_cast<int> (value.value ());
+    return *this;
+}
+
+capability_builder_t &capability_builder_t::service_weight (int value)
+{
+    if (value < 0 || value > 10000)
+        throw std::invalid_argument (
+          "service weight must be in range 0..10000");
+    auto &snapshot = capability_snapshot (*_state);
+    snapshot.enabled = true;
+    snapshot.service_weight = value;
     return *this;
 }
 
@@ -1038,7 +1053,16 @@ channel_server_socket_runtime_options_t &channel_server_socket_runtime_options_t
 channel_server_socket_runtime_options_t &
 channel_server_socket_runtime_options_t::peer_weight (zlink::peer_weight_t value)
 {
-    detail::channel_runtime_t (_state).set_server_peer_weight (_channel_name, value);
+    detail::channel_runtime_t (_state).set_server_weight (
+      _channel_name, static_cast<int> (value.value ()));
+    return *this;
+}
+
+channel_server_socket_runtime_options_t &
+channel_server_socket_runtime_options_t::weight (int value)
+{
+    detail::channel_runtime_t (_state).set_server_weight (
+      _channel_name, value);
     return *this;
 }
 
@@ -1365,7 +1389,7 @@ result_t<void>
 route_client_t::submit_spot_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
                                          const std::string &router_channel_id,
                                          const zlink::routing_id_t &target_node_rid,
-                                         const spot_rid_t &target_spot_rid,
+                                         const spot_id_t &target_spot_id,
                                          std::uint64_t target_spot_generation,
                                          const std::string &packet_name,
                                          std::type_index message_type,
@@ -1381,7 +1405,7 @@ route_client_t::submit_spot_send_erased (const std::shared_ptr<detail::route_cli
                                         "route client is not configured");
     }
     runtime::messaging::message_parts_t parts;
-    const auto spot_rid = zlink::routing_id_t::from (std::string (target_spot_rid.value ()));
+    const auto &spot_id = target_spot_id;
     const auto use_route_channel = detail::has_route_channel (state->runtime, router_channel_id);
     const auto mesh_sender = use_route_channel
                                ? std::nullopt
@@ -1406,7 +1430,7 @@ route_client_t::submit_spot_send_erased (const std::shared_ptr<detail::route_cli
                                           std::nullopt,
                                           header.correlation_id,
                                           target_node_rid.to_string (),
-                                          spot_rid.to_string (),
+                                          spot_id,
                                           std::nullopt,
                                           std::nullopt};
           });
@@ -1418,12 +1442,12 @@ route_client_t::submit_spot_send_erased (const std::shared_ptr<detail::route_cli
     }
     try {
         if (mesh_sender) {
-            return (*mesh_sender) (target_node_rid, spot_rid,
+            return (*mesh_sender) (target_node_rid, spot_id,
                                    target_spot_generation, std::move (parts));
         }
         detail::channel_runtime_manager_t manager (state->runtime);
         auto &runtime = manager.get_route_channel (router_channel_id);
-        return runtime.submit_spot_send_parts (target_node_rid, spot_rid, std::move (parts));
+        return runtime.submit_spot_send_parts (target_node_rid, spot_id, std::move (parts));
     }
     catch (const framework_exception_t &error) {
         return detail::result_access_t::failure<void> (error);
@@ -1437,7 +1461,7 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
   const std::shared_ptr<detail::route_client_state_t> &state,
   const std::string &router_channel_id,
   const zlink::routing_id_t &target_node_rid,
-  const spot_rid_t &target_spot_rid,
+  const spot_id_t &target_spot_id,
   const std::string &packet_name,
   std::type_index request_type,
   payload_encoder_t encode_payload,
@@ -1453,7 +1477,7 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
           framework_error_kind_t::request_protocol_error, "route client is not configured"));
     }
     runtime::messaging::message_parts_t parts;
-    const auto spot_rid = zlink::routing_id_t::from (std::string (target_spot_rid.value ()));
+    const auto &spot_id = target_spot_id;
     try {
         detail::channel_runtime_manager_t manager (state->runtime);
         auto &runtime = manager.get_route_channel (router_channel_id);
@@ -1474,7 +1498,7 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
                                           std::nullopt,
                                           header.correlation_id,
                                           target_node_rid.to_string (),
-                                          spot_rid.to_string (),
+                                          spot_id,
                                           std::nullopt,
                                           std::nullopt};
           });
@@ -1489,7 +1513,7 @@ task_t<std::uint64_t> route_client_t::submit_spot_request_erased (
         detail::channel_runtime_manager_t manager (state->runtime);
         auto &runtime = manager.get_route_channel (router_channel_id);
         return task_t<std::uint64_t> (
-          runtime.request_to_spot_parts (target_node_rid, spot_rid, std::move (parts)));
+          runtime.request_to_spot_parts (target_node_rid, spot_id, std::move (parts)));
     }
     catch (const framework_exception_t &error) {
         return task_t<std::uint64_t> (
@@ -1788,7 +1812,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
   const std::shared_ptr<detail::route_client_state_t> &state,
   std::string router_channel_id,
   zlink::routing_id_t target_node_rid,
-  spot_rid_t target_spot_rid,
+  spot_id_t target_spot_id,
   std::uint64_t target_spot_generation,
   std::string packet_name,
   std::type_index request_type,
@@ -1807,7 +1831,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
     }
     runtime::messaging::message_parts_t parts;
     auto effective_timeout = timeout;
-    const auto spot_rid = zlink::routing_id_t::from (std::string (target_spot_rid.value ()));
+    const auto &spot_id = target_spot_id;
     const auto use_route_channel = detail::has_route_channel (state->runtime, router_channel_id);
     const auto mesh_requester = use_route_channel
                                   ? std::nullopt
@@ -1841,7 +1865,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                           std::nullopt,
                                           header.correlation_id,
                                           target_node_rid.to_string (),
-                                          spot_rid.to_string (),
+                                          spot_id,
                                           std::nullopt,
                                           std::nullopt};
           });
@@ -1859,7 +1883,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
         || !executor->try_submit ([runtime_state, source,
                                    router_channel_id = std::move (router_channel_id),
                                    target_node_rid = std::move (target_node_rid),
-                                   spot_rid = std::move (spot_rid),
+                                   spot_id = std::move (spot_id),
                                    target_spot_generation,
                                    packet_name = std::move (packet_name), parts = std::move (parts),
                                    effective_timeout, mesh_requester] () mutable {
@@ -1868,7 +1892,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                   auto reply = [&] () -> result_t<runtime::messaging::message_parts_t> {
                       if (mesh_requester) {
                           return (*mesh_requester) (
-                            target_node_rid, spot_rid, target_spot_generation,
+                            target_node_rid, spot_id, target_spot_generation,
                             std::move (parts), effective_timeout);
                       }
                       detail::channel_runtime_manager_t manager (runtime_state);
@@ -1877,7 +1901,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                ? runtime.request_reply_parts (
                                    target_node_rid, std::move (parts), effective_timeout)
                                : runtime.request_reply_spot_parts (
-                                   target_node_rid, spot_rid, std::move (parts), effective_timeout);
+                                   target_node_rid, spot_id, std::move (parts), effective_timeout);
                   } ();
                   if (!reply) {
                       if (reply.error_kind ()
@@ -1891,7 +1915,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                               packet_name,
                               router_channel_id,
                               std::nullopt,
-                              spot_rid.to_string (),
+                              spot_id,
                               std::nullopt,
                               target_node_rid.to_string (),
                               std::nullopt,
@@ -1934,7 +1958,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_request_reply_message_erase
                                                     std::nullopt,
                                                     reply_header.value ().correlation_id,
                                                     target_node_rid.to_string (),
-                                                    spot_rid.to_string (),
+                                                    spot_id,
                                                     std::nullopt,
                                                     std::nullopt};
                     });
@@ -2012,7 +2036,7 @@ result_t<void> route_client_t::submit_spot_handle_send_erased (
     }
     const auto address = handle_state->snapshot ();
     return submit_spot_send_erased (state, address.mesh_name, address.node_rid,
-                                    spot_rid_t::from_string (address.spot_rid.to_string ()),
+                                    spot_id_t (address.spot_id),
                                     address.spot_generation,
                                     packet_name, message_type, std::move (encode_payload),
                                     metadata);
@@ -2036,7 +2060,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_handle_request_reply_messag
     try {
         co_return co_await submit_spot_request_reply_message_erased (
           state, address.mesh_name, address.node_rid,
-          spot_rid_t::from_string (address.spot_rid.to_string ()), address.spot_generation,
+          spot_id_t (address.spot_id), address.spot_generation,
           packet_name, request_type,
           encode_payload, timeout, metadata);
     }
@@ -2049,7 +2073,7 @@ task_t<zlink::message_t> route_client_t::submit_spot_handle_request_reply_messag
     const auto refreshed = handle_state->snapshot ();
     co_return co_await submit_spot_request_reply_message_erased (
       state, refreshed.mesh_name, refreshed.node_rid,
-      spot_rid_t::from_string (refreshed.spot_rid.to_string ()), refreshed.spot_generation,
+      spot_id_t (refreshed.spot_id), refreshed.spot_generation,
       std::move (packet_name),
       request_type, std::move (encode_payload), timeout, std::move (metadata));
 }

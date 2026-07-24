@@ -18,16 +18,36 @@ bound를 합하며 `Capture` 뒤 actual encoded size로만 축소한다.
 다섯 getter와 다섯 setter는 Java exact public member inventory의 JVM method를 그대로 호출한다. Kotlin 전용
 property, relocation limit wrapper와 `$default` member는 생성하지 않는다.
 
-Global authority key는 ActorId 또는 SpotRid를 기준으로 정한다. ActorId, SpotRid와 stable type은 UTF-8
+Global authority key는 ActorId 또는 SpotId를 기준으로 정한다. ActorId, SpotId와 stable type은 UTF-8
 1..255 bytes의 case-sensitive exact value다. Authority snapshot의 object generation과 owner generation은
 provider가 발급하는 `1..Long.MAX_VALUE` 값이다. Snapshot과 stored result의
-`ZLinkPlacementAllocation`은 Pending 또는 Active 상태, object kind, stable type, descriptor key·lifecycle
-generation과 `1..Integer.MAX_VALUE` capacity delta를 포함한다. Generic reserve만 Missing에서 Pending을
-만들고 commit만 Pending을 Active로 전환한다. Generic abort는 exact reservation을 기준으로 current target
-liveness와 관계없이 Pending을 정리한다. Existing Active authority의 preserve·owner relocation·delete만
+`ZLinkPlacementAllocation`은 Reserved 또는 Active 상태, object kind·stable type, descriptor
+key·lifecycle generation과 typed capacity bundle을 포함한다. Bundle은 Actor slot, Spot slot과
+optional `(Spot kind, stable type, slots)` 하나를
+가진다. Generic reserve만 Missing에서 Reserved를 만들고 commit만 Reserved를 Active로 전환한다. Generic
+abort는 exact reservation을 기준으로 current target liveness와 관계없이 Reserved를 정리한다. Existing Active authority의 preserve·owner relocation·delete만
 `ZLinkAuthorityExpectFound`를 사용한다. Descriptor와 operational snapshot은 node-wide placement
-weight, active capacity, pending capacity와 현재 사용량을 typed field로 제공한다. Slot과 allocation group
-field는 없다.
+weight와 Actor 전체·Spot 전체·Spot type별 active·reserved·limit을 typed field로 제공한다. Entry Spot은
+Spot capacity에서 제외하지만 Entry Spot의 Actor는 Actor 전체 capacity에 포함한다.
+Channel weight, placement weight와 ClientServer descriptor weight는 Java signed `int` `0..10000`을 그대로
+사용한다. Provider는 범위 밖 값을 거부하고 descriptor revision이 증가한 mutable update만 적용한다.
+Java `ZLinkMeshNodeDescriptor.entrySpotId()`는 Object Server에서 exact
+`<prefix>-entry-<entry-uuid>` RID를 반환하고 다른 role에서는 empty다. `entry-uuid`는 MeshNode UUID와
+독립적으로 생성한 RFC 4122 UUID v4의 lowercase canonical 36자 형식(`8-4-4-4-12`)이다. Automatic
+MeshNode RID도 같은 형식으로 `<prefix>-<uuid>`를 사용한다. Kotlin은 descriptor lifecycle과 이 값을 mapping
+fence로 사용하며 RID 문자열을 parse하지 않는다.
+
+상속한 `updateMeshNode(..., ZLinkLocationWriteIntent.NEW_CLAIM)`은 Object Server descriptor identity와
+`entrySpotId` global Spot identity를 exact owner lease·lifecycle로 한 transaction에서 claim한다. 별도 Entry
+claim public method는 제공하지 않는다. 어느 identity라도 충돌하면 descriptor, Entry claim과 index를 바꾸지
+않고 첫 claim에서 startup을 `RoutingIdConflict`로 끝낸다. 두 번째 UUID나 claim은 만들지 않는다.
+
+`entrySpotId`는 descriptor immutable field와 digest에 포함되며 renew나 mutable update로 바꿀 수 없다.
+Descriptor remove와 `removeAllByOwner`는 exact owner lease·lifecycle이 일치할 때만 Entry claim을 함께
+해제한다. Stale cleanup은 successor descriptor나 Entry claim을 제거할 수 없다. User Spot과 Instance Spot의
+generic `reserve`는 같은 global identity claim과 충돌하는 RID를 거부하며 authority나 capacity를 일부
+변경하지 않는다. Contract test는 이 원자성, 충돌 무변경, exact cleanup, stale successor 보호, immutable
+digest, UUID v4 형식, 첫 claim 즉시 실패와 두 번째 UUID·claim 미생성을 검증한다.
 `ZLinkPlacementObjectKind`의 numeric value는 `ACTOR=1`, `USER_SPOT=2`, `INSTANCE_SPOT=3`이다. Kotlin은
 ordinal을 저장하거나 전송하지 않고 `value()`를 사용한다.
 
@@ -79,11 +99,39 @@ abstract class ZLinkSuspendingLocationStore(
     ): CompletionStage<ZLinkObjectCommitResult> =
         async { commitSuspending(reservation, readyPayload, cancellation) }
 
+    final override fun commit(
+        reservation: ZLinkObjectReservation,
+        readyPayload: ByteArray,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkObjectCommitResult> =
+        async { commitSuspending(reservation, readyPayload, terminal, cancellation) }
+
+    final override fun reject(
+        reservation: ZLinkObjectReservation,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkObjectRejectResult> =
+        async { rejectSuspending(reservation, terminal, cancellation) }
+
     final override fun abort(
         reservation: ZLinkObjectReservation,
         cancellation: ZLinkStoreCancellation,
     ): CompletionStage<ZLinkObjectAbortResult> =
         async { abortSuspending(reservation, cancellation) }
+
+    final override fun abort(
+        reservation: ZLinkObjectReservation,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkObjectAbortResult> =
+        async { abortSuspending(reservation, terminal, cancellation) }
+
+    final override fun readCreationTerminal(
+        operation: ZLinkCreationOperationIdentity,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkCreationTerminalReadResult> =
+        async { readCreationTerminalSuspending(operation, cancellation) }
 
     final override fun reserveRelocationCapacity(
         request: ZLinkRelocationCapacityReservationRequest,
@@ -267,10 +315,34 @@ abstract class ZLinkSuspendingLocationStore(
         cancellation: ZLinkStoreCancellation,
     ): ZLinkObjectCommitResult
 
+    protected abstract suspend fun commitSuspending(
+        reservation: ZLinkObjectReservation,
+        readyPayload: ByteArray,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkObjectCommitResult
+
+    protected abstract suspend fun rejectSuspending(
+        reservation: ZLinkObjectReservation,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkObjectRejectResult
+
     protected abstract suspend fun abortSuspending(
         reservation: ZLinkObjectReservation,
         cancellation: ZLinkStoreCancellation,
     ): ZLinkObjectAbortResult
+
+    protected abstract suspend fun abortSuspending(
+        reservation: ZLinkObjectReservation,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkObjectAbortResult
+
+    protected abstract suspend fun readCreationTerminalSuspending(
+        operation: ZLinkCreationOperationIdentity,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkCreationTerminalReadResult
 
     protected abstract suspend fun reserveRelocationCapacitySuspending(
         request: ZLinkRelocationCapacityReservationRequest,
@@ -461,12 +533,12 @@ abstract class ZLinkSuspendingRelocationStore(
 subclass가 다시 override할 수 없는 `public final` bridge이며, provider 구현은 protected suspend hook만 구현한다.
 
 `reserve`는 Actor, User Spot과 Instance Spot에 공통인 generic operation이다. Request는 object kind,
-authority key, stable type, placement profile·affinity key, 최대 1 MiB인 creation intent reference·hash·encoded
-size, target descriptor, exact owner token과 pending capacity delta를 가진다. `commit`과 `abort`는 reserve가 반환한 exact
+authority key, stable type, 최대 1 MiB인 creation intent reference·hash·encoded
+size, target descriptor, exact owner token과 typed capacity bundle을 가진다. `commit`과 `abort`는 reserve가 반환한 exact
 reservation을 받으며 idempotent terminal result를 반환한다. Object별 `reserveActor`, `reserveSpot` 같은
 interface는 제공하지 않는다.
 
-Java `ZLinkAuthoritySnapshot.pendingCreation()`은 Pending allocation에서 반드시 non-empty이고 Active에서는
+Java `ZLinkAuthoritySnapshot.pendingCreation()`은 Reserved allocation에서 반드시 non-empty이고 Active에서는
 empty다. 값은 provider-issued reservation ID와 Actor·User Spot·Instance Spot 생성 요청의 immutable content
 reference, exact 32-byte SHA-256과 `0..1 MiB` encoded size를 반환한다. Target-owned Instance Spot의 cold
 activation content만 complete `instance-activation-recovery-v1` envelope이며, Actor와 User Spot의 manager
@@ -505,7 +577,11 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingLocationStor
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAuthorityScanResult> list(java.lang.String, java.util.Optional<systems.zlink.framework.locations.ZLinkAuthorityScanCursor>, int, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectReserveResult> reserve(systems.zlink.framework.locations.ZLinkObjectReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectCommitResult> commit(systems.zlink.framework.locations.ZLinkObjectReservation, byte[], systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectCommitResult> commit(systems.zlink.framework.locations.ZLinkObjectReservation, byte[], systems.zlink.framework.locations.ZLinkCreationOperationTerminal, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectRejectResult> reject(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkCreationOperationTerminal, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectAbortResult> abort(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkObjectAbortResult> abort(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkCreationOperationTerminal, systems.zlink.framework.locations.ZLinkStoreCancellation);
+  public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkCreationTerminalReadResult> readCreationTerminal(systems.zlink.framework.locations.ZLinkCreationOperationIdentity, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationCapacityReserveResult> reserveRelocationCapacity(systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkRelocationCapacityAbortResult> abortRelocationCapacity(systems.zlink.framework.locations.ZLinkRelocationCapacityFence, systems.zlink.framework.locations.ZLinkStoreCancellation);
   public final java.util.concurrent.CompletionStage<systems.zlink.framework.locations.ZLinkAggregatePrepareResult> prepareAggregate(systems.zlink.framework.locations.ZLinkAggregatePrepareRequest, systems.zlink.framework.locations.ZLinkStoreCancellation);
@@ -537,7 +613,11 @@ public abstract class systems.zlink.framework.kotlin.ZLinkSuspendingLocationStor
   protected abstract java.lang.Object listAuthoritiesSuspending(java.lang.String, java.util.Optional<systems.zlink.framework.locations.ZLinkAuthorityScanCursor>, int, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkAuthorityScanResult>);
   protected abstract java.lang.Object reserveSuspending(systems.zlink.framework.locations.ZLinkObjectReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectReserveResult>);
   protected abstract java.lang.Object commitSuspending(systems.zlink.framework.locations.ZLinkObjectReservation, byte[], systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectCommitResult>);
+  protected abstract java.lang.Object commitSuspending(systems.zlink.framework.locations.ZLinkObjectReservation, byte[], systems.zlink.framework.locations.ZLinkCreationOperationTerminal, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectCommitResult>);
+  protected abstract java.lang.Object rejectSuspending(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkCreationOperationTerminal, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectRejectResult>);
   protected abstract java.lang.Object abortSuspending(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectAbortResult>);
+  protected abstract java.lang.Object abortSuspending(systems.zlink.framework.locations.ZLinkObjectReservation, systems.zlink.framework.locations.ZLinkCreationOperationTerminal, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkObjectAbortResult>);
+  protected abstract java.lang.Object readCreationTerminalSuspending(systems.zlink.framework.locations.ZLinkCreationOperationIdentity, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkCreationTerminalReadResult>);
   protected abstract java.lang.Object reserveRelocationCapacitySuspending(systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkRelocationCapacityReserveResult>);
   protected abstract java.lang.Object abortRelocationCapacitySuspending(systems.zlink.framework.locations.ZLinkRelocationCapacityFence, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkRelocationCapacityAbortResult>);
   protected abstract java.lang.Object prepareAggregateSuspending(systems.zlink.framework.locations.ZLinkAggregatePrepareRequest, systems.zlink.framework.locations.ZLinkStoreCancellation, kotlin.coroutines.Continuation<? super systems.zlink.framework.locations.ZLinkAggregatePrepareResult>);

@@ -7,7 +7,7 @@ namespace Zlink.Framework.Contracts.Spots;
 public sealed record InstanceSpotAddress(
     string MeshName,
     string InstanceSpotType,
-    RoutingId SpotRid);
+    string SpotId);
 
 /// <summary>Per-MeshNode limits for one registered Instance Spot type.</summary>
 public sealed record ZLinkInstanceSpotFactoryOptions

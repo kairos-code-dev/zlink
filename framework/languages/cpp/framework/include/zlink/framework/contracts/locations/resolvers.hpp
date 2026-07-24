@@ -21,7 +21,7 @@ class spot_handle_resolver_t
   public:
     virtual ~spot_handle_resolver_t () = default;
     virtual task_t<std::optional<spot_handle_t>>
-    resolve_spot_handle (spot_rid_t spot_rid) = 0;
+    resolve_spot_handle (spot_id_t spot_id) = 0;
 };
 
 /* Resolves an actor id to an opaque handle for its current spot. The

@@ -473,7 +473,8 @@ class location_auto_connect_host_service_t final : public hosted_service_t
             const auto override =
               detail::channel_runtime_t::from (_bus).server_peer_weight_override (local.mesh_name);
             if (override) {
-                return override->value ();
+                return static_cast<std::uint32_t> (
+                  std::min (*override, 100));
             }
         }
         return local.weight;

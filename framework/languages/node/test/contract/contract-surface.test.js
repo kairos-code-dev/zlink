@@ -220,19 +220,23 @@ test('spot actor lifecycle handler registration API is not public', () => {
   assert.deepEqual(remaining, []);
 });
 
-test('entry spot public surface exposes create lifecycle and actor join admission but no spot create callback', () => {
+test('entry spot public surface separates creation and membership from user spot admission', () => {
   const declarations = readTree(declarationsRoot);
   const entrySpot = declarationBody(declarations, 'ZLinkEntrySpot');
-  const spotActorLifecycle = declarationBody(declarations, 'ZLinkSpotActorLifecycle');
+  const membershipLifecycle = declarationBody(declarations, 'ZLinkSpotActorMembershipLifecycle');
+  const userLifecycle = declarationBody(declarations, 'ZLinkUserSpotActorLifecycle');
   const entryContext = declarationBody(declarations, 'ZLinkEntrySpotContext');
 
   assert.equal(interfaceExtends(entrySpot, 'ZLinkSpot'), false);
-  assert.equal(interfaceExtends(entrySpot, 'ZLinkSpotActorLifecycle'), true);
+  assert.equal(interfaceExtends(entrySpot, 'ZLinkSpotActorMembershipLifecycle'), true);
   assert.equal(entrySpot.includes('onCreate?'), false);
-  assert.equal(spotActorLifecycle.includes('onActorJoin'), true);
+  assert.equal(entrySpot.includes('onActorJoin'), false);
+  assert.equal(membershipLifecycle.includes('onActorJoin'), false);
+  assert.equal(userLifecycle.includes('onActorJoin'), true);
   assert.equal(entrySpot.includes('onCreateActor'), true);
-  assert.equal(spotActorLifecycle.includes('onJoinedActor'), true);
-  assert.equal(spotActorLifecycle.includes('onLeaveActor'), true);
+  assert.equal(entrySpot.includes('onActorRelocated'), true);
+  assert.equal(membershipLifecycle.includes('onJoinedActor'), true);
+  assert.equal(membershipLifecycle.includes('onLeaveActor'), true);
   assert.equal(entryContext.includes('leaveActor'), false);
   assert.equal(entryContext.includes('destroyActor'), true);
   assert.equal(declarationBody(declarations, 'ZLinkSpotContext').includes('destroyActor'), false);
@@ -414,7 +418,8 @@ test('framework error kind values and retriable defaults match the shared table'
     ['RoutingIdConflict', 'routingIdConflict', 31, false],
     ['SpotGenerationStale', 'spotGenerationStale', 32, false],
     ['SpotMoving', 'spotMoving', 33, true],
-    ['RelocationDataLost', 'relocationDataLost', 34, false]
+    ['RelocationDataLost', 'relocationDataLost', 34, false],
+    ['SpotIdConflict', 'spotIdConflict', 35, false]
   ];
 
   assert.equal(Object.keys(framework.ZLinkFrameworkErrorKind).length, expected.length);
@@ -499,13 +504,14 @@ test('location contract declarations fix store resolver runtime query watch and 
   assert.match(actorFilter, /readonly locationKind\?: ZLinkSpotKind/);
 });
 
-test('actor convenience declarations expose directory snapshot and bind-or-get shapes', () => {
+test('actor convenience declarations expose fluent manager snapshot and bind-or-get shapes', () => {
   const declarations = readTree(declarationsRoot);
   const actorClient = declarationBody(declarations, 'ZLinkActorClient');
   const actorSendCall = declarationBody(declarations, 'ZLinkActorSendCall');
   const actorRequestCall = declarationBody(declarations, 'ZLinkActorRequestCall');
-  const directory = declarationBody(declarations, 'ZLinkActorDirectory');
-  const placement = declarationBody(declarations, 'ZLinkActorPlacement');
+  const manager = declarationBody(declarations, 'ZLinkActorManager');
+  const createCall = declarationBody(declarations, 'ZLinkActorCreateCall');
+  const getOrCreateCall = declarationBody(declarations, 'ZLinkActorGetOrCreateCall');
   const sessionActors = declarationBody(declarations, 'ZLinkSessionActors');
   const snapshot = declarationBody(declarations, 'ZLinkActorRefSnapshot');
 
@@ -520,10 +526,18 @@ test('actor convenience declarations expose directory snapshot and bind-or-get s
   assert.match(actorRequestCall, /timeout\(timeoutMs: number\): this/);
   assert.match(actorRequestCall, /submit<TReply>\(signal\?: AbortSignal\): Promise<TReply>/);
   assert.match(actorRequestCall, /yield<TReply>\(signal\?: AbortSignal\): Promise<TReply>/);
-  assert.match(directory, /find\(meshName: string, actorId: string, signal\?: AbortSignal\): Promise<ActorRef \| undefined>/);
-  assert.match(directory, /ensure\(\s*meshName: string,\s*actorId: string,\s*createRequest: unknown,\s*placement\?: ZLinkActorPlacement,\s*signal\?: AbortSignal\s*\): Promise<ActorRef>/);
-  assert.match(placement, /readonly preferredNodeRid\?: RoutingId/);
-  assert.match(placement, /readonly routeMesh\?: string/);
+  assert.match(manager, /create\(actorId: string, actorType: string\): ZLinkActorCreateCall/);
+  assert.match(manager, /getOrCreate\(actorId: string, actorType: string\): ZLinkActorGetOrCreateCall/);
+  assert.match(manager, /find\(actorId: string, signal\?: AbortSignal\): Promise<ActorRef \| undefined>/);
+  assert.match(manager, /findSpot\(actorId: string, signal\?: AbortSignal\): Promise<SpotRef \| undefined>/);
+  assert.match(manager, /destroy\(actor: ActorRef, signal\?: AbortSignal\): Promise<boolean>/);
+  for (const call of [createCall, getOrCreateCall]) {
+    assert.match(call, /inMesh\(meshName: string\): this/);
+    assert.match(call, /request\(request: unknown\): this/);
+    assert.match(call, /timeout\(timeoutMs: number\): this/);
+    assert.match(call, /submit\(signal\?: AbortSignal\): Promise<ZLinkActorCreateResult>/);
+    assert.equal(call.includes('preferredNodeRid'), false);
+  }
   assert.match(snapshot, /readonly nodeRid: RoutingId/);
   assert.match(snapshot, /readonly actorId: string/);
   assert.match(snapshot, /readonly generation: bigint/);

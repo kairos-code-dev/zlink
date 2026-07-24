@@ -10,13 +10,13 @@ public interface ZLinkActorManager {
      * used only by creation APIs and must match a value registered with
      * {@code addActorFactory}.
      */
-    CompletionStage<ActorRef> create(String actorId, String actorType);
+    CompletionStage<ZLinkActorCreateResult> create(String actorId, String actorType);
 
     /**
      * Creates an actor with a creation payload. The actor type string is defined
      * by factory registration; lookup APIs use actor id only.
      */
-    default CompletionStage<ActorRef> create(
+    default CompletionStage<ZLinkActorCreateResult> create(
         String actorId,
         String actorType,
         Object createRequest) {
@@ -27,7 +27,7 @@ public interface ZLinkActorManager {
      * Creates an actor with a framework message payload. The actor type string is
      * defined by factory registration; lookup APIs use actor id only.
      */
-    CompletionStage<ActorRef> create(
+    CompletionStage<ZLinkActorCreateResult> create(
         String actorId,
         String actorType,
         ZLinkMessage createRequest);
@@ -42,13 +42,13 @@ public interface ZLinkActorManager {
      * Finds an actor by id or creates it using the factory registered for the
      * supplied actor type string.
      */
-    CompletionStage<ActorRef> getOrCreate(String actorId, String actorType);
+    CompletionStage<ZLinkActorCreateResult> getOrCreate(String actorId, String actorType);
 
     /**
      * Finds an actor by id or creates it with a creation payload. The actor type
      * string must be one registered with {@code addActorFactory}.
      */
-    default CompletionStage<ActorRef> getOrCreate(
+    default CompletionStage<ZLinkActorCreateResult> getOrCreate(
         String actorId,
         String actorType,
         Object createRequest) {
@@ -59,7 +59,7 @@ public interface ZLinkActorManager {
      * Finds an actor by id or creates it with a framework message payload. The
      * actor type string must be one registered with {@code addActorFactory}.
      */
-    CompletionStage<ActorRef> getOrCreate(
+    CompletionStage<ZLinkActorCreateResult> getOrCreate(
         String actorId,
         String actorType,
         ZLinkMessage createRequest);

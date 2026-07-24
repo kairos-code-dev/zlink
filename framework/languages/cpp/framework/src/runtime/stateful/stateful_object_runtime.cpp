@@ -48,6 +48,14 @@ stateful_object_runtime_t::stateful_object_runtime_t (
 void stateful_object_runtime_t::replace_placement_candidates (
   std::vector<placement_candidate_t> candidates)
 {
+    if (std::any_of (
+          candidates.begin (), candidates.end (),
+          [] (const placement_candidate_t &candidate) {
+              return candidate.weight < 0
+                     || candidate.weight > 10000;
+          }))
+        throw std::invalid_argument (
+          "placement weight must be in range 0..10000");
     std::lock_guard lock (_mutex);
     _candidates = std::move (candidates);
 }
@@ -1315,17 +1323,20 @@ stateful_object_runtime_t::select_candidate_locked (
             continue;
         }
         eligible.push_back (&candidate);
-        total_weight += candidate.weight;
+        total_weight += static_cast<std::uint64_t> (
+          candidate.weight);
     }
     if (eligible.empty () || total_weight == 0) {
         return std::nullopt;
     }
     auto selection = stable_hash (request.key) % total_weight;
     for (const auto *candidate : eligible) {
-        if (selection < candidate->weight) {
+        const auto weight = static_cast<std::uint64_t> (
+          candidate->weight);
+        if (selection < weight) {
             return *candidate;
         }
-        selection -= candidate->weight;
+        selection -= weight;
     }
     return *eligible.back ();
 }

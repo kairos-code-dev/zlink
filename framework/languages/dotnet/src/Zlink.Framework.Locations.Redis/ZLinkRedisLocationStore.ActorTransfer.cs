@@ -191,21 +191,21 @@ internal static class ZLinkRedisActorTransferCodec
             root.GetProperty("generation").GetUInt64());
     }
 
-    internal static string SerializeParticipants(IReadOnlySet<RoutingId> participants)
+    internal static string SerializeParticipants(IReadOnlySet<string> participants)
     {
-        var hexes = participants
-            .Select(static rid => rid.IsEmpty ? string.Empty : rid.ToHex())
-            .OrderBy(static hex => hex, StringComparer.Ordinal)
+        var values = participants
+            .OrderBy(static value => value, StringComparer.Ordinal)
             .ToArray();
-        return JsonSerializer.Serialize(hexes);
+        return JsonSerializer.Serialize(values);
     }
 
-    internal static IReadOnlySet<RoutingId> ParseParticipants(string json)
+    internal static IReadOnlySet<string> ParseParticipants(string json)
     {
-        var hexes = JsonSerializer.Deserialize<string[]>(json) ?? [];
-        var set = new HashSet<RoutingId>();
-        foreach (var hex in hexes)
-            set.Add(string.IsNullOrEmpty(hex) ? default : RoutingId.FromHex(hex));
+        var values = JsonSerializer.Deserialize<string[]>(json) ?? [];
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var value in values)
+            if (!string.IsNullOrEmpty(value))
+                set.Add(value);
         return set;
     }
 

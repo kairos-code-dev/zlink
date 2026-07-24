@@ -45,7 +45,7 @@ internal sealed class ZLinkCurrentSpotPublishCall<TEvent>(
                 _messageName,
                 channelName,
                 topic,
-                SpotRid: activation.SpotRid.ToString()));
+                SpotId: activation.SpotId.ToString()));
         try
         {
             var result = await activation.OutboundEndpoint
@@ -122,7 +122,7 @@ internal sealed class ZLinkExternalSpotPublishCall<TEvent>(
                 packetName,
                 channelName,
                 topic,
-                SpotRid: bundle.Spot.RoutingId.ToString()));
+                SpotId: bundle.Spot.RoutingId.ToString()));
 
         try
         {

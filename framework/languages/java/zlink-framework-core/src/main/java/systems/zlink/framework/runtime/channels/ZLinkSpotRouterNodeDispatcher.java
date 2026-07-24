@@ -22,7 +22,7 @@ final class ZLinkSpotRouterNodeDispatcher {
         String routerChannelId,
         ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetSpotGeneration,
         List<Message> spotParts) {
         CompletableFuture<Void> result = new CompletableFuture<>();
@@ -30,13 +30,13 @@ final class ZLinkSpotRouterNodeDispatcher {
         try {
             boolean submitted = node.entrySpot().sendToSpot(
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 targetSpotGeneration,
                 requestParts,
                 SendFlags.NONE);
             ZLinkChannelRuntime.trace("spot-route node-send-submit router=" + routerChannelId
                 + " targetNode=" + targetNodeRid
-                + " targetSpot=" + targetSpotRid
+                + " targetSpot=" + targetSpotId
                 + " submitted=" + submitted);
             if (submitted) {
                 result.complete(null);
@@ -57,7 +57,7 @@ final class ZLinkSpotRouterNodeDispatcher {
         String routerChannelId,
         ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetSpotGeneration,
         List<Message> spotParts,
         Duration timeout,
@@ -78,7 +78,7 @@ final class ZLinkSpotRouterNodeDispatcher {
                 try {
                     boolean submitted = node.entrySpot().requestToSpot(
                         targetNodeRid,
-                        targetSpotRid,
+                        targetSpotId,
                         targetSpotGeneration,
                         requestParts,
                         reply -> completeReply(reply, result, requestStartedNanos),
@@ -86,7 +86,7 @@ final class ZLinkSpotRouterNodeDispatcher {
                         timeout);
                     ZLinkChannelRuntime.trace("spot-route node-submit router=" + routerChannelId
                         + " targetNode=" + targetNodeRid
-                        + " targetSpot=" + targetSpotRid
+                        + " targetSpot=" + targetSpotId
                         + " submitted=" + submitted);
                     if (!submitted && System.nanoTime() < deadline) {
                         retryRequest.accept(this);
@@ -100,7 +100,7 @@ final class ZLinkSpotRouterNodeDispatcher {
                     ZLinkChannelRuntime.trace("spot-route node-submit-error router="
                         + routerChannelId
                         + " targetNode=" + targetNodeRid
-                        + " targetSpot=" + targetSpotRid
+                        + " targetSpot=" + targetSpotId
                         + " error=" + ZLinkChannelRuntime.requestErrorSummary(ex));
                     if (ZLinkChannelRequestSubmitter.isRetriableSubmit(ex)
                         && System.nanoTime() < deadline) {
@@ -127,7 +127,7 @@ final class ZLinkSpotRouterNodeDispatcher {
                 + " result=" + reply.result()
                 + " origin=spot-node-callback"
                 + " sourceRid=" + reply.routingId().map(Object::toString).orElse(null)
-                + " sourceSpot=" + reply.spotRid().map(Object::toString).orElse(null)
+                + " sourceSpot=" + reply.spotId().map(Object::toString).orElse(null)
                 + " requestSeq=" + reply.requestSeq().map(Object::toString).orElse(null)
                 + " parts=" + ZLinkChannelRuntime.describeTraceParts(reply.parts()));
             if (reply.result() != ZLinkBackendRequestResult.OK) {

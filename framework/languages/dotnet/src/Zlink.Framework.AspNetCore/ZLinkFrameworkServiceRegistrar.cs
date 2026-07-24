@@ -205,11 +205,13 @@ internal static class ZLinkFrameworkServiceRegistrar
 
         if (HasActorCapableSpotNode(registration) || registration.Locations.Enabled)
         {
-            services.AddSingleton<IZLinkActorDirectory>(static provider =>
+            services.AddSingleton(static provider =>
                 new ZLinkActorDirectory(
                     provider.GetRequiredService<ZLinkFrameworkRuntime>(),
                     provider.GetRequiredService<ZLinkFrameworkRegistration>(),
                     provider.GetService<ZLinkStoreLocationResolvers>()));
+            services.AddSingleton<IZLinkActorResolver>(static provider =>
+                provider.GetRequiredService<ZLinkActorDirectory>());
         }
 
         if (HasRouterSpotNode(registration) && registration.Locations.Enabled)

@@ -49,8 +49,8 @@ void to_json (nlohmann::json &json, const spot_actor_admission_route_request_t &
                           {"actorType", value.actor_type},
                           {"actorId", value.actor_id},
                           {"actorGeneration", value.actor_generation},
-                          {"sourceSpotRid", value.source_spot_rid},
-                          {"targetSpotRid", value.target_spot_rid},
+                          {"sourceSpotId", value.source_spot_id},
+                          {"targetSpotId", value.target_spot_id},
                           {"payload", value.payload}};
 }
 
@@ -61,8 +61,8 @@ void from_json (const nlohmann::json &json, spot_actor_admission_route_request_t
     value.actor_type = json.at ("actorType").get<std::string> ();
     value.actor_id = json.at ("actorId").get<std::string> ();
     value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
-    value.source_spot_rid = json.at ("sourceSpotRid").get<std::string> ();
-    value.target_spot_rid = json.at ("targetSpotRid").get<std::string> ();
+    value.source_spot_id = json.at ("sourceSpotId").get<std::string> ();
+    value.target_spot_id = json.at ("targetSpotId").get<std::string> ();
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
 }
 
@@ -102,7 +102,7 @@ void to_json (nlohmann::json &json, const spot_actor_commit_route_request_t &val
                           {"actorType", value.actor_type},
                           {"actorId", value.actor_id},
                           {"actorGeneration", value.actor_generation},
-                          {"targetSpotRid", value.target_spot_rid},
+                          {"targetSpotId", value.target_spot_id},
                           {"boundSessionNodeRid", value.bound_session_node_rid},
                           {"boundSessionRid", value.bound_session_rid},
                           {"transferState", value.transfer_state},
@@ -125,7 +125,7 @@ void from_json (const nlohmann::json &json, spot_actor_commit_route_request_t &v
     value.actor_type = json.at ("actorType").get<std::string> ();
     value.actor_id = json.at ("actorId").get<std::string> ();
     value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
-    value.target_spot_rid = json.at ("targetSpotRid").get<std::string> ();
+    value.target_spot_id = json.at ("targetSpotId").get<std::string> ();
     value.bound_session_node_rid = json.value ("boundSessionNodeRid", "");
     value.bound_session_rid = json.value ("boundSessionRid", "");
     value.transfer_state = json.at ("transferState").get<std::vector<std::uint8_t>> ();
@@ -150,7 +150,7 @@ void to_json (nlohmann::json &json, const spot_actor_join_route_request_t &value
                           {"actorType", value.actor_type},
                           {"actorId", value.actor_id},
                           {"actorGeneration", value.actor_generation},
-                          {"spotRid", value.spot_rid},
+                          {"spotId", value.spot_id},
                           {"payload", value.payload},
                           {"actorSnapshotPresent", value.actor_snapshot_present},
                           {"actorSnapshot", value.actor_snapshot}};
@@ -162,7 +162,7 @@ void from_json (const nlohmann::json &json, spot_actor_join_route_request_t &val
     value.actor_type = json.at ("actorType").get<std::string> ();
     value.actor_id = json.at ("actorId").get<std::string> ();
     value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
-    value.spot_rid = json.at ("spotRid").get<std::string> ();
+    value.spot_id = json.at ("spotId").get<std::string> ();
     value.payload = json.at ("payload").get<std::vector<std::uint8_t>> ();
     value.actor_snapshot_present = json.value ("actorSnapshotPresent", false);
     value.actor_snapshot = json.value ("actorSnapshot", std::vector<std::uint8_t>{});
@@ -194,7 +194,7 @@ void to_json (nlohmann::json &json, const spot_actor_packet_route_request_t &val
                           {"actorType", value.actor_type},
                           {"actorId", value.actor_id},
                           {"actorGeneration", value.actor_generation},
-                          {"spotRid", value.spot_rid},
+                          {"spotId", value.spot_id},
                           {"packetName", value.packet_name_value},
                           {"contentType", value.content_type},
                           {"metadata", value.metadata},
@@ -207,7 +207,7 @@ void from_json (const nlohmann::json &json, spot_actor_packet_route_request_t &v
     value.actor_type = json.at ("actorType").get<std::string> ();
     value.actor_id = json.at ("actorId").get<std::string> ();
     value.actor_generation = json.at ("actorGeneration").get<std::uint64_t> ();
-    value.spot_rid = json.at ("spotRid").get<std::string> ();
+    value.spot_id = json.at ("spotId").get<std::string> ();
     value.packet_name_value = json.at ("packetName").get<std::string> ();
     value.content_type = json.value ("contentType", "application/json");
     value.metadata = json.value ("metadata", std::map<std::string, std::string>{});
@@ -317,7 +317,7 @@ zlink::message_t message_from_bytes (const std::vector<std::uint8_t> &bytes)
 
 spot_actor_join_route_request_t
 make_spot_actor_join_route_request (const actor_ref_t &actor_ref,
-                                    spot_rid_t spot_rid,
+                                    spot_id_t spot_id,
                                     const zlink::message_t &payload,
                                     const std::optional<zlink::message_t> &actor_snapshot)
 {
@@ -326,7 +326,7 @@ make_spot_actor_join_route_request (const actor_ref_t &actor_ref,
       .actor_type = std::string (actor_ref.actor_type ()),
       .actor_id = std::string (actor_ref.actor_id ()),
       .actor_generation = actor_ref.generation (),
-      .spot_rid = std::string (spot_rid.value ()),
+      .spot_id = std::string (spot_id),
       .payload = payload.to_bytes (),
       .actor_snapshot_present = actor_snapshot.has_value (),
       .actor_snapshot = actor_snapshot ? actor_snapshot->to_bytes () : std::vector<std::uint8_t>{}};
@@ -372,7 +372,7 @@ actor_join_reply_t actor_join_reply_from_spot_route (const spot_actor_join_route
 
 spot_actor_packet_route_request_t
 make_spot_actor_packet_route_request (const actor_ref_t &actor_ref,
-                                      spot_rid_t spot_rid,
+                                      spot_id_t spot_id,
                                       std::string_view packet_name,
                                       const zlink::message_t &payload,
                                       const spot_actor_message_metadata_t &metadata)
@@ -382,7 +382,7 @@ make_spot_actor_packet_route_request (const actor_ref_t &actor_ref,
                                              .actor_type = std::string (actor_ref.actor_type ()),
                                              .actor_id = std::string (actor_ref.actor_id ()),
                                              .actor_generation = actor_ref.generation (),
-                                             .spot_rid = std::string (spot_rid.value ()),
+                                             .spot_id = std::string (spot_id),
                                              .packet_name_value = std::string (packet_name),
                                              .content_type = metadata.content_type,
                                              .metadata = metadata.values,

@@ -29,14 +29,17 @@ export interface ZLinkEndpointConnections {
     listConnections(): readonly string[];
 }
 
-export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkSpotActorLifecycle<TActor> {
+export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>
+    extends ZLinkSpotActorMembershipLifecycle<TActor> {
     readonly context: ZLinkEntrySpotContext<TActor>;
     configure?(): void;
     onInitialize?(): Promise<void>;
     onClosing?(
         context: ZLinkSpotClosingContext,
         cleanupSignal: AbortSignal): Promise<void>;
-    onCreateActor?(actor: TActor, createRequest: ZLinkMessage): Promise<void>;
+    onCreateActor?(
+        actor: TActor,
+        createRequest: ZLinkMessage): Promise<ZLinkActorCreateResponse>;
     onActorRelocated?(actor: TActor): Promise<void>;
 }
 
@@ -75,7 +78,7 @@ export interface ZLinkFanoutPublishCall {
 }
 ```
 
-Entry Spot의 RID는 Framework가 MeshNode startup에서 발급한다. 애플리케이션은 Entry Spot RID를 구성값으로
+Entry Spot의 Spot ID는 Framework가 MeshNode startup에서 발급한다. 애플리케이션은 Entry Spot ID를 구성값으로
 제공하지 않는다. Actor create는 선택한 owner MeshNode의 Entry Spot membership과 Actor Ready barrier를 같은
 lifecycle에서 완료한다. 이후 one-way 업무 message는 Actor queue로 직접 전달되며 Entry Spot callback을
 경유하지 않는다.
@@ -118,6 +121,11 @@ store가 필요하고, manual publisher와 manual subscriber만 사용하는 hos
 Publisher는 descriptor만 게시하고 subscriber endpoint로 outbound connect를 시작하지 않는다. Subscriber만
 publisher endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle generation마다 connection
 intent 하나를 만든다.
+
+자동 할당 Publisher RID는 Framework 기본 diagnostic prefix와 RFC 4122 UUID v4의 lowercase canonical
+`8-4-4-4-12` 표현을 사용한다. Descriptor owner claim의 첫 active conflict에서는 기존 record를 변경하지
+않고 `RoutingIdConflict`로 startup을 실패하며 두 번째 UUID나 claim을 만들지 않는다. Caller가
+`routingId(...)`로 지정한 fixed RID에는 UUID 형식을 강제하지 않는다.
 
 ## 2. Metrics, monitoring과 packet
 
@@ -170,7 +178,7 @@ Node runtime은 Instance Spot 관측값도 `ZLinkMeter`로 기록한다. 이 언
 One-way placement·activation 실패는 `zlink.mesh_node.messages.dropped`에
 `surface=instance_spot`을 붙여 기록한다. `ZLinkMessageFlowEvent`도 별도 event ID를 추가하지 않고
 `eventId=zlink.message_flow`, 같은 surface와 `outcome=dropped`를 사용한다. `instanceSpotType`에는 startup에
-등록한 bounded type만 기록하며 Spot RID, owner ID와 internal authority fields는 metric attribute로 사용하지
+등록한 bounded type만 기록하며 Spot ID, owner ID와 internal authority fields는 metric attribute로 사용하지
 않는다. `eventId=zlink.message_flow`의 reason은 `ZLinkMessageFlowReason`,
 `eventId=zlink.dispatch_error`의 reason은 `ZLinkDispatchErrorReason` 값만 사용한다.
 
@@ -272,6 +280,13 @@ export interface ZLinkRequestCall {
     metadata(metadata: ZLinkMessageMetadata): this;
     timeout(timeoutMs: number): this;
     submit<TReply>(signal?: AbortSignal): Promise<TReply>;
+}
+
+export interface ZLinkChannelRequestCall {
+    metadata(key: string, value: string): this;
+    metadata(metadata: ZLinkMessageMetadata): this;
+    timeout(timeoutMs: number): this;
+    submit<TReply>(signal?: AbortSignal): Promise<TReply>;
     yield<TReply>(signal?: AbortSignal): Promise<TReply>;
 }
 
@@ -287,9 +302,9 @@ export interface ZLinkRouteClient {
     sendToNode(meshName: string, targetNodeRid: RoutingId, message: unknown): ZLinkSendCall;
     requestToNode(meshName: string, targetNodeRid: RoutingId, request: unknown): ZLinkRequestCall;
     sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
-    requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
-    sendToSpot(spotRid: SpotRid, message: unknown): ZLinkSpotSendCall;
-    requestToSpot(spotRid: SpotRid, request: unknown): ZLinkSpotRequestCall;
+    requestToChannel(channelName: string, request: unknown): ZLinkChannelRequestCall;
+    sendToSpot(spotId: SpotId, message: unknown): ZLinkSpotSendCall;
+    requestToSpot(spotId: SpotId, request: unknown): ZLinkSpotRequestCall;
 }
 
 export interface ZLinkRouteConfig {
@@ -328,13 +343,27 @@ export interface ZLinkRouteLocationKey {
 }
 
 export interface ZLinkRouteMeshRuntimeOptions {
+    mesh(meshName: string): ZLinkMeshPlacementRuntimeOptions;
     channel(channelName: string): ZLinkMeshChannelRuntimeOptions;
+}
+
+export interface ZLinkMeshPlacementRuntimeOptions {
+    placementWeight: number;
 }
 
 export interface ZLinkMeshChannelRuntimeOptions {
     weight: number;
 }
 ```
+
+두 runtime weight property는 정수 `0..10000`만 허용한다. 범위 밖 값은 descriptor를 갱신하지 않고
+configuration error로 거부한다. 성공한 변경은 descriptor revision을 증가시키고 이후 target 선택에만
+적용한다.
+
+`yield(...)`는 channel, Spot, Actor request와 I/O·CPU worker call에만 제공한다. Node direct request와
+Actor join에는 제공하지 않는다. Runtime은 operation submit 전에 current execution context를 확인하며
+`SpotWide` User Spot 또는 Instance Spot application handler가 아니면 outbound admission, queue 변경과 gate
+반환 없이 `InvalidConfiguration`으로 완료한다.
 
 `maxMessageSize`는 startup 전에만 설정하며 실행 중 property를 제공하지 않는다. `0`은 binding 또는
 transport가 수신할 수 있는 최대 complete message 크기로 정규화한다. Transport가 unlimited이면 service
@@ -446,6 +475,9 @@ route가 준비되지 않은 경우에는 `Submitted`와 unreachable detail을 �
 top-level status를 바꾸지 않고 detail에만 반영한다. Remote count는
 `snapshotRemoteNodeCount === admittedRemoteNodeCount + droppedRemoteNodeCount + unreachableRemoteNodeCount`를
 만족한다.
+Remote admitted count는 source의 local outbound transport queue 제출만 집계한다. Local admitted count는
+origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과 remote·local handler
+실행 또는 완료는 `Promise` 완료 조건이 아니다.
 
 ## 6. Serializer와 STREAM session
 

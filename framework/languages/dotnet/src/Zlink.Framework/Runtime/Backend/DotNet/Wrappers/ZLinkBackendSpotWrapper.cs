@@ -28,12 +28,14 @@ internal sealed class ZLinkBackendSpotWrapper :
         _pump = pump;
         _completions = completions;
         _subscriptions = subscriptions;
-        _state = pump.RegisterSpot(spot.RoutingId);
+        _state = pump.RegisterSpot(ZLinkSpotId.FromNativeRoutingId(spot.RoutingId));
     }
 
     private readonly ZLinkSpotSubscriptionTracker? _subscriptions;
 
     public RoutingId RoutingId => _spot.RoutingId;
+
+    private string SpotId => ZLinkSpotId.FromNativeRoutingId(_spot.RoutingId);
 
     public ulong LifecycleGeneration => _spot.Status().LifecycleGeneration;
 
@@ -48,13 +50,13 @@ internal sealed class ZLinkBackendSpotWrapper :
 
     public void ObserveSpotAuthority(
         RoutingId nodeRid,
-        RoutingId spotRid,
+        string spotId,
         ulong objectGeneration,
         ulong authorityOwnerGeneration)
     {
         RequireManagedNode().ObserveSpotAuthority(
             nodeRid,
-            spotRid,
+            spotId,
             objectGeneration,
             authorityOwnerGeneration);
     }
@@ -75,7 +77,7 @@ internal sealed class ZLinkBackendSpotWrapper :
     public void SetSubscription(string channelName, string topic)
     {
         _spot.SetSubscription(channelName, topic);
-        _subscriptions?.Add(_spot.RoutingId, channelName, topic);
+        _subscriptions?.Add(SpotId, channelName, topic);
     }
 
     public ZLinkBackendSubscribeMessage? Subscribe(RecvFlags flags)
@@ -90,7 +92,7 @@ internal sealed class ZLinkBackendSpotWrapper :
 
     public void OnDispatchEvent(Action<ZLinkBackendSpotDispatchInfo> handler)
     {
-        _pump.SetDispatchHandler(_spot.RoutingId, handler);
+        _pump.SetDispatchHandler(SpotId, handler);
     }
 
     public void OnSendReady(Action handler)
@@ -154,24 +156,24 @@ internal sealed class ZLinkBackendSpotWrapper :
     }
 
     public SubmitResult SendToSpot(
-        RoutingId targetRid, RoutingId spotRid, ulong spotGeneration,
+        RoutingId targetRid, string spotId, ulong spotGeneration,
         Message message, SendFlags flags, ReadOnlyMemory<byte> metadata)
     {
         return _spot.SendToSpot(
-            targetRid, spotRid, spotGeneration, new[] { message }, flags, metadata);
+            targetRid, spotId, spotGeneration, new[] { message }, flags, metadata);
     }
 
     public SubmitResult SendToSpot(
-        RoutingId targetRid, RoutingId spotRid, ulong spotGeneration,
+        RoutingId targetRid, string spotId, ulong spotGeneration,
         IReadOnlyList<Message> parts, SendFlags flags, ReadOnlyMemory<byte> metadata)
     {
         return _spot.SendToSpot(
-            targetRid, spotRid, spotGeneration, parts, flags, metadata);
+            targetRid, spotId, spotGeneration, parts, flags, metadata);
     }
 
     public bool RequestToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        string spotId,
         ulong spotGeneration,
         Message message,
         RequestCallback callback,
@@ -180,13 +182,13 @@ internal sealed class ZLinkBackendSpotWrapper :
         ReadOnlyMemory<byte> metadata)
     {
         return RequestToSpot(
-            targetRid, spotRid, spotGeneration, new[] { message }, callback, flags,
+            targetRid, spotId, spotGeneration, new[] { message }, callback, flags,
             timeout, metadata);
     }
 
     public bool RequestToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        string spotId,
         ulong spotGeneration,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
@@ -195,9 +197,9 @@ internal sealed class ZLinkBackendSpotWrapper :
         ReadOnlyMemory<byte> metadata)
     {
         var submit = _spot.RequestToSpot(
-            targetRid, spotRid, spotGeneration, parts, out var operationId,
+            targetRid, spotId, spotGeneration, parts, out var operationId,
             timeout ?? default, flags, metadata);
-        return AcceptRequestSubmit(submit, $"SPOT '{spotRid}' on node '{targetRid}'")
+        return AcceptRequestSubmit(submit, $"SPOT '{spotId}' on node '{targetRid}'")
                && _completions.RegisterRequest(operationId, callback);
     }
 
@@ -248,7 +250,7 @@ internal sealed class ZLinkBackendSpotWrapper :
 
     public ValueTask DisposeAsync()
     {
-        _subscriptions?.RemoveSpot(_spot.RoutingId);
+        _subscriptions?.RemoveSpot(SpotId);
         return _spot.DisposeAsync();
     }
 }

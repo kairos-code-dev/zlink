@@ -32,8 +32,8 @@
     "runtimeState",
     "applicationVersion",
     "capabilities",
-    "nodeActiveLimit",
-    "nodePendingLimit",
+    "actorLimit",
+    "spotLimit",
     "immutableDigest"
   ],
   "immutableDigest": {
@@ -50,12 +50,12 @@
       "cluster-a",
       "0",
       "none",
-      "10000",
-      "128",
+      "0",
+      "0",
       "0"
     ],
-    "preimage": "28:zlink-mesh-node-immutable-v14:game12:67616d652d611:719:tcp://10.0.0.1:73001:26:orders5:world9:cluster-a1:04:none5:100003:1281:0",
-    "sha256LowerHex": "d259662e0dae8738eb4c086577079a31d4408e794e6df773fc9954ac65b86dce"
+    "preimage": "28:zlink-mesh-node-immutable-v14:game12:67616d652d611:719:tcp://10.0.0.1:73001:26:orders5:world9:cluster-a1:04:none1:01:01:0",
+    "sha256LowerHex": "a70183abe5f380b64ca36374b09b6bd15a98b0beaba8beacd4a9371dba41d1a6"
   },
   "row": {
     "kind": "mesh",
@@ -63,7 +63,7 @@
     "hash": {
       "owner": "mesh-owner-a",
       "gen": "7",
-      "json": "{\"MeshName\":\"game\",\"Rid\":\"67616d652d61\",\"LifecycleGeneration\":7,\"DescriptorRevision\":3,\"Endpoint\":\"tcp://10.0.0.1:7300\",\"ChannelWeights\":{\"orders\":100,\"world\":50},\"SecurityIdentity\":\"cluster-a\",\"OwnerId\":\"mesh-owner-a\",\"LeaseGeneration\":9,\"UpdatedAt\":\"2024-07-15T00:00:00+00:00\",\"ApplicationVersion\":0,\"ObjectCapabilities\":[],\"MaintenanceWave\":null,\"State\":1,\"ObjectRole\":0,\"PlacementWeight\":100,\"Capacity\":{\"Active\":0,\"Pending\":0,\"ActiveLimit\":10000,\"PendingLimit\":128}}",
+      "json": "{\"MeshName\":\"game\",\"Rid\":\"67616d652d61\",\"LifecycleGeneration\":7,\"DescriptorRevision\":3,\"Endpoint\":\"tcp://10.0.0.1:7300\",\"ChannelWeights\":{\"orders\":100,\"world\":50},\"SecurityIdentity\":\"cluster-a\",\"OwnerId\":\"mesh-owner-a\",\"LeaseGeneration\":9,\"UpdatedAt\":\"2024-07-15T00:00:00+00:00\",\"ApplicationVersion\":0,\"ObjectCapabilities\":[],\"MaintenanceWave\":null,\"State\":1,\"ObjectRole\":0,\"EntrySpotId\":null,\"PlacementWeight\":100,\"Capacity\":{\"Actors\":{\"Active\":0,\"Reserved\":0,\"Limit\":0},\"Spots\":{\"Active\":0,\"Reserved\":0,\"Limit\":0},\"SpotTypes\":[]},\"ActivationConcurrency\":{\"Active\":0,\"Limit\":128}}",
       "updatedAtMs": "1721001600000",
       "mesh": "game"
     }

@@ -176,10 +176,47 @@ class ZLinkLocationStoreResolverTest {
         }
 
         @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkObjectCommitResult> commit(
+            systems.zlink.framework.locations.ZLinkObjectReservation reservation,
+            byte[] readyPayload,
+            systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.commit(
+                reservation,
+                readyPayload,
+                terminal,
+                cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkObjectRejectResult> reject(
+            systems.zlink.framework.locations.ZLinkObjectReservation reservation,
+            systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.reject(reservation, terminal, cancellation);
+        }
+
+        @Override
         public CompletionStage<systems.zlink.framework.locations.ZLinkObjectAbortResult> abort(
             systems.zlink.framework.locations.ZLinkObjectReservation reservation,
             systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
             return authority.abort(reservation, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkObjectAbortResult> abort(
+            systems.zlink.framework.locations.ZLinkObjectReservation reservation,
+            systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+            systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.abort(reservation, terminal, cancellation);
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkCreationTerminalReadResult>
+            readCreationTerminal(
+                systems.zlink.framework.locations.ZLinkCreationOperationIdentity operation,
+                systems.zlink.framework.locations.ZLinkStoreCancellation cancellation) {
+            return authority.readCreationTerminal(operation, cancellation);
         }
 
         @Override

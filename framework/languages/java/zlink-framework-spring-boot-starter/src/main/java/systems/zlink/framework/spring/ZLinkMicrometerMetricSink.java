@@ -16,7 +16,7 @@ import systems.zlink.framework.runtime.internal.metrics.ZLinkRuntimeMetrics;
 
 final class ZLinkMicrometerMetricSink implements ZLinkRuntimeMetrics.Sink {
     private static final Set<String> FORBIDDEN_TAGS = Set.of(
-        "correlation_id", "flow_id", "actor_id", "spot_rid");
+        "correlation_id", "flow_id", "actor_id", "spot_id");
     private final MeterRegistry registry;
     private final Map<Key, AtomicLong> gauges = new ConcurrentHashMap<>();
 

@@ -5,11 +5,15 @@
 #include <map>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 namespace zlink::framework::runtime::mesh
 {
+
+std::uint64_t
+sum_service_weights (std::span<const int> weights);
 
 enum class service_node_state_t
 {
@@ -31,7 +35,7 @@ enum class service_object_role_t
 struct service_channel_descriptor_t
 {
     std::string name;
-    std::uint32_t weight = 100;
+    int weight = 100;
 
     friend bool operator== (const service_channel_descriptor_t &,
                             const service_channel_descriptor_t &) = default;
@@ -51,7 +55,7 @@ struct service_node_descriptor_t
     std::int64_t application_version = 0;
     std::vector<std::string> protocol_capabilities{"framework-service-v11"};
     service_object_role_t object_role = service_object_role_t::none;
-    std::uint32_t placement_weight = 100;
+    int placement_weight = 100;
     std::uint32_t active_capacity_limit = 10000;
     std::uint32_t pending_capacity_limit = 128;
     std::uint32_t active_capacity_used = 0;
@@ -93,6 +97,8 @@ class service_topology_registry_t
     std::optional<admitted_peer_t>
     peer (const std::vector<std::uint8_t> &node_routing_id) const;
     std::optional<admitted_peer_t> select (const std::string &channel_name);
+    std::vector<admitted_peer_t>
+    multicast_targets (const std::string &channel_name) const;
 
   private:
     struct byte_vector_less_t

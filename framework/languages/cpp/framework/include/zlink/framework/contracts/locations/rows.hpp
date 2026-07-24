@@ -26,9 +26,30 @@ struct object_capability_t
     maintenance_policy_kind_t policy =
       maintenance_policy_kind_t::disabled;
     bool has_snapshot_adapter = false;
-    std::set<std::string> placement_profiles;
     std::optional<std::uint32_t> active_limit;
     std::optional<std::uint32_t> pending_limit;
+};
+
+struct capacity_usage_t
+{
+    std::uint64_t active = 0;
+    std::uint64_t reserved = 0;
+    std::int32_t limit = 0;
+};
+
+struct spot_type_capacity_t
+{
+    placement_object_kind_t object_kind =
+      placement_object_kind_t::user_spot;
+    std::string stable_type;
+    capacity_usage_t usage;
+};
+
+struct placement_capacity_t
+{
+    capacity_usage_t actors;
+    capacity_usage_t spots;
+    std::vector<spot_type_capacity_t> spot_types;
 };
 
 struct mesh_node_descriptor_t
@@ -39,12 +60,14 @@ struct mesh_node_descriptor_t
     std::uint64_t lifecycle_generation = 0;
     std::uint64_t descriptor_revision = 0;
     std::string endpoint;
+    std::optional<std::string> entry_spot_id;
     std::map<std::string, int> channel_weights;
     std::int64_t application_version = 0;
     std::vector<object_capability_t> object_capabilities;
     object_role_t object_role = object_role_t::none;
-    std::uint8_t placement_weight = 100;
+    int placement_weight = 100;
     object_capacity_options_t object_capacity{};
+    placement_capacity_t placement_capacity{};
     std::optional<std::string> maintenance_wave;
     framework_runtime_state_t state =
       framework_runtime_state_t::preparing;
@@ -69,7 +92,7 @@ struct client_server_server_descriptor_t
     std::uint64_t lifecycle_generation = 0;
     std::uint64_t descriptor_revision = 0;
     std::string endpoint;
-    int weight = 0;
+    int weight = 100;
     framework_runtime_state_t state =
       framework_runtime_state_t::preparing;
     std::string security_identity;
@@ -131,7 +154,7 @@ struct peer_location_t
 struct spot_location_t
 {
     std::string mesh_name;
-    zlink::routing_id_t spot_rid = zlink::routing_id_t::from (std::uint32_t{0});
+    std::string spot_id;
     std::uint64_t spot_generation = 0;
     std::optional<std::string> spot_type;
     zlink::routing_id_t node_rid = zlink::routing_id_t::from (std::uint32_t{0});
@@ -150,7 +173,7 @@ struct actor_location_t
     actor_ref_t actor_ref;
     zlink::routing_id_t owner_node_rid = zlink::routing_id_t::from (std::uint32_t{0});
     std::uint64_t owner_node_generation = 0;
-    zlink::routing_id_t spot_rid = zlink::routing_id_t::from (std::uint32_t{0});
+    std::string spot_id;
     std::uint64_t spot_generation = 0;
     zlink::spot_kind spot_kind = zlink::spot_kind::invalid;
     std::uint64_t membership_epoch = 0;

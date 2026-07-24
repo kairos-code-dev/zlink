@@ -120,7 +120,7 @@ public interface IZLinkHandlerFilter
 `ActorRef`와 `SpotRef`의 typed JSON contract는 다음 property 이름과 JSON type으로 고정한다. 모든 property는
 required이고 중복 property, `null`, unknown property와 범위를 벗어난 generation을 거부한다. Property 이름은
 case-sensitive다. `objectGeneration`은 unsigned 63-bit 범위를 잃지 않도록 decimal JSON string으로 encode한다.
-`actorId`와 `spotRid`는 global logical ID이고 `meshName`과 `nodeRid`는 조회 시점의 location snapshot이다.
+`actorId`와 `spotId`는 global logical ID이고 `meshName`과 `nodeRid`는 조회 시점의 location snapshot이다.
 
 ```json
 {
@@ -133,7 +133,7 @@ case-sensitive다. `objectGeneration`은 unsigned 63-bit 범위를 잃지 않도
 
 ```json
 {
-  "spotRid": "room-42",
+  "spotId": "room-42",
   "objectGeneration": "9",
   "meshName": "game",
   "nodeRid": "game-node-0123456789abcdef0123456789abcdef"

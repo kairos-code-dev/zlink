@@ -1,0 +1,109 @@
+# 5. 실행 모델
+
+> [공통 계약 목차](README.ko.md)
+>
+> Terminator와 Spot 실행 문맥 결합은
+> [12 HTTP client §3](12-http-client.ko.md)과
+> [04 비동기 실행 정책 §1.1](../04-async-execution-policy.ko.md)이 소유한다. 아래
+> §5.1은 호출 형태를 이해하기 위한 요약이다. 이 문서는 §5.2부터 HTTP 전송의
+> non-blocking 근거, cancellation과 timeout 경계를 정의한다.
+
+## 5.1 terminator 세 축 (+ callback)
+
+**framework의 모든 대기 호출과 같은 terminator를 제공한다.**
+
+| terminator | 완료를 기다리나 | [Spot](../01-glossary.ko.md#spot) 실행 줄 |
+| --- | --- | --- |
+| **submit** | 아니오 | 그대로 진행. 응답을 쓰지 않는 fire 경로 |
+| **async** | 예 | **turn을 유지한다.** handler는 하나의 turn이다 |
+| **yield** | 예 | **turn을 반납한다.** 완료된 continuation은 Spot 실행 줄의 큐에 재삽입되어 순서대로 재개된다 |
+
+**callback은 네 번째 terminator가 아니다.** framework의 terminator 축은 셋뿐이고
+([framework 04 §1.1](../04-async-execution-policy.ko.md)), callback은
+awaitable을 쓰지 않는 호출자를 위한 **별도 완료 경로**다. Spot 실행 문맥에서는 `submit`과 같이
+동작하며 완료 callback이 그 Spot 실행 줄의 **새 turn**으로 들어간다
+([framework 12 §3](12-http-client.ko.md)).
+
+제출은 언어의 표준 비동기 값을 돌려주며, 네트워크 대기 중 호출자의 스레드/event loop를 점유하지
+않는다.
+
+| 언어 | 비동기 반환형 | non-blocking 근거 |
+| --- | --- | --- |
+| cpp | `task_t<T>` (`co_await`) | `.coroutines()` 활성 시 execute scheduler로 오프로드 |
+| dotnet | `ValueTask<T>` | `SocketsHttpHandler` epoll/IOCP |
+| java | `CompletionStage<T>` | `java.net.http` NIO selector |
+| kotlin | `suspend` 함수 | java 런타임 + `CompletionStage.await()` 브리지 |
+| node | `Promise<T>` | undici libuv |
+
+**terminator 이름은 framework 관용을 따른다.** `.NET`은 `Async(...)`이며 `SubmitAsync`처럼 submit
+동사를 반복하지 않는다 — `submit`은 one-way 전용 동사다
+([04 §2](../04-async-execution-policy.ko.md)).
+
+## 5.2 yield와 Spot 실행 줄
+
+**이 client가 존재하는 이유가 `yield`다.** actor 입·퇴장 시 외부 API나 레거시 API에서 데이터를
+가져오는 대기는 spot의 공유 흐름과 무관하다. 그 대기 때문에 room 전체와 timer가 멈추면 안 된다.
+
+```
+// SpotWide User Spot 또는 Instance Spot handler 안
+var profile = await http.Get($"/players/{id}").Yield<Profile>(ct);
+```
+
+- **`yield` 앞뒤로 spot 상태의 불변식을 가정하지 않는다.** 그 줄을 넘으면 다른 callback이 상태를
+  바꿀 수 있다.
+- **`async`는 turn을 유지한다.** spot 상태를 await를 가로질러 다뤄야 하면 `async`를 쓴다.
+- `yield`는 `SpotWide` User Spot과 Instance Spot에서만 사용할 수 있다. Entry Spot,
+  `PerActor` User Spot, Entry Spot Actor와 Node·Channel handler에서는 사용할 수 없다.
+
+## 5.3 turn seam — execution scheduler 주입
+
+**HTTP client는 framework를 모른다.** Spot의 turn을 아는 것은 **주입된 execution scheduler**
+하나다. 바이너리 의존은 `framework → HTTP client` 한 방향을 유지한다.
+
+- HTTP client는 **execution scheduler 주입점**을 공개 계약으로 둔다. scheduler가 completion을
+  어디서 재개할지 정한다.
+- **framework가 DI 등록 시 shared Spot turn을 아는 scheduler를 꽂는다.** `SpotWide` User Spot과
+  Instance Spot에서만 `yield`가 활성화된다.
+- scheduler가 없는 단독 사용(CLI · client 시나리오)에서는 **`yield`를 노출하지 않는다.**
+
+cpp의 `coroutines(resume_scheduler)` / `framework_resume_scheduler_t`가 이 seam의 선례다.
+
+- `coroutines()` — 기본 스케줄러 사용.
+- `coroutines(resume_scheduler)` — 재개 위치 주입(framework 실행 줄에서 continuation 재개).
+- `coroutines(execute_scheduler, resume_scheduler)` — 실행/재개 모두 주입.
+
+주의(현행 구현 특성, 계약 아님): cpp 기본 스케줄러는 단일 스레드를 execute/resume 공용으로 쓰므로
+요청이 직렬화되며, 재개된 continuation에서 같은 스케줄러의 다른 task를 blocking 대기하면 데드락이
+가능하다.
+
+## 5.4 blocking terminator를 두지 않는다
+
+**완료 값을 동기로 언래핑하는 public terminator를 만들지 않는다.** 같은 의미의 blocking 대안
+terminator는 계약 위반이다([04 §2](../04-async-execution-policy.ko.md)).
+
+- 금지 대상: cpp `fetch()`/`.result()`, dotnet `Fetch<T>()`, java `fetch()`/`.join()`/`.get()`.
+- 테스트나 CLI에서 동기로 기다려야 하면 **호출자가** 언어 관용으로 감싼다
+  (`GetAwaiter().GetResult()`, `runBlocking`, `.join()`).
+- 합성은 `co_await` / `await` / `thenCompose` / suspend로 한다.
+
+## 5.5 서버 표면과 client 수명
+
+**서버(Spot handler·channel handler)에서 쓰는 client는 DI로 주입받는다.** handler 안에서 정적
+팩토리로 client를 만들지 않는다 — 연결 pool과 turn seam을 잃는다.
+
+| 표면 | 누가 쓰나 | terminator |
+|------|-----------|------------|
+| 정적 팩토리 | CLI · client 시나리오 | `async` / callback |
+| **DI 주입 client** | **Spot handler · 서버 코드** | `submit` / `async` / `yield` / callback |
+
+- client는 서비스당 하나를 만들어 재사용한다(pool/keep-alive 이득).
+- builder verb 단축(one-shot)은 제출 시 client를 lazy build하고 완료 후 닫는 **편의 경로**다.
+  요청마다 전송 스택 초기화 비용을 내므로 반복/고부하 호출에 쓰지 않는다. one-shot 요청 객체는
+  재제출할 수 없다(재제출 시 `requestProtocolError`).
+
+## 5.6 취소
+
+- dotnet은 제출에 `CancellationToken`을 받는다.
+- kotlin coroutine 취소의 하부 요청 전파는 현재 미구현이다(개정 후보
+  [R5](10-revision-candidates.ko.md)).
+- cpp/java/node는 요청 단위 취소 API를 노출하지 않는다(timeout으로 경계).

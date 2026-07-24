@@ -17,7 +17,7 @@ internal sealed class ZLinkActorContext(
            ?? throw new InvalidOperationException(
                $"Actor '{state.ActorId}' does not belong to a registered RouteMesh.");
 
-    public RoutingId? SpotRid => state.SpotRid;
+    public string? SpotId => state.SpotId;
 
     public IZLinkBoundSession BoundSession
     {
@@ -29,7 +29,7 @@ internal sealed class ZLinkActorContext(
     }
 
     public IZLinkActorJoinSpotCall JoinSpot(
-        RoutingId spotRid,
+        string spotId,
         ZLinkMessage request)
     {
         state.EnsureContextValid();
@@ -37,18 +37,20 @@ internal sealed class ZLinkActorContext(
         return ZLinkActorJoinCall.ForSpot(
             runtime,
             CurrentActor,
-            spotRid,
+            spotId,
             request);
     }
 
-    public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid, ZLinkMessage request)
+    public IZLinkActorJoinEntrySpotCall JoinEntrySpot(ZLinkMessage request)
     {
         state.EnsureContextValid();
         ArgumentNullException.ThrowIfNull(request);
         return ZLinkActorJoinCall.ForEntrySpot(
             runtime,
             CurrentActor,
-            spotNodeRid,
+            state.NativeActorRef?.NodeRid
+            ?? throw new InvalidOperationException(
+                $"Actor '{state.ActorId}' does not have a current node identity."),
             request);
     }
 }
@@ -60,7 +62,8 @@ internal sealed class ZLinkActorJoinCall :
     private readonly IZLinkActor _actor;
     private readonly ZLinkFrameworkRuntime _runtime;
     private readonly ZLinkMessage _request;
-    private readonly RoutingId _targetRid;
+    private readonly RoutingId _targetNodeRid;
+    private readonly string? _targetSpotId;
     private readonly TargetKind _targetKind;
     private readonly ZLinkSerialTurn? _turn;
     private TimeSpan? _timeout;
@@ -68,13 +71,15 @@ internal sealed class ZLinkActorJoinCall :
     private ZLinkActorJoinCall(
         ZLinkFrameworkRuntime runtime,
         IZLinkActor actor,
-        RoutingId targetRid,
+        RoutingId targetNodeRid,
+        string? targetSpotId,
         ZLinkMessage request,
         TargetKind targetKind)
     {
         _runtime = runtime;
         _actor = actor;
-        _targetRid = targetRid;
+        _targetNodeRid = targetNodeRid;
+        _targetSpotId = targetSpotId;
         _request = request;
         _targetKind = targetKind;
         _turn = ZLinkSerialTurn.Current;
@@ -83,10 +88,12 @@ internal sealed class ZLinkActorJoinCall :
     public static IZLinkActorJoinSpotCall ForSpot(
         ZLinkFrameworkRuntime runtime,
         IZLinkActor actor,
-        RoutingId spotRid,
+        string spotId,
         ZLinkMessage request)
     {
-        return new ZLinkActorJoinCall(runtime, actor, spotRid, request, TargetKind.Spot);
+        return new ZLinkActorJoinCall(
+            runtime, actor, default, ZLinkSpotId.Require(spotId, nameof(spotId)),
+            request, TargetKind.Spot);
     }
 
     public static IZLinkActorJoinEntrySpotCall ForEntrySpot(
@@ -95,7 +102,8 @@ internal sealed class ZLinkActorJoinCall :
         RoutingId spotNodeRid,
         ZLinkMessage request)
     {
-        return new ZLinkActorJoinCall(runtime, actor, spotNodeRid, request, TargetKind.EntrySpot);
+        return new ZLinkActorJoinCall(
+            runtime, actor, spotNodeRid, null, request, TargetKind.EntrySpot);
     }
 
     IZLinkActorJoinSpotCall IZLinkActorJoinSpotCall.Timeout(TimeSpan timeout)
@@ -144,12 +152,12 @@ internal sealed class ZLinkActorJoinCall :
         {
             return _targetKind == TargetKind.Spot
                 ? await _runtime.JoinActorAsync(
-                    _targetRid,
+                    _targetSpotId!,
                     _actor,
                     _request,
                     timeoutSource.Token).ConfigureAwait(false)
                 : await _runtime.JoinActorEntrySpotAsync(
-                    _targetRid,
+                    _targetNodeRid,
                     _actor,
                     _request,
                     timeoutSource.Token).ConfigureAwait(false);

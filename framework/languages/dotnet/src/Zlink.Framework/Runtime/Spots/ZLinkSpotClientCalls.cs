@@ -125,7 +125,7 @@ internal sealed class ZLinkInstanceSpotRequestCall<TRequest>(
             .ConfigureAwait(false)
             ?? throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.SpotRouteNotFound,
-                $"Instance Spot '{target.InstanceSpotType}/{target.SpotRid}' is not ready.");
+                $"Instance Spot '{target.InstanceSpotType}/{target.SpotId}' is not ready.");
         var call = new ZLinkRouteSpotRequestCall<TRequest>(runtime, handle, request);
         if (_timeout is { } timeout) call.Timeout(timeout);
         call.Metadata(new ZLinkMessageMetadata(_metadata.Snapshot()));
@@ -169,7 +169,7 @@ internal sealed class ZLinkRoutedSpotSendCall<TMessage>(
             return await activation.OutboundEndpoint.SendToSpotAsync(
                     snapshot.RouterChannelId,
                     snapshot.NodeRid,
-                    snapshot.SpotRid,
+                    snapshot.SpotId,
                     (ulong)snapshot.Generation,
                     snapshot.AuthorityOwnerGeneration,
                     parts,
@@ -244,7 +244,7 @@ internal sealed class ZLinkRoutedSpotRequestCall<TRequest>(
                     return activation.OutboundEndpoint.RequestToSpotAsync(
                         snapshot.RouterChannelId,
                         snapshot.NodeRid,
-                        snapshot.SpotRid,
+                        snapshot.SpotId,
                         (ulong)snapshot.Generation,
                         snapshot.AuthorityOwnerGeneration,
                         parts,

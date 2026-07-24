@@ -5,7 +5,8 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 
-public interface ZLinkSpot<TActor extends ZLinkActor> extends ZLinkSpotActorLifecycle<TActor> {
+public interface ZLinkSpot<TActor extends ZLinkActor>
+    extends ZLinkUserSpotActorLifecycle<TActor> {
     ZLinkSpotContext context();
 
     default void configure() {

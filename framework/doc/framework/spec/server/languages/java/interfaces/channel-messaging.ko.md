@@ -65,8 +65,8 @@ public interface ZLinkRouteClient {
         String meshName, RoutingId target, Object request);
     ZLinkSendCall sendToChannel(String channelName, Object message);
     ZLinkRequestCall requestToChannel(String channelName, Object request);
-    ZLinkSpotSendCall sendToSpot(RoutingId spotRid, Object message);
-    ZLinkSpotRequestCall requestToSpot(RoutingId spotRid, Object request);
+    ZLinkSpotSendCall sendToSpot(String spotId, Object message);
+    ZLinkSpotRequestCall requestToSpot(String spotId, Object request);
 }
 
 public interface ZLinkFanoutClient {
@@ -93,11 +93,18 @@ Channel 호출은 process-local ChannelName index만 사용한다. 호출자가 
 물리 배선을 고르는 overload는 제공하지 않는다. `sendToNode(String, RoutingId, Object)`는 exact RID를
 지정하므로 첫 인자를 MeshName으로 해석한다.
 
-Spot direct operation은 global SpotRid만 address로 받고 Spot 전용 fluent call을 반환한다. 이 call의
+Spot direct operation은 global SpotId만 address로 받고 Spot 전용 fluent call을 반환한다. 이 call의
 `instanceSpot()` marker와 placement option은 Missing Instance Spot의 cold activation intent를 표현한다. Marker가
 없으면 Missing authority를 not-found로 끝낸다. Existing authority는 저장된 kind·stable type과 current owner를
 사용하므로 type이나 Mesh를 다시 요구하지 않는다. 세부 member와 cold activation 선택 규칙은
 [Java Spot 인터페이스](spots.ko.md)가 소유한다.
+
+`ZLinkRequestCall.yield(...)`는 `requestToChannel`이 만든 request에만 적용하며 submit을 먼저 호출하는
+default method가 아니다. Runtime은 `SPOT_WIDE` User Spot 또는 Instance Spot application handler인지
+operation submission 전에 검증한다. Entry Spot·Entry Actor·`PER_ACTOR`·Node·Channel·owner context 밖이면
+outbound admission과 queue mutation 전에 `InvalidConfiguration`으로 완료한다. 현재 Spot gate가 필요한
+target을 기다리는 일반 `submit(...)`도 같은 시점에 거부한다. One-way `submit()`은 FIFO queue admission을
+유지하고 application handler를 inline 또는 reentrant하게 호출하지 않는다.
 
 `channel(channelName)`이 반환하는 RouteMesh builder에서는 `client()` 또는 `server()`를 정확히 한 번
 선택한다. 한 process에는 서로 다른 ClientServer ChannelName을 여러 개 등록할 수 있다.
@@ -106,6 +113,17 @@ Spot direct operation은 global SpotRid만 address로 받고 Spot 전용 fluent 
 topology를 공유하지만 `(ChannelName, Role)` key의 별도 registration이다. 같은 역할의 중복 등록은 startup
 오류다. RouteMesh ChannelName 충돌 규칙은 그대로 유지한다. 역할을 선택하기 전에는 weight와 handler를
 설정할 수 없으며, Server 설정은 각 Server builder에만 존재한다.
+
+RouteMesh Channel Server, ClientServer Server와 node-wide placement의 public weight는 signed `int`
+`0..10000`이고 기본값은 `100`이다. `1..10000`은 eligible target 사이의 상대적 선택 비중이다. Startup과
+runtime 변경에서 범위 밖 값은 configuration error다.
+Runtime 변경은 descriptor revision으로 순서화하고 이미 제출했거나 reservation을 완료한 operation에는
+적용하지 않는다. Readiness, drain과 capacity를 먼저 적용한 뒤 positive weight 합계를 최소 64-bit integer로
+계산한다. Logical Multicast는 positive RouteMesh member를 각각 한 번만 포함하며 weight 크기로 제출 횟수를
+늘리지 않는다.
+`ZLinkLogicalMulticastDetail`의 remote admitted는 source의 local outbound transport queue 제출만 집계한다.
+Local admitted는 origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과
+remote·local handler 실행 또는 완료는 `CompletionStage` 완료 조건이 아니다.
 
 ClientServer의 local Server도 listener와 service admission을 마친 뒤 remote Server와 같은 candidate
 집합에 포함한다. Ready, positive weight, non-draining 조건을 동일하게 적용하며 local 우선순위나 remote
@@ -218,7 +236,7 @@ public interface systems.zlink.framework.channels.ZLinkRequestCall {
   public default systems.zlink.framework.channels.ZLinkRequestCall metadata(java.util.Map<java.lang.String, java.lang.String>);
   public abstract systems.zlink.framework.channels.ZLinkRequestCall timeout(java.time.Duration);
   public abstract <TReply> java.util.concurrent.CompletionStage<TReply> submit(java.lang.Class<TReply>);
-  public default <TReply> java.util.concurrent.CompletionStage<TReply> yield(java.lang.Class<TReply>);
+  public abstract <TReply> java.util.concurrent.CompletionStage<TReply> yield(java.lang.Class<TReply>);
 }
 public interface systems.zlink.framework.channels.ZLinkRequestContext extends systems.zlink.framework.ZLinkHandlerContext {
 }
@@ -229,9 +247,9 @@ public interface systems.zlink.framework.channels.ZLinkRouteClient {
   public abstract systems.zlink.framework.channels.ZLinkSendCall sendToChannel(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToChannel(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkSendCall sendToNode(java.lang.String, systems.zlink.contracts.core.RoutingId, java.lang.Object);
-  public abstract systems.zlink.framework.spots.ZLinkSpotSendCall sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
+  public abstract systems.zlink.framework.spots.ZLinkSpotSendCall sendToSpot(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToNode(java.lang.String, systems.zlink.contracts.core.RoutingId, java.lang.Object);
-  public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
+  public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(java.lang.String, java.lang.Object);
 }
 public interface systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions {
   public abstract systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptions mesh(java.lang.String);

@@ -44,17 +44,17 @@ final class ZLinkActorOwnershipCoordinator {
     CompletionStage<Void> setActorRef(String actorType, String actorId, ActorRef actorRef) {
         return renew(actorType, actorId, row -> new ZLinkActorLocation(
             row.actorId(), row.actorType(), actorRef, row.nodeRid(), row.locationKind(),
-            row.spotMeshName(), row.spotRid(), row.ownerId(), row.generation(), row.updatedAt()));
+            row.spotMeshName(), row.spotId(), row.ownerId(), row.generation(), row.updatedAt()));
     }
 
     CompletionStage<Void> notifyJoinedSpot(
         String actorType,
         String actorId,
         String meshName,
-        RoutingId spotRid) {
+        String spotId) {
         return renew(actorType, actorId, row -> new ZLinkActorLocation(
             row.actorId(), row.actorType(), row.actorRef(), row.nodeRid(), ZLinkSpotKind.USER,
-            meshName, spotRid, row.ownerId(), row.generation(), row.updatedAt()));
+            meshName, spotId, row.ownerId(), row.generation(), row.updatedAt()));
     }
 
     CompletionStage<Void> notifyLeftSpot(String actorType, String actorId) {
@@ -166,7 +166,7 @@ final class ZLinkActorOwnershipCoordinator {
     private static ZLinkActorLocation rowWithGeneration(ZLinkActorLocation row, long generation) {
         return new ZLinkActorLocation(
             row.actorId(), row.actorType(), row.actorRef(), row.nodeRid(), row.locationKind(),
-            row.spotMeshName(), row.spotRid(), row.ownerId(), generation, row.updatedAt());
+            row.spotMeshName(), row.spotId(), row.ownerId(), generation, row.updatedAt());
     }
 
     private record TrackedActor(ZLinkActorLocation row, Runnable deactivate) {

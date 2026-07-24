@@ -412,7 +412,6 @@ function canonicalCapabilities(
   values: ZLinkMeshNodeDescriptor['objectCapabilities']
 ): ZLinkMeshNodeDescriptor['objectCapabilities'] {
   return [...values]
-    .map(value => ({ ...value, placementProfiles: [...value.placementProfiles].sort() }))
     .sort((left, right) => {
       const byKind = left.objectKind.localeCompare(right.objectKind);
       return byKind !== 0 ? byKind : left.stableType.localeCompare(right.stableType);
@@ -427,7 +426,8 @@ function capabilitiesToJson(
     StableType: value.stableType,
     Policy: policyToWire(value.policy),
     HasSnapshotAdapter: value.hasSnapshotAdapter,
-    PlacementProfiles: [...value.placementProfiles],
+    Active: value.active,
+    Reserved: value.reserved,
     ActiveLimit: value.activeLimit ?? null,
     PendingLimit: value.pendingLimit ?? null
   }));
@@ -461,7 +461,8 @@ function capabilitiesOf(value: unknown): ZLinkMeshNodeDescriptor['objectCapabili
       stableType: stringOf(row.stableType ?? row.StableType),
       policy: policyFromJson(row.policy ?? row.Policy),
       hasSnapshotAdapter: booleanOf(row.hasSnapshotAdapter ?? row.HasSnapshotAdapter),
-      placementProfiles: stringArrayOf(row.placementProfiles ?? row.PlacementProfiles),
+      active: numberOf(row.active ?? row.Active ?? 0),
+      reserved: numberOf(row.reserved ?? row.Reserved ?? 0),
       activeLimit: optionalNumber(row.activeLimit ?? row.ActiveLimit),
       pendingLimit: optionalNumber(row.pendingLimit ?? row.PendingLimit)
     };

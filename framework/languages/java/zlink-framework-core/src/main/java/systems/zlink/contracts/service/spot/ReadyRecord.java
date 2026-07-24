@@ -9,9 +9,9 @@ import systems.zlink.contracts.core.RoutingId;
  *
  * @param ownerKind the owner kind (node, spot or actor)
  * @param domain the ready domain bit mask
- * @param spotRid the owning spot's routing id, if applicable
+ * @param spotId the owning spot's routing id, if applicable
  * @param actor the owning actor reference, if applicable
  */
-public record ReadyRecord(OwnerKind ownerKind, int domain, RoutingId spotRid,
+public record ReadyRecord(OwnerKind ownerKind, int domain, RoutingId spotId,
                           ActorRef actor) {
 }

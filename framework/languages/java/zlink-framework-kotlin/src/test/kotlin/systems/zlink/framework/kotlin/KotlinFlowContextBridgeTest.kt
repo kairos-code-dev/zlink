@@ -50,9 +50,10 @@ class KotlinFlowContextBridgeTest {
 
     companion object {
         private val UNUSED_CONTEXT = object : ZLinkActorContext {
-            override fun spotRid(): Optional<RoutingId> = Optional.empty()
+            override fun spotId(): Optional<String> = Optional.empty()
             override fun boundSession(): ZLinkBoundSession = error("not used")
-            override fun joinSpot(spotRid: RoutingId, request: Any): ZLinkActorJoinCall = error("not used")
+            override fun joinSpot(spotId: String, request: Any): ZLinkActorJoinCall =
+                error("not used")
             override fun joinEntrySpot(spotNodeRid: RoutingId, request: Any): ZLinkActorJoinCall = error("not used")
         }
     }

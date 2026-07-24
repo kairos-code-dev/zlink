@@ -52,8 +52,12 @@ import {
   type ZLinkObjectAbortResult,
   type ZLinkObjectCommitRequest,
   type ZLinkObjectCommitResult,
+  type ZLinkObjectCreationCompleteRequest,
+  type ZLinkObjectCreationCompleteResult,
   type ZLinkObjectReserveRequest,
   type ZLinkObjectReserveResult,
+  type ZLinkCreationOperationIdentity,
+  type ZLinkCreationTerminalReadResult,
   type ZLinkPageRequest,
   type ZLinkPeerLocation,
   type ZLinkPeerLocationFilter,
@@ -112,12 +116,11 @@ export class ZLinkInMemoryLocationStore implements
           && lease.token.leaseGeneration === owner.leaseGeneration
           && lease.leaseExpiresAt.getTime() > this.now().getTime();
       },
-      placementCapacityAvailable: (key, objectKind, stableType, delta, pending, active, profile) => {
+      placementCapacityAvailable: (key, objectKind, stableType, delta, pending, active) => {
         const descriptor = this.meshNodes.rows.get(meshNodeKey(key.meshName, key.rid));
         const capability = descriptor?.objectCapabilities.find(candidate =>
           candidate.objectKind === objectKind && candidate.stableType === stableType);
         if (descriptor === undefined || capability === undefined) return false;
-        if (profile !== undefined && !capability.placementProfiles.includes(profile)) return false;
         return pending + delta <= descriptor.objectCapacity.maxPendingActivations
           && active + delta <= descriptor.objectCapacity.maxActiveObjects
           && (capability.pendingLimit === undefined || pending + delta <= capability.pendingLimit)
@@ -163,6 +166,20 @@ export class ZLinkInMemoryLocationStore implements
     signal?: AbortSignal
   ): Promise<ZLinkObjectCommitResult> {
     return this.authority.commit(request, signal);
+  }
+
+  async completeCreation(
+    request: ZLinkObjectCreationCompleteRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkObjectCreationCompleteResult> {
+    return this.authority.completeCreation(request, signal);
+  }
+
+  async readCreationTerminal(
+    operation: ZLinkCreationOperationIdentity,
+    signal?: AbortSignal
+  ): Promise<ZLinkCreationTerminalReadResult> {
+    return this.authority.readCreationTerminal(operation, signal);
   }
 
   async abort(
@@ -277,7 +294,33 @@ export class ZLinkInMemoryLocationStore implements
   }
 
   async listMeshNodes(meshName: string): Promise<readonly ZLinkMeshNodeDescriptor[]> {
-    return [...this.meshNodes.rows.values()].filter((row) => row.meshName === meshName);
+    return [...this.meshNodes.rows.values()]
+      .filter((row) => row.meshName === meshName)
+      .map((row) => {
+        let activeObjects = 0;
+        let pendingActivations = 0;
+        const descriptor = { meshName: row.meshName, rid: row.rid };
+        const objectCapabilities = row.objectCapabilities.map((capability) => {
+          const usage = this.authority.capacityUsage(
+            descriptor,
+            row.lifecycleGeneration,
+            capability.objectKind,
+            capability.stableType
+          );
+          activeObjects += usage.active;
+          pendingActivations += usage.reserved;
+          return { ...capability, active: usage.active, reserved: usage.reserved };
+        });
+        return {
+          ...row,
+          objectCapabilities,
+          objectCapacity: {
+            ...row.objectCapacity,
+            activeObjects,
+            pendingActivations
+          }
+        };
+      });
   }
 
   async updateClientServer(
@@ -1106,7 +1149,7 @@ function validateMeshNodeDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
     || descriptor.objectCapacity.maxActiveObjects === 0
     || descriptor.objectCapacity.maxPendingActivations === 0
     || descriptor.placementWeight < 0
-    || descriptor.placementWeight > 100
+    || descriptor.placementWeight > 10_000
     || descriptor.objectCapabilities.length > 1024
     || (descriptor.objectRole !== ZLinkObjectRole.Server
       && descriptor.objectCapabilities.length !== 0)) {
@@ -1128,10 +1171,9 @@ function validateMeshNodeDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
         throw new RangeError('MeshNode capability limits must be non-negative safe integers.');
       }
     }
-    if (capability.placementProfiles.length > 1024
-      || new Set(capability.placementProfiles).size !== capability.placementProfiles.length
-      || capability.placementProfiles.some(profile => !validDescriptorText(profile))) {
-      throw new TypeError('MeshNode placement profiles must be unique non-empty values.');
+    if (!Number.isSafeInteger(capability.active) || capability.active < 0
+      || !Number.isSafeInteger(capability.reserved) || capability.reserved < 0) {
+      throw new RangeError('MeshNode capability usage must be non-negative safe integers.');
     }
   }
 }
@@ -1143,10 +1185,6 @@ function validDescriptorText(value: string): boolean {
 
 function meshNodeImmutableFingerprint(descriptor: ZLinkMeshNodeDescriptor): string {
   const capabilities = [...descriptor.objectCapabilities]
-    .map(capability => ({
-      ...capability,
-      placementProfiles: [...capability.placementProfiles].sort()
-    }))
     .sort((left, right) => {
       const byKind = left.objectKind.localeCompare(right.objectKind);
       return byKind !== 0 ? byKind : left.stableType.localeCompare(right.stableType);
@@ -1237,8 +1275,8 @@ function validateClientServerDescriptor(descriptor: ZLinkClientServerServerDescr
     || descriptor.leaseGeneration < 1n || descriptor.leaseGeneration > maxGeneration) {
     throw new RangeError('ClientServer descriptor generations are invalid.');
   }
-  if (!Number.isInteger(descriptor.weight) || descriptor.weight < 0 || descriptor.weight > 100) {
-    throw new RangeError('ClientServer descriptor weight must be between 0 and 100.');
+  if (!Number.isInteger(descriptor.weight) || descriptor.weight < 0 || descriptor.weight > 10_000) {
+    throw new RangeError('ClientServer descriptor weight must be an integer in 0..10000.');
   }
 }
 

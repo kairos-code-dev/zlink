@@ -10,16 +10,18 @@ normalization하지 않는다. 일반 send/request는 ActorId만 받으며 curre
 bind할 때만 사용한다. `objectGeneration`은 `1..Long.MAX_VALUE`이고 JSON에서는 decimal string이다.
 
 `ZLinkActorManager.create(actorId, actorType)`와 `getOrCreate(actorId, actorType)`는 Java의 single-use fluent
-call을 반환한다. `inMesh`, `request`, `placementProfile`, `affinityKey`, `timeout`을 설정한 뒤 terminal
+call을 반환한다. `inMesh`, `request`, `timeout`을 설정한 뒤 terminal
 `submit`을 한 번만 호출한다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, 두 번째 submit은
 `AlreadySubmitted`다. `inMesh`를 생략했을 때 object role Mesh가 하나면 자동 선택하고, 0개면
 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`다. 지정한 Mesh가 없으면 `MeshNotFound`다.
-`placementProfile`과 `affinityKey`는 각각 UTF-8 1..255 bytes이며 target RID나 predicate callback을 받는
+Target RID나 predicate callback을 받는
 placement API는 제공하지 않는다.
 
 Actor type은 UTF-8 1..255 bytes의 stable exact value다. `Create`에서 Ready object가 있으면
-`ActorAlreadyExists`, `GetOrCreate`에서 같은 type의 Ready 또는 Creating object가 있으면 같은 attempt에
-합류한다. 다른 type이면 `ActorTypeMismatch`다. Kotlin은 local Actor create, directory, resolver 또는
+`ActorAlreadyExists`, `GetOrCreate`에서 같은 type의 Ready object가 있으면 `Existing`을 반환한다. Creating
+object가 있으면 authority 변경을 기다리고 Ready면 `Existing`, rejection cleanup이면 새 reservation으로
+자신의 request를 실행한다. 서로 다른 operation은 앞선 `Rejected` reply를 공유하지 않고 같은 operation ID
+retry만 terminal result를 재사용한다. 다른 type이면 `ActorTypeMismatch`다. Kotlin은 local Actor create, directory, resolver 또는
 hidden remote retry를 추가하지 않는다.
 
 Kotlin은 Java `ZLinkActorRelocationAdapter<TActor>`와 `ZLinkRelocationPolicy<TInstance>`를 그대로 사용한다.
@@ -123,12 +125,6 @@ suspend fun <TReply> ZLinkActorJoinCall.awaitJoin(
 ): ZLinkActorJoinResult<TReply>
 inline suspend fun <reified TReply> ZLinkActorJoinCall.awaitJoinReply():
     ZLinkActorJoinResult<TReply>
-suspend fun ZLinkActorJoinCall.yieldJoin(): ZLinkActorJoinResult<Void>
-suspend fun <TReply> ZLinkActorJoinCall.yieldJoin(
-    replyType: Class<TReply>,
-): ZLinkActorJoinResult<TReply>
-inline suspend fun <reified TReply> ZLinkActorJoinCall.yieldJoinReply():
-    ZLinkActorJoinResult<TReply>
 
 suspend fun <T> ZLinkWorkerCall<T>.yieldWorker(): T
 ```
@@ -163,3 +159,13 @@ adapter registration을 위한 reified helper, policy를 생략하는 overload�
 Exact `ActorRef`를 받는 public operation은
 destroy와 session bind뿐이다. Missing exact ref는 `false`, generation 불일치는 `ActorGenerationStale`, seal된
 이관 구간은 `ActorMoving`으로 처리한다.
+
+Actor join extension은 `awaitJoin`만 제공하고 `yieldJoin` 계열은 제공하지 않는다. `yieldReply`와
+`yieldWorker`는 `SPOT_WIDE` User Spot member Actor에서 Actor FIFO claim을 유지하고 User Spot gate만
+반환한다. Entry Actor와 `PER_ACTOR` Actor에서는 underlying Java operation submission 전에
+`InvalidConfiguration`으로 완료한다. 같은 Actor 자신에게 보내는 awaited request도 coroutine을 suspend하거나
+queue를 변경하기 전에 거부한다.
+`SPOT_WIDE` member Actor가 현재 User Spot을 떠나는 `joinSpot(...).awaitJoin(...)`을 기다리는 경우도 source
+lifecycle callback이 같은 gate를 얻어야 하므로 underlying Java operation을 제출하거나 coroutine을
+suspend하고 source·target queue를 변경하기 전에 `InvalidConfiguration`으로 완료한다. Callback을 inline
+또는 재진입 방식으로 호출하지 않는다.

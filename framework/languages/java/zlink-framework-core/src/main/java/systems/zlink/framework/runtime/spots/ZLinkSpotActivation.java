@@ -139,7 +139,7 @@ final class SpotActivation
                 event,
                 actorRef,
                 actor,
-                context.spotRid());
+                context.spotId());
             if (transition == null) {
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             }

@@ -2081,7 +2081,7 @@ int main ()
     auto spot_request =
       route_runtime.request_to_spot_parts (target_node, target_spot, request_parts);
     if (!spot_request || route_runtime.pending_request_count () != 2
-        || route_runtime.outbound_packets ().back ().target_spot_rid.value () != target_spot) {
+        || route_runtime.outbound_packets ().back ().target_spot_id != target_spot) {
         return 38;
     }
     zlink::framework::detail::route_channel_runtime_t spot_backend_runtime ("spot.route");
@@ -3033,24 +3033,24 @@ int main ()
       "spot-only",
       [&spot_only_send_count] (
         const zlink::routing_id_t &target_node_rid,
-        const zlink::routing_id_t &target_spot_rid,
+        const zlink::routing_id_t &target_spot_id,
         zlink::framework::runtime::messaging::message_parts_t) {
           if (target_node_rid.to_string () == "spot-node"
-              && (target_spot_rid.to_string () == "spot-rid"
-                  || target_spot_rid.to_string () == "spot-node")) {
+              && ( == "spot-rid"
+                  ||  == "spot-node")) {
               ++spot_only_send_count;
           }
           return zlink::framework::result_t<void>::success ();
       },
       [&spot_only_request_called, &envelope_codec, &serializers] (
         const zlink::routing_id_t &target_node_rid,
-        const zlink::routing_id_t &target_spot_rid,
+        const zlink::routing_id_t &target_spot_id,
         zlink::framework::runtime::messaging::message_parts_t parts,
         std::chrono::milliseconds timeout) {
           const auto header = envelope_codec.decode_header (parts);
           const auto body = envelope_codec.decode_body (parts);
           if (!header || !body || target_node_rid.to_string () != "spot-node"
-              || target_spot_rid.to_string () != "spot-rid"
+              ||  != "spot-rid"
               || timeout != std::chrono::milliseconds (75)
               || serializers.get<request_t> ()
                      .deserialize (zlink::framework::detail::encoded_payload_from_raw (
@@ -3107,16 +3107,16 @@ int main ()
           return zlink::framework::result_t<void>::success ();
       },
       [&retry_stale_attempts, &retry_fresh_attempts, &envelope_codec, &serializers] (
-        const zlink::routing_id_t &, const zlink::routing_id_t &target_spot_rid,
+        const zlink::routing_id_t &, const zlink::routing_id_t &target_spot_id,
         zlink::framework::runtime::messaging::message_parts_t parts, std::chrono::milliseconds) {
-          if (target_spot_rid.to_string () == "stale-spot") {
+          if ( == "stale-spot") {
               ++retry_stale_attempts;
               return zlink::framework::result_t<
                 zlink::framework::runtime::messaging::message_parts_t>::failure (
                 zlink::framework::framework_error_kind_t::spot_route_not_found,
                 "spot moved away from the stale address");
           }
-          if (target_spot_rid.to_string () != "fresh-spot") {
+          if ( != "fresh-spot") {
               return zlink::framework::result_t<
                 zlink::framework::runtime::messaging::message_parts_t>::failure (
                 zlink::framework::framework_error_kind_t::request_failed,
@@ -3152,7 +3152,7 @@ int main ()
         || retry_stale_attempts.load () != 1 || retry_fresh_attempts.load () != 1) {
         return 143;
     }
-    if (stale_handle.spot_rid ().value () != "fresh-spot") {
+    if (stale_handle.spot_id ().value () != "fresh-spot") {
         return 144;
     }
 

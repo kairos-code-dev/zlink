@@ -31,7 +31,7 @@ internal interface IZLinkBackendAuthorityObserver
 
     void ObserveSpotAuthority(
         RoutingId nodeRid,
-        RoutingId spotRid,
+        string spotId,
         ulong objectGeneration,
         ulong authorityOwnerGeneration);
 }
@@ -40,7 +40,7 @@ internal readonly record struct ZLinkBackendActorJoinResult(
     RequestResult Result,
     int JoinResultCode,
     ZLinkBackendActorRef Actor,
-    RoutingId JoinedSpotRid,
+    string JoinedSpotId,
     ulong JoinEpoch,
     uint Flags);
 
@@ -49,7 +49,7 @@ internal readonly record struct ZLinkBackendActorJoinEntrySpotResult(
     int JoinResultCode,
     ZLinkBackendActorRef Actor,
     RoutingId TargetNodeRid,
-    RoutingId JoinedSpotRid,
+    string JoinedSpotId,
     ulong JoinEpoch,
     uint Flags);
 
@@ -64,8 +64,8 @@ internal delegate void ActorJoinEntrySpotCallback(
 internal readonly record struct ZLinkBackendSpotActorLifecycleInfo(
     ZLinkBackendActorRef? PreviousActor,
     ZLinkBackendActorRef? CurrentActor,
-    RoutingId? PreviousSpotRid,
-    RoutingId? CurrentSpotRid,
+    string? PreviousSpotId,
+    string? CurrentSpotId,
     ulong JoinEpoch,
     uint Flags);
 
@@ -87,7 +87,7 @@ internal class ZLinkBackendActorJoinRequest(
     ZLinkBackendActorRef sourceActor,
     ZLinkBackendActorRef targetActor,
     RoutingId sourceNodeRid,
-    RoutingId targetSpotRid,
+    string targetSpotId,
     ulong joinEpoch,
     Message message,
     IReadOnlyList<Message> parts)
@@ -98,7 +98,7 @@ internal class ZLinkBackendActorJoinRequest(
 
     public RoutingId SourceNodeRid { get; } = sourceNodeRid;
 
-    public RoutingId TargetSpotRid { get; } = targetSpotRid;
+    public string TargetSpotId { get; } = targetSpotId;
 
     public ulong JoinEpoch { get; } = joinEpoch;
 

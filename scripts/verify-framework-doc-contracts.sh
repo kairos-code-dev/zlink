@@ -1334,7 +1334,7 @@ if (typeof consolidation.directory !== 'string'
 // hash failure.
 const redisFixtures = [
   ['actor-location-v2.json', 'actor-location-v2'],
-  ['authority-store-v1.json', 'location-authority-hybrid-v1'],
+  ['authority-store-v3.json', 'location-authority-hybrid-v3'],
   ['client-server-server-descriptor-v1.json', 'client-server-server-descriptor-v1'],
   ['fanout-publisher-descriptor-v1.json', 'fanout-publisher-descriptor-v1'],
   ['mesh-node-descriptor-v1.json', 'mesh-node-descriptor-v1'],
@@ -1363,12 +1363,12 @@ const canonicalAuthorityKey = keyContract => {
   const kind = authorityKeyProfile.kindDiscriminators.find(
     candidate => candidate.objectKind === keyContract?.objectKind);
   const identityHex = keyContract?.identityHex || '';
-  if (!kind || typeof keyContract?.meshName !== 'string'
-      || !/^(?:[0-9a-fA-F]{2})+$/u.test(identityHex)) return undefined;
-  const mesh = Buffer.from(keyContract.meshName, 'utf8');
+  if (!kind || !/^(?:[0-9a-fA-F]{2})+$/u.test(identityHex)) return undefined;
   const identity = Buffer.from(identityHex, 'hex');
+  if (identity.length < 1 || identity.length > 255
+      || !Buffer.from(identity.toString('utf8'), 'utf8').equals(identity)) return undefined;
   return [authorityKeyProfile.prefix, kind.wire,
-    encodeAuthorityComponent(mesh), encodeAuthorityComponent(identity)]
+    encodeAuthorityComponent(identity)]
     .join(authorityKeyProfile.separator);
 };
 const validateHashFields = (fixtureName, fixture, hash) => {
@@ -1409,6 +1409,43 @@ const validateAuthorityHash = (fixtureName, fixture, hash) => {
     fail(`Redis authority fixture allocation metadata differs: ${fixtureName}`);
   }
 };
+const validateAuthorityV2Hash = (fixtureName, fixture, hash, fields, state) => {
+  if (!Array.isArray(fields) || new Set(fields).size !== fields.length
+      || !hash || typeof hash !== 'object'
+      || JSON.stringify(Object.keys(hash)) !== JSON.stringify(fields)) {
+    fail(`Redis authority v2 hash field schema differs: ${fixtureName}`);
+    return;
+  }
+  const expectedCapacityBundle = hash?.objectKind === 'actor'
+    ? fixture.contextCapacityBundles?.actor
+    : fixture.contextCapacityBundles?.userSpot;
+  if (hash.authorityKey !== fixture.keyContract?.authorityKey
+      || typeof hash.payload !== 'string' || hash.payload.length === 0
+      || !positiveDecimal(hash.storeVersion)
+      || !positiveDecimal(hash.objectGeneration)
+      || !positiveDecimal(hash.authorityOwnerGeneration)
+      || typeof hash.ownerId !== 'string' || hash.ownerId.length === 0
+      || !positiveDecimal(hash.ownerLeaseGeneration)
+      || hash.allocationState !== state
+      || !['actor', 'user_spot', 'instance_spot'].includes(hash.objectKind)
+      || typeof hash.stableType !== 'string' || hash.stableType.length === 0
+      || typeof hash.descriptorKey !== 'string' || hash.descriptorKey.length === 0
+      || !positiveDecimal(hash.descriptorLifecycleGeneration)
+      || hash.capacityBundle !== expectedCapacityBundle
+      || Object.hasOwn(hash, 'capacityDelta')
+      || Object.hasOwn(hash, 'leaseExpiresAtMs')) {
+    fail(`Redis authority v2 metadata differs: ${fixtureName}`);
+  }
+};
+const exactFieldMap = (fixtureName, fields, value) => {
+  if (!Array.isArray(fields) || new Set(fields).size !== fields.length
+      || !value || typeof value !== 'object'
+      || JSON.stringify(Object.keys(value)) !== JSON.stringify(fields)) {
+    fail(`Redis exact field map differs: ${fixtureName}`);
+    return false;
+  }
+  return true;
+};
 const validateHashRow = (fixtureName, row, expectedKey = undefined) => {
   if (!row || typeof row !== 'object' || !row.hash || typeof row.hash !== 'object') {
     fail(`Redis fixture row/hash is missing: ${fixtureName}`);
@@ -1445,7 +1482,7 @@ const descriptorFieldOrder = {
     'Endpoint', 'ChannelWeights', 'SecurityIdentity', 'OwnerId',
     'LeaseGeneration', 'UpdatedAt', 'ApplicationVersion',
     'ObjectCapabilities', 'MaintenanceWave', 'State', 'ObjectRole',
-    'PlacementWeight', 'Capacity',
+    'EntrySpotId', 'PlacementWeight', 'Capacity', 'ActivationConcurrency',
   ],
 };
 const runtimeStates = new Set(['Preparing', 'Serving', 'Draining', 'Stopped', 'Error']);
@@ -1495,19 +1532,44 @@ const validateDescriptorPayload = (name, payload) => {
   }
   if (!Number.isInteger(payload.ObjectRole)
       || !Number.isInteger(payload.PlacementWeight)
-      || payload.PlacementWeight < 0 || payload.PlacementWeight > 100
-      || !payload.Capacity
-      || !['Active', 'Pending', 'ActiveLimit', 'PendingLimit']
-        .every(field => Number.isInteger(payload.Capacity[field])
-          && payload.Capacity[field] >= 0)) {
+      || payload.PlacementWeight < 0 || payload.PlacementWeight > 10000
+      || !payload.Capacity) {
     fail('MeshNode descriptor placement metadata differs');
+  }
+  const validUsage = usage => usage
+    && JSON.stringify(Object.keys(usage)) === JSON.stringify([
+      'Active', 'Reserved', 'Limit'])
+    && ['Active', 'Reserved', 'Limit'].every(field =>
+      Number.isInteger(usage[field]) && usage[field] >= 0)
+    && (usage.Limit === 0 || usage.Active + usage.Reserved <= usage.Limit);
+  if (!validUsage(payload.Capacity?.Actors)
+      || !validUsage(payload.Capacity?.Spots)
+      || !Array.isArray(payload.Capacity?.SpotTypes)) {
+    fail('MeshNode descriptor typed capacity differs');
+  }
+  let previousSpotType;
+  for (const spotType of payload.Capacity?.SpotTypes || []) {
+    if (JSON.stringify(Object.keys(spotType)) !== JSON.stringify([
+      'ObjectKind', 'StableType', 'Usage'])
+        || ![2, 3].includes(spotType.ObjectKind)
+        || typeof spotType.StableType !== 'string'
+        || spotType.StableType.length === 0
+        || !validUsage(spotType.Usage)) {
+      fail('MeshNode descriptor SpotTypes capacity differs');
+      continue;
+    }
+    const canonical = `${spotType.ObjectKind}\0${spotType.StableType}`;
+    if (previousSpotType !== undefined
+        && compareUtf8(previousSpotType, canonical) >= 0) {
+      fail('MeshNode descriptor SpotTypes order differs');
+    }
+    previousSpotType = canonical;
   }
   const kindOrder = { 1: 1, 2: 2, 3: 3 };
   let previousCapability;
   for (const capability of payload.ObjectCapabilities) {
     if (JSON.stringify(Object.keys(capability)) !== JSON.stringify([
-      'ObjectKind', 'StableType', 'Policy', 'HasSnapshotAdapter', 'PlacementProfiles',
-      'ActiveLimit', 'PendingLimit'])) {
+      'ObjectKind', 'StableType', 'Policy', 'HasSnapshotAdapter', 'SpotLimit'])) {
       fail('MeshNode descriptor ObjectCapabilities field order differs');
       continue;
     }
@@ -1515,9 +1577,8 @@ const validateDescriptorPayload = (name, payload) => {
         || typeof capability.StableType !== 'string' || capability.StableType.length === 0
         || ![1, 2, 3].includes(capability.Policy)
         || typeof capability.HasSnapshotAdapter !== 'boolean'
-        || !isStrictlyUtf8Sorted(capability.PlacementProfiles)
-        || ![capability.ActiveLimit, capability.PendingLimit].every(limit =>
-          limit === null || (Number.isSafeInteger(limit) && limit >= 0))) {
+        || !Number.isSafeInteger(capability.SpotLimit)
+        || capability.SpotLimit < 0) {
       fail('MeshNode descriptor ObjectCapabilities value differs');
     }
     if ((capability.Policy === 3) !== capability.HasSnapshotAdapter) {
@@ -1551,6 +1612,296 @@ for (const [name, format] of redisFixtures) {
   }
   redisFixtureCount += 1;
   if (fixture.format !== format) fail(`Redis fixture format differs: ${name}`);
+  if (name === 'authority-store-v3.json') {
+    const expectedKey = canonicalAuthorityKey(fixture.keyContract);
+    const authorityBytes = Buffer.from(expectedKey || '', 'utf8');
+    const authorityHex = authorityBytes.toString('hex');
+    const authorityDigest = crypto.createHash('sha256')
+      .update(authorityBytes).digest('hex');
+    const physicalBase = 'P:{zlink-location-v3}';
+    if (!expectedKey || fixture.keyContract?.authorityKey !== expectedKey
+        || fixture.prefixRules?.literalHashTag !== '{zlink-location-v3}'
+        || fixture.prefixRules?.schemaKey !== `${physicalBase}:schema`
+        || fixture.prefixRules?.schemaFields?.format
+          !== 'location-authority-hybrid-v3'
+        || fixture.prefixRules?.schemaFields?.epoch !== '3'
+        || fixture.keyContract?.authorityKeyHex !== authorityHex
+        || fixture.keyContract?.authorityKeySha256 !== authorityDigest
+        || fixture.keyContract?.currentKey
+          !== `${physicalBase}:authority:current:${authorityDigest}`
+        || fixture.keyContract?.historyKey
+          !== `${physicalBase}:authority:history:${authorityDigest}`
+        || fixture.keyContract?.historyRevisionKey
+          !== `${physicalBase}:authority:history-revisions:${authorityDigest}`
+        || fixture.keyContract?.indexKey
+          !== `${physicalBase}:authority:key-index`) {
+      fail('Authority Store v3 physical key schema differs');
+    }
+
+    const expectedCurrentFields = [
+      'authorityKey', 'payload', 'storeVersion', 'objectGeneration',
+      'authorityOwnerGeneration', 'ownerId', 'ownerLeaseGeneration',
+      'allocationState', 'objectKind', 'stableType', 'descriptorKey',
+      'descriptorLifecycleGeneration', 'capacityBundle',
+    ];
+    const expectedReservedFields = [
+      ...expectedCurrentFields,
+      'pendingCreationReservationId', 'pendingCreationReference',
+      'pendingCreationSha256', 'pendingCreationEncodedSize',
+    ];
+    if (JSON.stringify(fixture.currentHashFields)
+          !== JSON.stringify(expectedCurrentFields)
+        || JSON.stringify(fixture.reservedCurrentHashFields)
+          !== JSON.stringify(expectedReservedFields)) {
+      fail('Authority Store v2 current HASH field schema differs');
+    }
+
+    const segment = value =>
+      `${Buffer.byteLength(String(value), 'utf8')}:${String(value)}`;
+    const bundle = fixture.capacityBundle || {};
+    const encodedBundle = [
+      bundle.domain,
+      bundle.actorSlots,
+      bundle.spotSlots,
+      bundle.spotTypePresence,
+      bundle.spotTypeObjectKind,
+      bundle.spotTypeStableType,
+      bundle.spotTypeSlots,
+    ].map(segment).join('');
+    if (bundle.domain !== 'zlink-capacity-bundle-v2'
+        || bundle.spotTypePresence !== '1'
+        || !['user_spot', 'instance_spot'].includes(
+          bundle.spotTypeObjectKind)
+        || bundle.encoded !== encodedBundle
+        || bundle.hex !== Buffer.from(encodedBundle, 'utf8').toString('hex')) {
+      fail('Authority Store v2 capacityBundle encoding differs');
+    }
+    const contextBundles = fixture.contextCapacityBundles || {};
+    const actorBundle = [
+      'zlink-capacity-bundle-v2', '1', '0', '0',
+    ].map(segment).join('');
+    const userSpotBundle = [
+      'zlink-capacity-bundle-v2', '0', '1', '1',
+      'user_spot', 'room', '1',
+    ].map(segment).join('');
+    if (contextBundles.actor !== actorBundle
+        || contextBundles.userSpot !== userSpotBundle
+        || contextBundles.aggregate !== encodedBundle) {
+      fail('Authority Store v2 contextual capacity bundles differ');
+    }
+
+    const capacity = fixture.capacityBuckets || {};
+    const expectedNodeBucket =
+      segment(capacity.descriptorKey)
+      + segment(capacity.descriptorLifecycleGeneration)
+      + segment('spot');
+    const expectedSpotTypeBucket =
+      expectedNodeBucket
+      + segment(capacity.objectKind)
+      + segment(capacity.stableType);
+    const expectedUnicodeSpotTypeBucket =
+      expectedNodeBucket
+      + segment(capacity.objectKind)
+      + segment(capacity.unicodeStableType);
+    if (capacity.segmentLengthUnit !== 'UTF-8 bytes'
+        || capacity.node !== expectedNodeBucket
+        || capacity.spotType !== expectedSpotTypeBucket
+        || capacity.unicodeSpotType !== expectedUnicodeSpotTypeBucket
+        || !['user_spot', 'instance_spot'].includes(capacity.objectKind)) {
+      fail('Authority Store v2 capacity bucket encoding differs');
+    }
+
+    validateAuthorityV2Hash(
+      name, fixture, fixture.reserve?.currentHash,
+      fixture.reservedCurrentHashFields, 'reserved');
+    for (const transition of ['commit', 'preserve', 'newOwner']) {
+      validateAuthorityV2Hash(
+        name, fixture, fixture[transition]?.currentHash,
+        fixture.currentHashFields, 'active');
+    }
+    if (!/^[0-9a-f]{32}$/u.test(
+          fixture.reserve?.currentHash?.pendingCreationReservationId || '')
+        || !/^[0-9a-f]{64}$/u.test(
+          fixture.reserve?.currentHash?.pendingCreationSha256 || '')
+        || fixture.reserve?.currentHash?.pendingCreationEncodedSize !== '0') {
+      fail('Authority Store v2 Reserved creation projection differs');
+    }
+
+    const expectedRecordFields = {
+      creation: [
+        'state', 'reservationId', 'authorityKey', 'storeVersion',
+        'objectGeneration', 'authorityOwnerGeneration', 'reservationVersion',
+        'objectKind', 'stableType', 'targetDescriptorKey',
+        'targetDescriptorLifecycleGeneration', 'targetOwnerId',
+        'targetOwnerLeaseGeneration', 'creationReference', 'creationSha256',
+        'creationEncodedSize', 'capacityBundle',
+      ],
+      creationTerminal: [
+        'state', 'sourceNodeRid', 'sourceNodeGeneration', 'operationIdHigh',
+        'operationIdLow', 'reservationId', 'objectKind', 'terminalEnvelope',
+        'terminalEnvelopeSha256', 'expiresAtUnixMs',
+      ],
+      standaloneRelocation: [
+        'state', 'reservationId', 'authorityKey', 'expectedStoreVersion',
+        'objectKind', 'stableType', 'sourceDescriptorKey',
+        'sourceDescriptorLifecycleGeneration', 'sourceOwnerId',
+        'sourceOwnerLeaseGeneration', 'targetDescriptorKey',
+        'targetDescriptorLifecycleGeneration', 'targetOwnerId',
+        'targetOwnerLeaseGeneration', 'capacityBundle',
+      ],
+      aggregate: [
+        'state', 'aggregateId', 'aggregateGeneration', 'participants',
+        'inventoryDigest', 'targetDescriptorKey',
+        'targetDescriptorLifecycleGeneration', 'targetOwnerId',
+        'targetOwnerLeaseGeneration', 'capacityBundle',
+      ],
+    };
+    const recordIds = {
+      creation: '00112233445566778899aabbccddeeff',
+      creationTerminal: '00112233445566778899aabbccddeeff',
+      standaloneRelocation: '11112222333344445555666677778888',
+      aggregate: '22223333444455556666777788889999',
+    };
+    const recordStates = {
+      creation: 'Reserved',
+      creationTerminal: 'Rejected',
+      standaloneRelocation: 'Committed',
+      aggregate: 'Aborted',
+    };
+    const recordKeys = {
+      creation: `${physicalBase}:creation:${recordIds.creation}`,
+      creationTerminal:
+        `${physicalBase}:creation-terminal:6:6e6f64652d61:7:00000000000000000000000000000001`,
+      standaloneRelocation:
+        `${physicalBase}:relocation:${recordIds.standaloneRelocation}`,
+      aggregate: `${physicalBase}:aggregate:${recordIds.aggregate}:9`,
+    };
+    const recordCapacityBundles = {
+      creation: contextBundles.userSpot,
+      standaloneRelocation: contextBundles.actor,
+      aggregate: contextBundles.aggregate,
+    };
+    for (const recordName of Object.keys(expectedRecordFields)) {
+      const fields = fixture.operationRecordFieldSets?.[recordName];
+      const record = fixture.operationRecords?.[recordName];
+      const hash = record?.hash;
+      if (JSON.stringify(fields)
+            !== JSON.stringify(expectedRecordFields[recordName])
+          || !exactFieldMap(
+            `authority-store-v3/${recordName}`, fields, hash)
+          || record?.key !== recordKeys[recordName]
+          || hash?.state !== recordStates[recordName]
+          || (hash?.reservationId ?? hash?.aggregateId)
+            !== recordIds[recordName]
+          || hash?.capacityBundle !== recordCapacityBundles[recordName]
+          || (Object.hasOwn(hash || {}, 'authorityKey')
+            && hash.authorityKey !== expectedKey)) {
+        fail(`Authority Store v2 ${recordName} record differs`);
+      }
+    }
+    if (!/^[0-9a-f]{64}$/u.test(
+          fixture.operationRecords?.creation?.hash?.creationSha256 || '')
+        || fixture.operationRecords?.creationTerminal?.hash?.terminalEnvelope
+          !== '010000000d00000000000000000103000000'
+        || fixture.operationRecords?.creationTerminal?.hash?.terminalEnvelopeSha256
+          !== 'ce55bfa12e48da832d17470e81f80282667be2d06b19625f14a3df8138f66fcd'
+        || fixture.operationRecords?.creationTerminal?.hash?.sourceNodeRid !== 'node-a'
+        || fixture.operationRecords?.creationTerminal?.hash?.sourceNodeGeneration !== '7'
+        || fixture.operationRecords?.creationTerminal?.hash?.operationIdHigh !== '0'
+        || fixture.operationRecords?.creationTerminal?.hash?.operationIdLow !== '1'
+        || !positiveDecimal(
+          fixture.operationRecords?.creationTerminal?.hash?.expiresAtUnixMs)
+        || !/^[0-9a-f]{64}$/u.test(
+          fixture.operationRecords?.aggregate?.hash?.inventoryDigest || '')
+        || !positiveDecimal(
+          fixture.operationRecords?.aggregate?.hash?.aggregateGeneration)) {
+      fail('Authority Store v3 binary record field encoding differs');
+    }
+
+    const entry = fixture.entryClaim || {};
+    const entryDigest = crypto.createHash('sha256')
+      .update(Buffer.from(entry.spotId || '', 'utf8')).digest('hex');
+    const entryUuid = (entry.spotId || '').slice(
+      (entry.spotId || '').lastIndexOf('-entry-') + 7);
+    if (!exactFieldMap(
+          'authority-store-v3/entryClaim', entry.hashFields, entry.hash)
+        || JSON.stringify(entry.hashFields) !== JSON.stringify([
+          'state', 'spotId', 'descriptorKey',
+          'descriptorLifecycleGeneration', 'ownerId',
+          'ownerLeaseGeneration',
+        ])
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+          .test(entryUuid)
+        || entry.spotIdSha256 !== entryDigest
+        || entry.key !== `${physicalBase}:entry-spot-id:${entryDigest}`
+        || entry.hash?.state !== 'Claimed'
+        || entry.hash?.spotId !== entry.spotId
+        || !positiveDecimal(entry.hash?.descriptorLifecycleGeneration)
+        || !positiveDecimal(entry.hash?.ownerLeaseGeneration)) {
+      fail('Authority Store v3 Entry Spot claim differs');
+    }
+
+    const history = fixture.historyEncoding || {};
+    if (history.revisionFieldSeparator !== ':'
+        || history.fullSnapshotDeletedValue !== '0'
+        || history.tombstoneDeletedValue !== '1'
+        || JSON.stringify(history.fullSnapshotSuffixes)
+          !== JSON.stringify(['deleted', ...expectedCurrentFields])
+        || JSON.stringify(history.reservedFullSnapshotSuffixes)
+          !== JSON.stringify(['deleted', ...expectedReservedFields])
+        || JSON.stringify(history.tombstoneSuffixes)
+          !== JSON.stringify(['deleted', 'authorityKey'])) {
+      fail('Authority Store v2 history field encoding differs');
+    }
+
+    const reserveVersion = BigInt(
+      fixture.reserve?.currentHash?.storeVersion ?? '-1');
+    const commitVersion = BigInt(
+      fixture.commit?.currentHash?.storeVersion ?? '-1');
+    const preserveVersion = BigInt(
+      fixture.preserve?.currentHash?.storeVersion ?? '-1');
+    const newOwnerVersion = BigInt(
+      fixture.newOwner?.currentHash?.storeVersion ?? '-1');
+    const deleteVersion = BigInt(
+      fixture.delete?.consumedStoreRevision ?? '-1');
+    if (fixture.missing?.kind !== 'Missing'
+        || Object.hasOwn(fixture.missing || {}, 'storeVersion')
+        || fixture.reserve?.expectation !== 'Missing'
+        || fixture.reserve?.result !== 'Reserved'
+        || fixture.commit?.expectation?.storeVersion
+          !== fixture.reserve?.currentHash?.storeVersion
+        || fixture.commit?.result !== 'Committed'
+        || fixture.preserve?.expectation?.storeVersion
+          !== fixture.commit?.currentHash?.storeVersion
+        || fixture.newOwner?.expectation?.storeVersion
+          !== fixture.preserve?.currentHash?.storeVersion
+        || fixture.delete?.expectation?.storeVersion
+          !== fixture.newOwner?.currentHash?.storeVersion
+        || fixture.delete?.result !== 'Deleted'
+        || fixture.delete?.tombstone !== true
+        || !(reserveVersion < commitVersion
+          && commitVersion < preserveVersion
+          && preserveVersion < newOwnerVersion
+          && newOwnerVersion < deleteVersion)) {
+      fail('Authority Store v2 CAS version transition differs');
+    }
+    if (fixture.scan?.indexMember !== authorityHex
+        || fixture.scan?.revisionZsetScore !== 0
+        || fixture.scan?.pageSizeMaximum !== 1000
+        || fixture.scan?.encodedPageBytesMaximum !== 4 * 1024 * 1024
+        || fixture.scan?.cursorBytesMaximum !== 4096
+        || !/^[0-9a-f]{16}$/u.test(
+          fixture.scan?.watermarkRevisionHex || '')
+        || fixture.generationExhausted?.counterAtMaximum
+          !== serviceWireSchema.authorityStoreGenerationProfile
+            .generationMaximum
+        || fixture.generationExhausted?.result !== 'GenerationExhausted'
+        || fixture.generationExhausted?.retriable !== false
+        || fixture.generationExhausted?.rowIndexAndCounterMutationCount !== 0) {
+      fail('Authority Store v2 bounds or exhaustion contract differs');
+    }
+    continue;
+  }
   if (name === 'authority-store-v1.json') {
     const expectedKey = canonicalAuthorityKey(fixture.keyContract);
     if (!expectedKey || fixture.keyContract?.authorityKey !== expectedKey) {
@@ -1731,8 +2082,8 @@ for (const [name, format] of redisFixtures) {
         || JSON.stringify(fixture.admissionHashFields) !== JSON.stringify([
           'descriptorKey', 'descriptorRevision', 'lifecycleGeneration',
           'ownerId', 'ownerLeaseGeneration', 'objectRole', 'runtimeState',
-          'applicationVersion', 'capabilities', 'nodeActiveLimit',
-          'nodePendingLimit', 'immutableDigest',
+          'applicationVersion', 'capabilities', 'actorLimit',
+          'spotLimit', 'immutableDigest',
         ])) {
       fail('MeshNode descriptor hybrid physical schema differs');
     }
@@ -1750,8 +2101,8 @@ for (const [name, format] of redisFixtures) {
 
 const amendedObjectSemanticFixtures = [
   ['cpp', ['04-spots.ko.md', '05-actors.ko.md'], [
-    'global ActorId', 'global SpotRid', 'send(actor_id_t actor_id',
-    'spot_send_call_t send_to_spot(spot_rid_t target',
+    'global ActorId', 'global SpotId', 'send(actor_id_t actor_id',
+    'spot_send_call_t send_to_spot(spot_id_t target',
     'spot_request_call_t request_to_spot(',
     '`instance_spot()`은 stable type을 생략한 marker',
     '`spot_manager_t`는 User Spot만 생성한다.',
@@ -1762,10 +2113,10 @@ const amendedObjectSemanticFixtures = [
   ]],
   ['dotnet', ['05-spots.ko.md', '06-actors.ko.md', '07-stream-session.ko.md'], [
     'ActorId는 Location Store transaction domain 전체에서 유일한 logical ID',
-    'SpotRid는 Location Store transaction domain 전체에서 유일한 logical ID',
+    'User·Instance SpotId는 global key다.',
     'SendToActor<TMessage>(',
-    'IZLinkSpotSendCall SendToSpot<TMessage>(RoutingId spotRid',
-    'IZLinkSpotRequestCall RequestToSpot<TRequest>(RoutingId spotRid',
+    'IZLinkSpotSendCall SendToSpot<TMessage>(string spotId',
+    'IZLinkSpotRequestCall RequestToSpot<TRequest>(string spotId',
     'IZLinkSpotSendCall InstanceSpot();',
     'IZLinkSpotRequestCall InstanceSpot();',
     '`IZLinkSpotManager`는 User Spot의 명시적 create·get-or-create, resolve와 exact close만 제공한다.',
@@ -1775,10 +2126,11 @@ const amendedObjectSemanticFixtures = [
     '다른 ref를 찾아 같은 bind operation을 hidden retry하지 않는다.',
   ]],
   ['java', ['actors.ko.md', 'spots.ko.md', 'stream-session.ko.md'], [
-    'ActorId는 UTF-8 1..255 bytes의 global logical ID', 'SpotRid는 global logical ID',
+    'ActorId는 UTF-8 1..255 bytes의 global logical ID',
+    'SpotId는 UTF-8 encoded 크기 1..255 bytes의 `String`이며 global logical ID다.',
     'sendToActor(java.lang.String, java.lang.Object)',
-    'ZLinkSpotSendCall sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object)',
-    'ZLinkSpotRequestCall requestToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object)',
+    'ZLinkSpotSendCall sendToSpot(java.lang.String, java.lang.Object)',
+    'ZLinkSpotRequestCall requestToSpot(java.lang.String, java.lang.Object)',
     'ZLinkSpotSendCall instanceSpot();',
     'ZLinkSpotRequestCall instanceSpot();',
     'Spot manager는 User Spot 전용이다.',
@@ -1790,7 +2142,7 @@ const amendedObjectSemanticFixtures = [
     '새 ref를 찾아 hidden retry하지 않는다.',
   ]],
   ['kotlin', ['README.ko.md', 'actors.ko.md', 'spots.ko.md', 'stream-session.ko.md'], [
-    'global ActorId·SpotRid', 'ID-only 일반',
+    'global ActorId·SpotId', 'ID-only 일반',
     'ZLinkActorManager.create(actorId, actorType)',
     'ZLinkSpotManager.create(spotType)',
     'Manager는 Instance Spot',
@@ -1800,15 +2152,15 @@ const amendedObjectSemanticFixtures = [
     'serving Instance type이 distinct',
     'value 하나일 때만 그 type을 자동 선택한다.',
     'ActorRef(actorId, objectGeneration, meshName, nodeRid)',
-    'SpotRef(spotRid, objectGeneration, meshName, nodeRid)',
+    'SpotRef(spotId, objectGeneration, meshName, nodeRid)',
     'Framework는 hidden retry나 local fallback을 수행하지 않는다.',
   ]],
   ['node', ['01-foundation-configuration.ko.md', '04-spots.ko.md', '05-actors.ko.md'], [
     '`ActorId`는 Location Store transaction domain 전체에서 유일한 logical ID',
-    'User·Instance SpotRid는 global key',
+    'Entry·User·Instance SpotId는 UTF-8 encoded 크기 1..255 bytes의 `string`이며 global key다.',
     'sendToActor(actorId: ActorId',
-    'sendToSpot(spotRid: SpotRid, message: unknown): ZLinkSpotSendCall',
-    'requestToSpot(spotRid: SpotRid, request: unknown): ZLinkSpotRequestCall',
+    'sendToSpot(spotId: SpotId, message: unknown): ZLinkSpotSendCall',
+    'requestToSpot(spotId: SpotId, request: unknown): ZLinkSpotRequestCall',
     'instanceSpot(): this;',
     'Instance Spot에는 manager create·get-or-create를 제공하지 않는다.',
     'distinct Instance type이 하나일 때',

@@ -41,7 +41,9 @@ payload를 저장하며 `SNAPSHOT`은 application state를 추가로 저장한�
 public interface systems.zlink.framework.configuration.ZLinkMeshNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingIdPrefix(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setPlacementWeight(int);
-  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setObjectCapacity(int, int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setActorCapacity(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setSpotCapacity(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setActivationConcurrency(int);
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder objects();
 }
 public interface systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder {
@@ -73,23 +75,44 @@ fun ZLinkFrameworkOptions.configureStreamCompression(
 inline fun <reified TActor, reified TFactory>
     ZLinkMeshObjectServerBuilder.actorFactory(
         actorType: String,
-        placement: ZLinkObjectPlacementOptions?,
+        placement: ZLinkActorFactoryOptions?,
         relocation: ZLinkRelocationPolicy<TActor>,
     ): ZLinkMeshObjectServerBuilder
     where TActor : ZLinkActor,
           TFactory : ZLinkActorFactory
 ```
 
-`placement`은 nullable이지만 `relocation`에는 default가 없다. Placement option은 placement profile collection,
-type별 `maxActiveObjects`, `maxPendingActivations`만 가진다. Node default는 active 10000, pending 128이고
-type override 범위는 1..`Int.MAX_VALUE`다. Effective capacity는 node와 type 값 중 작은 값이다. Node placement
-weight는 0..100이고 기본값은 100이다. Channel weight와 별개이며 runtime update와 descriptor snapshot에
-같은 값을 사용한다.
+`placement`은 nullable이지만 `relocation`에는 default가 없다. Actor factory option은 capacity만 가진다.
+User·Instance Spot factory option은 `stableTypeLimit`을 가지며 `0`은
+별도 stable type limit이 없다는 뜻이다. Node의 Actor 전체·Spot 전체 limit도 기본값 `0`이고 음수는 startup
+configuration error다. Entry Spot은 Spot capacity에서 제외하지만 그 안의 Actor는 Actor capacity에 포함한다.
+Activation concurrency는 별도 양수 설정이며 기본값은 128이다. Node placement
+weight는 Java signed `int` `0..10000`이고 기본값은 `100`이다. RouteMesh Channel Server와 ClientServer
+Server weight도 같은 범위와 기본값을 사용한다. `1..10000`은 eligible target 사이의 상대적 선택
+비중이다. Startup 또는 runtime 변경에 범위 밖 값을 지정하면
+configuration error다. Channel weight와 placement weight는 별개이며 runtime update와 descriptor snapshot에
+같은 값을 사용한다. Runtime 변경은 descriptor revision으로 순서화하며 이미 제출했거나 reservation을
+완료한 operation에는 적용하지 않는다. Capacity와 readiness를 먼저 적용한 뒤 positive weight 합계를 최소
+64-bit integer로 계산한다.
 
-MeshNode와 Store-backed fanout publisher의 automatic RID는 `prefix-<32 lowercase hex>` 형식이다. Prefix는
-ASCII `[A-Za-z0-9._-]` 1..64자이고 full RID는 UTF-8 255 bytes 이하다. Active owner 충돌은 새 suffix로 최대
-8회 재시도하고 모두 충돌하면 `RoutingIdConflict`다. Fixed RID는 object role이나 automatic Store descriptor가
+Kotlin은 Java `ZLinkUserSpotExecutionMode`와 typed factory option을 그대로 사용한다. User Spot factory의
+mode를 생략하면 `SPOT_WIDE`이고 `PER_ACTOR`는 factory registration에서만 고정할 수 있다. `PER_ACTOR`의
+Actor별 lane, Spot direct·lifecycle lane과 timer별 lane은 독립적으로 진행하며 close·relocation·snapshot은
+모든 lane이 안전한 turn 경계에 도달한 all-lane barrier 뒤에만 진행한다.
+
+MeshNode와 Store-backed fanout publisher의 automatic RID는 `prefix-<uuid-v4>` 형식이다. `<uuid-v4>`는
+RFC 4122 UUID v4의 lowercase canonical 36-character `8-4-4-4-12` 표현이다. Prefix는 ASCII
+`[A-Za-z0-9._-]` 1..64자이고 full RID는 UTF-8 255 bytes 이하다. 첫 active owner 충돌에서 기존 record를
+변경하지 않고 startup을 `RoutingIdConflict`로 실패시킨다. Fixed RID는 object role이나 automatic Store descriptor가
 없는 manual topology에서만 사용할 수 있다. Slot count, allocation group과 public allocation provider는 없다.
+
+Object Server의 Entry Spot ID는 `<prefix>-entry-<uuid-v4>`이고 caller가 설정하지 않는다. Entry UUID는
+RFC 4122 UUID v4의 lowercase canonical 36-character `8-4-4-4-12` 표현이며 MeshNode RID의 UUID와
+독립적으로 발급한다. 같은 lifecycle에서는 유지하고 replacement lifecycle에서는 새 UUID를 발급한다.
+Global Spot namespace의 첫 active conflict에서 기존 record를 변경하지 않고 startup을
+`RoutingIdConflict`로 실패시킨다. Java descriptor의 exact Entry Spot ID mapping을 사용하며 문자열을 parse하지 않는다.
+Reserved Entry pattern을 caller가 User·Instance Spot ID로 제공하면 Store 접근 전에
+`InvalidConfiguration`으로 거부한다.
 
 모든 Actor, User Spot, Instance Spot factory는 stable type, optional typed placement와 명시적인
 `Disabled`·`Recreate`·`Snapshot` policy를 받는다. Policy를 생략하는 Kotlin overload와 `$default` JVM member는
@@ -114,7 +137,7 @@ public final class systems.zlink.framework.kotlin.ZLinkDispatchOptionsExtensions
   public static final systems.zlink.framework.configuration.ZLinkDispatchOptions configureDispatch(systems.zlink.framework.configuration.ZLinkFrameworkOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkDispatchOptions, kotlin.Unit>);
 }
 public final class systems.zlink.framework.kotlin.ZLinkFrameworkExtensionsKt {
-  public static final <TActor extends systems.zlink.framework.actors.ZLinkActor, TFactory extends systems.zlink.framework.actors.ZLinkActorFactory> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder actorFactory(systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder, java.lang.String, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
+  public static final <TActor extends systems.zlink.framework.actors.ZLinkActor, TFactory extends systems.zlink.framework.actors.ZLinkActorFactory> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder actorFactory(systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder, java.lang.String, systems.zlink.framework.configuration.ZLinkActorFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
   public static final systems.zlink.framework.configuration.ZLinkFrameworkOptions configureStreamCompression(systems.zlink.framework.configuration.ZLinkFrameworkOptions, kotlin.jvm.functions.Function1<? super systems.zlink.framework.configuration.ZLinkStreamCompressionBuilder, kotlin.Unit>);
 }
 ```

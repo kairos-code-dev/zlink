@@ -42,9 +42,12 @@ class ZLinkLocationKeyCodecTest {
     @Test
     void encodesSpotActorAndRouteKeys() {
         assertEquals(
-            "4:mesh4:0102",
+            "4:0102",
             ZLinkLocationKeyCodec.encodeSpotKey(
-                new ZLinkSpotLocationKey("mesh", RoutingId.from(new byte[] {0x01, 0x02}))));
+                new ZLinkSpotLocationKey("0102")));
+        assertEquals(
+            new ZLinkSpotLocationKey("0102"),
+            new ZLinkSpotLocationKey("0102"));
         assertEquals(
             "8:actor-42",
             ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey("actor-42")));

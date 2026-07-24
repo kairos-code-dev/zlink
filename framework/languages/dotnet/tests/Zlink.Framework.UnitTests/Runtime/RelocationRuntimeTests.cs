@@ -202,7 +202,7 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
-    public async Task Creation_admission_checks_profile_and_node_and_type_limits()
+    public async Task Creation_admission_checks_stable_type_and_capacity_limits()
     {
         var store = new ZLinkInMemoryLocationStore();
         var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
@@ -217,10 +217,7 @@ public sealed class RelocationRuntimeTests
                 "bounded-node",
                 owner.Token,
                 activeLimit: 1,
-                pendingLimit: 1,
-                placementProfiles: new HashSet<string>(
-                    ["premium"],
-                    StringComparer.Ordinal)),
+                pendingLimit: 1),
             ZLinkLocationWriteIntent.NewClaim);
 
         Assert.IsType<ZLinkObjectReserveResult.Conflict>(
@@ -229,41 +226,38 @@ public sealed class RelocationRuntimeTests
                     "actor:mesh:wrong-profile",
                     descriptorKey,
                     owner.Token,
-                    placementProfile: "standard")));
+                    stableType: "Other.Actor")));
 
         var first = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
             await store.ReserveAsync(
                 ObjectReservation(
                     "actor:mesh:first",
                     descriptorKey,
-                    owner.Token,
-                    placementProfile: "premium")));
+                    owner.Token)));
         var pendingDescriptor = Assert.Single(
             await store.ListMeshNodesAsync("mesh"),
             value => value.Rid == RoutingId.From("bounded-node"));
-        Assert.Equal(0, pendingDescriptor.Capacity.Active);
-        Assert.Equal(1, pendingDescriptor.Capacity.Pending);
+        Assert.Equal(0, pendingDescriptor.Capacity.Actors.Active);
+        Assert.Equal(1, pendingDescriptor.Capacity.Actors.Reserved);
         Assert.IsType<ZLinkObjectReserveResult.PlacementCapacityExhausted>(
             await store.ReserveAsync(
                 ObjectReservation(
                     "actor:mesh:pending-overflow",
                     descriptorKey,
-                    owner.Token,
-                    placementProfile: "premium")));
+                    owner.Token)));
         Assert.IsType<ZLinkObjectCommitResult.Committed>(
             await store.CommitAsync(first.Reservation, new byte[] { 0x01 }));
         var activeDescriptor = Assert.Single(
             await store.ListMeshNodesAsync("mesh"),
             value => value.Rid == RoutingId.From("bounded-node"));
-        Assert.Equal(1, activeDescriptor.Capacity.Active);
-        Assert.Equal(0, activeDescriptor.Capacity.Pending);
+        Assert.Equal(1, activeDescriptor.Capacity.Actors.Active);
+        Assert.Equal(0, activeDescriptor.Capacity.Actors.Reserved);
         Assert.IsType<ZLinkObjectReserveResult.PlacementCapacityExhausted>(
             await store.ReserveAsync(
                 ObjectReservation(
                     "actor:mesh:active-overflow",
                     descriptorKey,
-                    owner.Token,
-                    placementProfile: "premium")));
+                    owner.Token)));
     }
 
     [Fact]
@@ -645,7 +639,6 @@ public sealed class RelocationRuntimeTests
             "room",
             new ZLinkObjectPlacementOptions
             {
-                PlacementProfiles = ["ssd"],
                 MaxActiveObjects = 100,
                 MaxPendingActivations = 10
             },
@@ -656,7 +649,8 @@ public sealed class RelocationRuntimeTests
         Assert.Equal(typeof(TestRelocatableSpot), relocation.InstanceType);
         Assert.Equal((byte)2, relocation.PolicyKind);
         Assert.Equal(typeof(TestSpotRelocationAdapter), relocation.AdapterType);
-        Assert.Equal(["ssd"], relocation.Placement.PlacementProfiles);
+        Assert.Equal(100, relocation.Placement.MaxActiveObjects);
+        Assert.Equal(10, relocation.Placement.MaxPendingActivations);
     }
 
     [Fact]
@@ -677,7 +671,6 @@ public sealed class RelocationRuntimeTests
             "Game.Actor",
             new ZLinkObjectPlacementOptions
             {
-                PlacementProfiles = ["ssd"],
                 MaxActiveObjects = 100,
                 MaxPendingActivations = 10
             },
@@ -695,7 +688,7 @@ public sealed class RelocationRuntimeTests
     }
 
     [Fact]
-    public void Placement_profile_rejects_values_outside_utf8_contract()
+    public void Placement_limits_reject_non_positive_values()
     {
         var registration = new ZLinkFrameworkRegistration();
         var options = new ZLinkFrameworkOptionsBuilder(registration);
@@ -708,7 +701,7 @@ public sealed class RelocationRuntimeTests
                 "Game.Actor",
                 new ZLinkObjectPlacementOptions
                 {
-                    PlacementProfiles = [new string('가', 86)]
+                    MaxActiveObjects = 0
                 },
                 ZLinkRelocationPolicy<TestRelocatableActor>.Recreate));
         Assert.Throws<ZLinkConfigurationException>(
@@ -718,7 +711,7 @@ public sealed class RelocationRuntimeTests
                 "Game.Actor.Nul",
                 new ZLinkObjectPlacementOptions
                 {
-                    PlacementProfiles = ["premium\0hidden"]
+                    MaxPendingActivations = 0
                 },
                 ZLinkRelocationPolicy<TestRelocatableActor>.Recreate));
     }
@@ -771,7 +764,7 @@ public sealed class RelocationRuntimeTests
             ZLinkSpotAcceptedJournal.Encode(received));
 
         Assert.Equal(RoutingId.From("source-node"), restored.SourceNodeRid);
-        Assert.Equal(RoutingId.From("spot-7"), restored.SpotRid);
+        Assert.Equal(RoutingId.From("spot-7"), restored.SpotId);
         Assert.Equal<ulong?>(44, restored.RequestSequence);
         Assert.Equal("abc", restored.Metadata.Find("trace"));
         Assert.Equal(new byte[] { 1, 2 }, restored.Parts[0].ToArray());
@@ -1042,13 +1035,11 @@ public sealed class RelocationRuntimeTests
         ZLinkMeshNodeDescriptorKey descriptor,
         ZLinkLocationOwnerToken owner,
         int capacityDelta = 1,
-        string? placementProfile = null) =>
+        string stableType = "Game.Actor") =>
         new(
             ZLinkPlacementObjectKind.Actor,
             new ZLinkAuthorityKey(authorityKey),
-            "Game.Actor",
-            placementProfile,
-            null,
+            stableType,
             $"intent:{authorityKey}",
             SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(authorityKey)),
@@ -1064,8 +1055,7 @@ public sealed class RelocationRuntimeTests
         ZLinkLocationOwnerToken owner,
         string stableType = "Game.Actor",
         int? activeLimit = null,
-        int? pendingLimit = null,
-        IReadOnlySet<string>? placementProfiles = null) =>
+        int? pendingLimit = null) =>
         new(
             "mesh",
             RoutingId.From(rid),
@@ -1089,17 +1079,16 @@ public sealed class RelocationRuntimeTests
                     stableType,
                     ZLinkObjectMaintenancePolicyKind.Recreate,
                     HasSnapshotAdapter: false,
-                    placementProfiles
-                    ?? new HashSet<string>(StringComparer.Ordinal),
-                    activeLimit,
-                    pendingLimit)
+                    Limit: 0)
             ],
             State = ZLinkFrameworkRuntimeState.Serving,
             Capacity = new(
-                0,
-                0,
-                activeLimit ?? 10_000,
-                pendingLimit ?? 128)
+                new ZLinkPopulationCapacity(
+                    0,
+                    0,
+                    activeLimit ?? 10_000),
+                new ZLinkPopulationCapacity(0, 0, 0),
+                Array.Empty<ZLinkSpotTypeCapacity>())
         };
 
     private static ZLinkRelocationCapacityReservationRequest
@@ -1296,6 +1285,17 @@ public sealed class RelocationRuntimeTests
         public ValueTask<ZLinkObjectCommitResult> CommitAsync(
             ZLinkObjectReservation reservation,
             ReadOnlyMemory<byte> readyPayload,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
+            ZLinkObjectReservation reservation,
+            ZLinkObjectCreationCompletion completion,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
+            ZLinkCreationOperationId operation,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

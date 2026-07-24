@@ -132,8 +132,6 @@ public sealed record ZLinkObjectReservationRequest(
     ZLinkPlacementObjectKind ObjectKind,
     ZLinkAuthorityKey Key,
     string StableType,
-    string? PlacementProfile,
-    string? AffinityKey,
     string CreationIntentReference,
     ReadOnlyMemory<byte> CreationIntentHash,
     int CreationIntentEncodedSize,
@@ -152,6 +150,47 @@ public sealed record ZLinkObjectReservation(
     ZLinkMeshNodeDescriptorKey TargetDescriptor,
     ulong TargetNodeLifecycleGeneration,
     ZLinkLocationOwnerToken TargetOwner);
+
+public readonly record struct ZLinkCreationOperationId(
+    RoutingId SourceNodeRid,
+    ulong SourceNodeGeneration,
+    ulong OperationIdHigh,
+    ulong OperationIdLow);
+
+public enum ZLinkCreationTerminalState
+{
+    Created = 1,
+    Rejected = 2,
+    Failed = 3
+}
+
+public sealed record ZLinkCreationTerminalPublication(
+    ZLinkCreationOperationId Operation,
+    ReadOnlyMemory<byte> TerminalEnvelope,
+    ReadOnlyMemory<byte> TerminalEnvelopeSha256,
+    DateTimeOffset ExpiresAt);
+
+public sealed record ZLinkCreationTerminalRecord(
+    ZLinkCreationOperationId Operation,
+    string ReservationId,
+    ZLinkPlacementObjectKind ObjectKind,
+    ZLinkCreationTerminalState State,
+    ReadOnlyMemory<byte> TerminalEnvelope,
+    ReadOnlyMemory<byte> TerminalEnvelopeSha256,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset StoreNow);
+
+public abstract record ZLinkCreationTerminalReadResult
+{
+    private protected ZLinkCreationTerminalReadResult()
+    {
+    }
+
+    public sealed record Missing(DateTimeOffset StoreNow) : ZLinkCreationTerminalReadResult;
+
+    public sealed record Found(ZLinkCreationTerminalRecord Record)
+        : ZLinkCreationTerminalReadResult;
+}
 
 public abstract record ZLinkObjectReserveResult
 {
@@ -191,6 +230,49 @@ public abstract record ZLinkObjectCommitResult
     public sealed record Stale : ZLinkObjectCommitResult;
 
     public sealed record GenerationExhausted : ZLinkObjectCommitResult;
+}
+
+public abstract record ZLinkObjectCreationCompletion
+{
+    private protected ZLinkObjectCreationCompletion()
+    {
+    }
+
+    public sealed record Created(
+        ReadOnlyMemory<byte> ReadyPayload,
+        ZLinkCreationTerminalPublication Terminal)
+        : ZLinkObjectCreationCompletion;
+
+    public sealed record Rejected(ZLinkCreationTerminalPublication Terminal)
+        : ZLinkObjectCreationCompletion;
+
+    public sealed record Failed(ZLinkCreationTerminalPublication Terminal)
+        : ZLinkObjectCreationCompletion;
+}
+
+public abstract record ZLinkObjectCreationCompleteResult
+{
+    private protected ZLinkObjectCreationCompleteResult()
+    {
+    }
+
+    public sealed record Created(
+        ZLinkAuthoritySnapshot Snapshot,
+        ZLinkCreationTerminalRecord Terminal)
+        : ZLinkObjectCreationCompleteResult;
+
+    public sealed record Rejected(ZLinkCreationTerminalRecord Terminal)
+        : ZLinkObjectCreationCompleteResult;
+
+    public sealed record Failed(ZLinkCreationTerminalRecord Terminal)
+        : ZLinkObjectCreationCompleteResult;
+
+    public sealed record AlreadyCompleted(ZLinkCreationTerminalRecord Terminal)
+        : ZLinkObjectCreationCompleteResult;
+
+    public sealed record Stale : ZLinkObjectCreationCompleteResult;
+
+    public sealed record GenerationExhausted : ZLinkObjectCreationCompleteResult;
 }
 
 public abstract record ZLinkObjectAbortResult
@@ -328,6 +410,15 @@ public interface IZLinkAuthorityStore
     ValueTask<ZLinkObjectCommitResult> CommitAsync(
         ZLinkObjectReservation reservation,
         ReadOnlyMemory<byte> readyPayload,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
+        ZLinkObjectReservation reservation,
+        ZLinkObjectCreationCompletion completion,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
+        ZLinkCreationOperationId operation,
         CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkObjectAbortResult> AbortAsync(

@@ -65,7 +65,7 @@ RouteMesh 등록은 MeshName 하나를 받고 MeshNode builder를 반환한다. 
 - `None`, `Client`, `Server` 중 하나인 object role
 - Object Server의 Entry Spot, user Spot, typed Actor와 actor-free Instance Spot factory
 - 모든 object factory에 명시하는 `Disabled`, `Recreate`, `Snapshot` relocation policy
-- placement profile, node·type별 capacity, node-wide placement weight
+- Actor·Spot population capacity, Spot stable type별 capacity와 node-wide placement weight
 - route cache age와 stale route forwarding window
 - Logical Multicast publish policy
 
@@ -95,14 +95,29 @@ Client capability를 포함하며 factory와 placement target을 제공한다. `
 
 Object Server는 Channel weight와 독립된 node-wide placement weight를 사용한다. 범위는 0부터 100까지이고
 기본값은 100이다. 0인 node는 새 placement와 relocation target에서 제외하지만 Ready object와 이미 reservation을
-확보한 attempt는 유지한다. Node 전체 기본 capacity는 active 10,000개와 pending 128개다. Stable type별
-capacity는 생략하면 node limit을 공유하며, 명시할 때는 1부터 `2^31-1`까지의 값으로 node limit보다 작게
-제한한다. Runtime은 active·pending capacity를 먼저 적용하고 남은 후보를 placement weight 비율로 선택한다.
+확보한 attempt는 유지한다. Node는 Actor 전체와 Spot 전체의 population limit을 각각 설정한다. 기본값 `0`은
+제한을 두지 않는다는 뜻이고 양수는 `1..2^31-1` 범위의 상한이며 음수는 startup configuration error다.
+Spot factory는 User Spot 또는 Instance Spot의 kind와 stable type별 population limit을 같은 규칙으로 설정한다.
+Entry Spot은 Spot 전체와 Spot stable type capacity에 포함하지 않지만 Entry Spot에 존재하는 Actor는 Actor
+전체 capacity에 포함한다. Actor stable type별 capacity는 제공하지 않는다.
+
+Location Store는 active와 reserved 사용량의 권한 원본이다. Object 하나를 새로 만들거나 relocation할 때는
+factory를 호출하기 전에 필요한 typed capacity bundle을 원자적으로 예약하고, 성공하면 reserved를 active로
+전환하며, 실패하면 같은 reservation fence로 reserved를 해제한다. Actor bundle은 Actor slot 하나, Spot
+bundle은 Spot slot 하나와 optional `(Spot kind, stable type)` slot 하나를 함께 포함한다. 하나의 bundle은
+Spot stable type을 최대 하나만 포함한다. User Spot aggregate
+relocation은 Spot slot 하나, 해당 Spot type slot 하나와 participant Actor 수만큼의 Actor slot을 한
+transaction에서 예약한다. Descriptor와 monitoring의 capacity 값은 Location Store projection이며 독립된
+권한 원본이 아니다.
+
+Factory 실행을 제한하는 activation concurrency는 population capacity와 별도다. 기본값은 node당 128이고
+양수만 허용한다. Activation permit은 factory와 초기화가 끝나면 반환하며 active·reserved population count를
+변경하지 않는다. Runtime은 typed capacity를 먼저 적용하고 남은 후보를 placement weight 비율로 선택한다.
 자격을 만족하는 후보가 없으면 `PlacementCapacityExhausted`로 완료한다.
 
-Placement profile과 affinity key는 UTF-8 1..255 bytes의 case-sensitive stable value다. Create call은 이 두
-값만 optional placement 입력으로 받는다. Required capability, region·zone과 deployment policy는 Server가
-등록한 profile 안에서 해석한다. Call이 target RID, predicate나 selection callback을 제공하지 않는다.
+Create call은 caller-defined placement selector를 받지 않는다. Runtime은 선택한 Mesh의 `Serving` Object
+Server 중 stable type capability와 population capacity를 만족하는 후보에 node-wide placement weight를
+적용한다. Call이 target RID, predicate나 selection callback을 제공하지 않는다.
 
 Framework의 `MaxMessageSize = 0`은 Framework가 transport 기본값보다 작은 별도 상한을 두지 않는다는
 뜻이다. 양수는 같은 byte 상한으로 적용하고 음수 값은 설정 오류다. Binding option 표현과 변환은
@@ -133,7 +148,7 @@ Public messaging은 typed payload를 받고 Framework가 packet name과 codec을
 |---|---|---|
 | Node direct send/request | MeshName context와 target RID | MeshNode route handler |
 | Channel send/request | ChannelName | ChannelName handler |
-| Spot send/request | global Spot RID | current Ready Spot |
+| Spot send/request | global Spot ID | current Ready Spot |
 | Actor send/request | global Actor ID | current Ready Actor context |
 | Logical Multicast publish | ChannelName과 topic | local Spot subscription |
 | classic fanout publish | fanout channel name | fanout subscriber handler |
@@ -361,13 +376,19 @@ Subscriber가 0이어도 local publisher queue가 event를 수락하면 `Submitt
 
 Spot factory와 typed Actor factory는 Object Server builder에 등록한다. User·Instance Spot type은 UTF-8
 1..255 bytes의 case-sensitive stable name이며 언어 class 이름을 wire·Store identity로 사용하지 않는다.
-Entry Spot RID는 Framework가 발급하고 caller가 생성하지 않는다. Instance Spot은 actor-free lifecycle을
+Entry Spot ID는 Framework가 발급하고 caller가 생성하지 않는다. Instance Spot은 actor-free lifecycle을
 사용하며 Actor handler, Actor membership과 Logical Multicast subscription을 등록할 수 없다.
 
+User Spot factory registration은 execution mode를 함께 고정한다. 생략하면 `SpotWide`이며 `PerActor`를
+명시할 수 있다. Mode는 activation마다 또는 message마다 바꾸지 않는다. `SpotWide`는 member Actor, Spot
+direct handler, timer와 lifecycle callback이 User Spot execution gate 하나를 공유한다. `PerActor`는
+Actor별 FIFO lane, Spot direct·lifecycle lane과 timer별 FIFO lane을 사용한다. Instance Spot과 Entry
+Spot에는 이 option을 적용하지 않는다. 정확한 enum·option 이름은 다섯 언어 exact interface가 소유한다.
+
 Actor manager와 User Spot manager는 global ID를 받는 `Create`, `GetOrCreate`, `Find` family를 제공한다. Actor
-`Create`·`GetOrCreate`는 Actor ID와 stable type을, User Spot `GetOrCreate`는 caller가 정한 Spot RID와 stable
-type을 필수로 받는다. User Spot `Create`는 Framework가 global Spot RID를 생성한다. Optional fluent 설정은 initial Mesh,
-최대 1 MiB로 encode되는 creation request, placement profile, affinity key와 deadline이다. 같은 option을 두 번
+`Create`·`GetOrCreate`는 Actor ID와 stable type을, User Spot `GetOrCreate`는 caller가 정한 Spot ID와 stable
+type을 필수로 받는다. User Spot `Create`는 Framework가 global Spot ID를 생성한다. Optional fluent 설정은 initial Mesh,
+최대 1 MiB로 encode되는 creation request와 deadline이다. 같은 option을 두 번
 설정하면 `InvalidConfiguration`, terminal submit을 두 번 실행하면 `AlreadySubmitted`다.
 
 Initial Mesh를 명시하면 해당 Mesh를 사용한다. 생략했을 때 object role Mesh가 하나면 자동으로 선택하고,
@@ -382,7 +403,7 @@ optional metadata presence·frame, 선택한 Mesh·stable type과 target descrip
 eligible target으로 전송한다.
 Source는 owner claim이나 reservation을 먼저 만들지 않는다. Target runtime은 complete activation envelope를
 Relocation Store에 immutable recovery root로 저장한 뒤 current authority와 local exact instance를 확인하고,
-Missing이면 자신을 owner로 generic reservation을 획득한다. Pending authority snapshot은 provider가 발급한
+Missing이면 자신을 owner로 generic reservation을 획득한다. Reserved authority snapshot은 provider가 발급한
 reservation fence와 recovery root receipt를 반환한다. CAS winner만 factory와 initialize를 실행하고 envelope
 message를 durable activation inbox의 첫 record로 확정한다. Handler barrier를 유지한 상태에서 recovery
 root·cursor를 포함한 `Ready`를 commit하고, 첫 record를 local queue head로 복원한 뒤 barrier를 연다. CAS loser는
@@ -424,8 +445,8 @@ Actor factory는 Actor lifecycle을 만들고 Actor handler는 Actor context의 
 Actor message는 Actor mailbox로 직접 dispatch한다. Actor message를 Node callback이나 Spot packet handler가
 다시 분류하지 않는다.
 
-Spot direct 시작 method는 global Spot RID와 payload를 받고 Spot 전용 send/request call을 반환한다. 이 call은
-metadata와 terminal 외에 Instance intent, optional stable type, initial Mesh, placement profile과 affinity key를
+Spot direct 시작 method는 global Spot ID와 payload를 받고 Spot 전용 send/request call을 반환한다. 이 call은
+metadata와 terminal 외에 Instance intent, optional stable type과 initial Mesh를
 설정할 수 있다. Instance intent가 없는 call은 existing-only이며 Missing에서 target-not-found다. Instance
 intent를 가진 call은 Location resolve와 cold activation claim을 분리하지 않고 하나의 terminal operation으로
 수행한다. Existing authority가 있으면 저장된 kind·type과 current Mesh를 사용하며 cold activation option으로
@@ -477,6 +498,7 @@ Actor egress는 bound session FIFO를 사용한다. Actor dispatch capability를
 | 32 | `SpotGenerationStale` | no |
 | 33 | `SpotMoving` | yes |
 | 34 | `RelocationDataLost` | no |
+| 35 | `SpotIdConflict` | no |
 
 `RouteNotConnected`는 알려진 target의 pipe가 준비되지 않은 상태이고, `RequestTargetNotFound`는 등록한
 송신 경로에 현재 선택 가능한 target snapshot이 없거나 ChannelName 송신 경로 자체가 없는 상태다.
@@ -485,6 +507,8 @@ Generation stale은 exact ref가 current incarnation과 다른 상태이고 movi
 admission을 거부한 상태다. `RelocationDataLost`는 Location authority가 publish한 immutable Relocation root를 영구적으로
 읽을 수 없거나 checksum·inventory digest가 일치하지 않는 상태다. 이미 commit된 owner·membership을 source로
 rollback하지 않으며 같은 reference를 다시 시도해 복구 가능한 오류로 분류하지 않는다.
+`RoutingIdConflict`는 MeshNode transport RID owner claim 충돌이고, `SpotIdConflict`는 global Spot
+namespace의 Entry·User·Instance Spot ID claim 충돌이다.
 
 ### 13.1 Operation 결과 변환
 
@@ -572,7 +596,8 @@ Framework는 host가 message를 받기 전에 최소한 다음 설정을 검증�
   ASCII `[A-Za-z0-9._-]` 1..64자로 제한
 - Object role과 manager·factory·placement target의 일치
 - Spot, Actor, STREAM session factory와 owner 관계
-- User·Instance Spot stable type 중복, actor-free Instance lifecycle, node·type별 active·pending capacity
+- User·Instance Spot stable type 중복, actor-free Instance lifecycle, Actor·Spot·Spot stable type population
+  limit과 activation concurrency
 - 모든 Actor·User Spot·Instance Spot factory의 explicit relocation policy, Snapshot adapter kind와 대상 type의 일치,
   Instance Spot factory가 하나라도 있거나 `Recreate` 또는 `Snapshot` 사용 시 정확히 하나의 Relocation Store
 - 분산 owner 또는 relocation을 사용할 때 authority CAS·store clock capability
@@ -587,9 +612,10 @@ Framework는 host가 message를 받기 전에 최소한 다음 설정을 검증�
 ## 15. Runtime query와 monitoring
 
 Runtime query는 DI에서 사용할 수 있는 일반 public service다. MeshNode status, peer admission, RouteMesh
-Channel membership과 weight, object role·placement weight·active·pending capacity, ClientServer server
+Channel membership과 weight, object role·placement weight, Actor·Spot·Spot stable type별
+active·reserved·limit capacity, ClientServer server
 readiness·weight·state, bounded location page, lifecycle state와 backlog를 caller-owned snapshot으로 반환한다.
 
 Monitoring event는 source kind, ChannelName, 조건부 MeshName 또는 server identity, lifecycle generation과
-구조화된 오류를 제공한다. Topic, Actor ID와 Spot RID처럼 값의 종류가 매우 많은 식별자는 metric label로
+구조화된 오류를 제공한다. Topic, Actor ID와 Spot ID처럼 값의 종류가 매우 많은 식별자는 metric label로
 사용하지 않는다.

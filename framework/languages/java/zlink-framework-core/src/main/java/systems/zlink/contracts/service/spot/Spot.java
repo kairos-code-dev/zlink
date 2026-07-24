@@ -31,21 +31,21 @@ public interface Spot extends AutoCloseable {
                                  SendFlags flags, Duration timeout);
 
     /** Sends a message to another spot. */
-    void sendToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
+    void sendToSpot(RoutingId targetNodeRid, RoutingId targetSpotId,
                     long targetSpotGeneration, List<Message> parts, SendFlags flags);
 
     /** Sends a message with canonical application metadata to another spot. */
-    void sendToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
+    void sendToSpot(RoutingId targetNodeRid, RoutingId targetSpotId,
                     long targetSpotGeneration, byte[] metadata, List<Message> parts,
                     SendFlags flags);
 
     /** Sends a request to another spot. */
-    OperationId requestToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
+    OperationId requestToSpot(RoutingId targetNodeRid, RoutingId targetSpotId,
                               long targetSpotGeneration, List<Message> parts,
                               SendFlags flags, Duration timeout);
 
     /** Sends a request with canonical application metadata to another spot. */
-    OperationId requestToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
+    OperationId requestToSpot(RoutingId targetNodeRid, RoutingId targetSpotId,
                               long targetSpotGeneration, byte[] metadata, List<Message> parts,
                               SendFlags flags, Duration timeout);
 

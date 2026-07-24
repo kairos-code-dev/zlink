@@ -6,7 +6,7 @@ import systems.zlink.framework.spots.ZLinkSpotKind;
 public record ZLinkActorLocationFilter(
     String actorType,
     RoutingId nodeRid,
-    RoutingId spotRid,
+    String spotId,
     ZLinkSpotKind locationKind) {
 
     public static ZLinkActorLocationFilter all() {

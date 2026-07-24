@@ -192,7 +192,7 @@ final class RouteRequestAttempt implements Runnable {
                 callback.handle(new ZLinkBackendReceived(
                     ZLinkBackendRequestResult.TIMED_OUT,
                     reply.routingId(),
-                    reply.spotRid(),
+                    reply.spotId(),
                     reply.requestSeq(),
                     List.of()));
             } else {

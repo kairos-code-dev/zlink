@@ -6,10 +6,12 @@
 #include "runtime/client_server/raw_client_server_owner.hpp"
 #include "runtime/protocol/service_wire_codec.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <future>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -72,6 +74,114 @@ void verify_topology_snapshot_and_connection_fence ()
     assert (topology.admit (peer, replacement_connection)
             == mesh::peer_admission_result_t::admitted);
     assert (!topology.select ("alpha"));
+}
+
+void verify_signed_weight_contract ()
+{
+    auto local = descriptor ("weight-local");
+    local.channels = {{"weighted", 100}};
+    local.placement_weight = 100;
+    mesh::service_topology_registry_t topology (local);
+
+    auto weight_100 =
+      descriptor ("weight-100", "tcp://127.0.0.1:7101");
+    weight_100.channels = {{"weighted", 100}};
+    weight_100.state = mesh::service_node_state_t::serving;
+    auto weight_300 =
+      descriptor ("weight-300", "tcp://127.0.0.1:7102");
+    weight_300.channels = {{"weighted", 300}};
+    weight_300.state = mesh::service_node_state_t::serving;
+    auto weight_zero =
+      descriptor ("weight-zero", "tcp://127.0.0.1:7103");
+    weight_zero.channels = {{"weighted", 0}};
+    weight_zero.state = mesh::service_node_state_t::serving;
+    assert (
+      topology.admit (weight_100, bytes ("weight-connection-100"))
+      == mesh::peer_admission_result_t::admitted);
+    assert (
+      topology.admit (weight_300, bytes ("weight-connection-300"))
+      == mesh::peer_admission_result_t::admitted);
+    assert (
+      topology.admit (weight_zero, bytes ("weight-connection-zero"))
+      == mesh::peer_admission_result_t::admitted);
+
+    std::size_t selected_100 = 0;
+    std::size_t selected_300 = 0;
+    for (std::size_t index = 0; index < 400; ++index) {
+        const auto selected = topology.select ("weighted");
+        assert (selected);
+        if (selected->descriptor.node_routing_id
+            == bytes ("weight-100"))
+            ++selected_100;
+        else if (selected->descriptor.node_routing_id
+                 == bytes ("weight-300"))
+            ++selected_300;
+        else
+            assert (false);
+    }
+    assert (selected_100 == 100);
+    assert (selected_300 == 300);
+
+    const auto multicast =
+      topology.multicast_targets ("weighted");
+    assert (multicast.size () == 2);
+    assert (std::count_if (
+              multicast.begin (), multicast.end (),
+              [] (const auto &peer) {
+                  return peer.descriptor.node_routing_id
+                         == bytes ("weight-100");
+              })
+            == 1);
+    assert (std::count_if (
+              multicast.begin (), multicast.end (),
+              [] (const auto &peer) {
+                  return peer.descriptor.node_routing_id
+                         == bytes ("weight-300");
+              })
+            == 1);
+
+    auto revision = weight_100;
+    revision.descriptor_revision = 2;
+    revision.channels.front ().weight = 0;
+    assert (
+      topology.admit (
+        revision, bytes ("weight-connection-100"))
+      == mesh::peer_admission_result_t::admitted);
+    const auto after_revision =
+      topology.multicast_targets ("weighted");
+    assert (after_revision.size () == 1);
+    assert (after_revision.front ().descriptor.node_routing_id
+            == bytes ("weight-300"));
+
+    auto invalid_negative = local;
+    invalid_negative.channels.front ().weight = -1;
+    bool rejected_negative = false;
+    try {
+        mesh::service_topology_registry_t invalid (
+          invalid_negative);
+    }
+    catch (const std::invalid_argument &) {
+        rejected_negative = true;
+    }
+    assert (rejected_negative);
+
+    auto invalid_upper = local;
+    invalid_upper.placement_weight = 10001;
+    bool rejected_upper = false;
+    try {
+        mesh::service_topology_registry_t invalid (
+          invalid_upper);
+    }
+    catch (const std::invalid_argument &) {
+        rejected_upper = true;
+    }
+    assert (rejected_upper);
+
+    std::vector<int> overflow_safe_weights (
+      430000, 10000);
+    assert (
+      mesh::sum_service_weights (overflow_safe_weights)
+      == 4'300'000'000ull);
 }
 
 void verify_independent_mailbox_domains_and_claim_fence ()
@@ -634,6 +744,7 @@ void verify_raw_owner_node_send_and_liveness ()
 int main ()
 {
     verify_topology_snapshot_and_connection_fence ();
+    verify_signed_weight_contract ();
     verify_independent_mailbox_domains_and_claim_fence ();
     verify_liveness_reuses_probe_and_fences_reconnect ();
     verify_location_descriptor_cas_snapshot_and_watch ();

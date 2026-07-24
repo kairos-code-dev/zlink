@@ -74,7 +74,7 @@ Framework는 인과 관계가 있는 다음 operation에 flow ID와 root origin�
 | classic fanout | 각 subscriber branch가 같은 flow ID 사용 |
 
 Logical Multicast와 classic fanout은 tree를 만든다. 각 branch에 새 flow ID를 발급하지 않으며 branch를
-구분하려면 trace event의 target RID, Spot RID 또는 local sequence를 사용한다.
+구분하려면 trace event의 target RID, Spot ID 또는 local sequence를 사용한다.
 
 request를 다른 Framework surface로 그대로 relay하면 correlation ID도 reply까지 보존한다. handler가
 새로운 downstream request를 시작하면 새 correlation ID를 만들고 current flow ID만 이어받는다.
@@ -120,7 +120,7 @@ flow ID는 retry 허가가 아니다. request 재시도 여부와 새 correlatio
 trace event는 `correlation_id`, `flow_id`, `flow_origin` field로 값을 기록한다. fallback text key는 각각
 `corr`, `flow`, `origin`이다. metric label에는 세 값을 모두 사용하지 않는다.
 
-Framework는 flow ID와 correlation ID에 user ID, Actor ID, Spot RID, endpoint 또는 payload 값을 encode하지
+Framework는 flow ID와 correlation ID에 user ID, Actor ID, Spot ID, endpoint 또는 payload 값을 encode하지
 않는다. application이 외부 trace context와 연결할 때는 별도 observability adapter가 같은 event를
 참조하며 Framework ID 형식을 바꾸지 않는다.
 

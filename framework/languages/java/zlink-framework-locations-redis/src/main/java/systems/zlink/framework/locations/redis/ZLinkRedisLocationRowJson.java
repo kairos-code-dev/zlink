@@ -26,6 +26,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.locations.ZLinkActorLocation;
 import systems.zlink.framework.locations.ZLinkClientServerServerDescriptor;
+import systems.zlink.framework.locations.ZLinkCapacityUsage;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
 import systems.zlink.framework.locations.ZLinkLocationRole;
@@ -39,6 +40,7 @@ import systems.zlink.framework.locations.ZLinkPeerLocation;
 import systems.zlink.framework.locations.ZLinkRouteKind;
 import systems.zlink.framework.locations.ZLinkRouteLocation;
 import systems.zlink.framework.locations.ZLinkSpotLocation;
+import systems.zlink.framework.locations.ZLinkSpotTypeCapacity;
 import systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState;
 import systems.zlink.framework.spots.ZLinkSpotKind;
 
@@ -90,25 +92,7 @@ final class ZLinkRedisLocationRowJson {
                 encoded.put(
                     "HasSnapshotAdapter",
                     capability.hasSnapshotAdapter());
-                ArrayNode profiles = JSON.createArrayNode();
-                capability.placementProfiles().stream()
-                    .sorted()
-                    .forEach(profiles::add);
-                encoded.set("PlacementProfiles", profiles);
-                if (capability.activeLimit() == null) {
-                    encoded.putNull("ActiveLimit");
-                } else {
-                    encoded.put(
-                        "ActiveLimit",
-                        capability.activeLimit());
-                }
-                if (capability.pendingLimit() == null) {
-                    encoded.putNull("PendingLimit");
-                } else {
-                    encoded.put(
-                        "PendingLimit",
-                        capability.pendingLimit());
-                }
+                encoded.put("SpotLimit", capability.spotLimit());
                 capabilities.add(encoded);
             });
         node.set("ObjectCapabilities", capabilities);
@@ -123,12 +107,36 @@ final class ZLinkRedisLocationRowJson {
         node.put("ObjectRole", row.objectRole().value());
         node.put("PlacementWeight", row.placementWeight());
         ObjectNode capacity = JSON.createObjectNode();
-        capacity.put("Active", row.capacity().active());
-        capacity.put("Pending", row.capacity().pending());
-        capacity.put("ActiveLimit", row.capacity().activeLimit());
-        capacity.put("PendingLimit", row.capacity().pendingLimit());
+        capacity.set("Actors", serializeCapacityUsage(
+            row.capacity().actors()));
+        capacity.set("Spots", serializeCapacityUsage(
+            row.capacity().spots()));
+        ArrayNode spotTypes = JSON.createArrayNode();
+        row.capacity().spotTypes().stream()
+            .sorted(java.util.Comparator
+                .<ZLinkSpotTypeCapacity>comparingInt(
+                    value -> value.objectKind().value())
+                .thenComparing(ZLinkSpotTypeCapacity::stableType))
+            .forEach(value -> {
+                ObjectNode encoded = JSON.createObjectNode();
+                encoded.put("ObjectKind", value.objectKind().value());
+                encoded.put("StableType", value.stableType());
+                encoded.set("Usage", serializeCapacityUsage(
+                    value.usage()));
+                spotTypes.add(encoded);
+            });
+        capacity.set("SpotTypes", spotTypes);
         node.set("Capacity", capacity);
         return write(node);
+    }
+
+    private static ObjectNode serializeCapacityUsage(
+        ZLinkCapacityUsage usage) {
+        ObjectNode encoded = JSON.createObjectNode();
+        encoded.put("Active", usage.active());
+        encoded.put("Reserved", usage.reserved());
+        encoded.put("Limit", usage.limit());
+        return encoded;
     }
 
     static String serializeClientServer(
@@ -308,10 +316,10 @@ final class ZLinkRedisLocationRowJson {
                 java.util.Locale.ROOT));
         appendImmutableSegment(
             preimage,
-            Integer.toString(row.capacity().activeLimit()));
+            Integer.toString(row.capacity().actors().limit()));
         appendImmutableSegment(
             preimage,
-            Integer.toString(row.capacity().pendingLimit()));
+            Integer.toString(row.capacity().spots().limit()));
 
         List<ZLinkObjectCapability> capabilities = new ArrayList<>(
             row.objectCapabilities());
@@ -338,24 +346,9 @@ final class ZLinkRedisLocationRowJson {
             appendImmutableSegment(
                 preimage,
                 capability.hasSnapshotAdapter() ? "1" : "0");
-            List<String> profiles = new ArrayList<>(
-                capability.placementProfiles());
-            profiles.sort(ZLinkRedisLocationRowJson::compareUtf8);
             appendImmutableSegment(
                 preimage,
-                Integer.toString(profiles.size()));
-            profiles.forEach(
-                value -> appendImmutableSegment(preimage, value));
-            appendImmutableSegment(
-                preimage,
-                capability.activeLimit() == null
-                    ? ""
-                    : Integer.toString(capability.activeLimit()));
-            appendImmutableSegment(
-                preimage,
-                capability.pendingLimit() == null
-                    ? ""
-                    : Integer.toString(capability.pendingLimit()));
+                Integer.toString(capability.spotLimit()));
         }
         return preimage.toString();
     }
@@ -405,25 +398,7 @@ final class ZLinkRedisLocationRowJson {
                 encoded.put(
                     "hasSnapshotAdapter",
                     capability.hasSnapshotAdapter());
-                ArrayNode profiles = JSON.createArrayNode();
-                capability.placementProfiles().stream()
-                    .sorted()
-                    .forEach(profiles::add);
-                encoded.set("placementProfiles", profiles);
-                if (capability.activeLimit() == null) {
-                    encoded.putNull("activeLimit");
-                } else {
-                    encoded.put(
-                        "activeLimit",
-                        capability.activeLimit());
-                }
-                if (capability.pendingLimit() == null) {
-                    encoded.putNull("pendingLimit");
-                } else {
-                    encoded.put(
-                        "pendingLimit",
-                        capability.pendingLimit());
-                }
+                encoded.put("spotLimit", capability.spotLimit());
                 capabilities.add(encoded);
             });
         return write(capabilities);
@@ -456,11 +431,6 @@ final class ZLinkRedisLocationRowJson {
                 entry.getValue().asInt()));
         List<ZLinkObjectCapability> capabilities = new ArrayList<>();
         node.path("ObjectCapabilities").forEach(capability -> {
-            Set<String> profiles = new java.util.HashSet<>();
-            capability.path("PlacementProfiles").forEach(
-                profile -> profiles.add(profile.asText()));
-            JsonNode activeLimit = capability.get("ActiveLimit");
-            JsonNode pendingLimit = capability.get("PendingLimit");
             capabilities.add(new ZLinkObjectCapability(
                 placementObjectKind(
                     capability.path("ObjectKind").asInt()),
@@ -468,15 +438,16 @@ final class ZLinkRedisLocationRowJson {
                 maintenancePolicy(
                     capability.path("Policy").asInt()),
                 capability.path("HasSnapshotAdapter").asBoolean(),
-                profiles,
-                activeLimit == null || activeLimit.isNull()
-                    ? null
-                    : activeLimit.asInt(),
-                pendingLimit == null || pendingLimit.isNull()
-                    ? null
-                    : pendingLimit.asInt()));
+                capability.path("SpotLimit").asInt()));
         });
         JsonNode encodedCapacity = node.path("Capacity");
+        List<ZLinkSpotTypeCapacity> spotTypes = new ArrayList<>();
+        encodedCapacity.path("SpotTypes").forEach(value ->
+            spotTypes.add(new ZLinkSpotTypeCapacity(
+                placementObjectKind(
+                    value.path("ObjectKind").asInt()),
+                text(value, "StableType"),
+                deserializeCapacityUsage(value.path("Usage")))));
         return new ZLinkMeshNodeDescriptor(
             text(node, "MeshName"),
             rid(node, "Rid"),
@@ -489,10 +460,11 @@ final class ZLinkRedisLocationRowJson {
             objectRole(node.path("ObjectRole").asInt()),
             node.path("PlacementWeight").asInt(),
             new ZLinkPlacementCapacity(
-                encodedCapacity.path("Active").asInt(),
-                encodedCapacity.path("Pending").asInt(),
-                encodedCapacity.path("ActiveLimit").asInt(),
-                encodedCapacity.path("PendingLimit").asInt()),
+                deserializeCapacityUsage(
+                    encodedCapacity.path("Actors")),
+                deserializeCapacityUsage(
+                    encodedCapacity.path("Spots")),
+                spotTypes),
             Optional.ofNullable(
                 nullableText(node, "MaintenanceWave")),
             runtimeState(node.path("State").asInt()),
@@ -500,6 +472,14 @@ final class ZLinkRedisLocationRowJson {
             text(node, "OwnerId"),
             node.path("LeaseGeneration").asLong(),
             updatedAt);
+    }
+
+    private static ZLinkCapacityUsage deserializeCapacityUsage(
+        JsonNode encoded) {
+        return new ZLinkCapacityUsage(
+            encoded.path("Active").asInt(),
+            encoded.path("Reserved").asInt(),
+            encoded.path("Limit").asInt());
     }
 
     static String serializePeer(ZLinkPeerLocation row) {
@@ -541,7 +521,7 @@ final class ZLinkRedisLocationRowJson {
     static String serializeSpot(ZLinkSpotLocation row) {
         ObjectNode node = JSON.createObjectNode();
         node.put("MeshName", row.meshName());
-        putRid(node, "SpotRid", row.spotRid());
+        node.put("SpotId", row.spotId());
         node.put("SpotGeneration", row.spotGeneration());
         putNullableText(node, "SpotType", row.spotType());
         putRid(node, "NodeRid", row.nodeRid());
@@ -557,7 +537,7 @@ final class ZLinkRedisLocationRowJson {
         JsonNode node = read(json);
         return new ZLinkSpotLocation(
             text(node, "MeshName"),
-            rid(node, "SpotRid"),
+            text(node, "SpotId"),
             node.path("SpotGeneration").asLong(generation),
             nullableText(node, "SpotType"),
             rid(node, "NodeRid"),
@@ -576,7 +556,7 @@ final class ZLinkRedisLocationRowJson {
         putRid(node, "NodeRid", row.nodeRid());
         node.put("LocationKind", row.locationKind().value());
         node.put("SpotMeshName", row.spotMeshName());
-        putRid(node, "SpotRid", row.spotRid());
+        node.put("SpotId", row.spotId());
         node.put("OwnerId", row.ownerId());
         node.put("Generation", row.generation());
         putInstant(node, "UpdatedAt", row.updatedAt());
@@ -592,7 +572,7 @@ final class ZLinkRedisLocationRowJson {
             rid(node, "NodeRid"),
             spotKind(node.path("LocationKind").asInt()),
             text(node, "SpotMeshName"),
-            rid(node, "SpotRid"),
+            text(node, "SpotId"),
             text(node, "OwnerId"),
             generation,
             updatedAt);

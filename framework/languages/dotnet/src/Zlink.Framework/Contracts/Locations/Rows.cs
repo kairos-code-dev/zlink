@@ -31,10 +31,18 @@ public sealed record ZLinkMeshNodeDescriptor(
 
     public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
 
+    public string? EntrySpotId { get; init; }
+
     public int PlacementWeight { get; init; } = 100;
 
     public ZLinkPlacementCapacity Capacity { get; init; }
-        = new(0, 0, 10_000, 128);
+        = new(
+            new ZLinkPopulationCapacity(0, 0, 0),
+            new ZLinkPopulationCapacity(0, 0, 0),
+            Array.Empty<ZLinkSpotTypeCapacity>());
+
+    public ZLinkActivationConcurrency ActivationConcurrency { get; init; }
+        = new(0, 128);
 }
 
 public readonly record struct ZLinkMeshNodeDescriptorKey(
@@ -77,15 +85,28 @@ public sealed record ZLinkObjectCapability(
     string StableType,
     ZLinkObjectMaintenancePolicyKind Policy,
     bool HasSnapshotAdapter,
-    IReadOnlySet<string> PlacementProfiles,
-    int? ActiveLimit,
-    int? PendingLimit);
+    int Limit);
+
+public sealed record ZLinkPopulationCapacity(
+    int Active,
+    int Reserved,
+    int Limit);
+
+public sealed record ZLinkSpotTypeCapacity(
+    ZLinkPlacementObjectKind ObjectKind,
+    string StableType,
+    int Active,
+    int Reserved,
+    int Limit);
 
 public sealed record ZLinkPlacementCapacity(
+    ZLinkPopulationCapacity Actors,
+    ZLinkPopulationCapacity Spots,
+    IReadOnlyList<ZLinkSpotTypeCapacity> SpotTypes);
+
+public sealed record ZLinkActivationConcurrency(
     int Active,
-    int Pending,
-    int ActiveLimit,
-    int PendingLimit);
+    int Limit);
 
 /// <summary>
 ///     Current location of one logical Spot. The owner MeshNode's RID and
@@ -94,7 +115,7 @@ public sealed record ZLinkPlacementCapacity(
 /// </summary>
 public sealed record ZLinkSpotLocation(
     string MeshName,
-    RoutingId SpotRid,
+    string SpotId,
     ulong SpotGeneration,
     RoutingId OwnerNodeRid,
     ulong OwnerNodeGeneration,
@@ -108,7 +129,7 @@ public sealed record ZLinkSpotLocation(
 
 public sealed record InstanceSpotLocation(
     string MeshName,
-    RoutingId SpotRid,
+    string SpotId,
     ulong SpotGeneration,
     RoutingId OwnerNodeRid,
     ulong OwnerNodeGeneration,
@@ -121,7 +142,7 @@ public sealed record InstanceSpotLocation(
 
 public sealed record InstanceSpotClaimRequest(
     string MeshName,
-    RoutingId SpotRid,
+    string SpotId,
     string InstanceSpotType,
     RoutingId TargetNodeRid,
     ulong TargetNodeGeneration,
@@ -173,7 +194,7 @@ public abstract record InstanceSpotResolveResult
 
 public sealed record InstanceSpotFence(
     string MeshName,
-    RoutingId SpotRid,
+    string SpotId,
     string OwnerId,
     ulong OwnerNodeGeneration,
     ulong LocationGeneration,
@@ -190,7 +211,7 @@ public sealed record ZLinkActorLocation(
     ActorRef ActorRef,
     RoutingId OwnerNodeRid,
     ulong OwnerNodeGeneration,
-    RoutingId SpotRid,
+    string SpotId,
     ulong SpotGeneration,
     ZLinkSpotKind SpotKind,
     ulong MembershipEpoch,

@@ -3,21 +3,30 @@
 [인터페이스 목차](README.ko.md) · [Java Spot](../../java/interfaces/spots.ko.md) ·
 [Spot 공통 계약](../../../23-spot-actor.ko.md)
 
-SpotRid는 Location Store transaction domain 전체에서 유일한 logical ID다. 일반 Spot send/request는
-SpotRid만 받는다. `SpotRef(spotRid, objectGeneration, meshName, nodeRid)`는 exact incarnation을 close할 때만
+SpotId는 UTF-8 encoded 크기 1..255 bytes의 `String`이며 Location Store transaction domain 전체에서
+유일한 logical ID다. 비교는 case-sensitive exact match이고 Unicode normalization과 case folding을
+적용하지 않는다. 일반 Spot send/request는
+SpotId만 받는다. `SpotRef(spotId, objectGeneration, meshName, nodeRid)`는 exact incarnation을 close할 때만
 사용하는 immutable snapshot이다. `objectGeneration`은 `1..Long.MAX_VALUE`이고 JSON에서는 decimal string이다.
 User와 Instance Spot type은 UTF-8 1..255 bytes의 stable exact value다.
 Java enum의 numeric value는 `ZLinkSpotKind.INVALID=0`, `ENTRY=1`, `USER=2`, `INSTANCE=3`이고
 Kotlin은 ordinal을 계약 값으로 사용하지 않고 `value()`를 사용한다. Creatable kind enum은 제공하지 않는다.
 
-`ZLinkSpotManager.create(spotType)`은 User Spot RID를 생성하고,
-`getOrCreate(spotRid, spotType)`은 caller가 정한 User Spot RID를 사용한다. Manager는 Instance Spot
+`ZLinkSpotManager.create(spotType)`은 User Spot ID를 생성하고,
+`getOrCreate(spotId, spotType)`은 caller가 정한 User Spot ID를 사용한다. Manager는 Instance Spot
 create/get-or-create를 제공하지 않는다. 두 operation은 Java single-use fluent call을 반환하며 `inMesh`,
-`request`, `placementProfile`, `affinityKey`, `timeout` 뒤 terminal `submit`을 정확히 한 번 호출한다. 중복
-option과 중복 submit, Mesh 선택, type 충돌과 deadline 규칙은 Actor operation과 같다. Entry Spot RID는
+`request`, `timeout` 뒤 terminal `submit`을 정확히 한 번 호출한다. 중복
+option과 중복 submit, Mesh 선택, type 충돌과 deadline 규칙은 Actor operation과 같다. Entry Spot ID는
 Framework가 만들며 public create 대상이 아니다.
+`create(spotType)`의 Spot ID는 lowercase canonical UUID v4 random identity다. 첫 active authority 충돌은 기존 record를 변경하지
+않고 `RoutingIdConflict`로 즉시 끝나며 UUID 생성과 reservation은 각각 1건, factory 실행은 0건이다.
+두 번째 UUID나 reservation을 만들지 않는다.
+Caller가 `<prefix>-entry-<uuid-v4>` reserved pattern의 Spot ID를 User Spot get-or-create 또는 Instance Spot
+address로 제시하면 Java runtime은 Store 접근 전에 `InvalidConfiguration`으로 거부한다. `<uuid-v4>`는
+RFC 4122 UUID v4의 lowercase canonical 36-character `8-4-4-4-12` 표현이다. Kotlin은 descriptor의 exact
+Entry Spot ID mapping을 사용하며 문자열을 parse하지 않는다.
 
-Spot send/request는 global SpotRid만 address로 받고 Java의 `ZLinkSpotSendCall` 또는 `ZLinkSpotRequestCall`을
+Spot send/request는 global SpotId만 address로 받고 Java의 `ZLinkSpotSendCall` 또는 `ZLinkSpotRequestCall`을
 반환한다. `instanceSpot()`이나 `instanceSpot(stableType)`을 호출한 call만 Missing Instance Spot의 cold
 activation intent를 만든다. Marker가 없으면 Missing authority는 not-found다. Existing authority가 있으면
 등록 type 수와 관계없이 저장된 stable type을 사용하므로 type을 다시 요구하지 않는다.
@@ -27,22 +36,23 @@ value 하나일 때만 그 type을 자동 선택한다. `inMesh`를 지정하면
 이상이면 `instanceSpot(stableType)`이 필요하다. Stable type 인자는 Missing cold activation에만 사용하고
 existing authority를 resolve하는 데는 필요하지 않다. Caller가 명시한 type과 stored type이 다르면
 `SpotTypeMismatch`다.
-`inMesh`, `placementProfile`과 `affinityKey`는 Missing cold activation placement에만 적용하며 existing owner를
+`inMesh`는 Missing cold activation의 Mesh 선택에만 적용하며 existing owner를
 재배치하지 않는다. Kotlin은 이 fluent state를 숨기는 terminal request extension을 제공하지 않는다.
 
 Source는 Ready authority가 있으면 current owner에게 일반 message를 보내고, Missing authority와 Instance
-intent가 있으면 eligible target을 선택해 SpotRid, stable type, creation intent와 first message를 포함한
+intent가 있으면 eligible target을 선택해 SpotId, stable type, creation intent와 first message를 포함한
 activation envelope를 보낸다. Source는 placement reservation을 만들지 않는다. Activation envelope는 Ready
 CAS 전에 target으로 전달할 수 있는 Framework infrastructure message이며 application handler로 dispatch하지
 않는다. Target Java runtime은 metadata presence·frame을 포함한 complete envelope를 Relocation Store에 immutable recovery root로 먼저 저장한다.
 Command 39 route kind `1`은 Ready authority의 exact generation fence를 사용한다. Missing cold activation은
-route kind `2`로 target Mesh·node RID·lifecycle, Spot RID, stable type, descriptor version, placement
-profile·affinity key와 deadline을 전달하며 authority fence를 포함하지 않는다. Kind `2` route와
-`instance-activation-recovery-v1`의 placement profile·affinity key·deadline, operation identity와 metadata
+route kind `2`로 target Mesh·node RID·lifecycle, Spot ID, stable type, descriptor version과 deadline을
+전달하며 authority fence를 포함하지 않는다. Kind `2` route와
+`instance-activation-recovery-v1`의 deadline, operation identity와 metadata
 presence·frame은 byte 단위로 같아야 한다. Cold activation send와 request는 모두 nonzero operation identity를
 사용한다.
-Local exact instance가 없을 때만 자신을 owner로 Reserve하며 Pending snapshot은 provider가 발급한 reservation
-fence와 recovery root receipt를 반환한다. CAS winner가 factory, initialize와 durable activation inbox first
+Local exact instance가 없을 때만 자신을 owner로 Reserve하며 Spot 전체와 해당 Instance Spot stable type의
+reserved slot을 하나의 typed bundle로 확보한다. Reserved snapshot은 provider가 발급한 reservation fence와
+recovery root receipt를 반환한다. CAS winner가 factory, initialize와 durable activation inbox first
 record 확정을 수행한다. CAS loser는 factory를 시작하지 않고 current authority를 읽어 owner에게 reroute하거나
 진행 중인 attempt에 합류한다. Commit은 handler barrier를 유지한 채 recovery root·cursor와 Ready를 게시한다.
 Runtime은 first record를 local queue head로 복원한 뒤 barrier를 열며 source는 Ready 뒤 같은 message를 다시
@@ -136,14 +146,10 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
     protected open suspend fun onClosingSuspending(
         context: ZLinkSpotClosingContext,
     )
-    protected abstract suspend fun onCreateActorSuspending(
+    protected open suspend fun onCreateActorSuspending(
         actor: TActor,
         createRequest: ZLinkMessage,
-    )
-    protected abstract suspend fun onActorJoinSuspending(
-        actorId: String,
-        request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse
+    ): ZLinkActorCreateResponse
     protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
     protected abstract suspend fun onLeaveActorSuspending(actor: TActor)
     protected open suspend fun onDisconnectActorSuspending(actor: TActor)
@@ -153,11 +159,11 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> :
 inline fun <reified THandler : Any> ZLinkSpotHandlerRegistry.addHandler()
 
 fun <TMessage> ZLinkRouteClient.send(
-    spotRid: RoutingId,
+    spotId: String,
     message: TMessage,
 ): ZLinkSpotSendCall
 fun <TRequest> ZLinkRouteClient.request(
-    spotRid: RoutingId,
+    spotId: String,
     message: TRequest,
 ): ZLinkSpotRequestCall
 ```
@@ -215,7 +221,23 @@ API가 아니다. Maintenance target은 Actor adapter restore, Location commit, 
 `onLeaveActorSuspending(actor)`, old Entry membership의 durable cleanup, accepted journal replay와 dispatch
 개방 순서로 처리한다. Source process가 종료되면 exact source fence의 durable cleanup terminal이 source
 callback 완료를 대신한다. 어느 callback의 exception도 commit을 rollback하지
-않고 target을 sealed 상태로 유지한 채 retry한다. 일반
-same-node·remote join은 `onActorJoinSuspending`과 `onJoinedActorSuspending`을 사용하며 이 callback을 호출하지
-않는다. Maintenance relocation에서는 target의 일반 join callback은 호출하지 않는다. Whole User Spot aggregate에서는
-member의 Entry/User Spot membership callback을 모두 호출하지 않는다.
+않고 target을 sealed 상태로 유지한 채 retry한다. User Spot application join만
+`onActorJoinSuspending`과 `onJoinedActorSuspending`을 사용한다. 새 Actor의 첫 생성은
+`onCreateActorSuspending`의 승인과 선택적 reply만 사용하며 join/joined callback을 호출하지 않는다.
+User Spot에서 Entry Spot으로 돌아갈 때는 target의 `onJoinedActorSuspending`과 source의
+`onLeaveActorSuspending`을 호출한다. Maintenance relocation에서는 target의 `onActorRelocatedSuspending`과
+source의 `onLeaveActorSuspending`만 호출한다. Whole User Spot aggregate에서는 member의 Entry/User Spot
+membership callback을 모두 호출하지 않는다.
+
+User Spot factory mode의 기본값은 `SPOT_WIDE`다. 이 mode에서 suspending Spot·Actor·timer·lifecycle callback은
+일반 suspension 동안 User Spot gate를 유지한다. Member Actor는 Actor FIFO claim도 함께 유지한다.
+`yieldReply`와 `yieldWorker`만 gate를 반환하고 terminal completion 뒤 같은 gate를 다시 얻어 coroutine
+continuation을 실행한다. `PER_ACTOR`에서는 Actor별 lane, Spot direct·lifecycle lane과 timer별 lane이
+독립적이며 suspension은 해당 lane permit만 유지한다. 서로 다른 Actor와 서로 다른 timer는 동시에 실행할 수
+있다. Close·relocation·snapshot은 새 admission을 seal하고 모든 coroutine continuation을 포함한 active lane이
+안전한 turn 경계에 도달한 all-lane barrier 뒤에만 진행한다. Barrier 실패는 같은 generation의 seal 전체를
+abort하고 application admission을 정확히 복원한다.
+
+Yield는 Channel·Spot·Actor request와 I/O·CPU worker에만 제공한다. Entry Spot·Entry Actor·`PER_ACTOR`·Node·
+Channel·owner context 밖에서는 coroutine suspension, operation submission, queue mutation과 gate 반환 전에
+`InvalidConfiguration`으로 완료한다.

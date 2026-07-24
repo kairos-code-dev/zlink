@@ -23,7 +23,7 @@ final class ZLinkSpotLocationLifecycle {
 
     CompletionStage<ZLinkLocationWriteStatus> claim(
         String meshName,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         String spotType,
         RoutingId nodeRid,
@@ -32,7 +32,7 @@ final class ZLinkSpotLocationLifecycle {
         Runnable deactivate) {
         ZLinkSpotLocation row = new ZLinkSpotLocation(
             meshName,
-            spotRid,
+            spotId,
             spotGeneration,
             spotType,
             nodeRid,
@@ -44,7 +44,7 @@ final class ZLinkSpotLocationLifecycle {
         return runtime.writeSpot(row, ZLinkLocationWriteIntent.NEW_CLAIM)
             .thenApply(result -> {
                 if (result.status() == ZLinkLocationWriteStatus.STORED) {
-                    String key = ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(meshName, spotRid));
+                    String key = ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spotId));
                     synchronized (gate) {
                         spots.put(key, new TrackedSpot(result.generation(), deactivate));
                     }
@@ -53,8 +53,8 @@ final class ZLinkSpotLocationLifecycle {
             });
     }
 
-    CompletionStage<Void> release(String meshName, RoutingId spotRid) {
-        ZLinkSpotLocationKey key = new ZLinkSpotLocationKey(meshName, spotRid);
+    CompletionStage<Void> release(String meshName, String spotId) {
+        ZLinkSpotLocationKey key = new ZLinkSpotLocationKey(spotId);
         String canonical = ZLinkLocationKeyCodec.encodeSpotKey(key);
         TrackedSpot tracked;
         synchronized (gate) {

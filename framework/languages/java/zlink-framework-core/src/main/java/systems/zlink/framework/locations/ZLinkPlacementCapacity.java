@@ -1,19 +1,16 @@
 package systems.zlink.framework.locations;
 
+import java.util.List;
+import java.util.Objects;
+
 public record ZLinkPlacementCapacity(
-    int active,
-    int pending,
-    int activeLimit,
-    int pendingLimit) {
+    ZLinkCapacityUsage actors,
+    ZLinkCapacityUsage spots,
+    List<ZLinkSpotTypeCapacity> spotTypes) {
     public ZLinkPlacementCapacity {
-        if (active < 0
-            || pending < 0
-            || activeLimit <= 0
-            || pendingLimit <= 0
-            || active > activeLimit
-            || pending > pendingLimit) {
-            throw new IllegalArgumentException(
-                "placement capacity counts and limits are invalid");
-        }
+        Objects.requireNonNull(actors, "actors");
+        Objects.requireNonNull(spots, "spots");
+        spotTypes = List.copyOf(
+            Objects.requireNonNull(spotTypes, "spotTypes"));
     }
 }

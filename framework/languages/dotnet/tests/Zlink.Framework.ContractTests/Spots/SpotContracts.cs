@@ -765,8 +765,6 @@ public sealed class SpotContracts
             public IZLinkSpotCreateCall InMesh(string meshName) => this;
             public IZLinkSpotCreateCall Request(ZLinkMessage request) => this;
             public IZLinkSpotCreateCall Request<TRequest>(TRequest request) => this;
-            public IZLinkSpotCreateCall PlacementProfile(string placementProfile) => this;
-            public IZLinkSpotCreateCall AffinityKey(string affinityKey) => this;
             public IZLinkSpotCreateCall Timeout(TimeSpan timeout) => this;
             public ValueTask<ZLinkSpotCreateResult> Async(
                 CancellationToken cancellationToken = default) => SubmitAsync();
@@ -780,8 +778,6 @@ public sealed class SpotContracts
             public IZLinkSpotGetOrCreateCall InMesh(string meshName) => this;
             public IZLinkSpotGetOrCreateCall Request(ZLinkMessage request) => this;
             public IZLinkSpotGetOrCreateCall Request<TRequest>(TRequest request) => this;
-            public IZLinkSpotGetOrCreateCall PlacementProfile(string placementProfile) => this;
-            public IZLinkSpotGetOrCreateCall AffinityKey(string affinityKey) => this;
             public IZLinkSpotGetOrCreateCall Timeout(TimeSpan timeout) => this;
             public ValueTask<ZLinkSpotCreateResult> Async(
                 CancellationToken cancellationToken = default) => SubmitAsync();

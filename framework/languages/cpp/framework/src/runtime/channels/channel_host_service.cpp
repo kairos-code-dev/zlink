@@ -10,6 +10,7 @@
 
 #include <zlink.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <deque>
@@ -258,16 +259,19 @@ class channel_host_service_t::server_loop_t
     {
         const auto peer_weight = _runtime.server_peer_weight_override (_channel_name);
         if (!peer_weight
-            || (_applied_peer_weight && _applied_peer_weight->value () == peer_weight->value ())) {
+            || (_applied_peer_weight && *_applied_peer_weight == *peer_weight)) {
             return;
         }
-        _router->options ().peer_weight (*peer_weight);
+        _router->options ().peer_weight (
+          zlink::peer_weight_t::value (
+            static_cast<std::uint32_t> (
+              std::min (*peer_weight, 100))));
         _applied_peer_weight = *peer_weight;
     }
 
     bool is_drained () const noexcept
     {
-        return _applied_peer_weight && _applied_peer_weight->value () == 0;
+        return _applied_peer_weight && *_applied_peer_weight == 0;
     }
 
     void drain_monitor_events ()
@@ -323,7 +327,7 @@ class channel_host_service_t::server_loop_t
     std::unique_ptr<zlink::router_socket_t> _router;
     zlink::socket_monitor_t _monitor;
     std::set<std::string> _pending_handshake_remotes;
-    std::optional<zlink::peer_weight_t> _applied_peer_weight;
+    std::optional<int> _applied_peer_weight;
     std::mutex _workers_mutex;
     std::vector<std::thread> _workers;
     std::mutex _replies_mutex;

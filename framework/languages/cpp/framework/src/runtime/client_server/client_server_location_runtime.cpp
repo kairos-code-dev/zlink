@@ -189,9 +189,8 @@ void client_server_location_runtime_t::start_server (
     admission.server_routing_id =
       server_routing_id (channel);
     admission.lifecycle_generation = make_lifecycle_generation ();
-    admission.weight = channel.server.peer_weight
-                         ? channel.server.peer_weight->value ()
-                         : 100u;
+    admission.weight = static_cast<std::uint32_t> (
+      channel.server.service_weight);
     admission.state = mesh::service_node_state_t::preparing;
     admission.security_identity =
       std::string (default_security_identity);
@@ -288,12 +287,8 @@ void client_server_location_runtime_t::publish_servers ()
         const auto weight_override =
           _channel_runtime.server_peer_weight_override (channel_name);
         const auto weight =
-          static_cast<int> (
-            weight_override
-              ? weight_override->value ()
-              : (server->capability.peer_weight
-                   ? server->capability.peer_weight->value ()
-                   : 100u));
+          weight_override.value_or (
+            server->capability.service_weight);
         const auto state = current_state (*_locations);
         const bool new_owner =
           server->descriptor.owner_id != owner->owner_id

@@ -28,7 +28,7 @@ MeshName을 받는 partial termination operation은 제공하지 않는다. Loca
 호출은 process-local ChannelName만 받는다. Node를 직접 지정하는
 `sendToNode(String, RoutingId, Object)`의 첫 번째 인자는 MeshName이다.
 
-ActorId와 User·Instance SpotRid는 global logical ID다. 일반 message는 ID만 받고 current authority를
+ActorId와 User·Instance SpotId는 global logical ID다. 일반 message는 ID만 받고 current authority를
 resolve하며 exact mutation과 session bind는 `ActorRef` 또는 `SpotRef`를 받는다. MeshNode object role은
 `None`, `Client`, `Server`로 닫혀 있고 Client·Server는 Location Store가 필수다.
 

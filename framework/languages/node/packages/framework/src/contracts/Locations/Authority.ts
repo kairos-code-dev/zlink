@@ -19,8 +19,6 @@ export interface ZLinkAuthorityStoreVersion {
 
 export type ZLinkPlacementObjectKind = 'actor' | 'user_spot' | 'instance_spot';
 export type ZLinkPlacementAllocationState = 'pending' | 'active';
-export type ZLinkPlacementProfile = string;
-export type ZLinkAffinityKey = string;
 
 export interface ZLinkPlacementAllocation {
   readonly state: ZLinkPlacementAllocationState;
@@ -140,12 +138,49 @@ export interface ZLinkObjectCreationTarget {
 
 export interface ZLinkObjectCreationIntent {
   readonly stableType: string;
-  readonly placementProfile?: ZLinkPlacementProfile;
-  readonly affinityKey?: ZLinkAffinityKey;
   readonly requestContentReference: string;
   readonly requestSha256: Uint8Array;
   readonly requestEncodedSize: bigint;
 }
+
+export interface ZLinkCreationOperationId {
+  readonly high: bigint;
+  readonly low: bigint;
+}
+
+export interface ZLinkCreationOperationIdentity {
+  readonly sourceNodeRid: RoutingId;
+  readonly sourceNodeGeneration: bigint;
+  readonly operationId: ZLinkCreationOperationId;
+}
+
+export type ZLinkCreationTerminalState = 'created' | 'rejected' | 'failed';
+
+export interface ZLinkCreationTerminalPublication {
+  readonly operation: ZLinkCreationOperationIdentity;
+  readonly terminalEnvelope: Uint8Array;
+  readonly terminalEnvelopeSha256: Uint8Array;
+  /**
+   * The original operation deadline. Providers retain the terminal for five
+   * minutes after this absolute instant.
+   */
+  readonly operationDeadline: Date;
+}
+
+export interface ZLinkCreationTerminalRecord {
+  readonly state: ZLinkCreationTerminalState;
+  readonly operation: ZLinkCreationOperationIdentity;
+  readonly reservationId: string;
+  readonly objectKind: ZLinkPlacementObjectKind;
+  readonly terminalEnvelope: Uint8Array;
+  readonly terminalEnvelopeSha256: Uint8Array;
+  readonly expiresAt: Date;
+  readonly storeNow: Date;
+}
+
+export type ZLinkCreationTerminalReadResult =
+  | { readonly kind: 'missing'; readonly storeNow: Date }
+  | { readonly kind: 'found'; readonly record: ZLinkCreationTerminalRecord };
 
 export interface ZLinkObjectReserveRequest {
   readonly key: ZLinkObjectCreationKey;
@@ -178,6 +213,38 @@ export interface ZLinkObjectCommitRequest {
 export type ZLinkObjectCommitResult =
   | { readonly kind: 'committed'; readonly ready: ZLinkAuthoritySnapshot }
   | { readonly kind: 'alreadyCommitted'; readonly ready: ZLinkAuthoritySnapshot }
+  | { readonly kind: 'stale' }
+  | { readonly kind: 'generationExhausted' };
+
+export type ZLinkObjectCreationCompletion =
+  | {
+      readonly kind: 'created';
+      readonly readyPayload: Uint8Array;
+      readonly terminal: ZLinkCreationTerminalPublication;
+    }
+  | {
+      readonly kind: 'rejected' | 'failed';
+      readonly terminal: ZLinkCreationTerminalPublication;
+    };
+
+export interface ZLinkObjectCreationCompleteRequest {
+  readonly key: ZLinkObjectCreationKey;
+  readonly reservationId: string;
+  readonly expectedStoreVersion: string;
+  readonly target: ZLinkObjectCreationTarget;
+  readonly completion: ZLinkObjectCreationCompletion;
+}
+
+export type ZLinkObjectCreationCompleteResult =
+  | {
+      readonly kind: 'created';
+      readonly ready: ZLinkAuthoritySnapshot;
+      readonly terminal: ZLinkCreationTerminalRecord;
+    }
+  | {
+      readonly kind: 'rejected' | 'failed' | 'alreadyCompleted';
+      readonly terminal: ZLinkCreationTerminalRecord;
+    }
   | { readonly kind: 'stale' }
   | { readonly kind: 'generationExhausted' };
 
@@ -278,6 +345,10 @@ export type ZLinkAggregateAbortResult =
   | { readonly kind: 'stale' };
 
 export interface ZLinkObjectCreationStore {
+  readCreationTerminal(
+    operation: ZLinkCreationOperationIdentity,
+    signal?: AbortSignal
+  ): Promise<ZLinkCreationTerminalReadResult>;
   reserve(
     request: ZLinkObjectReserveRequest,
     signal?: AbortSignal
@@ -286,6 +357,10 @@ export interface ZLinkObjectCreationStore {
     request: ZLinkObjectCommitRequest,
     signal?: AbortSignal
   ): Promise<ZLinkObjectCommitResult>;
+  completeCreation(
+    request: ZLinkObjectCreationCompleteRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkObjectCreationCompleteResult>;
   abort(
     request: ZLinkObjectAbortRequest,
     signal?: AbortSignal

@@ -6,7 +6,7 @@ import systems.zlink.contracts.core.RoutingId;
 public record ZLinkBackendAdmissionKey(
     Kind kind,
     RoutingId nodeRid,
-    RoutingId spotRid,
+    String spotId,
     String actorId,
     long actorGeneration,
     String channelName) {
@@ -33,9 +33,9 @@ public record ZLinkBackendAdmissionKey(
             Kind.CHANNEL, null, null, null, 0L, channelName);
     }
 
-    public static ZLinkBackendAdmissionKey spot(RoutingId nodeRid, RoutingId spotRid) {
+    public static ZLinkBackendAdmissionKey spot(RoutingId nodeRid, String spotId) {
         return new ZLinkBackendAdmissionKey(
-            Kind.SPOT, nodeRid, spotRid, null, 0L, null);
+            Kind.SPOT, nodeRid, spotId, null, 0L, null);
     }
 
     public static ZLinkBackendAdmissionKey actor(

@@ -151,7 +151,7 @@ internal sealed class ZLinkActorEntrySpotJoinCoordinator(
             actor.ActorId,
             actorState.ActorType ?? actor.GetType().Name,
             sourceActorRef,
-            previousActivation?.SpotRid,
+            previousActivation?.SpotId,
             joinRequest,
             registration.Codecs);
 

@@ -21,15 +21,28 @@ struct object_creation_target_t {
     location_owner_token_t owner;
 };
 enum class placement_allocation_state_t : std::uint8_t {
-    pending = 1,
+    reserved = 1,
     active = 2
 };
+
+struct spot_type_capacity_delta_t {
+    placement_object_kind_t object_kind;
+    std::string stable_type;
+    std::uint32_t slots;
+};
+
+struct placement_capacity_bundle_t {
+    std::uint32_t actor_slots;
+    std::uint32_t spot_slots;
+    std::optional<spot_type_capacity_delta_t> spot_type;
+};
+
 struct placement_allocation_t {
     placement_allocation_state_t state;
     placement_object_kind_t object_kind;
     std::string stable_type;
     object_creation_target_t target;
-    std::uint32_t capacity_delta;
+    placement_capacity_bundle_t capacity_bundle;
 };
 struct pending_object_creation_t {
     std::string reservation_id;
@@ -128,8 +141,6 @@ struct object_creation_key_t {
 
 struct object_creation_intent_t {
     std::string stable_type;
-    std::optional<placement_profile_t> placement_profile;
-    std::optional<affinity_key_t> affinity_key;
     std::string request_content_reference;
     std::array<std::byte, 32> request_sha256;
     std::uint64_t request_encoded_size;
@@ -140,7 +151,7 @@ struct object_reserve_request_t {
     object_creation_intent_t intent;
     object_creation_target_t target;
     std::vector<std::byte> creating_payload;
-    std::uint32_t pending_capacity_delta = 1;
+    placement_capacity_bundle_t capacity_bundle;
 };
 
 struct object_reservation_fence_t {
@@ -149,7 +160,7 @@ struct object_reservation_fence_t {
     std::uint64_t object_generation;
     std::uint64_t authority_owner_generation;
     object_creation_target_t target;
-    std::uint32_t pending_capacity_delta;
+    placement_capacity_bundle_t capacity_bundle;
 };
 
 struct object_reserved_t {
@@ -207,7 +218,7 @@ struct relocation_capacity_reserve_request_t {
     std::string stable_type;
     object_creation_target_t source;
     object_creation_target_t target;
-    std::uint32_t capacity_delta = 1;
+    placement_capacity_bundle_t capacity_bundle;
 };
 struct relocation_capacity_reserved_t {
     relocation_capacity_fence_t fence;
@@ -268,7 +279,9 @@ struct aggregate_prepare_request_t {
     std::uint64_t aggregate_generation;
     std::vector<aggregate_participant_t> participants;
     inventory_digest_t inventory_digest;
-    std::vector<relocation_capacity_fence_t> target_reservations;
+    mesh_node_descriptor_key_t target_descriptor;
+    std::uint64_t target_descriptor_lifecycle_generation;
+    placement_capacity_bundle_t capacity_bundle;
     location_owner_token_t target_owner;
 };
 
@@ -367,18 +380,28 @@ public:
 `checksum_crc32c`는 저장된 immutable root bytes의 CRC32C(Castagnoli)를 나타내는 exact unsigned 32-bit 값이다.
 Runtime은 이 값과 Location authority에 publish할 checksum이 정확히 같은지 검증한다.
 
+`placement_capacity_bundle_t`는 Actor slot 수, Spot slot 수와 optional Spot kind·stable type slot을 함께
+보존한다. 각 slot 수는 `0..2147483647`이고 bundle 전체에는 양수 slot이 하나 이상 있어야 한다.
+`spot_type`은 User·Instance Spot 항목만 허용한다. 하나의 operation bundle은 Spot stable type을 최대 하나만
+변경한다. `spot_slots`는 `0` 또는 `1`이고 `1`이면 같은 slot 수 `1`인 `spot_type`이 반드시 존재하며,
+`0`이면 `spot_type`은 `nullopt`다. Actor 하나는 `{actor_slots=1, spot_slots=0, spot_type=nullopt}`, User·Instance Spot 하나는
+`{actor_slots=0, spot_slots=1, spot_type=(kind, stable_type, 1)}`을 사용한다. User Spot과 member Actor
+`N`개의 aggregate relocation은 Spot 1개, 해당 stable type 1개와 Actor `N`개를 하나의 bundle로 사용한다.
+Location Store는 bundle이 요구하는 Actor 전체·Spot 전체·Spot stable type별 limit을 한 transaction에서
+검사하며 일부 slot만 예약하거나 전환하지 않는다.
+
 `reserve(...)`는 Framework가 encode한 `creating_payload`를 해석하지 않고 Missing authority를 Creating으로
 바꾸며 final object·owner generation, durable creation intent와
-target pending capacity를 하나의 atomic operation에서 확정한다. Request content는 최대 1 MiB이며 reference와
+target typed reserved capacity bundle을 하나의 atomic operation에서 확정한다. Request content는 최대 1 MiB이며 reference와
 SHA-256이 일치해야 한다. Reservation에는 TTL을 두지 않는다. `commit(...)`은 exact reservation에서
 target descriptor lifecycle과 owner lease를 다시 확인하고 Framework가 encode한 `ready_payload`를 해석하지
-않은 채 Creating→Ready와 pending 감소·active 증가를 함께 처리한다. Stale이면 mutation 0으로 reservation을
+않은 채 Creating→Ready와 bundle 전체의 Reserved→Active 전환을 함께 처리한다. Stale이면 mutation 0으로 reservation을
 유지한다. `abort(...)`는 current lifecycle·lease를 요구하지 않고 reservation에 고정한 exact Creating authority와
-이전 target pending capacity만 해제한다. 같은 fence의 Commit과 Abort는 각각 `object_already_committed_t`와
+이전 target reserved bundle 전체만 해제한다. 같은 fence의 Commit과 Abort는 각각 `object_already_committed_t`와
 `object_already_aborted_t`를 반환하고 다른 reservation generation은 stale 결과다. Counter가 소진되면 mutation과
 counter 소비 없이 `authority_generation_exhausted_t`를 반환한다. Reserve의 결과는 Reserved, AlreadyExists,
 TypeMismatch, PlacementCapacityExhausted, Conflict와 GenerationExhausted로 닫혀 있다. Provider는 object kind를
-해석하지 않지만 Pending snapshot에는 `pending_creation`을 반드시 반환하고 Active snapshot에서는 `nullopt`로
+해석하지 않지만 Reserved snapshot에는 `pending_creation`을 반드시 반환하고 Active snapshot에서는 `nullopt`로
 반환한다. 이 projection은 provider-issued reservation ID와 Actor·User Spot·Instance Spot 생성 요청의 immutable
 content reference, exact 32-byte SHA-256과 `0..1 MiB` encoded size를 가진다. Target-owned Instance Spot의 cold
 activation content만 complete `instance-activation-recovery-v1` envelope이며, Actor와 User Spot의 manager create
@@ -386,10 +409,10 @@ content에는 이 envelope를 사용하지 않는다.
 
 Existing object relocation은 creation reservation을 재사용하지 않는다. `reserve_relocation_capacity`는
 non-zero 128-bit reservation ID, current authority version, kind·stable type, source·target descriptor와 exact
-owner token을 검증하고 양수인 `capacity_delta`만큼 target pending capacity만 예약한다. 같은 ID와 exact request는
+owner token과 typed `capacity_bundle`을 검증하고 target의 bundle 전체를 Reserved로 예약한다. 같은 ID와 exact request는
 `relocation_capacity_already_reserved_t`, 다른 내용은 conflict다. Standalone Actor의 `new_owner` CAS와 aggregate
-commit만 fence를 소비하며 source active 감소와 target pending-to-active를 authority mutation과 같은 transaction에서
-처리한다. Commit 전 abort는 pending을 해제하고 reservation은 TTL로 만료시키지 않는다.
+commit만 fence를 소비하며 source Active bundle 감소와 target Reserved→Active 전환을 authority mutation과 같은
+transaction에서 처리한다. Commit 전 abort는 reserved bundle 전체를 해제하고 reservation은 TTL로 만료시키지 않는다.
 Standalone `new_owner` fence가 reserved 상태가 아니거나 authority key·expected StoreVersion·source·target
 owner와 일치하지 않거나 이미 committed·aborted됐으면 current authority read를 담은
 `authority_conflict_t`다. CAS transaction은 request source를 durable current Active allocation과 다시
@@ -402,20 +425,20 @@ authority row, capacity와 fence state의 mutation은 0이다.
 bounded canonical participant set이다. Participant는 최대 1024개이며 prepare request와 durable aggregate
 record의 encoded 크기는 각각 최대 1 MiB다. `inventory_digest`는 participant set과 mutation 전체를 canonical
 encode한 bytes의 SHA-256이다. Provider는 participant payload와 membership mutation을 해석하지 않는다.
-`target_reservations`는 `new_owner` participant와 정확히 일대일이어야 한다. Fence reservation의 authority
-key·expected StoreVersion·source owner·target owner는 participant expectation, current authority owner와
-aggregate `target_owner`에 정확히 일치해야 한다. Request source는 durable Active allocation과 exact match해야
-하고 target descriptor lifecycle·owner lease만 live/exact로 확인한다. 누락·중복·추가 fence와 값 불일치는
-conflict이며 mutation은 0이다.
-`prepare_aggregate(...)`는 같은 transaction에서 Reserved fence를 aggregate ID·generation에 bind해 Prepared로
-바꾸고 durable
-prepared record를 만든다. `commit_aggregate(...)`는 모든 owner, AuthorityOwnerGeneration과 membership visibility를
-한 transaction에서 전환한다. Bind된 fence의 direct abort는 stale이고 다른 aggregate prepare는 conflict다.
+User Spot aggregate는 participant별 relocation capacity fence를 만들지 않는다. `capacity_bundle`은 member
+Actor slot `N`, Spot slot `1`, User Spot stable type slot `1`을 하나의 typed bundle로 표현해야 한다.
+`prepare_aggregate(...)`는 모든 participant expectation과 durable Active allocation을 exact-match하고,
+`target_descriptor`, lifecycle generation과 `target_owner`를 live/exact로 검증한 뒤 bundle 전체를 같은
+transaction에서 reserved capacity로 예약한다. Participant set 또는 bundle이 맞지 않으면 conflict이며
+authority, capacity와 aggregate record의 mutation은 0이다. 성공하면 durable aggregate state를
+`Reserved`로 저장한다. `commit_aggregate(...)`는 모든 owner, AuthorityOwnerGeneration, membership visibility와
+bundle 전체의 reserved-to-active 전환을 한 transaction에서 처리한다. 일부 participant 또는 capacity만
+전환하지 않는다.
 Exact duplicate prepare만 already-prepared다. Commit은 source Active allocation match와 target descriptor
 lifecycle·owner lease를 다시 확인한다. Source descriptor row·lease는 stale·missing이어도 allocation match가
-유지되면 허용하고 target이 stale이면 mutation 없이 fence를 bind 상태로 유지한다.
-`abort_aggregate(...)`는 commit 전 prepared record와 bind된
-fence의 target pending을 정리하고 fence를 aborted로 닫는다. 같은
+유지되면 허용하고 target이 stale이면 mutation 없이 reserved aggregate record를 유지한다.
+`abort_aggregate(...)`는 commit 전 aggregate record가 소유한 target reserved bundle을 정리하고 aggregate를
+aborted로 닫는다. 같은
 fence는 idempotent하고 다른 generation은 stale이며 expectation 하나가 다르면 participant, reservation, index와
 counter를 하나도 변경하지 않는다.
 
@@ -445,10 +468,10 @@ reply bytes는 relocation stream에 저장한다.
 Page는 opaque key와 payload를 반환하며 provider는 payload를 해석하지 않는다. Framework operational
 query가 Actor projection을 decode하며 이 목록은 routing authority로 사용하지 않는다. Provider domain은
 영구적인 global object generation, authority owner generation과 Store revision counter를 각각 하나씩 유지한다.
-Generic Reserve만 object와 initial owner generation, Pending allocation을 발급한다. Commit은 같은 allocation을
-Active로 바꾸고 Abort는 Pending allocation을 제거한다. `new_owner`는 owner generation만 증가시키고 target
+Generic Reserve만 object와 initial owner generation, Reserved allocation을 발급한다. Commit은 같은 allocation을
+Active로 바꾸고 Abort는 Reserved allocation을 제거한다. `new_owner`는 owner generation만 증가시키고 target
 Active allocation으로 바꾸며 `preserve`는 generation과 allocation을 유지한다. Delete는 Active allocation의
-capacity delta를 감소시키고 row를 제거한다. Pending row의 generic CAS는 conflict와 mutation 0이다. Stored
+exact capacity bundle 전체를 감소시키고 row를 제거한다. Reserved row의 generic CAS는 conflict와 mutation 0이다. Stored
 mutation과 delete는 global Store revision으로 fence하고 per-key counter나 version tombstone을 유지하지 않는다.
 Scan lease가 활성화된 동안만 scan snapshot을 유지하기 위한 tombstone을 bounded로
 유지할 수 있다. Payload에 generation을 중복 encode하지 않는다. Authority row는

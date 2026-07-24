@@ -8,7 +8,7 @@ public record ZLinkLocationTopologyEntry(
     String meshName,
     ZLinkLocationRole role,
     RoutingId nodeRid,
-    RoutingId spotRid,
+    String spotId,
     String actorId,
     String endpoint,
     ZLinkLocationTopologyState state,

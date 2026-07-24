@@ -43,6 +43,19 @@ class route_mesh_runtime_options_service_t::node_options_t final :
         _node->native_node ().set_max_message_size (value == 0 ? -1 : value);
     }
 
+    int placement_weight () const override
+    {
+        return _node->placement_weight ();
+    }
+
+    void placement_weight (int value) override
+    {
+        if (value < 0 || value > 10000)
+            throw runtime_options_error (
+              "placement weight must be in range 0..10000");
+        _node->set_placement_weight (value);
+    }
+
   private:
     std::shared_ptr<detail::mesh_node_runtime_t> _node;
 };
@@ -69,8 +82,9 @@ class route_mesh_runtime_options_service_t::channel_options_t final :
 
     void weight (int value) override
     {
-        if (value < 0 || value > 100)
-            throw runtime_options_error ("channel weight must be in range 0..100");
+        if (value < 0 || value > 10000)
+            throw runtime_options_error (
+              "channel weight must be in range 0..10000");
         _node->set_channel_weight (_channel_name, value);
     }
 

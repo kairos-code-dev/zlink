@@ -16,14 +16,14 @@ public interface ZLinkBackendSpotRouteBridge extends ZLinkBackendObject {
     boolean send(
         String channelName,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<Message> parts,
         SendFlags flags);
 
     boolean request(
         String channelName,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<Message> parts,
         ZLinkBackendRequestCallback callback,
         SendFlags flags,
@@ -32,7 +32,7 @@ public interface ZLinkBackendSpotRouteBridge extends ZLinkBackendObject {
     default CompletionStage<List<Message>> requestAsync(
         String channelName,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<Message> parts,
         SendFlags flags,
         Duration timeout) {
@@ -41,7 +41,7 @@ public interface ZLinkBackendSpotRouteBridge extends ZLinkBackendObject {
             boolean submitted = request(
                 channelName,
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 parts,
                 reply -> {
                     if (reply.result() == ZLinkBackendRequestResult.OK) {

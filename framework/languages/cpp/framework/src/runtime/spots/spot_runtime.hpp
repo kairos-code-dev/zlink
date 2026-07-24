@@ -47,26 +47,24 @@ class spot_node_builder_state_t
     spot_node_snapshot_t snapshot;
     std::map<std::string, std::type_index> spot_factories;
     std::map<std::string, spot_lifecycle_callbacks_t> spot_lifecycles;
-    std::map<std::string, spot_rid_t> spot_rids_by_name;
-    std::map<std::string, std::string> spot_names_by_rid;
-    std::map<std::string, spot_context_t> spot_contexts_by_rid;
+    std::map<std::string, spot_id_t> spot_ids_by_name;
+    std::map<std::string, std::string> spot_names_by_id;
+    std::map<std::string, spot_context_t> spot_contexts_by_id;
     struct pending_spot_creation_t
     {
         std::string spot_name;
         std::shared_future<local_spot_create_result_t> future;
     };
-    std::map<std::string, pending_spot_creation_t> pending_spot_creations_by_rid;
+    std::map<std::string, pending_spot_creation_t> pending_spot_creations_by_id;
     std::weak_ptr<service::mesh_node_t> native_node;
     std::function<task_t<spot_create_result_t> (
       bool,
-      std::optional<spot_rid_t>,
+      std::optional<spot_id_t>,
       std::string,
       std::optional<std::string>,
       std::optional<message_t>,
-      std::optional<placement_profile_t>,
-      std::optional<affinity_key_t>,
       std::chrono::milliseconds)> create_user_spot;
-    std::function<task_t<std::optional<spot_ref_t>> (spot_rid_t)>
+    std::function<task_t<std::optional<spot_ref_t>> (spot_id_t)>
       find_user_spot;
     std::function<task_t<bool> (spot_ref_t)> close_user_spot;
     std::shared_ptr<channel_runtime_state_t> channel_runtime;
@@ -76,7 +74,7 @@ class spot_node_builder_state_t
     std::shared_ptr<std::atomic_bool> drain_flag;
     std::shared_ptr<monitoring_runtime_state_t> monitoring;
     std::atomic_bool stopping{false};
-    std::map<std::string, spot_rid_t> actor_spot_rids;
+    std::map<std::string, spot_id_t> actor_spot_ids;
     std::map<std::string, std::uint64_t> actor_generations;
     std::map<std::string, std::string> actor_types_by_id;
     std::set<std::string> actor_created_keys;
@@ -102,7 +100,7 @@ class spot_node_builder_state_t
     {
         actor_ref_t source_actor;
         std::string transfer_id;
-        spot_rid_t target_spot_rid;
+        spot_id_t target_spot_id;
         std::chrono::steady_clock::time_point not_before;
     };
     std::vector<pending_remote_source_cleanup_t> pending_remote_source_cleanups;
@@ -156,7 +154,7 @@ class spot_node_builder_state_t
     std::map<std::string, std::unique_ptr<service::actor_t>> native_actors;
     std::unordered_set<std::string> mesh_runtime_owned_native_actor_ids;
     std::map<std::string, std::uint64_t> core_actor_membership_epochs;
-    std::map<std::string, std::shared_ptr<service::spot_t>> native_spots_by_rid;
+    std::map<std::string, std::shared_ptr<service::spot_t>> native_spots_by_id;
     std::shared_ptr<service::spot_t> routed_control_spot;
     std::optional<route_client_t> route_client;
     struct queued_actor_packet_t
@@ -165,7 +163,7 @@ class spot_node_builder_state_t
         std::vector<zlink::message_t> parts;
     };
     std::vector<queued_actor_packet_t> queued_actor_packets;
-    std::map<std::string, std::function<std::optional<spot_route_t> (spot_rid_t)>> resolvers;
+    std::map<std::string, std::function<std::optional<spot_route_t> (spot_id_t)>> resolvers;
     std::vector<std::string> last_monitoring_peers;
     std::shared_ptr<runtime::offload_executor_t> worker_executor;
     std::uint64_t next_spot_id = 1;
@@ -175,12 +173,10 @@ struct spot_create_call_state_t
 {
     std::shared_ptr<spot_node_builder_state_t> node;
     bool exclusive = false;
-    std::optional<spot_rid_t> spot_rid;
+    std::optional<spot_id_t> spot_id;
     std::string stable_type;
     std::optional<std::string> mesh_name;
     std::optional<message_t> request;
-    std::optional<placement_profile_t> profile;
-    std::optional<affinity_key_t> affinity;
     std::optional<std::chrono::milliseconds> timeout;
     bool submitted = false;
 };
@@ -236,18 +232,18 @@ class spot_context_state_t
             lifecycle.on_closing (spot_instance.get ());
         }
         cancel_timers ();
-        const auto rid = std::string (spot_rid.value ());
+        const auto rid = std::string (spot_id);
         if (node->location_lifecycle) {
             (void) node->location_lifecycle->release_spot (
-              spot_location_key_t{node->snapshot.name, zlink::routing_id_t::from (rid)});
+              spot_location_key_t{rid});
         }
-        node->spot_contexts_by_rid.erase (rid);
-        node->spot_names_by_rid.erase (rid);
-        node->native_spots_by_rid.erase (rid);
-        for (auto iterator = node->spot_rids_by_name.begin ();
-             iterator != node->spot_rids_by_name.end (); ++iterator) {
-            if (std::string (iterator->second.value ()) == rid) {
-                node->spot_rids_by_name.erase (iterator);
+        node->spot_contexts_by_id.erase (rid);
+        node->spot_names_by_id.erase (rid);
+        node->native_spots_by_id.erase (rid);
+        for (auto iterator = node->spot_ids_by_name.begin ();
+             iterator != node->spot_ids_by_name.end (); ++iterator) {
+            if (iterator->second == rid) {
+                node->spot_ids_by_name.erase (iterator);
                 break;
             }
         }
@@ -272,7 +268,7 @@ class spot_context_state_t
     std::shared_ptr<spot_node_builder_state_t> node;
     std::shared_ptr<channel_runtime_state_t> channel_runtime;
     node_rid_t node_rid;
-    spot_rid_t spot_rid;
+    spot_id_t spot_id;
     std::string spot_name;
     std::vector<spot_packet_descriptor_t> packets;
     std::vector<spot_handler_descriptor_t> handlers;
@@ -316,17 +312,17 @@ inline void record_actor_route_unlocked (spot_node_builder_state_t &state,
                                          spot_route_t route,
                                          std::uint64_t generation)
 {
-    state.actor_spot_rids[key] = route.spot_rid;
+    state.actor_spot_ids[key] = route.spot_id;
     state.actor_routes[key] = std::move (route);
     state.actor_generations[key] = generation;
 }
 
 inline void record_actor_spot_location_unlocked (spot_node_builder_state_t &state,
                                                  const std::string &key,
-                                                 spot_rid_t spot_rid,
+                                                 spot_id_t spot_id,
                                                  std::uint64_t generation)
 {
-    state.actor_spot_rids[key] = std::move (spot_rid);
+    state.actor_spot_ids[key] = std::move (spot_id);
     state.actor_routes.erase (key);
     state.actor_generations[key] = generation;
 }
@@ -339,7 +335,7 @@ inline void record_actor_context_route_unlocked (spot_node_builder_state_t &stat
 {
     record_actor_route_unlocked (state, key,
                                  spot_route_t{node_rid_t::from_string (node_rid),
-                                              context_state.spot_rid, context_state.spot_name},
+                                              context_state.spot_id, context_state.spot_name},
                                  generation);
     context_state.actor_count++;
 }
@@ -357,7 +353,7 @@ class spot_node_runtime_t
   public:
     struct remote_actor_transfer_t
     {
-        spot_rid_t source_spot_rid;
+        spot_id_t source_spot_id;
         zlink::message_t state;
     };
     explicit spot_node_runtime_t (std::shared_ptr<spot_node_builder_state_t> state);
@@ -369,18 +365,18 @@ class spot_node_runtime_t
 
     local_spot_create_result_t create_spot (std::string spot_name);
     local_spot_create_result_t create_spot (std::string spot_name, zlink::message_t request);
-    local_spot_create_result_t get_or_create_spot (std::string spot_name, spot_rid_t spot_rid);
+    local_spot_create_result_t get_or_create_spot (std::string spot_name, spot_id_t spot_id);
     local_spot_create_result_t
-    get_or_create_spot (std::string spot_name, spot_rid_t spot_rid, zlink::message_t request);
-    std::optional<spot_info_t> find_spot (spot_rid_t spot_rid) const;
+    get_or_create_spot (std::string spot_name, spot_id_t spot_id, zlink::message_t request);
+    std::optional<spot_info_t> find_spot (spot_id_t spot_id) const;
     std::vector<spot_info_t> list_spots () const;
-    task_t<bool> close_spot (spot_rid_t spot_rid);
+    task_t<bool> close_spot (spot_id_t spot_id);
     bool close_all_user_spots ();
     node_rid_t node_rid () const;
-    std::optional<std::string> spot_name_for (spot_rid_t spot_rid) const;
-    std::optional<spot_route_t> resolve_spot (spot_rid_t spot_rid) const;
-    std::optional<spot_rid_t> actor_spot (const actor_ref_t &actor_ref) const;
-    void record_actor_spot (const actor_ref_t &actor_ref, spot_rid_t spot_rid);
+    std::optional<std::string> spot_name_for (spot_id_t spot_id) const;
+    std::optional<spot_route_t> resolve_spot (spot_id_t spot_id) const;
+    std::optional<spot_id_t> actor_spot (const actor_ref_t &actor_ref) const;
+    void record_actor_spot (const actor_ref_t &actor_ref, spot_id_t spot_id);
     std::optional<spot_route_t> actor_route (const actor_ref_t &actor_ref) const;
     std::optional<actor_forwarding_target_t>
     actor_forwarding_target (const actor_ref_t &actor_ref) const;
@@ -419,11 +415,11 @@ class spot_node_runtime_t
     std::shared_ptr<service::mesh_node_t> native_node () const;
     result_t<void> send_spot_mesh_parts (
       const zlink::routing_id_t &target_node_rid,
-      const zlink::routing_id_t &target_spot_rid,
+      const spot_id_t &target_spot_id,
       runtime::messaging::message_parts_t parts) const;
     result_t<runtime::messaging::message_parts_t> request_spot_mesh_parts (
       const zlink::routing_id_t &target_node_rid,
-      const zlink::routing_id_t &target_spot_rid,
+      const spot_id_t &target_spot_id,
       runtime::messaging::message_parts_t parts,
       std::chrono::milliseconds timeout) const;
     void poll_monitoring ();
@@ -470,19 +466,19 @@ class spot_node_runtime_t
     spot_manager_t manager () const;
     result_t<actor_join_reply_t> join_actor_to_spot_erased (
       const actor_ref_t &actor_ref,
-      spot_rid_t spot_rid,
+      spot_id_t spot_id,
       const zlink::message_t &request,
       const std::optional<zlink::message_t> &actor_snapshot = std::nullopt);
     result_t<actor_join_reply_t>
     join_remote_actor_to_spot_erased (const actor_ref_t &actor_ref,
-                                      spot_rid_t spot_rid,
+                                      spot_id_t spot_id,
                                       const zlink::message_t &request,
                                       actor_context_t actor_context = {});
     result_t<spot_actor_join_response_t>
     admit_remote_actor_to_spot (std::string transfer_id,
                                 const actor_ref_t &actor_ref,
-                                spot_rid_t source_spot_rid,
-                                spot_rid_t target_spot_rid,
+                                spot_id_t source_spot_id,
+                                spot_id_t target_spot_id,
                                 const zlink::message_t &request);
     // handoff_backlog holds the in-flight packets the source preserved while the
     // actor was moving (§10.2-2). They are enqueued on the target actor's
@@ -491,14 +487,14 @@ class spot_node_runtime_t
     result_t<actor_join_reply_t>
     prepare_remote_actor_to_spot (std::string transfer_id,
                                   const actor_ref_t &actor_ref,
-                                  spot_rid_t target_spot_rid,
+                                  spot_id_t target_spot_id,
                                   zlink::message_t transfer_state,
                                   actor_context_t actor_context = {},
                                   bool defer_joined_callback = false);
     result_t<actor_join_reply_t>
     commit_remote_actor_to_spot (std::string transfer_id,
                                  const actor_ref_t &actor_ref,
-                                 spot_rid_t target_spot_rid,
+                                 spot_id_t target_spot_id,
                                  zlink::message_t transfer_state,
                                  actor_context_t actor_context = {},
                                  std::vector<handoff_packet_t> handoff_backlog = {},
@@ -506,7 +502,7 @@ class spot_node_runtime_t
     result_t<actor_join_reply_t>
     finalize_remote_actor_to_spot (std::string transfer_id,
                                    const actor_ref_t &actor_ref,
-                                   spot_rid_t target_spot_rid,
+                                   spot_id_t target_spot_id,
                                    std::vector<handoff_packet_t> handoff_backlog,
                                    service_provider_t &services,
                                    actor_gateway_runtime_t *actor_gateway = nullptr);
@@ -536,7 +532,7 @@ class spot_node_runtime_t
     void emit_actor_transfer_marker (std::string marker,
                                      const actor_ref_t &actor_ref,
                                      std::string transfer_id,
-                                     std::optional<spot_rid_t> spot_rid = std::nullopt,
+                                     std::optional<spot_id_t> spot_id = std::nullopt,
                                      std::optional<node_rid_t> target_node_rid = std::nullopt) const;
     result_t<actor_join_reply_t> join_actor_to_entry_spot_erased (
       const actor_ref_t &actor_ref,
@@ -574,7 +570,7 @@ class spot_node_runtime_t
 
     template <typename TSpot, typename TActor>
     result_t<actor_join_reply_t> join_actor_to_spot (const actor_ref_t &actor_ref,
-                                                     spot_rid_t spot_rid,
+                                                     spot_id_t spot_id,
                                                      TActor &actor,
                                                      const zlink::message_t &request)
     {
@@ -582,7 +578,7 @@ class spot_node_runtime_t
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::actor_route_not_found, "actor ref is empty");
         }
-        auto context = find_context (spot_rid);
+        auto context = find_context (spot_id);
         if (!context || !context->_state->spot_instance) {
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::spot_route_not_found, "target spot is not registered");
@@ -628,12 +624,12 @@ class spot_node_runtime_t
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::spot_route_not_found, "entry spot is not registered");
         }
-        const auto entry_rid = _state->spot_rids_by_name.find (*_state->snapshot.entry_spot_name);
-        if (entry_rid == _state->spot_rids_by_name.end ()) {
+        const auto entry_id = _state->spot_ids_by_name.find (*_state->snapshot.entry_spot_name);
+        if (entry_id == _state->spot_ids_by_name.end ()) {
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::spot_route_not_found, "entry spot is not created");
         }
-        auto context = find_context (entry_rid->second);
+        auto context = find_context (entry_id->second);
         if (!context || !context->_state->spot_instance) {
             return result_t<actor_join_reply_t>::failure (
               framework_error_kind_t::spot_route_not_found, "entry spot context is not registered");
@@ -679,8 +675,8 @@ class spot_node_runtime_t
                                             "actor ref is empty");
         }
         const auto key = actor_key (actor_ref);
-        const auto found_location = _state->actor_spot_rids.find (key);
-        if (found_location == _state->actor_spot_rids.end ()) {
+        const auto found_location = _state->actor_spot_ids.find (key);
+        if (found_location == _state->actor_spot_ids.end ()) {
             return result_t<void>::success ();
         }
         const auto found_generation = _state->actor_generations.find (key);
@@ -836,10 +832,10 @@ class spot_node_runtime_t
         return slot;
     }
 
-    std::optional<spot_context_t> find_context (const spot_rid_t &spot_rid) const
+    std::optional<spot_context_t> find_context (const spot_id_t &spot_id) const
     {
-        const auto found = _state->spot_contexts_by_rid.find (std::string (spot_rid.value ()));
-        if (found == _state->spot_contexts_by_rid.end ()) {
+        const auto found = _state->spot_contexts_by_id.find (std::string (spot_id));
+        if (found == _state->spot_contexts_by_id.end ()) {
             return std::nullopt;
         }
         return found->second;
@@ -943,12 +939,12 @@ class spot_node_runtime_t
     template <typename TActor> void commit_actor_left (const actor_ref_t &actor_ref, TActor &actor)
     {
         const auto key = actor_key (actor_ref);
-        const auto found_location = _state->actor_spot_rids.find (key);
-        if (found_location == _state->actor_spot_rids.end ()) {
+        const auto found_location = _state->actor_spot_ids.find (key);
+        if (found_location == _state->actor_spot_ids.end ()) {
             return;
         }
         auto previous_context = find_context (found_location->second);
-        _state->actor_spot_rids.erase (found_location);
+        _state->actor_spot_ids.erase (found_location);
         _state->actor_routes.erase (key);
         _state->actor_generations.erase (key);
         if (!previous_context) {
@@ -1035,17 +1031,17 @@ class spot_node_runtime_t
 
     local_spot_create_result_t
     create_spot_context_unlocked (std::string spot_name,
-                                  spot_rid_t spot_rid,
+                                  spot_id_t spot_id,
                                   zlink::message_t request,
                                   std::unique_lock<std::recursive_mutex> &node_lock);
-    result_t<spot_context_t> actor_join_context_unlocked (spot_rid_t spot_rid,
+    result_t<spot_context_t> actor_join_context_unlocked (spot_id_t spot_id,
                                                           const zlink::message_t &request);
     result_t<std::reference_wrapper<spot_node_builder_state_t::actor_factory_registration_t>>
     actor_factory_unlocked (const actor_ref_t &actor_ref) const;
     result_t<std::reference_wrapper<spot_actor_admission_callbacks_t>>
     actor_admission_unlocked (spot_context_t &context,
                               std::type_index actor_type,
-                              spot_rid_t spot_rid,
+                              spot_id_t spot_id,
                               const actor_ref_t &actor_ref);
     // Releases node_lock while the previous spot runs the user leave callback on its
     // serial queue, then re-acquires it before mutating node state.

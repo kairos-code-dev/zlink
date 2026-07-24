@@ -16,7 +16,8 @@ import { DefaultZLinkActorContext } from './actor-context';
 import {
   ZLinkActorRuntimeState,
   toFrameworkActorRef,
-  toFrameworkRoutingId
+  toFrameworkRoutingId,
+  type ZLinkActorCreationAttemptResult
 } from './actor-runtime-state';
 import type { ZLinkActorManagerOptions } from './actor-runtime-contracts';
 
@@ -35,7 +36,7 @@ export class ZLinkActorCreationCoordinator {
     createRequest: ZLinkActorCreateRequest,
     claimLocation: boolean,
     signal?: AbortSignal
-  ): Promise<ZLinkActor> {
+  ): Promise<ZLinkActorCreationAttemptResult> {
     const lifecycle = this.options.locationLifecycle;
     if (lifecycle !== undefined && claimLocation) {
       const nodeRid = this.resolveLocationNodeRid();
@@ -56,6 +57,10 @@ export class ZLinkActorCreationCoordinator {
         () => this.createActorAfterClaim(actorId, actorType, state, createRequest, true, signal)
       );
       if (activation.activated !== undefined) {
+        if (activation.activated.status === 'rejected') {
+          await lifecycle.releaseActor(actorType, actorId);
+          return activation.activated;
+        }
         if (activation.generation !== undefined) state.setLocationGeneration(activation.generation);
         state.markLocationOwned();
         return activation.activated;
@@ -76,7 +81,7 @@ export class ZLinkActorCreationCoordinator {
     actorType: string,
     state: ZLinkActorRuntimeState,
     restore: (() => Promise<ZLinkActor>) | undefined
-  ): Promise<ZLinkActor> {
+  ): Promise<ZLinkActorCreationAttemptResult> {
     const context = state.ensureContext(() => new DefaultZLinkActorContext(
       state,
       this.options.joinCoordinator,
@@ -94,7 +99,7 @@ export class ZLinkActorCreationCoordinator {
     if (nativeActorNode !== undefined) {
       state.ensureNativeActorRef(nativeActorNode);
     }
-    return actor;
+    return { status: 'created', actor };
   }
 
   private async createActorAfterClaim(
@@ -104,7 +109,7 @@ export class ZLinkActorCreationCoordinator {
     createRequest: ZLinkActorCreateRequest,
     updateLocation: boolean,
     signal?: AbortSignal
-  ): Promise<ZLinkActor> {
+  ): Promise<ZLinkActorCreationAttemptResult> {
     const factory = await this.createFactory(actorType);
     const context = state.ensureContext(() => new DefaultZLinkActorContext(
       state,
@@ -114,18 +119,39 @@ export class ZLinkActorCreationCoordinator {
       this.options.actorMeshNameProvider,
       this.options.actorLeaveSpot
     ));
-    const actor = await factory.create(actorId, context);
+    const actor = await factory.create(actorId, context, signal);
+    const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
     try {
-      state.bindActor(actor, context);
-      const nativeActorNode = this.options.nativeActorNode ?? this.options.nativeActorNodeProvider?.();
+      let nodeRid: RoutingId | undefined;
       if (nativeActorNode !== undefined) {
         const actorRef = state.ensureNativeActorRef(nativeActorNode, createRequest.nativeRequest);
-        await this.options.actorCreatedNotifier?.(
-          toFrameworkRoutingId(actorRef.nodeRid),
+        nodeRid = toFrameworkRoutingId(actorRef.nodeRid);
+      } else {
+        nodeRid = this.options.actorCreatedNodeRidProvider?.();
+        if (nodeRid !== undefined) {
+          state.setNativeActorRef({
+            nodeRid: nodeRid as never,
+            actorId,
+            generation: 0n
+          });
+        }
+      }
+      const response = nodeRid === undefined
+        ? { accepted: true }
+        : await this.options.actorCreatedNotifier?.(
+          nodeRid,
           actor,
           createRequest.callbackRequest,
           signal
-        );
+        ) ?? { accepted: true };
+      if (!response.accepted) {
+        await this.discardStagingActor(state, nativeActorNode);
+        return { status: 'rejected', reply: response.reply };
+      }
+
+      state.bindActor(actor, context);
+      if (nativeActorNode !== undefined) {
+        const actorRef = state.nativeActorRef!;
         if (updateLocation) {
           await this.options.locationLifecycle?.setActorRef(
             actorType,
@@ -134,25 +160,30 @@ export class ZLinkActorCreationCoordinator {
             nativeActorNode.status().lifecycleGeneration
           );
         }
-      } else {
-        const nodeRid = this.options.actorCreatedNodeRidProvider?.();
-        if (nodeRid !== undefined) {
-          await this.options.actorCreatedNotifier?.(nodeRid, actor, createRequest.callbackRequest, signal);
-          if (updateLocation) {
-            await this.options.locationLifecycle?.setActorRef(
-              actorType,
-              actorId,
-              { nodeRid, actorId, generation: 0n },
-              0n
-            );
-          }
-        }
+      } else if (nodeRid !== undefined && updateLocation) {
+        await this.options.locationLifecycle?.setActorRef(
+          actorType,
+          actorId,
+          { nodeRid, actorId, generation: 0n },
+          0n
+        );
       }
+      return { status: 'created', actor, reply: response.reply };
     } catch (error) {
-      state.clearAfterDestroy();
+      await this.discardStagingActor(state, nativeActorNode);
       throw error;
     }
-    return actor;
+  }
+
+  private async discardStagingActor(
+    state: ZLinkActorRuntimeState,
+    nativeActorNode: ZLinkActorManagerOptions['nativeActorNode']
+  ): Promise<void> {
+    const actorRef = state.nativeActorRef;
+    if (nativeActorNode !== undefined && actorRef !== undefined) {
+      await nativeActorNode.destroyActor(actorRef, 0);
+      state.markNativeActorDestroyed(actorRef);
+    }
   }
 
   private resolveLocationNodeRid(): RoutingId {

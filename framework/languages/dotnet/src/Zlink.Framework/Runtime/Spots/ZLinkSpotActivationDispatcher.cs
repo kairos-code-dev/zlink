@@ -178,7 +178,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             {
                 var admissionRequest = ZLinkRemoteActorJoinPackets.DecodeAdmissionRequest(received.Parts);
                 var admissionReply = await runtime.AdmitRoutedActorJoinAsync(
-                        nativeSpot.RoutingId,
+                        ZLinkSpotId.FromNativeRoutingId(nativeSpot.RoutingId),
                         admissionRequest,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -196,7 +196,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             {
                 var completionRequest = ZLinkRemoteActorJoinPackets.DecodeHandoffCompletionRequest(received.Parts);
                 await runtime.CompleteRoutedActorHandoffAsync(
-                        nativeSpot.RoutingId,
+                        ZLinkSpotId.FromNativeRoutingId(nativeSpot.RoutingId),
                         completionRequest,
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -216,7 +216,7 @@ internal sealed class ZLinkSpotActivationDispatcher
             // deduped retry awaits the same preparation. Cancelling the
             // processing with the request would abort the in-flight join.
             var reply = await runtime.JoinRoutedActorAsync(
-                nativeSpot.RoutingId,
+                ZLinkSpotId.FromNativeRoutingId(nativeSpot.RoutingId),
                 joinRequest,
                 runtime.ShutdownToken)
             .ConfigureAwait(false);

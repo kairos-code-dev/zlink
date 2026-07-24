@@ -7,8 +7,7 @@ namespace Zlink.Framework.Contracts.Locations;
 /// compared as "no value" and still participate in the key.
 /// </summary>
 public readonly record struct ZLinkSpotLocationKey(
-    string MeshName,
-    RoutingId SpotRid);
+    string SpotId);
 
 /// <summary>
 /// Actor id is framework-wide unique. Actor type is creation, handler, and

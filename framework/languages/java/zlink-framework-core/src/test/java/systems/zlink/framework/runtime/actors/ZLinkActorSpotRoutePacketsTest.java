@@ -24,7 +24,7 @@ final class ZLinkActorSpotRoutePacketsTest {
                 "stateful",
                 actor,
                 RoutingId.from("entry-source"),
-                RoutingId.from("entry-spot"),
+                "entry-spot",
                 "entry-channel",
                 RoutingId.from("session-source"),
                 RoutingId.from("session-41"),

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics.Metrics;
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Runtime.Actors;
 
 namespace Zlink.Framework.UnitTests;
 
@@ -284,7 +285,7 @@ public sealed class SessionActorCoordinatorTests
             static _ => ValueTask.CompletedTask);
     }
 
-    private static ZLinkFrameworkRuntime CreateRuntime(IZLinkActorDirectory? actorDirectory = null)
+    private static ZLinkFrameworkRuntime CreateRuntime(IZLinkActorResolver? actorDirectory = null)
     {
         var registration = new ZLinkFrameworkRegistration();
         var services = new ServiceCollection();
@@ -304,33 +305,21 @@ public sealed class SessionActorCoordinatorTests
 
     private sealed record SessionPush(string Value);
 
-    private sealed class MissingActorDirectory : IZLinkActorDirectory
+    private sealed class MissingActorDirectory : IZLinkActorResolver
     {
-        public ValueTask<ActorRef?> FindAsync(
+        public ValueTask<(ActorRef? Ref, bool RowPresent)> FindWithPresenceAsync(
             string actorId,
-            CancellationToken cancellationToken = default) => ValueTask.FromResult<ActorRef?>(null);
-
-        public ValueTask<ActorRef> EnsureAsync(
-            string actorId,
-            ZLinkMessage createRequest,
-            ZLinkActorPlacement placement = default,
             CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            ValueTask.FromResult<(ActorRef?, bool)>((null, false));
     }
 
-    private sealed class FixedActorDirectory(ActorRef actor) : IZLinkActorDirectory
+    private sealed class FixedActorDirectory(ActorRef actor) : IZLinkActorResolver
     {
-        public ValueTask<ActorRef?> FindAsync(
+        public ValueTask<(ActorRef? Ref, bool RowPresent)> FindWithPresenceAsync(
             string actorId,
             CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult<ActorRef?>(actor.ActorId == actorId ? actor : null);
-
-        public ValueTask<ActorRef> EnsureAsync(
-            string actorId,
-            ZLinkMessage createRequest,
-            ZLinkActorPlacement placement = default,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
+            ValueTask.FromResult<(ActorRef?, bool)>(
+                actor.ActorId == actorId ? (actor, true) : (null, false));
     }
 
     private sealed class TestSessionHandlerRegistry : IZLinkSessionHandlerRegistry

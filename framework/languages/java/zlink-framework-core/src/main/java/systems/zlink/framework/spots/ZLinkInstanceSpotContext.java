@@ -7,7 +7,7 @@ import systems.zlink.contracts.core.RoutingId;
 public interface ZLinkInstanceSpotContext {
     String meshName();
 
-    RoutingId spotRid();
+    String spotId();
 
     RoutingId nodeRid();
 

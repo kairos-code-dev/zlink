@@ -968,7 +968,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
         String routeTargetEndpoint = tcpEndpoint();
         String sourceSpotEndpoint = tcpEndpoint();
         String targetSpotEndpoint = tcpEndpoint();
-        RoutingId targetSpotRid = RoutingId.from("spot-egress-target");
+        String targetSpotId = RoutingId.from("spot-egress-target");
         ZLinkInMemoryLocationStore locations = new ZLinkInMemoryLocationStore();
         OutboundChannelSpot.CONTEXT.set(null);
 
@@ -1005,7 +1005,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
              ZLinkFrameworkRuntime target =
                  RuntimeTestSupport.startFramework(targetOptions, new ZLinkJavaBackendAdapterFactory())) {
             target.spotManager()
-                .create(RemoteStateSpot.class, targetSpotRid)
+                .create(RemoteStateSpot.class, targetSpotId)
                 .toCompletableFuture()
                 .get(3, TimeUnit.SECONDS);
             source.spotManager()
@@ -1016,14 +1016,14 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
             ZLinkSpotContext context = Objects.requireNonNull(OutboundChannelSpot.CONTEXT.get());
             SpotEgressReply reply = context.outbound()
                 .requestToSpot(
-                    awaitSpotHandle(OutboundChannelSpot.HANDLES.get(), targetSpotRid),
+                    awaitSpotHandle(OutboundChannelSpot.HANDLES.get(), targetSpotId),
                     new SpotEgressRequest("ping"))
                 .timeout(Duration.ofSeconds(3))
                 .submit(SpotEgressReply.class)
                 .toCompletableFuture()
                 .get(4, TimeUnit.SECONDS);
 
-            assertEquals("spot-egress-target", reply.spotRid());
+            assertEquals("spot-egress-target", reply.spotId());
             assertEquals(SPOT_EGRESS_TARGET_NODE_RID.toString(), reply.nodeRid());
             assertEquals("pong:ping", reply.value());
         } finally {
@@ -1558,16 +1558,16 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
 
     private static SpotHandle awaitSpotHandle(
         SpotHandleResolver resolver,
-        RoutingId spotRid) {
+        String spotId) {
         long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
         while (System.nanoTime() < deadline) {
-            var handle = resolver.resolveSpotHandle(spotRid).toCompletableFuture().join();
+            var handle = resolver.resolveSpotHandle(spotId).toCompletableFuture().join();
             if (handle.isPresent()) {
                 return handle.get();
             }
             Thread.onSpinWait();
         }
-        throw new AssertionError("spot handle was not published: " + spotRid);
+        throw new AssertionError("spot handle was not published: " + spotId);
     }
 
     private static String awaitSharedRouteReply(
@@ -1766,7 +1766,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
             RemoteStateSpot spot,
             SpotEgressRequest request) {
             return CompletableFuture.completedFuture(new SpotEgressReply(
-                spot.context().spotRid().toString(),
+                spot.context().spotId().toString(),
                 spot.context().nodeRid().toString(),
                 "pong:" + request.value()));
         }
@@ -1813,7 +1813,7 @@ channel.addRequestHandler(EchoHandler.class, EchoRequest.class, String.class, "E
     @ZLinkPacket("NestedRoute") public record NestedRoute(String value) { }
 
     public record SpotEgressReply(
-        String spotRid,
+        String spotId,
         String nodeRid,
         String value) {
     }

@@ -669,8 +669,8 @@ function requirePeerWeight(label: string, value: number | undefined): void {
   if (value === undefined) {
     return;
   }
-  if (!Number.isInteger(value) || value < 0 || value > 100) {
-    throw new ZLinkConfigurationException(`${label} must be between 0 and 100.`);
+  if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+    throw new ZLinkConfigurationException(`${label} must be an integer in 0..10000.`);
   }
 }
 

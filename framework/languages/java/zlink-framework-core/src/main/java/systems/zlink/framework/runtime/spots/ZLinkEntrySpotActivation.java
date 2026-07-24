@@ -79,6 +79,7 @@ import systems.zlink.framework.spots.ZLinkSpot;
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext;
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext;
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
+import systems.zlink.framework.spots.ZLinkActorCreateResponse;
 import systems.zlink.framework.spots.ZLinkSpotCreateResult;
 import systems.zlink.framework.spots.ZLinkSpotCreateResponse;
 import systems.zlink.framework.spots.ZLinkWorkerCall;
@@ -118,7 +119,7 @@ final class EntrySpotActivation
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    CompletionStage<Void> notifyActorCreated(
+    CompletionStage<ZLinkActorCreateResponse> notifyActorCreated(
         ZLinkActor actor,
         ZLinkMessage createRequest,
         Object createContext) {
@@ -129,10 +130,18 @@ final class EntrySpotActivation
                     actor,
                     createRequest));
         }
-        return context.enqueueDispatch(() -> ZLinkHandlerStages.fromStageSupplier(() ->
-            rawEntrySpot.onCreateActor(
-                actor,
-                createRequest)));
+        java.util.concurrent.CompletableFuture<ZLinkActorCreateResponse> response =
+            new java.util.concurrent.CompletableFuture<>();
+        context.enqueueDispatch(() -> ZLinkHandlerStages.fromStageSupplier(() ->
+                (CompletionStage<ZLinkActorCreateResponse>)
+                    rawEntrySpot.onCreateActor(actor, createRequest))
+            .thenAccept(response::complete))
+            .whenComplete((ignored, error) -> {
+                if (error != null) {
+                    response.completeExceptionally(error);
+                }
+            });
+        return response;
     }
 
     @Override
@@ -156,7 +165,7 @@ final class EntrySpotActivation
             event,
             actorRef,
             actor,
-            context.spotRid());
+            context.spotId());
         return transition == null ? tail : context.enqueueDispatch(transition);
     }
 
@@ -240,8 +249,8 @@ final class EntrySpotActivation
                 host.primaryNode(),
                 backendSpot.routingId(),
                 entrySpot,
-                (actorId, request) -> ZLinkHandlerStages.fromStageSupplier(() ->
-                    rawEntrySpot.onActorJoin(actorId, request)),
+                (actorId, request) -> java.util.concurrent.CompletableFuture.completedFuture(
+                    ZLinkSpotActorJoinResponse.accept()),
                 actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
                     entrySpot, actor, backendSpot.routingId(), true));
             transfer.handle(received.parts())
@@ -329,8 +338,8 @@ final class EntrySpotActivation
             host.primaryNode(),
             backendSpot.routingId(),
             entrySpot,
-            (actorId, request) -> ZLinkHandlerStages.fromStageSupplier(() ->
-                rawEntrySpot.onActorJoin(actorId, request)),
+            (actorId, request) -> java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkSpotActorJoinResponse.accept()),
             actor -> host.notifySpotActorLifecycleAndSuppressBackendEvent(
                 entrySpot, actor, backendSpot.routingId(), true));
         CompletableFuture<Message> result = new CompletableFuture<>();
@@ -372,7 +381,7 @@ final class EntrySpotActivation
         ZLinkActorSessionCoordinator.ActorRoute route = host.actorSessions().routeFor(
             actor,
             host.primaryNode().routingId(),
-            spotRid -> host.spotSurfaceFor(spotRid) != null);
+            spotId -> host.spotSurfaceFor(spotId) != null);
         if (!route.remoteJoinedSpot()) {
             host.dispatchLocalActorPacket(
                 context,
@@ -507,7 +516,8 @@ final class EntrySpotActivation
         return host.actorAdmissions().admitEntryActor(
             request,
             backendSpot.routingId(),
-            actorId -> invokeEntryActorJoin(actorId, payload));
+            actorId -> java.util.concurrent.CompletableFuture.completedFuture(
+                ZLinkSpotActorJoinResponse.accept()));
     }
 
     private void completeAcceptedEntryJoin(ZLinkBackendActorJoinRequest request) {
@@ -521,28 +531,6 @@ final class EntrySpotActivation
                     backendSpot.routingId(),
                     true)))
             .exceptionally(error -> null);
-    }
-
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private CompletionStage<ZLinkSpotActorJoinResponse> invokeEntryActorJoin(
-        String actorId,
-        Message payload) {
-        CompletableFuture<ZLinkSpotActorJoinResponse> admission = new CompletableFuture<>();
-        context.enqueueDispatch(() ->
-                ZLinkHandlerStages.fromStageSupplier(() ->
-                    (CompletionStage<ZLinkSpotActorJoinResponse>)
-                    ((ZLinkEntrySpot) entrySpot).onActorJoin(
-                        actorId,
-                        ZLinkMessage.fromEncoded(
-                            ZLinkMessagePayloads.encoded(payload),
-                            host.serializerForSpot())))
-                    .thenAccept(admission::complete))
-            .whenComplete((ignored, error) -> {
-                if (error != null) {
-                    admission.completeExceptionally(error);
-                }
-            });
-        return admission;
     }
 
     @Override

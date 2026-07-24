@@ -28,14 +28,14 @@ public abstract class SpotHandle
 
     public abstract string MeshName { get; }
 
-    public abstract RoutingId SpotRid { get; }
+    public abstract string SpotId { get; }
 }
 
 public interface IZLinkSpotHandleResolver
 {
     ValueTask<SpotHandle?> ResolveSpotHandleAsync(
         string meshName,
-        RoutingId spotRid,
+        string spotId,
         CancellationToken cancellationToken = default);
 }
 

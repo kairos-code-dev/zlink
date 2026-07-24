@@ -11,9 +11,7 @@
 
 ```ts
 export type ActorId = string;
-export type SpotRid = RoutingId;
-export type ZLinkPlacementProfile = string;
-export type ZLinkAffinityKey = string;
+export type SpotId = string;
 
 export interface ActorRef {
     readonly actorId: ActorId;
@@ -23,7 +21,7 @@ export interface ActorRef {
 }
 
 export interface SpotRef {
-    readonly spotRid: SpotRid;
+    readonly spotId: SpotId;
     readonly objectGeneration: bigint;
     readonly meshName: string;
     readonly nodeRid: RoutingId;
@@ -35,10 +33,21 @@ export declare enum ZLinkObjectRole {
     Server = "server"
 }
 
-export interface ZLinkObjectPlacementOptions {
-    readonly placementProfiles?: readonly ZLinkPlacementProfile[];
-    readonly maxActiveObjects?: number;
-    readonly maxPendingActivations?: number;
+export interface ZLinkActorFactoryOptions {
+}
+
+export declare enum ZLinkUserSpotExecutionMode {
+    SpotWide = "spot_wide",
+    PerActor = "per_actor"
+}
+
+export interface ZLinkUserSpotFactoryOptions {
+    readonly stableTypeLimit?: number;
+    readonly executionMode?: ZLinkUserSpotExecutionMode;
+}
+
+export interface ZLinkInstanceSpotFactoryOptions {
+    readonly stableTypeLimit?: number;
 }
 
 export declare function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean;
@@ -122,7 +131,7 @@ export interface ZLinkBoundSessionSendCall {
 
 export interface ZLinkChannelClient {
     sendToChannel(channelName: string, message: unknown): ZLinkSendCall;
-    requestToChannel(channelName: string, request: unknown): ZLinkRequestCall;
+    requestToChannel(channelName: string, request: unknown): ZLinkChannelRequestCall;
 }
 
 export interface ZLinkMeshPeerConnection {
@@ -177,7 +186,9 @@ export interface ZLinkMeshNodeBuilder {
     routingId(routingId: RoutingId): this;
     setRoutingIdPrefix(prefix: string): this;
     setPlacementWeight(weight: number): this;
-    setObjectCapacity(maxActiveObjects: number, maxPendingActivations: number): this;
+    setActorLimit(limit: number): this;
+    setSpotLimit(limit: number): this;
+    setActivationConcurrency(limit: number): this;
     objects(): ZLinkMeshObjectRoleBuilder;
     configureRouterSocket(): ZLinkMeshNodeSocketConfig;
     configureSpotPublisher(): ZLinkSpotPublisherConfig;
@@ -200,17 +211,17 @@ export interface ZLinkMeshObjectServerBuilder {
     addSpotFactory<TSpot extends ZLinkSpot>(
         spotType: string,
         implementation: Type<TSpot>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkUserSpotFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TSpot>): this;
     addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
         instanceSpotType: string,
         implementation: Type<TSpot>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkInstanceSpotFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TSpot>): this;
     addActorFactory<TActor extends ZLinkActor>(
         actorType: string,
         factoryType: Type<ZLinkActorFactory<TActor>>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkActorFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TActor>): this;
 }
 
@@ -280,6 +291,14 @@ local 우선순위나 remote 제외는 없다. Local-only 구성은 Location Sto
 bound endpoint를 peer source로 사용한다. Local Server를 선택해도 Client DEALER에서 Server ROUTER로 실제
 transport message를 전달하고 handler 직접 호출로 codec, HWM, timeout, cancellation, correlation 또는
 terminal completion을 우회하지 않는다.
+
+RouteMesh Channel Server, ClientServer Server와 node-wide placement의 public weight는 signed integer로
+검증하는 JavaScript `number`다. 허용 범위는 `0..10000`, 기본값은 `100`이며 정수가 아니거나 범위 밖인
+startup·runtime 설정은 configuration error다. `1..10000`은 eligible target 사이의 상대적 선택 비중이며
+weight 0은 해당 기능의 새 target 선택에서만 제외한다.
+Runtime 변경은 descriptor revision으로 순서화하며 이미 제출했거나 reservation을 완료한 operation에는
+적용하지 않는다. Readiness, drain과 typed capacity를 먼저 적용한 뒤 positive weight 합계를 overflow 없이
+최소 64-bit integer 범위에서 계산한다. Logical Multicast는 positive member를 각각 한 번만 포함한다.
 
 Actor와 User·Instance Spot의 relocation policy는 factory 등록과 함께 전달한다. Generic policy type과
 Disabled·Recreate는 유지한다. Snapshot policy는 adapter `Type` 하나만 보유한다. Actor factory에는
@@ -358,9 +377,23 @@ manager를 제공하고 `objects().server()`는 그 기능과 factory·Entry Spo
 선택하거나 factory를 Server builder 밖에서 등록하면 `InvalidConfiguration`이다. Client 또는 Server role은
 Location Store가 필요하다.
 
+Entry Spot ID를 설정하는 builder member는 제공하지 않는다. Object Server는 MeshNode diagnostic prefix를
+사용해 `<prefix>-entry-<uuid-v4>` 형식의 RID를 lifecycle마다 발급한다. `<uuid-v4>`는 RFC 4122 UUID v4의
+lowercase canonical 36-character `8-4-4-4-12` 표현이며 MeshNode RID의 UUID와 독립적으로 발급한다. 같은
+lifecycle에서는 유지하고 replacement lifecycle에서는 새 UUID를 발급한다. Global Spot namespace의 첫
+active conflict에서 기존 record를 변경하지 않고 socket bind 전에 `RoutingIdConflict`로 startup을 실패한다.
+
 모든 User·Instance Spot과 Actor factory는 relocation policy를 명시해야 한다. 생략을 Disabled로 해석하지 않는다.
-Placement profile은 UTF-8 1..255 bytes이며 factory별 capacity가 없으면 MeshNode의 object capacity를 사용한다.
-Placement weight는 양수이고 active limit은 양수, pending limit은 0 이상이다.
+User Spot execution mode는 factory registration에서 고정하며
+생략하면 `SpotWide`다. `PerActor`에서는 Actor별 lane, Spot direct·lifecycle lane과 timer별 lane이 독립적으로
+진행하고 close·relocation·snapshot은 모든 lane의 active claim이 끝난 all-lane barrier에서만 진행한다.
+정의되지 않은 execution mode 값은 startup 전에 `InvalidConfiguration`이다.
+
+Node Actor limit과 Spot limit, User·Instance Spot stable-type limit의 기본값 `0`은 제한 없음을 뜻한다.
+양수는 population 상한이고 음수는 startup 전에 `InvalidConfiguration`이다. Actor stable-type limit은
+제공하지 않는다. Activation concurrency는 기본값 128인 별도 process-local gate이며 양수만 허용한다.
+모든 population limit과 activation concurrency limit은 MeshNode lifecycle 시작 전에 고정하고 실행 중에
+변경하지 않는다.
 
 ## 3. Handler metadata와 dispatch option
 

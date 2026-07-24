@@ -71,34 +71,4 @@ inline std::string placement_value (std::string value,
 
 } // namespace detail
 
-class placement_profile_t final
-{
-  public:
-    explicit placement_profile_t (std::string value) :
-        _value (detail::placement_value (
-          std::move (value), "placement profile"))
-    {
-    }
-
-    std::string_view value () const noexcept { return _value; }
-
-  private:
-    std::string _value;
-};
-
-class affinity_key_t final
-{
-  public:
-    explicit affinity_key_t (std::string value) :
-        _value (detail::placement_value (
-          std::move (value), "affinity key"))
-    {
-    }
-
-    std::string_view value () const noexcept { return _value; }
-
-  private:
-    std::string _value;
-};
-
 } // namespace zlink::framework

@@ -244,8 +244,8 @@ public sealed class ClientServerChannelRuntimeTests
     public async Task AutomaticClient_SelectsAcrossPositiveWeightReadyServers()
     {
         var store = new ZLinkInMemoryLocationStore();
-        await using var first = CreateAutomaticServer(store, "first");
-        await using var second = CreateAutomaticServer(store, "second");
+        await using var first = CreateAutomaticServer(store, "first", weight: 100);
+        await using var second = CreateAutomaticServer(store, "second", weight: 300);
         await using var excluded = CreateAutomaticServer(store, "excluded", weight: 0);
         await using var client = CreateAutomaticClient(store);
         var providers = new[] { first, second, excluded, client };
@@ -279,7 +279,7 @@ public sealed class ClientServerChannelRuntimeTests
                     exception);
             }
             var route = client.GetRequiredService<IZLinkRouteClient>();
-            var selected = new HashSet<string>(StringComparer.Ordinal);
+            var selected = new Dictionary<string, int>(StringComparer.Ordinal);
             for (var index = 0; index < 12; index++)
             {
                 var reply = await route.RequestToChannel(
@@ -287,12 +287,48 @@ public sealed class ClientServerChannelRuntimeTests
                         new EchoRequest(index.ToString()))
                     .Timeout(TimeSpan.FromSeconds(5))
                     .Async<EchoReply>();
-                selected.Add(reply.Value.Split(':', 2)[0]);
+                var server = reply.Value.Split(':', 2)[0];
+                selected[server] = selected.GetValueOrDefault(server) + 1;
             }
 
             Assert.Equal(
                 new[] { "first", "second" },
-                selected.Order(StringComparer.Ordinal));
+                selected.Keys.Order(StringComparer.Ordinal));
+            Assert.Equal(3, selected["first"]);
+            Assert.Equal(9, selected["second"]);
+
+            var runtimeOptions =
+                first.GetRequiredService<IZLinkRouteMeshRuntimeOptions>();
+            runtimeOptions.Channel("work").Weight = 0;
+            Assert.Throws<ZLinkConfigurationException>(
+                () => runtimeOptions.Channel("work").Weight = 10_001);
+            await WaitUntilAsync(
+                () => clientTransport.ReadyCount == 1,
+                TimeSpan.FromSeconds(5));
+            for (var index = 0; index < 4; index++)
+            {
+                var reply = await route.RequestToChannel(
+                        "work",
+                        new EchoRequest($"after-{index}"))
+                    .Timeout(TimeSpan.FromSeconds(5))
+                    .Async<EchoReply>();
+                Assert.StartsWith("second:", reply.Value);
+            }
+            var ownerId = first.GetRequiredService<ZLinkLocationRuntime>()
+                .OwnerId;
+            ZLinkClientServerServerDescriptor? updated = null;
+            var updateDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (DateTime.UtcNow < updateDeadline)
+            {
+                updated = (await store.ListClientServersAsync(
+                        "work",
+                        new ZLinkPageRequest(16))).Items
+                    .Single(row => row.OwnerId == ownerId);
+                if (updated.Weight == 0)
+                    break;
+                await Task.Delay(10);
+            }
+            Assert.Equal(0, updated?.Weight);
         }
         finally
         {

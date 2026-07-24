@@ -120,7 +120,10 @@ public final class ZLinkServiceTopologyRegistry {
     }
 
     private Optional<Peer> select(String key, List<WeightedPeer> eligible) {
-        long total = eligible.stream().mapToLong(WeightedPeer::weight).sum();
+        long total = 0;
+        for (WeightedPeer candidate : eligible) {
+            total = Math.addExact(total, candidate.weight());
+        }
         if (total == 0) {
             return Optional.empty();
         }
@@ -129,7 +132,7 @@ public final class ZLinkServiceTopologyRegistry {
         long selected = Math.floorMod(cursor, total);
         long offset = 0;
         for (WeightedPeer value : eligible) {
-            offset += value.weight();
+            offset = Math.addExact(offset, value.weight());
             if (selected < offset) {
                 return Optional.of(value.peer());
             }

@@ -21,6 +21,7 @@ class ZLinkMeshNodeRuntimeTest {
     void startAppliesIdentityTopologyAndPeersBeforeOwningLifecycle() {
         MeshNodeRegistration registration = new MeshNodeRegistration("game");
         registration.setRoutingId(RoutingId.from("game-1"));
+        registration.setPlacementWeight(300);
         registration.listen("inproc://game-1");
         registration.channelName("orders").setWeight(2);
         registration.peerConnections().connect(
@@ -38,6 +39,7 @@ class ZLinkMeshNodeRuntimeTest {
             assertEquals(List.of(
                 "routing-id:game-1",
                 "bind:inproc://game-1",
+                "placement-weight:300",
                 "channel:orders",
                 "weight:orders:2",
                 "spot-node",
@@ -86,6 +88,9 @@ class ZLinkMeshNodeRuntimeTest {
         }
         @Override public void setChannelWeight(String channelName, int weight) {
             calls.add("weight:" + channelName + ":" + weight);
+        }
+        @Override public void setPlacementWeight(int weight) {
+            calls.add("placement-weight:" + weight);
         }
         @Override public void setRouterHighWaterMark(int value) {
             routerHighWaterMark = value;

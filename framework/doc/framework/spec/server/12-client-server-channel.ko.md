@@ -76,9 +76,11 @@ RouteMesh peer admission으로 변환하지 않는다. Manual과 automatic sourc
 
 ## 4. Weight와 대상 선택
 
-Server weight 범위는 `0..100`이고 기본값은 `100`이다. Positive weight의 ready server는 weight 비율을
-반영해 선택하며 같은 weight의 server는 순환 방식으로 선택한다. Weight `0` 또는 draining server는 새
-send와 request의 대상에서 제외한다.
+Server weight는 signed integer `0..10000`이고 기본값은 `100`이다. `1..10000`은 eligible server 사이의
+상대적 선택 비중이다. Startup 설정이나 runtime 변경에 범위 밖 값을 지정하면 configuration error다.
+Positive weight의 ready server는 weight 비율을 반영해 선택하며 같은 weight의 server는 순환 방식으로
+선택한다. Weight `0` 또는 draining server는 새 send와 request의 대상에서 제외한다. Framework는 readiness,
+drain과 service eligibility를 먼저 적용한 뒤 남은 weight 합계를 최소 64-bit 정수로 계산한다.
 
 같은 process에 등록한 local Server도 remote Server와 같은 candidate 집합에 포함한다. Listener와 service
 admission을 마쳐 ready이고, weight가 양수이며, draining 상태가 아닐 때만 선택한다. Local이라는 이유로
@@ -92,6 +94,7 @@ Server가 request를 실행한 뒤 reply만 전달되지 않았을 수 있기 �
 
 Descriptor의 weight 또는 drain state가 바뀌면 revision을 증가시킨다. Client는 같은 lifecycle generation의
 더 큰 revision만 적용하며 낮은 revision으로 ready target 집합을 되돌리지 않는다.
+새 revision은 이후 선택에만 적용하며 이미 제출한 send·request에는 소급 적용하지 않는다.
 
 Local Server의 runtime weight 변경은 ChannelName으로 대상을 지정한다. Server RID와 endpoint는 remote
 target을 구분하는 관측 identity이며 application이 local weight 변경 대상으로 선택하지 않는다.
@@ -140,6 +143,8 @@ lease를 갱신하지 못해 fencing deadline에 도달하면 새 업무 admissi
 - 같은 process의 Client와 Server만 등록한 local-only 구성은 location store나 manual endpoint 없이 실제
   transport admission을 거쳐 ready target을 만든다.
 - 같은 ChannelName의 여러 server가 weight, weight `0`과 drain state를 반영해 선택된다.
+- `0`, 기본값 `100`과 상한 `10000`을 허용하고 `-1`, `10001`을 startup과 runtime 변경에서 거부한다.
+- Service eligibility를 weight보다 먼저 적용하고 후보 합계를 최소 64-bit 정수로 overflow 없이 계산한다.
 - Local Server도 remote Server와 같은 readiness·weight·drain 규칙으로 선택하며 실제 transport를 거쳐
   handler에 도달한다.
 - Automatic discovery가 전용 ClientServer server descriptor를 사용하며 MeshNode descriptor와 섞이지 않는다.

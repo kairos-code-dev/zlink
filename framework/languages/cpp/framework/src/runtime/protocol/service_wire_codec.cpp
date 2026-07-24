@@ -376,7 +376,7 @@ encode_channel_send_header (const std::string &channel_name)
 
 std::vector<std::uint8_t> encode_spot_message_header (
   command kind,
-  const std::vector<std::uint8_t> &source_spot_routing_id,
+  const std::string &source_spot_id,
   const spot_route_fence_t &target,
   std::optional<std::uint64_t> correlation)
 {
@@ -395,8 +395,8 @@ std::vector<std::uint8_t> encode_spot_message_header (
     if (correlation) {
         append_u64 (result, *correlation);
     }
-    append_bytes8 (result, source_spot_routing_id, "source Spot RID");
-    append_bytes8 (result, target.spot_routing_id, "target Spot RID");
+    append_text8 (result, source_spot_id, "source SpotId");
+    append_text8 (result, target.spot_id, "target SpotId");
     append_u64 (result, target.object_generation);
     append_bytes8 (
       result, target.target_node_routing_id, "target node RID");
@@ -426,10 +426,10 @@ spot_message_header_t decode_spot_message_header (
     }
     spot_message_header_t result;
     result.correlation = correlation;
-    result.source_spot_routing_id =
-      read_bytes8 (bytes, offset, "source Spot RID");
-    result.target.spot_routing_id =
-      read_bytes8 (bytes, offset, "target Spot RID");
+    result.source_spot_id =
+      read_text8 (bytes, offset, "source SpotId");
+    result.target.spot_id =
+      read_text8 (bytes, offset, "target SpotId");
     result.target.object_generation = read_u64 (bytes, offset);
     result.target.target_node_routing_id =
       read_bytes8 (bytes, offset, "target node RID");
@@ -562,7 +562,7 @@ std::vector<std::uint8_t> encode_user_spot_create_header (
     append_bytes8 (
       bytes, record.source_node_routing_id, "source node RID");
     append_u64 (bytes, record.source_node_generation);
-    append_bytes8 (bytes, record.spot_routing_id, "spot RID");
+    append_text8 (bytes, record.spot_id, "spot ID");
     append_text8 (bytes, record.stable_type, "stable type");
     append_text8 (
       bytes, record.reservation.reservation_id, "reservation ID");
@@ -601,7 +601,7 @@ user_spot_create_header_t decode_user_spot_create_header (
     record.source_node_routing_id =
       read_bytes8 (bytes, offset, "source node RID");
     record.source_node_generation = read_u64 (bytes, offset);
-    record.spot_routing_id = read_bytes8 (bytes, offset, "spot RID");
+    record.spot_id = read_text8 (bytes, offset, "spot ID");
     record.stable_type = read_text8 (bytes, offset, "stable type");
     record.reservation.reservation_id =
       read_text8 (bytes, offset, "reservation ID");
@@ -663,7 +663,7 @@ std::vector<std::uint8_t> encode_user_spot_close_header (
       bytes, record.source_node_routing_id, "source node RID");
     append_u64 (bytes, record.source_node_generation);
     std::vector<std::uint8_t> fence;
-    append_bytes8 (fence, record.target.spot_routing_id, "spot RID");
+    append_text8 (fence, record.target.spot_id, "spot ID");
     append_u64 (fence, record.target.object_generation);
     append_bytes8 (
       fence, record.target.target_node_routing_id, "target node RID");
@@ -709,8 +709,8 @@ user_spot_close_header_t decode_user_spot_close_header (
     }
     const auto fence_end = offset + fence_size;
     const auto fence_bytes = bytes.first (fence_end);
-    record.target.spot_routing_id =
-      read_bytes8 (fence_bytes, offset, "spot RID");
+    record.target.spot_id =
+      read_text8 (fence_bytes, offset, "spot ID");
     record.target.object_generation = read_u64 (fence_bytes, offset);
     record.target.target_node_routing_id =
       read_bytes8 (fence_bytes, offset, "target node RID");
@@ -847,7 +847,9 @@ std::vector<std::uint8_t> encode_route_mesh_admission (
     append_u16 (route, static_cast<std::uint16_t> (descriptor.channels.size ()));
     for (const auto &channel : descriptor.channels) {
         append_text8 (route, channel.name, "channel name");
-        append_u32 (route, channel.weight);
+        append_u32 (
+          route,
+          static_cast<std::uint32_t> (channel.weight));
     }
 
     std::vector<std::uint8_t> extension;
@@ -878,7 +880,8 @@ std::vector<std::uint8_t> encode_route_mesh_admission (
     for (const auto &[id, value] :
          std::array<std::pair<std::uint8_t, std::uint32_t>, 5>{
            std::pair<std::uint8_t, std::uint32_t>{
-             8, descriptor.placement_weight},
+             8, static_cast<std::uint32_t> (
+                  descriptor.placement_weight)},
            {9, descriptor.active_capacity_limit},
            {10, descriptor.pending_capacity_limit},
            {11, descriptor.active_capacity_used},
@@ -930,9 +933,14 @@ mesh::service_node_descriptor_t decode_route_mesh_admission (
     const auto channel_count = read_u16 (bytes, offset);
     result.channels.reserve (channel_count);
     for (std::uint16_t index = 0; index < channel_count; ++index) {
+        auto name =
+          read_text8 (bytes, offset, "channel name");
+        const auto weight = read_u32 (bytes, offset);
+        if (weight > 10000)
+            throw service_wire_error_t (
+              "channel weight is outside 0..10000");
         result.channels.push_back (
-          {read_text8 (bytes, offset, "channel name"),
-           read_u32 (bytes, offset)});
+          {std::move (name), static_cast<int> (weight)});
     }
 
     const auto extension_length = read_u32 (bytes, offset);
@@ -996,7 +1004,8 @@ mesh::service_node_descriptor_t decode_route_mesh_admission (
                 required |= 1u << 3u;
                 break;
             case 8:
-                result.placement_weight = read_u32 (value, value_offset);
+                result.placement_weight = static_cast<int> (
+                  read_u32 (value, value_offset));
                 required |= 1u << 4u;
                 break;
             case 9:
@@ -1111,7 +1120,7 @@ std::vector<std::uint8_t> encode_client_server_server_admission (
 {
     validate_admission_kind (kind);
     if (admission.lifecycle_generation == 0
-        || admission.descriptor_revision == 0 || admission.weight > 100
+        || admission.descriptor_revision == 0 || admission.weight > 10000
         || admission.effective_max_message_bytes == 0) {
         throw service_wire_error_t (
           "invalid ClientServer server descriptor");
@@ -1190,7 +1199,7 @@ client_server_server_admission_t decode_client_server_server_admission (
     result.advertised_endpoint =
       read_text16 (bytes, offset, "advertised endpoint");
     if (result.lifecycle_generation == 0
-        || result.descriptor_revision == 0 || result.weight > 100
+        || result.descriptor_revision == 0 || result.weight > 10000
         || result.effective_max_message_bytes == 0
         || offset != bytes.size ()) {
         throw service_wire_error_t (
@@ -1286,7 +1295,7 @@ std::vector<std::uint8_t> encode_user_spot_create_reply (
   std::uint32_t terminal_result,
   std::uint32_t failure_code,
   user_spot_create_result_t result,
-  const std::vector<std::uint8_t> &spot_routing_id,
+  const std::string &spot_id,
   std::uint64_t object_generation)
 {
     auto bytes =
@@ -1301,7 +1310,7 @@ std::vector<std::uint8_t> encode_user_spot_create_reply (
           "invalid User Spot create success reply");
     }
     bytes.push_back (result_value);
-    append_bytes8 (bytes, spot_routing_id, "spot RID");
+    append_text8 (bytes, spot_id, "spot ID");
     append_u64 (bytes, object_generation);
     return bytes;
 }
@@ -1332,8 +1341,8 @@ user_spot_create_reply_t decode_user_spot_create_reply (
     }
     reply.result =
       static_cast<user_spot_create_result_t> (bytes[offset++]);
-    reply.spot_routing_id =
-      read_bytes8 (bytes, offset, "spot RID");
+    reply.spot_id =
+      read_text8 (bytes, offset, "spot ID");
     reply.object_generation = read_u64 (bytes, offset);
     if (reply.object_generation == 0 || offset != bytes.size ()) {
         throw service_wire_error_t (

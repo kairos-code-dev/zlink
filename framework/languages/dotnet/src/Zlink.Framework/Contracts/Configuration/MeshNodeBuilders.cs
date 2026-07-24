@@ -97,8 +97,6 @@ public interface IZLinkMeshObjectClientBuilder
 
 public sealed record ZLinkObjectPlacementOptions
 {
-    public IReadOnlyCollection<string> PlacementProfiles { get; init; } = [];
-
     public int? MaxActiveObjects { get; init; }
 
     public int? MaxPendingActivations { get; init; }
@@ -147,8 +145,6 @@ public interface IZLinkMeshNodeBuilder : IZLinkMeshObjectServerBuilder
         where THandler : class;
 
     IZLinkEntrySpotOptions ConfigureEntrySpot();
-
-    IZLinkMeshNodeBuilder SetEntrySpotRoutingId(RoutingId routingId);
 
     IZLinkMeshNodeBuilder AddSpotFactory<TSpot>()
         where TSpot : IZLinkSpot;

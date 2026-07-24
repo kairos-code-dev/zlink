@@ -29,8 +29,28 @@ public interface ZLinkAuthorityStore {
         byte[] readyPayload,
         ZLinkStoreCancellation cancellation);
 
+    CompletionStage<ZLinkObjectCommitResult> commit(
+        ZLinkObjectReservation reservation,
+        byte[] readyPayload,
+        ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation);
+
+    CompletionStage<ZLinkObjectRejectResult> reject(
+        ZLinkObjectReservation reservation,
+        ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation);
+
     CompletionStage<ZLinkObjectAbortResult> abort(
         ZLinkObjectReservation reservation,
+        ZLinkStoreCancellation cancellation);
+
+    CompletionStage<ZLinkObjectAbortResult> abort(
+        ZLinkObjectReservation reservation,
+        ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation);
+
+    CompletionStage<ZLinkCreationTerminalReadResult> readCreationTerminal(
+        ZLinkCreationOperationIdentity operation,
         ZLinkStoreCancellation cancellation);
 
     CompletionStage<ZLinkRelocationCapacityReserveResult>

@@ -14,7 +14,7 @@ public interface Actor extends AutoCloseable {
     ActorRef ref();
 
     /** Joins the given spot. */
-    OperationId joinSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
+    OperationId joinSpot(RoutingId targetNodeRid, RoutingId targetSpotId,
                          long targetSpotGeneration, List<Message> creationParts,
                          Duration timeout);
 

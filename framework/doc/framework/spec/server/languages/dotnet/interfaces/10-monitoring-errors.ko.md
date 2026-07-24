@@ -299,7 +299,7 @@ public abstract record ZLinkLocationActorEvent : IZLinkRuntimeEvent
 }
 
 public readonly record struct ZLinkSpotTimerDiagnostic(
-    RoutingId SpotRid,
+    string SpotId,
     bool IsEntrySpot,
     string TimerName,
     string HandlerType,
@@ -406,7 +406,7 @@ public sealed record ZLinkSpotNodePeerEntry(
     ZLinkSpotPeerSource Source,
     ZLinkSpotPeerKind Kind,
     ZLinkSpotPeerState State,
-    uint Weight,
+    int Weight,
     ulong ConnectedSinceMs,
     ulong LastChangedMs);
 

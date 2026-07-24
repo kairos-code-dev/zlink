@@ -208,7 +208,7 @@ public sealed class ActorTransferTests
         return new ZLinkBackendRouteReceived(
             owned,
             sourceNodeRid: RoutingId.From("transfer-source"),
-            spotRid: RoutingId.From("transfer-target"),
+            spotId: RoutingId.From("transfer-target"),
             requestSeq: null,
             reply: null);
     }
@@ -250,19 +250,18 @@ public sealed class ActorTransferTests
     {
         public string MeshName => "play";
 
-        public RoutingId? SpotRid => null;
+        public string? SpotId => null;
 
         public IZLinkBoundSession BoundSession => throw new NotSupportedException();
 
         public IZLinkActorJoinSpotCall JoinSpot(
-            RoutingId spotRid,
+            string spotId,
             ZLinkMessage request)
         {
             throw new NotSupportedException();
         }
 
         public IZLinkActorJoinEntrySpotCall JoinEntrySpot(
-            RoutingId spotNodeRid,
             ZLinkMessage request)
         {
             throw new NotSupportedException();

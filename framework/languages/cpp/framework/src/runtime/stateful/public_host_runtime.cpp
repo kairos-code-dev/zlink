@@ -291,15 +291,14 @@ spot_status_t spot_handle_t::status () const
     return {_object.object_generation};
 }
 
-zlink::routing_id_t spot_handle_t::routing_id () const
+const std::string &spot_handle_t::spot_id () const noexcept
 {
-    return zlink::routing_id_t::from (
-      std::vector<std::uint8_t> (_object.key.begin (), _object.key.end ()));
+    return _object.key;
 }
 
 zlink::submit_result_t spot_handle_t::send_to_spot (
   const zlink::routing_id_t &target_node_rid,
-  const zlink::routing_id_t &target_spot_rid,
+  const std::string &target_spot_id,
   std::uint64_t target_spot_generation,
   const std::vector<zlink::message_t> &parts,
   zlink::send_flags_t,
@@ -314,19 +313,19 @@ zlink::submit_result_t spot_handle_t::send_to_spot (
       peer ? peer->descriptor.lifecycle_generation
            : _host->status ().lifecycle_generation ();
     const auto target = protocol::spot_route_fence_t{
-      target_spot_rid.to_bytes (),
+      target_spot_id,
       target_spot_generation,
       target_node_rid.to_bytes (),
       target_node_generation,
       target_spot_generation};
     return submitted (_host->transport ().send_to_spot (
-      target_node_rid.to_bytes (), routing_id ().to_bytes (), target,
+      target_node_rid.to_bytes (), spot_id (), target,
       _host->encode_application (parts, metadata)));
 }
 
 zlink::submit_result_t spot_handle_t::request_to_spot (
   const zlink::routing_id_t &target_node_rid,
-  const zlink::routing_id_t &target_spot_rid,
+  const std::string &target_spot_id,
   std::uint64_t target_spot_generation,
   const std::vector<zlink::message_t> &parts,
   operation_id_t &operation,
@@ -344,14 +343,14 @@ zlink::submit_result_t spot_handle_t::request_to_spot (
       peer ? peer->descriptor.lifecycle_generation
            : _host->status ().lifecycle_generation ();
     const auto target = protocol::spot_route_fence_t{
-      target_spot_rid.to_bytes (),
+      target_spot_id,
       target_spot_generation,
       target_node_rid.to_bytes (),
       target_node_generation,
       target_spot_generation};
     const auto host = _host;
     return submitted (_host->transport ().request_to_spot (
-      target_node_rid.to_bytes (), routing_id ().to_bytes (), target,
+      target_node_rid.to_bytes (), spot_id (), target,
       _host->encode_application (parts, metadata), timeout,
       [host, operation] (foundation::operation_terminal_t terminal,
                          std::vector<std::uint8_t> payload) mutable {
@@ -366,11 +365,39 @@ zlink::submit_result_t spot_handle_t::publish (
   const std::string &,
   const std::vector<zlink::message_t> &parts,
   zlink::send_flags_t,
-  std::span<const std::uint8_t>,
-  publish_detail_t *)
+  std::span<const std::uint8_t> metadata,
+  publish_detail_t *detail)
 {
-    return !_host ? zlink::submit_result_t::invalid_handle
-                  : _host->send_to_channel (channel_name, parts);
+    if (!_host)
+        return zlink::submit_result_t::invalid_handle;
+    const auto targets =
+      _host->transport ().topology ().multicast_targets (
+        channel_name);
+    if (detail)
+        detail->snapshot_remote_target_count =
+          static_cast<std::uint64_t> (targets.size ());
+    if (targets.empty ())
+        return zlink::submit_result_t::not_connected;
+    const auto encoded =
+      _host->encode_application (parts, metadata);
+    std::uint64_t admitted = 0;
+    std::uint64_t unreachable = 0;
+    for (const auto &target : targets) {
+        if (_host->transport ().send_to_node (
+              target.descriptor.node_routing_id,
+              encoded))
+            ++admitted;
+        else
+            ++unreachable;
+    }
+    if (detail) {
+        detail->admitted_remote_target_count = admitted;
+        detail->unreachable_remote_target_count =
+          unreachable;
+    }
+    return admitted != 0
+             ? zlink::submit_result_t::ok
+             : zlink::submit_result_t::not_connected;
 }
 
 void spot_handle_t::set_subscription (const std::string &,
@@ -415,14 +442,13 @@ zlink::submit_result_t actor_handle_t::join_entry_spot (
 {
     return join_spot (
       target_node_rid,
-      zlink::routing_id_t::from (
-        target_node_rid.to_string () + ":entry"),
+      target_node_rid.to_string () + "-entry",
       1, parts, operation, timeout);
 }
 
 zlink::submit_result_t actor_handle_t::join_spot (
   const zlink::routing_id_t &target_node_rid,
-  const zlink::routing_id_t &target_spot_rid,
+  const std::string &target_spot_id,
   std::uint64_t target_spot_generation,
   const std::vector<zlink::message_t> &,
   operation_id_t &operation,
@@ -432,12 +458,12 @@ zlink::submit_result_t actor_handle_t::join_spot (
         return zlink::submit_result_t::invalid_handle;
     }
     operation = _host->next_operation ();
-    auto target = _host->resolve_spot (target_spot_rid);
+    auto target = _host->resolve_spot (target_spot_id);
     if (!target
         && target_node_rid.to_bytes ()
              == _host->status ().routing_id ().to_bytes ()) {
-        (void) _host->get_or_create_spot (target_spot_rid);
-        target = _host->resolve_spot (target_spot_rid);
+        (void) _host->get_or_create_spot (target_spot_id);
+        target = _host->resolve_spot (target_spot_id);
     }
     receive_record_t completion;
     completion.kind = record_kind_t::completion;
@@ -630,8 +656,8 @@ void public_host_runtime_t::set_channel_weight (
   const std::string &channel_name,
   std::uint32_t weight)
 {
-    if (weight > 100) {
-        throw std::invalid_argument ("channel weight exceeds 100");
+    if (weight > 10000) {
+        throw std::invalid_argument ("channel weight exceeds 10000");
     }
     auto descriptor = _transport->topology ().local_descriptor ();
     const auto found = std::find_if (
@@ -776,15 +802,14 @@ bool public_host_runtime_t::close_user_spot_remote (
 
 spot_handle_t public_host_runtime_t::entry_spot ()
 {
-    return get_or_create_spot (zlink::routing_id_t::from (
-      status ().routing_id ().to_string () + ":" + _options.entry_spot_name));
+    return get_or_create_spot (
+      status ().routing_id ().to_string () + "-entry-" + _options.entry_spot_name);
 }
 
 spot_handle_t public_host_runtime_t::get_or_create_spot (
-  const zlink::routing_id_t &routing_id)
+  std::string spot_id)
 {
-    const auto key_bytes = routing_id.to_bytes ();
-    const std::string key (key_bytes.begin (), key_bytes.end ());
+    const auto &key = spot_id;
     {
         std::lock_guard lock (_mutex);
         const auto found = _spots.find (key);
@@ -1087,7 +1112,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                            std::uint32_t failure_code,
                            protocol::user_spot_create_result_t
                              result,
-                           const std::vector<std::uint8_t> &spot,
+                           const std::string &spot,
                            std::uint64_t generation,
                            std::optional<
                              protocol::application_payload_t>
@@ -1141,11 +1166,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                           {}, 0);
                         continue;
                     }
-                    const auto spot_rid =
-                      zlink::routing_id_t::from (
-                        request.spot_routing_id);
-                    const auto global_id =
-                      spot_rid.to_string ();
+                    const auto &global_id = request.spot_id;
                     const auto read =
                       store
                         ->read_authority (
@@ -1265,9 +1286,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                     }
                     const stateful::object_ref_t exact_ref{
                       stateful::object_kind_t::user_spot,
-                      std::string (
-                        request.spot_routing_id.begin (),
-                        request.spot_routing_id.end ()),
+                      request.spot_id,
                       reservation.object_generation,
                       reservation.authority_owner_generation,
                       snapshot->allocation.mesh_name,
@@ -1296,7 +1315,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                           0, 0,
                           protocol::user_spot_create_result_t::
                             existing,
-                          request.spot_routing_id,
+                          request.spot_id,
                           exact_ref.object_generation);
                         continue;
                     }
@@ -1320,7 +1339,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                           0, 0,
                           protocol::user_spot_create_result_t::
                             existing,
-                          request.spot_routing_id,
+                          request.spot_id,
                           exact_ref.object_generation);
                         continue;
                     }
@@ -1398,7 +1417,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                           0, 0,
                           protocol::user_spot_create_result_t::
                             rejected,
-                          request.spot_routing_id,
+                          request.spot_id,
                           exact_ref.object_generation,
                           std::move (
                             materialized.application_reply));
@@ -1484,7 +1503,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                       0, 0,
                       protocol::user_spot_create_result_t::
                         created,
-                      request.spot_routing_id,
+                      request.spot_id,
                       exact_ref.object_generation,
                       std::move (
                         materialized.application_reply));
@@ -1601,10 +1620,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                     terminal (101, 0, false);
                     continue;
                 }
-                const auto spot_rid =
-                  zlink::routing_id_t::from (
-                    request.target.spot_routing_id);
-                const auto global_id = spot_rid.to_string ();
+                const auto &global_id = request.target.spot_id;
                 const auto read =
                   store
                     ->read_authority (
@@ -1658,9 +1674,7 @@ std::size_t public_host_runtime_t::dispatch_user_spot_operations ()
                 }
                 const stateful::object_ref_t exact_ref{
                   stateful::object_kind_t::user_spot,
-                  std::string (
-                    target.spot_routing_id.begin (),
-                    target.spot_routing_id.end ()),
+                  target.spot_id,
                   target.object_generation,
                   target.authority_owner_generation,
                   snapshot->allocation.mesh_name,
@@ -1905,9 +1919,7 @@ std::size_t public_host_runtime_t::dispatch_ready (
                     owner.owner_kind = owner_kind_t::spot;
                     const auto spot = protocol::decode_spot_message_header (
                       mailbox_record.parts.front (), wire.kind);
-                    owner.spot_rid =
-                      zlink::routing_id_t::from (
-                        spot.target.spot_routing_id);
+                    owner.spot_id = spot.target.spot_id;
                 } else if (kind == record_kind_t::actor_send
                            || kind == record_kind_t::actor_request) {
                     owner.owner_kind = owner_kind_t::actor;
@@ -1961,7 +1973,7 @@ bool public_host_runtime_t::prepare_actor_transfer (
   actor_transfer_prepare_result_t &result)
 {
     auto actor = resolve_actor (prepare.actor);
-    auto target = resolve_spot (prepare.target_spot_rid);
+    auto target = resolve_spot (prepare.target_spot_id);
     if (!actor || !target) {
         return false;
     }
@@ -2004,12 +2016,10 @@ public_host_runtime_t::resolve_actor (const actor_ref_t &actor) const
 
 std::optional<stateful::object_ref_t>
 public_host_runtime_t::resolve_spot (
-  const zlink::routing_id_t &spot) const
+  const std::string &spot_id) const
 {
-    const auto bytes = spot.to_bytes ();
-    const std::string key (bytes.begin (), bytes.end ());
     std::lock_guard lock (_mutex);
-    const auto found = _spots.find (key);
+    const auto found = _spots.find (spot_id);
     return found == _spots.end ()
              ? std::optional<stateful::object_ref_t>{}
              : std::make_optional (found->second);

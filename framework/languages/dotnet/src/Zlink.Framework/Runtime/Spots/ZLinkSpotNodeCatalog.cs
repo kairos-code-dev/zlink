@@ -20,9 +20,9 @@ internal sealed class ZLinkSpotNodeCatalog(
         spotChannelName);
 
     private readonly object _gate = new();
-    private readonly Dictionary<RoutingId, TaskCompletionSource<bool>> _closing = [];
-    private readonly Dictionary<RoutingId, PendingSpotCreation> _pending = [];
-    private readonly Dictionary<RoutingId, ZLinkSpotActivation> _spots = [];
+    private readonly Dictionary<string, TaskCompletionSource<bool>> _closing = [];
+    private readonly Dictionary<string, PendingSpotCreation> _pending = [];
+    private readonly Dictionary<string, ZLinkSpotActivation> _spots = [];
     private TaskCompletionSource? _creationsDrained;
     private int _activeCreations;
     private bool _closed;
@@ -33,7 +33,7 @@ internal sealed class ZLinkSpotNodeCatalog(
     {
         var activations = SnapshotActivations();
         foreach (var activation in activations)
-            await CloseAsync(activation.SpotRid, cancellationToken).ConfigureAwait(false);
+            await CloseAsync(activation.SpotId, cancellationToken).ConfigureAwait(false);
 
         lock (_gate) return _spots.Count == 0;
     }
@@ -54,13 +54,13 @@ internal sealed class ZLinkSpotNodeCatalog(
         List<Exception>? failures = null;
         foreach (var activation in activations)
         {
-            var spotRid = activation.SpotRid;
+            var spotId = activation.SpotId;
             TaskCompletionSource<bool> transaction;
             bool ownsTransaction;
             lock (_gate)
             {
-                if (!_spots.ContainsKey(spotRid)) continue;
-                if (_closing.TryGetValue(spotRid, out transaction!))
+                if (!_spots.ContainsKey(spotId)) continue;
+                if (_closing.TryGetValue(spotId, out transaction!))
                 {
                     ownsTransaction = false;
                 }
@@ -68,7 +68,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 {
                     transaction = new TaskCompletionSource<bool>(
                         TaskCreationOptions.RunContinuationsAsynchronously);
-                    _closing.Add(spotRid, transaction);
+                    _closing.Add(spotId, transaction);
                     ownsTransaction = true;
                 }
             }
@@ -77,7 +77,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 {
                     if (ownsTransaction)
                         _ = await ExecuteCloseTransactionAsync(
-                                spotRid,
+                                spotId,
                                 activation,
                                 transaction)
                             .ConfigureAwait(false);
@@ -87,7 +87,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 .ConfigureAwait(false);
 
             bool stillTracked;
-            lock (_gate) stillTracked = _spots.ContainsKey(spotRid);
+            lock (_gate) stillTracked = _spots.ContainsKey(spotId);
             if (stillTracked)
                 await CaptureAsync(() => ForceCloseForShutdownAsync(activation)).ConfigureAwait(false);
         }
@@ -144,12 +144,12 @@ internal sealed class ZLinkSpotNodeCatalog(
 
         foreach (var activation in activations)
         {
-            var spotRid = activation.SpotRid;
+            var spotId = activation.SpotId;
             await CaptureAsync(activation.DisposeAsync).ConfigureAwait(false);
             lock (_gate)
             {
-                _spots.Remove(spotRid);
-                _closing.Remove(spotRid);
+                _spots.Remove(spotId);
+                _closing.Remove(spotId);
             }
         }
 
@@ -188,10 +188,16 @@ internal sealed class ZLinkSpotNodeCatalog(
         ZLinkSpotActivation? activation = null;
         try
         {
-            nativeSpot = node.CreateSpot();
+            var spotId = Guid.NewGuid().ToString("D");
+            nativeSpot = node.GetOrCreateSpot(spotId, out var created);
+            if (!created)
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.SpotIdConflict,
+                    $"Generated User Spot ID '{spotId}' is already active.");
             var creation = await _activationFactory.CreateAsync(
                 spotType,
                 nativeSpot,
+                spotId,
                 request,
                 cancellationToken);
             activation = creation.Activation;
@@ -211,7 +217,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 .ConfigureAwait(false);
             lock (_gate)
             {
-                _spots.Add(activation.SpotRid, activation);
+                _spots.Add(activation.SpotId, activation);
             }
             ZLinkRuntimeMetrics.RecordSpotCreated("user");
 
@@ -237,7 +243,7 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync(
         Type spotType,
-        RoutingId requestedSpotRid,
+        string requestedSpotId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -250,24 +256,24 @@ internal sealed class ZLinkSpotNodeCatalog(
             EnsureSpotTypeRegisteredLocked(spotType);
             EnsureCreationAdmissionOpenLocked();
 
-            if (_spots.TryGetValue(requestedSpotRid, out var existing))
+            if (_spots.TryGetValue(requestedSpotId, out var existing))
             {
-                ThrowIfSpotTypeMismatch(existing.Spot.GetType(), spotType, requestedSpotRid);
+                ThrowIfSpotTypeMismatch(existing.Spot.GetType(), spotType, requestedSpotId);
                 return new ZLinkSpotCreateResult(
                     Reference(existing),
                     ZLinkSpotCreateState.Existing,
                     null);
             }
 
-            if (_pending.TryGetValue(requestedSpotRid, out pending!))
+            if (_pending.TryGetValue(requestedSpotId, out pending!))
             {
-                ThrowIfSpotTypeMismatch(pending.SpotType, spotType, requestedSpotRid);
+                ThrowIfSpotTypeMismatch(pending.SpotType, spotType, requestedSpotId);
             }
             else
             {
                 BeginCreationLocked();
                 pending = new PendingSpotCreation(spotType);
-                _pending.Add(requestedSpotRid, pending);
+                _pending.Add(requestedSpotId, pending);
                 owner = true;
             }
         }
@@ -275,7 +281,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         if (owner)
             _ = CompletePendingCreationAsync(
                 spotType,
-                requestedSpotRid,
+                requestedSpotId,
                 request,
                 pending,
                 runtime.ShutdownToken,
@@ -289,7 +295,7 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     private async ValueTask CompletePendingCreationAsync(
         Type spotType,
-        RoutingId requestedSpotRid,
+        string requestedSpotId,
         ZLinkMessage request,
         PendingSpotCreation pending,
         CancellationToken cancellationToken,
@@ -300,7 +306,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         var factoryOwnsNativeSpot = false;
         try
         {
-            nativeSpot = node.GetOrCreateSpot(requestedSpotRid, out var created);
+            nativeSpot = node.GetOrCreateSpot(requestedSpotId, out var created);
             if (!created)
             {
                 var existingNativeSpot = nativeSpot;
@@ -308,13 +314,14 @@ internal sealed class ZLinkSpotNodeCatalog(
                 await existingNativeSpot.DisposeAsync();
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.SpotCreateFailed,
-                    $"SPOT routing id '{requestedSpotRid}' already exists in core but no framework SPOT is registered.");
+                    $"SPOT routing id '{requestedSpotId}' already exists in core but no framework SPOT is registered.");
             }
 
             factoryOwnsNativeSpot = true;
             var creation = await _activationFactory.CreateAsync(
                 spotType,
                 nativeSpot,
+                requestedSpotId,
                 request,
                 cancellationToken);
             activation = creation.Activation;
@@ -328,7 +335,7 @@ internal sealed class ZLinkSpotNodeCatalog(
                 await DisposeFailedCreationAsync(activation).ConfigureAwait(false);
                 lock (_gate)
                 {
-                    _pending.Remove(requestedSpotRid);
+                    _pending.Remove(requestedSpotId);
                     pending.Complete(rejected);
                 }
                 return;
@@ -345,8 +352,8 @@ internal sealed class ZLinkSpotNodeCatalog(
                 creation.Response.Reply);
             lock (_gate)
             {
-                _pending.Remove(requestedSpotRid);
-                _spots.Add(activation.SpotRid, activation);
+                _pending.Remove(requestedSpotId);
+                _spots.Add(activation.SpotId, activation);
                 pending.Complete(result);
             }
             ZLinkRuntimeMetrics.RecordSpotCreated("user");
@@ -354,7 +361,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         catch (Exception error)
         {
             ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"SPOT '{requestedSpotRid}' creation failed on node '{node.RoutingId}': {error}");
+                $"SPOT '{requestedSpotId}' creation failed on node '{node.RoutingId}': {error}");
             var wrapped = WrapSpotCreateFailed(spotType, error);
             lock (_gate)
             {
@@ -369,7 +376,7 @@ internal sealed class ZLinkSpotNodeCatalog(
             var finalFailure = failures.BuildException()!;
             lock (_gate)
             {
-                _pending.Remove(requestedSpotRid);
+                _pending.Remove(requestedSpotId);
                 pending.Fail(finalFailure);
             }
         }
@@ -381,7 +388,7 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     internal async ValueTask<PreparedReservedSpot> PrepareReservedAsync(
         Type spotType,
-        RoutingId requestedSpotRid,
+        string requestedSpotId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -392,35 +399,35 @@ internal sealed class ZLinkSpotNodeCatalog(
         {
             EnsureSpotTypeRegisteredLocked(spotType);
             EnsureCreationAdmissionOpenLocked();
-            if (_spots.TryGetValue(requestedSpotRid, out var existing))
+            if (_spots.TryGetValue(requestedSpotId, out var existing))
             {
-                ThrowIfSpotTypeMismatch(existing.Spot.GetType(), spotType, requestedSpotRid);
+                ThrowIfSpotTypeMismatch(existing.Spot.GetType(), spotType, requestedSpotId);
                 return new PreparedReservedSpot(existing, true, null);
             }
-            if (_pending.ContainsKey(requestedSpotRid))
+            if (_pending.ContainsKey(requestedSpotId))
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.SpotMoving,
-                    $"SPOT '{requestedSpotRid}' is already being materialized.",
+                    $"SPOT '{requestedSpotId}' is already being materialized.",
                     true);
 
             BeginCreationLocked();
-            _pending.Add(requestedSpotRid, pending);
+            _pending.Add(requestedSpotId, pending);
         }
 
         IZLinkBackendSpot? nativeSpot = null;
         ZLinkSpotActivation? activation = null;
         try
         {
-            nativeSpot = node.GetOrCreateSpot(requestedSpotRid, out var created);
+            nativeSpot = node.GetOrCreateSpot(requestedSpotId, out var created);
             if (!created)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.SpotMoving,
-                    $"SPOT '{requestedSpotRid}' is already materialized.");
+                    $"SPOT '{requestedSpotId}' is already materialized.");
             var creation = await _activationFactory.CreateAsync(
-                    spotType, nativeSpot, request, cancellationToken)
+                    spotType, nativeSpot, requestedSpotId, request, cancellationToken)
                 .ConfigureAwait(false);
             activation = creation.Activation;
-            lock (_gate) _pending.Remove(requestedSpotRid);
+            lock (_gate) _pending.Remove(requestedSpotId);
             EndCreation();
             return new PreparedReservedSpot(
                 activation,
@@ -429,7 +436,7 @@ internal sealed class ZLinkSpotNodeCatalog(
         }
         catch
         {
-            lock (_gate) _pending.Remove(requestedSpotRid);
+            lock (_gate) _pending.Remove(requestedSpotId);
             if (activation is not null)
                 await activation.DisposeAsync().ConfigureAwait(false);
             else if (nativeSpot is not null)
@@ -444,11 +451,11 @@ internal sealed class ZLinkSpotNodeCatalog(
         if (prepared.Existing) return;
         lock (_gate)
         {
-            if (_spots.ContainsKey(prepared.Activation.SpotRid))
+            if (_spots.ContainsKey(prepared.Activation.SpotId))
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.SpotMoving,
-                    $"SPOT '{prepared.Activation.SpotRid}' became visible before publication.");
-            _spots.Add(prepared.Activation.SpotRid, prepared.Activation);
+                    $"SPOT '{prepared.Activation.SpotId}' became visible before publication.");
+            _spots.Add(prepared.Activation.SpotId, prepared.Activation);
         }
         ZLinkRuntimeMetrics.RecordSpotCreated("user");
     }
@@ -459,20 +466,20 @@ internal sealed class ZLinkSpotNodeCatalog(
             await prepared.Activation.DisposeAsync().ConfigureAwait(false);
     }
 
-    internal bool HasActiveActors(RoutingId spotRid)
+    internal bool HasActiveActors(string spotId)
     {
         lock (_gate)
-            return _spots.TryGetValue(spotRid, out var activation)
+            return _spots.TryGetValue(spotId, out var activation)
                    && activation.JoinedActorCount > 0;
     }
 
-    internal ReservedSpotCloseReadiness CloseReadiness(RoutingId spotRid)
+    internal ReservedSpotCloseReadiness CloseReadiness(string spotId)
     {
         lock (_gate)
         {
-            if (!_spots.TryGetValue(spotRid, out var activation))
+            if (!_spots.TryGetValue(spotId, out var activation))
                 return ReservedSpotCloseReadiness.LocalMissing;
-            if (_closing.ContainsKey(spotRid))
+            if (_closing.ContainsKey(spotId))
                 return ReservedSpotCloseReadiness.Closing;
             return activation.JoinedActorCount == 0
                 ? ReservedSpotCloseReadiness.Ready
@@ -482,20 +489,20 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     private static SpotRef Reference(ZLinkSpotActivation activation) =>
         new(
-            activation.SpotRid,
+            activation.SpotId,
             activation.NativeSpot.LifecycleGeneration,
             activation.SpotNodeName,
             activation.NodeRid);
 
     public ValueTask<ZLinkSpotInfo?> GetAsync(
-        RoutingId spotRid,
+        string spotId,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            ZLinkSpotInfo? result = _spots.TryGetValue(spotRid, out var activation)
-                ? new ZLinkSpotInfo(activation.SpotRid)
+            ZLinkSpotInfo? result = _spots.TryGetValue(spotId, out var activation)
+                ? new ZLinkSpotInfo(activation.SpotId)
                 : null;
             return ValueTask.FromResult(result);
         }
@@ -507,15 +514,15 @@ internal sealed class ZLinkSpotNodeCatalog(
         lock (_gate)
         {
             IReadOnlyList<ZLinkSpotInfo> result = _spots.Values
-                .Select(static activation => new ZLinkSpotInfo(activation.SpotRid))
-                .OrderBy(static item => item.SpotRid.ToHex(), StringComparer.Ordinal)
+                .Select(static activation => new ZLinkSpotInfo(activation.SpotId))
+                .OrderBy(static item => item.SpotId, StringComparer.Ordinal)
                 .ToArray();
             return ValueTask.FromResult(result);
         }
     }
 
     public async ValueTask<bool> CloseAsync(
-        RoutingId spotRid,
+        string spotId,
         CancellationToken cancellationToken)
     {
         ZLinkSpotActivation? activation;
@@ -524,17 +531,17 @@ internal sealed class ZLinkSpotNodeCatalog(
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
         {
-            if (_closing.TryGetValue(spotRid, out transaction))
+            if (_closing.TryGetValue(spotId, out transaction))
             {
                 activation = null;
             }
             else
             {
-                if (!_spots.TryGetValue(spotRid, out activation)) return false;
+                if (!_spots.TryGetValue(spotId, out activation)) return false;
 
                 transaction = new TaskCompletionSource<bool>(
                     TaskCreationOptions.RunContinuationsAsynchronously);
-                _closing.Add(spotRid, transaction);
+                _closing.Add(spotId, transaction);
                 ownsTransaction = true;
             }
         }
@@ -548,20 +555,20 @@ internal sealed class ZLinkSpotNodeCatalog(
                     "spot-close-after-current-turn",
                     async _ =>
                     {
-                        await ExecuteCloseTransactionAsync(spotRid, activation!, transaction!)
+                        await ExecuteCloseTransactionAsync(spotId, activation!, transaction!)
                             .ConfigureAwait(false);
                     }))
             {
-                lock (_gate) _closing.Remove(spotRid);
+                lock (_gate) _closing.Remove(spotId);
                 transaction!.TrySetException(new InvalidOperationException(
-                    $"SPOT '{spotRid}' close could not be scheduled in the current runtime generation."));
+                    $"SPOT '{spotId}' close could not be scheduled in the current runtime generation."));
                 return false;
             }
 
             return true;
         }
 
-        return await ExecuteCloseTransactionAsync(spotRid, activation!, transaction!)
+        return await ExecuteCloseTransactionAsync(spotId, activation!, transaction!)
             .ConfigureAwait(false);
     }
 
@@ -577,15 +584,16 @@ internal sealed class ZLinkSpotNodeCatalog(
     {
         if (lifecycle is null) return;
 
-        var spotRid = activation.SpotRid;
+        var spotId = activation.SpotId;
         var status = await lifecycle.SpotLocations.ClaimAsync(
                 spotChannelName,
-                spotRid,
+                spotId,
                 activation.NativeSpot.LifecycleGeneration,
                 spotType.FullName,
                 node.RoutingId,
+                node.MeshStatus().LifecycleGeneration,
                 ZLinkSpotKind.User,
-                deactivate: async ct => _ = await CloseAsync(spotRid, ct).ConfigureAwait(false),
+                deactivate: async ct => _ = await CloseAsync(spotId, ct).ConfigureAwait(false),
                 cancellationToken)
             .ConfigureAwait(false);
         if (status == ZLinkLocationWriteStatus.Stored) return;
@@ -593,14 +601,14 @@ internal sealed class ZLinkSpotNodeCatalog(
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.SpotCreateFailed,
             status == ZLinkLocationWriteStatus.RejectedConflict
-                ? $"SPOT '{spotRid}' location in mesh '{spotChannelName}' is owned by another node."
-                : $"SPOT '{spotRid}' location claim failed because the location store is unavailable.");
+                ? $"SPOT '{spotId}' location in mesh '{spotChannelName}' is owned by another node."
+                : $"SPOT '{spotId}' location claim failed because the location store is unavailable.");
     }
 
-    private async ValueTask ReleaseSpotLocationAsync(RoutingId spotRid)
+    private async ValueTask ReleaseSpotLocationAsync(string spotId)
     {
         if (lifecycle is not null)
-            await lifecycle.SpotLocations.ReleaseAsync(spotChannelName, spotRid).ConfigureAwait(false);
+            await lifecycle.SpotLocations.ReleaseAsync(spotChannelName, spotId).ConfigureAwait(false);
     }
 
     private IReadOnlyCollection<ZLinkSpotActivation> SnapshotActivations()
@@ -612,7 +620,7 @@ internal sealed class ZLinkSpotNodeCatalog(
     }
 
     private async ValueTask<bool> ExecuteCloseTransactionAsync(
-        RoutingId spotRid,
+        string spotId,
         ZLinkSpotActivation activation,
         TaskCompletionSource<bool> transaction)
     {
@@ -621,20 +629,20 @@ internal sealed class ZLinkSpotNodeCatalog(
             if (!await activation.TryCloseIfNoActorsAsync(CancellationToken.None)
                     .ConfigureAwait(false))
             {
-                lock (_gate) _closing.Remove(spotRid);
+                lock (_gate) _closing.Remove(spotId);
                 transaction.TrySetResult(false);
                 return false;
             }
 
             await activation.DisposeAsync().ConfigureAwait(false);
-            await ReleaseSpotLocationAsync(spotRid).ConfigureAwait(false);
+            await ReleaseSpotLocationAsync(spotId).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             lock (_gate)
             {
-                _spots.Remove(spotRid);
-                _closing.Remove(spotRid);
+                _spots.Remove(spotId);
+                _closing.Remove(spotId);
             }
             transaction.TrySetException(exception);
             throw;
@@ -642,8 +650,8 @@ internal sealed class ZLinkSpotNodeCatalog(
 
         lock (_gate)
         {
-            _spots.Remove(spotRid);
-            _closing.Remove(spotRid);
+            _spots.Remove(spotId);
+            _closing.Remove(spotId);
         }
         ZLinkRuntimeMetrics.RecordSpotClosed("user");
 
@@ -663,12 +671,12 @@ internal sealed class ZLinkSpotNodeCatalog(
     {
         var failures = new ZLinkFailureCollector();
         await failures.CaptureAsync(() => activation.CloseAsync(CancellationToken.None)).ConfigureAwait(false);
-        await failures.CaptureAsync(() => ReleaseSpotLocationAsync(activation.SpotRid)).ConfigureAwait(false);
+        await failures.CaptureAsync(() => ReleaseSpotLocationAsync(activation.SpotId)).ConfigureAwait(false);
         await failures.CaptureAsync(activation.DisposeAsync).ConfigureAwait(false);
         lock (_gate)
         {
-            _spots.Remove(activation.SpotRid);
-            _closing.Remove(activation.SpotRid);
+            _spots.Remove(activation.SpotId);
+            _closing.Remove(activation.SpotId);
         }
         ZLinkRuntimeMetrics.RecordSpotClosed("user");
         failures.ThrowIfAny();
@@ -686,7 +694,7 @@ internal sealed class ZLinkSpotNodeCatalog(
 
     private void RemoveActivationLocked(ZLinkSpotActivation? activation)
     {
-        if (activation is not null) _spots.Remove(activation.SpotRid);
+        if (activation is not null) _spots.Remove(activation.SpotId);
     }
 
     private static async ValueTask DisposeFailedCreationAsync(ZLinkSpotActivation activation)
@@ -732,13 +740,13 @@ internal sealed class ZLinkSpotNodeCatalog(
     private static void ThrowIfSpotTypeMismatch(
         Type existingSpotType,
         Type requestedSpotType,
-        RoutingId spotRid)
+        string spotId)
     {
         if (existingSpotType == requestedSpotType) return;
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.SpotTypeMismatch,
-            $"SPOT routing id '{spotRid}' already belongs to '{existingSpotType}'.");
+            $"SPOT routing id '{spotId}' already belongs to '{existingSpotType}'.");
     }
 
     private static Exception WrapSpotCreateFailed(

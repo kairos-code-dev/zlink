@@ -171,7 +171,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
     // These stubs keep the seam compiling; see S8 route/spot-plane follow-up.
     public bool SendToSpot(
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         IReadOnlyList<Message> parts,
         SendFlags flags)
     {
@@ -182,7 +182,7 @@ internal sealed class ZLinkBackendRouterSocketWrapper(IRouterSocket nativeSocket
 
     public bool RequestToSpot(
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         IReadOnlyList<Message> parts,
         RequestCallback callback,
         SendFlags flags,

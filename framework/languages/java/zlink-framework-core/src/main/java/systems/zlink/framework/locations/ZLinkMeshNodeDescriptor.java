@@ -51,9 +51,10 @@ public record ZLinkMeshNodeDescriptor(
             throw new IllegalArgumentException(
                 "applicationVersion must not be negative");
         }
-        if (placementWeight < 0 || placementWeight > 100) {
+        Objects.requireNonNull(objectRole, "objectRole");
+        if (placementWeight < 0 || placementWeight > 10_000) {
             throw new IllegalArgumentException(
-                "placementWeight must be in 0..100");
+                "placementWeight must be in 0..10000");
         }
         channelWeights = Map.copyOf(
             Objects.requireNonNull(channelWeights, "channelWeights"));
@@ -63,9 +64,9 @@ public record ZLinkMeshNodeDescriptor(
             int weight = Objects.requireNonNull(
                 channel.getValue(),
                 "channelWeight");
-            if (weight < 0 || weight > 100) {
+            if (weight < 0 || weight > 10_000) {
                 throw new IllegalArgumentException(
-                    "channel weight must be in 0..100");
+                    "channel weight must be in 0..10000");
             }
         }
         objectCapabilities = Objects.requireNonNull(
@@ -100,7 +101,6 @@ public record ZLinkMeshNodeDescriptor(
                     "objectCapabilities must be unique by kind and stableType");
             }
         }
-        Objects.requireNonNull(objectRole, "objectRole");
         Objects.requireNonNull(capacity, "capacity");
         maintenanceWave = Objects.requireNonNull(
             maintenanceWave,

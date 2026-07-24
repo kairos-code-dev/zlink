@@ -23,7 +23,7 @@ var game = await ZLinkHttpClient.Create("https://game-api.example.internal")
 | 4 | [Request 만들기](04-making-requests.ko.md) | HTTP 메서드, query 파라미터, 헤더, request timeout |
 | 5 | [Request Body](05-request-body.ko.md) | JSON DTO, raw, form, multipart, streaming 업로드 |
 | 6 | [Response 다루기](06-handling-responses.ko.md) | 응답 구조, `Async`, status 처리 |
-| 7 | [비동기](07-async.ko.md) | `Async`/`Yield`, callback, Spot turn 규칙 |
+| 7 | [비동기](07-async.ko.md) | `Async`, callback, I/O worker와 Spot turn 규칙 |
 | 8 | [Streaming](08-streaming.ko.md) | `DownloadAsync(sink)` 다운로드, chunked 업로드 |
 | 9 | [인증과 TLS](09-authentication-tls.ko.md) | Basic/Bearer, HTTPS 검증, mTLS |
 | 10 | [Redirect · Retry · Cookie](10-redirects-retries-cookies.ko.md) | redirect 의미론, 재시도 정책, cookie jar |

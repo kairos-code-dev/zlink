@@ -153,16 +153,9 @@ export class ServiceTopologyRegistry {
     );
   }
 
-  selectObjectPlacement(
-    stableType: string,
-    placementProfile?: string,
-    affinityKey?: string
-  ): ServiceNodeDescriptor | undefined {
+  selectObjectPlacement(stableType: string): ServiceNodeDescriptor | undefined {
     requireText(stableType, 'stableType');
     const capability = `object-type:${stableType}`;
-    const profileCapability = placementProfile === undefined
-      ? undefined
-      : `object-profile:${stableType}:${placementProfile}`;
     const candidates = [
       this.local,
       ...this.peers().map(peer => peer.descriptor)
@@ -173,19 +166,7 @@ export class ServiceTopologyRegistry {
       && descriptor.activeCapacityUsed < descriptor.activeCapacityLimit
       && descriptor.pendingCapacityUsed < descriptor.pendingCapacityLimit
       && descriptor.protocolCapabilities.includes(capability)
-      && (
-        profileCapability === undefined
-        || descriptor.protocolCapabilities.includes(profileCapability)
-      )
     );
-    if (affinityKey !== undefined) {
-      requireText(affinityKey, 'affinityKey');
-      return selectWeightedAt(
-        candidates,
-        descriptor => descriptor.placementWeight,
-        stableHash(affinityKey)
-      );
-    }
     return this.selectWeighted(
       `object:${stableType}`,
       candidates,
@@ -212,31 +193,6 @@ export class ServiceTopologyRegistry {
   }
 }
 
-function selectWeightedAt<T>(
-  values: readonly T[],
-  weight: (value: T) => number,
-  selected: bigint
-): T | undefined {
-  const total = values.reduce((sum, value) => sum + BigInt(weight(value)), 0n);
-  if (total === 0n) return undefined;
-  const point = selected % total;
-  let offset = 0n;
-  for (const value of values) {
-    offset += BigInt(weight(value));
-    if (point < offset) return value;
-  }
-  return values.at(-1);
-}
-
-function stableHash(value: string): bigint {
-  let hash = 0xcbf29ce484222325n;
-  for (const byte of Buffer.from(value)) {
-    hash ^= BigInt(byte);
-    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
-  }
-  return hash;
-}
-
 export function validateDescriptor(descriptor: ServiceNodeDescriptor): void {
   requireText(descriptor.meshName, 'meshName');
   requireText(descriptor.nodeRoutingId, 'nodeRoutingId');
@@ -252,7 +208,7 @@ export function validateDescriptor(descriptor: ServiceNodeDescriptor): void {
   ) {
     throw new RangeError('Descriptor message bound or application version is invalid.');
   }
-  validatePercent(descriptor.placementWeight, 'placementWeight');
+  validatePublicWeight(descriptor.placementWeight, 'placementWeight');
   validateCapacity(descriptor.activeCapacityLimit, false, 'activeCapacityLimit');
   validateCapacity(descriptor.pendingCapacityLimit, true, 'pendingCapacityLimit');
   validateCapacity(descriptor.activeCapacityUsed, true, 'activeCapacityUsed');
@@ -267,7 +223,7 @@ export function validateDescriptor(descriptor: ServiceNodeDescriptor): void {
     descriptor.channels,
     channel => {
       requireText(channel.name, 'channel.name');
-      validatePercent(channel.weight, 'channel.weight');
+      validatePublicWeight(channel.weight, 'channel.weight');
       return channel.name;
     },
     'channels'
@@ -291,9 +247,9 @@ function validateCapacity(value: number, allowZero: boolean, field: string): voi
   }
 }
 
-function validatePercent(value: number, field: string): void {
-  if (!Number.isInteger(value) || value < 0 || value > 100) {
-    throw new RangeError(`${field} must be in the range 0..100.`);
+function validatePublicWeight(value: number, field: string): void {
+  if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+    throw new RangeError(`${field} must be an integer in 0..10000.`);
   }
 }
 

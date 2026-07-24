@@ -46,7 +46,7 @@ MeshNode를 추가하는 scale-out만으로 기존 owner가 자동 변경되는 
 
 actor 노드는 아래 evidence를 공통으로 남긴다.
 
-- actor id, actor type, actor generation 또는 ref snapshot, source/target spot rid, source/target node rid.
+- actor ID, actor type, actor generation 또는 ref snapshot, source/target Spot ID, source/target node RID.
 - callback order marker: `admission`, `source_sealed`, `capture`, `target_factory`, `restore`, `journal_staged`,
   `prepared`, `authority_committed`, `joined`, `journal_replayed`, `leave`, `source_cleanup`, `completed`,
   `route_ack`, `steady_normalized`, `ready`, `admission_open`, `success_reply`.
@@ -468,6 +468,34 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
   journal, forwarding queue와 target handler에 들어가지 않는다.
 - 세부 동작: accepted request replay, durable reply correlation, timeout과 moving rejection 분리.
 
+### Track G — execution lane barrier와 aggregate capacity
+
+#### ST-G1 yielded continuation을 포함한 relocation barrier
+
+우선순위: `P0`
+
+- 절차: `SpotWide` User Spot member Actor가 request `Yield` 상태이고 다른 Actor·Spot handler·timer가
+  실행 중일 때 host `Retire`를 시작한다. 별도 반복에서는 `PerActor` User Spot의 여러 Actor lane,
+  Spot lane과 서로 다른 timer lane을 동시에 실행한다.
+- 검증: 새 application admission과 membership 변경을 먼저 seal하지만 yielded continuation과 이미
+  실행 중인 모든 lane이 안전한 turn 경계에 도달하기 전에는 `Capture`와 relocation payload publication을
+  시작하지 않는다. Barrier는 Actor claim, Spot gate와 timer lane generation을 모두 포함한다. Abort하면
+  같은 generation의 seal만 풀고 기존 queue·timer 순서를 유지한다.
+- 세부 동작: execution mode별 all-lane quiescence.
+
+#### ST-G2 User Spot aggregate capacity all-or-none
+
+우선순위: `P0`
+
+- 절차: Actor N개를 포함한 stable type `room` User Spot을 (a) Actor total slot이 N보다 하나 부족한
+  target, (b) Spot total과 Actor total은 충분하지만 `room` stable type slot만 부족한 target,
+  (c) 세 bucket이 모두 충분한 target으로 차례로 relocation한다.
+- 검증: (a)와 (b)에는 Spot total 1개, `room` stable type 1개와 Actor total N개 가운데 어떤 reservation도
+  남지 않고 factory·Restore·participant authority mutation이 0건이다. (c)는 같은 transaction에서 단일
+  typed capacity bundle과 canonical participant set을 Reserved로 연결하고 aggregate commit에서 모두
+  Active로 전환한다.
+- 세부 동작: participant authority와 capacity vector의 atomic aggregate.
+
 ## 5. 완료 기준
 
 - Track A, Track B, Track C의 `P0` 시나리오는 모든 framework 언어가 같은 의미로 구현해야 한다.
@@ -476,6 +504,8 @@ timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되�
 - Track F의 `P0` 시나리오(ST-F1~F3, ST-F3A)는 네 runtime lane과 다섯 public 언어 표현에서 같은 순서 의미로
   통과해야 한다. `P1`(ST-F4~F6)은 지원 범위를 ledger에 기록하되 formal contract에 포함된 기능의 구현 gap을
   completion으로 처리하지 않는다.
+- Track G의 `P0` 시나리오는 `SpotWide`와 `PerActor`를 모두 사용하고 yielded continuation, timer lane과
+  typed aggregate capacity를 public evidence로 검증해야 한다.
 - callback order는 단순 로그 문자열 grep이 아니라 역할 server evidence와 message flow correlation id로
   검증한다.
 - location 검증은 public Actor·Spot manager의 `Find`, runtime snapshot 또는 역할 server endpoint로 관찰한다. 내부 store key를 client가

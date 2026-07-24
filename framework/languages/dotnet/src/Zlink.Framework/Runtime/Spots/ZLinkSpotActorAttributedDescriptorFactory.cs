@@ -8,6 +8,7 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
     private const string PostActorJoinedMethodName = "OnJoinedActorAsync";
     private const string ActorLeftMethodName = "OnLeaveActorAsync";
     private const string ActorDisconnectedMethodName = "OnDisconnectActorAsync";
+    private const string ActorRelocatedMethodName = "OnActorRelocatedAsync";
 
     public static IEnumerable<ZLinkSpotActorPacketDescriptor> CreatePacketDescriptors(
         ZLinkSpotActorHandlerSurface surface,
@@ -98,6 +99,24 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
                     Disconnected = CreateSpotLifecycle(surface, spotType, method, contract.ActorType)
                 };
             }
+            else if (method.Name == ActorRelocatedMethodName)
+            {
+                if (contract is null
+                    || surface != ZLinkSpotActorHandlerSurface.EntrySpot)
+                {
+                    throw new InvalidOperationException(
+                        $"SPOT actor relocation hook '{spotType}' must implement IZLinkEntrySpot<TActor>.");
+                }
+
+                yield return new ZLinkSpotActorInferredHandlerDescriptor
+                {
+                    Relocated = CreateSpotLifecycle(
+                        surface,
+                        spotType,
+                        method,
+                        contract.ActorType)
+                };
+            }
     }
 
     private static ZLinkSpotActorPacketDescriptor? TryCreatePacket(
@@ -172,7 +191,25 @@ internal static class ZLinkSpotActorAttributedDescriptorFactory
             parameters[passRequestArgument ? 2 : 1],
             "SPOT actor lifecycle hook",
             passRequestArgument ? "third" : "second");
-        ZLinkHandlerMethodShape.RequireNoReply(spotType, method, "SPOT actor lifecycle hook");
+        if (passRequestArgument)
+        {
+            var expectedValueTask = typeof(ValueTask<ZLinkActorCreateResponse>);
+            var expectedTask = typeof(Task<ZLinkActorCreateResponse>);
+            if (method.ReturnType != expectedValueTask
+                && method.ReturnType != expectedTask)
+            {
+                throw new InvalidOperationException(
+                    $"SPOT actor creation hook '{spotType}' method '{method.Name}' "
+                    + $"must return {expectedValueTask.Name} or {expectedTask.Name}.");
+            }
+        }
+        else
+        {
+            ZLinkHandlerMethodShape.RequireNoReply(
+                spotType,
+                method,
+                "SPOT actor lifecycle hook");
+        }
         ZLinkSpotActorDescriptorBuilder.ValidateActorType(spotType, expectedActorType, actorType);
         return ZLinkSpotActorDescriptorBuilder.CreateLifecycle(
             surface,

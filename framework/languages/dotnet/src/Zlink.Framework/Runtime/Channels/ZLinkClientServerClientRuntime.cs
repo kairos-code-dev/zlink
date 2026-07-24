@@ -331,15 +331,20 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             var ready = DistinctConnections()
                 .Where(static value => value.Ready && value.Weight > 0)
                 .ToArray();
-            var total = ready.Sum(static value => value.Weight);
+            var total = ZLinkWeightedSelector.Sum(
+                ready,
+                static value => value.Weight);
             if (total <= 0)
                 return null;
             foreach (var connection in ready)
-                connection.SelectionCurrent += connection.Weight;
+                connection.SelectionCurrent = checked(
+                    connection.SelectionCurrent + connection.Weight);
             var selected = ready
-                .OrderByDescending(static value => value.SelectionCurrent)
+                .OrderByDescending(
+                    static value => value.SelectionCurrent)
                 .First();
-            selected.SelectionCurrent -= total;
+            selected.SelectionCurrent = checked(
+                selected.SelectionCurrent - total);
             return selected;
         }
     }
@@ -483,6 +488,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             get { lock (_gate) return _admissionCompleted; }
         }
         internal int Weight { get { lock (_gate) return _weight; } }
+        internal long SelectionCurrent { get; set; }
         internal string Diagnostics
         {
             get { lock (_gate) return _diagnostics; }
@@ -499,7 +505,6 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         {
             get { lock (_gate) return _expected; }
         }
-        internal long SelectionCurrent { get; set; }
         internal long LivenessAckCount =>
             Interlocked.Read(ref _livenessAckCount);
         internal long ReceivedLivenessProbeCount =>
@@ -784,7 +789,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                         admission.ChannelName,
                         _channelName)
                     || admission.LifecycleGeneration == 0
-                    || admission.Weight is < 0 or > 100
+                    || admission.Weight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight
                     || admission.NormalizedEffectiveMaxMessageBytes == 0
                     || admission.NormalizedEffectiveMaxMessageBytes
                     > _normalizedEffectiveMaxMessageBytes

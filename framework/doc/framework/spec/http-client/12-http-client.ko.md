@@ -60,43 +60,38 @@ builder의 세부 계약(path 형식, percent-encoding, body 소스별 retry 가
 
 ## 3. 실행 terminator — framework와 같은 세 축 (+ callback)
 
-**Spot 실행 문맥에서 완료를 기다리는 모든 framework 호출은 같은 terminator를 갖는다**
-([04 §1.1](../04-async-execution-policy.ko.md)). HTTP client도 예외가 아니다.
+HTTP client의 완료 표면은 `submit`, `async`와 callback이다. Shared Spot gate를 반납하는 `Yield`는
+서버 request와 worker allowlist가 소유하며 HTTP request builder에는 포함하지 않는다
+([04 §1.1](../04-async-execution-policy.ko.md)).
 
 | terminator | 완료를 기다리나 | Spot 실행 줄 |
 |---|---|---|
 | **submit** | 아니오 | 그대로 진행. 응답을 쓰지 않는 fire 경로(telemetry beacon 등) |
 | **async** | 예 | **turn을 유지한다.** handler는 하나의 turn이다 |
-| **yield** | 예 | **turn을 반납한다.** 완료된 continuation은 Spot 실행 줄의 큐에 재삽입되어 순서대로 재개된다 |
 
-**callback은 네 번째 terminator가 아니다.** framework의 terminator 축은 셋뿐이며
-([04 §1.1](../04-async-execution-policy.ko.md)), callback은 **awaitable을 쓰지 않는 호출자**(CLI,
+**callback은 terminator가 아니다.** HTTP client의 terminator는 `submit`과 `async`다. Callback은
+**awaitable을 쓰지 않는 호출자**(CLI,
 이벤트 루프 기반 client)를 위한 **별도 완료 경로**다. HTTP client는 그 경로도 함께 제공한다.
 
 Spot 실행 문맥에서 callback을 쓰면 **`submit`과 같다** — 호출은 turn을 잡지 않고 그대로 진행하고,
 완료 callback은 그 Spot 실행 줄의 **새 turn**으로 큐에 들어간다. 완료 값으로 그 turn의 판단을
-이어가야 하면 callback이 아니라 `async` 또는 `yield`를 쓴다.
+이어가야 하면 callback이 아니라 `async`를 쓴다.
 
-### 3.1 yield가 이 client의 존재 이유다
+### 3.1 외부 HTTP를 기다리면서 Spot gate를 반납하는 방법
 
-**actor 입·퇴장 시 외부 API나 레거시 API에서 데이터를 가져오는 경우**가 대표적이다. 그 대기는
-spot의 공유 흐름과 무관하므로, 그것 때문에 room 전체와 timer가 멈추면 안 된다.
+HTTP client call 자체는 shared Spot gate를 반납하지 않는다. Actor 입·퇴장 중 외부 API를 기다리면서
+다른 Spot 작업을 진행해야 하면 I/O worker에서 HTTP client의 `async`를 실행하고 worker call의 `Yield`로
+기다린다.
 
 ```
-// spot handler 안
-var profile = await http.Get($"/players/{id}").Yield<Profile>(ct);
+var profile = await Context
+    .RunIoWorker(async workerCancellation =>
+        await http.Get($"/players/{id}").Async<Profile>(workerCancellation))
+    .Yield(ct);
 ```
 
-`RunIoWorker`로 감싸도 같은 효과를 얻지만([04 §1.2](../04-async-execution-policy.ko.md)), **가장 흔한
-경로에는 1급 단축을 준다.** 매 호출 지점에 worker boilerplate를 요구하면 사용자는 결국 그냥
-`async`로 기다리게 되고 room이 멈춘다.
-
-두 축의 역할은 다르다.
-
-| 축 | 용도 |
-|---|---|
-| `RunIoWorker(...).Yield()` | **범용 escape hatch** — DB 드라이버, gRPC, 외부 SDK, 무엇이든 |
-| HTTP client의 `.Yield()` | **1급 단축** — 외부 HTTP·레거시 API |
+HTTP request builder에는 `Yield` terminal을 제공하지 않는다. Gate 반납과 재획득은 서버 runtime의
+worker call이 소유하므로 HTTP package가 Spot execution context를 판정하지 않는다.
 
 ### 3.2 turn seam — 주입점 하나
 
@@ -105,10 +100,9 @@ var profile = await http.Get($"/players/{id}").Yield<Profile>(ct);
 
 - HTTP client는 **execution scheduler 주입점**을 공개 계약으로 둔다. scheduler는 completion을
   어디서 재개할지 정한다.
-- **framework는 DI 등록 시 Spot turn scheduler를 주입한다.** 이 scheduler가 있는
-  server client에서만 `yield`를 제공한다.
-- scheduler가 없는 단독 사용(CLI·client 시나리오)에서는 **`yield`를 노출하지 않는다.** `async`와
-  callback만 쓴다.
+- **framework는 DI 등록 시 callback completion scheduler를 주입한다.** callback은 원래 Spot 실행 줄의
+  새 turn으로 들어간다.
+- DI와 단독 사용 모두 HTTP request builder에 `yield`를 노출하지 않는다. `async`와 callback만 쓴다.
 
 C++ HTTP client는 같은 scheduler seam을 `coroutines(resume_scheduler)`와
 `framework_resume_scheduler_t`로 표현한다.
@@ -128,13 +122,12 @@ handler 안에서 client를 만들지 않는다 — 연결 pool과 turn seam을 
   framework가 기본 client 하나를 자동 등록하지 않는다.
 - 등록 표면의 형태는 channel 등록과 같다: 구성 단계에서 이름과 정책을 함께 등록하고, handler는
   그 이름으로 주입받는다.
-- **정적 팩토리 진입점은 client-side 전용으로 남긴다.** CLI와 client 시나리오가 쓴다. turn이
-  없으므로 `yield`도 없다.
+- **정적 팩토리 진입점은 client-side 전용으로 남긴다.** CLI와 client 시나리오가 쓴다.
 
 | 표면 | 누가 쓰나 | terminator |
 |------|-----------|------------|
 | 정적 팩토리 | CLI · client 시나리오 | `async` / callback |
-| **DI 주입 client** | **Spot handler · 서버 코드** | `submit` / `async` / `yield` / callback |
+| **DI 주입 client** | **Spot handler · 서버 코드** | `submit` / `async` / callback |
 
 ## 5. Codec
 
@@ -163,10 +156,10 @@ typed body의 encode/decode는 그 registry가 담당한다. raw body API는 reg
 
 | 항목 | 검증 |
 |---|---|
-| terminator 축 | `submit` / `async` / `yield` / callback이 모두 있고, blocking 언래핑 terminator가 **없다** |
+| terminator 축 | `submit` / `async`와 callback 완료 경로가 있고, blocking 언래핑 terminator와 HTTP `yield`가 **없다** |
 | turn 유지 | Spot handler가 `async`로 기다리는 동안 같은 Spot의 다른 callback이 시작하지 않는다 |
-| turn 반납 | `yield`로 기다리는 동안 같은 Spot의 다른 callback이 실행되고, continuation이 큐에 재삽입되어 순서대로 재개된다 |
-| seam 부재 | scheduler가 없는 단독 사용에서 `yield`가 노출되지 않는다 |
+| turn 반납 | HTTP `async`를 `RunIoWorker` 안에서 실행하고 worker `Yield`로 기다릴 때만 shared Spot gate를 반납한다 |
+| 표면 제한 | DI와 단독 사용 모두 HTTP request builder에 `yield`를 노출하지 않는다 |
 | 등록 | 서버 표면이 DI 주입으로만 얻어지고, handler 안에서 정적 팩토리로 client를 만들지 않는다 |
 | 오류 kind | HTTP client 전용 kind가 없고 framework 공용 kind만 쓴다 |
 | builder | body 소스를 섞으면 `RequestProtocolError`로 실패한다 |

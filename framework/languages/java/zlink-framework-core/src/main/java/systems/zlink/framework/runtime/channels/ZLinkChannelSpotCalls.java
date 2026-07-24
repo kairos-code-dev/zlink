@@ -135,7 +135,7 @@ final class RouteSpotSendCall implements ZLinkSendCall {
                 return runtime.sendToSpot(
                     address.routerChannelId(),
                     address.targetNodeRid(),
-                    address.spotRid(),
+                    address.spotId(),
                     address.spotGeneration(),
                     sendParts).whenComplete((ignored, error) -> sendParts.forEach(Message::close));
             } catch (RuntimeException error) {
@@ -202,7 +202,7 @@ final class RouteSpotRequestCall implements ZLinkRequestCall {
             return runtime.requestToSpot(
                 address.routerChannelId(),
                 address.targetNodeRid(),
-                address.spotRid(),
+                address.spotId(),
                 address.spotGeneration(),
                 requestParts,
                 timeout)

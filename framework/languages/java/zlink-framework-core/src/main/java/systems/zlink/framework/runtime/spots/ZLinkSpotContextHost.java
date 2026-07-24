@@ -13,7 +13,7 @@ abstract class ZLinkSpotContextHost {
         RoutingId nodeRid);
 
     abstract ZLinkSpotTimerRegistry createTimerRegistry(
-        RoutingId spotRid,
+        String spotId,
         ZLinkSpotTimerRegistry.Dispatch dispatch);
 
     abstract CompletionStage<Void> destroyActorFromEntry(
@@ -24,9 +24,9 @@ abstract class ZLinkSpotContextHost {
         RoutingId nodeRid,
         ZLinkSpot<?> spot,
         ZLinkActor actor,
-        RoutingId fallbackSpotRid);
+        String fallbackSpotId);
 
-    abstract CompletionStage<Boolean> closeSpot(RoutingId spotRid);
+    abstract CompletionStage<Boolean> closeSpot(String spotId);
 
     abstract <T> CompletionStage<T> runWithOutbound(
         DefaultSpotOutbound outbound,

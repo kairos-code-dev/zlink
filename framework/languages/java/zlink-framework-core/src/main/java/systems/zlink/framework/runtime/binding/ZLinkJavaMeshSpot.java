@@ -56,12 +56,12 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
 
     @Override public String name() { return "meshSpot." + routingId(); }
     @Override public ZLinkBackendObject admissionSource() { return owner.spotNode(); }
-    @Override public RoutingId routingId() { return spot.routingId(); }
+    @Override public String routingId() { return spot.routingId().toString(); }
     @Override public long lifecycleGeneration() { return spot.status().lifecycleGeneration(); }
 
     @Override
-    public void setRoutingId(RoutingId routingId) {
-        if (!spot.routingId().equals(routingId)) {
+    public void setRoutingId(String spotId) {
+        if (!spot.routingId().toString().equals(spotId)) {
             throw new IllegalStateException(
                 "MeshNode Spot routing id is assigned when the Spot is created");
         }
@@ -106,14 +106,14 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
     @Override
     public boolean sendToSpot(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         List<Message> parts,
         SendFlags flags) {
         spot.sendToSpot(
             targetNodeRid,
-            spotRid,
-            requireGeneration(targetNodeRid, spotRid, spotGeneration),
+            RoutingId.from(spotId),
+            requireGeneration(targetNodeRid, spotId, spotGeneration),
             parts,
             flags);
         return true;
@@ -122,15 +122,15 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
     @Override
     public boolean sendToSpot(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         byte[] metadata,
         List<Message> parts,
         SendFlags flags) {
         spot.sendToSpot(
             targetNodeRid,
-            spotRid,
-            requireGeneration(targetNodeRid, spotRid, spotGeneration),
+            RoutingId.from(spotId),
+            requireGeneration(targetNodeRid, spotId, spotGeneration),
             metadata,
             parts,
             flags);
@@ -140,25 +140,25 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
     @Override
     public boolean requestToSpot(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         List<Message> parts,
         ZLinkBackendRequestCallback callback,
         SendFlags flags,
         Duration timeout) {
-        var generation = requireGeneration(targetNodeRid, spotRid, spotGeneration);
+        var generation = requireGeneration(targetNodeRid, spotId, spotGeneration);
         systems.zlink.contracts.service.spot.OperationId operation;
         try {
             operation = spot.requestToSpot(
                 targetNodeRid,
-                spotRid,
+                RoutingId.from(spotId),
                 generation,
                 parts,
                 flags,
                 timeout);
         } catch (systems.zlink.contracts.errors.ZlinkSubmitException error) {
             throw requestSubmitFailure(
-                error, targetNodeRid, spotRid, generation);
+                error, targetNodeRid, spotId, generation);
         }
         completeRequest(operation, callback);
         return true;
@@ -167,19 +167,19 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
     @Override
     public boolean requestToSpot(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         byte[] metadata,
         List<Message> parts,
         ZLinkBackendRequestCallback callback,
         SendFlags flags,
         Duration timeout) {
-        var generation = requireGeneration(targetNodeRid, spotRid, spotGeneration);
+        var generation = requireGeneration(targetNodeRid, spotId, spotGeneration);
         systems.zlink.contracts.service.spot.OperationId operation;
         try {
             operation = spot.requestToSpot(
                 targetNodeRid,
-                spotRid,
+                RoutingId.from(spotId),
                 generation,
                 metadata,
                 parts,
@@ -187,7 +187,7 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
                 timeout);
         } catch (systems.zlink.contracts.errors.ZlinkSubmitException error) {
             throw requestSubmitFailure(
-                error, targetNodeRid, spotRid, generation);
+                error, targetNodeRid, spotId, generation);
         }
         completeRequest(operation, callback);
         return true;
@@ -208,13 +208,13 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
     private static IllegalStateException requestSubmitFailure(
         systems.zlink.contracts.errors.ZlinkSubmitException error,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long generation) {
         return new IllegalStateException(
             "MeshNode Spot request submit failed result=" + error.getResult()
                 + " errno=" + error.getNativeErrno()
                 + " targetNode=" + targetNodeRid
-                + " targetSpot=" + targetSpotRid
+                + " targetSpot=" + targetSpotId
                 + " targetGeneration=" + Long.toUnsignedString(generation),
             error);
     }
@@ -255,7 +255,8 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
             routes.add(new ZLinkBackendReceived(
                 ZLinkBackendRequestResult.OK,
                 Optional.ofNullable(record.receive().sourceNodeRid()),
-                Optional.ofNullable(record.receive().sourceSpotRid()),
+                Optional.ofNullable(record.receive().sourceSpotId())
+                    .map(RoutingId::toString),
                 requestSequence(kind, record.receive().operationId()),
                 record.receive().applicationMetadata(),
                 record.parts(),
@@ -290,7 +291,7 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
                 actorMessages.add(new ZLinkBackendActorReceived(
                     actor,
                     record.receive().sourceNodeRid(),
-                    record.receive().sourceSpotRid(),
+                    record.receive().sourceSpotId(),
                     Optional.empty(),
                     requestId,
                     kind == RecordKind.ACTOR_REQUEST ? 1 : 0,
@@ -334,8 +335,10 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
                     new systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleInfo(
                         previous == null || previous.actorId().isEmpty() ? null : previous,
                         current == null || current.actorId().isEmpty() ? null : current,
-                        Optional.ofNullable(control.previousSpotRid()),
-                        Optional.ofNullable(control.currentSpotRid()),
+                        Optional.ofNullable(control.previousSpotId())
+                            .map(RoutingId::toString),
+                        Optional.ofNullable(control.currentSpotId())
+                            .map(RoutingId::toString),
                         control.currentMembershipEpoch(),
                         control.resultCode())));
                 owner.actorControl(control);
@@ -419,11 +422,11 @@ final class ZLinkJavaMeshSpot implements ZLinkBackendSpot {
 
     private long requireGeneration(
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long suppliedGeneration) {
         long generation = suppliedGeneration > 0
             ? suppliedGeneration
-            : owner.spotGeneration(targetNodeRid, targetSpotRid);
+            : owner.spotGeneration(targetNodeRid, targetSpotId);
         if (generation <= 0) {
             throw new IllegalArgumentException(
                 "target Spot lifecycle generation is required");

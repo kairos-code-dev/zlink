@@ -6,7 +6,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ZLinkActor;
 
 public interface ZLinkSpotContext {
-    RoutingId spotRid();
+    String spotId();
 
     RoutingId nodeRid();
 

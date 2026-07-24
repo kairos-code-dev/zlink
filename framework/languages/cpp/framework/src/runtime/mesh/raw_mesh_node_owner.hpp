@@ -104,12 +104,12 @@ class raw_mesh_node_owner_t
                           const protocol::application_payload_t &application_payload);
     bool send_to_spot (
       const std::vector<std::uint8_t> &target_routing_id,
-      const std::vector<std::uint8_t> &source_spot_routing_id,
+      const std::string &source_spot_id,
       const protocol::spot_route_fence_t &target,
       const protocol::application_payload_t &application_payload);
     bool request_to_spot (
       const std::vector<std::uint8_t> &target_routing_id,
-      const std::vector<std::uint8_t> &source_spot_routing_id,
+      const std::string &source_spot_id,
       const protocol::spot_route_fence_t &target,
       const protocol::application_payload_t &application_payload,
       std::chrono::milliseconds timeout,

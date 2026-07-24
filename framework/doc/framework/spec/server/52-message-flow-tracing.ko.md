@@ -75,7 +75,7 @@ remote target 수를 count 필드로 기록한다.
 | `server_rid` | ClientServer에서 조건부 | 선택된 ClientServer server identity |
 | `source_rid`, `target_rid` | 조건부 | routed hop의 source와 target |
 | `packet_name` | 조건부 | typed dispatch key |
-| `topic`, `spot_rid`, `actor_id` | 조건부 | 해당 surface의 논리 target |
+| `topic`, `spot_id`, `actor_id` | 조건부 | 해당 surface의 논리 target |
 | `instance_spot_type`, `activation_state` | Instance Spot에서 조건부 | startup 등록 type과 `activating`, `ready`, `closing` state |
 | `correlation_id` | 조건부 | request와 terminal reply의 operation key |
 | `flow_id`, `flow_origin` | 조건부 pair | causal flow와 최초 origin |

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/locations/stores.hpp>
+#include <zlink/framework/contracts/spots/spot_identity.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -931,6 +932,8 @@ local typePendingLimit =
     limitOr(capability.pendingLimit, nodePendingLimit)
 local typeActiveLimit =
     limitOr(capability.activeLimit, nodeActiveLimit)
+local stableTypeLimit =
+    tonumber(capability.capacityLimit or '0')
 if delta <= 0
     or delta > nodePendingLimit
     or nodePending > nodePendingLimit - delta
@@ -939,7 +942,10 @@ if delta <= 0
     or delta > nodeActiveLimit
     or nodeActive > nodeActiveLimit - delta
     or delta > typeActiveLimit
-    or typeActive > typeActiveLimit - delta then
+    or typeActive > typeActiveLimit - delta
+    or (ARGV[11] ~= 'actor' and stableTypeLimit > 0
+        and typeActive + typePending
+              > stableTypeLimit - delta) then
     return {'exhausted', ''}
 end
 redis.call('HINCRBY', KEYS[5], ARGV[20], delta)
@@ -1050,15 +1056,6 @@ if redis.call('EXISTS', KEYS[1]) == 1 then
     return snapshot('already_exists')
 end
 local capability = findCapability(KEYS[12], ARGV[11], ARGV[3])
-local profileFound = ARGV[13] == ''
-if capability and not profileFound then
-    for _, profile in ipairs(capability.placementProfiles or {}) do
-        if profile == ARGV[13] then
-            profileFound = true
-            break
-        end
-    end
-end
 if not liveLease(KEYS[6], ARGV[5])
     or redis.call('EXISTS', KEYS[12]) == 0
     or redis.call('HGET', KEYS[12], 'descriptorKey') ~= ARGV[19]
@@ -1067,8 +1064,7 @@ if not liveLease(KEYS[6], ARGV[5])
     or redis.call('HGET', KEYS[12], 'ownerLeaseGeneration') ~= ARGV[5]
     or redis.call('HGET', KEYS[12], 'runtimeState') ~= '1'
     or redis.call('HGET', KEYS[12], 'objectRole') ~= '2'
-    or not capability
-    or not profileFound then
+    or not capability then
     return {'conflict', '', '', '0', '0', '', '0',
         '', '0', '', '', '', '0', '0', '', '', '', '0',
         tostring(nowMs)}
@@ -1447,6 +1443,134 @@ redis.call('ZADD', KEYS[8], 0, deletedRevision)
 redis.call('HSET', KEYS[2], 'status', 'aborted')
 return {'aborted', 'missing', '', '', '0', '0', '', '0',
     '', '0', '', '', '', '0', '0', tostring(nowMs)}
+)";
+
+    static constexpr std::string_view read_creation_terminal = R"(
+if redis.replicate_commands then redis.replicate_commands() end
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+if redis.call('EXISTS', KEYS[1]) == 0 then
+    return {'missing', tostring(nowMs)}
+end
+local expiresAt = tonumber(redis.call('HGET', KEYS[1], 'expiresAtMs') or '0')
+if expiresAt <= nowMs then
+    redis.call('DEL', KEYS[1])
+    return {'missing', tostring(nowMs)}
+end
+return {'found',
+    redis.call('HGET', KEYS[1], 'sourceRid') or '',
+    redis.call('HGET', KEYS[1], 'sourceGeneration') or '0',
+    redis.call('HGET', KEYS[1], 'operationHigh') or '0',
+    redis.call('HGET', KEYS[1], 'operationLow') or '0',
+    redis.call('HGET', KEYS[1], 'objectKind') or '0',
+    redis.call('HGET', KEYS[1], 'objectId') or '',
+    redis.call('HGET', KEYS[1], 'reservationId') or '',
+    redis.call('HGET', KEYS[1], 'expectedVersion') or '',
+    redis.call('HGET', KEYS[1], 'objectGeneration') or '0',
+    redis.call('HGET', KEYS[1], 'authorityOwnerGeneration') or '0',
+    redis.call('HGET', KEYS[1], 'targetMesh') or '',
+    redis.call('HGET', KEYS[1], 'targetNode') or '',
+    redis.call('HGET', KEYS[1], 'targetLifecycleGeneration') or '0',
+    redis.call('HGET', KEYS[1], 'targetOwnerId') or '',
+    redis.call('HGET', KEYS[1], 'targetLeaseGeneration') or '0',
+    redis.call('HGET', KEYS[1], 'capacityDelta') or '0',
+    redis.call('HGET', KEYS[1], 'state') or '0',
+    redis.call('HGET', KEYS[1], 'envelope') or '',
+    redis.call('HGET', KEYS[1], 'sha256') or '',
+    tostring(expiresAt), tostring(nowMs)}
+)";
+
+    static constexpr std::string_view complete_creation = R"(
+if redis.replicate_commands then redis.replicate_commands() end
+local time = redis.call('TIME')
+local nowMs = tonumber(time[1]) * 1000 + math.floor(tonumber(time[2]) / 1000)
+local expiresAt = tonumber(ARGV[24])
+if expiresAt <= nowMs then return 'expired' end
+if redis.call('EXISTS', KEYS[1]) == 1 then
+    local storedExpiry = tonumber(redis.call('HGET', KEYS[1], 'expiresAtMs') or '0')
+    if storedExpiry > nowMs then return 'already' end
+    redis.call('DEL', KEYS[1])
+end
+if redis.call('EXISTS', KEYS[3]) == 0
+    or redis.call('HGET', KEYS[3], 'reservationId') ~= ARGV[1]
+    or redis.call('HGET', KEYS[3], 'expectedVersion') ~= ARGV[2]
+    or redis.call('HGET', KEYS[3], 'objectGeneration') ~= ARGV[3]
+    or redis.call('HGET', KEYS[3], 'authorityOwnerGeneration') ~= ARGV[4]
+    or redis.call('HGET', KEYS[3], 'targetMesh') ~= ARGV[5]
+    or redis.call('HGET', KEYS[3], 'targetNode') ~= ARGV[6]
+    or redis.call('HGET', KEYS[3], 'targetLifecycleGeneration') ~= ARGV[7]
+    or redis.call('HGET', KEYS[3], 'targetOwnerId') ~= ARGV[8]
+    or redis.call('HGET', KEYS[3], 'targetLeaseGeneration') ~= ARGV[9]
+    or redis.call('HGET', KEYS[3], 'capacityDelta') ~= ARGV[10]
+    or redis.call('HGET', KEYS[3], 'status') ~= 'prepared' then
+    return 'stale'
+end
+if redis.call('EXISTS', KEYS[2]) == 0
+    or redis.call('HGET', KEYS[2], 'storeVersion') ~= ARGV[2]
+    or redis.call('HGET', KEYS[2], 'allocationState') ~= 'pending' then
+    return 'conflict'
+end
+local delta = tonumber(ARGV[10])
+local nodePending = tonumber(redis.call('HGET', KEYS[6], ARGV[11]) or '0')
+local typePending = tonumber(redis.call('HGET', KEYS[7], ARGV[12]) or '0')
+if nodePending < delta or typePending < delta then return 'conflict' end
+if ARGV[13] == '1' then
+    if redis.call('PTTL', KEYS[10]) <= 0
+        or redis.call('HGET', KEYS[10], 'generation') ~= ARGV[9]
+        or redis.call('EXISTS', KEYS[11]) == 0
+        or redis.call('HGET', KEYS[11], 'lifecycleGeneration') ~= ARGV[7]
+        or redis.call('HGET', KEYS[11], 'ownerId') ~= ARGV[8]
+        or redis.call('HGET', KEYS[11], 'ownerLeaseGeneration') ~= ARGV[9]
+        or redis.call('HGET', KEYS[11], 'runtimeState') ~= '1'
+        or redis.call('HGET', KEYS[11], 'objectRole') ~= '2' then
+        return 'conflict'
+    end
+    local revision = redis.call('HGET', KEYS[4], 'storeRevision') or '0'
+    if revision == '9223372036854775807' then return 'exhausted' end
+    redis.call('HINCRBY', KEYS[4], 'storeRevision', 1)
+    local version = redis.call('HGET', KEYS[4], 'storeRevision')
+    redis.call('HSET', KEYS[2],
+        'storeVersion', version,
+        'payload', ARGV[14],
+        'allocationState', 'active')
+    redis.call('HDEL', KEYS[2],
+        'pendingCreationReservationId', 'pendingCreationReference',
+        'pendingCreationSha256', 'pendingCreationEncodedSize')
+    redis.call('HINCRBY', KEYS[6], ARGV[11], -delta)
+    redis.call('HINCRBY', KEYS[7], ARGV[12], -delta)
+    redis.call('HINCRBY', KEYS[8], ARGV[11], delta)
+    redis.call('HINCRBY', KEYS[9], ARGV[12], delta)
+    redis.call('HSET', KEYS[3], 'status', 'committed')
+else
+    redis.call('DEL', KEYS[2])
+    redis.call('ZREM', KEYS[5], ARGV[15])
+    redis.call('HINCRBY', KEYS[6], ARGV[11], -delta)
+    redis.call('HINCRBY', KEYS[7], ARGV[12], -delta)
+    redis.call('HSET', KEYS[3], 'status', 'aborted')
+end
+redis.call('HSET', KEYS[1],
+    'sourceRid', ARGV[16],
+    'sourceGeneration', ARGV[17],
+    'operationHigh', ARGV[18],
+    'operationLow', ARGV[19],
+    'objectKind', ARGV[20],
+    'objectId', ARGV[21],
+    'reservationId', ARGV[1],
+    'expectedVersion', ARGV[2],
+    'objectGeneration', ARGV[3],
+    'authorityOwnerGeneration', ARGV[4],
+    'targetMesh', ARGV[5],
+    'targetNode', ARGV[6],
+    'targetLifecycleGeneration', ARGV[7],
+    'targetOwnerId', ARGV[8],
+    'targetLeaseGeneration', ARGV[9],
+    'capacityDelta', ARGV[10],
+    'state', ARGV[13],
+    'envelope', ARGV[22],
+    'sha256', ARGV[23],
+    'expiresAtMs', ARGV[24])
+redis.call('PEXPIREAT', KEYS[1], expiresAt)
+return 'completed'
 )";
 
     static constexpr std::string_view prepare_aggregate = R"(
@@ -1906,7 +2030,7 @@ class redis_location_key_schema_t
             || prefix.find ('}') != std::string_view::npos)
             throw std::invalid_argument (
               "redis location key prefix must be non-empty and must not contain braces");
-        return join (prefix, "{zlink-location-v1}");
+        return join (prefix, "{zlink-location-v3}");
     }
 
     static std::string encode_mesh_node_key (
@@ -2125,7 +2249,8 @@ class redis_location_key_schema_t
 
     static std::string encode_spot_key (const spot_location_key_t &key)
     {
-        return encode (key.mesh_name, key.spot_rid.to_hex ());
+        zlink::framework::detail::require_spot_id (key.spot_id);
+        return encode (key.spot_id);
     }
 
     static std::string encode_actor_key (const actor_location_key_t &key)
@@ -2353,6 +2478,34 @@ class redis_location_key_schema_t
     {
         return join (domain_prefix (prefix), "creation", key);
     }
+
+    static std::string creation_terminal_key (
+      std::string_view prefix,
+      const creation_operation_identity_t &operation)
+    {
+        const auto source = operation.source_node_rid.value ();
+        static constexpr char hex[] = "0123456789abcdef";
+        std::string source_hex;
+        source_hex.reserve (source.size () * 2);
+        for (const auto value : source) {
+            const auto byte =
+              static_cast<unsigned char> (value);
+            source_hex.push_back (hex[byte >> 4]);
+            source_hex.push_back (hex[byte & 0x0f]);
+        }
+        std::ostringstream operation_hex;
+        operation_hex << std::hex << std::nouppercase
+                      << std::setfill ('0') << std::setw (16)
+                      << operation.operation_id.high
+                      << std::setw (16)
+                      << operation.operation_id.low;
+        return join (
+          domain_prefix (prefix), "creation-terminal",
+          std::to_string (source.size ()), source_hex,
+          std::to_string (operation.source_node_generation),
+          operation_hex.str ());
+    }
+
 
     static std::string relocation_capacity_reservation_key (
       std::string_view prefix,
@@ -2609,8 +2762,8 @@ class redis_location_key_schema_t
 
     static spot_location_key_t decode_spot_key (std::string_view encoded)
     {
-        const auto segments = decode (encoded, 2);
-        return spot_location_key_t{segments[0], zlink::routing_id_t::from_hex (segments[1])};
+        const auto segments = decode (encoded, 1);
+        return spot_location_key_t{segments[0]};
     }
 
     static actor_location_key_t decode_actor_key (std::string_view encoded)
@@ -2774,6 +2927,10 @@ class redis_location_row_codec_t
         json["DescriptorRevision"] =
           row.descriptor_revision;
         json["Endpoint"] = row.endpoint;
+        json["EntrySpotId"] =
+          row.entry_spot_id
+            ? nlohmann::json (*row.entry_spot_id)
+            : nlohmann::json (nullptr);
         json["ChannelWeights"] = row.channel_weights;
         json["SecurityIdentity"] = row.security_identity;
         json["OwnerId"] = row.owner_id;
@@ -2792,10 +2949,6 @@ class redis_location_row_codec_t
               static_cast<int> (capability.policy);
             value["HasSnapshotAdapter"] =
               capability.has_snapshot_adapter;
-            value["PlacementProfiles"] =
-              std::vector<std::string> (
-                capability.placement_profiles.begin (),
-                capability.placement_profiles.end ());
             value["ActiveLimit"] =
               capability.active_limit
                 ? nlohmann::json (*capability.active_limit)
@@ -2819,6 +2972,27 @@ class redis_location_row_codec_t
           {"Pending", row.object_capacity.pending},
           {"ActiveLimit", row.object_capacity.active_limit},
           {"PendingLimit", row.object_capacity.pending_limit}};
+        nlohmann::ordered_json spot_types =
+          nlohmann::ordered_json::array ();
+        for (const auto &typed :
+             row.placement_capacity.spot_types) {
+            spot_types.push_back ({
+              {"ObjectKind", static_cast<int> (typed.object_kind)},
+              {"StableType", typed.stable_type},
+              {"Active", typed.usage.active},
+              {"Reserved", typed.usage.reserved},
+              {"Limit", typed.usage.limit}});
+        }
+        json["PlacementCapacity"] = {
+          {"Actors",
+           {{"Active", row.placement_capacity.actors.active},
+            {"Reserved", row.placement_capacity.actors.reserved},
+            {"Limit", row.placement_capacity.actors.limit}}},
+          {"Spots",
+           {{"Active", row.placement_capacity.spots.active},
+            {"Reserved", row.placement_capacity.spots.reserved},
+            {"Limit", row.placement_capacity.spots.limit}}},
+          {"SpotTypes", std::move (spot_types)}};
         return json.dump ();
     }
 
@@ -2835,6 +3009,10 @@ class redis_location_row_codec_t
         row.descriptor_revision =
           json.at ("DescriptorRevision").get<std::uint64_t> ();
         row.endpoint = json.at ("Endpoint").get<std::string> ();
+        if (json.contains ("EntrySpotId")
+            && !json.at ("EntrySpotId").is_null ())
+            row.entry_spot_id =
+              json.at ("EntrySpotId").get<std::string> ();
         row.channel_weights =
           json.at ("ChannelWeights")
             .get<std::map<std::string, int>> ();
@@ -2862,10 +3040,6 @@ class redis_location_row_codec_t
                 item.at ("Policy").get<int> ());
             capability.has_snapshot_adapter =
               item.at ("HasSnapshotAdapter").get<bool> ();
-            for (const auto &profile :
-                 item.at ("PlacementProfiles"))
-                capability.placement_profiles.insert (
-                  profile.get<std::string> ());
             if (!item.at ("ActiveLimit").is_null ())
                 capability.active_limit =
                   item.at ("ActiveLimit")
@@ -2881,7 +3055,7 @@ class redis_location_row_codec_t
           static_cast<object_role_t> (
             json.at ("ObjectRole").get<int> ());
         row.placement_weight =
-          json.at ("PlacementWeight").get<std::uint8_t> ();
+          json.at ("PlacementWeight").get<int> ();
         const auto &capacity = json.at ("Capacity");
         row.object_capacity.active =
           capacity.at ("Active").get<std::uint32_t> ();
@@ -2891,6 +3065,30 @@ class redis_location_row_codec_t
           capacity.at ("ActiveLimit").get<std::uint32_t> ();
         row.object_capacity.pending_limit =
           capacity.at ("PendingLimit").get<std::uint32_t> ();
+        if (json.contains ("PlacementCapacity")) {
+            const auto &placement =
+              json.at ("PlacementCapacity");
+            const auto decode_usage =
+              [] (const nlohmann::json &usage) {
+                  return capacity_usage_t{
+                    usage.at ("Active").get<std::uint64_t> (),
+                    usage.at ("Reserved").get<std::uint64_t> (),
+                    usage.at ("Limit").get<std::int32_t> ()};
+              };
+            row.placement_capacity.actors =
+              decode_usage (placement.at ("Actors"));
+            row.placement_capacity.spots =
+              decode_usage (placement.at ("Spots"));
+            for (const auto &typed :
+                 placement.at ("SpotTypes"))
+                row.placement_capacity.spot_types.push_back ({
+                  static_cast<placement_object_kind_t> (
+                    typed.at ("ObjectKind").get<int> ()),
+                  typed.at ("StableType").get<std::string> (),
+                  {typed.at ("Active").get<std::uint64_t> (),
+                   typed.at ("Reserved").get<std::uint64_t> (),
+                   typed.at ("Limit").get<std::int32_t> ()}});
+        }
         if (!json.at ("MaintenanceWave").is_null ())
             row.maintenance_wave =
               json.at ("MaintenanceWave").get<std::string> ();
@@ -2937,7 +3135,7 @@ class redis_location_row_codec_t
         std::vector<std::string> segments{
           "zlink-mesh-node-immutable-v1", row.mesh_name,
           row.rid.to_hex (), std::to_string (row.lifecycle_generation),
-          row.endpoint};
+          row.endpoint, row.entry_spot_id.value_or (std::string{})};
         std::vector<std::string> channels;
         channels.reserve (row.channel_weights.size ());
         for (const auto &[name, _] : row.channel_weights)
@@ -2954,6 +3152,29 @@ class redis_location_row_codec_t
           std::to_string (row.object_capacity.active_limit));
         segments.push_back (
           std::to_string (row.object_capacity.pending_limit));
+        segments.push_back (
+          std::to_string (row.placement_capacity.actors.limit));
+        segments.push_back (
+          std::to_string (row.placement_capacity.spots.limit));
+        auto spot_types = row.placement_capacity.spot_types;
+        std::sort (
+          spot_types.begin (), spot_types.end (),
+          [] (const spot_type_capacity_t &left,
+              const spot_type_capacity_t &right) {
+              if (left.object_kind != right.object_kind)
+                  return left.object_kind < right.object_kind;
+              return unsigned_utf8_less (
+                left.stable_type, right.stable_type);
+          });
+        segments.push_back (std::to_string (spot_types.size ()));
+        for (const auto &typed : spot_types) {
+            segments.push_back (
+              redis_location_key_schema_t::object_kind_token (
+                typed.object_kind));
+            segments.push_back (typed.stable_type);
+            segments.push_back (
+              std::to_string (typed.usage.limit));
+        }
         auto capabilities = row.object_capabilities;
         std::sort (
           capabilities.begin (), capabilities.end (),
@@ -2979,16 +3200,6 @@ class redis_location_row_codec_t
             segments.push_back (policy_token (capability.policy));
             segments.push_back (
               capability.has_snapshot_adapter ? "1" : "0");
-            auto profiles = std::vector<std::string> (
-              capability.placement_profiles.begin (),
-              capability.placement_profiles.end ());
-            std::sort (
-              profiles.begin (), profiles.end (),
-              unsigned_utf8_less);
-            segments.push_back (
-              std::to_string (profiles.size ()));
-            segments.insert (
-              segments.end (), profiles.begin (), profiles.end ());
             segments.push_back (
               capability.active_limit
                 ? std::to_string (*capability.active_limit)
@@ -3044,13 +3255,6 @@ class redis_location_row_codec_t
             value["policy"] = policy_token (capability.policy);
             value["hasSnapshotAdapter"] =
               capability.has_snapshot_adapter;
-            auto profiles = std::vector<std::string> (
-              capability.placement_profiles.begin (),
-              capability.placement_profiles.end ());
-            std::sort (
-              profiles.begin (), profiles.end (),
-              unsigned_utf8_less);
-            value["placementProfiles"] = std::move (profiles);
             value["activeLimit"] =
               capability.active_limit
                 ? nlohmann::json (*capability.active_limit)
@@ -3059,6 +3263,19 @@ class redis_location_row_codec_t
               capability.pending_limit
                 ? nlohmann::json (*capability.pending_limit)
                 : nlohmann::json (nullptr);
+            const auto typed = std::find_if (
+              row.placement_capacity.spot_types.begin (),
+              row.placement_capacity.spot_types.end (),
+              [&] (const spot_type_capacity_t &candidate) {
+                  return candidate.object_kind
+                           == capability.object_kind
+                         && candidate.stable_type
+                              == capability.stable_type;
+              });
+            value["capacityLimit"] =
+              typed == row.placement_capacity.spot_types.end ()
+                ? 0
+                : typed->usage.limit;
             json.push_back (std::move (value));
         }
         return json.dump ();
@@ -3273,7 +3490,7 @@ class redis_location_row_codec_t
     {
         nlohmann::ordered_json json;
         json["MeshName"] = row.mesh_name;
-        json["SpotRid"] = row.spot_rid.to_hex ();
+        json["SpotId"] = row.spot_id;
         json["SpotGeneration"] = row.spot_generation;
         json["SpotType"] = row.spot_type ? nlohmann::json (*row.spot_type)
                                          : nlohmann::json (nullptr);
@@ -3292,7 +3509,7 @@ class redis_location_row_codec_t
         const auto json = nlohmann::json::parse (value);
         spot_location_t row;
         row.mesh_name = json.at ("MeshName").get<std::string> ();
-        row.spot_rid = zlink::routing_id_t::from_hex (json.at ("SpotRid").get<std::string> ());
+        row.spot_id = json.at ("SpotId").get<std::string> ();
         row.spot_generation = json.value ("SpotGeneration", std::uint64_t{0});
         if (!json.at ("SpotType").is_null ()) {
             row.spot_type = json.at ("SpotType").get<std::string> ();
@@ -3324,7 +3541,7 @@ class redis_location_row_codec_t
         json["ActorRef"] = std::move (actor_ref);
         json["OwnerNodeRid"] = row.owner_node_rid.to_hex ();
         json["OwnerNodeGeneration"] = row.owner_node_generation;
-        json["SpotRid"] = row.spot_rid.to_hex ();
+        json["SpotId"] = row.spot_id;
         json["SpotGeneration"] = row.spot_generation;
         json["SpotKind"] = static_cast<int> (row.spot_kind);
         json["MembershipEpoch"] = row.membership_epoch;
@@ -3351,7 +3568,7 @@ class redis_location_row_codec_t
         row.owner_node_rid =
           zlink::routing_id_t::from_hex (json.at ("OwnerNodeRid").get<std::string> ());
         row.owner_node_generation = json.at ("OwnerNodeGeneration").get<std::uint64_t> ();
-        row.spot_rid = zlink::routing_id_t::from_hex (json.at ("SpotRid").get<std::string> ());
+        row.spot_id = json.at ("SpotId").get<std::string> ();
         row.spot_generation = json.at ("SpotGeneration").get<std::uint64_t> ();
         row.spot_kind = static_cast<zlink::spot_kind> (json.at ("SpotKind").get<int> ());
         row.membership_epoch = json.at ("MembershipEpoch").get<std::uint64_t> ();
@@ -3900,9 +4117,75 @@ class redis_location_store_t final : public location_store_t,
                                 std::move (id));
                               break;
                           }
-                          result.items.push_back (
+                          auto descriptor =
                             detail::redis_location_row_codec_t::
-                              decode_mesh_node (*json));
+                              decode_mesh_node (*json);
+                          descriptor.placement_capacity.actors.active = 0;
+                          descriptor.placement_capacity.actors.reserved = 0;
+                          descriptor.placement_capacity.spots.active = 0;
+                          descriptor.placement_capacity.spots.reserved = 0;
+                          const auto active_key =
+                            detail::redis_location_key_schema_t::
+                              capacity_type_active_key (
+                                _options.key_prefix);
+                          const auto reserved_key =
+                            detail::redis_location_key_schema_t::
+                              capacity_type_pending_key (
+                                _options.key_prefix);
+                          for (const auto &capability :
+                               descriptor.object_capabilities) {
+                              const auto field =
+                                detail::redis_location_key_schema_t::
+                                  capacity_type_field (
+                                    descriptor.mesh_name,
+                                    descriptor.rid.to_string (),
+                                    descriptor.lifecycle_generation,
+                                    capability.object_kind,
+                                    capability.stable_type);
+                              const auto active = redis_get (
+                                client ().hget (active_key, field));
+                              const auto reserved = redis_get (
+                                client ().hget (
+                                  reserved_key, field));
+                              const auto active_count =
+                                active
+                                  ? static_cast<std::uint64_t> (
+                                      std::stoull (*active))
+                                  : 0;
+                              const auto reserved_count =
+                                reserved
+                                  ? static_cast<std::uint64_t> (
+                                      std::stoull (*reserved))
+                                  : 0;
+                              if (capability.object_kind
+                                  == placement_object_kind_t::actor) {
+                                  descriptor.placement_capacity.actors.active
+                                    += active_count;
+                                  descriptor.placement_capacity.actors.reserved
+                                    += reserved_count;
+                                  continue;
+                              }
+                              descriptor.placement_capacity.spots.active
+                                += active_count;
+                              descriptor.placement_capacity.spots.reserved
+                                += reserved_count;
+                              const auto typed = std::find_if (
+                                descriptor.placement_capacity.spot_types.begin (),
+                                descriptor.placement_capacity.spot_types.end (),
+                                [&] (const spot_type_capacity_t &candidate) {
+                                    return candidate.object_kind
+                                             == capability.object_kind
+                                           && candidate.stable_type
+                                                == capability.stable_type;
+                                });
+                              if (typed
+                                  != descriptor.placement_capacity.spot_types.end ()) {
+                                  typed->usage.active = active_count;
+                                  typed->usage.reserved = reserved_count;
+                              }
+                          }
+                          result.items.push_back (
+                            std::move (descriptor));
                           encoded_size += json->size ();
                       }
                   }
@@ -4614,7 +4897,7 @@ class redis_location_store_t final : public location_store_t,
                                                  location_write_intent_t intent) override
     {
         const auto row_key = detail::redis_location_key_schema_t::encode_spot_key (
-          spot_location_key_t{spot.mesh_name, spot.spot_rid});
+          spot_location_key_t{spot.spot_id});
         return write_row (location_kind_t::spot, row_key, spot.mesh_name, spot.owner_id,
                           spot.generation, detail::redis_location_row_codec_t::encode_spot (spot),
                           intent);
@@ -4623,9 +4906,16 @@ class redis_location_store_t final : public location_store_t,
     task_t<location_write_result_t> remove_spot (spot_location_key_t key,
                                                  location_owner_token_t owner) override
     {
+        const auto current = resolve_spot (key).result ().value ();
+        if (!current) {
+            return task_t<location_write_result_t> (
+              result_t<location_write_result_t>::success (
+                location_write_result_t{
+                  location_write_status_t::ignored_stale, 0, {}}));
+        }
         return remove_row (location_kind_t::spot,
                            detail::redis_location_key_schema_t::encode_spot_key (key),
-                           key.mesh_name, std::move (owner));
+                           current->mesh_name, std::move (owner));
     }
 
     task_t<std::optional<spot_location_t>> resolve_spot (spot_location_key_t key) override
@@ -5588,6 +5878,284 @@ class redis_location_store_t final : public location_store_t,
 #endif
     }
 
+    task_t<std::optional<creation_terminal_record_t>>
+    read_creation_terminal (
+      creation_operation_identity_t operation,
+      std::stop_token cancellation = {}) override
+    {
+        if (cancellation.stop_requested ())
+            return cancelled<std::optional<creation_terminal_record_t>> ();
+#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+        return _worker.submit<
+          std::optional<creation_terminal_record_t>> (
+          [this, operation = std::move (operation)] {
+              try {
+                  const auto keys = std::vector<std::string>{
+                    detail::redis_location_key_schema_t::
+                      creation_terminal_key (
+                        _options.key_prefix, operation)};
+                  const std::vector<std::string> args;
+                  const auto result = redis_get (
+                    client ().eval<std::vector<std::string>> (
+                      std::string (
+                        detail::redis_location_scripts_t::
+                          read_creation_terminal),
+                      keys.begin (), keys.end (), args.begin (),
+                      args.end ()));
+                  if (result.size () == 2
+                      && result[0] == "missing")
+                      return std::optional<
+                        creation_terminal_record_t>{};
+                  return std::optional<
+                    creation_terminal_record_t>{
+                      parse_creation_terminal (result)};
+              }
+              catch (const sw::redis::Error &error) {
+                  throw framework_exception_t (
+                    framework_error_kind_t::request_failed,
+                    error.what (), true);
+              }
+          });
+#else
+        (void) operation;
+        return unavailable_read<
+          std::optional<creation_terminal_record_t>> ();
+#endif
+    }
+
+    task_t<object_complete_creation_result_t>
+    complete_creation (
+      object_complete_creation_request_t request,
+      std::stop_token cancellation = {}) override
+    {
+        if (cancellation.stop_requested ())
+            return cancelled<object_complete_creation_result_t> ();
+        const auto publication = std::visit (
+          [] (const auto &value)
+            -> creation_terminal_publication_t {
+              return value.terminal;
+          },
+          request.completion);
+        const auto envelope =
+          bytes_to_string (publication.terminal_envelope);
+        const auto digest = byte_array_key (
+          publication.sha256);
+        if (publication.terminal_envelope.size ()
+              > 1024u * 1024u
+            || detail::redis_location_key_schema_t::
+                 sha256_hex (envelope)
+                 != digest)
+            throw std::invalid_argument (
+              "creation terminal envelope or SHA-256 is invalid");
+        const auto expires_at =
+          publication.operation_deadline
+          + std::chrono::minutes (5);
+        const auto expires_at_ms =
+          std::chrono::duration_cast<
+            std::chrono::milliseconds> (
+              expires_at.time_since_epoch ())
+            .count ();
+#if defined(ZLINK_FRAMEWORK_LOCATIONS_REDIS_HAS_ASYNC_CLIENT)
+        return _worker.submit<object_complete_creation_result_t> (
+          [this, request = std::move (request),
+           envelope, digest, expires_at,
+           expires_at_ms] {
+              try {
+                  const auto publication = std::visit (
+                    [] (const auto &value)
+                      -> creation_terminal_publication_t {
+                        return value.terminal;
+                    },
+                    request.completion);
+                  const auto key = object_key (request.key);
+                  const auto current = read_authority_sync (
+                    authority_key_t{key});
+                  const auto *snapshot =
+                    std::get_if<authority_snapshot_t> (
+                      &current);
+                  const auto stable_type =
+                    snapshot
+                      ? snapshot->allocation.stable_type
+                      : std::string{};
+                  const auto state =
+                    std::holds_alternative<
+                      object_creation_completed_t> (
+                        request.completion)
+                      ? creation_terminal_state_t::created
+                      : (std::holds_alternative<
+                           object_creation_rejected_t> (
+                             request.completion)
+                           ? creation_terminal_state_t::rejected
+                           : creation_terminal_state_t::failed);
+                  std::string ready_payload;
+                  if (const auto *created = std::get_if<
+                        object_creation_completed_t> (
+                          &request.completion))
+                      ready_payload = bytes_to_string (
+                        created->ready_payload);
+                  const auto node_field =
+                    detail::redis_location_key_schema_t::
+                      capacity_node_field (
+                        request.fence.target.mesh_name,
+                        request.fence.target.node_rid.value (),
+                        request.fence.target
+                          .node_lifecycle_generation);
+                  const auto type_field =
+                    detail::redis_location_key_schema_t::
+                      capacity_type_field (
+                        request.fence.target.mesh_name,
+                        request.fence.target.node_rid.value (),
+                        request.fence.target
+                          .node_lifecycle_generation,
+                        request.key.kind, stable_type);
+                  const auto index_member =
+                    detail::redis_location_key_schema_t::
+                      authority_index_member (key);
+                  const auto keys = std::vector<std::string>{
+                    detail::redis_location_key_schema_t::
+                      creation_terminal_key (
+                        _options.key_prefix,
+                        publication.operation),
+                    detail::redis_location_key_schema_t::
+                      authority_key (_options.key_prefix, key),
+                    detail::redis_location_key_schema_t::
+                      creation_reservation_key (
+                        _options.key_prefix,
+                        request.fence.reservation_id),
+                    detail::redis_location_key_schema_t::
+                      authority_store_revision_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      authority_keys_key (_options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_node_pending_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_type_pending_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_node_active_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      capacity_type_active_key (
+                        _options.key_prefix),
+                    detail::redis_location_key_schema_t::
+                      lease_key (
+                        _options.key_prefix,
+                        request.fence.target.owner.owner_id),
+                    detail::redis_location_key_schema_t::
+                      mesh_node_admission_key (
+                        _options.key_prefix,
+                        request.fence.target.mesh_name,
+                        request.fence.target.node_rid.value ())};
+                  auto args = object_fence_args (
+                    request.fence);
+                  args.push_back (node_field);
+                  args.push_back (type_field);
+                  args.push_back (std::to_string (
+                    static_cast<int> (state)));
+                  args.push_back (ready_payload);
+                  args.push_back (index_member);
+                  args.push_back (std::string (
+                    publication.operation.source_node_rid
+                      .value ()));
+                  args.push_back (std::to_string (
+                    publication.operation
+                      .source_node_generation));
+                  args.push_back (std::to_string (
+                    publication.operation.operation_id.high));
+                  args.push_back (std::to_string (
+                    publication.operation.operation_id.low));
+                  args.push_back (std::to_string (
+                    static_cast<int> (request.key.kind)));
+                  args.push_back (request.key.global_id);
+                  args.push_back (envelope);
+                  args.push_back (digest);
+                  args.push_back (
+                    std::to_string (expires_at_ms));
+                  const auto status = redis_get (
+                    client ().eval<std::string> (
+                      std::string (
+                        detail::redis_location_scripts_t::
+                          complete_creation),
+                      keys.begin (), keys.end (), args.begin (),
+                      args.end ()));
+                  if (status == "already") {
+                      const auto terminal_keys =
+                        std::vector<std::string>{keys.front ()};
+                      const std::vector<std::string>
+                        terminal_args;
+                      const auto stored_terminal = redis_get (
+                        client ().eval<
+                          std::vector<std::string>> (
+                          std::string (
+                            detail::
+                              redis_location_scripts_t::
+                                read_creation_terminal),
+                          terminal_keys.begin (),
+                          terminal_keys.end (),
+                          terminal_args.begin (),
+                          terminal_args.end ()));
+                      if (stored_terminal.size () == 2
+                          && stored_terminal[0] == "missing")
+                          throw sw::redis::Error (
+                            "creation terminal disappeared");
+                      return object_complete_creation_result_t{
+                        object_creation_already_completed_result_t{
+                          parse_creation_terminal (
+                            stored_terminal)}};
+                  }
+                  if (status == "stale")
+                      return object_complete_creation_result_t{
+                        object_creation_completion_stale_t{}};
+                  if (status == "conflict")
+                      return object_complete_creation_result_t{
+                        object_creation_completion_conflict_t{
+                          read_authority_sync (
+                            authority_key_t{key})}};
+                  if (status == "exhausted")
+                      return object_complete_creation_result_t{
+                        authority_generation_exhausted_t{}};
+                  if (status == "expired")
+                      throw std::invalid_argument (
+                        "creation terminal expiry is not in the future");
+                  if (status != "completed")
+                      throw sw::redis::Error (
+                        "unknown creation completion result");
+                  const creation_terminal_record_t terminal{
+                    publication.operation, request.key,
+                    request.fence, state,
+                    publication.terminal_envelope,
+                    publication.sha256, expires_at};
+                  std::optional<authority_snapshot_t> ready;
+                  if (state
+                      == creation_terminal_state_t::created) {
+                      const auto stored =
+                        read_authority_sync (
+                          authority_key_t{key});
+                      if (const auto *value =
+                            std::get_if<authority_snapshot_t> (
+                              &stored))
+                          ready = *value;
+                  }
+                  return object_complete_creation_result_t{
+                    object_creation_completed_result_t{
+                      terminal, std::move (ready)}};
+              }
+              catch (const sw::redis::Error &error) {
+                  throw framework_exception_t (
+                    framework_error_kind_t::request_failed,
+                    error.what (), true);
+              }
+          });
+#else
+        (void) request;
+        (void) expires_at;
+        (void) expires_at_ms;
+        return unavailable_read<object_complete_creation_result_t> ();
+#endif
+    }
+
     task_t<object_reserve_result_t> reserve (
       object_reserve_request_t request,
       std::stop_token cancellation = {}) override
@@ -5673,10 +6241,7 @@ class redis_location_store_t final : public location_store_t,
                       object_kind_token (
                         request.key.kind),
                     std::string{},
-                    request.intent.placement_profile
-                      ? std::string (
-                          request.intent.placement_profile->value ())
-                      : std::string{},
+                    std::string{},
                     std::string{},
                     detail::redis_location_key_schema_t::
                       authority_index_member (key),
@@ -7009,7 +7574,7 @@ class redis_location_store_t final : public location_store_t,
                && valid_descriptor_text (
                  descriptor.endpoint)
                && descriptor.weight >= 0
-               && descriptor.weight <= 100
+               && descriptor.weight <= 10000
                && state
                     <= static_cast<unsigned int> (
                       framework_runtime_state_t::error)
@@ -7176,7 +7741,8 @@ class redis_location_store_t final : public location_store_t,
                    std::numeric_limits<std::int64_t>::max ())
             || descriptor.endpoint.empty ()
             || descriptor.application_version < 0
-            || descriptor.placement_weight > 100
+            || descriptor.placement_weight < 0
+            || descriptor.placement_weight > 10000
             || descriptor.object_capacity.active
                  > descriptor.object_capacity.active_limit
             || descriptor.object_capacity.pending
@@ -7189,6 +7755,10 @@ class redis_location_store_t final : public location_store_t,
             || descriptor.object_capacity.pending_limit
                  > static_cast<std::uint32_t> (
                    std::numeric_limits<std::int32_t>::max ())
+            || descriptor.placement_capacity.actors.limit < 0
+            || descriptor.placement_capacity.spots.limit < 0
+            || descriptor.placement_capacity.spot_types.size ()
+                 > 1024
             || descriptor.security_identity.empty ()
             || descriptor.owner_id.empty ()
             || descriptor.lease_generation <= 0
@@ -7196,12 +7766,17 @@ class redis_location_store_t final : public location_store_t,
             || (descriptor.object_role != object_role_t::server
                 && !descriptor.object_capabilities.empty ()))
             return false;
+        for (const auto &[name, weight] :
+             descriptor.channel_weights) {
+            if (name.empty () || weight < 0
+                || weight > 10000)
+                return false;
+        }
         std::pair<int, std::string> previous;
         bool first = true;
         for (const auto &capability :
              descriptor.object_capabilities) {
             if (capability.stable_type.empty ()
-                || capability.placement_profiles.size () > 1024
                 || ((capability.policy
                        == maintenance_policy_kind_t::snapshot)
                     != capability.has_snapshot_adapter)
@@ -7224,6 +7799,28 @@ class redis_location_store_t final : public location_store_t,
             if (!first && previous >= key)
                 return false;
             previous = key;
+            first = false;
+        }
+        std::pair<int, std::string> previous_capacity;
+        first = true;
+        for (const auto &typed :
+             descriptor.placement_capacity.spot_types) {
+            if (typed.stable_type.empty ()
+                || typed.object_kind
+                     == placement_object_kind_t::actor
+                || typed.usage.limit < 0
+                || (typed.usage.limit > 0
+                    && typed.usage.active
+                         + typed.usage.reserved
+                       > static_cast<std::uint64_t> (
+                           typed.usage.limit)))
+                return false;
+            const auto key = std::make_pair (
+              static_cast<int> (typed.object_kind),
+              typed.stable_type);
+            if (!first && previous_capacity >= key)
+                return false;
+            previous_capacity = key;
             first = false;
         }
         return true;
@@ -7407,6 +8004,55 @@ class redis_location_store_t final : public location_store_t,
                + ":" + key.global_id;
     }
 
+    static creation_terminal_record_t parse_creation_terminal (
+      const std::vector<std::string> &result)
+    {
+        if (result.size () != 22 || result[0] != "found"
+            || result[19].size () != 64)
+            throw std::invalid_argument (
+              "creation terminal row is incomplete");
+        const auto hex_value = [] (char value) -> unsigned {
+            if (value >= '0' && value <= '9')
+                return static_cast<unsigned> (value - '0');
+            if (value >= 'a' && value <= 'f')
+                return static_cast<unsigned> (value - 'a' + 10);
+            throw std::invalid_argument (
+              "creation terminal SHA-256 is not lower hex");
+        };
+        std::array<std::byte, 32> digest{};
+        for (std::size_t index = 0; index < digest.size ();
+             ++index)
+            digest[index] = static_cast<std::byte> (
+              (hex_value (result[19][index * 2]) << 4u)
+              | hex_value (result[19][index * 2 + 1]));
+        const creation_operation_identity_t operation{
+          node_rid_t::from_string (result[1]),
+          std::stoull (result[2]),
+          {std::stoull (result[3]),
+           std::stoull (result[4])}};
+        const object_creation_key_t object{
+          static_cast<placement_object_kind_t> (
+            std::stoi (result[5])),
+          result[6]};
+        const object_reservation_fence_t reservation{
+          result[7], result[8],
+          std::stoull (result[9]),
+          std::stoull (result[10]),
+          {result[11],
+            node_rid_t::from_string (result[12]),
+            std::stoull (result[13]),
+            {result[14], std::stoll (result[15])}},
+          static_cast<std::uint32_t> (
+            std::stoul (result[16]))};
+        return {
+          operation, object, reservation,
+          static_cast<creation_terminal_state_t> (
+            std::stoi (result[17])),
+          string_to_bytes (result[18]), digest,
+          detail::redis_location_script_result_t::
+            from_unix_ms (std::stoll (result[20]))};
+    }
+
     template <std::size_t Size>
     static std::string byte_array_key (
       const std::array<std::byte, Size> &value)
@@ -7432,18 +8078,6 @@ class redis_location_store_t final : public location_store_t,
           static_cast<int> (request.key.kind);
         value["globalId"] = request.key.global_id;
         value["stableType"] = request.intent.stable_type;
-        value["placementProfile"] =
-          request.intent.placement_profile
-            ? nlohmann::json (
-                std::string (
-                  request.intent.placement_profile->value ()))
-            : nlohmann::json (nullptr);
-        value["affinityKey"] =
-          request.intent.affinity_key
-            ? nlohmann::json (
-                std::string (
-                  request.intent.affinity_key->value ()))
-            : nlohmann::json (nullptr);
         value["contentReference"] =
           request.intent.request_content_reference;
         value["sha256"] =
@@ -8327,7 +8961,7 @@ class redis_location_store_t final : public location_store_t,
         return (!filter.mesh_name || row.mesh_name == *filter.mesh_name)
                && (!filter.actor_type || row.actor_type == *filter.actor_type)
                && (!filter.owner_node_rid || row.owner_node_rid == *filter.owner_node_rid)
-               && (!filter.spot_rid || row.spot_rid == *filter.spot_rid)
+               && (!filter.spot_id || row.spot_id == *filter.spot_id)
                && (!filter.spot_kind || row.spot_kind == *filter.spot_kind);
     }
 

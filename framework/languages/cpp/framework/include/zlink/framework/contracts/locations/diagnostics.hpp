@@ -47,7 +47,7 @@ struct location_topology_entry_t
     std::optional<std::string> mesh_name;
     std::optional<location_role_t> role;
     std::optional<zlink::routing_id_t> node_rid;
-    std::optional<zlink::routing_id_t> spot_rid;
+    std::optional<std::string> spot_id;
     std::optional<std::string> actor_id;
     std::optional<std::string> endpoint;
     location_topology_state_t state = location_topology_state_t::discovered;

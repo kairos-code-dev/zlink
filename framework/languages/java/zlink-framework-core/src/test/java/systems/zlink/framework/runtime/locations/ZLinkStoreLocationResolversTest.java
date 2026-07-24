@@ -38,7 +38,7 @@ class ZLinkStoreLocationResolversTest {
             .toCompletableFuture()
             .get();
 
-        assertNull(resolvers(store).resolveSpotRow(new ZLinkSpotLocationKey("game", SPOT))
+        assertNull(resolvers(store).resolveSpotRow(new ZLinkSpotLocationKey(SPOT.toString()))
             .toCompletableFuture()
             .get());
 
@@ -46,10 +46,10 @@ class ZLinkStoreLocationResolversTest {
             .toCompletableFuture()
             .get();
 
-        assertEquals(SPOT, resolvers(store).resolveSpotRow(new ZLinkSpotLocationKey("game", SPOT))
+        assertEquals(SPOT.toString(), resolvers(store).resolveSpotRow(new ZLinkSpotLocationKey(SPOT.toString()))
             .toCompletableFuture()
             .get()
-            .spotRid());
+            .spotId());
     }
 
     @Test
@@ -86,7 +86,7 @@ class ZLinkStoreLocationResolversTest {
             .size());
         ZLinkStoreLocationResolvers rows = new ZLinkStoreLocationResolvers(stores, liveRows);
 
-        assertNull(rows.resolveSpotRow(new ZLinkSpotLocationKey("game", SPOT))
+        assertNull(rows.resolveSpotRow(new ZLinkSpotLocationKey(SPOT.toString()))
             .toCompletableFuture()
             .get());
     }
@@ -119,7 +119,7 @@ class ZLinkStoreLocationResolversTest {
     private static ZLinkSpotLocation spot(String ownerId, long generation) {
         return new ZLinkSpotLocation(
             "game",
-            SPOT,
+            SPOT.toString(),
             "RoomSpot",
             NODE,
             ZLinkSpotKind.USER,
@@ -133,7 +133,7 @@ class ZLinkStoreLocationResolversTest {
         String ownerId,
         String actorId,
         ZLinkSpotKind locationKind,
-        RoutingId spotRid) {
+        String spotId) {
         return new ZLinkActorLocation(
             actorId,
             "player",
@@ -141,7 +141,7 @@ class ZLinkStoreLocationResolversTest {
             NODE,
             locationKind,
             "game",
-            spotRid,
+            spotId,
             ownerId,
             0,
             NOW);

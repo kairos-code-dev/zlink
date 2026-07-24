@@ -413,7 +413,9 @@ final class EntrySpotActorDispatchTests {
         private final List<RemoteBind> remoteSessionBinds = new CopyOnWriteArrayList<>();
 
         @Override public RoutingId routingId() { return routingId; }
-        @Override public void setRoutingId(RoutingId routingId) { this.routingId = routingId; }
+        @Override public void setRoutingId(RoutingId routingId) {
+            this.routingId = routingId;
+        }
         @Override public void setPublisherRoutingId(RoutingId routingId) { }
         @Override public void setSubscriberRoutingId(RoutingId routingId) { }
         @Override public void setRouterBind(String endpoint) { }
@@ -433,9 +435,9 @@ final class EntrySpotActorDispatchTests {
         }
 
         @Override public ZLinkBackendActorRef actorLookup(String actorId) { return new ZLinkBackendActorRef(routingId, actorId, 1); }
-        @Override public CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, Duration timeout) { throw new UnsupportedOperationException(); }
+        @Override public CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, String targetSpotId, List<Message> parts, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Message request, Duration timeout) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, RoutingId currentSpotRid, Duration timeout) { throw new UnsupportedOperationException(); }
+        @Override public CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, String currentSpotId, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) { throw new UnsupportedOperationException(); }
 
         @Override
@@ -479,7 +481,7 @@ final class EntrySpotActorDispatchTests {
     }
 
     private static final class TestSpot implements ZLinkBackendSpot {
-        private RoutingId routingId = RoutingId.from("entry-spot");
+        private String routingId = "entry-spot";
         private ZLinkBackendSpotDispatchHandler handler;
 
         void raiseActorReadable(List<ZLinkBackendActorReceived> actorMessages) {
@@ -488,14 +490,14 @@ final class EntrySpotActorDispatchTests {
                 actorMessages));
         }
 
-        @Override public RoutingId routingId() { return routingId; }
-        @Override public void setRoutingId(RoutingId routingId) { this.routingId = routingId; }
+        @Override public String routingId() { return routingId; }
+        @Override public void setRoutingId(String spotId) { this.routingId = spotId; }
         @Override public void setSubscription(String topic) { }
         @Override public ZLinkBackendTopicMessage subscribe(ZLinkBackendRecvMode mode) { return null; }
         @Override public ZLinkBackendReceived recvRoute(ZLinkBackendRecvMode mode) { return null; }
         @Override public boolean publish(String channelName, String topic, List<Message> parts, SendFlags flags) { throw new UnsupportedOperationException(); }
-        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, long spotGeneration, List<Message> parts, SendFlags flags) { throw new UnsupportedOperationException(); }
-        @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, long spotGeneration, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { throw new UnsupportedOperationException(); }
+        @Override public boolean sendToSpot(RoutingId targetNodeRid, String spotId, long spotGeneration, List<Message> parts, SendFlags flags) { throw new UnsupportedOperationException(); }
+        @Override public boolean requestToSpot(RoutingId targetNodeRid, String spotId, long spotGeneration, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public void onDispatchEvent(ZLinkBackendSpotDispatchHandler handler) { this.handler = handler; }
         @Override public ZLinkBackendActorJoinRequest recvActorJoin(ZLinkBackendRecvMode mode) { return null; }
         @Override public void replyActorJoin(ZLinkBackendActorJoinRequest request, int joinResultCode, List<Message> parts) { throw new UnsupportedOperationException(); }

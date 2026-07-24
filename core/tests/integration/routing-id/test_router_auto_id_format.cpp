@@ -44,6 +44,10 @@ void test_router_auto_id_format ()
     zlink_routing_id_t auto_routing_id_value;
     TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (client, &auto_routing_id_value));
     TEST_ASSERT_EQUAL_UINT (16u, auto_routing_id_value.size);
+    TEST_ASSERT_EQUAL_HEX8 (
+      0x40u, static_cast<unsigned int> (auto_routing_id_value.data[6] & 0xf0u));
+    TEST_ASSERT_EQUAL_HEX8 (
+      0x80u, static_cast<unsigned int> (auto_routing_id_value.data[8] & 0xc0u));
     memcpy (auto_routing_id, auto_routing_id_value.data, auto_routing_id_value.size);
     auto_routing_id_size = auto_routing_id_value.size;
     TEST_ASSERT_EQUAL_UINT (16u, auto_routing_id_size);
@@ -62,11 +66,28 @@ void test_router_auto_id_format ()
     close_sync_socket_zero_linger (server);
 }
 
+void test_caller_routing_id_remains_exact_binary ()
+{
+    void *socket = create_sync_socket (ZLINK_SOCKET_DEALER);
+    const unsigned char caller_routing_id[] = {0x00u, 0x40u, 0x80u, 0xffu, 0x01u};
+
+    TEST_ASSERT_SUCCESS_ERRNO (
+      zlink_set_routing_id (socket, caller_routing_id, sizeof (caller_routing_id)));
+
+    zlink_routing_id_t observed;
+    TEST_ASSERT_SUCCESS_ERRNO (zlink_get_routing_id (socket, &observed));
+    TEST_ASSERT_EQUAL_UINT (sizeof (caller_routing_id), observed.size);
+    TEST_ASSERT_EQUAL_MEMORY (caller_routing_id, observed.data, sizeof (caller_routing_id));
+
+    close_sync_socket_zero_linger (socket);
+}
+
 int main ()
 {
     setup_test_environment ();
 
     UNITY_BEGIN ();
     RUN_TEST (test_router_auto_id_format);
+    RUN_TEST (test_caller_routing_id_remains_exact_binary);
     return UNITY_END ();
 }

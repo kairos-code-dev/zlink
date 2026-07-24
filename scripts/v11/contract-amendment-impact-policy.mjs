@@ -57,8 +57,8 @@ const runtimeLanguage = language => language === 'kotlin' ? 'java' : language;
 
 export const closedCatchAllExpectations = {
   'kotlin-reviewed-contract-set': {
-    count: 115,
-    identitySetSha256: '1cbe6e9160f7bad5a480e643feae184e10f83f9d36ef086097ccd49967c991ab',
+    count: 101,
+    identitySetSha256: '6d58e7d504a195ad442e3480566fff99334615ba38e0bb7877a734a922208274',
   },
   'node-reviewed-contract-set': {
     count: 56,
@@ -95,7 +95,8 @@ const rules = [
   },
   {
     id: 'instance-spot-explicit-create',
-    matches: value => /instancespotaddress|requesttospot|sendtospot/u.test(value),
+    matches: value => /instancespotaddress|requesttospot|sendtospot/u.test(value)
+      && !/spotrid/u.test(value),
     decisions: ['CA-D25'],
     coverage: () => ['e2e:add:global-spot-explicit-create'],
   },
@@ -130,8 +131,37 @@ const rules = [
     coverage: () => ['e2e:add:global-spot-explicit-create'],
   },
   {
+    id: 'spot-id-string-identity',
+    matches: value => /spotrid/u.test(value),
+    decisions: ['CA-D65'],
+    coverage: member => [
+      'e2e:add:global-spot-explicit-create',
+      `public-behavior:formal-contract-parity:${member.language}`,
+    ],
+  },
+  {
+    id: 'yield-surface-restriction',
+    matches: value => /yield/u.test(value),
+    decisions: ['CA-D58', 'CA-D59'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'spot-actor-lifecycle-split',
+    matches: value => /(?:entryspot|spotactorlifecycle).*(?:onactorjoin|onjoinedactor|onleaveactor|ondisconnectactor)/u.test(value),
+    decisions: ['CA-D67'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'authority-create-transition-split',
+    matches: value => /authorityexpect(?:missing|found)|authorityexpectationzlinkauthorityexpectation|authoritygenerationtransition.*newobject|missingmissing/u.test(value)
+      && !/equals|hashcode|tostring/u.test(value),
+    decisions: ['CA-D44', 'CA-D45'],
+    coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
     id: 'reviewed-exact-surface-cleanup',
-    matches: value => /zlinkentryspotcontext|zlinkframeworkruntimeeventruntime|zlinkhandlerinvocation(?:context|message)/u.test(value),
+    matches: value => /zlinkentryspotcontext|zlinkframeworkruntimeeventruntime|zlinkhandlerinvocation(?:context|message)/u.test(value)
+      && !/spotrid/u.test(value),
     decisions: ['CA-D29'],
     coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
   },
@@ -175,7 +205,7 @@ const rules = [
   {
     id: 'spot-manager-replacement',
     matches: value => /spothandleresolver|resolvespothandle|spothandle|spotmanager.*(?:find|list)|spotinfo/u.test(value)
-      && !/actorspothandleresolver|resolveactorspothandle/u.test(value),
+      && !/actorspothandleresolver|resolveactorspothandle|spotrid/u.test(value),
     decisions: ['CA-D02', 'CA-D26'],
     coverage: () => ['e2e:add:global-spot-explicit-create'],
   },
@@ -187,7 +217,8 @@ const rules = [
   },
   {
     id: 'spot-global-authority-key',
-    matches: value => /spotlocationkey|authoritysnapshot.*spot/u.test(value),
+    matches: value => /spotlocationkey|authoritysnapshot.*spot/u.test(value)
+      && !/spotrid/u.test(value),
     decisions: ['CA-D02'],
     coverage: member => [`regression:add:global-authority-key:${runtimeLanguage(member.language)}`],
   },
@@ -234,7 +265,7 @@ const rules = [
     id: 'placement-policy',
     matches: value => /placement|affinity|capacity|weight/u.test(value)
       && !/zlinksocket/u.test(value),
-    decisions: ['CA-D14', 'CA-D22', 'CA-D23'],
+    decisions: ['CA-D14', 'CA-D22', 'CA-D23', 'CA-D70'],
     coverage: () => ['e2e:add:placement-capacity-weight-affinity'],
   },
   {
@@ -271,7 +302,7 @@ const rules = [
     id: 'spot-fluent-create',
     matches: (value, member) => /spotmanager.*create|spotmanager.*getorcreate|spotcreate/u.test(value)
       && !/meshnodebuilder|nestmeshnodebuilder/u.test(normalize(member.ownerIdentity))
-      && !/maxactiveinstances/u.test(value),
+      && !/maxactiveinstances|spotrid/u.test(value),
     decisions: ['CA-D02', 'CA-D04', 'CA-D09'],
     coverage: () => ['e2e:add:global-spot-explicit-create'],
   },
@@ -284,7 +315,7 @@ const rules = [
   },
   {
     id: 'operational-location-query',
-    matches: value => /peerlocationresolver|listlivepeers|locationruntimequery|list.*location|listtopology|listmeshnode/u.test(value)
+    matches: value => /peerlocationresolver|listlivepeers|locationruntimequery|list.*location|listtopology|listmeshnode|listauthorities|readauthority|listclientservers|listfanoutpublishers|listpeers|listroutes/u.test(value)
       && !/resolve.*handle/u.test(value),
     decisions: ['CA-D26'],
     coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
@@ -304,13 +335,15 @@ const rules = [
   },
   {
     id: 'actor-location-filter',
-    matches: value => /actorlocationfilter/u.test(value),
+    matches: value => /actorlocationfilter/u.test(value)
+      && !/spotrid/u.test(value),
     decisions: ['CA-D01', 'CA-D26'],
     coverage: () => ['e2e:add:global-actor-remote-create'],
   },
   {
     id: 'spot-location-filter',
-    matches: value => /spotlocationfilter/u.test(value),
+    matches: value => /spotlocationfilter/u.test(value)
+      && !/spotrid/u.test(value),
     decisions: ['CA-D02', 'CA-D26'],
     coverage: () => ['e2e:add:global-spot-explicit-create'],
   },
@@ -323,9 +356,24 @@ const rules = [
   },
   {
     id: 'generated-record-contract-set',
-    matches: value => /zlinkmeshNodeDescriptorhashset/i.test(value),
+    matches: value => /zlinkmeshNodeDescriptorhashset|zlinkauthorityexpectmissing(?:equals|hashcode|tostring)/i.test(value),
     decisions: ['CA-D29'],
     coverage: member => [`public-behavior:formal-contract-parity:${member.language}`],
+  },
+  {
+    id: 'cpp-reviewed-contract-set',
+    matches: (value, member) => member.language === 'cpp'
+      && /(?:actorlocation|spotlocation|routelocation).*from|appt(?:retire|shutdown)|(?:clientserverchannelserverbuilder|meshchannelserverbuilder|meshnodebuilder).*(?:addrequesthandler|addsendhandler|addrouterequesthandler|addroutesendhandler)|healthbuildertsetstatus|loggert(?:critical|debug|error|info|log|trace|warn)|loggingbuildert(?:useasync|userotatingfile)|metricsbuildertrecordruntimemetric|requestclientt(?:request|send)|spotcommoncontexttaddtimer/u.test(value)
+      && !/spotlocationkey/u.test(value),
+    decisions: ['CA-D29'],
+    coverage: () => ['public-behavior:formal-contract-parity:cpp'],
+  },
+  {
+    id: 'node-generated-contract-set',
+    matches: (value, member) => member.language === 'node'
+      && /zlinkauthoritykeybrand|zlinkauthorityversionbrand|zlinkauthoritykeytrue|zlinkauthoritystoreversiontrue|zlinkmoduleoptionstrue|zlinkmetercreate(?:counter|histogram|updowncounter)/u.test(value),
+    decisions: ['CA-D29'],
+    coverage: () => ['public-behavior:formal-contract-parity:node'],
   },
   {
     id: 'redis-location-options-split',

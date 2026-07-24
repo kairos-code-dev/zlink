@@ -148,7 +148,7 @@ class ZLinkRedisLocationRowJsonTest {
     void spotJsonPreservesLifecycleGenerationSeparatelyFromOwnerGeneration() throws Exception {
         ZLinkSpotLocation original = new ZLinkSpotLocation(
             "mesh",
-            RoutingId.from("spot"),
+            "spot",
             41L,
             "room",
             RoutingId.from("node"),
@@ -182,7 +182,7 @@ class ZLinkRedisLocationRowJsonTest {
               "Generation": 1,
               "LocationKind": 2,
               "SpotMeshName": "game",
-              "SpotRid": "02",
+              "SpotId": "02",
               "OwnerId": "owner-a",
               "UpdatedAt": "2026-07-03T00:00:00Z"
             }
@@ -243,7 +243,12 @@ class ZLinkRedisLocationRowJsonTest {
                 List.of(),
                 ZLinkMeshNodeObjectRole.NONE,
                 100,
-                new ZLinkPlacementCapacity(0, 0, 10_000, 128),
+                new ZLinkPlacementCapacity(
+                    new systems.zlink.framework.locations
+                        .ZLinkCapacityUsage(0, 0, 10_000),
+                    new systems.zlink.framework.locations
+                        .ZLinkCapacityUsage(0, 0, 128),
+                    List.of()),
                 Optional.empty(),
                 ZLinkFrameworkRuntimeState.SERVING,
                 "cluster-a",
@@ -338,7 +343,7 @@ class ZLinkRedisLocationRowJsonTest {
     private static ZLinkSpotLocation fixtureSpot() {
         return new ZLinkSpotLocation(
             "play",
-            RoutingId.from("spot-1"),
+            "spot-1",
             "game",
             RoutingId.from("node-1"),
             ZLinkSpotKind.USER,

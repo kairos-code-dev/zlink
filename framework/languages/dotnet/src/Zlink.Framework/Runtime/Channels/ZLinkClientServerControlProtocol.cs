@@ -64,7 +64,7 @@ internal static class ZLinkClientServerControlProtocol
     {
         if (admission.LifecycleGeneration == 0
             || admission.DescriptorRevision == 0
-            || admission.Weight is < 0 or > 100)
+            || admission.Weight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight)
             throw new ArgumentOutOfRangeException(nameof(admission));
         var role = new Writer();
         role.Text8(admission.ChannelName);
@@ -163,7 +163,7 @@ internal static class ZLinkClientServerControlProtocol
             || !reader.TryU64(out var revision)
             || revision == 0
             || !reader.TryU32(out var weight)
-            || weight > 100
+            || weight > ZLinkSocketConfig.MaximumPeerWeight
             || !reader.TryU8(out var stateValue)
             || !TryRuntimeStateFromWire(stateValue, out var state)
             || !reader.TryText8(out var securityIdentity)

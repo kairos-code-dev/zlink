@@ -20,11 +20,11 @@ internal sealed class ZLinkSpotHandleRegistry
         => Register(_actors, key, handle);
 
     internal void UpdateSpot(ZLinkSpotLocation row)
-        => Apply(_spots, new ZLinkSpotLocationKey(row.MeshName, row.SpotRid), handle => handle.Update(
+        => Apply(_spots, new ZLinkSpotLocationKey(row.SpotId), handle => handle.Update(
             new ZLinkSpotHandleSnapshot(
                 row.MeshName,
                 row.OwnerNodeRid,
-                row.SpotRid,
+                row.SpotId,
                 row.SpotGeneration,
                 row.SpotKind,
                 row.AuthorityOwnerGeneration),
@@ -40,18 +40,18 @@ internal sealed class ZLinkSpotHandleRegistry
             handle => handle.Update(ToSnapshot(row), row.MembershipEpoch));
 
     private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
-        => row.SpotKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
+        => row.SpotKind == ZLinkSpotKind.Entry || string.IsNullOrEmpty(row.SpotId)
             ? new ZLinkSpotHandleSnapshot(
                 row.MeshName,
                 row.OwnerNodeRid,
-                row.OwnerNodeRid,
+                row.SpotId,
                 row.SpotGeneration,
                 ZLinkSpotKind.Entry,
                 row.AuthorityOwnerGeneration)
             : new ZLinkSpotHandleSnapshot(
                 row.MeshName,
                 row.OwnerNodeRid,
-                row.SpotRid,
+                row.SpotId,
                 row.SpotGeneration,
                 ZLinkSpotKind.User,
                 row.AuthorityOwnerGeneration);

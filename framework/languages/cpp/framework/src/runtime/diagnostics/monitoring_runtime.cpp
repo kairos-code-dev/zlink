@@ -377,7 +377,7 @@ void monitoring_runtime_t::publish_actor (actor_event_payload_t event) const
 }
 
 void monitoring_runtime_t::publish_timer_failure (std::string source_name,
-                                                  spot_rid_t spot_rid,
+                                                  spot_id_t spot_id,
                                                   timer_failure_event_t failure) const
 {
     if (!contains_source (_state->spot_sources, source_name)) {
@@ -396,7 +396,7 @@ void monitoring_runtime_t::publish_timer_failure (std::string source_name,
       std::move (source_name),
       {},
       {},
-      spot_timer_diagnostic_t{std::move (spot_rid), false, std::move (failure.timer_name),
+      spot_timer_diagnostic_t{std::move (spot_id), false, std::move (failure.timer_name),
                               failure.handler_type.name (), failure.delivery_index,
                               failure.delivery_index, "std::exception",
                               std::move (failure.message)}});

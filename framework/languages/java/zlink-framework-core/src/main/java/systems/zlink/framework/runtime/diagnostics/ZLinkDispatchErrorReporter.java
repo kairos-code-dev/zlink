@@ -46,7 +46,7 @@ public final class ZLinkDispatchErrorReporter {
             error.topic(),
             error.correlationId(),
             error.sourceRid(),
-            error.spotRid(),
+            error.spotId(),
             error.actorId(),
             null,
             error.reason(),

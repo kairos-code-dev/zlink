@@ -34,6 +34,43 @@ public sealed class RedisLocationStoreTests
     }
 
     [Fact]
+    public void WeightJsonAcceptsSignedMaximumAndRejectsOutOfRangeValues()
+    {
+        var maximum = TestRows.MeshNode(OwnerA) with
+        {
+            PlacementWeight = 10_000,
+            ChannelWeights = new Dictionary<string, int>(
+                StringComparer.Ordinal)
+            {
+                ["play"] = 10_000,
+                ["excluded"] = 0
+            }
+        };
+
+        var json = ZLinkRedisLocationRowJson.Serialize(maximum);
+        var decoded =
+            ZLinkRedisLocationRowJson.Deserialize<ZLinkMeshNodeDescriptor>(
+                json);
+        Assert.Equal(10_000, decoded.PlacementWeight);
+        Assert.Equal(10_000, decoded.ChannelWeights["play"]);
+        Assert.Equal(0, decoded.ChannelWeights["excluded"]);
+
+        Assert.Throws<System.Text.Json.JsonException>(() =>
+            ZLinkRedisLocationRowJson.Serialize(
+                maximum with { PlacementWeight = 10_001 }));
+        Assert.Throws<System.Text.Json.JsonException>(() =>
+            ZLinkRedisLocationRowJson.Serialize(
+                maximum with
+                {
+                    ChannelWeights =
+                        new Dictionary<string, int>(StringComparer.Ordinal)
+                        {
+                            ["play"] = -1
+                        }
+                }));
+    }
+
+    [Fact]
     public void Descriptor_Row_Json_Requires_The_Complete_Exact_Contract()
     {
         var row = TestRows.MeshNode(OwnerA) with
@@ -98,18 +135,18 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(
             new[]
             {
+                "actorLimit",
                 "applicationVersion",
                 "capabilities",
                 "descriptorKey",
                 "descriptorRevision",
                 "immutableDigest",
                 "lifecycleGeneration",
-                "nodeActiveLimit",
-                "nodePendingLimit",
                 "objectRole",
                 "ownerId",
                 "ownerLeaseGeneration",
-                "runtimeState"
+                "runtimeState",
+                "spotLimit"
             },
             (await _fixture.HashGetAllAsync(
                 keys.HybridDescriptorAdmissionKey(canonicalKey).ToString()))
@@ -159,7 +196,7 @@ public sealed class RedisLocationStoreTests
         Assert.Equal("actor-1", resolved!.ActorRef.ActorId);
         Assert.Equal(RoutingId.From("node-1"), resolved.OwnerNodeRid);
         Assert.Equal(ZLinkSpotKind.Entry, resolved.SpotKind);
-        Assert.False(resolved.SpotRid is { Size: > 0 });
+        Assert.Equal(string.Empty, resolved.SpotId);
         Assert.Equal(OwnerA, resolved.OwnerId);
         // UpdatedAt comes from the store clock, not from the row the writer
         // sent (it carried a default timestamp).
@@ -190,14 +227,18 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(7, descriptor.ApplicationVersion);
         Assert.Equal(ZLinkMeshNodeObjectRole.Server, descriptor.ObjectRole);
         Assert.Equal(80, descriptor.PlacementWeight);
-        Assert.Equal(new ZLinkPlacementCapacity(0, 0, 1_000, 64), descriptor.Capacity);
+        Assert.Equal(
+            new ZLinkPopulationCapacity(0, 0, 1_000),
+            descriptor.Capacity.Actors);
+        Assert.Equal(
+            new ZLinkPopulationCapacity(0, 0, 1_000),
+            descriptor.Capacity.Spots);
+        Assert.Empty(descriptor.Capacity.SpotTypes);
         Assert.Equal("wave-a", descriptor.MaintenanceWave);
         var capability = Assert.Single(descriptor.ObjectCapabilities);
         Assert.Equal(ZLinkPlacementObjectKind.Actor, capability.ObjectKind);
         Assert.Equal("player", capability.StableType);
-        Assert.Equal(
-            ["zone-a", "zone-b"],
-            capability.PlacementProfiles.Order(StringComparer.Ordinal));
+        Assert.Equal(0, capability.Limit);
     }
 
     [SkippableFact]
@@ -356,8 +397,8 @@ public sealed class RedisLocationStoreTests
         Assert.Equal(3, removed);
         Assert.DoesNotContain(await store.ListMeshNodesAsync("play"), row => row.OwnerId == OwnerA);
         Assert.Contains(await store.ListMeshNodesAsync("play"), row => row.OwnerId == OwnerB);
-        Assert.Null(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("play", RoutingId.From("spot-a"))));
-        Assert.NotNull(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("play", RoutingId.From("spot-b"))));
+        Assert.Null(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("spot-a")));
+        Assert.NotNull(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("spot-b")));
         Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-a")));
         Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-b")));
     }
@@ -371,7 +412,7 @@ public sealed class RedisLocationStoreTests
         var claimed = await store.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-1"), ZLinkLocationWriteIntent.NewClaim);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, claimed.Status);
 
-        var key = new ZLinkSpotLocationKey("play", RoutingId.From("spot-1"));
+        var key = new ZLinkSpotLocationKey("spot-1");
         var resolved = await store.ResolveSpotAsync(key);
         Assert.NotNull(resolved);
         Assert.Equal("game", resolved!.SpotType);
@@ -506,7 +547,7 @@ public sealed class RedisLocationStoreTests
                 keys.HybridScanKey(Guid.Empty.ToString("N")).ToString()
             },
             key => Assert.Contains(
-                "{zlink-location-v1}",
+                "{zlink-location-v3}",
                 key,
                 StringComparison.Ordinal));
 

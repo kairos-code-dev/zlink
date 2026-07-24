@@ -43,7 +43,7 @@ final class ZLinkActorSpotAdmission {
 
     private record LocalJoin(
         ZLinkBackendActorRef actorRef,
-        RoutingId spotRid,
+        String spotId,
         ZLinkSpot<?> spot,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
     }
@@ -66,11 +66,11 @@ final class ZLinkActorSpotAdmission {
     CompletionStage<Void> leaveSpot(
         ZLinkInternalSpotNode node,
         ZLinkActor actor,
-        RoutingId fallbackSpotRid,
+        String fallbackSpotId,
         RoutingId entryNodeRid,
         Duration timeout) {
         ZLinkActorRuntime runtime = requireActors();
-        RoutingId currentSpotRid = runtime.spotRid(actor).orElse(fallbackSpotRid);
+        String currentSpotId = runtime.spotId(actor).orElse(fallbackSpotId);
         ZLinkBackendActorRef actorRef = runtime.actorRef(actor);
         CompletableFuture<Void> entryJoined = entryNodeRid == null
             ? null
@@ -93,7 +93,7 @@ final class ZLinkActorSpotAdmission {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "actor leave is already pending: " + actor.actorId()));
         }
-        CompletionStage<Void> leaving = node.leaveActor(actorRef, currentSpotRid, timeout)
+        CompletionStage<Void> leaving = node.leaveActor(actorRef, currentSpotId, timeout)
             .whenComplete((replyParts, error) -> {
                 if (replyParts != null) {
                     replyParts.forEach(Message::close);
@@ -137,14 +137,14 @@ final class ZLinkActorSpotAdmission {
     CompletionStage<Void> markJoined(
         ZLinkActor actor,
         ZLinkBackendActorRef actorRef,
-        RoutingId spotRid,
+        String spotId,
         ZLinkSpot<?> spot) {
-        return requireActors().markJoined(actor, actorRef, spotRid, spot);
+        return requireActors().markJoined(actor, actorRef, spotId, spot);
     }
 
     CompletionStage<ZLinkSpotActorJoinResponse> admitEntryActor(
         ZLinkBackendActorJoinRequest request,
-        RoutingId spotRid,
+        String spotId,
         Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback) {
         if (draining.getAsBoolean()) {
             return CompletableFuture.completedFuture(ZLinkSpotActorJoinResponse.reject());
@@ -164,14 +164,14 @@ final class ZLinkActorSpotAdmission {
 
     CompletionStage<Void> completeEntryActorJoin(
         ZLinkBackendActorJoinRequest request,
-        RoutingId spotRid,
+        String spotId,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
         String actorId = request.targetActor().actorId();
         ZLinkActorRuntime runtime = requireActors();
         return runtime.getOrCreateLocalActor(actorId, ZLinkActor.class)
             .thenCompose(actor -> actor
                 .map(value -> runtime.markJoined(
-                        value, request.targetActor(), spotRid, null)
+                        value, request.targetActor(), spotId, null)
                     .thenCompose(ignored -> joinedCallback.apply(value)))
                 .orElseGet(() -> CompletableFuture.failedFuture(
                     new ZLinkConfigurationException(
@@ -213,16 +213,16 @@ final class ZLinkActorSpotAdmission {
 
     CompletionStage<ZLinkSpotActorJoinResponse> admitSpotActor(
         ZLinkBackendActorJoinRequest request,
-        RoutingId spotRid,
+        String spotId,
         ZLinkSpot<?> spotSurface,
         Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
-        return admitNativeActor(request, spotRid, spotSurface, callback, joinedCallback);
+        return admitNativeActor(request, spotId, spotSurface, callback, joinedCallback);
     }
 
     private CompletionStage<ZLinkSpotActorJoinResponse> admitNativeActor(
         ZLinkBackendActorJoinRequest request,
-        RoutingId spotRid,
+        String spotId,
         ZLinkSpot<?> spotSurface,
         Function<String, CompletionStage<ZLinkSpotActorJoinResponse>> callback,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback) {
@@ -237,7 +237,7 @@ final class ZLinkActorSpotAdmission {
                     return CompletableFuture.completedFuture(effective);
                 }
                 LocalJoin pending = new LocalJoin(
-                    request.targetActor(), spotRid, spotSurface, joinedCallback);
+                    request.targetActor(), spotId, spotSurface, joinedCallback);
                 LocalJoin previous = pendingLocalJoins.putIfAbsent(actorId, pending);
                 if (previous != null) {
                     return CompletableFuture.failedFuture(new ZLinkConfigurationException(
@@ -256,9 +256,9 @@ final class ZLinkActorSpotAdmission {
         ZLinkActorRuntime runtime = requireActors();
         return runtime.leaveSourceForLocalMove(actor)
             .thenRun(() -> runtime.markJoined(
-                actor, pending.actorRef(), pending.spotRid(), pending.spot()))
+                actor, pending.actorRef(), pending.spotId(), pending.spot()))
             .thenCompose(ignored -> pending.joinedCallback().apply(actor))
-            .thenCompose(ignored -> runtime.commitJoinedLocation(actor, pending.spotRid()))
+            .thenCompose(ignored -> runtime.commitJoinedLocation(actor, pending.spotId()))
             .thenRun(() -> runtime.completeRemoteMove(actor))
             .whenComplete((ignored, error) -> {
                 if (error != null) {
@@ -304,7 +304,7 @@ final class ZLinkActorSpotAdmission {
         ZLinkActorSpotRoutePackets.TransferRequest request,
         ZLinkMessage transferState,
         ZLinkInternalSpotNode primaryNode,
-        RoutingId spotRid,
+        String spotId,
         Object spotSurface,
         Function<ZLinkActor, CompletionStage<Void>> joinedCallback,
         Function<ZLinkBackendActorRef, CompletionStage<List<Message>>> backlogReplay) {
@@ -369,7 +369,7 @@ final class ZLinkActorSpotAdmission {
                         request.actorGeneration()))
             .thenCompose(actor -> {
                 runtime.setEntrySpotNodeRid(actor, request.sourceEntrySpotNodeRid());
-                runtime.setEntrySpotRid(actor, request.sourceEntrySpotRid());
+                runtime.setEntrySpotId(actor, request.sourceEntrySpotId());
                 runtime.setEntryRouterChannelId(actor, request.sourceEntryRouterChannelId());
                 runtime.traceActorTransferMarker(
                     "target_materialized", actor.actorId(), request.transferId());
@@ -387,7 +387,7 @@ final class ZLinkActorSpotAdmission {
                     runtime.markJoined(
                         actor,
                         actorRef,
-                        spotRid,
+                        spotId,
                         (ZLinkSpot<?>) spotSurface);
                 }
                 return joinedCallback.apply(actor)
@@ -401,14 +401,14 @@ final class ZLinkActorSpotAdmission {
                     })
                     .thenCompose(replies -> (entryTarget
                         ? runtime.commitEntryLocation(actor, primaryNode.routingId())
-                        : runtime.commitJoinedLocation(actor, spotRid))
+                        : runtime.commitJoinedLocation(actor, spotId))
                         .thenApply(committed -> {
                             runtime.traceActorTransferMarker(
                                 "location_committed", actor.actorId(), request.transferId());
                             if (preparedFence != null) {
                                 long nextEpoch = request.coreMembershipEpoch() + 1;
                                 primaryNode.registerTransferredActor(
-                                    actorRef, spotRid, nextEpoch);
+                                    actorRef, spotId, nextEpoch);
                                 primaryNode.activateActorTransfer(preparedFence.token());
                             }
                             return replies;
@@ -461,7 +461,7 @@ final class ZLinkActorSpotAdmission {
                 pending.sourcePeerRid() == null
                     ? request.actorRef().nodeRid()
                     : pending.sourcePeerRid(),
-                request.sourceEntrySpotRid(),
+                request.sourceEntrySpotId(),
                 request.actorRef());
         }
         return runtime.bindNativeSession(actor, primaryNode, actorRef);

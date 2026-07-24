@@ -139,7 +139,7 @@ final class LocationContractTest {
         assertRecordComponents(
             ZLinkSpotLocation.class,
             "meshName",
-            "spotRid",
+            "spotId",
             "spotGeneration",
             "spotType",
             "nodeRid",
@@ -148,7 +148,7 @@ final class LocationContractTest {
             "ownerId",
             "generation",
             "updatedAt");
-        assertEquals(RoutingId.class, componentType(ZLinkSpotLocation.class, "spotRid"));
+        assertEquals(String.class, componentType(ZLinkSpotLocation.class, "spotId"));
 
         assertRecordComponents(
             ZLinkActorLocation.class,
@@ -158,7 +158,7 @@ final class LocationContractTest {
             "nodeRid",
             "locationKind",
             "spotMeshName",
-            "spotRid",
+            "spotId",
             "ownerId",
             "generation",
             "updatedAt");
@@ -393,7 +393,21 @@ final class LocationContractTest {
             Map.entry("WORKER_TIMED_OUT", 18),
             Map.entry("WORKER_FAILED", 19),
             Map.entry("ACTOR_LOCATION_STALE", 20),
-            Map.entry("ACTOR_CREATE_REJECTED", 21)));
+            Map.entry("ACTOR_CREATE_REJECTED", 21),
+            Map.entry("OBJECT_CLIENT_NOT_CONFIGURED", 22),
+            Map.entry("MESH_SELECTION_REQUIRED", 23),
+            Map.entry("MESH_NOT_FOUND", 24),
+            Map.entry("INVALID_CONFIGURATION", 25),
+            Map.entry("ALREADY_SUBMITTED", 26),
+            Map.entry("ACTOR_GENERATION_STALE", 27),
+            Map.entry("ACTOR_MOVING", 28),
+            Map.entry("DEADLINE_EXCEEDED", 29),
+            Map.entry("PLACEMENT_CAPACITY_EXHAUSTED", 30),
+            Map.entry("ROUTING_ID_CONFLICT", 31),
+            Map.entry("SPOT_GENERATION_STALE", 32),
+            Map.entry("SPOT_MOVING", 33),
+            Map.entry("RELOCATION_DATA_LOST", 34),
+            Map.entry("SPOT_ID_CONFLICT", 35)));
         assertRetriableOnly(ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED, ZLinkFrameworkErrorKind.ACTOR_LOCATION_STALE);
 
         assertEnumValues(ZLinkLocationAutoConnectType.class, Map.of(
@@ -477,7 +491,7 @@ final class LocationContractTest {
             "role",
             "nodeRid",
             "endpoint");
-        assertRecordComponents(ZLinkSpotLocationKey.class, "meshName", "spotRid");
+        assertRecordComponents(ZLinkSpotLocationKey.class, "spotId");
         assertRecordComponents(ZLinkActorLocationKey.class, "actorId");
         assertRecordComponents(ZLinkRouteLocationKey.class, "routeKind", "routeKey");
         assertRecordComponents(ZLinkLocationChanged.class, "kind", "key", "changeType", "generation", "updatedAt");
@@ -530,10 +544,10 @@ final class LocationContractTest {
             .getMethod("create", String.class)
             .getReturnType());
         assertEquals(ZLinkSpotGetOrCreateCall.class, ZLinkSpotManager.class
-            .getMethod("getOrCreate", RoutingId.class, String.class)
+            .getMethod("getOrCreate", String.class, String.class)
             .getReturnType());
         assertEquals(CompletionStage.class, ZLinkSpotManager.class
-            .getMethod("find", RoutingId.class)
+            .getMethod("find", String.class)
             .getReturnType());
         assertEquals(CompletionStage.class, ZLinkSpotManager.class
             .getMethod("close", SpotRef.class)

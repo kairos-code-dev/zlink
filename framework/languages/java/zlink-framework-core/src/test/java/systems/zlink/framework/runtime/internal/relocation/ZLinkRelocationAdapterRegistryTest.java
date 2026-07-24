@@ -29,7 +29,7 @@ final class ZLinkRelocationAdapterRegistryTest {
             "player",
             TestActor.class,
             TestActorFactory.class,
-            new ZLinkObjectPlacementOptions(Set.of(), null, null),
+            new ZLinkObjectPlacementOptions(null, null),
             ZLinkRelocationPolicy.snapshot(TestActorAdapter.class));
         node.validate();
         registration.meshNodes().add(node);

@@ -2324,8 +2324,6 @@ test('public SpotRid call reaches production host Missing Instance placement wit
     .metadata('trace', 'abc')
     .instanceSpot('chat-room')
     .inMesh('mesh')
-    .placementProfile('interactive')
-    .affinityKey('tenant-7')
     .submit();
 
   assert.equal(result.status, ZLinkSubmitStatus.Submitted);

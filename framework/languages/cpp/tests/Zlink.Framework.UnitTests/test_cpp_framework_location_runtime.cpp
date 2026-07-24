@@ -32,7 +32,7 @@ actor_location_t make_actor (std::string actor_id, std::int64_t generation = 0)
                               "player", actor_id_copy, 1),
                             .owner_node_rid = zlink::routing_id_t::from ("node-a"),
                             .owner_node_generation = 1,
-                            .spot_rid = zlink::routing_id_t::from ("entry-spot"),
+                            .spot_id = zlink::routing_id_t::from ("entry-spot"),
                             .spot_generation = 1,
                             .spot_kind = zlink::spot_kind::entry,
                             .membership_epoch = 1};

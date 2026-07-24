@@ -130,7 +130,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal async ValueTask<ZLinkSubmitResult> SendToSpotViaRouterChannelAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -141,12 +141,12 @@ internal sealed partial class ZLinkFrameworkRuntime
         var handedOff = false;
         try
         {
-            EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotRid}'");
+            EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotId}'");
 
             var accepted = _spotRouteRouter.SendAsync(
                 routerChannelId,
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 targetSpotGeneration,
                 authorityOwnerGeneration,
                 parts,
@@ -172,18 +172,18 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal bool TrySendToSpotViaRouterChannelOnce(
         string routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
         ReadOnlyMemory<byte> metadata = default)
     {
         using var operation = EnterOperation();
-        EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotRid}'");
+        EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotId}'");
         return _spotRouteRouter.TrySendOnce(
             routerChannelId,
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             authorityOwnerGeneration,
             parts,
@@ -193,7 +193,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal async ValueTask<IReadOnlyList<Message>> RequestToSpotViaRouterChannelAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -208,12 +208,12 @@ internal sealed partial class ZLinkFrameworkRuntime
             var timedOut = false;
             try
             {
-                EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotRid}'");
+                EnsureKnownRouteMeshPeer(routerChannelId, targetNodeRid, $"SPOT '{targetSpotId}'");
 
                 return await _spotRouteRouter.RequestAsync(
                         routerChannelId,
                         targetNodeRid,
-                        targetSpotRid,
+                        targetSpotId,
                         targetSpotGeneration,
                         authorityOwnerGeneration,
                         parts,

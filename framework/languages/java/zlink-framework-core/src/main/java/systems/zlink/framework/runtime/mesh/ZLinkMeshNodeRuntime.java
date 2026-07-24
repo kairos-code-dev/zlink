@@ -25,6 +25,7 @@ public final class ZLinkMeshNodeRuntime implements AutoCloseable {
                 node.setRoutingId(registration.routingId());
             }
             node.setBind(registration.bindEndpoint());
+            node.setPlacementWeight(registration.placementWeight());
             int routerSendHighWaterMark =
                 registration.configureRouterSocket().sendHighWaterMark();
             node.setRouterHighWaterMark(routerSendHighWaterMark);

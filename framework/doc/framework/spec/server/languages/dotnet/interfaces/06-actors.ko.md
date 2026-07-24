@@ -26,16 +26,16 @@ public interface IZLinkActor
 public interface IZLinkActorContext
 {
     string MeshName { get; }
-    RoutingId? SpotRid { get; }
+    string? SpotId { get; }
     IZLinkBoundSession BoundSession { get; }
     IZLinkActorJoinSpotCall JoinSpot(
-        RoutingId spotRid,
+        string spotId,
         ZLinkMessage request);
     IZLinkActorJoinSpotCall JoinSpot<TRequest>(
-        RoutingId spotRid,
+        string spotId,
         TRequest request)
     {
-        return JoinSpot(spotRid, ZLinkMessage.From(request));
+        return JoinSpot(spotId, ZLinkMessage.From(request));
     }
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
         ZLinkMessage request);
@@ -135,10 +135,8 @@ public interface IZLinkActorCreateCall
     IZLinkActorCreateCall InMesh(string meshName);
     IZLinkActorCreateCall Request(ZLinkMessage request);
     IZLinkActorCreateCall Request<TRequest>(TRequest request);
-    IZLinkActorCreateCall PlacementProfile(string placementProfile);
-    IZLinkActorCreateCall AffinityKey(string affinityKey);
     IZLinkActorCreateCall Timeout(TimeSpan timeout);
-    ValueTask<ActorRef> Async(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorCreateResult> Async(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkActorGetOrCreateCall
@@ -146,10 +144,25 @@ public interface IZLinkActorGetOrCreateCall
     IZLinkActorGetOrCreateCall InMesh(string meshName);
     IZLinkActorGetOrCreateCall Request(ZLinkMessage request);
     IZLinkActorGetOrCreateCall Request<TRequest>(TRequest request);
-    IZLinkActorGetOrCreateCall PlacementProfile(string placementProfile);
-    IZLinkActorGetOrCreateCall AffinityKey(string affinityKey);
     IZLinkActorGetOrCreateCall Timeout(TimeSpan timeout);
-    ValueTask<ActorRef> Async(CancellationToken cancellationToken = default);
+    ValueTask<ZLinkActorCreateResult> Async(CancellationToken cancellationToken = default);
+}
+
+public abstract record ZLinkActorCreateResult
+{
+    private protected ZLinkActorCreateResult() { }
+
+    public sealed record Existing(ActorRef Actor)
+        : ZLinkActorCreateResult;
+
+    public sealed record Created(
+        ActorRef Actor,
+        ZLinkMessage? Reply)
+        : ZLinkActorCreateResult;
+
+    public sealed record Rejected(
+        ZLinkMessage? Reply)
+        : ZLinkActorCreateResult;
 }
 
 public interface IZLinkActorSendCall : IZLinkMetadataCall<IZLinkActorSendCall>
@@ -171,28 +184,10 @@ public interface IZLinkActorJoinCall
 {
     ValueTask<ZLinkActorJoinResult> Async(
         CancellationToken cancellationToken = default);
-    ValueTask<ZLinkActorJoinResult> Yield(
-        CancellationToken cancellationToken = default);
     async ValueTask<ZLinkActorJoinResult<TReply>> Async<TReply>(
         CancellationToken cancellationToken = default)
     {
         var result = await Async(cancellationToken).ConfigureAwait(false);
-        return result switch
-        {
-            ZLinkActorJoinResult.Accepted accepted =>
-                new ZLinkActorJoinResult<TReply>.Accepted(
-                    accepted.Actor,
-                    accepted.Reply.Decode<TReply>()),
-            ZLinkActorJoinResult.Rejected rejected =>
-                new ZLinkActorJoinResult<TReply>.Rejected(
-                    rejected.Reply.Decode<TReply>()),
-            _ => throw new InvalidOperationException("Unknown actor join result.")
-        };
-    }
-    async ValueTask<ZLinkActorJoinResult<TReply>> Yield<TReply>(
-        CancellationToken cancellationToken = default)
-    {
-        var result = await Yield(cancellationToken).ConfigureAwait(false);
         return result switch
         {
             ZLinkActorJoinResult.Accepted accepted =>
@@ -237,8 +232,19 @@ public abstract record ZLinkActorJoinResult<TReply>
 ```
 
 Actor packet handler는 Spot이 소유한 registry에 등록한다. Handler의 정확한 context와 generic parameter는
-[Spot interface](05-spots.ko.md)가 정의한다. `SpotRid == null`은 Entry Spot 단계이고 값이 있으면 해당 user
+[Spot interface](05-spots.ko.md)가 정의한다. `SpotId == null`은 Entry Spot 단계이고 값이 있으면 해당 user
 Spot에 참여한 상태다. 같은 상태를 나타내는 별도 boolean은 제공하지 않는다.
+
+Actor join call은 `Async(...)`만 제공하고 `Yield(...)`를 제공하지 않는다. `SpotWide` User Spot의 member
+Actor가 Actor·Spot·Channel request 또는 worker call을 `Yield(...)`하면 Actor queue claim은 유지하고 User
+Spot gate만 반환한다. 같은 Actor의 다음 job은 terminal continuation이 gate를 다시 얻어 현재 job을 완료할
+때까지 시작하지 않는다. Entry Spot과 `PerActor` User Spot Actor에서는 request·worker operation submit 전에
+`InvalidConfiguration`으로 완료한다.
+
+`SpotWide` member Actor가 현재 User Spot을 떠나는 `JoinSpot(...).Async(...)`를 기다리면 source lifecycle
+callback이 같은 User Spot gate를 얻을 수 없다. Framework는 join operation submission, outbound admission과
+source·target queue 변경 전에 `InvalidConfiguration`으로 완료하며 callback을 inline 또는 재진입 방식으로
+호출하지 않는다.
 
 Relocation policy는 Actor factory registration이 소유한다. `Disabled`는 cross-node materialization이 필요한
 이동을 capture 전에 거부한다. `Recreate`는 target factory로 같은 logical identity를 다시 만들고 application
@@ -286,7 +292,7 @@ Entry Spot maintenance와 일반 join에서 실행하는 lifecycle callback의 �
 User Spot aggregate move의 callback 생략은 [Spot interface](05-spots.ko.md)가 정한다. Actor relocation adapter는 이
 lifecycle callback을 대신하지 않는다. 이 순서를 제어하는 public phase API는 없다.
 
-새 distributed Actor는 generic placement reservation이 authority의 `Creating` row와 target pending capacity를
+새 distributed Actor는 generic placement reservation이 authority의 `Creating` row와 target Actor reserved capacity를
 함께 확보한 뒤 factory, initial Entry membership과 initialize를 수행한다. 성공하면 같은 reservation을
 `Ready`와 active capacity로 commit하고, 실패하면 abort한다. Resolve와 remote messaging은 `Ready`만 사용한다.
 CAS loser는 별도 factory를 시작하지 않으며 exact reservation 결과를 read해 reconcile한다. Entry Spot
@@ -300,12 +306,16 @@ Create와 GetOrCreate call은 single-use다. 같은 option을 두 번 설정하�
 `Async(...)`를 두 번 호출하면 `AlreadySubmitted`다. Terminal 호출 시 resolve, reservation, factory와 Ready
 barrier 전체에 적용할 deadline 하나를 확정한다. `InMesh(...)`를 생략했을 때 object-role Mesh가 하나이면
 그 Mesh를 사용하고, 0개이면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`다. 명시한 Mesh가
-없으면 `MeshNotFound`다. `PlacementProfile`과 `AffinityKey`는 UTF-8 1..255 bytes이며 target RID, predicate와
+없으면 `MeshNotFound`다. Target RID, predicate와
 callback을 지정하지 않는다.
 
 `Create`는 같은 ActorId의 Ready incarnation이 있으면 `ActorAlreadyExists`, stable type이 다르면
-`ActorTypeMismatch`다. `GetOrCreate`는 같은 type의 Ready 또는 Creating attempt에 합류하며 CAS loser는 별도
-factory를 실행하지 않는다. Creating attempt가 deadline 안에 끝나지 않으면 `DeadlineExceeded`다. Creation
+`ActorTypeMismatch`다. 새 attempt는 `Created` 또는 `Rejected`를 반환한다. `GetOrCreate`는 같은 type의 Ready
+Actor를 찾으면 factory와 `OnCreateActorAsync(...)`를 호출하지 않고 `Existing`을 반환하며, Creating
+attempt가 있으면 authority 변경을 기다린다. Ready면 `Existing`, rejection cleanup이면 새 reservation으로
+자신의 request를 실행한다. 서로 다른 operation은 앞선 `Rejected` reply를 공유하지 않고 동일한
+`OperationId`의 retry만 terminal result를 재사용한다. 현재 callback과 동시에 별도 factory를 실행하지 않는다.
+Creating 대기가 deadline 안에 끝나지 않으면 `DeadlineExceeded`다. Creation
 request는 최대 1 MiB이고 reservation 전에 immutable reference와 hash를 기록한다. Factory는 같은 ID,
 ObjectGeneration과 creation attempt에 대해 retry-safe해야 한다.
 

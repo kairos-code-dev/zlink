@@ -15,7 +15,7 @@ terminator, turn seam, 서버 등록, codec, 오류 모델을 소유하며, **�
 
 | 장 | 문서 | 내용 |
 | --- | --- | --- |
-| **12** | [**HTTP client (framework 계약)**](12-http-client.ko.md) | **정본** — 정체성, fluent builder, terminator(`submit`/`async`/`yield` + callback), turn seam, DI 서버 표면 |
+| **12** | [**HTTP client (framework 계약)**](12-http-client.ko.md) | **정본** — 정체성, fluent builder, terminator(`submit`/`async` + callback), completion seam, DI 서버 표면 |
 | 1 | [범위와 아키텍처](01-scope-and-architecture.ko.md) | 정체성, 산출물 경계, framework와의 관계 |
 | 2 | [Client builder 계약](02-client-builder.ko.md) | builder 옵션 전체와 **기본값 표** |
 | 3 | [Request 계약](03-request-builder.ko.md) | HTTP 메서드, 헤더/query, body 소스 5종과 배타 규칙 |

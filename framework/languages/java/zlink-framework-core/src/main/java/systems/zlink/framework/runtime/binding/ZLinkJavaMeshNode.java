@@ -50,6 +50,7 @@ final class ZLinkJavaMeshNode implements ZLinkInternalMeshNode {
     private String primaryChannelName;
     private ZLinkMeshApplicationReceiver localApplicationReceiver;
     private Duration routerSendTimeout = Duration.ofSeconds(1);
+    private volatile int placementWeight = 100;
     private int routerPendingAdmissionCapacity =
         systems.zlink.framework.runtime.backend.ZLinkBackendObject
             .DEFAULT_PENDING_ADMISSION_CAPACITY;
@@ -72,7 +73,7 @@ final class ZLinkJavaMeshNode implements ZLinkInternalMeshNode {
     @Override
     public void addChannel(String channelName) {
         node.addChannel(channelName);
-        channelWeights.put(channelName, 1);
+        channelWeights.put(channelName, 100);
         if (primaryChannelName == null) {
             primaryChannelName = channelName;
         }
@@ -85,6 +86,20 @@ final class ZLinkJavaMeshNode implements ZLinkInternalMeshNode {
     public void setChannelWeight(String channelName, int weight) {
         node.setChannelWeight(channelName, weight);
         channelWeights.put(channelName, weight);
+    }
+
+    @Override
+    public int placementWeight() {
+        return placementWeight;
+    }
+
+    @Override
+    public void setPlacementWeight(int weight) {
+        if (weight < 0 || weight > 10_000) {
+            throw new IllegalArgumentException(
+                "placement weight must be in 0..10000");
+        }
+        placementWeight = weight;
     }
 
     @Override
@@ -270,11 +285,11 @@ final class ZLinkJavaMeshNode implements ZLinkInternalMeshNode {
         return operations.track(operationId);
     }
 
-    long spotGeneration(RoutingId targetNodeRid, RoutingId targetSpotRid) {
+    long spotGeneration(RoutingId targetNodeRid, String targetSpotId) {
         if (!node.getRoutingId().equals(targetNodeRid) || spotNode == null) {
             return 0L;
         }
-        return spotNode.spotGeneration(targetSpotRid);
+        return spotNode.spotGeneration(targetSpotId);
     }
 
     void actorControl(ActorControlRecord control) {

@@ -16,6 +16,10 @@ export interface ZLinkActorJoinSpotCall extends ZLinkActorJoinCall<ZLinkActorJoi
 
 export interface ZLinkActorJoinEntrySpotCall extends ZLinkActorJoinCall<ZLinkActorJoinEntrySpotCall> {}
 
-export interface ZLinkActorFactory {
-  create(actorId: string, context: ZLinkActorContext): Promise<ZLinkActor>;
+export interface ZLinkActorFactory<TActor extends ZLinkActor = ZLinkActor> {
+  create(
+    actorId: string,
+    context: ZLinkActorContext,
+    signal?: AbortSignal
+  ): Promise<TActor>;
 }

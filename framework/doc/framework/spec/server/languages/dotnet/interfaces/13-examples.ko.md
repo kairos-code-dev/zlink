@@ -12,15 +12,21 @@ services.AddZLinkFramework(options =>
 
     var mesh = options.AddRouteMesh("world")
         .Listen() // automatic discovery가 실제 port를 할당하고 advertised endpoint를 게시한다.
-        .SetRoutingIdPrefix("game") // lifecycle마다 game-<32 lowercase hex> RID를 만든다.
+        .SetRoutingIdPrefix("game") // lifecycle마다 game-<RFC 4122 UUID v4> RID를 만든다.
         .SetPlacementWeight(100)
-        .SetObjectCapacity(10_000, 128);
+        .SetActorLimit(10_000) // 이 node의 Actor population 상한이다.
+        .SetSpotLimit(1_000) // Entry Spot을 제외한 User·Instance Spot 전체 상한이다.
+        .SetActivationConcurrency(128); // population과 분리한 factory 동시 실행 상한이다.
 
     mesh.Objects()
         .Server() // Client capability를 포함하고 등록한 object type을 host한다.
         .AddSpotFactory<StageSpot>(
             "stage",
-            placement: null,
+            options: new ZLinkUserSpotFactoryOptions
+            {
+                StableTypeLimit = 200,
+                ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide
+            },
             relocation: ZLinkRelocationPolicy<StageSpot>.Disabled);
 
     mesh.Channel("game")

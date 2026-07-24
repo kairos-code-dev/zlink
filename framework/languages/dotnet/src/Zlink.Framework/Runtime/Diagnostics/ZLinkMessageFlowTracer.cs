@@ -170,7 +170,7 @@ internal sealed class ZLinkMessageFlowTracer
             flow.LocalRid,
             flow.PeerRid,
             flow.SocketRole,
-            flow.SpotRid,
+            flow.SpotId,
             flow.ActorId,
             flow.ErrorReason,
             flow.ErrorAction,
@@ -265,7 +265,7 @@ internal static class ZLinkTraceFormat
         Append(builder, "localRid", flow.LocalRid);
         Append(builder, "peerRid", flow.PeerRid);
         Append(builder, "socket", flow.SocketRole);
-        Append(builder, "spot", flow.SpotRid);
+        Append(builder, "spot", flow.SpotId);
         Append(builder, "actor", flow.ActorId);
         Append(builder, "errorReason", flow.ErrorReason?.ToString());
         Append(builder, "errorAction", flow.ErrorAction?.ToString());

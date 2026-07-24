@@ -35,9 +35,9 @@ public record ZLinkClientServerServerDescriptor(
                 "lifecycleGeneration, descriptorRevision and "
                     + "leaseGeneration must be positive");
         }
-        if (weight < 0 || weight > 100) {
+        if (weight < 0 || weight > 10_000) {
             throw new IllegalArgumentException(
-                "weight must be in 0..100");
+                "weight must be in 0..10000");
         }
         Objects.requireNonNull(state, "state");
         Objects.requireNonNull(updatedAt, "updatedAt");

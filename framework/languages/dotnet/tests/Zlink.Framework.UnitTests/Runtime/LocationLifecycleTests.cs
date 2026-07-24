@@ -231,7 +231,7 @@ public sealed class LocationLifecycleTests
 
         var joined = await fixture.Store.ResolveActorAsync(key);
         Assert.Equal(ZLinkSpotKind.User, joined!.SpotKind);
-        Assert.Equal(RoutingId.From("spot-1"), joined.SpotRid);
+        Assert.Equal(RoutingId.From("spot-1"), joined.SpotId);
         Assert.Equal(4UL, joined.SpotGeneration);
         Assert.Equal(ActorId, joined.ActorRef.ActorId);
         Assert.Equal(1UL, joined.MembershipEpoch);
@@ -240,7 +240,7 @@ public sealed class LocationLifecycleTests
 
         var left = await fixture.Store.ResolveActorAsync(key);
         Assert.Equal(ZLinkSpotKind.Entry, left!.SpotKind);
-        Assert.False(left.SpotRid is { Size: > 0 });
+        Assert.False(left.SpotId is { Size: > 0 });
         Assert.Equal(2UL, left.MembershipEpoch);
     }
 
@@ -249,7 +249,7 @@ public sealed class LocationLifecycleTests
     {
         await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
-        var spotRid = RoutingId.From("spot-7");
+        var spotId = RoutingId.From("spot-7");
 
         await CreateTrackedActorAsync(node);
         await node.ActorOwnership.ReleaseActorAsync(ActorId);
@@ -257,17 +257,17 @@ public sealed class LocationLifecycleTests
 
         var status = await node.SpotLocations.ClaimAsync(
             "mesh",
-            spotRid,
+            spotId,
             7,
             "game",
             RoutingId.From("node-a"),
             ZLinkSpotKind.User,
             deactivate: null);
         Assert.Equal(ZLinkLocationWriteStatus.Stored, status);
-        Assert.NotNull(await fixture.Store.ResolveSpotAsync(new ZLinkSpotLocationKey("mesh", spotRid)));
+        Assert.NotNull(await fixture.Store.ResolveSpotAsync(new ZLinkSpotLocationKey("mesh", spotId)));
 
-        await node.SpotLocations.ReleaseAsync("mesh", spotRid);
-        Assert.Null(await fixture.Store.ResolveSpotAsync(new ZLinkSpotLocationKey("mesh", spotRid)));
+        await node.SpotLocations.ReleaseAsync("mesh", spotId);
+        Assert.Null(await fixture.Store.ResolveSpotAsync(new ZLinkSpotLocationKey("mesh", spotId)));
     }
 
     [Fact]
@@ -320,7 +320,7 @@ public sealed class LocationLifecycleTests
         // The rejected reference publish is not part of the committed base.
         Assert.Equal(0UL, row.ActorRef.Generation);
         Assert.Equal(ZLinkSpotKind.User, row.SpotKind);
-        Assert.Equal(RoutingId.From("spot-1"), row.SpotRid);
+        Assert.Equal(RoutingId.From("spot-1"), row.SpotId);
     }
 
     [Fact]
@@ -358,12 +358,12 @@ public sealed class LocationLifecycleTests
         await using var fixture = await LifecycleFixture.CreateAsync();
         var original = await fixture.NodeAsync("node-a");
         var restarted = await fixture.NodeAsync("node-a");
-        var spotRid = RoutingId.From("spot-7");
-        var key = new ZLinkSpotLocationKey("mesh", spotRid);
+        var spotId = RoutingId.From("spot-7");
+        var key = new ZLinkSpotLocationKey("mesh", spotId);
 
         var first = await original.SpotLocations.ClaimAsync(
             "mesh",
-            spotRid,
+            spotId,
             7,
             "game",
             RoutingId.From("node-a"),
@@ -374,7 +374,7 @@ public sealed class LocationLifecycleTests
 
         var takeover = await restarted.SpotLocations.ClaimAsync(
             "mesh",
-            spotRid,
+            spotId,
             7,
             "game",
             RoutingId.From("node-a"),
@@ -390,7 +390,7 @@ public sealed class LocationLifecycleTests
         Assert.Equal(7ul, firstRow!.SpotGeneration);
         Assert.Equal(7ul, current.SpotGeneration);
 
-        await original.SpotLocations.ReleaseAsync("mesh", spotRid);
+        await original.SpotLocations.ReleaseAsync("mesh", spotId);
         var afterStaleRelease = await fixture.Store.ResolveSpotAsync(key);
         Assert.Equal(restarted.Runtime.OwnerId, afterStaleRelease!.OwnerId);
     }
@@ -401,12 +401,12 @@ public sealed class LocationLifecycleTests
         await using var fixture = await LifecycleFixture.CreateAsync();
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
-        var spotRid = RoutingId.From("spot-7");
-        var key = new ZLinkSpotLocationKey("mesh", spotRid);
+        var spotId = RoutingId.From("spot-7");
+        var key = new ZLinkSpotLocationKey("mesh", spotId);
 
         var first = await nodeA.SpotLocations.ClaimAsync(
             "mesh",
-            spotRid,
+            spotId,
             7,
             "game",
             RoutingId.From("node-a"),
@@ -416,7 +416,7 @@ public sealed class LocationLifecycleTests
 
         var conflict = await nodeB.SpotLocations.ClaimAsync(
             "mesh",
-            spotRid,
+            spotId,
             7,
             "game",
             RoutingId.From("node-b"),
@@ -510,7 +510,7 @@ public sealed class LocationLifecycleTests
     {
         await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
-        var spotRid = RoutingId.From("spot-9");
+        var spotId = RoutingId.From("spot-9");
 
         var resolver = new ZLinkLocationAddressResolvers(
             node.Resolvers,
@@ -518,7 +518,7 @@ public sealed class LocationLifecycleTests
 
         var status = await node.SpotLocations.ClaimAsync(
             "mesh",
-            spotRid,
+            spotId,
             7,
             "game",
             RoutingId.From("node-a"),
@@ -527,10 +527,10 @@ public sealed class LocationLifecycleTests
         Assert.Equal(ZLinkLocationWriteStatus.Stored, status);
 
         var handle = Assert.IsType<ZLinkResolvedSpotHandle>(
-            await resolver.ResolveSpotHandleAsync("mesh", spotRid, CancellationToken.None));
+            await resolver.ResolveSpotHandleAsync("mesh", spotId, CancellationToken.None));
         Assert.Equal("mesh", handle.Snapshot.RouterChannelId);
         Assert.Equal(RoutingId.From("node-a"), handle.Snapshot.NodeRid);
-        Assert.Equal(spotRid, handle.SpotRid);
+        Assert.Equal(spotId, handle.SpotId);
 
         // No heartbeat: once the owner lease expires the row is stale and
         // the resolver reports a clean miss instead of a wrong node.
@@ -538,7 +538,7 @@ public sealed class LocationLifecycleTests
 
         Assert.Null(await resolver.ResolveSpotHandleAsync(
             "mesh",
-            spotRid,
+            spotId,
             CancellationToken.None));
     }
 

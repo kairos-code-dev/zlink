@@ -44,7 +44,7 @@ internal enum MeshOperationKind
 {
     NodeRequest = 1, ChannelRequest, SpotRequest, ActorRequest, ActorLookup,
     ActorDestroy, ActorJoin, ActorLeave, StreamBind, StreamUnbind, StreamClose,
-    InstanceSpotRequest, UserSpotCreate, UserSpotClose
+    InstanceSpotRequest, UserSpotCreate, UserSpotClose, ActorCreate
 }
 
 internal enum ActorLifecycleKind { Created = 1, Joined, Left, Disconnected, Destroyed }
@@ -54,20 +54,20 @@ internal enum MeshDestinationKind { Node = 1, Channel, Spot, Actor, BoundSession
 internal abstract record MeshRecordPayload;
 internal sealed record ActorControlRecord(
     ActorLifecycleKind Kind, ActorRef PreviousActor, ActorRef CurrentActor,
-    RoutingId PreviousSpotRid, RoutingId CurrentSpotRid,
+    string PreviousSpotId, string CurrentSpotId,
     ulong PreviousSpotGeneration, ulong CurrentSpotGeneration,
     ulong PreviousMembershipEpoch, ulong CurrentMembershipEpoch,
     int ResultCode) : MeshRecordPayload;
 
 internal sealed record ActorLocation(
-    ActorRef Actor, RoutingId SpotRid, ulong SpotGeneration, ulong MembershipEpoch);
+    ActorRef Actor, string SpotId, ulong SpotGeneration, ulong MembershipEpoch);
 
 internal sealed record ActorJoinCompletion(
     ActorJoinResult JoinResult, ActorRef Actor, ActorLocation Location) : MeshRecordPayload;
 
 internal sealed record MeshSendReadyData(
     MeshDestinationKind DestinationKind, RoutingId TargetNodeRid,
-    RoutingId TargetSpotRid, ActorRef TargetActor,
+    string TargetSpotId, ActorRef TargetActor,
     string? ChannelName) : MeshRecordPayload;
 
 internal enum ActorTransferRole { Source = 1, Target = 2 }
@@ -87,7 +87,7 @@ internal readonly record struct ActorTransferControl(
     int ResultCode, int FailureErrno);
 internal sealed record ActorTransferControlRecord(ActorTransferControl Control) : MeshRecordPayload;
 
-internal readonly record struct UserSpotReservationFence(
+internal readonly record struct ObjectReservationFence(
     string ReservationId,
     string ExpectedStoreVersion,
     ulong ObjectGeneration,
@@ -99,7 +99,7 @@ internal readonly record struct UserSpotReservationFence(
     uint PendingCapacityDelta);
 
 internal readonly record struct UserSpotCloseFence(
-    RoutingId SpotRid,
+    string SpotId,
     ulong ObjectGeneration,
     RoutingId TargetNodeRid,
     ulong TargetNodeGeneration,
@@ -111,9 +111,9 @@ internal readonly record struct UserSpotCreateOperation(
     MeshOperationId OperationId,
     RoutingId SourceNodeRid,
     ulong SourceNodeGeneration,
-    RoutingId SpotRid,
+    string SpotId,
     string StableType,
-    UserSpotReservationFence Reservation,
+    ObjectReservationFence Reservation,
     ulong DeadlineUnixMs);
 
 internal readonly record struct UserSpotCloseOperation(
@@ -133,26 +133,58 @@ internal enum UserSpotCreateResult : byte
 
 internal sealed record UserSpotCreateCompletion(
     UserSpotCreateResult Result,
-    RoutingId SpotRid,
+    string SpotId,
     ulong ObjectGeneration) : MeshRecordPayload;
 
 internal sealed record UserSpotCloseCompletion(bool Closed) : MeshRecordPayload;
+
+internal readonly record struct ActorCreateOperation(
+    ulong Correlation,
+    MeshOperationId OperationId,
+    RoutingId SourceNodeRid,
+    ulong SourceNodeGeneration,
+    string ActorId,
+    string StableType,
+    ObjectReservationFence Reservation,
+    ulong DeadlineUnixMs);
+
+internal enum ActorCreateResult : byte
+{
+    Existing = 1,
+    Created = 2,
+    Rejected = 3
+}
+
+internal sealed record ActorCreateCompletion(
+    ActorCreateResult Result,
+    ActorRef Actor) : MeshRecordPayload;
+
+internal sealed record ActorCreateOperationTerminal(
+    RequestResult Result,
+    ServiceWireConstants.FrameworkErrorCode FailureCode,
+    ActorCreateCompletion? Completion = null,
+    IReadOnlyList<ReadOnlyMemory<byte>>? ReplyParts = null);
+
+internal interface IActorCreateOperationTarget
+{
+    ValueTask<ActorCreateOperationTerminal> CreateAsync(
+        ActorCreateOperation operation,
+        CancellationToken cancellationToken);
+}
 
 internal readonly record struct InstanceSpotActivationTarget(
     string MeshName,
     RoutingId TargetNodeRid,
     ulong TargetNodeGeneration,
-    RoutingId TargetSpotRid,
+    string TargetSpotId,
     string StableType,
-    string DescriptorVersion,
-    string? PlacementProfile,
-    string? AffinityKey);
+    string DescriptorVersion);
 
 internal readonly record struct InstanceSpotActivationOperation(
     InstanceSpotActivationTarget Target,
     RoutingId SourceNodeRid,
     ulong SourceNodeGeneration,
-    RoutingId SourceSpotRid,
+    string SourceSpotId,
     MeshOperationId OperationId,
     bool IsRequest,
     ulong ReplyRouteId,
@@ -221,7 +253,7 @@ internal sealed record MeshMonitorEvent(
     MeshMonitorEventKind Kind, ulong TimestampMs, ulong MeshLifecycleGeneration,
     ulong MeshDescriptorRevision, MeshNodeState MeshState, RoutingId PeerRid,
     ulong PeerLifecycleGeneration, ulong PeerDescriptorRevision,
-    MeshOwnerKind OwnerKind, RoutingId SpotRid, ActorRef Actor,
+    MeshOwnerKind OwnerKind, string SpotId, ActorRef Actor,
     string ChannelName, MeshOperationId OperationId,
     uint SnapshotRemoteTargetCount, uint AdmittedRemoteTargetCount,
     uint DroppedRemoteTargetCount, uint UnreachableRemoteTargetCount,
@@ -241,7 +273,7 @@ internal interface IMeshNodeMonitor : IDisposable, IAsyncDisposable
 
 internal readonly record struct MeshReadyRecord(
     MeshOwnerKind OwnerKind, MeshReadyDomains Domain,
-    RoutingId SpotRid, ActorRef Actor);
+    string SpotId, ActorRef Actor);
 
 internal sealed class MeshReadyBatch : IDisposable
 {
@@ -300,7 +332,7 @@ internal readonly struct MeshReceiveRecord
         _joinReply;
     internal MeshReceiveRecord(
         MeshRecordKind kind, MeshReadyDomains domain, RoutingId sourceNodeRid,
-        RoutingId sourceSpotRid, ulong sourceBindingGeneration, ActorRef sourceActor,
+        string sourceSpotId, ulong sourceBindingGeneration, ActorRef sourceActor,
         MeshOperationId operationId, MeshOperationKind operationKind,
         string? channelName, string? topic, byte[]? applicationMetadata,
         int partOffset, int partCount, int terminalResult, int failureErrno,
@@ -310,7 +342,7 @@ internal readonly struct MeshReceiveRecord
             joinReply = null)
     {
         Kind = kind; Domain = domain; SourceNodeRid = sourceNodeRid;
-        SourceSpotRid = sourceSpotRid; SourceBindingGeneration = sourceBindingGeneration;
+        SourceSpotId = sourceSpotId; SourceBindingGeneration = sourceBindingGeneration;
         SourceActor = sourceActor; OperationId = operationId; OperationKind = operationKind;
         ChannelName = channelName; Topic = topic; ApplicationMetadata = applicationMetadata;
         PartOffset = partOffset; PartCount = partCount; TerminalResult = terminalResult;
@@ -320,7 +352,7 @@ internal readonly struct MeshReceiveRecord
     public MeshRecordKind Kind { get; }
     public MeshReadyDomains Domain { get; }
     public RoutingId SourceNodeRid { get; }
-    public RoutingId SourceSpotRid { get; }
+    public string SourceSpotId { get; }
     public ulong SourceBindingGeneration { get; }
     public ActorRef SourceActor { get; }
     public MeshOperationId OperationId { get; }
@@ -339,6 +371,8 @@ internal readonly struct MeshReceiveRecord
         KindData as UserSpotCreateCompletion;
     public UserSpotCloseCompletion? UserSpotCloseCompletion =>
         KindData as UserSpotCloseCompletion;
+    public ActorCreateCompletion? ActorCreateCompletion =>
+        KindData as ActorCreateCompletion;
     public MeshSendReadyData? SendReady => KindData as MeshSendReadyData;
     public ActorTransferControl? TransferControl => (KindData as ActorTransferControlRecord)?.Control;
     public SubmitResult Reply(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None) =>
@@ -402,11 +436,16 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     bool DrainReady(MeshReadyDomains domains, MeshReadyBatch batch, RecvFlags flags = RecvFlags.None);
     ISpot CreateSpot();
     ISpot EntrySpot();
-    ISpot GetOrCreateSpot(RoutingId spotRid, out bool created);
+    ISpot GetOrCreateSpot(string spotId, out bool created);
     ActorRef CreateActor(string actorId, IReadOnlyList<Message>? creationParts = null, TimeSpan timeout = default);
+    ActorRef CreateReservedActor(
+        string actorId,
+        ulong objectGeneration,
+        IReadOnlyList<Message>? creationParts = null,
+        TimeSpan timeout = default);
     bool ActorLookup(string actorId, out ActorLocation location);
     MeshOperationId DestroyActor(ActorRef actor, TimeSpan timeout = default);
-    MeshOperationId JoinSpot(ActorRef actor, RoutingId targetNodeRid, RoutingId targetSpotRid,
+    MeshOperationId JoinSpot(ActorRef actor, RoutingId targetNodeRid, string targetSpotId,
         ulong targetSpotGeneration, IReadOnlyList<Message>? creationParts = null, TimeSpan timeout = default);
     MeshOperationId JoinEntrySpot(ActorRef actor, RoutingId targetNodeRid,
         IReadOnlyList<Message>? creationParts = null, TimeSpan timeout = default);
@@ -426,10 +465,11 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     void ActivateActorTransfer(ActorTransferToken token);
     void AbortActorTransfer(ActorTransferToken token);
     void SetUserSpotOperationTarget(IUserSpotOperationTarget target);
+    void SetActorCreateOperationTarget(IActorCreateOperationTarget target);
     void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target);
     SubmitResult ActivateInstanceSpot(
         InstanceSpotActivationTarget target,
-        RoutingId sourceSpotRid,
+        string sourceSpotId,
         IReadOnlyList<Message> parts,
         bool request,
         out MeshOperationId operationId,
@@ -439,15 +479,23 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
         ReadOnlyMemory<byte> metadata = default);
     SubmitResult CreateUserSpot(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        string spotId,
         string stableType,
-        UserSpotReservationFence reservation,
+        ObjectReservationFence reservation,
         ulong deadlineUnixMs,
         out MeshOperationId operationId,
         TimeSpan timeout = default);
     SubmitResult CloseUserSpot(
         RoutingId targetNodeRid,
         UserSpotCloseFence target,
+        ulong deadlineUnixMs,
+        out MeshOperationId operationId,
+        TimeSpan timeout = default);
+    SubmitResult CreateActorRemote(
+        RoutingId targetNodeRid,
+        string actorId,
+        string stableType,
+        ObjectReservationFence reservation,
         ulong deadlineUnixMs,
         out MeshOperationId operationId,
         TimeSpan timeout = default);
@@ -469,10 +517,10 @@ internal interface ISpot : IDisposable, IAsyncDisposable
     MeshPublishResult Publish(string channelName, string topic,
         IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None,
         ReadOnlyMemory<byte> metadata = default);
-    SubmitResult SendToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
+    SubmitResult SendToSpot(RoutingId targetNodeRid, string targetSpotId,
         ulong targetSpotGeneration, IReadOnlyList<Message> parts,
         SendFlags flags = SendFlags.None, ReadOnlyMemory<byte> metadata = default);
-    SubmitResult RequestToSpot(RoutingId targetNodeRid, RoutingId targetSpotRid,
+    SubmitResult RequestToSpot(RoutingId targetNodeRid, string targetSpotId,
         ulong targetSpotGeneration, IReadOnlyList<Message> parts,
         out MeshOperationId operationId, TimeSpan timeout = default,
         SendFlags flags = SendFlags.None, ReadOnlyMemory<byte> metadata = default);

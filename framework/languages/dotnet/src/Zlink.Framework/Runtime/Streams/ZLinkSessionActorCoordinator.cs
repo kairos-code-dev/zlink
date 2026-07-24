@@ -185,7 +185,7 @@ internal sealed class ZLinkSessionActorCoordinator(
         if (actor is not ZLinkSessionActor actorRef)
             throw new InvalidOperationException("Actor ref was not created by this framework runtime.");
 
-        if (runtime.Services.GetService<IZLinkActorDirectory>() is { } directory)
+        if (runtime.Services.GetService<IZLinkActorResolver>() is { } directory)
         {
             // A resolve miss with the row still present is the
             // transfer-commit window (a claimed-but-unpublished
@@ -194,11 +194,9 @@ internal sealed class ZLinkSessionActorCoordinator(
             // source incarnation's capture pipeline preserves in-flight
             // order — instead of stalling the frame behind the window.
             // A confirmed store miss is terminal: the actor was destroyed.
-            var (current, rowPresent) = directory is ZLinkActorDirectory concreteDirectory
-                ? await concreteDirectory.FindWithPresenceAsync(actorRef.ActorId, cancellationToken)
-                    .ConfigureAwait(false)
-                : (await directory.FindAsync(actorRef.ActorId, cancellationToken)
-                    .ConfigureAwait(false), false);
+            var (current, rowPresent) = await directory
+                .FindWithPresenceAsync(actorRef.ActorId, cancellationToken)
+                .ConfigureAwait(false);
 
             if (current is null && !rowPresent && !actorRef.AwaitingLocationObservation)
                 throw new ZLinkFrameworkException(

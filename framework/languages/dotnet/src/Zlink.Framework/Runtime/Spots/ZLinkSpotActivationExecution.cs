@@ -140,7 +140,7 @@ internal sealed partial class ZLinkSpotActivation
 
     ValueTask<bool> IZLinkSpotContext.CloseAsync(CancellationToken cancellationToken)
     {
-        return _runtime.CloseAsync(SpotRid, cancellationToken);
+        return _runtime.CloseAsync(SpotId, cancellationToken);
     }
 
     public async ValueTask<ZLinkSpotCreateResponse> InitializeAsync(
@@ -722,7 +722,7 @@ internal sealed partial class ZLinkSpotActivation
         return _runtime.PublishRuntimeEventAsync(
             ZLinkSpotTimerFailureEventFactory.Create(
                 SpotNodeName,
-                SpotRid,
+                SpotId,
                 false,
                 descriptor,
                 tick,

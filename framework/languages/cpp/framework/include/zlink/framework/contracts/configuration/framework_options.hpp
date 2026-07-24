@@ -409,13 +409,11 @@ class client_server_channel_builder_t
 
     void set_server_weight (int weight)
     {
-        if (weight < 0 || weight > 100)
+        if (weight < 0 || weight > 10000)
             throw framework_exception_t (
               framework_error_kind_t::request_protocol_error,
-              "client/server server weight must be between 0 and 100");
-        _server_peer_weight =
-          zlink::peer_weight_t::value (
-            static_cast<std::uint32_t> (weight));
+              "client/server server weight must be between 0 and 10000");
+        _server_weight = weight;
         apply_channel ();
     }
 
@@ -453,18 +451,16 @@ class client_server_channel_builder_t
     {
         const auto channel_name = _channel_name;
         const auto server_endpoint = _server_endpoint;
-        const auto server_peer_weight = _server_peer_weight;
+        const auto server_weight = _server_weight;
         const auto client_enabled = _client_enabled;
         const auto client_endpoints =
           _options->client_endpoint_connections[_channel_name].list_connections ();
         if (!server_endpoint.empty ()) {
             _options->client_server_server_actions[channel_name] =
               [server_endpoint,
-               server_peer_weight] (channel_builder_t &channel) {
+               server_weight] (channel_builder_t &channel) {
                   auto server = channel.enable_server ();
-                  if (server_peer_weight) {
-                      server.peer_weight (*server_peer_weight);
-                  }
+                  server.service_weight (server_weight);
                   server.bind (server_endpoint);
               };
         }
@@ -515,7 +511,7 @@ class client_server_channel_builder_t
     std::string _server_bind_host = "0.0.0.0";
     std::optional<std::string> _server_advertise_host;
     std::optional<std::uint16_t> _server_port;
-    std::optional<zlink::peer_weight_t> _server_peer_weight;
+    int _server_weight = 100;
     bool _client_enabled = false;
     std::size_t _inline_handler_sequence = 0;
 };

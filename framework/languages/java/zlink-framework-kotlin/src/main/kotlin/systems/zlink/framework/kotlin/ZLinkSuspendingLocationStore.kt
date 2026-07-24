@@ -33,8 +33,12 @@ import systems.zlink.framework.locations.ZLinkAuthorityReadResult
 import systems.zlink.framework.locations.ZLinkAuthorityScanCursor
 import systems.zlink.framework.locations.ZLinkAuthorityScanResult
 import systems.zlink.framework.locations.ZLinkAuthorityWriteResult
+import systems.zlink.framework.locations.ZLinkCreationOperationIdentity
+import systems.zlink.framework.locations.ZLinkCreationOperationTerminal
+import systems.zlink.framework.locations.ZLinkCreationTerminalReadResult
 import systems.zlink.framework.locations.ZLinkObjectAbortResult
 import systems.zlink.framework.locations.ZLinkObjectCommitResult
+import systems.zlink.framework.locations.ZLinkObjectRejectResult
 import systems.zlink.framework.locations.ZLinkObjectReservation
 import systems.zlink.framework.locations.ZLinkObjectReservationRequest
 import systems.zlink.framework.locations.ZLinkObjectReserveResult
@@ -100,11 +104,39 @@ abstract class ZLinkSuspendingLocationStore(
     ): CompletionStage<ZLinkObjectCommitResult> =
         async { commitSuspending(reservation, readyPayload, cancellation) }
 
+    final override fun commit(
+        reservation: ZLinkObjectReservation,
+        readyPayload: ByteArray,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkObjectCommitResult> =
+        async { commitSuspending(reservation, readyPayload, terminal, cancellation) }
+
+    final override fun reject(
+        reservation: ZLinkObjectReservation,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkObjectRejectResult> =
+        async { rejectSuspending(reservation, terminal, cancellation) }
+
     final override fun abort(
         reservation: ZLinkObjectReservation,
         cancellation: ZLinkStoreCancellation,
     ): CompletionStage<ZLinkObjectAbortResult> =
         async { abortSuspending(reservation, cancellation) }
+
+    final override fun abort(
+        reservation: ZLinkObjectReservation,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkObjectAbortResult> =
+        async { abortSuspending(reservation, terminal, cancellation) }
+
+    final override fun readCreationTerminal(
+        operation: ZLinkCreationOperationIdentity,
+        cancellation: ZLinkStoreCancellation,
+    ): CompletionStage<ZLinkCreationTerminalReadResult> =
+        async { readCreationTerminalSuspending(operation, cancellation) }
 
     final override fun reserveRelocationCapacity(
         request: ZLinkRelocationCapacityReservationRequest,
@@ -287,10 +319,34 @@ abstract class ZLinkSuspendingLocationStore(
         cancellation: ZLinkStoreCancellation,
     ): ZLinkObjectCommitResult
 
+    protected abstract suspend fun commitSuspending(
+        reservation: ZLinkObjectReservation,
+        readyPayload: ByteArray,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkObjectCommitResult
+
+    protected abstract suspend fun rejectSuspending(
+        reservation: ZLinkObjectReservation,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkObjectRejectResult
+
     protected abstract suspend fun abortSuspending(
         reservation: ZLinkObjectReservation,
         cancellation: ZLinkStoreCancellation,
     ): ZLinkObjectAbortResult
+
+    protected abstract suspend fun abortSuspending(
+        reservation: ZLinkObjectReservation,
+        terminal: ZLinkCreationOperationTerminal,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkObjectAbortResult
+
+    protected abstract suspend fun readCreationTerminalSuspending(
+        operation: ZLinkCreationOperationIdentity,
+        cancellation: ZLinkStoreCancellation,
+    ): ZLinkCreationTerminalReadResult
 
     protected abstract suspend fun reserveRelocationCapacitySuspending(
         request: ZLinkRelocationCapacityReservationRequest,

@@ -63,7 +63,7 @@ struct placement_candidate_t
     std::string mesh_name;
     std::string node_id;
     std::set<std::string> stable_types;
-    std::uint32_t weight = 100;
+    int weight = 100;
     std::size_t active_capacity = 0;
     std::size_t active_count = 0;
     std::size_t pending_capacity = 0;

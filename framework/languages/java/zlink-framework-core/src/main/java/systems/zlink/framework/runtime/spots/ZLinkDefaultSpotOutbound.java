@@ -189,13 +189,13 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             return resolve(target).thenCompose(address -> {
                 backendSpot.rememberSpotAuthority(
                     address.targetNodeRid(),
-                    address.spotRid(),
+                    address.spotId(),
                     address.spotGeneration(),
                     address.authorityOwnerGeneration());
                 ZLinkSendCall call = routeMeshEnabled
-                    ? routed.send(address.routerChannelId(), address.targetNodeRid(), address.spotRid(),
+                    ? routed.send(address.routerChannelId(), address.targetNodeRid(), address.spotId(),
                         address.spotGeneration(), payload, packetName)
-                    : direct.send(backendSpot, address.targetNodeRid(), address.spotRid(),
+                    : direct.send(backendSpot, address.targetNodeRid(), address.spotId(),
                         address.spotGeneration(), payload, packetName);
                 call = call.metadata(metadata.values());
                 return call.submit();
@@ -253,13 +253,13 @@ final class DefaultSpotOutbound implements ZLinkSpotOutbound {
             CompletionStage<TReply> stage = resolve(target).thenCompose(address -> {
                 backendSpot.rememberSpotAuthority(
                     address.targetNodeRid(),
-                    address.spotRid(),
+                    address.spotId(),
                     address.spotGeneration(),
                     address.authorityOwnerGeneration());
                 ZLinkRequestCall call = routeMeshEnabled
-                    ? routed.request(address.routerChannelId(), address.targetNodeRid(), address.spotRid(),
+                    ? routed.request(address.routerChannelId(), address.targetNodeRid(), address.spotId(),
                         address.spotGeneration(), payload, packetName, timeout)
-                    : direct.request(backendSpot, address.targetNodeRid(), address.spotRid(),
+                    : direct.request(backendSpot, address.targetNodeRid(), address.spotId(),
                         address.spotGeneration(), payload, packetName, timeout);
                 return call.metadata(metadata.values()).submit(replyType);
             });

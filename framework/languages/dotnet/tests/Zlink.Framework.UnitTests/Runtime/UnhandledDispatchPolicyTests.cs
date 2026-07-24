@@ -1134,7 +1134,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         }
 
         public SubmitResult SendToSpot(
-            RoutingId targetRid, RoutingId targetSpotRid, ulong spotGeneration,
+            RoutingId targetRid, string targetSpotId, ulong spotGeneration,
             Message message, SendFlags flags, ReadOnlyMemory<byte> metadata)
         {
             return SubmitResult.Backpressured;
@@ -1142,7 +1142,7 @@ public sealed partial class UnhandledDispatchPolicyTests
 
         public SubmitResult SendToSpot(
             RoutingId targetRid,
-            RoutingId targetSpotRid,
+            string targetSpotId,
             ulong spotGeneration,
             IReadOnlyList<Message> parts,
             SendFlags flags,
@@ -1153,7 +1153,7 @@ public sealed partial class UnhandledDispatchPolicyTests
 
         public bool RequestToSpot(
             RoutingId targetRid,
-            RoutingId targetSpotRid,
+            string targetSpotId,
             ulong spotGeneration,
             Message message,
             RequestCallback callback,
@@ -1166,7 +1166,7 @@ public sealed partial class UnhandledDispatchPolicyTests
 
         public bool RequestToSpot(
             RoutingId targetRid,
-            RoutingId targetSpotRid,
+            string targetSpotId,
             ulong spotGeneration,
             IReadOnlyList<Message> parts,
             RequestCallback callback,

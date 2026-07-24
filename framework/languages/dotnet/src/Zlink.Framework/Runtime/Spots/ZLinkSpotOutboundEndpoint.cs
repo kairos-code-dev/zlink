@@ -102,7 +102,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     public ValueTask<IReadOnlyList<Message>> RequestToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -113,7 +113,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return runtime.RequestToSpotViaRouterChannelAsync(
             routerChannelId,
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             authorityOwnerGeneration,
             parts,
@@ -153,7 +153,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     public bool TrySendToSpotOnce(
         string routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -162,7 +162,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return runtime.TrySendToSpotViaRouterChannelOnce(
             routerChannelId,
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             authorityOwnerGeneration,
             parts,
@@ -172,7 +172,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     public ValueTask<ZLinkSubmitResult> SendToSpotAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -182,7 +182,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         return runtime.SendToSpotViaRouterChannelAsync(
             routerChannelId,
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             authorityOwnerGeneration,
             parts,

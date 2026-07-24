@@ -113,8 +113,7 @@ struct send_ready_data_t
     destination_kind_t destination_kind = destination_kind_t::node;
     zlink::routing_id_t target_node_rid =
       zlink::routing_id_t::from (std::uint32_t{0});
-    zlink::routing_id_t target_spot_rid =
-      zlink::routing_id_t::from (std::uint32_t{0});
+    std::string target_spot_id;
     std::string channel_name;
     actor_ref_t target_actor;
 };
@@ -150,8 +149,7 @@ struct ready_record_t
 {
     owner_kind_t owner_kind = owner_kind_t::node;
     ready_domain_t domain = ready_domain_t::application;
-    zlink::routing_id_t spot_rid =
-      zlink::routing_id_t::from (std::uint32_t{0});
+    std::string spot_id;
     actor_ref_t actor;
     std::string channel_name;
 };
@@ -236,10 +234,8 @@ struct actor_transfer_prepare_t
     actor_transfer_role_t role = actor_transfer_role_t::source;
     std::string transfer_id;
     actor_ref_t actor;
-    zlink::routing_id_t source_spot_rid =
-      zlink::routing_id_t::from (std::uint32_t{0});
-    zlink::routing_id_t target_spot_rid =
-      zlink::routing_id_t::from (std::uint32_t{0});
+    std::string source_spot_id;
+    std::string target_spot_id;
     zlink::routing_id_t target_node_rid =
       zlink::routing_id_t::from (std::uint32_t{0});
 };
@@ -275,17 +271,17 @@ class spot_handle_t
                    stateful::object_ref_t object);
 
     spot_status_t status () const;
-    zlink::routing_id_t routing_id () const;
+    const std::string &spot_id () const noexcept;
     zlink::submit_result_t send_to_spot (
       const zlink::routing_id_t &target_node_rid,
-      const zlink::routing_id_t &target_spot_rid,
+      const std::string &target_spot_id,
       std::uint64_t target_spot_generation,
       const std::vector<zlink::message_t> &parts,
       zlink::send_flags_t flags = zlink::send_flags_t::none,
       std::span<const std::uint8_t> metadata = {});
     zlink::submit_result_t request_to_spot (
       const zlink::routing_id_t &target_node_rid,
-      const zlink::routing_id_t &target_spot_rid,
+      const std::string &target_spot_id,
       std::uint64_t target_spot_generation,
       const std::vector<zlink::message_t> &parts,
       operation_id_t &operation,
@@ -326,7 +322,7 @@ class actor_handle_t
       std::chrono::milliseconds timeout);
     zlink::submit_result_t join_spot (
       const zlink::routing_id_t &target_node_rid,
-      const zlink::routing_id_t &target_spot_rid,
+      const std::string &target_spot_id,
       std::uint64_t target_spot_generation,
       const std::vector<zlink::message_t> &parts,
       operation_id_t &operation,
@@ -396,7 +392,7 @@ class public_host_runtime_t :
       user_spot_close_completion_t completion);
 
     spot_handle_t entry_spot ();
-    spot_handle_t get_or_create_spot (const zlink::routing_id_t &routing_id);
+    spot_handle_t get_or_create_spot (std::string spot_id);
     actor_handle_t create_actor (std::string actor_type, std::string actor_id);
     zlink::submit_result_t send_to_actor (
       const actor_ref_t &target,
@@ -447,7 +443,7 @@ class public_host_runtime_t :
     std::optional<stateful::object_ref_t>
     resolve_actor (const actor_ref_t &actor) const;
     std::optional<stateful::object_ref_t>
-    resolve_spot (const zlink::routing_id_t &spot) const;
+    resolve_spot (const std::string &spot_id) const;
 
   private:
     friend class spot_handle_t;

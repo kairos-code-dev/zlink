@@ -20,14 +20,14 @@ import systems.zlink.framework.spots.ZLinkSpot;
 
 final class ZLinkActorSessionCoordinator {
     record ActorRoute(
-        Optional<RoutingId> joinedSpotRid,
+        Optional<String> joinedSpotId,
         ZLinkBackendActorRef actorRef,
         boolean remoteJoinedSpot) {
     }
 
     record LocalDispatch(
         ZLinkActor actor,
-        Optional<RoutingId> joinedSpotRid) {
+        Optional<String> joinedSpotId) {
     }
 
     private ZLinkActorRuntime actors;
@@ -38,8 +38,8 @@ final class ZLinkActorSessionCoordinator {
         Supplier<Object> actorCreateContextSupplier,
         Function<ZLinkActor, CompletionStage<Void>> disconnectedNotifier,
         ZLinkActorRuntime.SourceActorLeaver sourceActorLeaver,
-        Function<RoutingId, ZLinkSpot<?>> spotResolver,
-        Function<RoutingId, String> spotMeshResolver) {
+        Function<String, ZLinkSpot<?>> spotResolver,
+        Function<String, String> spotMeshResolver) {
         this.actors = actors;
         actors.setCreatedNotifier(createdNotifier);
         actors.setActorCreateContextSupplier(actorCreateContextSupplier);
@@ -53,8 +53,8 @@ final class ZLinkActorSessionCoordinator {
         return actors != null;
     }
 
-    boolean hasActorsInSpot(RoutingId spotRid) {
-        return actors != null && actors.hasActorsInSpot(spotRid);
+    boolean hasActorsInSpot(String spotId) {
+        return actors != null && actors.hasActorsInSpot(spotId);
     }
 
     Optional<ZLinkActor> localActor(String actorId) {
@@ -83,7 +83,7 @@ final class ZLinkActorSessionCoordinator {
         ZLinkBackendActorRef actorRef,
         ZLinkStreamHeader header,
         Message payload,
-        Predicate<RoutingId> isLocalSpot,
+        Predicate<String> isLocalSpot,
         Function<LocalDispatch, CompletionStage<Optional<Message>>> localDispatch) {
         return dispatchLocalSession(
             actorRef, header, payload, isLocalSpot, localDispatch, true);
@@ -93,7 +93,7 @@ final class ZLinkActorSessionCoordinator {
         ZLinkBackendActorRef actorRef,
         ZLinkStreamHeader header,
         Message payload,
-        Predicate<RoutingId> isLocalSpot,
+        Predicate<String> isLocalSpot,
         Function<LocalDispatch, CompletionStage<Optional<Message>>> localDispatch) {
         return dispatchLocalSession(
             actorRef, header, payload, isLocalSpot, localDispatch, false);
@@ -103,7 +103,7 @@ final class ZLinkActorSessionCoordinator {
         ZLinkBackendActorRef actorRef,
         ZLinkStreamHeader header,
         Message payload,
-        Predicate<RoutingId> isLocalSpot,
+        Predicate<String> isLocalSpot,
         Function<LocalDispatch, CompletionStage<Optional<Message>>> localDispatch,
         boolean captureMovingPacket) {
         ZLinkActorRuntime runtime = requireActors();
@@ -127,14 +127,14 @@ final class ZLinkActorSessionCoordinator {
                     isLocalSpot,
                     localDispatch));
         }
-        Optional<RoutingId> joinedSpotRid = runtime.spotRid(actor);
-        if (joinedSpotRid.isPresent()
+        Optional<String> joinedSpotId = runtime.spotId(actor);
+        if (joinedSpotId.isPresent()
             && currentSpotSurface(actor) == null
-            && !isLocalSpot.test(joinedSpotRid.get())
-            && runtime.canRouteRemoteJoinedSpot(joinedSpotRid.get())) {
+            && !isLocalSpot.test(joinedSpotId.get())
+            && runtime.canRouteRemoteJoinedSpot(joinedSpotId.get())) {
             return runtime.dispatchRemoteJoinedActor(
                 runtime.currentRef(actor),
-                joinedSpotRid.get(),
+                joinedSpotId.get(),
                 header,
                 payload);
         }
@@ -142,7 +142,7 @@ final class ZLinkActorSessionCoordinator {
             // Transfer commit already owns the actor's serialized turn. Queuing
             // replay behind that turn would wait on the commit that is waiting
             // for this replay to finish.
-            return localDispatch.apply(new LocalDispatch(actor, joinedSpotRid));
+            return localDispatch.apply(new LocalDispatch(actor, joinedSpotId));
         }
         CompletableFuture<Optional<Message>> result = new CompletableFuture<>();
         return runtime.submitActorDispatch(
@@ -150,7 +150,7 @@ final class ZLinkActorSessionCoordinator {
                 ZLinkActorAcceptedJournal.encode(actor.actorId(), header, payload),
                 () -> invokeLocalDispatch(
                     localDispatch,
-                    new LocalDispatch(actor, joinedSpotRid),
+                    new LocalDispatch(actor, joinedSpotId),
                     result))
             .thenCompose(ignored -> result);
     }
@@ -200,33 +200,33 @@ final class ZLinkActorSessionCoordinator {
     boolean isJoinedTo(
         ZLinkActor actor,
         ZLinkBackendActorRef actorRef,
-        RoutingId spotRid) {
-        if (actors == null || actor == null || actorRef == null || spotRid == null) {
+        String spotId) {
+        if (actors == null || actor == null || actorRef == null || spotId == null) {
             return false;
         }
-        return actors.spotRid(actor).filter(spotRid::equals).isPresent()
+        return actors.spotId(actor).filter(spotId::equals).isPresent()
             && actorRef.equals(actors.currentRef(actor));
     }
 
-    boolean isJoinedToDifferentSpot(ZLinkActor actor, RoutingId spotRid) {
-        if (actors == null || actor == null || spotRid == null) {
+    boolean isJoinedToDifferentSpot(ZLinkActor actor, String spotId) {
+        if (actors == null || actor == null || spotId == null) {
             return false;
         }
-        return actors.spotRid(actor)
-            .map(current -> !spotRid.equals(current))
+        return actors.spotId(actor)
+            .map(current -> !spotId.equals(current))
             .orElse(false);
     }
 
     Object spotSurface(
         ZLinkActor actor,
-        Function<RoutingId, Object> resolver,
+        Function<String, Object> resolver,
         Supplier<Object> fallback) {
         Object current = currentSpotSurface(actor);
         if (current != null) {
             return current;
         }
         if (actors != null) {
-            Object resolved = actors.spotRid(actor).map(resolver).orElse(null);
+            Object resolved = actors.spotId(actor).map(resolver).orElse(null);
             if (resolved != null) {
                 return resolved;
             }
@@ -237,15 +237,15 @@ final class ZLinkActorSessionCoordinator {
     ActorRoute routeFor(
         ZLinkActor actor,
         RoutingId localNodeRid,
-        Predicate<RoutingId> isLocalSpot) {
+        Predicate<String> isLocalSpot) {
         ZLinkActorRuntime runtime = requireActors();
-        Optional<RoutingId> joinedSpotRid = runtime.spotRid(actor);
+        Optional<String> joinedSpotId = runtime.spotId(actor);
         ZLinkBackendActorRef actorRef = runtime.currentRef(actor);
-        boolean remote = joinedSpotRid.isPresent()
+        boolean remote = joinedSpotId.isPresent()
             && !actorRef.nodeRid().equals(localNodeRid)
-            && !isLocalSpot.test(joinedSpotRid.get())
-            && runtime.canRouteRemoteJoinedSpot(joinedSpotRid.get());
-        return new ActorRoute(joinedSpotRid, actorRef, remote);
+            && !isLocalSpot.test(joinedSpotId.get())
+            && runtime.canRouteRemoteJoinedSpot(joinedSpotId.get());
+        return new ActorRoute(joinedSpotId, actorRef, remote);
     }
 
     CompletionStage<Void> sendBoundSession(

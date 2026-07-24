@@ -17,11 +17,13 @@ internal sealed class EnsurePlayerActorHandler(
         EnsurePlayerActorReq request,
         CancellationToken cancellationToken)
     {
-        var actor = await actors.GetOrCreateAsync(
-            request.ActorId,
-            SampleNames.PlayerActorType,
-            request,
-            cancellationToken);
+        var actor = (await actors.GetOrCreate(request.ActorId, SampleNames.PlayerActorType)
+            .Request(request).Async(cancellationToken)) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Player Actor creation was rejected.")
+        };
 
         return new EnsurePlayerActorRes
         {

@@ -325,17 +325,12 @@ public sealed partial class ZLinkRedisLocationStore
                         key = request.Key.Value,
                         objectKind = ObjectKindToken(request.ObjectKind),
                         stableType = request.StableType,
-                        placementProfile =
-                            request.PlacementProfile ?? string.Empty,
                         capacityDelta = request.PendingCapacityDelta,
                         payload = Convert.ToBase64String(
                             request.CreatingPayload.Span),
                         reservationId = reservationVersion,
                         intent = new
                         {
-                            placementProfile =
-                                request.PlacementProfile ?? string.Empty,
-                            affinityKey = request.AffinityKey ?? string.Empty,
                             requestContentReference =
                                 request.CreationIntentReference,
                             requestSha256 = Convert.ToBase64String(
@@ -473,8 +468,7 @@ public sealed partial class ZLinkRedisLocationStore
                             lifecycleGeneration =
                                 comparable.targetNodeLifecycleGeneration,
                             owner = comparable.targetOwner
-                        },
-                        placementProfile = string.Empty
+                        }
                     },
                     HybridDescriptorRowKey(request.TargetDescriptor),
                     _keys.HybridDescriptorAdmissionKey(
@@ -567,8 +561,7 @@ public sealed partial class ZLinkRedisLocationStore
                         reservationId = reservation.ReservationVersion,
                         expectedStoreVersion = reservation.StoreVersion,
                         target,
-                        payload = Convert.ToBase64String(readyPayload.Span),
-                        placementProfile = string.Empty
+                        payload = Convert.ToBase64String(readyPayload.Span)
                     },
                     HybridDescriptorRowKey(reservation.TargetDescriptor),
                     _keys.HybridDescriptorAdmissionKey(descriptorKey),
@@ -595,6 +588,153 @@ public sealed partial class ZLinkRedisLocationStore
             _ => throw new InvalidOperationException(
                 $"Unknown Redis authority commit result '{status}'.")
         };
+    }
+
+    public async ValueTask<ZLinkObjectCreationCompleteResult>
+        CompleteCreationAsync(
+            ZLinkObjectReservation reservation,
+            ZLinkObjectCreationCompletion completion,
+            CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(reservation);
+        ArgumentNullException.ThrowIfNull(completion);
+        var publication = completion switch
+        {
+            ZLinkObjectCreationCompletion.Created created => created.Terminal,
+            ZLinkObjectCreationCompletion.Rejected rejected => rejected.Terminal,
+            ZLinkObjectCreationCompletion.Failed failed => failed.Terminal,
+            _ => throw new ArgumentOutOfRangeException(nameof(completion))
+        };
+        ValidateCreationTerminal(publication);
+        var readyPayload = completion is ZLinkObjectCreationCompletion.Created accepted
+            ? accepted.ReadyPayload
+            : ReadOnlyMemory<byte>.Empty;
+        if (completion is ZLinkObjectCreationCompletion.Created)
+            ValidateAuthorityPayload(readyPayload);
+        var state = completion switch
+        {
+            ZLinkObjectCreationCompletion.Created => "Created",
+            ZLinkObjectCreationCompletion.Rejected => "Rejected",
+            ZLinkObjectCreationCompletion.Failed => "Failed",
+            _ => throw new ArgumentOutOfRangeException(nameof(completion))
+        };
+        var descriptorKey = ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(
+            reservation.TargetDescriptor);
+        var target = new
+        {
+            descriptor = new
+            {
+                meshName = reservation.TargetDescriptor.MeshName,
+                rid = reservation.TargetDescriptor.Rid.ToHex()
+            },
+            descriptorKey,
+            lifecycleGeneration =
+                reservation.TargetNodeLifecycleGeneration.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+            owner = OwnerJson(reservation.TargetOwner)
+        };
+        var operation = publication.Operation;
+        var result = await ExecuteAsync(
+                database => AuthorityCallAsync(
+                    database,
+                    "completeCreation",
+                    reservation.Key.Value,
+                    new
+                    {
+                        key = reservation.Key.Value,
+                        reservationId = reservation.ReservationVersion,
+                        expectedStoreVersion = reservation.StoreVersion,
+                        target,
+                        payload = Convert.ToBase64String(readyPayload.Span),
+                        terminal = new
+                        {
+                            state,
+                            sourceNodeRid = operation.SourceNodeRid.ToHex(),
+                            sourceNodeGeneration =
+                                operation.SourceNodeGeneration.ToString(
+                                    System.Globalization.CultureInfo.InvariantCulture),
+                            operationIdHigh = operation.OperationIdHigh.ToString(
+                                System.Globalization.CultureInfo.InvariantCulture),
+                            operationIdLow = operation.OperationIdLow.ToString(
+                                System.Globalization.CultureInfo.InvariantCulture),
+                            terminalEnvelope = Convert.ToHexString(
+                                    publication.TerminalEnvelope.Span)
+                                .ToLowerInvariant(),
+                            terminalEnvelopeSha256 = Convert.ToHexString(
+                                    publication.TerminalEnvelopeSha256.Span)
+                                .ToLowerInvariant(),
+                            expiresAtUnixMs = publication.ExpiresAt
+                                .ToUnixTimeMilliseconds()
+                                .ToString(
+                                    System.Globalization.CultureInfo.InvariantCulture)
+                        }
+                    },
+                    HybridDescriptorRowKey(reservation.TargetDescriptor),
+                    _keys.HybridDescriptorAdmissionKey(descriptorKey),
+                    _keys.HybridOwnerLeaseKey(
+                        reservation.TargetOwner.OwnerId),
+                    _keys.HybridCreationKey(
+                        reservation.ReservationVersion),
+                    extraKeys:
+                    [
+                        _keys.HybridCreationTerminalKey(operation)
+                    ]),
+                cancellationToken)
+            .ConfigureAwait(false);
+        var kind = result.GetProperty("kind").GetString();
+        if (kind == "invalidExpiry")
+            throw new ArgumentOutOfRangeException(
+                nameof(completion),
+                "The creation terminal must expire after provider StoreNow.");
+        if (kind is "stale")
+            return new ZLinkObjectCreationCompleteResult.Stale();
+        if (kind is "generationExhausted")
+            return new ZLinkObjectCreationCompleteResult.GenerationExhausted();
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(
+            result.GetProperty("storeNowMs").GetInt64());
+        var terminal = CreationTerminal(
+            publication.Operation,
+            result.GetProperty("terminal"),
+            now);
+        return kind switch
+        {
+            "alreadyCompleted" =>
+                new ZLinkObjectCreationCompleteResult.AlreadyCompleted(terminal),
+            "created" => new ZLinkObjectCreationCompleteResult.Created(
+                Snapshot(result.GetProperty("ready"), now),
+                terminal),
+            "rejected" =>
+                new ZLinkObjectCreationCompleteResult.Rejected(terminal),
+            "failed" => new ZLinkObjectCreationCompleteResult.Failed(terminal),
+            _ => throw new InvalidOperationException(
+                $"Unknown Redis creation completion result '{kind}'.")
+        };
+    }
+
+    public async ValueTask<ZLinkCreationTerminalReadResult>
+        ReadCreationTerminalAsync(
+            ZLinkCreationOperationId operation,
+            CancellationToken cancellationToken = default)
+    {
+        ValidateCreationOperation(operation);
+        var result = await ExecuteAsync(
+                database => AuthorityCallAsync(
+                    database,
+                    "readCreationTerminal",
+                    string.Empty,
+                    new { },
+                    recordKey: _keys.HybridCreationTerminalKey(operation)),
+                cancellationToken)
+            .ConfigureAwait(false);
+        var now = DateTimeOffset.FromUnixTimeMilliseconds(
+            result.GetProperty("storeNowMs").GetInt64());
+        return result.GetProperty("kind").GetString() == "missing"
+            ? new ZLinkCreationTerminalReadResult.Missing(now)
+            : new ZLinkCreationTerminalReadResult.Found(
+                CreationTerminal(
+                    operation,
+                    result.GetProperty("terminal"),
+                    now));
     }
 
     public async ValueTask<ZLinkObjectAbortResult> AbortAsync(
@@ -1086,6 +1226,65 @@ public sealed partial class ZLinkRedisLocationStore
             ZLinkPlacementObjectKind.InstanceSpot => "instance_spot",
             _ => throw new ArgumentOutOfRangeException(nameof(kind))
         };
+
+    private static void ValidateCreationTerminal(
+        ZLinkCreationTerminalPublication publication)
+    {
+        ArgumentNullException.ThrowIfNull(publication);
+        ValidateCreationOperation(publication.Operation);
+        if (publication.TerminalEnvelope.Length > 1024 * 1024
+            || publication.TerminalEnvelopeSha256.Length != 32)
+            throw new ArgumentOutOfRangeException(nameof(publication));
+        Span<byte> digest = stackalloc byte[32];
+        SHA256.HashData(publication.TerminalEnvelope.Span, digest);
+        if (!CryptographicOperations.FixedTimeEquals(
+                digest,
+                publication.TerminalEnvelopeSha256.Span))
+            throw new ArgumentException(
+                "The creation terminal SHA-256 does not match its envelope.",
+                nameof(publication));
+    }
+
+    private static void ValidateCreationOperation(
+        ZLinkCreationOperationId operation)
+    {
+        if (operation.SourceNodeRid.IsEmpty
+            || operation.SourceNodeGeneration == 0
+            || (operation.OperationIdHigh == 0 && operation.OperationIdLow == 0))
+            throw new ArgumentOutOfRangeException(nameof(operation));
+    }
+
+    private static ZLinkCreationTerminalRecord CreationTerminal(
+        ZLinkCreationOperationId operation,
+        JsonElement value,
+        DateTimeOffset storeNow) =>
+        new(
+            operation,
+            value.GetProperty("reservationId").GetString()!,
+            value.GetProperty("objectKind").GetString() switch
+            {
+                "actor" => ZLinkPlacementObjectKind.Actor,
+                "user_spot" => ZLinkPlacementObjectKind.UserSpot,
+                "instance_spot" => ZLinkPlacementObjectKind.InstanceSpot,
+                var kind => throw new InvalidDataException(
+                    $"Redis creation terminal object kind '{kind}' is invalid.")
+            },
+            value.GetProperty("state").GetString() switch
+            {
+                "Created" => ZLinkCreationTerminalState.Created,
+                "Rejected" => ZLinkCreationTerminalState.Rejected,
+                "Failed" => ZLinkCreationTerminalState.Failed,
+                var state => throw new InvalidDataException(
+                    $"Redis creation terminal state '{state}' is invalid.")
+            },
+            Convert.FromHexString(value.GetProperty("terminalEnvelope").GetString()!),
+            Convert.FromHexString(
+                value.GetProperty("terminalEnvelopeSha256").GetString()!),
+            DateTimeOffset.FromUnixTimeMilliseconds(
+                long.Parse(
+                    value.GetProperty("expiresAtUnixMs").GetString()!,
+                    System.Globalization.CultureInfo.InvariantCulture)),
+            storeNow);
 
     private static (string ScanId, string LastHex) ParseCursor(
         ZLinkAuthorityScanCursor cursor)

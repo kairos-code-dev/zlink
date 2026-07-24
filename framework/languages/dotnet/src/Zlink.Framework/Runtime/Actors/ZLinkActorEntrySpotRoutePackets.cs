@@ -8,7 +8,7 @@ internal static class ZLinkActorEntrySpotRoutePackets
         string actorId,
         string actorType,
         ZLinkBackendActorRef sourceActorRef,
-        RoutingId? previousSpotRid,
+        string? previousSpotId,
         ZLinkMessage request,
         ZLinkCodecRegistryBuilder codecs)
     {
@@ -17,7 +17,7 @@ internal static class ZLinkActorEntrySpotRoutePackets
             actorId,
             actorType,
             sourceActorRef.NodeRid.ToHex(),
-            previousSpotRid?.ToHex() ?? string.Empty,
+            previousSpotId ?? string.Empty,
             sourceActorRef.Generation,
             encodedRequest.ContentType,
             encodedRequest.Payload.ToArray());
@@ -98,7 +98,7 @@ internal sealed record ZLinkActorEntrySpotRouteJoinRequest(
     string ActorId,
     string ActorType,
     string SourceNodeRid,
-    string SourceSpotRid,
+    string SourceSpotId,
     ulong SourceGeneration,
     string RequestContentType,
     byte[] RequestPayload);

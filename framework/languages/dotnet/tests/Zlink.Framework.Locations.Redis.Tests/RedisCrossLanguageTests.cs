@@ -18,7 +18,7 @@ public sealed class RedisCrossLanguageTests
         Assert.Equal(RoutingId.From("node-node"), actor.ActorRef.NodeRid);
         Assert.Equal("node-owner", actor.OwnerId);
 
-        var spot = await store.ResolveSpotAsync(new ZLinkSpotLocationKey("cross", RoutingId.From("node-spot")));
+        var spot = await store.ResolveSpotAsync(new ZLinkSpotLocationKey("node-spot"));
         Assert.NotNull(spot);
         Assert.Equal("node-game", spot!.SpotType);
         Assert.Equal(RoutingId.From("node-node"), spot.OwnerNodeRid);
@@ -51,7 +51,7 @@ public sealed class RedisCrossLanguageTests
             new ActorRef(nodeRid, "dotnet-actor", 1),
             OwnerNodeRid: nodeRid,
             OwnerNodeGeneration: 1,
-            SpotRid: RoutingId.From("dotnet-spot"),
+            SpotId: "dotnet-spot",
             SpotGeneration: 1,
             SpotKind: ZLinkSpotKind.User,
             MembershipEpoch: 1,
@@ -60,7 +60,7 @@ public sealed class RedisCrossLanguageTests
 
         Assert.Equal(ZLinkLocationWriteStatus.Stored, (await store.UpdateSpotAsync(new ZLinkSpotLocation(
             "cross",
-            RoutingId.From("dotnet-spot"),
+            "dotnet-spot",
             SpotGeneration: 1,
             OwnerNodeRid: nodeRid,
             OwnerNodeGeneration: 1,

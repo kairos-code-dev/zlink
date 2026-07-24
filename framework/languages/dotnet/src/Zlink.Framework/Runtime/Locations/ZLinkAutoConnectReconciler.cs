@@ -49,6 +49,7 @@ internal sealed class ZLinkAutoConnectReconciler
     private bool _ownerCleanupStarted;
     private long _discoveredPeerCount;
     private long _pendingLocalWeight = -1;
+    private long _pendingPlacementWeight = -1;
 
     /// <summary>
     /// <paramref name="localRow"/> is null for a dial-only capability that
@@ -113,6 +114,9 @@ internal sealed class ZLinkAutoConnectReconciler
 
     internal void SetLocalWeight(uint weight) => Volatile.Write(ref _pendingLocalWeight, weight);
 
+    internal void SetLocalPlacementWeight(int weight) =>
+        Volatile.Write(ref _pendingPlacementWeight, weight);
+
     internal ValueTask<bool> SetLocalWeightAsync(
         uint weight,
         CancellationToken cancellationToken = default) =>
@@ -128,6 +132,12 @@ internal sealed class ZLinkAutoConnectReconciler
             if (_localRow is { } localRow
                 && pendingWeight >= 0
                 && WeightOf(localRow) != (int)pendingWeight)
+                return true;
+            var pendingPlacementWeight =
+                Volatile.Read(ref _pendingPlacementWeight);
+            if (_localRow is { } placementRow
+                && pendingPlacementWeight >= 0
+                && placementRow.PlacementWeight != pendingPlacementWeight)
                 return true;
 
             foreach (var (key, desired) in _lastDesired)
@@ -243,6 +253,19 @@ internal sealed class ZLinkAutoConnectReconciler
         {
             _localRow = WithWeight(localRow, (uint)pendingWeight)
                 with { DescriptorRevision = ++_localRevision };
+            _localPublished = false;
+        }
+        var pendingPlacementWeight =
+            Volatile.Read(ref _pendingPlacementWeight);
+        if (_localRow is { } placementRow
+            && pendingPlacementWeight >= 0
+            && placementRow.PlacementWeight != pendingPlacementWeight)
+        {
+            _localRow = placementRow with
+            {
+                PlacementWeight = checked((int)pendingPlacementWeight),
+                DescriptorRevision = ++_localRevision
+            };
             _localPublished = false;
         }
         // Publish (or re-publish after recovery) the local descriptor before

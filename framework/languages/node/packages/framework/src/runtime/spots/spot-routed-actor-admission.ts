@@ -247,7 +247,7 @@ export class ZLinkSpotRoutedActorAdmission {
       expectedMembershipEpoch: decoded.expectedMembershipEpoch
     });
     return this.options.serial.execute(async () =>
-      target.onActorJoin === undefined
+      this.options.defaultAccept || target.onActorJoin === undefined
         ? { accepted: this.options.defaultAccept }
         : target.onActorJoin(joinRequest, joinPayload)
     );

@@ -9,7 +9,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     public ValueTask<ZLinkSubmitResult> SendAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -18,7 +18,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     {
         return ResolveMeshNode(routerChannelId).EntryOutbound.SendToSpotAsync(
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             authorityOwnerGeneration,
             parts,
@@ -31,7 +31,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     public bool TrySendOnce(
         string routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -39,7 +39,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     {
         return ResolveMeshNode(routerChannelId).EntryOutbound.TrySendToSpotOnce(
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             authorityOwnerGeneration,
             parts,
@@ -49,7 +49,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     public async ValueTask<IReadOnlyList<Message>> RequestAsync(
         string routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        string targetSpotId,
         ulong targetSpotGeneration,
         ulong authorityOwnerGeneration,
         IReadOnlyList<Message> parts,
@@ -59,7 +59,7 @@ internal sealed class ZLinkSpotRouteRouterDispatcher(
     {
         return await ResolveMeshNode(routerChannelId).EntryOutbound.RequestToSpotAsync(
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 targetSpotGeneration,
                 authorityOwnerGeneration,
                 parts,

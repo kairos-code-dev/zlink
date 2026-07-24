@@ -122,7 +122,7 @@ public interface IZLinkRouteClient
         string channelName,
         TMessage message);
 
-    IZLinkRequestCall RequestToChannel<TRequest>(
+    IZLinkChannelRequestCall RequestToChannel<TRequest>(
         string channelName,
         TRequest request);
 }

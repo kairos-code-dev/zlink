@@ -247,7 +247,7 @@ public abstract record ZLinkLocationActorEvent : IZLinkRuntimeEvent
 }
 
 public readonly record struct ZLinkSpotTimerDiagnostic(
-    RoutingId SpotRid,
+    string SpotId,
     bool IsEntrySpot,
     string TimerName,
     string HandlerType,

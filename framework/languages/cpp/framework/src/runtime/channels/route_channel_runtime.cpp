@@ -143,7 +143,7 @@ route_channel_runtime_t::submit_send_parts (const zlink::routing_id_t &target_no
 {
     send_backend_t backend;
     std::optional<zlink::routing_id_t> backend_target;
-    std::optional<zlink::routing_id_t> backend_spot_target;
+    std::optional<std::string> backend_spot_target;
     runtime::messaging::message_parts_t backend_parts;
     if (auto connected = wait_until_connected (default_request_timeout ()); !connected) {
         return connected;
@@ -161,7 +161,7 @@ route_channel_runtime_t::submit_send_parts (const zlink::routing_id_t &target_no
         if (_send_backend) {
             backend = _send_backend;
             backend_target = packet.target_node_rid;
-            backend_spot_target = packet.target_spot_rid;
+            backend_spot_target = packet.target_spot_id;
             backend_parts = packet.parts;
         }
     }
@@ -220,12 +220,12 @@ route_channel_runtime_t::request_reply_parts (const zlink::routing_id_t &target_
 
 result_t<void>
 route_channel_runtime_t::submit_spot_send_parts (const zlink::routing_id_t &target_node_rid,
-                                                 const zlink::routing_id_t &target_spot_rid,
+                                                 const std::string &target_spot_id,
                                                  runtime::messaging::message_parts_t parts)
 {
     send_backend_t backend;
     std::optional<zlink::routing_id_t> backend_target;
-    std::optional<zlink::routing_id_t> backend_spot_target;
+    std::optional<std::string> backend_spot_target;
     runtime::messaging::message_parts_t backend_parts;
     if (auto connected = wait_until_connected (default_request_timeout ()); !connected) {
         return connected;
@@ -238,12 +238,12 @@ route_channel_runtime_t::submit_spot_send_parts (const zlink::routing_id_t &targ
         if (auto connected = ensure_connected (); !connected) {
             return connected;
         }
-        auto &packet = append_outbound_unlocked (target_node_rid, target_spot_rid,
+        auto &packet = append_outbound_unlocked (target_node_rid, target_spot_id,
                                                  std::move (parts), std::nullopt);
         if (_send_backend) {
             backend = _send_backend;
             backend_target = packet.target_node_rid;
-            backend_spot_target = packet.target_spot_rid;
+            backend_spot_target = packet.target_spot_id;
             backend_parts = packet.parts;
         }
     }
@@ -256,7 +256,7 @@ route_channel_runtime_t::submit_spot_send_parts (const zlink::routing_id_t &targ
 
 result_t<std::uint64_t>
 route_channel_runtime_t::request_to_spot_parts (const zlink::routing_id_t &target_node_rid,
-                                                const zlink::routing_id_t &target_spot_rid,
+                                                const std::string &target_spot_id,
                                                 runtime::messaging::message_parts_t parts)
 {
     request_backend_t backend;
@@ -266,14 +266,14 @@ route_channel_runtime_t::request_to_spot_parts (const zlink::routing_id_t &targe
         if (auto connected = ensure_connected (); !connected) {
             return detail::propagate_failure<std::uint64_t> (connected, "route channel is not connected");
         }
-        auto registered = register_request_unlocked (target_node_rid, target_spot_rid, parts);
+        auto registered = register_request_unlocked (target_node_rid, target_spot_id, parts);
         request_seq = registered.value ();
         if (_request_backend) {
             backend = _request_backend;
         }
     }
     if (backend) {
-        auto reply = backend (target_node_rid, target_spot_rid, parts, default_request_timeout ());
+        auto reply = backend (target_node_rid, target_spot_id, parts, default_request_timeout ());
         std::lock_guard lock (_mutex);
         _pending_requests.remove (request_seq);
         if (!reply) {
@@ -287,7 +287,7 @@ route_channel_runtime_t::request_to_spot_parts (const zlink::routing_id_t &targe
 
 result_t<runtime::messaging::message_parts_t>
 route_channel_runtime_t::request_reply_spot_parts (const zlink::routing_id_t &target_node_rid,
-                                                   const zlink::routing_id_t &target_spot_rid,
+                                                   const std::string &target_spot_id,
                                                    runtime::messaging::message_parts_t parts,
                                                    std::chrono::milliseconds timeout)
 {
@@ -304,7 +304,7 @@ route_channel_runtime_t::request_reply_spot_parts (const zlink::routing_id_t &ta
         if (auto connected = ensure_connected (); !connected) {
             return detail::propagate_failure<runtime::messaging::message_parts_t> (connected, "route channel is not connected");
         }
-        auto registered = register_request_unlocked (target_node_rid, target_spot_rid, parts);
+        auto registered = register_request_unlocked (target_node_rid, target_spot_id, parts);
         request_seq = registered.value ();
         if (!_request_backend) {
             _pending_requests.remove (request_seq);
@@ -313,7 +313,7 @@ route_channel_runtime_t::request_reply_spot_parts (const zlink::routing_id_t &ta
         }
         backend = _request_backend;
     }
-    auto reply = backend (target_node_rid, target_spot_rid, parts, timeout);
+    auto reply = backend (target_node_rid, target_spot_id, parts, timeout);
     {
         std::lock_guard lock (_mutex);
         _pending_requests.remove (request_seq);
@@ -357,23 +357,23 @@ std::size_t route_channel_runtime_t::pending_request_count () const noexcept
 
 route_outbound_packet_t &route_channel_runtime_t::append_outbound_unlocked (
   const zlink::routing_id_t &target_node_rid,
-  std::optional<zlink::routing_id_t> target_spot_rid,
+  std::optional<std::string> target_spot_id,
   runtime::messaging::message_parts_t parts,
   std::optional<std::uint64_t> request_seq)
 {
     _outbound_packets.push_back (route_outbound_packet_t{
-      target_node_rid, std::move (target_spot_rid), std::move (parts), request_seq});
+      target_node_rid, std::move (target_spot_id), std::move (parts), request_seq});
     return _outbound_packets.back ();
 }
 
 result_t<std::uint64_t> route_channel_runtime_t::register_request_unlocked (
   const zlink::routing_id_t &target_node_rid,
-  std::optional<zlink::routing_id_t> target_spot_rid,
+  std::optional<std::string> target_spot_id,
   runtime::messaging::message_parts_t parts)
 {
     const auto request_seq = _pending_requests.next_request_seq ();
     _pending_requests.register_request (request_seq, _router_channel_id);
-    append_outbound_unlocked (target_node_rid, std::move (target_spot_rid), std::move (parts),
+    append_outbound_unlocked (target_node_rid, std::move (target_spot_id), std::move (parts),
                               request_seq);
     return result_t<std::uint64_t>::success (request_seq);
 }

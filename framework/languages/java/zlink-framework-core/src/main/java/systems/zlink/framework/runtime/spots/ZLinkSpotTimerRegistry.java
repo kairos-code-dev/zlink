@@ -30,7 +30,7 @@ import systems.zlink.framework.spots.ZLinkTimerOverrunPolicy;
 import systems.zlink.framework.spots.ZLinkTimerTick;
 
 final class ZLinkSpotTimerRegistry implements AutoCloseable {
-    private final RoutingId spotRid;
+    private final String spotId;
     private final ScheduledExecutorService executor;
     private final ZLinkHandlerActivator handlerFactory;
     private final List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers;
@@ -42,14 +42,14 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
     private boolean frozen;
 
     ZLinkSpotTimerRegistry(
-        RoutingId spotRid,
+        String spotId,
         ScheduledExecutorService executor,
         ZLinkHandlerActivator handlerFactory,
         List<ZLinkSuspendInvocationAdapter> suspendHandlerInvokers,
         ZLinkRuntimeEventDispatcher eventDispatcher,
         String sourceName,
         Dispatch dispatch) {
-        this.spotRid = spotRid;
+        this.spotId = spotId;
         this.executor = executor;
         this.handlerFactory = handlerFactory;
         this.suspendHandlerInvokers = suspendHandlerInvokers;
@@ -180,7 +180,7 @@ final class ZLinkSpotTimerRegistry implements AutoCloseable {
             Optional.empty(),
             List.of(),
             List.of(),
-            Optional.of("spotRid=" + spotRid
+            Optional.of("spotId=" + spotId
                 + "|timer=" + timer.name
                 + "|handler=" + timer.handlerType.getName()
                 + "|deliveryIndex=" + tick.deliveryIndex()

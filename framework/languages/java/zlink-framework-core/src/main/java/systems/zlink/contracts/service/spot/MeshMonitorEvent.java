@@ -16,7 +16,7 @@ public record MeshMonitorEvent(
     long peerDescriptorRevision,
     /** Owner kind, or {@code null} when the event is not associated with an owner. */
     OwnerKind ownerKind,
-    RoutingId spotRid,
+    RoutingId spotId,
     ActorRef actor,
     String channelName,
     OperationId operationId,

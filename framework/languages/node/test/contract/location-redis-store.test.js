@@ -248,7 +248,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
       .update('source-owner', 'utf8').digest('hex');
     assert.deepEqual(
       Object.keys(await fixture.client.hGetAll(
-        `${prefix}:{zlink-location-v1}:owner-lease:${sourceLeaseDigest}`
+        `${prefix}:{zlink-location-v3}:owner-lease:${sourceLeaseDigest}`
       )).sort(),
       redisSemanticFixture('mesh-node-descriptor-v1.json')
         .ownerLeaseHashFields.sort()
@@ -283,7 +283,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     const immutableFixture = redisSemanticFixture(
       'mesh-node-descriptor-v1.json');
     const immutableAdmissionKey =
-      `${prefix}:{zlink-location-v1}:descriptor-admission:mesh:`
+      `${prefix}:{zlink-location-v3}:descriptor-admission:mesh:`
       + immutableFixture.physicalKeys.descriptorKeySha256;
     assert.equal(
       (await fixture.client.hGetAll(immutableAdmissionKey)).immutableDigest,
@@ -300,13 +300,13 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     const descriptorHash = createHash('sha256')
       .update(descriptorCanonicalKey, 'utf8').digest('hex');
     const descriptorRedisKey =
-      `${prefix}:{zlink-location-v1}:descriptor:mesh:${descriptorHash}`;
+      `${prefix}:{zlink-location-v3}:descriptor:mesh:${descriptorHash}`;
     assert.deepEqual(
       Object.keys(await fixture.client.hGetAll(descriptorRedisKey)).sort(),
       ['gen', 'json', 'mesh', 'owner', 'updatedAtMs']
     );
     const admissionRedisKey =
-      `${prefix}:{zlink-location-v1}:descriptor-admission:mesh:${descriptorHash}`;
+      `${prefix}:{zlink-location-v3}:descriptor-admission:mesh:${descriptorHash}`;
     assert.deepEqual(
       Object.keys(await fixture.client.hGetAll(admissionRedisKey)).sort(),
       redisSemanticFixture('mesh-node-descriptor-v1.json')
@@ -317,13 +317,13 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
       .digest('hex');
     assert.equal(
       (await fixture.client.sMembers(
-        `${prefix}:{zlink-location-v1}:descriptor:mesh:index`
+        `${prefix}:{zlink-location-v3}:descriptor:mesh:index`
       )).includes(descriptorCanonicalKey),
       true
     );
     assert.equal(
       (await fixture.client.sMembers(
-        `${prefix}:{zlink-location-v1}:descriptor:mesh:owner:${targetOwnerTokenDigest}`
+        `${prefix}:{zlink-location-v3}:descriptor:mesh:owner:${targetOwnerTokenDigest}`
       )).includes(descriptorCanonicalKey),
       true
     );
@@ -351,7 +351,6 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
       key: { kind: 'instance_spot', globalId: 'instance-1' },
       intent: {
         stableType: 'room',
-        placementProfile: 'default',
         requestContentReference: 'root-1',
         requestSha256: Buffer.alloc(32, 1),
         requestEncodedSize: 10n
@@ -384,6 +383,127 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     });
     assert.equal(ready.kind, 'committed');
     assert.equal(ready.ready.pendingCreation, undefined);
+
+    const actorCreation = {
+      ...creation,
+      key: { kind: 'actor', globalId: 'actor-created' },
+      intent: {
+        ...creation.intent,
+        stableType: 'player',
+        requestContentReference: 'actor-root-created'
+      }
+    };
+    const createdOperation = {
+      sourceNodeRid: 'source-node',
+      sourceNodeGeneration: 7n,
+      operationId: { high: 0n, low: 1n }
+    };
+    const createdEnvelope = Buffer.from('creation-operation-terminal-v1:created');
+    const actorReserved = await storeA.reserve(actorCreation);
+    assert.equal(actorReserved.kind, 'reserved');
+    const actorCommitted = await storeA.completeCreation({
+      key: actorCreation.key,
+      reservationId: actorReserved.reservationId,
+      expectedStoreVersion: actorReserved.creating.storeVersion.value,
+      target: actorCreation.target,
+      completion: {
+        kind: 'created',
+        readyPayload: Buffer.from('actor-ready'),
+        terminal: {
+          operation: createdOperation,
+          terminalEnvelope: createdEnvelope,
+          terminalEnvelopeSha256: createHash('sha256').update(createdEnvelope).digest(),
+          operationDeadline: new Date(Date.now() + 30_000)
+        }
+      }
+    });
+    assert.equal(actorCommitted.kind, 'created');
+    const createdTerminal = await storeB.readCreationTerminal(createdOperation);
+    assert.equal(createdTerminal.kind, 'found');
+    assert.equal(createdTerminal.record.state, 'created');
+    assert.deepEqual(Buffer.from(createdTerminal.record.terminalEnvelope), createdEnvelope);
+    const duplicateOperationCreation = {
+      ...actorCreation,
+      key: { kind: 'actor', globalId: 'actor-duplicate-operation' },
+      intent: {
+        ...actorCreation.intent,
+        requestContentReference: 'actor-root-duplicate-operation'
+      }
+    };
+    const duplicateOperationReserved = await storeA.reserve(duplicateOperationCreation);
+    assert.equal(duplicateOperationReserved.kind, 'reserved');
+    assert.equal((await storeA.completeCreation({
+      key: duplicateOperationCreation.key,
+      reservationId: duplicateOperationReserved.reservationId,
+      expectedStoreVersion: duplicateOperationReserved.creating.storeVersion.value,
+      target: duplicateOperationCreation.target,
+      completion: {
+        kind: 'rejected',
+        terminal: {
+          operation: createdOperation,
+          terminalEnvelope: createdEnvelope,
+          terminalEnvelopeSha256: createHash('sha256').update(createdEnvelope).digest(),
+          operationDeadline: new Date(Date.now() + 30_000)
+        }
+      }
+    })).kind, 'alreadyCompleted');
+    assert.equal((await storeA.readAuthority({
+      value: 'zla1:a:25:actor-duplicate-operation'
+    })).allocation.state, 'pending');
+    assert.equal((await storeA.abort({
+      key: duplicateOperationCreation.key,
+      reservationId: duplicateOperationReserved.reservationId,
+      expectedStoreVersion: duplicateOperationReserved.creating.storeVersion.value,
+      target: duplicateOperationCreation.target
+    })).kind, 'aborted');
+
+    const rejectedCreation = {
+      ...actorCreation,
+      key: { kind: 'actor', globalId: 'actor-rejected' },
+      intent: {
+        ...actorCreation.intent,
+        requestContentReference: 'actor-root-rejected'
+      }
+    };
+    const rejectedOperation = {
+      ...createdOperation,
+      operationId: { high: 0n, low: 2n }
+    };
+    const rejectedEnvelope = Buffer.from('creation-operation-terminal-v1:rejected');
+    const rejectedReserved = await storeA.reserve(rejectedCreation);
+    assert.equal(rejectedReserved.kind, 'reserved');
+    assert.equal((await storeA.completeCreation({
+      key: rejectedCreation.key,
+      reservationId: rejectedReserved.reservationId,
+      expectedStoreVersion: rejectedReserved.creating.storeVersion.value,
+      target: rejectedCreation.target,
+      completion: {
+        kind: 'rejected',
+        terminal: {
+          operation: rejectedOperation,
+          terminalEnvelope: rejectedEnvelope,
+          terminalEnvelopeSha256: createHash('sha256').update(rejectedEnvelope).digest(),
+          operationDeadline: new Date(Date.now() + 30_000)
+        }
+      }
+    })).kind, 'rejected');
+    assert.equal((await storeB.readAuthority({
+      value: 'zla1:a:14:actor-rejected'
+    })).kind, 'missing');
+    assert.equal((await storeB.readCreationTerminal(rejectedOperation)).record.state, 'rejected');
+    assert.equal((await storeB.readCreationTerminal(createdOperation)).record.state, 'created');
+    const sourceRidHex = Buffer.from('source-node', 'utf8').toString('hex');
+    const terminalRedisKey = `${prefix}:{zlink-location-v3}:creation-terminal:`
+      + `11:${sourceRidHex}:7:${'0'.repeat(31)}2`;
+    const physicalTerminal = await fixture.client.hGetAll(terminalRedisKey);
+    assert.deepEqual(
+      Object.keys(physicalTerminal).sort(),
+      redisSemanticFixture('authority-store-v3.json')
+        .operationRecordFieldSets.creationTerminal.slice().sort()
+    );
+    assert.equal(physicalTerminal.state, 'Rejected');
+    assert.equal(physicalTerminal.terminalEnvelope, rejectedEnvelope.toString('hex'));
+    assert.equal(await fixture.client.pTTL(terminalRedisKey) > 0, true);
 
     const secondCreation = {
       ...creation,
@@ -459,7 +579,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     const authorityHash = createHash('sha256')
       .update(authorityKey, 'utf8').digest('hex');
     const authorityRedisKey =
-      `${prefix}:{zlink-location-v1}:authority:current:${authorityHash}`;
+      `${prefix}:{zlink-location-v3}:authority:current:${authorityHash}`;
     const physicalAuthority = await fixture.client.hGetAll(authorityRedisKey);
     assert.deepEqual(
       Object.keys(physicalAuthority).sort(),
@@ -473,11 +593,11 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     assert.equal(await fixture.client.exists(`${prefix}:authority-state`), 0);
     assert.deepEqual(
       await fixture.client.hGetAll(
-        `${prefix}:{zlink-location-v1}:schema`
+        `${prefix}:{zlink-location-v3}:schema`
       ),
       {
-        format: 'location-authority-hybrid-v1',
-        epoch: '1'
+        format: 'location-authority-hybrid-v3',
+        epoch: '3'
       }
     );
 
@@ -501,7 +621,7 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     const historyRevision = BigInt(secondBefore.storeVersion.value)
       .toString(16).padStart(16, '0');
     const physicalHistory = await fixture.client.hGetAll(
-      `${prefix}:{zlink-location-v1}:authority:history:${secondAuthorityHash}`
+      `${prefix}:{zlink-location-v3}:authority:history:${secondAuthorityHash}`
     );
     for (const suffix of redisSemanticFixture('authority-store-v1.json')
       .historyEncoding.fullSnapshotSuffixes) {
@@ -535,14 +655,14 @@ test('redis provider atomically fences creation, relocation capacity, and aggreg
     const targetTypeBucket = `${targetNodeBucket}13:instance_spot4:room`;
     assert.equal(
       await fixture.client.hGet(
-        `${prefix}:{zlink-location-v1}:capacity:node:active`,
+        `${prefix}:{zlink-location-v3}:capacity:node:active`,
         targetNodeBucket
       ),
       '2'
     );
     assert.equal(
       await fixture.client.hGet(
-        `${prefix}:{zlink-location-v1}:capacity:type:active`,
+        `${prefix}:{zlink-location-v3}:capacity:type:active`,
         targetTypeBucket
       ),
       '2'
@@ -755,7 +875,7 @@ test('redis ClientServer descriptors enforce revision, lifecycle takeover, pagin
     const fixtureContract = redisSemanticFixture('client-server-server-descriptor-v1.json');
     const canonicalKey = fixtureContract.row.key;
     const rowDigest = createHash('sha256').update(canonicalKey, 'utf8').digest('hex');
-    const physicalKey = `${prefix}:{zlink-location-v1}:descriptor:client-server:${rowDigest}`;
+    const physicalKey = `${prefix}:{zlink-location-v3}:descriptor:client-server:${rowDigest}`;
     const storedHash = await fixture.client.hGetAll(physicalKey);
     assert.deepEqual(Object.keys(storedHash).sort(), fixtureContract.hashFields.slice().sort());
     assert.equal(storedHash.owner, initial.ownerId);
@@ -945,7 +1065,7 @@ test('redis fanout publisher descriptors match the fixture and enforce dedicated
       .update(fixtureContract.row.key, 'utf8')
       .digest('hex');
     const physicalKey =
-      `${prefix}:{zlink-location-v1}:descriptor:fanout-publisher:${rowDigest}`;
+      `${prefix}:{zlink-location-v3}:descriptor:fanout-publisher:${rowDigest}`;
     const storedHash = await fixture.client.hGetAll(physicalKey);
     assert.deepEqual(Object.keys(storedHash).sort(), fixtureContract.hashFields.slice().sort());
     assert.equal(storedHash.owner, initial.ownerId);
@@ -1217,7 +1337,17 @@ function exactMeshNodeDescriptor(nodeName = 'game-a', ownerId = 'mesh-owner-a', 
       stableType: 'room',
       policy: 'recreate',
       hasSnapshotAdapter: false,
-      placementProfiles: ['default'],
+      active: 0,
+      reserved: 0,
+      activeLimit: 100,
+      pendingLimit: 100
+    }, {
+      objectKind: 'actor',
+      stableType: 'player',
+      policy: 'recreate',
+      hasSnapshotAdapter: false,
+      active: 0,
+      reserved: 0,
       activeLimit: 100,
       pendingLimit: 100
     }],

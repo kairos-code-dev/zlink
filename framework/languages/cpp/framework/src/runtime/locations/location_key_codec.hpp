@@ -2,6 +2,7 @@
 #pragma once
 
 #include <zlink/framework/contracts/locations/keys.hpp>
+#include <zlink/framework/contracts/spots/spot_identity.hpp>
 
 #include "runtime/locations/location_value_codec.hpp"
 
@@ -24,7 +25,8 @@ class location_key_codec_t
 
     static std::string encode_spot_key (const spot_location_key_t &key)
     {
-        return encode (key.mesh_name, key.spot_rid.to_hex ());
+        detail::require_spot_id (key.spot_id);
+        return encode (key.spot_id);
     }
 
     static std::string encode_actor_key (const actor_location_key_t &key)

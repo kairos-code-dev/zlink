@@ -418,7 +418,7 @@ final class MonitoringEventsTest {
         public java.util.concurrent.CompletionStage<ZLinkBackendActorJoinResult> joinActor(
             ZLinkBackendActorRef actor,
             RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
+            String targetSpotId,
             List<Message> parts,
             java.time.Duration timeout) {
             return java.util.concurrent.CompletableFuture.failedFuture(
@@ -438,7 +438,7 @@ final class MonitoringEventsTest {
         @Override
         public java.util.concurrent.CompletionStage<List<Message>> leaveActor(
             ZLinkBackendActorRef actor,
-            RoutingId currentSpotRid,
+            String currentSpotId,
             java.time.Duration timeout) {
             return java.util.concurrent.CompletableFuture.failedFuture(
                 new UnsupportedOperationException("leave actor is not used by this test"));
@@ -534,7 +534,7 @@ final class MonitoringEventsTest {
         public boolean send(
             String channelName,
             RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
+            String targetSpotId,
             List<Message> parts,
             SendFlags flags) {
             throw unused();
@@ -544,7 +544,7 @@ final class MonitoringEventsTest {
         public boolean request(
             String channelName,
             RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
+            String targetSpotId,
             List<Message> parts,
             ZLinkBackendRequestCallback callback,
             SendFlags flags,

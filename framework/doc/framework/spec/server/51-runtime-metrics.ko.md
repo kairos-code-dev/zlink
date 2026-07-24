@@ -83,6 +83,14 @@ Logical Multicast의 `targets`는 remote node 수만 기록한다. local matchin
 | `zlink.actor.count` | updown | `{actor}` | `mesh_name` | 현재 Actor 수 |
 | `zlink.actor.queue.depth` | observable | `{item}` | `mesh_name` | Actor application queue의 pending payload 수 |
 | `zlink.actor.queue.wait.duration` | histogram | `s` | `mesh_name` | Actor payload admission부터 turn 시작까지의 시간 |
+| `zlink.object.capacity.active` | observable | `{object}` | `mesh_name`, `capacity_scope` | Location Store가 확정한 active population 수 |
+| `zlink.object.capacity.reserved` | observable | `{object}` | `mesh_name`, `capacity_scope` | Location Store reservation이 확보한 population 수 |
+| `zlink.object.capacity.limit` | observable | `{object}` | `mesh_name`, `capacity_scope` | Actor 전체 또는 Spot 전체 limit이며 0은 제한 없음 |
+| `zlink.spot.type.capacity.active` | observable | `{spot}` | `mesh_name`, `spot_kind`, `stable_type` | 등록한 Spot type의 active 수 |
+| `zlink.spot.type.capacity.reserved` | observable | `{spot}` | `mesh_name`, `spot_kind`, `stable_type` | 등록한 Spot type의 reserved 수 |
+| `zlink.spot.type.capacity.limit` | observable | `{spot}` | `mesh_name`, `spot_kind`, `stable_type` | 등록한 Spot type의 limit이며 0은 별도 제한 없음 |
+| `zlink.object.activation.active` | observable | `{activation}` | `mesh_name` | 현재 factory·initialization 실행 수 |
+| `zlink.object.activation.limit` | observable | `{activation}` | `mesh_name` | population capacity와 분리된 activation concurrency limit |
 | `zlink.relocation.started` | counter | `{relocation}` | `mesh_name`, `object_kind`, `policy` | Actor·Instance Spot relocation 시작 누계 |
 | `zlink.relocation.completed` | counter | `{relocation}` | `mesh_name`, `object_kind`, `policy`, `outcome` | relocation terminal 결과 누계 |
 | `zlink.relocation.duration` | histogram | `s` | `mesh_name`, `object_kind`, `policy`, `outcome` | prepare부터 terminal phase까지의 시간 |
@@ -93,7 +101,11 @@ Logical Multicast의 `targets`는 remote node 수만 기록한다. local matchin
 | `zlink.stream.connections.opened` | counter | `{connection}` | `transport` | STREAM session open 누계 |
 | `zlink.stream.connections.closed` | counter | `{connection}` | `transport`, `close_reason` | STREAM session close 누계 |
 
-`spot_kind`는 `entry|user|instance`, `object_kind`는 `actor|user_spot|instance_spot`, `policy`는
+`spot_kind`는 일반 Spot 계기에서 `entry|user|instance`이고 Spot type capacity에서는 `user|instance`만
+허용한다. `capacity_scope`는 `actor|spot`이다. `stable_type`은 startup에 등록한 bounded User·Instance Spot
+type만 사용하며 Actor type이나 address에서 얻은 값을 사용하지 않는다. Entry Spot은 Spot capacity 계기에
+포함하지 않지만 그 안의 Actor는 `capacity_scope=actor`에 포함한다. `object_kind`는
+`actor|user_spot|instance_spot`, `policy`는
 `recreate|snapshot`, relocation `outcome`은 `completed|aborted|recovered|failed|shutdown`, `transport`는
 등록 시점에 정해지는 닫힌 값이다. `close_reason`은
 `client_close|idle_timeout|heartbeat_timeout|server_shutdown|protocol_error|transport_error`다.
@@ -152,7 +164,7 @@ filter 값은 metric label로 기록하지 않는다.
 
 | 허용 | 금지 |
 |---|---|
-| `mesh_name`, `channel_name`, `scope_kind`, `scope_name`, 정적 `source`, `surface`, `message_kind`, `outcome`, `reason`, `domain`, `owner_kind`, `object_kind`, `policy`, `spot_kind`, 등록된 `instance_spot_type`, `record_kind`, `transport`, `close_reason`, `intent`, `state` | topic, Actor ID, Spot RID, RID, endpoint, session ID, relocation ID, user ID, correlation ID, flow ID, application metadata value, application state format·version |
+| `mesh_name`, `channel_name`, `scope_kind`, `scope_name`, 정적 `source`, `surface`, `message_kind`, `outcome`, `reason`, `domain`, `owner_kind`, `object_kind`, `policy`, `spot_kind`, 등록된 `instance_spot_type`, `record_kind`, `transport`, `close_reason`, `intent`, `state` | topic, Actor ID, Spot ID, RID, endpoint, session ID, relocation ID, user ID, correlation ID, flow ID, application metadata value, application state format·version |
 
 MeshName, ChannelName과 `scope_name`도 host 등록값으로 닫힌 집합일 때만 label로 사용한다. 실행 중 payload나 metadata에서
 새 label value를 만들지 않는다. packet name별 metric이 필요하면 startup에 등록된 bounded handler key만
@@ -178,10 +190,12 @@ metric은 언어 표준 meter 또는 registry에 연결하며 특정 exporter를
 - 계기 이름, 종류, 단위와 닫힌 label value가 모든 언어에서 같다.
 - publish operation의 backpressure와 target별 drop이 별도 counter에 기록된다.
 - application·infrastructure mailbox backlog를 domain별로 관찰할 수 있다.
-- topic, Actor ID, Spot RID, RID, endpoint, correlation ID와 flow ID가 어떤 metric label에도 나타나지 않는다.
+- Actor 전체·Spot 전체·Spot stable type의 active·reserved·limit이 monitoring snapshot과 일치하고 activation
+  concurrency와 분리된다.
+- topic, Actor ID, Spot ID, RID, endpoint, correlation ID와 flow ID가 어떤 metric label에도 나타나지 않는다.
 - observer overflow와 metric reader failure가 message dispatch와 host termination 결과를 바꾸지 않는다.
 - termination 계기와 label은 [54 Host retirement와 shutdown](54-graceful-drain-handoff.ko.md)의 terminal result와 일치한다.
 - Instance activation의 outcome·duration, pending budget, claim conflict와 takeover를 등록된 type 단위로
-  관찰하고 Spot RID·owner ID·authority generation은 label로 사용하지 않는다.
+  관찰하고 Spot ID·owner ID·authority generation은 label로 사용하지 않는다.
 - Instance one-way activation 실패가 `zlink.mesh_node.messages.dropped`의
   `surface=instance_spot`에 기록되고 별도 reply나 replay를 만들지 않는다.

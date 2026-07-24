@@ -5,6 +5,6 @@ import systems.zlink.framework.spots.ZLinkSpotKind;
 
 public record ZLinkBackendSpotRoute(
     RoutingId nodeRid,
-    RoutingId spotRid,
+    String spotId,
     ZLinkSpotKind spotKind) {
 }

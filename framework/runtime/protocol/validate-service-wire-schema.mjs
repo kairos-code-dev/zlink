@@ -99,6 +99,7 @@ function validateSchema(schema) {
   }
   const amendmentBounds = new Map([
     ["creationIntentBytes", 1048576n],
+    ["creationTerminalEnvelopeBytes", 1048576n],
     ["maintenanceAggregateParticipants", 1024n],
     ["relocationResourceParticipants", 2048n],
     ["maintenanceAggregateBytes", 1048576n],
@@ -1104,7 +1105,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
     ["spot-authority-aggregate-integrity", {
       authorityObjectType: "authority-object-identity",
       canonicalKeyKind: "spot",
-      canonicalKeyComponents: ["spotRid"],
+      canonicalKeyComponents: ["spotId"],
       spotKinds: ["entry", "user", "instance"],
       singleAuthoritativeRow: true,
       typedSpotLocation: "framework-decoded-projection-not-separate-authority",
@@ -1226,9 +1227,8 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       requestBoundFields: [
         "targetNodeRid",
         "targetNodeGeneration",
-        "targetSpotRid",
+        "targetSpotId",
         "ready.authority-or-coldActivation.stableType-and-targetDescriptorVersion",
-        "coldActivation.placementProfile-and-affinityKey",
         "coldActivation.deadlineUnixMs",
       ],
       targetComparison: "exact-current-authority-before-mailbox-admission",
@@ -1291,7 +1291,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
       operationIdentity: "source-node-rid-source-node-generation-and-operation-id-terminal-once",
       deadline: "one-source-deadline-covering-resolve-reservation-remote-execution-and-terminal-reply-never-restarted",
       create: {
-        authorityKey: "global-spot-rid-user-kind-only",
+        authorityKey: "global-spot-id-user-kind-only",
         reservation: "provider-issued-reservation-id-exact-store-version-object-generation-authority-owner-generation-target-node-lifecycle-owner-lease-and-pending-capacity",
         content: "target-exact-reads-immutable-pending-creation-content-from-location-store-never-command-payload",
         admissionOrder: [
@@ -1319,6 +1319,22 @@ function validateSemanticConstraints(constraints, contexts, fail) {
         retarget: "forbidden",
       },
       polling: "location-row-polling-is-not-terminal-completion",
+      applicationControlPacket: "forbidden",
+    }],
+    ["actor-create-terminal-operation-integrity", {
+      commands: {
+        create: "actorCreate",
+        terminal: "reply",
+      },
+      scope: "route-mesh-object-client-or-server-to-exact-object-server-only",
+      operationIdentity: "source-node-rid-source-node-generation-and-operation-id-terminal-once",
+      deadline: "one-source-deadline-covering-resolve-reservation-remote-execution-and-terminal-reply-never-restarted",
+      creationInput: "immutable-content-reference-in-reserved-authority-command-carries-no-application-payload",
+      concurrency: "one-callback-per-actor-reservation-distinct-operation-waits-then-ready-existing-or-rejected-cleanup-new-reservation",
+      terminalResult: "same-operation-only-existing-created-or-rejected-with-optional-application-payload",
+      terminalEnvelopeMaximumBytes: { $bound: "creationTerminalEnvelopeBytes" },
+      terminalRetention: "original-operation-deadline-plus-300000ms-provider-store-time",
+      rejectedPublication: "no-ready-authority-no-active-capacity-exact-reserved-cleanup",
       applicationControlPacket: "forbidden",
     }],
     ["relocation-authority-phase-boundaries", {
@@ -1781,6 +1797,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
     }],
     ["contract-amendment-limit-integrity", {
       creationIntentBytesMaximum: { $bound: "creationIntentBytes" },
+      creationTerminalEnvelopeBytesMaximum: { $bound: "creationTerminalEnvelopeBytes" },
       aggregateParticipantsMaximum: { $bound: "maintenanceAggregateParticipants" },
       aggregateEncodedBytesMaximum: { $bound: "maintenanceAggregateBytes" },
       aggregateId: "nonzero-128-bit",
@@ -1796,7 +1813,7 @@ function validateSemanticConstraints(constraints, contexts, fail) {
     ["actor-retire-membership-integrity", {
       relocatable: "source-entry-spot-current-member-only",
       userSpotMember: "preflight-blocked-relocationDisabled-state-and-admission-unchanged",
-      targetOffer: "compatible-initialized-target-entry-spot-rid-object-generation-and-kind",
+      targetOffer: "compatible-initialized-target-entry-spot-id-object-generation-and-kind",
       commit: "newOwner-cas-atomically-updates-owner-authority-owner-generation-and-current-target-entry-spot",
       callbackOrder: "factory-restore-and-staging-then-owner-entry-membership-commit-then-target-entry-onActorRelocated-then-source-entry-onLeaveActor-and-old-entry-membership-durable-cleanup-or-source-crash-durable-cleanup-terminal-then-journal-replay",
       targetCallback: "target-entry-onActorRelocated-after-commit-never-onJoinedActor",
@@ -2012,12 +2029,20 @@ class FixtureReader {
     return value;
   }
 
+  utf8(bytes) {
+    const value = bytes.toString("utf8");
+    if (!Buffer.from(value, "utf8").equals(bytes)) {
+      throw new Error("fixture text is not valid UTF-8");
+    }
+    return value;
+  }
+
   text8() {
-    return this.bytesOf(this.u8()).toString("utf8");
+    return this.utf8(this.bytesOf(this.u8()));
   }
 
   text16() {
-    return this.bytesOf(this.u16()).toString("utf8");
+    return this.utf8(this.bytesOf(this.u16()));
   }
 
   bytes32() {
@@ -2181,7 +2206,7 @@ function decodeRelocationObject(reader) {
   } else if (kind === "userSpot") {
     decoded = {
       objectKind: kind,
-      spotRidUtf8Fixture: body.text8(),
+      spotIdUtf8Fixture: body.text8(),
       spotGeneration: body.u64(),
       expectedAuthorityOwnerGeneration: body.u64(),
     };
@@ -2189,7 +2214,7 @@ function decodeRelocationObject(reader) {
     decoded = {
       objectKind: kind,
       instanceType: body.text8(),
-      spotRidUtf8Fixture: body.text8(),
+      spotIdUtf8Fixture: body.text8(),
       spotGeneration: body.u64(),
     };
   }
@@ -2207,7 +2232,7 @@ function decodeAuthorityObject(reader) {
       actorType: body.text8(),
       actorId: body.text8(),
       state: fixtureEnum(FIXTURE_ENUMS.actorAuthorityState, body.u8(), "Actor authority state"),
-      currentSpotRidUtf8Fixture: body.text8(),
+      currentSpotIdUtf8Fixture: body.text8(),
       currentSpotGeneration: body.u64(),
       currentSpotKind: fixtureEnum(FIXTURE_ENUMS.actorSpotKind, body.u8(), "Actor Spot kind"),
     };
@@ -2218,7 +2243,7 @@ function decodeAuthorityObject(reader) {
       decoded = {
         objectKind: kind,
         spotKind,
-        spotRidUtf8Fixture: spotBody.text8(),
+        spotIdUtf8Fixture: spotBody.text8(),
         spotType: spotBody.text8(),
         state: fixtureEnum(
           FIXTURE_ENUMS.domainSpotAuthorityState,
@@ -2241,7 +2266,7 @@ function decodeAuthorityObject(reader) {
       spotKind,
       authorityState,
       instanceType: stateBody.text8(),
-      spotRidUtf8Fixture: stateBody.text8(),
+      spotIdUtf8Fixture: stateBody.text8(),
     };
     stateBody.end();
     spotBody.end();
@@ -2426,7 +2451,7 @@ function decodeInstancePlacement(reader) {
   const decoded = {
     targetNodeRidUtf8Fixture: body.text8(),
     targetNodeGeneration: body.u64(),
-    targetSpotRidUtf8Fixture: body.text8(),
+    targetSpotIdUtf8Fixture: body.text8(),
     authority: {
       objectGeneration: body.u64(),
       ownerId: body.text8(),
@@ -2452,7 +2477,7 @@ function decodeFrozenRecord(reader) {
     sourceOwnerLeaseGeneration: sourceBody.u64(),
   };
   if (sourceKind === "spot") {
-    source.sourceSpotRidUtf8Fixture = sourceBody.text8();
+    source.sourceSpotIdUtf8Fixture = sourceBody.text8();
   } else if (sourceKind === "actor" || sourceKind === "boundSession") {
     source.sourceActor = { actorId: sourceBody.text8(), generation: sourceBody.u64() };
     if (sourceKind === "boundSession") {
@@ -2484,7 +2509,7 @@ function decodeFrozenRecord(reader) {
       replyRouteId,
       body: {
         targetSpot: {
-          spotRidUtf8Fixture: reader.text8(),
+          spotIdUtf8Fixture: reader.text8(),
           spotGeneration: reader.u64(),
           targetNodeRidUtf8Fixture: reader.text8(),
           targetNodeGeneration: reader.u64(),
@@ -2604,32 +2629,18 @@ function decodeGoldenBody(formatName, bytes) {
     }
     activationBody.end();
   } else if (formatName === "instance-activation-recovery-v1") {
-    const targetSpotRidUtf8Fixture = reader.text8();
+    const targetSpotIdUtf8Fixture = reader.text8();
     const stableType = reader.text8();
     const targetMeshName = reader.text8();
     const targetNodeRidUtf8Fixture = reader.text8();
     const targetNodeGeneration = reader.u64();
     const targetDescriptorVersion = reader.text8();
-    const hasPlacementProfile = reader.u8();
-    let placementProfile = null;
-    if (hasPlacementProfile === 1) {
-      placementProfile = reader.text8();
-    } else if (hasPlacementProfile !== 0) {
-      throw new Error("Instance activation placement profile presence flag is invalid");
-    }
-    const hasAffinityKey = reader.u8();
-    let affinityKey = null;
-    if (hasAffinityKey === 1) {
-      affinityKey = reader.text8();
-    } else if (hasAffinityKey !== 0) {
-      throw new Error("Instance activation affinity key presence flag is invalid");
-    }
     const sourceNodeRidUtf8Fixture = reader.text8();
     const sourceNodeGeneration = reader.u64();
     const hasSourceSpot = reader.u8();
-    let sourceSpotRidUtf8Fixture = null;
+    let sourceSpotIdUtf8Fixture = null;
     if (hasSourceSpot === 1) {
-      sourceSpotRidUtf8Fixture = reader.text8();
+      sourceSpotIdUtf8Fixture = reader.text8();
     } else if (hasSourceSpot !== 0) {
       throw new Error("Instance activation source Spot presence flag is invalid");
     }
@@ -2668,17 +2679,15 @@ function decodeGoldenBody(formatName, bytes) {
     };
     payloadBody.end();
     decoded = {
-      targetSpotRidUtf8Fixture,
+      targetSpotIdUtf8Fixture,
       stableType,
       targetMeshName,
       targetNodeRidUtf8Fixture,
       targetNodeGeneration,
       targetDescriptorVersion,
-      placementProfile,
-      affinityKey,
       sourceNodeRidUtf8Fixture,
       sourceNodeGeneration,
-      sourceSpotRidUtf8Fixture,
+      sourceSpotIdUtf8Fixture,
       operationKind,
       operationHigh,
       operationLow,
@@ -2748,10 +2757,10 @@ function encodeRelocationObject(writer, object) {
     body.text8(object.actorId).u64(object.actorGeneration)
       .u64(object.expectedAuthorityOwnerGeneration);
   } else if (object.objectKind === "userSpot") {
-    body.text8(object.spotRidUtf8Fixture).u64(object.spotGeneration)
+    body.text8(object.spotIdUtf8Fixture).u64(object.spotGeneration)
       .u64(object.expectedAuthorityOwnerGeneration);
   } else {
-    body.text8(object.instanceType).text8(object.spotRidUtf8Fixture)
+    body.text8(object.instanceType).text8(object.spotIdUtf8Fixture)
       .u64(object.spotGeneration);
   }
   const bytes = body.finish();
@@ -2764,18 +2773,18 @@ function encodeAuthorityObject(writer, object) {
   if (object.objectKind === "actor") {
     body.text8(object.actorType).text8(object.actorId)
       .u8(fixtureEnumValue(FIXTURE_ENUMS.actorAuthorityState, object.state, "Actor authority state"))
-      .text8(object.currentSpotRidUtf8Fixture).u64(object.currentSpotGeneration)
+      .text8(object.currentSpotIdUtf8Fixture).u64(object.currentSpotGeneration)
       .u8(fixtureEnumValue(FIXTURE_ENUMS.actorSpotKind, object.currentSpotKind, "Actor Spot kind"));
   } else {
     const spotBody = new FixtureWriter();
     if (object.spotKind === "instance") {
       const stateBody = new FixtureWriter();
-      stateBody.text8(object.instanceType).text8(object.spotRidUtf8Fixture);
+      stateBody.text8(object.instanceType).text8(object.spotIdUtf8Fixture);
       const stateBytes = stateBody.finish();
       spotBody.u8(fixtureEnumValue(FIXTURE_ENUMS.authorityState, object.authorityState, "authority state"))
         .u16(stateBytes.length).raw(stateBytes);
     } else {
-      spotBody.text8(object.spotRidUtf8Fixture).text8(object.spotType)
+      spotBody.text8(object.spotIdUtf8Fixture).text8(object.spotType)
         .u8(fixtureEnumValue(
           FIXTURE_ENUMS.domainSpotAuthorityState,
           object.state,
@@ -2895,7 +2904,7 @@ function encodeRelocationRootPointer(writer, relocationRoot) {
 function encodeInstancePlacement(writer, placement) {
   const body = new FixtureWriter();
   body.text8(placement.targetNodeRidUtf8Fixture).u64(placement.targetNodeGeneration)
-    .text8(placement.targetSpotRidUtf8Fixture)
+    .text8(placement.targetSpotIdUtf8Fixture)
     .u64(placement.authority.objectGeneration)
     .text8(placement.authority.ownerId)
     .u64(placement.authority.authorityOwnerGeneration)
@@ -2915,7 +2924,7 @@ function encodeFrozenRecord(writer, record) {
     .text8(record.source.sourceOwnerId)
     .u64(record.source.sourceOwnerLeaseGeneration);
   if (record.source.sourceKind === "spot") {
-    sourceBody.text8(record.source.sourceSpotRidUtf8Fixture);
+    sourceBody.text8(record.source.sourceSpotIdUtf8Fixture);
   } else if (record.source.sourceKind === "actor" || record.source.sourceKind === "boundSession") {
     sourceBody.text8(record.source.sourceActor.actorId).u64(record.source.sourceActor.generation);
     if (record.source.sourceKind === "boundSession") {
@@ -2938,7 +2947,7 @@ function encodeFrozenRecord(writer, record) {
   const replyRouteBytes = replyRoute.finish();
   writer.u16(replyRouteBytes.length).raw(replyRouteBytes);
   if (record.recordKind === "spotRequest") {
-    writer.text8(record.body.targetSpot.spotRidUtf8Fixture)
+    writer.text8(record.body.targetSpot.spotIdUtf8Fixture)
       .u64(record.body.targetSpot.spotGeneration)
       .text8(record.body.targetSpot.targetNodeRidUtf8Fixture)
       .u64(record.body.targetSpot.targetNodeGeneration)
@@ -3022,28 +3031,18 @@ function encodeGoldenBody(formatName, decoded) {
     return writer.finish();
   }
   if (formatName === "instance-activation-recovery-v1") {
-    writer.text8(decoded.targetSpotRidUtf8Fixture)
+    writer.text8(decoded.targetSpotIdUtf8Fixture)
       .text8(decoded.stableType)
       .text8(decoded.targetMeshName)
       .text8(decoded.targetNodeRidUtf8Fixture)
       .u64(decoded.targetNodeGeneration)
       .text8(decoded.targetDescriptorVersion);
-    if (decoded.placementProfile === null) {
-      writer.u8(0);
-    } else {
-      writer.u8(1).text8(decoded.placementProfile);
-    }
-    if (decoded.affinityKey === null) {
-      writer.u8(0);
-    } else {
-      writer.u8(1).text8(decoded.affinityKey);
-    }
     writer.text8(decoded.sourceNodeRidUtf8Fixture)
       .u64(decoded.sourceNodeGeneration);
-    if (decoded.sourceSpotRidUtf8Fixture === null) {
+    if (decoded.sourceSpotIdUtf8Fixture === null) {
       writer.u8(0);
     } else {
-      writer.u8(1).text8(decoded.sourceSpotRidUtf8Fixture);
+      writer.u8(1).text8(decoded.sourceSpotIdUtf8Fixture);
     }
     writer.u8(fixtureEnumValue(
       FIXTURE_ENUMS.instanceOperation,
@@ -3682,8 +3681,8 @@ function decodeAuthorityKey(encoded) {
   if (identityBytes.length !== identityLength) {
     throw new Error("authority key raw byte length does not match its declared length");
   }
-  if (parts[1] === "a" && !Buffer.from(identityBytes.toString("utf8"), "utf8").equals(identityBytes)) {
-    throw new Error("authority key Actor ID must be valid UTF-8");
+  if (!Buffer.from(identityBytes.toString("utf8"), "utf8").equals(identityBytes)) {
+    throw new Error(`authority key ${parts[1] === "a" ? "Actor" : "Spot"} ID must be valid UTF-8`);
   }
   const objectKind = parts[1] === "a" ? "actor" : "spot";
   if (encodeAuthorityKey(objectKind, identityBytes) !== encoded) {
@@ -4249,25 +4248,23 @@ function validateServiceInvariants(schema, types, fail) {
   requireFields(readyInstanceRoute?.fields, [
     { name: "targetNodeRid", $ref: "rid" },
     { name: "targetNodeGeneration", $ref: "nonzero-u64" },
-    { name: "targetSpotRid", $ref: "rid" },
+    { name: "targetSpotId", $ref: "text8" },
     { name: "authority", $ref: "authority-generation-fence" },
   ], "$.types", "Ready Instance route must carry the exact current authority fence");
   requireFields(coldInstanceRoute?.fields, [
     { name: "targetNodeRid", $ref: "rid" },
     { name: "targetNodeGeneration", $ref: "nonzero-u64" },
-    { name: "targetSpotRid", $ref: "rid" },
+    { name: "targetSpotId", $ref: "text8" },
     { name: "targetMeshName", $ref: "text8" },
     { name: "stableType", $ref: "text8" },
     { name: "targetDescriptorVersion", $ref: "text8" },
-    { name: "placementProfile", $ref: "optional-text8" },
-    { name: "affinityKey", $ref: "optional-text8" },
     { name: "deadlineUnixMs", $ref: "nonzero-u64" },
   ], "$.types", "Cold Instance route must carry descriptor-fenced placement intent without authority generations");
   requireFields(commands.get("instanceSpot")?.body, [
     { name: "route", $ref: "instance-route-v1" },
     { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
     { name: "sourceNodeRid", $ref: "rid" },
-    { name: "sourceSpotRid", $ref: "optional-rid" },
+    { name: "sourceSpotId", $ref: "optional-text8" },
     { name: "operationKind", $ref: "instance-operation-kind" },
     { name: "operation", $ref: "operation-id" },
     { name: "replyRoute", $ref: "instance-reply-route" },
@@ -4278,8 +4275,6 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "key", $ref: "object-creation-key" },
     { name: "stableType", $ref: "text8" },
     { name: "initialMeshName", $ref: "text8" },
-    { name: "placementProfile", $ref: "optional-text8" },
-    { name: "affinityKey", $ref: "optional-text8" },
     { name: "requestContentReference", $ref: "creation-content-reference" },
     { name: "requestSha256", $ref: "sha256-bytes" },
     { name: "requestEncodedSize", $ref: "creation-request-size" },
@@ -4308,7 +4303,7 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "operation", $ref: "operation-id" },
     { name: "sourceNodeRid", $ref: "rid" },
     { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
-    { name: "spotRid", $ref: "rid" },
+    { name: "spotId", $ref: "text8" },
     { name: "stableType", $ref: "text8" },
     { name: "reservation", $ref: "object-reservation-fence" },
     { name: "deadlineUnixMs", $ref: "nonzero-u64" },
@@ -4328,7 +4323,17 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "target", $ref: "user-spot-close-fence-v1" },
     { name: "deadlineUnixMs", $ref: "nonzero-u64" },
   ], "$.commands", "User Spot close must carry exact operation, source lifecycle, target authority fence and deadline");
-  for (const [name, id] of [["userSpotCreate", 47], ["userSpotClose", 48]]) {
+  requireFields(commands.get("actorCreate")?.body, [
+    { name: "correlation", $ref: "nonzero-u64" },
+    { name: "operation", $ref: "operation-id" },
+    { name: "sourceNodeRid", $ref: "rid" },
+    { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
+    { name: "actorId", $ref: "text8" },
+    { name: "stableType", $ref: "text8" },
+    { name: "reservation", $ref: "object-reservation-fence" },
+    { name: "deadlineUnixMs", $ref: "nonzero-u64" },
+  ], "$.commands", "Actor create must carry exact operation, source lifecycle, authority key, type, reservation and deadline");
+  for (const [name, id] of [["userSpotCreate", 47], ["userSpotClose", 48], ["actorCreate", 49]]) {
     const command = commands.get(name);
     if (command?.id !== id
         || command?.domain !== "infrastructure"
@@ -4342,17 +4347,17 @@ function validateServiceInvariants(schema, types, fail) {
   const expectedOperationKinds = [
     "none", "nodeRequest", "channelRequest", "spotRequest", "actorRequest", "actorLookup",
     "actorDestroy", "actorJoin", "actorLeave", "streamBind", "streamUnbind", "streamClose",
-    "instanceSpotRequest", "userSpotCreate", "userSpotClose",
+    "instanceSpotRequest", "userSpotCreate", "userSpotClose", "actorCreate",
   ].map((name, value) => ({ name, value }));
   if (operationKinds?.encoding !== "u32"
       || JSON.stringify(operationKinds?.values) !== JSON.stringify(expectedOperationKinds)) {
-    fail("$.types", "operation discriminator must keep stable values and add only User Spot create=13 and close=14");
+    fail("$.types", "operation discriminator must keep stable values and add Actor create=15 after User Spot create=13 and close=14");
   }
   const requestTail = types.get("request-specific-tail");
   const expectedRequestTailCases = new Map([
     ["actorLookup:ok", [
       { name: "actor", $ref: "actor-ref" },
-      { name: "spotRid", $ref: "rid" },
+      { name: "spotId", $ref: "text8" },
       { name: "spotGeneration", $ref: "nonzero-u64" },
       { name: "authorityOwnerGeneration", $ref: "nonzero-u64" },
     ]],
@@ -4366,11 +4371,12 @@ function validateServiceInvariants(schema, types, fail) {
       { name: "spot", $ref: "spot-ref" },
     ]],
     ["userSpotClose:ok", [{ name: "closed", $ref: "bool8" }]],
+    ["actorCreate:ok", [{ name: "creation", $ref: "actor-create-terminal" }]],
   ]);
   const requestTailCases = requestTail?.cases ?? [];
   if (requestTailCases.length !== expectedRequestTailCases.size
       || requestTail?.otherwise?.fields?.length !== 0) {
-    fail("$.types", "reply tail must remain closed with exactly five successful operation-specific cases");
+    fail("$.types", "reply tail must remain closed with exactly six successful operation-specific cases");
   } else {
     const seenReplyCases = new Set();
     for (const replyCase of requestTailCases) {
@@ -4392,6 +4398,101 @@ function validateServiceInvariants(schema, types, fail) {
         { name: "rejected", value: 3 },
       ])) {
     fail("$.types", "User Spot create result must be the closed Existing, Created or Rejected discriminator");
+  }
+  const actorCreateResults = types.get("actor-create-result");
+  if (actorCreateResults?.encoding !== "u8"
+      || JSON.stringify(actorCreateResults?.values) !== JSON.stringify([
+        { name: "existing", value: 1 },
+        { name: "created", value: 2 },
+        { name: "rejected", value: 3 },
+      ])) {
+    fail("$.types", "Actor create result must be the closed Existing, Created or Rejected discriminator");
+  }
+  const actorCreateTerminal = types.get("actor-create-terminal");
+  if (actorCreateTerminal?.kind !== "conditional-union"
+      || actorCreateTerminal?.bodyLengthType?.$ref !== "u16"
+      || actorCreateTerminal?.bodyLengthCovers !== "selected-case"
+      || actorCreateTerminal?.otherwise !== "protocol-error"
+      || actorCreateTerminal?.trailingBytes !== "forbidden"
+      || JSON.stringify(actorCreateTerminal?.discriminators) !== JSON.stringify([{
+        name: "createResult", source: "wire", $ref: "actor-create-result",
+      }])) {
+    fail("$.types", "Actor create terminal must be a closed length-delimited union discriminated by createResult");
+  } else {
+    const expectedActorCreateTerminalCases = new Map([
+      ["existing", [{ name: "actor", $ref: "actor-ref" }]],
+      ["created", [{ name: "actor", $ref: "actor-ref" }]],
+      ["rejected", []],
+    ]);
+    const cases = actorCreateTerminal.cases ?? [];
+    if (cases.length !== expectedActorCreateTerminalCases.size) {
+      fail("$.types", "Actor create terminal must declare exactly Existing, Created and Rejected cases");
+    } else {
+      const seen = new Set();
+      for (const entry of cases) {
+        const result = entry.when?.createResult;
+        if (seen.has(result)
+            || !expectedActorCreateTerminalCases.has(result)
+            || JSON.stringify(fieldShape(entry.fields))
+              !== JSON.stringify(expectedActorCreateTerminalCases.get(result))) {
+          fail("$.types", `Actor create terminal case ${result} violates the exact result payload contract`);
+        }
+        seen.add(result);
+      }
+    }
+  }
+  const creationOperationTerminal = types.get("creation-operation-terminal-v1");
+  if (creationOperationTerminal?.kind !== "versioned-length-delimited"
+      || creationOperationTerminal?.version?.$ref !== "u8"
+      || creationOperationTerminal?.version?.constant !== 1
+      || creationOperationTerminal?.length?.$ref !== "u32"
+      || creationOperationTerminal?.length?.covers !== "body"
+      || creationOperationTerminal?.maximumEncodedBytes?.$bound
+        !== "creationTerminalEnvelopeBytes"
+      || creationOperationTerminal?.correlationFields !== "forbidden"
+      || creationOperationTerminal?.trailingBytes !== "forbidden") {
+    fail("$.types", "creation operation terminal must be a bounded correlation-free v1 semantic envelope");
+  }
+  requireFields(creationOperationTerminal?.body, [
+    { name: "terminalResult", $ref: "request-terminal-result" },
+    { name: "failureCode", $ref: "framework-error-code" },
+    { name: "hasCreation", $ref: "bool8" },
+    { name: "creation", $ref: "actor-create-terminal" },
+    { name: "hasApplicationPayload", $ref: "bool8" },
+    { name: "applicationPayload", $ref: "application-payload-envelope-v1" },
+  ], "$.types", "creation operation terminal must preserve semantic result without request correlation");
+  const creationTerminalCreation = creationOperationTerminal?.body
+    ?.find((field) => field.name === "creation");
+  const creationTerminalPayload = creationOperationTerminal?.body
+    ?.find((field) => field.name === "applicationPayload");
+  if (creationTerminalCreation?.when?.fieldEquals?.name !== "hasCreation"
+      || creationTerminalCreation?.when?.fieldEquals?.value !== "true"
+      || creationTerminalCreation?.otherwise !== "forbidden"
+      || creationTerminalPayload?.when?.fieldEquals?.name !== "hasApplicationPayload"
+      || creationTerminalPayload?.when?.fieldEquals?.value !== "true"
+      || creationTerminalPayload?.otherwise !== "forbidden") {
+    fail("$.types", "creation operation terminal optional fields must be controlled by their exact presence flags");
+  }
+  const expectedCreationTerminalConstraints = [
+    {
+      kind: "terminal-success-shape",
+      when: { terminalResult: "ok" },
+      requires: { failureCode: "none", hasCreation: "true" },
+    },
+    {
+      kind: "terminal-failure-shape",
+      when: { terminalResultNot: "ok" },
+      requires: { hasCreation: "false", hasApplicationPayload: "false" },
+    },
+    {
+      kind: "existing-has-no-application-payload",
+      when: { "creation.createResult": "existing" },
+      requires: { hasApplicationPayload: "false" },
+    },
+  ];
+  if (JSON.stringify(creationOperationTerminal?.constraints)
+      !== JSON.stringify(expectedCreationTerminalConstraints)) {
+    fail("$.types", "creation operation terminal success, failure and Existing payload shapes are closed");
   }
   const reservation = types.get("generic-object-reservation-v1");
   if (JSON.stringify((reservation?.cases ?? []).map((entry) => entry.when))
@@ -4416,17 +4517,15 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "requestEncodedSize", $ref: "creation-request-size" },
   ], "$.types", "Pending authority must expose exact creation recovery projection");
   requireFields(types.get("instance-activation-recovery-v1")?.fields, [
-    { name: "targetSpotRid", $ref: "rid" },
+    { name: "targetSpotId", $ref: "text8" },
     { name: "stableType", $ref: "text8" },
     { name: "targetMeshName", $ref: "text8" },
     { name: "targetNodeRid", $ref: "rid" },
     { name: "targetNodeGeneration", $ref: "nonzero-u64" },
     { name: "targetDescriptorVersion", $ref: "text8" },
-    { name: "placementProfile", $ref: "optional-text8" },
-    { name: "affinityKey", $ref: "optional-text8" },
     { name: "sourceNodeRid", $ref: "rid" },
     { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
-    { name: "sourceSpotRid", $ref: "optional-rid" },
+    { name: "sourceSpotId", $ref: "optional-text8" },
     { name: "operationKind", $ref: "instance-operation-kind" },
     { name: "operation", $ref: "operation-id" },
     { name: "replyRoute", $ref: "instance-reply-route" },
@@ -4505,9 +4604,9 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "expectedAuthorityOwnerGeneration", $ref: "nonzero-u64" },
   ], "$.types", "Actor route fence must pair ActorRef with exact node and authority generations");
   requireFields(types.get("spot-ref")?.fields, [
-    { name: "spotRid", $ref: "rid" },
+    { name: "spotId", $ref: "text8" },
     { name: "objectGeneration", $ref: "nonzero-u64" },
-  ], "$.types", "Spot reference must pair a non-empty RID with a non-zero generation");
+  ], "$.types", "Spot reference must pair a non-empty Spot ID with a non-zero generation");
   requireFields(types.get("spot-membership")?.fields, [
     { name: "spot", $ref: "spot-ref" },
   ], "$.types", "Spot membership must carry exactly one shared Spot generation fence");
@@ -4856,7 +4955,6 @@ function validateServiceInvariants(schema, types, fail) {
     { name: "objectKind", $ref: "stateful-object-kind" },
     { name: "type", $ref: "text8" },
     { name: "relocationPolicy", $ref: "relocation-policy-kind" },
-    { name: "placementProfiles", $ref: "sorted-text8-vector" },
     { name: "activeCapacityLimit", $ref: "object-capacity-limit" },
     { name: "pendingCapacityLimit", $ref: "object-pending-capacity-limit" },
     { name: "hasSnapshotAdapter", $ref: "bool8" },
@@ -4991,12 +5089,12 @@ function validateServiceInvariants(schema, types, fail) {
   const spotAuthority = types.get("spot-authority-identity");
   const expectedSpotKinds = new Map([
     ["entry", [
-      { name: "spotRid", $ref: "rid" },
+      { name: "spotId", $ref: "text8" },
       { name: "spotType", $ref: "text8" },
       { name: "state", $ref: "entry-user-spot-authority-state" },
     ]],
     ["user", [
-      { name: "spotRid", $ref: "rid" },
+      { name: "spotId", $ref: "text8" },
       { name: "spotType", $ref: "text8" },
       { name: "state", $ref: "entry-user-spot-authority-state" },
     ]],
@@ -5010,26 +5108,26 @@ function validateServiceInvariants(schema, types, fail) {
     const kind = spotCase.when?.spotKind;
     if (!expectedSpotKinds.has(kind)
         || JSON.stringify(fieldShape(spotCase.fields)) !== JSON.stringify(expectedSpotKinds.get(kind))) {
-      fail("$.types", `Spot authority kind ${kind} does not match the shared RID aggregate contract`);
+      fail("$.types", `Spot authority kind ${kind} does not match the shared Spot ID aggregate contract`);
     }
   }
   const instanceAuthority = types.get("instance-authority-identity");
   const expectedAuthorityStates = new Map([
     ["coldActivating", [
       { name: "instanceType", $ref: "text8" },
-      { name: "spotRid", $ref: "rid" },
+      { name: "spotId", $ref: "text8" },
     ]],
     ["ready", [
       { name: "instanceType", $ref: "text8" },
-      { name: "spotRid", $ref: "rid" },
+      { name: "spotId", $ref: "text8" },
     ]],
     ["closing", [
       { name: "instanceType", $ref: "text8" },
-      { name: "spotRid", $ref: "rid" },
+      { name: "spotId", $ref: "text8" },
     ]],
     ["relocating", [
       { name: "instanceType", $ref: "text8" },
-      { name: "spotRid", $ref: "rid" },
+      { name: "spotId", $ref: "text8" },
     ]],
   ]);
   if ((instanceAuthority?.cases ?? []).length !== expectedAuthorityStates.size) {
@@ -5226,7 +5324,7 @@ function validateServiceInvariants(schema, types, fail) {
       { name: "sourceNodeGeneration", $ref: "nonzero-u64" },
       { name: "sourceOwnerId", $ref: "text8" },
       { name: "sourceOwnerLeaseGeneration", $ref: "nonzero-u64" },
-      { name: "sourceSpotRid", $ref: "rid" },
+      { name: "sourceSpotId", $ref: "text8" },
     ]],
     ["actor", [
       { name: "sourceNodeRid", $ref: "rid" },
@@ -5533,7 +5631,7 @@ function validateAuthorityKeyFormat(format, fail) {
     separator: ":",
     kindDiscriminators: [
       { objectKind: "actor", wire: "a", components: ["actorId"] },
-      { objectKind: "spot", wire: "s", components: ["spotRid"] },
+      { objectKind: "spot", wire: "s", components: ["spotId"] },
     ],
     componentLayout: "decimal-raw-byte-length-colon-percent-encoded-bytes",
     componentRawBytesMinimum: 1,
@@ -6189,6 +6287,55 @@ function runSelfTests(schema) {
       command.payload = "optional";
       command.payloadType = { $ref: "application-payload-envelope-v1" };
     }],
+    ["Actor create reservation omitted", (candidate) => {
+      const command = candidate.commands.find((entry) => entry.name === "actorCreate");
+      command.body = command.body.filter((field) => field.name !== "reservation");
+    }],
+    ["Actor create source lifecycle omitted", (candidate) => {
+      const command = candidate.commands.find((entry) => entry.name === "actorCreate");
+      command.body = command.body.filter((field) => field.name !== "sourceNodeGeneration");
+    }],
+    ["Actor create accepts command payload", (candidate) => {
+      const command = candidate.commands.find((entry) => entry.name === "actorCreate");
+      command.payload = "optional";
+      command.payloadType = { $ref: "application-payload-envelope-v1" };
+    }],
+    ["Actor create result discriminator changed", (candidate) => {
+      const result = candidate.types.find((type) => type.name === "actor-create-result");
+      result.values.find((entry) => entry.name === "rejected").value = 4;
+    }],
+    ["Actor rejected terminal exposes ActorRef", (candidate) => {
+      const terminal = candidate.types.find((type) => type.name === "actor-create-terminal");
+      terminal.cases.find(
+        (entry) => entry.when?.createResult === "rejected",
+      ).fields.push({ name: "actor", $ref: "actor-ref" });
+    }],
+    ["Actor creation terminal stores correlation", (candidate) => {
+      const terminal = candidate.types.find(
+        (type) => type.name === "creation-operation-terminal-v1",
+      );
+      terminal.correlationFields = "included";
+    }],
+    ["Actor creation terminal loses size bound", (candidate) => {
+      const terminal = candidate.types.find(
+        (type) => type.name === "creation-operation-terminal-v1",
+      );
+      delete terminal.maximumEncodedBytes;
+    }],
+    ["Actor creation terminal allows Existing payload", (candidate) => {
+      const terminal = candidate.types.find(
+        (type) => type.name === "creation-operation-terminal-v1",
+      );
+      terminal.constraints = terminal.constraints.filter(
+        (entry) => entry.kind !== "existing-has-no-application-payload",
+      );
+    }],
+    ["Actor create reply tail omitted", (candidate) => {
+      const tail = candidate.types.find((type) => type.name === "request-specific-tail");
+      tail.cases = tail.cases.filter(
+        (entry) => entry.when?.originalOperationKind !== "actorCreate",
+      );
+    }],
     ["legacy reply envelope field changed", (candidate) => {
       const command = candidate.commands.find((entry) => entry.name === "reply");
       command.body[0].name = "operation";
@@ -6325,8 +6472,8 @@ function runSelfTests(schema) {
       const recovery = candidate.types.find(
         (type) => type.name === "instance-activation-recovery-v1",
       );
-      recovery.fields.find((field) => field.name === "placementProfile").name =
-        "recoveryPlacementProfile";
+      recovery.fields.find((field) => field.name === "targetDescriptorVersion").name =
+        "recoveryDescriptorVersion";
     }],
     ["creation intent bound widened", (candidate) => {
       const bound = candidate.bounds.find((entry) => entry.name === "creationIntentBytes");
@@ -6885,6 +7032,11 @@ function runAuthorityKeyFixtureSelfTests(schema, schemaPath) {
       candidate.cases[0].identityHex = "61".repeat(256);
       candidate.cases[0].encoded = `zla1:a:256:${"a".repeat(256)}`;
     }],
+    ["invalid UTF-8 Spot ID", (candidate) => {
+      const spot = candidate.cases.find((entry) => entry.objectKind === "spot");
+      spot.identityHex = "ff";
+      spot.encoded = "zla1:s:1:%FF";
+    }],
     ["Actor and Spot domain collision", (candidate) => {
       const actor = candidate.cases.find((entry) => entry.objectKind === "actor");
       const spot = candidate.cases.find((entry) => entry.objectKind === "spot");
@@ -6912,11 +7064,11 @@ function validateContractAmendmentFixtureData(fixture, location, fail) {
     descriptor: {
       objectRole: "server", placementWeight: 100, activeCapacityLimit: 10000,
       pendingCapacityLimit: 128, objectKind: "userSpot", stableType: "chat-room",
-      placementProfiles: ["default"], typeCapacityLimit: 4096,
+      typeCapacityLimit: 4096,
     },
     creationIntent: {
       objectKind: "instanceSpot", globalIdHex: "73706f742d31", stableType: "presence",
-      initialMeshName: "main", placementProfile: "default", affinityKey: "tenant-42",
+      initialMeshName: "main",
       requestContentReference: "create/1",
       requestSha256Hex: "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
       requestEncodedSize: 1048576,
@@ -6954,22 +7106,23 @@ function validateContractAmendmentFixtureData(fixture, location, fail) {
     },
     exactRefRoute: {
       actor: ["actorId", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"],
-      spot: ["spotRid", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"],
+      spot: ["spotId", "objectGeneration", "targetNodeRid", "targetNodeGeneration", "authorityOwnerGeneration"],
     },
     normalInstanceMessageFields: [
-      "spotRid", "objectGeneration", "targetNodeRid", "targetNodeGeneration",
+      "spotId", "objectGeneration", "targetNodeRid", "targetNodeGeneration",
       "authorityOwnerGeneration",
     ],
     terminalServiceOperations: {
       commands: {
         userSpotCreate: 47,
         userSpotClose: 48,
+        actorCreate: 49,
         terminalReply: 20,
-        reservedFirst: 49,
+        reservedFirst: 50,
       },
       replyEnvelopeFields: ["correlation", "terminalResult", "failureCode", "tail"],
       createRequestFields: [
-        "correlation", "operation", "sourceNodeRid", "sourceNodeGeneration", "spotRid",
+        "correlation", "operation", "sourceNodeRid", "sourceNodeGeneration", "spotId",
         "stableType", "reservation", "deadlineUnixMs",
       ],
       createReservationFences: [
@@ -6980,6 +7133,13 @@ function validateContractAmendmentFixtureData(fixture, location, fail) {
       createTerminalStates: ["existing", "created", "rejected"],
       createTerminalTail: ["createResult", "spot"],
       createContentSource: "location-pending-creation-exact-read",
+      actorCreateRequestFields: [
+        "correlation", "operation", "sourceNodeRid", "sourceNodeGeneration", "actorId",
+        "stableType", "reservation", "deadlineUnixMs",
+      ],
+      actorCreateTerminalStates: ["existing", "created", "rejected"],
+      actorCreateTerminalTail: ["creation"],
+      actorCreateConcurrency: "distinct-operation-waits-then-ready-existing-or-rejected-cleanup-new-reservation",
       closeRequestFields: [
         "correlation", "operation", "sourceNodeRid", "sourceNodeGeneration", "target",
         "deadlineUnixMs",

@@ -32,7 +32,7 @@ public final class ZLinkActorSpotRoutePackets {
         String actorType,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceEntrySpotNodeRid,
-        RoutingId sourceEntrySpotRid,
+        String sourceEntrySpotId,
         String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
@@ -47,7 +47,7 @@ public final class ZLinkActorSpotRoutePackets {
                 actorType,
                 actorRef,
                 sourceEntrySpotNodeRid,
-                sourceEntrySpotRid,
+                sourceEntrySpotId,
                 sourceEntryRouterChannelId,
                 sourceNodeRid,
                 sourceSessionRid,
@@ -62,7 +62,7 @@ public final class ZLinkActorSpotRoutePackets {
         String actorType,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceEntrySpotNodeRid,
-        RoutingId sourceEntrySpotRid,
+        String sourceEntrySpotId,
         String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
@@ -71,7 +71,7 @@ public final class ZLinkActorSpotRoutePackets {
         List<ZLinkActorHandoffPacket> backlog) {
         return createCommitRequestParts(
             transferId, timeout, actorId, actorType, actorRef,
-            sourceEntrySpotNodeRid, sourceEntrySpotRid, sourceEntryRouterChannelId,
+            sourceEntrySpotNodeRid, sourceEntrySpotId, sourceEntryRouterChannelId,
             sourceNodeRid, sourceSessionRid, adapterKey, transferState, backlog, null);
     }
 
@@ -82,7 +82,7 @@ public final class ZLinkActorSpotRoutePackets {
         String actorType,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceEntrySpotNodeRid,
-        RoutingId sourceEntrySpotRid,
+        String sourceEntrySpotId,
         String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
@@ -101,7 +101,7 @@ public final class ZLinkActorSpotRoutePackets {
                 actorType,
                 actorRef,
                 sourceEntrySpotNodeRid,
-                sourceEntrySpotRid,
+                sourceEntrySpotId,
                 sourceEntryRouterChannelId,
                 sourceNodeRid,
                 sourceSessionRid,
@@ -126,14 +126,14 @@ public final class ZLinkActorSpotRoutePackets {
         String actorType,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceEntrySpotNodeRid,
-        RoutingId sourceEntrySpotRid,
+        String sourceEntrySpotId,
         String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
         String adapterKey) {
         return encodeTransferRequest(
             phase, transferId, timeout, actorId, actorType, actorRef,
-            sourceEntrySpotNodeRid, sourceEntrySpotRid,
+            sourceEntrySpotNodeRid, sourceEntrySpotId,
             sourceEntryRouterChannelId, sourceNodeRid, sourceSessionRid, adapterKey, 0, null);
     }
 
@@ -145,7 +145,7 @@ public final class ZLinkActorSpotRoutePackets {
         String actorType,
         ZLinkBackendActorRef actorRef,
         RoutingId sourceEntrySpotNodeRid,
-        RoutingId sourceEntrySpotRid,
+        String sourceEntrySpotId,
         String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,
@@ -166,7 +166,7 @@ public final class ZLinkActorSpotRoutePackets {
             actorRef.nodeRid().toString(),
             Long.toUnsignedString(actorRef.generation()),
             sourceEntrySpotNodeRid.toString(),
-            sourceEntrySpotRid.toString(),
+            sourceEntrySpotId.toString(),
             sourceEntryRouterChannelId,
             sourceNodeRid == null ? "" : sourceNodeRid.toString(),
             sourceSessionRid == null ? "" : sourceSessionRid.toString(),
@@ -204,7 +204,7 @@ public final class ZLinkActorSpotRoutePackets {
             RoutingId.from(fields[5]),
             Long.parseUnsignedLong(fields[6]),
             RoutingId.from(fields[7]),
-            RoutingId.from(fields[8]),
+            fields[8],
             fields[9],
             fields[10].isBlank() ? null : RoutingId.from(fields[10]),
             fields[11].isBlank() ? null : RoutingId.from(fields[11]),
@@ -428,7 +428,7 @@ public final class ZLinkActorSpotRoutePackets {
         RoutingId actorNodeRid,
         long actorGeneration,
         RoutingId sourceEntrySpotNodeRid,
-        RoutingId sourceEntrySpotRid,
+        String sourceEntrySpotId,
         String sourceEntryRouterChannelId,
         RoutingId sourceNodeRid,
         RoutingId sourceSessionRid,

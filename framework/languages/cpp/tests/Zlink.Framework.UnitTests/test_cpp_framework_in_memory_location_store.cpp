@@ -53,7 +53,7 @@ peer_location_t make_peer (std::string owner_id)
 spot_location_t make_spot (std::string owner_id, std::string spot_name = "spot-1")
 {
     return spot_location_t{.mesh_name = "play",
-                           .spot_rid = zlink::routing_id_t::from (spot_name),
+                           .spot_id = std::move (spot_name),
                            .spot_type = "game",
                            .node_rid = zlink::routing_id_t::from ("node-1"),
                            .spot_kind = zlink::spot_kind::user,
@@ -72,7 +72,7 @@ actor_location_t make_actor (std::string owner_id, std::int64_t generation)
         zlink::framework::node_rid_t::from_string ("node-1"), "player", "actor-1", 1),
       .owner_node_rid = zlink::routing_id_t::from ("node-1"),
       .owner_node_generation = 1,
-      .spot_rid = zlink::routing_id_t::from ("entry-spot"),
+      .spot_id = "entry-spot",
       .spot_generation = 1,
       .spot_kind = zlink::spot_kind::entry,
       .membership_epoch = 1,
@@ -127,8 +127,7 @@ zlink::framework::mesh_node_descriptor_t make_mesh_node (
       .object_capabilities =
         {{.object_kind = placement_object_kind_t::actor,
           .stable_type = "player",
-          .policy = maintenance_policy_kind_t::recreate,
-          .placement_profiles = {"standard"}}},
+          .policy = maintenance_policy_kind_t::recreate}},
       .object_role = object_role_t::server,
       .object_capacity =
         {.active_limit = 100, .pending_limit = pending_limit},
@@ -187,7 +186,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore, SharesOneStoreForAllLocationRoles)
 
     const auto spot = store
                         .resolve_spot (spot_location_key_t{
-                          .mesh_name = "play", .spot_rid = zlink::routing_id_t::from ("spot-1")})
+                          .spot_id = "spot-1"})
                         .result ()
                         .value ();
     ASSERT_TRUE (spot.has_value ());
@@ -366,10 +365,7 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
 
     object_reserve_request_t request{
       .key = {placement_object_kind_t::actor, "profiled-a"},
-      .intent =
-        {.stable_type = "player",
-         .placement_profile =
-           placement_profile_t{"standard"}},
+      .intent = {.stable_type = "player"},
       .target =
         {.mesh_name = "play",
          .node_rid = node_rid_t::from_string ("node-target"),
@@ -382,15 +378,6 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
 
     publish_mesh_node (
       store, "node-target", owner, 1);
-    auto wrong_profile = request;
-    wrong_profile.key.global_id = "profiled-wrong";
-    wrong_profile.intent.placement_profile =
-      placement_profile_t{"premium"};
-    EXPECT_NE (
-      nullptr,
-      std::get_if<object_reserve_conflict_t> (
-        &store.reserve (wrong_profile).result ().value ()));
-
     EXPECT_NE (
       nullptr,
       std::get_if<object_reserved_t> (
@@ -481,6 +468,62 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
     EXPECT_EQ (committed.ready.store_version,
                current.store_version);
     EXPECT_EQ (committed.ready.payload, current.payload);
+}
+
+TEST (ZLinkFrameworkInMemoryLocationStore,
+      CreationTerminalDedupesOnlyTheSameOperation)
+{
+    using namespace zlink::framework;
+    in_memory_location_store_t store;
+    const auto owner = claim_owner (store, "creation-owner");
+    publish_mesh_node (store, "creation-node", owner);
+
+    const creation_operation_identity_t first_operation{
+      node_rid_t::from_string ("source-node"), 7, {11, 13}};
+    object_reserve_request_t request{
+      .key = {placement_object_kind_t::actor, "actor-terminal"},
+      .intent = {.stable_type = "player"},
+      .target =
+        {.mesh_name = "play",
+         .node_rid = node_rid_t::from_string ("creation-node"),
+         .node_lifecycle_generation = 1,
+         .owner = owner}};
+    const auto reserved =
+      std::get<object_reserved_t> (
+        store.reserve (request).result ().value ());
+
+    const std::vector<std::byte> envelope{
+      std::byte{'r'}, std::byte{'e'}, std::byte{'j'}};
+    creation_terminal_publication_t publication{
+      first_operation,
+      envelope,
+      zlink::framework::runtime::sha256 (envelope),
+      std::chrono::system_clock::now ()
+        + std::chrono::seconds (30)};
+    const auto completed =
+      store.complete_creation (
+        {request.key, reserved.fence,
+         object_creation_rejected_t{publication}})
+        .result ()
+        .value ();
+    ASSERT_NE (
+      nullptr,
+      std::get_if<object_creation_completed_result_t> (
+        &completed));
+    const auto terminal =
+      store.read_creation_terminal (first_operation)
+        .result ()
+        .value ();
+    ASSERT_TRUE (terminal);
+    EXPECT_EQ (
+      creation_terminal_state_t::rejected,
+      terminal->state);
+
+    auto second = request;
+    EXPECT_NE (
+      nullptr,
+      std::get_if<object_reserved_t> (
+        &store.reserve (second).result ().value ()));
 }
 
 TEST (ZLinkFrameworkInMemoryLocationStore,
@@ -822,15 +865,14 @@ TEST (ZLinkFrameworkInMemoryLocationStore, RemovesRowsOnlyWithMatchingOwnerToken
         .value ();
     EXPECT_EQ (location_write_status_t::stored,
                store
-                 .remove_spot (spot_location_key_t{.mesh_name = "play",
-                                                   .spot_rid = zlink::routing_id_t::from ("spot-1")},
+                 .remove_spot (spot_location_key_t{.spot_id = "spot-1"},
                                owner_token ("owner-a", spot_claim.generation))
                  .result ()
                  .value ()
                  .status);
     EXPECT_FALSE (store
                     .resolve_spot (spot_location_key_t{
-                      .mesh_name = "play", .spot_rid = zlink::routing_id_t::from ("spot-1")})
+                      .spot_id = "spot-1"})
                     .result ()
                     .value ()
                     .has_value ());
@@ -1202,6 +1244,85 @@ TEST (ZLinkFrameworkInMemoryLocationStore,
       store.remove_all_by_owner (owner)
         .result ()
         .value ());
+}
+
+TEST (ZLinkFrameworkInMemoryLocationStore,
+      SignedWeightBoundariesAreValidatedWithoutNarrowing)
+{
+    in_memory_location_store_t store;
+    const auto owner = claim_owner (
+      store, "weight-owner");
+
+    auto upper = make_mesh_node (
+      "weight-upper", owner);
+    upper.channel_weights = {{"default", 10000}};
+    upper.placement_weight = 10000;
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_mesh_node (
+          upper, location_write_intent_t::new_claim)
+        .result ()
+        .value ()
+        .status);
+    const auto listed =
+      store
+        .list_mesh_nodes (
+          "play",
+          location_page_request_t{.page_size = 1000})
+        .result ()
+        .value ();
+    ASSERT_EQ (1u, listed.items.size ());
+    EXPECT_EQ (
+      10000, listed.items.front ().placement_weight);
+    EXPECT_EQ (
+      10000,
+      listed.items.front ().channel_weights.at (
+        "default"));
+
+    auto negative = make_mesh_node (
+      "weight-negative", owner);
+    negative.channel_weights = {{"default", -1}};
+    EXPECT_THROW (
+      (void) store.update_mesh_node (
+        negative, location_write_intent_t::new_claim),
+      std::invalid_argument);
+
+    auto over = make_mesh_node (
+      "weight-over", owner);
+    over.placement_weight = 10001;
+    EXPECT_THROW (
+      (void) store.update_mesh_node (
+        over, location_write_intent_t::new_claim),
+      std::invalid_argument);
+
+    zlink::framework::client_server_server_descriptor_t server{
+      .channel_name = "orders",
+      .server_rid = zlink::routing_id_t::from (
+        "weight-server"),
+      .lifecycle_generation = 1,
+      .descriptor_revision = 1,
+      .endpoint = "tcp://127.0.0.1:5002",
+      .weight = 10000,
+      .state = framework_runtime_state_t::serving,
+      .security_identity = "test",
+      .owner_id = owner.owner_id,
+      .lease_generation = owner.lease_generation};
+    EXPECT_EQ (
+      location_write_status_t::stored,
+      store
+        .update_client_server (
+          server, location_write_intent_t::new_claim)
+        .result ()
+        .value ()
+        .status);
+    server.server_rid =
+      zlink::routing_id_t::from ("weight-server-over");
+    server.weight = 10001;
+    EXPECT_THROW (
+      (void) store.update_client_server (
+        server, location_write_intent_t::new_claim),
+      std::invalid_argument);
 }
 
 } // namespace

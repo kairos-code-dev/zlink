@@ -23,7 +23,7 @@ struct spot_handle_access_t;
 class spot_handle_t final
 {
   public:
-    spot_rid_t spot_rid () const noexcept;
+    spot_id_t spot_id () const noexcept;
 
   private:
     spot_handle_t () = default;

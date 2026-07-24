@@ -185,8 +185,8 @@ function validateClientServer(descriptor: ClientServerDescriptor): void {
   requireText(descriptor.securityIdentity, 'securityIdentity');
   requireText(descriptor.advertisedEndpoint, 'advertisedEndpoint');
   validateRevision(descriptor.lifecycleGeneration, descriptor.descriptorRevision);
-  if (!Number.isInteger(descriptor.weight) || descriptor.weight < 0 || descriptor.weight > 100) {
-    throw new RangeError('ClientServer weight must be in the range 0..100.');
+  if (!Number.isInteger(descriptor.weight) || descriptor.weight < 0 || descriptor.weight > 10_000) {
+    throw new RangeError('ClientServer weight must be an integer in 0..10000.');
   }
   if (!Number.isSafeInteger(descriptor.effectiveMaxMessageBytes) || descriptor.effectiveMaxMessageBytes < 1) {
     throw new RangeError('ClientServer message bound must be positive.');

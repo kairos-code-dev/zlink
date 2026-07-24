@@ -17,9 +17,10 @@ Spot은 room, stage, zone처럼 주소와 상태를 가진 논리 인스턴스�
 
 ## 2. Spot과 MeshNode
 
-User·Instance Spot은 Location Store namespace 전체에서 전역인 logical Spot RID로 식별된다. RID는 RoutingId의
-1..255-byte exact value이며 MeshName은 최초 placement attribute이지 identity key가 아니다. 같은 RID를 서로
-다른 MeshName, Spot kind 또는 stable type에 중복 사용할 수 없다. Entry Spot RID는 Framework가 발급하며 caller가
+Entry·User·Instance Spot은 Location Store namespace 전체에서 전역인 logical Spot ID로 식별된다.
+Spot ID는 UTF-8 encoded 크기 1..255 bytes의 case-sensitive exact string이며 normalization과 case
+folding을 적용하지 않는다. MeshName은 최초 placement attribute이지 identity key가 아니다. 같은 Spot ID를 서로
+다른 MeshName, Spot kind 또는 stable type에 중복 사용할 수 없다. Entry Spot ID는 Framework가 발급하며 caller가
 create 대상으로 지정하지 않는다.
 
 Spot factory, Entry Spot과 Spot lifecycle 등록은 Object Server role의 MeshNode만 제공한다. Object Client는
@@ -39,7 +40,7 @@ classic fanout은 별도 PUB/SUB socket 계약이다. 서비스 event fanout과 
 
 ## 3. Spot direct
 
-Spot direct send/request의 시작 method는 global Spot RID만 대상으로 받는다. Framework는 positive route cache
+Spot direct send/request의 시작 method는 global Spot ID만 대상으로 받는다. Framework는 positive route cache
 또는 Location Store에서 current Ready incarnation과 owner route를 resolve하고, 선택한 ObjectGeneration과 owner
 fence를 target admission에 고정한다. 수신 MeshNode는 target Spot의 application queue에 payload를 제출한다.
 
@@ -58,7 +59,7 @@ local outbound admission만 나타내고 target Spot handler 실행은 기다리
 Cold activation을 포함하는 submit도 source가 activation envelope를 선택한 target transport에 수락시킨 시점에
 같은 결과를 완료하며 target의 reservation, factory, Ready commit과 application handler 실행을 기다리지 않는다.
 Activation envelope는 최초 application message와 operation identity·reply correlation·deadline, source
-node RID·lifecycle generation·optional source Spot RID, global Spot RID, 선택한 Mesh·stable type과 target
+node RID·lifecycle generation·optional source Spot ID, global Spot ID, 선택한 Mesh·stable type과 target
 descriptor fence를 함께 보존한다. Target은 이 전체 envelope를 Relocation Store에 immutable activation recovery
 root로 먼저 저장하고 reference·hash·encoded size를 generic placement reservation에 연결한 뒤에만 factory를 실행한다.
 
@@ -83,13 +84,15 @@ client가 같은 process에 등록되어 있으면 해당 경로를 사용할 �
 process나 MeshNode를 relay로 사용하지 않고 `RequestTargetNotFound`로 끝낸다.
 
 Framework는 다른 송신 경로의 request correlation과 원래 Spot activation·generation을 함께 보존한다.
-`Async`는 원래 turn을 유지하고, `Yield`는 turn을 반환한 뒤 completion이 확정되면 원래 Spot queue에 실행
-재개 record 하나를 넣는다. Reply를 Spot packet으로 다시 dispatch하지 않는다. Spot shutdown, timeout,
+`Async`는 원래 gate를 유지하고, 허용된 `SpotWide` User Spot 또는 Instance Spot의 `Yield`는 gate를 반환한
+뒤 completion이 확정되면 같은 Spot gate에 실행 재개 record 하나를 넣는다. `PerActor` User Spot, Entry
+Spot, Node·Channel handler와 callback 밖의 호출은 outbound admission 전에 `InvalidConfiguration`으로
+완료한다. Reply를 Spot packet으로 다시 dispatch하지 않는다. Spot shutdown, timeout,
 cancellation과 reply가 경쟁해도 terminal completion은 하나이며 이전 Spot generation의 늦은 reply를 새
 activation에 전달하지 않는다.
 
 이 동작은 Framework process 안의 송신 경로 선택이다. Service runtime은 등록되지 않은 다른 RouteMesh를
-찾거나 RouteMesh 사이를 relay하지 않으며, ClientServer transport가 원래 Spot RID를 물리 source identity로
+찾거나 RouteMesh 사이를 relay하지 않으며, ClientServer transport가 원래 Spot ID를 물리 source identity로
 사용하지 않는다.
 
 ## 4. Channel-scoped Logical Multicast
@@ -106,6 +109,9 @@ publish는 다음 단계를 하나의 Framework operation으로 수행한다.
 2. origin MeshNode도 target ChannelName에 참여하면 node-local subscription을 검사한다.
 3. 각 수신 MeshNode는 local subscription만 검사한다.
 4. 일치하는 각 Spot application queue에 동일한 immutable message storage의 reference를 제출한다.
+
+Weight 0인 remote member는 새 target snapshot에서 제외한다. Positive weight의 크기는 대상별 제출 횟수를
+늘리지 않으며 각 member는 정확히 한 번만 포함한다.
 
 같은 node의 여러 Spot에 전달할 때 payload를 Spot 수만큼 다시 encode하거나 복사하지 않는다. 각 queue가
 message reference를 보유하고 마지막 consumer가 반환하면 storage를 회수한다. 이 reference 관리 방식은
@@ -124,15 +130,19 @@ target을 drop 수에 기록하고 기다리지 않는다.
 
 Publish transaction이 시작되면 snapshot operation은 commit된 것이다. 이후 cancellation이나 shutdown으로
 남은 target 제출을 중단하지 않는다. 뒤 target에서 backpressure가 발생해도 앞에서 성공한 제출을 취소하지 않는다.
-Executor direct handoff가 성공하지 못했거나 remote capacity가 부족하면 `Backpressured`,
+Executor direct handoff가 성공하지 못했거나 remote target으로 향하는 source-local outbound transport
+queue의 capacity가 부족하면 `Backpressured`,
 snapshot target이 모두 0이면 `TargetNotFound`다. Target별 send timeout 뒤의 용량 실패는 `TimedOut`으로
 다시 분류하지 않는다. Remote 연결 불가와 local Spot queue drop은 top-level status를 바꾸지 않고 publish
-detail에 기록한다. Remote target이 모두 연결 불가여서 admitted count가 0이어도 remote capacity drop이
+detail에 기록한다. Remote target이 모두 연결 불가여서 admitted count가 0이어도 source-local transport
+queue의 capacity drop이
 없으면 `Submitted`다.
 
-publish 수락은 subscriber handler 실행이나 업무 처리를 확인하는 acknowledgement가 아니다. 특히 remote
-ROUTER의 송신 수락은 수신 MeshNode의 local Spot queue 수락을 보장하지 않으며, durable 저장·재생·
-exactly-once 전달을 뜻하지 않는다.
+publish 수락은 subscriber handler 실행이나 업무 처리를 확인하는 acknowledgement가 아니다. Remote count의
+admitted는 source MeshNode의 local outbound transport queue가 제출을 수락했다는 뜻이다. Framework는 수신
+MeshNode의 Spot queue 제출이나 handler 실행·완료를 기다리지 않는다. Local count의 admitted만 origin
+MeshNode에서 일치한 local Spot application queue가 제출을 수락했다는 뜻이다. 어느 경우에도 durable
+저장·재생·exactly-once 전달을 뜻하지 않는다.
 
 publish 결과는 remote target의 snapshot, admitted, dropped, unreachable 수와 local Spot match의 snapshot,
 admitted, dropped 수를 제공한다. remote target 하나 이상이 용량 때문에 수락되지 않으면 backpressure
@@ -159,11 +169,21 @@ Spot application queue에는 다음 Spot 소유 작업을 추가한다.
 Instance Spot queue에는 direct payload와 timer callback만 추가한다. Actor control과 Logical Multicast
 subscription은 Instance Spot registration 또는 activation 단계에서 거부한다.
 
-같은 Spot의 application callback은 하나의 Spot turn에서 순서대로 실행한다. 다만 callback이 `Yield`로
-turn을 반납하면 같은 Spot의 다음 application record가 먼저 실행될 수 있으며, 완료 continuation은 새
-turn에서 재개한다([Async 실행 정책 §1.1](../04-async-execution-policy.ko.md#11-submit-async와-yield)). Actor 업무 payload는 이
-queue나 Spot callback에 넣지 않고 Actor queue로 직접 제출한다. Actor가 Spot 상태를 바꾸려면 명시적인
-Spot 호출을 제출해야 한다. Actor payload와 membership 제어의 경계는
+User Spot factory는 execution mode를 startup registration에서 고정한다. 기본 `SpotWide`는 Spot direct,
+Logical Multicast, timer, lifecycle과 member Actor handler가 하나의 User Spot execution gate를 공유한다.
+Member Actor는 Actor queue claim을 유지한 상태에서 이 gate를 얻는다. Member Actor가 `Yield`하면 User Spot
+gate만 반납하며 같은 Actor의 다음 record는 현재 continuation이 gate를 다시 얻어 완료할 때까지 시작하지
+않는다.
+
+Optional `PerActor`에서는 Actor별 queue, Spot direct·lifecycle lane과 timer별 lane을 사용한다. 같은 Actor와
+같은 timer는 각각 직렬 실행하지만 서로 다른 Actor, Spot lane과 서로 다른 timer lane은 동시에 실행할 수
+있다. `PerActor`와 Entry Spot은 `Yield`를 지원하지 않으며 공통 call type에서 호출되면 submit 전에
+`InvalidConfiguration`으로 완료한다.
+
+Actor 업무 payload는 Spot queue나 Spot callback으로 변환하지 않고 Actor queue로 직접 제출한다. Actor가
+Spot 상태를 바꾸려면 명시적인 Spot 호출을 제출해야 한다. `SpotWide` Actor가 같은 User Spot gate가 필요한
+Actor·Spot request를 `Async`로 기다리는 경우와 자기 Actor의 awaited request는 submit 전에
+`InvalidConfiguration`으로 거부한다. Actor payload와 membership 제어의 경계는
 [22 Actor 모델](22-actor-model.ko.md)이 소유한다.
 
 ready notification, completion, send-ready와 relocation progress 같은 infrastructure 작업은 Spot
@@ -192,12 +212,12 @@ Spot direct와 Logical Multicast는 [03 메시지 모델](../03-message-model.ko
 snapshot을 사용한다. metadata ownership, 크기와 reply 규칙은 이 문서에서 다시 정의하지 않는다.
 
 관측 정보는 current owner MeshName, ChannelName, origin RID, remote target 수, local match 수, admission 대기·실패,
-drop과 Spot dispatch 결과를 구분해야 한다. topic과 Spot RID는 metric label로 사용하지 않는다.
+drop과 Spot dispatch 결과를 구분해야 한다. topic과 Spot ID는 metric label로 사용하지 않는다.
 
 ## 8. 검증 요구
 
 - Spot direct와 Logical Multicast가 MeshNode ROUTER 하나만 사용한다.
-- Spot direct가 global Spot RID만 받고 MeshName, owner RID와 generation을 application에 요구하지 않는다.
+- Spot direct가 global Spot ID만 받고 MeshName, owner RID와 generation을 application에 요구하지 않는다.
 - Instance intent가 없는 Missing Spot message가 type·Mesh를 새로 제공하거나 creation intent를 만들지 않는다.
 - Instance intent를 가진 call만 Missing Spot의 type을 명시하거나 유일한 type을 자동 선택해 cold activation한다.
 - Missing Instance activation에서는 source가 owner claim을 선점하지 않고 최초 message를 포함한 activation

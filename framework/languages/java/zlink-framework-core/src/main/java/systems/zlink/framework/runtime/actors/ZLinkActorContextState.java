@@ -19,20 +19,20 @@ final class ZLinkActorContextState {
     private RoutingId boundSessionSourceNodeRid;
     private RoutingId boundSessionSourceSessionRid;
     private RoutingId entrySpotNodeRid;
-    private RoutingId entrySpotRid;
+    private String entrySpotId;
     private String entryRouterChannelId;
-    private RoutingId spotRid;
+    private String spotId;
     private ZLinkSpot<?> spot;
     private boolean joined;
     private boolean destroying;
     private boolean moving;
     private CompletableFuture<Void> moveCompletion = CompletableFuture.completedFuture(null);
 
-    ZLinkActorContextState(ZLinkBackendActorRef actorRef, RoutingId entrySpotRid) {
+    ZLinkActorContextState(ZLinkBackendActorRef actorRef, String entrySpotId) {
         this.actorId = actorRef.actorId();
         this.actorRef = actorRef;
         this.entrySpotNodeRid = actorRef.nodeRid();
-        this.entrySpotRid = entrySpotRid;
+        this.entrySpotId = entrySpotId;
     }
 
     ZLinkActor actor() {
@@ -63,16 +63,16 @@ final class ZLinkActorContextState {
         return bindingToken == sessionBindingToken ? boundSessionSourceSessionRid : null;
     }
 
-    RoutingId spotRid() {
-        return spotRid;
+    String spotId() {
+        return spotId;
     }
 
     RoutingId entrySpotNodeRid() {
         return entrySpotNodeRid;
     }
 
-    RoutingId entrySpotRid() {
-        return entrySpotRid;
+    String entrySpotId() {
+        return entrySpotId;
     }
 
     String entryRouterChannelId() {
@@ -86,11 +86,11 @@ final class ZLinkActorContextState {
         this.entrySpotNodeRid = entrySpotNodeRid;
     }
 
-    void setEntrySpotRid(RoutingId entrySpotRid) {
-        if (entrySpotRid == null) {
-            throw new ZLinkConfigurationException("entrySpotRid is required");
+    void setEntrySpotId(String entrySpotId) {
+        if (entrySpotId == null) {
+            throw new ZLinkConfigurationException("entrySpotId is required");
         }
-        this.entrySpotRid = entrySpotRid;
+        this.entrySpotId = entrySpotId;
     }
 
     void setEntryRouterChannelId(String entryRouterChannelId) {
@@ -148,11 +148,11 @@ final class ZLinkActorContextState {
 
     void markJoined(
         ZLinkBackendActorRef actorRef,
-        RoutingId spotRid,
+        String spotId,
         ZLinkSpot<?> spot) {
         this.actorRef = actorRef;
         updateNativeBoundSessionActorRef(actorRef);
-        this.spotRid = spotRid;
+        this.spotId = spotId;
         this.spot = spot;
         this.joined = true;
     }
@@ -162,7 +162,7 @@ final class ZLinkActorContextState {
         RoutingId entrySpotNodeRid) {
         this.actorRef = actorRef;
         updateNativeBoundSessionActorRef(actorRef);
-        this.spotRid = entrySpotNodeRid;
+        this.spotId = entrySpotNodeRid.toString();
         this.spot = null;
         this.joined = true;
     }
@@ -177,7 +177,7 @@ final class ZLinkActorContextState {
     }
 
     void markLeft() {
-        spotRid = null;
+        spotId = null;
         spot = null;
         joined = false;
     }
@@ -258,10 +258,10 @@ final class ZLinkActorContextState {
         boundSessionSourceNodeRid = null;
         boundSessionSourceSessionRid = null;
         entrySpotNodeRid = null;
-        entrySpotRid = null;
+        entrySpotId = null;
         entryRouterChannelId = null;
         sessionBindingToken++;
-        spotRid = null;
+        spotId = null;
         spot = null;
         joined = false;
         destroying = false;

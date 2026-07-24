@@ -11,6 +11,7 @@ import systems.zlink.framework.locations.ZLinkPeerLocationKey;
 import systems.zlink.framework.locations.ZLinkRouteKind;
 import systems.zlink.framework.locations.ZLinkRouteLocationKey;
 import systems.zlink.framework.locations.ZLinkSpotLocationKey;
+import systems.zlink.framework.locations.ZLinkCreationOperationIdentity;
 
 class ZLinkRedisLocationKeyCodecTest {
     @Test
@@ -38,12 +39,28 @@ class ZLinkRedisLocationKeyCodecTest {
     }
 
     @Test
-    void rowKeysMatchDotnetLengthPrefixContract() {
-        assertEquals("4:mesh4:0a0b", ZLinkRedisLocationKeyCodec.encodeSpotKey(
-            new ZLinkSpotLocationKey("mesh", RoutingId.from(new byte[] {0x0a, 0x0b}))));
+    void spotRowKeyUsesGlobalSpotIdNamespace() {
+        assertEquals("4:0a0b", ZLinkRedisLocationKeyCodec.encodeSpotKey(
+            new ZLinkSpotLocationKey("0a0b")));
         assertEquals("5:actor", ZLinkRedisLocationKeyCodec.encodeActorKey(
             new ZLinkActorLocationKey("actor")));
         assertEquals("1:19:route-key", ZLinkRedisLocationKeyCodec.encodeRouteKey(
             new ZLinkRouteLocationKey(ZLinkRouteKind.ACTOR_SESSION, "route-key")));
+    }
+
+    @Test
+    void creationTerminalKeyUsesExactSourceLifecycleAndOperationId() {
+        ZLinkRedisLocationKeys keys = new ZLinkRedisLocationKeys("P");
+
+        assertEquals(
+            "P:{zlink-location-v3}:creation-terminal:"
+                + "2:0a0b:7:"
+                + "00000000000000010000000000000002",
+            keys.creationTerminalKey(
+                new ZLinkCreationOperationIdentity(
+                    RoutingId.from(new byte[] {0x0a, 0x0b}),
+                    7,
+                    1,
+                    2)));
     }
 }

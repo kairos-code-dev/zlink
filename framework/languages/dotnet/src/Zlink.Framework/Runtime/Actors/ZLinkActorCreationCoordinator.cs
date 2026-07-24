@@ -47,6 +47,43 @@ internal sealed class ZLinkActorCreationCoordinator(
             creation.Created ? createRequest : ZLinkMessage.Empty);
     }
 
+    public async ValueTask<CreateActorResult> PrepareReservedActorAsync(
+        ZLinkActorRuntimeState state,
+        string actorId,
+        string actorType,
+        ZLinkMessage createRequest,
+        ulong objectGeneration,
+        CancellationToken cancellationToken)
+    {
+        var factoryType = ResolveActorFactory(actorType);
+        state.BeginReservedCreation();
+        try
+        {
+            var creation = await state.GetOrStartActorCreationAsync(
+                    actorType,
+                    true,
+                    () => ActivateActorCoreAsync(
+                        state,
+                        actorId,
+                        factoryType,
+                        createRequest,
+                        CancellationToken.None,
+                        objectGeneration).AsTask(),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var actor = await creation.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            return new CreateActorResult(
+                actor,
+                creation.Created,
+                creation.Created ? createRequest : ZLinkMessage.Empty);
+        }
+        catch
+        {
+            state.PublishReservedCreation();
+            throw;
+        }
+    }
+
     public async ValueTask<CreateActorResult> TransferAndBindActorAsync(
         ZLinkActorRuntimeState state,
         string actorId,
@@ -252,7 +289,8 @@ internal sealed class ZLinkActorCreationCoordinator(
         string actorId,
         Type factoryType,
         ZLinkMessage createRequest,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        ulong? reservedGeneration = null)
     {
         await using var scope = services.CreateAsyncScope();
         var context = ensureActorContext(state);
@@ -266,7 +304,7 @@ internal sealed class ZLinkActorCreationCoordinator(
                 $"Actor factory '{factoryType}' returned actor id '{actor.ActorId}' for requested id '{actorId}'.");
 
         bindActorContext(actor, state);
-        EnsureNativeActorRef(state, actor.ActorId, createRequest);
+        EnsureNativeActorRef(state, actor.ActorId, createRequest, reservedGeneration);
 
         return actor;
     }
@@ -274,7 +312,8 @@ internal sealed class ZLinkActorCreationCoordinator(
     private void EnsureNativeActorRef(
         ZLinkActorRuntimeState state,
         string actorId,
-        ZLinkMessage createRequest)
+        ZLinkMessage createRequest,
+        ulong? reservedGeneration = null)
     {
         var node = getActorSpotNode();
         if (node is null || state.NativeActorRef is not null) return;
@@ -287,7 +326,9 @@ internal sealed class ZLinkActorCreationCoordinator(
         }
 
         using var nativeCreateRequest = createRequest.ToRawMessage(runtime.Registration.Codecs);
-        state.BindNativeActorRef(node.CreateActor(actorId, nativeCreateRequest));
+        state.BindNativeActorRef(reservedGeneration is { } generation
+            ? node.CreateReservedActor(actorId, generation, nativeCreateRequest)
+            : node.CreateActor(actorId, nativeCreateRequest));
     }
 
     private async ValueTask PublishActorRefOrCompensateAsync(

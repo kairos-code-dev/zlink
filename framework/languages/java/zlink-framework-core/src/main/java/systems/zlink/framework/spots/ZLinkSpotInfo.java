@@ -2,5 +2,5 @@ package systems.zlink.framework.spots;
 
 import systems.zlink.contracts.core.RoutingId;
 
-public record ZLinkSpotInfo(RoutingId spotRid) {
+public record ZLinkSpotInfo(String spotId) {
 }

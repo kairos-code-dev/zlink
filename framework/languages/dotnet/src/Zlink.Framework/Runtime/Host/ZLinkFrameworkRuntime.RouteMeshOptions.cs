@@ -9,32 +9,75 @@ namespace Zlink.Framework.Runtime.Host;
 // reaches the live IMeshNode through ZLinkSpotNodeRuntime.Node.
 internal sealed partial class ZLinkFrameworkRuntime
 {
-    internal IZLinkMeshNodeRuntimeOptions ResolveMeshNodeRuntimeOptions(string meshName)
+    internal IZLinkMeshPlacementRuntimeOptions ResolveMeshPlacementRuntimeOptions(
+        string meshName)
     {
-        return ExecuteOperation<IZLinkMeshNodeRuntimeOptions>(() =>
+        return ExecuteOperation<IZLinkMeshPlacementRuntimeOptions>(() =>
         {
             var (nodeRuntime, registration) = ResolveMeshNode(meshName);
-            return new ZLinkMeshNodeRuntimeOptions(registration, nodeRuntime.Node);
+            return new ZLinkMeshPlacementRuntimeOptions(
+                this,
+                registration,
+                nodeRuntime.Node);
         });
     }
 
     internal IZLinkMeshChannelRuntimeOptions ResolveMeshChannelRuntimeOptions(
-        string meshName,
         string channelName)
     {
         return ExecuteOperation<IZLinkMeshChannelRuntimeOptions>(() =>
         {
-            var (nodeRuntime, registration) = ResolveMeshNode(meshName);
-            var membership = registration.ChannelMemberships.FirstOrDefault(
-                candidate => string.Equals(candidate.ChannelName, channelName, StringComparison.Ordinal));
-            if (membership is null)
-                throw new ZLinkConfigurationException(
-                    $"RouteMesh '{meshName}' has no channel membership '{channelName}'.");
-            if (registration.Router is null)
-                throw new ZLinkConfigurationException(
-                    $"RouteMesh '{meshName}' has no serving channel on this node.");
+            var state = GetOrStartState();
+            foreach (var registration in Registration.SpotNodes.Values)
+            {
+                var membership = registration.ChannelMemberships.FirstOrDefault(
+                    candidate => string.Equals(
+                        candidate.ChannelName,
+                        channelName,
+                        StringComparison.Ordinal));
+                if (membership is null)
+                    continue;
+                if (!state.SpotNodes.TryGetValue(
+                        registration.SpotNodeName,
+                        out var nodeRuntime))
+                    break;
+                return new ZLinkMeshChannelRuntimeOptions(
+                    this,
+                    nodeRuntime.Node,
+                    membership,
+                    null,
+                    null);
+            }
+            if (Registration.Channels.TryGetValue(channelName, out var channel)
+                && channel.Server is { } server
+                && state.ClientServerServerBundles.TryGetValue(
+                    channelName,
+                    out var bundle)
+                && bundle.ClientServerServer is { } identity)
+                return new ZLinkMeshChannelRuntimeOptions(
+                    this,
+                    null,
+                    null,
+                    server,
+                    identity);
+            throw new ZLinkConfigurationException(
+                $"No local RouteMesh or ClientServer Server membership '{channelName}' is registered.");
+        });
+    }
 
-            return new ZLinkMeshChannelRuntimeOptions(this, nodeRuntime.Node, membership);
+    internal void SetMeshPlacementWeight(
+        IZLinkBackendSpotNode node,
+        ZLinkSpotNodeRegistration registration,
+        int weight)
+    {
+        _ = node;
+        ExecuteOperation(() =>
+        {
+            registration.PlacementWeight = weight;
+            _autoConnect?.SetLocalPlacementWeight(
+                registration.SpotNodeName,
+                weight);
+            return true;
         });
     }
 
@@ -52,6 +95,20 @@ internal sealed partial class ZLinkFrameworkRuntime
                 membership.ChannelName,
                 ZLinkLocationRole.Spot,
                 (uint)weight);
+            return true;
+        });
+    }
+
+    internal void SetClientServerWeight(
+        ZLinkChannelServerCapabilityRegistration registration,
+        ZLinkClientServerServerIdentity identity,
+        int weight)
+    {
+        ExecuteOperation(() =>
+        {
+            identity.SetWeight(weight);
+            registration.SocketConfig.Weight = weight;
+            _autoConnect?.SetClientServerWeight(identity.ChannelName, weight);
             return true;
         });
     }

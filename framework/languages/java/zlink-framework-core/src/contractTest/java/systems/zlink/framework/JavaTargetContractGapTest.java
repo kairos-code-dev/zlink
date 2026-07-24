@@ -61,8 +61,8 @@ final class JavaTargetContractGapTest {
         Class<?> context = Class.forName("systems.zlink.framework.actors.ZLinkActorContext");
         assertNoPublicMethodNamed(context, "isJoined");
         assertNoPublicMethodNamed(context, "getSpot");
-        Method spotRid = context.getMethod("spotRid");
-        assertEquals(Optional.class, spotRid.getReturnType());
+        Method spotId = context.getMethod("spotId");
+        assertEquals(Optional.class, spotId.getReturnType());
         assertNotNull(Class.forName("systems.zlink.framework.actors.ZLinkActorJoinCall"));
         Class<?> result = Class.forName("systems.zlink.framework.actors.ZLinkActorJoinResult");
         assertTrue(result.isSealed(), "actor join result must be sealed");

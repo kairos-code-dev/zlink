@@ -193,15 +193,15 @@ public class ZLinkFrameworkAutoConfiguration {
             public java.util.concurrent.CompletionStage<java.util.Optional<
                 systems.zlink.framework.spots.SpotHandle>> resolveSpotHandle(
                     String meshName,
-                    systems.zlink.contracts.core.RoutingId spotRid) {
-                return lifecycle.spotHandleResolver().resolveSpotHandle(meshName, spotRid);
+                    String spotId) {
+                return lifecycle.spotHandleResolver().resolveSpotHandle(meshName, spotId);
             }
 
             @Override
             public java.util.concurrent.CompletionStage<java.util.Optional<
                 systems.zlink.framework.spots.SpotHandle>> resolveSpotHandle(
-                    systems.zlink.contracts.core.RoutingId spotRid) {
-                return lifecycle.spotHandleResolver().resolveSpotHandle(spotRid);
+                    String spotId) {
+                return lifecycle.spotHandleResolver().resolveSpotHandle(spotId);
             }
         };
     }

@@ -148,7 +148,7 @@ public sealed partial class RegressionTests
         Assert.DoesNotContain("record ReassignDelivery", messages, StringComparison.Ordinal);
         Assert.Contains("FindAsync(request.CourierId", courierRoutes, StringComparison.Ordinal);
         Assert.Contains("FindAsync(request.CustomerId", customerAccess, StringComparison.Ordinal);
-        Assert.Contains("GetOrCreateAsync(", customerAccess, StringComparison.Ordinal);
+        Assert.Contains("GetOrCreate(", customerAccess, StringComparison.Ordinal);
         Assert.Contains("new FindCustomerActorReq(CustomerId)", customerSession, StringComparison.Ordinal);
         Assert.Contains("new EnsureCustomerActorReq(CustomerId)", customerSession, StringComparison.Ordinal);
         Assert.Contains("IZLinkSpotPacketHandler<CustomerEntrySpot, DeliveryStatusUpdatedMsg>",

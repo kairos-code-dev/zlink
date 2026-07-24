@@ -9,10 +9,11 @@ internal sealed class ZLinkSpotLocationLifecycle(
 
     internal async ValueTask<ZLinkLocationWriteStatus> ClaimAsync(
         string meshName,
-        RoutingId spotRid,
+        string spotId,
         ulong spotGeneration,
         string? spotType,
         RoutingId nodeRid,
+        ulong nodeGeneration,
         ZLinkSpotKind spotKind,
         Func<CancellationToken, ValueTask>? deactivate,
         CancellationToken cancellationToken = default)
@@ -24,10 +25,10 @@ internal sealed class ZLinkSpotLocationLifecycle(
         // descriptor (40-location-runtime §2.2).
         var row = new ZLinkSpotLocation(
             meshName,
-            spotRid,
+            spotId,
             SpotGeneration: spotGeneration,
             OwnerNodeRid: nodeRid,
-            OwnerNodeGeneration: 0,
+            OwnerNodeGeneration: nodeGeneration,
             spotKind,
             SpotType: spotType ?? string.Empty,
             OwnerId: string.Empty,
@@ -37,7 +38,7 @@ internal sealed class ZLinkSpotLocationLifecycle(
         if (result.Status == ZLinkLocationWriteStatus.RejectedConflict)
         {
             var existing = await resolver.ResolveSpotRowAsync(
-                new ZLinkSpotLocationKey(meshName, spotRid),
+                new ZLinkSpotLocationKey(spotId),
                 cancellationToken).ConfigureAwait(false);
             if (existing?.OwnerNodeRid == nodeRid)
             {
@@ -49,11 +50,11 @@ internal sealed class ZLinkSpotLocationLifecycle(
         if (result.Status == ZLinkLocationWriteStatus.Stored)
         {
             var canonical = ZLinkLocationKeyCodec.EncodeSpotKey(
-                new ZLinkSpotLocationKey(meshName, spotRid));
+                new ZLinkSpotLocationKey(spotId));
             lock (_gate)
             {
                 _spots[canonical] = new TrackedSpot(
-                    spotRid, spotGeneration, result.Generation, deactivate);
+                    spotId, spotGeneration, result.Generation, deactivate);
             }
         }
 
@@ -62,13 +63,13 @@ internal sealed class ZLinkSpotLocationLifecycle(
 
     /// <summary>Core lifecycle generation of a spot this runtime claimed;
     /// actor membership rows carry it as their spot lifecycle fence.</summary>
-    internal bool TryGetTrackedGeneration(RoutingId spotRid, out ulong generation)
+    internal bool TryGetTrackedGeneration(string spotId, out ulong generation)
     {
         lock (_gate)
         {
             foreach (var tracked in _spots.Values)
             {
-                if (!tracked.SpotRid.Equals(spotRid)) continue;
+                if (!tracked.SpotId.Equals(spotId)) continue;
                 generation = tracked.SpotGeneration;
                 return true;
             }
@@ -80,10 +81,10 @@ internal sealed class ZLinkSpotLocationLifecycle(
 
     internal async ValueTask ReleaseAsync(
         string meshName,
-        RoutingId spotRid,
+        string spotId,
         CancellationToken cancellationToken = default)
     {
-        var key = new ZLinkSpotLocationKey(meshName, spotRid);
+        var key = new ZLinkSpotLocationKey(spotId);
         var canonical = ZLinkLocationKeyCodec.EncodeSpotKey(key);
         TrackedSpot? tracked;
         lock (_gate)
@@ -98,7 +99,7 @@ internal sealed class ZLinkSpotLocationLifecycle(
             .ConfigureAwait(false);
         if (result.Status is not (ZLinkLocationWriteStatus.Stored or ZLinkLocationWriteStatus.IgnoredStale))
             throw new InvalidOperationException(
-                $"SPOT '{spotRid}' location release was rejected with '{result.Status}'.");
+                $"SPOT '{spotId}' location release was rejected with '{result.Status}'.");
 
         lock (_gate)
         {
@@ -123,7 +124,7 @@ internal sealed class ZLinkSpotLocationLifecycle(
     // SpotGeneration is the spot's core lifecycle generation (row content);
     // StoreGeneration is the store-issued owner token presented on removal.
     private sealed record TrackedSpot(
-        RoutingId SpotRid,
+        string SpotId,
         ulong SpotGeneration,
         ulong StoreGeneration,
         Func<CancellationToken, ValueTask>? Deactivate);

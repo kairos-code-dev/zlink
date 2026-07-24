@@ -254,19 +254,58 @@ test('location runtime applies listPageSize when callers omit a page size', asyn
   ]);
 });
 
-test('location resolver owns actor placement and rotates eligible peers without RID sorting', async () => {
+test('location resolver filters exact actor capacity before weighted placement', async () => {
   const resolver = resolversFor(new internal.ZLinkInMemoryLocationStore());
-  resolver.listLivePeers = async () => [
-    { nodeRid: 'node-z', draining: false, capabilities: ['actor:Player'] },
-    { nodeRid: 'node-a', draining: false, capabilities: ['actor:Player'] },
-    { nodeRid: 'node-draining', draining: true, capabilities: ['actor:Player'] },
-    { nodeRid: 'node-other', draining: false, capabilities: ['actor:Other'] }
-  ];
+  resolver.liveRows.filter = async rows => rows;
+  resolver.options.stores.locationStore = {
+    async listMeshNodes() {
+      return [
+        placementDescriptor('node-z', 'Player', 1, 0, 0),
+        placementDescriptor('node-a', 'Player', 1, 0, 0),
+        placementDescriptor('node-full', 'Player', 10_000, 1, 0),
+        placementDescriptor('node-other', 'Other', 10_000, 0, 0)
+      ];
+    }
+  };
 
-  assert.equal(await resolver.selectActorPlacement('play', 'Player', 'node-source'), 'node-z');
-  assert.equal(await resolver.selectActorPlacement('play', 'Player', 'node-source'), 'node-a');
-  assert.equal(await resolver.selectActorPlacement('play', 'Player', 'node-z'), 'node-a');
+  assert.equal(String(await resolver.selectActorPlacement('play', 'Player', 'node-source')), 'node-z');
+  assert.equal(String(await resolver.selectActorPlacement('play', 'Player', 'node-source')), 'node-a');
+  assert.equal(String(await resolver.selectActorPlacement('play', 'Player', 'node-z')), 'node-a');
 });
+
+function placementDescriptor(nodeRid, stableType, placementWeight, active, reserved) {
+  return {
+    meshName: 'play',
+    rid: rid(nodeRid),
+    lifecycleGeneration: 1n,
+    descriptorRevision: 1n,
+    endpoint: `tcp://${nodeRid}`,
+    objectRole: framework.ZLinkObjectRole.Server,
+    placementWeight,
+    objectCapacity: {
+      activeObjects: active,
+      pendingActivations: reserved,
+      maxActiveObjects: 1,
+      maxPendingActivations: 1
+    },
+    channelWeights: {},
+    applicationVersion: 1n,
+    spotTypes: [],
+    objectCapabilities: [{
+      objectKind: 'actor',
+      stableType,
+      policy: 'disabled',
+      hasSnapshotAdapter: false,
+      active,
+      reserved
+    }],
+    state: framework.ZLinkFrameworkRuntimeState.Serving,
+    securityIdentity: 'test',
+    ownerId: nodeRid,
+    leaseGeneration: 1n,
+    updatedAt: new Date()
+  };
+}
 
 test('location readiness returns false when ready state is missing or query fails', async () => {
   const ready = new internal.DefaultZLinkLocationReadiness({

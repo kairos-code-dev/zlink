@@ -4,11 +4,11 @@ import java.util.Optional;
 import systems.zlink.contracts.core.RoutingId;
 
 public interface ZLinkActorContext {
-    Optional<RoutingId> spotRid();
+    Optional<String> spotId();
 
     ZLinkBoundSession boundSession();
 
-    ZLinkActorJoinCall joinSpot(RoutingId spotRid, Object request);
+    ZLinkActorJoinCall joinSpot(String spotId, Object request);
 
     ZLinkActorJoinCall joinEntrySpot(RoutingId spotNodeRid, Object request);
 }

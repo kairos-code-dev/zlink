@@ -47,12 +47,12 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.8 | Java | runtime event가 sealed event 계층이 아니며 location source 등록 네 개가 없고 event handler가 `void`를 반환한다 |
 | §12.9 | Java/Kotlin, C++ | Spot handle이 전송 mesh를 소유해야 하지만 outbound 호출이 handle과 별도로 ChannelName 또는 node RID를 받는다 |
 | §12.15 | Java | 비동기 실패를 오류 코드를 가진 공통 예외로 정규화하지 않는다 |
-| §12.22 | C++ | HTTP client에 `submit`·`yield`와 DI 서버 표면이 없고 blocking `fetch<T>()`가 공개되어 있다 |
+| §12.22 | C++ | HTTP client에 `submit`과 DI 서버 표면이 없고 blocking `fetch<T>()`가 공개되어 있다 |
 | §12.23 | Java/Kotlin, C++ | worker callback에 cancellation 신호를 전달하지 않는다 |
 | §12.24 | 전 언어 | actor join의 location CAS보다 source leave나 target membership 공개를 먼저 실행한다 |
 | §12.25 | `.NET`, Java/Kotlin, C++ | 계약 밖 receive-count, 수신 큐 admission 우회 또는 operation별 codec 선택·registry가 남아 있다 |
 | §12.26 | Java/Kotlin | Config 5·7 E2E가 exact RouteMesh runtime options 대신 ChannelName 전용 options를 사용한다 |
-| §12.27 | `.NET`, Java/Kotlin, C++ | Actor location이 Spot lifecycle generation을 보존하지 않아 Spot RID 재사용 뒤 stale membership을 구분할 수 없다 |
+| §12.27 | `.NET`, Java/Kotlin, C++ | Actor location이 Spot lifecycle generation을 보존하지 않아 Spot ID 재사용 뒤 stale membership을 구분할 수 없다 |
 | §12.28 | 전 언어 | STREAM Actor dispatch가 target MeshName을 지정하는 public 설정과 startup 검증을 제공하지 않는다 |
 | §12.29 | 전 언어 | Location provider의 opaque authority CAS와 Relocation Store를 relocation coordinator에 연결하지 않아 process 장애 뒤 Actor·Instance relocation을 복구할 수 없다 |
 | §12.30 | C++ | STREAM TLS server 설정이 client 인증서 요구 여부를 받지 않는다 |
@@ -69,6 +69,10 @@ declaration의 세부 차이는 `server/languages/<lang>/`의 exact spec이 소�
 | §12.41 | 전 언어 | MeshNode별 drain policy가 남아 있고 current-turn boundary, permit-before-seal, queue·journal·timer relocation, User Spot aggregate와 Entry maintenance callback을 구현하지 않았다 |
 | §12.43 | 전 언어 | 다섯 언어의 공개 one-way call은 비동기 결과로 전환됐다. 그러나 언어별 admission runtime에 signal 없는 재시도, blocking executor, terminal queue cleanup과 Logical Multicast commit barrier 차이가 남아 있고 Config 13 process E2E가 없다 |
 | §12.44 | 전 언어 | Instance Spot exact public surface, opaque authority CAS 기반 cold activation과 네 언어 runtime의 actor-free lifecycle·fencing·recovery가 완성되지 않았다 |
+| §12.45 | 전 언어 | User Spot factory execution mode, `SpotWide` Actor claim+Spot gate 이중 claim, `PerActor` Actor·Spot·timer lane과 all-lane lifecycle barrier가 목표 계약대로 구현되지 않았다 |
+| §12.46 | 전 언어 | `Yield`가 허용되지 않은 Entry·`PerActor`·Node·Channel 문맥과 Actor join 등에 노출되거나 operation submission 뒤 검증되며, same-gate awaited request가 timeout에 의존한다 |
+| §12.47 | 전 언어 | Generic object active·pending capacity와 scalar delta가 남아 있으며 Actor total·Spot total·Spot stable type typed reservation, activation concurrency 분리와 계층별 monitoring이 구현되지 않았다 |
+| §12.48 | 전 언어 | Entry Spot ID의 `<prefix>-entry-<lowercase-canonical-uuid-v4>` 발급, lifecycle mapping, active collision 즉시 실패와 caller reserved-pattern 사전 거부가 runtime·provider·contract test에서 완성되지 않았다 |
 
 ## 10. Stream Connector wire·검증 계약 차이
 
@@ -104,22 +108,19 @@ client로 규정하고 terminator·turn seam·서버 등록 표면을 고정한�
 
 | 항목 | 계약 | 현재 |
 |------|------|------|
-| terminator | `submit` / `async` / `yield` / callback | C++는 완료 방식 전체를 제공하지 않는다 |
-| Spot turn 인지 | `yield`가 turn을 반납한다 | C++는 framework 실행 turn과 연결되지 않는다 |
-| 서버 표면 | DI 주입 client(`submit`/`async`/`yield`/callback) | C++에는 서버 등록 표면이 없다 |
+| terminator | `submit` / `async` / callback | C++는 완료 방식 전체를 제공하지 않는다 |
+| Spot gate 반납 | HTTP client에는 `yield`가 없고 server worker call이 담당한다 | C++ HTTP client에 execution-turn 기능을 추가하지 않는다 |
+| 서버 표면 | DI 주입 client(`submit`/`async`/callback) | C++에는 서버 등록 표면이 없다 |
 | blocking 표면 | 두지 않는다 | C++ `fetch<T>()`가 남아 있다 |
 
-그 결과 **spot handler에서 외부 API를 호출하면 실행 줄이 그대로 막힌다.** actor 입·퇴장 시 외부
-데이터를 가져오는 흐름이 room 전체와 timer를 멈춘다 — 이 client가 존재해야 하는 이유가 바로
-그 경로인데 표면이 없다.
+Spot handler에서 외부 API를 기다리면서 shared gate를 반납하는 책임은 HTTP client가 아니라
+`RunIoWorker(...).Yield()`에 있다.
 
 **고쳐야 할 것:**
 
-- 세 terminator(`submit`/`async`/`yield`)와 callback 완료 경로를 제공한다.
-- **turn seam**(execution scheduler 주입점)을 공개 계약으로 둔다. framework가 DI 등록 시 spot
-  turn을 아는 scheduler를 꽂는다. C++ HTTP client에는 **같은 형태의 API 표면이 있다**
-  (`framework_resume_scheduler_t`) — 다만 framework 런타임이 아직 그것을 주입하지 않으므로 표면만
-  있고 통합은 검증되지 않았다.
+- `submit`/`async` terminator와 callback 완료 경로를 제공한다.
+- HTTP request builder에는 `yield`를 추가하지 않는다. Shared Spot gate를 반납하는 호출은 C++ framework의
+  I/O worker와 worker `yield()`를 사용한다.
 - **서버용 DI 표면**을 신설한다. application이 명명 등록하고 handler가 주입받는다. 정적 팩토리는
   client-side 전용으로 남긴다.
 - blocking 언래핑 terminator를 public 표면에서 제거한다.
@@ -205,7 +206,7 @@ ChannelName을 등록하면 startup에서 거부하는 contract test를 추가�
 ### 12.27 `.NET`·Java/Kotlin·C++ Actor location의 Spot generation 미구현
 
 [Location Runtime §3](server/40-location-runtime.ko.md)과 다섯 언어 exact interface는 Actor location에
-현재 Spot의 lifecycle generation을 보존한다. 같은 Spot RID가 종료 뒤 다시 사용되면 이 값으로 낮은
+현재 Spot의 lifecycle generation을 보존한다. 같은 Spot ID가 종료 뒤 다시 사용되면 이 값으로 낮은
 generation의 membership과 새 membership을 구분한다.
 
 `.NET`, C++와 Java/Kotlin의 public `ActorLocation` record와 공식 Redis codec에는 이 필드가 없다.
@@ -217,7 +218,7 @@ contract test로 고정해야 한다.
 - Actor가 Spot에 join할 때 현재 Spot generation을 location row에 기록한다.
 - resolve와 relocation admission은 row의 Spot generation과 현재 Spot owner를 함께 검증한다.
 - Redis round-trip이 unsigned 64-bit generation을 손실 없이 보존한다.
-- 같은 Spot RID를 더 큰 generation으로 다시 만든 뒤 낮은 generation의 actor row를 stale로 거부한다.
+- 같은 Spot ID를 더 큰 generation으로 다시 만든 뒤 낮은 generation의 actor row를 stale로 거부한다.
 
 ### 12.28 전 언어 STREAM Actor dispatch MeshName 설정 미구현
 
@@ -610,7 +611,7 @@ validation, cancellation·timeout·shutdown terminal 경합, no late admission�
 
 정식 계약은 Spot manager의 명시적인 `Create`와 `GetOrCreate`가 User Spot만 생성하도록 요구한다. 두 operation은
 target node나 endpoint를 받지 않으며 single-use call로 동작한다. Direct send/request의 시작 method는 global
-Spot RID만 받고 Spot 전용 fluent call을 반환한다. Instance intent가 없는 call은 existing Ready owner만
+Spot ID만 받고 Spot 전용 fluent call을 반환한다. Instance intent가 없는 call은 existing Ready owner만
 resolve한다. Instance intent를 가진 call만 Missing Instance Spot의 cold activation을 시작하며 stable type을
 생략하면 선택한 Mesh의 distinct Instance type이 하나일 때 자동 선택한다. 여러 type이면 caller가 type을
 명시한다. 별도 address, resolver와 handle은 제공하지 않는다.
@@ -649,6 +650,46 @@ runtime에서 병렬로 진행한다. Java와 Kotlin은 JVM runtime을 공유하
 projection을 제거한다.
 Remote target의 queue 미수락 receipt와 자동 request 재제출은 첫 계약에 추가하지 않는다. Instance intent가
 없는 일반 message는 durable creation intent 없이 owner를 선택하거나 Instance를 선제 activation하지 않는다.
+
+### 12.45 전 언어 User Spot execution mode와 barrier 미구현
+
+정식 계약은 User Spot factory의 기본 `SpotWide`와 선택형 `PerActor`를 요구한다. `SpotWide` Member Actor는
+Actor FIFO claim 안에서 User Spot gate를 얻고, `PerActor`는 Actor별 FIFO lane, Spot direct·lifecycle lane과
+timer별 FIFO lane을 사용한다. 현재 runtime은 언어마다 Actor mailbox와 Spot queue의 중첩 순서가 다르고,
+yielded continuation까지 기다리는 close·snapshot·relocation barrier가 없다. C++의 mutex claim은 FIFO가
+아니며 Node.js User Spot에는 외부 Actor mailbox가 없다. JVM lifecycle의 claim 순서는 새 gate와 결합하면
+교착할 수 있고 Kotlin coroutine context는 execution permit을 보존하지 않는다.
+
+각 runtime은 `Actor claim → User Spot gate` 순서를 지키고 application continuation을 inline으로 실행하지
+않아야 한다. Barrier는 admission과 participant 변경을 먼저 seal한 뒤 active·yielded Actor·Spot·timer lane이
+같은 generation의 안전 경계에 도달할 때만 capture한다.
+
+### 12.46 전 언어 Yield allowlist와 submit 전 검증 미구현
+
+`Yield`는 Channel·Spot·Actor request와 I/O·CPU worker call에만 존재하고 `SpotWide` User Spot과 Instance
+Spot에서만 실행할 수 있다. 현재 public surface에는 Actor join과 일반 owner call의 `Yield`가 남아 있고 일부
+runtime은 outbound operation이나 worker를 먼저 시작한 뒤 execution context를 검사한다. Entry Spot·Entry
+Actor·`PerActor`·Node·Channel·owner 밖의 호출은 operation ID, outbound admission, worker scheduling과 queue
+mutation 전에 `InvalidConfiguration`으로 끝나야 한다. Same-gate `Async`와 self awaited Actor request도
+timeout에 의존하지 않고 submit 전에 거부해야 한다.
+
+### 12.47 전 언어 typed capacity와 Location transaction 미구현
+
+현재 구현의 generic active object와 pending activation 수, scalar capacity delta는 Actor와 Spot의 다른
+비용과 User Spot aggregate를 표현하지 못한다. 목표 계약은 Actor total, Spot total과 optional Spot
+stable-type bucket을 typed vector로 예약한다. `0`은 unlimited이고 activation concurrency는 population과
+별도다. Creation·commit·abort·destroy·relocation과 aggregate commit은 vector 전체와 authority를 한
+Location Store transaction에서 변경해야 한다. 공식 Redis provider는 `{zlink-location-v3}` epoch로
+migration하고 monitoring은 계층별 active·reserved·limit을 제공해야 한다.
+
+### 12.48 전 언어 Entry Spot lifecycle ID 미구현
+
+Entry Spot은 MeshNode diagnostic prefix에 `-entry-`와 독립 RFC 4122 UUID v4 lowercase canonical 문자열을
+붙인 Spot ID를 lifecycle마다 발급한다. Runtime과 provider는 같은 lifecycle의 exact descriptor mapping, replacement의 새 Spot ID, global
+namespace active collision의 record mutation·재시도 없는 즉시 `SpotIdConflict` startup failure를 구현해야 한다. Caller가 지정한
+User·Instance Spot ID가 reserved Entry 형식과 일치하면 Location Store reservation과 factory 전에
+`InvalidConfiguration`으로 거부해야 한다. 관계를 RID 문자열 parsing이나 full MeshNode RID 결합으로
+복원하지 않는다.
 
 ## 13. 샘플 계약 차이
 

@@ -149,11 +149,20 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 objectCapabilities: BuildObjectCapabilities(spot),
                 applicationVersion: registration.ApplicationVersion,
                 maintenanceWave: registration.MaintenanceWave,
+                entrySpotId: spot.EntrySpotId,
                 placementWeight: spot.PlacementWeight,
                 capacity: new ZLinkPlacementCapacity(
+                    new ZLinkPopulationCapacity(
+                        0,
+                        0,
+                        spot.MaxActiveObjects),
+                    new ZLinkPopulationCapacity(
+                        0,
+                        0,
+                        spot.MaxActiveObjects),
+                    BuildSpotTypeCapacities(spot)),
+                activationConcurrency: new ZLinkActivationConcurrency(
                     0,
-                    0,
-                    spot.MaxActiveObjects,
                     spot.MaxPendingActivations));
         }
 
@@ -320,8 +329,10 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         IReadOnlyList<ZLinkObjectCapability>? objectCapabilities = null,
         long applicationVersion = 0,
         string? maintenanceWave = null,
+        string? entrySpotId = null,
         int placementWeight = 100,
-        ZLinkPlacementCapacity? capacity = null)
+        ZLinkPlacementCapacity? capacity = null,
+        ZLinkActivationConcurrency? activationConcurrency = null)
     {
         // A descriptor is keyed by (MeshName, Rid), so a capability without
         // an identity cannot be advertised (an endpoint-less member still
@@ -354,13 +365,15 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 ObjectCapabilities =
                     objectCapabilities ?? Array.Empty<ZLinkObjectCapability>(),
                 MaintenanceWave = maintenanceWave,
+                EntrySpotId = entrySpotId,
                 State = ZLinkFrameworkRuntimeState.Serving,
                 PlacementWeight = placementWeight,
                 Capacity = capacity ?? new ZLinkPlacementCapacity(
-                    0,
-                    0,
-                    10_000,
-                    128)
+                    new ZLinkPopulationCapacity(0, 0, 0),
+                    new ZLinkPopulationCapacity(0, 0, 0),
+                    Array.Empty<ZLinkSpotTypeCapacity>()),
+                ActivationConcurrency = activationConcurrency
+                    ?? new ZLinkActivationConcurrency(0, 128)
             }
             : null;
         var reconciler = new ZLinkAutoConnectReconciler(
@@ -391,6 +404,19 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     {
         if (_localReconcilers.TryGetValue((type, meshName, role), out var reconciler))
             reconciler.SetLocalWeight(weight);
+    }
+
+    internal void SetLocalPlacementWeight(string meshName, int weight)
+    {
+        if (_localReconcilers.TryGetValue(
+                (ZLinkLocationAutoConnectType.SpotMesh, meshName, ZLinkLocationRole.Spot),
+                out var reconciler))
+            reconciler.SetLocalPlacementWeight(weight);
+    }
+
+    internal void SetClientServerWeight(string channelName, int weight)
+    {
+        _clientServerDiscovery?.SetLocalWeight(channelName, weight);
     }
 
     internal ValueTask<bool> SetLocalWeightAsync(
@@ -466,12 +492,25 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                         $"Unknown relocation policy kind '{registration.PolicyKind}'.")
                 },
                 registration.AdapterType is not null,
-                registration.Placement.PlacementProfiles.ToHashSet(
-                    StringComparer.Ordinal),
-                registration.Placement.MaxActiveObjects,
-                registration.Placement.MaxPendingActivations));
+                objectKind == ZLinkPlacementObjectKind.Actor
+                    ? 0
+                    : registration.Placement.MaxActiveObjects ?? 0));
         }
     }
+
+    private static IReadOnlyList<ZLinkSpotTypeCapacity>
+        BuildSpotTypeCapacities(ZLinkSpotNodeRegistration registration) =>
+        BuildObjectCapabilities(registration)
+            .Where(static capability =>
+                capability.ObjectKind is ZLinkPlacementObjectKind.UserSpot
+                    or ZLinkPlacementObjectKind.InstanceSpot)
+            .Select(static capability => new ZLinkSpotTypeCapacity(
+                capability.ObjectKind,
+                capability.StableType,
+                0,
+                0,
+                capability.Limit))
+            .ToArray();
 
     private static RoutingId? BundleRid(string? bundleRid, RoutingId fallback) =>
         bundleRid is { Length: > 0 } value ? RoutingId.From(value) : RidOrNull(fallback);

@@ -55,13 +55,13 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
 
     public void ObserveSpotAuthority(
         RoutingId nodeRid,
-        RoutingId spotRid,
+        string spotId,
         ulong objectGeneration,
         ulong authorityOwnerGeneration)
     {
         RequireManagedNode().ObserveSpotAuthority(
             nodeRid,
-            spotRid,
+            spotId,
             objectGeneration,
             authorityOwnerGeneration);
     }
@@ -173,6 +173,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         _node.SetUserSpotOperationTarget(target);
     }
 
+    public void SetActorCreateOperationTarget(IActorCreateOperationTarget target)
+    {
+        _node.SetActorCreateOperationTarget(target);
+    }
+
     public void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target)
     {
         _node.SetInstanceSpotActivationTarget(target);
@@ -182,16 +187,16 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         UserSpotCreateCompletion Completion,
         IReadOnlyList<Message> Reply)> CreateUserSpotAsync(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        string spotId,
         string stableType,
-        UserSpotReservationFence reservation,
+        ObjectReservationFence reservation,
         ulong deadlineUnixMs,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
         EnsureStarted();
         var submit = RequireManagedNode().CreateUserSpot(
-            targetNodeRid, spotRid, stableType, reservation,
+            targetNodeRid, spotId, stableType, reservation,
             deadlineUnixMs, out var operationId, timeout);
         if (submit != SubmitResult.Ok)
             throw new ZlinkSubmitException(
@@ -217,6 +222,59 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         }))
             throw new InvalidOperationException(
                 "Remote User Spot create did not return an operation id.");
+        await using (cancellationToken.Register(
+                         () => terminal.TrySetCanceled(cancellationToken))
+                     .ConfigureAwait(false))
+            return await terminal.Task.ConfigureAwait(false);
+    }
+
+    public async ValueTask<(
+        ActorCreateCompletion Completion,
+        IReadOnlyList<Message> Reply)> CreateActorRemoteAsync(
+        RoutingId targetNodeRid,
+        string actorId,
+        string stableType,
+        ObjectReservationFence reservation,
+        ulong deadlineUnixMs,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        var submit = RequireManagedNode().CreateActorRemote(
+            targetNodeRid, actorId, stableType, reservation,
+            deadlineUnixMs, out var operationId, timeout);
+        if (submit != SubmitResult.Ok)
+            throw new ZlinkSubmitException(
+                (ZlinkSubmitException.ErrorCode)(int)submit);
+        var terminal = new TaskCompletionSource<(
+            ActorCreateCompletion, IReadOnlyList<Message>)>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_completions.Register(operationId, (record, parts) =>
+        {
+            if (record.TerminalResult == (int)RequestResult.Ok
+                && record.ActorCreateCompletion is { } completion)
+            {
+                var actor = completion.Result is ActorCreateResult.Existing
+                    or ActorCreateResult.Created
+                    ? new ActorRef(
+                        targetNodeRid,
+                        completion.Actor.ActorId,
+                        completion.Actor.Generation)
+                    : default;
+                terminal.TrySetResult((
+                    completion with { Actor = actor },
+                    parts));
+            }
+            else
+            {
+                ZLinkMessageParts.DisposeAll(parts);
+                terminal.TrySetException(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.ActorCreateFailed,
+                    "Remote Actor create failed."));
+            }
+        }))
+            throw new InvalidOperationException(
+                "Remote Actor create did not return an operation id.");
         await using (cancellationToken.Register(
                          () => terminal.TrySetCanceled(cancellationToken))
                      .ConfigureAwait(false))
@@ -323,11 +381,11 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             _node, _node.CreateSpot(), _pump, _completions, _subscriptions);
     }
 
-    public IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created)
+    public IZLinkBackendSpot GetOrCreateSpot(string spotId, out bool created)
     {
         EnsureStarted();
         return new ZLinkBackendSpotWrapper(
-            _node, _node.GetOrCreateSpot(spotRid, out created),
+            _node, _node.GetOrCreateSpot(spotId, out created),
             _pump, _completions, _subscriptions);
     }
 
@@ -404,6 +462,19 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         return EnsureConcreteActorRef(actorRef.ToBackend(), actorId);
     }
 
+    public ZLinkBackendActorRef CreateReservedActor(
+        string actorId,
+        ulong objectGeneration,
+        Message createRequest)
+    {
+        EnsureStarted();
+        var actorRef = _node.CreateReservedActor(
+            actorId,
+            objectGeneration,
+            new[] { createRequest });
+        return EnsureConcreteActorRef(actorRef.ToBackend(), actorId);
+    }
+
     public ZLinkBackendActorRef? ActorLookup(string actorId)
     {
         return _node.ActorLookup(actorId, out var location)
@@ -428,13 +499,13 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     public bool JoinActor(
         ZLinkBackendActorRef actor,
         RoutingId destNodeRid,
-        RoutingId destSpotRid,
+        string destSpotId,
         Message message,
         RequestCallback callback,
         TimeSpan? timeout)
     {
         var operationId = _node.JoinSpot(
-            actor.ToNative(), destNodeRid, destSpotRid, 0, new[] { message },
+            actor.ToNative(), destNodeRid, destSpotId, 0, new[] { message },
             timeout ?? default);
         return _completions.RegisterRequest(operationId, callback);
     }
@@ -442,13 +513,13 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
     public bool JoinActor(
         ZLinkBackendActorRef actor,
         RoutingId destNodeRid,
-        RoutingId destSpotRid,
+        string destSpotId,
         IReadOnlyList<Message> parts,
         ActorJoinCallback callback,
         TimeSpan? timeout)
     {
         var operationId = _node.JoinSpot(
-            actor.ToNative(), destNodeRid, destSpotRid, 0, parts, timeout ?? default);
+            actor.ToNative(), destNodeRid, destSpotId, 0, parts, timeout ?? default);
         return _completions.Register(operationId, (record, replyParts) =>
             callback(BuildJoinResult(record, actor), replyParts));
     }
@@ -474,7 +545,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             ZLinkMeshCompletionTable.MapResult(record.TerminalResult, record.FailureErrno),
             completion is { JoinResult: ActorJoinResult.Accepted } ? 0 : 1,
             completion?.Actor.ToBackend() ?? fallback,
-            completion?.Location.SpotRid ?? default,
+            completion?.Location.SpotId ?? string.Empty,
             completion?.Location.MembershipEpoch ?? 0,
             0);
     }
@@ -488,7 +559,7 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
             completion is { JoinResult: ActorJoinResult.Accepted } ? 0 : 1,
             completion?.Actor.ToBackend() ?? fallback,
             targetNodeRid,
-            completion?.Location.SpotRid ?? default,
+            completion?.Location.SpotId ?? string.Empty,
             completion?.Location.MembershipEpoch ?? 0,
             0);
     }

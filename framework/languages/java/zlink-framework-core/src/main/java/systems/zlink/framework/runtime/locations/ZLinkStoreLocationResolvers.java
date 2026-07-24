@@ -48,19 +48,19 @@ public final class ZLinkStoreLocationResolvers
     }
 
     CompletionStage<ZLinkSpotLocation> resolveAnySpotRow(
-        systems.zlink.contracts.core.RoutingId spotRid) {
-        return resolveAnySpotRow(spotRid, ZLinkPageRequest.firstPage());
+        String spotId) {
+        return resolveAnySpotRow(spotId, ZLinkPageRequest.firstPage());
     }
 
     private CompletionStage<ZLinkSpotLocation> resolveAnySpotRow(
-        systems.zlink.contracts.core.RoutingId spotRid,
+        String spotId,
         ZLinkPageRequest page) {
         return stores.spotStore()
             .listSpotLocations(ZLinkSpotLocationFilter.all(), page)
             .thenCompose(result -> liveRows.filterLiveSpots(result.items())
                 .thenCompose(live -> {
                     ZLinkSpotLocation found = live.stream()
-                        .filter(row -> row.spotRid().equals(spotRid))
+                        .filter(row -> row.spotId().equals(spotId))
                         .findFirst()
                         .orElse(null);
                     if (found != null || result.continuationToken() == null
@@ -68,7 +68,7 @@ public final class ZLinkStoreLocationResolvers
                         return CompletableFuture.completedFuture(found);
                     }
                     return resolveAnySpotRow(
-                        spotRid,
+                        spotId,
                         new ZLinkPageRequest(
                             page.pageSize(),
                             result.continuationToken()));
@@ -76,8 +76,52 @@ public final class ZLinkStoreLocationResolvers
     }
 
     public CompletionStage<ZLinkActorLocation> resolveActorRow(ZLinkActorLocationKey key) {
-        return liveRows.resolveLiveActor(stores.actorStore().resolveActor(key))
-            .thenApply(row -> row == null || row.actorRef() == null ? null : row);
+        if (stores.authorityStore() == null) {
+            return legacyActorRow(key);
+        }
+        return stores.authorityStore()
+            .read(ZLinkAuthorityKeyCodec.actor(key.actorId()), () -> false)
+            .thenCompose(read -> {
+                if (read instanceof systems.zlink.framework.locations
+                    .ZLinkAuthoritySnapshot snapshot) {
+                    var authority =
+                        new ZLinkActorAuthorityPayloadCodec()
+                            .decode(snapshot.payload())
+                            .orElse(null);
+                    if (authority != null
+                        && authority.state()
+                            == ZLinkActorAuthorityPayloadCodec.State.READY) {
+                        return CompletableFuture.completedFuture(
+                            new ZLinkActorLocation(
+                                authority.actorId(),
+                                authority.stableType(),
+                                new systems.zlink.framework.actors.ActorRef(
+                                    authority.nodeRid(),
+                                    authority.actorId(),
+                                    snapshot.objectGeneration()),
+                                authority.nodeRid(),
+                                authority.currentSpotKind() == 1
+                                    ? systems.zlink.framework.spots
+                                        .ZLinkSpotKind.ENTRY
+                                    : systems.zlink.framework.spots
+                                        .ZLinkSpotKind.USER,
+                                authority.meshName(),
+                                authority.currentSpotId(),
+                                snapshot.ownerId(),
+                                snapshot.authorityOwnerGeneration(),
+                                snapshot.storeNow()));
+                    }
+                }
+                return legacyActorRow(key);
+            });
+    }
+
+    private CompletionStage<ZLinkActorLocation> legacyActorRow(
+        ZLinkActorLocationKey key) {
+        return liveRows.resolveLiveActor(
+                stores.actorStore().resolveActor(key))
+            .thenApply(row ->
+                row == null || row.actorRef() == null ? null : row);
     }
 
     CompletionStage<ZLinkRouteLocation> resolveRouteRow(ZLinkRouteLocationKey key) {
@@ -110,21 +154,21 @@ public final class ZLinkStoreLocationResolvers
 
         public CompletionStage<ZLinkSpotLocation> resolveSpotRow(
             String meshName,
-            systems.zlink.contracts.core.RoutingId spotRid) {
-            return rows.resolveSpotRow(new ZLinkSpotLocationKey(meshName, spotRid));
+            String spotId) {
+            return rows.resolveSpotRow(new ZLinkSpotLocationKey(spotId));
         }
 
         public CompletionStage<ZLinkSpotLocation> resolveAnySpotRow(
-            systems.zlink.contracts.core.RoutingId spotRid) {
+            String spotId) {
             CompletionStage<ZLinkSpotLocation> result = CompletableFuture.completedFuture(null);
             for (String meshName : meshNames) {
                 result = result.thenCompose(found -> found != null
                     ? CompletableFuture.completedFuture(found)
-                    : rows.resolveSpotRow(new ZLinkSpotLocationKey(meshName, spotRid)));
+                    : rows.resolveSpotRow(new ZLinkSpotLocationKey(spotId)));
             }
             return result.thenCompose(found -> found != null
                 ? CompletableFuture.completedFuture(found)
-                : rows.resolveAnySpotRow(spotRid));
+                : rows.resolveAnySpotRow(spotId));
         }
 
         public String routerChannelId(String meshName) {

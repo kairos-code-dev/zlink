@@ -36,6 +36,7 @@
     { "name": "applicationVersionMax", "value": "9223372036854775807" },
     { "name": "weightMax", "value": 100 },
     { "name": "creationIntentBytes", "value": 1048576 },
+    { "name": "creationTerminalEnvelopeBytes", "value": 1048576 },
     { "name": "maintenanceAggregateParticipants", "value": 1024 },
     { "name": "relocationResourceParticipants", "value": 2048 },
     { "name": "maintenanceAggregateBytes", "value": 1048576 },
@@ -61,7 +62,7 @@
       "controls": "bound-session-tail"
     },
     {
-      "name": "sourceSpotRid",
+      "name": "sourceSpotId",
       "bit": 4,
       "controls": "bound-session-tail"
     },
@@ -164,7 +165,7 @@
       "kind": "spot-authority-aggregate-integrity",
       "authorityObjectType": "authority-object-identity",
       "canonicalKeyKind": "spot",
-      "canonicalKeyComponents": ["spotRid"],
+      "canonicalKeyComponents": ["spotId"],
       "spotKinds": ["entry", "user", "instance"],
       "singleAuthoritativeRow": true,
       "typedSpotLocation": "framework-decoded-projection-not-separate-authority",
@@ -294,9 +295,8 @@
       "requestBoundFields": [
         "targetNodeRid",
         "targetNodeGeneration",
-        "targetSpotRid",
+        "targetSpotId",
         "ready.authority-or-coldActivation.stableType-and-targetDescriptorVersion",
-        "coldActivation.placementProfile-and-affinityKey",
         "coldActivation.deadlineUnixMs"
       ],
       "targetComparison": "exact-current-authority-before-mailbox-admission",
@@ -362,7 +362,7 @@
       "operationIdentity": "source-node-rid-source-node-generation-and-operation-id-terminal-once",
       "deadline": "one-source-deadline-covering-resolve-reservation-remote-execution-and-terminal-reply-never-restarted",
       "create": {
-        "authorityKey": "global-spot-rid-user-kind-only",
+        "authorityKey": "global-spot-id-user-kind-only",
         "reservation": "provider-issued-reservation-id-exact-store-version-object-generation-authority-owner-generation-target-node-lifecycle-owner-lease-and-pending-capacity",
         "content": "target-exact-reads-immutable-pending-creation-content-from-location-store-never-command-payload",
         "admissionOrder": [
@@ -390,6 +390,23 @@
         "retarget": "forbidden"
       },
       "polling": "location-row-polling-is-not-terminal-completion",
+      "applicationControlPacket": "forbidden"
+    },
+    {
+      "kind": "actor-create-terminal-operation-integrity",
+      "commands": {
+        "create": "actorCreate",
+        "terminal": "reply"
+      },
+      "scope": "route-mesh-object-client-or-server-to-exact-object-server-only",
+      "operationIdentity": "source-node-rid-source-node-generation-and-operation-id-terminal-once",
+      "deadline": "one-source-deadline-covering-resolve-reservation-remote-execution-and-terminal-reply-never-restarted",
+      "creationInput": "immutable-content-reference-in-reserved-authority-command-carries-no-application-payload",
+      "concurrency": "one-callback-per-actor-reservation-distinct-operation-waits-then-ready-existing-or-rejected-cleanup-new-reservation",
+      "terminalResult": "same-operation-only-existing-created-or-rejected-with-optional-application-payload",
+      "terminalEnvelopeMaximumBytes": { "$bound": "creationTerminalEnvelopeBytes" },
+      "terminalRetention": "original-operation-deadline-plus-300000ms-provider-store-time",
+      "rejectedPublication": "no-ready-authority-no-active-capacity-exact-reserved-cleanup",
       "applicationControlPacket": "forbidden"
     },
     {
@@ -858,6 +875,7 @@
     {
       "kind": "contract-amendment-limit-integrity",
       "creationIntentBytesMaximum": { "$bound": "creationIntentBytes" },
+      "creationTerminalEnvelopeBytesMaximum": { "$bound": "creationTerminalEnvelopeBytes" },
       "aggregateParticipantsMaximum": { "$bound": "maintenanceAggregateParticipants" },
       "aggregateEncodedBytesMaximum": { "$bound": "maintenanceAggregateBytes" },
       "aggregateId": "nonzero-128-bit",
@@ -874,7 +892,7 @@
       "kind": "actor-retire-membership-integrity",
       "relocatable": "source-entry-spot-current-member-only",
       "userSpotMember": "preflight-blocked-relocationDisabled-state-and-admission-unchanged",
-      "targetOffer": "compatible-initialized-target-entry-spot-rid-object-generation-and-kind",
+      "targetOffer": "compatible-initialized-target-entry-spot-id-object-generation-and-kind",
       "commit": "newOwner-cas-atomically-updates-owner-authority-owner-generation-and-current-target-entry-spot",
       "callbackOrder": "factory-restore-and-staging-then-owner-entry-membership-commit-then-target-entry-onActorRelocated-then-source-entry-onLeaveActor-and-old-entry-membership-durable-cleanup-or-source-crash-durable-cleanup-terminal-then-journal-replay",
       "targetCallback": "target-entry-onActorRelocated-after-commit-never-onJoinedActor",
@@ -938,7 +956,7 @@
     "separator": ":",
     "kindDiscriminators": [
       { "objectKind": "actor", "wire": "a", "components": ["actorId"] },
-      { "objectKind": "spot", "wire": "s", "components": ["spotRid"] }
+      { "objectKind": "spot", "wire": "s", "components": ["spotId"] }
     ],
     "componentLayout": "decimal-raw-byte-length-colon-percent-encoded-bytes",
     "componentRawBytesMinimum": 1,
@@ -1830,7 +1848,8 @@
         { "name": "streamClose", "value": 11 },
         { "name": "instanceSpotRequest", "value": 12 },
         { "name": "userSpotCreate", "value": 13 },
-        { "name": "userSpotClose", "value": 14 }
+        { "name": "userSpotClose", "value": 14 },
+        { "name": "actorCreate", "value": 15 }
       ]
     },
     {
@@ -1916,6 +1935,16 @@
       ]
     },
     {
+      "name": "actor-create-result",
+      "kind": "enum",
+      "encoding": "u8",
+      "values": [
+        { "name": "existing", "value": 1 },
+        { "name": "created", "value": 2 },
+        { "name": "rejected", "value": 3 }
+      ]
+    },
+    {
       "name": "instance-authority-state",
       "kind": "enum",
       "encoding": "u8",
@@ -1975,9 +2004,83 @@
       "name": "spot-ref",
       "kind": "struct",
       "fields": [
-        { "name": "spotRid", "$ref": "rid" },
+        { "name": "spotId", "$ref": "text8" },
         { "name": "objectGeneration", "$ref": "nonzero-u64" }
       ]
+    },
+    {
+      "name": "actor-create-terminal",
+      "kind": "conditional-union",
+      "discriminators": [
+        { "name": "createResult", "source": "wire", "$ref": "actor-create-result" }
+      ],
+      "bodyLengthType": { "$ref": "u16" },
+      "bodyLengthCovers": "selected-case",
+      "cases": [
+        {
+          "when": { "createResult": "existing" },
+          "fields": [{ "name": "actor", "$ref": "actor-ref" }]
+        },
+        {
+          "when": { "createResult": "created" },
+          "fields": [{ "name": "actor", "$ref": "actor-ref" }]
+        },
+        { "when": { "createResult": "rejected" }, "fields": [] }
+      ],
+      "otherwise": "protocol-error",
+      "trailingBytes": "forbidden"
+    },
+    {
+      "name": "creation-operation-terminal-v1",
+      "kind": "versioned-length-delimited",
+      "version": { "$ref": "u8", "constant": 1 },
+      "length": { "$ref": "u32", "covers": "body" },
+      "maximumEncodedBytes": { "$bound": "creationTerminalEnvelopeBytes" },
+      "body": [
+        { "name": "terminalResult", "$ref": "request-terminal-result" },
+        { "name": "failureCode", "$ref": "framework-error-code" },
+        { "name": "hasCreation", "$ref": "bool8" },
+        {
+          "name": "creation",
+          "$ref": "actor-create-terminal",
+          "when": { "fieldEquals": { "name": "hasCreation", "value": "true" } },
+          "otherwise": "forbidden"
+        },
+        { "name": "hasApplicationPayload", "$ref": "bool8" },
+        {
+          "name": "applicationPayload",
+          "$ref": "application-payload-envelope-v1",
+          "when": {
+            "fieldEquals": { "name": "hasApplicationPayload", "value": "true" }
+          },
+          "otherwise": "forbidden"
+        }
+      ],
+      "constraints": [
+        {
+          "kind": "terminal-success-shape",
+          "when": { "terminalResult": "ok" },
+          "requires": {
+            "failureCode": "none",
+            "hasCreation": "true"
+          }
+        },
+        {
+          "kind": "terminal-failure-shape",
+          "when": { "terminalResultNot": "ok" },
+          "requires": {
+            "hasCreation": "false",
+            "hasApplicationPayload": "false"
+          }
+        },
+        {
+          "kind": "existing-has-no-application-payload",
+          "when": { "creation.createResult": "existing" },
+          "requires": { "hasApplicationPayload": "false" }
+        }
+      ],
+      "correlationFields": "forbidden",
+      "trailingBytes": "forbidden"
     },
     {
       "name": "optional-spot-ref",
@@ -2084,9 +2187,9 @@
         { "when": { "objectKind": "actor" },
           "fields": [{ "name": "actorId", "$ref": "text8" }] },
         { "when": { "objectKind": "userSpot" },
-          "fields": [{ "name": "spotRid", "$ref": "rid" }] },
+          "fields": [{ "name": "spotId", "$ref": "text8" }] },
         { "when": { "objectKind": "instanceSpot" },
-          "fields": [{ "name": "spotRid", "$ref": "rid" }] }
+          "fields": [{ "name": "spotId", "$ref": "text8" }] }
       ],
       "otherwise": "protocol-error",
       "trailingBytes": "forbidden"
@@ -2101,8 +2204,6 @@
         { "name": "key", "$ref": "object-creation-key" },
         { "name": "stableType", "$ref": "text8" },
         { "name": "initialMeshName", "$ref": "text8" },
-        { "name": "placementProfile", "$ref": "optional-text8" },
-        { "name": "affinityKey", "$ref": "optional-text8" },
         { "name": "requestContentReference", "$ref": "creation-content-reference" },
         { "name": "requestSha256", "$ref": "sha256-bytes" },
         { "name": "requestEncodedSize", "$ref": "creation-request-size" }
@@ -2138,17 +2239,15 @@
       "name": "instance-activation-recovery-v1",
       "kind": "struct",
       "fields": [
-        { "name": "targetSpotRid", "$ref": "rid" },
+        { "name": "targetSpotId", "$ref": "text8" },
         { "name": "stableType", "$ref": "text8" },
         { "name": "targetMeshName", "$ref": "text8" },
         { "name": "targetNodeRid", "$ref": "rid" },
         { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "targetDescriptorVersion", "$ref": "text8" },
-        { "name": "placementProfile", "$ref": "optional-text8" },
-        { "name": "affinityKey", "$ref": "optional-text8" },
         { "name": "sourceNodeRid", "$ref": "rid" },
         { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
-        { "name": "sourceSpotRid", "$ref": "optional-rid" },
+        { "name": "sourceSpotId", "$ref": "optional-text8" },
         { "name": "operationKind", "$ref": "instance-operation-kind" },
         { "name": "operation", "$ref": "operation-id" },
         { "name": "replyRoute", "$ref": "instance-reply-route" },
@@ -2385,7 +2484,7 @@
           },
           "fields": [
             { "name": "instanceType", "$ref": "text8" },
-            { "name": "spotRid", "$ref": "rid" },
+            { "name": "spotId", "$ref": "text8" },
             { "name": "objectGeneration", "$ref": "nonzero-u64" }
           ]
         }
@@ -2421,28 +2520,28 @@
           "when": { "authorityState": "coldActivating" },
           "fields": [
             { "name": "instanceType", "$ref": "text8" },
-            { "name": "spotRid", "$ref": "rid" }
+            { "name": "spotId", "$ref": "text8" }
           ]
         },
         {
           "when": { "authorityState": "ready" },
           "fields": [
             { "name": "instanceType", "$ref": "text8" },
-            { "name": "spotRid", "$ref": "rid" }
+            { "name": "spotId", "$ref": "text8" }
           ]
         },
         {
           "when": { "authorityState": "closing" },
           "fields": [
             { "name": "instanceType", "$ref": "text8" },
-            { "name": "spotRid", "$ref": "rid" }
+            { "name": "spotId", "$ref": "text8" }
           ]
         },
         {
           "when": { "authorityState": "relocating" },
           "fields": [
             { "name": "instanceType", "$ref": "text8" },
-            { "name": "spotRid", "$ref": "rid" }
+            { "name": "spotId", "$ref": "text8" }
           ]
         }
       ],
@@ -2465,7 +2564,7 @@
         {
           "when": { "spotKind": "entry" },
           "fields": [
-            { "name": "spotRid", "$ref": "rid" },
+            { "name": "spotId", "$ref": "text8" },
             { "name": "spotType", "$ref": "text8" },
             { "name": "state", "$ref": "entry-user-spot-authority-state" }
           ]
@@ -2473,7 +2572,7 @@
         {
           "when": { "spotKind": "user" },
           "fields": [
-            { "name": "spotRid", "$ref": "rid" },
+            { "name": "spotId", "$ref": "text8" },
             { "name": "spotType", "$ref": "text8" },
             { "name": "state", "$ref": "entry-user-spot-authority-state" }
           ]
@@ -2695,7 +2794,6 @@
         { "name": "objectKind", "$ref": "stateful-object-kind" },
         { "name": "type", "$ref": "text8" },
         { "name": "relocationPolicy", "$ref": "relocation-policy-kind" },
-        { "name": "placementProfiles", "$ref": "sorted-text8-vector" },
         { "name": "activeCapacityLimit", "$ref": "object-capacity-limit" },
         { "name": "pendingCapacityLimit", "$ref": "object-pending-capacity-limit" },
         { "name": "hasSnapshotAdapter", "$ref": "bool8" },
@@ -3238,7 +3336,7 @@
           },
           "fields": [
             { "name": "actor", "$ref": "actor-ref" },
-            { "name": "spotRid", "$ref": "rid" },
+            { "name": "spotId", "$ref": "text8" },
             { "name": "spotGeneration", "$ref": "nonzero-u64" },
             { "name": "authorityOwnerGeneration", "$ref": "nonzero-u64" }
           ]
@@ -3279,6 +3377,15 @@
           },
           "fields": [
             { "name": "closed", "$ref": "bool8" }
+          ]
+        },
+        {
+          "when": {
+            "originalOperationKind": "actorCreate",
+            "terminalResult": "ok"
+          },
+          "fields": [
+            { "name": "creation", "$ref": "actor-create-terminal" }
           ]
         }
       ],
@@ -3420,7 +3527,7 @@
             { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
             { "name": "sourceOwnerId", "$ref": "text8" },
             { "name": "sourceOwnerLeaseGeneration", "$ref": "nonzero-u64" },
-            { "name": "sourceSpotRid", "$ref": "rid" }
+            { "name": "sourceSpotId", "$ref": "text8" }
           ]
         },
         {
@@ -3506,7 +3613,7 @@
           "fields": [
             { "name": "targetNodeRid", "$ref": "rid" },
             { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
-            { "name": "targetSpotRid", "$ref": "rid" },
+            { "name": "targetSpotId", "$ref": "text8" },
             { "name": "authority", "$ref": "authority-generation-fence" }
           ]
         },
@@ -3515,12 +3622,10 @@
           "fields": [
             { "name": "targetNodeRid", "$ref": "rid" },
             { "name": "targetNodeGeneration", "$ref": "nonzero-u64" },
-            { "name": "targetSpotRid", "$ref": "rid" },
+            { "name": "targetSpotId", "$ref": "text8" },
             { "name": "targetMeshName", "$ref": "text8" },
             { "name": "stableType", "$ref": "text8" },
             { "name": "targetDescriptorVersion", "$ref": "text8" },
-            { "name": "placementProfile", "$ref": "optional-text8" },
-            { "name": "affinityKey", "$ref": "optional-text8" },
             { "name": "deadlineUnixMs", "$ref": "nonzero-u64" }
           ]
         }
@@ -4055,7 +4160,7 @@
       "allowedFlags": ["metadata"],
       "requiredFlags": [],
       "body": [
-        { "name": "sourceSpotRid", "$ref": "rid" },
+        { "name": "sourceSpotId", "$ref": "text8" },
         { "name": "targetSpot", "$ref": "spot-route-fence" }
       ],
       "payload": "required",
@@ -4069,7 +4174,7 @@
       "requiredFlags": [],
       "body": [
         { "name": "correlation", "$ref": "nonzero-u64" },
-        { "name": "sourceSpotRid", "$ref": "rid" },
+        { "name": "sourceSpotId", "$ref": "text8" },
         { "name": "targetSpot", "$ref": "spot-route-fence" }
       ],
       "payload": "required",
@@ -4084,7 +4189,7 @@
       "body": [
         { "name": "channelName", "$ref": "text8" },
         { "name": "topic", "$ref": "text8" },
-        { "name": "sourceSpotRid", "$ref": "rid" }
+        { "name": "sourceSpotId", "$ref": "text8" }
       ],
       "payload": "required",
       "payloadType": { "$ref": "application-payload-envelope-v1" }
@@ -4093,12 +4198,12 @@
       "id": 24,
       "name": "actorSend",
       "domain": "application",
-      "allowedFlags": ["metadata", "boundSession", "sourceSpotRid"],
+      "allowedFlags": ["metadata", "boundSession", "sourceSpotId"],
       "requiredFlags": [],
       "flagConstraints": [
         {
           "kind": "all-or-none",
-          "flags": ["boundSession", "sourceSpotRid"]
+          "flags": ["boundSession", "sourceSpotId"]
         }
       ],
       "body": [
@@ -4108,7 +4213,7 @@
           "name": "boundSessionTail",
           "$ref": "optional-bound-session-tail",
           "when": {
-            "allFlagsSet": ["boundSession", "sourceSpotRid"]
+            "allFlagsSet": ["boundSession", "sourceSpotId"]
           },
           "otherwise": "forbidden"
         }
@@ -4120,12 +4225,12 @@
       "id": 25,
       "name": "actorRequest",
       "domain": "application",
-      "allowedFlags": ["metadata", "boundSession", "sourceSpotRid"],
+      "allowedFlags": ["metadata", "boundSession", "sourceSpotId"],
       "requiredFlags": [],
       "flagConstraints": [
         {
           "kind": "all-or-none",
-          "flags": ["boundSession", "sourceSpotRid"]
+          "flags": ["boundSession", "sourceSpotId"]
         }
       ],
       "body": [
@@ -4136,7 +4241,7 @@
           "name": "boundSessionTail",
           "$ref": "optional-bound-session-tail",
           "when": {
-            "allFlagsSet": ["boundSession", "sourceSpotRid"]
+            "allFlagsSet": ["boundSession", "sourceSpotId"]
           },
           "otherwise": "forbidden"
         }
@@ -4349,7 +4454,7 @@
         { "name": "route", "$ref": "instance-route-v1" },
         { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "sourceNodeRid", "$ref": "rid" },
-        { "name": "sourceSpotRid", "$ref": "optional-rid" },
+        { "name": "sourceSpotId", "$ref": "optional-text8" },
         { "name": "operationKind", "$ref": "instance-operation-kind" },
         { "name": "operation", "$ref": "operation-id" },
         { "name": "replyRoute", "$ref": "instance-reply-route" }
@@ -4513,7 +4618,7 @@
         { "name": "operation", "$ref": "operation-id" },
         { "name": "sourceNodeRid", "$ref": "rid" },
         { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
-        { "name": "spotRid", "$ref": "rid" },
+        { "name": "spotId", "$ref": "text8" },
         { "name": "stableType", "$ref": "text8" },
         { "name": "reservation", "$ref": "object-reservation-fence" },
         { "name": "deadlineUnixMs", "$ref": "nonzero-u64" }
@@ -4532,6 +4637,24 @@
         { "name": "sourceNodeRid", "$ref": "rid" },
         { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
         { "name": "target", "$ref": "user-spot-close-fence-v1" },
+        { "name": "deadlineUnixMs", "$ref": "nonzero-u64" }
+      ],
+      "payload": "forbidden"
+    },
+    {
+      "id": 49,
+      "name": "actorCreate",
+      "domain": "infrastructure",
+      "allowedFlags": [],
+      "requiredFlags": [],
+      "body": [
+        { "name": "correlation", "$ref": "nonzero-u64" },
+        { "name": "operation", "$ref": "operation-id" },
+        { "name": "sourceNodeRid", "$ref": "rid" },
+        { "name": "sourceNodeGeneration", "$ref": "nonzero-u64" },
+        { "name": "actorId", "$ref": "text8" },
+        { "name": "stableType", "$ref": "text8" },
+        { "name": "reservation", "$ref": "object-reservation-fence" },
         { "name": "deadlineUnixMs", "$ref": "nonzero-u64" }
       ],
       "payload": "forbidden"
@@ -4712,6 +4835,6 @@
   },
   "reservedCommandRanges": [
     { "first": 7, "last": 15 },
-    { "first": 49, "last": 255 }
+    { "first": 50, "last": 255 }
   ]
 }

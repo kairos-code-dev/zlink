@@ -8,7 +8,7 @@
     "relocationLow": "9",
     "object": {
       "objectKind": "userSpot",
-      "spotRidUtf8Fixture": "room",
+      "spotIdUtf8Fixture": "room",
       "spotGeneration": "1",
       "expectedAuthorityOwnerGeneration": "7"
     },
@@ -63,7 +63,7 @@
           "replyRouteId": "99",
           "body": {
             "targetSpot": {
-              "spotRidUtf8Fixture": "room",
+              "spotIdUtf8Fixture": "room",
               "spotGeneration": "1",
               "targetNodeRidUtf8Fixture": "m",
               "targetNodeGeneration": "2",

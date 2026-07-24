@@ -58,7 +58,7 @@ internal static class ZLinkSpotStartupValidator
 
         public IZLinkSpotHandlerRegistry Handlers { get; }
 
-        public RoutingId SpotRid => default;
+        public string SpotId => default;
 
         public RoutingId NodeRid => default;
 

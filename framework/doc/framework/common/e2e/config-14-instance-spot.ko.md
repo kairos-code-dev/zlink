@@ -4,7 +4,7 @@
 
 # Config 14 — Instance Spot activation
 
-이 config는 global Spot RID를 받는 Spot direct call에 Instance intent를 명시한 첫 send/request가 Location
+이 config는 global Spot ID를 받는 Spot direct call에 Instance intent를 명시한 첫 send/request가 Location
 authority owner 하나와
 언어별 Framework runtime의 Instance Spot 하나로 수렴하는지 검증한다. Location row가
 `Ready`가 되기 전에는 application handler를 실행하지 않고, `Ready` commit 뒤에는 첫
@@ -23,12 +23,12 @@ activation, owner claim, barrier와 queue를 해석하지 않는다.
 
 ## 1. 검증 범위
 
-- Spot direct 시작 method는 global Spot RID와 typed payload만 받는다. Instance intent를 명시한 call builder에서만
-  optional stable type, initial Mesh, placement profile과 affinity key를 설정한다.
-- 선택한 Object Mesh에서 type을 제공하고 `Serving` 상태이며 maintenance 대상이 아닌 node만
-  placement 후보가 된다.
+- Spot direct 시작 method는 global Spot ID와 typed payload만 받는다. Instance intent를 명시한 call
+  builder에서만 optional stable type과 initial Mesh를 설정한다.
+- 선택한 Object Mesh에서 stable type을 제공하고 `Serving` 상태이며 capacity가 남은 node만 placement
+  후보가 되고 node-wide weight를 적용한다.
 - Source runtime은 public send deadline 안에서 Location Store resolve와 eligible target 선택을 끝내고, global
-  Spot RID·stable type·target descriptor fence·operation identity·reply correlation·deadline과 first message를
+  Spot ID·stable type·target descriptor fence·operation identity·reply correlation·deadline과 first message를
   포함한 activation envelope를 target transport에 제출한다. Source는 owner claim이나 `Creating` authority를
   만들지 않으며 caller에게 endpoint, node RID, owner token과 generation을 요구하지 않는다.
 - Target runtime은 current authority와 local Instance registry를 확인한다. Missing이면 complete activation
@@ -78,10 +78,10 @@ endpoint를 지정해 선택하지 않고 Location authority CAS가 결정한다
 
 | 역할 | 수 | 책임 |
 |---|---:|---|
-| `InstanceCaller` | 2 | Object Client 역할과 Location Store를 등록한다. 서로 다른 process에서 같은 global Spot RID와 서로 다른 RID로 send/request를 시작한다. |
-| `InstanceOwner` | 2 | Object Server 역할, Location Store와 Relocation Store를 등록한다. Stable type `PlayerQuestSpot`·`OrderWorkflowSpot`은 `Snapshot` policy와 각 `IZLinkSpotRelocationAdapter<TSpot>`을 사용하고, 별도 negative type은 `Disabled`, recovery 비교 type은 `Recreate`를 사용한다. 모든 factory는 explicit policy와 positive placement capacity를 제공하고 activation·handler·timer evidence를 기록한다. |
-| `SpotOwner` | 1 | Object Server 역할과 Location Store를 등록하고 User Spot factory에는 stable type과 explicit `Disabled` policy를 제공한다. Entry Spot과 같은 RID의 User Spot 충돌, existing-only Spot 회귀를 검증하며 relocation은 시작하지 않는다. |
-| `MultiMeshCaller` | 1 | 다른 Object Mesh를 initial placement으로 지정하되 global RID 중복이 하나의 authority로 수렴함을 검증한다 |
+| `InstanceCaller` | 2 | Object Client 역할과 Location Store를 등록한다. 서로 다른 process에서 같은 global Spot ID로 send/request를 시작한다. |
+| `InstanceOwner` | 2 | Object Server 역할, Location Store와 Relocation Store를 등록한다. Stable type `PlayerQuestSpot`·`OrderWorkflowSpot`은 `Snapshot` policy와 각 `IZLinkSpotRelocationAdapter<TSpot>`을 사용하고, 별도 negative type은 `Disabled`, recovery 비교 type은 `Recreate`를 사용한다. 모든 factory는 explicit policy와 양수 placement weight를 제공하고, node의 Spot 전체와 각 Instance Spot stable-type population limit 및 별도 activation concurrency limit을 설정한다. Activation·handler·timer evidence도 기록한다. |
+| `SpotOwner` | 1 | Object Server 역할과 Location Store를 등록하고 User Spot factory에는 stable type과 explicit `Disabled` policy를 제공한다. Entry Spot과 같은 Spot ID의 User Spot 충돌, existing-only Spot 회귀를 검증하며 relocation은 시작하지 않는다. |
+| `MultiMeshCaller` | 1 | 다른 Object Mesh를 initial placement으로 지정하되 global Spot ID 중복이 하나의 authority로 수렴함을 검증한다 |
 | Redis Location Store | 1 | Descriptor, owner lease, Instance authority와 CAS를 제공한다 |
 | Redis Relocation Store | 1 | Retire의 immutable application state·accepted journal payload와 cold activation의 complete first-message recovery root·durable inbox first record를 보존한다. External State Store를 대신하지 않으며 별도 Store instance와 key prefix를 사용한다. |
 | External State Store | 1 | Factory 복구와 reference sample의 domain state를 보존한다 |
@@ -107,8 +107,9 @@ status를 같이 기록한다.
 
 Factory 초기화 뒤와 `Ready` CAS 전에 internal test barrier를 둔다. 이 barrier는 public API가
 아니며 activation 결과를 변경하거나 handler를 직접 호출하지 않는다. Barrier가 닫혀 있을
-때는 application handler count 0, activation leader 1, bounded pending record 수와 type slot 1을
-확인한다. Barrier를 열면 `Ready` CAS를 먼저 확인한 뒤 admission sequence 순서로 handler가
+때는 application handler count 0, activation concurrency active 1, `Reserved` allocation 1과 Spot 전체·stable
+type capacity의 reserved count 증가를 확인한다. Barrier를 열면 `Ready` CAS를 먼저 확인한 뒤 allocation과
+두 capacity count가 `Active`로 전환되고 admission sequence 순서로 handler가
 실행되어야 한다.
 
 ### 3.3 Process pause·crash
@@ -137,13 +138,13 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 
 | ID | 검증 대상 | 완료 조건 |
 |---|---|---|
-| `IS-F01` | Direct fluent target | 시작 method는 global Spot RID와 payload만 받고 Instance intent의 stable type·initial Mesh·placement option은 Missing authority에만 적용 |
+| `IS-F01` | Direct fluent target | 시작 method는 global Spot ID와 payload만 받고 Instance intent의 stable type과 initial Mesh는 Missing authority에만 적용 |
 | `IS-F02` | Factory | Actor-free Instance lifecycle과 packet·timer handler registry만 제공하고 잘못된 capability를 startup에서 거부 |
-| `IS-F03` | Builder | Existing-only·Instance marker, optional type inference, `InMesh`·profile·affinity와 send/request terminal이 다섯 public 언어에서 같은 의미를 가짐 |
+| `IS-F03` | Builder | Existing-only·Instance marker, optional type inference, `InMesh`와 send/request terminal이 다섯 public 언어에서 같은 의미를 가짐 |
 | `IS-F04` | Descriptor | Instance type set을 정렬·중복 제거해 게시하고 runtime 중 변경하지 않음 |
-| `IS-F05` | Placement | 선택한 initial Mesh, valid lease·generation, `Serving`, type·profile·capacity를 모두 만족하는 node만 선택 |
+| `IS-F05` | Placement | 선택한 initial Mesh, valid lease·generation, `Serving`, stable type·capacity를 모두 만족하는 node에 node-wide weight를 적용 |
 | `IS-F06` | Location authority | Target-owned claim, `Ready`, `Closing`, release가 opaque expected-version CAS와 같은 state transition을 사용 |
-| `IS-F07` | Activation leader | 같은 global Spot RID의 concurrent envelope가 target CAS winner, factory, DI scope과 type slot 하나로 수렴 |
+| `IS-F07` | Activation leader | 같은 global Spot ID의 concurrent envelope가 target CAS winner, factory, DI scope과 type slot 하나로 수렴 |
 | `IS-F08` | Ordering | Activation envelope admission, immutable recovery root Put·verify, target reservation, Configure, message 없는 initialize, durable activation inbox first record, recovery root·cursor를 유지한 `Ready` CAS, local queue head restore, barrier open 순서를 지킴. First record 확정 전 handler count는 0이고 Ready 뒤 후속 message는 이 queue head를 추월하지 않는다. 첫 handler terminal completion의 durable 기록과 cursor 갱신 전에는 recovery pointer를 release하지 않음 |
 | `IS-F09` | Failure cleanup | Factory·initialize·`Ready`·barrier 실패에서 local barrier를 닫고 request를 typed terminal-once로 완료하며 one-way drop·event를 기록한다. Exact owner fence로 row를 삭제한 뒤 Missing 또는 current replacement를 확인하고 queue·scope·slot을 한 번 정리하며 같은 registry에서 hidden rerun을 하지 않음 |
 | `IS-F10` | 재제출 경계 | CAS loser redirect 한 번 외의 hidden retry·replay가 없음 |
@@ -157,7 +158,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 
 | ID | 검증 대상 | 완료 조건 |
 |---|---|---|
-| `IS-P01` | Cold target | Activation recovery envelope가 global Spot RID, selected initial Mesh, target descriptor fence, Instance type, source node RID·lifecycle generation·optional source Spot RID, first packet contract, operation identity·request correlation과 deadline을 보존 |
+| `IS-P01` | Cold target | Activation recovery envelope가 global Spot ID, selected initial Mesh, target descriptor fence, Instance type, source node RID·lifecycle generation·optional source Spot ID, first packet contract, operation identity·request correlation과 deadline을 보존 |
 | `IS-P02` | Authority fence | Source claim은 0건이다. Target은 envelope의 descriptor lifecycle·owner lease와 current Store state를 exact 확인하고 자신을 owner로 reservation을 획득하며 CAS winner만 object·authority owner generation을 발급함 |
 | `IS-P03` | Bounded queue | Activation 중 message·byte 상한, FIFO과 request terminal-once를 보존 |
 | `IS-P04` | Barrier | Durable inbox first record는 `Ready` CAS 전에 확정하지만 application handler count는 0이다. Ready payload가 recovery root·cursor를 유지하고 local queue head restore 뒤 barrier를 열어 admission sequence를 보존 |
@@ -171,7 +172,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 
 | ID | 검증 대상 | 완료 조건 |
 |---|---|---|
-| `IS-REG-01` | Missing existing-only call | Instance marker 없는 Spot RID 호출은 target-not-found이며 activation·creation intent를 시작하지 않음 |
+| `IS-REG-01` | Missing existing-only call | Instance marker 없는 Spot ID 호출은 target-not-found이며 activation·creation intent를 시작하지 않음 |
 | `IS-REG-02` | Generation fence | Direct Spot generation 0·stale generation을 거부하고 create-if-missing으로 해석하지 않음 |
 | `IS-REG-03` | User Spot creation | User Spot Create·GetOrCreate가 global authority·factory 하나로 수렴하고 Instance kind를 만들지 않음 |
 | `IS-REG-04` | Entry Spot | Startup Entry Spot, Actor 기본 위치와 shutdown 순서가 유지됨 |
@@ -182,7 +183,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-REG-09` | Kind·type conflict | 유지 중인 Entry·User Spot 또는 다른 Instance type을 변경하지 않고 activation 전에 실패 |
 | `IS-REG-10` | Existing send | `Ready` Instance를 포함한 existing-only send가 exact direct route와 source submit 의미를 사용 |
 | `IS-REG-11` | Existing request | Request deadline·cancellation·terminal-once가 Instance hidden retry로 바뀌지 않음 |
-| `IS-REG-12` | Public surface | Spot RID fluent call·factory·async send/request만 노출하고 Instance address·manager create·raw placement·token·phase helper를 노출하지 않음 |
+| `IS-REG-12` | Public surface | Spot ID fluent call·factory·async send/request만 노출하고 Instance address·manager create·raw placement·token·phase helper를 노출하지 않음 |
 | `IS-REG-13` | Global identity | 같은 RID를 다른 Mesh에 동시 생성해도 authority·kind·type·generation 하나로 수렴하고 Mesh별 row를 만들지 않음 |
 | `IS-REG-14` | Core·binding removal | Core·binding public surface에 Instance service API를 복구하지 않음 |
 
@@ -190,7 +191,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 
 | ID | 시나리오 | 완료 조건 |
 |---|---|---|
-| `IS-E2E-01` | Cold request | Row가 없는 global Spot RID의 Instance-intent request envelope가 target-owned claim·factory·`Ready` 뒤 handler에서 한 번 실행되고 reply를 반환 |
+| `IS-E2E-01` | Cold request | Row가 없는 global Spot ID의 Instance-intent request envelope가 target-owned claim·factory·`Ready` 뒤 handler에서 한 번 실행되고 reply를 반환 |
 | `IS-E2E-02` | Cold send | Resolve·selection과 activation envelope outbound admission은 같은 send deadline 안에서 끝나고 Submit은 outbound admission으로 완료되며 target reservation·factory·Ready를 기다리지 않음. Target activation 실패는 이미 반환한 결과를 바꾸지 않고 drop·flow event로 관측 |
 | `IS-E2E-03` | Concurrent first call | 두 caller의 request 100개가 authority owner·runtime object·factory 하나와 handler concurrency 1로 수렴 |
 | `IS-E2E-04` | Different RID | 여러 RID가 eligible node에 분산되고 RID별 serial queue가 서로를 차단하지 않음 |
@@ -204,7 +205,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 | `IS-E2E-12` | Ambiguous result | Target 수락 뒤 connection을 종료해도 다른 owner로 재제출하지 않음 |
 | `IS-E2E-13` | Accepted send then failure | 다른 owner에서 replay하지 않고 runtime error·trace·drop metric으로 관측 |
 | `IS-E2E-14` | Store outage | Authority deadline 뒤 cached route와 target admission을 막고 Missing RID를 local 상태로 추측하지 않음 |
-| `IS-E2E-15` | Kind·type atomic conflict | 같은 global Spot RID의 User Spot `GetOrCreate`와 Instance cold request를 동시에 제출해 authority CAS winner의 kind·type·factory 하나만 성공하고 loser가 Mesh별 location row·generation을 남기지 않음. Winner close 뒤 다른 kind를 만들면 더 높은 object generation을 사용 |
+| `IS-E2E-15` | Kind·type atomic conflict | 같은 global Spot ID의 User Spot `GetOrCreate`와 Instance cold request를 동시에 제출해 authority CAS winner의 kind·type·factory 하나만 성공하고 loser가 Mesh별 location row·generation을 남기지 않음. Winner close 뒤 다른 kind를 만들면 더 높은 object generation을 사용 |
 | `IS-E2E-16` | No eligible node | Request와 send가 target-not-found로 종료하고 authority row를 남기지 않음 |
 | `IS-E2E-17` | Activation backpressure | Message·byte 상한 초과가 bounded 결과로 종료하고 accepted order와 serial handler를 유지 |
 | `IS-E2E-18` | Cross-language | 다른 Framework 언어 caller·owner 조합이 authority, queue, failure code와 timeout을 같게 해석 |
@@ -231,7 +232,7 @@ activation, 긴 request와 one-way send를 취소하지 않는다.
 
 ### 7.1 GameQuest
 
-`PlayerQuestSpot`은 Instance Spot으로 등록한다. Caller는 Player ID를 global Spot RID로 사용하고
+`PlayerQuestSpot`은 Instance Spot으로 등록한다. Caller는 Player ID를 global Spot ID로 사용하고
 gameplay send와 quest progress request의 Spot direct fluent call에 Instance intent를 명시한다. Spot manager
 `GetOrCreate`, Instance address, owner node 선택 코드를 두지 않는다.
 
@@ -245,7 +246,7 @@ gameplay send와 quest progress request의 Spot direct fluent call에 Instance i
 ### 7.2 ShoppingMall
 
 `OrderWorkflowSpot`은 Instance Spot으로 등록한다. `StartOrderWorkflowReq`,
-`ContinueOrderWorkflowReq`와 `RebuildOrderProjectionReq`는 Order ID를 global Spot RID로 사용한다. Caller에는
+`ContinueOrderWorkflowReq`와 `RebuildOrderProjectionReq`는 Order ID를 global Spot ID로 사용한다. Caller에는
 Spot manager `GetOrCreate`, Instance address와 owner node 선택 코드를 두지 않는다.
 
 - 첫 start가 runtime Instance와 domain workflow를 각각 한 번만 만든다.
@@ -275,6 +276,6 @@ Config 14 완료에는 다음 증거가 모두 필요하다.
 2. 각 지원 언어 feature map이 `IS-REG-01~14`, `IS-E2E-01~33`과 실제 process log를 연결한다.
 3. 최소 두 Framework 언어를 사용한 caller·owner 조합이 같은 authority·queue·failure code로
    수렴한다.
-4. GameQuest와 ShoppingMall이 같은 global Spot RID + Instance fluent intent 계약으로 동작하고 기존 Spot·Actor·Channel
+4. GameQuest와 ShoppingMall이 같은 global Spot ID + Instance fluent intent 계약으로 동작하고 기존 Spot·Actor·Channel
    회귀가 통과한다.
 5. Public source, exact interface, sample과 E2E에서 금지 표면이 0건이다.

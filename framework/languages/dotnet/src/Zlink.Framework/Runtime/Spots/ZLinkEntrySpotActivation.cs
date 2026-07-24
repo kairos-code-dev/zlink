@@ -40,6 +40,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         IServiceProvider services,
         AsyncServiceScope scope,
         IZLinkBackendSpot nativeSpot,
+        string spotId,
         Type entrySpotType,
         RoutingId nodeRid,
         string spotNodeName,
@@ -50,6 +51,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
         _runtime = runtime;
         _timers = new ZLinkSpotTimerRegistry(() => runtime.Flow.CaptureEnabled);
         _nativeSpot = nativeSpot;
+        SpotId = ZLinkSpotId.Require(spotId, nameof(spotId));
         NodeRid = nodeRid;
         SpotNodeName = spotNodeName;
         ChannelName = channelName;
@@ -212,7 +214,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     ZLinkSpotOutboundEndpoint IZLinkCurrentSpotActivation.OutboundEndpoint => _outboundEndpoint;
 
-    public RoutingId SpotRid => _nativeSpot.RoutingId;
+    public string SpotId { get; }
 
     public RoutingId NodeRid { get; }
 
@@ -403,6 +405,13 @@ internal sealed partial class ZLinkEntrySpotActivation :
         return _actorHandlers.TryResolveDisconnected(actorType, out descriptor);
     }
 
+    public bool TryResolveActorRelocated(
+        Type actorType,
+        out ZLinkSpotActorLifecycleDescriptor? descriptor)
+    {
+        return _actorHandlers.TryResolveRelocated(actorType, out descriptor);
+    }
+
     public async ValueTask InvokeActorPacketAsync(
         ZLinkSpotActorPacketDescriptor descriptor,
         IZLinkActor actor,
@@ -473,6 +482,33 @@ internal sealed partial class ZLinkEntrySpotActivation :
             cancellationToken).ConfigureAwait(false);
     }
 
+    public async ValueTask<ZLinkActorCreateResponse> InvokeActorCreateAsync(
+        ZLinkSpotActorLifecycleDescriptor descriptor,
+        IZLinkActor actor,
+        ZLinkMessage request,
+        CancellationToken cancellationToken)
+    {
+        var call = new ActorCreateCallState(descriptor, actor, request);
+        await ExecuteAsync(
+            static async (activation, state, ct) =>
+            {
+                using var flow = ZLinkFlowContext.Enter(
+                    null,
+                    null,
+                    activation._runtime.Flow.CaptureEnabled,
+                    ZLinkFlowOrigin.Lifecycle);
+                state.Response = await activation._invoker.InvokeActorCreateAsync(
+                        state.Descriptor,
+                        state.Actor,
+                        state.Request,
+                        ct)
+                    .ConfigureAwait(false);
+            },
+            call,
+            cancellationToken).ConfigureAwait(false);
+        return call.Response;
+    }
+
     public async ValueTask InvokeActorDisconnectedAsync(
         ZLinkSpotActorLifecycleDescriptor descriptor,
         IZLinkActor actor,
@@ -511,6 +547,18 @@ internal sealed partial class ZLinkEntrySpotActivation :
         public Message Body { get; } = body;
 
         public ZLinkActorReply? Reply { get; set; }
+    }
+
+    private sealed class ActorCreateCallState(
+        ZLinkSpotActorLifecycleDescriptor descriptor,
+        IZLinkActor actor,
+        ZLinkMessage request)
+    {
+        public ZLinkSpotActorLifecycleDescriptor Descriptor { get; } = descriptor;
+        public IZLinkActor Actor { get; } = actor;
+        public ZLinkMessage Request { get; } = request;
+        public ZLinkActorCreateResponse Response { get; set; } =
+            ZLinkActorCreateResponse.Accept();
     }
 
     private sealed class ActorJoinCallState(

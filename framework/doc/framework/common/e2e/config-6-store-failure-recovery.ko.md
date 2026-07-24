@@ -460,9 +460,49 @@ failure point로 주입한다. Payload를 먼저 준비하고 Location Store ref
   bytes를 mutate·reuse하지 않는다. Mutable-buffer 언어 adapter의 defensive snapshot 뒤에도 checksum과 replay가
   같아야 한다.
 
+### Track G — typed capacity transaction
+
+#### SF-G1 Actor·Spot·stable type limit의 atomic reservation
+
+우선순위: `P0`
+
+- 절차: Actor total, Spot total과 한 Spot stable type의 limit을 서로 다른 작은 양수로 설정한다. 여러
+  process에서 마지막 available slot보다 많은 Actor·User Spot·Instance Spot creation을 동시에 시작하고
+  일부 factory는 failure와 timeout을 반환하게 한다.
+- 검증: Location Store는 Active+Reserved+Requested를 같은 transaction에서 검사한다. Actor, Spot total과
+  stable type bucket 가운데 하나라도 부족하면 vector 전체가 바뀌지 않고 factory가 실행되지 않는다.
+  성공 수는 각 limit을 넘지 않으며 failure·timeout·abort는 exact reservation ID와 lifecycle fence가 확보한
+  slot만 해제한다. 다른 node가 eligible하면 그 node를 시도하고 모두 소진되면
+  `PlacementCapacityExhausted`로 끝난다.
+
+#### SF-G2 unlimited·Entry Spot·activation concurrency 분리
+
+우선순위: `P0`
+
+- 절차: population limit을 `0`으로 둔 node에서 기존 10,000 상한을 넘는 synthetic reservation contract를
+  실행한다. 별도 node는 작은 activation concurrency와 unlimited population을 사용한다. Entry Spot과 그
+  member Actor도 함께 관찰한다.
+- 검증: `0`은 hidden population limit 없이 unlimited다. Entry Spot 자체는 Spot total·stable type count에서
+  제외되지만 member Actor는 Actor total에 포함된다. Activation concurrency가 차면 새 factory 시작만
+  backpressure되고 이미 Active인 population은 capacity exhaustion으로 바뀌지 않는다. 음수 limit은 socket
+  bind 전에 startup configuration error다.
+
+#### SF-G3 User Spot aggregate relocation capacity vector
+
+우선순위: `P0`
+
+- 절차: member Actor가 N개인 stable type `room` User Spot aggregate를 target으로 relocation한다. Target은
+  (a) Spot total slot은 남지만 Actor total slot이 N보다 하나 부족한 경우, (b) Spot total과 Actor total은
+  충분하지만 `room` stable type slot만 부족한 경우, (c) 세 bucket이 모두 충분한 경우를 각각 만든다.
+  Prepare 뒤 abort와 process restart도 주입한다.
+- 검증: (a)와 (b)에는 target Spot total 1개, `room` stable type 1개와 Actor total N개 가운데 어떤
+  reservation도 남지 않고 factory·Restore·authority mutation이 0건이다. (c)는 단일 typed capacity
+  bundle 전체와 aggregate participant authority를 한 transaction으로 Reserved→Active 전환한다.
+  Abort·recovery는 aggregate에 연결된 exact bundle만 해제하고 successor lifecycle count를 변경하지 않는다.
+
 ## 5. 완료 기준
 
-- `P0` 시나리오(SF-A1·B1·B3·C1·C3·C4·C5·D1·D2·F1·F2·F4·F5·F6·F7·F8·F9·F10·F11)가 모두 통과한다.
+- `P0` 시나리오(SF-A1·B1·B3·C1·C3·C4·C5·D1·D2·F1·F2·F4·F5·F6·F7·F8·F9·F10·F11·G1·G2·G3)가 모두 통과한다.
 - 판정은 public 표면으로만 한다. `Snapshot(meshName).Location`, `ListMeshNodesAsync(meshName)`,
   descriptor owner ID의 `ReadOwnerLeaseAsync(ownerId)`, 실제 messaging과 역할 server evidence를 사용한다.
 - stale descriptor 판정은 "성공 결과에서 제외"로 검증한다. 물리 삭제 시점은 background cleanup의

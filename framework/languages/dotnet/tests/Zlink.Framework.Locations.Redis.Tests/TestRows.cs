@@ -13,7 +13,7 @@ internal static class TestRows
         new ActorRef(RoutingId.From("node-1"), actorId, 1),
         OwnerNodeRid: RoutingId.From("node-1"),
         OwnerNodeGeneration: 0,
-        SpotRid: default,
+        SpotId: string.Empty,
         SpotGeneration: 0,
         SpotKind: ZLinkSpotKind.Entry,
         MembershipEpoch: 0,
@@ -21,9 +21,9 @@ internal static class TestRows
         UpdatedAt: default);
 
     internal static ZLinkSpotLocation Spot(
-        string ownerId, string spotRid, string meshName = "play") => new(
+        string ownerId, string spotId, string meshName = "play") => new(
         meshName,
-        RoutingId.From(spotRid),
+        spotId,
         SpotGeneration: 0,
         OwnerNodeRid: RoutingId.From("node-1"),
         OwnerNodeGeneration: 0,
@@ -58,15 +58,15 @@ internal static class TestRows
                 "player",
                 ZLinkObjectMaintenancePolicyKind.Recreate,
                 HasSnapshotAdapter: false,
-                new HashSet<string>(
-                    ["zone-b", "zone-a"],
-                    StringComparer.Ordinal),
-                ActiveLimit: 400,
-                PendingLimit: 20)
+                Limit: 0)
         ],
         MaintenanceWave = "wave-a",
         State = ZLinkFrameworkRuntimeState.Serving,
         PlacementWeight = 80,
-        Capacity = new(12, 2, 1_000, 64)
+        Capacity = new(
+            new ZLinkPopulationCapacity(12, 2, 1_000),
+            new ZLinkPopulationCapacity(0, 0, 1_000),
+            Array.Empty<ZLinkSpotTypeCapacity>()),
+        EntrySpotId = "play-entry-00000000-0000-4000-8000-000000000001"
     };
 }

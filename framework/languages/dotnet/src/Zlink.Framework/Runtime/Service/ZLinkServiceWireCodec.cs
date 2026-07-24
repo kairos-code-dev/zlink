@@ -37,8 +37,8 @@ internal static class ZLinkServiceWireCodec
     internal readonly record struct StatefulRecord(
         ServiceWireConstants.Command Command,
         ulong Correlation,
-        RoutingId SourceSpotRid,
-        RoutingId TargetSpotRid,
+        string SourceSpotId,
+        string TargetSpotId,
         ulong TargetSpotGeneration,
         ActorRef TargetActor,
         RoutingId TargetNodeRid,
@@ -50,6 +50,9 @@ internal static class ZLinkServiceWireCodec
         ServiceWireConstants.Command Command,
         UserSpotCreateOperation Create,
         UserSpotCloseOperation Close);
+
+    internal readonly record struct ActorCreateOperationRecord(
+        ActorCreateOperation Operation);
 
     internal readonly record struct InstanceSpotActivationRecord(
         InstanceSpotActivationOperation Operation,
@@ -329,12 +332,12 @@ internal static class ZLinkServiceWireCodec
         if (failureCode != ServiceWireConstants.FrameworkErrorCode.None
             || completion is null
             || completion.ObjectGeneration == 0
-            || completion.SpotRid.IsEmpty)
+            || !ZLinkSpotId.IsValid(completion.SpotId))
             throw new ArgumentOutOfRangeException(nameof(completion));
 
         var tail = new WireWriter();
         tail.U8((byte)completion.Result);
-        tail.Rid(completion.SpotRid);
+        tail.Text8(completion.SpotId);
         tail.U64(completion.ObjectGeneration);
         return EncodeReply(
             correlation,
@@ -366,6 +369,126 @@ internal static class ZLinkServiceWireCodec
             (int)terminalResult,
             (uint)failureCode,
             [completion.Closed ? (byte)1 : (byte)0]);
+    }
+
+    internal static byte[] EncodeActorCreateReply(
+        ulong correlation,
+        RequestResult terminalResult,
+        ServiceWireConstants.FrameworkErrorCode failureCode,
+        ActorCreateCompletion? completion)
+    {
+        if (terminalResult != RequestResult.Ok)
+        {
+            if (completion is not null)
+                throw new ArgumentException(
+                    "A failed Actor create reply cannot carry a success tail.",
+                    nameof(completion));
+            return EncodeReply(correlation, (int)terminalResult, (uint)failureCode);
+        }
+        if (failureCode != ServiceWireConstants.FrameworkErrorCode.None
+            || completion is null
+            || completion.Result is < ActorCreateResult.Existing
+                or > ActorCreateResult.Rejected)
+            throw new ArgumentOutOfRangeException(nameof(completion));
+
+        var selected = new WireWriter();
+        if (completion.Result is ActorCreateResult.Existing
+            or ActorCreateResult.Created)
+        {
+            if (string.IsNullOrEmpty(completion.Actor.ActorId)
+                || completion.Actor.Generation == 0
+                || completion.Actor.NodeRid.IsEmpty)
+                throw new ArgumentOutOfRangeException(nameof(completion));
+            selected.Rid(completion.Actor.NodeRid);
+            selected.Text8(completion.Actor.ActorId);
+            selected.U64(completion.Actor.Generation);
+        }
+        else if (!string.IsNullOrEmpty(completion.Actor.ActorId)
+                 || completion.Actor.Generation != 0
+                 || !completion.Actor.NodeRid.IsEmpty)
+        {
+            throw new ArgumentOutOfRangeException(nameof(completion));
+        }
+
+        var tail = new WireWriter();
+        tail.U8((byte)completion.Result);
+        tail.U16(checked((ushort)selected.Count));
+        tail.Bytes(selected.ToArray());
+        return EncodeReply(
+            correlation,
+            (int)terminalResult,
+            (uint)failureCode,
+            tail.ToArray());
+    }
+
+    internal static bool TryDecodeActorCreateReply(
+        ReplyRecord reply,
+        out ActorCreateCompletion? completion,
+        out DecodeError error)
+    {
+        completion = null;
+        if (reply.TerminalResult != (int)RequestResult.Ok)
+        {
+            if (reply.Tail.Length != 0)
+            {
+                error = DecodeError.InvalidField;
+                return false;
+            }
+            error = DecodeError.None;
+            return true;
+        }
+        if (reply.FailureCode != 0)
+        {
+            error = DecodeError.InvalidField;
+            return false;
+        }
+
+        var reader = new WireReader(reply.Tail);
+        if (!reader.TryU8(out var encodedResult)
+            || encodedResult is < (byte)ActorCreateResult.Existing
+                or > (byte)ActorCreateResult.Rejected
+            || !reader.TryU16(out var selectedLength)
+            || !reader.TrySlice(selectedLength, out var selectedBytes)
+            || reader.Remaining != 0)
+        {
+            error = reader.Truncated
+                ? DecodeError.TruncatedField
+                : reader.Remaining != 0
+                    ? DecodeError.TrailingByte
+                    : DecodeError.InvalidField;
+            return false;
+        }
+
+        var result = (ActorCreateResult)encodedResult;
+        var selected = new WireReader(selectedBytes);
+        ActorRef actor = default;
+        if (result is ActorCreateResult.Existing or ActorCreateResult.Created)
+        {
+            if (!selected.TryRid(out var nodeRid)
+                || nodeRid.IsEmpty
+                || !selected.TryText8(out var actorId)
+                || !selected.TryU64(out var generation)
+                || generation == 0
+                || selected.Remaining != 0)
+            {
+                error = selected.Truncated
+                    ? DecodeError.TruncatedField
+                    : selected.Remaining != 0
+                        ? DecodeError.TrailingByte
+                        : DecodeError.InvalidField;
+                return false;
+            }
+            actor = new ActorRef(nodeRid, actorId, generation);
+        }
+        else if (selected.Remaining != 0)
+        {
+            error = DecodeError.InvalidField;
+            return false;
+        }
+
+        completion = new ActorCreateCompletion(result, actor);
+        error = DecodeError.None;
+        return true;
     }
 
     internal static bool TryDecodeUserSpotReply(
@@ -409,7 +532,7 @@ internal static class ZLinkServiceWireCodec
             if (!reader.TryU8(out var result)
                 || result is < (byte)UserSpotCreateResult.Existing
                     or > (byte)UserSpotCreateResult.Rejected
-                || !reader.TryRid(out var spotRid)
+                || !reader.TryText8(out var spotId)
                 || !reader.TryU64(out var objectGeneration)
                 || objectGeneration == 0
                 || reader.Remaining != 0)
@@ -423,7 +546,7 @@ internal static class ZLinkServiceWireCodec
             }
             completion = new UserSpotCreateCompletion(
                 (UserSpotCreateResult)result,
-                spotRid,
+                spotId,
                 objectGeneration);
         }
         else
@@ -449,8 +572,8 @@ internal static class ZLinkServiceWireCodec
     internal static byte[] EncodeSpot(
         ServiceWireConstants.Command command,
         ulong correlation,
-        RoutingId sourceSpotRid,
-        RoutingId targetSpotRid,
+        string sourceSpotId,
+        string targetSpotId,
         ulong targetSpotGeneration,
         RoutingId targetNodeRid,
         ulong targetNodeGeneration,
@@ -468,8 +591,8 @@ internal static class ZLinkServiceWireCodec
         var body = new WireWriter();
         if (request)
             body.U64(correlation);
-        body.Rid(sourceSpotRid);
-        body.Rid(targetSpotRid);
+        body.Text8(sourceSpotId);
+        body.Text8(targetSpotId);
         body.U64(targetSpotGeneration);
         body.Rid(targetNodeRid);
         body.U64(targetNodeGeneration);
@@ -550,15 +673,15 @@ internal static class ZLinkServiceWireCodec
             return false;
         }
 
-        RoutingId sourceSpotRid = default;
-        RoutingId targetSpotRid = default;
+        string sourceSpotId = default;
+        string targetSpotId = default;
         ulong targetSpotGeneration = 0;
         ActorRef targetActor = default;
         if (command is ServiceWireConstants.Command.SpotSend
             or ServiceWireConstants.Command.SpotRequest)
         {
-            if (!reader.TryRid(out sourceSpotRid)
-                || !reader.TryRid(out targetSpotRid)
+            if (!reader.TryText8(out sourceSpotId)
+                || !reader.TryText8(out targetSpotId)
                 || !reader.TryU64(out targetSpotGeneration)
                 || targetSpotGeneration == 0)
             {
@@ -608,8 +731,8 @@ internal static class ZLinkServiceWireCodec
         record = new StatefulRecord(
             command,
             correlation,
-            sourceSpotRid,
-            targetSpotRid,
+            sourceSpotId,
+            targetSpotId,
             targetSpotGeneration,
             targetActor,
             targetNodeRid,
@@ -629,12 +752,10 @@ internal static class ZLinkServiceWireCodec
         var route = new WireWriter();
         route.Rid(target.TargetNodeRid);
         route.U64(target.TargetNodeGeneration);
-        route.Rid(target.TargetSpotRid);
+        route.Text8(target.TargetSpotId);
         route.Text8(target.MeshName);
         route.Text8(target.StableType);
         route.Text8(target.DescriptorVersion);
-        WriteOptionalText8(route, target.PlacementProfile);
-        WriteOptionalText8(route, target.AffinityKey);
         route.U64(operation.DeadlineUnixMs);
 
         var body = new WireWriter();
@@ -643,7 +764,7 @@ internal static class ZLinkServiceWireCodec
         body.Bytes(route.ToArray());
         body.U64(operation.SourceNodeGeneration);
         body.Rid(operation.SourceNodeRid);
-        WriteOptionalRid(body, operation.SourceSpotRid);
+        WriteOptionalText8(body, operation.SourceSpotId);
         body.U8(operation.IsRequest ? (byte)2 : (byte)1);
         WriteOperationId(body, operation.OperationId);
         if (operation.IsRequest)
@@ -693,19 +814,17 @@ internal static class ZLinkServiceWireCodec
         if (!route.TryRid(out var targetNodeRid)
             || !route.TryU64(out var targetNodeGeneration)
             || targetNodeGeneration == 0
-            || !route.TryRid(out var targetSpotRid)
+            || !route.TryText8(out var targetSpotId)
             || !route.TryText8(out var meshName)
             || !route.TryText8(out var stableType)
             || !route.TryText8(out var descriptorVersion)
-            || !TryReadOptionalText8(ref route, out var placementProfile)
-            || !TryReadOptionalText8(ref route, out var affinityKey)
             || !route.TryU64(out var deadlineUnixMs)
             || deadlineUnixMs is 0 or > long.MaxValue
             || route.Remaining != 0
             || !reader.TryU64(out var sourceNodeGeneration)
             || sourceNodeGeneration == 0
             || !reader.TryRid(out var sourceNodeRid)
-            || !TryReadOptionalRid(ref reader, out var sourceSpotRid)
+            || !reader.TryOptionalText8(out var sourceSpotId)
             || !reader.TryU8(out var operationKind)
             || operationKind is not (1 or 2)
             || !TryReadOperationId(ref reader, out var operationId))
@@ -737,14 +856,12 @@ internal static class ZLinkServiceWireCodec
                     meshName,
                     targetNodeRid,
                     targetNodeGeneration,
-                    targetSpotRid,
+                    targetSpotId,
                     stableType,
-                    descriptorVersion,
-                    placementProfile,
-                    affinityKey),
+                    descriptorVersion),
                 sourceNodeRid,
                 sourceNodeGeneration,
-                sourceSpotRid,
+                sourceSpotId,
                 operationId,
                 request,
                 replyRouteId,
@@ -762,7 +879,7 @@ internal static class ZLinkServiceWireCodec
             operation.SourceNodeRid,
             operation.SourceNodeGeneration,
             operation.DeadlineUnixMs);
-        if (operation.SpotRid.IsEmpty
+        if (!ZLinkSpotId.IsValid(operation.SpotId)
             || string.IsNullOrWhiteSpace(operation.StableType))
             throw new ArgumentOutOfRangeException(nameof(operation));
         ValidateReservation(operation.Reservation);
@@ -772,7 +889,7 @@ internal static class ZLinkServiceWireCodec
         WriteOperationId(body, operation.OperationId);
         body.Rid(operation.SourceNodeRid);
         body.U64(operation.SourceNodeGeneration);
-        body.Rid(operation.SpotRid);
+        body.Text8(operation.SpotId);
         body.Text8(operation.StableType);
         WriteReservation(body, operation.Reservation);
         body.U64(operation.DeadlineUnixMs);
@@ -795,7 +912,7 @@ internal static class ZLinkServiceWireCodec
         ValidateCloseFence(operation.Target);
 
         var fenceBody = new WireWriter();
-        fenceBody.Rid(operation.Target.SpotRid);
+        fenceBody.Text8(operation.Target.SpotId);
         fenceBody.U64(operation.Target.ObjectGeneration);
         fenceBody.Rid(operation.Target.TargetNodeRid);
         fenceBody.U64(operation.Target.TargetNodeGeneration);
@@ -817,6 +934,91 @@ internal static class ZLinkServiceWireCodec
             body.Count);
         body.CopyTo(result.AsSpan(5));
         return result;
+    }
+
+    internal static byte[] EncodeActorCreate(ActorCreateOperation operation)
+    {
+        ValidateOperationIdentity(
+            operation.Correlation,
+            operation.OperationId,
+            operation.SourceNodeRid,
+            operation.SourceNodeGeneration,
+            operation.DeadlineUnixMs);
+        if (string.IsNullOrEmpty(operation.ActorId)
+            || string.IsNullOrWhiteSpace(operation.StableType))
+            throw new ArgumentOutOfRangeException(nameof(operation));
+        ValidateReservation(operation.Reservation);
+
+        var body = new WireWriter();
+        body.U64(operation.Correlation);
+        WriteOperationId(body, operation.OperationId);
+        body.Rid(operation.SourceNodeRid);
+        body.U64(operation.SourceNodeGeneration);
+        body.Text8(operation.ActorId);
+        body.Text8(operation.StableType);
+        WriteReservation(body, operation.Reservation);
+        body.U64(operation.DeadlineUnixMs);
+        var result = Prefix(
+            ServiceWireConstants.Command.ActorCreate,
+            ServiceWireConstants.Flag.None,
+            body.Count);
+        body.CopyTo(result.AsSpan(5));
+        return result;
+    }
+
+    internal static bool TryDecodeActorCreateOperation(
+        ReadOnlySpan<byte> bytes,
+        out ActorCreateOperationRecord record,
+        out DecodeError error)
+    {
+        record = default;
+        if (!TryDecodePrefix(bytes, out var command, out var flags, out error))
+            return false;
+        if (command != ServiceWireConstants.Command.ActorCreate)
+        {
+            error = DecodeError.UnknownCommand;
+            return false;
+        }
+        if (flags != ServiceWireConstants.Flag.None)
+        {
+            error = DecodeError.ForbiddenFlag;
+            return false;
+        }
+
+        var reader = new WireReader(bytes[5..]);
+        if (!reader.TryU64(out var correlation)
+            || correlation == 0
+            || !TryReadOperationId(ref reader, out var operationId)
+            || !reader.TryRid(out var sourceNodeRid)
+            || !reader.TryU64(out var sourceNodeGeneration)
+            || sourceNodeGeneration == 0
+            || !reader.TryText8(out var actorId)
+            || !reader.TryText8(out var stableType)
+            || !TryReadReservation(ref reader, out var reservation)
+            || !reader.TryU64(out var deadlineUnixMs)
+            || deadlineUnixMs is 0 or > long.MaxValue
+            || reader.Remaining != 0)
+        {
+            error = reader.Truncated
+                ? DecodeError.TruncatedField
+                : reader.Remaining != 0
+                    ? DecodeError.TrailingByte
+                    : DecodeError.InvalidField;
+            return false;
+        }
+
+        record = new ActorCreateOperationRecord(
+            new ActorCreateOperation(
+                correlation,
+                operationId,
+                sourceNodeRid,
+                sourceNodeGeneration,
+                actorId,
+                stableType,
+                reservation,
+                deadlineUnixMs));
+        error = DecodeError.None;
+        return true;
     }
 
     internal static bool TryDecodeUserSpotOperation(
@@ -853,7 +1055,7 @@ internal static class ZLinkServiceWireCodec
 
         if (command == ServiceWireConstants.Command.UserSpotCreate)
         {
-            if (!reader.TryRid(out var spotRid)
+            if (!reader.TryText8(out var spotId)
                 || !reader.TryText8(out var stableType)
                 || !TryReadReservation(ref reader, out var reservation)
                 || !reader.TryU64(out var deadlineUnixMs)
@@ -874,7 +1076,7 @@ internal static class ZLinkServiceWireCodec
                     operationId,
                     sourceNodeRid,
                     sourceNodeGeneration,
-                    spotRid,
+                    spotId,
                     stableType,
                     reservation,
                     deadlineUnixMs),
@@ -891,7 +1093,7 @@ internal static class ZLinkServiceWireCodec
                 return false;
             }
             var fenceReader = new WireReader(fenceBytes);
-            if (!fenceReader.TryRid(out var spotRid)
+            if (!fenceReader.TryText8(out var spotId)
                 || !fenceReader.TryU64(out var objectGeneration)
                 || objectGeneration == 0
                 || !fenceReader.TryRid(out var targetNodeRid)
@@ -921,7 +1123,7 @@ internal static class ZLinkServiceWireCodec
                     sourceNodeRid,
                     sourceNodeGeneration,
                     new UserSpotCloseFence(
-                        spotRid,
+                        spotId,
                         objectGeneration,
                         targetNodeRid,
                         targetNodeGeneration,
@@ -967,7 +1169,7 @@ internal static class ZLinkServiceWireCodec
         body.U16((ushort)orderedChannels.Length);
         foreach (var (name, weight) in orderedChannels)
         {
-            if (weight > 100)
+            if (weight > ZLinkSocketConfig.MaximumPeerWeight)
                 throw new ArgumentOutOfRangeException(nameof(channels));
             body.Text8(name);
             body.U32(weight);
@@ -1038,7 +1240,7 @@ internal static class ZLinkServiceWireCodec
         {
             if (!reader.TryText8(out var channel)
                 || !reader.TryU32(out var weight)
-                || weight > 100
+                || weight > ZLinkSocketConfig.MaximumPeerWeight
                 || (previousChannel is not null
                     && StringComparer.Ordinal.Compare(previousChannel, channel) >= 0)
                 || !channels.TryAdd(channel, weight))
@@ -1122,7 +1324,7 @@ internal static class ZLinkServiceWireCodec
             throw new ArgumentOutOfRangeException(nameof(correlation));
     }
 
-    private static void ValidateReservation(UserSpotReservationFence reservation)
+    private static void ValidateReservation(ObjectReservationFence reservation)
     {
         if (string.IsNullOrWhiteSpace(reservation.ReservationId)
             || string.IsNullOrWhiteSpace(reservation.ExpectedStoreVersion)
@@ -1138,7 +1340,7 @@ internal static class ZLinkServiceWireCodec
 
     private static void ValidateCloseFence(UserSpotCloseFence target)
     {
-        if (target.SpotRid.IsEmpty
+        if (!ZLinkSpotId.IsValid(target.SpotId)
             || target.ObjectGeneration == 0
             || target.TargetNodeRid.IsEmpty
             || target.TargetNodeGeneration == 0
@@ -1168,7 +1370,7 @@ internal static class ZLinkServiceWireCodec
 
     private static void WriteReservation(
         WireWriter writer,
-        UserSpotReservationFence reservation)
+        ObjectReservationFence reservation)
     {
         writer.Text8(reservation.ReservationId);
         writer.Text16(reservation.ExpectedStoreVersion, requireNonEmpty: true);
@@ -1187,7 +1389,7 @@ internal static class ZLinkServiceWireCodec
         var target = operation.Target;
         if (target.TargetNodeRid.IsEmpty
             || target.TargetNodeGeneration == 0
-            || target.TargetSpotRid.IsEmpty
+            || !ZLinkSpotId.IsValid(target.TargetSpotId)
             || string.IsNullOrWhiteSpace(target.MeshName)
             || string.IsNullOrWhiteSpace(target.StableType)
             || string.IsNullOrWhiteSpace(target.DescriptorVersion)
@@ -1247,7 +1449,7 @@ internal static class ZLinkServiceWireCodec
 
     private static bool TryReadReservation(
         ref WireReader reader,
-        out UserSpotReservationFence reservation)
+        out ObjectReservationFence reservation)
     {
         reservation = default;
         if (!reader.TryText8(out var reservationId)
@@ -1265,7 +1467,7 @@ internal static class ZLinkServiceWireCodec
             || !reader.TryU32(out var pendingCapacityDelta)
             || pendingCapacityDelta == 0)
             return false;
-        reservation = new UserSpotReservationFence(
+        reservation = new ObjectReservationFence(
             reservationId,
             expectedStoreVersion,
             objectGeneration,
@@ -1426,7 +1628,7 @@ internal static class ZLinkServiceWireCodec
                     break;
                 case 8:
                     if (!value.TryU32(out placementWeight)
-                        || placementWeight > 100
+                        || placementWeight > ZLinkSocketConfig.MaximumPeerWeight
                         || value.Remaining != 0)
                         return false;
                     break;

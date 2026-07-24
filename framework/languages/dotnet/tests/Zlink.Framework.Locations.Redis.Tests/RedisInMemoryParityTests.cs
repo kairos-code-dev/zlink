@@ -88,7 +88,7 @@ public sealed class RedisInMemoryParityTests
         Record("spot-claim-2",
             await spots.UpdateSpotAsync(TestRows.Spot(OwnerA, "spot-2"), ZLinkLocationWriteIntent.NewClaim));
         RecordStatus("spot-remove-wrong-owner", await spots.RemoveSpotAsync(
-            new ZLinkSpotLocationKey("play", RoutingId.From("spot-1")),
+            new ZLinkSpotLocationKey("spot-1"),
             new ZLinkLocationOwnerToken(OwnerB, 1)));
         trace.Add(
             $"remove-all-by-owner={await store.RemoveAllByOwnerAsync(ownerAToken)}");

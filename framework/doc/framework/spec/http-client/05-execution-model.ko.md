@@ -8,18 +8,17 @@
 > 이긴다.** 아래 §5.1은 그 계약을 **다시 적은 요약**이며, 이 문서의 몫은 §5.2 이하의 **HTTP 전송
 > 실행 세부**(non-blocking 근거, 취소, timeout 경계)다.
 
-## 5.1 terminator 세 축 (+ callback)
+## 5.1 두 terminator와 callback
 
-**framework의 모든 대기 호출과 같은 terminator를 제공한다.**
+HTTP client는 `submit`과 `async`를 제공한다. Shared Spot gate를 반납하는 `Yield`는 HTTP request
+builder가 아니라 서버 request와 worker allowlist가 소유한다.
 
 | terminator | 완료를 기다리나 | Spot 실행 줄 |
 | --- | --- | --- |
 | **submit** | 아니오 | 그대로 진행. 응답을 쓰지 않는 fire 경로 |
 | **async** | 예 | **turn을 유지한다.** handler는 하나의 turn이다 |
-| **yield** | 예 | **turn을 반납한다.** 완료된 continuation은 Spot 실행 줄의 큐에 재삽입되어 순서대로 재개된다 |
 
-**callback은 네 번째 terminator가 아니다.** framework의 terminator 축은 셋뿐이고
-([framework 04 §1.1](../04-async-execution-policy.ko.md)), callback은
+**callback은 terminator가 아니다.** HTTP client의 terminator는 `submit`과 `async`다. Callback은
 awaitable을 쓰지 않는 호출자를 위한 **별도 완료 경로**다. Spot 실행 문맥에서는 `submit`과 같이
 동작하며 완료 callback이 그 Spot 실행 줄의 **새 turn**으로 들어간다
 ([framework 12 §3](12-http-client.ko.md)).
@@ -39,18 +38,21 @@ awaitable을 쓰지 않는 호출자를 위한 **별도 완료 경로**다. Spot
 동사를 반복하지 않는다 — `submit`은 one-way 전용 동사다
 ([04 §2](../04-async-execution-policy.ko.md)).
 
-## 5.2 yield와 Spot 실행 줄
+## 5.2 외부 HTTP 대기와 Spot 실행 줄
 
-**이 client가 존재하는 이유가 `yield`다.** actor 입·퇴장 시 외부 API나 레거시 API에서 데이터를
-가져오는 대기는 spot의 공유 흐름과 무관하다. 그 대기 때문에 room 전체와 timer가 멈추면 안 된다.
+HTTP request builder는 shared Spot gate를 반납하는 `yield`를 제공하지 않는다. Actor 입·퇴장 시 외부
+API를 기다리면서 room 전체와 timer를 진행해야 하면 I/O worker에서 HTTP `async`를 실행하고 worker call의
+`Yield`로 기다린다.
 
 ```
-// spot handler 안
-var profile = await http.Get($"/players/{id}").Yield<Profile>(ct);
+var profile = await Context
+    .RunIoWorker(async workerCancellation =>
+        await http.Get($"/players/{id}").Async<Profile>(workerCancellation))
+    .Yield(ct);
 ```
 
-- **`yield` 앞뒤로 spot 상태의 불변식을 가정하지 않는다.** 그 줄을 넘으면 다른 callback이 상태를
-  바꿀 수 있다.
+- **worker `Yield` 앞뒤로 spot 상태의 불변식을 가정하지 않는다.** 그 줄을 넘으면 다른 callback이
+  상태를 바꿀 수 있다.
 - **`async`는 turn을 유지한다.** spot 상태를 await를 가로질러 다뤄야 하면 `async`를 쓴다.
 
 ## 5.3 turn seam — execution scheduler 주입
@@ -60,8 +62,9 @@ var profile = await http.Get($"/players/{id}").Yield<Profile>(ct);
 
 - HTTP client는 **execution scheduler 주입점**을 공개 계약으로 둔다. scheduler가 completion을
   어디서 재개할지 정한다.
-- **framework가 DI 등록 시 spot turn을 아는 scheduler를 꽂는다.** 그때 `yield`가 살아난다.
-- scheduler가 없는 단독 사용(CLI · client 시나리오)에서는 **`yield`를 노출하지 않는다.**
+- **framework가 DI 등록 시 callback completion scheduler를 꽂는다.** callback은 Spot 실행 줄의 새
+  turn으로 들어간다.
+- DI와 단독 사용 모두 HTTP request builder에 **`yield`를 노출하지 않는다.**
 
 cpp의 `coroutines(resume_scheduler)` / `framework_resume_scheduler_t`가 이 seam의 선례다.
 
@@ -91,7 +94,7 @@ terminator는 계약 위반이다([04 §2](../04-async-execution-policy.ko.md)).
 | 표면 | 누가 쓰나 | terminator |
 |------|-----------|------------|
 | 정적 팩토리 | CLI · client 시나리오 | `async` / callback |
-| **DI 주입 client** | **Spot handler · 서버 코드** | `submit` / `async` / `yield` / callback |
+| **DI 주입 client** | **Spot handler · 서버 코드** | `submit` / `async` / callback |
 
 - client는 서비스당 하나를 만들어 재사용한다(pool/keep-alive 이득).
 - builder verb 단축(one-shot)은 제출 시 client를 lazy build하고 완료 후 닫는 **편의 경로**다.

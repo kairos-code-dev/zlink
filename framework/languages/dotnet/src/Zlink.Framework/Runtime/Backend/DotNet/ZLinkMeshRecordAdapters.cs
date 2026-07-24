@@ -22,7 +22,7 @@ internal static class ZLinkMeshRecordAdapters
             joiningActor.ToBackend(),
             joiningActor.ToBackend(),
             record.SourceNodeRid,
-            record.SourceSpotRid,
+            record.SourceSpotId,
             epoch,
             message,
             parts,
@@ -48,8 +48,8 @@ internal static class ZLinkMeshRecordAdapters
             control.CurrentActor.ActorId is { Length: > 0 }
                 ? control.CurrentActor.ToBackend()
                 : null,
-            control.PreviousSpotRid,
-            control.CurrentSpotRid,
+            control.PreviousSpotId,
+            control.CurrentSpotId,
             control.CurrentMembershipEpoch,
             0);
         return new ZLinkBackendSpotActorLifecycleEvent(lifecycleKind, info);
@@ -84,7 +84,7 @@ internal static class ZLinkMeshRecordAdapters
             parts[i] = new ZLinkBackendActorPart(
                 actor,
                 record.SourceNodeRid,
-                record.SourceSpotRid,
+                ZLinkSpotId.ToNativeRoutingId(record.SourceSpotId),
                 requestId,
                 flags,
                 messages[i],
@@ -99,7 +99,7 @@ internal sealed class ZLinkMeshActorJoinRequest(
     ZLinkBackendActorRef sourceActor,
     ZLinkBackendActorRef targetActor,
     RoutingId sourceNodeRid,
-    RoutingId targetSpotRid,
+    string targetSpotId,
     ulong joinEpoch,
     Message message,
     IReadOnlyList<Message> parts,
@@ -108,7 +108,7 @@ internal sealed class ZLinkMeshActorJoinRequest(
         sourceActor,
         targetActor,
         sourceNodeRid,
-        targetSpotRid,
+        targetSpotId,
         joinEpoch,
         message,
         parts)

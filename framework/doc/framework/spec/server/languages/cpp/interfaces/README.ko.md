@@ -11,7 +11,7 @@ Framework spec이 동작을 정하고 다음 문서가 namespace, type, member, 
 | [Common runtime](01-common-runtime.ko.md) | `dispatch`, `errors`, `messaging`, `codecs`, `workers` |
 | [Configuration과 host](02-configuration-host.ko.md) | `configuration`, `http`, host·DI·module·lifecycle |
 | [Channel messaging](03-channel-messaging.ko.md) | `channels`, `handlers`, topology builder, object role·capacity·weight와 automatic RID |
-| [Spots](04-spots.ko.md) | global SpotRid·SpotRef, Spot relocation adapter, Entry Spot relocation callback, Instance fluent cold activation과 User Spot manager |
+| [Spots](04-spots.ko.md) | global SpotId·SpotRef, Spot relocation adapter, Entry Spot relocation callback, Instance fluent cold activation과 User Spot manager |
 | [Actors](05-actors.ko.md) | global ActorId·ActorRef, Actor relocation adapter, ID-only messaging, manager create와 exact mutation·bind |
 | [STREAM session](06-stream-session.ko.md) | `streams`, packet session과 bound session 연동 |
 | [Location Store·Redis](07-location-store.ko.md) | Location record, descriptor·capacity와 Redis provider |

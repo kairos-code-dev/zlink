@@ -23,13 +23,18 @@ internal sealed class ApplicationJoinCoordinator(
     {
         try
         {
-            Task<ActorRef> operation;
+            Task<ZLinkActorCreateResult> operation;
             using (ExecutionContext.SuppressFlow())
-                operation = Task.Run(async () => await actors.GetOrCreateAsync(
-                    request.ActorId,
-                    SpotServiceNames.ActorType,
-                    new Spots.ScenarioActorCreateReq(request.DisplayName)));
-            var actor = await operation;
+                operation = Task.Run(async () => await actors
+                    .GetOrCreate(request.ActorId, SpotServiceNames.ActorType)
+                    .Request(new Spots.ScenarioActorCreateReq(request.DisplayName))
+                    .Async());
+            var actor = await operation switch
+            {
+                ZLinkActorCreateResult.Existing value => value.Actor,
+                ZLinkActorCreateResult.Created value => value.Actor,
+                _ => throw new InvalidOperationException("Actor creation was rejected.")
+            };
             evidence.Add(
                 $"application-join-completed|actor={actor.ActorId}|node={actor.NodeRid}"
                 + $"|generation={actor.Generation}");

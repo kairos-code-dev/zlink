@@ -107,7 +107,7 @@ pending operation 저장소, dispatch 순서와 native transport adapter는 공�
 않는다. 공개 facade가 상태를 유지해야 할 때도 사용자는 그 상태의 자료구조나 처리 순서를 알 필요가
 없어야 한다.
 
-공개 `route_client_t`와 `route_send_call_t`는 node와 global Spot RID를 대상으로 하는 typed 호출을
+공개 `route_client_t`와 `route_send_call_t`는 node와 global Spot ID를 대상으로 하는 typed 호출을
 제공한다. User Spot과 Instance Spot은 같은 ID-only 호출 표면을 사용하며, 별도 handle·resolver·논리 주소
 타입을 제공하지 않는다. request 계열은 `channel_request_call_t`을 반환한다. 사용자는 target MeshNode,
 location owner token, generation이나 retry 절차를 넘기지 않으며 routing envelope, location claim과
@@ -152,29 +152,6 @@ declaration은 [exact interface 목차](README.ko.md)에서 지정한 단 하나
 소유한다.
 
 ## 4. Common result, coroutine과 message
-
-Object placement에 사용하는 문자열은 서로 바꿔 쓸 수 없는 value type으로 고정한다.
-
-```cpp
-namespace zlink::framework {
-
-class placement_profile_t final {
-public:
-    explicit placement_profile_t(std::string value);
-    std::string_view value() const noexcept;
-};
-
-class affinity_key_t final {
-public:
-    explicit affinity_key_t(std::string value);
-    std::string_view value() const noexcept;
-};
-
-} // namespace zlink::framework
-```
-
-두 값은 UTF-8 `1..255` byte exact 값이다. Constructor는 empty, invalid UTF-8과 255 byte 초과를
-`std::invalid_argument`로 거부한다. Trim, case folding과 Unicode normalization을 적용하지 않는다.
 
 ```cpp
 namespace zlink::framework {
@@ -390,7 +367,11 @@ public:
 **worker는 spot·session 실행 문맥 밖에서 실행하는 작업이다.** 완료를 원래 실행 문맥에서 재개하는
 규칙은 [비동기 실행 정책](../../../../04-async-execution-policy.ko.md)이 소유한다. Worker function에는 timeout,
 host 종료와 caller cancellation을 합친 `std::stop_token`을 전달한다. `submit()`은 결과를 기다리지
-않는 terminal이고 `async()`와 `yield()`는 각각 현재 turn을 유지하거나 양보하며 결과를 기다린다.
+않는 terminal이고 `async()`는 현재 claim과 gate를 유지한 채 결과를 기다린다. `yield()`는 `SpotWide`
+User Spot 또는 Instance Spot callback에서만 현재 Spot gate를 반납하고, 완료 continuation이 같은 gate를
+다시 얻은 뒤 결과를 반환한다. `SpotWide` member Actor에서 호출하면 Actor FIFO claim은 계속 유지한다.
+`PerActor`, Entry Spot, Node, Channel과 실행 문맥 밖에서 `yield()`를 호출하면 worker queue에 제출하기 전에
+`invalid_configuration`으로 실패한다.
 `worker_options_t`의 최소·최대 thread 수, idle timeout과 queue 상한은 host 시작 전에만 설정한다.
 
 ### 7.4 오류 경계

@@ -93,17 +93,19 @@ test('ZLinkActorManager create find and getOrCreate follow dotnet actor semantic
     }
   }
   class PlayerFactory {
-    async create(actorId, context) {
+    async create(actorId, context, signal) {
+      assert.equal(signal, creation.signal);
       events.push(`create:${actorId}`);
       return new PlayerActor(actorId, context);
     }
   }
 
+  const creation = new AbortController();
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map([['player', PlayerFactory]])
   });
 
-  const actor = await manager.getOrCreateActor('alice', 'player');
+  const actor = await manager.getOrCreateActor('alice', 'player', creation.signal);
   assert.equal(actor.actorId, 'alice');
   assert.equal(actor.context.isJoined, false);
   assert.equal(await manager.findActor('alice'), actor);
@@ -327,9 +329,9 @@ test('ZLinkActorManager create notifies Entry Spot after native actor creation',
 
   assert.deepEqual(events, [
     'create:alice',
-    'configure:alice',
     'createNative:alice',
-    'entryCreate:node-a:alice'
+    'entryCreate:node-a:alice',
+    'configure:alice'
   ]);
 });
 
@@ -379,7 +381,7 @@ test('ZLinkActorManager claims location before activation and releases on destro
     locationLifecycle: nodeB.lifecycle
   });
 
-  await managerA.create('alice', 'player');
+  await managerA.create('alice', 'player').inMesh('play').submit();
   const row = await store.resolveActor({ meshName: 'play', actorId: 'alice' });
   assert.equal(row.ownerId, 'owner-a');
   assert.equal(String(row.ownerNodeRid), 'node-a');
@@ -389,7 +391,7 @@ test('ZLinkActorManager claims location before activation and releases on destro
   assert.ok(managerA.getState('alice').locationGeneration > 0n);
 
   await assert.rejects(
-    () => managerB.create('alice', 'player'),
+    () => managerB.create('alice', 'player').inMesh('play').submit(),
     /location claim conflict/
   );
   assert.equal(activatedA, 1);
@@ -502,7 +504,7 @@ test('ZLinkActorManager rolls location claim back when activation fails', async 
   });
 
   await assert.rejects(
-    () => manager.create('alice', 'player'),
+    () => manager.create('alice', 'player').inMesh('play').submit(),
     /actor factory failed/
   );
   assert.equal(await store.resolveActor({ meshName: 'play', actorId: 'alice' }), undefined);
@@ -564,7 +566,7 @@ test('ZLinkActorManager clears failed create state when Entry Spot create callba
   });
 
   await assert.rejects(
-    () => manager.create('alice', 'player'),
+    () => manager.create('alice', 'player').inMesh('play').submit(),
     /creation failed/
   );
   assert.equal(await manager.find('alice'), undefined);
@@ -791,22 +793,22 @@ test('ZLinkActorManager rejects duplicate create and actor type mismatch', async
     ])
   });
 
-  await manager.create('alice', 'player');
+  await manager.create('alice', 'player').inMesh('play').submit();
   await assert.rejects(
-    () => manager.create('alice', 'player'),
+    () => manager.create('alice', 'player').inMesh('play').submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.ActorAlreadyExists
   );
   await assert.rejects(
-    () => manager.getOrCreate('alice', 'spectator'),
+    () => manager.getOrCreate('alice', 'spectator').inMesh('play').submit(),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.ActorTypeMismatch
   );
 });
 
-test('ZLinkActorManager shares concurrent getOrCreate actor creation', async () => {
+test('concurrent getOrCreate loser returns Existing after the winning creation commits', async () => {
   let releaseCreate;
   const release = new Promise((resolve) => {
     releaseCreate = resolve;
@@ -829,13 +831,133 @@ test('ZLinkActorManager shares concurrent getOrCreate actor creation', async () 
     actorFactories: new Map([['player', PlayerFactory]])
   });
 
-  const first = manager.getOrCreateActor('alice', 'player');
-  const second = manager.getOrCreateActor('alice', 'player');
+  const first = manager.getOrCreateActorResult('alice', 'player');
+  const second = manager.getOrCreateActorResult('alice', 'player');
   releaseCreate();
-  const [firstActor, secondActor] = await Promise.all([first, second]);
+  const [firstResult, secondResult] = await Promise.all([first, second]);
 
-  assert.equal(firstActor, secondActor);
+  assert.equal(firstResult.status, 'created');
+  assert.equal(secondResult.status, 'existing');
+  assert.equal(firstResult.actor, secondResult.actor);
   assert.equal(createCount, 1);
+});
+
+test('distinct concurrent getOrCreate callers retry after the winning creation is rejected', async () => {
+  const events = [];
+  let releaseFirst;
+  let firstCallbackStarted;
+  const firstStarted = new Promise((resolve) => {
+    firstCallbackStarted = resolve;
+  });
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  let callbackCount = 0;
+  let activeCallbacks = 0;
+  let maximumActiveCallbacks = 0;
+  let nativeGeneration = 0n;
+  class PlayerFactory {
+    create(actorId, context) {
+      events.push(`factory:${actorId}`);
+      return { actorId, context };
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['player', PlayerFactory]]),
+    nativeActorNode: createMockSpotNode({
+      createActor(actorId) {
+        nativeGeneration += 1n;
+        events.push(`native-create:${nativeGeneration}`);
+        return { nodeRid: rid('node-a'), actorId, generation: nativeGeneration };
+      },
+      async destroyActor(actorRef) {
+        events.push(`native-discard:${actorRef.generation}`);
+      }
+    }),
+    async actorCreatedNotifier(_nodeRid, actor, request) {
+      callbackCount += 1;
+      activeCallbacks += 1;
+      maximumActiveCallbacks = Math.max(maximumActiveCallbacks, activeCallbacks);
+      const requestValue = request.decode().request;
+      events.push(`callback:${callbackCount}:${requestValue}`);
+      try {
+        if (callbackCount === 1) {
+          firstCallbackStarted();
+          assert.equal(await manager.findActor(actor.actorId), undefined);
+          await firstGate;
+          return { accepted: false, reply: { reason: 'first-rejected' } };
+        }
+        return { accepted: true, reply: { acceptedRequest: requestValue } };
+      } finally {
+        activeCallbacks -= 1;
+      }
+    }
+  });
+
+  const first = manager.getOrCreateActorResult('alice', 'player', { request: 'first' });
+  await firstStarted;
+  const second = manager.getOrCreateActorResult('alice', 'player', { request: 'second' });
+  releaseFirst();
+
+  const firstResult = await first;
+  const secondResult = await second;
+  assert.deepEqual(firstResult, {
+    status: 'rejected',
+    reply: { reason: 'first-rejected' }
+  });
+  assert.equal(secondResult.status, 'created');
+  assert.deepEqual(secondResult.reply, { acceptedRequest: 'second' });
+  assert.equal(await manager.findActor('alice'), secondResult.actor);
+  assert.equal(callbackCount, 2);
+  assert.equal(maximumActiveCallbacks, 1);
+  assert.deepEqual(events, [
+    'factory:alice',
+    'native-create:1',
+    'callback:1:first',
+    'native-discard:1',
+    'factory:alice',
+    'native-create:2',
+    'callback:2:second'
+  ]);
+});
+
+test('rejected actor staging is never configured, found, or exposed to destroy lifecycle', async () => {
+  const events = [];
+  class RejectedFactory {
+    create(actorId, context) {
+      return {
+        actorId,
+        context,
+        configure() {
+          events.push('configure');
+        }
+      };
+    }
+  }
+  const manager = new framework.DefaultZLinkActorManager({
+    actorFactories: new Map([['rejected', RejectedFactory]]),
+    nativeActorNode: createMockSpotNode({
+      createActor(actorId) {
+        return { nodeRid: rid('node-a'), actorId, generation: 9n };
+      },
+      async destroyActor(actorRef) {
+        events.push(`discard:${actorRef.actorId}`);
+      }
+    }),
+    async actorCreatedNotifier(_nodeRid, actor) {
+      assert.equal(await manager.findActor(actor.actorId), undefined);
+      return { accepted: false, reply: 'not-allowed' };
+    },
+    actorDestroyedCleanup() {
+      events.push('destroy-lifecycle');
+    }
+  });
+
+  const result = await manager.getOrCreateActorResult('denied', 'rejected');
+  assert.deepEqual(result, { status: 'rejected', reply: 'not-allowed' });
+  assert.equal(await manager.findActor('denied'), undefined);
+  assert.equal(manager.getState('denied'), undefined);
+  assert.deepEqual(events, ['discard:denied']);
 });
 
 test('ZLinkActorManager validates factory returned actor id and context', async () => {
@@ -859,7 +981,7 @@ test('ZLinkActorManager validates factory returned actor id and context', async 
 
   for (const [actorId, actorType] of [['alice', 'wrong-id'], ['bob', 'wrong-context']]) {
     await assert.rejects(
-      () => manager.create(actorId, actorType),
+      () => manager.create(actorId, actorType).inMesh('play').submit(),
       (error) =>
         error instanceof framework.ZLinkFrameworkException
         && error.kind === framework.ZLinkFrameworkErrorKind.ActorCreateFailed
@@ -1001,7 +1123,7 @@ test('actor join submit keeps the Spot turn while yield releases it', async () =
   assert.deepEqual(events.slice(-3), ['yield:start', 'yield:next', 'yield:end']);
 });
 
-test('actor directory find/ensure uses id lookup and exposes actor ref snapshots', async () => {
+test('actor manager fluent getOrCreate uses global id lookup and exposes actor ref snapshots', async () => {
   class PlayerFactory {
     create(actorId, context) {
       return { actorId, context };
@@ -1013,33 +1135,30 @@ test('actor directory find/ensure uses id lookup and exposes actor ref snapshots
     actorCreatedNodeRidProvider: () => rid('node-a')
   });
 
-  assert.equal(await manager.find('play-mesh', 'alice'), undefined);
-  const ensured = await manager.ensure(
-    'play-mesh',
-    'alice',
-    { actorType: 'player', displayName: 'Alice' }
-  );
-  const found = await manager.find('play-mesh', 'alice');
-  const existing = await manager.ensure(
-    'play-mesh',
-    'alice',
-    { actorType: 'player', displayName: 'Ignored' }
-  );
-  const snapshot = framework.zlinkActorRefSnapshotFrom(ensured);
+  assert.equal(await manager.find('alice'), undefined);
+  const created = await manager.getOrCreate('alice', 'player')
+    .inMesh('play-mesh')
+    .request({ displayName: 'Alice' })
+    .submit();
+  assert.equal(created.status, 'created');
+  const found = await manager.find('alice');
+  const existing = await manager.getOrCreate('alice', 'player').inMesh('play-mesh').submit();
+  assert.equal(existing.status, 'existing');
+  const snapshot = framework.zlinkActorRefSnapshotFrom(created.actor);
   const wireActorRef = framework.zlinkActorRefSnapshotToActorRef(
     JSON.parse(JSON.stringify(snapshot, (_key, value) => typeof value === 'bigint' ? value.toString() : value))
   );
 
-  assert.deepEqual(found, ensured);
-  assert.deepEqual(existing, ensured);
+  assert.deepEqual(found, created.actor);
+  assert.deepEqual(existing.actor, created.actor);
   assert.equal(snapshot.nodeRid, 'node-a');
   assert.equal(wireActorRef.nodeRid, 'node-a');
-  assert.equal(wireActorRef.actorId, ensured.actorId);
-  assert.equal(wireActorRef.generation, ensured.generation);
+  assert.equal(wireActorRef.actorId, created.actor.actorId);
+  assert.equal(wireActorRef.generation, created.actor.generation);
   assert.equal(framework.zlinkActorRefSnapshotToActorRef({ ...snapshot, generation: '42' }).generation, 42n);
 });
 
-test('actor directory find and ensure reuse remote location refs without local creation', async () => {
+test('actor manager find and getOrCreate reuse a remote global location ref', async () => {
   const remote = { nodeRid: rid('node-b'), actorId: 'alice', generation: 7n };
   let creates = 0;
   const manager = new framework.DefaultZLinkActorManager({
@@ -1051,47 +1170,34 @@ test('actor directory find and ensure reuse remote location refs without local c
     }]]),
     actorCreatedNodeRidProvider: () => rid('node-a'),
     actorRefResolver: {
-      async resolveActorRef(meshName, actorId) {
-        return meshName === 'play-mesh' && actorId === 'alice' ? remote : undefined;
+      async resolveActorRef(actorId) {
+        return actorId === 'alice' ? remote : undefined;
       }
     }
   });
 
-  assert.deepEqual(await manager.find('play-mesh', 'alice'), remote);
-  assert.deepEqual(
-    await manager.ensure(
-      'play-mesh',
-      'alice',
-      { actorType: 'player' },
-      { preferredNodeRid: rid('node-b') }
-    ),
-    remote
-  );
+  assert.deepEqual(await manager.find('alice'), remote);
+  const result = await manager.getOrCreate('alice', 'player').inMesh('play-mesh').submit();
+  assert.equal(result.status, 'existing');
+  assert.deepEqual(result.actor, remote);
   assert.equal(creates, 0);
 });
 
-test('actor directory isolates the same actor id by RouteMesh', async () => {
-  const meshARef = { nodeRid: rid('node-a'), actorId: 'shared', generation: 1n };
-  const meshBRef = { nodeRid: rid('node-b'), actorId: 'shared', generation: 2n };
-  const lookups = [];
+test('actor manager resolves an Actor ID as one global identity', async () => {
+  const globalRef = { nodeRid: rid('node-a'), actorId: 'shared', generation: 1n };
   const manager = new framework.DefaultZLinkActorManager({
     actorFactories: new Map(),
     actorRefResolver: {
-      async resolveActorRef(meshName, actorId) {
-        lookups.push(`${meshName}:${actorId}`);
-        if (meshName === 'mesh-a' && actorId === 'shared') return meshARef;
-        if (meshName === 'mesh-b' && actorId === 'shared') return meshBRef;
-        return undefined;
+      async resolveActorRef(actorId) {
+        return actorId === 'shared' ? globalRef : undefined;
       }
     }
   });
 
-  assert.deepEqual(await manager.find('mesh-a', 'shared'), meshARef);
-  assert.deepEqual(await manager.find('mesh-b', 'shared'), meshBRef);
-  assert.deepEqual(lookups, ['mesh-a:shared', 'mesh-b:shared']);
+  assert.deepEqual(await manager.find('shared'), globalRef);
 });
 
-test('actor manager does not expose a local ActorRef through another RouteMesh', async () => {
+test('actor manager prevents the same global Actor ID from changing type or Mesh', async () => {
   class PlayerFactory {
     create(actorId, context) {
       return { actorId, context };
@@ -1110,42 +1216,27 @@ test('actor manager does not expose a local ActorRef through another RouteMesh',
     }
   });
 
-  const local = await manager.getOrCreate('mesh-a', 'shared', 'player-a');
+  const local = await manager.getOrCreate('shared', 'player-a').inMesh('mesh-a').submit();
 
-  assert.deepEqual(await manager.find('mesh-a', 'shared'), local);
-  assert.deepEqual(await manager.find('mesh-b', 'shared'), remote);
+  assert.deepEqual(await manager.find('shared'), local.actor);
   await assert.rejects(
-    () => manager.getOrCreate('mesh-b', 'shared', 'player-b'),
-    (error) => error instanceof framework.ZLinkConfigurationException
+    () => manager.getOrCreate('shared', 'player-b').inMesh('mesh-b').submit(),
+    (error) =>
+      error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.ActorTypeMismatch
   );
 });
 
-test('actor directory ensure rejects an unavailable preferred node before local creation', async () => {
-  let creates = 0;
+test('actor create call does not expose a caller-selected target node', () => {
   const manager = new framework.DefaultZLinkActorManager({
-    actorFactories: new Map([['player', {
-      create() {
-        creates += 1;
-        return { actorId: 'alice', context: {} };
-      }
-    }]]),
-    actorCreatedNodeRidProvider: () => rid('node-a'),
-    actorRefResolver: { async resolveActorRef() { return undefined; } }
+    actorFactories: new Map()
   });
-
-  await assert.rejects(
-    () => manager.ensure(
-      'play-mesh',
-      'alice',
-      { actorType: 'player' },
-      { preferredNodeRid: rid('node-b') }
-    ),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.RouteNotConnected
-  );
-  assert.equal(creates, 0);
+  const call = manager.create('alice', 'player');
+  assert.equal(call.preferredNodeRid, undefined);
+  assert.equal(call.onNode, undefined);
 });
 
-test('actor directory ensure rejects create failures with ActorCreateRejected', async () => {
+test('actor manager fluent create reports factory failures', async () => {
   class FailingFactory {
     create() {
       throw new Error('admission denied');
@@ -1156,8 +1247,8 @@ test('actor directory ensure rejects create failures with ActorCreateRejected', 
   });
 
   await assert.rejects(
-    () => manager.ensure('play-mesh', 'alice', { actorType: 'player' }),
-    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorCreateRejected
+    () => manager.create('alice', 'player').inMesh('play-mesh').submit(),
+    (error) => error.kind === framework.ZLinkFrameworkErrorKind.ActorCreateFailed
   );
 });
 
@@ -1767,6 +1858,7 @@ test('target ownership publication failure releases the claimed actor location',
       spotRid: rid('source-entry')
     },
     clearAfterDestroy() {},
+    setJoinedSpot() {},
     get locationGeneration() { return locationGeneration; },
     setLocationGeneration(value) { locationGeneration = value; },
     get ownsLocation() { return ownsLocation; },
@@ -2283,7 +2375,7 @@ test('DefaultZLinkActorManager adopts remote native actor ref without claiming a
     locationLifecycle: owner.lifecycle
   });
 
-  await ownerManager.create('alice', 'player');
+  await ownerManager.create('alice', 'player').inMesh('play').submit();
   const ownedRow = await store.resolveActor({ meshName: 'play', actorId: 'alice' });
   assert.equal(ownedRow.ownerId, 'owner-a');
 
@@ -2372,6 +2464,34 @@ test('ZLinkEntrySpotActivation destroyActor does not invoke Entry Spot lifecycle
     'entryCreate:alice',
     'destroyHook:node-a:alice'
   ]);
+});
+
+test('Entry Spot maintenance restoration uses relocated notification without admission or joined callbacks', async () => {
+  const events = [];
+  class EntrySpot {
+    async onActorJoin() {
+      events.push('admission');
+      return { accepted: false };
+    }
+    async onJoinedActor() {
+      events.push('joined');
+    }
+    async onActorRelocated(actor) {
+      events.push(`relocated:${actor.actor.actorId}`);
+    }
+  }
+  const activation = new framework.ZLinkEntrySpotActivation({
+    entrySpotType: EntrySpot,
+    nativeSpot: { routingId: 'entry-stage', async dispose() {} },
+    nativeNode: { routingId: 'node-a' },
+    nodeRid: 'node-a',
+    spotNodeName: 'node-a'
+  });
+  await activation.create();
+
+  await activation.notifyRelocatedActor(lifecycleActor('alice'));
+
+  assert.deepEqual(events, ['relocated:alice']);
 });
 
 test('ZLinkEntrySpotActivation disposes native resources when onClosing fails', async () => {
@@ -2510,7 +2630,7 @@ test('native actor join admission closes caller-owned reply when submit fails', 
   }
 });
 
-test('native actor join commits Entry Spot lifecycle after the native reply', async () => {
+test('native actor join skips Entry admission and commits membership after the native reply', async () => {
   const events = [];
   const actor = lifecycleActor('alice');
   const request = zlink.Message.from('return-home');
@@ -2548,7 +2668,7 @@ test('native actor join commits Entry Spot lifecycle after the native reply', as
     message: request
   });
 
-  assert.deepEqual(events, ['admit', 'native-reply', 'entry-joined']);
+  assert.deepEqual(events, ['native-reply', 'entry-joined']);
   request.close();
 });
 
@@ -2623,7 +2743,7 @@ function createEntryActorRuntime(resolveActor, destroyActor = async () => {}) {
   };
 }
 
-test('ZLinkEntrySpotActivation runs onActorJoin admission on the native dispatch round-trip', async () => {
+test('ZLinkEntrySpotActivation does not expose Entry admission on the native dispatch round-trip', async () => {
   const events = [];
   class EntrySpot {
     async onActorJoin(actor, request) {
@@ -2657,14 +2777,13 @@ test('ZLinkEntrySpotActivation runs onActorJoin admission on the native dispatch
 
   assert.equal(harness.replies[0].actorId, 'alice');
   assert.equal(harness.replies[0].code, 0);
-  assert.equal(JSON.parse(harness.replies[0].reply.getString()), 'entry-accept-reply');
+  assert.equal(harness.replies[0].reply, undefined);
   assert.equal(harness.replies[1].actorId, 'bob');
-  assert.equal(harness.replies[1].code, 1);
-  assert.equal(JSON.parse(harness.replies[1].reply.getString()), 'entry-reject-reply');
+  assert.equal(harness.replies[1].code, 0);
+  assert.equal(harness.replies[1].reply, undefined);
   assert.deepEqual(events, [
-    'entryJoin:alice:return-to-entry',
     'entryJoined:alice',
-    'entryJoin:bob:blocked'
+    'entryJoined:bob'
   ]);
   acceptRequest.close();
   rejectRequest.close();
@@ -3214,6 +3333,17 @@ function createMockSpotNode(overrides) {
     },
     joinActorEntrySpot() {
       throw new Error('not used');
+    },
+    leaveActor() {
+      const operationId = { high: 0n, low: nextOperation++ };
+      completions.set(operationId.low, {
+        terminalResult: 0,
+        failureErrno: 0,
+        operationKind: 8,
+        kindData: null,
+        parts: []
+      });
+      return operationId;
     },
     destroyActor() {
       throw new Error('not used');

@@ -203,8 +203,8 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             auto runtime = _runtime;
             auto admitted = runtime.admit_remote_actor_to_spot (
               request.transfer_id, actor_ref_from_spot_route (request),
-              spot_rid_t::from_string (request.source_spot_rid),
-              spot_rid_t::from_string (request.target_spot_rid),
+              spot_id_t (request.source_spot_id),
+              spot_id_t (request.target_spot_id),
               zlink::message_t::from (request.payload));
             if (!admitted) {
                 return detail::propagate_failure<zlink::message_t> (admitted, "remote actor admission failed");
@@ -247,16 +247,15 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                       framework_error_kind_t::request_failed,
                       "target Core MeshNode is unavailable");
                 }
-                const auto target_spot =
-                  zlink::routing_id_t::from (request.target_spot_rid);
+                const auto &target_spot = request.target_spot_id;
                 runtime::host::actor_transfer_prepare_t transfer_prepare{
                   .role = runtime::host::actor_transfer_role_t::target,
                   .transfer_id = request.transfer_id,
                   .actor = runtime::host::public_host_runtime_t::remote_actor_ref (
                     zlink::routing_id_t::from (request.actor_node_rid),
                     request.actor_id, request.actor_generation),
-                  .source_spot_rid = target_spot,
-                  .target_spot_rid = target_spot,
+                  .source_spot_id = target_spot,
+                  .target_spot_id = target_spot,
                   .target_node_rid = native->status ().routing_id ()};
                 runtime::host::actor_transfer_token_t transfer_token;
                 runtime::host::actor_transfer_prepare_result_t transfer_result;
@@ -302,17 +301,17 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
             auto committed = request.finalize
                                ? runtime.finalize_remote_actor_to_spot (
                                    request.transfer_id, actor_ref,
-                                   spot_rid_t::from_string (request.target_spot_rid),
+                                   spot_id_t (request.target_spot_id),
                                    std::move (handoff_backlog), services, &actor_gateway)
                              : request.prepare
                                ? runtime.prepare_remote_actor_to_spot (
                                    request.transfer_id, actor_ref,
-                                   spot_rid_t::from_string (request.target_spot_rid),
+                                   spot_id_t (request.target_spot_id),
                                    zlink::message_t::from (request.transfer_state),
                                    actor_gateway.actor_context (actor_ref), true)
                                : runtime.commit_remote_actor_to_spot (
                                    request.transfer_id, actor_ref,
-                                   spot_rid_t::from_string (request.target_spot_rid),
+                                   spot_id_t (request.target_spot_id),
                                    zlink::message_t::from (request.transfer_state),
                                    actor_gateway.actor_context (actor_ref),
                                    std::move (handoff_backlog), &services);
@@ -424,14 +423,14 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
           runtime.node_rid (), std::string (actor_ref.actor_type ()),
           std::string (actor_ref.actor_id ()), actor_ref.generation ());
         auto joined =
-          request.spot_rid.empty ()
+          request.spot_id.empty ()
             ? runtime.join_actor_to_entry_spot_erased (
                 entry_actor_ref, runtime.node_rid (), zlink::message_t::from (request.payload),
                 request.actor_snapshot_present
                   ? std::make_optional (zlink::message_t::from (request.actor_snapshot))
                   : std::nullopt)
             : runtime.join_remote_actor_to_spot_erased (
-                actor_ref, spot_rid_t::from_string (request.spot_rid),
+                actor_ref, spot_id_t (request.spot_id),
                 zlink::message_t::from (request.payload), actor_gateway.actor_context (actor_ref));
         if (!joined) {
             return detail::propagate_failure<zlink::message_t> (joined, "remote actor join failed");

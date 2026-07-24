@@ -618,11 +618,11 @@ int main ()
                       "spot handle surface is missing: " + required);
     }
 
-    /* CPP-G0-ACTOR-001 — nullable spot rid is the single membership source. */
+    /* CPP-G0-ACTOR-001 — nullable spot id is the single membership source. */
     gate.require (actor_hpp.find ("is_joined") == std::string::npos, "CPP-G0-ACTOR-001",
                   "actor_context_t::is_joined is still public");
-    gate.require (actor_hpp.find ("std::optional<spot_rid_t> spot_rid") != std::string::npos,
-                  "CPP-G0-ACTOR-001", "actor_context_t::spot_rid() nullable accessor is missing");
+    gate.require (actor_hpp.find ("std::optional<spot_id_t> spot_id") != std::string::npos,
+                  "CPP-G0-ACTOR-001", "actor_context_t::spot_id() nullable accessor is missing");
 
     /* CPP-G0-ACTOR-002 — join result is an accepted/rejected variant. */
     for (const std::string required : {"actor_join_accepted_t", "actor_join_rejected_t"}) {
@@ -951,7 +951,7 @@ int main ()
     gate.require (st_d1_local.find ("{\"ST-D1\", \"during-joined-wait\"}")
                     != std::string::npos
                     && st_d1_local.find ("blocked_probe.wait_for") != std::string::npos
-                    && st_d1_local.find ("probe.spot_rid == spot_rid") != std::string::npos,
+                    && st_d1_local.find ("probe.spot_id == spot_id") != std::string::npos,
                   "E2E-CP-55",
                   "ST-D1 does not observe actor packet routing across the delayed local commit");
 
@@ -1094,8 +1094,8 @@ int main ()
     /* E2E-CP-19 — SM-F4 executes request + one-way send from a source Spot to
      * a closed target route and proves the dispatch failure count grows. */
     gate.require (spot_service_f4.find ("/spot/to-spot/negative") != std::string::npos
-                    && spot_service_f4.find ("source_spot_rid") != std::string::npos
-                    && spot_service_f4.find ("target_spot_rid") != std::string::npos,
+                    && spot_service_f4.find ("source_spot_id") != std::string::npos
+                    && spot_service_f4.find ("target_spot_id") != std::string::npos,
                   "E2E-CP-19", "SM-F4 does not route request and send from a source Spot");
     gate.require (spot_service_f4.find ("dispatch_failures_before") != std::string::npos
                     && spot_service_f4.find ("dispatch_failures_after") != std::string::npos,

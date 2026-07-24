@@ -235,8 +235,8 @@ class message_flow_tracer_t
             if (event.source_rid) {
                 add ("src", *event.source_rid);
             }
-            if (event.spot_rid) {
-                add ("spot", *event.spot_rid);
+            if (event.spot_id) {
+                add ("spot", *event.spot_id);
             }
             if (event.actor_id) {
                 add ("actor", *event.actor_id);

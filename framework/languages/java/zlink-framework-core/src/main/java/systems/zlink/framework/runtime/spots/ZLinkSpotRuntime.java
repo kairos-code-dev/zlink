@@ -389,7 +389,8 @@ public final class ZLinkSpotRuntime
                 || !nodeRegistration.entrySpots().isEmpty()) {
                 ZLinkBackendSpot entryBackendSpot = node.entrySpot();
                 if (nodeRegistration.entrySpotRoutingId() != null) {
-                    entryBackendSpot.setRoutingId(nodeRegistration.entrySpotRoutingId());
+                    entryBackendSpot.setRoutingId(
+                        nodeRegistration.entrySpotRoutingId().toString());
                 }
                 entrySpotInitializations.add(new EntrySpotInitialization(
                     node.routingId(),
@@ -432,6 +433,7 @@ public final class ZLinkSpotRuntime
             spotLocations.registerNode(
                 nodeRegistration.meshName(),
                 node.routingId(),
+                node.entrySpot().routingId(),
                 node.entrySpot().lifecycleGeneration(),
                 nodeRegistration.routerBind(),
                 nodeRegistration.pubSubEnabled());
@@ -454,7 +456,8 @@ public final class ZLinkSpotRuntime
                 || !nodeRegistration.actorFactories().isEmpty()) {
                 ZLinkBackendSpot entryBackendSpot = node.entrySpot();
                 if (nodeRegistration.entrySpotRoutingId() != null) {
-                    entryBackendSpot.setRoutingId(nodeRegistration.entrySpotRoutingId());
+                    entryBackendSpot.setRoutingId(
+                        nodeRegistration.entrySpotRoutingId().toString());
                 }
                 entrySpotInitializations.add(new EntrySpotInitialization(
                     node.routingId(),
@@ -476,6 +479,7 @@ public final class ZLinkSpotRuntime
             spotLocations.registerNode(
                 nodeRegistration.meshName(),
                 node.routingId(),
+                node.entrySpot().routingId(),
                 node.entrySpot().lifecycleGeneration(),
                 nodeRegistration.bindEndpoint(),
                 !nodeRegistration.channelNames().isEmpty());
@@ -589,27 +593,27 @@ public final class ZLinkSpotRuntime
 
     @Override
     public systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall getOrCreate(
-        RoutingId spotRid,
+        String spotId,
         String spotType) {
         return new GetOrCreateCall(
-            java.util.Objects.requireNonNull(spotRid, "spotRid"),
+            java.util.Objects.requireNonNull(spotId, "spotId"),
             requireStableType(spotType));
     }
 
     @Override
     public CompletionStage<Optional<systems.zlink.framework.spots.SpotRef>> find(
-        RoutingId spotRid) {
-        java.util.Objects.requireNonNull(spotRid, "spotRid");
+        String spotId) {
+        java.util.Objects.requireNonNull(spotId, "spotId");
         systems.zlink.framework.locations.ZLinkAuthorityStore store =
             requireUserSpotAuthorityStore();
         return store.read(
                 systems.zlink.framework.runtime.locations
-                    .ZLinkAuthorityKeyCodec.spot(spotRid),
+                    .ZLinkAuthorityKeyCodec.spot(spotId),
                 () -> false)
             .thenApply(read -> read
                 instanceof systems.zlink.framework.locations
                     .ZLinkAuthoritySnapshot snapshot
-                ? readyRef(snapshot, spotRid)
+                ? readyRef(snapshot, spotId)
                 : Optional.empty());
     }
 
@@ -620,7 +624,7 @@ public final class ZLinkSpotRuntime
         systems.zlink.framework.locations.ZLinkAuthorityStore store =
             requireUserSpotAuthorityStore();
         String key = systems.zlink.framework.runtime.locations
-            .ZLinkAuthorityKeyCodec.spot(spot.spotRid());
+            .ZLinkAuthorityKeyCodec.spot(spot.spotId());
         return store.read(key, () -> false).thenCompose(read -> {
             if (!(read instanceof systems.zlink.framework.locations
                 .ZLinkAuthoritySnapshot snapshot)) {
@@ -681,7 +685,7 @@ public final class ZLinkSpotRuntime
             var intent = new ZLinkInternalMeshNode.UserSpotCloseIntent(
                         new systems.zlink.framework.runtime.service
                             .ZLinkServiceM6BWireCodec.UserSpotCloseFence(
-                                spot.spotRid(),
+                                spot.spotId(),
                                 spot.objectGeneration(),
                                 authority.nodeRid(),
                                 authority.nodeGeneration(),
@@ -698,21 +702,19 @@ public final class ZLinkSpotRuntime
     }
 
     private CompletionStage<ZLinkSpotCreateResult> submitUserSpot(
-        RoutingId requestedRid,
+        String requestedId,
         String stableType,
         String meshName,
         ZLinkMessage request,
-        String placementProfile,
-        String affinityKey,
         Duration timeout,
         boolean getOrCreate) {
         requireAcceptingNewState();
         systems.zlink.framework.locations.ZLinkLocationStore locations =
             requireUserSpotLocationStore();
         String selectedMesh = resolveObjectMesh(meshName);
-        RoutingId spotRid = requestedRid == null
-            ? RoutingId.from("spot-" + java.util.UUID.randomUUID())
-            : requestedRid;
+        String spotId = requestedId == null
+            ? java.util.UUID.randomUUID().toString()
+            : requestedId;
         byte[] applicationBytes =
             request.toEncodedPayload(serializer).bytes();
         byte[] envelope = userSpotPayloads.encodeApplicationPayload(
@@ -730,40 +732,62 @@ public final class ZLinkSpotRuntime
             ? defaultRequestTimeout : timeout;
         long deadline = System.currentTimeMillis()
             + effectiveTimeout.toMillis();
+        return placeUserSpot(
+            locations,
+            selectedMesh,
+            spotId,
+            stableType,
+            envelope,
+            deadline,
+            effectiveTimeout,
+            getOrCreate,
+            java.util.Set.of());
+    }
+
+    private CompletionStage<ZLinkSpotCreateResult> placeUserSpot(
+        systems.zlink.framework.locations.ZLinkLocationStore locations,
+        String meshName,
+        String spotId,
+        String stableType,
+        byte[] envelope,
+        long deadline,
+        Duration timeout,
+        boolean getOrCreate,
+        java.util.Set<systems.zlink.framework.locations
+            .ZLinkMeshNodeDescriptorKey> excludedTargets) {
         return selectUserSpotTarget(
                 locations,
-                selectedMesh,
+                meshName,
                 stableType,
-                placementProfile,
-                deadline)
+                deadline,
+                excludedTargets)
             .thenCompose(target -> reserveAndCreate(
                 locations,
-                selectedMesh,
-                spotRid,
+                meshName,
+                spotId,
                 stableType,
-                placementProfile,
-                affinityKey,
                 envelope,
                 target,
                 deadline,
-                effectiveTimeout,
-                getOrCreate));
+                timeout,
+                getOrCreate,
+                excludedTargets));
     }
 
     private CompletionStage<ZLinkSpotCreateResult> reserveAndCreate(
         systems.zlink.framework.locations.ZLinkLocationStore locations,
         String meshName,
-        RoutingId spotRid,
+        String spotId,
         String stableType,
-        String placementProfile,
-        String affinityKey,
         byte[] envelope,
         systems.zlink.framework.locations.ZLinkMeshNodeDescriptor target,
         long deadline,
         Duration timeout,
-        boolean getOrCreate) {
+        boolean getOrCreate,
+        java.util.Set<systems.zlink.framework.locations
+            .ZLinkMeshNodeDescriptorKey> excludedTargets) {
         String key = systems.zlink.framework.runtime.locations
-            .ZLinkAuthorityKeyCodec.spot(spotRid);
+            .ZLinkAuthorityKeyCodec.spot(spotId);
         var owner = new systems.zlink.framework.locations
             .ZLinkLocationOwnerToken(
                 target.ownerId(), target.leaseGeneration());
@@ -771,7 +795,7 @@ public final class ZLinkSpotRuntime
             systems.zlink.framework.runtime.locations
                 .ZLinkServiceAuthorityPayloadCodec.State.CREATING,
             stableType,
-            spotRid,
+            spotId,
             target.ownerId(),
             target.leaseGeneration(),
             meshName,
@@ -783,8 +807,6 @@ public final class ZLinkSpotRuntime
                     .ZLinkPlacementObjectKind.USER_SPOT,
                 key,
                 stableType,
-                Optional.ofNullable(placementProfile),
-                Optional.ofNullable(affinityKey),
                 inlineCreationIntent(envelope),
                 sha256(envelope),
                 envelope.length,
@@ -804,13 +826,48 @@ public final class ZLinkSpotRuntime
                                 "User Spot already exists"));
                     }
                     return existingResult(
-                        exists.current(), spotRid, stableType);
+                        exists.current(), spotId, stableType);
                 }
                 if (result instanceof systems.zlink.framework.locations
                     .ZLinkObjectTypeMismatch) {
                     return CompletableFuture.failedFuture(
                         new IllegalStateException(
-                            "User Spot type does not match"));
+                                "User Spot type does not match"));
+                }
+                if (result instanceof systems.zlink.framework.locations
+                    .ZLinkPlacementCapacityExhausted
+                    || result instanceof systems.zlink.framework.locations
+                        .ZLinkObjectConflict conflict
+                        && conflict.current() instanceof
+                            systems.zlink.framework.locations
+                                .ZLinkAuthorityMissing) {
+                    return placeUserSpot(
+                        locations,
+                        meshName,
+                        spotId,
+                        stableType,
+                        envelope,
+                        deadline,
+                        timeout,
+                        getOrCreate,
+                        excluding(excludedTargets, target));
+                }
+                if (result instanceof systems.zlink.framework.locations
+                    .ZLinkObjectConflict) {
+                    return CompletableFuture.supplyAsync(
+                            () -> null,
+                            CompletableFuture.delayedExecutor(
+                                10, TimeUnit.MILLISECONDS))
+                        .thenCompose(ignored -> placeUserSpot(
+                            locations,
+                            meshName,
+                            spotId,
+                            stableType,
+                            envelope,
+                            deadline,
+                            timeout,
+                            getOrCreate,
+                            excludedTargets));
                 }
                 if (!(result instanceof systems.zlink.framework.locations
                     .ZLinkObjectReserved reserved)) {
@@ -843,7 +900,7 @@ public final class ZLinkSpotRuntime
                         1);
                 var intent =
                     new ZLinkInternalMeshNode.UserSpotCreateIntent(
-                        spotRid, stableType, fence, deadline);
+                        spotId, stableType, fence, deadline);
                 CompletionStage<ZLinkInternalMeshNode.UserSpotCreateResponse>
                     targetCreate = source.requestUserSpotCreate(
                         target.rid(), intent, timeout);
@@ -860,7 +917,7 @@ public final class ZLinkSpotRuntime
                         response.applicationReply().forEach(Message::close);
                         return new ZLinkSpotCreateResult(
                             new systems.zlink.framework.spots.SpotRef(
-                                response.spotRid(),
+                                response.spotId(),
                                 response.objectGeneration(),
                                 meshName,
                                 target.rid()),
@@ -879,7 +936,7 @@ public final class ZLinkSpotRuntime
 
     private CompletionStage<ZLinkSpotCreateResult> existingResult(
         systems.zlink.framework.locations.ZLinkAuthoritySnapshot snapshot,
-        RoutingId spotRid,
+        String spotId,
         String stableType) {
         var authority = userSpotAuthorities.decode(snapshot.payload())
             .orElseThrow(() -> new IllegalStateException(
@@ -895,7 +952,7 @@ public final class ZLinkSpotRuntime
         return CompletableFuture.completedFuture(
             new ZLinkSpotCreateResult(
                 new systems.zlink.framework.spots.SpotRef(
-                    spotRid,
+                    spotId,
                     snapshot.objectGeneration(),
                     authority.meshName(),
                     authority.nodeRid()),
@@ -909,8 +966,9 @@ public final class ZLinkSpotRuntime
             systems.zlink.framework.locations.ZLinkLocationStore locations,
             String meshName,
             String stableType,
-            String placementProfile,
-            long deadlineUnixMs) {
+            long deadlineUnixMs,
+            java.util.Set<systems.zlink.framework.locations
+                .ZLinkMeshNodeDescriptorKey> excludedTargets) {
         return locations.listMeshNodes(
                 meshName,
                 new systems.zlink.framework.locations.ZLinkPageRequest(
@@ -927,8 +985,8 @@ public final class ZLinkSpotRuntime
                                         == systems.zlink.framework.locations
                                             .ZLinkMeshNodeObjectRole.SERVER
                                     && node.placementWeight() > 0
-                                    && node.capacity().pending()
-                                        < node.capacity().pendingLimit()
+                                    && !excludedTargets.contains(
+                                        descriptorKey(node))
                                     && node.objectCapabilities().stream()
                                         .anyMatch(capability ->
                                             capability.objectKind()
@@ -938,11 +996,9 @@ public final class ZLinkSpotRuntime
                                                     .USER_SPOT
                                             && capability.stableType()
                                                 .equals(stableType)
-                                            && (placementProfile == null
-                                                || capability
-                                                    .placementProfiles()
-                                                    .contains(
-                                                        placementProfile))))
+                                            && hasCapacity(
+                                                node,
+                                                capability)))
                             .toList();
                 if (candidates.isEmpty()) {
                     if (System.currentTimeMillis() >= deadlineUnixMs) {
@@ -951,12 +1007,14 @@ public final class ZLinkSpotRuntime
                     }
                     return null;
                 }
-                int total = candidates.stream()
-                    .mapToInt(systems.zlink.framework.locations
-                        .ZLinkMeshNodeDescriptor::placementWeight)
-                    .sum();
-                int selected = java.util.concurrent.ThreadLocalRandom
-                    .current().nextInt(total);
+                long total = 0;
+                for (var candidate : candidates) {
+                    total = Math.addExact(
+                        total,
+                        candidate.placementWeight());
+                }
+                long selected = java.util.concurrent.ThreadLocalRandom
+                    .current().nextLong(total);
                 for (var candidate : candidates) {
                     selected -= candidate.placementWeight();
                     if (selected < 0) {
@@ -975,20 +1033,57 @@ public final class ZLinkSpotRuntime
                         locations,
                         meshName,
                         stableType,
-                        placementProfile,
-                        deadlineUnixMs)));
+                        deadlineUnixMs,
+                        java.util.Set.of())));
+    }
+
+    static boolean hasCapacity(
+        systems.zlink.framework.locations.ZLinkMeshNodeDescriptor node,
+        systems.zlink.framework.locations.ZLinkObjectCapability capability) {
+        return hasRoom(node.capacity().spots())
+            && node.capacity().spotTypes().stream()
+                .filter(type ->
+                    type.objectKind() == capability.objectKind()
+                        && type.stableType().equals(
+                            capability.stableType()))
+                .findFirst()
+                .map(type -> hasRoom(type.usage()))
+                .orElse(false);
+    }
+
+    private static boolean hasRoom(
+        systems.zlink.framework.locations.ZLinkCapacityUsage usage) {
+        return usage.limit() == 0
+            || (long) usage.active() + usage.reserved() < usage.limit();
+    }
+
+    private static systems.zlink.framework.locations
+        .ZLinkMeshNodeDescriptorKey descriptorKey(
+            systems.zlink.framework.locations.ZLinkMeshNodeDescriptor node) {
+        return new systems.zlink.framework.locations
+            .ZLinkMeshNodeDescriptorKey(node.meshName(), node.rid());
+    }
+
+    private static java.util.Set<systems.zlink.framework.locations
+        .ZLinkMeshNodeDescriptorKey> excluding(
+            java.util.Set<systems.zlink.framework.locations
+                .ZLinkMeshNodeDescriptorKey> current,
+            systems.zlink.framework.locations.ZLinkMeshNodeDescriptor node) {
+        var result = new java.util.HashSet<>(current);
+        result.add(descriptorKey(node));
+        return java.util.Set.copyOf(result);
     }
 
     private Optional<systems.zlink.framework.spots.SpotRef> readyRef(
         systems.zlink.framework.locations.ZLinkAuthoritySnapshot snapshot,
-        RoutingId spotRid) {
+        String spotId) {
         return userSpotAuthorities.decode(snapshot.payload())
             .filter(authority ->
                 authority.state()
                     == systems.zlink.framework.runtime.locations
                         .ZLinkServiceAuthorityPayloadCodec.State.READY)
             .map(authority -> new systems.zlink.framework.spots.SpotRef(
-                spotRid,
+                spotId,
                 snapshot.objectGeneration(),
                 authority.meshName(),
                 authority.nodeRid()));
@@ -1068,8 +1163,6 @@ public final class ZLinkSpotRuntime
         String meshName;
         ZLinkMessage request = ZLinkMessage.empty();
         boolean requestSet;
-        String placementProfile;
-        String affinityKey;
         Duration timeout;
         final java.util.concurrent.atomic.AtomicBoolean submitted =
             new java.util.concurrent.atomic.AtomicBoolean();
@@ -1093,22 +1186,6 @@ public final class ZLinkSpotRuntime
             requestSet = true;
         }
 
-        void setPlacementProfile(String value) {
-            if (placementProfile != null) {
-                throw new IllegalStateException(
-                    "placementProfile was already set");
-            }
-            placementProfile = requireStableType(value);
-        }
-
-        void setAffinityKey(String value) {
-            if (affinityKey != null) {
-                throw new IllegalStateException(
-                    "affinityKey was already set");
-            }
-            affinityKey = requireStableType(value);
-        }
-
         void setTimeout(Duration value) {
             if (timeout != null) {
                 throw new IllegalStateException("timeout was already set");
@@ -1121,7 +1198,7 @@ public final class ZLinkSpotRuntime
         }
 
         CompletionStage<ZLinkSpotCreateResult> submit(
-            RoutingId spotRid,
+            String spotId,
             boolean getOrCreate) {
             if (!submitted.compareAndSet(false, true)) {
                 return CompletableFuture.failedFuture(
@@ -1129,12 +1206,10 @@ public final class ZLinkSpotRuntime
                         "User Spot call was already submitted"));
             }
             return submitUserSpot(
-                spotRid,
+                spotId,
                 stableType,
                 meshName,
                 request,
-                placementProfile,
-                affinityKey,
                 timeout,
                 getOrCreate);
         }
@@ -1155,12 +1230,6 @@ public final class ZLinkSpotRuntime
         @Override public CreateCall request(ZLinkMessage value) {
             setRequest(value); return this;
         }
-        @Override public CreateCall placementProfile(String value) {
-            setPlacementProfile(value); return this;
-        }
-        @Override public CreateCall affinityKey(String value) {
-            setAffinityKey(value); return this;
-        }
         @Override public CreateCall timeout(Duration value) {
             setTimeout(value); return this;
         }
@@ -1171,11 +1240,11 @@ public final class ZLinkSpotRuntime
 
     private final class GetOrCreateCall extends UserSpotCall
         implements systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall {
-        private final RoutingId spotRid;
+        private final String spotId;
 
-        GetOrCreateCall(RoutingId spotRid, String stableType) {
+        GetOrCreateCall(String spotId, String stableType) {
             super(stableType);
-            this.spotRid = spotRid;
+            this.spotId = spotId;
         }
 
         @Override public GetOrCreateCall inMesh(String value) {
@@ -1187,17 +1256,11 @@ public final class ZLinkSpotRuntime
         @Override public GetOrCreateCall request(ZLinkMessage value) {
             setRequest(value); return this;
         }
-        @Override public GetOrCreateCall placementProfile(String value) {
-            setPlacementProfile(value); return this;
-        }
-        @Override public GetOrCreateCall affinityKey(String value) {
-            setAffinityKey(value); return this;
-        }
         @Override public GetOrCreateCall timeout(Duration value) {
             setTimeout(value); return this;
         }
         @Override public CompletionStage<ZLinkSpotCreateResult> submit() {
-            return submit(spotRid, true);
+            return submit(spotId, true);
         }
     }
 
@@ -1286,8 +1349,8 @@ public final class ZLinkSpotRuntime
         }
     }
 
-    private void requireAcceptingNewState(RoutingId spotRid) {
-        if ((closing || draining) && !spotLifecycle.hasUserSpot(spotRid)) {
+    private void requireAcceptingNewState(String spotId) {
+        if ((closing || draining) && !spotLifecycle.hasUserSpot(spotId)) {
             requireAcceptingNewState();
         }
     }
@@ -1441,7 +1504,7 @@ public final class ZLinkSpotRuntime
             actorRef,
             header,
             payload,
-            spotRid -> spotSurfaceFor(spotRid) != null,
+            spotId -> spotSurfaceFor(spotId) != null,
             local -> dispatchLocalSessionActor(
                 actorRef,
                 header,
@@ -1457,7 +1520,7 @@ public final class ZLinkSpotRuntime
             actorRef,
             header,
             payload,
-            spotRid -> spotSurfaceFor(spotRid) != null,
+            spotId -> spotSurfaceFor(spotId) != null,
             local -> dispatchLocalSessionActor(
                 actorRef,
                 header,
@@ -1544,7 +1607,7 @@ public final class ZLinkSpotRuntime
                         ? ZLinkDispatchErrorAction.REPLY_ERROR
                         : ZLinkDispatchErrorAction.DROP)
                 .packetName(header.packetName())
-                .spotRid(local.joinedSpotRid().orElse(null))
+                .spotId(local.joinedSpotId().orElse(null))
                 .actorId(actor.actorId())
                 .correlationId(header.requestSequence().map(Object::toString).orElse(null))
                 .error(error));
@@ -1790,12 +1853,12 @@ public final class ZLinkSpotRuntime
     private boolean isAlreadyJoinedTo(
         ZLinkActor actor,
         ZLinkBackendActorRef actorRef,
-        RoutingId spotRid) {
-        return actorSessions.isJoinedTo(actor, actorRef, spotRid);
+        String spotId) {
+        return actorSessions.isJoinedTo(actor, actorRef, spotId);
     }
 
-    private boolean isJoinedToDifferentSpot(ZLinkActor actor, RoutingId spotRid) {
-        return actorSessions.isJoinedToDifferentSpot(actor, spotRid);
+    private boolean isJoinedToDifferentSpot(ZLinkActor actor, String spotId) {
+        return actorSessions.isJoinedToDifferentSpot(actor, spotId);
     }
 
     ZLinkBackendActorRef actorLifecycleRef(ZLinkBackendActorLifecycleEvent event) {
@@ -1804,65 +1867,65 @@ public final class ZLinkSpotRuntime
             : event.info().currentActor();
     }
 
-    private RoutingId actorLifecycleSpotRid(
+    private String actorLifecycleSpotId(
         ZLinkBackendActorLifecycleEvent event,
-        RoutingId fallbackSpotRid) {
+        String fallbackSpotId) {
         return event.kind() == ZLinkBackendActorLifecycleEventKind.LEFT
-            ? event.info().previousSpotRid().orElse(fallbackSpotRid)
-            : event.info().currentSpotRid().orElse(fallbackSpotRid);
+            ? event.info().previousSpotId().orElse(fallbackSpotId)
+            : event.info().currentSpotId().orElse(fallbackSpotId);
     }
 
     private boolean shouldIgnoreJoinedOrLeftLifecycle(
         ZLinkBackendActorLifecycleEvent event,
         ZLinkBackendActorRef actorRef,
         ZLinkActor actor,
-        RoutingId spotRid) {
-        if (isJoinedToDifferentSpot(actor, spotRid)) {
+        String spotId) {
+        if (isJoinedToDifferentSpot(actor, spotId)) {
             return true;
         }
-        if (consumeSuppressedActorLifecycleCallback(event.kind(), actor, spotRid)) {
+        if (consumeSuppressedActorLifecycleCallback(event.kind(), actor, spotId)) {
             return true;
         }
         return event.kind() != ZLinkBackendActorLifecycleEventKind.LEFT
-            && isAlreadyJoinedTo(actor, actorRef, spotRid);
+            && isAlreadyJoinedTo(actor, actorRef, spotId);
     }
 
     CompletionStage<Void> notifySpotActorLifecycleAndSuppressBackendEvent(
         Object spotSurface,
         ZLinkActor actor,
-        RoutingId spotRid,
+        String spotId,
         boolean joined) {
         suppressActorLifecycleCallback(
             joined ? ZLinkBackendActorLifecycleEventKind.JOINED : ZLinkBackendActorLifecycleEventKind.LEFT,
             actor,
-            spotRid);
+            spotId);
         return notifySpotActorLifecycle(spotSurface, actor, joined);
     }
 
     private void suppressActorLifecycleCallback(
         ZLinkBackendActorLifecycleEventKind kind,
         ZLinkActor actor,
-        RoutingId spotRid) {
-        if (kind != null && actor != null && spotRid != null) {
-            suppressedActorLifecycleCallbacks.add(actorLifecycleCallbackKey(kind, actor.actorId(), spotRid));
+        String spotId) {
+        if (kind != null && actor != null && spotId != null) {
+            suppressedActorLifecycleCallbacks.add(actorLifecycleCallbackKey(kind, actor.actorId(), spotId));
         }
     }
 
     private boolean consumeSuppressedActorLifecycleCallback(
         ZLinkBackendActorLifecycleEventKind kind,
         ZLinkActor actor,
-        RoutingId spotRid) {
+        String spotId) {
         return kind != null
             && actor != null
-            && spotRid != null
-            && suppressedActorLifecycleCallbacks.remove(actorLifecycleCallbackKey(kind, actor.actorId(), spotRid));
+            && spotId != null
+            && suppressedActorLifecycleCallbacks.remove(actorLifecycleCallbackKey(kind, actor.actorId(), spotId));
     }
 
     private static String actorLifecycleCallbackKey(
         ZLinkBackendActorLifecycleEventKind kind,
         String actorId,
-        RoutingId spotRid) {
-        return kind.name() + "|" + actorId + "|" + spotRid;
+        String spotId) {
+        return kind.name() + "|" + actorId + "|" + spotId;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
@@ -1889,17 +1952,18 @@ public final class ZLinkSpotRuntime
         if (spotSurface == null) {
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
-        RoutingId spotRid = spotSurface instanceof ZLinkSpot<?> spot
-            ? spot.context().spotRid()
-            : ((ZLinkEntrySpot<?>) spotSurface).context().spotRid();
+        String spotId = spotSurface instanceof ZLinkSpot<?> spot
+            ? spot.context().spotId()
+            : ((ZLinkEntrySpot<?>) spotSurface).context().spotId();
         return notifySpotActorLifecycleAndSuppressBackendEvent(
             spotSurface,
             actor,
-            spotRid,
+            spotId,
             false);
     }
 
-    private CompletionStage<Void> notifyEntrySpotActorCreated(
+    private CompletionStage<systems.zlink.framework.spots.ZLinkActorCreateResponse>
+        notifyEntrySpotActorCreated(
         RoutingId nodeRid,
         ZLinkActor actor,
         ZLinkMessage createRequest,
@@ -1911,23 +1975,23 @@ public final class ZLinkSpotRuntime
             createContext);
     }
 
-    ZLinkSpot<?> spotFor(RoutingId spotRid) {
-        return spotLifecycle.spotFor(spotRid);
+    ZLinkSpot<?> spotFor(String spotId) {
+        return spotLifecycle.spotFor(spotId);
     }
 
-    private String meshNameForSpot(RoutingId spotRid) {
+    private String meshNameForSpot(String spotId) {
         return spotLocations.meshNameForSpot(
-            spotRid,
+            spotId,
             primaryNode.routingId(),
-            spotLifecycle.hasUserSpot(spotRid));
+            spotLifecycle.hasUserSpot(spotId));
     }
 
-    Object spotSurfaceFor(RoutingId spotRid) {
-        return spotLifecycle.spotSurfaceFor(spotRid);
+    Object spotSurfaceFor(String spotId) {
+        return spotLifecycle.spotSurfaceFor(spotId);
     }
 
-    private EntrySpotActivation entrySpotActivationFor(RoutingId spotRid) {
-        return spotLifecycle.entrySpotActivationFor(spotRid);
+    private EntrySpotActivation entrySpotActivationFor(String spotId) {
+        return spotLifecycle.entrySpotActivationFor(spotId);
     }
 
     public CompletionStage<Message> handleEntryActorTransferRoute(
@@ -2112,10 +2176,10 @@ public final class ZLinkSpotRuntime
 
     @Override
     ZLinkSpotTimerRegistry createTimerRegistry(
-        RoutingId spotRid,
+        String spotId,
         ZLinkSpotTimerRegistry.Dispatch dispatch) {
         return new ZLinkSpotTimerRegistry(
-            spotRid,
+            spotId,
             timerExecutor,
             handlerFactory,
             suspendHandlerInvokers,
@@ -2148,7 +2212,7 @@ public final class ZLinkSpotRuntime
         RoutingId nodeRid,
         ZLinkSpot<?> spot,
         ZLinkActor actor,
-        RoutingId fallbackSpotRid) {
+        String fallbackSpotId) {
         if (actor == null) {
             return CompletableFuture.failedFuture(new ZLinkConfigurationException(
                 "actor is required"));
@@ -2166,8 +2230,8 @@ public final class ZLinkSpotRuntime
                 return actorAdmissions.leaveRoutedActorToLocalEntry(
                     actor,
                     primaryNode.routingId(),
-                    actorId -> ZLinkHandlerStages.fromStageSupplier(() ->
-                        rawEntrySpot.onActorJoin(actorId, ZLinkMessage.empty())),
+                    actorId -> java.util.concurrent.CompletableFuture.completedFuture(
+                        systems.zlink.framework.spots.ZLinkSpotActorJoinResponse.accept()),
                     joinedActor -> notifySpotActorLifecycleAndSuppressBackendEvent(
                         rawEntrySpot,
                         joinedActor,
@@ -2179,7 +2243,7 @@ public final class ZLinkSpotRuntime
             return actorAdmissions.leaveSpot(
                 nodeByRid(nodeRid),
                 actor,
-                fallbackSpotRid,
+                fallbackSpotId,
                 entry == null ? null : primaryNode.routingId(),
                 defaultRequestTimeout);
         } catch (RuntimeException ex) {
@@ -2192,8 +2256,8 @@ public final class ZLinkSpotRuntime
     }
 
     @Override
-    CompletionStage<Boolean> closeSpot(RoutingId spotRid) {
-        return spotLifecycle.close(spotRid);
+    CompletionStage<Boolean> closeSpot(String spotId) {
+        return spotLifecycle.close(spotId);
     }
 
     @Override
@@ -2313,12 +2377,12 @@ public final class ZLinkSpotRuntime
         ZLinkBackendActorLifecycleEvent event,
         ZLinkBackendActorRef actorRef,
         ZLinkActor actor,
-        RoutingId defaultSpotRid) {
+        String defaultSpotId) {
         if (event.kind() == ZLinkBackendActorLifecycleEventKind.DISCONNECTED) {
             return () -> notifySpotActorDisconnected(actor);
         }
-        RoutingId spotRid = actorLifecycleSpotRid(event, defaultSpotRid);
-        if (shouldIgnoreJoinedOrLeftLifecycle(event, actorRef, actor, spotRid)) {
+        String spotId = actorLifecycleSpotId(event, defaultSpotId);
+        if (shouldIgnoreJoinedOrLeftLifecycle(event, actorRef, actor, spotId)) {
             return null;
         }
         if (event.kind() == ZLinkBackendActorLifecycleEventKind.LEFT) {
@@ -2330,8 +2394,8 @@ public final class ZLinkSpotRuntime
         return () -> actorAdmissions.markJoined(
                 actor,
                 actorRef,
-                spotRid,
-                spotSurfaceFor(spotRid) instanceof ZLinkSpot<?> spot ? spot : null)
+                spotId,
+                spotSurfaceFor(spotId) instanceof ZLinkSpot<?> spot ? spot : null)
             .thenCompose(ignored -> notifySpotActorLifecycle(spotSurface, actor, true))
             .whenComplete((ignored, error) -> {
                 if (spotSurface instanceof ZLinkEntrySpot<?>) {
@@ -2366,7 +2430,7 @@ public final class ZLinkSpotRuntime
             boolean request = packetHeader.requestSeq().isPresent();
             reportSpotActorHandlerMissing(
                 packetHeader,
-                dispatchLine.spotRid(),
+                dispatchLine.spotId(),
                 actor.actorId(),
                 headerPart.sourceNodeRid());
             if (request) {
@@ -2519,7 +2583,7 @@ public final class ZLinkSpotRuntime
         String topic,
         String correlationId,
         String sourceRid,
-        String spotRid,
+        String spotId,
         String actorId) {
         if (!dispatchErrors.flow().enabled(outcome)) {
             return;
@@ -2533,7 +2597,7 @@ public final class ZLinkSpotRuntime
             topic,
             correlationId,
             sourceRid,
-            spotRid,
+            spotId,
             actorId,
             null));
     }
@@ -2547,7 +2611,7 @@ public final class ZLinkSpotRuntime
             failure.packetName == null || failure.packetName.isBlank() ? null : failure.packetName,
             failure.channelName,
             failure.topic,
-            failure.spotRid == null ? null : failure.spotRid.toString(),
+            failure.spotId == null ? null : failure.spotId.toString(),
             failure.actorId,
             failure.sourceRid == null ? null : failure.sourceRid.toString(),
             failure.correlationId,
@@ -2558,21 +2622,21 @@ public final class ZLinkSpotRuntime
     void reportSpotRouteSendDropped(
         ZLinkBackendReceived received,
         String packetName,
-        RoutingId spotRid) {
+        String spotId) {
         reportDispatchError(DispatchFailureReport.of(
                 ZLinkDispatchErrorSurface.SPOT_ROUTE,
                 ZLinkDispatchMessageKind.SEND,
                 ZLinkDispatchErrorReason.HANDLER_MISSING,
                 ZLinkDispatchErrorAction.DROP)
             .packetName(packetName)
-            .spotRid(spotRid)
+            .spotId(spotId)
             .sourceRid(received.routingId().orElse(null)));
     }
 
     void reportSpotSubscriptionDropped(
         String topic,
         String packetName,
-        RoutingId spotRid,
+        String spotId,
         ZLinkDispatchErrorReason reason) {
         reportDispatchError(DispatchFailureReport.of(
                 ZLinkDispatchErrorSurface.SPOT_SUBSCRIPTION,
@@ -2581,12 +2645,12 @@ public final class ZLinkSpotRuntime
                 ZLinkDispatchErrorAction.DROP)
             .packetName(packetName)
             .topic(topic)
-            .spotRid(spotRid));
+            .spotId(spotId));
     }
 
     void reportSpotActorHandlerMissing(
         ActorPacketFrames.Header packetHeader,
-        RoutingId spotRid,
+        String spotId,
         String actorId,
         RoutingId sourceRid) {
         boolean request = packetHeader.requestSeq().isPresent();
@@ -2600,7 +2664,7 @@ public final class ZLinkSpotRuntime
                     ? ZLinkDispatchErrorAction.REPLY_ERROR
                     : ZLinkDispatchErrorAction.DROP)
             .packetName(packetHeader.packetName())
-            .spotRid(spotRid)
+            .spotId(spotId)
             .actorId(actorId)
             .sourceRid(sourceRid)
             .correlationId(packetHeader.requestSeq().map(Object::toString).orElse(null)));
@@ -2644,7 +2708,7 @@ public final class ZLinkSpotRuntime
     void replySpotRouteDispatchError(
         ZLinkBackendReceived received,
         String packetName,
-        RoutingId spotRid,
+        String spotId,
         ZLinkDispatchErrorReason reason,
         Throwable error) {
         Throwable cause = unwrapCompletion(error);
@@ -2661,7 +2725,7 @@ public final class ZLinkSpotRuntime
                 reason,
                 ZLinkDispatchErrorAction.REPLY_ERROR)
             .packetName(packetName)
-            .spotRid(spotRid)
+            .spotId(spotId)
             .sourceRid(received.routingId().orElse(null))
             .correlationId(received.requestSeq().map(Object::toString).orElse(null))
             .error(cause));
@@ -2705,7 +2769,7 @@ public final class ZLinkSpotRuntime
         LOGGER.fine("[zlink-java-stream-trace] spot-route " + phase
             + " localSpot=" + backendSpot.routingId()
             + " sourceRid=" + received.routingId().map(Object::toString).orElse(null)
-            + " sourceSpot=" + received.spotRid().map(Object::toString).orElse(null)
+            + " sourceSpot=" + received.spotId().map(Object::toString).orElse(null)
             + " requestSeq=" + received.requestSeq().map(Object::toString).orElse(null)
             + " result=" + received.result()
             + " parts=" + describeTraceParts(received.parts()));
@@ -2722,7 +2786,7 @@ public final class ZLinkSpotRuntime
         LOGGER.fine("[zlink-java-stream-trace] spot-route " + phase
             + " localSpot=" + backendSpot.routingId()
             + " sourceRid=" + received.routingId().map(Object::toString).orElse(null)
-            + " sourceSpot=" + received.spotRid().map(Object::toString).orElse(null)
+            + " sourceSpot=" + received.spotId().map(Object::toString).orElse(null)
             + " requestSeq=" + received.requestSeq().map(Object::toString).orElse(null)
             + " packet=" + packet.packetName()
             + " payloadBytes=" + packet.payload().size());

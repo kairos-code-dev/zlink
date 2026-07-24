@@ -6,6 +6,7 @@ import type {
   ZLinkChannelClient,
   ZLinkFanoutClient,
   ZLinkMessage,
+  ZLinkMeshNodeDescriptor,
   ZLinkMessageSerializer,
   ZLinkProviderResolver,
   ZLinkPublishResult,
@@ -13,7 +14,10 @@ import type {
   ZLinkSpotPublisherClient
 } from '../../contracts';
 import {
+  ZLinkFrameworkRuntimeState,
   ZLinkLocationWriteIntent,
+  ZLinkLocationWriteStatus,
+  ZLinkObjectRole,
   ZLinkSpotKind,
   ZLinkSubmitStatus
 } from '../../contracts';
@@ -122,6 +126,8 @@ export class ZLinkSpotNodeRuntimeManager {
   >();
   private readonly activePublishes = new Set<string>();
   private readonly autoConnectLoops: ZLinkAutoConnectLoop[] = [];
+  private readonly publishedMeshNodeDescriptors =
+    new Map<string, ZLinkMeshNodeDescriptor>();
   private locationAutoConnect?: ZLinkSpotNodeLocationAutoConnectContext;
 
   constructor(private readonly options: ZLinkSpotNodeRuntimeManagerOptions) {}
@@ -213,14 +219,6 @@ export class ZLinkSpotNodeRuntimeManager {
           ...Object.keys(spotNode.instanceSpotFactoryRegistrations ?? {}),
           ...Object.keys(spotNode.actorFactoryRegistrations ?? {})
         ];
-        const profileCapabilities = [
-          ...Object.entries(spotNode.spotFactoryRegistrations ?? {}),
-          ...Object.entries(spotNode.instanceSpotFactoryRegistrations ?? {}),
-          ...Object.entries(spotNode.actorFactoryRegistrations ?? {})
-        ].flatMap(([stableType, registration]) =>
-          (registration.placement?.placementProfiles ?? [])
-            .map(profile => `object-profile:${stableType}:${profile}`)
-        );
         const hasLegacyObjectFactories =
           (spotNode.spotFactories?.length ?? 0) > 0
           || Object.keys(spotNode.instanceSpotFactories ?? {}).length > 0
@@ -235,10 +233,7 @@ export class ZLinkSpotNodeRuntimeManager {
           placementWeight: spotNode.placementWeight ?? 100,
           activeCapacityLimit: spotNode.maxActiveObjects ?? 10_000,
           pendingCapacityLimit: spotNode.maxPendingActivations ?? 128,
-          objectCapabilities: [
-            ...stableTypes.map(type => `object-type:${type}`),
-            ...profileCapabilities
-          ]
+          objectCapabilities: stableTypes.map(type => `object-type:${type}`)
         });
         for (const [channelName, channel] of Object.entries(spotNode.meshChannels ?? {})) {
           node.addChannelName(channelName);
@@ -287,6 +282,91 @@ export class ZLinkSpotNodeRuntimeManager {
     }
   }
 
+  async publishMeshNodeState(
+    state: ZLinkFrameworkRuntimeState,
+    signal?: AbortSignal,
+    selectedMeshName?: string
+  ): Promise<void> {
+    const location = this.locationAutoConnect;
+    if (location === undefined) return;
+    for (const [meshName, registration] of this.options.registration.spotNodes) {
+      if (selectedMeshName !== undefined && meshName !== selectedMeshName) continue;
+      const node = this.meshNodes.get(meshName);
+      if (node === undefined) continue;
+      const status = node.status();
+      const userSpots = effectiveUserSpotRegistrations(registration);
+      const instanceSpots = effectiveInstanceSpotRegistrations(registration);
+      const actors = effectiveActorRegistrations(registration);
+      const capabilities = [
+        ...userSpots.map(([stableType, factory]) =>
+          objectCapability('user_spot', stableType, factory)),
+        ...instanceSpots.map(([stableType, factory]) =>
+          objectCapability('instance_spot', stableType, factory)),
+        ...actors.map(([stableType, factory]) =>
+          objectCapability('actor', stableType, factory))
+      ].sort((left, right) =>
+        left.objectKind.localeCompare(right.objectKind)
+        || left.stableType.localeCompare(right.stableType));
+      const current = this.publishedMeshNodeDescriptors.get(meshName);
+      const descriptor = {
+        meshName,
+        rid: status.routingId,
+        lifecycleGeneration: status.lifecycleGeneration,
+        descriptorRevision: (current?.descriptorRevision ?? 0n) + 1n,
+        // Core resolves wildcard/port-zero binds before status publication.
+        // The resolved local endpoint is the address peers can connect to.
+        endpoint: status.localEndpoint,
+        objectRole: effectiveObjectRole(registration),
+        placementWeight: registration.placementWeight ?? 100,
+        objectCapacity: {
+          activeObjects: current?.objectCapacity.activeObjects ?? 0,
+          pendingActivations: current?.objectCapacity.pendingActivations ?? 0,
+          maxActiveObjects: registration.maxActiveObjects ?? 10_000,
+          maxPendingActivations: registration.maxPendingActivations ?? 128
+        },
+        channelWeights: Object.fromEntries(
+          Object.entries(registration.meshChannels ?? {})
+            .map(([channelName, channel]) => [
+              channelName,
+              state === ZLinkFrameworkRuntimeState.Draining
+                ? 0
+                : channel.weight ?? 100
+            ])
+        ),
+        applicationVersion: 1n,
+        spotTypes: [
+          ...userSpots.map(([stableType]) => stableType),
+          ...instanceSpots.map(([stableType]) => stableType),
+          ...(registration.entrySpotType === undefined
+            ? []
+            : [registration.entrySpotType.name])
+        ]
+          .sort(),
+        objectCapabilities: capabilities,
+        state,
+        securityIdentity: 'default',
+      };
+      const result = await location.runtime.writeMeshNode(
+        descriptor,
+        current === undefined
+          ? ZLinkLocationWriteIntent.NewClaim
+          : ZLinkLocationWriteIntent.Renew,
+        signal
+      );
+      if (result.status !== ZLinkLocationWriteStatus.Stored) {
+        throw new ZLinkConfigurationException(
+          `MeshNode '${meshName}' descriptor publication failed: ${result.status}.`
+        );
+      }
+      this.publishedMeshNodeDescriptors.set(meshName, {
+        ...descriptor,
+        ownerId: location.runtime.currentOwnerToken!.ownerId,
+        leaseGeneration: location.runtime.currentOwnerToken!.leaseGeneration,
+        updatedAt: result.updatedAt
+      });
+    }
+  }
+
   get meshNodesByName(): ReadonlyMap<string, ZLinkBackendMeshNode> {
     return this.meshNodes;
   }
@@ -315,11 +395,11 @@ export class ZLinkSpotNodeRuntimeManager {
     actor: ZLinkActor,
     createRequest: ZLinkMessage,
     signal?: AbortSignal
-  ): Promise<void> {
+  ): Promise<import('../../contracts').ZLinkActorCreateResponse | undefined> {
     const activation = [...this.entryActivations.values()].find(
       (entryActivation) => routingIdsEqual(entryActivation.nodeRid, nodeRid)
     );
-    return activation?.notifyCreateActor(actor, createRequest, signal) ?? Promise.resolve();
+    return activation?.notifyCreateActor(actor, createRequest, signal) ?? Promise.resolve(undefined);
   }
 
   notifyPrimaryEntrySpotActorJoined(
@@ -328,6 +408,14 @@ export class ZLinkSpotNodeRuntimeManager {
   ): Promise<void> {
     const activation = this.primaryEntryActivation();
     return activation?.notifyJoinActor(actor, signal) ?? Promise.resolve();
+  }
+
+  notifyPrimaryEntrySpotActorRelocated(
+    actor: ZLinkActor,
+    signal?: AbortSignal
+  ): Promise<void> {
+    const activation = this.primaryEntryActivation();
+    return activation?.notifyRelocatedActor(actor, signal) ?? Promise.resolve();
   }
 
   notifyPrimaryEntrySpotActorLeft(
@@ -764,4 +852,85 @@ function requireEntrySpotReply(result: number): void {
 
 function toBackendRoutingId(routingId: RoutingId) {
   return toBindingRoutingId(routingId);
+}
+
+interface DescriptorFactoryRegistration {
+  readonly placement?: {
+    readonly maxActiveObjects?: number;
+    readonly maxPendingActivations?: number;
+  };
+  readonly relocation?: {
+    readonly kind: 'disabled' | 'recreate' | 'snapshot';
+  };
+}
+
+function effectiveUserSpotRegistrations(
+  registration: ZLinkSpotNodeOptions
+): Array<[string, DescriptorFactoryRegistration]> {
+  const registrations = new Map<string, DescriptorFactoryRegistration>(
+    Object.entries(registration.spotFactoryRegistrations ?? {})
+  );
+  for (const implementation of registration.spotFactories ?? []) {
+    if (!registrations.has(implementation.name)) {
+      registrations.set(implementation.name, {});
+    }
+  }
+  return [...registrations];
+}
+
+function effectiveInstanceSpotRegistrations(
+  registration: ZLinkSpotNodeOptions
+): Array<[string, DescriptorFactoryRegistration]> {
+  const registrations = new Map<string, DescriptorFactoryRegistration>(
+    Object.entries(registration.instanceSpotFactoryRegistrations ?? {})
+  );
+  for (const stableType of Object.keys(registration.instanceSpotFactories ?? {})) {
+    if (!registrations.has(stableType)) registrations.set(stableType, {});
+  }
+  return [...registrations];
+}
+
+function effectiveActorRegistrations(
+  registration: ZLinkSpotNodeOptions
+): Array<[string, DescriptorFactoryRegistration]> {
+  const registrations = new Map<string, DescriptorFactoryRegistration>(
+    Object.entries(registration.actorFactoryRegistrations ?? {})
+  );
+  const legacy = registration.actorFactories instanceof Map
+    ? registration.actorFactories.keys()
+    : Object.keys(registration.actorFactories ?? {});
+  for (const stableType of legacy) {
+    if (!registrations.has(stableType)) registrations.set(stableType, {});
+  }
+  return [...registrations];
+}
+
+function effectiveObjectRole(
+  registration: ZLinkSpotNodeOptions
+): ZLinkObjectRole {
+  if (registration.objectRole === 'server') return ZLinkObjectRole.Server;
+  if (registration.objectRole === 'client') return ZLinkObjectRole.Client;
+  return effectiveUserSpotRegistrations(registration).length > 0
+    || effectiveInstanceSpotRegistrations(registration).length > 0
+    || effectiveActorRegistrations(registration).length > 0
+    ? ZLinkObjectRole.Server
+    : ZLinkObjectRole.None;
+}
+
+function objectCapability(
+  objectKind: 'actor' | 'user_spot' | 'instance_spot',
+  stableType: string,
+  factory: DescriptorFactoryRegistration
+) {
+  const policy = factory.relocation?.kind ?? 'disabled';
+  return {
+    objectKind,
+    stableType,
+    policy,
+    hasSnapshotAdapter: policy === 'snapshot',
+    active: 0,
+    reserved: 0,
+    activeLimit: factory.placement?.maxActiveObjects,
+    pendingLimit: factory.placement?.maxPendingActivations
+  };
 }

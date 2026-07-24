@@ -22,7 +22,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var actorRef = Assert.Single(node.CreatedActors);
             var target = await runtime.CreateAsync<JoinTargetSpot>();
             var probe = runtime.Services.GetRequiredService<FlowJoinProbe>();
-            probe.TargetSpotRid = target.Spot.SpotRid;
+            probe.TargetSpotId = target.Spot.SpotId;
 
             Assert.Null(ZLinkFlowContext.Current);
             await DispatchEntryActorPartsAsync(

@@ -2,6 +2,9 @@
 
 [C++ exact interface 목차](README.ko.md)
 
+Monitoring의 Channel, ClientServer와 placement weight는 configuration·descriptor와 같은 signed `int`
+`0..10000`을 사용한다. `std::uint8_t`나 다른 좁은 unsigned projection을 사용하지 않는다.
+
 ## 1. Host termination 관측
 
 Host 단위 상태는 RouteMesh·ClientServer·fanout snapshot과 분리한다. `mesh_node_state_t`는 MeshNode 상태를
@@ -43,6 +46,25 @@ public:
       std::function<void(const framework_runtime_event_t &)> observer) = 0;
 };
 ```
+
+### 1.1 MeshNode placement capacity
+
+`mesh_node_snapshot_t`의 exact declaration은
+[Channel messaging](03-channel-messaging.ko.md)에 있고, snapshot이 사용하는 `capacity_usage_t`,
+`spot_type_capacity_t`와 `placement_capacity_t`는
+[Location Store·Redis](07-location-store.ko.md)에 있다. `object_capacity.actors`,
+`object_capacity.spots`와 각 `object_capacity.spot_types` 항목은 각각 `active`, `reserved`, `limit`을
+제공한다. Limit `0`은 제한 없음을 뜻한다.
+
+Actor 집계에는 Entry Spot과 User Spot의 Actor를 모두 포함한다. Spot 전체와 stable type별 집계에는
+User·Instance Spot을 포함하지만 Entry Spot은 제외한다. Spot stable type 항목은 User Spot과 Instance Spot을
+`object_kind`로 구분한다. `activation_concurrency`는 현재 factory·initialization 실행 수와 양수 limit을
+별도로 제공하며 population capacity의 `reserved`에 합치지 않는다.
+
+이 값은 Location Store의 authoritative counter를 관측용으로 투영한 snapshot이다. Descriptor와 runtime
+snapshot의 projection이 늦게 갱신될 수 있으므로 placement 수락 여부를 판단하는 API로 사용하지 않는다.
+Capacity reservation failure는 기존 `placement_reservation_failure_count`와
+`last_placement_reservation_failure`에 기록하며 application factory나 handler exception으로 바꾸지 않는다.
 
 ## 2. 메시지 흐름 관측
 
@@ -103,7 +125,7 @@ struct message_dispatch_error_event_t {
     std::optional<std::string> packet_name;
     std::optional<std::string> channel_name;
     std::optional<std::string> topic;
-    std::optional<std::string> spot_rid;
+    std::optional<std::string> spot_id;
     std::optional<std::string> actor_id;
     std::optional<std::string> source_rid;
     std::optional<std::string> correlation_id;
@@ -120,7 +142,7 @@ struct message_flow_event_t {
     std::optional<std::string> topic;
     std::optional<std::string> correlation_id;
     std::optional<std::string> source_rid;
-    std::optional<std::string> spot_rid;
+    std::optional<std::string> spot_id;
     std::optional<std::string> actor_id;
     std::optional<std::size_t> message_size;
     std::optional<dispatch_error_reason_t> error_reason;
@@ -308,7 +330,7 @@ struct location_event_payload_t : runtime_event_base_t {
 };
 
 struct spot_timer_diagnostic_t {
-    spot_rid_t spot_rid;
+    spot_id_t spot_id;
     bool entry_spot = false;
     std::string timer_name;
     std::string handler_type;

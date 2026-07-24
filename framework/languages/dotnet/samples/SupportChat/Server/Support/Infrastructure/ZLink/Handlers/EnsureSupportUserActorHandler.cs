@@ -18,11 +18,13 @@ internal sealed class EnsureSupportUserActorHandler(
     {
         if (await actors.FindAsync(request.ActorId, cancellationToken) is { } existing) return ToResponse(existing);
 
-        var actor = await actors.GetOrCreateAsync(
-            request.ActorId,
-            SampleNames.SupportActorType,
-            request,
-            cancellationToken);
+        var actor = (await actors.GetOrCreate(request.ActorId, SampleNames.SupportActorType)
+            .Request(request).Async(cancellationToken)) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Support Actor creation was rejected.")
+        };
 
         return ToResponse(actor);
     }

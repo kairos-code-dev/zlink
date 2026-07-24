@@ -18,6 +18,7 @@ internal sealed class ZLinkSpotNodeInitializer(
 
         foreach (var spotNodeRegistration in registration.SpotNodes.Values)
         {
+            spotNodeRegistration.EntrySpotId = CreateEntrySpotId(spotNodeRegistration);
             // Core requires the mesh membership name at construction; SpotMeshChannelName
             // is the meshName from AddRouteMesh(meshName) (falls back to the node name).
             var meshName = spotNodeRegistration.SpotMeshChannelName
@@ -74,9 +75,10 @@ internal sealed class ZLinkSpotNodeInitializer(
                 }
 
                 node.Start();
+                await WaitForLifecycleGenerationAsync(node).ConfigureAwait(false);
             }
 
-            nodeRuntime.ApplyEntrySpotRoutingIdBeforeBind();
+            nodeRuntime.ApplyEntrySpotIdBeforeBind();
 
             state.SpotNodes.Add(spotNodeRegistration.SpotNodeName, nodeRuntime);
             try
@@ -97,14 +99,30 @@ internal sealed class ZLinkSpotNodeInitializer(
         }
     }
 
-    /// <summary>Spot lifecycle write (draft 15.1): spot node start
-    /// advertises the entry spot location row. The row is keyed by the
-    /// spot node's routing id — that is the identity peers know and
-    /// address (session relay requests target the node rid), while the
-    /// entry spot instance rid is a node-internal derivation. A failed
-    /// claim is logged and never fails node startup: the row can only be
-    /// missing until the store recovers, and the owner lease governs its
-    /// liveness.</summary>
+    private static async ValueTask WaitForLifecycleGenerationAsync(
+        IZLinkBackendSpotNode node)
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        while (node.MeshStatus().LifecycleGeneration == 0)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(1), timeout.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new ZLinkConfigurationException(
+                    $"MeshNode '{node.RoutingId}' did not publish its lifecycle generation after startup.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Publishes the generated Entry Spot logical identity after the node
+    /// owner lease is established. A conflicting global SpotId is a terminal
+    /// startup error and is distinct from a MeshNode RID collision.
+    /// </summary>
     private async ValueTask ClaimEntrySpotLocationAsync(
         ZLinkSpotNodeRegistration spotNodeRegistration,
         IZLinkBackendSpotNode node)
@@ -115,16 +133,20 @@ internal sealed class ZLinkSpotNodeInitializer(
 
         var status = await lifecycle.SpotLocations.ClaimAsync(
                 spotNodeRegistration.SpotMeshChannelName ?? spotNodeRegistration.SpotNodeName,
-                node.RoutingId,
+                spotNodeRegistration.EntrySpotId,
                 node.EntrySpot().LifecycleGeneration,
                 spotType: null,
                 node.RoutingId,
+                node.MeshStatus().LifecycleGeneration,
                 ZLinkSpotKind.Entry,
                 deactivate: null)
             .ConfigureAwait(false);
         if (status != ZLinkLocationWriteStatus.Stored)
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"entry spot location claim for '{spotNodeRegistration.SpotNodeName}' returned {status}");
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.SpotIdConflict,
+                $"Entry Spot ID '{spotNodeRegistration.EntrySpotId}' could not be claimed: {status}.");
+        }
     }
 
     private static void ConnectManualPeers(
@@ -155,5 +177,20 @@ internal sealed class ZLinkSpotNodeInitializer(
         var bytes = RandomNumberGenerator.GetBytes(16);
         bytes[0] = 0x10;
         return RoutingId.From(bytes);
+    }
+
+    private static string CreateEntrySpotId(ZLinkSpotNodeRegistration registration)
+    {
+        var spotId = $"{registration.SpotNodeName}-entry-{Guid.NewGuid():D}";
+        try
+        {
+            return ZLinkSpotId.Require(spotId, nameof(registration));
+        }
+        catch (ArgumentException error)
+        {
+            throw new ZLinkConfigurationException(
+                $"MeshNode '{registration.SpotNodeName}' cannot produce a valid Entry Spot ID: "
+                + error.Message);
+        }
     }
 }

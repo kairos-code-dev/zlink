@@ -7,7 +7,7 @@ export class RedisStoreKeys {
     if (keyPrefix.includes('{') || keyPrefix.includes('}')) {
       throw new Error('Redis location keyPrefix must not contain hash-tag braces.');
     }
-    this.authorityDomain = `${keyPrefix}:{zlink-location-v1}`;
+    this.authorityDomain = `${keyPrefix}:{zlink-location-v3}`;
   }
 
   rowHash(tag: string, rowKey: string): string {
@@ -154,6 +154,18 @@ export class RedisStoreKeys {
     return `${this.authorityDomain}:creation:${compactId(reservationId)}`;
   }
 
+  creationTerminal(
+    sourceNodeRid: string,
+    sourceNodeGeneration: bigint,
+    operationIdHigh: bigint,
+    operationIdLow: bigint
+  ): string {
+    const source = Buffer.from(sourceNodeRid, 'utf8');
+    return `${this.authorityDomain}:creation-terminal:${source.byteLength}:`
+      + `${source.toString('hex')}:${sourceNodeGeneration}:`
+      + `${u64Hex(operationIdHigh)}${u64Hex(operationIdLow)}`;
+  }
+
   relocation(fenceId: string): string {
     return `${this.authorityDomain}:relocation:${compactId(fenceId)}`;
   }
@@ -210,4 +222,11 @@ function compactId(value: string): string {
     throw new TypeError('Redis provider IDs must be non-zero 128-bit values.');
   }
   return compact;
+}
+
+function u64Hex(value: bigint): string {
+  if (value < 0n || value > 0xffff_ffff_ffff_ffffn) {
+    throw new TypeError('Redis provider operation IDs must contain unsigned 64-bit values.');
+  }
+  return value.toString(16).padStart(16, '0');
 }

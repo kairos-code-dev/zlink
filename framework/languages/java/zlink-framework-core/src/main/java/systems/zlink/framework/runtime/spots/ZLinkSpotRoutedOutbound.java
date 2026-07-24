@@ -43,7 +43,7 @@ final class ZLinkSpotRoutedOutbound {
     ZLinkSendCall send(
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         Message payload,
         Optional<String> packetName) {
@@ -51,7 +51,7 @@ final class ZLinkSpotRoutedOutbound {
             this,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName);
@@ -60,7 +60,7 @@ final class ZLinkSpotRoutedOutbound {
     ZLinkRequestCall request(
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         Message payload,
         Optional<String> packetName,
@@ -69,7 +69,7 @@ final class ZLinkSpotRoutedOutbound {
             this,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName,
@@ -79,7 +79,7 @@ final class ZLinkSpotRoutedOutbound {
     CompletionStage<systems.zlink.framework.channels.ZLinkSubmitResult> submitSend(
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         Message payload,
         Optional<String> packetName,
@@ -89,13 +89,13 @@ final class ZLinkSpotRoutedOutbound {
             ZLinkDispatchMessageKind.SEND,
             packetName,
             routerChannelId,
-            spotRid);
+            spotId);
         ZLinkInternalSpotNode routerNode = localRouterNode.apply(routerChannelId);
         if (routerNode != null) {
             return directOutbound.send(
                 routerNode.entrySpot(),
                 targetNodeRid,
-                spotRid,
+                spotId,
                 spotGeneration,
                 payload,
                 packetName)
@@ -111,7 +111,7 @@ final class ZLinkSpotRoutedOutbound {
             return ZLinkSubmitResults.fromVoidStage(channels.sendToSpotViaRouterChannel(
                 routerChannelId,
                 targetNodeRid,
-                spotRid,
+                spotId,
                 spotGeneration,
                 parts).whenComplete((ignored, error) -> {
                     parts.forEach(Message::close);
@@ -129,7 +129,7 @@ final class ZLinkSpotRoutedOutbound {
     <TReply> CompletionStage<TReply> submitRequest(
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         Message payload,
         Optional<String> packetName,
@@ -141,13 +141,13 @@ final class ZLinkSpotRoutedOutbound {
             ZLinkDispatchMessageKind.REQUEST,
             packetName,
             routerChannelId,
-            spotRid);
+            spotId);
         ZLinkInternalSpotNode routerNode = localRouterNode.apply(routerChannelId);
         if (routerNode != null) {
             return directOutbound.request(
                 routerNode.entrySpot(),
                 targetNodeRid,
-                spotRid,
+                spotId,
                 spotGeneration,
                 payload,
                 packetName,
@@ -164,7 +164,7 @@ final class ZLinkSpotRoutedOutbound {
                 return channels.requestToSpotViaRouterChannel(
                     routerChannelId,
                     targetNodeRid,
-                    spotRid,
+                    spotId,
                     spotGeneration,
                     parts,
                     timeout)
@@ -174,7 +174,7 @@ final class ZLinkSpotRoutedOutbound {
                         ZLinkDispatchMessageKind.RESPONSE,
                         packetName,
                         routerChannelId,
-                        spotRid);
+                        spotId);
                     return messages.decodeReply(replyParts, replyType);
                 });
         } finally {
@@ -187,7 +187,7 @@ final class ZLinkSpotRoutedOutbound {
         ZLinkDispatchMessageKind kind,
         Optional<String> packetName,
         String routerChannelId,
-        RoutingId spotRid) {
+        String spotId) {
         if (!flow.enabled(outcome)) {
             return;
         }
@@ -200,7 +200,7 @@ final class ZLinkSpotRoutedOutbound {
             null,
             null,
             null,
-            spotRid.toString(),
+            spotId.toString(),
             null,
             null));
     }
@@ -212,7 +212,7 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
     private final ZLinkSpotRoutedOutbound outbound;
     private final String routerChannelId;
     private final RoutingId targetNodeRid;
-    private final RoutingId spotRid;
+    private final String spotId;
     private final long spotGeneration;
     private final Message payload;
     private final Optional<String> packetName;
@@ -222,7 +222,7 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
         ZLinkSpotRoutedOutbound outbound,
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         Message payload,
         Optional<String> packetName) {
@@ -230,7 +230,7 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
             outbound,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName,
@@ -241,7 +241,7 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
         ZLinkSpotRoutedOutbound outbound,
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         Message payload,
         Optional<String> packetName,
@@ -249,7 +249,7 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
         this.outbound = outbound;
         this.routerChannelId = routerChannelId;
         this.targetNodeRid = targetNodeRid;
-        this.spotRid = spotRid;
+        this.spotId = spotId;
         this.spotGeneration = spotGeneration;
         this.payload = payload;
         this.packetName = packetName;
@@ -261,7 +261,7 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
             outbound,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             Optional.of(packetName),
@@ -274,7 +274,7 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
             outbound,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName,
@@ -287,7 +287,7 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
             outbound,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName,
@@ -304,7 +304,7 @@ final class ZLinkSpotRoutedSendCall implements ZLinkSendCall {
         return outbound.submitSend(
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName,
@@ -316,7 +316,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
     private final ZLinkSpotRoutedOutbound outbound;
     private final String routerChannelId;
     private final RoutingId targetNodeRid;
-    private final RoutingId spotRid;
+    private final String spotId;
     private final long spotGeneration;
     private final Message payload;
     private final Optional<String> packetName;
@@ -327,7 +327,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
         ZLinkSpotRoutedOutbound outbound,
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         Message payload,
         Optional<String> packetName,
@@ -336,7 +336,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             outbound,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName,
@@ -348,7 +348,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
         ZLinkSpotRoutedOutbound outbound,
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         Message payload,
         Optional<String> packetName,
@@ -357,7 +357,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
         this.outbound = outbound;
         this.routerChannelId = routerChannelId;
         this.targetNodeRid = targetNodeRid;
-        this.spotRid = spotRid;
+        this.spotId = spotId;
         this.spotGeneration = spotGeneration;
         this.payload = payload;
         this.packetName = packetName;
@@ -370,7 +370,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             outbound,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             Optional.of(packetName),
@@ -384,7 +384,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             outbound,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName,
@@ -398,7 +398,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             outbound,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName,
@@ -412,7 +412,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             outbound,
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName,
@@ -426,7 +426,7 @@ final class ZLinkSpotRoutedRequestCall implements ZLinkRequestCall {
             outbound.submitRequest(
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             payload,
             packetName,

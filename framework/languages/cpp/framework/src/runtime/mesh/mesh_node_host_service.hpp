@@ -36,6 +36,7 @@ class mesh_node_host_service_t final : public hosted_service_t
     void request_stop () noexcept override;
     void stop () noexcept override;
     std::vector<std::shared_ptr<detail::mesh_node_runtime_t>> nodes () const;
+    actor_manager_t actor_manager ();
     zlink::submit_result_t submit_local_node_send (
       const std::shared_ptr<detail::mesh_node_runtime_t> &node,
       const std::vector<zlink::message_t> &parts);
@@ -47,18 +48,29 @@ class mesh_node_host_service_t final : public hosted_service_t
     task_t<spot_create_result_t> create_user_spot (
       const std::shared_ptr<detail::mesh_node_runtime_t> &source,
       bool exclusive,
-      std::optional<spot_rid_t> spot_rid,
+      std::optional<spot_id_t> spot_id,
       std::string stable_type,
       std::optional<std::string> mesh_name,
       std::optional<message_t> request,
-      std::optional<placement_profile_t> profile,
-      std::optional<affinity_key_t> affinity,
       std::chrono::milliseconds timeout);
     task_t<std::optional<spot_ref_t>> find_user_spot (
-      spot_rid_t spot_rid);
+      spot_id_t spot_id);
     task_t<bool> close_user_spot (
       const std::shared_ptr<detail::mesh_node_runtime_t> &source,
       spot_ref_t spot);
+    task_t<actor_create_result_t> create_actor (
+      bool exclusive,
+      actor_id_t actor_id,
+      std::string stable_type,
+      std::optional<std::string> mesh_name,
+      std::optional<message_t> request,
+      std::chrono::milliseconds timeout,
+      creation_operation_identity_t operation);
+    task_t<std::optional<actor_ref_t>> find_actor (
+      actor_id_t actor_id);
+    task_t<std::optional<spot_ref_t>> find_actor_spot (
+      actor_id_t actor_id);
+    task_t<bool> destroy_actor (actor_ref_t actor);
 
     std::vector<std::shared_ptr<detail::mesh_node_builder_state_t>> _registrations;
     serializer_registry_t *_serializers;
@@ -67,6 +79,8 @@ class mesh_node_host_service_t final : public hosted_service_t
     std::shared_ptr<location_store_t> _location_store;
     std::optional<location_owner_token_t> _location_owner;
     std::vector<mesh_node_descriptor_key_t> _published_mesh_nodes;
+    std::vector<mesh_node_descriptor_t> _published_mesh_descriptors;
+    std::mutex _descriptor_publish_mutex;
     std::atomic_bool _stop{false};
     std::atomic_bool _accept_application_dispatch{false};
     mutable std::mutex _dispatch_gate_mutex;

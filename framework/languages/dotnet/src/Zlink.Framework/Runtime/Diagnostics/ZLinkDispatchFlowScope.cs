@@ -13,10 +13,10 @@ internal readonly struct ZLinkDispatchFlowScope(
     string? correlationId = null,
     string? topic = null,
     string? sourceRid = null,
-    string? spotRid = null,
+    string? spotId = null,
     string? actorId = null,
     string? actorType = null,
-    string? logSpotRid = null)
+    string? logSpotId = null)
 {
     public string? ChannelName => channelName;
 
@@ -213,7 +213,7 @@ internal readonly struct ZLinkDispatchFlowScope(
             channelName,
             topic,
             SourceRid: sourceRid,
-            SpotRid: spotRid,
+            SpotId: spotId,
             ActorId: actorId,
             CorrelationId: correlationId,
             Exception: exception));
@@ -234,7 +234,7 @@ internal readonly struct ZLinkDispatchFlowScope(
             channelName,
             topic,
             SourceRid: sourceRid,
-            SpotRid: spotRid,
+            SpotId: spotId,
             ActorId: actorId,
             CorrelationId: correlationId,
             Exception: exception));
@@ -254,7 +254,7 @@ internal readonly struct ZLinkDispatchFlowScope(
             topic,
             correlationId,
             sourceRid,
-            SpotRid: forLog ? logSpotRid ?? spotRid : spotRid,
+            SpotId: forLog ? logSpotId ?? spotId : spotId,
             ActorId: actorId)
         {
             FlowId = flow?.FlowId ?? string.Empty,

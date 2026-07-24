@@ -5,16 +5,33 @@ public final class ZLinkAuthorityKeyCodec {
     private ZLinkAuthorityKeyCodec() {
     }
 
-    public static String spot(systems.zlink.contracts.core.RoutingId spotRid) {
-        byte[] identity =
-            java.util.Objects.requireNonNull(spotRid, "spotRid")
-                .toBytes();
+    public static String spot(String spotId) {
+        byte[] identity = systems.zlink.framework.runtime.internal.spots
+            .ZLinkSpotIdValidator.requireValid(spotId)
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return encode("zla1:s:", identity, "Spot");
+    }
+
+    public static String actor(String actorId) {
+        if (actorId == null || actorId.isBlank()
+            || actorId.indexOf('\0') >= 0) {
+            throw new IllegalArgumentException("actorId is required");
+        }
+        byte[] identity = actorId.getBytes(
+            java.nio.charset.StandardCharsets.UTF_8);
+        return encode("zla1:a:", identity, "Actor");
+    }
+
+    private static String encode(
+        String prefix,
+        byte[] identity,
+        String kind) {
         if (identity.length == 0 || identity.length > 0xff) {
             throw new IllegalArgumentException(
-                "Spot authority identity must contain 1..255 bytes");
+                kind + " authority identity must contain 1..255 bytes");
         }
         StringBuilder encoded = new StringBuilder(
-            "zla1:s:" + identity.length + ":");
+            prefix + identity.length + ":");
         for (byte item : identity) {
             int value = Byte.toUnsignedInt(item);
             if (isUnreserved(value)) {

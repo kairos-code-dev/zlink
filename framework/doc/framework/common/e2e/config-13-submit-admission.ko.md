@@ -44,7 +44,7 @@ send·reply call이다. Stream connector package의 send builder, 반환 type과
 |---|---:|---|
 | location store | 1 | Automatic topology와 global Spot·Actor authority가 공유하는 공식 Redis Location Store. 실행마다 전용 key prefix를 사용한다. |
 | `AdmissionCaller` | 1 | Location Store를 등록한 Object Client. 이 host가 source인 RouteMesh·ClientServer Channel, global Spot·Actor와 Logical Multicast call을 시작하지만 factory와 placement target은 제공하지 않는다. |
-| `MeshTarget` | 2 | Location Store를 등록한 Object Server. Entry Spot, stable User Spot type `admission.spot`과 Actor type `admission.actor` factory를 명시적 `Disabled` policy로 등록하고 placement weight `100`, node capacity active `128`·pending `32`를 사용한다. RouteMesh Channel handler, local·remote Spot·Actor handler와 User Spot의 Logical Multicast subscription을 제공한다. |
+| `MeshTarget` | 2 | Location Store를 등록한 Object Server. Entry Spot, stable User Spot type `admission.spot`과 Actor type `admission.actor` factory를 명시적 `Disabled` policy로 등록하고 placement weight `100`, Actor total·Spot total·`admission.spot` stable type limit `128`, activation concurrency `32`를 사용한다. RouteMesh Channel handler, local·remote Spot·Actor handler와 User Spot의 Logical Multicast subscription을 제공한다. |
 | `ClientServerTarget` | 2 | 전용 ClientServer Channel의 send handler를 제공하고 select-one 재선택 대상을 분리한다 |
 | `SessionGateway` | 2 | Location Store를 등록한 Object Client. local·remote bound session, global Actor relay와 server STREAM session을 제공하고 이 family의 public call을 시작하지만 object factory는 제공하지 않는다. |
 | `FanoutPublisher` | 1 | classic fanout publisher와 publish endpoint를 제공하고 fanout public call을 시작한다 |
@@ -151,7 +151,8 @@ token에서 만든 call object의 public invocation을 별도로 기록한다. C
 ### 3.4 handler gate와 Logical Multicast commit barrier
 
 일반 send family에서 `Submitted`는 local outbound queue가 operation을 수락했다는 뜻이다. Logical Multicast는
-Framework runtime이 고정한 target snapshot 처리를 완료했고 remote capacity drop이 없으면 `Submitted`다. Snapshot target이
+Framework runtime이 고정한 target snapshot 처리를 완료했고 remote target별 source-local outbound transport
+queue의 capacity drop이 없으면 `Submitted`다. Snapshot target이
 모두 0이면 `TargetNotFound`이며, snapshot에 포함된 remote target이 모두 unreachable이어서 admitted가 0인
 경우는 `Submitted`다. `Submitted`와 원격 실행 완료를 구분할 때는 target이
 payload를 받은 직후 handler 본문을 진행하지 않도록 application handler gate를 닫는다. Submit terminal을 먼저
@@ -394,7 +395,7 @@ public result, 역할 server evidence와 사용한 gate 기록을 함께 대조�
 ### SA-E2E-11 — Spot resolve generation과 route admission
 
 - **목적:** Spot direct send가 location resolve 실패와 resolved owner route의 capacity 결과를 구분하는지 확인한다.
-- **Topology·사전 조건:** 존재하지 않는 global Spot RID와 ready location을 가진 remote Spot을 준비한다.
+- **Topology·사전 조건:** 존재하지 않는 global Spot ID와 ready location을 가진 remote Spot을 준비한다.
   Ready Spot은 resolve와 outbound admission 사이에서 close·recreate하여 generation을 바꿀 수 있고 current
   owner의 receiver gate를 독립 제어할 수 있어야 한다.
 - **절차:** Missing RID로 한 번 보낸다. Ready RID는 resolve barrier에서 정지한 뒤 close·recreate하고 barrier를
@@ -402,7 +403,7 @@ public result, 역할 server evidence와 사용한 gate 기록을 함께 대조�
 - **기대 결과:** Missing Spot은 `TargetNotFound`이며 remote creation을 시작하지 않는다. Generation 교체 전
   operation은 새 incarnation으로 자동 retarget되지 않고 terminal 한 번으로 끝나며 잘못된 handler 실행은 0이다.
   Fresh operation은 route capacity에 따라 `Submitted` 또는 `TimedOut`이고 handler delivery는 성공 sequence에만 있다.
-- **공통 evidence:** Global Spot RID, resolve에서 선택한 object·owner generation, current generation, owner route,
+- **공통 evidence:** Global Spot ID, resolve에서 선택한 object·owner generation, current generation, owner route,
   admission terminal과 generation별 Spot handler sequence를 남긴다. Public call에는 handle·ref·owner를 넘기지 않는다.
 
 ### SA-E2E-12 — Actor resolve generation과 route admission
@@ -438,7 +439,8 @@ public result, 역할 server evidence와 사용한 gate 기록을 함께 대조�
   - `SA-E2E-13.e`: Remote target은 snapshot에 포함하지 않고 local Spot subscription만 포함한다.
     `LocalMailboxGate`로 local mailbox capacity drop을 만든다.
   Commit된 case는 marker 뒤 cancellation 또는 shutdown signal을 발생시키되 gate와 snapshot을 유지한다.
-- **기대 결과:** Remote capacity drop이 하나 이상인 `SA-E2E-13.a`는 `Backpressured`이고 admitted와 dropped
+- **기대 결과:** Remote target별 source-local outbound transport queue의 capacity drop이 하나 이상인
+  `SA-E2E-13.a`는 `Backpressured`이고 admitted와 dropped
   detail을 그대로 보존한다. 모든 remote target이 unreachable이고 admitted가 0인 `SA-E2E-13.b`는
   `Submitted`이며 unreachable detail을 보존한다. Snapshot count는 0보다 크고 admitted는 0, unreachable은
   snapshot count와 같다. Direct
@@ -525,14 +527,14 @@ public result, 역할 server evidence와 사용한 gate 기록을 함께 대조�
 
 ### SA-E2E-18 — direct logical target fence와 select-one commit 전 재선택
 
-- **목적:** Direct call은 Node의 `(MeshName, NodeRid)`, global Spot RID, global Actor ID와 session binding token을
+- **목적:** Direct call은 Node의 `(MeshName, NodeRid)`, global Spot ID, global Actor ID와 session binding token을
   유지하고,
   ChannelName select-one은 admission되기 전까지 현재 eligible member를 다시 선택할 수 있음을 구분해
   확인한다. 두 경로 모두 commit 뒤
   같은 operation을 replay하지 않아야 한다.
 - **Topology·사전 조건:** 다음 하위 case를 독립 topology로 실행한다.
   - `SA-E2E-18.a`: Node direct, Spot, Actor와 bound session별로 `ReceiverGate`를 닫아 pending operation을
-    만든다. Node는 `(MeshName, NodeRid)`, Spot은 global Spot RID, Actor는 global Actor ID, bound session은
+    만든다. Node는 `(MeshName, NodeRid)`, Spot은 global Spot ID, Actor는 global Actor ID, bound session은
     binding token을 public identity로 고정한다. Spot·Actor의 resolved generation과 owner fence는 내부 admission
     evidence로만 기록하고 해당 current connection을 종료할 수 있어야 한다.
   - `SA-E2E-18.b`: RouteMesh select-one을 검증한다. 같은 ChannelName에 RouteMesh member A와 B를 준비한다.
@@ -554,7 +556,7 @@ public result, 역할 server evidence와 사용한 gate 기록을 함께 대조�
   operation은 public invocation 1회 안에서 A에 대한 최초 attempt와 B에 대한 commit 전 retry를 수행한다.
   Successful admission이 B를 최종 target으로 확정하고 결과는 `Submitted`, commit은 1회, B의 handler count는
   최대 1이다. 어느 하위 case도 commit된 payload를 route 복구나 member 변경 뒤 replay하지 않는다.
-- **공통 evidence:** Direct case는 old·new operation ID, Node `(MeshName, NodeRid)`·global Spot RID·global Actor ID·session binding token,
+- **공통 evidence:** Direct case는 old·new operation ID, Node `(MeshName, NodeRid)`·global Spot ID·global Actor ID·session binding token,
   resolve에서 고정한 Spot·Actor generation·owner fence와 old·new physical connection generation을 남긴다. 두 select-one case는 family 이름과 attempt별 eligible
   snapshot·selected member·connection generation, successful admission target과 commit 시각을 각각 남긴다.
   모든 case는 public invocation·transport attempt·commit,

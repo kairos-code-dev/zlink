@@ -108,7 +108,7 @@ internal static class ZLinkTelemetry
         if (!string.IsNullOrEmpty(flow.ChannelName)) activity.SetTag("zlink.channel.name", flow.ChannelName);
         if (!string.IsNullOrEmpty(flow.ActorId)) activity.SetTag("zlink.actor.id", flow.ActorId);
         if (!string.IsNullOrEmpty(actorType)) activity.SetTag("zlink.actor.type", actorType);
-        if (!string.IsNullOrEmpty(flow.SpotRid)) activity.SetTag("zlink.spot.rid", flow.SpotRid);
+        if (!string.IsNullOrEmpty(flow.SpotId)) activity.SetTag("zlink.spot.rid", flow.SpotId);
         activity.AddEvent(new ActivityEvent(eventName));
     }
 

@@ -189,12 +189,12 @@ internal static class ZLinkSpotDescriptorFactory
 
     public static IEnumerable<ZLinkSpotActorJoinDescriptor> CreateSpotActorJoinDescriptors(Type spotType)
     {
-        var contract = ZLinkSpotActorContractInspector.GetSpotOrEntryContract(spotType);
+        var contract = ZLinkSpotActorContractInspector.GetUserSpotContract(spotType);
         foreach (var method in EnumerateActorJoinMethods(spotType, contract?.ContractType))
         {
             if (contract is null)
                 throw new InvalidOperationException(
-                    $"SPOT actor join hook '{spotType}' must implement IZLinkSpot<TActor> or IZLinkEntrySpot<TActor>.");
+                    $"SPOT actor join hook '{spotType}' must implement IZLinkSpot<TActor>.");
 
             yield return CreateSpotActorJoinDescriptor(spotType, method, contract.ActorType);
         }

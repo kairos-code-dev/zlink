@@ -283,7 +283,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onLeaveActor(ZLinkActor actor) {
-            lastLeave.set(actor.context().spotRid().isEmpty());
+            lastLeave.set(actor.context().spotId().isEmpty());
             return CompletableFuture.completedFuture(null);
         }
     }

@@ -7,7 +7,7 @@ import systems.zlink.contracts.core.RoutingId;
 public interface SpotHandleResolver {
     CompletionStage<Optional<SpotHandle>> resolveSpotHandle(
         String meshName,
-        RoutingId spotRid);
+        String spotId);
 
-    CompletionStage<Optional<SpotHandle>> resolveSpotHandle(RoutingId spotRid);
+    CompletionStage<Optional<SpotHandle>> resolveSpotHandle(String spotId);
 }

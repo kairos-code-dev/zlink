@@ -41,11 +41,12 @@ export declare const ServiceWireCommand: {
     readonly replyRelayAck: 46;
     readonly userSpotCreate: 47;
     readonly userSpotClose: 48;
+    readonly actorCreate: 49;
 };
 export declare const ServiceWireFlag: {
     readonly metadata: 1;
     readonly boundSession: 2;
-    readonly sourceSpotRid: 4;
+    readonly sourceSpotId: 4;
     readonly extension: 8;
 };
 export declare const ServiceWireFrameworkErrorCode: {

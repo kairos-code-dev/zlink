@@ -104,6 +104,7 @@
         <Compile Include="Runtime/UnhandledDispatchPolicyTests.cs"/>
         <Compile Include="Runtime/EntrySpotActorExactRequestMessageFlowTests.cs"/>
         <Compile Include="Runtime/WorkerPoolTests.cs"/>
+        <Compile Include="Runtime/WeightContractTests.cs"/>
         <Compile Include="Runtime/ZLinkAsyncSubmitterTests.cs"/>
         <Compile Include="../Common/FrameworkGlobalUsings.cs" Link="GlobalUsings.cs"/>
         <Compile Include="../Common/FrameworkTestEnvironment.cs" Link="Common/FrameworkTestEnvironment.cs"/>

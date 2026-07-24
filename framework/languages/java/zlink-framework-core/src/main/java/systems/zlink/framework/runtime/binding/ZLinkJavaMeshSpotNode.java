@@ -46,10 +46,10 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
 
     private final ZLinkJavaMeshNode owner;
     private final MeshNode node;
-    private final Map<RoutingId, ZLinkJavaMeshSpot> spots = new ConcurrentHashMap<>();
+    private final Map<String, ZLinkJavaMeshSpot> spots = new ConcurrentHashMap<>();
     private final Map<String, Actor> actors = new ConcurrentHashMap<>();
-    private final Map<String, RoutingId> actorSpots = new ConcurrentHashMap<>();
-    private final Map<String, RoutingId> localActorDispatchSpots = new ConcurrentHashMap<>();
+    private final Map<String, String> actorSpots = new ConcurrentHashMap<>();
+    private final Map<String, String> localActorDispatchSpots = new ConcurrentHashMap<>();
     private final Map<String, Long> actorMembershipEpochs = new ConcurrentHashMap<>();
     private final Map<String, CompletableFuture<List<Message>>> pendingLeaves =
         new ConcurrentHashMap<>();
@@ -201,8 +201,8 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
     }
 
     @Override
-    public ZLinkBackendSpot createSpot(RoutingId spotRid) {
-        return register(node.getOrCreateSpot(spotRid).spot());
+    public ZLinkBackendSpot createSpot(String spotId) {
+        return register(node.getOrCreateSpot(RoutingId.from(spotId)).spot());
     }
 
     @Override
@@ -297,7 +297,8 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
             callback.handle(new ZLinkBackendReceived(
                 mapResult(completion.receive().terminalResult()),
                 Optional.ofNullable(completion.receive().sourceNodeRid()),
-                Optional.ofNullable(completion.receive().sourceSpotRid()),
+                Optional.ofNullable(completion.receive().sourceSpotId())
+                    .map(RoutingId::toString),
                 Optional.ofNullable(completion.receive().operationId())
                     .map(operationId -> operationId.low()),
                 completion.parts(),
@@ -373,7 +374,7 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
     public ZLinkBackendActorRef actorLookup(String actorId) {
         return node.actorLookup(actorId)
             .map(location -> {
-                actorSpots.put(actorId, location.spotRid());
+                actorSpots.put(actorId, location.spotId().toString());
                 actorMembershipEpochs.put(actorId, location.membershipEpoch());
                 return concreteRef(backendRef(location.actor()));
             })
@@ -384,27 +385,27 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
     public CompletionStage<ZLinkBackendActorJoinResult> joinActor(
         ZLinkBackendActorRef actor,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<Message> parts,
         Duration timeout) {
-        return joinActor(actor, targetNodeRid, targetSpotRid, 0L, parts, timeout);
+        return joinActor(actor, targetNodeRid, targetSpotId, 0L, parts, timeout);
     }
 
     @Override
     public CompletionStage<ZLinkBackendActorJoinResult> joinActor(
         ZLinkBackendActorRef actor,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetSpotGeneration,
         List<Message> parts,
         Duration timeout) {
         var operation = node.joinActorSpot(
             nativeRef(actor),
             targetNodeRid,
-            targetSpotRid,
+            RoutingId.from(targetSpotId),
             targetSpotGeneration > 0
                 ? targetSpotGeneration
-                : spotGeneration(targetSpotRid),
+                : spotGeneration(targetSpotId),
             parts,
             timeout);
         return owner.trackCompletion(operation).thenApply(completion -> {
@@ -412,9 +413,9 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
                 mapResult(completion.receive().terminalResult());
             List<Message> reply = completion.parts();
             var join = completion.receive().joinCompletion();
-            RoutingId completedSpot = join == null
-                ? targetSpotRid
-                : join.location().spotRid();
+            String completedSpot = join == null
+                ? targetSpotId
+                : join.location().spotId().toString();
             long completedEpoch = join == null
                 ? actorMembershipEpochs.getOrDefault(actor.actorId(), 0L)
                 : join.location().membershipEpoch();
@@ -453,18 +454,18 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
             ZLinkBackendRequestResult result =
                 mapResult(completion.receive().terminalResult());
             var join = completion.receive().joinCompletion();
-            RoutingId targetSpotRid = join == null
+            String targetSpotId = join == null
                 ? entrySpot().routingId()
-                : join.location().spotRid();
+                : join.location().spotId().toString();
             long epoch = join == null
                 ? actorMembershipEpochs.getOrDefault(actor.actorId(), 0L)
                 : join.location().membershipEpoch();
             if (result == ZLinkBackendRequestResult.OK && join != null
                 && join.joinResult()
                     == systems.zlink.contracts.service.spot.ActorJoinDecision.ACCEPTED) {
-                actorSpots.put(actor.actorId(), targetSpotRid);
+                actorSpots.put(actor.actorId(), targetSpotId);
                 if (join.actor().nodeRid().equals(node.getRoutingId())) {
-                    localActorDispatchSpots.put(actor.actorId(), targetSpotRid);
+                    localActorDispatchSpots.put(actor.actorId(), targetSpotId);
                 }
                 actorMembershipEpochs.put(actor.actorId(), epoch);
             }
@@ -476,7 +477,7 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
                     ? 0 : 1,
                 join == null ? actor : backendRef(join.actor()),
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 epoch,
                 0,
                 completion.parts());
@@ -486,7 +487,7 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
     @Override
     public CompletionStage<List<Message>> leaveActor(
         ZLinkBackendActorRef actor,
-        RoutingId currentSpotRid,
+        String currentSpotId,
         Duration timeout) {
         long epoch = actorMembershipEpochs.getOrDefault(actor.actorId(), 1L);
         CompletableFuture<List<Message>> completion = new CompletableFuture<>();
@@ -553,9 +554,9 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
 
     @Override
     public void registerTransferredActor(
-        ZLinkBackendActorRef actor, RoutingId spotRid, long membershipEpoch) {
-        actorSpots.put(actor.actorId(), spotRid);
-        localActorDispatchSpots.put(actor.actorId(), spotRid);
+        ZLinkBackendActorRef actor, String spotId, long membershipEpoch) {
+        actorSpots.put(actor.actorId(), spotId);
+        localActorDispatchSpots.put(actor.actorId(), spotId);
         actorMembershipEpochs.put(actor.actorId(), membershipEpoch);
     }
 
@@ -633,15 +634,15 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
 
     private ZLinkJavaMeshSpot register(systems.zlink.contracts.service.spot.Spot spot) {
         return spots.computeIfAbsent(
-            spot.routingId(),
+            spot.routingId().toString(),
             ignored -> new ZLinkJavaMeshSpot(
                 owner,
                 spot,
                 () -> primaryChannelName));
     }
 
-    long spotGeneration(RoutingId spotRid) {
-        ZLinkJavaMeshSpot target = spots.get(spotRid);
+    long spotGeneration(String spotId) {
+        ZLinkJavaMeshSpot target = spots.get(spotId);
         return target == null ? 0L : target.lifecycleGeneration();
     }
 
@@ -654,18 +655,20 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
             record.close();
             return CompletableFuture.completedFuture(null);
         }
-        RoutingId ownerSpotRid = null;
+        String ownerSpotId = null;
         if (record.owner().actor() != null
             && !record.owner().actor().actorId().isEmpty()) {
-            ownerSpotRid = localActorDispatchSpots.get(record.owner().actor().actorId());
+            ownerSpotId = localActorDispatchSpots.get(record.owner().actor().actorId());
         }
-        if (ownerSpotRid == null || ownerSpotRid.size() == 0) {
-            ownerSpotRid = record.owner().spotRid();
+        if (ownerSpotId == null || ownerSpotId.isEmpty()) {
+            ownerSpotId = record.owner().spotId() == null
+                ? null : record.owner().spotId().toString();
         }
-        if (ownerSpotRid == null || ownerSpotRid.size() == 0) {
-            ownerSpotRid = record.receive().sourceSpotRid();
+        if (ownerSpotId == null || ownerSpotId.isEmpty()) {
+            ownerSpotId = record.receive().sourceSpotId() == null
+                ? null : record.receive().sourceSpotId().toString();
         }
-        ZLinkJavaMeshSpot target = spots.get(ownerSpotRid);
+        ZLinkJavaMeshSpot target = spots.get(ownerSpotId);
         if (target == null) {
             record.close();
             return CompletableFuture.completedFuture(null);
@@ -679,7 +682,7 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
             case NODE -> ZLinkBackendAdmissionKey.node(ready.targetNodeRid());
             case CHANNEL -> ZLinkBackendAdmissionKey.channel(ready.channelName());
             case SPOT -> ZLinkBackendAdmissionKey.spot(
-                ready.targetNodeRid(), ready.targetSpotRid());
+                ready.targetNodeRid(), ready.targetSpotId().toString());
             case ACTOR -> ZLinkBackendAdmissionKey.actor(
                 ready.targetActor().nodeRid(),
                 ready.targetActor().actorId(),
@@ -695,9 +698,10 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
         if (control.kind() == ActorLifecycleKind.CREATED
             || control.kind() == ActorLifecycleKind.JOINED) {
             String actorId = control.currentActor().actorId();
-            actorSpots.put(actorId, control.currentSpotRid());
+            actorSpots.put(actorId, control.currentSpotId().toString());
             if (control.currentActor().nodeRid().equals(node.getRoutingId())) {
-                localActorDispatchSpots.put(actorId, control.currentSpotRid());
+                localActorDispatchSpots.put(
+                    actorId, control.currentSpotId().toString());
             }
             actorMembershipEpochs.put(actorId, control.currentMembershipEpoch());
             return;
@@ -706,16 +710,17 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
             return;
         }
         String actorId = control.previousActor().actorId();
-        actorSpots.put(actorId, control.currentSpotRid());
+        actorSpots.put(actorId, control.currentSpotId().toString());
         if (control.currentActor().nodeRid().equals(node.getRoutingId())) {
-            localActorDispatchSpots.put(actorId, control.currentSpotRid());
+            localActorDispatchSpots.put(
+                actorId, control.currentSpotId().toString());
         }
         actorMembershipEpochs.put(actorId, control.currentMembershipEpoch());
         CompletableFuture<List<Message>> completion = pendingLeaves.remove(actorId);
         if (completion != null) {
             completion.complete(List.of());
         }
-        ZLinkJavaMeshSpot previous = spots.get(control.previousSpotRid());
+        ZLinkJavaMeshSpot previous = spots.get(control.previousSpotId());
         if (previous != null) {
             previous.raisePendingLifecycle();
         }
@@ -771,39 +776,39 @@ final class ZLinkJavaMeshSpotNode implements ZLinkInternalSpotNode {
     }
 
     private void notifyLifecycle(
-        RoutingId previousSpotRid,
-        RoutingId currentSpotRid,
+        String previousSpotId,
+        String currentSpotId,
         ZLinkBackendActorRef actor,
         long epoch) {
-        if (previousSpotRid != null) {
-            notifyLeft(previousSpotRid, actor, epoch);
+        if (previousSpotId != null) {
+            notifyLeft(previousSpotId, actor, epoch);
         }
-        ZLinkJavaMeshSpot current = spots.get(currentSpotRid);
+        ZLinkJavaMeshSpot current = spots.get(currentSpotId);
         if (current != null) {
             current.lifecycle(new ZLinkBackendActorLifecycleEvent(
                 ZLinkBackendActorLifecycleEventKind.JOINED,
                 new ZLinkBackendActorLifecycleInfo(
                     null,
                     actor,
-                    Optional.ofNullable(previousSpotRid),
-                    Optional.of(currentSpotRid),
+                    Optional.ofNullable(previousSpotId),
+                    Optional.of(currentSpotId),
                     epoch,
                     0)));
         }
     }
 
     private void notifyLeft(
-        RoutingId previousSpotRid,
+        String previousSpotId,
         ZLinkBackendActorRef actor,
         long epoch) {
-        ZLinkJavaMeshSpot previous = spots.get(previousSpotRid);
+        ZLinkJavaMeshSpot previous = spots.get(previousSpotId);
         if (previous != null) {
             previous.lifecycle(new ZLinkBackendActorLifecycleEvent(
                 ZLinkBackendActorLifecycleEventKind.LEFT,
                 new ZLinkBackendActorLifecycleInfo(
                     actor,
                     null,
-                    Optional.of(previousSpotRid),
+                    Optional.of(previousSpotId),
                     Optional.empty(),
                     epoch,
                     0)));

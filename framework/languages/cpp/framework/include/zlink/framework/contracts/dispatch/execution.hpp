@@ -146,7 +146,7 @@ struct message_dispatch_error_event_t
     std::optional<std::string> packet_name;
     std::optional<std::string> channel_name;
     std::optional<std::string> topic;
-    std::optional<std::string> spot_rid;
+    std::optional<std::string> spot_id;
     std::optional<std::string> actor_id;
     std::optional<std::string> source_rid;
     std::optional<std::string> correlation_id;
@@ -166,7 +166,7 @@ struct message_flow_event_t
     std::optional<std::string> topic;
     std::optional<std::string> correlation_id;
     std::optional<std::string> source_rid;
-    std::optional<std::string> spot_rid;
+    std::optional<std::string> spot_id;
     std::optional<std::string> actor_id;
     std::optional<std::size_t> message_size;
     std::optional<dispatch_error_reason_t> error_reason;

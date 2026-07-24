@@ -46,13 +46,13 @@ internal sealed class ZLinkSpotMeshLocationResolver
     }
 
     internal async ValueTask<ZLinkSpotLocation?> ResolveAsync(
-        RoutingId spotRid,
+        string spotId,
         CancellationToken cancellationToken)
     {
         foreach (var meshName in _meshNames)
         {
             var row = await _rows.ResolveSpotRowAsync(
-                    new ZLinkSpotLocationKey(meshName, spotRid),
+                    new ZLinkSpotLocationKey(spotId),
                     cancellationToken)
                 .ConfigureAwait(false);
             if (row is not null) return row;

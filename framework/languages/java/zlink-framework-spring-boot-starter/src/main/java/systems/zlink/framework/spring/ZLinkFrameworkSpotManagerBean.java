@@ -24,14 +24,14 @@ final class ZLinkFrameworkSpotManagerBean implements ZLinkSpotManager {
 
     @Override
     public ZLinkSpotGetOrCreateCall getOrCreate(
-        RoutingId spotRid,
+        String spotId,
         String spotType) {
-        return lifecycle.spotManager().getOrCreate(spotRid, spotType);
+        return lifecycle.spotManager().getOrCreate(spotId, spotType);
     }
 
     @Override
-    public CompletionStage<Optional<SpotRef>> find(RoutingId spotRid) {
-        return lifecycle.spotManager().find(spotRid);
+    public CompletionStage<Optional<SpotRef>> find(String spotId) {
+        return lifecycle.spotManager().find(spotId);
     }
 
     @Override

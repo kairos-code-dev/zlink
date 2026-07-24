@@ -36,7 +36,7 @@ public sealed record ZLinkActorTransferRecord(
     ActorRef Target,
     ulong ExpectedActorGeneration,
     ulong ExpectedMembershipEpoch,
-    IReadOnlySet<RoutingId> Participants,
+    IReadOnlySet<string> Participants,
     ZLinkActorTransferState State,
     string RecoveryOwnerId,
     DateTimeOffset RecoveryLeaseExpiresAt,
@@ -55,7 +55,7 @@ public sealed record ZLinkActorTransferPrepareRequest(
     ActorRef Target,
     ulong ExpectedActorGeneration,
     ulong ExpectedMembershipEpoch,
-    IReadOnlySet<RoutingId> Participants,
+    IReadOnlySet<string> Participants,
     string RecoveryOwnerId,
     TimeSpan RecoveryLeaseTtl);
 

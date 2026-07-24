@@ -32,7 +32,7 @@ final class ZLinkLocationKeyCodec {
     }
 
     static String encodeSpotKey(ZLinkSpotLocationKey key) {
-        return encode(key.meshName(), toHex(key.spotRid()));
+        return encode(key.spotId());
     }
 
     static String encodeActorKey(ZLinkActorLocationKey key) {

@@ -8,6 +8,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import systems.zlink.contracts.core.RoutingId;
+import systems.zlink.framework.actors.ActorRef;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorRef;
 import systems.zlink.framework.runtime.protocol.ServiceWireConstants;
 
@@ -22,14 +23,14 @@ public final class ZLinkServiceM6BWireCodec {
         boolean request,
         int flags,
         Long correlation,
-        RoutingId sourceSpotRid,
+        String sourceSpotId,
         SpotRouteFence target) {
         if ((flags & ~ServiceWireConstants.FLAG_METADATA) != 0
             || request != (correlation != null)
             || (correlation != null && correlation <= 0)) {
             throw protocol("invalid Spot message header");
         }
-        Objects.requireNonNull(sourceSpotRid, "sourceSpotRid");
+        Objects.requireNonNull(sourceSpotId, "sourceSpotId");
         Objects.requireNonNull(target, "target");
         Writer writer = prefix(
             request
@@ -39,8 +40,8 @@ public final class ZLinkServiceM6BWireCodec {
         if (correlation != null) {
             writer.u64(correlation);
         }
-        writer.rid(sourceSpotRid, "sourceSpotRid");
-        writer.rid(target.spotRid(), "targetSpotRid");
+        writer.text8(sourceSpotId, "sourceSpotId");
+        writer.text8(target.spotId(), "targetSpotId");
         writer.nonzero(target.spotGeneration(), "targetSpotGeneration");
         writer.rid(target.targetNodeRid(), "targetNodeRid");
         writer.nonzero(
@@ -69,9 +70,9 @@ public final class ZLinkServiceM6BWireCodec {
         Long correlation = request
             ? reader.nonzeroU64("correlation")
             : null;
-        RoutingId sourceSpotRid = reader.rid("sourceSpotRid");
+        String sourceSpotId = reader.text8("sourceSpotId");
         SpotRouteFence target = new SpotRouteFence(
-            reader.rid("targetSpotRid"),
+            reader.text8("targetSpotId"),
             reader.nonzeroU64("targetSpotGeneration"),
             reader.rid("targetNodeRid"),
             reader.nonzeroU64("targetNodeGeneration"),
@@ -81,7 +82,7 @@ public final class ZLinkServiceM6BWireCodec {
             request,
             header.flags(),
             correlation,
-            sourceSpotRid,
+            sourceSpotId,
             target);
     }
 
@@ -109,7 +110,7 @@ public final class ZLinkServiceM6BWireCodec {
         BoundSessionTail boundSession) {
         int boundFlags =
             ServiceWireConstants.FLAG_BOUND_SESSION
-                | ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+                | ServiceWireConstants.FLAG_SOURCE_SPOT_ID;
         if ((flags & ~(ServiceWireConstants.FLAG_METADATA | boundFlags)) != 0
             || request != (correlation != null)
             || (correlation != null && correlation <= 0)
@@ -170,7 +171,7 @@ public final class ZLinkServiceM6BWireCodec {
         }
         int boundFlags =
             ServiceWireConstants.FLAG_BOUND_SESSION
-                | ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+                | ServiceWireConstants.FLAG_SOURCE_SPOT_ID;
         if ((header.flags()
                 & ~(ServiceWireConstants.FLAG_METADATA | boundFlags)) != 0
             || ((header.flags() & boundFlags) != 0
@@ -295,7 +296,7 @@ public final class ZLinkServiceM6BWireCodec {
         int flags,
         String channelName,
         String topic,
-        RoutingId sourceSpotRid) {
+        String sourceSpotId) {
         if ((flags & ~ServiceWireConstants.FLAG_METADATA) != 0) {
             throw protocol("logical multicast contains an unknown flag");
         }
@@ -304,7 +305,7 @@ public final class ZLinkServiceM6BWireCodec {
             flags);
         writer.text8(channelName, "channelName");
         writer.text8(topic, "topic");
-        writer.rid(sourceSpotRid, "sourceSpotRid");
+        writer.text8(sourceSpotId, "sourceSpotId");
         return writer.toByteArray();
     }
 
@@ -320,7 +321,7 @@ public final class ZLinkServiceM6BWireCodec {
             header.flags(),
             reader.text8("channelName"),
             reader.text8("topic"),
-            reader.rid("sourceSpotRid"));
+            reader.text8("sourceSpotId"));
         reader.end();
         return result;
     }
@@ -342,7 +343,7 @@ public final class ZLinkServiceM6BWireCodec {
         route.nonzero(
             message.route().targetNodeGeneration(),
             "targetNodeGeneration");
-        route.rid(message.route().targetSpotRid(), "targetSpotRid");
+        route.text8(message.route().targetSpotId(), "targetSpotId");
         route.nonzero(
             message.route().objectGeneration(), "objectGeneration");
         route.text8(message.route().ownerId(), "ownerId");
@@ -363,7 +364,7 @@ public final class ZLinkServiceM6BWireCodec {
         writer.nonzero(
             message.sourceNodeGeneration(), "sourceNodeGeneration");
         writer.rid(message.sourceNodeRid(), "sourceNodeRid");
-        writer.optionalRid(message.sourceSpotRid(), "sourceSpotRid");
+        writer.optionalText8(message.sourceSpotId(), "sourceSpotId");
         writer.u8(message.request() ? 2 : 1);
         writer.u64(message.operationHigh());
         writer.u64(message.operationLow());
@@ -386,7 +387,7 @@ public final class ZLinkServiceM6BWireCodec {
         InstanceRouteFence route = new InstanceRouteFence(
             reader.rid("targetNodeRid"),
             reader.nonzeroU64("targetNodeGeneration"),
-            reader.rid("targetSpotRid"),
+            reader.text8("targetSpotId"),
             reader.nonzeroU64("objectGeneration"),
             reader.text8("ownerId"),
             reader.nonzeroU64("authorityOwnerGeneration"),
@@ -398,7 +399,7 @@ public final class ZLinkServiceM6BWireCodec {
         long sourceNodeGeneration =
             reader.nonzeroU64("sourceNodeGeneration");
         RoutingId sourceNodeRid = reader.rid("sourceNodeRid");
-        RoutingId sourceSpotRid = reader.optionalRid("sourceSpotRid");
+        String sourceSpotId = reader.optionalText8("sourceSpotId");
         int operationKind = reader.u8("operationKind");
         if (operationKind != 1 && operationKind != 2) {
             throw protocol("unknown Instance operation kind");
@@ -419,7 +420,7 @@ public final class ZLinkServiceM6BWireCodec {
             route,
             sourceNodeGeneration,
             sourceNodeRid,
-            sourceSpotRid,
+            sourceSpotId,
             request,
             operationHigh,
             operationLow,
@@ -443,7 +444,7 @@ public final class ZLinkServiceM6BWireCodec {
         writer.rid(message.sourceNodeRid(), "sourceNodeRid");
         writer.nonzero(
             message.sourceNodeGeneration(), "sourceNodeGeneration");
-        writer.rid(message.spotRid(), "spotRid");
+        writer.text8(message.spotId(), "spotId");
         writer.text8(message.stableType(), "stableType");
         writeReservation(writer, message.reservation());
         writer.nonzero(message.deadlineUnixMs(), "deadlineUnixMs");
@@ -464,7 +465,7 @@ public final class ZLinkServiceM6BWireCodec {
         RoutingId sourceNodeRid = reader.rid("sourceNodeRid");
         long sourceNodeGeneration =
             reader.nonzeroU64("sourceNodeGeneration");
-        RoutingId spotRid = reader.rid("spotRid");
+        String spotId = reader.text8("spotId");
         String stableType = reader.text8("stableType");
         ReservationFence reservation = readReservation(reader);
         long deadlineUnixMs = reader.nonzeroU64("deadlineUnixMs");
@@ -481,7 +482,67 @@ public final class ZLinkServiceM6BWireCodec {
             operationLow,
             sourceNodeRid,
             sourceNodeGeneration,
-            spotRid,
+            spotId,
+            stableType,
+            reservation,
+            deadlineUnixMs);
+    }
+
+    public byte[] encodeActorCreateHeader(ActorCreate message) {
+        Objects.requireNonNull(message, "message");
+        validateTerminalOperation(
+            message.correlation(),
+            message.operationHigh(),
+            message.operationLow(),
+            message.sourceNodeGeneration(),
+            message.deadlineUnixMs());
+        Writer writer = prefix(
+            ServiceWireConstants.COMMAND_ACTOR_CREATE, 0);
+        writer.nonzero(message.correlation(), "correlation");
+        writer.u64(message.operationHigh());
+        writer.u64(message.operationLow());
+        writer.rid(message.sourceNodeRid(), "sourceNodeRid");
+        writer.nonzero(
+            message.sourceNodeGeneration(), "sourceNodeGeneration");
+        writer.text8(message.actorId(), "actorId");
+        writer.text8(message.stableType(), "stableType");
+        writeReservation(writer, message.reservation());
+        writer.nonzero(message.deadlineUnixMs(), "deadlineUnixMs");
+        return writer.toByteArray();
+    }
+
+    public ActorCreate decodeActorCreateHeader(byte[] frame) {
+        Reader reader = new Reader(frame);
+        Header header = reader.prefix();
+        if (header.command()
+                != ServiceWireConstants.COMMAND_ACTOR_CREATE
+            || header.flags() != 0) {
+            throw protocol("command is not actorCreate");
+        }
+        long correlation = reader.nonzeroU64("correlation");
+        long operationHigh = reader.u64("operation.high");
+        long operationLow = reader.u64("operation.low");
+        RoutingId sourceNodeRid = reader.rid("sourceNodeRid");
+        long sourceNodeGeneration =
+            reader.nonzeroU64("sourceNodeGeneration");
+        String actorId = reader.text8("actorId");
+        String stableType = reader.text8("stableType");
+        ReservationFence reservation = readReservation(reader);
+        long deadlineUnixMs = reader.nonzeroU64("deadlineUnixMs");
+        reader.end();
+        validateTerminalOperation(
+            correlation,
+            operationHigh,
+            operationLow,
+            sourceNodeGeneration,
+            deadlineUnixMs);
+        return new ActorCreate(
+            correlation,
+            operationHigh,
+            operationLow,
+            sourceNodeRid,
+            sourceNodeGeneration,
+            actorId,
             stableType,
             reservation,
             deadlineUnixMs);
@@ -496,7 +557,7 @@ public final class ZLinkServiceM6BWireCodec {
             message.sourceNodeGeneration(),
             message.deadlineUnixMs());
         Writer target = new Writer();
-        target.rid(message.target().spotRid(), "spotRid");
+        target.text8(message.target().spotId(), "spotId");
         target.nonzero(
             message.target().objectGeneration(), "objectGeneration");
         target.rid(
@@ -547,7 +608,7 @@ public final class ZLinkServiceM6BWireCodec {
         int targetLength = reader.u16("userSpotCloseFence.length");
         int targetEnd = reader.position() + targetLength;
         UserSpotCloseFence target = new UserSpotCloseFence(
-            reader.rid("spotRid"),
+            reader.text8("spotId"),
             reader.nonzeroU64("objectGeneration"),
             reader.rid("targetNodeRid"),
             reader.nonzeroU64("targetNodeGeneration"),
@@ -584,7 +645,7 @@ public final class ZLinkServiceM6BWireCodec {
             correlation, terminalResult, failureCode);
         if (success != null) {
             writer.u8(success.result().wireValue);
-            writer.rid(success.spotRid(), "spotRid");
+            writer.text8(success.spotId(), "spotId");
             writer.nonzero(
                 success.objectGeneration(), "objectGeneration");
         }
@@ -601,7 +662,7 @@ public final class ZLinkServiceM6BWireCodec {
             success = new UserSpotCreateTerminal(
                 UserSpotCreateResult.fromWire(
                     reader.u8("createResult")),
-                reader.rid("spotRid"),
+                reader.text8("spotId"),
                 reader.nonzeroU64("objectGeneration"));
         }
         reader.end();
@@ -609,6 +670,159 @@ public final class ZLinkServiceM6BWireCodec {
             terminalResult, failureCode, success != null);
         return new UserSpotCreateReply(
             correlation, terminalResult, failureCode, success);
+    }
+
+    public byte[] encodeActorCreateReply(
+        long correlation,
+        ActorCreationTerminal terminal) {
+        Objects.requireNonNull(terminal, "terminal");
+        Writer writer = replyPrefix(
+            correlation,
+            terminal.terminalResult(),
+            terminal.failureCode());
+        writeActorCreateTerminal(writer, terminal.creation());
+        return writer.toByteArray();
+    }
+
+    public ActorCreateReply decodeActorCreateReply(byte[] frame) {
+        Reader reader = replyReader(frame);
+        long correlation = reader.nonzeroU64("correlation");
+        int terminalResult = reader.u32("terminalResult");
+        int failureCode = reader.u32("failureCode");
+        ActorCreateTerminal creation = terminalResult == 0
+            ? readActorCreateTerminal(reader)
+            : null;
+        reader.end();
+        requireActorTerminalShape(
+            terminalResult, failureCode, creation, null);
+        return new ActorCreateReply(
+            correlation,
+            new ActorCreationTerminal(
+                terminalResult,
+                failureCode,
+                creation,
+                null));
+    }
+
+    public byte[] encodeCreationOperationTerminal(
+        ActorCreationTerminal terminal) {
+        Objects.requireNonNull(terminal, "terminal");
+        requireActorTerminalShape(
+            terminal.terminalResult(),
+            terminal.failureCode(),
+            terminal.creation(),
+            terminal.applicationPayloadFrame());
+        Writer body = new Writer();
+        body.u32(terminal.terminalResult(), "terminalResult");
+        body.u32(terminal.failureCode(), "failureCode");
+        body.u8(terminal.creation() == null ? 0 : 1);
+        if (terminal.creation() != null) {
+            writeActorCreateTerminal(body, terminal.creation());
+        }
+        body.u8(terminal.applicationPayloadFrame() == null ? 0 : 1);
+        if (terminal.applicationPayloadFrame() != null) {
+            body.bytes(terminal.applicationPayloadFrame());
+        }
+        Writer envelope = new Writer();
+        envelope.u8(1);
+        envelope.u32(body.toByteArray().length, "bodyLength");
+        envelope.bytes(body.toByteArray());
+        byte[] result = envelope.toByteArray();
+        if (result.length > 1024 * 1024) {
+            throw protocol(
+                "creation operation terminal exceeds 1 MiB");
+        }
+        return result;
+    }
+
+    public ActorCreationTerminal decodeCreationOperationTerminal(
+        byte[] envelope) {
+        Reader reader = new Reader(envelope);
+        if (reader.u8("version") != 1) {
+            throw protocol(
+                "unknown creation operation terminal version");
+        }
+        Reader body = reader.reader(reader.u32("bodyLength"));
+        reader.end();
+        int terminalResult = body.u32("terminalResult");
+        int failureCode = body.u32("failureCode");
+        int hasCreation = body.u8("hasCreation");
+        if (hasCreation != 0 && hasCreation != 1) {
+            throw protocol("hasCreation must be bool8");
+        }
+        ActorCreateTerminal creation = hasCreation == 1
+            ? readActorCreateTerminal(body)
+            : null;
+        int hasPayload = body.u8("hasApplicationPayload");
+        if (hasPayload != 0 && hasPayload != 1) {
+            throw protocol("hasApplicationPayload must be bool8");
+        }
+        byte[] applicationPayload = hasPayload == 1
+            ? body.remainingBytes()
+            : null;
+        body.end();
+        requireActorTerminalShape(
+            terminalResult,
+            failureCode,
+            creation,
+            applicationPayload);
+        return new ActorCreationTerminal(
+            terminalResult,
+            failureCode,
+            creation,
+            applicationPayload);
+    }
+
+    private static void writeActorCreateTerminal(
+        Writer writer,
+        ActorCreateTerminal terminal) {
+        writer.u8(terminal.result().wireValue);
+        Writer selected = new Writer();
+        if (terminal.result() != ActorCreateResult.REJECTED) {
+            ActorRef actor = Objects.requireNonNull(
+                terminal.actor(), "actor");
+            selected.rid(actor.nodeRid(), "actor.nodeRid");
+            selected.text8(actor.actorId(), "actor.actorId");
+            selected.nonzero(
+                actor.generation(), "actor.generation");
+        }
+        writer.u16(selected.toByteArray().length);
+        writer.bytes(selected.toByteArray());
+    }
+
+    private static ActorCreateTerminal readActorCreateTerminal(
+        Reader reader) {
+        ActorCreateResult result = ActorCreateResult.fromWire(
+            reader.u8("createResult"));
+        Reader selected = reader.reader(reader.u16("creationLength"));
+        ActorRef actor = null;
+        if (result != ActorCreateResult.REJECTED) {
+            actor = new ActorRef(
+                selected.rid("actor.nodeRid"),
+                selected.text8("actor.actorId"),
+                selected.nonzeroU64("actor.generation"));
+        }
+        selected.end();
+        return new ActorCreateTerminal(result, actor);
+    }
+
+    private static void requireActorTerminalShape(
+        int terminalResult,
+        int failureCode,
+        ActorCreateTerminal creation,
+        byte[] applicationPayload) {
+        requireReplyTail(
+            terminalResult, failureCode, creation != null);
+        if (creation != null
+            && creation.result() == ActorCreateResult.EXISTING
+            && applicationPayload != null) {
+            throw protocol(
+                "Existing Actor terminal cannot carry application payload");
+        }
+        if (terminalResult != 0 && applicationPayload != null) {
+            throw protocol(
+                "failed Actor terminal cannot carry application payload");
+        }
     }
 
     public byte[] encodeUserSpotCloseReply(
@@ -646,13 +860,13 @@ public final class ZLinkServiceM6BWireCodec {
     }
 
     public record SpotRouteFence(
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         RoutingId targetNodeRid,
         long targetNodeGeneration,
         long authorityOwnerGeneration) {
         public SpotRouteFence {
-            Objects.requireNonNull(spotRid, "spotRid");
+            Objects.requireNonNull(spotId, "spotId");
             Objects.requireNonNull(targetNodeRid, "targetNodeRid");
             if (spotGeneration <= 0
                 || targetNodeGeneration <= 0
@@ -666,7 +880,7 @@ public final class ZLinkServiceM6BWireCodec {
         boolean request,
         int flags,
         Long correlation,
-        RoutingId sourceSpotRid,
+        String sourceSpotId,
         SpotRouteFence target) {
     }
 
@@ -761,13 +975,13 @@ public final class ZLinkServiceM6BWireCodec {
         int flags,
         String channelName,
         String topic,
-        RoutingId sourceSpotRid) {
+        String sourceSpotId) {
     }
 
     public record InstanceRouteFence(
         RoutingId targetNodeRid,
         long targetNodeGeneration,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long objectGeneration,
         String ownerId,
         long authorityOwnerGeneration,
@@ -775,7 +989,7 @@ public final class ZLinkServiceM6BWireCodec {
         String storeVersion) {
         public InstanceRouteFence {
             Objects.requireNonNull(targetNodeRid, "targetNodeRid");
-            Objects.requireNonNull(targetSpotRid, "targetSpotRid");
+            Objects.requireNonNull(targetSpotId, "targetSpotId");
             if (targetNodeGeneration <= 0
                 || objectGeneration <= 0
                 || authorityOwnerGeneration <= 0
@@ -796,7 +1010,7 @@ public final class ZLinkServiceM6BWireCodec {
         InstanceRouteFence route,
         long sourceNodeGeneration,
         RoutingId sourceNodeRid,
-        RoutingId sourceSpotRid,
+        String sourceSpotId,
         boolean request,
         long operationHigh,
         long operationLow,
@@ -841,13 +1055,13 @@ public final class ZLinkServiceM6BWireCodec {
         long operationLow,
         RoutingId sourceNodeRid,
         long sourceNodeGeneration,
-        RoutingId spotRid,
+        String spotId,
         String stableType,
         ReservationFence reservation,
         long deadlineUnixMs) {
         public UserSpotCreate {
             Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
-            Objects.requireNonNull(spotRid, "spotRid");
+            Objects.requireNonNull(spotId, "spotId");
             Objects.requireNonNull(reservation, "reservation");
             if (stableType == null || stableType.isBlank()) {
                 throw protocol("stableType is required");
@@ -855,15 +1069,90 @@ public final class ZLinkServiceM6BWireCodec {
         }
     }
 
+    public record ActorCreate(
+        long correlation,
+        long operationHigh,
+        long operationLow,
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        String actorId,
+        String stableType,
+        ReservationFence reservation,
+        long deadlineUnixMs) {
+        public ActorCreate {
+            Objects.requireNonNull(sourceNodeRid, "sourceNodeRid");
+            if (actorId == null || actorId.isBlank()
+                || stableType == null || stableType.isBlank()) {
+                throw protocol("Actor create identity is required");
+            }
+            Objects.requireNonNull(reservation, "reservation");
+        }
+    }
+
+    public enum ActorCreateResult {
+        EXISTING(1),
+        CREATED(2),
+        REJECTED(3);
+
+        private final int wireValue;
+
+        ActorCreateResult(int wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        static ActorCreateResult fromWire(int value) {
+            for (ActorCreateResult result : values()) {
+                if (result.wireValue == value) {
+                    return result;
+                }
+            }
+            throw protocol("unknown Actor create result");
+        }
+    }
+
+    public record ActorCreateTerminal(
+        ActorCreateResult result,
+        ActorRef actor) {
+        public ActorCreateTerminal {
+            Objects.requireNonNull(result, "result");
+            if ((result == ActorCreateResult.REJECTED) != (actor == null)) {
+                throw protocol(
+                    "Rejected has no ActorRef and other results require it");
+            }
+        }
+    }
+
+    public record ActorCreationTerminal(
+        int terminalResult,
+        int failureCode,
+        ActorCreateTerminal creation,
+        byte[] applicationPayloadFrame) {
+        public ActorCreationTerminal {
+            applicationPayloadFrame = applicationPayloadFrame == null
+                ? null : applicationPayloadFrame.clone();
+        }
+
+        @Override
+        public byte[] applicationPayloadFrame() {
+            return applicationPayloadFrame == null
+                ? null : applicationPayloadFrame.clone();
+        }
+    }
+
+    public record ActorCreateReply(
+        long correlation,
+        ActorCreationTerminal terminal) {
+    }
+
     public record UserSpotCloseFence(
-        RoutingId spotRid,
+        String spotId,
         long objectGeneration,
         RoutingId targetNodeRid,
         long targetNodeGeneration,
         long authorityOwnerGeneration,
         String storeVersion) {
         public UserSpotCloseFence {
-            Objects.requireNonNull(spotRid, "spotRid");
+            Objects.requireNonNull(spotId, "spotId");
             Objects.requireNonNull(targetNodeRid, "targetNodeRid");
             if (objectGeneration <= 0
                 || targetNodeGeneration <= 0
@@ -912,11 +1201,11 @@ public final class ZLinkServiceM6BWireCodec {
 
     public record UserSpotCreateTerminal(
         UserSpotCreateResult result,
-        RoutingId spotRid,
+        String spotId,
         long objectGeneration) {
         public UserSpotCreateTerminal {
             Objects.requireNonNull(result, "result");
-            Objects.requireNonNull(spotRid, "spotRid");
+            Objects.requireNonNull(spotId, "spotId");
             if (objectGeneration <= 0) {
                 throw protocol("objectGeneration must be nonzero");
             }
@@ -1170,6 +1459,14 @@ public final class ZLinkServiceM6BWireCodec {
             rid(value, field);
         }
 
+        void optionalText8(String value, String field) {
+            if (value == null) {
+                u8(0);
+                return;
+            }
+            text8(value, field);
+        }
+
         void bytes(byte[] value) {
             output.writeBytes(value);
         }
@@ -1267,6 +1564,19 @@ public final class ZLinkServiceM6BWireCodec {
 
         int position() {
             return input.position();
+        }
+
+        Reader reader(int length) {
+            require(length, "body");
+            byte[] bytes = new byte[length];
+            input.get(bytes);
+            return new Reader(bytes);
+        }
+
+        byte[] remainingBytes() {
+            byte[] bytes = new byte[input.remaining()];
+            input.get(bytes);
+            return bytes;
         }
 
         String optionalText8(String field) {

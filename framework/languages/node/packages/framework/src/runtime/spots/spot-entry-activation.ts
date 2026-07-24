@@ -3,6 +3,7 @@ import type {
   RoutingId,
   Type,
   ZLinkActor,
+  ZLinkActorCreateResponse,
   ZLinkChannelClient,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
@@ -288,10 +289,15 @@ export class ZLinkEntrySpotActivation {
     if (errors.length > 1) throw new AggregateError(errors, 'Entry Spot cleanup failed.');
   }
 
-  notifyCreateActor(actor: ZLinkActor, createRequest: ZLinkMessage, signal?: AbortSignal): Promise<void> {
+  notifyCreateActor(
+    actor: ZLinkActor,
+    createRequest: ZLinkMessage,
+    signal?: AbortSignal
+  ): Promise<ZLinkActorCreateResponse> {
     throwIfAborted(signal);
-    return this.serial.execute(() =>
-      this.entrySpot.onCreateActor?.(createActorMembership(actor), createRequest));
+    return this.serial.execute(async () =>
+      await this.entrySpot.onCreateActor?.(createActorMembership(actor), createRequest)
+        ?? { accepted: true });
   }
 
   notifyJoinActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
@@ -299,10 +305,16 @@ export class ZLinkEntrySpotActivation {
     return this.serial.execute(() => this.entrySpot.onJoinedActor(createActorMembership(actor)));
   }
 
+  notifyRelocatedActor(actor: ZLinkActor, signal?: AbortSignal): Promise<void> {
+    throwIfAborted(signal);
+    return this.serial.execute(() =>
+      this.entrySpot.onActorRelocated?.(createActorMembership(actor)));
+  }
+
   /**
-   * Entry Spot join admission uses the shared core round-trip. Re-entry defaults
-   * to accept when the Entry Spot does not declare `onActorJoin` (actor returning
-   * home), so `defaultAccept` is true.
+   * Entry Spot membership does not have an application admission callback.
+   * The shared core round-trip therefore accepts a valid returning Actor and
+   * runs only the post-commit membership notification.
    */
   private attachActorJoinDispatch(): void {
     const dispatch = new ZLinkSpotActorJoinDispatch({

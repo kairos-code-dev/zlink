@@ -28,7 +28,7 @@ builder는 client 전역 설정을 모은다. 옵션은 네이티브 `SocketsHtt
 ## framework 서버에 등록
 
 Spot handler에서 사용하는 client는 이름을 붙여 DI에 등록한다. 서버 등록은 connection pool을
-재사용하고 `Yield`와 callback 완료를 현재 Spot 실행 줄에 연결한다.
+재사용하고 callback 완료를 현재 Spot 실행 줄의 새 turn에 연결한다.
 
 ```csharp
 services.AddZLinkHttpClient("player-api", http => http
@@ -37,7 +37,8 @@ services.AddZLinkHttpClient("player-api", http => http
 ```
 
 handler는 같은 이름의 `ZLinkHttpServerClient`를 주입받는다. 정적 팩토리로 만든
-`ZLinkHttpClient`는 client-side 코드용이므로 `Submit`과 `Yield`를 제공하지 않는다.
+`ZLinkHttpClient`는 client-side 코드용이므로 `Submit`을 제공하지 않는다. 두 client 모두 HTTP
+request builder에 `Yield`를 제공하지 않는다.
 
 ## 네이티브 위임 vs 래퍼 구현
 

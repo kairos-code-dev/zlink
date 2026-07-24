@@ -228,7 +228,7 @@ final class ZLinkClientServerServiceWire {
 
     private static int requireWeight(Reader reader) {
         int weight = reader.intU32("weight");
-        if (weight > 100) {
+        if (weight > 10_000) {
             throw protocol("ClientServer weight is invalid");
         }
         return weight;

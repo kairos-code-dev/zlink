@@ -157,7 +157,7 @@ class location_lifecycle_t
         }
 
         const auto result =
-          _runtime->remove_spot (spot_location_key_t{spot.mesh_name, spot.spot_rid},
+          _runtime->remove_spot (spot_location_key_t{spot.spot_id},
                                  spot.generation);
         if (result.status == location_write_status_t::stored
             || result.status == location_write_status_t::ignored_stale) {
@@ -249,7 +249,7 @@ class location_lifecycle_t
 
     static std::string spot_key (const spot_location_t &spot)
     {
-        return spot_key (spot_location_key_t{spot.mesh_name, spot.spot_rid});
+        return spot_key (spot_location_key_t{spot.spot_id});
     }
 
     static std::string spot_key (const spot_location_key_t &key)

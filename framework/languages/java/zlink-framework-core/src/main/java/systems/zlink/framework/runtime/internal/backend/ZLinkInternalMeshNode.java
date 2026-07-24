@@ -20,6 +20,15 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
 
     void setChannelWeight(String channelName, int weight);
 
+    default int placementWeight() {
+        return 100;
+    }
+
+    default void setPlacementWeight(int weight) {
+        // Optional for test and alternate backends that do not publish
+        // Framework-owned service descriptors.
+    }
+
     default long maxMessageSize() {
         return 0;
     }
@@ -97,6 +106,20 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         // Alternate backends may not yet own Framework service operations.
     }
 
+    default void setActorCreateOperationHandler(
+        ActorCreateOperationHandler handler) {
+        // Alternate backends may not yet own Framework Actor creation.
+    }
+
+    default CompletionStage<ActorCreateResponse> requestActorCreate(
+        RoutingId targetNodeRid,
+        ActorCreateIntent intent,
+        Duration timeout) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+            new UnsupportedOperationException(
+                "Remote Actor create is unavailable"));
+    }
+
     default CompletionStage<UserSpotCreateResponse>
         requestUserSpotCreate(
             RoutingId targetNodeRid,
@@ -146,16 +169,40 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
             UserSpotCloseRequest request);
     }
 
+    interface ActorCreateOperationHandler {
+        CompletionStage<ActorCreateResponse> create(
+            ActorCreateRequest request);
+    }
+
     record UserSpotCreateIntent(
-        RoutingId spotRid,
+        String spotId,
         String stableType,
         ZLinkServiceM6BWireCodec.ReservationFence reservation,
         long deadlineUnixMs) {
         public UserSpotCreateIntent {
-            java.util.Objects.requireNonNull(spotRid, "spotRid");
+            java.util.Objects.requireNonNull(spotId, "spotId");
             java.util.Objects.requireNonNull(stableType, "stableType");
             java.util.Objects.requireNonNull(
                 reservation, "reservation");
+        }
+    }
+
+    record ActorCreateIntent(
+        String actorId,
+        String stableType,
+        ZLinkServiceM6BWireCodec.ReservationFence reservation,
+        long operationHigh,
+        long operationLow,
+        long deadlineUnixMs) {
+        public ActorCreateIntent {
+            java.util.Objects.requireNonNull(actorId, "actorId");
+            java.util.Objects.requireNonNull(stableType, "stableType");
+            java.util.Objects.requireNonNull(
+                reservation, "reservation");
+            if (operationHigh == 0 && operationLow == 0) {
+                throw new IllegalArgumentException(
+                    "operationId must not be zero");
+            }
         }
     }
 
@@ -175,6 +222,14 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         UserSpotCreateIntent intent) {
     }
 
+    record ActorCreateRequest(
+        RoutingId sourceNodeRid,
+        long sourceNodeGeneration,
+        long operationHigh,
+        long operationLow,
+        ActorCreateIntent intent) {
+    }
+
     record UserSpotCloseRequest(
         RoutingId sourceNodeRid,
         long sourceNodeGeneration,
@@ -185,16 +240,28 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
 
     record UserSpotCreateResponse(
         ZLinkServiceM6BWireCodec.UserSpotCreateResult result,
-        RoutingId spotRid,
+        String spotId,
         long objectGeneration,
         List<systems.zlink.contracts.messaging.Message>
             applicationReply) {
         public UserSpotCreateResponse {
             java.util.Objects.requireNonNull(result, "result");
-            java.util.Objects.requireNonNull(spotRid, "spotRid");
+            java.util.Objects.requireNonNull(spotId, "spotId");
             applicationReply = List.copyOf(
                 java.util.Objects.requireNonNull(
                     applicationReply, "applicationReply"));
+        }
+    }
+
+    record ActorCreateResponse(byte[] terminalEnvelope) {
+        public ActorCreateResponse {
+            terminalEnvelope = java.util.Objects.requireNonNull(
+                terminalEnvelope, "terminalEnvelope").clone();
+        }
+
+        @Override
+        public byte[] terminalEnvelope() {
+            return terminalEnvelope.clone();
         }
     }
 
@@ -202,7 +269,7 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
     }
 
     record SpotAuthorityRoute(
-        RoutingId spotRid,
+        String spotId,
         long objectGeneration,
         RoutingId targetNodeRid,
         long targetNodeGeneration,
@@ -212,7 +279,7 @@ public interface ZLinkInternalMeshNode extends ZLinkBackendObject {
         String meshName,
         String storeVersion) {
         public SpotAuthorityRoute {
-            java.util.Objects.requireNonNull(spotRid, "spotRid");
+            java.util.Objects.requireNonNull(spotId, "spotId");
             java.util.Objects.requireNonNull(
                 targetNodeRid, "targetNodeRid");
             java.util.Objects.requireNonNull(ownerId, "ownerId");

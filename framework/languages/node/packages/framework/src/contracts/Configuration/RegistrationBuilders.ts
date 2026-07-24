@@ -2,6 +2,7 @@ import type {
   RoutingId,
   Type,
   ZLinkActor,
+  ZLinkActorFactory,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
   ZLinkFanoutChannelBuilder,
@@ -465,12 +466,10 @@ class DefaultClientServerChannelServerBuilder implements ZLinkClientServerChanne
   }
 
   setWeight(weight: number): this {
-    if (!Number.isInteger(weight) || weight < 0 || weight > 100) {
-      throw new ZLinkConfigurationException(
-        `ClientServer channel '${this.name}' weight must be between 0 and 100.`
-      );
-    }
-    this.server.weight = weight;
+    this.server.weight = requirePublicWeight(
+      weight,
+      `ClientServer channel '${this.name}' weight`
+    );
     return this;
   }
 
@@ -738,7 +737,7 @@ class DefaultMeshNodeBuilder implements ZLinkMeshNodeBuilder {
   }
 
   setPlacementWeight(weight: number): this {
-    this.node.placementWeight = requirePositiveCapacity(weight, 'Placement weight');
+    this.node.placementWeight = requirePublicWeight(weight, 'Placement weight');
     return this;
   }
 
@@ -918,7 +917,7 @@ class DefaultMeshObjectServerBuilder implements ZLinkMeshObjectServerBuilder {
 
   addActorFactory<TActor extends ZLinkActor>(
     actorType: string,
-    implementation: Type<TActor>,
+    implementation: Type<ZLinkActorFactory<TActor>>,
     placement: ZLinkObjectPlacementOptions | undefined,
     relocation: ZLinkRelocationPolicy<TActor>
   ): this {
@@ -941,10 +940,7 @@ class DefaultMeshChannelBuilder implements ZLinkMeshChannelBuilder {
   constructor(private readonly channel: MutableMeshChannelOptions) {}
 
   setWeight(weight: number): this {
-    if (!Number.isSafeInteger(weight) || weight < 0) {
-      throw new ZLinkConfigurationException('Mesh channel weight must be a non-negative safe integer.');
-    }
-    this.channel.weight = weight;
+    this.channel.weight = requirePublicWeight(weight, 'Mesh channel weight');
     return this;
   }
 
@@ -1025,11 +1021,15 @@ function requirePositiveCapacity(value: number, label: string): number {
   return value;
 }
 
+function requirePublicWeight(value: number, label: string): number {
+  if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+    throw new ZLinkConfigurationException(`${label} must be an integer in 0..10000.`);
+  }
+  return value;
+}
+
 function validateObjectPlacement(options: ZLinkObjectPlacementOptions | undefined): void {
   if (options === undefined) return;
-  for (const profile of options.placementProfiles ?? []) {
-    requireStableObjectType(profile, 'Placement profile');
-  }
   for (const [name, value] of [
     ['maxActiveObjects', options.maxActiveObjects],
     ['maxPendingActivations', options.maxPendingActivations]
@@ -1155,7 +1155,10 @@ interface MutableSpotNodeOptions {
     MutableObjectFactoryRegistration<ZLinkInstanceSpot>
   >;
   actorFactories?: Record<string, Type>;
-  actorFactoryRegistrations?: Record<string, MutableObjectFactoryRegistration<ZLinkActor>>;
+  actorFactoryRegistrations?: Record<
+    string,
+    MutableObjectFactoryRegistration<ZLinkActor, ZLinkActorFactory>
+  >;
   meshChannels?: Record<string, MutableMeshChannelOptions>;
   routeSendHandlers?: Array<{ packetName: string; handlerType: Type }>;
   routeRequestHandlers?: Array<{ packetName: string; handlerType: Type }>;
@@ -1167,8 +1170,8 @@ interface MutableSpotNodeOptions {
   };
 }
 
-interface MutableObjectFactoryRegistration<T> {
-  readonly implementation: Type<T>;
+interface MutableObjectFactoryRegistration<T, TImplementation = T> {
+  readonly implementation: Type<TImplementation>;
   readonly placement?: ZLinkObjectPlacementOptions;
   readonly relocation: ZLinkRelocationPolicy<T>;
 }

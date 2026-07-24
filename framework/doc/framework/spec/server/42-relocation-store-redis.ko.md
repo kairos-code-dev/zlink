@@ -76,7 +76,7 @@ Completion append, `replyRelayAck` 또는 exact request-source owner lease expir
 
 Instance Spot cold activation은 같은 publish-before-reference 원칙을 다음 순서로 사용한다.
 
-1. Target은 operation identity, send/request kind, source node RID·lifecycle generation, optional source Spot RID,
+1. Target은 operation identity, send/request kind, source node RID·lifecycle generation, optional source Spot ID,
    reply correlation, deadline, target descriptor fence, command 39의 optional metadata presence·frame과 application
    payload를 포함한 complete activation envelope를 immutable root로 저장한다.
 2. Reference, SHA-256, encoded size와 retention을 검증한 뒤 Location Store Reserve가 `Creating` authority와

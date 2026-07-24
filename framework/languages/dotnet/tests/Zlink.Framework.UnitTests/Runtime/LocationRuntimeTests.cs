@@ -627,6 +627,17 @@ public sealed class LocationRuntimeTests
             CancellationToken cancellationToken = default) =>
             inner.CommitAsync(reservation, readyPayload, cancellationToken);
 
+        public ValueTask<ZLinkObjectCreationCompleteResult> CompleteCreationAsync(
+            ZLinkObjectReservation reservation,
+            ZLinkObjectCreationCompletion completion,
+            CancellationToken cancellationToken = default) =>
+            inner.CompleteCreationAsync(reservation, completion, cancellationToken);
+
+        public ValueTask<ZLinkCreationTerminalReadResult> ReadCreationTerminalAsync(
+            ZLinkCreationOperationId operation,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadCreationTerminalAsync(operation, cancellationToken);
+
         public ValueTask<ZLinkObjectAbortResult> AbortAsync(
             ZLinkObjectReservation reservation,
             CancellationToken cancellationToken = default) =>

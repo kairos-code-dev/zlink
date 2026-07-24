@@ -7,7 +7,7 @@
 
 이 문서는 ZLink Framework 11.0.0의 public Spot 계약 위에 room·stage·zone 같은 상위 실행 모델을 만드는
 공통 계약을 정의한다. 이 문서는 “Stage wrapper가 Spot 소유 상태를 한 turn에서 안전하게 유지하면서
-Actor의 독립 실행 경계를 어떻게 보존하는가?”라는 질문에 답한다.
+선택한 User Spot execution mode에 따라 Actor 실행 경계를 어떻게 보존하는가?”라는 질문에 답한다.
 
 Framework는 별도 Stage runtime이나 공통 Stage base type을 제공하지 않는다. application의 domain
 wrapper가 Spot의 public 등록·메시징·timer·lifecycle 표면을 조합한다. 언어별 wrapper 형태는 각 언어의
@@ -23,7 +23,7 @@ wrapper가 Spot의 public 등록·메시징·timer·lifecycle 표면을 조합�
 | Actor queue와 Actor 업무 handler | Framework Actor runtime |
 | Actor join·leave와 lifecycle control | Framework Spot·Actor control claim |
 | 입장 권한, stage state, membership 정책과 broadcast 내용 | Stage wrapper 또는 application |
-| domain key를 global Spot RID에 대응시키는 정책 | Stage wrapper와 application domain store |
+| domain key를 global Spot ID에 대응시키는 정책 | Stage wrapper와 application domain store |
 
 Stage wrapper는 transport RID, endpoint, internal queue, native timer handle과 message storage reference를
 public surface에 노출하지 않는다.
@@ -38,23 +38,36 @@ Stage가 소유하는 상태를 읽거나 바꾸는 callback은 target Spot의 a
 - Actor join·leave와 lifecycle control callback
 - Stage wrapper가 명시적으로 Spot에 제출한 domain operation
 
-같은 Spot에서 수락된 위 작업은 하나씩 실행되며 callback 두 개가 동시에 Spot 상태를 변경하지 않는다.
-callback이 비동기 작업을 기다리는 동안 turn을 유지하거나 반납하는 의미는
+User Spot의 실행 mode는 factory를 등록할 때 고정한다. 기본 `SpotWide`에서는 위 작업과 member Actor
+handler가 같은 Spot gate를 사용하므로 callback 두 개가 동시에 Spot 상태를 변경하지 않는다.
+`PerActor`에서는 Spot direct·Logical Multicast·lifecycle control이 Spot lane에서 직렬화되고, 각 member
+Actor의 payload는 Actor별 lane에서 직렬화된다. 같은 timer의 callback은 timer별 lane에서 직렬화된다.
+서로 다른 Actor lane, Spot lane과 서로 다른 timer lane은 동시에 실행될 수 있으므로 application이 공유
+Stage state의 동기화를 책임진다.
+
+callback이 비동기 작업을 기다리는 동안 claim과 gate를 유지하거나 gate만 반납하는 의미는
 [04 비동기 실행 정책](../04-async-execution-policy.ko.md)이 정한다. wrapper는 별도 scheduler나 lock 규칙으로
 그 계약을 바꾸지 않는다.
 
 request reply continuation이 Spot 상태를 바꾸면 원래 Spot turn으로 다시 제출되어야 한다. transport 또는
 completion thread에서 Spot 상태를 직접 변경하지 않는다.
 
+`Yield`는 `SpotWide` User Spot과 Instance Spot callback에서만 현재 Spot gate를 반납한다. Member Actor
+callback은 Actor FIFO claim을 계속 유지하므로 같은 Actor의 다음 payload를 실행하지 않는다. 같은 gate가
+필요한 request를 `Async`로 기다리거나 자신에게 보낸 request를 기다리는 호출은 submit 전에
+`InvalidConfiguration`으로 거부한다. `PerActor`와 Entry Spot callback은 `Yield`를 사용할 수 없다.
+
 ## 4. Actor 경계
 
 Actor가 Stage 역할의 Spot에 join해도 Actor 업무 payload는 Actor queue로 직접 전달된다. Actor payload를
-Spot callback으로 변환하거나 Spot application queue에 넣지 않는다. 따라서 Actor handler는 Stage의
-mutable state를 직접 참조하지 않는다.
+Spot callback으로 변환하거나 Spot application queue에 넣지 않는다. `SpotWide`에서는 Actor FIFO claim과
+Spot gate를 함께 얻은 뒤 handler를 실행하고, `PerActor`에서는 해당 Actor lane만 얻는다. 따라서
+`PerActor` Actor handler는 Stage의 mutable state를 동기화 없이 직접 참조하지 않는다.
 
 Actor가 Stage state를 바꾸려면 Stage Spot으로 명시적인 send/request를 제출한다. 해당 handler가 Spot
-turn에서 membership, score, world state와 broadcast 결정을 수행한다. 이 경계는 여러 Actor가 같은 Stage에
-속해도 Actor의 독립적인 payload 처리와 Stage state의 단일-writer 의미를 함께 유지한다.
+lane에서 membership, score, world state와 broadcast 결정을 수행한다. `SpotWide`는 공유 gate로 Stage state의
+단일-writer 의미를 제공하고, `PerActor`는 Actor별 처리량을 높이는 대신 shared state 동기화를 application에
+맡긴다.
 
 Spot control claim이 받는 Actor 관련 작업은 join·leave·relocation과 lifecycle notification뿐이다. 업무
 payload와 control 작업을 같은 callback namespace로 합치지 않는다. 자세한 Actor queue 및 control 계약은
@@ -78,7 +91,7 @@ seal하면 실행하지 않은 tick과 logical timer registration을 relocation 
 ## 6. 생성과 membership
 
 Stage wrapper는 User Spot manager의 explicit Create·GetOrCreate에 stable type과 domain 생성 payload를 전달하고 생성
-callback 안에서 초기 Stage state를 만든다. Framework는 global Spot RID의 authority와 중복 factory 실행을
+callback 안에서 초기 Stage state를 만든다. Framework는 global Spot ID의 authority와 중복 factory 실행을
 fence한다. Admission 권한과 재활성 뒤 복원할 업무 상태는 domain 규칙으로 결정한다.
 
 Actor join은 Spot control claim에서 Stage membership 정책을 검사한다. 성공한 membership은 Actor의 현재
@@ -95,7 +108,7 @@ Logical Multicast를 Stage member 목록의 durable source로 사용하지 않�
 
 ## 7. Location과 수명
 
-외부 service는 domain key에서 global Spot RID를 얻어 Stage Spot에 메시지를 보낸다. Exact incarnation을
+외부 service는 domain key에서 global Spot ID를 얻어 Stage Spot에 메시지를 보낸다. Exact incarnation을
 종료하거나 운영 정보로 표시할 때는 manager lookup이 반환한 `SpotRef`를 사용한다. Owner RID와 endpoint는
 wrapper 상태에 저장하지 않는다. 위치 갱신과 stale route의 의미는
 [24 Spot 주소 메시징](24-spot-address-messaging.ko.md)이 정한다.
@@ -114,8 +127,12 @@ Stage wrapper는 [03 메시지 모델](../03-message-model.ko.md)의 immutable m
 
 ## 9. 검증 요구
 
-- Spot direct, Logical Multicast, timer와 explicit Stage operation이 같은 Spot turn을 보존한다.
+- `SpotWide`에서 Spot direct, Logical Multicast, timer, explicit Stage operation과 member Actor handler가
+  같은 Spot gate를 사용한다.
+- `PerActor`에서 Spot lane과 Actor별 lane이 각각 FIFO 직렬성을 유지하며 서로 동시에 실행될 수 있다.
 - Actor payload가 Stage Spot callback이나 Spot application queue를 거치지 않는다.
+- `SpotWide` Actor `Yield`가 Spot gate만 반납하고 Actor FIFO claim은 유지한다.
+- 같은 gate를 필요로 하는 `Async`와 self-awaited request를 submit 전에 `InvalidConfiguration`으로 거부한다.
 - Actor handler가 Stage state를 바꿀 때 명시적인 Spot 호출을 사용한다.
 - Spot control claim에는 join·leave와 lifecycle control만 포함한다.
 - request continuation이 transport thread에서 Stage state를 직접 변경하지 않는다.

@@ -83,23 +83,28 @@ reset하거나 wrap해 복구하지 않는다.
 
 ### 2.3 Authority snapshot
 
-Authority canonical key는 Actor의 global ActorId 또는 Spot의 global SpotRid다. 두 ID는 UTF-8 1..255 bytes,
-case-sensitive exact value이며 normalization과 case folding을 하지 않는다. Spot row는 Entry, User와 Instance
+Authority canonical key는 Actor의 global ActorId 또는 Spot의 global SpotId다. 두 ID는 UTF-8 encoded
+크기 1..255 bytes의 string이고 case-sensitive exact byte sequence로 비교하며 normalization과 case
+folding을 하지 않는다. SpotId는 Core RoutingId가 아니며 Spot row는 Entry, User와 Instance
 kind를 closed union으로 구분한다. MeshName은 identity key가 아니라 current placement attribute다. Snapshot은
 opaque payload와 다음 provider metadata를 포함한다.
 
 - StoreVersion, ObjectGeneration과 AuthorityOwnerGeneration
 - current OwnerId와 OwnerLeaseGeneration
-- provider capacity state `Pending` 또는 `Active`, object kind·stable type, current descriptor key·lifecycle
-  generation과 capacity delta로 구성한 current placement allocation
+- provider capacity state `Reserved` 또는 `Active`, object kind·stable type, current descriptor
+  key·lifecycle generation과 typed capacity bundle로 구성한 current placement allocation
 - StoreNow
 
 Initial placement intent, creation intent와 relocation phase·fence는 Framework가 encode한 opaque payload에 둔다.
-Current placement allocation의 kind·stable type·descriptor key·lifecycle generation·capacity delta는 payload에
+Current placement allocation의 kind·stable type·descriptor key·lifecycle generation·typed capacity bundle은 payload에
 중복 encode하지 않는다. Provider도 application state와 relocation payload를 해석하지 않는다. Canonical authority
 key가 immutable object identity를 제공하므로 payload에 key를 다시 넣지 않는다.
-Capacity delta는 weighted placement unit이며 `1..2^31-1` 범위다. Creation reservation, relocation
-reservation, current allocation과 node·type capacity counter는 같은 값을 사용한다.
+Typed capacity bundle은 Actor slot 수, Spot slot 수와 optional `(Spot kind, stable type, slot 수)` 하나를 포함한다.
+각 slot 수는 `0..2^31-1`이고 bundle 전체에는 하나 이상의 양수 slot이 있어야 한다. Actor 하나는 Actor
+slot 하나를, User·Instance Spot 하나는 Spot slot 하나와 해당 Spot kind·stable type slot 하나를 사용한다.
+User Spot aggregate relocation은 Spot slot 하나, 해당 Spot type slot 하나와 participant Actor 수만큼의 Actor
+slot을 하나의 bundle로 사용한다. Creation reservation, relocation reservation, current allocation과 capacity
+counter는 같은 bundle을 사용한다.
 
 Authority row에는 TTL이 없다. Owner lease가 만료돼도 row는 남으며 recovery coordinator가 expected StoreVersion
 CAS로 owner를 교체하거나 명시적으로 삭제한다. Missing read는 StoreNow만 반환하고 synthetic StoreVersion이나
@@ -127,12 +132,20 @@ Descriptor가 connection intent를 만들 수는 있지만 ready를 증명하지
 physical connection의 service admission을 통과해야 한다. Fanout subscriber는 publisher별 전용 SUB socket에서 첫
 valid application record 또는 exact beacon을 받은 뒤 ready다.
 
-Object Server descriptor는 `Server` role, node-wide placement weight, node active·pending capacity와 type별
-capability를 포함한다. Weight는 0..100이고 기본값은 100이다. Node capacity 기본값은 active 10,000, pending
-128이다. Type별 limit은 생략하면 node limit을 공유하며 명시하면 1..`2^31-1` 범위에서 더 작은 값을 적용한다.
-Placement는 current lease와 `Serving` 상태를 확인하고 active·pending capacity를 먼저 적용한 뒤 positive weight
+Object Server descriptor는 `Server` role, node-wide placement weight, Actor 전체·Spot 전체 population limit과
+User·Instance Spot stable type별 limit을 포함한다. Limit `0`은 제한 없음이고 양수는 `1..2^31-1`이며 음수는
+startup configuration error다. Entry Spot은 Spot capacity에 포함하지 않지만 Entry Spot의 Actor는 Actor 전체
+capacity에 포함한다. Actor stable type별 limit은 제공하지 않는다. Location Store의 active·reserved count가
+권한 원본이고 descriptor count는 projection이다. Placement는 current lease와 `Serving` 상태를 확인하고 typed
+population capacity를 먼저 적용한 뒤 positive weight
 비율로 target을 고른다. Weight 0은 새 reservation과 relocation target에서만 제외하며 Ready object와 이미 완료된
-reservation은 취소하지 않는다.
+reservation은 취소하지 않는다. Placement weight는 signed integer `0..10000`이고 기본값은 `100`이다.
+Descriptor update는 같은 lifecycle의 더 큰 revision으로만 적용하며 이미 제출했거나 reservation을 완료한
+operation에는 소급 적용하지 않는다.
+
+Activation concurrency는 factory와 initialization의 동시 실행 수를 제한하는 process-local gate다. 기본값은
+128이고 양수만 허용한다. 이 gate는 Location Store population reservation과 별도이며 permit 획득·반환이
+active·reserved slot 수를 바꾸지 않는다.
 
 ## 4. Owner lease와 local admission deadline
 
@@ -166,14 +179,14 @@ owner 권한으로 새 mutation을 만들지 않는다.
 ### 5.1 Read와 CAS
 
 Authority Read는 `Missing(StoreNow)` 또는 `Found(snapshot, StoreNow)` closed result다. Public authority
-mutation은 Active `Found`의 exact expected StoreVersion만 받는다. Missing→Pending 생성은 generic Reserve가
+mutation은 Active `Found`의 exact expected StoreVersion만 받는다. Missing→Reserved 생성은 generic Reserve가
 전담하므로 public compare-exchange에 Missing expectation을 제공하지 않는다.
 
 - Preserve는 Active allocation에서 target owner token 없이 object, authority owner generation과 placement
   allocation을 유지하고 StoreRevision만 바꾼다.
 - NewOwner는 Active allocation에서 exact target owner token과 relocation capacity fence를 받아 ObjectGeneration을
   유지한 채 새 AuthorityOwnerGeneration을 발급하고 target Active allocation으로 교체한다.
-- Delete는 Active allocation에서만 row와 current index entry를 제거하고 current active capacity delta를 같은
+- Delete는 Active allocation에서만 row와 current index entry를 제거하고 current active capacity bundle을 같은
   transaction에서 감소시킨다.
 
 Provider는 expectation 검증, global counter 소비, row와 index 변경을 atomic하게 수행한다. Opaque payload 안에
@@ -186,9 +199,9 @@ missing·stale이면 current authority read를 담은 Conflict로 끝내고 row�
 fence는 `NewOwner`에서만 반드시 있고 `Preserve`에서는 없어야 한다. 이 조합도 provider I/O 전에
 검증한다.
 
-Missing→Pending allocation은 generic `Reserve`, Pending→Active는 exact reservation `Commit`, Pending→Missing은
-exact `Abort`만 수행한다. Active→다른 Active는 capacity fence를 소비하는 NewOwner 또는 aggregate commit,
-Active→Missing은 Delete만 수행한다. Pending row에 generic Preserve·NewOwner·Delete를 적용하면 current authority
+Missing→Reserved allocation은 generic `Reserve`, Reserved→Active는 exact reservation `Commit`,
+Reserved→Missing은 exact `Abort`만 수행한다. Active→다른 Active는 capacity fence를 소비하는 NewOwner 또는 aggregate commit,
+Active→Missing은 Delete만 수행한다. Reserved row에 generic Preserve·NewOwner·Delete를 적용하면 current authority
 read를 담은 Conflict이며 mutation은 0이다. Public authority transition에는 별도 create transition이 없고
 ObjectGeneration과 initial AuthorityOwnerGeneration·allocation은 Reserve만 발급한다.
 
@@ -205,17 +218,19 @@ lease가 참조하는 versioned index와 tombstone만 보관하고 older scan이
 
 ## 6. Logical create와 placement reservation
 
-Actor와 User Spot은 Manager의 명시적인 `Create` 또는 `GetOrCreate`로 생성한다. ActorId와 SpotRid는 global
+Actor와 User Spot은 Manager의 명시적인 `Create` 또는 `GetOrCreate`로 생성한다. ActorId와 SpotId는 global
 canonical key이고 MeshName은 initial placement attribute다. Actor operation은 required ActorId를 받는다.
-User Spot의 `Create`는 Framework가 SpotRid를 발급하고, `GetOrCreate`는 caller의 SpotRid와 stable type을 받는다.
+User Spot의 `Create`는 Framework가 lowercase canonical UUID v4 string SpotId를 발급하고,
+`GetOrCreate`는 caller의 SpotId와 stable type을 받는다.
 Entry Spot identity는 Framework만 발급한다. Instance Spot은 Manager create family를 제공하지 않으며 §6.1의
 Spot direct cold activation으로만 Missing authority를 만든다.
 
 Create option에 `InMesh`가 있으면 그 Mesh를 사용한다. 생략했고 Object Client 또는 Server role의 Mesh가 하나이면
 그 Mesh를 사용한다. 후보가 0개면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`, 명시한 Mesh가
 없으면 `MeshNotFound`다.
-Create call은 object kind에 따라 필요한 identity와 stable type, optional MeshName·creation request·
-`PlacementProfile`·`AffinityKey`·timeout을 가진 single-use operation이다. Terminal submit 시점에 resolve,
+Create call은 object kind에 따라 필요한 identity와 stable type, optional MeshName·creation request·timeout을
+가진 single-use operation이다. 별도 caller placement selector는 public option이나 creation intent에 포함하지
+않는다. Terminal submit 시점에 resolve,
 reservation, factory와 Ready barrier 전체에 적용할 하나의 end-to-end deadline을 고정한다. 같은 option을 두 번
 설정하면 `InvalidConfiguration`, terminal submit을 두 번 호출하면 `AlreadySubmitted`다.
 
@@ -223,49 +238,94 @@ Creation request는 encoded 최대 1 MiB다. Actor·User Spot manager의 generic
 creation reservation domain에 보관하며 ZLIA root나 durable activation inbox를 사용하지 않는다. 따라서 이들의
 policy가 `Disabled`이고 Instance Spot factory가 없으면 Relocation Store가 필요하지 않다. Target-owned Instance
 cold activation만 reservation 전에 complete request envelope를 Relocation Store에 immutable하게 저장하고 content
-reference, SHA-256과 encoded size를 Pending creation projection에 기록한다. 이 Instance의 Ready payload는 첫
+reference, SHA-256과 encoded size를 Reserved creation projection에 기록한다. 이 Instance의 Ready payload는 첫
 handler terminal completion과 replay cursor 갱신이 끝날 때까지 recovery root를 유지한다. Factory는
 `(logical key, ObjectGeneration, creation attempt)`에 대해 at-least-once 실행될 수 있으므로 retry-safe해야 한다.
 
 Actor와 User Spot manager가 시작하는 Missing object 생성은 다음 순서를 따른다. Instance Spot은 target
 runtime이 activation envelope를 수락한 뒤 reservation을 만드는 §6.1의 순서를 사용한다.
 
-1. Complete descriptor와 exact lease에서 role, type, profile, active·pending capacity를 만족하는 target을 찾고
-   positive placement weight로 하나를 선택한다.
+1. 선택한 Mesh의 complete descriptor와 exact lease에서 `Serving` Object Server role, stable type과 typed
+   population capacity를 만족하는 target을 찾고 positive node-wide placement weight로 하나를 선택한다.
 2. Framework는 선택한 descriptor key·lifecycle generation·owner token과 Creating authority payload를 encode한다.
    Generic `Reserve`는 payload를 해석하지 않고
-   `Missing → Creating` authority, creation intent와 target pending capacity를 하나의 atomic transaction으로
+   `Missing → Creating` authority, creation intent와 target reserved capacity bundle을 하나의 atomic transaction으로
    기록한다. ObjectGeneration과 AuthorityOwnerGeneration은 이때 발급한다.
+   Reserve가 capacity 소진 또는 target descriptor·lifecycle·lease 변경으로 거부되고 authority가 계속
+   Missing이면 해당 candidate lifecycle을 제외하고 최신 complete descriptor에서 다른 eligible target을
+   선택한다. 이 재선택은 operation deadline까지만 반복한다. 다른 operation이 authority를 먼저 만들었다면
+   target을 다시 선택하지 않고 current authority를 reconcile한다.
 3. Target은 reservation에 고정한 exact authority, descriptor lifecycle과 owner lease를 확인하고 factory와 initialization을
-   실행한다. Remote target이면 source는 reservation 이후 command 47 `userSpotCreate`를 보내며 creation request
-   bytes를 wire payload로 중복 전송하지 않는다. Target은 command의 source lifecycle, key·type,
-   provider-issued reservation·StoreVersion과 target lifecycle을 Pending authority exact read와 비교한다.
-4. Framework는 Ready authority payload를 encode한다. Generic `Commit`은 payload를 해석하지 않고 같은
-   reservation의 target descriptor lifecycle과 owner lease를 다시 확인한 뒤 `Creating → Ready`와 pending-to-active
-   capacity 전환을 atomic하게 수행한다. Stale이면 mutation 0으로 끝내고 reservation을 recovery가 정리하도록
-   유지한다.
-5. Runtime은 global ID, ObjectGeneration, current MeshName과 NodeRid가 포함된 current ref를 반환한다.
+   실행한다. Actor는 factory가 만든 staging instance를 Entry Spot creation callback에 전달해 승인 여부와
+   optional reply를 얻는다. Remote target이면 source는 reservation 이후 User Spot에 command 47
+   `userSpotCreate`, Actor에 command 49 `actorCreate`를 보내며 creation request bytes를 wire payload로 중복
+   전송하지 않는다. Target은 command의 source lifecycle, key·type,
+   provider-issued reservation·StoreVersion과 target lifecycle을 Reserved authority exact read와 비교한다.
+4. 승인된 Actor와 User Spot은 Ready authority payload를 encode한다. Generic `Commit`은 payload를 해석하지
+   않고 같은 reservation의 target descriptor lifecycle과 owner lease를 다시 확인한 뒤 `Creating → Ready`,
+   reserved-to-active capacity와 `Created` terminal record publication을 atomic하게 수행한다. Application이
+   거절하면 generic `Reject`가 Ready를 공개하지 않고 exact Creating authority 삭제, reserved capacity 해제와
+   `Rejected` terminal record publication을 atomic하게 수행한다. Actor terminal record는 exact source node
+   lifecycle과 `OperationId`, reservation ID, correlation-free semantic terminal envelope와 SHA-256을
+   가진다. 이 record는
+   같은 operation의 retry에만 사용하며 다른 concurrent caller의 result가 아니다. Stale이면 mutation 0으로
+   끝내고 reservation을 recovery가 정리하도록 유지한다.
+5. Runtime은 `Created` 또는 `Rejected` terminal result를 반환한다. Created만 global ID, ObjectGeneration,
+   current MeshName과 NodeRid가 포함된 current ref를 가진다.
 
 `Create`가 Ready object를 찾으면 같은 stable type이어도 `AlreadyExists`다. `GetOrCreate`는 같은 type의 Ready
-object를 반환하고 같은 type의 Creating attempt이면 그 completion에 합류한다. 다른 Actor type 또는 Spot kind·type은
-`TypeMismatch` 또는 `SpotTypeMismatch`다. CAS loser는 다른 target을 선택하거나 factory를 시작하지 않는다.
-Creating waiter가 deadline에 도달하면 `DeadlineExceeded`로 끝나며 다음 call이 exact authority를 reconcile한다.
+object를 반환한다. Actor Creating을 관찰한 서로 다른 operation은 authority 변경을 기다린 뒤 Ready면
+`Existing`을 반환하고, rejection·failure cleanup이면 새 reservation을 경쟁하여 자신의 request로 생성
+callback을 실행한다. 다른 Actor type 또는 Spot kind·type은 `TypeMismatch` 또는 `SpotTypeMismatch`다. 같은
+Actor의 factory와 callback은 reservation으로 직렬화하며 동시에 둘을 실행하지 않는다. Waiter가 deadline에
+도달하면 `DeadlineExceeded`로 끝나며 다음 call이 exact authority를 reconcile한다.
 
-Factory 또는 Ready commit 실패는 같은 reservation의 generic `Abort`로 Creating authority와 pending capacity를 함께
-정리한다. Abort는 current descriptor lifecycle이나 owner lease의 유효성을 요구하지 않고 reservation에 고정한
-이전 descriptor·capacity counter를 exact fence로 정리한다. Owner lease가 stale이면 recovery coordinator가 exact
+Factory 또는 callback exception은 `CompleteCreation.Failed`로 Creating authority와 reserved capacity를
+정리하면서 operation terminal을 함께 기록한다. Runtime이 terminal publication을 만들 수 없는 recovery
+상황과 Ready commit 자체의 불명확한 결과만 generic `Abort`와 exact authority reconcile을 사용한다. Abort는
+current descriptor lifecycle이나 owner lease의 유효성을 요구하지 않고 reservation에 고정한 이전
+descriptor·capacity counter를 exact fence로 정리한다. Owner lease가 stale이면 recovery coordinator가 exact
 fence로 attempt를 takeover하거나 abort한다.
 Caller cancellation, timeout이나 response loss는 commit 실패를 의미하지 않으므로 exact read로 결과를 확인한다.
 Original creation payload와 일반 message를 다른 owner에 hidden retry하지 않는다.
 그러나 exact read는 recovery와 다음 call의 reconcile 근거일 뿐 현재 call의 terminal completion이 아니다.
-Remote create는 command 20 reply가 `Existing`·`Created`·`Rejected`, exact SpotRef와 optional application reply를
-한 번 반환해야 완료된다.
+Remote create는 command 20 reply가 `Existing`·`Created`·`Rejected`, object kind에 맞는 exact ref와 optional
+application reply를 한 번 반환해야 완료된다. `Create`는 `Existing`을 반환하지 않는다. 서로 다른 operation은
+앞선 creation attempt의 application result를 공유하지 않는다. 동일한 source lifecycle과 `OperationId`가
+재전달된 경우에만 operation terminal record를 읽어 같은 semantic result를 반환한다. Command reply는
+현재 request의 correlation과 reply route로 다시 encode한다. Rejected cleanup 뒤
+다른 operation은 새 reservation ID로 자신의 request를 실행한다.
+
+`creation-operation-terminal-v1` envelope는 command head, request correlation과 reply route를 포함하지 않는
+semantic result이며 encoded size는 최대 1,048,576 bytes다. Application reply는 실제 envelope overhead를
+제외한 나머지 범위에 들어가야 한다. 같은 `OperationId`가 재전달되면 Framework는 이 semantic result를
+현재 request의 correlation과 reply route를 사용해 새 command reply로 encode한다. Terminal record의
+`ExpiresAt`은 original operation deadline에 5분을 더한 provider Store time 절대 시각이다. Application은
+retention을 설정하지 않는다.
+
+Location Store의 generic creation surface는 다음 닫힌 operation을 제공한다.
+
+- Runtime은 `Reserve` 전에 exact source Node RID·lifecycle generation·128-bit `OperationId`로
+  `ReadCreationTerminal`을 호출한다. Retained record가 있으면 reservation을 만들지 않고 기존 terminal을
+  반환한다. Read가 `Missing`인 뒤 경쟁이 발생해도 authority reservation과 terminal key의 CAS가 중복
+  callback publication을 막으며, conflict 뒤에는 terminal을 다시 읽는다.
+- `CompleteCreation`은 `Created`, `Rejected`, `Failed` union이다. `Created`는 Ready payload와 terminal
+  publication을 받고, 나머지는 terminal publication만 받는다.
+- `Created`는 Ready publication·reserved-to-active capacity·terminal publication을 하나의 transaction에서
+  수행한다. `Rejected`와 `Failed`는 Creating 삭제·reserved capacity release·terminal publication을 하나의
+  transaction에서 수행한다.
+- `ReadCreationTerminal`은 exact operation identity로 `Missing` 또는 `Found`를 반환한다.
+- Recovery용 `Abort`는 operation terminal을 만들지 않는다. Runtime은 application rejection이나 callback
+  failure를 `Abort`로 처리하지 않고 `CompleteCreation`의 대응 case로 처리한다.
+
+Provider는 terminal envelope를 해석하지 않는다. `CompleteCreation`의 case와 encoded terminal reply의 의미가
+일치하는지는 Framework가 encode 전에 검사한다.
 
 ### 6.1 Instance Spot direct cold activation
 
 Spot direct call은 기본적으로 existing-only다. Instance intent가 없는 call은 Missing authority에서
-target-not-found로 끝난다. Instance intent가 있는 call은 optional stable type, `InMesh`, placement profile과
-affinity key를 Missing object의 최초 reservation에 사용할 수 있다.
+target-not-found로 끝난다. Instance intent가 있는 call은 optional stable type과 `InMesh`를 Missing object의
+최초 reservation에 사용할 수 있다.
 
 Location read에서 Ready authority를 찾으면 저장된 kind·stable type과 current Mesh를 사용한다. 이 경우 cold
 activation option은 current owner를 제한하거나 다른 Mesh로 이동시키지 않는다. Missing이면 먼저 object Mesh를
@@ -275,16 +335,16 @@ Instance type이 하나면 자동 선택한다. 0개이면 target-not-found, 둘
 `InvalidConfiguration`이다. 여러 node가 같은 stable type을 등록한 경우 distinct type 하나와 여러 placement
 후보로 처리한다.
 
-Source는 선택한 type·Mesh와 eligible target descriptor fence를 고정하고 global Spot RID, operation
+Source는 선택한 type·Mesh와 eligible target descriptor fence를 고정하고 global Spot ID, operation
 identity·reply correlation·deadline 및 first message를 하나의 activation envelope로 target transport에
-제출한다. Source는 전송 전에 owner claim, Missing→Pending reservation 또는 synthetic generation을 만들지 않는다.
+제출한다. Source는 전송 전에 owner claim, Missing→Reserved reservation 또는 synthetic generation을 만들지 않는다.
 
 Target runtime은 current authority와 local Instance registry를 확인한다. Ready authority가 target 자신과 local
 exact instance를 가리키면 기존 queue를 사용한다. Authority가 Missing이고 local exact instance가 없으면 target이
 complete activation envelope를 Relocation Store에 immutable root로 저장하고 receipt를 검증한다. 그 뒤 target이
 자신을 owner로 generic `Reserve`를 호출한다. Reserve는 target descriptor lifecycle·owner lease·type·capacity를
 같은 transaction에서 다시 확인하고 Missing authority, provider-issued reservation fence, immutable recovery
-receipt와 pending capacity를 원자적으로 확정한다. Pending authority snapshot은 exact reservation ID,
+receipt와 typed reserved capacity bundle을 원자적으로 확정한다. Reserved authority snapshot은 exact reservation ID,
 request content reference, SHA-256과 encoded size를 반환하며 Active authority에서는 이 projection을 반환하지 않는다.
 
 Target의 CAS winner만 factory와 initialize를 실행한다. Target은 recovery root의 first message를 durable activation
@@ -298,7 +358,7 @@ Activation recovery pointer는 이 Ready Instance cold activation 기간에만 �
 Creating·Closing·Relocating authority와 maintenance relocation payload에는 이 pointer를 둘 수 없다.
 
 Target process가 Reserve 뒤 종료되면 startup Serving gate의 complete authority scan과 이후 bounded background
-scan이 Pending creation projection을 exact read한다. Recovery는 root reference·hash·size를 검증하고 같은
+scan이 Reserved creation projection을 exact read한다. Recovery는 root reference·hash·size를 검증하고 같은
 reservation, object generation과 authority owner generation으로 factory·initialize·durable inbox·Ready commit을
 재개하거나 exact fenced Abort를 수행한다. Ready commit 뒤 queue head 복원 전에 종료되면 Ready payload의 recovery
 root와 cursor로 inbox를 먼저 복원하며, 그 전에는 해당 owner의 application admission을 열지 않는다. Relocation
@@ -368,18 +428,19 @@ Location Store가 authority로 저장한다. Relocation manifest의 같은 diges
 
 Cross-node relocation은 Missing object 생성용 reservation을 재사용하지 않는다. Framework가 만든 non-zero
 128-bit reservation ID, current authority key·StoreVersion, object kind·stable type, source descriptor key·
-lifecycle generation·owner token, target descriptor key·lifecycle generation·owner token과 capacity delta를
+lifecycle generation·owner token, target descriptor key·lifecycle generation·owner token과 typed capacity bundle을
 `ReserveRelocationCapacity`에 전달한다. Provider는 current
 authority owner와 Active placement allocation이 request의 source descriptor·lifecycle·kind·stable type·capacity
-delta와 정확히 같은지 확인한다. Source descriptor row나 source owner lease의 live 상태는 요구하지 않는다.
-Target descriptor lifecycle·owner lease·capability·pending capacity는 같은 transaction에서 live/exact로
-검증하고 target pending capacity를 예약한다. 같은 reservation ID와 exact request의 재호출은
+bundle과 정확히
+같은지 확인한다. Source descriptor row나 source owner lease의 live 상태는 요구하지 않는다.
+Target descriptor lifecycle·owner lease·capability와 bundle의 모든 capacity limit은 같은 transaction에서
+live/exact로 검증하고 target reserved capacity를 예약한다. 같은 reservation ID와 exact request의 재호출은
 같은 fence를 반환하고, 다른 내용은 conflict다. 이 operation은 authority owner나 source admission을 바꾸지 않는다.
 
 Standalone Actor의 `NewOwner` Put은 exact relocation capacity fence를 반드시 포함한다. Provider는 authority CAS와
-같은 transaction에서 source active capacity를 줄이고 target pending을 active로 바꾼 뒤 fence를 committed로
+같은 transaction에서 source active capacity를 줄이고 target reserved를 active로 바꾼 뒤 fence를 committed로
 닫는다. User Spot aggregate의 각 participant도 같은 fence를 사용하며 aggregate commit이 모든 capacity·owner·
-membership mutation을 함께 적용한다. Commit 전 abort는 target pending만 exact fence로 해제한다. 이미 committed
+membership mutation을 함께 적용한다. Commit 전 abort는 target reserved bundle만 exact fence로 해제한다. 이미 committed
 fence의 abort는 closed `AlreadyCommitted`이고 다른 fence는 `Stale`다. Crash 뒤 recovery coordinator는 authority
 StoreVersion·current owner token·Active allocation을 exact read해 unpublished reservation을 resume 또는 abort하며 elapsed time이나
 TTL만으로 capacity를 해제하지 않는다.
@@ -391,21 +452,19 @@ descriptor lifecycle과 target owner lease를 live/exact로 재검증한다. Sou
 stale·missing이어도 allocation match를 대체하지 않는다. Target이 stale이면 Conflict이며 authority row, capacity와
 fence state의 mutation은 0이다.
 
-Aggregate prepare의 relocation capacity fence 집합은 `NewOwner` participant와 정확히 일대일 대응해야 한다.
-Provider는 자신이 발급한 opaque fence의 reservation record가 participant authority key·expected StoreVersion,
-current authority의 source owner, aggregate target owner와 모두 같은지 확인하고 source·target descriptor lifecycle과
-placement allocation을 다시 검증한다. Source descriptor row·lease의 live 상태는 요구하지 않고 target descriptor
-lifecycle과 owner lease만 live/exact로 확인한다. 누락·중복·추가 fence나 값 불일치가 하나라도 있으면 prepare를 conflict로 닫고
-participant, capacity, fence와 aggregate record를 변경하지 않는다.
-
-Prepare 성공은 모든 `Reserved` fence를 같은 transaction에서 `(AggregateId, AggregateGeneration)`에 bind하고
-`Prepared`로 전이한다. Bind된 fence의 direct abort는 `Stale`이며 다른 aggregate prepare도 conflict와 mutation
-0으로 끝난다. 같은 aggregate generation의 exact duplicate prepare만 `AlreadyPrepared`다. `CommitAggregate`는
+User Spot aggregate의 `PrepareAggregate`는 participant authority expectation 전체, target descriptor
+lifecycle·owner lease와 하나의 typed capacity bundle을 받는다. Bundle은 Spot slot 하나, 해당 User Spot
+stable type slot 하나와 participant Actor 수만큼의 Actor slot을 포함해야 한다. Provider는 participant의
+current Active allocation과 bundle inventory를 검증하고 target의 Actor·Spot·Spot type reserved count를 한
+transaction에서 증가시킨 뒤 aggregate record를 `Prepared`로 만든다. Source descriptor row·lease의 live
+상태는 요구하지 않고 target descriptor lifecycle과 owner lease만 live/exact로 확인한다. Participant나
+bundle 값이 하나라도 다르면 participant, capacity와 aggregate record를 변경하지 않는다. 같은 aggregate
+generation의 exact duplicate prepare만 `AlreadyPrepared`다. `CommitAggregate`는
 source Active allocation exact match와 target descriptor lifecycle·owner lease를 다시 확인한다. Target이 stale이면
-participant·capacity·fence mutation 없이 `Stale`로 끝내고 fence는 recovery가 처리할 수 있도록 bind 상태를
-유지한다. Source descriptor row·lease가 stale·missing이어도 allocation match가 유지되면 commit할 수 있다. 유효한 bind된
-fence만 committed로 전이하고 capacity를 pending-to-active로 바꾼다. `AbortAggregate`는 bind된 fence의
-target pending을 해제하고 aborted로 전이한다.
+participant·capacity mutation 없이 `Stale`로 끝내고 prepared reservation은 recovery가 처리할 수 있도록
+유지한다. Source descriptor row·lease가 stale·missing이어도 allocation match가 유지되면 commit할 수 있다.
+Commit은 aggregate의 reserved bundle 전체를 active로 전환한다. `AbortAggregate`는 같은 bundle 전체를
+해제하고 aborted로 전이한다.
 
 ### 7.2 Phase별 closed owner rule
 
@@ -591,22 +650,23 @@ runtime-owned resource보다 늦게 남지 않는다.
 - Authority Read Missing이 synthetic StoreVersion을 만들지 않고 authority row에 TTL이 없다.
 - Opaque 4096-byte scan cursor, 1000-item·4-MiB page와 snapshot consistency가 유지된다.
 - Actor·Spot global key가 MeshName과 독립적으로 같은 authority row에 수렴한다.
-- `Create`와 `GetOrCreate` 경쟁이 같은 Creating attempt에 수렴하고 CAS loser가 별도 factory를 시작하지 않는다.
+- 같은 Actor의 `Create`와 `GetOrCreate` 경쟁이 callback을 직렬화하고, CAS loser는 Ready면 기존 Actor를
+  관찰하며 rejection cleanup이면 새 reservation으로 자신의 request를 실행한다.
 - Remote User Spot create·close가 command 47·48의 source·target lifecycle, operation identity,
   reservation·StoreVersion과 exact generation fence를 검사하고 command 20으로 terminal-once 완료된다.
-- Generic reservation이 Creating authority와 pending capacity를 atomic하게 reserve·commit·abort한다.
-- Authority snapshot의 provider-owned allocation이 Pending·Active state, kind·stable type, descriptor
-  lifecycle과 capacity delta를 빠짐없이 반환하고 opaque payload와 중복되지 않는다.
+- Generic reservation이 Creating authority와 typed reserved capacity bundle을 atomic하게 reserve·commit·abort한다.
+- Authority snapshot의 provider-owned allocation이 Reserved·Active state, descriptor lifecycle과 typed capacity
+  bundle을 빠짐없이 반환하고 opaque payload와 중복되지 않는다.
 - Relocation reservation과 commit이 source request를 durable Active allocation에 exact-match하며 source
   descriptor·lease가 stale이어도 recovery를 허용하고 target descriptor·lease가 stale이면 no-write로 막는다.
-- Aggregate prepare가 모든 Reserved capacity fence를 aggregate generation에 atomic하게 bind하고 bind와 direct
-  abort race에서 둘 중 하나만 성공한다.
-- Delete가 live current owner lease와 Active allocation을 검증하고 exact active capacity delta를 같은
+- Aggregate prepare가 User Spot 하나, 해당 Spot type 하나와 participant Actor 전체의 typed capacity bundle을
+  한 transaction에서 예약한다.
+- Delete가 live current owner lease와 Active allocation을 검증하고 exact active capacity bundle을 같은
   transaction에서 감소시킨다.
 - Creation request reference와 hash가 Ready 또는 fenced abort까지 유지되고 factory가 retry-safe하게 재개된다.
 - 일반 message와 find가 Missing Instance Spot을 hidden create하지 않는다.
 - Instance-intent source가 owner claim을 선점하지 않고 first-message activation envelope를 target에 제출한다.
-- Target CAS winner만 Missing→Pending reservation과 factory를 실행하고 durable inbox first record를 Ready 전에
+- Target CAS winner만 Missing→Reserved reservation과 factory를 실행하고 durable inbox first record를 Ready 전에
   확정한다. Ready recovery pointer를 유지한 채 local queue head를 복원한 뒤 barrier를 연다.
 - Missing, Creating과 Store failure를 cache하지 않고 Ready cache가 owner admission deadline을 넘지 않는다.
 - Forwarding chain이 8 hops, mapping별 1024 message·16 MiB bound와 generation 증가를 검증한다.

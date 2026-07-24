@@ -112,18 +112,28 @@ public record ZLinkAuthorityMissing(
     Instant storeNow) implements ZLinkAuthorityReadResult {}
 
 public enum ZLinkPlacementAllocationState {
-    PENDING(1), ACTIVE(2);
+    RESERVED(1), ACTIVE(2);
     private final int value;
     ZLinkPlacementAllocationState(int value) { this.value = value; }
     public int value() { return value; }
 }
+public record ZLinkSpotTypeCapacityDelta(
+    ZLinkPlacementObjectKind objectKind,
+    String stableType,
+    int slots) {}
+
+public record ZLinkPlacementCapacityBundle(
+    int actorSlots,
+    int spotSlots,
+    Optional<ZLinkSpotTypeCapacityDelta> spotType) {}
+
 public record ZLinkPlacementAllocation(
     ZLinkPlacementAllocationState state,
     ZLinkPlacementObjectKind objectKind,
     String stableType,
     ZLinkMeshNodeDescriptorKey descriptor,
     long descriptorLifecycleGeneration,
-    int capacityDelta) {}
+    ZLinkPlacementCapacityBundle capacityBundle) {}
 
 public record ZLinkPendingObjectCreation(
     String reservationId,
@@ -212,8 +222,23 @@ public interface ZLinkAuthorityStore {
     CompletionStage<ZLinkObjectCommitResult> commit(
         ZLinkObjectReservation reservation, byte[] readyPayload,
         ZLinkStoreCancellation cancellation);
+    CompletionStage<ZLinkObjectCommitResult> commit(
+        ZLinkObjectReservation reservation, byte[] readyPayload,
+        ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation);
+    CompletionStage<ZLinkObjectRejectResult> reject(
+        ZLinkObjectReservation reservation,
+        ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation);
     CompletionStage<ZLinkObjectAbortResult> abort(
         ZLinkObjectReservation reservation, ZLinkStoreCancellation cancellation);
+    CompletionStage<ZLinkObjectAbortResult> abort(
+        ZLinkObjectReservation reservation,
+        ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation);
+    CompletionStage<ZLinkCreationTerminalReadResult> readCreationTerminal(
+        ZLinkCreationOperationIdentity operation,
+        ZLinkStoreCancellation cancellation);
     CompletionStage<ZLinkRelocationCapacityReserveResult> reserveRelocationCapacity(
         ZLinkRelocationCapacityReservationRequest request,
         ZLinkStoreCancellation cancellation);
@@ -284,27 +309,53 @@ public record ZLinkObjectCapability(
     String stableType,
     ZLinkObjectMaintenancePolicyKind policy,
     boolean hasSnapshotAdapter,
-    Set<String> placementProfiles,
-    Integer activeLimit,
-    Integer pendingLimit) {}
+    int spotLimit) {}
+
+public record ZLinkCapacityUsage(int active, int reserved, int limit) {}
+
+public record ZLinkSpotTypeCapacity(
+    ZLinkPlacementObjectKind objectKind,
+    String stableType,
+    ZLinkCapacityUsage usage) {}
 
 public record ZLinkPlacementCapacity(
-    int active, int pending, int activeLimit, int pendingLimit) {}
+    ZLinkCapacityUsage actors,
+    ZLinkCapacityUsage spots,
+    List<ZLinkSpotTypeCapacity> spotTypes) {}
 
 public record ZLinkObjectReservationRequest(
     ZLinkPlacementObjectKind objectKind, String authorityKey, String stableType,
-    Optional<String> placementProfile, Optional<String> affinityKey,
     String creationIntentReference, byte[] creationIntentHash,
     int creationIntentEncodedSize, ZLinkMeshNodeDescriptorKey targetDescriptor,
     long targetDescriptorLifecycleGeneration,
     ZLinkLocationOwnerToken targetOwner, byte[] creatingPayload,
-    int pendingCapacityDelta) {}
+    ZLinkPlacementCapacityBundle capacityBundle) {}
 public record ZLinkObjectReservation(
     String authorityKey, String storeVersion, long objectGeneration,
     long authorityOwnerGeneration, String reservationVersion,
     ZLinkMeshNodeDescriptorKey targetDescriptor,
     long targetDescriptorLifecycleGeneration,
     ZLinkLocationOwnerToken targetOwner) {}
+public record ZLinkCreationOperationIdentity(
+    RoutingId sourceNodeRid, long sourceLifecycleGeneration,
+    long operationIdHigh, long operationIdLow) {}
+public enum ZLinkCreationTerminalState {
+    CREATED(1), REJECTED(2), FAILED(3)
+}
+public record ZLinkCreationOperationTerminal(
+    ZLinkCreationOperationIdentity operation,
+    ZLinkObjectReservation reservation,
+    ZLinkCreationTerminalState state,
+    byte[] terminalEnvelope,
+    byte[] terminalSha256,
+    Instant expiresAt) {}
+public sealed interface ZLinkCreationTerminalReadResult
+    permits ZLinkCreationTerminalFound, ZLinkCreationTerminalMissing {}
+public record ZLinkCreationTerminalFound(
+    ZLinkCreationOperationTerminal terminal)
+    implements ZLinkCreationTerminalReadResult {}
+public record ZLinkCreationTerminalMissing()
+    implements ZLinkCreationTerminalReadResult {}
 public sealed interface ZLinkObjectReserveResult
     permits ZLinkObjectReserved, ZLinkObjectConflict, ZLinkObjectAlreadyExists,
             ZLinkObjectTypeMismatch, ZLinkPlacementCapacityExhausted,
@@ -323,6 +374,12 @@ public enum ZLinkObjectCommitResult {
     COMMITTED(1), ALREADY_COMMITTED(2), STALE(3), GENERATION_EXHAUSTED(4);
     private final int value;
     ZLinkObjectCommitResult(int value) { this.value = value; }
+    public int value() { return value; }
+}
+public enum ZLinkObjectRejectResult {
+    REJECTED(1), ALREADY_REJECTED(2), STALE(3), GENERATION_EXHAUSTED(4);
+    private final int value;
+    ZLinkObjectRejectResult(int value) { this.value = value; }
     public int value() { return value; }
 }
 public enum ZLinkObjectAbortResult {
@@ -344,7 +401,7 @@ public record ZLinkRelocationCapacityReservationRequest(
     ZLinkMeshNodeDescriptorKey targetDescriptor,
     long targetDescriptorLifecycleGeneration,
     ZLinkLocationOwnerToken targetOwner,
-    int capacityDelta) {}
+    ZLinkPlacementCapacityBundle capacityBundle) {}
 public sealed interface ZLinkRelocationCapacityReserveResult
     permits ZLinkRelocationCapacityReserved, ZLinkRelocationCapacityAlreadyReserved,
             ZLinkRelocationCapacityConflict, ZLinkRelocationCapacityTargetUnavailable,
@@ -371,7 +428,9 @@ public record ZLinkAggregatePrepareRequest(
     UUID aggregateId, long aggregateGeneration,
     List<ZLinkAggregateParticipant> participants,
     byte[] inventoryDigest,
-    List<ZLinkRelocationCapacityFence> targetReservations,
+    ZLinkMeshNodeDescriptorKey targetDescriptor,
+    long targetDescriptorLifecycleGeneration,
+    ZLinkPlacementCapacityBundle capacityBundle,
     ZLinkLocationOwnerToken targetOwner) {}
 public record ZLinkAggregateFence(UUID aggregateId, long aggregateGeneration) {}
 public sealed interface ZLinkAggregatePrepareResult
@@ -450,6 +509,7 @@ public record ZLinkMeshNodeDescriptor(
     long applicationVersion,
     List<ZLinkObjectCapability> objectCapabilities,
     ZLinkMeshNodeObjectRole objectRole,
+    Optional<String> entrySpotId,
     int placementWeight,
     ZLinkPlacementCapacity capacity,
     Optional<String> maintenanceWave,
@@ -491,7 +551,7 @@ public record ZLinkFanoutPublisherDescriptorKey(
 
 public record ZLinkSpotLocation(
     String meshName,
-    RoutingId spotRid,
+    String spotId,
     long spotGeneration,
     RoutingId ownerNodeRid,
     long ownerNodeGeneration,
@@ -500,7 +560,7 @@ public record ZLinkSpotLocation(
     String ownerId,
     long leaseGeneration,
     Instant updatedAt) {}
-public record ZLinkSpotLocationKey(RoutingId spotRid) {}
+public record ZLinkSpotLocationKey(String spotId) {}
 
 public record ZLinkActorLocation(
     String meshName,
@@ -509,7 +569,7 @@ public record ZLinkActorLocation(
     ActorRef actorRef,
     RoutingId ownerNodeRid,
     long ownerNodeGeneration,
-    RoutingId spotRid,
+    String spotId,
     long spotGeneration,
     ZLinkSpotKind spotKind,
     String ownerId,
@@ -552,7 +612,7 @@ public interface ZLinkLocationStore extends
 }
 ```
 
-`pendingCreation`은 allocation이 Pending이면 반드시 non-empty이고 Active이면 반드시 empty다. Provider는
+`pendingCreation`은 allocation이 `Reserved`이면 반드시 non-empty이고 `Active`이면 반드시 empty다. Provider는
 provider-issued reservation ID와 Actor·User Spot·Instance Spot 생성 요청의 immutable content reference, exact
 32-byte SHA-256과 `0..1 MiB` encoded size를 저장한다. Framework는 snapshot의 store version, generation,
 owner와 allocation target을 이 projection과 결합해 exact Commit 또는 Abort fence를 복원하며, 별도
@@ -560,11 +620,25 @@ process-local reservation index나 caller-generated reservation ID에 의존하�
 Spot의 cold activation content만 complete `instance-activation-recovery-v1` envelope이며, Actor와 User Spot의
 manager create content에는 이 envelope를 사용하지 않는다.
 
+Actor creation terminal은 source `NodeRid`, source lifecycle generation과 128-bit operation ID의 exact
+조합으로 조회한다. Redis key는
+`P:{zlink-location-v3}:creation-terminal:<sourceRidUtf8ByteLengthDecimal>:<sourceRidLowerHexBytes>:<sourceGenerationDecimal>:<operationId32LowerHex>`다.
+`terminalEnvelope`는 framing을 포함해 최대 1,048,576 bytes이고 `terminalSha256`은 exact 32-byte SHA-256이다.
+이 payload는 command head와 correlation을 포함하지 않는 correlation-free
+`creation-operation-terminal-v1` semantic envelope다. 같은 operation retry는 현재 request의 correlation과 reply
+route로 새 reply를 encode한다.
+
+Provider는 Commit에서 Ready publication·capacity 전환과 `Created` terminal을, Reject에서 Creating 삭제·reserved
+capacity 해제와 `Rejected` terminal을 같은 transaction으로 처리한다. Recovery Abort가 terminal을 게시하면 state는
+`Failed`다. `ExpiresAt`은 original operation deadline에 5분을 더한 provider Store time이며 caller가 retention을
+설정하지 않는다. 이미 만료된 expiry는 authority·capacity·terminal을 변경하기 전에 거부한다. 다른 operation은
+이 terminal을 읽거나 결과와 reply를 공유하지 않는다.
+
 `ZLinkLocationStore`가 MeshNode descriptor, owner lease와 generic authority capability를 함께 제공한다.
-User·Instance Spot은 global `SpotRid`에서 파생한 하나의 authority key를 공유한다. User Spot
-create와 Instance cold claim은 generic `reserve`가 같은 row의 `Missing → Pending`, generation 발급과
-target pending capacity 증가를 한 transaction으로 처리한다. 성공한 activation은 같은 reservation의 `commit`으로
-`Pending → Active`와 capacity 전환을 함께 공개하고 실패는 exact fence의 `abort`로 정리한다. Actor direct
+User·Instance Spot은 global `SpotId`에서 파생한 하나의 authority key를 공유한다. User Spot
+create와 Instance cold claim은 generic `reserve`가 같은 row의 `Missing → Reserved`, generation 발급과
+target typed capacity bundle 예약을 한 transaction으로 처리한다. 성공한 activation은 같은 reservation의
+`commit`으로 `Reserved → Active`와 capacity 전환을 함께 공개하고 실패는 exact fence의 `abort`로 정리한다. Actor direct
 resolve도 canonical authority key를 읽는다. Operational
 Spot·Actor 목록은 Framework가 authority enumeration과 opaque payload를 decode한 projection이며 routing
 authority가 아니다. `ZLinkSpotLocation`은 이 projection type이고 provider write·remove·resolve interface가
@@ -610,7 +684,7 @@ target Active allocation 교체를 authority owner metadata와 같은 transactio
 authority owner generation과 Store revision counter를 각각 하나씩 유지한다. CAS 성공 operation에서
 `NEW_OWNER`는 owner generation만 증가시키며 `PRESERVE`는 두 generation을 모두 유지한다. Stored mutation과
 delete는 global Store revision으로 fence한다. Delete는 stored current owner lease와 Active allocation을
-exact 검증하고 active capacity delta 감소와 row 제거를 한 transaction으로 적용한다. Per-key counter나
+exact 검증하고 active capacity bundle 감소와 row 제거를 한 transaction으로 적용한다. Per-key counter나
 version tombstone은 유지하지 않는다.
 Scan lease가 활성화된 동안만 scan snapshot을 유지하기 위한 tombstone을 bounded로 유지할 수 있다.
 Authority payload에 generation을 중복 encode하지 않는다.
@@ -639,12 +713,13 @@ reference·checksum·retention을 검증한 뒤 Location authority CAS 한 번�
 `participants`는 Location Store가 소유하는 bounded canonical participant set이고 `inventoryDigest`는 participant별
 mutation까지 포함한 exact 32-byte SHA-256이다. Relocation manifest의 inventory는 payload lookup projection일 뿐
 authority가 아니며 두 digest가 일치해야 restore와 replay를 시작한다.
-Aggregate prepare는 각 Reserved capacity fence를 `(aggregateId, aggregateGeneration)`에 원자적으로 연결하고
-Prepared로 전환한다. 연결된 fence를 `abortRelocationCapacity`로 직접 정리하면 `STALE`이고, 다른 aggregate가
-같은 fence를 prepare하면 mutation 없이 `ZLinkAggregateConflict`다. Participant payload·membership mutation,
-inventory digest, target owner와 fence 목록까지 정확히 같은 duplicate만
-`ZLinkAggregateAlreadyPrepared`다. `commitAggregate`와 `abortAggregate`만 연결된 fence를 최종 확정하거나
-해제한다. Commit 직전 target descriptor·owner lease가 stale이면 authority와 fence binding을 바꾸지 않고
+User Spot aggregate의 prepare는 participant expectation과 target descriptor·owner lease를 검증하고 Spot
+slot 하나, 해당 User Spot type slot 하나와 participant Actor 수만큼의 Actor slot을 typed bundle 하나로
+원자적으로 예약한다. Participant payload·membership mutation,
+inventory digest, target descriptor·lifecycle generation, typed bundle과 target owner까지 정확히 같은
+duplicate만 `ZLinkAggregateAlreadyPrepared`다. `commitAggregate`와 `abortAggregate`는 aggregate record가
+소유한 bundle 전체를 최종 확정하거나 해제한다. Commit 직전 target descriptor·owner lease가 stale이면
+authority와 reserved aggregate record를 바꾸지 않고
 `STALE`을 반환한다.
 
 `RECREATE` 또는 `SNAPSHOT` factory가 하나라도 있거나 Instance Spot factory가 하나라도 있는 host는
@@ -696,20 +771,47 @@ public option은 없다. Hot authority row는 compact metadata와 replay cursor�
 bytes는 relocation stream에 저장한다.
 
 MeshNode의 `objectCapabilities`는 Actor·User Spot·Instance Spot을 object kind와 type별로 구분하고 maintenance
-policy, Snapshot adapter 등록 여부, placement profile과 type별 capacity limit을 같은 항목에 둔다.
+policy, Snapshot adapter 등록 여부와 Spot type limit을 같은 항목에 둔다. Actor
+capability의 `spotLimit`은 반드시 0이다.
 `hasSnapshotAdapter`는 target에 해당 object kind의 adapter가 등록되어 있는지만 나타내며 application state의
 format, version이나 contract ID를 광고하지 않는다.
+`entrySpotId`는 Object Server descriptor에서만 non-empty이며 `<prefix>-entry-<entry-uuid>` exact RID를
+담는다. `entry-uuid`는 MeshNode UUID와 독립적으로 생성한 RFC 4122 UUID v4의 lowercase canonical 36자
+형식(`8-4-4-4-12`)이다. Automatic MeshNode RID도 같은 UUID 형식으로 `<prefix>-<uuid>`를 사용한다.
+Descriptor lifecycle과 함께 mapping fence를 구성한다. Runtime은 이 값을 parse하지 않고 Actor의 Entry
+placement·join·relocation에 그대로 사용한다. 다른 object role에서 값이 있거나 Server에서 값이 없으면
+descriptor admission을 거부한다.
+
+기존 `updateMeshNode(descriptor, ZLinkLocationWriteIntent.NEW_CLAIM)` operation은 Object Server descriptor의
+`(meshName, rid)` identity와 `entrySpotId` global Spot identity를 exact owner lease·lifecycle로 한
+transaction에서 claim한다. 별도 Entry claim public method는 제공하지 않는다. 어느 identity라도 active
+owner와 충돌하면 descriptor, Entry claim과 index를 바꾸지 않고 첫 claim에서 startup을
+`RoutingIdConflict`로 끝낸다. 두 번째 UUID나 claim은 만들지 않는다.
+
+`entrySpotId`는 descriptor immutable field와 digest에 포함되며 renew나 mutable update로 바꿀 수 없다.
+Descriptor remove와 `removeAllByOwner`는 exact owner lease·lifecycle이 일치할 때만 Entry claim을 함께
+해제한다. Stale cleanup은 successor descriptor나 Entry claim을 제거할 수 없다. User Spot과 Instance Spot의
+generic `reserve`는 같은 global identity claim과 충돌하는 RID를 거부하고 authority나 capacity를 일부
+변경하지 않는다.
+
+검증에서는 `NEW_CLAIM`의 두 identity claim과 충돌 실패의 무변경 결과, User·Instance Spot reserve 충돌,
+exact cleanup과 stale successor 보호, immutable `entrySpotId`와 digest, lowercase canonical UUID v4 형식,
+첫 claim 즉시 실패와 두 번째 UUID·claim 미생성을 확인해야 한다.
 
 MeshNode descriptor는 `ZLinkFrameworkRuntimeState` 하나로 lifecycle 상태를 나타낸다. 별도 `draining`
 boolean을 두지 않으므로 서로 모순되는 상태 조합을 만들 수 없다.
 
-Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
-ChannelName key set, Spot type set와 object capability의 kind·type·policy·Snapshot adapter 등록 여부·profile·limit은
-첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight 값, capability capacity, maintenance wave와 runtime state만
+Descriptor의 key, RID, lifecycle generation, exact Entry Spot ID mapping, endpoint, security identity, owner token, application version,
+ChannelName key set, Spot type set와 object capability의 kind·type·policy·Snapshot adapter 등록 여부·profile·Spot limit은
+첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight 값, node placement weight, capability capacity,
+maintenance wave와 runtime state만
 mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고
 `descriptorRevision`을 strictly 증가시켜야 한다. Provider는 stale revision이나 immutable field 변경을 원자적으로
 거부하며 일부 field만 적용하지 않는다. ClientServer와 fanout descriptor도 같은 identity·revision fence를
 적용한다.
+
+Channel weight, node placement weight와 ClientServer descriptor weight는 signed `int` `0..10000`이다.
+Provider는 범위 밖 값을 거부하며 다른 폭의 integer로 변환하거나 truncate하지 않는다.
 
 `lifecycleGeneration`은 0이 아닌 opaque equality token이다. Runtime은 수치 크기로 lifecycle의 선후를
 판정하지 않는다. Store-backed descriptor에는 exact owner lease·descriptor lifetime token을 사용한다. Manual
@@ -724,30 +826,34 @@ application이 조립하는 owner token을 만들지 않는다. Location owner l
 계약이다.
 
 `reserve`, `commit`, `abort`는 Actor, User Spot과 Instance Spot에 공통인 generic object reservation이다.
-Request는 object kind, global authority key, stable type, placement profile·affinity key, creation content
-reference·exact 32-byte SHA-256·encoded size, target descriptor, exact owner token과 pending capacity delta를
+Request는 object kind, global authority key, stable type, creation content
+reference·exact 32-byte SHA-256·encoded size, target descriptor, exact owner token과 typed capacity bundle을
 받는다. Target descriptor key와 0보다 큰 lifecycle generation은 request와 reservation에 함께 고정한다.
-Capacity delta의 유효 범위는 `1..Integer.MAX_VALUE`다. Reserve request는 Framework가 encode한 opaque Pending
+Bundle은 Actor slot, Spot slot과 optional `(Spot kind, stable type, slots)` 하나를 가진다. 각 slot은
+`0..Integer.MAX_VALUE`이고 bundle 전체에는 하나 이상의 양수 slot이 있어야 한다. Reserve request는 Framework가 encode한 opaque Reserved
 authority payload도 받고, commit은 opaque Active
 authority payload를 받는다. Provider는 두 payload를 해석하거나 합성하지 않고 해당 authority revision에 그대로
-기록한다. Reserve는 authority row에 object kind·stable type·target descriptor key·lifecycle generation·capacity
-delta를 포함한 Pending allocation을 저장한다. Commit은 reservation을 exact 검증하고 target descriptor와 owner
-lease가 여전히 current일 때만 Pending allocation을 Active로 전환한다. Abort는 exact reservation과 Pending
-allocation만 검증하며 current descriptor·lease liveness와 관계없이 row와 pending delta를 정리한다.
+기록한다. Reserve는 authority row에 object kind·stable type·target descriptor
+key·lifecycle generation·capacity bundle을 포함한
+Reserved allocation을 저장한다. Commit은 reservation을 exact 검증하고 target descriptor와 owner lease가
+여전히 current일 때만 Reserved allocation을 Active로 전환한다. Abort는 exact reservation과 Reserved
+allocation만 검증하며 current descriptor·lease liveness와 관계없이 row와 reserved bundle을 정리한다.
 Encoded request는 최대 1 MiB다. Reserve는 kind·type mismatch와 capacity exhaustion을 closed result로
 구분하고, commit·abort는 같은 reservation에 idempotent하며 다른 fence를 stale로 거부한다. Aggregate operation은
 0이 아닌 128-bit ID, 최대 1024 participant와 encoded 1 MiB bound를 적용하고 owner·membership visibility를
 하나의 commit generation으로 전환한다.
 
-Existing object relocation은 creation reservation을 재사용하지 않는다. `reserveRelocationCapacity`는 zero가 아닌
+Standalone Actor와 Instance Spot relocation은 creation reservation을 재사용하지 않는다. `reserveRelocationCapacity`는 zero가 아닌
 UUID, current authority version, kind·stable type, source·target descriptor lifecycle과 exact owner token을
-검증하고 target capacity를 예약한다. Source owner lease·descriptor liveness는 요구하지 않고, current Active
+검증하고 target의 bundle 전체 capacity를 예약한다. Source owner lease·descriptor liveness는 요구하지 않고, current Active
 allocation과 source field가 정확히 같은지만 검증한다. Target descriptor와 owner lease는 reserve, aggregate
 prepare와 commit 직전에 다시 검증한다. 같은 ID와 exact request는
 `ZLinkRelocationCapacityAlreadyReserved`, 다른 내용은
-conflict다. Standalone Actor의 `NEW_OWNER` CAS와 aggregate commit만 fence를 소비하며 source active 감소와 target
-active 증가와 Active allocation 교체를 authority mutation과 같은 transaction에서 처리한다. Commit 전
-`abortRelocationCapacity`는 pending을 해제하고 reservation은 TTL로 만료시키지 않는다.
+conflict다. Standalone Actor의 `NEW_OWNER` CAS만 relocation capacity fence를 소비하며 source active 감소와
+target active 증가와 Active allocation 교체를 authority mutation과 같은 transaction에서 처리한다. Commit 전
+`abortRelocationCapacity`는 reserved bundle을 해제하고 reservation은 TTL로 만료시키지 않는다.
+User Spot aggregate는 participant별 relocation capacity fence를 만들지 않고 `prepareAggregate`에서 bundle
+전체를 예약한다. Commit은 bundle 전체를 active로 전환하고 abort는 bundle 전체를 해제한다.
 Standalone `NEW_OWNER`에 전달한 fence가 reserved 상태가 아니거나 authority key, expected StoreVersion,
 source owner, target owner 중 하나라도 reservation과 다르면 current authority read를 담은
 `ZLinkAuthorityConflict`를 반환한다. 이미 committed·aborted된 fence도 같은 결과이며 authority row,
@@ -830,7 +936,7 @@ public final class systems.zlink.framework.locations.ZLinkObjectMaintenancePolic
   public int value();
 }
 public final class systems.zlink.framework.locations.ZLinkObjectCapability extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkObjectCapability(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind, boolean, java.util.Set<java.lang.String>, java.lang.Integer, java.lang.Integer);
+  public systems.zlink.framework.locations.ZLinkObjectCapability(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind, boolean, java.util.Set<java.lang.String>, int);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -838,19 +944,37 @@ public final class systems.zlink.framework.locations.ZLinkObjectCapability exten
   public java.lang.String stableType();
   public systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind policy();
   public boolean hasSnapshotAdapter();
-  public java.util.Set<java.lang.String> placementProfiles();
-  public java.lang.Integer activeLimit();
-  public java.lang.Integer pendingLimit();
+  public int spotLimit();
+}
+public final class systems.zlink.framework.locations.ZLinkCapacityUsage extends java.lang.Record {
+  public systems.zlink.framework.locations.ZLinkCapacityUsage(int, int, int);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public int active();
+  public int reserved();
+  public int limit();
+}
+public final class systems.zlink.framework.locations.ZLinkSpotTypeCapacity extends java.lang.Record {
+  public systems.zlink.framework.locations.ZLinkSpotTypeCapacity(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkCapacityUsage);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public systems.zlink.framework.locations.ZLinkPlacementObjectKind objectKind();
+  public java.lang.String stableType();
+  public systems.zlink.framework.locations.ZLinkCapacityUsage usage();
 }
 public final class systems.zlink.framework.locations.ZLinkPlacementCapacity extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkPlacementCapacity(int, int, int, int);
-  public int active();
-  public int pending();
-  public int activeLimit();
-  public int pendingLimit();
+  public systems.zlink.framework.locations.ZLinkPlacementCapacity(systems.zlink.framework.locations.ZLinkCapacityUsage, systems.zlink.framework.locations.ZLinkCapacityUsage, java.util.List<systems.zlink.framework.locations.ZLinkSpotTypeCapacity>);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public systems.zlink.framework.locations.ZLinkCapacityUsage actors();
+  public systems.zlink.framework.locations.ZLinkCapacityUsage spots();
+  public java.util.List<systems.zlink.framework.locations.ZLinkSpotTypeCapacity> spotTypes();
 }
 public final class systems.zlink.framework.locations.ZLinkObjectReservationRequest extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkObjectReservationRequest(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, java.lang.String, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.String>, java.lang.String, byte[], int, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, long, systems.zlink.framework.locations.ZLinkLocationOwnerToken, byte[], int);
+  public systems.zlink.framework.locations.ZLinkObjectReservationRequest(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, java.lang.String, java.util.Optional<java.lang.String>, java.util.Optional<java.lang.String>, java.lang.String, byte[], int, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, long, systems.zlink.framework.locations.ZLinkLocationOwnerToken, byte[], systems.zlink.framework.locations.ZLinkPlacementCapacityBundle);
 }
 public final class systems.zlink.framework.locations.ZLinkObjectReservation extends java.lang.Record {
   public systems.zlink.framework.locations.ZLinkObjectReservation(java.lang.String, java.lang.String, long, long, java.lang.String, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, long, systems.zlink.framework.locations.ZLinkLocationOwnerToken);
@@ -871,7 +995,7 @@ public final class systems.zlink.framework.locations.ZLinkObjectAbortResult exte
   public int value();
 }
 public final class systems.zlink.framework.locations.ZLinkMeshNodeDescriptor extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkMeshNodeDescriptor(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, java.util.Map<java.lang.String, java.lang.Integer>, long, java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability>, systems.zlink.framework.locations.ZLinkMeshNodeObjectRole, int, systems.zlink.framework.locations.ZLinkPlacementCapacity, java.util.Optional<java.lang.String>, systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState, java.lang.String, java.lang.String, long, java.time.Instant);
+  public systems.zlink.framework.locations.ZLinkMeshNodeDescriptor(java.lang.String, systems.zlink.contracts.core.RoutingId, long, long, java.lang.String, java.util.Map<java.lang.String, java.lang.Integer>, long, java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability>, systems.zlink.framework.locations.ZLinkMeshNodeObjectRole, java.util.Optional<systems.zlink.contracts.core.RoutingId>, int, systems.zlink.framework.locations.ZLinkPlacementCapacity, java.util.Optional<java.lang.String>, systems.zlink.framework.runtime.host.ZLinkFrameworkRuntimeState, java.lang.String, java.lang.String, long, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -884,6 +1008,7 @@ public final class systems.zlink.framework.locations.ZLinkMeshNodeDescriptor ext
   public long applicationVersion();
   public java.util.List<systems.zlink.framework.locations.ZLinkObjectCapability> objectCapabilities();
   public systems.zlink.framework.locations.ZLinkMeshNodeObjectRole objectRole();
+  public java.util.Optional<java.lang.String> entrySpotId();
   public int placementWeight();
   public systems.zlink.framework.locations.ZLinkPlacementCapacity capacity();
   public java.util.Optional<java.lang.String> maintenanceWave();
@@ -1050,14 +1175,32 @@ public final class systems.zlink.framework.locations.ZLinkPendingObjectCreation 
   public int requestEncodedSize();
 }
 public final class systems.zlink.framework.locations.ZLinkPlacementAllocationState extends java.lang.Enum<systems.zlink.framework.locations.ZLinkPlacementAllocationState> {
-  public static final systems.zlink.framework.locations.ZLinkPlacementAllocationState PENDING;
+  public static final systems.zlink.framework.locations.ZLinkPlacementAllocationState RESERVED;
   public static final systems.zlink.framework.locations.ZLinkPlacementAllocationState ACTIVE;
   public static systems.zlink.framework.locations.ZLinkPlacementAllocationState[] values();
   public static systems.zlink.framework.locations.ZLinkPlacementAllocationState valueOf(java.lang.String);
   public int value();
 }
+public final class systems.zlink.framework.locations.ZLinkSpotTypeCapacityDelta extends java.lang.Record {
+  public systems.zlink.framework.locations.ZLinkSpotTypeCapacityDelta(systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, int);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public systems.zlink.framework.locations.ZLinkPlacementObjectKind objectKind();
+  public java.lang.String stableType();
+  public int slots();
+}
+public final class systems.zlink.framework.locations.ZLinkPlacementCapacityBundle extends java.lang.Record {
+  public systems.zlink.framework.locations.ZLinkPlacementCapacityBundle(int, int, java.util.Optional<systems.zlink.framework.locations.ZLinkSpotTypeCapacityDelta>);
+  public final java.lang.String toString();
+  public final int hashCode();
+  public final boolean equals(java.lang.Object);
+  public int actorSlots();
+  public int spotSlots();
+  public java.util.Optional<systems.zlink.framework.locations.ZLinkSpotTypeCapacityDelta> spotType();
+}
 public final class systems.zlink.framework.locations.ZLinkPlacementAllocation extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkPlacementAllocation(systems.zlink.framework.locations.ZLinkPlacementAllocationState, systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, long, int);
+  public systems.zlink.framework.locations.ZLinkPlacementAllocation(systems.zlink.framework.locations.ZLinkPlacementAllocationState, systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, long, systems.zlink.framework.locations.ZLinkPlacementCapacityBundle);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -1066,7 +1209,7 @@ public final class systems.zlink.framework.locations.ZLinkPlacementAllocation ex
   public java.lang.String stableType();
   public systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey descriptor();
   public long descriptorLifecycleGeneration();
-  public int capacityDelta();
+  public systems.zlink.framework.locations.ZLinkPlacementCapacityBundle capacityBundle();
 }
 public final class systems.zlink.framework.locations.ZLinkAuthorityEntry extends java.lang.Record {
   public systems.zlink.framework.locations.ZLinkAuthorityEntry(java.lang.String, systems.zlink.framework.locations.ZLinkAuthoritySnapshot);
@@ -1139,7 +1282,7 @@ public final class systems.zlink.framework.locations.ZLinkRelocationCapacityFenc
   public java.lang.String value();
 }
 public final class systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest(java.util.UUID, java.lang.String, java.lang.String, systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, long, systems.zlink.framework.locations.ZLinkLocationOwnerToken, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, long, systems.zlink.framework.locations.ZLinkLocationOwnerToken, int);
+  public systems.zlink.framework.locations.ZLinkRelocationCapacityReservationRequest(java.util.UUID, java.lang.String, java.lang.String, systems.zlink.framework.locations.ZLinkPlacementObjectKind, java.lang.String, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, long, systems.zlink.framework.locations.ZLinkLocationOwnerToken, systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey, long, systems.zlink.framework.locations.ZLinkLocationOwnerToken, systems.zlink.framework.locations.ZLinkPlacementCapacityBundle);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -1154,7 +1297,7 @@ public final class systems.zlink.framework.locations.ZLinkRelocationCapacityRese
   public systems.zlink.framework.locations.ZLinkMeshNodeDescriptorKey targetDescriptor();
   public long targetDescriptorLifecycleGeneration();
   public systems.zlink.framework.locations.ZLinkLocationOwnerToken targetOwner();
-  public int capacityDelta();
+  public systems.zlink.framework.locations.ZLinkPlacementCapacityBundle capacityBundle();
 }
 public sealed interface systems.zlink.framework.locations.ZLinkRelocationCapacityReserveResult
     permits systems.zlink.framework.locations.ZLinkRelocationCapacityReserved,
@@ -1456,7 +1599,7 @@ public interface systems.zlink.framework.locations.ZLinkOwnerLeaseStore {
 
 ```java
 public final class systems.zlink.framework.locations.ZLinkPeerLocation extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkPeerLocation(systems.zlink.framework.locations.ZLinkLocationAutoConnectType, java.lang.String, systems.zlink.contracts.core.RoutingId, systems.zlink.framework.locations.ZLinkLocationRole, java.lang.String, long, boolean, long, java.util.Map<java.lang.String, java.lang.String>, java.util.List<java.lang.String>, java.lang.String, long, long, java.time.Instant);
+  public systems.zlink.framework.locations.ZLinkPeerLocation(systems.zlink.framework.locations.ZLinkLocationAutoConnectType, java.lang.String, systems.zlink.contracts.core.RoutingId, systems.zlink.framework.locations.ZLinkLocationRole, java.lang.String, int, boolean, long, java.util.Map<java.lang.String, java.lang.String>, java.util.List<java.lang.String>, java.lang.String, long, long, java.time.Instant);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
@@ -1465,7 +1608,7 @@ public final class systems.zlink.framework.locations.ZLinkPeerLocation extends j
   public systems.zlink.contracts.core.RoutingId nodeRid();
   public systems.zlink.framework.locations.ZLinkLocationRole role();
   public java.lang.String endpoint();
-  public long weight();
+  public int weight();
   public boolean draining();
   public long value();
   public java.util.Map<java.lang.String, java.lang.String> metadata();
@@ -1563,7 +1706,7 @@ public final class systems.zlink.framework.locations.ZLinkActorLocation extends 
   public systems.zlink.framework.actors.ActorRef actorRef();
   public systems.zlink.contracts.core.RoutingId ownerNodeRid();
   public long ownerNodeGeneration();
-  public systems.zlink.contracts.core.RoutingId spotRid();
+  public java.lang.String spotId();
   public long spotGeneration();
   public systems.zlink.framework.spots.ZLinkSpotKind spotKind();
   public java.lang.String ownerId();
@@ -1578,7 +1721,7 @@ public final class systems.zlink.framework.locations.ZLinkActorLocationFilter ex
   public final boolean equals(java.lang.Object);
   public java.lang.String actorType();
   public systems.zlink.contracts.core.RoutingId nodeRid();
-  public systems.zlink.contracts.core.RoutingId spotRid();
+  public java.lang.String spotId();
   public systems.zlink.framework.spots.ZLinkSpotKind locationKind();
 }
 public final class systems.zlink.framework.locations.ZLinkActorLocationKey extends java.lang.Record {
@@ -1739,7 +1882,7 @@ public final class systems.zlink.framework.locations.ZLinkLocationTopologyEntry 
   public java.lang.String meshName();
   public systems.zlink.framework.locations.ZLinkLocationRole role();
   public systems.zlink.contracts.core.RoutingId nodeRid();
-  public systems.zlink.contracts.core.RoutingId spotRid();
+  public java.lang.String spotId();
   public java.lang.String actorId();
   public java.lang.String endpoint();
   public systems.zlink.framework.locations.ZLinkLocationTopologyState state();
@@ -1805,7 +1948,7 @@ public final class systems.zlink.framework.locations.ZLinkSpotLocation extends j
   public final int hashCode();
   public final boolean equals(java.lang.Object);
   public java.lang.String meshName();
-  public systems.zlink.contracts.core.RoutingId spotRid();
+  public java.lang.String spotId();
   public long spotGeneration();
   public systems.zlink.contracts.core.RoutingId ownerNodeRid();
   public long ownerNodeGeneration();
@@ -1827,10 +1970,10 @@ public final class systems.zlink.framework.locations.ZLinkSpotLocationFilter ext
   public systems.zlink.framework.spots.ZLinkSpotKind spotKind();
 }
 public final class systems.zlink.framework.locations.ZLinkSpotLocationKey extends java.lang.Record {
-  public systems.zlink.framework.locations.ZLinkSpotLocationKey(systems.zlink.contracts.core.RoutingId);
+  public systems.zlink.framework.locations.ZLinkSpotLocationKey(java.lang.String);
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
-  public systems.zlink.contracts.core.RoutingId spotRid();
+  public java.lang.String spotId();
 }
 ```

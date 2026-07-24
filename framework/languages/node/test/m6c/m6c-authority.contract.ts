@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createHash } from 'node:crypto';
 import { RequestResult } from '@zlink-systems/zlink';
 import type {
   ZLinkAggregateId,
@@ -105,6 +106,111 @@ test('creation abort cleans pending capacity without requiring a live target', a
     target: target('node-a', 'owner-a')
   }), { kind: 'aborted' });
   assert.equal((await store.readAuthority(authorityKey('ephemeral'))).kind, 'missing');
+});
+
+test('Actor creation terminal is scoped to the exact source operation and published atomically', async () => {
+  const store = authority(new Set(['mesh:node-a:1:owner-a:1']));
+  const placement = target('node-a', 'owner-a');
+  const actorRequest = {
+    ...reserveRequest('actor-a', placement),
+    key: { kind: 'actor' as const, globalId: 'actor-a' },
+    intent: {
+      ...reserveRequest('actor-a', placement).intent,
+      stableType: 'player'
+    }
+  };
+  const operation = {
+    sourceNodeRid: 'source-node',
+    sourceNodeGeneration: 7n,
+    operationId: { high: 0n, low: 1n }
+  };
+  const distinctOperation = {
+    ...operation,
+    operationId: { high: 0n, low: 2n }
+  };
+  const envelope = Buffer.from('creation-operation-terminal-v1:created');
+  const reserved = await store.reserve(actorRequest);
+  assert.equal(reserved.kind, 'reserved');
+  if (reserved.kind !== 'reserved') return;
+  await assert.rejects(() => store.commit({
+    key: actorRequest.key,
+    reservationId: reserved.reservationId,
+    expectedStoreVersion: reserved.creating.storeVersion.value,
+    target: placement,
+    readyPayload: Buffer.from('ready')
+  }), /completeCreation/);
+  const pending = await store.readAuthority(encodeAuthorityKey('actor', 'actor-a'));
+  assert.equal(pending.kind, 'snapshot');
+  if (pending.kind === 'snapshot') assert.equal(pending.allocation.state, 'pending');
+  const committed = await store.completeCreation({
+    key: actorRequest.key,
+    reservationId: reserved.reservationId,
+    expectedStoreVersion: reserved.creating.storeVersion.value,
+    target: placement,
+    completion: {
+      kind: 'created',
+      readyPayload: Buffer.from('ready'),
+      terminal: {
+        operation,
+        terminalEnvelope: envelope,
+        terminalEnvelopeSha256: createHash('sha256').update(envelope).digest(),
+        operationDeadline: new Date(1_000)
+      }
+    }
+  });
+  assert.equal(committed.kind, 'created');
+  const found = await store.readCreationTerminal(operation);
+  assert.equal(found.kind, 'found');
+  if (found.kind === 'found') assert.equal(found.record.state, 'created');
+  assert.equal((await store.readCreationTerminal(distinctOperation)).kind, 'missing');
+});
+
+test('Actor rejection removes Creating authority and does not leak its reply to another operation', async () => {
+  const store = authority(new Set(['mesh:node-a:1:owner-a:1']));
+  const placement = target('node-a', 'owner-a');
+  const actorRequest = {
+    ...reserveRequest('actor-rejected', placement),
+    key: { kind: 'actor' as const, globalId: 'actor-rejected' },
+    intent: {
+      ...reserveRequest('actor-rejected', placement).intent,
+      stableType: 'player'
+    }
+  };
+  const operation = {
+    sourceNodeRid: 'source-node',
+    sourceNodeGeneration: 7n,
+    operationId: { high: 0n, low: 3n }
+  };
+  const envelope = Buffer.from('creation-operation-terminal-v1:rejected');
+  const reserved = await store.reserve(actorRequest);
+  assert.equal(reserved.kind, 'reserved');
+  if (reserved.kind !== 'reserved') return;
+  const rejected = await store.completeCreation({
+    key: actorRequest.key,
+    reservationId: reserved.reservationId,
+    expectedStoreVersion: reserved.creating.storeVersion.value,
+    target: placement,
+    completion: {
+      kind: 'rejected',
+      terminal: {
+        operation,
+        terminalEnvelope: envelope,
+        terminalEnvelopeSha256: createHash('sha256').update(envelope).digest(),
+        operationDeadline: new Date(1_000)
+      }
+    }
+  });
+  assert.equal(rejected.kind, 'rejected');
+  assert.equal((await store.readAuthority(
+    encodeAuthorityKey('actor', 'actor-rejected')
+  )).kind, 'missing');
+  const terminal = await store.readCreationTerminal(operation);
+  assert.equal(terminal.kind, 'found');
+  if (terminal.kind === 'found') assert.equal(terminal.record.state, 'rejected');
+  assert.equal((await store.readCreationTerminal({
+    ...operation,
+    operationId: { high: 0n, low: 4n }
+  })).kind, 'missing');
 });
 
 test('public User Spot coordinator hides Pending, runs one factory, then publishes Ready generation', async () => {
@@ -310,6 +416,50 @@ test('User Spot reservation maps capacity exhaustion and Pending expiry to exact
       && 'kind' in error
       && error.kind === 'deadlineExceeded'
   );
+});
+
+test('User Spot placement excludes a capacity-race loser and reserves the next candidate', async () => {
+  const base = authority(new Set([
+    'mesh:node-a:1:owner-a:1',
+    'mesh:node-b:1:owner-b:1'
+  ]));
+  const store = Object.create(base) as ZLinkInMemoryAuthorityStore;
+  const reserve = base.reserve.bind(base);
+  let reserveCalls = 0;
+  store.reserve = async (request, signal) => {
+    reserveCalls++;
+    return reserveCalls === 1
+      ? { kind: 'placementCapacityExhausted' }
+      : reserve(request, signal);
+  };
+  const coordinator = new ZLinkUserSpotCreationCoordinator({
+    store,
+    target: async (_request, _signal, excluded) => {
+      const node = excluded?.has('node-a') === true ? 'node-b' : 'node-a';
+      return {
+        meshName: 'mesh',
+        nodeRid: node,
+        nodeGeneration: 1n,
+        owner: owner(node === 'node-a' ? 'owner-a' : 'owner-b', 1n),
+        isLocal: true
+      };
+    }
+  });
+
+  const result = await coordinator.getOrCreate({
+    meshName: 'mesh',
+    spotRid: 'capacity-race-room',
+    stableType: 'room',
+    requestPayload: Buffer.from('create'),
+    timeoutMs: 1_000
+  }, async target => ({
+    spotRid: 'capacity-race-room',
+    state: ZLinkSpotCreateState.Created,
+    target
+  }));
+
+  assert.equal(reserveCalls, 2);
+  assert.equal(result.spot.nodeRid, 'node-b');
 });
 
 test('User Spot production placement maps no target to retriable capacity exhaustion and provider faults to RequestFailed', async () => {
@@ -688,8 +838,6 @@ test('exact User Spot manager call is single-use and returns the committed SpotR
   const call = manager.getOrCreate('room-7', 'room')
     .inMesh('mesh')
     .request({ title: 'room' })
-    .placementProfile('interactive')
-    .affinityKey('tenant-7')
     .timeout(500);
   const result = await call.submit();
   assert.equal(created, 1);
@@ -837,11 +985,8 @@ test('User Spot manager close sends the exact authority fence to the remote owne
       }
     } as never,
     coordinator: {
-      async close(
-        spot: typeof current,
-        closeOwner: (resolved: typeof current, snapshot: unknown) => Promise<boolean>
-      ) {
-        return await closeOwner(spot, snapshot);
+      async resolveCloseTarget() {
+        return { spot: current, snapshot };
       }
     } as never,
     factories: new Map(),
@@ -869,6 +1014,42 @@ test('User Spot manager close sends the exact authority fence to the remote owne
   assert.equal(await manager.close(current), true);
   assert.equal(localCloseCalled, false);
   assert.equal(remoteCloseCalled, true);
+});
+
+test('remote User Spot close remains deleted when the terminal reply is lost', async () => {
+  const store = authority(new Set(['mesh:node-b:2:owner-b:2']));
+  const ready = await createActive(store, 'reply-loss-close', target('node-b', 'owner-b'));
+  const coordinator = new ZLinkUserSpotCreationCoordinator({
+    store,
+    target: async () => undefined
+  });
+  const spot = {
+    spotRid: 'reply-loss-close',
+    objectGeneration: ready.objectGeneration,
+    meshName: 'mesh',
+    nodeRid: 'node-b'
+  } as const;
+  const manager = new ZLinkPublicSpotManager({
+    local: {} as never,
+    coordinator,
+    factories: new Map(),
+    resolver: () => undefined,
+    isLocalNode: () => false,
+    defaultTimeoutMs: 1_000,
+    remoteClose: async (_meshName, _targetNodeRid, request) => {
+      await coordinator.handleRemoteClose({
+        ...request,
+        kind: 'userSpotClose',
+        correlation: 1n,
+        operation: { high: 1n, low: 1n }
+      }, async () => true);
+      throw new Error('terminal reply lost');
+    }
+  });
+
+  await assert.rejects(() => manager.close(spot), /terminal reply lost/);
+  assert.equal((await store.readAuthority(authorityKey('reply-loss-close'))).kind, 'missing');
+  assert.equal(await manager.close(spot), false);
 });
 
 test('relocation matches durable source allocation and only requires the target to be live', async () => {

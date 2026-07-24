@@ -12,10 +12,17 @@ public record ZLinkActorLocation(
     RoutingId nodeRid,
     ZLinkSpotKind locationKind,
     String spotMeshName,
-    RoutingId spotRid,
+    String spotId,
     String ownerId,
     long generation,
     Instant updatedAt) {
+    public ZLinkActorLocation {
+        if (spotId != null) {
+            systems.zlink.framework.runtime.internal.spots.ZLinkSpotIdValidator
+                .requireValid(spotId);
+        }
+    }
+
     public static ZLinkActorLocation fromActorRef(
         String actorId,
         String actorType,
@@ -23,7 +30,7 @@ public record ZLinkActorLocation(
         RoutingId nodeRid,
         ZLinkSpotKind locationKind,
         String spotMeshName,
-        RoutingId spotRid,
+        String spotId,
         String ownerId,
         long generation,
         Instant updatedAt) {
@@ -34,7 +41,7 @@ public record ZLinkActorLocation(
             nodeRid,
             locationKind,
             spotMeshName,
-            spotRid,
+            spotId,
             ownerId,
             generation,
             updatedAt);

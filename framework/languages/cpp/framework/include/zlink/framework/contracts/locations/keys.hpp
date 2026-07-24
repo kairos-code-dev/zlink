@@ -23,8 +23,7 @@ struct peer_location_key_t
 
 struct spot_location_key_t
 {
-    std::string mesh_name;
-    zlink::routing_id_t spot_rid = zlink::routing_id_t::from (std::uint32_t{0});
+    std::string spot_id;
 };
 
 struct actor_location_key_t
@@ -64,7 +63,7 @@ struct actor_location_filter_t
     std::optional<std::string> mesh_name;
     std::optional<std::string> actor_type;
     std::optional<zlink::routing_id_t> owner_node_rid;
-    std::optional<zlink::routing_id_t> spot_rid;
+    std::optional<std::string> spot_id;
     std::optional<zlink::spot_kind> spot_kind;
 };
 

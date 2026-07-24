@@ -3,6 +3,7 @@
 #include <zlink/framework/contracts/actors/actor.hpp>
 
 #include "runtime/mesh/mesh_node_runtime.hpp"
+#include "runtime/actors/actor_manager_access.hpp"
 #include "runtime/messaging/client_call_codec.hpp"
 #include "runtime/messaging/request_failure_mapper.hpp"
 #include "runtime/locations/store_location_resolvers.hpp"
@@ -13,6 +14,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
@@ -20,6 +22,196 @@
 
 namespace zlink::framework
 {
+
+namespace detail
+{
+class actor_manager_state_t
+{
+  public:
+    actor_manager_access_t::create_fn_t create_actor;
+    actor_manager_access_t::find_fn_t find_actor;
+    actor_manager_access_t::find_spot_fn_t find_spot;
+    actor_manager_access_t::destroy_fn_t destroy_actor;
+    std::atomic<std::uint64_t> operation_sequence{1};
+};
+
+class actor_create_call_state_t
+{
+  public:
+    std::shared_ptr<actor_manager_state_t> manager;
+    bool exclusive = false;
+    actor_id_t actor_id;
+    std::string stable_type;
+    std::optional<std::string> mesh_name;
+    std::optional<message_t> request;
+    std::chrono::milliseconds timeout{std::chrono::seconds (30)};
+    bool mesh_set = false;
+    bool request_set = false;
+    bool timeout_set = false;
+    bool submitted = false;
+    std::mutex mutex;
+};
+} // namespace detail
+
+namespace
+{
+void require_call_option (bool &flag, const char *name)
+{
+    if (flag)
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          std::string ("Actor create option was set more than once: ") + name);
+    flag = true;
+}
+} // namespace
+
+actor_create_call_t::actor_create_call_t (
+  std::shared_ptr<detail::actor_create_call_state_t> state) :
+    _state (std::move (state))
+{
+}
+
+actor_create_call_t::~actor_create_call_t () = default;
+actor_create_call_t::actor_create_call_t (actor_create_call_t &&) noexcept = default;
+actor_create_call_t &
+actor_create_call_t::operator= (actor_create_call_t &&) noexcept = default;
+
+actor_create_call_t &actor_create_call_t::in_mesh (std::string mesh_name)
+{
+    std::lock_guard lock (_state->mutex);
+    require_call_option (_state->mesh_set, "in_mesh");
+    _state->mesh_name = std::move (mesh_name);
+    return *this;
+}
+
+actor_create_call_t &actor_create_call_t::creation_request (message_t request)
+{
+    std::lock_guard lock (_state->mutex);
+    require_call_option (_state->request_set, "creation_request");
+    _state->request = std::move (request);
+    return *this;
+}
+
+actor_create_call_t &
+actor_create_call_t::timeout (std::chrono::milliseconds timeout)
+{
+    std::lock_guard lock (_state->mutex);
+    require_call_option (_state->timeout_set, "timeout");
+    if (timeout <= std::chrono::milliseconds::zero ())
+        throw framework_exception_t (
+          framework_error_kind_t::invalid_configuration,
+          "Actor create timeout must be positive");
+    _state->timeout = timeout;
+    return *this;
+}
+
+task_t<actor_create_result_t> actor_create_call_t::submit ()
+{
+    std::lock_guard lock (_state->mutex);
+    if (_state->submitted)
+        return task_t<actor_create_result_t> (
+          result_t<actor_create_result_t>::failure (
+            framework_error_kind_t::already_submitted,
+            "Actor create call was already submitted"));
+    _state->submitted = true;
+    if (!_state->manager || !_state->manager->create_actor)
+        return task_t<actor_create_result_t> (
+          result_t<actor_create_result_t>::failure (
+            framework_error_kind_t::object_client_not_configured,
+            "Actor manager is not bound to an object runtime"));
+    const auto sequence =
+      _state->manager->operation_sequence.fetch_add (1);
+    const creation_operation_id_t operation{
+      static_cast<std::uint64_t> (
+        reinterpret_cast<std::uintptr_t> (
+          _state->manager.get ())),
+      sequence};
+    return _state->manager->create_actor (
+      _state->exclusive, _state->actor_id, _state->stable_type,
+      _state->mesh_name, _state->request,
+      _state->timeout, operation);
+}
+
+actor_manager_t::actor_manager_t () :
+    _state (std::make_shared<detail::actor_manager_state_t> ())
+{
+}
+
+actor_manager_t::actor_manager_t (
+  std::shared_ptr<detail::actor_manager_state_t> state) :
+    _state (std::move (state))
+{
+}
+
+actor_manager_t::~actor_manager_t () = default;
+actor_manager_t::actor_manager_t (actor_manager_t &&) noexcept = default;
+actor_manager_t &actor_manager_t::operator= (actor_manager_t &&) noexcept = default;
+
+actor_create_call_t actor_manager_t::create (
+  actor_id_t actor_id, std::string stable_type)
+{
+    auto state = std::make_shared<detail::actor_create_call_state_t> ();
+    state->manager = _state;
+    state->exclusive = true;
+    state->actor_id = std::move (actor_id);
+    state->stable_type = std::move (stable_type);
+    return actor_create_call_t (std::move (state));
+}
+
+actor_create_call_t actor_manager_t::get_or_create (
+  actor_id_t actor_id, std::string stable_type)
+{
+    auto state = std::make_shared<detail::actor_create_call_state_t> ();
+    state->manager = _state;
+    state->actor_id = std::move (actor_id);
+    state->stable_type = std::move (stable_type);
+    return actor_create_call_t (std::move (state));
+}
+
+task_t<std::optional<actor_ref_t>>
+actor_manager_t::find (actor_id_t actor_id) const
+{
+    if (!_state || !_state->find_actor)
+        return task_t<std::optional<actor_ref_t>> (
+          result_t<std::optional<actor_ref_t>>::failure (
+            framework_error_kind_t::object_client_not_configured,
+            "Actor manager is not bound to an object runtime"));
+    return _state->find_actor (std::move (actor_id));
+}
+
+task_t<std::optional<spot_ref_t>>
+actor_manager_t::find_spot (actor_id_t actor_id) const
+{
+    if (!_state || !_state->find_spot)
+        return task_t<std::optional<spot_ref_t>> (
+          result_t<std::optional<spot_ref_t>>::failure (
+            framework_error_kind_t::object_client_not_configured,
+            "Actor manager is not bound to an object runtime"));
+    return _state->find_spot (std::move (actor_id));
+}
+
+task_t<bool> actor_manager_t::destroy (actor_ref_t actor)
+{
+    if (!_state || !_state->destroy_actor)
+        return task_t<bool> (result_t<bool>::failure (
+          framework_error_kind_t::object_client_not_configured,
+          "Actor manager is not bound to an object runtime"));
+    return _state->destroy_actor (std::move (actor));
+}
+
+actor_manager_t detail::actor_manager_access_t::create (
+  create_fn_t create_actor,
+  find_fn_t find_actor,
+  find_spot_fn_t find_spot,
+  destroy_fn_t destroy_actor)
+{
+    auto state = std::make_shared<actor_manager_state_t> ();
+    state->create_actor = std::move (create_actor);
+    state->find_actor = std::move (find_actor);
+    state->find_spot = std::move (find_spot);
+    state->destroy_actor = std::move (destroy_actor);
+    return actor_manager_t (std::move (state));
+}
 
 actor_send_call_t::actor_send_call_t (actor_client_t &client,
                                       actor_ref_t actor_ref,
@@ -305,7 +497,7 @@ class actor_client_impl_t final : public actor_client_t
         actor_ref_t framework_ref;
         actor_ref_t native_ref;
         node_rid_t node_rid;
-        spot_rid_t spot_rid;
+        spot_id_t spot_id;
     };
 
     result_t<resolved_actor_t> resolve_explicit_actor (const actor_ref_t &actor_ref)
@@ -318,7 +510,7 @@ class actor_client_impl_t final : public actor_client_t
         return result_t<resolved_actor_t>::success (
           resolved_actor_t{
             actor_ref, actor_ref, actor_ref.node_rid (),
-            spot_rid_t::from_string (std::string (actor_ref.node_rid ().value ())) });
+            spot_id_t (std::string (actor_ref.node_rid ().value ())) });
     }
 
     result_t<resolved_actor_t> resolve_actor (const std::string &actor_id, stale_policy_t policy)
@@ -346,7 +538,7 @@ class actor_client_impl_t final : public actor_client_t
                                                         : "actor location became stale",
               policy == stale_policy_t::location_stale);
         }
-        if (row.value ()->spot_rid.to_string ().empty ()) {
+        if (row.value ()->spot_id.empty ()) {
             return result_t<resolved_actor_t>::failure (
               policy == stale_policy_t::route_not_found
                 ? framework_error_kind_t::actor_route_not_found
@@ -359,8 +551,8 @@ class actor_client_impl_t final : public actor_client_t
           resolved_actor_t{row.value ()->actor_ref, row.value ()->actor_ref,
                            node_rid_t::from_string (
                              row.value ()->owner_node_rid.to_string ()),
-                           spot_rid_t::from_string (
-                             row.value ()->spot_rid.to_string ())});
+                           spot_id_t (
+                             row.value ()->spot_id)});
     }
 
     result_t<void> submit_send (const resolved_actor_t &actor,

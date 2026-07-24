@@ -52,7 +52,7 @@ final class DefaultEntrySpotContext implements ZLinkEntrySpotContext, SpotDispat
         this.outbound = host.createContextOutbound(backendSpot, nodeRid);
     }
 
-    @Override public RoutingId spotRid() { return backendSpot.routingId(); }
+    @Override public String spotId() { return backendSpot.routingId(); }
     @Override public RoutingId nodeRid() { return nodeRid; }
     @Override public ZLinkSpotOutbound outbound() { return outbound; }
     @Override public DefaultSpotOutbound dispatchOutbound() { return outbound; }
@@ -170,7 +170,7 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
         timers.setSpot(spot);
     }
 
-    @Override public RoutingId spotRid() { return backendSpot.routingId(); }
+    @Override public String spotId() { return backendSpot.routingId(); }
     @Override public RoutingId nodeRid() { return nodeRid; }
     @Override public ZLinkSpotOutbound outbound() { return outbound; }
     @Override public DefaultSpotOutbound dispatchOutbound() { return outbound; }
@@ -179,12 +179,12 @@ final class DefaultSpotContext implements ZLinkSpotContext, SpotDispatchLine {
 
     @Override
     public CompletionStage<Void> leaveActor(ZLinkActor actor) {
-        return host.leaveActor(nodeRid, spot, actor, spotRid());
+        return host.leaveActor(nodeRid, spot, actor, spotId());
     }
 
     @Override
     public CompletionStage<Boolean> close() {
-        return host.closeSpot(spotRid());
+        return host.closeSpot(spotId());
     }
 
     @Override

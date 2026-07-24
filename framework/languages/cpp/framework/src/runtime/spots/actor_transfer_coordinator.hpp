@@ -28,8 +28,8 @@ struct pending_actor_admission_t
 {
     std::string actor_key;
     actor_ref_t source_actor;
-    spot_rid_t source_spot_rid;
-    spot_rid_t target_spot_rid;
+    spot_id_t source_spot_id;
+    spot_id_t target_spot_id;
     std::chrono::steady_clock::time_point deadline;
 };
 
@@ -108,11 +108,11 @@ class actor_transfer_coordinator_t
     bool try_add_admission (std::string transfer_id, pending_actor_admission_t admission);
     std::optional<pending_actor_admission_t> begin_commit (const std::string &transfer_id,
                                                            const actor_ref_t &source_actor,
-                                                           const spot_rid_t &target_spot_rid);
+                                                           const spot_id_t &target_spot_id);
     std::optional<pending_actor_admission_t> pending_commit (
       const std::string &transfer_id,
       const actor_ref_t &source_actor,
-      const spot_rid_t &target_spot_rid) const;
+      const spot_id_t &target_spot_id) const;
     void fail_commit (const std::string &transfer_id, bool reconcile);
     void complete_commit (const std::string &transfer_id);
     std::vector<expired_actor_admission_t>

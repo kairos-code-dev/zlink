@@ -92,17 +92,16 @@ enum class object_role_t : std::uint8_t {
     server = 2
 };
 
-struct object_capacity_options_t {
-    std::uint32_t active = 0;
-    std::uint32_t pending = 0;
-    std::uint32_t active_limit = 10000;
-    std::uint32_t pending_limit = 128;
+struct actor_placement_options_t {
 };
 
-struct object_placement_options_t {
-    std::vector<std::string> placement_profiles;
-    std::optional<std::uint32_t> active_limit;
-    std::optional<std::uint32_t> pending_limit;
+struct spot_placement_options_t {
+    std::int32_t stable_type_limit = 0;
+};
+
+enum class user_spot_execution_mode_t {
+    spot_wide = 0,
+    per_actor = 1
 };
 
 class mesh_node_builder_t {
@@ -115,8 +114,10 @@ public:
     mesh_node_builder_t &set_routing_id(zlink::routing_id_t routing_id);
     mesh_node_builder_t &set_automatic_routing_id_prefix(std::string prefix);
     mesh_node_builder_t &set_object_role(object_role_t role);
-    mesh_node_builder_t &set_placement_weight(std::uint8_t weight);
-    mesh_node_builder_t &set_object_capacity(object_capacity_options_t capacity);
+    mesh_node_builder_t &set_placement_weight(int weight);
+    mesh_node_builder_t &set_actor_limit(std::int32_t limit);
+    mesh_node_builder_t &set_spot_limit(std::int32_t limit);
+    mesh_node_builder_t &set_activation_concurrency(std::int32_t limit);
     mesh_node_socket_config_t &configure_router_socket();
     mesh_peer_connections_t &peer_connections();
     mesh_node_builder_t &set_default_request_timeout(std::chrono::milliseconds timeout);
@@ -145,7 +146,9 @@ public:
       std::string stable_type,
       std::function<std::shared_ptr<TSpot>()> factory,
       relocation_policy_t<TSpot> relocation,
-      object_placement_options_t placement);
+      spot_placement_options_t placement,
+      user_spot_execution_mode_t execution_mode =
+        user_spot_execution_mode_t::spot_wide);
 
     template <typename TSpot>
       requires std::derived_from<TSpot, instance_spot_t>
@@ -153,7 +156,7 @@ public:
       std::string stable_type,
       std::function<std::shared_ptr<TSpot>()> factory,
       relocation_policy_t<TSpot> relocation,
-      object_placement_options_t placement);
+      spot_placement_options_t placement);
 
     template <typename TActor, typename TActorFactory>
       requires std::derived_from<TActor, actor_t> &&
@@ -162,7 +165,7 @@ public:
       std::string stable_type,
       std::shared_ptr<TActorFactory> factory,
       relocation_policy_t<TActor> relocation,
-      object_placement_options_t placement);
+      actor_placement_options_t placement);
 
 };
 
@@ -230,24 +233,24 @@ struct location_runtime_snapshot_t {
     std::optional<std::chrono::system_clock::time_point> last_failure_at;
 };
 
-struct object_capacity_snapshot_t {
-    std::uint32_t active_limit;
-    std::uint32_t pending_limit;
-    std::uint32_t active_count;
-    std::uint32_t pending_count;
+struct activation_concurrency_snapshot_t {
+    std::uint32_t active;
+    std::uint32_t limit;
 };
 
 struct mesh_node_snapshot_t {
     std::string mesh_name;
     zlink::routing_id_t rid;
+    std::optional<std::string> entry_spot_id;
     std::uint64_t lifecycle_generation;
     std::uint64_t descriptor_revision;
     std::string endpoint;
     mesh_node_state_t state;
     object_role_t object_role;
     std::int64_t application_version;
-    std::uint8_t placement_weight;
-    object_capacity_snapshot_t object_capacity;
+    int placement_weight;
+    placement_capacity_t object_capacity;
+    activation_concurrency_snapshot_t activation_concurrency;
     std::uint64_t placement_reservation_failure_count;
     std::optional<std::string> last_placement_reservation_failure;
     std::vector<object_capability_t> object_capabilities;
@@ -446,6 +449,8 @@ public:
 class route_mesh_runtime_options_t {
 public:
     virtual ~route_mesh_runtime_options_t() = default;
+    virtual int placement_weight() const = 0;
+    virtual void placement_weight(int value) = 0;
     virtual mesh_channel_runtime_options_t &channel(std::string channel_name) = 0;
 };
 
@@ -472,16 +477,38 @@ Root BindHost 기본값은 `127.0.0.1`이다. AdvertiseHost를 생략하면 wild
 listener의 port를 생략하거나 listener 호출을 생략하면 port `0`을 사용한다.
 Listener별 host 설정은 root 기본값보다 우선한다.
 
-Automatic RID prefix는 `[A-Za-z0-9._-]` 1..64자다. Runtime은 prefix와 CSPRNG 128-bit lowercase hex를
-`prefix-<32 lower hex>`로 조합하고 전체 RID를 255 byte 이하로 제한한다. Active descriptor owner CAS가
-충돌하면 최대 8회 새 suffix로 시도하고 이후 `routing_id_conflict`로 startup을 실패한다. Fixed RID는
+Automatic RID prefix는 `[A-Za-z0-9._-]` 1..64자다. Runtime은 RFC 4122 UUID v4를 lowercase canonical
+36-character `8-4-4-4-12` 형식으로 encode하고 `prefix-<uuid-v4>`로 조합한다. 전체 RID는 255 byte 이하다.
+Active descriptor owner CAS의 첫 충돌에서 기존 record를 변경하지 않고 `routing_id_conflict`로 startup을
+실패한다. Fixed RID는
 Object role `none`인 explicit manual topology에서만 허용한다.
 
 Object role `server`는 `client` 기능을 포함한다. `client`와 `server`는 Location Store가 필수이며 `none`은
-manager, factory와 hidden local object runtime을 만들지 않는다. Placement weight는 `0..100`, 기본값은 100이고
-0은 새 create·relocation target에서만 제외한다. Capacity 기본값은 active 10000, pending 128이며 type별 limit은
-`1..2147483647`이다. `object_placement_options_t`는 type별 active·pending limit과 UTF-8 1..255 byte
-placement profile collection을 함께 등록한다. Profile과 capacity를 생략하면 node-wide 설정을 공유한다.
+manager, factory와 hidden local object runtime을 만들지 않는다. RouteMesh Channel Server, ClientServer
+Server와 node-wide placement의 public weight는 모두 signed `int`를 사용한다. 허용 범위는 `0..10000`,
+기본값은 `100`이며 `1..10000`은 eligible target 사이의 상대적 선택 비중이다. Startup 설정이나 runtime
+변경의 범위 밖 값은 configuration error다. Placement weight
+0은 새 create·relocation target에서만 제외한다. Node Actor limit과 Node Spot limit의 기본값은 `0`이며
+제한 없음을 뜻한다. `set_actor_limit(...)`은 Entry Spot과 User Spot에 존재하는 모든 Actor를 계산하고,
+`set_spot_limit(...)`은 User·Instance Spot을 계산하지만 Entry Spot은 제외한다. 두 limit과
+`spot_placement_options_t::stable_type_limit`은 `0..2147483647`만 허용하며 음수는 socket bind 전에
+configuration error다. Actor stable type별 limit은 제공하지 않는다.
+
+`set_activation_concurrency(...)`는 factory와 initialization의 process-local 동시 실행 gate를 설정하며
+기본값은 `128`이고 양수만 허용한다. `0`이나 음수는 socket bind 전에 configuration error다. Population
+capacity와 activation concurrency를 같은 counter나 option으로 합치지 않는다. 모든 값은 MeshNode lifecycle
+시작 전에 고정한다.
+
+Descriptor capacity는 candidate filter에만 사용한다. Framework는 선택한 node에서 Location Store의 typed
+bundle reservation을 원자적으로 얻은 뒤에만 factory를 실행한다. Actor는 Actor slot 하나, Spot은 Spot 전체
+slot 하나와 해당 stable type slot 하나를 예약한다. User Spot과 member Actor `N`개의 aggregate relocation은
+Spot total 1개, 해당 Spot stable type 1개와 Actor total `N`개를 all-or-none으로 예약한다. 모든 후보의 reservation이 capacity 때문에
+실패하면 `placement_capacity_exhausted`로 완료하고 application factory나 handler를 호출하지 않는다.
+Capacity와 readiness를 먼저 적용한 뒤 positive weight 합계를 최소 64-bit integer로 계산한다. Runtime weight
+변경은 descriptor revision으로 순서화하며 이미 제출했거나 reservation을 완료한 operation에는 적용하지
+않는다. Logical Multicast는 positive membership을 각각 한 번만 포함하고 weight 크기로 전송 횟수를 늘리지
+않는다.
+
 Actor·User Spot·Instance Spot factory는 relocation policy를 항상 명시하며 이를 생략하는
 overload는 없다. Snapshot Actor factory에는 `actor_relocation_adapter_t<TActor>`, Snapshot User·Instance Spot
 factory에는 `spot_relocation_adapter_t<TSpot>`가 필요하다. Factory 종류와 adapter 종류 또는 instance type이
@@ -490,9 +517,17 @@ factory에는 `spot_relocation_adapter_t<TSpot>`가 필요하다. Factory 종류
 Factory와 Entry Spot member는 Object role `server`에서만 유효하다. 단일 C++ builder가 이 member를 함께
 노출하더라도 `none` 또는 `client` role에 factory를 등록한 조합은 socket bind 전에 configuration error로 실패한다.
 
-Entry Spot RID는 Framework가 startup에서 발급한다. Caller가 RID를 전달하거나 Entry Spot별 option을 구성하는
-public member는 제공하지 않는다. Entry Spot factory 등록과 초기화가 완료된 뒤에만 Framework가 descriptor와
-resolver에 RID를 게시한다.
+Entry Spot ID는 Framework가 Object Server lifecycle마다 발급한다. MeshNode와 같은 diagnostic prefix에
+MeshNode RID의 UUID와 독립적으로 발급한 RFC 4122 UUID v4의 lowercase canonical 36-character
+`8-4-4-4-12` 표현을 붙여 `<prefix>-entry-<uuid-v4>`를 만든다. Full RID는 UTF-8 255 bytes 이하여야 하며
+full MeshNode RID에 marker나 UUID를 이어 붙이지 않는다. 같은 lifecycle에서는 유지하고 endpoint가 같은
+replacement lifecycle에서도 새 Entry Spot UUID를 발급한다.
+
+Global Spot namespace의 첫 active conflict에서 기존 record를 변경하지 않고 socket bind 전에
+`routing_id_conflict`로 startup을 실패한다. Caller가 RID를 전달하거나 Entry Spot별 option을
+구성하는 public member는 제공하지 않는다. Entry Spot factory 등록과 초기화가 완료된 뒤에만 Framework가
+descriptor와 resolver에 exact RID·lifecycle mapping을 게시한다. Actor placement·Entry join과 relocation은
+이 mapping을 사용하며 RID 문자열을 parse해 관계를 추론하지 않는다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
 Spot type과 stateful object capability collection은 각각 최대 1024개다. Runtime은 완성된 descriptor를 socket
@@ -672,13 +707,9 @@ class actor_join_call_t {
 public:
     actor_join_call_t &timeout(std::chrono::milliseconds timeout);
     task_t<actor_join_result_t> async();
-    task_t<actor_join_result_t> yield();
 
     template <typename TReply>
     task_t<typed_actor_join_result_t<TReply>> async();
-
-    template <typename TReply>
-    task_t<typed_actor_join_result_t<TReply>> yield();
 };
 
 enum class submit_status_t {
@@ -1001,10 +1032,10 @@ public:
       TRequest request);
 
     template <typename TMessage>
-    spot_send_call_t send_to_spot(spot_rid_t target, TMessage message);
+    spot_send_call_t send_to_spot(spot_id_t target, TMessage message);
 
     template <typename TRequest>
-    spot_request_call_t request_to_spot(spot_rid_t target, TRequest request);
+    spot_request_call_t request_to_spot(spot_id_t target, TRequest request);
 };
 
 class route_send_call_t {
@@ -1019,8 +1050,6 @@ public:
     spot_send_call_t &instance_spot();
     spot_send_call_t &instance_spot(std::string stable_type);
     spot_send_call_t &in_mesh(std::string mesh_name);
-    spot_send_call_t &placement_profile(placement_profile_t profile);
-    spot_send_call_t &affinity_key(affinity_key_t key);
     task_t<submit_result_t> submit();
 };
 
@@ -1031,8 +1060,6 @@ public:
     spot_request_call_t &instance_spot();
     spot_request_call_t &instance_spot(std::string stable_type);
     spot_request_call_t &in_mesh(std::string mesh_name);
-    spot_request_call_t &placement_profile(placement_profile_t profile);
-    spot_request_call_t &affinity_key(affinity_key_t key);
 
     template <typename TReply>
     task_t<TReply> async();
@@ -1070,16 +1097,31 @@ public:
 } // namespace zlink::framework
 ```
 
-`send_to_spot(...)`과 `request_to_spot(...)`의 target은 항상 global `spot_rid_t` 하나다. Fluent option은
+`send_to_spot(...)`과 `request_to_spot(...)`의 target은 항상 global `spot_id_t` 하나다. Fluent option은
 Missing Instance Spot의 cold activation intent를 표현하며 address에 MeshName, stable type, owner RID 또는
 generation을 추가하지 않는다. Instance marker를 설정하지 않은 call은 existing-only이고 Missing RID에서
 target-not-found로 끝난다.
 
 `instance_spot()`은 stable type을 생략하고 `instance_spot(stable_type)`은 stable type을 명시한다.
-`in_mesh(...)`, `placement_profile(...)`과 `affinity_key(...)`는 Instance marker와 함께 Missing RID의 최초
-placement에만 적용한다. Marker와 각 option은 한 call에서 한 번만 설정할 수 있고 중복 설정은
+`in_mesh(...)`는 Instance marker와 함께 Missing RID의 최초 Mesh 선택에만 적용한다. Caller-defined
+placement selector는 제공하지 않는다. Marker와 각 option은 한 call에서 한 번만 설정할 수 있고 중복 설정은
 `invalid_configuration`이다. `submit()`, `async<TReply>()` 또는 `yield<TReply>()` 가운데 terminal operation도
 한 번만 시작할 수 있으며 두 번째 호출은 `already_submitted`다.
+
+User Spot factory의 `execution_mode`는 startup 뒤 바꿀 수 없다. 기본 `spot_wide`는 Spot callback,
+Spot timer와 모든 member Actor handler가 하나의 Spot gate를 공유한다. `per_actor`는 Spot direct와
+lifecycle callback을 Spot lane에서 실행하고 각 Actor handler를 Actor별 lane에서 실행한다. Timer는 같은
+timer의 callback만 직렬화하는 timer별 lane을 사용한다. Entry Spot과 Instance Spot에는 이 option을 제공하지 않는다.
+
+`yield()`는 Channel request, Spot request, Actor request와 worker call에만 제공하며 Actor join에는 제공하지
+않는다. 이 terminal은 현재 callback이 `spot_wide` User Spot 또는 Instance Spot에 속할 때만 사용할 수 있다.
+`spot_wide` member Actor의 `yield()`는 Spot gate만 반납하고 Actor FIFO claim은 유지한다. `per_actor`,
+Entry Spot, Node, Channel 또는 실행 문맥 밖에서 호출하면 operation을 admission queue에 제출하기 전에
+`invalid_configuration`으로 실패한다. `request_to_node(...)`처럼 Channel·Spot·Actor request가 아닌 operation이
+공통 request call type의 `yield()`를 호출해도 submit 전에 같은 오류로 실패한다. 현재 callback이 유지하는
+gate가 완료에 필요한 call을 `async()`로 기다리거나 자신에게 보낸 request를 기다리는 경우도 같은 시점에
+`invalid_configuration`으로 실패한다. One-way self send는 FIFO queue에 제출할 수 있지만 inline 또는
+reentrant dispatch로 실행하지 않는다.
 
 Public API는 transport 종류와 무관하게 channel name과 typed payload를 기준으로 유지한다.
 `publisher_t::publish(...)`는 typed event의 packet name을 topic으로 사용하는 편의 호출과 topic을
@@ -1129,6 +1171,9 @@ route가 준비되지 않은 경우에는 `submitted`와 unreachable detail을 �
 top-level status를 바꾸지 않고 detail에만 반영한다.
 Remote count는 `snapshot_remote_node_count == admitted_remote_node_count + dropped_remote_node_count +
 unreachable_remote_node_count`를 만족한다.
+Remote admitted count는 source의 local outbound transport queue 제출만 집계한다. Local admitted count는
+origin node의 local Spot application queue 제출만 집계한다. Remote Spot queue 제출과 remote·local handler
+실행 또는 완료는 `task_t<publish_result_t>` 완료 조건이 아니다.
 
 framework는 아래 서비스를 기본 등록한다. 사용자는 직접 생성하지 않고 DI에서
 주입받아 사용할 수 있다.

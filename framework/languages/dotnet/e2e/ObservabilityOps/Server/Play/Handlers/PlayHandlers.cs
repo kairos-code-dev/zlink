@@ -17,8 +17,13 @@ internal sealed class EnsurePlayerHandler(IZLinkActorManager actors)
         CancellationToken cancellationToken)
     {
         _ = spot;
-        var actor = await actors.GetOrCreateAsync(request.ActorId, ObservabilityNames.PlayerActorType,
-            request, cancellationToken);
+        var actor = (await actors.GetOrCreate(request.ActorId, ObservabilityNames.PlayerActorType)
+            .Request(request).Async(cancellationToken)) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Actor creation was rejected.")
+        };
         return new EnsurePlayerRes(actor.ActorId, actor.NodeRid.ToString(), actor.Generation);
     }
 }

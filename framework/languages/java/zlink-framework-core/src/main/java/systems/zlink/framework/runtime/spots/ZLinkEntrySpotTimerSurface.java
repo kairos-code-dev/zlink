@@ -53,8 +53,8 @@ record ZLinkEntrySpotBackedContext(
     ZLinkEntrySpotContext entryContext) implements ZLinkSpotContext {
 
     @Override
-    public RoutingId spotRid() {
-        return entryContext.spotRid();
+    public String spotId() {
+        return entryContext.spotId();
     }
 
     @Override

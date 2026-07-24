@@ -79,7 +79,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(store);
         RoutingId nodeRid = RoutingId.from("spot-node");
-        RoutingId spotRid = RoutingId.from("room-1");
+        String spotId = "room-1";
         var mesh = options.addRouteMesh("location-game")
             .setRoutingId(nodeRid)
             .listen("inproc://location-user-spot");
@@ -87,13 +87,13 @@ class ZLinkFrameworkLocationRuntimeTest {
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
-            new ZLinkObjectPlacementOptions(Set.of(), null, null),
+            new ZLinkObjectPlacementOptions(null, null),
             ZLinkRelocationPolicy.disabled());
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
             var created = runtime.spotManager()
-                .getOrCreate(spotRid, "location-spot")
+                .getOrCreate(spotId, "location-spot")
                 .submit()
                 .toCompletableFuture()
                 .get();
@@ -101,7 +101,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             assertInstanceOf(
                 ZLinkAuthoritySnapshot.class,
                 store.read(
-                        ZLinkAuthorityKeyCodec.spot(spotRid),
+                        ZLinkAuthorityKeyCodec.spot(spotId),
                         () -> false)
                     .toCompletableFuture()
                     .get());
@@ -110,7 +110,7 @@ class ZLinkFrameworkLocationRuntimeTest {
             assertInstanceOf(
                 ZLinkAuthorityMissing.class,
                 store.read(
-                        ZLinkAuthorityKeyCodec.spot(spotRid),
+                        ZLinkAuthorityKeyCodec.spot(spotId),
                         () -> false)
                     .toCompletableFuture()
                     .get());
@@ -123,7 +123,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         options.addLocationStore(store);
         RoutingId nodeRid = RoutingId.from("moving-spot-node");
-        RoutingId spotRid = RoutingId.from("moving-room");
+        String spotId = "moving-room";
         var mesh = options.addRouteMesh("moving-game")
             .setRoutingId(nodeRid)
             .listen("inproc://moving-user-spot");
@@ -131,18 +131,18 @@ class ZLinkFrameworkLocationRuntimeTest {
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
-            new ZLinkObjectPlacementOptions(Set.of(), null, null),
+            new ZLinkObjectPlacementOptions(null, null),
             ZLinkRelocationPolicy.disabled());
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(
                      options, new ZLinkJavaBackendAdapterFactory())) {
             var created = runtime.spotManager()
-                .getOrCreate(spotRid, "location-spot")
+                .getOrCreate(spotId, "location-spot")
                 .submit()
                 .toCompletableFuture()
                 .get();
-            String key = ZLinkAuthorityKeyCodec.spot(spotRid);
+            String key = ZLinkAuthorityKeyCodec.spot(spotId);
             var snapshot = assertInstanceOf(
                 ZLinkAuthoritySnapshot.class,
                 store.read(key, () -> false).toCompletableFuture().get());
@@ -156,7 +156,7 @@ class ZLinkFrameworkLocationRuntimeTest {
                     systems.zlink.framework.runtime.locations
                         .ZLinkServiceAuthorityPayloadCodec.State.CLOSING,
                     authority.stableType(),
-                    authority.spotRid(),
+                    authority.spotId(),
                     authority.ownerId(),
                     authority.ownerLeaseGeneration(),
                     authority.meshName(),
@@ -223,6 +223,116 @@ class ZLinkFrameworkLocationRuntimeTest {
     }
 
     @Test
+    void durableActorCreationPublishesReadyAuthorityThroughCommand49()
+        throws Exception {
+        ZLinkInMemoryLocationStore store =
+            new ZLinkInMemoryLocationStore();
+        DefaultZLinkFrameworkOptions options =
+            new DefaultZLinkFrameworkOptions();
+        options.addLocationStore(store);
+        RoutingId nodeRid = RoutingId.from("durable-actor-node");
+        var mesh = options.addRouteMesh("durable-actors")
+            .setRoutingId(nodeRid)
+            .listen("inproc://durable-actor-create");
+        mesh.channelName("durable-actors");
+        mesh.objects().server().addActorFactory(
+            "player",
+            LocationActor.class,
+            LocationActorFactory.class,
+            new systems.zlink.framework.configuration
+                .ZLinkObjectPlacementOptions(null, null),
+            systems.zlink.framework.actors.ZLinkRelocationPolicy
+                .<LocationActor>disabled());
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(
+                     options,
+                     new ZLinkJavaBackendAdapterFactory())) {
+            var created = runtime.actorManager()
+                .create("durable-player", "player")
+                .toCompletableFuture()
+                .get();
+
+            assertInstanceOf(
+                systems.zlink.framework.actors
+                    .ZLinkActorCreateResult.Created.class,
+                created);
+            var authority = assertInstanceOf(
+                systems.zlink.framework.locations
+                    .ZLinkAuthoritySnapshot.class,
+                store.read(
+                        systems.zlink.framework.runtime.locations
+                            .ZLinkAuthorityKeyCodec.actor(
+                                "durable-player"),
+                        () -> false)
+                    .toCompletableFuture()
+                    .get());
+            assertEquals(
+                systems.zlink.framework.locations
+                    .ZLinkPlacementAllocationState.ACTIVE,
+                authority.allocation().state());
+            assertTrue(authority.pendingCreation().isEmpty());
+        }
+    }
+
+    @Test
+    void durableConcurrentGetOrCreateWaitsForCreatingThenReturnsExisting()
+        throws Exception {
+        BlockingLocationActorFactory.reset();
+        ZLinkInMemoryLocationStore store =
+            new ZLinkInMemoryLocationStore();
+        DefaultZLinkFrameworkOptions options =
+            new DefaultZLinkFrameworkOptions();
+        options.addLocationStore(store);
+        var mesh = options.addRouteMesh("durable-concurrent")
+            .setRoutingId(RoutingId.from("durable-concurrent-node"))
+            .listen("inproc://durable-actor-concurrent");
+        mesh.channelName("durable-concurrent");
+        mesh.objects().server().addActorFactory(
+            "player",
+            LocationActor.class,
+            BlockingLocationActorFactory.class,
+            new systems.zlink.framework.configuration
+                .ZLinkObjectPlacementOptions(null, null),
+            systems.zlink.framework.actors.ZLinkRelocationPolicy
+                .<LocationActor>disabled());
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(
+                     options,
+                     new ZLinkJavaBackendAdapterFactory())) {
+            var first = runtime.actorManager().getOrCreate(
+                "durable-concurrent-player", "player");
+            long waitUntil = System.nanoTime()
+                + Duration.ofSeconds(5).toNanos();
+            while (BlockingLocationActorFactory.invocations.get() == 0
+                && System.nanoTime() < waitUntil) {
+                Thread.onSpinWait();
+            }
+            var second = runtime.actorManager().getOrCreate(
+                "durable-concurrent-player", "player");
+
+            assertEquals(
+                1,
+                BlockingLocationActorFactory.invocations.get());
+            assertTrue(!second.toCompletableFuture().isDone());
+            BlockingLocationActorFactory.release.complete(null);
+
+            assertInstanceOf(
+                systems.zlink.framework.actors
+                    .ZLinkActorCreateResult.Created.class,
+                first.toCompletableFuture().get());
+            assertInstanceOf(
+                systems.zlink.framework.actors
+                    .ZLinkActorCreateResult.Existing.class,
+                second.toCompletableFuture().get());
+            assertEquals(
+                1,
+                BlockingLocationActorFactory.invocations.get());
+        }
+    }
+
+    @Test
     void actorCreationConflictThrowsCreateRejectedKind() throws Exception {
         ZLinkInMemoryLocationStore store = new ZLinkInMemoryLocationStore();
         store.claimOwnerLease("owner-b", Duration.ofSeconds(30))
@@ -273,7 +383,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         options.addLocationStore(store);
         options.addRelocationStore(new InMemoryRelocationStore());
         RoutingId nodeRid = RoutingId.from("join-node");
-        RoutingId spotRid = RoutingId.from("join-room");
+        String spotId = "join-room";
         LocationActorFactory.last.set(null);
         LocationSpot.last.set(null);
         var mesh = options.addRouteMesh("rooms")
@@ -284,7 +394,7 @@ class ZLinkFrameworkLocationRuntimeTest {
         mesh.objects().server().addSpotFactory(
             "location-spot",
             LocationSpot.class,
-            new ZLinkObjectPlacementOptions(Set.of(), null, null),
+            new ZLinkObjectPlacementOptions(null, null),
             ZLinkRelocationPolicy.disabled());
 
         try (ZLinkFrameworkRuntime runtime =
@@ -294,20 +404,20 @@ class ZLinkFrameworkLocationRuntimeTest {
                 .toCompletableFuture()
                 .get();
             runtime.spotManager()
-                .getOrCreate(spotRid, "location-spot")
+                .getOrCreate(spotId, "location-spot")
                 .submit()
                 .toCompletableFuture()
                 .get();
             LocationActor actor = LocationActorFactory.last.get();
 
             actor.context()
-                .joinSpot(spotRid, systems.zlink.framework.messaging.ZLinkMessage.empty())
+                .joinSpot(spotId, systems.zlink.framework.messaging.ZLinkMessage.empty())
                 .submit()
                 .toCompletableFuture()
                 .get();
 
             ZLinkActorLocation joined = store.listActorLocations(
-                    new ZLinkActorLocationFilter("player", nodeRid, spotRid, ZLinkSpotKind.USER),
+                    new ZLinkActorLocationFilter("player", nodeRid, spotId, ZLinkSpotKind.USER),
                     ZLinkPageRequest.firstPage())
                 .toCompletableFuture()
                 .get()
@@ -432,6 +542,27 @@ class ZLinkFrameworkLocationRuntimeTest {
             LocationActor actor = new LocationActor(actorId, context);
             last.set(actor);
             return CompletableFuture.completedFuture(actor);
+        }
+    }
+
+    public static final class BlockingLocationActorFactory
+        implements ZLinkActorFactory {
+        static final java.util.concurrent.atomic.AtomicInteger invocations =
+            new java.util.concurrent.atomic.AtomicInteger();
+        static CompletableFuture<Void> release;
+
+        static void reset() {
+            invocations.set(0);
+            release = new CompletableFuture<>();
+        }
+
+        @Override
+        public CompletionStage<ZLinkActor> create(
+            String actorId,
+            ZLinkActorContext context) {
+            invocations.incrementAndGet();
+            return release.thenApply(
+                ignored -> new LocationActor(actorId, context));
         }
     }
 

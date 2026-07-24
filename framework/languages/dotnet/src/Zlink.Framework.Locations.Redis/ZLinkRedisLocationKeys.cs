@@ -10,7 +10,7 @@ namespace Zlink.Framework.Locations.Redis;
 /// </summary>
 internal sealed class ZLinkRedisLocationKeys
 {
-    private const string HybridHashTag = "{zlink-location-v1}";
+    private const string HybridHashTag = "{zlink-location-v3}";
     private readonly string prefix;
 
     public ZLinkRedisLocationKeys(string prefix)
@@ -74,13 +74,22 @@ internal sealed class ZLinkRedisLocationKeys
     public RedisKey HybridCapacityKey(bool type, bool pending) =>
         $"{HybridBase}:capacity:{(type ? "type" : "node")}:{(pending ? "pending" : "active")}";
 
-    internal static string HybridCapacityNodeBucket(
+    internal static string HybridCapacityPopulationBucket(
         string canonicalDescriptorKey,
-        ulong lifecycleGeneration)
+        ulong lifecycleGeneration,
+        ZLinkPlacementObjectKind objectKind)
     {
         var lifecycle = lifecycleGeneration.ToString(
             System.Globalization.CultureInfo.InvariantCulture);
-        return Segment(canonicalDescriptorKey) + Segment(lifecycle);
+        var population = objectKind == ZLinkPlacementObjectKind.Actor
+            ? "actor"
+            : objectKind is ZLinkPlacementObjectKind.UserSpot
+                or ZLinkPlacementObjectKind.InstanceSpot
+                ? "spot"
+                : throw new ArgumentOutOfRangeException(nameof(objectKind));
+        return Segment(canonicalDescriptorKey)
+               + Segment(lifecycle)
+               + Segment(population);
     }
 
     internal static string HybridCapacityTypeBucket(
@@ -96,15 +105,39 @@ internal sealed class ZLinkRedisLocationKeys
             ZLinkPlacementObjectKind.InstanceSpot => "instance_spot",
             _ => throw new ArgumentOutOfRangeException(nameof(objectKind))
         };
-        return HybridCapacityNodeBucket(
+        return HybridCapacityPopulationBucket(
                 canonicalDescriptorKey,
-                lifecycleGeneration)
+                lifecycleGeneration,
+                objectKind)
             + Segment(token)
             + Segment(stableType);
     }
 
     public RedisKey HybridCreationKey(string reservationId) =>
         $"{HybridBase}:creation:{NormalizeId(reservationId)}";
+
+    public RedisKey HybridCreationTerminalKey(
+        ZLinkCreationOperationId operation)
+    {
+        if (operation.SourceNodeGeneration == 0)
+            throw new ArgumentOutOfRangeException(nameof(operation));
+        var sourceRid = operation.SourceNodeRid.ToBytes();
+        var operationId = string.Create(
+            32,
+            operation,
+            static (span, value) =>
+            {
+                value.OperationIdHigh.TryFormat(
+                    span[..16], out _, "x16",
+                    System.Globalization.CultureInfo.InvariantCulture);
+                value.OperationIdLow.TryFormat(
+                    span[16..], out _, "x16",
+                    System.Globalization.CultureInfo.InvariantCulture);
+            });
+        return $"{HybridBase}:creation-terminal:{sourceRid.Length}:"
+            + $"{Convert.ToHexString(sourceRid).ToLowerInvariant()}:"
+            + $"{operation.SourceNodeGeneration}:{operationId}";
+    }
 
     public RedisKey HybridRelocationKey(string fenceId) =>
         $"{HybridBase}:relocation:{NormalizeId(fenceId)}";

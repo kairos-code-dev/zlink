@@ -126,7 +126,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             new ActorRef(nodeRid, actorId, 0),
             OwnerNodeRid: nodeRid,
             OwnerNodeGeneration: 0,
-            SpotRid: default,
+            SpotId: default,
             SpotGeneration: 0,
             SpotKind: ZLinkSpotKind.Entry,
             MembershipEpoch: 0,
@@ -237,7 +237,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
 
     internal async ValueTask NotifyActorJoinedSpotAsync(
         string actorId,
-        RoutingId spotRid,
+        string spotId,
         ulong spotGeneration,
         CancellationToken cancellationToken = default)
     {
@@ -246,7 +246,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 row => row with
                 {
                     SpotKind = ZLinkSpotKind.User,
-                    SpotRid = spotRid,
+                    SpotId = spotId,
                     SpotGeneration = spotGeneration,
                     MembershipEpoch = row.MembershipEpoch + 1
                 },
@@ -257,7 +257,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
     internal async ValueTask CommitTransferredActorLocationAsync(
         string actorId,
         ActorRef actorRef,
-        RoutingId spotRid,
+        string spotId,
         ulong spotGeneration,
         CancellationToken cancellationToken = default)
     {
@@ -268,7 +268,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                     ActorRef = actorRef,
                     OwnerNodeRid = actorRef.NodeRid,
                     SpotKind = ZLinkSpotKind.User,
-                    SpotRid = spotRid,
+                    SpotId = spotId,
                     SpotGeneration = spotGeneration,
                     MembershipEpoch = row.MembershipEpoch + 1
                 },
@@ -289,7 +289,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                     ActorRef = actorRef,
                     OwnerNodeRid = targetNodeRid,
                     SpotKind = ZLinkSpotKind.Entry,
-                    SpotRid = default,
+                    SpotId = default,
                     SpotGeneration = 0,
                     MembershipEpoch = row.MembershipEpoch + 1
                 },
@@ -308,7 +308,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 {
                     OwnerNodeRid = targetNodeRid,
                     SpotKind = ZLinkSpotKind.Entry,
-                    SpotRid = default,
+                    SpotId = default,
                     SpotGeneration = 0,
                     MembershipEpoch = row.MembershipEpoch + 1
                 },
@@ -325,7 +325,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 row => row with
                 {
                     SpotKind = ZLinkSpotKind.Entry,
-                    SpotRid = default,
+                    SpotId = default,
                     SpotGeneration = 0,
                     MembershipEpoch = row.MembershipEpoch + 1
                 },

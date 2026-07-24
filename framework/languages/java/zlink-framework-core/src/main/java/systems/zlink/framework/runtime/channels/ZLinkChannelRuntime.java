@@ -211,8 +211,9 @@ public final class ZLinkChannelRuntime
     }
 
     static void validatePeerWeight(int value) {
-        if (value < 0 || value > 100) {
-            throw new ZLinkConfigurationException("Weight must be between 0 and 100.");
+        if (value < 0 || value > 10_000) {
+            throw new ZLinkConfigurationException(
+                "Weight must be in 0..10000.");
         }
     }
 
@@ -1049,16 +1050,16 @@ public final class ZLinkChannelRuntime
     public CompletionStage<Void> sendToSpotViaRouterChannel(
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<Message> spotParts) {
         return sendToSpotViaRouterChannel(
-            routerChannelId, targetNodeRid, targetSpotRid, 0L, spotParts);
+            routerChannelId, targetNodeRid, targetSpotId, 0L, spotParts);
     }
 
     public CompletionStage<Void> sendToSpotViaRouterChannel(
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetSpotGeneration,
         List<Message> spotParts) {
         ZLinkSpotRouteTarget target = resolveSpotRouteTarget(routerChannelId, targetNodeRid);
@@ -1067,7 +1068,7 @@ public final class ZLinkChannelRuntime
                 routerChannelId,
                 spotRouterNodeTarget.node(),
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 targetSpotGeneration,
                 spotParts);
         }
@@ -1081,7 +1082,7 @@ public final class ZLinkChannelRuntime
                 bridge,
                 routerChannelId,
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 bridgePayloads,
                 effectiveRouteTimeout(defaultRequestTimeout(routerChannelId)),
                 timeoutExecutor,
@@ -1097,13 +1098,13 @@ public final class ZLinkChannelRuntime
     public CompletionStage<List<Message>> requestToSpotViaRouterChannel(
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<Message> spotParts,
         Duration timeout) {
         return requestToSpotViaRouterChannel(
             routerChannelId,
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             0L,
             spotParts,
             timeout);
@@ -1112,24 +1113,24 @@ public final class ZLinkChannelRuntime
     public CompletionStage<List<Message>> requestToSpotViaRouterChannel(
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetSpotGeneration,
         List<Message> spotParts,
         Duration timeout) {
         trace("spot-route request-start router=" + routerChannelId
             + " targetNode=" + targetNodeRid
-            + " targetSpot=" + targetSpotRid
+            + " targetSpot=" + targetSpotId
             + " parts=" + describeTraceParts(spotParts));
         ZLinkSpotRouteTarget target = resolveSpotRouteTarget(routerChannelId, targetNodeRid);
         if (target instanceof ZLinkSpotRouterNodeTarget spotRouterNodeTarget) {
             trace("spot-route request-path=spot-router-node router=" + routerChannelId
                 + " targetNode=" + targetNodeRid
-                + " targetSpot=" + targetSpotRid);
+                + " targetSpot=" + targetSpotId);
             return requestToSpotViaSpotRouterNode(
                 routerChannelId,
                 spotRouterNodeTarget.node(),
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 targetSpotGeneration,
                 spotParts,
                 timeout);
@@ -1140,12 +1141,12 @@ public final class ZLinkChannelRuntime
             ZLinkBackendSpotRouteBridge bridge = requireSpotRouteBridge(routerChannelId);
             trace("spot-route request-path=route-bridge router=" + routerChannelId
                 + " targetNode=" + targetNodeRid
-                + " targetSpot=" + targetSpotRid);
+                + " targetSpot=" + targetSpotId);
             ZLinkSpotRouteBridgeDispatcher.submitRequest(
                 bridge,
                 routerChannelId,
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 copyMessages(spotParts),
                 timeout,
                 spotRouteBridgeExecutor,
@@ -1155,7 +1156,7 @@ public final class ZLinkChannelRuntime
         } catch (RuntimeException ex) {
             trace("spot-route request-exception router=" + routerChannelId
                 + " targetNode=" + targetNodeRid
-                + " targetSpot=" + targetSpotRid
+                + " targetSpot=" + targetSpotId
                 + " error=" + ex);
             spotRouteBridgeRawReplies.remove(routerChannelId, result);
             result.completeExceptionally(ex);
@@ -1189,14 +1190,14 @@ public final class ZLinkChannelRuntime
         String routerChannelId,
         ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetSpotGeneration,
         List<Message> spotParts) {
         return ZLinkSpotRouterNodeDispatcher.send(
             routerChannelId,
             node,
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             spotParts);
     }
@@ -1205,7 +1206,7 @@ public final class ZLinkChannelRuntime
         String routerChannelId,
         ZLinkInternalSpotNode node,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetSpotGeneration,
         List<Message> spotParts,
         Duration timeout) {
@@ -1213,7 +1214,7 @@ public final class ZLinkChannelRuntime
             routerChannelId,
             node,
             targetNodeRid,
-            targetSpotRid,
+            targetSpotId,
             targetSpotGeneration,
             spotParts,
             timeout,

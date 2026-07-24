@@ -33,12 +33,12 @@ internal sealed class ZLinkObservedLocationGenerations
 
     internal bool AcceptSpot(ZLinkSpotLocation row) =>
         _spots.Accept(
-            new ZLinkSpotLocationKey(row.MeshName, row.SpotRid),
+            new ZLinkSpotLocationKey(row.SpotId),
             new ObservedVersion(row.SpotGeneration, 0));
 
     internal void ObserveSpot(ZLinkSpotLocation row) =>
         _spots.Observe(
-            new ZLinkSpotLocationKey(row.MeshName, row.SpotRid),
+            new ZLinkSpotLocationKey(row.SpotId),
             new ObservedVersion(row.SpotGeneration, 0));
 
     // Membership epoch is the major axis: it increases monotonically across

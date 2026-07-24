@@ -250,7 +250,7 @@ Spot·Actor factory는 owner MeshNode에 등록한다. Spot direct와 Logical Mu
 
 ### 7.1 Entry Spot identity와 membership
 
-Framework는 MeshNode startup에서 Entry Spot의 global Spot RID를 발급한다. 애플리케이션은 Entry Spot RID를
+Framework는 MeshNode startup에서 Entry Spot의 global Spot ID를 발급한다. 애플리케이션은 Entry Spot ID를
 구성하거나 변경하지 않는다. Startup은 Entry Spot factory와 handler를 초기화하고 Ready barrier를 완료한 뒤
 descriptor를 게시한다. Actor create는 선택한 owner MeshNode의 Entry Spot membership과 Actor Ready barrier를
 같은 lifecycle에서 완료한다.
@@ -271,14 +271,14 @@ Instance Spot provider는 direct packet과 timer handler만 등록할 수 있다
 subscription을 등록하면 location을 `Ready`로 바꾸기 전에 activation이 실패한다. Provider scope는 activation이
 실패하거나 Instance Spot이 닫힐 때 한 번만 정리한다.
 
-Spot direct fluent call의 Instance intent만 global Spot RID, stable type과 최초 Mesh를 durable creation intent로
+Spot direct fluent call의 Instance intent만 global Spot ID, stable type과 최초 Mesh를 durable creation intent로
 기록한다. Stable type을 생략하면 선택한 Mesh의 serving descriptor에 distinct Instance type이 하나일 때 자동
-선택하고 여러 type이면 caller가 stable type을 명시한다. Marker가 없는 일반 message는 Spot RID만 받으며
+선택하고 여러 type이면 caller가 stable type을 명시한다. Marker가 없는 일반 message는 Spot ID만 받으며
 missing RID에 intent를 만들거나 factory를 시작하지 않는다. Application은 target node, owner token, generation
 또는 retry option을 전달하지 않는다.
 
-Ready location은 global Spot RID와 exact object generation을 포함하는 immutable `SpotRef`로 관측한다. 일반
-message는 ref가 아니라 Spot RID를 사용하고, exact ref는 close에만 사용한다. Store version과 owner fence는
+Ready location은 global Spot ID와 exact object generation을 포함하는 immutable `SpotRef`로 관측한다. 일반
+message는 ref가 아니라 Spot ID를 사용하고, exact ref는 close에만 사용한다. Store version과 owner fence는
 Framework 내부에 유지하며 application callback에 전달하지 않는다.
 
 ## 8. STREAM 등록

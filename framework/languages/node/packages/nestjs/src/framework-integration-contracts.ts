@@ -2,6 +2,7 @@ import type {
   RoutingId,
   Type,
   ZLinkActor,
+  ZLinkActorFactory,
   ZLinkDispatchOptions,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
@@ -10,6 +11,9 @@ import type {
   ZLinkLocationOptionValues,
   ZLinkLocationStore,
   ZLinkRelocationStore,
+  ZLinkRelocationPolicy,
+  ZLinkObjectPlacementOptions,
+  ZLinkInstanceSpot,
   ZLinkMessageSerializer,
   ZLinkMetricsOptions,
   ZLinkMonitoringOptions,
@@ -210,6 +214,7 @@ export interface ZLinkSpotNodeRegistrationOptions extends ZLinkSpotNodeOptions {
 }
 
 export interface ZLinkSpotNodeOptions {
+  readonly objectRole?: 'client' | 'server';
   readonly routingId?: string;
   readonly routingIdAllocation?: ZLinkRoutingIdAllocationOptions;
   readonly router?: ZLinkSpotRouterCapabilityOptions;
@@ -217,7 +222,20 @@ export interface ZLinkSpotNodeOptions {
   readonly entrySpot?: ZLinkEntrySpotOptions;
   readonly entrySpotType?: Type<ZLinkEntrySpot>;
   readonly spotFactories?: readonly Type<ZLinkSpot>[];
+  readonly spotFactoryRegistrations?: Readonly<Record<
+    string,
+    ZLinkObjectFactoryRegistration<ZLinkSpot>
+  >>;
+  readonly instanceSpotFactories?: Readonly<Record<string, Type<ZLinkInstanceSpot>>>;
+  readonly instanceSpotFactoryRegistrations?: Readonly<Record<
+    string,
+    ZLinkObjectFactoryRegistration<ZLinkInstanceSpot>
+  >>;
   readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
+  readonly actorFactoryRegistrations?: Readonly<Record<
+    string,
+    ZLinkObjectFactoryRegistration<ZLinkActor, ZLinkActorFactory>
+  >>;
   readonly meshChannels?: Readonly<Record<string, ZLinkMeshChannelOptions>>;
   readonly routeSendHandlers?: readonly ZLinkRouteMeshSendHandlerRegistration[];
   readonly routeRequestHandlers?: readonly ZLinkRouteMeshRequestHandlerRegistration[];
@@ -237,6 +255,12 @@ export interface ZLinkSpotNodeOptions {
   readonly spotSubscriptionHandlers?: readonly ZLinkSpotSubscriptionHandlerRegistration[];
   readonly spotActorSendHandlers?: readonly ZLinkSpotActorSendHandlerRegistration[];
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
+}
+
+interface ZLinkObjectFactoryRegistration<T, TImplementation = T> {
+  readonly implementation: Type<TImplementation>;
+  readonly placement?: ZLinkObjectPlacementOptions;
+  readonly relocation: ZLinkRelocationPolicy<T>;
 }
 
 export interface ZLinkMeshChannelOptions {

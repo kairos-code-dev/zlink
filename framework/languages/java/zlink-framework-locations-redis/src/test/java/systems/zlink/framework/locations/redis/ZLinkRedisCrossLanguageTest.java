@@ -71,7 +71,7 @@ final class ZLinkRedisCrossLanguageTest {
                 .toCompletableFuture()
                 .get();
             ZLinkSpotLocation spot = store.resolveSpot(
-                    new ZLinkSpotLocationKey("cross", RoutingId.from("dotnet-spot")))
+                    new ZLinkSpotLocationKey("dotnet-spot"))
                 .toCompletableFuture()
                 .get();
             ZLinkRouteLocation route = store.resolveRoute(
@@ -139,7 +139,7 @@ final class ZLinkRedisCrossLanguageTest {
     private static ZLinkSpotLocation javaSpot() {
         return new ZLinkSpotLocation(
             "cross",
-            RoutingId.from("java-spot"),
+            "java-spot",
             "java-game",
             RoutingId.from("java-node"),
             ZLinkSpotKind.USER,
@@ -157,7 +157,7 @@ final class ZLinkRedisCrossLanguageTest {
             RoutingId.from("java-node"),
             ZLinkSpotKind.USER,
             "cross",
-            RoutingId.from("java-spot"),
+            "java-spot",
             "java-owner",
             0,
             UPDATED_AT);

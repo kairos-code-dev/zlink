@@ -2,6 +2,7 @@ import type { InjectionToken, ModuleMetadata } from '@nestjs/common';
 import type {
   Type,
   ZLinkActor,
+  ZLinkActorFactory,
   ZLinkActorTransferAdapter,
   ZLinkCodecExtension,
   ZLinkDispatchOptions,
@@ -12,6 +13,9 @@ import type {
   ZLinkLocationStore,
   ZLinkLocationOptions,
   ZLinkRelocationStore,
+  ZLinkRelocationPolicy,
+  ZLinkObjectPlacementOptions,
+  ZLinkInstanceSpot,
   ZLinkMeshNodeSocketConfig,
   ZLinkMeshPeerConnections,
   ZLinkMetricsOptions,
@@ -263,6 +267,7 @@ export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuild
   configureRouterSocket(): ZLinkMeshNodeSocketConfig;
   configureSpotPublisher(): ZLinkSpotPublisherConfig;
   peerConnections(): ZLinkMeshPeerConnections;
+  objects(): ZLinkNestMeshObjectRoleBuilder;
   addSendHandler(packetName: string, handlerType: Type): this;
   addRequestHandler(packetName: string, handlerType: Type): this;
   configureEntrySpot(options: ZLinkEntrySpotOptions): this;
@@ -272,6 +277,35 @@ export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuild
   addActorTransferAdapter<TActor extends ZLinkActor>(
     actorType: string,
     adapterType: Type<ZLinkActorTransferAdapter<TActor>>
+  ): this;
+}
+
+export interface ZLinkNestMeshObjectRoleBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  client(): ZLinkNestMeshObjectClientBuilder;
+  server(): ZLinkNestMeshObjectServerBuilder;
+}
+
+export interface ZLinkNestMeshObjectClientBuilder extends ZLinkNestFrameworkOptionsBuilder {}
+
+export interface ZLinkNestMeshObjectServerBuilder extends ZLinkNestFrameworkOptionsBuilder {
+  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(entrySpotType: Type<TEntrySpot>): this;
+  addSpotFactory<TSpot extends ZLinkSpot>(
+    spotType: string,
+    implementation: Type<TSpot>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TSpot>
+  ): this;
+  addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
+    instanceSpotType: string,
+    implementation: Type<TSpot>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TSpot>
+  ): this;
+  addActorFactory<TActor extends ZLinkActor>(
+    actorType: string,
+    implementation: Type<ZLinkActorFactory<TActor>>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TActor>
   ): this;
 }
 

@@ -46,12 +46,12 @@ JSON 전용 client가 아니다. 일반 HTTP client이며 typed 경로
   (epoll/IOCP)에서 처리되고 **호출 스레드(handler 스레드)는 점유되지 않는다.**
 - 완료 값을 동기로 꺼내는 blocking terminator는 제공하지 않는다.
 - standalone client는 `Async`와 callback을 제공한다. DI로 주입받는 server client는
-  여기에 `Submit`과 `Yield`를 추가한다.
+  여기에 one-way `Submit`을 추가한다. HTTP request builder에는 `Yield`가 없다.
 
 이 모델의 실용적 결론 하나만 기억하면 된다:
 
-> 일반 요청은 `Async<T>()`로 기다린다. Spot의 다른 처리를 진행해야 하는 외부 I/O만
-> DI server client의 `Yield<T>()`로 기다린다.
+> 일반 요청은 `Async<T>()`로 기다린다. Spot의 다른 처리를 진행해야 하면 HTTP 요청을
+> `RunIoWorker(...)` 안에서 실행하고 worker call의 `Yield()`로 기다린다.
 
 자세한 규칙은 [7. 비동기](07-async.ko.md)에서 다룬다.
 

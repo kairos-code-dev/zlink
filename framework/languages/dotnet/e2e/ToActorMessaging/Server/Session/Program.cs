@@ -89,7 +89,7 @@ internal sealed class ToActorSession(
 }
 
 internal sealed class BindActorHandler(
-    IZLinkActorDirectory actorDirectory,
+    IZLinkActorManager actorDirectory,
     SessionEvidence evidence)
     : IZLinkSessionPacketHandler<IZLinkSessionContext, BindActorRequest>
 {

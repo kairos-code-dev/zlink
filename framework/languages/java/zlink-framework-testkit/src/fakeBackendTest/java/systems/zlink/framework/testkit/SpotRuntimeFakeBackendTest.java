@@ -100,13 +100,13 @@ final class SpotRuntimeFakeBackendTest {
                 .find(rid)
                 .toCompletableFuture()
                 .join()
-                .map(info -> info.spotRid()));
+                .map(info -> info.spotId()));
             assertEquals(List.of(rid), runtime.spotManager()
                 .list()
                 .toCompletableFuture()
                 .join()
                 .stream()
-                .map(info -> info.spotRid())
+                .map(info -> info.spotId())
                 .toList());
             assertEquals(true, runtime.spotManager()
                 .close(rid)
@@ -1413,21 +1413,21 @@ final class SpotRuntimeFakeBackendTest {
                 node.addSpotFactory(OutboundSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
-        RoutingId spotRid = RoutingId.from("game-joined");
+        String spotId = RoutingId.from("game-joined");
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
-                .create(OutboundSpot.class, spotRid)
+                .create(OutboundSpot.class, spotId)
                 .toCompletableFuture()
                 .join();
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
 
-            backendFactory.dispatchEntrySpotActorLifecycleJoined("player-1", spotRid);
+            backendFactory.dispatchEntrySpotActorLifecycleJoined("player-1", spotId);
 
-            awaitCondition(() -> Optional.of(spotRid).equals(actor.context().spotRid()));
-            assertEquals(Optional.of(spotRid), actor.context().spotRid());
-            assertEquals(Optional.of(spotRid), actor.context().spotRid());
+            awaitCondition(() -> Optional.of(spotId).equals(actor.context().spotId()));
+            assertEquals(Optional.of(spotId), actor.context().spotId());
+            assertEquals(Optional.of(spotId), actor.context().spotId());
         }
     }
 
@@ -1626,14 +1626,14 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public CompletionStage<Void> onJoinedActor(
             ZLinkActor actor) {
-            lastJoin.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            lastJoin.set(actor.actorId() + ":" + actor.context().spotId().isPresent());
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
         public CompletionStage<Void> onLeaveActor(
             ZLinkActor actor) {
-            lastLeave.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            lastLeave.set(actor.actorId() + ":" + actor.context().spotId().isPresent());
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -1909,14 +1909,14 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public CompletionStage<Void> onJoinedActor(
             ZLinkActor actor) {
-            lastJoin.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            lastJoin.set(actor.actorId() + ":" + actor.context().spotId().isPresent());
             return CompletableFuture.completedFuture(null);
         }
 
         @Override
         public CompletionStage<Void> onLeaveActor(
             ZLinkActor actor) {
-            lastLeave.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            lastLeave.set(actor.actorId() + ":" + actor.context().spotId().isPresent());
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -2051,7 +2051,7 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public CompletionStage<Void> onLeaveActor(
             ZLinkActor actor) {
-            lastLeave.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            lastLeave.set(actor.actorId() + ":" + actor.context().spotId().isPresent());
             return CompletableFuture.completedFuture(null);
         }
     }
@@ -2101,7 +2101,7 @@ final class SpotRuntimeFakeBackendTest {
         @Override
         public CompletionStage<Void> onJoinedActor(
             ZLinkActor actor) {
-            lastPostJoin.set(actor.actorId() + ":" + actor.context().spotRid().isPresent());
+            lastPostJoin.set(actor.actorId() + ":" + actor.context().spotId().isPresent());
             return CompletableFuture.completedFuture(null);
         }
     }

@@ -53,7 +53,7 @@ final class ZLinkActorClientRuntimeTest {
                     RoutingId.from("actor-node"),
                     ZLinkSpotKind.ENTRY,
                     "mesh",
-                    RoutingId.from("actor-node"),
+                    "actor-node",
                     "owner",
                     1,
                     Instant.now()),
@@ -270,7 +270,7 @@ final class ZLinkActorClientRuntimeTest {
                     RoutingId.from("actor-node"),
                     ZLinkSpotKind.ENTRY,
                     "mesh",
-                    RoutingId.from("actor-node"),
+                    "actor-node",
                     "owner",
                     1,
                     Instant.now()),
@@ -371,9 +371,9 @@ final class ZLinkActorClientRuntimeTest {
         @Override public ZLinkBackendSpot entrySpot() { throw new UnsupportedOperationException(); }
         @Override public ZLinkBackendActorRef createActor(String actorId, Message createRequest) { throw new UnsupportedOperationException(); }
         @Override public ZLinkBackendActorRef actorLookup(String actorId) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, Duration timeout) { throw new UnsupportedOperationException(); }
+        @Override public CompletionStage<ZLinkBackendActorJoinResult> joinActor(ZLinkBackendActorRef actor, RoutingId targetNodeRid, String targetSpotId, List<Message> parts, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(ZLinkBackendActorRef actor, RoutingId targetNodeRid, Message request, Duration timeout) { throw new UnsupportedOperationException(); }
-        @Override public CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, RoutingId currentSpotRid, Duration timeout) { throw new UnsupportedOperationException(); }
+        @Override public CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, String currentSpotId, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) { throw new UnsupportedOperationException(); }
         @Override public boolean sendActorBoundSession(ZLinkBackendActorRef actor, List<Message> parts, SendFlags flags) { throw new UnsupportedOperationException(); }
         @Override public void replyActorNoBind(ZLinkBackendActorRef actor, RoutingId sourceNodeRid, RoutingId sourceSessionRid, long requestId, int flags, List<Message> parts) { throw new UnsupportedOperationException(); }

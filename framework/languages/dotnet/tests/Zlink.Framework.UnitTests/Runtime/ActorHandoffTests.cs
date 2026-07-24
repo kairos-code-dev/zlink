@@ -515,23 +515,23 @@ public sealed class ActorHandoffTests
             "handoff-1",
             (time.GetUtcNow() + TimeSpan.FromSeconds(5)).ToUnixTimeMilliseconds());
         var reply = new ZLinkRemoteActorAdmissionReply(true, "application/json", [], request.DeadlineUnixTimeMilliseconds);
-        var targetSpotRid = RoutingId.From("spot-1");
+        var targetSpotId = RoutingId.From("spot-1");
 
-        admissions.Register(request, targetSpotRid, reply);
-        Assert.True(admissions.TryGetReply(request, targetSpotRid, out var stored));
+        admissions.Register(request, targetSpotId, reply);
+        Assert.True(admissions.TryGetReply(request, targetSpotId, out var stored));
         Assert.Same(reply, stored);
         var wrongActorCommit = JoinRequest("other-actor");
         Assert.Throws<InvalidOperationException>(() =>
-            admissions.BeginCommit(wrongActorCommit, targetSpotRid));
+            admissions.BeginCommit(wrongActorCommit, targetSpotId));
         Assert.Throws<InvalidOperationException>(() =>
-            admissions.BeginCommit(JoinRequest("actor-1") with { SourceNodeRid = [9] }, targetSpotRid));
+            admissions.BeginCommit(JoinRequest("actor-1") with { SourceNodeRid = [9] }, targetSpotId));
         Assert.Throws<InvalidOperationException>(() =>
             admissions.BeginCommit(JoinRequest("actor-1"), RoutingId.From("spot-other")));
 
         time.Advance(TimeSpan.FromSeconds(6));
         Assert.Throws<TimeoutException>(() =>
-            admissions.BeginCommit(JoinRequest("actor-1"), targetSpotRid));
-        Assert.False(admissions.TryGetReply(request, targetSpotRid, out _));
+            admissions.BeginCommit(JoinRequest("actor-1"), targetSpotId));
+        Assert.False(admissions.TryGetReply(request, targetSpotId, out _));
 
         ZLinkRemoteActorJoinRequest JoinRequest(string actorId) => new(
             actorId,
@@ -544,7 +544,7 @@ public sealed class ActorHandoffTests
             "application/json",
             [],
             [],
-            request.SourceSpotRid,
+            request.SourceSpotId,
             request.SourceNodeRid);
     }
 
@@ -668,7 +668,7 @@ public sealed class ActorHandoffTests
         var completion = new ZLinkRemoteActorHandoffCompletionRequest(
             request.ActorId,
             request.HandoffId,
-            request.SourceSpotRid,
+            request.SourceSpotId,
             request.SourceNodeRid,
             targetSpot.ToBytes().ToArray(),
             []);
@@ -691,7 +691,7 @@ public sealed class ActorHandoffTests
         // source's reconciliation (RequestRejected), never retried.
         var changedTarget = Assert.Throws<ZLinkFrameworkException>(() =>
             admissions.TryBeginCompletion(
-                completion with { TargetSpotRid = RoutingId.From("spot-other").ToBytes().ToArray() },
+                completion with { TargetSpotId = RoutingId.From("spot-other").ToBytes().ToArray() },
                 targetSpot));
         Assert.Equal(ZLinkFrameworkErrorKind.RequestRejected, changedTarget.Kind);
     }
@@ -733,7 +733,7 @@ public sealed class ActorHandoffTests
         var completion = new ZLinkRemoteActorHandoffCompletionRequest(
             request.ActorId,
             request.HandoffId,
-            request.SourceSpotRid,
+            request.SourceSpotId,
             request.SourceNodeRid,
             targetSpot.ToBytes().ToArray(),
             []);

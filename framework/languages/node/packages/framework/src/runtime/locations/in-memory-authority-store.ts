@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type {
   ZLinkAggregateAbortResult,
   ZLinkAggregateCommitResult,
@@ -19,8 +19,14 @@ import type {
   ZLinkObjectAbortResult,
   ZLinkObjectCommitRequest,
   ZLinkObjectCommitResult,
+  ZLinkObjectCreationCompleteRequest,
+  ZLinkObjectCreationCompleteResult,
   ZLinkObjectReserveRequest,
   ZLinkObjectReserveResult,
+  ZLinkCreationOperationIdentity,
+  ZLinkCreationTerminalPublication,
+  ZLinkCreationTerminalReadResult,
+  ZLinkCreationTerminalRecord,
   ZLinkPlacementAllocation,
   ZLinkRelocationCapacityAbortResult,
   ZLinkRelocationCapacityFence,
@@ -31,6 +37,8 @@ import { encodeAuthorityKey } from './authority-key-codec';
 
 const MAX_GENERATION = 0x7fff_ffff_ffff_ffffn;
 const MAX_PAYLOAD_BYTES = 1024 * 1024;
+const CREATION_TERMINAL_RETENTION_MS = 5 * 60 * 1000;
+const MAX_U64 = 0xffff_ffff_ffff_ffffn;
 
 export interface ZLinkInMemoryAuthorityValidation {
   isTargetLive(
@@ -44,8 +52,7 @@ export interface ZLinkInMemoryAuthorityValidation {
     stableType: string,
     requestedDelta: number,
     currentPending: number,
-    currentActive: number,
-    placementProfile?: string
+    currentActive: number
   ): boolean;
 }
 
@@ -54,7 +61,7 @@ interface AuthorityRow {
   creation?: {
     readonly reservationId: string;
     readonly target: CreationTarget;
-    terminal?: 'committed' | 'aborted';
+    terminal?: 'committed' | 'rejected' | 'failed' | 'aborted';
   };
 }
 
@@ -85,7 +92,9 @@ interface AggregateRecord {
  */
 export class ZLinkInMemoryAuthorityStore {
   private readonly rows = new Map<string, AuthorityRow>();
-  private readonly creationTerminals = new Map<string, 'committed' | 'aborted'>();
+  private readonly creationTerminals =
+    new Map<string, 'committed' | 'rejected' | 'failed' | 'aborted'>();
+  private readonly operationTerminals = new Map<string, ZLinkCreationTerminalRecord>();
   private readonly capacityReservations = new Map<string, CapacityReservation>();
   private readonly aggregates = new Map<string, AggregateRecord>();
   private readonly activeCapacity = new Map<string, number>();
@@ -252,7 +261,7 @@ export class ZLinkInMemoryAuthorityStore {
       descriptorLifecycleGeneration: target.lifecycleGeneration,
       capacityDelta: request.pendingCapacityDelta
     };
-    if (!this.hasPendingCapacity(allocation, request.intent.placementProfile)) {
+    if (!this.hasPendingCapacity(allocation)) {
       return { kind: 'placementCapacityExhausted' };
     }
     if (
@@ -278,7 +287,13 @@ export class ZLinkInMemoryAuthorityStore {
         requestEncodedSize: request.intent.requestEncodedSize
       }
     };
-    this.rows.set(key, { snapshot, creation: { reservationId, target } });
+    this.rows.set(key, {
+      snapshot,
+      creation: {
+        reservationId,
+        target
+      }
+    });
     this.adjust(this.pendingCapacity, allocationCapacityKey(allocation), allocation.capacityDelta);
     this.scanRevision++;
     return { kind: 'reserved', reservationId, creating: this.snapshot(snapshot) };
@@ -290,6 +305,9 @@ export class ZLinkInMemoryAuthorityStore {
   ): Promise<ZLinkObjectCommitResult> {
     signal?.throwIfAborted();
     validatePayload(request.readyPayload);
+    if (request.key.kind === 'actor') {
+      throw new TypeError('Actor creation must use completeCreation.');
+    }
     const terminal = this.creationTerminals.get(request.reservationId);
     const key = creationKey(request.key);
     const row = this.rows.get(key);
@@ -327,6 +345,125 @@ export class ZLinkInMemoryAuthorityStore {
     this.creationTerminals.set(request.reservationId, 'committed');
     this.scanRevision++;
     return { kind: 'committed', ready: this.snapshot(row.snapshot) };
+  }
+
+  async completeCreation(
+    request: ZLinkObjectCreationCompleteRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkObjectCreationCompleteResult> {
+    signal?.throwIfAborted();
+    if (request.key.kind !== 'actor') {
+      throw new TypeError('completeCreation is reserved for Actor creation.');
+    }
+    if (request.completion.kind === 'created') {
+      validatePayload(request.completion.readyPayload);
+    }
+    const terminalRecord = validateTerminalForMutation(
+      request.completion.terminal,
+      request.completion.kind,
+      request.reservationId,
+      request.key.kind,
+      this.now()
+    )!;
+    const existingTerminal = this.operationTerminals.get(
+      creationOperationKey(terminalRecord.operation)
+    );
+    if (existingTerminal !== undefined
+      && existingTerminal.expiresAt.getTime() > this.now().getTime()) {
+      return {
+        kind: 'alreadyCompleted',
+        terminal: copyTerminalRecord(existingTerminal)
+      };
+    }
+    const reservationTerminal = this.creationTerminals.get(request.reservationId);
+    if (reservationTerminal === 'committed'
+      || reservationTerminal === 'rejected'
+      || reservationTerminal === 'failed') {
+      const retained = this.operationTerminals.get(
+        creationOperationKey(terminalRecord.operation)
+      );
+      return retained === undefined
+        ? { kind: 'stale' }
+        : { kind: 'alreadyCompleted', terminal: copyTerminalRecord(retained) };
+    }
+    const key = creationKey(request.key);
+    const row = this.rows.get(key);
+    if (
+      row === undefined
+      || row.snapshot.allocation.state !== 'pending'
+      || row.creation?.reservationId !== request.reservationId
+      || row.snapshot.storeVersion.value !== request.expectedStoreVersion
+      || !sameCreationTarget(row.creation.target, request.target)
+      || !this.validation.isTargetLive(
+        row.creation.target.descriptor,
+        row.creation.target.lifecycleGeneration,
+        row.creation.target.owner
+      )
+    ) {
+      return { kind: 'stale' };
+    }
+    if (!this.creationTerminalAvailable(terminalRecord)) {
+      return { kind: 'stale' };
+    }
+    const nextVersion = this.tryNextStoreVersion();
+    if (nextVersion === undefined) return { kind: 'generationExhausted' };
+    const pending = row.snapshot.allocation;
+    this.adjust(this.pendingCapacity, allocationCapacityKey(pending), -pending.capacityDelta);
+    let ready: ZLinkAuthoritySnapshot | undefined;
+    if (request.completion.kind === 'created') {
+      const active = { ...pending, state: 'active' as const };
+      this.adjust(this.activeCapacity, allocationCapacityKey(active), active.capacityDelta);
+      const { pendingCreation: _, ...creating } = row.snapshot;
+      row.snapshot = {
+        ...creating,
+        storeVersion: version(nextVersion),
+        payload: Buffer.from(request.completion.readyPayload),
+        allocation: active
+      };
+      row.creation.terminal = 'committed';
+      this.creationTerminals.set(request.reservationId, 'committed');
+      ready = this.snapshot(row.snapshot);
+    } else {
+      this.rows.delete(key);
+      row.creation.terminal = request.completion.kind;
+      this.creationTerminals.set(request.reservationId, request.completion.kind);
+    }
+    this.operationTerminals.set(
+      creationOperationKey(terminalRecord.operation),
+      terminalRecord
+    );
+    this.scanRevision++;
+    const terminal = copyTerminalRecord(terminalRecord);
+    return request.completion.kind === 'created'
+      ? { kind: 'created', ready: ready!, terminal }
+      : { kind: request.completion.kind, terminal };
+  }
+
+  async readCreationTerminal(
+    operation: ZLinkCreationOperationIdentity,
+    signal?: AbortSignal
+  ): Promise<ZLinkCreationTerminalReadResult> {
+    signal?.throwIfAborted();
+    validateCreationOperation(operation);
+    const key = creationOperationKey(operation);
+    const record = this.operationTerminals.get(key);
+    if (record === undefined) return { kind: 'missing', storeNow: this.now() };
+    if (record.expiresAt.getTime() <= this.now().getTime()) {
+      this.operationTerminals.delete(key);
+      return { kind: 'missing', storeNow: this.now() };
+    }
+    return { kind: 'found', record: copyTerminalRecord(record) };
+  }
+
+  private creationTerminalAvailable(record: ZLinkCreationTerminalRecord): boolean {
+    const key = creationOperationKey(record.operation);
+    const existing = this.operationTerminals.get(key);
+    if (existing === undefined) return true;
+    if (existing.expiresAt.getTime() <= this.now().getTime()) {
+      this.operationTerminals.delete(key);
+      return true;
+    }
+    return false;
   }
 
   async abort(
@@ -633,7 +770,7 @@ export class ZLinkInMemoryAuthorityStore {
     );
   }
 
-  private hasPendingCapacity(allocation: ZLinkPlacementAllocation, placementProfile?: string): boolean {
+  private hasPendingCapacity(allocation: ZLinkPlacementAllocation): boolean {
     const key = allocationCapacityKey(allocation);
     const currentPending = this.pendingCapacity.get(key) ?? 0;
     const currentActive = this.activeCapacity.get(key) ?? 0;
@@ -643,8 +780,7 @@ export class ZLinkInMemoryAuthorityStore {
       allocation.stableType,
       allocation.capacityDelta,
       currentPending,
-      currentActive,
-      placementProfile
+      currentActive
     ) ?? true;
   }
 
@@ -662,6 +798,24 @@ export class ZLinkInMemoryAuthorityStore {
     if (next < 0) throw new Error('In-memory placement capacity counter underflow.');
     if (next === 0) values.delete(key);
     else values.set(key, next);
+  }
+
+  capacityUsage(
+    descriptor: ZLinkMeshNodeDescriptorKey,
+    lifecycleGeneration: bigint,
+    objectKind: string,
+    stableType: string
+  ): { readonly active: number; readonly reserved: number } {
+    const key = capacityKey(
+      descriptor,
+      lifecycleGeneration,
+      objectKind,
+      stableType
+    );
+    return {
+      active: this.activeCapacity.get(key) ?? 0,
+      reserved: this.pendingCapacity.get(key) ?? 0
+    };
   }
 
   private tryNextStoreVersion(): bigint | undefined {
@@ -691,6 +845,98 @@ function validateReserve(request: ZLinkObjectReserveRequest): void {
   ) {
     throw new TypeError('Object creation content receipt is invalid.');
   }
+}
+
+function validateCreationOperation(operation: ZLinkCreationOperationIdentity): void {
+  const sourceRid = String(operation.sourceNodeRid);
+  const sourceRidBytes = Buffer.byteLength(sourceRid, 'utf8');
+  if (sourceRidBytes < 1 || sourceRidBytes > 255 || sourceRid.includes('\0')) {
+    throw new TypeError('Creation terminal source node RID must contain 1..255 UTF-8 bytes without NUL.');
+  }
+  if (
+    operation.sourceNodeGeneration < 1n
+    || operation.sourceNodeGeneration > MAX_GENERATION
+    || operation.operationId.high < 0n
+    || operation.operationId.high > MAX_U64
+    || operation.operationId.low < 0n
+    || operation.operationId.low > MAX_U64
+    || (operation.operationId.high === 0n && operation.operationId.low === 0n)
+  ) {
+    throw new RangeError('Creation terminal source generation and operation ID are invalid.');
+  }
+}
+
+function validateTerminalForMutation(
+  publication: ZLinkCreationTerminalPublication | undefined,
+  state: ZLinkCreationTerminalRecord['state'],
+  reservationId: string,
+  objectKind: ZLinkPlacementAllocation['objectKind'],
+  storeNow: Date
+): ZLinkCreationTerminalRecord | undefined {
+  if (publication === undefined) return undefined;
+  validateCreationOperation(publication.operation);
+  if (
+    publication.terminalEnvelope.byteLength > MAX_PAYLOAD_BYTES
+    || publication.terminalEnvelopeSha256.byteLength !== 32
+  ) {
+    throw new RangeError('Creation terminal envelope must not exceed 1 MiB and requires a SHA-256 digest.');
+  }
+  const actualSha = createHash('sha256').update(publication.terminalEnvelope).digest();
+  if (!timingSafeEqual(actualSha, Buffer.from(publication.terminalEnvelopeSha256))) {
+    throw new TypeError('Creation terminal envelope SHA-256 does not match its bytes.');
+  }
+  const deadlineMs = publication.operationDeadline.getTime();
+  const expiresAtMs = deadlineMs + CREATION_TERMINAL_RETENTION_MS;
+  if (
+    !Number.isSafeInteger(deadlineMs)
+    || !Number.isSafeInteger(expiresAtMs)
+    || expiresAtMs <= storeNow.getTime()
+  ) {
+    throw new RangeError('Creation terminal expiry must be the live operation deadline plus five minutes.');
+  }
+  return {
+    state,
+    operation: copyCreationOperation(publication.operation),
+    reservationId: requireText(reservationId, 'creation reservation ID'),
+    objectKind,
+    terminalEnvelope: Buffer.from(publication.terminalEnvelope),
+    terminalEnvelopeSha256: Buffer.from(publication.terminalEnvelopeSha256),
+    expiresAt: new Date(expiresAtMs),
+    storeNow: new Date(storeNow.getTime())
+  };
+}
+
+function creationOperationKey(operation: ZLinkCreationOperationIdentity): string {
+  return [
+    String(operation.sourceNodeRid),
+    operation.sourceNodeGeneration.toString(),
+    operation.operationId.high.toString(16).padStart(16, '0'),
+    operation.operationId.low.toString(16).padStart(16, '0')
+  ].join('\0');
+}
+
+function copyCreationOperation(
+  operation: ZLinkCreationOperationIdentity
+): ZLinkCreationOperationIdentity {
+  return {
+    sourceNodeRid: operation.sourceNodeRid,
+    sourceNodeGeneration: operation.sourceNodeGeneration,
+    operationId: {
+      high: operation.operationId.high,
+      low: operation.operationId.low
+    }
+  };
+}
+
+function copyTerminalRecord(record: ZLinkCreationTerminalRecord): ZLinkCreationTerminalRecord {
+  return {
+    ...record,
+    operation: copyCreationOperation(record.operation),
+    terminalEnvelope: Buffer.from(record.terminalEnvelope),
+    terminalEnvelopeSha256: Buffer.from(record.terminalEnvelopeSha256),
+    expiresAt: new Date(record.expiresAt),
+    storeNow: new Date(record.storeNow)
+  };
 }
 
 function validateRelocationReservation(request: ZLinkRelocationCapacityReservationRequest): void {

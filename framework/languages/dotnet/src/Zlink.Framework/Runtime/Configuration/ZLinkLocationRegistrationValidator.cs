@@ -83,9 +83,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         if (allocation.HasExplicitRoutingId)
             throw new ZLinkConfigurationException(
                 $"Routing-id allocation member '{allocation.MemberName}' cannot combine SetRoutingId and UseAllocatedRoutingId.");
-        if (allocation.HasExplicitEntrySpotRoutingId)
-            throw new ZLinkConfigurationException(
-                $"SPOT node '{allocation.MemberName}' cannot combine allocated routing id and explicit entry Spot routing id.");
         if (!allocation.HasBindableRole)
             throw new ZLinkConfigurationException(
                 $"Routing-id allocation member '{allocation.MemberName}' must enable a socket or SPOT node role.");
@@ -98,7 +95,6 @@ internal sealed record ZLinkRoutingIdAllocationMemberRegistration(
     string Prefix,
     int SlotCount,
     bool HasExplicitRoutingId,
-    bool HasExplicitEntrySpotRoutingId,
     bool HasBindableRole,
     Action<RoutingId> Apply);
 
@@ -114,7 +110,6 @@ internal static class ZLinkRoutingIdAllocationCatalog
                     allocation,
                     channel.ChannelName,
                     channel.HasExplicitRoutingId,
-                    false,
                     channel.Publisher is not null || channel.Subscriber is not null,
                     routingId => channel.RoutingId = routingId));
 
@@ -124,13 +119,8 @@ internal static class ZLinkRoutingIdAllocationCatalog
                     allocation,
                     spot.SpotNodeName,
                     spot.HasExplicitRoutingId,
-                    spot.HasExplicitEntrySpotRoutingId,
                     spot.Router is not null,
-                    routingId =>
-                    {
-                        spot.RoutingId = routingId;
-                        spot.EntrySpotOptions.RoutingId = routingId;
-                    }));
+                    routingId => spot.RoutingId = routingId));
 
         return members;
     }
@@ -139,7 +129,6 @@ internal static class ZLinkRoutingIdAllocationCatalog
         ZLinkRoutingIdAllocationRegistration allocation,
         string memberName,
         bool hasExplicitRoutingId,
-        bool hasExplicitEntrySpotRoutingId,
         bool hasBindableRole,
         Action<RoutingId> apply) => new(
         allocation.GroupName ?? memberName,
@@ -147,7 +136,6 @@ internal static class ZLinkRoutingIdAllocationCatalog
         allocation.RoutingIdPrefix,
         allocation.SlotCount,
         hasExplicitRoutingId,
-        hasExplicitEntrySpotRoutingId,
         hasBindableRole,
         apply);
 }

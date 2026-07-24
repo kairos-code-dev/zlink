@@ -14,7 +14,7 @@ final class DispatchFailureReport {
     String packetName;
     String channelName;
     String topic;
-    RoutingId spotRid;
+    String spotId;
     String actorId;
     RoutingId sourceRid;
     String correlationId;
@@ -54,8 +54,8 @@ final class DispatchFailureReport {
         return this;
     }
 
-    DispatchFailureReport spotRid(RoutingId spotRid) {
-        this.spotRid = spotRid;
+    DispatchFailureReport spotId(String spotId) {
+        this.spotId = spotId;
         return this;
     }
 

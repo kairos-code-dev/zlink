@@ -24,6 +24,7 @@ using zlink::framework::actor_ref_t;
 using zlink::framework::client_server_location_store_t;
 using zlink::framework::client_server_server_descriptor_key_t;
 using zlink::framework::client_server_server_descriptor_t;
+using zlink::framework::creation_operation_identity_t;
 using zlink::framework::fanout_location_store_t;
 using zlink::framework::fanout_publisher_descriptor_key_t;
 using zlink::framework::fanout_publisher_descriptor_t;
@@ -62,6 +63,39 @@ std::string revision_hex (std::string_view value)
            << std::setw (16) << std::setfill ('0')
            << std::stoull (std::string (value));
     return stream.str ();
+}
+
+std::array<std::byte, 32> sha256_bytes (
+  std::string_view value)
+{
+    const auto encoded =
+      redis_location_key_schema_t::sha256_hex (value);
+    const auto nibble = [] (char digit) {
+        return digit >= '0' && digit <= '9'
+                 ? static_cast<unsigned> (digit - '0')
+                 : static_cast<unsigned> (digit - 'a' + 10);
+    };
+    std::array<std::byte, 32> result{};
+    for (std::size_t index = 0; index < result.size ();
+         ++index)
+        result[index] = static_cast<std::byte> (
+          (nibble (encoded[index * 2]) << 4u)
+          | nibble (encoded[index * 2 + 1]));
+    return result;
+}
+
+TEST (ZLinkFrameworkLocationsRedis,
+      CreationTerminalKeyUsesRoutingIdRawBytes)
+{
+    const creation_operation_identity_t operation{
+      node_rid_t::from_string ("node-a"), 7, {0x12, 0x34}};
+
+    EXPECT_EQ (
+      "P:{zlink-location-v3}:creation-terminal:"
+      "6:6e6f64652d61:7:"
+      "00000000000000120000000000000034",
+      redis_location_key_schema_t::creation_terminal_key (
+        "P", operation));
 }
 
 std::vector<std::string> redis_test_endpoints ()
@@ -289,7 +323,7 @@ const nlohmann::json &fixture_row (const nlohmann::json &fixture, std::string_vi
 actor_location_t make_actor_location (std::string mesh_name,
                                       std::string actor_id,
                                       std::string node_rid,
-                                      std::string spot_rid,
+                                      std::string spot_id,
                                       zlink::spot_kind spot_kind,
                                       std::string owner_id,
                                       std::uint64_t actor_generation = 1,
@@ -306,7 +340,7 @@ actor_location_t make_actor_location (std::string mesh_name,
                                 actor_id, actor_generation),
       .owner_node_rid = zlink::routing_id_t::from (node_rid),
       .owner_node_generation = owner_node_generation,
-      .spot_rid = zlink::routing_id_t::from (std::move (spot_rid)),
+      .spot_id = std::move (spot_id),
       .spot_generation = spot_generation,
       .spot_kind = spot_kind,
       .membership_epoch = membership_epoch,
@@ -566,7 +600,7 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
 
     auto spot = store.update_spot (
       spot_location_t{.mesh_name = "play",
-                      .spot_rid = zlink::routing_id_t::from ("spot-a"),
+                      .spot_id = "spot-a",
                       .spot_type = "room",
                       .node_rid = zlink::routing_id_t::from ("node-a"),
                       .owner_id = "owner-a"},
@@ -592,8 +626,8 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
     ASSERT_NE (nullptr, read.result ().error ());
     EXPECT_TRUE (read.result ().error ()->is_retriable ());
 
-    auto read_spot = store.resolve_spot (spot_location_key_t{
-      .mesh_name = "play", .spot_rid = zlink::routing_id_t::from ("spot-a")});
+    auto read_spot = store.resolve_spot (
+      spot_location_key_t{.spot_id = "spot-a"});
     EXPECT_FALSE (read_spot.result ().has_value ());
     ASSERT_NE (nullptr, read_spot.result ().error ());
     EXPECT_TRUE (read_spot.result ().error ()->is_retriable ());
@@ -638,7 +672,7 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
     EXPECT_TRUE (removed_peer.result ().error ()->is_retriable ());
 
     auto removed_spot = store.remove_spot (
-      spot_location_key_t{.mesh_name = "play", .spot_rid = zlink::routing_id_t::from ("spot-a")},
+      spot_location_key_t{.spot_id = "spot-a"},
       location_owner_token_t{"owner-a", 0});
     EXPECT_FALSE (removed_spot.result ().has_value ());
     ASSERT_NE (nullptr, removed_spot.result ().error ());
@@ -681,6 +715,62 @@ TEST (ZLinkFrameworkLocationsRedis, StoreWithoutRedisClientReportsUnavailable)
     EXPECT_FALSE (stamp.result ().has_value ());
     ASSERT_NE (nullptr, stamp.result ().error ());
     EXPECT_TRUE (stamp.result ().error ()->is_retriable ());
+}
+
+TEST (ZLinkFrameworkLocationsRedis,
+      TypedCapacityProjectionRoundTripsAndAffectsImmutableDigest)
+{
+    using namespace zlink::framework;
+    mesh_node_descriptor_t descriptor{
+      .mesh_name = "play",
+      .rid = zlink::routing_id_t::from ("node-a"),
+      .lifecycle_generation = 1,
+      .descriptor_revision = 1,
+      .endpoint = "tcp://127.0.0.1:5001",
+      .application_version = 1,
+      .object_capabilities =
+        {{.object_kind = placement_object_kind_t::user_spot,
+          .stable_type = "room"}},
+      .object_role = object_role_t::server,
+      .placement_capacity =
+        {.actors = {.active = 2, .reserved = 1, .limit = 10},
+         .spots = {.active = 3, .reserved = 2, .limit = 20},
+         .spot_types =
+           {{.object_kind = placement_object_kind_t::user_spot,
+             .stable_type = "room",
+             .usage = {.active = 3, .reserved = 2, .limit = 7}}}},
+      .state = framework_runtime_state_t::serving,
+      .security_identity = "test",
+      .owner_id = "owner-a",
+      .lease_generation = 1};
+    const auto encoded =
+      redis_location_row_codec_t::encode_mesh_node (descriptor);
+    const auto decoded =
+      redis_location_row_codec_t::decode_mesh_node (encoded);
+    ASSERT_EQ (1u, decoded.placement_capacity.spot_types.size ());
+    EXPECT_EQ (
+      3u,
+      decoded.placement_capacity.spot_types.front ().usage.active);
+    EXPECT_EQ (
+      2u,
+      decoded.placement_capacity.spot_types.front ().usage.reserved);
+    EXPECT_EQ (
+      7,
+      decoded.placement_capacity.spot_types.front ().usage.limit);
+
+    const auto digest =
+      redis_location_row_codec_t::mesh_node_immutable_digest (
+        descriptor);
+    descriptor.placement_capacity.spot_types.front ().usage.active++;
+    EXPECT_EQ (
+      digest,
+      redis_location_row_codec_t::mesh_node_immutable_digest (
+        descriptor));
+    descriptor.placement_capacity.spot_types.front ().usage.limit++;
+    EXPECT_NE (
+      digest,
+      redis_location_row_codec_t::mesh_node_immutable_digest (
+        descriptor));
 }
 
 TEST (ZLinkFrameworkLocationsRedis, RedisServerRoundTripUsesStoreSchema)
@@ -825,7 +915,6 @@ TEST (ZLinkFrameworkLocationsRedis,
         {{.object_kind = placement_object_kind_t::actor,
           .stable_type = "player",
           .policy = maintenance_policy_kind_t::recreate,
-          .placement_profiles = {"standard"},
           .pending_limit = 3}},
       .object_role = object_role_t::server,
       .object_capacity =
@@ -954,28 +1043,16 @@ TEST (ZLinkFrameworkLocationsRedis,
         .value ()
         .status);
 
-    object_reserve_request_t wrong_profile{
+    object_reserve_request_t creation{
       .key = {placement_object_kind_t::actor,
-              "redis-profile-wrong"},
-      .intent =
-        {.stable_type = "player",
-         .placement_profile =
-           placement_profile_t{"premium"}},
+              "redis-profiled"},
+      .intent = {.stable_type = "player"},
       .target =
         {.mesh_name = "play",
          .node_rid =
            node_rid_t::from_string ("node-descriptor"),
          .node_lifecycle_generation = 7,
          .owner = token}};
-    EXPECT_NE (
-      nullptr,
-      std::get_if<object_reserve_conflict_t> (
-        &store.reserve (wrong_profile).result ().value ()));
-
-    auto creation = wrong_profile;
-    creation.key.global_id = "redis-profiled";
-    creation.intent.placement_profile =
-      placement_profile_t{"standard"};
     creation.intent.request_content_reference =
       "inline-v1:00000000:";
     creation.intent.request_sha256[0] =
@@ -1101,6 +1178,84 @@ TEST (ZLinkFrameworkLocationsRedis,
     EXPECT_EQ (
       "1:redis-profiled",
       authority_page->items.front ().key.value);
+
+    auto rejected_creation = creation;
+    rejected_creation.key.global_id =
+      "redis-terminal-rejected";
+    const auto rejected_reserve =
+      store.reserve (rejected_creation).result ().value ();
+    const auto *rejected_fence =
+      std::get_if<object_reserved_t> (
+        &rejected_reserve);
+    ASSERT_NE (nullptr, rejected_fence);
+    const creation_operation_identity_t operation{
+      node_rid_t::from_string ("node-a"), 7,
+      {0x12, 0x34}};
+    const auto completed_rejection =
+      store
+        .complete_creation (
+          {rejected_creation.key,
+           rejected_fence->fence,
+           object_creation_rejected_t{
+             {operation, {}, sha256_bytes (""),
+              std::chrono::system_clock::now ()
+                + std::chrono::seconds (30)}}})
+        .result ()
+        .value ();
+    EXPECT_NE (
+      nullptr,
+      std::get_if<
+        object_creation_completed_result_t> (
+          &completed_rejection));
+    const auto stored_terminal =
+      store.read_creation_terminal (operation)
+        .result ()
+        .value ();
+    ASSERT_TRUE (stored_terminal.has_value ());
+    EXPECT_EQ (
+      creation_terminal_state_t::rejected,
+      stored_terminal->state);
+    EXPECT_EQ (
+      "redis-terminal-rejected",
+      stored_terminal->object.global_id);
+    const auto retry_reserve =
+      store.reserve (rejected_creation).result ().value ();
+    const auto *retry_fence =
+      std::get_if<object_reserved_t> (&retry_reserve);
+    ASSERT_NE (nullptr, retry_fence);
+    const creation_operation_identity_t retry_operation{
+      node_rid_t::from_string ("node-b"), 9,
+      {0x56, 0x78}};
+    const auto completed_retry =
+      store
+        .complete_creation (
+          {rejected_creation.key,
+           retry_fence->fence,
+           object_creation_completed_t{
+             {std::byte{0x01}},
+             {retry_operation, {}, sha256_bytes (""),
+              std::chrono::system_clock::now ()
+                + std::chrono::seconds (30)}}})
+        .result ()
+        .value ();
+    EXPECT_NE (
+      nullptr,
+      std::get_if<
+        object_creation_completed_result_t> (
+          &completed_retry));
+    const auto retry_authority =
+      store
+        .read_authority (
+          {"1:redis-terminal-rejected"})
+        .result ()
+        .value ();
+    const auto *retry_ready =
+      std::get_if<authority_snapshot_t> (
+        &retry_authority);
+    ASSERT_NE (nullptr, retry_ready);
+    EXPECT_EQ (
+      placement_capacity_state_t::active,
+      retry_ready->allocation.capacity_state);
 
     const auto target_token =
       std::get<owner_lease_claimed_t> (
@@ -1473,7 +1628,7 @@ TEST (ZLinkFrameworkLocationsRedis, CrossLanguageWritesRowsForDotnetToRead)
     EXPECT_EQ (location_write_status_t::stored,
                store.update_spot (
                       spot_location_t{.mesh_name = "cross",
-                                      .spot_rid = zlink::routing_id_t::from ("cpp-spot"),
+                                      .spot_id = "cpp-spot",
                                       .spot_type = "cpp-game",
                                       .node_rid = zlink::routing_id_t::from ("cpp-node"),
                                       .spot_kind = zlink::spot_kind::user,
@@ -1528,9 +1683,8 @@ TEST (ZLinkFrameworkLocationsRedis, CrossLanguageReadsDotnetRows)
     EXPECT_EQ ("dotnet-node", actor.value ()->owner_node_rid.to_string ());
     EXPECT_EQ ("dotnet-owner", actor.value ()->owner_id);
 
-    auto spot = store.resolve_spot (spot_location_key_t{
-                                      .mesh_name = "cross",
-                                      .spot_rid = zlink::routing_id_t::from ("dotnet-spot")})
+    auto spot = store.resolve_spot (
+                  spot_location_key_t{.spot_id = "dotnet-spot"})
                   .result ();
     ASSERT_TRUE (spot.has_value ());
     ASSERT_TRUE (spot.value ().has_value ());
@@ -1787,10 +1941,9 @@ TEST (ZLinkFrameworkLocationsRedis, PhysicalKeysUseCommonRedisSchema)
 
 TEST (ZLinkFrameworkLocationsRedis, RowKeysUseDotnetCanonicalKeyBytes)
 {
-    EXPECT_EQ ("9:mesh-main12:73706f742d61",
+    EXPECT_EQ ("6:spot-a",
                redis_location_key_schema_t::encode_spot_key (
-                 spot_location_key_t{.mesh_name = "mesh-main",
-                                     .spot_rid = zlink::routing_id_t::from ("spot-a")}));
+                 spot_location_key_t{.spot_id = "spot-a"}));
     EXPECT_EQ ("4:game7:actor-1",
                redis_location_key_schema_t::encode_actor_key (
                  actor_location_key_t{.mesh_name = "game", .actor_id = "actor-1"}));
@@ -2681,7 +2834,7 @@ TEST (ZLinkFrameworkLocationsRedis, SpotRowJsonUsesDotnetFieldSchema)
 {
     const auto encoded = redis_location_row_codec_t::encode_spot (
       spot_location_t{.mesh_name = "play",
-                      .spot_rid = zlink::routing_id_t::from ("spot-a"),
+                      .spot_id = "spot-a",
                       .spot_type = "room",
                       .node_rid = zlink::routing_id_t::from ("node-a"),
                       .spot_kind = zlink::spot_kind::user,
@@ -2691,8 +2844,7 @@ TEST (ZLinkFrameworkLocationsRedis, SpotRowJsonUsesDotnetFieldSchema)
 
     const auto json = nlohmann::json::parse (encoded);
     EXPECT_EQ ("play", json.at ("MeshName").get<std::string> ());
-    EXPECT_EQ (zlink::routing_id_t::from ("spot-a").to_hex (),
-               json.at ("SpotRid").get<std::string> ());
+    EXPECT_EQ ("spot-a", json.at ("SpotId").get<std::string> ());
     EXPECT_EQ ("room", json.at ("SpotType").get<std::string> ());
     EXPECT_EQ (zlink::routing_id_t::from ("node-a").to_hex (),
                json.at ("NodeRid").get<std::string> ());
@@ -2701,7 +2853,7 @@ TEST (ZLinkFrameworkLocationsRedis, SpotRowJsonUsesDotnetFieldSchema)
 
     const auto decoded = redis_location_row_codec_t::decode_spot (encoded);
     EXPECT_EQ ("play", decoded.mesh_name);
-    EXPECT_EQ ("spot-a", decoded.spot_rid.to_string ());
+    EXPECT_EQ ("spot-a", decoded.spot_id);
     ASSERT_TRUE (decoded.spot_type.has_value ());
     EXPECT_EQ ("room", *decoded.spot_type);
     EXPECT_EQ (zlink::spot_kind::user, decoded.spot_kind);
@@ -2721,8 +2873,7 @@ TEST (ZLinkFrameworkLocationsRedis, ActorRowJsonUsesDotnetFieldSchema)
     EXPECT_EQ (zlink::routing_id_t::from ("node-a").to_hex (),
                json.at ("OwnerNodeRid").get<std::string> ());
     EXPECT_EQ (7u, json.at ("OwnerNodeGeneration").get<std::uint64_t> ());
-    EXPECT_EQ (zlink::routing_id_t::from ("play-spot").to_hex (),
-               json.at ("SpotRid").get<std::string> ());
+    EXPECT_EQ ("play-spot", json.at ("SpotId").get<std::string> ());
     EXPECT_EQ (3u, json.at ("SpotGeneration").get<std::uint64_t> ());
     EXPECT_EQ (static_cast<int> (zlink::spot_kind::user), json.at ("SpotKind").get<int> ());
     EXPECT_EQ (4u, json.at ("MembershipEpoch").get<std::uint64_t> ());
@@ -2732,7 +2883,7 @@ TEST (ZLinkFrameworkLocationsRedis, ActorRowJsonUsesDotnetFieldSchema)
     EXPECT_EQ ("player", decoded.actor_type);
     EXPECT_EQ ("alice", decoded.actor_id);
     EXPECT_EQ ("node-a", decoded.owner_node_rid.to_string ());
-    EXPECT_EQ ("play-spot", decoded.spot_rid.to_string ());
+    EXPECT_EQ ("play-spot", decoded.spot_id);
     EXPECT_EQ (11u, decoded.actor_ref.generation ());
 }
 
@@ -2743,11 +2894,10 @@ TEST (ZLinkFrameworkLocationsRedis, EntryActorRowKeepsTypedSpotIdentity)
                            zlink::spot_kind::entry, "owner-a", 3));
 
     const auto json = nlohmann::json::parse (encoded);
-    EXPECT_EQ (zlink::routing_id_t::from ("entry-spot").to_hex (),
-               json.at ("SpotRid").get<std::string> ());
+    EXPECT_EQ ("entry-spot", json.at ("SpotId").get<std::string> ());
 
     const auto decoded = redis_location_row_codec_t::decode_actor (encoded);
-    EXPECT_EQ ("entry-spot", decoded.spot_rid.to_string ());
+    EXPECT_EQ ("entry-spot", decoded.spot_id);
     EXPECT_EQ (zlink::spot_kind::entry, decoded.spot_kind);
 }
 

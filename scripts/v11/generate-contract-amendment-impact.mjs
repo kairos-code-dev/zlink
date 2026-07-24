@@ -528,7 +528,7 @@ for (const member of publicMemberRemovals) {
 
 const plannedAdds = [
   ['e2e:add:global-actor-remote-create', 'e2e-scenario', 'global ActorId concurrent Create와 remote placement가 authority 하나로 수렴한다.', 'V11-M6B-E2E'],
-  ['e2e:add:global-spot-explicit-create', 'e2e-scenario', 'global SpotRid explicit Create와 stored intent reactivation을 검증한다.', 'V11-M6B-E2E'],
+  ['e2e:add:global-spot-explicit-create', 'e2e-scenario', 'global SpotId explicit Create와 stored intent reactivation을 검증한다.', 'V11-M6B-E2E'],
   ['e2e:add:exact-generation-mutation-bind', 'e2e-scenario', 'stale generation의 destroy, close와 session bind가 새 incarnation에 적용되지 않는다.', 'V11-M6B-E2E'],
   ['e2e:add:placement-capacity-weight-affinity', 'e2e-scenario', 'role, capability, profile, affinity, weight와 active·pending capacity 순서를 검증한다.', 'V11-M6A-E2E'],
   ['e2e:add:automatic-rid-collision', 'e2e-scenario', '128-bit random RID 충돌 8회 뒤 startup이 RoutingIdConflict로 끝난다.', 'V11-M6A-E2E'],
@@ -536,7 +536,7 @@ const plannedAdds = [
   ['e2e:add:forwarding-bounds', 'e2e-scenario', 'forwarding 8 hops, 1024 messages와 16 MiB bound에서 typed terminal 결과를 검증한다.', 'V11-M6B-E2E'],
   ['sample:add:remote-object-create', 'sample-contract', 'Client와 Server role을 분리한 remote Actor·Spot create 사용 흐름을 제공한다.', 'V11-M7-SAMPLES'],
   ['regression:add:no-negative-route-cache', 'regression', 'Missing, Creating과 Store failure가 negative cache에 남지 않는지 검증한다.', 'V11-M6-SCAFFOLD-ZERO'],
-  ['regression:add:global-authority-key', 'regression', 'MeshName과 독립적인 ActorId·SpotRid authority key encoding을 네 runtime에서 검증한다.', 'V11-M6-SCAFFOLD-ZERO'],
+  ['regression:add:global-authority-key', 'regression', 'MeshName과 독립적인 ActorId·SpotId authority key encoding을 네 runtime에서 검증한다.', 'V11-M6-SCAFFOLD-ZERO'],
   ['e2e:add:relocation-store-required-registration', 'e2e-scenario', 'Recreate 또는 Snapshot policy를 하나라도 등록한 Object Server가 Relocation Store를 정확히 하나 등록하고 socket bind 전에 검증을 통과한다.', 'V11-M6C-E2E'],
   ['e2e:add:relocation-store-registration-bind-failure', 'e2e-scenario', 'Recreate 또는 Snapshot policy에서 Relocation Store가 없거나 중복 등록되면 socket bind 전에 startup configuration error로 종료한다.', 'V11-M6C-E2E'],
   ['e2e:add:disabled-only-without-relocation-store', 'e2e-scenario', '모든 object policy가 Disabled인 Object Server는 Relocation Store 없이 시작하며 cross-node 이동을 Capture 전에 거부한다.', 'V11-M6C-E2E'],
@@ -608,7 +608,7 @@ const manifest = {
   schemaVersion: 1,
   version: '11.0.0',
   baselineRevision,
-  contractDecisionRange: 'CA-D01..CA-D36',
+  contractDecisionRange: 'CA-D01..CA-D71',
   publicContractTraceDelta: {
     path: traceRelativePath,
     baselineSha256: sha256(baselineTraceSource),

@@ -119,11 +119,15 @@ internal sealed class AuthSessionHandler(
         AuthReq request,
         CancellationToken cancellationToken)
     {
-        var actor = await actors.GetOrCreateAsync(
-            request.ActorId,
-            SpotServiceNames.ActorType,
-            new ScenarioActorCreateReq(request.DisplayName),
-            cancellationToken);
+        var actor = await actors
+            .GetOrCreate(request.ActorId, SpotServiceNames.ActorType)
+            .Request(new ScenarioActorCreateReq(request.DisplayName))
+            .Async(cancellationToken) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Actor creation was rejected.")
+        };
 
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
         evidence.Add($"entry-joined|rid={node.Rid}|actor={request.ActorId}");
@@ -196,11 +200,15 @@ internal sealed class UserSpotAuthSessionHandler(
         UserSpotAuthReq request,
         CancellationToken cancellationToken)
     {
-        var actor = await actors.GetOrCreateAsync(
-            request.ActorId,
-            SpotServiceNames.ActorType,
-            new ScenarioActorCreateReq(request.SpotRid),
-            cancellationToken);
+        var actor = await actors
+            .GetOrCreate(request.ActorId, SpotServiceNames.ActorType)
+            .Request(new ScenarioActorCreateReq(request.SpotRid))
+            .Async(cancellationToken) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Actor creation was rejected.")
+        };
 
         evidence.Add(
             $"ensure-user-spot-actor|rid={evidence.Rid}|spot={request.SpotRid}"

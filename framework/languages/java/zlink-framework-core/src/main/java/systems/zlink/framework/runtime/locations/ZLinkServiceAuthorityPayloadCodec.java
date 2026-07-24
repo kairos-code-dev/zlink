@@ -33,7 +33,7 @@ public final class ZLinkServiceAuthorityPayloadCodec {
         Kind kind,
         State state,
         String stableType,
-        RoutingId spotRid,
+        String spotId,
         String ownerId,
         long ownerLeaseGeneration,
         String meshName,
@@ -67,11 +67,11 @@ public final class ZLinkServiceAuthorityPayloadCodec {
             Reader spot = object.reader(object.u16());
             Kind kind;
             State state;
-            RoutingId spotRid;
+            String spotId;
             String stableType;
             if (spotKind == 2) {
                 kind = Kind.USER;
-                spotRid = spot.rid();
+                spotId = spot.rid().toString();
                 stableType = spot.text8();
                 int userState = spot.u8();
                 state = userState == 0 && operationKind == 1
@@ -86,7 +86,7 @@ public final class ZLinkServiceAuthorityPayloadCodec {
                 int instanceState = spot.u8();
                 Reader instance = spot.reader(spot.u16());
                 stableType = instance.text8();
-                spotRid = instance.rid();
+                spotId = instance.rid().toString();
                 if (!instance.end()) {
                     return Optional.empty();
                 }
@@ -117,7 +117,7 @@ public final class ZLinkServiceAuthorityPayloadCodec {
                 kind,
                 state,
                 stableType,
-                spotRid,
+                spotId,
                 ownerId,
                 ownerLeaseGeneration,
                 meshName,
@@ -131,14 +131,14 @@ public final class ZLinkServiceAuthorityPayloadCodec {
     public byte[] encodeUser(
         State state,
         String stableType,
-        RoutingId spotRid,
+        String spotId,
         String ownerId,
         long ownerLeaseGeneration,
         String meshName,
         RoutingId nodeRid,
         long nodeGeneration) {
         Writer spot = new Writer();
-        spot.rid(spotRid);
+        spot.rid(RoutingId.from(spotId));
         spot.text8(stableType);
         spot.u8(switch (state) {
             case CREATING -> 0;
@@ -153,6 +153,50 @@ public final class ZLinkServiceAuthorityPayloadCodec {
             case READY -> 0;
             case CLOSING -> 3;
         });
+        body.conditional16(2, object.bytes());
+        body.text8(ownerId);
+        body.nonzeroU64(ownerLeaseGeneration);
+        body.text8(meshName);
+        body.rid(nodeRid);
+        body.nonzeroU64(nodeGeneration);
+        body.conditional32(0, new byte[0]);
+        body.conditional32(0, new byte[0]);
+        Writer envelope = new Writer();
+        envelope.raw(MAGIC);
+        envelope.u8(1);
+        envelope.u16(0);
+        envelope.u32(body.size());
+        envelope.raw(body.bytes());
+        byte[] withoutChecksum = envelope.bytes();
+        envelope.u32(crc32c(
+            withoutChecksum, withoutChecksum.length));
+        return envelope.bytes();
+    }
+
+    byte[] encodeInstance(
+        State state,
+        String stableType,
+        String spotId,
+        String ownerId,
+        long ownerLeaseGeneration,
+        String meshName,
+        RoutingId nodeRid,
+        long nodeGeneration) {
+        if (state == State.CLOSING) {
+            throw new IllegalArgumentException(
+                "Instance authority does not define a closing state");
+        }
+        Writer instance = new Writer();
+        instance.text8(stableType);
+        instance.rid(RoutingId.from(spotId));
+        Writer spot = new Writer();
+        spot.u8(state == State.CREATING ? 1 : 2);
+        spot.u16(instance.size());
+        spot.raw(instance.bytes());
+        Writer object = new Writer();
+        object.conditional16(3, spot.bytes());
+        Writer body = new Writer();
+        body.u8(state == State.CREATING ? 1 : 0);
         body.conditional16(2, object.bytes());
         body.text8(ownerId);
         body.nonzeroU64(ownerLeaseGeneration);

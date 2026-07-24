@@ -12,7 +12,7 @@ import systems.zlink.contracts.core.RoutingId;
 public record MeshSendReadyData(
     MeshDestinationKind destinationKind,
     RoutingId targetNodeRid,
-    RoutingId targetSpotRid,
+    RoutingId targetSpotId,
     ActorRef targetActor,
     String channelName) implements MeshRecordPayload {
 }

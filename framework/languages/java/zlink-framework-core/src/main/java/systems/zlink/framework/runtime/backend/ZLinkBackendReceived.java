@@ -9,7 +9,7 @@ import systems.zlink.contracts.messaging.Message;
 public record ZLinkBackendReceived(
     ZLinkBackendRequestResult result,
     Optional<RoutingId> routingId,
-    Optional<RoutingId> spotRid,
+    Optional<String> spotId,
     Optional<Long> requestSeq,
     byte[] applicationMetadata,
     List<Message> parts,
@@ -24,7 +24,7 @@ public record ZLinkBackendReceived(
     public ZLinkBackendReceived(
         ZLinkBackendRequestResult result,
         Optional<RoutingId> routingId,
-        Optional<RoutingId> spotRid,
+        Optional<String> spotId,
         Optional<Long> requestSeq,
         List<Message> parts,
         Consumer<List<Message>> reply,
@@ -32,7 +32,7 @@ public record ZLinkBackendReceived(
         this(
             result,
             routingId,
-            spotRid,
+            spotId,
             requestSeq,
             new byte[0],
             parts,
@@ -42,13 +42,13 @@ public record ZLinkBackendReceived(
 
     public ZLinkBackendReceived(
         Optional<RoutingId> routingId,
-        Optional<RoutingId> spotRid,
+        Optional<String> spotId,
         Optional<Long> requestSeq,
         List<Message> parts) {
         this(
             ZLinkBackendRequestResult.OK,
             routingId,
-            spotRid,
+            spotId,
             requestSeq,
             new byte[0],
             parts,
@@ -58,14 +58,14 @@ public record ZLinkBackendReceived(
 
     public ZLinkBackendReceived(
         Optional<RoutingId> routingId,
-        Optional<RoutingId> spotRid,
+        Optional<String> spotId,
         Optional<Long> requestSeq,
         List<Message> parts,
         Consumer<List<Message>> reply) {
         this(
             ZLinkBackendRequestResult.OK,
             routingId,
-            spotRid,
+            spotId,
             requestSeq,
             new byte[0],
             parts,
@@ -75,7 +75,7 @@ public record ZLinkBackendReceived(
 
     public ZLinkBackendReceived(
         Optional<RoutingId> routingId,
-        Optional<RoutingId> spotRid,
+        Optional<String> spotId,
         Optional<Long> requestSeq,
         List<Message> parts,
         Consumer<List<Message>> reply,
@@ -83,7 +83,7 @@ public record ZLinkBackendReceived(
         this(
             ZLinkBackendRequestResult.OK,
             routingId,
-            spotRid,
+            spotId,
             requestSeq,
             new byte[0],
             parts,
@@ -94,13 +94,13 @@ public record ZLinkBackendReceived(
     public ZLinkBackendReceived(
         ZLinkBackendRequestResult result,
         Optional<RoutingId> routingId,
-        Optional<RoutingId> spotRid,
+        Optional<String> spotId,
         Optional<Long> requestSeq,
         List<Message> parts) {
         this(
             result,
             routingId,
-            spotRid,
+            spotId,
             requestSeq,
             new byte[0],
             parts,

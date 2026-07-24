@@ -31,6 +31,11 @@ public interface IZLinkRequestCall : IZLinkMetadataCall<IZLinkRequestCall>
 
 public interface IZLinkPublishCall : IZLinkMetadataCall<IZLinkPublishCall>
 {
+    /// <summary>
+    ///     Submits once to each selected remote MeshNode's local transport
+    ///     queue and to each matching local Spot queue. The result does not
+    ///     wait for a remote Spot queue, subscriber handler, or remote ACK.
+    /// </summary>
     ValueTask<ZLinkPublishResult> SubmitAsync(
         CancellationToken cancellationToken = default);
 }

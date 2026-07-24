@@ -132,9 +132,12 @@ final class ZLinkChannelSocketRegistry {
             .sorted(java.util.Comparator.comparing(
                 connection -> connection.descriptor().serverRid().toHex()))
             .toList();
-        long total = eligible.stream()
-            .mapToLong(connection -> connection.descriptor().weight())
-            .sum();
+        long total = 0;
+        for (ClientServerConnection connection : eligible) {
+            total = Math.addExact(
+                total,
+                connection.descriptor().weight());
+        }
         if (total == 0) {
             return unmanagedBackendClientMode
                 ? clients.get(channelName)
@@ -145,7 +148,9 @@ final class ZLinkChannelSocketRegistry {
         long selected = Math.floorMod(cursor.getAndIncrement(), total);
         long offset = 0;
         for (ClientServerConnection connection : eligible) {
-            offset += connection.descriptor().weight();
+            offset = Math.addExact(
+                offset,
+                connection.descriptor().weight());
             if (selected < offset) {
                 return connection.dealer();
             }

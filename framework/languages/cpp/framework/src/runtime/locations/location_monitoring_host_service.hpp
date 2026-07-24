@@ -139,7 +139,7 @@ class location_monitoring_host_service_t final : public hosted_service_t
     {
         return left.kind == right.kind && left.mesh_name == right.mesh_name
                && left.role == right.role && left.node_rid == right.node_rid
-               && left.spot_rid == right.spot_rid && left.actor_id == right.actor_id
+               && left.spot_id == right.spot_id && left.actor_id == right.actor_id
                && left.endpoint == right.endpoint && left.state == right.state
                && left.desired_count == right.desired_count
                && left.ready_count == right.ready_count && left.error_code == right.error_code;

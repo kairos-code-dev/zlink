@@ -6,6 +6,7 @@ import type {
   ZLinkActorFactory,
   ZLinkBoundSession,
   ZLinkMessage,
+  ZLinkActorCreateResponse,
   ZLinkMessageSerializer,
   ZLinkProviderResolver
 } from '../../contracts';
@@ -43,7 +44,7 @@ export interface ZLinkActorManagerOptions {
     actor: ZLinkActor,
     createRequest: ZLinkMessage,
     signal?: AbortSignal
-  ) => Promise<void>;
+  ) => Promise<ZLinkActorCreateResponse | undefined>;
   readonly actorDestroyedCleanup?: (actorId: string) => void;
   readonly locationLifecycle?: ZLinkLocationLifecycle;
   readonly boundSessionFactory?: ZLinkActorBoundSessionFactory;
@@ -56,7 +57,6 @@ export interface ZLinkActorManagerOptions {
 
 export interface ZLinkActorRuntimeLocationLookup {
   resolveActorRef(
-    meshName: string,
     actorId: string,
     signal?: AbortSignal
   ): Promise<ActorRef | undefined>;

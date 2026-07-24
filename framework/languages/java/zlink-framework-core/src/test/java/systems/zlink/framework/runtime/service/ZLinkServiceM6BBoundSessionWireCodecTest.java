@@ -65,7 +65,7 @@ final class ZLinkServiceM6BBoundSessionWireCodecTest {
             systems.zlink.framework.runtime.protocol.ServiceWireConstants
                 .FLAG_BOUND_SESSION
                 | systems.zlink.framework.runtime.protocol
-                    .ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+                    .ServiceWireConstants.FLAG_SOURCE_SPOT_ID;
         var tail = new ZLinkServiceM6BWireCodec.BoundSessionTail(
             RoutingId.from("session"),
             3,

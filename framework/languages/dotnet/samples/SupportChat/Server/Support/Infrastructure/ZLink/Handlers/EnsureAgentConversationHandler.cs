@@ -26,16 +26,23 @@ internal sealed class EnsureAgentConversationHandler(
         CancellationToken cancellationToken)
     {
         var conversationActorId = $"{request.RosterActorId}@{request.ConversationId}";
-        var actorRef = await actors.FindAsync(conversationActorId, cancellationToken)
-                       ?? await actors.GetOrCreateAsync(
-                           conversationActorId,
-                           SampleNames.SupportActorType,
-                           new EnsureSupportUserActorReq(
-                               conversationActorId,
-                               request.DisplayName,
-                               SupportChatRoles.Agent,
-                               request.RosterActorId),
-                           cancellationToken);
+        var actorRef = await actors.FindAsync(conversationActorId, cancellationToken);
+        if (actorRef is null)
+        {
+            actorRef = await actors
+                .GetOrCreate(conversationActorId, SampleNames.SupportActorType)
+                .Request(new EnsureSupportUserActorReq(
+                    conversationActorId,
+                    request.DisplayName,
+                    SupportChatRoles.Agent,
+                    request.RosterActorId))
+                .Async(cancellationToken) switch
+            {
+                ZLinkActorCreateResult.Existing value => value.Actor,
+                ZLinkActorCreateResult.Created value => value.Actor,
+                _ => throw new InvalidOperationException("Actor creation was rejected.")
+            };
+        }
 
         var conversationActor = directory.Get(conversationActorId);
         var joined = await conversationActor.Actor.Context.JoinSpot(
@@ -58,7 +65,7 @@ internal sealed class EnsureAgentConversationHandler(
             request.ConversationId,
             request.RosterActorId);
         return new EnsureAgentConversationRes(
-            ActorRefSnapshot.From(actorRef),
+            ActorRefSnapshot.From(actorRef.Value),
             state);
     }
 }

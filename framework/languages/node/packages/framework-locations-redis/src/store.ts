@@ -100,8 +100,14 @@ import {
   type ZLinkObjectAbortResult,
   type ZLinkObjectCommitRequest,
   type ZLinkObjectCommitResult,
+  type ZLinkObjectCreationCompleteRequest,
+  type ZLinkObjectCreationCompleteResult,
   type ZLinkObjectReserveRequest,
   type ZLinkObjectReserveResult,
+  type ZLinkCreationOperationIdentity,
+  type ZLinkCreationTerminalPublication,
+  type ZLinkCreationTerminalReadResult,
+  type ZLinkCreationTerminalRecord,
   type ZLinkRelocationCapacityAbortResult,
   type ZLinkRelocationCapacityFence,
   type ZLinkRelocationCapacityReservationRequest,
@@ -131,6 +137,8 @@ import {
 
 const CLIENT_SERVER_PAGE_MAX_BYTES = 4 * 1024 * 1024;
 const FANOUT_PAGE_MAX_BYTES = 4 * 1024 * 1024;
+const CREATION_TERMINAL_RETENTION_MS = 5 * 60 * 1000;
+const MAX_CREATION_TERMINAL_BYTES = 1024 * 1024;
 
 export class ZLinkRedisLocationStore implements
   ZLinkClientServerLocationStore,
@@ -232,6 +240,8 @@ export class ZLinkRedisLocationStore implements
       this.authorityCall('capacityProjection', {}, signal) as Promise<{
         readonly nodeActive: Readonly<Record<string, number>>;
         readonly nodePending: Readonly<Record<string, number>>;
+        readonly typeActive: Readonly<Record<string, number>>;
+        readonly typePending: Readonly<Record<string, number>>;
       }>
     ]);
     return rows
@@ -241,8 +251,21 @@ export class ZLinkRedisLocationStore implements
           encodeMeshNodeKey({ meshName: row.meshName, rid: row.rid }),
           row.lifecycleGeneration.toString()
         );
+        const objectCapabilities = row.objectCapabilities.map(capability => {
+          const typeKey = encodeKeySegments(
+            key,
+            capability.objectKind,
+            capability.stableType
+          );
+          return {
+            ...capability,
+            active: Number(projection.typeActive[typeKey] ?? 0),
+            reserved: Number(projection.typePending[typeKey] ?? 0)
+          };
+        });
         return {
           ...row,
+          objectCapabilities,
           objectCapacity: {
             ...row.objectCapacity,
             activeObjects: Number(projection.nodeActive[key] ?? 0),
@@ -976,7 +999,8 @@ export class ZLinkRedisLocationStore implements
       readonly storeNowMs?: number;
     };
     if (raw.kind === 'scanExpired') return { kind: 'scanExpired' };
-    const rows = raw.rows ?? [];
+    // Redis cjson encodes an empty Lua table as `{}` rather than `[]`.
+    const rows = Array.isArray(raw.rows) ? raw.rows : [];
     return {
       kind: 'page',
       items: rows.map(item => ({
@@ -1015,13 +1039,10 @@ export class ZLinkRedisLocationStore implements
       ),
       objectKind: request.key.kind,
       stableType: requireText(request.intent.stableType, 'stable type'),
-      placementProfile: request.intent.placementProfile ?? '',
       capacityDelta: request.pendingCapacityDelta,
       payload: encodePayload(request.creatingPayload),
       reservationId,
       intent: {
-        placementProfile: request.intent.placementProfile ?? '',
-        affinityKey: request.intent.affinityKey ?? '',
         requestContentReference: request.intent.requestContentReference,
         requestSha256: encodePayload(request.intent.requestSha256),
         requestEncodedSize: request.intent.requestEncodedSize.toString()
@@ -1031,11 +1052,38 @@ export class ZLinkRedisLocationStore implements
     return objectReserveResult(raw);
   }
 
+  async readCreationTerminal(
+    operation: ZLinkCreationOperationIdentity,
+    signal?: AbortSignal
+  ): Promise<ZLinkCreationTerminalReadResult> {
+    validateCreationOperation(operation);
+    const raw = await this.authorityCall('readCreationTerminal', {
+      operation: creationOperationJson(operation)
+    }, signal) as Record<string, unknown>;
+    if (raw.kind === 'missing') {
+      return { kind: 'missing', storeNow: fromUnixMs(Number(raw.storeNowMs)) };
+    }
+    if (raw.kind !== 'terminal') {
+      throw new Error('Redis creation terminal result is invalid.');
+    }
+    const record = creationTerminalRecord(raw);
+    if (String(record.operation.sourceNodeRid) !== String(operation.sourceNodeRid)
+      || record.operation.sourceNodeGeneration !== operation.sourceNodeGeneration
+      || record.operation.operationId.high !== operation.operationId.high
+      || record.operation.operationId.low !== operation.operationId.low) {
+      throw new Error('Redis creation terminal identity does not match its exact key.');
+    }
+    return { kind: 'found', record };
+  }
+
   async commit(
     request: ZLinkObjectCommitRequest,
     signal?: AbortSignal
   ): Promise<ZLinkObjectCommitResult> {
     validateAuthorityPayload(request.readyPayload);
+    if (request.key.kind === 'actor') {
+      throw new TypeError('Actor creation must use completeCreation.');
+    }
     const raw = await this.authorityCall('commit', {
       key: encodeAuthorityKey(
         request.key.kind,
@@ -1044,10 +1092,55 @@ export class ZLinkRedisLocationStore implements
       reservationId: request.reservationId,
       expectedStoreVersion: request.expectedStoreVersion,
       target: creationTargetJson(request.target),
-      payload: encodePayload(request.readyPayload),
-      placementProfile: ''
+      payload: encodePayload(request.readyPayload)
     }, signal);
     return objectCommitResult(raw);
+  }
+
+  async completeCreation(
+    request: ZLinkObjectCreationCompleteRequest,
+    signal?: AbortSignal
+  ): Promise<ZLinkObjectCreationCompleteResult> {
+    if (request.key.kind !== 'actor') {
+      throw new TypeError('completeCreation is reserved for Actor creation.');
+    }
+    if (request.completion.kind === 'created') {
+      validateAuthorityPayload(request.completion.readyPayload);
+    }
+    const terminal = creationTerminalJson(request.completion.terminal);
+    const raw = await this.authorityCall('completeCreation', {
+      key: encodeAuthorityKey(
+        request.key.kind,
+        requireText(request.key.globalId, 'object global ID')
+      ),
+      reservationId: request.reservationId,
+      expectedStoreVersion: request.expectedStoreVersion,
+      target: creationTargetJson(request.target),
+      completion: {
+        kind: request.completion.kind,
+        terminal,
+        readyPayload: request.completion.kind === 'created'
+          ? encodePayload(request.completion.readyPayload)
+          : undefined
+      }
+    }, signal) as Record<string, unknown>;
+    switch (raw.kind) {
+      case 'created':
+        return {
+          kind: 'created',
+          ready: authorityRead(raw.ready) as ZLinkAuthoritySnapshot,
+          terminal: creationTerminalRecord(raw.terminal as Record<string, unknown>)
+        };
+      case 'rejected':
+      case 'failed':
+      case 'alreadyCompleted':
+        return {
+          kind: raw.kind,
+          terminal: creationTerminalRecord(raw.terminal as Record<string, unknown>)
+        };
+      case 'generationExhausted': return { kind: 'generationExhausted' };
+      default: return { kind: 'stale' };
+    }
   }
 
   async abort(
@@ -1081,8 +1174,7 @@ export class ZLinkRedisLocationStore implements
         descriptorKey: encodeMeshNodeKey(request.targetDescriptor),
         lifecycleGeneration: comparable.targetNodeLifecycleGeneration,
         owner: comparable.targetOwner
-      },
-      placementProfile: ''
+      }
     }, signal);
     return relocationReserveResult(raw);
   }
@@ -1480,7 +1572,8 @@ export class ZLinkRedisLocationStore implements
       descriptor?: { meshName: string; rid: string };
       owner?: { ownerId: string };
     } | undefined;
-    const recordKey = operation === 'reserve' || operation === 'commit' || operation === 'abort'
+    const recordKey = operation === 'reserve' || operation === 'commit'
+      || operation === 'completeCreation' || operation === 'abort'
       ? this.keys.creation(String(value.reservationId))
       : operation === 'reserveRelocation'
         ? this.keys.relocation(String(value.reservationId))
@@ -1508,6 +1601,28 @@ export class ZLinkRedisLocationStore implements
             rid: ridOf(effectiveTarget.descriptor.rid)
           }));
     const currentOwner = value.currentOwner as { ownerId?: string } | undefined;
+    const terminalOperation = (
+      operation === 'readCreationTerminal'
+        ? value.operation
+        : ((value.completion as Record<string, unknown> | undefined)
+            ?.terminal as Record<string, unknown> | undefined)?.operation
+    ) as {
+      sourceNodeRid?: string;
+      sourceNodeGeneration?: string;
+      operationIdHigh?: string;
+      operationIdLow?: string;
+    } | undefined;
+    const creationTerminalKey = terminalOperation?.sourceNodeRid === undefined
+      || terminalOperation.sourceNodeGeneration === undefined
+      || terminalOperation.operationIdHigh === undefined
+      || terminalOperation.operationIdLow === undefined
+      ? placeholder
+      : this.keys.creationTerminal(
+          terminalOperation.sourceNodeRid,
+          BigInt(terminalOperation.sourceNodeGeneration),
+          BigInt(terminalOperation.operationIdHigh),
+          BigInt(terminalOperation.operationIdLow)
+        );
     const keys = [
       authorityKey.length === 0 ? placeholder : this.keys.authorityCurrent(authorityKey),
       authorityKey.length === 0 ? placeholder : this.keys.authorityHistory(authorityKey),
@@ -1529,7 +1644,7 @@ export class ZLinkRedisLocationStore implements
       this.keys.authorityIndexGc(),
       this.keys.scansExpiry(),
       this.keys.scansWatermark(),
-      placeholder
+      creationTerminalKey
     ];
     if (operation === 'prepareAggregate'
       || operation === 'commitAggregate'
@@ -1540,8 +1655,11 @@ export class ZLinkRedisLocationStore implements
       value.keyHex = Buffer.from(authorityKey, 'utf8').toString('hex');
     }
     const encoded = JSON.stringify(value);
-    if (Buffer.byteLength(encoded) > 1024 * 1024) {
-      throw new RangeError('Redis authority request exceeds 1 MiB.');
+    const maxRequestBytes = operation === 'completeCreation'
+      ? MAX_CREATION_TERMINAL_BYTES * 2 + 64 * 1024
+      : 1024 * 1024;
+    if (Buffer.byteLength(encoded) > maxRequestBytes) {
+      throw new RangeError('Redis authority request exceeds its operation-specific bound.');
     }
     const raw = await this.eval(AUTHORITY_HYBRID_SCRIPT, keys, [
       operation,
@@ -1687,13 +1805,13 @@ export class ZLinkRedisLocationStore implements
       }
       await client.sendCommand([
         'HSET', schemaKey,
-        'format', 'location-authority-hybrid-v1',
-        'epoch', '1'
+        'format', 'location-authority-hybrid-v3',
+        'epoch', '3'
       ]);
       return;
     }
-    if (asString(existing[0]) !== 'location-authority-hybrid-v1'
-        || asString(existing[1]) !== '1') {
+    if (asString(existing[0]) !== 'location-authority-hybrid-v3'
+        || asString(existing[1]) !== '3') {
       throw new Error('Redis location provider schema is incompatible.');
     }
   }
@@ -1840,6 +1958,39 @@ function objectCommitResult(raw: unknown): ZLinkObjectCommitResult {
     : { kind: 'stale' };
 }
 
+function creationTerminalRecord(raw: Record<string, unknown>): ZLinkCreationTerminalRecord {
+  const state = String(raw.state);
+  if (state !== 'Created' && state !== 'Rejected' && state !== 'Failed') {
+    throw new Error('Redis creation terminal state is invalid.');
+  }
+  const terminalEnvelope = Buffer.from(String(raw.terminalEnvelope), 'hex');
+  const terminalEnvelopeSha256 = Buffer.from(String(raw.terminalEnvelopeSha256), 'hex');
+  const actualSha256 = createHash('sha256').update(terminalEnvelope).digest();
+  if (String(raw.objectKind) !== 'actor'
+    || terminalEnvelope.byteLength > MAX_CREATION_TERMINAL_BYTES
+    || terminalEnvelopeSha256.byteLength !== 32
+    || !actualSha256.equals(terminalEnvelopeSha256)) {
+    throw new Error('Redis creation terminal envelope is invalid.');
+  }
+  return {
+    state: state.toLowerCase() as ZLinkCreationTerminalRecord['state'],
+    operation: {
+      sourceNodeRid: String(raw.sourceNodeRid),
+      sourceNodeGeneration: BigInt(String(raw.sourceNodeGeneration)),
+      operationId: {
+        high: BigInt(String(raw.operationIdHigh)),
+        low: BigInt(String(raw.operationIdLow))
+      }
+    },
+    reservationId: String(raw.reservationId),
+    objectKind: String(raw.objectKind) as ZLinkCreationTerminalRecord['objectKind'],
+    terminalEnvelope,
+    terminalEnvelopeSha256,
+    expiresAt: fromUnixMs(Number(raw.expiresAtUnixMs)),
+    storeNow: fromUnixMs(Number(raw.storeNowMs))
+  };
+}
+
 function relocationReserveResult(raw: unknown): ZLinkRelocationCapacityReserveResult {
   const value = raw as Record<string, unknown>;
   if (value.kind === 'reserved' || value.kind === 'alreadyReserved') {
@@ -1880,6 +2031,59 @@ function creationTargetJson(target: ZLinkObjectCommitRequest['target']): unknown
     lifecycleGeneration: target.nodeLifecycleGeneration.toString(),
     owner: ownerJson(target.owner)
   };
+}
+
+function creationOperationJson(operation: ZLinkCreationOperationIdentity): Record<string, string> {
+  validateCreationOperation(operation);
+  return {
+    sourceNodeRid: String(operation.sourceNodeRid),
+    sourceNodeGeneration: operation.sourceNodeGeneration.toString(),
+    operationIdHigh: operation.operationId.high.toString(),
+    operationIdLow: operation.operationId.low.toString()
+  };
+}
+
+function creationTerminalJson(
+  terminal: ZLinkCreationTerminalPublication
+): Record<string, unknown> {
+  const operation = creationOperationJson(terminal.operation);
+  if (terminal.terminalEnvelope.byteLength > MAX_CREATION_TERMINAL_BYTES
+    || terminal.terminalEnvelopeSha256.byteLength !== 32) {
+    throw new RangeError('Creation terminal envelope or SHA-256 exceeds its exact bound.');
+  }
+  const envelope = Buffer.from(terminal.terminalEnvelope);
+  const sha256 = Buffer.from(terminal.terminalEnvelopeSha256);
+  if (!createHash('sha256').update(envelope).digest().equals(sha256)) {
+    throw new TypeError('Creation terminal envelope SHA-256 does not match its bytes.');
+  }
+  const deadlineMs = terminal.operationDeadline.getTime();
+  const expiresAtUnixMs = deadlineMs + CREATION_TERMINAL_RETENTION_MS;
+  if (!Number.isSafeInteger(deadlineMs)
+    || !Number.isSafeInteger(expiresAtUnixMs)
+    || expiresAtUnixMs <= Date.now()) {
+    throw new RangeError('Creation terminal expiry must be an unexpired absolute instant.');
+  }
+  return {
+    operation,
+    terminalEnvelope: envelope.toString('hex'),
+    terminalEnvelopeSha256: sha256.toString('hex'),
+    expiresAtUnixMs: String(expiresAtUnixMs)
+  };
+}
+
+function validateCreationOperation(operation: ZLinkCreationOperationIdentity): void {
+  requireDescriptorText(String(operation.sourceNodeRid), 'creation source Node RID');
+  const maxGeneration = 0x7fff_ffff_ffff_ffffn;
+  const maxU64 = 0xffff_ffff_ffff_ffffn;
+  if (operation.sourceNodeGeneration < 1n
+    || operation.sourceNodeGeneration > maxGeneration
+    || operation.operationId.high < 0n
+    || operation.operationId.high > maxU64
+    || operation.operationId.low < 0n
+    || operation.operationId.low > maxU64
+    || operation.operationId.high === 0n && operation.operationId.low === 0n) {
+    throw new RangeError('Creation operation identity is invalid.');
+  }
 }
 
 function ownerJson(owner: ZLinkLocationOwnerToken): unknown {
@@ -1997,10 +2201,6 @@ function canonicalObjectCapabilities(
   values: ZLinkMeshNodeDescriptor['objectCapabilities']
 ): ZLinkMeshNodeDescriptor['objectCapabilities'] {
   return [...values]
-    .map(value => ({
-      ...value,
-      placementProfiles: [...value.placementProfiles].sort(compareUtf8)
-    }))
     .sort((left, right) => {
       const byKind = compareUtf8(left.objectKind, right.objectKind);
       return byKind !== 0 ? byKind : compareUtf8(left.stableType, right.stableType);
@@ -2032,8 +2232,6 @@ function meshDescriptorImmutableFingerprint(descriptor: ZLinkMeshNodeDescriptor)
       capability.stableType,
       capability.policy,
       capability.hasSnapshotAdapter ? '1' : '0',
-      capability.placementProfiles.length.toString(),
-      ...capability.placementProfiles,
       capability.activeLimit?.toString() ?? '',
       capability.pendingLimit?.toString() ?? ''
     );
@@ -2144,7 +2342,7 @@ function validateMeshDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
     || capacity.maxActiveObjects === 0
     || capacity.maxPendingActivations === 0
     || descriptor.placementWeight < 0
-    || descriptor.placementWeight > 100
+    || descriptor.placementWeight > 10_000
     || descriptor.objectCapabilities.length > 1024
     || descriptor.objectRole !== 'server' && descriptor.objectCapabilities.length !== 0) {
     throw new RangeError('MeshNode current object capacity exceeds its configured maximum.');
@@ -2158,22 +2356,14 @@ function validateMeshDescriptor(descriptor: ZLinkMeshNodeDescriptor): void {
     if ((capability.policy === 'snapshot') !== capability.hasSnapshotAdapter) {
       throw new TypeError('Snapshot adapter presence does not match the maintenance policy.');
     }
+    if (!Number.isSafeInteger(capability.active) || capability.active < 0
+      || !Number.isSafeInteger(capability.reserved) || capability.reserved < 0) {
+      throw new RangeError('MeshNode capability usage must be non-negative safe integers.');
+    }
     for (const limit of [capability.activeLimit, capability.pendingLimit]) {
       if (limit !== undefined && (!Number.isSafeInteger(limit) || limit <= 0)) {
         throw new RangeError('MeshNode capability limits must be non-negative safe integers.');
       }
-    }
-    if (capability.placementProfiles.length > 1024
-      || new Set(capability.placementProfiles).size !== capability.placementProfiles.length
-      || capability.placementProfiles.some(profile => {
-        try {
-          requireDescriptorText(profile, 'placement profile');
-          return false;
-        } catch {
-          return true;
-        }
-      })) {
-      throw new TypeError('MeshNode placement profiles must be unique non-empty values.');
     }
   }
 }
@@ -2197,8 +2387,8 @@ function validateClientServerDescriptor(
   }
   if (!Number.isInteger(descriptor.weight)
     || descriptor.weight < 0
-    || descriptor.weight > 100) {
-    throw new RangeError('ClientServer descriptor weight must be between 0 and 100.');
+    || descriptor.weight > 10_000) {
+    throw new RangeError('ClientServer descriptor weight must be an integer in 0..10000.');
   }
   if (!Object.values(ZLinkFrameworkRuntimeState).includes(descriptor.state)) {
     throw new RangeError('ClientServer descriptor runtime state is invalid.');

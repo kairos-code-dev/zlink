@@ -16,6 +16,8 @@ public interface ZLinkMeshNodeBuilder {
 
     ZLinkMeshNodeBuilder setRoutingId(RoutingId routingId);
 
+    ZLinkMeshNodeBuilder setPlacementWeight(int weight);
+
     ZLinkMeshNodeBuilder useAllocatedRoutingId(int slotCount);
 
     ZLinkMeshNodeBuilder useAllocatedRoutingId(int slotCount, String routingIdPrefix);

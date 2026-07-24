@@ -20,6 +20,7 @@ import systems.zlink.framework.locations.ZLinkAuthorityGenerationTransition;
 import systems.zlink.framework.locations.ZLinkAuthorityPut;
 import systems.zlink.framework.locations.ZLinkAuthoritySnapshot;
 import systems.zlink.framework.locations.ZLinkAuthorityStored;
+import systems.zlink.framework.locations.ZLinkCapacityUsage;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptor;
 import systems.zlink.framework.locations.ZLinkFanoutPublisherDescriptorKey;
 import systems.zlink.framework.locations.ZLinkLocationAutoConnectType;
@@ -34,6 +35,12 @@ import systems.zlink.framework.locations.ZLinkMeshNodeDescriptor;
 import systems.zlink.framework.locations.ZLinkMeshNodeObjectRole;
 import systems.zlink.framework.locations.ZLinkObjectCapability;
 import systems.zlink.framework.locations.ZLinkObjectCommitResult;
+import systems.zlink.framework.locations.ZLinkCreationOperationIdentity;
+import systems.zlink.framework.locations.ZLinkCreationOperationTerminal;
+import systems.zlink.framework.locations.ZLinkCreationTerminalFound;
+import systems.zlink.framework.locations.ZLinkCreationTerminalMissing;
+import systems.zlink.framework.locations.ZLinkCreationTerminalState;
+import systems.zlink.framework.locations.ZLinkObjectRejectResult;
 import systems.zlink.framework.locations.ZLinkObjectMaintenancePolicyKind;
 import systems.zlink.framework.locations.ZLinkObjectReservation;
 import systems.zlink.framework.locations.ZLinkObjectReservationRequest;
@@ -59,6 +66,86 @@ import systems.zlink.framework.locations.ZLinkRoutingIdSlotReleaseResult;
 class ZLinkInMemoryLocationStoreTest {
     private static final Instant NOW = Instant.parse("2026-07-03T00:00:00Z");
     private static final RoutingId NODE_A = RoutingId.from(new byte[] {0x01});
+
+    @Test
+    void creationTerminalsAreScopedToExactOperationAndRejectionReopensReservation()
+        throws Exception {
+        ZLinkInMemoryAuthorityStore store = newAuthorityStore();
+        ZLinkLocationOwnerToken owner =
+            new ZLinkLocationOwnerToken("owner", 1);
+        ZLinkCreationOperationIdentity firstOperation =
+            new ZLinkCreationOperationIdentity(NODE_A, 7, 1, 2);
+        ZLinkCreationOperationIdentity secondOperation =
+            new ZLinkCreationOperationIdentity(NODE_A, 7, 1, 3);
+
+        ZLinkObjectReservation first = reserveActor(
+            store,
+            "zla1:a:4:mesh:8:actor-a",
+            owner);
+        byte[] createdEnvelope = new byte[] {1, 2, 3};
+        ZLinkCreationOperationTerminal created = terminal(
+            firstOperation,
+            first,
+            ZLinkCreationTerminalState.CREATED,
+            createdEnvelope);
+        assertEquals(
+            ZLinkObjectCommitResult.COMMITTED,
+            store.commit(first, new byte[] {9}, created, () -> false)
+                .toCompletableFuture().get());
+        assertEquals(
+            ZLinkObjectCommitResult.ALREADY_COMMITTED,
+            store.commit(first, new byte[] {9}, created, () -> false)
+                .toCompletableFuture().get());
+        assertEquals(
+            ZLinkObjectCommitResult.STALE,
+            store.commit(
+                    first,
+                    new byte[] {9},
+                    terminal(
+                        firstOperation,
+                        first,
+                        ZLinkCreationTerminalState.CREATED,
+                        new byte[] {1, 2, 4}),
+                    () -> false)
+                .toCompletableFuture().get());
+        assertArrayEquals(
+            createdEnvelope,
+            assertInstanceOf(
+                ZLinkCreationTerminalFound.class,
+                store.readCreationTerminal(firstOperation, () -> false)
+                    .toCompletableFuture().get())
+                .terminal()
+                .terminalEnvelope());
+        assertInstanceOf(
+            ZLinkCreationTerminalMissing.class,
+            store.readCreationTerminal(secondOperation, () -> false)
+                .toCompletableFuture().get());
+
+        ZLinkObjectReservation rejectedReservation = reserveActor(
+            store,
+            "zla1:a:4:mesh:8:actor-b",
+            owner);
+        ZLinkCreationOperationTerminal rejected = terminal(
+            secondOperation,
+            rejectedReservation,
+            ZLinkCreationTerminalState.REJECTED,
+            new byte[] {4});
+        assertEquals(
+            ZLinkObjectRejectResult.REJECTED,
+            store.reject(
+                    rejectedReservation,
+                    rejected,
+                    () -> false)
+                .toCompletableFuture().get());
+        assertInstanceOf(
+            ZLinkObjectReserved.class,
+            store.reserve(
+                    reservationRequest(
+                        "zla1:a:4:mesh:8:actor-b",
+                        owner),
+                    () -> false)
+                .toCompletableFuture().get());
+    }
 
     @Test
     void fanoutPublisherUsesDedicatedLifecycleAndOwnerFences()
@@ -193,8 +280,6 @@ class ZLinkInMemoryLocationStoreTest {
                         ZLinkPlacementObjectKind.ACTOR,
                         key,
                         "player",
-                        Optional.empty(),
-                        Optional.empty(),
                         "creation-root",
                         new byte[32],
                         32,
@@ -206,7 +291,7 @@ class ZLinkInMemoryLocationStoreTest {
                     () -> false)
                 .toCompletableFuture().get()).reservation();
         assertEquals(
-            new ZLinkPlacementCapacity(0, 1, 8, 8),
+            actorCapacity(0, 1, 8),
             onlyMeshNode(store).capacity());
 
         assertEquals(
@@ -214,7 +299,7 @@ class ZLinkInMemoryLocationStoreTest {
             store.commit(reserved, new byte[] {2}, () -> false)
                 .toCompletableFuture().get());
         assertEquals(
-            new ZLinkPlacementCapacity(1, 0, 8, 8),
+            actorCapacity(1, 0, 8),
             onlyMeshNode(store).capacity());
 
         var active = assertInstanceOf(
@@ -229,7 +314,7 @@ class ZLinkInMemoryLocationStoreTest {
                     () -> false)
                 .toCompletableFuture().get());
         assertEquals(
-            new ZLinkPlacementCapacity(0, 0, 8, 8),
+            actorCapacity(0, 0, 8),
             onlyMeshNode(store).capacity());
     }
 
@@ -275,8 +360,6 @@ class ZLinkInMemoryLocationStoreTest {
             ZLinkPlacementObjectKind.ACTOR,
             "zla1:a:4:mesh:7:created",
             "player",
-            Optional.empty(),
-            Optional.empty(),
             "creation-root",
             new byte[32],
             32,
@@ -448,6 +531,50 @@ class ZLinkInMemoryLocationStoreTest {
                 .toCompletableFuture().get());
     }
 
+    private static ZLinkObjectReservation reserveActor(
+        ZLinkInMemoryAuthorityStore store,
+        String key,
+        ZLinkLocationOwnerToken owner) throws Exception {
+        return assertInstanceOf(
+            ZLinkObjectReserved.class,
+            store.reserve(reservationRequest(key, owner), () -> false)
+                .toCompletableFuture().get())
+            .reservation();
+    }
+
+    private static ZLinkObjectReservationRequest reservationRequest(
+        String key,
+        ZLinkLocationOwnerToken owner) {
+        return new ZLinkObjectReservationRequest(
+            ZLinkPlacementObjectKind.ACTOR,
+            key,
+            "player",
+            "creation-root",
+            new byte[32],
+            32,
+            new ZLinkMeshNodeDescriptorKey("mesh", NODE_A),
+            7,
+            owner,
+            new byte[] {1},
+            1);
+    }
+
+    private static ZLinkCreationOperationTerminal terminal(
+        ZLinkCreationOperationIdentity operation,
+        ZLinkObjectReservation reservation,
+        ZLinkCreationTerminalState state,
+        byte[] envelope) throws Exception {
+        return new ZLinkCreationOperationTerminal(
+            operation,
+            reservation,
+            state,
+            envelope,
+            java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(envelope),
+            NOW.plus(Duration.ofMinutes(5)));
+    }
+
     private static ZLinkInMemoryAuthorityStore newAuthorityStore() {
         return new ZLinkInMemoryAuthorityStore(
             Clock.fixed(NOW, ZoneOffset.UTC),
@@ -470,8 +597,6 @@ class ZLinkInMemoryLocationStoreTest {
                         ZLinkPlacementObjectKind.ACTOR,
                         key,
                         "player",
-                        Optional.empty(),
-                        Optional.empty(),
                         "creation-root",
                         new byte[32],
                         32,
@@ -536,12 +661,10 @@ class ZLinkInMemoryLocationStoreTest {
                 "player",
                 ZLinkObjectMaintenancePolicyKind.SNAPSHOT,
                 true,
-                java.util.Set.of(),
-                8,
-                8)),
+                0)),
             ZLinkMeshNodeObjectRole.SERVER,
             100,
-            new ZLinkPlacementCapacity(0, 0, 8, 8),
+            actorCapacity(0, 0, 8),
             Optional.empty(),
             systems.zlink.framework.runtime.host
                 .ZLinkFrameworkRuntimeState.SERVING,
@@ -575,5 +698,15 @@ class ZLinkInMemoryLocationStoreTest {
             ZLinkLocationRole.ROUTER,
             nodeRid,
             null);
+    }
+
+    private static ZLinkPlacementCapacity actorCapacity(
+        int active,
+        int reserved,
+        int limit) {
+        return new ZLinkPlacementCapacity(
+            new ZLinkCapacityUsage(active, reserved, limit),
+            new ZLinkCapacityUsage(0, 0, 0),
+            List.of());
     }
 }

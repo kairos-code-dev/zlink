@@ -286,9 +286,42 @@ final class ZLinkAuthorityContractTest {
         }
 
         @Override
+        public CompletionStage<ZLinkObjectCommitResult> commit(
+            ZLinkObjectReservation reservation,
+            byte[] readyPayload,
+            systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+            ZLinkStoreCancellation cancellation) {
+            throw new AssertionError();
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkObjectRejectResult> reject(
+            ZLinkObjectReservation reservation,
+            systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+            ZLinkStoreCancellation cancellation) {
+            throw new AssertionError();
+        }
+
+        @Override
         public CompletionStage<ZLinkObjectAbortResult> abort(
             ZLinkObjectReservation reservation,
             ZLinkStoreCancellation cancellation) {
+            throw new AssertionError();
+        }
+
+        @Override
+        public CompletionStage<ZLinkObjectAbortResult> abort(
+            ZLinkObjectReservation reservation,
+            systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+            ZLinkStoreCancellation cancellation) {
+            throw new AssertionError();
+        }
+
+        @Override
+        public CompletionStage<systems.zlink.framework.locations.ZLinkCreationTerminalReadResult>
+            readCreationTerminal(
+                systems.zlink.framework.locations.ZLinkCreationOperationIdentity operation,
+                ZLinkStoreCancellation cancellation) {
             throw new AssertionError();
         }
 

@@ -10,7 +10,7 @@ import systems.zlink.contracts.core.RoutingId;
  * @param kind the record kind
  * @param domain the ready domain bit mask
  * @param sourceNodeRid the source node routing id, if any
- * @param sourceSpotRid the source spot routing id, if any
+ * @param sourceSpotId the source spot routing id, if any
  * @param sourceBindingGeneration the validated bound-session generation, or zero
  * @param sourceActor the source actor reference, if any
  * @param operationId the correlated operation id, if any
@@ -26,7 +26,7 @@ import systems.zlink.contracts.core.RoutingId;
  * @param partCount the number of parts belonging to this record
  */
 public record ReceiveRecord(RecordKind kind, int domain, RoutingId sourceNodeRid,
-                            RoutingId sourceSpotRid, long sourceBindingGeneration,
+                            RoutingId sourceSpotId, long sourceBindingGeneration,
                             ActorRef sourceActor,
                             OperationId operationId, OperationKind operationKind,
                             ReplyToken replyToken, String channelName, String topic,
@@ -38,7 +38,7 @@ public record ReceiveRecord(RecordKind kind, int domain, RoutingId sourceNodeRid
         RecordKind kind,
         int domain,
         RoutingId sourceNodeRid,
-        RoutingId sourceSpotRid,
+        RoutingId sourceSpotId,
         ActorRef sourceActor,
         OperationId operationId,
         OperationKind operationKind,
@@ -54,7 +54,7 @@ public record ReceiveRecord(RecordKind kind, int domain, RoutingId sourceNodeRid
             kind,
             domain,
             sourceNodeRid,
-            sourceSpotRid,
+            sourceSpotId,
             0L,
             sourceActor,
             operationId,

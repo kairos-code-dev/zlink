@@ -105,7 +105,7 @@ final class SpotActorTransferContractTest {
                 systems.zlink.framework.actors.ZLinkActorJoinResult.Rejected.class,
                 rejected);
 
-            assertEquals(Optional.of(sourceRoom), actor.context().spotRid());
+            assertEquals(Optional.of(sourceRoom), actor.context().spotId());
             assertEquals(List.of("target-admission"), EVENTS);
         }
     }
@@ -140,7 +140,7 @@ final class SpotActorTransferContractTest {
             ContractTargetSpot.joinRelease.complete(null);
             assertInstanceOf(ZLinkActorJoinResult.Accepted.class,
                 joining.get(3, TimeUnit.SECONDS));
-            assertEquals("local-target", probe.get(3, TimeUnit.SECONDS).spotRid());
+            assertEquals("local-target", probe.get(3, TimeUnit.SECONDS).spotId());
             assertEquals(1, EVENTS.stream().filter("target-packet"::equals).count());
         }
     }
@@ -528,7 +528,7 @@ final class SpotActorTransferContractTest {
     }
 
     public record ProbeRequest(String marker) { }
-    public record ProbeReply(String marker, String spotRid) { }
+    public record ProbeReply(String marker, String spotId) { }
 
     public static final class ProbeHandler implements ZLinkSpotActorRequestHandler<
         ContractTargetSpot,
@@ -543,7 +543,7 @@ final class SpotActorTransferContractTest {
             ProbeRequest request) {
             EVENTS.add("target-packet");
             return CompletableFuture.completedFuture(
-                new ProbeReply(request.marker(), spot.context().spotRid().toString()));
+                new ProbeReply(request.marker(), spot.context().spotId().toString()));
         }
     }
 
@@ -661,44 +661,44 @@ final class SpotActorTransferContractTest {
             awaitSpotLocation(rid);
         }
 
-        private void awaitSpotLocation(RoutingId spotRid) {
+        private void awaitSpotLocation(String spotId) {
             var key = new systems.zlink.framework.locations.ZLinkSpotLocationKey(
                 "contract-mesh",
-                spotRid);
+                spotId);
             long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
             while (System.nanoTime() < deadline) {
                 if (locations.resolveSpot(key).toCompletableFuture().join() != null) {
                     SpotHandleResolver resolver = ContractSourceSpot.handles.get();
-                    if (resolver != null && resolver.resolveSpotHandle(spotRid)
+                    if (resolver != null && resolver.resolveSpotHandle(spotId)
                         .toCompletableFuture().join().isPresent()) {
                         return;
                     }
                 }
                 Thread.onSpinWait();
             }
-            throw new AssertionError("spot location was not published: " + spotRid);
+            throw new AssertionError("spot location was not published: " + spotId);
         }
 
-        private void awaitSourceSpotLocation(RoutingId spotRid) {
+        private void awaitSourceSpotLocation(String spotId) {
             var key = new systems.zlink.framework.locations.ZLinkSpotLocationKey(
-                "contract-mesh", spotRid);
+                "contract-mesh", spotId);
             long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
             while (System.nanoTime() < deadline) {
                 if (locations.resolveSpot(key).toCompletableFuture().join() != null) {
                     SpotHandleResolver resolver = ContractTargetSpot.handles.get();
-                    if (resolver != null && resolver.resolveSpotHandle(spotRid)
+                    if (resolver != null && resolver.resolveSpotHandle(spotId)
                         .toCompletableFuture().join().isPresent()) {
                         return;
                     }
                 }
                 Thread.onSpinWait();
             }
-            throw new AssertionError("source spot location was not published: " + spotRid);
+            throw new AssertionError("source spot location was not published: " + spotId);
         }
 
-        private void awaitSpotRow(RoutingId spotRid) {
+        private void awaitSpotRow(String spotId) {
             var key = new systems.zlink.framework.locations.ZLinkSpotLocationKey(
-                "contract-mesh", spotRid);
+                "contract-mesh", spotId);
             long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
             while (System.nanoTime() < deadline) {
                 if (locations.resolveSpot(key).toCompletableFuture().join() != null) {
@@ -706,7 +706,7 @@ final class SpotActorTransferContractTest {
                 }
                 Thread.onSpinWait();
             }
-            throw new AssertionError("spot location was not published: " + spotRid);
+            throw new AssertionError("spot location was not published: " + spotId);
         }
 
         private void awaitTargetPeer() {

@@ -6,7 +6,7 @@ import systems.zlink.contracts.core.RoutingId;
 
 public interface ZLinkSpotManager {
     ZLinkSpotCreateCall create(String spotType);
-    ZLinkSpotGetOrCreateCall getOrCreate(RoutingId spotRid, String spotType);
-    CompletionStage<Optional<SpotRef>> find(RoutingId spotRid);
+    ZLinkSpotGetOrCreateCall getOrCreate(String spotId, String spotType);
+    CompletionStage<Optional<SpotRef>> find(String spotId);
     CompletionStage<Boolean> close(SpotRef spot);
 }

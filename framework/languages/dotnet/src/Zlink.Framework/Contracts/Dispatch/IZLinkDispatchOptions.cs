@@ -66,7 +66,7 @@ public sealed record ZLinkMessageFlowEvent(
     string? LocalRid = null,
     string? PeerRid = null,
     string? SocketRole = null,
-    string? SpotRid = null,
+    string? SpotId = null,
     string? ActorId = null,
     long? MessageSize = null,
     ZLinkDispatchErrorReason? ErrorReason = null,

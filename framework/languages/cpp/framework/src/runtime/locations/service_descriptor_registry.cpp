@@ -151,7 +151,8 @@ bool service_descriptor_registry_t::valid (
            && record.descriptor_revision != 0 && !record.endpoint.empty ()
            && !record.security_identity.empty ()
            && record.effective_max_message_bytes != 0
-           && record.weight <= 100 && !record.owner_id.empty ()
+           && record.weight >= 0 && record.weight <= 10000
+           && !record.owner_id.empty ()
            && record.owner_lease_generation > 0;
 }
 

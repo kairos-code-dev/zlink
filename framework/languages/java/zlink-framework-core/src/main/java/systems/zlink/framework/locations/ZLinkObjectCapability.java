@@ -2,16 +2,13 @@ package systems.zlink.framework.locations;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
-import java.util.Set;
 
 public record ZLinkObjectCapability(
     ZLinkPlacementObjectKind objectKind,
     String stableType,
     ZLinkObjectMaintenancePolicyKind policy,
     boolean hasSnapshotAdapter,
-    Set<String> placementProfiles,
-    Integer activeLimit,
-    Integer pendingLimit) {
+    int spotLimit) {
     public ZLinkObjectCapability {
         Objects.requireNonNull(objectKind, "objectKind");
         Objects.requireNonNull(stableType, "stableType");
@@ -22,24 +19,11 @@ public record ZLinkObjectCapability(
             throw new IllegalArgumentException(
                 "Snapshot policy and adapter presence must match");
         }
-        placementProfiles = Set.copyOf(
-            Objects.requireNonNull(
-                placementProfiles,
-                "placementProfiles"));
-        if (placementProfiles.size() > 1024) {
+        if (spotLimit < 0
+            || objectKind == ZLinkPlacementObjectKind.ACTOR
+                && spotLimit != 0) {
             throw new IllegalArgumentException(
-                "placementProfiles must contain at most 1024 entries");
-        }
-        for (String profile : placementProfiles) {
-            requireBoundedText(profile, "placementProfile");
-        }
-        if (activeLimit != null && activeLimit <= 0) {
-            throw new IllegalArgumentException(
-                "activeLimit must be positive when present");
-        }
-        if (pendingLimit != null && pendingLimit <= 0) {
-            throw new IllegalArgumentException(
-                "pendingLimit must be positive when present");
+                "spotLimit must be non-negative and zero for Actor");
         }
     }
 

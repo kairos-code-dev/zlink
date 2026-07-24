@@ -36,7 +36,7 @@ final class ZLinkChannelCallRuntime {
         CompletionStage<Void> send(
             String channelName,
             RoutingId targetNode,
-            RoutingId targetSpot,
+            String targetSpot,
             long targetSpotGeneration,
             List<Message> parts);
     }
@@ -46,7 +46,7 @@ final class ZLinkChannelCallRuntime {
         CompletionStage<List<Message>> request(
             String channelName,
             RoutingId targetNode,
-            RoutingId targetSpot,
+            String targetSpot,
             long targetSpotGeneration,
             List<Message> parts,
             Duration timeout);
@@ -195,7 +195,7 @@ final class ZLinkChannelCallRuntime {
     CompletionStage<Void> sendToSpot(
         String channelName,
         RoutingId targetNode,
-        RoutingId targetSpot,
+        String targetSpot,
         long targetSpotGeneration,
         List<Message> parts) {
         return spotSend.send(
@@ -205,7 +205,7 @@ final class ZLinkChannelCallRuntime {
     CompletionStage<List<Message>> requestToSpot(
         String channelName,
         RoutingId targetNode,
-        RoutingId targetSpot,
+        String targetSpot,
         long targetSpotGeneration,
         List<Message> parts,
         Duration timeout) {

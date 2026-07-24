@@ -42,7 +42,7 @@ var app = builder.Build();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapPost("/send", async (
     ActorCallRequest request,
-    IZLinkActorDirectory actorDirectory,
+    IZLinkActorManager actorDirectory,
     IZLinkActorClient actors,
     CancellationToken ct) =>
 {
@@ -60,7 +60,7 @@ app.MapPost("/send", async (
 });
 app.MapPost("/request", async (
     ActorCallRequest request,
-    IZLinkActorDirectory actorDirectory,
+    IZLinkActorManager actorDirectory,
     IZLinkActorClient actors,
     CancellationToken ct) =>
 {
@@ -80,7 +80,7 @@ app.MapPost("/request", async (
 });
 app.MapPost("/refs/{actorId}/capture", async (
     string actorId,
-    IZLinkActorDirectory actorDirectory,
+    IZLinkActorManager actorDirectory,
     CancellationToken ct) =>
 {
     var actor = await actorDirectory.FindAsync(actorId, ct)
@@ -92,7 +92,7 @@ app.MapPost("/refs/{actorId}/capture", async (
 });
 app.MapGet("/directory/{actorId}", async (
     string actorId,
-    IZLinkActorDirectory actorDirectory,
+    IZLinkActorManager actorDirectory,
     CancellationToken ct) =>
 {
     var actor = await actorDirectory.FindAsync(actorId, ct);
@@ -144,7 +144,7 @@ await app.RunAsync();
 
 static async ValueTask<ActorRef> ResolveActorAsync(
     ActorCallRequest request,
-    IZLinkActorDirectory actorDirectory,
+    IZLinkActorManager actorDirectory,
     CancellationToken cancellationToken)
 {
     if (!string.IsNullOrWhiteSpace(request.TargetNodeRid)

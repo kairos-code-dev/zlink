@@ -4,7 +4,7 @@ internal interface IZLinkCurrentSpotActivation
 {
     string ChannelName { get; }
 
-    RoutingId SpotRid { get; }
+    string SpotId { get; }
 
     TimeSpan DefaultRequestTimeout { get; }
 

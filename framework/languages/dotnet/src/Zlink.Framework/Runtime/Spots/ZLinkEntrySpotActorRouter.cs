@@ -169,23 +169,50 @@ internal sealed class ZLinkEntrySpotActorRouter(ZLinkFrameworkRuntime runtime)
             cancellationToken).ConfigureAwait(false);
     }
 
-    public async ValueTask NotifyCreatedAsync(
+    public async ValueTask NotifyRelocatedAsync(
         ZLinkFrameworkComponentState state,
         IZLinkActor actor,
-        ZLinkMessage createRequest,
         RoutingId? targetNodeRid,
         CancellationToken cancellationToken)
     {
         await NotifyLifecycleAsync(
             state,
             actor,
-            createRequest,
             targetNodeRid,
             static (ZLinkEntrySpotActivation activation, Type actorType,
                     out ZLinkSpotActorLifecycleDescriptor? descriptor) =>
-                activation.TryResolveActorCreated(actorType, out descriptor),
-            throwOnFailure: false,
+                activation.TryResolveActorRelocated(actorType, out descriptor),
+            throwOnFailure: true,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<ZLinkActorCreateResponse> NotifyCreatedAsync(
+        ZLinkFrameworkComponentState state,
+        IZLinkActor actor,
+        ZLinkMessage createRequest,
+        RoutingId? targetNodeRid,
+        CancellationToken cancellationToken)
+    {
+        foreach (var node in state.SpotNodes.Values)
+        {
+            if (targetNodeRid is not null && node.Node.RoutingId != targetNodeRid)
+                continue;
+            if (node.EntrySpotActivation is not { } activation
+                || !activation.TryResolveActorCreated(
+                    actor.GetType(),
+                    out var descriptor)
+                || descriptor is null)
+                continue;
+
+            return await activation.InvokeActorCreateAsync(
+                    descriptor,
+                    actor,
+                    createRequest,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return ZLinkActorCreateResponse.Accept();
     }
 
     public async ValueTask NotifyLeftAsync(

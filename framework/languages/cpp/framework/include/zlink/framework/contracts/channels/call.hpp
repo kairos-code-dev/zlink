@@ -383,17 +383,25 @@ class send_call_t
 
 struct logical_multicast_detail_t
 {
+    // Counts the immutable remote target snapshot used for this publish.
     std::uint64_t snapshot_remote_node_count = 0;
+    // Counts remote targets whose source-local outbound transport queue
+    // accepted the publish. It does not wait for a remote Spot queue or handler.
     std::uint64_t admitted_remote_node_count = 0;
     std::uint64_t dropped_remote_node_count = 0;
     std::uint64_t unreachable_remote_node_count = 0;
+    // Counts the immutable local Spot snapshot used for this publish.
     std::uint64_t snapshot_local_spot_count = 0;
+    // Counts local Spots whose serial queue accepted the publish.
+    // It does not wait for handler execution.
     std::uint64_t admitted_local_spot_count = 0;
     std::uint64_t dropped_local_spot_count = 0;
 };
 
 struct publish_result_t
 {
+    // Reports submission through local transport and Spot queue admission only.
+    // Completion never means that a remote queue or application handler ran.
     submit_status_t status = submit_status_t::submitted;
     logical_multicast_detail_t detail;
 };

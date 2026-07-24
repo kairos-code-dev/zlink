@@ -75,14 +75,25 @@ RouteMesh, ClientServer와 classic fanout이 같은 process에 있어도 각 lis
 
 Automatic discovery에 참여하는 RouteMesh MeshNode의 RID는 MeshNode lifecycle마다 Framework가 새로 만든 opaque
 transport identity다. Caller는 ASCII `[A-Za-z0-9._-]` 1..64자의 진단 prefix만 지정할 수 있고, Framework는
-128-bit CSPRNG 값을 32자리 lowercase hex로 encode해 `prefix-<suffix>`를 만든다. Full RID는 255 bytes 이하다.
+CSPRNG로 RFC 4122 UUID v4를 만들고 lowercase canonical 36자
+`8-4-4-4-12` 형식으로 encode해 `prefix-<uuid>`를 만든다. Full RID는 255 bytes 이하다.
 Prefix와 RID를 application identity, placement, shard나 stable host 이름으로 해석하지 않는다.
 
-MeshNode descriptor owner CAS는 `(MeshName, RID)`의 active conflict를 확인한다. Framework는 충돌할 때 새 RID를
-최대 8회 만들고 계속 충돌하면 `RoutingIdConflict`로 startup을 실패한다. Replacement MeshNode lifecycle은
+MeshNode descriptor owner CAS는 `(MeshName, RID)`의 active conflict를 확인한다. Active conflict가 있으면
+기존 record를 바꾸지 않고 첫 claim에서 즉시 `RoutingIdConflict`로 startup을 실패한다. Framework는 두 번째
+UUID나 claim을 만들지 않는다. Replacement MeshNode lifecycle은
 endpoint가 같아도 새 RID를 사용한다. Fixed MeshNode RID는 descriptor와 automatic discovery를 사용하지 않는
 explicit manual RouteMesh topology에서만 허용한다. ClientServer와 classic fanout identity는 각 topology의 별도
 계약을 따른다.
+
+Classic fanout처럼 Framework가 diagnostic prefix를 받는 automatic RID를 제공하는 다른 topology도 같은
+UUID v4 lowercase canonical 표현과 active conflict 즉시 실패 규칙을 적용한다. 각 topology의 namespace,
+descriptor key와 기본 prefix는 해당 topology 계약이 정한다. Caller가 지정한 fixed RID와 STREAM의
+connection-local 4-byte RID에는 UUID 형식을 강제하지 않는다.
+
+Entry Spot은 transport listener identity가 아니다. Entry Spot ID의 형식, 발급, global namespace와
+descriptor mapping 계약은 [Spot 주소 메시징](24-spot-address-messaging.ko.md)의 Spot identity 절에서
+정의한다. 이 문서는 MeshNode와 다른 transport listener의 RID만 정의한다.
 
 Kubernetes에서는 Pod IP 또는 Pod별 DNS 이름을 AdvertiseHost로 사용할 수 있다. 개별 RID와 server identity,
 weight, admission과 drain을 관찰해야 하는 listener는 여러 Pod를 하나의 일반 Service 가상 주소로 대신하지
@@ -96,6 +107,9 @@ weight, admission과 drain을 관찰해야 하는 listener는 여러 Pod를 하�
 - Wildcard host와 port `0`이 remote endpoint나 location record에 남지 않는다.
 - RouteMesh, ClientServer와 fanout endpoint가 서로 다른 descriptor 종류에 기록되고 Spot·Actor row에 복제되지 않는다.
 - Advertised endpoint가 바뀐 재시작에서 새 generation만 ready가 된다.
-- Automatic MeshNode가 prefix와 random suffix 형식의 RID를 사용하고 active conflict를 최대 8회 재시도한다.
+- Automatic MeshNode가 prefix와 lowercase canonical UUID v4 형식의 RID를 사용하고 active conflict에서
+  기존 record를 바꾸지 않은 채 첫 claim으로 즉시 실패하는지 검증한다.
+- Diagnostic prefix를 제공하는 다른 automatic topology도 UUID v4 형식과 active conflict 즉시 실패를
+  적용하며 caller fixed RID와 STREAM connection RID에는 이를 강제하지 않는다.
 - Replacement MeshNode lifecycle이 새 RID를 사용하며 fixed RID와 automatic discovery를 함께 설정할 수 없다.
 - 같은 container port를 사용하는 여러 Pod가 서로 다른 AdvertiseHost로 직접 연결된다.

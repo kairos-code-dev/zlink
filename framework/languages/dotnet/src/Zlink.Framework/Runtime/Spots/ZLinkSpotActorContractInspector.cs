@@ -31,6 +31,11 @@ internal static class ZLinkSpotActorContractInspector
         return GetContract(spotType, typeof(IZLinkSpot<>), typeof(IZLinkEntrySpot<>));
     }
 
+    public static ZLinkSpotActorContract? GetUserSpotContract(Type spotType)
+    {
+        return GetContract(spotType, typeof(IZLinkSpot<>));
+    }
+
     private static ZLinkSpotActorContract? GetContract(
         Type spotType,
         Type expectedDefinition,

@@ -191,11 +191,15 @@ internal static class MultiNodeHostFactory
             SpotOnlyJoinReq request,
             CancellationToken cancellationToken) =>
         {
-            var actor = await actors.GetOrCreateAsync(
-                request.ActorId,
-                SpotServiceNames.ActorType,
-                new ScenarioActorCreateReq($"spot-only-{request.ActorId}"),
-                cancellationToken);
+            var actor = await actors
+                .GetOrCreate(request.ActorId, SpotServiceNames.ActorType)
+                .Request(new ScenarioActorCreateReq($"spot-only-{request.ActorId}"))
+                .Async(cancellationToken) switch
+            {
+                ZLinkActorCreateResult.Existing value => value.Actor,
+                ZLinkActorCreateResult.Created value => value.Actor,
+                _ => throw new InvalidOperationException("Actor creation was rejected.")
+            };
             var result = await actorClient.RequestToActor(
                     ResolveSpotMeshName(options),
                     actor,

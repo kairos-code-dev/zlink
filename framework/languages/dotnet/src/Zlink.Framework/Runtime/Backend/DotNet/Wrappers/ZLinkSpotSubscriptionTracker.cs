@@ -7,17 +7,17 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 // node tracks (spot, topic) pairs for the monitoring snapshot (spec 50).
 internal sealed class ZLinkSpotSubscriptionTracker
 {
-    private readonly ConcurrentDictionary<RoutingId, ConcurrentDictionary<SubscriptionKey, byte>> _targets = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<SubscriptionKey, byte>> _targets = new();
 
-    public void Add(RoutingId spotRid, string channelName, string topic)
+    public void Add(string spotId, string channelName, string topic)
     {
-        _targets.GetOrAdd(spotRid, static _ => new ConcurrentDictionary<SubscriptionKey, byte>())
+        _targets.GetOrAdd(spotId, static _ => new ConcurrentDictionary<SubscriptionKey, byte>())
             .TryAdd(new SubscriptionKey(channelName, topic), 0);
     }
 
-    public void RemoveSpot(RoutingId spotRid)
+    public void RemoveSpot(string spotId)
     {
-        _targets.TryRemove(spotRid, out _);
+        _targets.TryRemove(spotId, out _);
     }
 
     public IReadOnlyList<ZLinkSpotNodeSubjectEntry> Snapshot()

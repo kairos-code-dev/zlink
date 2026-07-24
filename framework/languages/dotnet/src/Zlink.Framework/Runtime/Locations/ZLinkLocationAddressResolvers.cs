@@ -25,11 +25,11 @@ internal sealed class ZLinkLocationAddressResolvers :
 
     public async ValueTask<SpotHandle?> ResolveSpotHandleAsync(
         string meshName,
-        RoutingId spotRid,
+        string spotId,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
-        var key = new ZLinkSpotLocationKey(meshName, spotRid);
+        var key = new ZLinkSpotLocationKey(spotId);
         var row = await _rows.ResolveSpotRowAsync(key, cancellationToken).ConfigureAwait(false);
         if (row is null) return null;
         var handle = new ZLinkResolvedSpotHandle(
@@ -88,24 +88,24 @@ internal sealed class ZLinkLocationAddressResolvers :
         => new(
             row.MeshName,
             row.OwnerNodeRid,
-            row.SpotRid,
+            row.SpotId,
             row.SpotGeneration,
             row.SpotKind,
             row.AuthorityOwnerGeneration);
 
     internal ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)
-        => row.SpotKind == ZLinkSpotKind.Entry || row.SpotRid is not { Size: > 0 }
+        => row.SpotKind == ZLinkSpotKind.Entry || string.IsNullOrEmpty(row.SpotId)
             ? new ZLinkSpotHandleSnapshot(
                 row.MeshName,
                 row.OwnerNodeRid,
-                row.OwnerNodeRid,
+                row.SpotId,
                 row.SpotGeneration,
                 ZLinkSpotKind.Entry,
                 row.AuthorityOwnerGeneration)
             : new ZLinkSpotHandleSnapshot(
                 row.MeshName,
                 row.OwnerNodeRid,
-                row.SpotRid,
+                row.SpotId,
                 row.SpotGeneration,
                 ZLinkSpotKind.User,
                 row.AuthorityOwnerGeneration);
@@ -114,7 +114,7 @@ internal sealed class ZLinkLocationAddressResolvers :
 internal readonly record struct ZLinkSpotHandleSnapshot(
     string RouterChannelId,
     RoutingId NodeRid,
-    RoutingId SpotRid,
+    string SpotId,
     ulong Generation,
     ZLinkSpotKind SpotKind = ZLinkSpotKind.User,
     ulong AuthorityOwnerGeneration = 0);
@@ -154,7 +154,7 @@ internal sealed class ZLinkResolvedSpotHandle : SpotHandle
 
     public override string MeshName { get { lock (_gate) return _snapshot.RouterChannelId; } }
 
-    public override RoutingId SpotRid { get { lock (_gate) return _snapshot.SpotRid; } }
+    public override string SpotId { get { lock (_gate) return _snapshot.SpotId; } }
 
     internal void Update(ZLinkSpotHandleSnapshot snapshot, ulong version)
     {

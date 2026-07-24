@@ -14,7 +14,7 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendReceived;
 import systems.zlink.framework.runtime.backend.ZLinkBackendRequestResult;
 
 final class ZLinkSpotAcceptedJournal {
-    private static final int MAGIC = 0x5A4A5231;
+    private static final int MAGIC = 0x5A4A5232;
 
     private ZLinkSpotAcceptedJournal() {
     }
@@ -26,7 +26,7 @@ final class ZLinkSpotAcceptedJournal {
             output.writeInt(MAGIC);
             output.writeInt(received.result().ordinal());
             writeRoutingId(output, received.routingId());
-            writeRoutingId(output, received.spotRid());
+            writeSpotId(output, received.spotId());
             output.writeBoolean(received.requestSeq().isPresent());
             if (received.requestSeq().isPresent()) {
                 output.writeLong(received.requestSeq().orElseThrow());
@@ -60,7 +60,7 @@ final class ZLinkSpotAcceptedJournal {
                     "invalid accepted Spot journal result");
             }
             Optional<RoutingId> routingId = readRoutingId(input);
-            Optional<RoutingId> spotRid = readRoutingId(input);
+            Optional<String> spotId = readSpotId(input);
             Optional<Long> requestSequence = input.readBoolean()
                 ? Optional.of(input.readLong())
                 : Optional.empty();
@@ -81,7 +81,7 @@ final class ZLinkSpotAcceptedJournal {
             return new Record(
                 results[result],
                 routingId,
-                spotRid,
+                spotId,
                 requestSequence,
                 metadata,
                 parts);
@@ -108,6 +108,42 @@ final class ZLinkSpotAcceptedJournal {
             : Optional.empty();
     }
 
+    private static void writeSpotId(
+        DataOutputStream output,
+        Optional<String> value) throws IOException {
+        output.writeBoolean(value.isPresent());
+        if (value.isPresent()) {
+            writeBytes(
+                output,
+                value.orElseThrow().getBytes(
+                    java.nio.charset.StandardCharsets.UTF_8));
+        }
+    }
+
+    private static Optional<String> readSpotId(
+        DataInputStream input) throws IOException {
+        if (!input.readBoolean()) {
+            return Optional.empty();
+        }
+        byte[] encoded = readBytes(input);
+        try {
+            String spotId = java.nio.charset.StandardCharsets.UTF_8
+                .newDecoder()
+                .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                .onUnmappableCharacter(
+                    java.nio.charset.CodingErrorAction.REPORT)
+                .decode(java.nio.ByteBuffer.wrap(encoded))
+                .toString();
+            return Optional.of(
+                systems.zlink.framework.runtime.internal.spots
+                    .ZLinkSpotIdValidator.requireValid(spotId));
+        } catch (java.nio.charset.CharacterCodingException error) {
+            throw new IllegalArgumentException(
+                "accepted Spot journal contains invalid SpotId UTF-8",
+                error);
+        }
+    }
+
     private static void writeBytes(
         DataOutputStream output,
         byte[] value) throws IOException {
@@ -132,7 +168,7 @@ final class ZLinkSpotAcceptedJournal {
     record Record(
         ZLinkBackendRequestResult result,
         Optional<RoutingId> routingId,
-        Optional<RoutingId> spotRid,
+        Optional<String> spotId,
         Optional<Long> requestSequence,
         byte[] applicationMetadata,
         List<byte[]> parts) {

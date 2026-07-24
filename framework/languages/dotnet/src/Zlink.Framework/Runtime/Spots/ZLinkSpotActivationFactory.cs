@@ -13,6 +13,7 @@ internal sealed class ZLinkSpotActivationFactory(
     public async ValueTask<ZLinkSpotActivationCreateResult> CreateAsync(
         Type spotType,
         IZLinkBackendSpot nativeSpot,
+        string spotId,
         ZLinkMessage request,
         CancellationToken cancellationToken)
     {
@@ -27,6 +28,7 @@ internal sealed class ZLinkSpotActivationFactory(
                 runtime,
                 spotScope,
                 nativeSpot,
+                spotId,
                 node.RoutingId,
                 registration.SpotNodeName,
                 spotChannelName,

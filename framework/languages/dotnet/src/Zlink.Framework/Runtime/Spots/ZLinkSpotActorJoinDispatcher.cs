@@ -225,7 +225,7 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
                 messageName,
                 channelName,
                 ActorId: joinRequest.TargetActor.ActorId,
-                SpotRid: joinRequest.TargetSpotRid.ToHex()),
+                SpotId: joinRequest.TargetSpotId),
             reason,
             "EntrySpot",
             "Request",
@@ -239,7 +239,7 @@ internal sealed class ZLinkSpotActorJoinDispatcher(
             ZLinkDispatchErrorAction.ReplyError,
             messageName,
             channelName,
-            SpotRid: joinRequest.TargetSpotRid.ToHex(),
+            SpotId: joinRequest.TargetSpotId,
             ActorId: joinRequest.TargetActor.ActorId,
             Exception: exception));
         using var emptyReply = Message.From(ReadOnlySpan<byte>.Empty);

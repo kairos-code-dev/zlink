@@ -81,6 +81,36 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
         return published;
     }
 
+    internal void SetLocalWeight(string channelName, int weight)
+    {
+        ZLinkSocketConfig.ValidatePeerWeight(weight);
+        var server = _servers.SingleOrDefault(candidate =>
+            string.Equals(
+                candidate.ChannelName,
+                channelName,
+                StringComparison.Ordinal));
+        if (server is null)
+            return;
+        _ = PublishWeightAsync(server);
+    }
+
+    private async Task PublishWeightAsync(LocalServer server)
+    {
+        try
+        {
+            await PublishAsync(
+                    server,
+                    ZLinkLocationWriteIntent.Renew,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            // The transport revision is already active. A later lifecycle
+            // publication reconciles a transient store failure.
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         var failures = new List<Exception>();
@@ -228,7 +258,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
                     || row.LifecycleGeneration == 0
                     || row.DescriptorRevision == 0
                     || string.IsNullOrWhiteSpace(row.Endpoint)
-                    || row.Weight is < 0 or > 100)
+                    || row.Weight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight)
                     continue;
                 if (leases is not null
                     && !await leases.IsOwnerTokenLiveAsync(

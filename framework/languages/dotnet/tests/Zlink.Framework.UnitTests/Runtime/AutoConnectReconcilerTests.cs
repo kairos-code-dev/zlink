@@ -90,6 +90,34 @@ public sealed class AutoConnectReconcilerTests
         Assert.Equal(fixture.Runtime.OwnerId, row.OwnerId);
     }
 
+    [Fact]
+    public async Task RuntimePlacementAndChannelWeightsPublishIncreasingRevisions()
+    {
+        var fixture = await FixtureAsync();
+        await fixture.Reconciler.TickAsync();
+        var initial = Assert.Single(
+            await fixture.Store.ListMeshNodesAsync("play"),
+            row => row.Rid.Equals(RoutingId.From("local")));
+
+        fixture.Reconciler.SetLocalPlacementWeight(10_000);
+        await fixture.Reconciler.TickAsync();
+        var placement = Assert.Single(
+            await fixture.Store.ListMeshNodesAsync("play"),
+            row => row.Rid.Equals(RoutingId.From("local")));
+        Assert.Equal(10_000, placement.PlacementWeight);
+        Assert.True(
+            placement.DescriptorRevision > initial.DescriptorRevision);
+
+        fixture.Reconciler.SetLocalWeight(10_000);
+        await fixture.Reconciler.TickAsync();
+        var channel = Assert.Single(
+            await fixture.Store.ListMeshNodesAsync("play"),
+            row => row.Rid.Equals(RoutingId.From("local")));
+        Assert.Equal(10_000, channel.ChannelWeights["play"]);
+        Assert.True(
+            channel.DescriptorRevision > placement.DescriptorRevision);
+    }
+
     [Theory]
     [InlineData(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer)]
     [InlineData(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router)]

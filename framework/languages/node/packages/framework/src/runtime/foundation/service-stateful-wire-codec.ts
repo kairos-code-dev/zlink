@@ -31,7 +31,7 @@ export const M6bServiceWireCommand = Object.freeze({
 export const M6bServiceWireFlag = Object.freeze({
   metadata: 1,
   boundSession: 2,
-  sourceSpotRid: 4
+  sourceSpotId: 4
 });
 
 export interface ServiceSpotRouteFence {
@@ -254,7 +254,7 @@ export function encodeActorHeader(
 ): Buffer {
   const flags = boundSession === undefined
     ? 0
-    : M6bServiceWireFlag.boundSession | M6bServiceWireFlag.sourceSpotRid;
+    : M6bServiceWireFlag.boundSession | M6bServiceWireFlag.sourceSpotId;
   return concat(
     prefix(
       kind === 'actorSend'
@@ -528,7 +528,7 @@ export function decodeStatefulHeader(frame: Uint8Array): ServiceStatefulWireReco
       requireFlags(
         command.flags,
         hasBinding
-          ? M6bServiceWireFlag.boundSession | M6bServiceWireFlag.sourceSpotRid
+          ? M6bServiceWireFlag.boundSession | M6bServiceWireFlag.sourceSpotId
           : 0
       );
       const correlation = request ? reader.nonZeroU64('correlation') : undefined;

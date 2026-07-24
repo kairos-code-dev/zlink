@@ -84,7 +84,13 @@ final class DefaultZLinkFrameworkOptionsTest {
         var mesh = options.addRouteMesh("game");
 
         assertDoesNotThrow(() -> mesh.channelName("disabled").setWeight(0));
-        assertDoesNotThrow(() -> mesh.channelName("maximum").setWeight(100));
+        assertDoesNotThrow(
+            () -> mesh.channelName("maximum").setWeight(10_000));
+        mesh.channelName("default");
+        assertEquals(
+            100,
+            options.registration().meshNodes().getFirst()
+                .channelWeights().get("default"));
     }
 
     @Test
@@ -97,7 +103,26 @@ final class DefaultZLinkFrameworkOptionsTest {
             () -> mesh.channelName("negative").setWeight(-1));
         assertThrows(
             ZLinkConfigurationException.class,
-            () -> mesh.channelName("too-large").setWeight(101));
+            () -> mesh.channelName("too-large").setWeight(10_001));
+    }
+
+    @Test
+    void routeMeshPlacementWeightUsesContractDefaultAndBoundaries() {
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        var mesh = options.addRouteMesh("game");
+        var registration = options.registration().meshNodes().getFirst();
+
+        assertEquals(100, registration.placementWeight());
+        assertDoesNotThrow(() -> mesh.setPlacementWeight(0));
+        assertEquals(0, registration.placementWeight());
+        assertDoesNotThrow(() -> mesh.setPlacementWeight(10_000));
+        assertEquals(10_000, registration.placementWeight());
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> mesh.setPlacementWeight(-1));
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> mesh.setPlacementWeight(10_001));
     }
 
     @Test

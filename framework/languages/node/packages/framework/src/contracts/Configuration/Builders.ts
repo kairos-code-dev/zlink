@@ -1,4 +1,4 @@
-import type { ZLinkActor } from '../Actors';
+import type { ZLinkActor, ZLinkActorFactory } from '../Actors';
 import type {
   ZLinkActorTransferAdapter,
   ZLinkEntrySpot,
@@ -147,7 +147,7 @@ export interface ZLinkMeshObjectServerBuilder {
   ): this;
   addActorFactory<TActor extends ZLinkActor>(
     actorType: string,
-    implementation: Type<TActor>,
+    implementation: Type<ZLinkActorFactory<TActor>>,
     placement: ZLinkObjectPlacementOptions | undefined,
     relocation: ZLinkRelocationPolicy<TActor>
   ): this;

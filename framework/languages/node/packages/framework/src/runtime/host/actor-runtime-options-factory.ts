@@ -50,7 +50,7 @@ export interface ZLinkActorRuntimeOptionsFactoryOptions {
     actor: ZLinkActor,
     createRequest: ZLinkMessage,
     signal?: AbortSignal
-  ) => Promise<void>;
+  ) => Promise<import('../../contracts').ZLinkActorCreateResponse | undefined>;
   readonly locationLifecycle: () => ZLinkLocationLifecycle | undefined;
   readonly primaryMeshName: () => string | undefined;
   readonly actorMeshName: (actorType: string) => string | undefined;
@@ -164,11 +164,8 @@ export class ZLinkActorRuntimeOptionsFactory {
         return node === undefined ? undefined : String(node.status().routingId);
       },
       actorRefResolver: {
-        resolveActorRef: async (meshName, actorId, signal) =>
-          (await this.options.createActorLocationResolver()?.resolveActorRow({
-            meshName,
-            actorId
-          }, signal))?.actorRef
+        resolveActorRef: async (actorId, signal) =>
+          await this.options.createActorLocationResolver()?.resolveActorRef(actorId, signal)
       },
       actorCreatedNotifier: (nodeRid, actor, createRequest, signal) => {
         this.options.forgetDestroyedActorRef(actor.actorId);

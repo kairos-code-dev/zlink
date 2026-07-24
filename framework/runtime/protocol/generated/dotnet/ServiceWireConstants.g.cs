@@ -48,6 +48,7 @@ internal static class ServiceWireConstants
         ReplyRelayAck = 46,
         UserSpotCreate = 47,
         UserSpotClose = 48,
+        ActorCreate = 49,
     }
     [System.Flags]
     internal enum Flag : byte
@@ -55,7 +56,7 @@ internal static class ServiceWireConstants
         None = 0,
         Metadata = 1,
         BoundSession = 2,
-        SourceSpotRid = 4,
+        SourceSpotId = 4,
         Extension = 8,
     }
     internal enum FrameworkErrorCode : uint

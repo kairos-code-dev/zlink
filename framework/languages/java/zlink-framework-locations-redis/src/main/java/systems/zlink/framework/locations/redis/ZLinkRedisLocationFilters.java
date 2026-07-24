@@ -35,7 +35,7 @@ final class ZLinkRedisLocationFilters {
         ZLinkActorLocationFilter safeFilter = filter == null ? ZLinkActorLocationFilter.all() : filter;
         return (safeFilter.actorType() == null || Objects.equals(row.actorType(), safeFilter.actorType()))
             && (safeFilter.nodeRid() == null || Objects.equals(row.nodeRid(), safeFilter.nodeRid()))
-            && (safeFilter.spotRid() == null || Objects.equals(row.spotRid(), safeFilter.spotRid()))
+            && (safeFilter.spotId() == null || Objects.equals(row.spotId(), safeFilter.spotId()))
             && (safeFilter.locationKind() == null || row.locationKind() == safeFilter.locationKind());
     }
 

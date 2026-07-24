@@ -37,11 +37,11 @@ import systems.zlink.framework.runtime.service.ZLinkServiceM6BWireCodec;
  */
 final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
     private final ZLinkJavaRawMeshNode owner;
-    private final Map<RoutingId, ZLinkJavaRawSpot> spots =
+    private final Map<String, ZLinkJavaRawSpot> spots =
         new ConcurrentHashMap<>();
     private final Map<String, ZLinkBackendActorRef> actors =
         new ConcurrentHashMap<>();
-    private final Map<String, RoutingId> actorSpots =
+    private final Map<String, String> actorSpots =
         new ConcurrentHashMap<>();
     private final Map<String, Long> actorMembershipEpochs =
         new ConcurrentHashMap<>();
@@ -68,7 +68,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         new ConcurrentHashMap<>();
     private final ZLinkJavaInstanceSpotRegistry instanceSpots =
         new ZLinkJavaInstanceSpotRegistry();
-    private final Map<RoutingId, InstanceAuthority> instanceAuthorities =
+    private final Map<String, InstanceAuthority> instanceAuthorities =
         new ConcurrentHashMap<>();
     private volatile ZLinkJavaRawSpot entrySpot;
     private volatile ZLinkMeshApplicationReceiver applicationReceiver;
@@ -281,33 +281,33 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
 
     @Override
     public ZLinkBackendSpot createSpot() {
-        return createSpot(RoutingId.from(UUID.randomUUID()));
+        return createSpot(UUID.randomUUID().toString());
     }
 
     @Override
-    public ZLinkBackendSpot createSpot(RoutingId spotRid) {
-        java.util.Objects.requireNonNull(spotRid, "spotRid");
-        return createSpot(spotRid, nextGeneration.getAndIncrement());
+    public ZLinkBackendSpot createSpot(String spotId) {
+        java.util.Objects.requireNonNull(spotId, "spotId");
+        return createSpot(spotId, nextGeneration.getAndIncrement());
     }
 
     @Override
     public ZLinkBackendSpot createSpot(
-        RoutingId spotRid,
+        String spotId,
         long lifecycleGeneration) {
-        java.util.Objects.requireNonNull(spotRid, "spotRid");
+        java.util.Objects.requireNonNull(spotId, "spotId");
         if (lifecycleGeneration <= 0) {
             throw new IllegalArgumentException(
                 "Spot lifecycle generation must be positive");
         }
         ZLinkJavaRawSpot created = new ZLinkJavaRawSpot(
-            this, spotRid, lifecycleGeneration);
-        ZLinkJavaRawSpot existing = spots.putIfAbsent(spotRid, created);
+            this, spotId, lifecycleGeneration);
+        ZLinkJavaRawSpot existing = spots.putIfAbsent(spotId, created);
         if (existing != null) {
             return existing;
         }
         rememberSpotAuthority(
             routingId(),
-            spotRid,
+            spotId,
             lifecycleGeneration,
             lifecycleGeneration);
         return created;
@@ -322,7 +322,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         synchronized (this) {
             if (entrySpot == null) {
                 entrySpot = (ZLinkJavaRawSpot) createSpot(
-                    RoutingId.from(UUID.randomUUID()));
+                    routingId() + "-entry-" + UUID.randomUUID());
             }
             return entrySpot;
         }
@@ -369,23 +369,23 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
     public CompletionStage<ZLinkBackendActorJoinResult> joinActor(
         ZLinkBackendActorRef actor,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<Message> parts,
         Duration timeout) {
         return joinActor(
-            actor, targetNodeRid, targetSpotRid, 0, parts, timeout);
+            actor, targetNodeRid, targetSpotId, 0, parts, timeout);
     }
 
     @Override
     public CompletionStage<ZLinkBackendActorJoinResult> joinActor(
         ZLinkBackendActorRef actor,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetSpotGeneration,
         List<Message> parts,
         Duration timeout) {
         ZLinkJavaRawSpot target = localSpot(
-            targetNodeRid, targetSpotRid, targetSpotGeneration);
+            targetNodeRid, targetSpotId, targetSpotGeneration);
         if (target == null || !actors.containsKey(actor.actorId())) {
             return CompletableFuture.completedFuture(
                 new ZLinkBackendActorJoinResult(
@@ -393,7 +393,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                         .ZLinkBackendRequestResult.NOT_FOUND,
                     1,
                     actor,
-                    targetSpotRid,
+                    targetSpotId,
                     actorMembershipEpochs.getOrDefault(actor.actorId(), 0L),
                     0,
                     List.of()));
@@ -416,7 +416,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                 actor.actorId(), 1L);
             if (reply.resultCode() == 0) {
                 epoch = epoch == Long.MAX_VALUE ? Long.MAX_VALUE : epoch + 1;
-                actorSpots.put(actor.actorId(), targetSpotRid);
+                actorSpots.put(actor.actorId(), targetSpotId);
                 actorMembershipEpochs.put(actor.actorId(), epoch);
             }
             return new ZLinkBackendActorJoinResult(
@@ -424,7 +424,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                     .ZLinkBackendRequestResult.OK,
                 reply.resultCode(),
                 actor,
-                targetSpotRid,
+                targetSpotId,
                 epoch,
                 0,
                 reply.parts());
@@ -489,9 +489,9 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
     @Override
     public CompletionStage<List<Message>> leaveActor(
         ZLinkBackendActorRef actor,
-        RoutingId currentSpotRid,
+        String currentSpotId,
         Duration timeout) {
-        ZLinkJavaRawSpot current = spots.get(currentSpotRid);
+        ZLinkJavaRawSpot current = spots.get(currentSpotId);
         if (current == null || !actors.containsKey(actor.actorId())) {
             return CompletableFuture.failedFuture(
                 new IllegalStateException("actor membership is stale"));
@@ -509,7 +509,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                 new ZLinkBackendActorLifecycleInfo(
                     actor,
                     actor,
-                    Optional.of(currentSpotRid),
+                    Optional.of(currentSpotId),
                     Optional.of(entrySpot().routingId()),
                     nextEpoch,
                     0));
@@ -716,8 +716,8 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
 
     void rekeySpot(
         ZLinkJavaRawSpot spot,
-        RoutingId previous,
-        RoutingId current) {
+        String previous,
+        String current) {
         if (previous.equals(current)) {
             return;
         }
@@ -742,11 +742,11 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
 
     void rememberSpotAuthority(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long objectGeneration,
         long authorityOwnerGeneration) {
         if (targetNodeRid == null
-            || spotRid == null
+            || spotId == null
             || objectGeneration <= 0
             || authorityOwnerGeneration <= 0) {
             throw new IllegalArgumentException(
@@ -754,28 +754,28 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         }
         spotAuthorities.put(
             new SpotAuthorityKey(
-                targetNodeRid, spotRid, objectGeneration),
+                targetNodeRid, spotId, objectGeneration),
             authorityOwnerGeneration);
     }
 
     long spotAuthorityOwnerGeneration(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long objectGeneration) {
         return spotAuthorities.getOrDefault(
             new SpotAuthorityKey(
-                targetNodeRid, spotRid, objectGeneration),
+                targetNodeRid, spotId, objectGeneration),
             0L);
     }
 
     void forgetSpotAuthority(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long objectGeneration,
         long authorityOwnerGeneration) {
         spotAuthorities.remove(
             new SpotAuthorityKey(
-                targetNodeRid, spotRid, objectGeneration),
+                targetNodeRid, spotId, objectGeneration),
             authorityOwnerGeneration);
     }
 
@@ -794,12 +794,12 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         Consumer<List<Message>> reply) {
         ZLinkJavaRawSpot target = localSpot(
             routingId(),
-            header.target().spotRid(),
+            header.target().spotId(),
             header.target().spotGeneration());
         if (target == null
             || spotAuthorityOwnerGeneration(
                 routingId(),
-                header.target().spotRid(),
+                header.target().spotId(),
                 header.target().spotGeneration())
                 != header.target().authorityOwnerGeneration()) {
             return false;
@@ -809,7 +809,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                 systems.zlink.framework.runtime.backend
                     .ZLinkBackendRequestResult.OK,
                 Optional.of(sourceNodeRid),
-                Optional.of(header.sourceSpotRid()),
+                Optional.of(header.sourceSpotId()),
                 Optional.ofNullable(header.correlation()),
                 metadata,
                 parts,
@@ -857,8 +857,8 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                 return false;
             }
         }
-        RoutingId targetSpotRid = actorSpots.get(actor.actorId());
-        ZLinkJavaRawSpot target = spots.get(targetSpotRid);
+        String targetSpotId = actorSpots.get(actor.actorId());
+        ZLinkJavaRawSpot target = spots.get(targetSpotId);
         if (target == null) {
             return false;
         }
@@ -1119,21 +1119,21 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
 
     CompletionStage<ZLinkJavaInstanceSpotRegistry.Activation>
         activateInstanceSpot(
-            RoutingId spotRid,
+            String spotId,
             String stableType) {
-        ZLinkJavaRawSpot current = spots.get(spotRid);
+        ZLinkJavaRawSpot current = spots.get(spotId);
         long generation = current == null
             ? nextGeneration.getAndIncrement()
             : current.lifecycleGeneration();
-        return instanceSpots.activate(spotRid, stableType, generation);
+        return instanceSpots.activate(spotId, stableType, generation);
     }
 
-    boolean closeInstanceSpot(RoutingId spotRid, long generation) {
-        return instanceSpots.close(spotRid, generation);
+    boolean closeInstanceSpot(String spotId, long generation) {
+        return instanceSpots.close(spotId, generation);
     }
 
-    ZLinkBackendSpot localSpot(RoutingId spotRid) {
-        return spots.get(spotRid);
+    ZLinkBackendSpot localSpot(String spotId) {
+        return spots.get(spotId);
     }
 
     void registerInstanceSpotAuthority(
@@ -1147,7 +1147,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         InstanceAuthority authority =
             new InstanceAuthority(stableType, route);
         InstanceAuthority current = instanceAuthorities.putIfAbsent(
-            route.targetSpotRid(), authority);
+            route.targetSpotId(), authority);
         if (current != null && !current.equals(authority)) {
             throw new IllegalStateException(
                 "Instance Spot authority fence changed without replacement");
@@ -1162,17 +1162,17 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
             return;
         }
         instanceAuthorities.put(
-            route.targetSpotRid(),
+            route.targetSpotId(),
             new InstanceAuthority(stableType, route));
     }
 
     void forgetInstanceSpotAuthority(
         ZLinkServiceM6BWireCodec.InstanceRouteFence route) {
         InstanceAuthority current =
-            instanceAuthorities.get(route.targetSpotRid());
+            instanceAuthorities.get(route.targetSpotId());
         if (current != null && current.route().equals(route)) {
             instanceAuthorities.remove(
-                route.targetSpotRid(), current);
+                route.targetSpotId(), current);
         }
     }
 
@@ -1183,14 +1183,14 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         List<Message> parts,
         Consumer<List<Message>> reply) {
         InstanceAuthority authority =
-            instanceAuthorities.get(header.route().targetSpotRid());
+            instanceAuthorities.get(header.route().targetSpotId());
         if (authority == null || !authority.route().equals(header.route())) {
             return false;
         }
         ZLinkJavaInstanceSpotRegistry.Activation activation;
         try {
             activation = instanceSpots.activate(
-                header.route().targetSpotRid(),
+                header.route().targetSpotId(),
                 authority.stableType(),
                 header.route().objectGeneration()).toCompletableFuture().join();
         } catch (RuntimeException failure) {
@@ -1206,7 +1206,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                 systems.zlink.framework.runtime.backend
                     .ZLinkBackendRequestResult.OK,
                 Optional.of(sourceNodeRid),
-                Optional.ofNullable(header.sourceSpotRid()),
+                Optional.ofNullable(header.sourceSpotId()),
                 Optional.ofNullable(header.replyRouteId()),
                 metadata,
                 parts,
@@ -1234,8 +1234,8 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
         if (!isCurrentActor(actor)) {
             return false;
         }
-        RoutingId targetSpotRid = actorSpots.get(actor.actorId());
-        ZLinkJavaRawSpot target = spots.get(targetSpotRid);
+        String targetSpotId = actorSpots.get(actor.actorId());
+        ZLinkJavaRawSpot target = spots.get(targetSpotId);
         if (target == null) {
             return false;
         }
@@ -1301,7 +1301,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
 
     private record SpotAuthorityKey(
         RoutingId nodeRid,
-        RoutingId spotRid,
+        String spotId,
         long objectGeneration) {
     }
 
@@ -1323,10 +1323,20 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
             || detail.admittedRemoteTargetCount() > 0;
     }
 
+    PublishDetail publishDetailed(
+        ZLinkJavaRawSpot source,
+        String channelName,
+        String topic,
+        byte[] metadata,
+        List<Message> parts) {
+        return owner.publishLogicalMulticast(
+            source, channelName, topic, metadata, parts);
+    }
+
     MulticastLocalDetail enqueueLogicalMulticast(
         String channelName,
         String topic,
-        RoutingId sourceSpotRid,
+        String sourceSpotId,
         RoutingId sourceNodeRid,
         byte[] metadata,
         List<Message> parts) {
@@ -1337,14 +1347,17 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                 continue;
             }
             snapshot++;
-            target.enqueueTopic(new systems.zlink.framework.runtime.backend
+            boolean submitted = target.enqueueTopic(
+                new systems.zlink.framework.runtime.backend
                 .ZLinkBackendTopicMessage(
                     Optional.of(sourceNodeRid),
                     channelName,
                     topic,
                     metadata == null ? new byte[0] : metadata.clone(),
                     ZLinkJavaRawSpot.copy(parts)));
-            admitted++;
+            if (submitted) {
+                admitted++;
+            }
         }
         return new MulticastLocalDetail(snapshot, admitted);
     }
@@ -1355,7 +1368,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
     boolean sendToSpot(
         ZLinkJavaRawSpot source,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetGeneration,
         byte[] metadata,
         List<Message> parts) {
@@ -1363,13 +1376,13 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
             return owner.sendSpot(
                 source.routingId(),
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 targetGeneration,
                 metadata,
                 parts);
         }
         ZLinkJavaRawSpot target = localSpot(
-            targetNodeRid, targetSpotRid, targetGeneration);
+            targetNodeRid, targetSpotId, targetGeneration);
         if (target == null) {
             return false;
         }
@@ -1390,7 +1403,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
     boolean requestToSpot(
         ZLinkJavaRawSpot source,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetGeneration,
         byte[] metadata,
         List<Message> parts,
@@ -1400,7 +1413,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
             return owner.requestSpot(
                 source.routingId(),
                 targetNodeRid,
-                targetSpotRid,
+                targetSpotId,
                 targetGeneration,
                 metadata,
                 parts,
@@ -1408,7 +1421,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                 timeout);
         }
         ZLinkJavaRawSpot target = localSpot(
-            targetNodeRid, targetSpotRid, targetGeneration);
+            targetNodeRid, targetSpotId, targetGeneration);
         if (target == null) {
             return false;
         }
@@ -1433,7 +1446,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                             systems.zlink.framework.runtime.backend
                                 .ZLinkBackendRequestResult.OK,
                             Optional.of(targetNodeRid),
-                            Optional.of(targetSpotRid),
+                            Optional.of(targetSpotId),
                             Optional.of(sequence),
                             ZLinkJavaRawSpot.copy(reply)));
                 },
@@ -1445,7 +1458,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                         systems.zlink.framework.runtime.backend
                             .ZLinkBackendRequestResult.INTERNAL_ERROR,
                         Optional.of(targetNodeRid),
-                        Optional.of(targetSpotRid),
+                        Optional.of(targetSpotId),
                         Optional.of(sequence),
                         List.of()));
             }
@@ -1460,7 +1473,7 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
                                 systems.zlink.framework.runtime.backend
                                     .ZLinkBackendRequestResult.TIMED_OUT,
                                 Optional.of(targetNodeRid),
-                                Optional.of(targetSpotRid),
+                                Optional.of(targetSpotId),
                                 Optional.of(sequence),
                                 List.of()));
                     }
@@ -1471,12 +1484,12 @@ final class ZLinkJavaRawSpotNode implements ZLinkInternalSpotNode {
 
     private ZLinkJavaRawSpot localSpot(
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetGeneration) {
         if (!routingId().equals(targetNodeRid)) {
             return null;
         }
-        ZLinkJavaRawSpot target = spots.get(targetSpotRid);
+        ZLinkJavaRawSpot target = spots.get(targetSpotId);
         if (target == null) {
             return null;
         }

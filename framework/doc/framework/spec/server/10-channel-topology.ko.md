@@ -34,9 +34,11 @@ MeshNode는 Server membership 없이도 시작할 수 있다. 이 구성은 Chan
 시작하는 process에 사용한다. Peer descriptor의 ChannelName set은 빈 값이며 가짜 ChannelName이나 weight
 `0` membership을 요구하지 않는다.
 
-Client와 Server role set은 startup 뒤 변경할 수 없다. 각 Server membership의 weight는 `0..100`이며 실행
-중 변경할 수 있다. Weight 0은 새 ChannelName select-one과 Logical Multicast remote target에서 제외한다.
-RID direct, 다른 membership과 이미 제출한 operation에는 영향을 주지 않는다.
+Client와 Server role set은 startup 뒤 변경할 수 없다. 각 Server membership의 weight는 signed integer
+`0..10000`이고 기본값은 `100`이며 실행 중 변경할 수 있다. `1..10000`은 eligible target 사이의 상대적
+선택 비중이다. Startup 설정이나 runtime 변경에 범위 밖 값을 지정하면 configuration error다. Weight 0은
+새 ChannelName select-one과 Logical Multicast remote target에서 제외한다. RID direct, 다른 membership과
+이미 제출한 operation에는 영향을 주지 않는다.
 
 Local Server weight를 실행 중 바꾸는 operation은 ChannelName으로 membership을 지정한다. 같은 process에서
 ChannelName이 물리 topology 하나에만 속하므로 MeshName을 다시 요구하지 않는다. 선택된 physical MeshName,
@@ -99,6 +101,7 @@ weight snapshot을 구분하며 1 이상에서 단조 증가한다. weight를 �
 Redis descriptor와 admitted peer control에 같은 snapshot을 게시한다. peer는 같은 lifecycle generation의
 더 큰 revision만 적용하고 channel ready index를 원자적으로 교체한다. update가 유실되어도 다음 Redis
 polling 또는 handshake가 최신 revision으로 수렴한다. weight 변경만으로 connection을 다시 만들지 않는다.
+이미 제출한 operation에는 새 revision을 소급 적용하지 않는다.
 
 ## 4. Peer를 찾는 방법
 
@@ -117,6 +120,8 @@ Redis location store를 등록해야 한다.
 MeshNode는 ROUTER bind, peer admission과 구성한 local handler·Spot·Actor registration이 준비된 뒤 ready가 된다.
 ChannelName member는 MeshNode가 ready이고 해당 membership weight가 양수일 때 새 select-one 대상이 된다.
 선택과 submit은 한 operation이므로 Framework가 선택한 RID를 application에 반환하지 않는다.
+Framework는 eligibility와 drain을 먼저 적용한 뒤 positive weight 합계를 최소 64-bit 정수로 계산한다.
+Logical Multicast는 positive weight member를 각각 한 번만 포함하며 weight 크기로 제출 횟수를 늘리지 않는다.
 
 Client role은 local 송신 경로만 만들며 remote ready member 수에 포함되지 않는다. 같은 ChannelName의 Server
 role이 없는 MeshNode도 remote Server membership을 선택해 send/request를 시작할 수 있다.
@@ -126,7 +131,8 @@ operation과 RID direct traffic의 종료 의미는 [Graceful drain](54-graceful
 
 ## 6. 서버 socket 설정
 
-MeshNode의 transport 설정은 startup 전에 확정한다. 실행 중에는 ChannelName weight만 바꿀 수 있다.
+MeshNode의 transport 설정은 startup 전에 확정한다. 실행 중에는 ChannelName weight와 object placement
+weight만 바꿀 수 있으며 두 값은 서로 독립적이다.
 
 `MaxMessageSize`는 byte 단위다. 양수는 수신하는 전체 transport message의 상한이며 `0`은 Framework가
 별도 상한을 적용하지 않는다는 뜻이다. 음수는 설정 오류다. 각 언어 service runtime은 startup에서 이 값을
@@ -181,4 +187,7 @@ message에는 source connection identity가 없으므로 socket을 공유하면 
 - Fanout subscriber가 publisher endpoint마다 전용 SUB socket을 사용하고 한 publisher의 timeout을 다른
   publisher에 적용하지 않는다.
 - weight 0과 drain이 새 ChannelName 선택에만 적용된다.
+- `0`, 기본값 `100`과 상한 `10000`을 허용하고 `-1`, `10001`을 startup과 runtime 변경에서 거부한다.
+- Weighted selection 합계가 overflow 없이 계산되며 Logical Multicast가 positive weight member를 한 번씩만
+  포함한다.
 - Startup에 고정한 `MaxMessageSize` 경계값과 초과 뒤 정상 request 처리를 검증한다.

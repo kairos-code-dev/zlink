@@ -101,7 +101,7 @@ internal sealed class ZLinkActorDrainCoordinator(
                     // the admission/commit transaction and materializes the
                     // actor in the target framework process; the native Entry
                     // Spot shortcut alone cannot transfer managed state.
-                    var result = await actors.JoinActorAsync(
+                    var result = await actors.JoinActorEntrySpotAsync(
                             target,
                             actor,
                             ZLinkMessage.Empty,

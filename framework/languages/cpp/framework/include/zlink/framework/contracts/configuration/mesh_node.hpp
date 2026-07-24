@@ -122,6 +122,7 @@ class mesh_node_builder_t
     mesh_channel_builder_t channel_name (std::string channel_name);
     mesh_node_builder_t &listen (std::string endpoint);
     mesh_node_builder_t &set_routing_id (zlink::routing_id_t routing_id);
+    mesh_node_builder_t &set_placement_weight (int weight);
     mesh_node_builder_t &use_allocated_routing_id (std::size_t slot_count,
                                                    std::string routing_id_prefix = {});
     mesh_node_builder_t &set_routing_id_allocation_group (std::string group_name);

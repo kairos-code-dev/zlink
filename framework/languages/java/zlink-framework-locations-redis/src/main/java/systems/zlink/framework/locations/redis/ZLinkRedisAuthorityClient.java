@@ -46,9 +46,11 @@ final class ZLinkRedisAuthorityClient {
                 .. string.len(kind) .. ':' .. kind
                 .. string.len(stableType) .. ':' .. stableType
         end
-        local function nodeCapacityBucket(descriptor, lifecycle)
+        local function nodeCapacityBucket(descriptor, lifecycle, kind)
+            local population = kind == 'actor' and 'actor' or 'spot'
             return string.len(descriptor) .. ':' .. descriptor
                 .. string.len(lifecycle) .. ':' .. lifecycle
+                .. string.len(population) .. ':' .. population
         end
         local function capacityValue(
             capacityKeys, bucket, phase, isNode)
@@ -79,16 +81,11 @@ final class ZLinkRedisAuthorityClient {
         end
         local function canReserve(
             capacityKeys, bucket, nodeBucket, delta,
-            activeLimit, pendingLimit,
-            nodeActiveLimit, nodePendingLimit)
-            activeLimit = tonumber(activeLimit)
-            pendingLimit = tonumber(pendingLimit)
-            nodeActiveLimit = tonumber(nodeActiveLimit)
-            nodePendingLimit = tonumber(nodePendingLimit)
-            if not activeLimit or activeLimit < 1
-                or not pendingLimit or pendingLimit < 1
-                or not nodeActiveLimit or nodeActiveLimit < 1
-                or not nodePendingLimit or nodePendingLimit < 1 then
+            typeLimit, populationLimit)
+            typeLimit = tonumber(typeLimit)
+            populationLimit = tonumber(populationLimit)
+            if not typeLimit or typeLimit < 0
+                or not populationLimit or populationLimit < 0 then
                 return false
             end
             local active =
@@ -107,11 +104,11 @@ final class ZLinkRedisAuthorityClient {
                 or not nodeActive or not nodePending then
                 return false
             end
-            return pending + delta <= pendingLimit
-                and active + pending + delta <= activeLimit
-                and nodePending + delta <= nodePendingLimit
-                and nodeActive + nodePending + delta
-                    <= nodeActiveLimit
+            return (typeLimit == 0
+                    or active + pending + delta <= typeLimit)
+                and (populationLimit == 0
+                    or nodeActive + nodePending + delta
+                        <= populationLimit)
         end
         local function canAdjust(
             capacityKeys, bucket, phase, delta, isNode)
@@ -170,7 +167,7 @@ final class ZLinkRedisAuthorityClient {
             descriptorKey, admissionKey,
             descriptorIdentity, lifecycle,
             ownerId, leaseGeneration, kind, stableType,
-            placementProfile, capacityKeys, delta)
+            capacityKeys, delta)
             local public = redis.call(
                 'HMGET', descriptorKey, 'owner', 'gen')
             local metadata = redis.call(
@@ -178,7 +175,7 @@ final class ZLinkRedisAuthorityClient {
                 'descriptorKey', 'lifecycleGeneration',
                 'ownerId', 'ownerLeaseGeneration',
                 'objectRole', 'runtimeState', 'capabilities',
-                'nodeActiveLimit', 'nodePendingLimit')
+                'actorLimit', 'spotLimit')
             if not metadata[1]
                 or public[1] ~= ownerId
                 or public[2] ~= lifecycle
@@ -207,46 +204,23 @@ final class ZLinkRedisAuthorityClient {
             if not capability then
                 return false, 'unavailable'
             end
-            if placementProfile and placementProfile ~= '' then
-                local found = false
-                if type(capability.placementProfiles) == 'table' then
-                    for _, profile in ipairs(
-                        capability.placementProfiles) do
-                        if profile == placementProfile then
-                            found = true
-                        end
-                    end
-                end
-                if not found then
-                    return false, 'unavailable'
-                end
-            end
-            local nodeActiveLimit =
-                tonumber(metadata[8])
-            local nodePendingLimit =
-                tonumber(metadata[9])
-            local activeLimit =
-                tonumber(capability.activeLimit)
-                    or nodeActiveLimit
-            local pendingLimit =
-                tonumber(capability.pendingLimit)
-                    or nodePendingLimit
-            if not nodeActiveLimit or not nodePendingLimit
-                or not activeLimit or not pendingLimit then
+            local actorLimit = tonumber(metadata[8])
+            local spotLimit = tonumber(metadata[9])
+            local typeLimit = kind == 'actor'
+                and 0 or tonumber(capability.spotLimit)
+            local populationLimit = kind == 'actor'
+                and actorLimit or spotLimit
+            if not actorLimit or not spotLimit
+                or not typeLimit or not populationLimit then
                 return false, 'unavailable'
             end
-            activeLimit = math.min(
-                activeLimit, nodeActiveLimit)
-            pendingLimit = math.min(
-                pendingLimit, nodePendingLimit)
             local bucket = capacityBucket(
                 descriptorIdentity, lifecycle, kind, stableType)
             local nodeBucket = nodeCapacityBucket(
-                descriptorIdentity, lifecycle)
+                descriptorIdentity, lifecycle, kind)
             if not canReserve(
                 capacityKeys, bucket, nodeBucket, delta,
-                activeLimit, pendingLimit,
-                nodeActiveLimit, nodePendingLimit) then
+                typeLimit, populationLimit) then
                 return false, 'capacity'
             end
             return true, bucket, nodeBucket
@@ -450,7 +424,7 @@ final class ZLinkRedisAuthorityClient {
             local bucket = capacityBucket(
                 descriptor, lifecycle, kind, stableType)
             local nodeBucket = nodeCapacityBucket(
-                descriptor, lifecycle)
+                descriptor, lifecycle, kind)
             local delta = tonumber(redis.call(
                 'HGET', KEYS[1], 'capacityDelta'))
             if not bucket or not nodeBucket or not delta
@@ -560,7 +534,7 @@ final class ZLinkRedisAuthorityClient {
                     targetLifecycle, targetOwner, targetLease,
                     redis.call('HGET', KEYS[7], 'kind'),
                     redis.call('HGET', KEYS[7], 'stableType'),
-                    '', capacityKeys, 0)
+                    capacityKeys, 0)
             if not accepted
                 or checkedBucket ~= targetBucket
                 or checkedNodeBucket ~= targetNodeBucket
@@ -576,7 +550,8 @@ final class ZLinkRedisAuthorityClient {
                     redis.call('HGET', KEYS[1], 'descriptorKey'),
                     redis.call(
                         'HGET', KEYS[1],
-                        'descriptorLifecycleGeneration'))
+                        'descriptorLifecycleGeneration'),
+                    redis.call('HGET', KEYS[1], 'objectKind'))
                 or not canAdjust(
                     capacityKeys, sourceBucket, 'active', -delta, false)
                 or not canAdjust(
@@ -654,8 +629,11 @@ final class ZLinkRedisAuthorityClient {
         local capacityKeys = {
             KEYS[7], KEYS[12], KEYS[13], KEYS[14]}
         if redis.call('EXISTS', KEYS[1]) == 1 then
-            local status = redis.call('HGET', KEYS[1], 'stableType') == ARGV[2]
-                and 'already-exists' or 'type-mismatch'
+            local status = redis.call('HGET', KEYS[1], 'stableType') ~= ARGV[2]
+                and 'type-mismatch'
+                or redis.call('HGET', KEYS[1], 'allocationState') == 'pending'
+                    and 'creating-conflict'
+                    or 'already-exists'
             return {status, nowMs,
                 redis.call('HGET', KEYS[1], 'storeVersion'),
                 redis.call('HGET', KEYS[1], 'payload'),
@@ -686,7 +664,7 @@ final class ZLinkRedisAuthorityClient {
         local accepted, reason, nodeBucket = descriptorAccepts(
             KEYS[8], KEYS[9],
             ARGV[9], ARGV[10], ARGV[3], ARGV[4],
-            ARGV[11], ARGV[2], ARGV[13], capacityKeys,
+            ARGV[11], ARGV[2], capacityKeys,
             tonumber(ARGV[12]))
         if not accepted then
             return {
@@ -706,7 +684,7 @@ final class ZLinkRedisAuthorityClient {
             KEYS[5], 'authorityOwnerGeneration')
         local revision = incrementCounter(
             KEYS[3], 'storeRevision')
-        local reservationVersion = ARGV[14]
+        local reservationVersion = ARGV[13]
         redis.call('HSET', KEYS[1],
             'storeVersion', revision,
             'payload', ARGV[8],
@@ -724,7 +702,7 @@ final class ZLinkRedisAuthorityClient {
             'creationReservationId', reservationVersion,
             'creationIntentReference', ARGV[5],
             'creationIntentSha256', ARGV[6],
-            'creationIntentEncodedSize', ARGV[15])
+            'creationIntentEncodedSize', ARGV[14])
         redis.call('HSET', KEYS[15],
             'state', 'reserved',
             'reservationId', reservationVersion,
@@ -749,6 +727,22 @@ final class ZLinkRedisAuthorityClient {
     private static final String COMMIT_RESERVATION = PROLOGUE + """
         local capacityKeys = {
             KEYS[4], KEYS[9], KEYS[10], KEYS[11]}
+        if ARGV[9] ~= '' then
+            if tonumber(ARGV[12]) <= nowMs then
+                return {'invalid-expiry', nowMs}
+            end
+            if redis.call('EXISTS', KEYS[16]) == 1 then
+                if redis.call('HGET', KEYS[16], 'reservationId') == ARGV[1]
+                    and redis.call('HGET', KEYS[16], 'state') == ARGV[9]
+                    and redis.call('HGET', KEYS[16], 'terminalSha256') == ARGV[11]
+                    and redis.call('HGET', KEYS[16], 'expiresAtMs') == ARGV[12]
+                    and redis.call('HGET', KEYS[16], 'authorityKey') == ARGV[13]
+                    and redis.call('HGET', KEYS[16], 'storeVersion') == ARGV[14] then
+                    return {'already-committed', nowMs}
+                end
+                return {'stale', nowMs}
+            end
+        end
         if redis.call('EXISTS', KEYS[1]) == 0 then
             return {'stale', nowMs}
         end
@@ -796,7 +790,7 @@ final class ZLinkRedisAuthorityClient {
             ARGV[6], ARGV[7], ARGV[4], ARGV[5],
             redis.call('HGET', KEYS[1], 'objectKind'),
             redis.call('HGET', KEYS[1], 'stableType'),
-            '', capacityKeys, 0)
+            capacityKeys, 0)
         if not accepted then
             return {'stale', nowMs}
         end
@@ -839,14 +833,49 @@ final class ZLinkRedisAuthorityClient {
         recordHistory(
             KEYS[1], KEYS[7], KEYS[8],
             KEYS[13], KEYS[15])
+        if ARGV[9] ~= '' then
+            redis.call('HSET', KEYS[16],
+                'state', ARGV[9],
+                'terminalEnvelope', ARGV[10],
+                'terminalSha256', ARGV[11],
+                'expiresAtMs', ARGV[12],
+                'reservationId', ARGV[1],
+                'authorityKey', ARGV[13],
+                'storeVersion', ARGV[14],
+                'objectGeneration', ARGV[2],
+                'authorityOwnerGeneration', ARGV[3],
+                'targetDescriptor', ARGV[6],
+                'targetLifecycle', ARGV[7],
+                'targetOwner', ARGV[4],
+                'targetLease', ARGV[5])
+            redis.call('PEXPIREAT', KEYS[16], ARGV[12])
+        end
         redis.call('DEL', KEYS[12])
         return {'committed', nowMs}
         """;
     private static final String ABORT_RESERVATION = PROLOGUE + """
         local capacityKeys = {
             KEYS[5], KEYS[8], KEYS[9], KEYS[10]}
+        if ARGV[10] ~= '' then
+            if tonumber(ARGV[13]) <= nowMs then
+                return {'invalid-expiry', nowMs}
+            end
+            if redis.call('EXISTS', KEYS[15]) == 1 then
+                if redis.call('HGET', KEYS[15], 'reservationId') == ARGV[1]
+                    and redis.call('HGET', KEYS[15], 'state') == ARGV[10]
+                    and redis.call('HGET', KEYS[15], 'terminalSha256') == ARGV[12]
+                    and redis.call('HGET', KEYS[15], 'expiresAtMs') == ARGV[13]
+                    and redis.call('HGET', KEYS[15], 'authorityKey') == ARGV[9]
+                    and redis.call('HGET', KEYS[15], 'storeVersion') == ARGV[14] then
+                    return {ARGV[10] == 'rejected'
+                        and 'already-rejected' or 'already-aborted', nowMs}
+                end
+                return {'stale', nowMs}
+            end
+        end
         if redis.call('EXISTS', KEYS[1]) == 0 then
-            return {'already-aborted', nowMs}
+            return {ARGV[10] == ''
+                and 'already-aborted' or 'stale', nowMs}
         end
         if redis.call(
                 'HGET', KEYS[11], 'reservationId') ~= ARGV[1]
@@ -880,7 +909,8 @@ final class ZLinkRedisAuthorityClient {
             redis.call('HGET', KEYS[1], 'objectKind'),
             redis.call('HGET', KEYS[1], 'stableType'))
         local nodeBucket = nodeCapacityBucket(
-            descriptor, lifecycle)
+            descriptor, lifecycle,
+            redis.call('HGET', KEYS[1], 'objectKind'))
         local delta = tonumber(
             redis.call('HGET', KEYS[1], 'capacityDelta'))
         if not bucket or not nodeBucket or not delta
@@ -900,7 +930,25 @@ final class ZLinkRedisAuthorityClient {
             KEYS[6], KEYS[7], KEYS[12],
             KEYS[14], KEYS[13],
             revision, ARGV[9], ARGV[8])
-        return {'aborted', nowMs}
+        if ARGV[10] ~= '' then
+            redis.call('HSET', KEYS[15],
+                'state', ARGV[10],
+                'terminalEnvelope', ARGV[11],
+                'terminalSha256', ARGV[12],
+                'expiresAtMs', ARGV[13],
+                'reservationId', ARGV[1],
+                'authorityKey', ARGV[9],
+                'storeVersion', ARGV[14],
+                'objectGeneration', ARGV[2],
+                'authorityOwnerGeneration', ARGV[3],
+                'targetDescriptor', ARGV[6],
+                'targetLifecycle', ARGV[7],
+                'targetOwner', ARGV[4],
+                'targetLease', ARGV[5])
+            redis.call('PEXPIREAT', KEYS[15], ARGV[13])
+        end
+        return {ARGV[10] == 'rejected'
+            and 'rejected' or 'aborted', nowMs}
         """;
     private static final String RESERVE_RELOCATION_CAPACITY = PROLOGUE + """
         local capacityKeys = {
@@ -934,7 +982,7 @@ final class ZLinkRedisAuthorityClient {
                 KEYS[3], KEYS[6],
                 ARGV[11], ARGV[12],
                 ARGV[4], ARGV[5], ARGV[6], ARGV[7],
-                '', capacityKeys, tonumber(ARGV[10]))
+                capacityKeys, tonumber(ARGV[10]))
         if not accepted then
             return {
                 targetBucket == 'capacity'
@@ -953,7 +1001,8 @@ final class ZLinkRedisAuthorityClient {
             redis.call('HGET', KEYS[1], 'descriptorKey'),
             redis.call(
                 'HGET', KEYS[1],
-                'descriptorLifecycleGeneration'))
+                'descriptorLifecycleGeneration'),
+            redis.call('HGET', KEYS[1], 'objectKind'))
         if not sourceBucket or not sourceNodeBucket
             or not adjustCapacity(
                 capacityKeys, targetBucket, targetNodeBucket,
@@ -1138,7 +1187,7 @@ final class ZLinkRedisAuthorityClient {
                         redis.call('HGET', fence, 'kind'),
                         redis.call(
                             'HGET', fence, 'stableType'),
-                        '', capacityKeys, 0)
+                        capacityKeys, 0)
                 local targetBucket = redis.call(
                     'HGET', fence, 'targetBucket')
                 local targetNodeBucket = redis.call(
@@ -1163,7 +1212,8 @@ final class ZLinkRedisAuthorityClient {
                         redis.call('HGET', row, 'descriptorKey'),
                         redis.call(
                             'HGET', row,
-                            'descriptorLifecycleGeneration')) then
+                            'descriptorLifecycleGeneration'),
+                        redis.call('HGET', row, 'objectKind')) then
                     return {'stale', nowMs}
                 end
                 requireCount(
@@ -1312,7 +1362,7 @@ final class ZLinkRedisAuthorityClient {
                         redis.call('HGET', fence, 'kind'),
                         redis.call(
                             'HGET', fence, 'stableType'),
-                        '', capacityKeys, 0)
+                        capacityKeys, 0)
                 local sourceBucket = redis.call(
                     'HGET', fence, 'sourceBucket')
                 local sourceNodeBucket = redis.call(
@@ -1337,7 +1387,8 @@ final class ZLinkRedisAuthorityClient {
                         redis.call('HGET', row, 'descriptorKey'),
                         redis.call(
                             'HGET', row,
-                            'descriptorLifecycleGeneration')) then
+                            'descriptorLifecycleGeneration'),
+                        redis.call('HGET', row, 'objectKind')) then
                     return {'stale', nowMs}
                 end
                 requireCount(
@@ -1923,7 +1974,6 @@ final class ZLinkRedisAuthorityClient {
                     request.targetDescriptorLifecycleGeneration()),
                 objectKindToken(request.objectKind()),
                 Integer.toString(request.pendingCapacityDelta()),
-                request.placementProfile().orElse(""),
                 reservationId,
                 Integer.toString(request.creationIntentEncodedSize())))
             .thenApply(raw -> reserveResult(request, raw));
@@ -1933,8 +1983,22 @@ final class ZLinkRedisAuthorityClient {
         ZLinkObjectReservation reservation,
         byte[] readyPayload,
         ZLinkStoreCancellation cancellation) {
+        return commit(reservation, readyPayload, null, cancellation);
+    }
+
+    CompletionStage<ZLinkObjectCommitResult> commit(
+        ZLinkObjectReservation reservation,
+        byte[] readyPayload,
+        ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation) {
         if (cancelled(cancellation)) {
             return cancelledStage();
+        }
+        if (terminal != null) {
+            validateTerminal(
+                reservation,
+                terminal,
+                ZLinkCreationTerminalState.CREATED);
         }
         return connection.commands()
             .thenCompose(redis -> redis.<List<Object>>eval(
@@ -1961,7 +2025,10 @@ final class ZLinkRedisAuthorityClient {
                         reservation.reservationVersion()),
                     keys.scansWatermarkKey(),
                     keys.authorityIndexGcKey(),
-                    keys.scansExpiryKey()
+                    keys.scansExpiryKey(),
+                    terminal == null
+                        ? keys.creationKey(reservation.reservationVersion())
+                        : keys.creationTerminalKey(terminal.operation())
                 },
                 reservation.reservationVersion(),
                 Long.toString(reservation.objectGeneration()),
@@ -1971,18 +2038,76 @@ final class ZLinkRedisAuthorityClient {
                 descriptorKey(reservation.targetDescriptor()),
                 Long.toString(
                     reservation.targetDescriptorLifecycleGeneration()),
-                encode(readyPayload)))
+                encode(readyPayload),
+                terminal == null ? "" : terminalState(terminal.state()),
+                terminal == null ? "" : encode(terminal.terminalEnvelope()),
+                terminal == null ? "" : encode(terminal.terminalSha256()),
+                terminal == null ? "" : Long.toString(
+                    terminal.expiresAt().toEpochMilli()),
+                reservation.authorityKey(),
+                reservation.storeVersion()))
             .thenApply(raw -> switch (string(raw.getFirst())) {
                 case "committed" -> ZLinkObjectCommitResult.COMMITTED;
                 case "already-committed" -> ZLinkObjectCommitResult.ALREADY_COMMITTED;
                 case "generation-exhausted" ->
                     ZLinkObjectCommitResult.GENERATION_EXHAUSTED;
+                case "invalid-expiry" -> throw new IllegalArgumentException(
+                    "terminal expiresAt must be later than provider store time");
                 default -> ZLinkObjectCommitResult.STALE;
+            });
+    }
+
+    CompletionStage<ZLinkObjectRejectResult> reject(
+        ZLinkObjectReservation reservation,
+        ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation) {
+        validateTerminal(
+            reservation,
+            terminal,
+            ZLinkCreationTerminalState.REJECTED);
+        return abortOrReject(
+            reservation,
+            terminal,
+            cancellation).thenApply(status -> switch (status) {
+                case "rejected" -> ZLinkObjectRejectResult.REJECTED;
+                case "already-rejected" ->
+                    ZLinkObjectRejectResult.ALREADY_REJECTED;
+                case "generation-exhausted" ->
+                    ZLinkObjectRejectResult.GENERATION_EXHAUSTED;
+                case "invalid-expiry" -> throw new IllegalArgumentException(
+                    "terminal expiresAt must be later than provider store time");
+                default -> ZLinkObjectRejectResult.STALE;
             });
     }
 
     CompletionStage<ZLinkObjectAbortResult> abort(
         ZLinkObjectReservation reservation,
+        ZLinkStoreCancellation cancellation) {
+        return abortOrReject(reservation, null, cancellation)
+            .thenApply(ZLinkRedisAuthorityClient::abortResult);
+    }
+
+    CompletionStage<ZLinkObjectAbortResult> abort(
+        ZLinkObjectReservation reservation,
+        ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation) {
+        validateTerminal(
+            reservation,
+            terminal,
+            ZLinkCreationTerminalState.FAILED);
+        return abortOrReject(reservation, terminal, cancellation)
+            .thenApply(status -> {
+                if ("invalid-expiry".equals(status)) {
+                    throw new IllegalArgumentException(
+                        "terminal expiresAt must be later than provider store time");
+                }
+                return abortResult(status);
+            });
+    }
+
+    private CompletionStage<String> abortOrReject(
+        ZLinkObjectReservation reservation,
+        ZLinkCreationOperationTerminal terminal,
         ZLinkStoreCancellation cancellation) {
         if (cancelled(cancellation)) {
             return cancelledStage();
@@ -2010,7 +2135,10 @@ final class ZLinkRedisAuthorityClient {
                         reservation.reservationVersion()),
                     keys.scansWatermarkKey(),
                     keys.authorityIndexGcKey(),
-                    keys.scansExpiryKey()
+                    keys.scansExpiryKey(),
+                    terminal == null
+                        ? keys.creationKey(reservation.reservationVersion())
+                        : keys.creationTerminalKey(terminal.operation())
                 },
                 reservation.reservationVersion(),
                 Long.toString(reservation.objectGeneration()),
@@ -2021,12 +2149,26 @@ final class ZLinkRedisAuthorityClient {
                 Long.toString(
                     reservation.targetDescriptorLifecycleGeneration()),
                 keys.encodedAuthorityKey(reservation.authorityKey()),
-                reservation.authorityKey()))
-            .thenApply(raw -> switch (string(raw.getFirst())) {
-                case "aborted" -> ZLinkObjectAbortResult.ABORTED;
-                case "already-aborted" -> ZLinkObjectAbortResult.ALREADY_ABORTED;
-                default -> ZLinkObjectAbortResult.STALE;
-            });
+                reservation.authorityKey(),
+                terminal == null ? "" : terminalState(terminal.state()),
+                terminal == null ? "" : encode(terminal.terminalEnvelope()),
+                terminal == null ? "" : encode(terminal.terminalSha256()),
+                terminal == null ? "" : Long.toString(
+                    terminal.expiresAt().toEpochMilli()),
+                reservation.storeVersion()))
+            .thenApply(raw -> string(raw.getFirst()));
+    }
+
+    CompletionStage<ZLinkCreationTerminalReadResult> readCreationTerminal(
+        ZLinkCreationOperationIdentity operation,
+        ZLinkStoreCancellation cancellation) {
+        if (cancelled(cancellation)) {
+            return cancelledStage();
+        }
+        return connection.commands()
+            .thenCompose(redis -> redis.hgetall(
+                keys.creationTerminalKey(operation)))
+            .thenApply(fields -> decodeCreationTerminal(operation, fields));
     }
 
     CompletionStage<ZLinkRelocationCapacityReserveResult>
@@ -2309,39 +2451,75 @@ final class ZLinkRedisAuthorityClient {
                 descriptor.rid()));
         String lifecycle =
             Long.toString(descriptor.lifecycleGeneration());
-        String nodeBucket = descriptorIdentity.length()
-            + ":"
-            + descriptorIdentity
-            + lifecycle.length()
-            + ":"
-            + lifecycle;
         return connection.commands()
-            .thenCompose(redis -> redis.hget(
-                    keys.capacityNodeActiveKey(),
-                    nodeBucket)
-                .thenCombine(
-                    redis.hget(
-                        keys.capacityNodePendingKey(),
-                        nodeBucket),
-                    CapacityProjection::new))
-            .thenApply(values -> {
-                long active = values.active == null
-                    ? 0
-                    : Long.parseLong(values.active);
-                long pending = values.pending == null
-                    ? 0
-                    : Long.parseLong(values.pending);
-                return withCapacity(
-                    descriptor,
-                    Math.toIntExact(active),
-                    Math.toIntExact(pending));
-            });
+            .thenCompose(redis -> {
+                var typeActive = redis.hgetall(
+                    keys.capacityTypeActiveKey());
+                var typeReserved = redis.hgetall(
+                    keys.capacityTypePendingKey());
+                var populationActive = redis.hgetall(
+                    keys.capacityNodeActiveKey());
+                var populationReserved = redis.hgetall(
+                    keys.capacityNodePendingKey());
+                return typeActive.thenCombine(
+                        typeReserved,
+                        CapacityMaps::new)
+                    .thenCombine(
+                        populationActive,
+                        CapacityMaps::withPopulationActive)
+                    .thenCombine(
+                        populationReserved,
+                        CapacityMaps::withPopulationReserved);
+            })
+            .thenApply(values -> withCapacity(
+                descriptor,
+                descriptorIdentity,
+                lifecycle,
+                values));
     }
 
     private static ZLinkMeshNodeDescriptor withCapacity(
         ZLinkMeshNodeDescriptor descriptor,
-        int active,
-        int pending) {
+        String descriptorIdentity,
+        String lifecycle,
+        CapacityMaps values) {
+        ZLinkCapacityUsage actors = usage(
+            values.populationActive,
+            values.populationReserved,
+            populationCapacityBucket(
+                descriptorIdentity, lifecycle, "actor"),
+            descriptor.capacity().actors().limit());
+        ZLinkCapacityUsage spots = usage(
+            values.populationActive,
+            values.populationReserved,
+            populationCapacityBucket(
+                descriptorIdentity, lifecycle, "user_spot"),
+            descriptor.capacity().spots().limit());
+        List<ZLinkSpotTypeCapacity> spotTypes =
+            descriptor.objectCapabilities().stream()
+                .filter(capability ->
+                    capability.objectKind()
+                        != ZLinkPlacementObjectKind.ACTOR)
+                .sorted(java.util.Comparator
+                    .<ZLinkObjectCapability>comparingInt(
+                        capability ->
+                            capability.objectKind().value())
+                    .thenComparing(
+                        ZLinkObjectCapability::stableType))
+                .map(capability -> new ZLinkSpotTypeCapacity(
+                    capability.objectKind(),
+                    capability.stableType(),
+                    usage(
+                        values.typeActive,
+                        values.typeReserved,
+                        capacityBucket(
+                            descriptorIdentity,
+                            lifecycle,
+                            objectKindToken(
+                                capability.objectKind()),
+                            capability.stableType()),
+                        capability.spotLimit())))
+                .toList();
         return new ZLinkMeshNodeDescriptor(
             descriptor.meshName(),
             descriptor.rid(),
@@ -2354,10 +2532,9 @@ final class ZLinkRedisAuthorityClient {
             descriptor.objectRole(),
             descriptor.placementWeight(),
             new ZLinkPlacementCapacity(
-                active,
-                pending,
-                descriptor.capacity().activeLimit(),
-                descriptor.capacity().pendingLimit()),
+                actors,
+                spots,
+                spotTypes),
             descriptor.maintenanceWave(),
             descriptor.state(),
             descriptor.securityIdentity(),
@@ -2366,12 +2543,52 @@ final class ZLinkRedisAuthorityClient {
             descriptor.updatedAt());
     }
 
+    private static ZLinkCapacityUsage usage(
+        Map<String, String> active,
+        Map<String, String> reserved,
+        String bucket,
+        int limit) {
+        return new ZLinkCapacityUsage(
+            Math.toIntExact(Long.parseLong(
+                active.getOrDefault(bucket, "0"))),
+            Math.toIntExact(Long.parseLong(
+                reserved.getOrDefault(bucket, "0"))),
+            limit);
+    }
+
+    private static String capacityBucket(
+        String descriptor,
+        String lifecycle,
+        String kind,
+        String stableType) {
+        return segment(descriptor)
+            + segment(lifecycle)
+            + segment(kind)
+            + segment(stableType);
+    }
+
+    private static String populationCapacityBucket(
+        String descriptor,
+        String lifecycle,
+        String kind) {
+        String population = "actor".equals(kind)
+            ? "actor"
+            : "spot";
+        return segment(descriptor)
+            + segment(lifecycle)
+            + segment(population);
+    }
+
+    private static String segment(String value) {
+        return value.length() + ":" + value;
+    }
+
     private ZLinkAuthorityReadResult readResult(List<Object> raw) {
         Instant now = time(raw, 1);
         if ("missing".equals(string(raw.getFirst()))) {
             return new ZLinkAuthorityMissing(now);
         }
-        return snapshot(raw, 2, now);
+        return snapshot(raw, 2, now, true);
     }
 
     private ZLinkObjectReserveResult reserveResult(
@@ -2389,8 +2606,14 @@ final class ZLinkRedisAuthorityClient {
         if ("capacity-exhausted".equals(status)) {
             return new ZLinkPlacementCapacityExhausted();
         }
-        if ("already-exists".equals(status) || "type-mismatch".equals(status)) {
-            ZLinkAuthoritySnapshot current = snapshot(raw, 2, now);
+        if ("already-exists".equals(status)
+            || "type-mismatch".equals(status)
+            || "creating-conflict".equals(status)) {
+            ZLinkAuthoritySnapshot current =
+                snapshot(raw, 2, now, true);
+            if ("creating-conflict".equals(status)) {
+                return new ZLinkObjectConflict(current);
+            }
             return "already-exists".equals(status)
                 ? new ZLinkObjectAlreadyExists(current)
                 : new ZLinkObjectTypeMismatch(current);
@@ -2412,18 +2635,19 @@ final class ZLinkRedisAuthorityClient {
     private ZLinkAuthoritySnapshot snapshot(
         List<Object> raw,
         int offset,
-        Instant now) {
+        Instant now,
+        boolean includesPendingCreation) {
         java.util.Optional<ZLinkPendingObjectCreation> pending =
             java.util.Optional.empty();
-        if (raw.size() >= offset + 17) {
-            String reservationId = string(raw.get(offset + 13));
+        if (includesPendingCreation && raw.size() >= offset + 16) {
+            String reservationId = string(raw.get(offset + 12));
             if (!reservationId.isEmpty()) {
                 pending = java.util.Optional.of(
                     new ZLinkPendingObjectCreation(
                         reservationId,
-                        string(raw.get(offset + 14)),
-                        decode(string(raw.get(offset + 15))),
-                        Math.toIntExact(number(raw.get(offset + 16)))));
+                        string(raw.get(offset + 13)),
+                        decode(string(raw.get(offset + 14))),
+                        Math.toIntExact(number(raw.get(offset + 15)))));
             }
         }
         return new ZLinkAuthoritySnapshot(
@@ -2452,7 +2676,7 @@ final class ZLinkRedisAuthorityClient {
         for (int index = 0; index + 12 < values.size(); index += 13) {
             items.add(new ZLinkAuthorityEntry(
                 string(values.get(index)),
-                snapshot(values, index + 1, now)));
+                snapshot(values, index + 1, now, false)));
         }
         Optional<ZLinkAuthorityScanCursor> next = nextOffset < 0
             ? Optional.empty()
@@ -2881,6 +3105,87 @@ final class ZLinkRedisAuthorityClient {
         return Base64.getDecoder().decode(value);
     }
 
+    private static ZLinkObjectAbortResult abortResult(String status) {
+        return switch (status) {
+            case "aborted" -> ZLinkObjectAbortResult.ABORTED;
+            case "already-aborted" ->
+                ZLinkObjectAbortResult.ALREADY_ABORTED;
+            default -> ZLinkObjectAbortResult.STALE;
+        };
+    }
+
+    private static String terminalState(
+        ZLinkCreationTerminalState state) {
+        return switch (state) {
+            case CREATED -> "created";
+            case REJECTED -> "rejected";
+            case FAILED -> "failed";
+        };
+    }
+
+    private static void validateTerminal(
+        ZLinkObjectReservation reservation,
+        ZLinkCreationOperationTerminal terminal,
+        ZLinkCreationTerminalState expectedState) {
+        if (!reservation.equals(terminal.reservation())) {
+            throw new IllegalArgumentException(
+                "terminal reservation must match the exact reservation");
+        }
+        if (terminal.state() != expectedState) {
+            throw new IllegalArgumentException(
+                "terminal state must be " + expectedState);
+        }
+        byte[] digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256")
+                .digest(terminal.terminalEnvelope());
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+        if (!java.util.Arrays.equals(
+                digest,
+                terminal.terminalSha256())) {
+            throw new IllegalArgumentException(
+                "terminalSha256 does not match terminalEnvelope");
+        }
+    }
+
+    private static ZLinkCreationTerminalReadResult decodeCreationTerminal(
+        ZLinkCreationOperationIdentity operation,
+        Map<String, String> fields) {
+        if (fields.isEmpty()) {
+            return new ZLinkCreationTerminalMissing();
+        }
+        ZLinkCreationTerminalState state = switch (
+            fields.getOrDefault("state", "")) {
+            case "created" -> ZLinkCreationTerminalState.CREATED;
+            case "rejected" -> ZLinkCreationTerminalState.REJECTED;
+            case "failed" -> ZLinkCreationTerminalState.FAILED;
+            default -> throw new IllegalStateException(
+                "invalid creation terminal state");
+        };
+        ZLinkObjectReservation reservation = new ZLinkObjectReservation(
+            fields.get("authorityKey"),
+            fields.get("storeVersion"),
+            Long.parseLong(fields.get("objectGeneration")),
+            Long.parseLong(fields.get("authorityOwnerGeneration")),
+            fields.get("reservationId"),
+            descriptor(fields.get("targetDescriptor")),
+            Long.parseLong(fields.get("targetLifecycle")),
+            new ZLinkLocationOwnerToken(
+                fields.get("targetOwner"),
+                Long.parseLong(fields.get("targetLease"))));
+        return new ZLinkCreationTerminalFound(
+            new ZLinkCreationOperationTerminal(
+                operation,
+                reservation,
+                state,
+                decode(fields.get("terminalEnvelope")),
+                decode(fields.get("terminalSha256")),
+                Instant.ofEpochMilli(
+                    Long.parseLong(fields.get("expiresAtMs")))));
+    }
+
     private static Instant time(List<Object> values, int index) {
         return Instant.ofEpochMilli(number(values.get(index)));
     }
@@ -2938,9 +3243,36 @@ final class ZLinkRedisAuthorityClient {
         Optional<ZLinkMeshNodeDescriptorKey> targetDescriptor) {
     }
 
-    private record CapacityProjection(
-        String active,
-        String pending) {
+    private record CapacityMaps(
+        Map<String, String> typeActive,
+        Map<String, String> typeReserved,
+        Map<String, String> populationActive,
+        Map<String, String> populationReserved) {
+        private CapacityMaps(
+            Map<String, String> typeActive,
+            Map<String, String> typeReserved) {
+            this(typeActive, typeReserved, Map.of(), Map.of());
+        }
+
+        private static CapacityMaps withPopulationActive(
+            CapacityMaps values,
+            Map<String, String> populationActive) {
+            return new CapacityMaps(
+                values.typeActive,
+                values.typeReserved,
+                populationActive,
+                Map.of());
+        }
+
+        private static CapacityMaps withPopulationReserved(
+            CapacityMaps values,
+            Map<String, String> populationReserved) {
+            return new CapacityMaps(
+                values.typeActive,
+                values.typeReserved,
+                values.populationActive,
+                populationReserved);
+        }
     }
 
     private record AggregateEncoding(

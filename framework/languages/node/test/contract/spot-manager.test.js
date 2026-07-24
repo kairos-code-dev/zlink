@@ -2119,8 +2119,6 @@ test('SpotRid outbound keeps Missing Instance placement intent behind the public
     .metadata('trace', 'abc')
     .instanceSpot('chat-room')
     .inMesh('target.mesh')
-    .placementProfile('interactive')
-    .affinityKey('tenant-7')
     .submit();
   const reply = await outbound.requestToSpot('instance-42', { value: 2 })
     .instanceSpot()
@@ -2131,8 +2129,6 @@ test('SpotRid outbound keeps Missing Instance placement intent behind the public
   assert.equal(calls[0].spotRid, 'instance-42');
   assert.equal(calls[0].options.instanceSpotType, 'chat-room');
   assert.equal(calls[0].options.initialMeshName, 'target.mesh');
-  assert.equal(calls[0].options.placementProfile, 'interactive');
-  assert.equal(calls[0].options.affinityKey, 'tenant-7');
   assert.equal(calls[0].options.metadata.get('trace'), 'abc');
   assert.equal(calls[1].options.instanceSpot, true);
   assert.equal(calls[1].options.instanceSpotType, undefined);

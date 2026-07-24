@@ -161,13 +161,6 @@ template <typename T> concept has_actor_directory_find = requires (T value)
     value.find (std::declval<std::string> ());
 };
 
-template <typename T> concept has_actor_directory_ensure = requires (T value)
-{
-    value.ensure (std::declval<std::string> (),
-                  std::declval<zlink::framework::message_t> (),
-                  std::declval<zlink::framework::actor_placement_t> ());
-};
-
 template <typename T> concept has_location_readiness = requires (T value)
 {
     value.is_peer_ready (std::declval<std::string> (),
@@ -584,15 +577,15 @@ static_assert (
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_handle_resolver_t &> ()
                              .resolve_spot_handle (
-                               std::declval<zlink::framework::spot_rid_t> ())),
+                               std::declval<zlink::framework::spot_id_t> ())),
                  zlink::framework::task_t<std::optional<zlink::framework::spot_handle_t>>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_spot_handle_resolver_t &> ()
                              .resolve_actor_spot_handle (std::declval<std::string> ())),
                  zlink::framework::task_t<std::optional<zlink::framework::spot_handle_t>>>);
 static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::spot_handle_t &> ().spot_rid ()),
-                 zlink::framework::spot_rid_t>);
+  std::is_same_v<decltype (std::declval<const zlink::framework::spot_handle_t &> ().spot_id ()),
+                 zlink::framework::spot_id_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::location_runtime_query_t &> ()
                              .get_status ()),
@@ -722,18 +715,10 @@ static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_location_key_t> ().actor_id),
                  std::string>);
 static_assert (has_actor_directory_find<zlink::framework::actor_directory_t>);
-static_assert (has_actor_directory_ensure<zlink::framework::actor_directory_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_directory_t &> ()
                              .find (std::declval<std::string> ())),
                  zlink::framework::task_t<std::optional<zlink::framework::actor_ref_t>>>);
-static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::actor_directory_t &> ()
-                             .ensure (std::declval<std::string> (),
-                                      std::declval<zlink::framework::message_t> (),
-                                      std::declval<zlink::framework::actor_placement_t> ())),
-                 zlink::framework::task_t<zlink::framework::actor_ref_t>>);
-
 template <typename T>
 concept has_http_client_coroutine_resume_builder =
   requires (T value, std::shared_ptr<zlink::http_client::coroutine_resume_scheduler_t> resume)
@@ -1260,6 +1245,10 @@ static_assert (std::has_virtual_destructor_v<
                zlink::framework::actor_transfer_adapter_t<contract_actor_t>>);
 static_assert (std::is_same_v<
                decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
+                           .set_placement_weight (10000)),
+               zlink::framework::mesh_node_builder_t &>);
+static_assert (std::is_same_v<
+               decltype (std::declval<zlink::framework::mesh_node_builder_t &> ()
                            .add_actor_transfer_adapter<contract_actor_t,
                                                        contract_actor_transfer_t> ("contract")),
                zlink::framework::mesh_node_builder_t &>);
@@ -1326,12 +1315,12 @@ static_assert (
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::spot_manager_t &> ()
                              .get_or_create (
-                               std::declval<zlink::framework::spot_rid_t> (),
+                               std::declval<zlink::framework::spot_id_t> (),
                                std::declval<std::string> ())),
                  zlink::framework::spot_create_call_t>);
 static_assert (
   std::is_same_v<decltype (std::declval<const zlink::framework::spot_manager_t &> ()
-                             .find (std::declval<zlink::framework::spot_rid_t> ())),
+                             .find (std::declval<zlink::framework::spot_id_t> ())),
                  zlink::framework::task_t<
                    std::optional<zlink::framework::spot_ref_t>>>);
 static_assert (
@@ -1387,7 +1376,7 @@ static_assert (
                  std::optional<zlink::framework::message_t>>);
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::actor_context_t &> ().join_spot (
-                   std::declval<zlink::framework::spot_rid_t> (),
+                   std::declval<zlink::framework::spot_id_t> (),
                    std::declval<const zlink::framework::message_t &> ())),
                  zlink::framework::actor_join_call_t>);
 static_assert (

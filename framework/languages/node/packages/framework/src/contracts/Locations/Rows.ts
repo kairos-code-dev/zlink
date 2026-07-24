@@ -23,7 +23,10 @@ export interface ZLinkObjectCapability {
   readonly stableType: string;
   readonly policy: ZLinkObjectMaintenancePolicyKind;
   readonly hasSnapshotAdapter: boolean;
-  readonly placementProfiles: readonly string[];
+  /** Current active population for this exact object kind and stable type. */
+  readonly active: number;
+  /** Current reserved population for this exact object kind and stable type. */
+  readonly reserved: number;
   readonly activeLimit?: number;
   readonly pendingLimit?: number;
 }

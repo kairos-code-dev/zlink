@@ -87,6 +87,11 @@ export interface ZLinkLogicalMulticastDetail {
 }
 
 export interface ZLinkPublishResult {
+  /**
+   * Reports source-local outbound transport queue admission for remote targets
+   * and origin-local Spot queue admission for local targets. It does not wait
+   * for remote Spot queue admission, acknowledgements, or handler execution.
+   */
   readonly status: ZLinkSubmitStatus;
   readonly detail: ZLinkLogicalMulticastDetail;
 }

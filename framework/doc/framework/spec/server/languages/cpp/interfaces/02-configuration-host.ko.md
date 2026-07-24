@@ -546,6 +546,13 @@ Location runtime을 사용하는 application은 `add_location_store(...)`로 Loc
 `Disabled` factory만 있는 same-node 구성에는 Relocation Store가 필요하지 않다. 필요한 Store가 없거나
 같은 capability가 중복 등록되면 Framework는 socket bind 전에 configuration error로 종료한다.
 
+Object Server는 startup validation에서 MeshNode diagnostic prefix로
+`<prefix>-entry-<uuid-v4>` 형식의 Entry Spot ID를 발급한다. `<uuid-v4>`는 RFC 4122 UUID v4의 lowercase
+canonical 36-character `8-4-4-4-12` 표현이며 MeshNode RID의 UUID와 독립적으로 발급한다. 같은
+lifecycle에서는 유지하고 replacement lifecycle에서는 새 UUID를 발급한다. Global Spot namespace의 첫
+active conflict에서 기존 record를 변경하지 않고 socket bind 전에 `routing_id_conflict`로 종료한다.
+Entry Spot ID를 caller가 지정하는 option은 제공하지 않는다.
+
 `configure_network()`는 process 전체의 BindHost와 AdvertiseHost 기본값을 반환하며 listener별 설정이 이 값을
 재정의한다. `worker()`는 bounded worker pool의 최소·최대 thread 수, idle timeout과 queue 상한을 반환한다.
 두 option은 host 시작 전에만 변경할 수 있다.
@@ -884,7 +891,7 @@ tracing hook은 공통 message-flow tracing 계약의 observer와 runtime contro
 
 One-way activation 실패는 별도 계기를 만들지 않고 `zlink.mesh_node.messages.dropped`에
 `surface=instance_spot`으로 기록한다. `instance_spot_type` label은 startup에 등록한 bounded type 이름만
-사용하며 Spot RID, owner ID와 internal authority fields를 label로 사용하지 않는다.
+사용하며 Spot ID, owner ID와 internal authority fields를 label로 사용하지 않는다.
 
 ### 5.2 message-flow dispatch error event
 
@@ -897,7 +904,7 @@ error reply 로 끝나고, local actor call 처럼 reply frame 이 없는 경로
 Exact dispatch option declaration은 [Monitoring interface](08-monitoring.ko.md)가 소유한다.
 
 `message_flow_event_t`의 dispatch error event는 `surface`, `message_kind`, `reason`, `action`,
-`packet_name`, `channel_name`, `topic`, `spot_rid`, `instance_spot_type`, `activation_state`, `actor_id`, `source_rid`,
+`packet_name`, `channel_name`, `topic`, `spot_id`, `instance_spot_type`, `activation_state`, `actor_id`, `source_rid`,
 `correlation_id`를 담는 snapshot이다. native message 소유권과 frame 참조는 포함하지 않는다.
 
 시작 전 기본 mode는 `configure_dispatch().message_flow(...)`에서 정한다. 실행 중 mode 변경은

@@ -687,9 +687,10 @@ data class ProfileEvent(val value: String)
 class PlayerActor(private val id: String) : ZLinkActor {
     override fun actorId(): String = id
     override fun context(): ZLinkActorContext = object : ZLinkActorContext {
-        override fun spotRid() = java.util.Optional.empty<RoutingId>()
+        override fun spotId() = java.util.Optional.empty<String>()
         override fun boundSession() = null
-        override fun joinSpot(spotRid: RoutingId, request: Any) = unsupportedJoinCall()
+        override fun joinSpot(spotId: String, request: Any) =
+            unsupportedJoinCall()
         override fun joinEntrySpot(spotNodeRid: RoutingId, request: Any) = unsupportedJoinCall()
     }
 

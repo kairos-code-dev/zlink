@@ -340,7 +340,7 @@ internal sealed class ZLinkRouteSpotSendCall<TMessage>(
             return await runtime.SendToSpotViaRouterChannelAsync(
                     snapshot.RouterChannelId,
                     snapshot.NodeRid,
-                    snapshot.SpotRid,
+                    snapshot.SpotId,
                     (ulong)snapshot.Generation,
                     snapshot.AuthorityOwnerGeneration,
                     parts,
@@ -417,7 +417,7 @@ internal sealed class ZLinkRouteSpotRequestCall<TRequest>(
                     return runtime.RequestToSpotViaRouterChannelAsync(
                         snapshot.RouterChannelId,
                         snapshot.NodeRid,
-                        snapshot.SpotRid,
+                        snapshot.SpotId,
                         (ulong)snapshot.Generation,
                         snapshot.AuthorityOwnerGeneration,
                         parts,

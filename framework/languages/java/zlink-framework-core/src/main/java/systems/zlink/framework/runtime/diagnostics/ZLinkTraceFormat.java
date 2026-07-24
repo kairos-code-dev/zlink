@@ -23,7 +23,7 @@ final class ZLinkTraceFormat {
         append(builder, "flow", flow.flowId());
         append(builder, "origin", enumName(flow.flowOrigin()));
         append(builder, "src", flow.sourceRid());
-        append(builder, "spot", flow.spotRid());
+        append(builder, "spot", flow.spotId());
         append(builder, "actor", flow.actorId());
         append(builder, "errorType", flow.errorType());
         append(builder, "errorMessage", flow.errorMessage());

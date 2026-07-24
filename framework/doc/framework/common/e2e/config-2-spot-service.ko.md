@@ -27,7 +27,7 @@ bound session이 연결되는 배포다. 이 구성을 한 번 시작한 뒤 spo
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록하고, peer descriptor와 Spot authority를 framework lifecycle이 자동 갱신한다. |
 | relocation store | 1 | 공식 Redis relocation store extension이 사용하는 공유 Redis instance. Actor가 다른 MeshNode의 Spot으로 join하는 시나리오가 immutable state·journal payload를 저장하도록 각 play host가 `AddRelocationStore(new ZLinkRedisRelocationStore(...))`로 별도 등록한다. |
-| play(actor) 노드 | 2 (`play-a`, `play-b`) | Object role을 `Server`로 고정하고 Entry Spot, User Spot factory와 Actor factory를 등록한다. User Spot factory는 explicit `Disabled` relocation policy를 사용한다. Actor factory는 explicit `Snapshot` policy와 Actor type에 맞는 relocation adapter를 사용하며, 두 노드 모두 같은 stable type capability와 cross-node join에 필요한 active·pending capacity를 게시한다. MeshNode의 단일 ROUTER endpoint에 handler와 timer를 등록하고 `/evidence`·`/health`를 제공한다. |
+| play(actor) 노드 | 2 (`play-a`, `play-b`) | Object role을 `Server`로 고정하고 Entry Spot, User Spot factory와 Actor factory를 등록한다. User Spot factory는 explicit `Disabled` relocation policy를 사용한다. Actor factory는 explicit `Snapshot` policy와 Actor type에 맞는 relocation adapter를 사용하며, 두 노드 모두 같은 stable type capability와 cross-node join에 필요한 Actor 전체, Spot 전체와 User Spot stable-type population capacity를 게시한다. MeshNode의 단일 ROUTER endpoint에 handler와 timer를 등록하고 `/evidence`·`/health`를 제공한다. |
 | session(gateway) 노드 | 2 (`session-a`, `session-b`) | Object role을 `Client`로 고정하고 Location Store를 등록한다. Stream session을 호스팅하고 인자가 없는 `EnableActorDispatch()`로 global Actor dispatch capability를 활성화한다. 각자 stream endpoint를 사용하며 업무 로직은 play 노드가 처리한다. |
 | consumer | 시나리오별 | ChannelName client + stream client. entry spot은 location store 기반으로 resolve(자기도 같은 store를 등록). |
 
@@ -39,7 +39,7 @@ payload를 선택한 bound Actor의 relay call에 함께
 STREAM correlation을 한 번 완료한다. One-way packet에는 reply capability가 없으므로 relay 결과는 admission만
 나타낸다. Actor가 내보내는 push도 session을 거쳐 client로 relay된다.
 
-ActorId와 Spot RID는 물리 MeshNode RID와 독립된 global object identity다. Application은 domain key에서 같은
+ActorId와 Spot ID는 물리 MeshNode RID와 독립된 global object identity다. Application은 domain key에서 같은
 global identity를 일관되게 만들 수 있지만, physical owner를 계산하거나 고정하지 않는다. Framework가 object
 role, stable type capability, placement weight와 capacity를 사용해 최초 owner를 선택하고 Location Store의 current
 authority로 이후 호출을 라우팅한다. Automatic topology의 MeshNode RID는 framework가 lifecycle마다 발급하므로
@@ -78,7 +78,7 @@ handler 동작(공유):
 - 절차: consumer가 역할 server의 app endpoint로 요청하고 server가 startup evidence에 기록한 Entry Spot
   RID로 `RequestToSpot(JoinReq)`를 보낸다.
 - 검증: entry Spot이 user Spot을 생성하고 reply에 Spot ID가 포함된다. Spot evidence에 생성 기록이
-  남고, Spot manager `Find(SpotRid)`가 Ready `SpotRef`의 owner RID·MeshName·ObjectGeneration을 반환한다.
+  남고, Spot manager `Find(SpotId)`가 Ready `SpotRef`의 owner RID·MeshName·ObjectGeneration을 반환한다.
 - 세부 동작: Entry Spot dispatch + Spot 생성 + Spot authority 등록.
 
 #### SM-A2 user spot request와 state mutation
@@ -91,7 +91,7 @@ handler 동작(공유):
 - 검증: 각 reply가 누적 상태를 정확히 반영한다(순서 보존). 동시 요청에도 상태가 깨지지 않는다.
 - 세부 동작: spot 단위 직렬 처리 + 상태 일관성.
 
-#### SM-A3 global Spot RID route resolve
+#### SM-A3 global Spot ID route resolve
 
 우선순위: `P1`
 
@@ -101,14 +101,14 @@ handler 동작(공유):
 - 검증: 해당 spot이 있는 노드에서만 처리(다른 노드 evidence엔 없음).
 - 세부 동작: spot route resolve의 정확성.
 
-#### SM-A4 global Spot RID와 current owner resolve
+#### SM-A4 global Spot ID와 current owner resolve
 
 우선순위: `P0`
 
-**검증 질문:** 같은 domain key에서 얻은 global Spot RID 호출이 physical owner를 계산하지 않고도 항상 current
+**검증 질문:** 같은 domain key에서 얻은 global Spot ID 호출이 physical owner를 계산하지 않고도 항상 current
 owner에 도달하는가.
 
-- 절차: 앱이 entity key(예: order id, player id)에 대응하는 global Spot RID를 일관되게 사용해 request를 보낸다.
+- 절차: 앱이 entity key(예: order id, player id)에 대응하는 global Spot ID를 일관되게 사용해 request를 보낸다.
   Target MeshNode RID, endpoint와 owner generation은 호출 인자로 전달하지 않는다.
 - 검증: 같은 key의 호출은 같은 logical Spot identity를 사용하고 Location Store가 가리킨 current owner에 도달한다.
   Scale-out만으로 owner는 바뀌지 않지만 `Retire`·relocation으로 owner가 바뀐 후에는 같은 RID가 새 owner를
@@ -145,7 +145,7 @@ current Actor membership이 있으면 상태를 바꾸지 않고 close를 거부
 
 우선순위: `P1`
 
-**검증 질문:** 이미 만든 spotRid를 다른 spot 타입으로 다시 `GetOrCreate`하면, `SpotTypeMismatch`로 명확히 거부되는가.
+**검증 질문:** 이미 만든 spotId를 다른 spot 타입으로 다시 `GetOrCreate`하면, `SpotTypeMismatch`로 명확히 거부되는가.
 
 - 절차: stable type A와 RID로 User Spot `GetOrCreate`를 완료한 뒤, 같은 RID를 stable type B의
   `GetOrCreate`로 다시 요청한다.
@@ -179,6 +179,83 @@ current Actor membership이 있으면 상태를 바꾸지 않고 close를 거부
   새 create를 시작한다.
 - 세부 동작: Store-backed User Spot의 `Creating`·factory·initialize·`Ready` publication barrier.
 
+#### SM-A10 Entry Spot ID 발급과 lifecycle
+
+우선순위: `P0`
+
+**검증 질문:** Object Server가 Entry Spot ID를 MeshNode RID와 독립적으로 발급하고 descriptor의 exact
+mapping을 lifecycle 전체에서 사용하는가.
+
+- 절차: Diagnostic prefix를 `play`로 지정해 Object Server를 시작하고 MeshNode descriptor와 Entry Spot
+  location을 읽는다. 같은 lifecycle에서 descriptor를 여러 번 갱신한 뒤 같은 endpoint로 replacement
+  lifecycle을 시작한다. 별도 반복에서는 Location Store test double이 첫 Entry Spot ID identity claim에
+  active conflict를 반환한다.
+- 검증: Entry Spot ID는
+  `^play-entry-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`와 일치하고
+  MeshNode RID도 같은 UUID v4 bit·lowercase canonical 표현을 사용하되 두 UUID는 독립적이다.
+  Full MeshNode RID에 marker나 suffix를 이어 붙인 값이 아니다. 같은 lifecycle에서는 RID가 유지되고
+  replacement에서는 MeshNode RID와 Entry Spot ID가 모두 바뀐다. Active conflict는 기존 record를 변경하지
+  않고 첫 claim에서 `SpotIdConflict`로 startup을 실패하며 Ready descriptor나 Entry Spot authority를
+  남기지 않는다. 두 번째 UUID 생성과 두 번째 claim은 0건이다.
+- 검증: Descriptor의 Entry Spot ID와 lifecycle generation은 실제 Ready Entry Spot location과 정확히
+  일치한다. Actor create, `JoinEntrySpot`과 relocation evidence는 이 mapping을 사용하며 RID 문자열 parse로
+  Entry Spot을 계산하지 않는다.
+- 검증: `NewClaim`은 descriptor publication과 같은 mutation에서 Entry Spot global identity를 원자적으로
+  claim한다. Descriptor의 immutable digest에는 Entry Spot ID가 포함되며, 같은 lifecycle에서 이를 바꾸는
+  update는 side effect 없이 거부된다.
+- 검증: 정상 종료의 descriptor remove와 owner-loss cleanup의 `RemoveAllByOwner`는 해당 lifecycle이 claim한
+  Entry Spot identity만 함께 제거한다. 이전 lifecycle의 지연된 cleanup은 replacement lifecycle의 descriptor,
+  Entry Spot authority와 identity claim을 제거하지 못한다.
+- 세부 동작: Entry Spot ID format, active collision 즉시 실패, lifecycle stability, descriptor mapping,
+  immutable digest와 lifecycle-fenced cleanup.
+
+#### SM-A11 Entry Spot 예약 ID 형식 거부
+
+우선순위: `P0`
+
+**검증 질문:** Caller가 Framework 전용 Entry Spot ID 형식을 User·Instance Spot ID로 지정하면 side
+effect 전에 거부되는가.
+
+- 절차: `play-entry-f67e5507-21c6-4a15-bfd1-4a240bfab371`을 User Spot `GetOrCreate` Spot ID로 사용하고, 별도
+  요청에서는 같은 Spot ID로 Instance Spot direct intent를 제출한다. Location Store reservation, target 선택과
+  factory 실행 횟수를 기록한다.
+- 검증: 두 요청 모두 `InvalidConfiguration`으로 끝난다. Location Store reservation, target 선택과 factory
+  실행 횟수는 모두 0이며 authority, `Reserved` typed capacity bundle과 creation payload를 남기지 않는다.
+- 세부 동작: Framework-issued Entry Spot namespace의 pre-admission validation.
+
+#### SM-A12 User Spot automatic ID active collision
+
+우선순위: `P0`
+
+**검증 질문:** Framework가 User Spot `Create`에 발급한 UUID v4 Spot ID가 active authority와 충돌할 때 문제를
+새 identity retry로 숨기지 않는가.
+
+- 절차: UUID generator를 고정하고 User Spot `Create`의 첫 global authority reservation에 같은 Spot ID의 active
+  authority conflict를 반환한다. UUID 생성, Location Store reservation과 factory 호출 횟수를 기록한다.
+- 검증: 호출은 기존 authority를 바꾸지 않고 `SpotIdConflict`로 즉시 끝난다. UUID 생성과 reservation은
+  각각 1건이고 factory 호출은 0건이며 두 번째 UUID, reservation과 creation payload는 없다.
+- 세부 동작: Framework-issued logical Spot ID의 UUID v4와 active collision 즉시 실패.
+
+#### SM-A13 SpotId string boundary와 legacy binary 거부
+
+우선순위: `P0`
+
+**검증 질문:** SpotId가 transport RID와 분리된 UTF-8 exact string으로 모든 public·wire·Store 경계에서
+같게 처리되는가.
+
+- 절차: UTF-8 encoded 크기가 각각 1, 255와 256 bytes인 Spot ID를 `GetOrCreate`와 direct call에
+  제출한다. `Room`과 `room`, NFC `é`와 NFD `é`를 각각 별도 Spot ID로 생성한다. 마지막으로 legacy
+  wire의 Spot field에 유효하지 않은 UTF-8 binary를 넣어 target admission에 제출한다.
+- 검증: 1-byte와 255-byte ID는 exact value로 생성·조회·호출되고 256-byte ID는 Store·factory side
+  effect 전에 `InvalidConfiguration`으로 거부된다. 대소문자 쌍과 Unicode 표현 쌍은 normalization 없이
+  서로 다른 네 authority key를 만든다. Invalid UTF-8 frame은 application queue와 Location Store에
+  도달하지 않고 protocol failure로 끝나며 binary 값을 base64나 replacement character로 바꾸지 않는다.
+- 검증: 같은 Spot ID의 User·Instance·Entry kind 또는 stable type 충돌은 namespace를 분리하지 않고
+  `SpotTypeMismatch` 또는 identity conflict로 끝난다. `MeshName`을 바꿔도 새 identity namespace가
+  만들어지지 않는다.
+- 세부 동작: UTF-8 1..255-byte bound, case-sensitive exact equality, no normalization, global namespace와
+  v11 binary Spot RID clean break.
+
 ### Track B — actor join과 lifecycle
 
 actor join은 actor가 어느 노드의 mailbox에서 실행되느냐에 따라 local과 remote로 나뉜다. 두
@@ -201,6 +278,29 @@ Missing Actor를 생성하지 않는가.
   받지 않고 eligible Object Server를 선택한다.
 - 세부 동작: explicit stable type global lifecycle과 existing-only manager `Find`.
 
+#### SM-B0A Actor creation 승인·거절과 concurrent terminal result
+
+우선순위: `P0`
+
+**검증 질문:** Entry Spot creation callback이 Actor별로 직렬화되고 서로 다른 operation은 자신의 request와
+reply를 유지하며, 거절된 Actor와 capacity가 공개되지 않는가.
+
+- 절차: 서로 다른 process의 caller가 같은 Actor ID와 stable type이지만 서로 다른 request와 `OperationId`로
+  `GetOrCreate`를 동시에 호출한다. 첫 callback은 typed reply와 함께 거절한다. 두 번째 operation은 Creating
+  정리를 기다린 뒤 새 reservation으로 자신의 request를 callback에 전달하고 승인된다. 두 번째 operation의
+  동일한 `OperationId`를 다시 전달하고, Ready Actor에 새로운 `OperationId`로 `GetOrCreate`도 반복한다.
+- 검증: 같은 Actor의 factory와 creation callback은 동시에 실행되지 않는다. 첫 operation은 자신의
+  `Rejected` reply를 받고 두 번째 operation은 첫 reply를 공유하지 않은 채 `Created`와 자신의 reply를 받는다.
+  동일한 `OperationId` 재전달은 callback을 다시 실행하지 않고 같은 semantic terminal result를 반환한다.
+  Command reply는 재전달 request의 current correlation과 reply route로 새로 encode하며,
+  Ready Actor에 대한 새 operation은 callback 없이 `Existing`을 반환한다. `Created`만 `ActorRef`, initial Entry
+  membership, Ready authority와 active capacity를 가진다. `Rejected`는 `Find`와 Actor messaging에서
+  조회되지 않고 Ready authority·active capacity·destroy callback을 남기지 않으며 pending capacity가 0으로
+  돌아온다. 거절 뒤 새 call은 새 reservation ID로 실행된다. Ready 반복은 `Existing`을 반환하고 factory와
+  creation callback을 호출하지 않는다. 최초 생성에서는 Entry Spot의 `OnActorJoin`과 `OnJoinedActor`가 모두
+  0건이다.
+- 세부 동작: Actor별 reservation 직렬화, operation-scoped terminal replay, atomic reject cleanup과 Entry creation lifecycle.
+
 #### SM-B1 local actor join
 
 우선순위: `P0`
@@ -210,7 +310,7 @@ Actor queue가 그 owner node에서만 실행되는가.
 
 - 절차: `play-a`만 해당 stable Actor type의 eligible capacity를 갖게 한 뒤 global Actor manager가 explicit
   Actor ID·stable type으로 create한다. Factory 실행과 initial Entry membership의 `Ready` evidence를 확인한 뒤,
-  `play-a`에 만든 User Spot으로 Actor가 `JoinSpot(globalSpotRid)`을 호출한다.
+  `play-a`에 만든 User Spot으로 Actor가 `JoinSpot(globalSpotId)`을 호출한다.
 - 검증: factory와 `Ready` publication은 `play-a`에서 한 번 관찰된다. Join evidence 순서는 target
   `OnActorJoin` → Location Store membership CAS commit → target `OnJoinedActor` → source `OnLeaveActor`이며,
   세 callback과 후속 Actor request가 `play-a`에서만 실행된다. Same-node join은 relocation adapter와 Relocation
@@ -225,7 +325,7 @@ Actor queue가 그 owner node에서만 실행되는가.
 호출이 target Actor queue에 도달하는가.
 
 - 절차: Actor placement capacity는 `play-a`만 허용해 Actor를 initial Entry Spot에 먼저 생성하고, User Spot
-  placement capacity는 `play-b`만 허용해 target Spot을 만든다. `play-a`의 Actor가 target global Spot RID로
+  placement capacity는 `play-b`만 허용해 target Spot을 만든다. `play-a`의 Actor가 target global Spot ID로
   `JoinSpot`을 호출한다. Caller는 target node RID·endpoint·owner token을 전달하지 않는다.
 - 검증: target `OnActorJoin` accept 뒤 source adapter `Capture`, Relocation Store immutable root 저장, target factory와
   adapter `Restore`·journal staging, Location Store owner·membership CAS commit, target `OnJoinedActor`, source
@@ -303,6 +403,8 @@ generation에는 영향을 주지 않는가.
   없을 때는 `false`, 새 generation이 존재할 때 이전 ref는 `ActorGenerationStale`로 끝난다. Destroy 자체는
   membership 이동이 아니므로 완료된 leave 이후 `OnLeaveActor`를 다시 호출하지 않으며 새 incarnation은
   유지된다.
+  `JoinEntrySpot`은 target Entry Spot의 `OnActorJoin` 없이 membership을 commit한 뒤 target
+  `OnJoinedActor`, source User Spot `OnLeaveActor` 순서로 완료된다.
 - 세부 동작: exact `ActorRef` fence를 사용하는 actor destroy와 idempotency.
 
 #### SM-B9 Spot join admission accept와 reject
@@ -421,8 +523,12 @@ send·request·publish verb와 timeout·미등록 negative를 모두 본다(같�
 
 **검증 질문:** 한 node의 Spot이 제출한 Logical Multicast를 **다른 node**의 구독 Spot이 실제로 받는가. origin의 제출 성공만으로 통과시키지 않는다.
 
-- 절차: `play-a`의 Spot이 target ChannelName과 topic으로 Logical Multicast를 제출하고, 구독자는 `play-b`의 Spot으로 둔다. 두 MeshNode는 같은 RouteMesh peer다.
-- 검증: 성공 기준은 **수신 측 evidence**다 — `play-b` 구독 spot이 이벤트를 받았다는 기록. 발행 측의 publish 성공 로그는 보조 증거일 뿐 단독으로는 통과가 아니다. 연결 미성립이면 발행이 성공으로 보여도 시나리오는 실패해야 한다.
+- 절차: `play-a`의 Spot이 target ChannelName과 topic으로 Logical Multicast를 제출한다. Remote subscriber
+  node는 weight `1`, `10000`, `0`을 각각 사용하고 positive node에는 topic 구독 Spot을 하나씩 둔다.
+- 검증: 성공 기준은 **수신 측 evidence**다. Weight `1`과 `10000`인 두 remote node에는 routed message가
+  정확히 한 번씩 도달하고 각 구독 Spot이 한 번 받는다. Weight 크기가 전송 횟수를 늘리지 않으며 weight
+  `0` node는 새 remote target에서 제외된다. 발행 측의 publish 성공 로그는 보조 증거일 뿐 단독으로는
+  통과가 아니다. 연결 미성립이면 발행이 성공으로 보여도 시나리오는 실패해야 한다.
 - 세부 동작: origin node가 target channel의 remote node마다 routed message를 한 번 제출하고, 수신 node가 topic과 일치하는 local Spot에 message ref를 공유한다.
 
 #### SM-C6 Logical Multicast ROUTER backpressure
@@ -659,13 +765,13 @@ actor가 존재하는 Spot 종류(entry/user), 한 session에 bind된 actor 수(
 
 ChannelName handler, RID direct handler와 Spot direct handler가 같은 MeshNode ROUTER를 사용할 때 namespace,
 대상 선택과 lifecycle이 서로 섞이지 않는지 검증한다. 별도 중계 계층이나 Spot 전용 socket은 사용하지
-않는다. 외부 코드는 `SendToSpot`·`RequestToSpot`에 global Spot RID만 전달하며 Framework가
+않는다. 외부 코드는 `SendToSpot`·`RequestToSpot`에 global Spot ID만 전달하며 Framework가
 Location Store에서 current owner·generation·Mesh를 resolve한다. `SpotRef`는 exact close와 관측용이지
 messaging target이 아니다.
 
 #### SM-F1 route client → local target Spot
 
-- 절차: consumer가 같은 node가 소유한 global Spot RID로 `RequestToSpot`·`SendToSpot`을 제출한다.
+- 절차: consumer가 같은 node가 소유한 global Spot ID로 `RequestToSpot`·`SendToSpot`을 제출한다.
 - 검증: request는 target Spot의 reply 하나로 완료되고 send는 target Spot evidence에만 기록된다.
 
 #### SM-F2 ToSpot 다른 MeshNode owner 호출
@@ -675,7 +781,7 @@ messaging target이 아니다.
 공통 구현 요구: 모든 framework 언어에서 필수다.
 
 - 절차: source와 target MeshNode를 서로 다른 process로 시작하고 target에 User Spot을 만든다.
-  Source 역할 server가 MeshName, owner RID, endpoint와 `SpotRef`를 전달하지 않고 global Spot RID만으로
+  Source 역할 server가 MeshName, owner RID, endpoint와 `SpotRef`를 전달하지 않고 global Spot ID만으로
   `RequestToSpot`·`SendToSpot`을 제출한다.
 - 검증: Location Store가 가리킨 remote owner의 target Spot handler만 각각 한 번 실행한다. Request는
   remote reply로 terminal-once 완료되고 send는 source outbound admission으로 완료된다. Evidence의
@@ -691,7 +797,7 @@ messaging target이 아니다.
 
 #### SM-F4 target Spot 없음과 stale generation
 
-- 절차: 존재하지 않는 Spot RID로 existing-only request와 send를 제출한다. User Spot을 닫고
+- 절차: 존재하지 않는 Spot ID로 existing-only request와 send를 제출한다. User Spot을 닫고
   같은 RID로 새 incarnation을 만든 뒤 이전 `SpotRef`로 exact `Close`를 시도한다.
 - 검증: Missing request와 send는 target-not-found 계약으로 완료되고 Instance cold activation을 시작하지
   않는다. 이전 `SpotRef` close는 stale-generation으로 끝나며 새 incarnation을 닫지 않는다.
@@ -707,9 +813,9 @@ messaging target이 아니다.
 
 - 절차: 같은 MeshName에 속한 source와 target MeshNode를 서로 다른 프로세스로 시작한다. 두 노드는 Object
   Server role, 같은 stable Actor type factory, explicit Snapshot policy·adapter, Relocation Store와 충분한
-  active·pending capacity를 §2대로 구성한다. Source Entry Spot에 Actor를 먼저 생성하고 target User Spot을
-  만든다. Source Spot은 global Spot RID로 target Spot에 request와 send를 제출하고, Actor는
-  `JoinSpot(globalSpotRid)`로 target User Spot에 join한다. 별도 Spot 전용 ROUTER나 PUB/SUB socket은 구성하지
+  typed population capacity를 §2대로 구성한다. Source Entry Spot에 Actor를 먼저 생성하고 target User Spot을
+  만든다. Source Spot은 global Spot ID로 target Spot에 request와 send를 제출하고, Actor는
+  `JoinSpot(globalSpotId)`로 target User Spot에 join한다. 별도 Spot 전용 ROUTER나 PUB/SUB socket은 구성하지
   않는다.
 - 검증: 시작 순서와 무관하게 두 MeshNode가 ready가 된 뒤 request reply, send evidence와 Actor join
   evidence가 target Spot에만 기록된다. Cross-node join은 adapter capture·restore와 Relocation Store root를
@@ -803,6 +909,28 @@ eligible placement target을 선택하는가.
 - 절차: 다수 actor에 다수 session을 bind한 뒤, 동시에 actor push를 대량으로 트리거한다.
 - 검증: 각 push가 해당 bound session으로만 relay되고(교차 오배달 없음), 부하 중에도 session 간 격리가 유지된다. (전량 무손실은 공개 계약이 아니므로 단언하지 않는다 — 오배달 없음과 격리 유지에 초점.)
 - 세부 동작: 대규모 bound session push 타깃팅(오배달 없음·격리).
+
+#### SM-G5 node-wide placement weight 범위와 비율
+
+우선순위: `P0`
+
+**검증 질문:** Object placement가 Channel·ClientServer와 같은 signed `0..10000` weight 계약을 사용하고
+capacity를 먼저 검사하는가.
+
+- 절차: 동일 capability와 충분한 typed capacity를 가진 두 Object Server의 placement weight를 `100`,
+  `300`으로 두고 많은 Actor·User Spot을 생성한다. Startup과 runtime update에서 `0`, 기본값 `100`,
+  `10000`, `-1`, `10001`을 각각 적용한다. 별도 반복에서는 weight가 큰 node의 capacity만 소진한다.
+  마지막 반복에서는 첫 target snapshot을 고정한 직후 선택된 node의 해당 typed capacity를 다른
+  reservation으로 소진해 Store reserve를 실패시키고, authority가 계속 Missing인 상태에서 다른 eligible
+  node를 선택할 수 있게 둔다.
+- 검증: 장기 신규 placement 비율은 `1:3`에 수렴하되 기존 object owner는 바뀌지 않는다. `0`, `100`,
+  `10000`은 허용하고 `-1`, `10001`은 descriptor revision과 placement mutation 전에 configuration error다.
+  Weight `0`은 새 placement·relocation target에서 제외하며 이미 reservation을 얻은 operation은 유지한다.
+  Capacity가 소진된 high-weight node는 weight 계산 전에 제외되고 eligible low-weight node가 선택된다.
+  Snapshot 뒤 capacity race로 첫 reserve가 실패한 operation도 같은 deadline 안에서 실패한 candidate
+  lifecycle을 제외하고 두 번째 node에 한 번만 reservation을 만들며 factory를 중복 실행하지 않는다.
+  합계는 최소 64-bit 정수로 계산해 overflow하지 않는다.
+- 세부 동작: node-wide placement weight validation, capacity-first selection과 runtime revision ordering.
 
 ## 5. 완료 기준
 

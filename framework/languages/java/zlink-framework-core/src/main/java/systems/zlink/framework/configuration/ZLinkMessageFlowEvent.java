@@ -9,7 +9,7 @@ public record ZLinkMessageFlowEvent(
     String topic,
     String correlationId,
     String sourceRid,
-    String spotRid,
+    String spotId,
     String actorId,
     Long messageSize,
     ZLinkDispatchErrorReason errorReason,
@@ -33,7 +33,7 @@ public record ZLinkMessageFlowEvent(
         String topic,
         String correlationId,
         String sourceRid,
-        String spotRid,
+        String spotId,
         String actorId,
         Long messageSize,
         ZLinkDispatchErrorReason errorReason,
@@ -41,7 +41,7 @@ public record ZLinkMessageFlowEvent(
         String errorType,
         String errorMessage) {
         this(outcome, surface, messageKind, packetName, channelName, topic,
-            correlationId, sourceRid, spotRid, actorId, messageSize, errorReason,
+            correlationId, sourceRid, spotId, actorId, messageSize, errorReason,
             errorAction, errorType, errorMessage, null, null);
     }
     public ZLinkMessageFlowEvent(
@@ -53,17 +53,17 @@ public record ZLinkMessageFlowEvent(
         String topic,
         String correlationId,
         String sourceRid,
-        String spotRid,
+        String spotId,
         String actorId,
         Long messageSize) {
         this(outcome, surface, messageKind, packetName, channelName, topic,
-            correlationId, sourceRid, spotRid, actorId, messageSize,
+            correlationId, sourceRid, spotId, actorId, messageSize,
             null, null, null, null, null, null);
     }
 
     public ZLinkMessageFlowEvent withFlow(String id, ZLinkFlowOrigin origin) {
         return new ZLinkMessageFlowEvent(outcome, surface, messageKind, packetName,
-            channelName, topic, correlationId, sourceRid, spotRid, actorId,
+            channelName, topic, correlationId, sourceRid, spotId, actorId,
             messageSize, errorReason, errorAction, errorType, errorMessage, id, origin);
     }
 }

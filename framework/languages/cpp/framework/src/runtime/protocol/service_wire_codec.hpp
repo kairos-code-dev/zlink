@@ -46,7 +46,7 @@ struct application_payload_t
 
 struct spot_route_fence_t
 {
-    std::vector<std::uint8_t> spot_routing_id;
+    std::string spot_id;
     std::uint64_t object_generation = 0;
     std::vector<std::uint8_t> target_node_routing_id;
     std::uint64_t target_node_generation = 0;
@@ -71,7 +71,7 @@ struct actor_route_fence_t
 struct spot_message_header_t
 {
     std::optional<std::uint64_t> correlation;
-    std::vector<std::uint8_t> source_spot_routing_id;
+    std::string source_spot_id;
     spot_route_fence_t target;
 };
 
@@ -120,7 +120,7 @@ struct user_spot_create_header_t
     wire_operation_id_t operation;
     std::vector<std::uint8_t> source_node_routing_id;
     std::uint64_t source_node_generation = 0;
-    std::vector<std::uint8_t> spot_routing_id;
+    std::string spot_id;
     std::string stable_type;
     user_spot_reservation_fence_t reservation;
     std::uint64_t deadline_unix_ms = 0;
@@ -131,7 +131,7 @@ struct user_spot_create_header_t
 
 struct user_spot_close_fence_t
 {
-    std::vector<std::uint8_t> spot_routing_id;
+    std::string spot_id;
     std::uint64_t object_generation = 0;
     std::vector<std::uint8_t> target_node_routing_id;
     std::uint64_t target_node_generation = 0;
@@ -167,7 +167,7 @@ struct user_spot_create_reply_t
     reply_header_t header;
     user_spot_create_result_t result =
       user_spot_create_result_t::rejected;
-    std::vector<std::uint8_t> spot_routing_id;
+    std::string spot_id;
     std::uint64_t object_generation = 0;
 };
 
@@ -223,7 +223,7 @@ std::vector<std::uint8_t>
 encode_channel_send_header (const std::string &channel_name);
 std::vector<std::uint8_t> encode_spot_message_header (
   command kind,
-  const std::vector<std::uint8_t> &source_spot_routing_id,
+  const std::string &source_spot_id,
   const spot_route_fence_t &target,
   std::optional<std::uint64_t> correlation = std::nullopt);
 spot_message_header_t decode_spot_message_header (
@@ -283,7 +283,7 @@ std::vector<std::uint8_t> encode_user_spot_create_reply (
   std::uint32_t terminal_result,
   std::uint32_t failure_code,
   user_spot_create_result_t result,
-  const std::vector<std::uint8_t> &spot_routing_id,
+  const std::string &spot_id,
   std::uint64_t object_generation);
 user_spot_create_reply_t decode_user_spot_create_reply (
   std::span<const std::uint8_t> bytes);

@@ -63,7 +63,7 @@ Metadata의 내부 frame 배치와 encoding은 공개 계약이 아니다. Frame
 | 경로 | metadata 전달 |
 |---|---|
 | Node direct와 ChannelName | source snapshot을 선택된 MeshNode의 handler context에 전달한다 |
-| Spot | global Spot RID의 current Ready owner에 있는 application claim에 전달한다 |
+| Spot | global Spot ID의 current Ready owner에 있는 application claim에 전달한다 |
 | Logical Multicast | 같은 publish snapshot을 각 matching Spot handler에 전달한다 |
 | Actor | Actor handler context에 전달하며 Spot callback을 거치지 않는다 |
 | STREAM session | session send/request context에 전달한다 |

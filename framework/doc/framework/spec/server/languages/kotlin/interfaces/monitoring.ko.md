@@ -9,6 +9,7 @@ Kotlin은 Java의 RouteMesh, ClientServer, automatic fanout과 host runtime snap
 Topology runtime은 Java `ZLinkFrameworkRuntime`의 `routeMeshRuntime()`, `clientServerRuntime()`과
 `fanoutRuntime()`을 그대로 사용한다. Kotlin wrapper accessor를 추가하지 않으며 Spring에서 주입받은 topology
 bean은 해당 Java accessor의 반환값과 reference identity가 같다.
+Channel, ClientServer와 placement weight는 Java의 signed `int` `0..10000` projection을 그대로 사용한다.
 
 ClientServer server 상태는 Java `ZLinkClientServerServerState`, fanout publisher 연결 상태는
 `ZLinkFanoutPublisherConnectionState`를 그대로 사용한다. Host의 `ZLinkFrameworkRuntimeState`나 MeshNode의
@@ -21,9 +22,11 @@ Fanout ready 의미도 Java 계약을 그대로 사용한다. Publisher 전용 S
 되지 않으며, 같은 socket에서 첫 valid application record 또는 liveness beacon까지 받아야 한다. 15초 inbound
 timeout은 해당 publisher entry만 `DISCONNECTED`로 바꾼다.
 
-RouteMesh object placement snapshot은 node-wide placement weight, active object 수와 상한, pending activation
-수와 상한을 Java의 typed numeric field로 제공한다. Channel weight와 같은 field로 합치지 않는다. Object
-location snapshot은 global ActorId 또는 SpotRid, stable type, object generation, MeshName과 NodeRid를 제공한다.
+RouteMesh object placement snapshot은 node-wide placement weight, Actor 전체·Spot 전체·등록한 Spot
+stable type별 active·reserved·limit을 Java의 typed field로 제공한다. Entry Spot은 Spot 집계에서 제외하지만
+Entry Spot의 Actor는 Actor 전체 집계에 포함한다. Factory·initialization의 active·limit은 별도 activation
+concurrency field로 제공한다. Channel weight와 같은 field로 합치지 않는다. Object
+location snapshot은 global ActorId 또는 SpotId, stable type, object generation, MeshName과 NodeRid를 제공한다.
 전체 object directory나 process-local handle은 monitoring surface에 포함하지 않는다.
 
 ## Framework 오류 값
@@ -45,10 +48,13 @@ ROUTING_ID_CONFLICT = 31
 SPOT_GENERATION_STALE = 32
 SPOT_MOVING = 33
 RELOCATION_DATA_LOST = 34
+SPOT_ID_CONFLICT = 35
 ```
 
 `RELOCATION_DATA_LOST`는 Location authority가 공개한 Relocation payload가 영구적으로 없거나 checksum·inventory
 digest가 일치하지 않을 때 반환하는 non-retriable 오류다. Runtime은 이전 owner로 rollback하지 않는다.
+`ROUTING_ID_CONFLICT`는 MeshNode RID 충돌에만 사용한다. Spot·Entry Spot identity 충돌은
+`SPOT_ID_CONFLICT`로 반환한다.
 Remote framework error는 `ZLinkFrameworkException`으로 전달한다. Public argument validation은 JVM 표준
 `IllegalArgumentException`, startup 구성 충돌은 `ZLinkConfigurationException`을 사용한다.
 

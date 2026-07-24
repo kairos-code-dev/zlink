@@ -2,41 +2,65 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
+    internal ZLinkSpotNodeRuntime ResolveActorCreationSource(string? meshName)
+    {
+        var state = _state
+                    ?? throw new ZLinkFrameworkException(
+                        ZLinkFrameworkErrorKind.InvalidConfiguration,
+                        "Framework runtime is not started.");
+        var candidates = state.SpotNodes.Values
+            .Where(node => node.Registration.ObjectRoleSelected
+                && (meshName is null
+                    || string.Equals(
+                        node.Registration.SpotMeshChannelName
+                        ?? node.Registration.SpotNodeName,
+                        meshName,
+                        StringComparison.Ordinal)))
+            .ToArray();
+        if (candidates.Length == 1)
+            return candidates[0];
+        throw new ZLinkFrameworkException(
+            candidates.Length == 0
+                ? meshName is null
+                    ? ZLinkFrameworkErrorKind.ObjectClientNotConfigured
+                    : ZLinkFrameworkErrorKind.MeshNotFound
+                : ZLinkFrameworkErrorKind.MeshSelectionRequired,
+            candidates.Length == 0
+                ? meshName is null
+                    ? "No object client MeshNode is registered."
+                    : $"Object MeshNode '{meshName}' is not registered."
+                : "More than one object client MeshNode is registered; InMesh is required.");
+    }
     public IZLinkSpotCreateCall Create(string spotType)
     {
         var stableType = RequireSpotType(spotType);
         return new ZLinkSpotCreateCall(
             Registration.DefaultRequestTimeout,
-            (mesh, request, profile, affinity, timeout, cancellation) =>
+            (mesh, request, timeout, cancellation) =>
                 SubmitUserSpotAsync(
                     stableType,
-                    RoutingId.From(Guid.NewGuid().ToString("N")),
+                    Guid.NewGuid().ToString("D"),
                     mesh,
                     request,
-                    profile,
-                    affinity,
                     timeout,
                     false,
                     cancellation));
     }
 
     public IZLinkSpotGetOrCreateCall GetOrCreate(
-        RoutingId spotRid,
+        string spotId,
         string spotType)
     {
         var stableType = RequireSpotType(spotType);
-        if (spotRid.IsEmpty)
-            throw new ArgumentException("Spot RID is required.", nameof(spotRid));
+        ZLinkSpotId.Require(spotId, nameof(spotId));
         return new ZLinkSpotGetOrCreateCall(
             Registration.DefaultRequestTimeout,
-            (mesh, request, profile, affinity, timeout, cancellation) =>
+            (mesh, request, timeout, cancellation) =>
                 SubmitUserSpotAsync(
                     stableType,
-                    spotRid,
+                    spotId,
                     mesh,
                     request,
-                    profile,
-                    affinity,
                     timeout,
                     true,
                     cancellation));
@@ -44,11 +68,9 @@ internal sealed partial class ZLinkFrameworkRuntime
 
     private async ValueTask<ZLinkSpotCreateResult> SubmitUserSpotAsync(
         string stableType,
-        RoutingId spotRid,
+        string spotId,
         string? meshName,
         ZLinkMessage request,
-        string? placementProfile,
-        string? affinityKey,
         TimeSpan timeout,
         bool joinExisting,
         CancellationToken cancellationToken)
@@ -58,11 +80,9 @@ internal sealed partial class ZLinkFrameworkRuntime
         return await _spots.CreateByStableTypeAsync(
                 GetOrStartState(),
                 stableType,
-                spotRid,
+                spotId,
                 meshName,
                 request,
-                placementProfile,
-                affinityKey,
                 timeout,
                 joinExisting,
                 cancellationToken)
@@ -93,7 +113,7 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     public async ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
-        RoutingId spotRid,
+        string spotId,
         ZLinkMessage request,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot
@@ -101,35 +121,35 @@ internal sealed partial class ZLinkFrameworkRuntime
         using var operation = EnterOperation();
         _drainAdmission.RequireSpotAdmission();
         return await _spots.GetOrCreateAsync(
-                GetOrStartState(), typeof(TSpot), spotRid, request, cancellationToken)
+                GetOrStartState(), typeof(TSpot), spotId, request, cancellationToken)
             .ConfigureAwait(false);
     }
 
     public ValueTask<ZLinkSpotCreateResult> GetOrCreateAsync<TSpot>(
-        RoutingId spotRid,
+        string spotId,
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot
     {
-        return GetOrCreateAsync<TSpot>(spotRid, ZLinkMessage.Empty, cancellationToken);
+        return GetOrCreateAsync<TSpot>(spotId, ZLinkMessage.Empty, cancellationToken);
     }
 
     public async ValueTask<SpotRef?> FindAsync(
-        RoutingId spotRid,
+        string spotId,
         CancellationToken cancellationToken = default)
     {
         using var operation = EnterOperation();
-        return await _spots.ResolveAsync(spotRid, cancellationToken)
+        return await _spots.ResolveAsync(spotId, cancellationToken)
             .ConfigureAwait(false);
     }
 
     internal async ValueTask<ZLinkSpotActivation?> GetSpotActivationByRidAsync(
-        RoutingId spotRid,
+        string spotId,
         CancellationToken cancellationToken)
     {
         using var operation = EnterOperation();
         var state = await GetStartedStateForRoutingAsync(cancellationToken)
             .ConfigureAwait(false);
-        return _spots.GetActivationBySpotRid(state, spotRid);
+        return _spots.GetActivationBySpotId(state, spotId);
     }
 
     public async ValueTask<IReadOnlyList<ZLinkSpotInfo>> ListAsync(
@@ -149,11 +169,11 @@ internal sealed partial class ZLinkFrameworkRuntime
     }
 
     public async ValueTask<bool> CloseAsync(
-        RoutingId spotRid,
+        string spotId,
         CancellationToken cancellationToken = default)
     {
         using var operation = EnterOperation();
-        return await _spots.CloseLegacyAsync(GetOrStartState(), spotRid, cancellationToken)
+        return await _spots.CloseLegacyAsync(GetOrStartState(), spotId, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -266,12 +286,28 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    internal async ValueTask NotifyEntrySpotActorCreatedAsync(
+    internal async ValueTask NotifyEntrySpotActorRelocatedAsync(
         IZLinkActor actor,
         RoutingId? targetNodeRid = null,
         CancellationToken cancellationToken = default)
     {
-        await NotifyEntrySpotActorCreatedAsync(
+        using var operation = EnterOperation();
+        if (_state is null) return;
+
+        await _spots.EntrySpotActors.NotifyRelocatedAsync(
+                _state,
+                actor,
+                targetNodeRid,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask<ZLinkActorCreateResponse> NotifyEntrySpotActorCreatedAsync(
+        IZLinkActor actor,
+        RoutingId? targetNodeRid = null,
+        CancellationToken cancellationToken = default)
+    {
+        return await NotifyEntrySpotActorCreatedAsync(
                 actor,
                 ZLinkMessage.Empty,
                 targetNodeRid,
@@ -279,16 +315,16 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    internal async ValueTask NotifyEntrySpotActorCreatedAsync(
+    internal async ValueTask<ZLinkActorCreateResponse> NotifyEntrySpotActorCreatedAsync(
         IZLinkActor actor,
         ZLinkMessage createRequest,
         RoutingId? targetNodeRid = null,
         CancellationToken cancellationToken = default)
     {
         using var operation = EnterOperation();
-        if (_state is null) return;
+        if (_state is null) return ZLinkActorCreateResponse.Accept();
 
-        await _spots.EntrySpotActors.NotifyCreatedAsync(
+        return await _spots.EntrySpotActors.NotifyCreatedAsync(
                 _state,
                 actor,
                 createRequest,

@@ -22,7 +22,7 @@ final class ZLinkServiceM6BUserSpotWireCodecTest {
             13,
             RoutingId.from("source"),
             14,
-            RoutingId.from("room"),
+            "room",
             "room-v1",
             reservation(),
             1_900_000_000_000L);
@@ -45,7 +45,7 @@ final class ZLinkServiceM6BUserSpotWireCodecTest {
             RoutingId.from("source"),
             24,
             new ZLinkServiceM6BWireCodec.UserSpotCloseFence(
-                RoutingId.from("room"),
+                "room",
                 25,
                 RoutingId.from("target"),
                 26,
@@ -66,7 +66,7 @@ final class ZLinkServiceM6BUserSpotWireCodecTest {
     void userSpotReplyTailIsPresentOnlyForSuccessfulMatchingOperation() {
         var created = new ZLinkServiceM6BWireCodec.UserSpotCreateTerminal(
             ZLinkServiceM6BWireCodec.UserSpotCreateResult.CREATED,
-            RoutingId.from("room"),
+            "room",
             31);
         var createReply = codec.decodeUserSpotCreateReply(
             codec.encodeUserSpotCreateReply(30, 0, 0, created));
@@ -100,7 +100,7 @@ final class ZLinkServiceM6BUserSpotWireCodecTest {
                 3,
                 RoutingId.from("source"),
                 4,
-                RoutingId.from("room"),
+                "room",
                 "room-v1",
                 reservation(),
                 5));
@@ -112,7 +112,7 @@ final class ZLinkServiceM6BUserSpotWireCodecTest {
                 RoutingId.from("source"),
                 4,
                 new ZLinkServiceM6BWireCodec.UserSpotCloseFence(
-                    RoutingId.from("room"),
+                    "room",
                     5,
                     RoutingId.from("target"),
                     6,

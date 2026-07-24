@@ -21,7 +21,7 @@
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 전용 key prefix. RL-C4에서 일시 정지 대상. |
 | relocation store | 1 | 공식 Redis relocation store extension이 사용하는 Redis instance. Location Store와 별도 key prefix와 등록 표면을 사용한다. Track F의 `Recreate`·`Snapshot` relocation payload와 accepted journal을 저장한다. |
 | provider | 2~3 | Config 1과 같은 ChannelName provider다. `AddLocationStore(...)`로 store를 등록하면 MeshNode descriptor가 자동 갱신된다. Automatic discovery lifecycle마다 Framework가 새 RID를 발급한다. 시나리오에서 provider를 강제 종료·재시작·교체한다. |
-| Object Server | 2 | Location Store와 Relocation Store를 등록한다. 두 node 모두 충분한 active·pending capacity를 게시하고 아래 stable type의 factory, 명시적 relocation policy와 필요한 adapter를 같은 capability로 등록한다. |
+| Object Server | 2 | Location Store와 Relocation Store를 등록한다. 두 node 모두 전체 participant inventory에 필요한 Actor 전체, Spot 전체와 Spot stable-type population capacity를 게시하고 아래 stable type의 factory, 명시적 relocation policy와 필요한 adapter를 같은 capability로 등록한다. |
 | consumer | 시나리오별 | 지속 트래픽을 보내며 복구를 관측한다. |
 
 Track F의 Object Server는 standalone Actor, User Spot, Instance Spot을 각각 검증할 stable type을 등록한다.
@@ -584,7 +584,7 @@ monitor callback이 남지 않는가.
   상태로 `Retire`를 호출한다. 두 target은 같은 stable type capability, adapter capability와 aggregate 전체를
   수용할 capacity를 게시한다.
 - 검증: Entry member Actor는 ObjectGeneration을 유지하면서 owner node, AuthorityOwnerGeneration과 current Spot을
-  target Entry Spot RID·ObjectGeneration·kind로 한 CAS에서 바꾼다. Target factory가 만든 Actor에 Snapshot
+  target Entry Spot ID·ObjectGeneration·kind로 한 CAS에서 바꾼다. Target factory가 만든 Actor에 Snapshot
   Adapter의 `Restore`와 journal staging을 끝낸 뒤 authority를 commit한다. Commit 뒤 evidence 순서는 target Entry
   Spot `OnActorRelocated` → source Entry Spot `OnLeaveActor` 완료와 old Entry membership의 durable cleanup →
   accepted journal replay다. Source process 종료 반복에서는 fenced durable source cleanup terminal이

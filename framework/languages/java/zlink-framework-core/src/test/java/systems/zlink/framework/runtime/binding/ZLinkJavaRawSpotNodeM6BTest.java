@@ -37,8 +37,8 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             RoutingId.from("jvm-m6b-user-spot-source");
         RoutingId targetRid =
             RoutingId.from("jvm-m6b-user-spot-target");
-        RoutingId spotRid =
-            RoutingId.from("jvm-m6b-user-spot-room");
+        String spotId =
+            "jvm-m6b-user-spot-room";
         try (var context = Zlink.createContext();
              var target = new ZLinkJavaRawMeshNode(context, "mesh");
              var source = new ZLinkJavaRawMeshNode(context, "mesh")) {
@@ -66,13 +66,13 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                         createCalls.incrementAndGet();
                         assertEquals(sourceRid, request.sourceNodeRid());
                         assertEquals(
-                            spotRid, request.intent().spotRid());
+                            spotId, request.intent().spotId());
                         return CompletableFuture.completedFuture(
                             new ZLinkInternalMeshNode
                                 .UserSpotCreateResponse(
                                     ZLinkServiceM6BWireCodec
                                         .UserSpotCreateResult.CREATED,
-                                    spotRid,
+                                    spotId,
                                     17,
                                     List.of(
                                         Message.from("reply-name"),
@@ -110,7 +110,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     1);
             var intent =
                 new ZLinkInternalMeshNode.UserSpotCreateIntent(
-                    spotRid,
+                    spotId,
                     "room-v1",
                     reservation,
                     deadline);
@@ -147,7 +147,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     ZLinkServiceM6BWireCodec
                         .UserSpotCreateResult.CREATED,
                     created.result());
-                assertEquals(spotRid, created.spotRid());
+                assertEquals(spotId, created.spotId());
                 assertEquals(17, created.objectGeneration());
                 assertEquals(
                     "created",
@@ -189,7 +189,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     new ZLinkInternalMeshNode.UserSpotCloseIntent(
                         new ZLinkServiceM6BWireCodec
                             .UserSpotCloseFence(
-                                spotRid,
+                                spotId,
                                 17,
                                 targetRid,
                                 target.lifecycleGeneration(),
@@ -213,13 +213,13 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             RoutingId sourceRid = RoutingId.from("jvm-m6b-source");
             RoutingId targetRid = RoutingId.from("jvm-m6b-target");
             node.setRoutingId(nodeRid);
-            ZLinkBackendSpot source = node.spotNode().createSpot(sourceRid);
-            ZLinkBackendSpot target = node.spotNode().createSpot(targetRid);
+            ZLinkBackendSpot source = node.spotNode().createSpot(sourceRid.toString());
+            ZLinkBackendSpot target = node.spotNode().createSpot(targetRid.toString());
 
             try (Message stale = Message.from("stale")) {
                 assertFalse(source.sendToSpot(
                     nodeRid,
-                    targetRid,
+                    targetRid.toString(),
                     target.lifecycleGeneration() + 1,
                     List.of(stale),
                     SendFlags.DONT_WAIT));
@@ -227,7 +227,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             try (Message current = Message.from("current")) {
                 assertTrue(source.sendToSpot(
                     nodeRid,
-                    targetRid,
+                    targetRid.toString(),
                     target.lifecycleGeneration(),
                     List.of(current),
                     SendFlags.DONT_WAIT));
@@ -264,20 +264,20 @@ final class ZLinkJavaRawSpotNodeM6BTest {
              var node = new ZLinkJavaRawMeshNode(context, "mesh")) {
             RoutingId nodeRid = RoutingId.from("jvm-m6b-owner-node");
             RoutingId sourceRid = RoutingId.from("jvm-m6b-owner-source");
-            RoutingId spotRid = RoutingId.from("jvm-m6b-owner-spot");
+            String spotId = "jvm-m6b-owner-spot";
             node.setRoutingId(nodeRid);
             ZLinkJavaRawSpotNode spots =
                 (ZLinkJavaRawSpotNode) node.spotNode();
-            ZLinkBackendSpot spot = spots.createSpot(spotRid);
+            ZLinkBackendSpot spot = spots.createSpot(spotId);
             spot.rememberSpotAuthority(
-                nodeRid, spotRid, spot.lifecycleGeneration(), 31);
+                nodeRid, spotId, spot.lifecycleGeneration(), 31);
             var staleSpot = new ZLinkServiceM6BWireCodec.SpotMessage(
                 false,
                 0,
                 null,
-                sourceRid,
+                sourceRid.toString(),
                 new ZLinkServiceM6BWireCodec.SpotRouteFence(
-                    spotRid,
+                    spotId,
                     spot.lifecycleGeneration(),
                     nodeRid,
                     1,
@@ -319,8 +319,8 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             RoutingId sourceRid = RoutingId.from("jvm-m6b-request-source");
             RoutingId targetRid = RoutingId.from("jvm-m6b-request-target");
             node.setRoutingId(nodeRid);
-            ZLinkBackendSpot source = node.spotNode().createSpot(sourceRid);
-            ZLinkBackendSpot target = node.spotNode().createSpot(targetRid);
+            ZLinkBackendSpot source = node.spotNode().createSpot(sourceRid.toString());
+            ZLinkBackendSpot target = node.spotNode().createSpot(targetRid.toString());
             AtomicInteger callbackCount = new AtomicInteger();
             CompletableFuture<String> reply = new CompletableFuture<>();
             target.onDispatchEvent(info -> {
@@ -339,7 +339,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             try (Message request = Message.from("request")) {
                 assertTrue(source.requestToSpot(
                     nodeRid,
-                    targetRid,
+                    targetRid.toString(),
                     target.lifecycleGeneration(),
                     List.of(request),
                     received -> {
@@ -366,7 +366,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             RoutingId nodeRid = RoutingId.from("jvm-m6b-join-node");
             RoutingId targetRid = RoutingId.from("jvm-m6b-join-target");
             node.setRoutingId(nodeRid);
-            ZLinkBackendSpot target = node.spotNode().createSpot(targetRid);
+            ZLinkBackendSpot target = node.spotNode().createSpot(targetRid.toString());
             target.onDispatchEvent(info -> {
                 if (info.event()
                     != ZLinkBackendSpotDispatchEvent.ACTOR_JOIN_READABLE) {
@@ -384,18 +384,18 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             var joined = node.spotNode().joinActor(
                 actor,
                 nodeRid,
-                targetRid,
+                targetRid.toString(),
                 target.lifecycleGeneration(),
                 List.of(),
                 Duration.ofSeconds(1)).toCompletableFuture()
                 .get(1, TimeUnit.SECONDS);
 
             assertEquals(ZLinkBackendRequestResult.OK, joined.result());
-            assertEquals(targetRid, joined.joinedSpotRid());
+            assertEquals(targetRid.toString(), joined.joinedSpotId());
             assertEquals(2, joined.joinEpoch());
 
             node.spotNode().leaveActor(
-                actor, targetRid, Duration.ofSeconds(1)).toCompletableFuture()
+                actor, targetRid.toString(), Duration.ofSeconds(1)).toCompletableFuture()
                 .get(1, TimeUnit.SECONDS);
             var lifecycle =
                 target.recvActorLifecycle(ZLinkBackendRecvMode.DONT_WAIT);
@@ -415,15 +415,15 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             RoutingId sourceRid = RoutingId.from("jvm-m6b-timeout-source");
             RoutingId targetRid = RoutingId.from("jvm-m6b-timeout-target");
             node.setRoutingId(nodeRid);
-            ZLinkBackendSpot source = node.spotNode().createSpot(sourceRid);
-            ZLinkBackendSpot target = node.spotNode().createSpot(targetRid);
+            ZLinkBackendSpot source = node.spotNode().createSpot(sourceRid.toString());
+            ZLinkBackendSpot target = node.spotNode().createSpot(targetRid.toString());
             CompletableFuture<ZLinkBackendRequestResult> result =
                 new CompletableFuture<>();
 
             try (Message request = Message.from("request")) {
                 assertTrue(source.requestToSpot(
                     nodeRid,
-                    targetRid,
+                    targetRid.toString(),
                     target.lifecycleGeneration(),
                     List.of(request),
                     received -> {
@@ -463,16 +463,16 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             right.start();
             right.connectPeer(endpoint, leftRid);
             ZLinkBackendSpot source = right.spotNode().createSpot(
-                RoutingId.from("jvm-m6b-remote-source"));
-            ZLinkBackendSpot target = left.spotNode().createSpot(targetRid);
+                "jvm-m6b-remote-source");
+            ZLinkBackendSpot target = left.spotNode().createSpot(targetRid.toString());
             target.rememberSpotAuthority(
                 leftRid,
-                targetRid,
+                targetRid.toString(),
                 target.lifecycleGeneration(),
                 77);
             source.rememberSpotAuthority(
                 leftRid,
-                targetRid,
+                targetRid.toString(),
                 target.lifecycleGeneration(),
                 77);
             CompletableFuture<String> sent = new CompletableFuture<>();
@@ -501,7 +501,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 try (Message message = Message.from("remote-send")) {
                     submitted = source.sendToSpot(
                         leftRid,
-                        targetRid,
+                        targetRid.toString(),
                         target.lifecycleGeneration(),
                         List.of(message),
                         SendFlags.DONT_WAIT);
@@ -517,7 +517,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             try (Message message = Message.from("remote-request")) {
                 assertTrue(source.requestToSpot(
                     leftRid,
-                    targetRid,
+                    targetRid.toString(),
                     target.lifecycleGeneration(),
                     List.of(message),
                     received -> {
@@ -686,6 +686,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             left.setRoutingId(leftRid);
             left.setBind(endpoint);
             left.addChannel("events");
+            left.setChannelWeight("events", 10_000);
             right.setRoutingId(rightRid);
             right.setBind(
                 "inproc://jvm-m6b-multicast-right-" + System.nanoTime());
@@ -694,7 +695,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             right.start();
             right.connectPeer(endpoint, leftRid);
             ZLinkBackendSpot remote = left.spotNode().createSpot(
-                RoutingId.from("jvm-m6b-multicast-target"));
+                "jvm-m6b-multicast-target");
             remote.setSubscription("orders");
 
             long deadline =
@@ -712,9 +713,12 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                     && peer.state()
                         == systems.zlink.contracts.service.spot
                             .MeshPeerState.ADMITTED));
+            assertEquals(
+                leftRid,
+                right.selectPlacementTarget().orElseThrow());
 
             var source = (ZLinkJavaRawSpot) right.spotNode().createSpot(
-                RoutingId.from("jvm-m6b-multicast-source"));
+                "jvm-m6b-multicast-source");
             systems.zlink.contracts.service.spot.PublishDetail detail;
             try (Message packet = Message.from("Packet");
                  Message payload = Message.from("multicast")) {
@@ -749,6 +753,39 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             } finally {
                 received.parts().forEach(Message::close);
             }
+
+            left.setChannelWeight("events", 0);
+            long updateDeadline =
+                System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            systems.zlink.contracts.service.spot.PublishDetail excluded;
+            do {
+                try (Message packet = Message.from("Packet");
+                     Message payload = Message.from("after-weight-zero")) {
+                    excluded = right.publishLogicalMulticast(
+                        source,
+                        "events",
+                        "orders",
+                        null,
+                        List.of(packet, payload));
+                }
+                if (excluded.snapshotRemoteTargetCount() != 0) {
+                    Thread.sleep(1);
+                }
+            } while (excluded.snapshotRemoteTargetCount() != 0
+                && System.nanoTime() < updateDeadline);
+            assertEquals(0, excluded.snapshotRemoteTargetCount());
+            assertEquals(0, excluded.admittedRemoteTargetCount());
+
+            left.setPlacementWeight(0);
+            long placementUpdateDeadline =
+                System.nanoTime() + Duration.ofSeconds(2).toNanos();
+            do {
+                if (right.selectPlacementTarget().isPresent()) {
+                    Thread.sleep(1);
+                }
+            } while (right.selectPlacementTarget().isPresent()
+                && System.nanoTime() < placementUpdateDeadline);
+            assertTrue(right.selectPlacementTarget().isEmpty());
         }
     }
 
@@ -759,7 +796,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             + System.nanoTime();
         RoutingId leftRid = RoutingId.from("jvm-m6b-instance-wire-left");
         RoutingId rightRid = RoutingId.from("jvm-m6b-instance-wire-right");
-        RoutingId spotRid = RoutingId.from("jvm-m6b-instance-wire-spot");
+        String spotId = "jvm-m6b-instance-wire-spot";
         try (var context = Zlink.createContext();
              var left = new ZLinkJavaRawMeshNode(context, "mesh");
              var right = new ZLinkJavaRawMeshNode(context, "mesh")) {
@@ -795,7 +832,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             var route = new ZLinkServiceM6BWireCodec.InstanceRouteFence(
                 leftRid,
                 left.lifecycleGeneration(),
-                spotRid,
+                spotId,
                 41,
                 "owner-a",
                 17,
@@ -814,7 +851,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
 
             ZLinkBackendSpot activated = null;
             while (activated == null && System.nanoTime() < deadline) {
-                activated = target.localSpot(spotRid);
+                activated = target.localSpot(spotId);
                 if (activated == null) {
                     Thread.sleep(1);
                 }
@@ -834,7 +871,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             var stale = new ZLinkServiceM6BWireCodec.InstanceRouteFence(
                 leftRid,
                 route.targetNodeGeneration(),
-                spotRid,
+                spotId,
                 route.objectGeneration(),
                 route.ownerId(),
                 route.authorityOwnerGeneration() + 1,
@@ -1235,7 +1272,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             systems.zlink.framework.runtime.protocol
                 .ServiceWireConstants.FLAG_BOUND_SESSION
                 | systems.zlink.framework.runtime.protocol
-                    .ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+                    .ServiceWireConstants.FLAG_SOURCE_SPOT_ID;
         Message payload = Message.from("bound-ingress");
         boolean accepted = target.enqueueRemoteActor(
                 ownerRid,
@@ -1270,7 +1307,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             systems.zlink.framework.runtime.protocol
                 .ServiceWireConstants.FLAG_BOUND_SESSION
                 | systems.zlink.framework.runtime.protocol
-                    .ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+                    .ServiceWireConstants.FLAG_SOURCE_SPOT_ID;
         try (Message payload = Message.from("stale-bound-ingress")) {
             assertFalse(target.enqueueRemoteActor(
                 ownerRid,
@@ -1446,7 +1483,7 @@ final class ZLinkJavaRawSpotNodeM6BTest {
                 systems.zlink.framework.runtime.protocol
                     .ServiceWireConstants.FLAG_BOUND_SESSION
                     | systems.zlink.framework.runtime.protocol
-                        .ServiceWireConstants.FLAG_SOURCE_SPOT_RID;
+                        .ServiceWireConstants.FLAG_SOURCE_SPOT_ID;
             try (Message payload = Message.from("stale-ingress")) {
                 assertFalse(target.enqueueRemoteActor(
                     sessionNodeRid,
@@ -1519,12 +1556,12 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             node.setRoutingId(RoutingId.from("jvm-m6b-instance-node"));
             ZLinkJavaRawSpotNode spots =
                 (ZLinkJavaRawSpotNode) node.spotNode();
-            RoutingId spotRid = RoutingId.from("jvm-m6b-instance");
+            String spotId = "jvm-m6b-instance";
             spots.registerInstanceSpotType("alpha");
 
-            var first = spots.activateInstanceSpot(spotRid, null)
+            var first = spots.activateInstanceSpot(spotId, null)
                 .toCompletableFuture();
-            var joined = spots.activateInstanceSpot(spotRid, "alpha")
+            var joined = spots.activateInstanceSpot(spotId, "alpha")
                 .toCompletableFuture();
             assertTrue(first.get(1, TimeUnit.SECONDS).spot()
                 == joined.get(1, TimeUnit.SECONDS).spot());
@@ -1535,15 +1572,15 @@ final class ZLinkJavaRawSpotNodeM6BTest {
             assertThrows(
                 IllegalStateException.class,
                 () -> spots.activateInstanceSpot(
-                    spotRid, "beta"));
+                    spotId, "beta"));
             assertThrows(
                 IllegalStateException.class,
                 () -> spots.activateInstanceSpot(
-                    RoutingId.from("jvm-m6b-instance-ambiguous"), null));
+                    "jvm-m6b-instance-ambiguous", null));
 
             assertTrue(spots.closeInstanceSpot(
-                spotRid, firstGeneration));
-            var reactivated = spots.activateInstanceSpot(spotRid, null)
+                spotId, firstGeneration));
+            var reactivated = spots.activateInstanceSpot(spotId, null)
                 .toCompletableFuture().get(1, TimeUnit.SECONDS);
             assertEquals("alpha", reactivated.stableType());
             assertTrue(

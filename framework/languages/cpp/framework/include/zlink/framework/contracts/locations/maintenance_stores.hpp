@@ -190,12 +190,24 @@ struct object_creation_target_t
 struct object_creation_intent_t
 {
     std::string stable_type;
-    std::optional<placement_profile_t> placement_profile;
-    std::optional<affinity_key_t> affinity_key;
     std::string request_content_reference;
     std::array<std::byte, 32> request_sha256{};
     std::uint64_t request_encoded_size = 0;
 };
+
+struct creation_operation_id_t
+{
+    std::uint64_t high = 0;
+    std::uint64_t low = 0;
+};
+
+struct creation_operation_identity_t
+{
+    node_rid_t source_node_rid;
+    std::uint64_t source_node_generation = 0;
+    creation_operation_id_t operation_id;
+};
+
 struct object_reserve_request_t
 {
     object_creation_key_t key;
@@ -233,6 +245,34 @@ struct object_reserve_conflict_t
 {
     authority_read_result_t current;
 };
+
+enum class creation_terminal_state_t : std::uint8_t
+{
+    created = 1,
+    rejected = 2,
+    failed = 3
+};
+
+struct creation_terminal_publication_t
+{
+    creation_operation_identity_t operation;
+    std::vector<std::byte> terminal_envelope;
+    std::array<std::byte, 32> sha256{};
+    std::chrono::system_clock::time_point operation_deadline{};
+};
+
+struct creation_terminal_record_t
+{
+    creation_operation_identity_t operation;
+    object_creation_key_t object;
+    object_reservation_fence_t reservation;
+    creation_terminal_state_t state =
+      creation_terminal_state_t::created;
+    std::vector<std::byte> terminal_envelope;
+    std::array<std::byte, 32> sha256{};
+    std::chrono::system_clock::time_point expires_at{};
+};
+
 using object_reserve_result_t = std::variant<
   object_reserved_t,
   object_already_exists_t,
@@ -240,6 +280,54 @@ using object_reserve_result_t = std::variant<
   object_placement_capacity_exhausted_t,
   object_reserve_conflict_t,
   authority_generation_exhausted_t>;
+
+struct object_creation_completed_t
+{
+    std::vector<std::byte> ready_payload;
+    creation_terminal_publication_t terminal;
+};
+struct object_creation_rejected_t
+{
+    creation_terminal_publication_t terminal;
+};
+struct object_creation_failed_t
+{
+    creation_terminal_publication_t terminal;
+};
+using object_creation_completion_t =
+  std::variant<object_creation_completed_t,
+               object_creation_rejected_t,
+               object_creation_failed_t>;
+
+struct object_complete_creation_request_t
+{
+    object_creation_key_t key;
+    object_reservation_fence_t fence;
+    object_creation_completion_t completion;
+};
+
+struct object_creation_completed_result_t
+{
+    creation_terminal_record_t terminal;
+    std::optional<authority_snapshot_t> ready;
+};
+struct object_creation_already_completed_result_t
+{
+    creation_terminal_record_t terminal;
+};
+struct object_creation_completion_stale_t
+{
+};
+struct object_creation_completion_conflict_t
+{
+    authority_read_result_t current;
+};
+using object_complete_creation_result_t =
+  std::variant<object_creation_completed_result_t,
+               object_creation_already_completed_result_t,
+               object_creation_completion_stale_t,
+               object_creation_completion_conflict_t,
+               authority_generation_exhausted_t>;
 
 struct object_commit_request_t
 {
@@ -423,9 +511,33 @@ class object_creation_store_t
 {
   public:
     virtual ~object_creation_store_t () = default;
+    virtual task_t<std::optional<creation_terminal_record_t>>
+    read_creation_terminal (
+      creation_operation_identity_t operation,
+      std::stop_token cancellation = {})
+    {
+        (void) operation;
+        (void) cancellation;
+        return task_t<std::optional<creation_terminal_record_t>> (
+          result_t<std::optional<creation_terminal_record_t>>::failure (
+            framework_error_kind_t::request_failed,
+            "creation terminal storage is not implemented"));
+    }
     virtual task_t<object_reserve_result_t> reserve (
       object_reserve_request_t request,
       std::stop_token cancellation = {}) = 0;
+    virtual task_t<object_complete_creation_result_t>
+    complete_creation (
+      object_complete_creation_request_t request,
+      std::stop_token cancellation = {})
+    {
+        (void) request;
+        (void) cancellation;
+        return task_t<object_complete_creation_result_t> (
+          result_t<object_complete_creation_result_t>::failure (
+            framework_error_kind_t::request_failed,
+            "creation completion storage is not implemented"));
+    }
     virtual task_t<object_commit_result_t> commit (
       object_commit_request_t request,
       std::stop_token cancellation = {}) = 0;

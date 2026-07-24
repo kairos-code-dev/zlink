@@ -49,23 +49,11 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                         "unsupported-type",
                         initial,
                         owner,
-                        "missing",
-                        Optional.empty()),
-                    () -> false)
-                .toCompletableFuture().get());
-        assertInstanceOf(
-            ZLinkObjectConflict.class,
-            store.reserve(
-                    creation(
-                        "unsupported-profile",
-                        initial,
-                        owner,
-                        "player",
-                        Optional.of("red")),
+                        "missing"),
                     () -> false)
                 .toCompletableFuture().get());
         assertEquals(
-            new ZLinkPlacementCapacity(0, 0, 4, 4),
+            actorCapacity(0, 0, 2),
             capacity(store, SOURCE_RID));
 
         ZLinkObjectReservation first = reserve(
@@ -74,22 +62,10 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                 "player-1",
                 initial,
                 owner,
-                "player",
-                Optional.of("blue")));
+                "player"));
         assertEquals(
-            new ZLinkPlacementCapacity(0, 1, 4, 4),
+            actorCapacity(0, 1, 2),
             capacity(store, SOURCE_RID));
-        assertInstanceOf(
-            ZLinkPlacementCapacityExhausted.class,
-            store.reserve(
-                    creation(
-                        "player-pending-limit",
-                        initial,
-                        owner,
-                        "player",
-                        Optional.of("blue")),
-                    () -> false)
-                .toCompletableFuture().get());
         assertEquals(
             ZLinkObjectCommitResult.COMMITTED,
             store.commit(first, new byte[] {2}, () -> false)
@@ -101,7 +77,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
             2,
             owner,
             ZLinkFrameworkRuntimeState.SERVING,
-            2,
+            1,
             4,
             1,
             true);
@@ -118,8 +94,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                 "player-2",
                 initial,
                 owner,
-                "player",
-                Optional.of("blue")));
+                "player"));
         ZLinkMeshNodeDescriptor reducedTypeLimit = descriptor(
             SOURCE_RID,
             11,
@@ -141,7 +116,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
             store.commit(second, new byte[] {3}, () -> false)
                 .toCompletableFuture().get());
         assertEquals(
-            new ZLinkPlacementCapacity(2, 0, 4, 4),
+            actorCapacity(2, 0, 2),
             capacity(store, SOURCE_RID));
         assertInstanceOf(
             ZLinkPlacementCapacityExhausted.class,
@@ -150,12 +125,11 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                         "player-active-limit",
                         initial,
                         owner,
-                        "player",
-                        Optional.of("blue")),
+                        "player"),
                     () -> false)
                 .toCompletableFuture().get());
         assertEquals(
-            new ZLinkPlacementCapacity(2, 0, 4, 4),
+            actorCapacity(2, 0, 2),
             capacity(store, SOURCE_RID));
     }
 
@@ -219,7 +193,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                     () -> false)
                 .toCompletableFuture().get());
         assertEquals(
-            new ZLinkPlacementCapacity(0, 0, 1, 1),
+            actorCapacity(0, 0, 1),
             capacity(store, TARGET_RID));
 
         assertEquals(
@@ -295,7 +269,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                     () -> false)
                 .toCompletableFuture().get());
         assertEquals(
-            new ZLinkPlacementCapacity(0, 1, 1, 1),
+            actorCapacity(0, 1, 1),
             capacity(store, TARGET_RID));
 
         publish(
@@ -328,7 +302,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
             sourceOwner.ownerId(),
             snapshot(store, "relocate-1").ownerId());
         assertEquals(
-            new ZLinkPlacementCapacity(0, 1, 1, 1),
+            actorCapacity(0, 1, 1),
             capacity(store, TARGET_RID));
 
         publish(
@@ -361,10 +335,85 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
             targetOwner.ownerId(),
             snapshot(store, "relocate-1").ownerId());
         assertEquals(
-            new ZLinkPlacementCapacity(1, 0, 1, 1),
+            actorCapacity(1, 0, 1),
             capacity(store, TARGET_RID));
         assertEquals(
-            new ZLinkPlacementCapacity(1, 0, 4, 4),
+            actorCapacity(1, 0, 4),
+            capacity(store, SOURCE_RID));
+    }
+
+    @Test
+    void userSpotCapacityProjectsPopulationAndStableTypeUsage()
+        throws Exception {
+        ZLinkInMemoryLocationStore store = store();
+        ZLinkLocationOwnerToken owner = claim(store, "spot-owner");
+        ZLinkMeshNodeDescriptor descriptor = new ZLinkMeshNodeDescriptor(
+            "mesh",
+            SOURCE_RID,
+            51,
+            1,
+            "tcp://127.0.0.1:7000",
+            Map.of(),
+            1,
+            List.of(new ZLinkObjectCapability(
+                ZLinkPlacementObjectKind.USER_SPOT,
+                "lobby",
+                ZLinkObjectMaintenancePolicyKind.SNAPSHOT,
+                true,
+                2)),
+            ZLinkMeshNodeObjectRole.SERVER,
+            100,
+            new ZLinkPlacementCapacity(
+                new ZLinkCapacityUsage(0, 0, 0),
+                new ZLinkCapacityUsage(0, 0, 3),
+                List.of(new ZLinkSpotTypeCapacity(
+                    ZLinkPlacementObjectKind.USER_SPOT,
+                    "lobby",
+                    new ZLinkCapacityUsage(0, 0, 2)))),
+            Optional.empty(),
+            ZLinkFrameworkRuntimeState.SERVING,
+            "security",
+            owner.ownerId(),
+            owner.leaseGeneration(),
+            NOW);
+        publish(store, descriptor, ZLinkLocationWriteIntent.NEW_CLAIM);
+
+        ZLinkObjectReservation reservation = reserve(
+            store,
+            new ZLinkObjectReservationRequest(
+                ZLinkPlacementObjectKind.USER_SPOT,
+                "zla1:s:lobby-1",
+                "lobby",
+                "creation-root",
+                new byte[32],
+                32,
+                descriptorKey(descriptor),
+                descriptor.lifecycleGeneration(),
+                owner,
+                new byte[] {1},
+                1));
+        assertEquals(
+            new ZLinkPlacementCapacity(
+                new ZLinkCapacityUsage(0, 0, 0),
+                new ZLinkCapacityUsage(0, 1, 3),
+                List.of(new ZLinkSpotTypeCapacity(
+                    ZLinkPlacementObjectKind.USER_SPOT,
+                    "lobby",
+                    new ZLinkCapacityUsage(0, 1, 2)))),
+            capacity(store, SOURCE_RID));
+
+        assertEquals(
+            ZLinkObjectCommitResult.COMMITTED,
+            store.commit(reservation, new byte[] {2}, () -> false)
+                .toCompletableFuture().get());
+        assertEquals(
+            new ZLinkPlacementCapacity(
+                new ZLinkCapacityUsage(0, 0, 0),
+                new ZLinkCapacityUsage(1, 0, 3),
+                List.of(new ZLinkSpotTypeCapacity(
+                    ZLinkPlacementObjectKind.USER_SPOT,
+                    "lobby",
+                    new ZLinkCapacityUsage(1, 0, 2)))),
             capacity(store, SOURCE_RID));
     }
 
@@ -412,8 +461,7 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                 authorityKey,
                 descriptor,
                 owner,
-                "player",
-                Optional.of("blue")));
+                "player"));
         assertEquals(
             ZLinkObjectCommitResult.COMMITTED,
             store.commit(reservation, new byte[] {1}, () -> false)
@@ -434,14 +482,11 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
         String authorityKey,
         ZLinkMeshNodeDescriptor descriptor,
         ZLinkLocationOwnerToken owner,
-        String stableType,
-        Optional<String> profile) {
+        String stableType) {
         return new ZLinkObjectReservationRequest(
             ZLinkPlacementObjectKind.ACTOR,
             authorityKey,
             stableType,
-            profile,
-            Optional.empty(),
             "creation-root",
             new byte[32],
             32,
@@ -489,10 +534,9 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
                 capability(
                     "player",
                     playerActiveLimit,
-                    1,
-                    Set.of("blue")),
-                capability("npc", 4, 4, Set.of()))
-            : List.of(capability("npc", 4, 4, Set.of()));
+                    1),
+                capability("npc", 4, 4))
+            : List.of(capability("npc", 4, 4));
         return new ZLinkMeshNodeDescriptor(
             "mesh",
             rid,
@@ -504,11 +548,10 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
             capabilities,
             ZLinkMeshNodeObjectRole.SERVER,
             100,
-            new ZLinkPlacementCapacity(
+            actorCapacity(
                 0,
                 0,
-                nodeActiveLimit,
-                nodePendingLimit),
+                Math.min(playerActiveLimit, nodeActiveLimit)),
             Optional.empty(),
             state,
             "security",
@@ -520,16 +563,23 @@ final class ZLinkInMemoryDescriptorAdmissionTest {
     private static ZLinkObjectCapability capability(
         String stableType,
         int activeLimit,
-        int pendingLimit,
-        Set<String> profiles) {
+        int pendingLimit) {
         return new ZLinkObjectCapability(
             ZLinkPlacementObjectKind.ACTOR,
             stableType,
             ZLinkObjectMaintenancePolicyKind.SNAPSHOT,
             true,
-            profiles,
-            activeLimit,
-            pendingLimit);
+            0);
+    }
+
+    private static ZLinkPlacementCapacity actorCapacity(
+        int active,
+        int reserved,
+        int limit) {
+        return new ZLinkPlacementCapacity(
+            new ZLinkCapacityUsage(active, reserved, limit),
+            new ZLinkCapacityUsage(0, 0, 0),
+            List.of());
     }
 
     private static ZLinkMeshNodeDescriptorKey descriptorKey(

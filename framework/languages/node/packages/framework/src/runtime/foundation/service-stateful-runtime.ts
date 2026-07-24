@@ -676,6 +676,8 @@ export class ServiceStatefulRuntime {
     const header = encodeLogicalMulticastHeader(channelName, topic, sourceSpotRid);
     const payloadFrame = encodeApplicationPayload(payload);
     for (const target of targets) {
+      // Remote admission ends at the source outbound transport queue. The
+      // receiver's Spot queue and handler completion are not publish results.
       if (this.raw.sendService(target.descriptor.nodeRoutingId, [header, payloadFrame])) {
         admittedRemoteTargetCount++;
       } else {

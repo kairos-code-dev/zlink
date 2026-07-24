@@ -229,10 +229,10 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         ZLinkSpotLocation spot,
         ZLinkLocationWriteIntent intent) {
         ZLinkSpotLocation stamped = new ZLinkSpotLocation(
-            spot.meshName(), spot.spotRid(), spot.spotGeneration(), spot.spotType(),
+            spot.meshName(), spot.spotId(), spot.spotGeneration(), spot.spotType(),
             spot.nodeRid(), spot.spotKind(),
             spot.routeEndpoint(), ownerId, spot.generation(), spot.updatedAt());
-        String key = ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spot.meshName(), spot.spotRid()));
+        String key = ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spot.spotId()));
         return stores.spotStore().updateSpot(stamped, intent)
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.SPOT, key));
     }
@@ -242,7 +242,7 @@ public final class ZLinkLocationRuntime implements AutoCloseable {
         ZLinkLocationWriteIntent intent) {
         ZLinkActorLocation stamped = new ZLinkActorLocation(
             actor.actorId(), actor.actorType(), actor.actorRef(), actor.nodeRid(), actor.locationKind(),
-            actor.spotMeshName(), actor.spotRid(), ownerId, actor.generation(), actor.updatedAt());
+            actor.spotMeshName(), actor.spotId(), ownerId, actor.generation(), actor.updatedAt());
         String key = ZLinkLocationKeyCodec.encodeActorKey(new ZLinkActorLocationKey(actor.actorId()));
         return stores.actorStore().updateActor(stamped, intent)
             .thenApply(result -> notifyIfStale(result, ZLinkLocationKind.ACTOR, key));

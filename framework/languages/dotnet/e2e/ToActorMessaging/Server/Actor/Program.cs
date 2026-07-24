@@ -40,7 +40,7 @@ app.MapPost("/actors/{actorId}/ensure", async (
     IZLinkActorManager actors,
     CancellationToken ct) =>
 {
-    await actors.GetOrCreateAsync(actorId, "test-actor", ct);
+    _ = await actors.GetOrCreate(actorId, "test-actor").Async(ct);
     return Results.Ok(new { actorId });
 });
 app.MapPost("/actors/{actorId}/destroy", async (
@@ -153,7 +153,7 @@ namespace ToActorMessaging.Actor
 
     internal sealed class NotifyHandler(
         EvidenceStore evidence,
-        IZLinkActorDirectory actors,
+        IZLinkActorManager actors,
         ServerOptions options)
         : IZLinkEntrySpotActorSendHandler<TestEntrySpot, TestActor, ActorNotify>
     {
@@ -179,7 +179,7 @@ namespace ToActorMessaging.Actor
 
     internal sealed class AskHandler(
         EvidenceStore evidence,
-        IZLinkActorDirectory actors,
+        IZLinkActorManager actors,
         ServerOptions options)
         : IZLinkEntrySpotActorRequestHandler<TestEntrySpot, TestActor, ActorAsk, ActorReply>
     {

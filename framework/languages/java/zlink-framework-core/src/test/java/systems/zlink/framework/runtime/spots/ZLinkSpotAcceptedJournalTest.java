@@ -17,7 +17,7 @@ final class ZLinkSpotAcceptedJournalTest {
         ZLinkBackendReceived received = new ZLinkBackendReceived(
             ZLinkBackendRequestResult.OK,
             Optional.of(RoutingId.fromHex("01")),
-            Optional.of(RoutingId.fromHex("02")),
+            Optional.of("02"),
             Optional.of(17L),
             new byte[] {3, 4},
             List.of(Message.from(new byte[] {5}), Message.from(new byte[] {6, 7})),
@@ -30,7 +30,7 @@ final class ZLinkSpotAcceptedJournalTest {
 
         assertEquals(received.result(), record.result());
         assertEquals(received.routingId(), record.routingId());
-        assertEquals(received.spotRid(), record.spotRid());
+        assertEquals(received.spotId(), record.spotId());
         assertEquals(received.requestSeq(), record.requestSequence());
         assertArrayEquals(new byte[] {3, 4}, record.applicationMetadata());
         assertArrayEquals(new byte[] {5}, record.parts().get(0));

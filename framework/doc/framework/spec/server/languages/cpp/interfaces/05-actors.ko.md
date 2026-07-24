@@ -147,13 +147,31 @@ public:
 ```
 
 Actor send와 request는 global `actor_id_t`만 target으로 받는다. MeshName, ActorRef, owner NodeRid와 current
-SpotRid를 받는 overload는 없다. Runtime은 positive Ready route만 cache하고 negative cache를 두지 않는다.
+SpotId를 받는 overload는 없다. Runtime은 positive Ready route만 cache하고 negative cache를 두지 않는다.
 Stale route는 `actor_location_stale`, exact-ref generation mismatch는 `actor_generation_stale`로 구분한다.
 
 ## 3. Single-use manager operation
 
 ```cpp
 namespace zlink::framework {
+
+struct actor_create_existing_t {
+    actor_ref_t actor;
+};
+
+struct actor_create_created_t {
+    actor_ref_t actor;
+    std::optional<message_t> reply;
+};
+
+struct actor_create_rejected_t {
+    std::optional<message_t> reply;
+};
+
+using actor_create_result_t = std::variant<
+  actor_create_existing_t,
+  actor_create_created_t,
+  actor_create_rejected_t>;
 
 class actor_create_call_t {
 public:
@@ -168,10 +186,8 @@ public:
     template <typename TCreation>
     actor_create_call_t &creation_request(TCreation request);
 
-    actor_create_call_t &placement_profile(placement_profile_t profile);
-    actor_create_call_t &affinity_key(affinity_key_t key);
     actor_create_call_t &timeout(std::chrono::milliseconds timeout);
-    task_t<actor_ref_t> submit();
+    task_t<actor_create_result_t> submit();
 };
 
 class actor_manager_t {
@@ -195,8 +211,12 @@ Call object는 option마다 최대 한 번 설정하고 `submit()`도 한 번만
 하나면 자동 선택하고, 0개면 `object_client_not_configured`, 여러 개면 `mesh_selection_required`다. Unknown
 Mesh는 `mesh_not_found`다.
 
-`Create`는 existing identity에 `actor_already_exists`를 반환한다. `GetOrCreate`는 같은 stable type의 Ready 또는
-Creating attempt에 합류하고 type이 다르면 `actor_type_mismatch`다. Deadline은 resolve, reservation, factory와
+`Create`는 existing identity에 `actor_already_exists`를 반환하고 새 attempt에서는
+`actor_create_created_t` 또는 `actor_create_rejected_t`를 반환한다. `GetOrCreate`는 같은 stable type의 Ready
+Actor에서 factory와 creation callback을 호출하지 않고 `actor_create_existing_t`를 반환하며, Creating
+attempt가 있으면 authority 변경을 기다린다. Ready면 `actor_create_existing_t`, rejection cleanup이면 새
+reservation으로 자신의 request를 실행한다. 서로 다른 operation은 앞선 rejected reply를 공유하지 않고
+동일한 operation ID retry만 terminal result를 재사용한다. Type이 다르면 `actor_type_mismatch`다. Deadline은 resolve, 대기, reservation, factory와
 Ready 전체에 적용한다. `Find`는 Ready ref만 반환하며 생성하지 않는다. `FindSpot`은 current User Spot
 membership의 Ready `spot_ref_t`만 반환하고 Entry membership 또는 Missing Actor에는 빈 optional을 반환한다.
 `Destroy`는 exact ActorRef만 변경한다.
@@ -205,6 +225,15 @@ Public Actor directory와 local Actor bind overload는 제공하지 않는다.
 
 Actor creation은 selected owner MeshNode의 Entry Spot membership을 Ready barrier 안에서 함께 확정한다. Actor
 업무 payload는 membership 종류와 관계없이 Actor queue로 직접 전달하며 Entry Spot callback을 경유하지 않는다.
+각 Actor는 payload를 처리하는 FIFO claim을 하나만 가진다. `SpotWide` User Spot의 member Actor는 이
+claim과 공유 Spot gate를 모두 얻은 뒤 handler를 실행하고, `PerActor` User Spot과 Entry Spot의
+Actor는 Actor별 lane에서 실행한다. 따라서 `SpotWide` Actor callback이 `yield()`를 호출해도 Spot gate만
+반납하며 같은 Actor의 다음 payload는 continuation이 끝날 때까지 시작하지 않는다. `PerActor`와 Entry Spot의
+Actor callback에서 `yield()`를 호출하면 operation을 제출하기 전에 `invalid_configuration`으로 실패한다.
+
+Actor callback이 자신에게 보낸 request를 기다리거나 현재 보유한 Spot gate에서만 완료할 수 있는 request를
+`async()`로 기다리면 admission 전에 `invalid_configuration`으로 실패한다. 자신에게 보내는 one-way operation은
+Actor FIFO queue에 제출할 수 있지만 현재 handler에서 inline 또는 reentrant 방식으로 실행하지 않는다.
 Original creation payload와 일반 message는 다른 owner나 새 incarnation으로 hidden retry하지 않는다. Caller가
 timeout, cancellation 또는 moving 결과를 받으면 새 operation을 명시적으로 시작해야 한다.
 

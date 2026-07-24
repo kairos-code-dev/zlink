@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <set>
+#include <stdexcept>
 #include <utility>
 
 namespace zlink::framework::detail
@@ -45,8 +46,12 @@ std::vector<std::string> channel_runtime_bundle_t::list_manual_connections () co
     return std::vector<std::string> (_manual_connections.begin (), _manual_connections.end ());
 }
 
-bool channel_runtime_bundle_t::try_add_auto_connection (std::string endpoint, std::uint32_t weight)
+bool channel_runtime_bundle_t::try_add_auto_connection (std::string endpoint, int weight)
 {
+    if (weight < 0 || weight > 10000) {
+        throw std::invalid_argument (
+          "connection weight must be in range 0..10000");
+    }
     std::lock_guard lock (_mutex);
     if (_manual_connections.find (endpoint) != _manual_connections.end ()) {
         return false;
@@ -130,44 +135,47 @@ std::vector<std::string> channel_runtime_bundle_t::manual_connections_from_next 
 std::vector<std::string> channel_runtime_bundle_t::connections_from_next ()
 {
     std::lock_guard lock (_mutex);
-    std::vector<std::pair<std::string, std::uint32_t>> weighted_connections;
-    std::uint32_t max_weight = 0;
+    std::vector<std::pair<std::string, int>> weighted_connections;
     for (const auto &endpoint : _manual_connections) {
         weighted_connections.push_back ({endpoint, 100});
-        max_weight = std::max (max_weight, 100u);
     }
     for (const auto &[endpoint, weight] : _auto_connections) {
         if (_manual_connections.find (endpoint) != _manual_connections.end () || weight == 0) {
             continue;
         }
         weighted_connections.push_back ({endpoint, weight});
-        max_weight = std::max (max_weight, weight);
     }
-    std::vector<std::string> weighted_slots;
-    for (std::uint32_t slot = 0; slot < max_weight; ++slot) {
-        for (const auto &[endpoint, weight] : weighted_connections) {
-            if (slot < weight) {
-                weighted_slots.push_back (endpoint);
-            }
-        }
-    }
-    if (weighted_slots.empty ()) {
+    std::uint64_t total_weight = 0;
+    for (const auto &[_, weight] : weighted_connections)
+        total_weight += static_cast<std::uint64_t> (weight);
+    if (total_weight == 0) {
         _next_connection = 0;
         return {};
     }
-    if (_next_connection >= weighted_slots.size ()) {
-        _next_connection = 0;
+    const auto selected_slot =
+      _next_connection++ % total_weight;
+    std::size_t selected_index = 0;
+    auto remaining = selected_slot;
+    for (std::size_t index = 0;
+         index < weighted_connections.size (); ++index) {
+        const auto weight = static_cast<std::uint64_t> (
+          weighted_connections[index].second);
+        if (remaining < weight) {
+            selected_index = index;
+            break;
+        }
+        remaining -= weight;
     }
     std::vector<std::string> ordered;
-    ordered.reserve (_manual_connections.size () + _auto_connections.size ());
-    std::set<std::string> seen;
-    for (std::size_t offset = 0; offset < weighted_slots.size (); ++offset) {
-        const auto &endpoint = weighted_slots[(_next_connection + offset) % weighted_slots.size ()];
-        if (seen.insert (endpoint).second) {
-            ordered.push_back (endpoint);
-        }
+    ordered.reserve (weighted_connections.size ());
+    for (std::size_t offset = 0;
+         offset < weighted_connections.size (); ++offset) {
+        ordered.push_back (
+          weighted_connections[
+            (selected_index + offset)
+            % weighted_connections.size ()]
+            .first);
     }
-    _next_connection = (_next_connection + 1) % weighted_slots.size ();
     return ordered;
 }
 

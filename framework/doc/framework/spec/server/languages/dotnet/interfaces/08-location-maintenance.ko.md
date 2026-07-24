@@ -152,6 +152,11 @@ owner-guarded remove는 owner ID와 generation이 현재 record와 정확히 일
 현재 owner lease 만료를 같은 원자 operation에서 확인할 수 있을 때만 성공한다. 예상되는 경합은
 `ZLinkLocationWriteStatus`로 반환하고 store 접속·명령 실패는 `ZLinkLocationStoreException`으로 보고한다.
 
+Object Server descriptor의 `NewClaim`은 `(MeshName, Rid)` descriptor identity와 `EntrySpotId`의 global Spot
+identity claim을 exact owner token·lifecycle에 연결해 한 transaction에서 만든다. 별도 Entry claim public
+method는 제공하지 않는다. 어느 identity든 active claim과 충돌하면 descriptor·Entry claim·index를 모두
+변경하지 않는다. User·Instance Spot의 generic Reserve도 같은 global identity claim을 검사한다.
+
 ```csharp
 public sealed class ZLinkLocationStoreException : Exception
 {
@@ -175,6 +180,7 @@ public sealed record ZLinkMeshNodeDescriptor(
     DateTimeOffset UpdatedAt)
 {
     public long ApplicationVersion { get; init; }
+    public string? EntrySpotId { get; init; }
     public IReadOnlyList<ZLinkObjectCapability> ObjectCapabilities { get; init; }
         = Array.Empty<ZLinkObjectCapability>();
     public string? MaintenanceWave { get; init; }
@@ -182,7 +188,9 @@ public sealed record ZLinkMeshNodeDescriptor(
     public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
     public int PlacementWeight { get; init; } = 100;
     public ZLinkPlacementCapacity Capacity { get; init; }
-        = new(0, 0, 10_000, 128);
+        = new(new(0, 0, 0), new(0, 0, 0), Array.Empty<ZLinkSpotTypeCapacity>());
+    public ZLinkActivationConcurrency ActivationConcurrency { get; init; }
+        = new(0, 128);
 }
 
 public readonly record struct ZLinkMeshNodeDescriptorKey(
@@ -224,7 +232,7 @@ public readonly record struct ZLinkFanoutPublisherDescriptorKey(
 
 public sealed record ZLinkSpotLocation(
     string MeshName,
-    RoutingId SpotRid,
+    string SpotId,
     ulong SpotGeneration,
     RoutingId OwnerNodeRid,
     ulong OwnerNodeGeneration,
@@ -235,7 +243,7 @@ public sealed record ZLinkSpotLocation(
     DateTimeOffset UpdatedAt);
 
 public readonly record struct ZLinkSpotLocationKey(
-    RoutingId SpotRid);
+    string SpotId);
 
 public sealed record ZLinkActorLocation(
     string MeshName,
@@ -244,7 +252,7 @@ public sealed record ZLinkActorLocation(
     ActorRef ActorRef,
     RoutingId OwnerNodeRid,
     ulong OwnerNodeGeneration,
-    RoutingId SpotRid,
+    string SpotId,
     ulong SpotGeneration,
     ZLinkSpotKind SpotKind,
     string OwnerId,
@@ -280,35 +288,55 @@ public sealed record ZLinkObjectCapability(
     string StableType,
     ZLinkObjectMaintenancePolicyKind Policy,
     bool HasSnapshotAdapter,
-    IReadOnlySet<string> PlacementProfiles,
-    int? ActiveLimit,
-    int? PendingLimit);
+    int Limit);
+
+public sealed record ZLinkPopulationCapacity(
+    int Active,
+    int Reserved,
+    int Limit);
+
+public sealed record ZLinkSpotTypeCapacity(
+    ZLinkPlacementObjectKind ObjectKind,
+    string StableType,
+    int Active,
+    int Reserved,
+    int Limit);
 
 public sealed record ZLinkPlacementCapacity(
+    ZLinkPopulationCapacity Actors,
+    ZLinkPopulationCapacity Spots,
+    IReadOnlyList<ZLinkSpotTypeCapacity> SpotTypes);
+
+public sealed record ZLinkActivationConcurrency(
     int Active,
-    int Pending,
-    int ActiveLimit,
-    int PendingLimit);
+    int Limit);
 ```
 
 `ChannelWeights`의 key 집합은 descriptor를 처음 게시하기 전에 고정한 ChannelName membership과 같다.
-Stable type과 placement profile은 UTF-8 byte 순서로 정렬한다.
-`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 stable type, policy, Snapshot adapter 등록 여부, profile과
-type별 capacity limit을 한 항목에 함께 둔다. `HasSnapshotAdapter`는 target에 해당 object kind의 adapter가
+Stable type은 UTF-8 byte 순서로 정렬한다.
+`ObjectCapabilities`는 Actor·User Spot·Instance Spot의 stable type, policy, Snapshot adapter 등록 여부와
+profile을 한 항목에 함께 둔다. User·Instance Spot capability의 `Limit`은 stable type별 limit이고 Actor는
+`0`이다. `HasSnapshotAdapter`는 target에 해당 object kind의 adapter가
 등록되어 있는지만 나타내며 application state의 format, version이나 contract ID를 광고하지 않는다.
-`ApplicationVersion`은 `0..long.MaxValue`이고 Redis JSON에서는 선행 0 없는 10진 integer로 저장한다. Channel
-weight, placement weight, active·pending count, maintenance wave와 runtime state는 실행 중 바뀔 수 있다. Spot과 Actor 운영 projection은 owner
+`ApplicationVersion`은 `0..long.MaxValue`이고 Redis JSON에서는 선행 0 없는 10진 integer로 저장한다. `Capacity`는
+Actor 전체, Spot 전체와 등록한 User·Instance Spot type별 active·reserved·limit projection을 구분한다.
+`ActivationConcurrency`는 population reservation과 분리된 process-local active·limit projection이다. Channel
+weight, placement weight, capacity count, maintenance wave와 runtime state는 실행 중 바뀔 수 있다. Spot과 Actor 운영 projection은 owner
 MeshNode의 RID와 generation을 함께 보존한다. Resolver는 owner lease와 같은 generation의 descriptor가 모두
 유효할 때만 projection을 성공 결과로 사용한다.
 
 Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
-ChannelName key set, object role과 object capability의 kind·type·policy·Snapshot adapter 등록 여부·profile·limit은
+ChannelName key set, object role, population limit, activation concurrency limit과 object capability의
+kind·type·policy·Snapshot adapter 등록 여부·profile·limit은
 첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight 값, placement weight,
-active·pending count, maintenance wave와 runtime state만
+active·reserved count, activation active count, maintenance wave와 runtime state만
 mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고
 `DescriptorRevision`을 strictly 증가시켜야 한다. Provider는 stale revision이나 immutable field 변경을 원자적으로
 거부하며 일부 field만 적용하지 않는다. ClientServer와 fanout descriptor도 같은 identity·revision fence를
 적용한다.
+
+`ChannelWeights`, `PlacementWeight`와 ClientServer descriptor의 `Weight`는 signed `int` `0..10000`이다.
+Provider는 범위 밖 값을 거부하고 더 작은 unsigned type으로 변환하거나 truncate하지 않는다.
 
 `ZLinkClientServerServerDescriptor`는 MeshName과 RouteMesh membership을 갖지 않는다. Redis extension은
 [공통 Redis 계약](../../../41-location-store-redis.ko.md)의 `channel-server` key kind, ChannelName과 ServerRid
@@ -317,6 +345,11 @@ length-prefix key, `channel` HASH field와 canonical JSON을 사용한다.
 `ZLinkFanoutPublisherDescriptor`는 subscriber나 target weight를 갖지 않는다. Redis extension은
 `fanout-publisher` key kind와 ChannelName+PublisherRid key를 사용한다. MeshNode, ClientServer 또는
 generic role descriptor로 바꾸어 저장하거나 조회하지 않는다.
+
+Redis extension의 authority 관련 durable record는
+[공통 Redis 계약](../../../41-location-store-redis.ko.md)의 schema epoch `3` exact HASH field set과
+typed `capacityBundle` bytes를 사용한다. .NET serializer가 만드는 property 이름, field 순서 또는 enum
+문자열은 저장 schema가 아니다. Contract test는 공통 raw-byte fixture를 사용한다.
 
 ## 5. Store capability
 
@@ -398,6 +431,16 @@ public interface IZLinkOwnerLeaseStore
 }
 ```
 
+`EntrySpotId`는 Object Server descriptor에서만 값이 있으며 Framework가 해당 lifecycle에 발급한 exact Entry
+Spot ID다. Actor placement·join과 relocation은 `Rid`, `LifecycleGeneration`, `EntrySpotId` mapping을
+그대로 사용하며 문자열 관계를 추론하지 않는다. Object Client와 object role이 없는 descriptor에서는
+`null`이다.
+
+`EntrySpotId`는 descriptor immutable field와 immutable digest에 포함되며 Renew 또는 mutable update로
+변경할 수 없다. `RemoveMeshNodeAsync`와 `RemoveAllByOwnerAsync`는 stored descriptor의 exact owner
+token·lifecycle이 일치할 때만 연결된 Entry claim을 같은 transaction에서 해제한다. Stale lifecycle cleanup은
+successor descriptor와 Entry claim을 삭제할 수 없다.
+
 Framework는 host process runtime lifecycle마다 새 owner ID를 만들며 application이 값을 설정하거나
 이전 lifecycle의 ID를 재사용하게 하지 않는다. 한 host의 모든 MeshNode·ClientServer·fanout
 descriptor와 authority는 같은 host token을 참조하고 각 descriptor가 자신의 RID를 갖는다.
@@ -439,7 +482,7 @@ Framework 계산값으로 만들지 않는다.
 descriptor에는 runtime이 CSPRNG로 만든 nonce를 사용하고 current connection handover fence와 함께 검증한다.
 Application이 값을 선택하는 option은 없다. 순서를 비교하는 값은 `DescriptorRevision`뿐이다. 이 revision이
 `long.MaxValue`인 상태에서 다음 값이 필요하면 host를 `Error`로 seal하고 wrap하지 않는다. Actor authority key는
-`ActorId` 하나이고 Spot authority key는 `SpotRid` 하나다. 두 key에 `MeshName`을 넣지 않으며 projection의
+`ActorId` 하나이고 Spot authority key는 `SpotId` 하나다. 두 key에 `MeshName`을 넣지 않으며 projection의
 `MeshName`은 current placement attribute다.
 Maintenance owner 이관은 `NewOwner`로 owner generation만 바꾸고 object generation을 유지한다.
 기존 ref의 object generation은 유지된다. 이전 owner route를 사용하면 runtime이 current authority를 재조회하여
@@ -456,11 +499,13 @@ Server RID와 generation을 admission에서 확인하기 전에는 반환된 des
 subscriber의 connection-intent 계산에 있다. Automatic subscriber는 선택한 모든 endpoint를 연결 대상으로
 사용하며 subscriber row는 게시하지 않는다.
 
-Entry·User·Instance Spot owner state는 global `SpotRid`에서 파생한 하나의 authority key를 공유한다.
+Entry·User·Instance Spot owner state는 global `SpotId`에서 파생한 하나의 authority key를 공유한다.
 User Spot create와 Instance cold claim은 같은 row에 generic placement reserve를 수행하므로 kind conflict,
 object generation과 capacity 증가가 원자적으로 결정된다. `ZLinkSpotLocation`은 Framework가 authority payload를 decode한
 운영 projection이며 provider write·remove·resolve interface가 아니다. Actor relocation도 같은 generic authority
 capability의 별도 key를 사용한다. Provider는 Spot kind, owner state나 relocation phase를 해석하지 않는다.
+Reserve는 descriptor `NewClaim`이 소유한 active Entry identity와 같은 Spot ID를 conflict로 닫고 authority
+row나 capacity를 변경하지 않는다.
 
 Application service는 authority provider interface를 직접 호출하지 않는다. Authority key와 payload의 정확한
 구성은 [Authority와 relocation](08-authority-relocation.ko.md)가 소유한다.

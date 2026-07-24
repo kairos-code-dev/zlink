@@ -77,6 +77,28 @@ internal sealed class ZLinkClientServerServerIdentity(
         return snapshot;
     }
 
+    internal Snapshot SetWeight(int weight)
+    {
+        ZLinkSocketConfig.ValidatePeerWeight(weight);
+        Snapshot snapshot;
+        lock (_gate)
+        {
+            if (_state != ZLinkFrameworkRuntimeState.Serving)
+                throw new ZLinkConfigurationException(
+                    $"ClientServer Server '{ChannelName}' is not serving.");
+            _revision = checked(_revision + 1);
+            _weight = weight;
+            snapshot = new Snapshot(
+                _revision,
+                _weight,
+                _state,
+                _advertisedEndpoint);
+        }
+        PushUpdate(snapshot);
+        SnapshotChanged?.Invoke(snapshot);
+        return snapshot;
+    }
+
     internal void AttachRouter(IZLinkBackendRouterSocket router)
     {
         lock (_gate) _router = router;

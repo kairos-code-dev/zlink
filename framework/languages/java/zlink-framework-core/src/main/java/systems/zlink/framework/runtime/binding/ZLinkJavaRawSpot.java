@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.contracts.messaging.Message;
+import systems.zlink.contracts.service.spot.PublishDetail;
 import systems.zlink.contracts.sockets.SendFlags;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorJoinRequest;
 import systems.zlink.framework.runtime.backend.ZLinkBackendActorLifecycleEvent;
@@ -45,12 +46,12 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
         new ConcurrentLinkedQueue<>();
     private final Set<String> topics = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean();
-    private volatile RoutingId routingId;
+    private volatile String routingId;
     private volatile ZLinkBackendSpotDispatchHandler dispatchHandler;
 
     ZLinkJavaRawSpot(
         ZLinkJavaRawSpotNode owner,
-        RoutingId routingId,
+        String routingId,
         long lifecycleGeneration) {
         this.owner = owner;
         this.routingId = routingId;
@@ -68,7 +69,7 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
     }
 
     @Override
-    public RoutingId routingId() {
+    public String routingId() {
         return routingId;
     }
 
@@ -78,7 +79,7 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
     }
 
     @Override
-    public void setRoutingId(RoutingId value) {
+    public void setRoutingId(String value) {
         owner.rekeySpot(this, routingId, java.util.Objects.requireNonNull(
             value, "routingId"));
         routingId = value;
@@ -105,12 +106,12 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
     @Override
     public void rememberSpotAuthority(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long objectGeneration,
         long authorityOwnerGeneration) {
         owner.rememberSpotAuthority(
             targetNodeRid,
-            spotRid,
+            spotId,
             objectGeneration,
             authorityOwnerGeneration);
     }
@@ -135,32 +136,43 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
     }
 
     @Override
-    public boolean sendToSpot(
-        RoutingId targetNodeRid,
-        RoutingId spotRid,
-        long spotGeneration,
+    public PublishDetail publishDetailed(
+        String channelName,
+        String topic,
+        byte[] metadata,
         List<Message> parts,
         SendFlags flags) {
-        return owner.sendToSpot(
-            this, targetNodeRid, spotRid, spotGeneration, new byte[0], parts);
+        return owner.publishDetailed(
+            this, channelName, topic, metadata, parts);
     }
 
     @Override
     public boolean sendToSpot(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
+        long spotGeneration,
+        List<Message> parts,
+        SendFlags flags) {
+        return owner.sendToSpot(
+            this, targetNodeRid, spotId, spotGeneration, new byte[0], parts);
+    }
+
+    @Override
+    public boolean sendToSpot(
+        RoutingId targetNodeRid,
+        String spotId,
         long spotGeneration,
         byte[] metadata,
         List<Message> parts,
         SendFlags flags) {
         return owner.sendToSpot(
-            this, targetNodeRid, spotRid, spotGeneration, metadata, parts);
+            this, targetNodeRid, spotId, spotGeneration, metadata, parts);
     }
 
     @Override
     public boolean requestToSpot(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         List<Message> parts,
         ZLinkBackendRequestCallback callback,
@@ -169,7 +181,7 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
         return owner.requestToSpot(
             this,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             new byte[0],
             parts,
@@ -180,7 +192,7 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
     @Override
     public boolean requestToSpot(
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         byte[] metadata,
         List<Message> parts,
@@ -190,7 +202,7 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
         return owner.requestToSpot(
             this,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             metadata,
             parts,
@@ -239,13 +251,14 @@ final class ZLinkJavaRawSpot implements ZLinkBackendSpot {
         return raise(ZLinkBackendSpotDispatchEvent.ROUTED_READABLE);
     }
 
-    CompletionStage<Void> enqueueTopic(ZLinkBackendTopicMessage message) {
+    boolean enqueueTopic(ZLinkBackendTopicMessage message) {
         if (closed.get()) {
             message.parts().forEach(Message::close);
-            return CompletableFuture.completedFuture(null);
+            return false;
         }
         subscriptions.add(message);
-        return raise(ZLinkBackendSpotDispatchEvent.SUBSCRIBE_READABLE);
+        raise(ZLinkBackendSpotDispatchEvent.SUBSCRIBE_READABLE);
+        return true;
     }
 
     CompletionStage<Void> enqueueJoin(ZLinkBackendActorJoinRequest request) {

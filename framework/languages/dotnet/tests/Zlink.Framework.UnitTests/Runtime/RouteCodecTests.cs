@@ -567,7 +567,7 @@ public sealed class RouteCodecTests
 
         public bool SendToSpot(
             RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
+            string targetSpotId,
             IReadOnlyList<Message> parts,
             SendFlags flags)
         {
@@ -576,7 +576,7 @@ public sealed class RouteCodecTests
 
         public bool RequestToSpot(
             RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
+            string targetSpotId,
             IReadOnlyList<Message> parts,
             RequestCallback callback,
             SendFlags flags,

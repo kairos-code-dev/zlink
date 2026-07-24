@@ -6,20 +6,20 @@ import systems.zlink.framework.spots.ZLinkSpotKind;
 public record SpotTransportAddress(
     String routerChannelId,
     RoutingId targetNodeRid,
-    RoutingId spotRid,
+    String spotId,
     long spotGeneration,
     long authorityOwnerGeneration,
     ZLinkSpotKind spotKind) {
     public SpotTransportAddress(
         String routerChannelId,
         RoutingId targetNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         ZLinkSpotKind spotKind) {
         this(
             routerChannelId,
             targetNodeRid,
-            spotRid,
+            spotId,
             spotGeneration,
             0L,
             spotKind);

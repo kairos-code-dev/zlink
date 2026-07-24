@@ -6,10 +6,6 @@ import type {
   ZLinkMessage,
   ZLinkMessageMetadata
 } from '../Common';
-import type {
-  ZLinkAffinityKey,
-  ZLinkPlacementProfile
-} from '../Locations';
 import type { ZLinkSubmitResult } from '../RouteMesh';
 import type { ZLinkSpotTimerHandler } from '../Handlers';
 import type { ZLinkTimer, ZLinkTimerOptions } from '../Timers';
@@ -115,8 +111,6 @@ export interface ZLinkSpotSendCall {
   instanceSpot(): this;
   instanceSpot(instanceSpotType: string): this;
   inMesh(meshName: string): this;
-  placementProfile(placementProfile: ZLinkPlacementProfile): this;
-  affinityKey(affinityKey: ZLinkAffinityKey): this;
   submit(signal?: AbortSignal): Promise<ZLinkSubmitResult>;
 }
 
@@ -126,8 +120,6 @@ export interface ZLinkSpotRequestCall {
   instanceSpot(): this;
   instanceSpot(instanceSpotType: string): this;
   inMesh(meshName: string): this;
-  placementProfile(placementProfile: ZLinkPlacementProfile): this;
-  affinityKey(affinityKey: ZLinkAffinityKey): this;
   timeout(timeoutMs: number): this;
   submit<TReply>(signal?: AbortSignal): Promise<TReply>;
   yield<TReply>(signal?: AbortSignal): Promise<TReply>;
@@ -159,8 +151,6 @@ export interface ZLinkSpotManager {
 export interface ZLinkSpotCreateCall {
   inMesh(meshName: string): this;
   request(request: unknown): this;
-  placementProfile(placementProfile: ZLinkPlacementProfile): this;
-  affinityKey(affinityKey: ZLinkAffinityKey): this;
   timeout(timeoutMs: number): this;
   submit(signal?: AbortSignal): Promise<ZLinkSpotCreateResult>;
 }

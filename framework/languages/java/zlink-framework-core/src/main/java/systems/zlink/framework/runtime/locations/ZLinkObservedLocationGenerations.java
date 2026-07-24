@@ -27,9 +27,7 @@ final class ZLinkObservedLocationGenerations {
 
     boolean acceptSpot(ZLinkSpotLocation row) {
         return accept(
-            ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(
-                row.meshName(),
-                row.spotRid())),
+            ZLinkLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(row.spotId())),
             row.generation());
     }
 

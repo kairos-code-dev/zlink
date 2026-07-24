@@ -3,6 +3,7 @@
 
 #include "runtime/locations/location_key_codec.hpp"
 #include "runtime/locations/pending_creation_projection.hpp"
+#include "runtime/locations/sha256.hpp"
 #include <zlink/framework/contracts/locations/stores.hpp>
 
 #include <algorithm>
@@ -117,8 +118,11 @@ class in_memory_location_store_t final : public location_store_t,
         std::lock_guard lock (_gate);
         std::vector<mesh_node_descriptor_t> matched;
         for (const auto &[_, descriptor] : _mesh_nodes) {
-            if (descriptor.mesh_name == mesh_name)
-                matched.push_back (descriptor);
+            if (descriptor.mesh_name == mesh_name) {
+                auto projected = descriptor;
+                apply_capacity_projection (projected);
+                matched.push_back (std::move (projected));
+            }
         }
         const auto offset =
           page.continuation_token
@@ -424,7 +428,7 @@ class in_memory_location_store_t final : public location_store_t,
     {
         const auto mesh_name = spot.mesh_name;
         const auto key = location_key_codec_t::encode_spot_key (
-          spot_location_key_t{spot.mesh_name, spot.spot_rid});
+          spot_location_key_t{spot.spot_id});
         return completed (
           write (_spots, key, std::move (spot), intent, location_kind_t::spot, mesh_name));
     }
@@ -432,8 +436,19 @@ class in_memory_location_store_t final : public location_store_t,
     task_t<location_write_result_t> remove_spot (spot_location_key_t key,
                                                  location_owner_token_t owner) override
     {
-        return completed (remove (_spots, location_key_codec_t::encode_spot_key (key),
-                                  std::move (owner), location_kind_t::spot, key.mesh_name));
+        const auto encoded = location_key_codec_t::encode_spot_key (key);
+        std::lock_guard lock (_gate);
+        const auto found = _spots.rows.find (encoded);
+        if (found == _spots.rows.end () || found->second.owner_id != owner.owner_id
+            || found->second.generation != owner.generation) {
+            return completed (location_write_result_t{
+              location_write_status_t::ignored_stale, 0, {}});
+        }
+        const auto mesh_name = found->second.mesh_name;
+        _spots.rows.erase (found);
+        bump (location_kind_t::spot, mesh_name);
+        return completed (
+          location_write_result_t::stored (owner.generation, clock_t::now ()));
     }
 
     task_t<std::optional<spot_location_t>> resolve_spot (spot_location_key_t key) override
@@ -756,7 +771,6 @@ class in_memory_location_store_t final : public location_store_t,
                       capacity->second.request.target,
                       capacity->second.request.object_kind,
                       capacity->second.request.stable_type,
-                      std::nullopt,
                       now)
                     || !relocation_capacity_counters_available (
                       capacity->second))
@@ -879,6 +893,154 @@ class in_memory_location_store_t final : public location_store_t,
           authority_scan_result_t{std::move (page)});
     }
 
+    task_t<std::optional<creation_terminal_record_t>>
+    read_creation_terminal (
+      creation_operation_identity_t operation,
+      std::stop_token cancellation = {}) override
+    {
+        if (cancellation.stop_requested ())
+            return cancelled<std::optional<creation_terminal_record_t>> ();
+        std::lock_guard lock (_gate);
+        const auto key = creation_operation_key (operation);
+        const auto found = _creation_terminals.find (key);
+        if (found == _creation_terminals.end ()
+            || found->second.expires_at <= clock_t::now ()) {
+            if (found != _creation_terminals.end ())
+                _creation_terminals.erase (found);
+            return completed (
+              std::optional<creation_terminal_record_t>{});
+        }
+        return completed (
+          std::optional<creation_terminal_record_t>{found->second});
+    }
+
+    task_t<object_complete_creation_result_t>
+    complete_creation (
+      object_complete_creation_request_t request,
+      std::stop_token cancellation = {}) override
+    {
+        if (cancellation.stop_requested ())
+            return cancelled<object_complete_creation_result_t> ();
+        const auto publication = std::visit (
+          [] (const auto &value)
+            -> creation_terminal_publication_t {
+              return value.terminal;
+          },
+          request.completion);
+        if (publication.terminal_envelope.size () > 1024u * 1024u
+            || sha256 (publication.terminal_envelope)
+                 != publication.sha256)
+            throw std::invalid_argument (
+              "creation terminal envelope or SHA-256 is invalid");
+        const auto expires_at =
+          publication.operation_deadline + std::chrono::minutes (5);
+        std::lock_guard lock (_gate);
+        const auto now = clock_t::now ();
+        if (expires_at <= now)
+            throw std::invalid_argument (
+              "creation terminal expiry is not in the future");
+        const auto terminal_key =
+          creation_operation_key (publication.operation);
+        if (const auto existing = _creation_terminals.find (
+              terminal_key);
+            existing != _creation_terminals.end ()
+            && existing->second.expires_at > now)
+            return completed (
+              object_complete_creation_result_t{
+                object_creation_already_completed_result_t{
+                  existing->second}});
+
+        const auto key = object_key (request.key);
+        const auto reservation = _reservations.find (key);
+        if (reservation == _reservations.end ()
+            || !same_fence (
+              reservation->second.fence, request.fence))
+            return completed (
+              object_complete_creation_result_t{
+                object_creation_completion_stale_t{}});
+        auto authority = _authorities.find (key);
+        if (authority == _authorities.end ()
+            || authority->second.store_version
+                 != request.fence.expected_store_version)
+            return completed (
+              object_complete_creation_result_t{
+                object_creation_completion_conflict_t{
+                  authority == _authorities.end ()
+                    ? authority_read_result_t{
+                        authority_missing_t{now}}
+                    : authority_read_result_t{
+                        authority->second}}});
+
+        creation_terminal_record_t terminal{
+          publication.operation,
+          request.key,
+          request.fence,
+          std::holds_alternative<object_creation_completed_t> (
+            request.completion)
+            ? creation_terminal_state_t::created
+            : (std::holds_alternative<object_creation_rejected_t> (
+                 request.completion)
+                 ? creation_terminal_state_t::rejected
+                 : creation_terminal_state_t::failed),
+          publication.terminal_envelope,
+          publication.sha256,
+          expires_at};
+        std::optional<authority_snapshot_t> ready;
+        if (const auto *created =
+              std::get_if<object_creation_completed_t> (
+                &request.completion)) {
+            const auto descriptor = live_target_descriptor (
+              request.fence.target,
+              reservation->second.request.key.kind,
+              reservation->second.request.intent.stable_type,
+              now);
+            const auto capacity_key = target_capacity_key (
+              request.fence.target,
+              reservation->second.request.key.kind,
+              reservation->second.request.intent.stable_type);
+            const auto pending =
+              _pending_by_placement.find (capacity_key);
+            if (!descriptor
+                || pending == _pending_by_placement.end ()
+                || pending->second
+                     < request.fence.pending_capacity_delta)
+                return completed (
+                  object_complete_creation_result_t{
+                    object_creation_completion_conflict_t{
+                      authority->second}});
+            if (!store_revisions_available ())
+                return completed (
+                  object_complete_creation_result_t{
+                    authority_generation_exhausted_t{}});
+            authority->second.store_version =
+              next_store_version ();
+            authority->second.payload =
+              created->ready_payload;
+            authority->second.store_now = now;
+            authority->second.allocation.capacity_state =
+              placement_capacity_state_t::active;
+            reservation->second.snapshot = authority->second;
+            reservation->second.status =
+              reservation_status_t::committed;
+            release_pending (reservation->second);
+            _active_by_placement[capacity_key] +=
+              request.fence.pending_capacity_delta;
+            ready = authority->second;
+        } else {
+            _authorities.erase (authority);
+            _object_types.erase (key);
+            release_pending (reservation->second);
+            reservation->second.status =
+              reservation_status_t::aborted;
+        }
+        _creation_terminals.insert_or_assign (
+          terminal_key, terminal);
+        return completed (
+          object_complete_creation_result_t{
+            object_creation_completed_result_t{
+              std::move (terminal), std::move (ready)}});
+    }
+
     task_t<object_reserve_result_t> reserve (
       object_reserve_request_t request,
       std::stop_token cancellation = {}) override
@@ -915,7 +1077,6 @@ class in_memory_location_store_t final : public location_store_t,
             request.target,
             request.key.kind,
             request.intent.stable_type,
-            request.intent.placement_profile,
             now);
         if (!target_descriptor)
             return completed (
@@ -942,6 +1103,10 @@ class in_memory_location_store_t final : public location_store_t,
               request.target,
               request.key.kind,
               request.intent.stable_type)];
+        const auto typed_capacity_limit =
+          placement_limit (
+            *target_descriptor, request.key.kind,
+            request.intent.stable_type);
         if (request.pending_capacity_delta == 0
             || request.pending_capacity_delta
                  > static_cast<std::uint32_t> (
@@ -952,7 +1117,13 @@ class in_memory_location_store_t final : public location_store_t,
             || request.pending_capacity_delta > active_limit_value
             || active
                  > active_limit_value
-                     - request.pending_capacity_delta)
+                     - request.pending_capacity_delta
+            || (typed_capacity_limit != 0
+                && (request.pending_capacity_delta
+                      > typed_capacity_limit
+                    || active + pending
+                         > typed_capacity_limit
+                             - request.pending_capacity_delta)))
             return completed (
               object_reserve_result_t{
                 object_placement_capacity_exhausted_t{}});
@@ -1055,7 +1226,6 @@ class in_memory_location_store_t final : public location_store_t,
               request.fence.target,
               reservation->second.request.key.kind,
               reservation->second.request.intent.stable_type,
-              reservation->second.request.intent.placement_profile,
               now);
         const auto capacity_key = target_capacity_key (
           request.fence.target,
@@ -1223,7 +1393,6 @@ class in_memory_location_store_t final : public location_store_t,
             request.target,
             request.object_kind,
             request.stable_type,
-            std::nullopt,
             now);
         if (!target_descriptor)
             return completed (
@@ -1249,12 +1418,22 @@ class in_memory_location_store_t final : public location_store_t,
               request.target,
               request.object_kind,
               request.stable_type)];
+        const auto typed_capacity_limit =
+          placement_limit (
+            *target_descriptor, request.object_kind,
+            request.stable_type);
         if (request.capacity_delta > limit
             || target_pending
                  > limit - request.capacity_delta
             || request.capacity_delta > active_limit_value
             || target_active
-                 > active_limit_value - request.capacity_delta)
+                 > active_limit_value - request.capacity_delta
+            || (typed_capacity_limit != 0
+                && (request.capacity_delta
+                      > typed_capacity_limit
+                    || target_active + target_pending
+                         > typed_capacity_limit
+                             - request.capacity_delta)))
             return completed (
               relocation_capacity_reserve_result_t{
                 relocation_capacity_exhausted_t{}});
@@ -1429,7 +1608,6 @@ class in_memory_location_store_t final : public location_store_t,
                   reservation->second.request.target,
                   reservation->second.request.object_kind,
                   reservation->second.request.stable_type,
-                  std::nullopt,
                   clock_t::now ())
                 || !relocation_capacity_counters_available (
                   reservation->second))
@@ -1522,7 +1700,6 @@ class in_memory_location_store_t final : public location_store_t,
                   reservation->second.request.target,
                   reservation->second.request.object_kind,
                   reservation->second.request.stable_type,
-                  std::nullopt,
                   now))
                 return completed (
                   aggregate_commit_result_t::stale);
@@ -1743,6 +1920,7 @@ class in_memory_location_store_t final : public location_store_t,
         aggregate_status_t status = aggregate_status_t::prepared;
     };
 
+
     struct authority_scan_state_t
     {
         std::vector<authority_entry_t> entries;
@@ -1782,7 +1960,6 @@ class in_memory_location_store_t final : public location_store_t,
       const object_creation_target_t &target,
       placement_object_kind_t kind,
       const std::string &stable_type,
-      const std::optional<placement_profile_t> &profile,
       clock_t::time_point now) const
     {
         const auto found = _mesh_nodes.find (
@@ -1806,11 +1983,6 @@ class in_memory_location_store_t final : public location_store_t,
         const auto capability = find_capability (
           descriptor, kind, stable_type);
         if (!capability)
-            return nullptr;
-        if (profile
-            && capability->placement_profiles.find (
-                 std::string (profile->value ()))
-                 == capability->placement_profiles.end ())
             return nullptr;
         return &descriptor;
     }
@@ -1856,6 +2028,33 @@ class in_memory_location_store_t final : public location_store_t,
                  : descriptor.object_capacity.active_limit;
     }
 
+    static std::uint64_t placement_limit (
+      const mesh_node_descriptor_t &descriptor,
+      placement_object_kind_t kind,
+      const std::string &stable_type)
+    {
+        if (kind == placement_object_kind_t::actor)
+            return descriptor.placement_capacity.actors.limit < 0
+                     ? 0
+                     : static_cast<std::uint64_t> (
+                         descriptor.placement_capacity.actors.limit);
+        const auto typed = std::find_if (
+          descriptor.placement_capacity.spot_types.begin (),
+          descriptor.placement_capacity.spot_types.end (),
+          [&] (const spot_type_capacity_t &candidate) {
+              return candidate.object_kind == kind
+                     && candidate.stable_type == stable_type;
+          });
+        if (typed != descriptor.placement_capacity.spot_types.end ()
+            && typed->usage.limit > 0)
+            return static_cast<std::uint64_t> (
+              typed->usage.limit);
+        return descriptor.placement_capacity.spots.limit < 0
+                 ? 0
+                 : static_cast<std::uint64_t> (
+                     descriptor.placement_capacity.spots.limit);
+    }
+
     static bool valid_mesh_node_descriptor (
       const mesh_node_descriptor_t &descriptor)
     {
@@ -1866,7 +2065,8 @@ class in_memory_location_store_t final : public location_store_t,
             || descriptor.descriptor_revision > max_generation
             || descriptor.endpoint.empty ()
             || descriptor.application_version < 0
-            || descriptor.placement_weight > 100
+            || descriptor.placement_weight < 0
+            || descriptor.placement_weight > 10000
             || descriptor.object_capacity.active
                  > descriptor.object_capacity.active_limit
             || descriptor.object_capacity.pending
@@ -1881,15 +2081,24 @@ class in_memory_location_store_t final : public location_store_t,
             || descriptor.owner_id.empty ()
             || descriptor.lease_generation <= 0
             || descriptor.object_capabilities.size () > 1024
+            || descriptor.placement_capacity.actors.limit < 0
+            || descriptor.placement_capacity.spots.limit < 0
+            || descriptor.placement_capacity.spot_types.size ()
+                 > 1024
             || (descriptor.object_role != object_role_t::server
                 && !descriptor.object_capabilities.empty ()))
             return false;
+        for (const auto &[name, weight] :
+             descriptor.channel_weights) {
+            if (name.empty () || weight < 0
+                || weight > 10000)
+                return false;
+        }
         std::pair<int, std::string> previous;
         bool first = true;
         for (const auto &capability :
              descriptor.object_capabilities) {
             if (capability.stable_type.empty ()
-                || capability.placement_profiles.size () > 1024
                 || ((capability.policy
                        == maintenance_policy_kind_t::snapshot)
                     != capability.has_snapshot_adapter)
@@ -1912,6 +2121,28 @@ class in_memory_location_store_t final : public location_store_t,
             previous = key;
             first = false;
         }
+        std::pair<int, std::string> previous_capacity;
+        first = true;
+        for (const auto &typed :
+             descriptor.placement_capacity.spot_types) {
+            if (typed.stable_type.empty ()
+                || typed.object_kind
+                     == placement_object_kind_t::actor
+                || typed.usage.limit < 0
+                || (typed.usage.limit > 0
+                    && typed.usage.active
+                         + typed.usage.reserved
+                       > static_cast<std::uint64_t> (
+                           typed.usage.limit)))
+                return false;
+            const auto key = std::make_pair (
+              static_cast<int> (typed.object_kind),
+              typed.stable_type);
+            if (!first && previous_capacity >= key)
+                return false;
+            previous_capacity = key;
+            first = false;
+        }
         return true;
     }
 
@@ -1924,8 +2155,6 @@ class in_memory_location_store_t final : public location_store_t,
                && left.policy == right.policy
                && left.has_snapshot_adapter
                     == right.has_snapshot_adapter
-               && left.placement_profiles
-                    == right.placement_profiles
                && left.active_limit == right.active_limit
                && left.pending_limit == right.pending_limit;
     }
@@ -1949,6 +2178,7 @@ class in_memory_location_store_t final : public location_store_t,
                && left.lifecycle_generation
                     == right.lifecycle_generation
                && left.endpoint == right.endpoint
+               && left.entry_spot_id == right.entry_spot_id
                && left.application_version
                     == right.application_version
                && same_channel_names (
@@ -1961,6 +2191,20 @@ class in_memory_location_store_t final : public location_store_t,
                     == right.object_capacity.active_limit
                && left.object_capacity.pending_limit
                     == right.object_capacity.pending_limit
+               && left.placement_capacity.actors.limit
+                    == right.placement_capacity.actors.limit
+               && left.placement_capacity.spots.limit
+                    == right.placement_capacity.spots.limit
+               && std::equal (
+                 left.placement_capacity.spot_types.begin (),
+                 left.placement_capacity.spot_types.end (),
+                 right.placement_capacity.spot_types.begin (),
+                 right.placement_capacity.spot_types.end (),
+                 [] (const auto &lhs, const auto &rhs) {
+                     return lhs.object_kind == rhs.object_kind
+                            && lhs.stable_type == rhs.stable_type
+                            && lhs.usage.limit == rhs.usage.limit;
+                 })
                && left.security_identity
                     == right.security_identity;
     }
@@ -1978,6 +2222,26 @@ class in_memory_location_store_t final : public location_store_t,
                     == right.object_capacity.active
                && left.object_capacity.pending
                     == right.object_capacity.pending
+               && left.placement_capacity.actors.active
+                    == right.placement_capacity.actors.active
+               && left.placement_capacity.actors.reserved
+                    == right.placement_capacity.actors.reserved
+               && left.placement_capacity.spots.active
+                    == right.placement_capacity.spots.active
+               && left.placement_capacity.spots.reserved
+                    == right.placement_capacity.spots.reserved
+               && std::equal (
+                 left.placement_capacity.spot_types.begin (),
+                 left.placement_capacity.spot_types.end (),
+                 right.placement_capacity.spot_types.begin (),
+                 right.placement_capacity.spot_types.end (),
+                 [] (const auto &lhs, const auto &rhs) {
+                     return lhs.object_kind == rhs.object_kind
+                            && lhs.stable_type == rhs.stable_type
+                            && lhs.usage.active == rhs.usage.active
+                            && lhs.usage.reserved == rhs.usage.reserved
+                            && lhs.usage.limit == rhs.usage.limit;
+                 })
                && left.maintenance_wave
                     == right.maintenance_wave
                && left.state == right.state
@@ -1996,7 +2260,7 @@ class in_memory_location_store_t final : public location_store_t,
                && descriptor.descriptor_revision <= max_generation
                && !descriptor.endpoint.empty ()
                && descriptor.weight >= 0
-               && descriptor.weight <= 100
+               && descriptor.weight <= 10000
                && !descriptor.security_identity.empty ()
                && !descriptor.owner_id.empty ()
                && descriptor.lease_generation > 0;
@@ -2171,6 +2435,19 @@ class in_memory_location_store_t final : public location_store_t,
                + ":" + key.global_id;
     }
 
+    static std::string creation_operation_key (
+      const creation_operation_identity_t &identity)
+    {
+        return std::string (identity.source_node_rid.value ())
+               + ":" + std::to_string (
+                 identity.source_node_generation)
+               + ":" + std::to_string (
+                 identity.operation_id.high)
+               + ":" + std::to_string (
+                 identity.operation_id.low);
+    }
+
+
     static bool same_owner (
       const location_owner_token_t &left,
       const location_owner_token_t &right)
@@ -2334,6 +2611,63 @@ class in_memory_location_store_t final : public location_store_t,
                + "\x1f"
                + std::to_string (static_cast<int> (kind))
                + "\x1f" + stable_type;
+    }
+
+    void apply_capacity_projection (
+      mesh_node_descriptor_t &descriptor) const
+    {
+        descriptor.placement_capacity.actors.active = 0;
+        descriptor.placement_capacity.actors.reserved = 0;
+        descriptor.placement_capacity.spots.active = 0;
+        descriptor.placement_capacity.spots.reserved = 0;
+        const object_creation_target_t target{
+          descriptor.mesh_name,
+          node_rid_t::from_string (descriptor.rid.to_string ()),
+          descriptor.lifecycle_generation,
+          {descriptor.owner_id, descriptor.lease_generation}};
+        for (const auto &capability :
+             descriptor.object_capabilities) {
+            const auto key = target_capacity_key (
+              target, capability.object_kind,
+              capability.stable_type);
+            const auto active = _active_by_placement.find (key);
+            const auto reserved =
+              _pending_by_placement.find (key);
+            const auto active_count =
+              active == _active_by_placement.end ()
+                ? 0u
+                : active->second;
+            const auto reserved_count =
+              reserved == _pending_by_placement.end ()
+                ? 0u
+                : reserved->second;
+            if (capability.object_kind
+                == placement_object_kind_t::actor) {
+                descriptor.placement_capacity.actors.active
+                  += active_count;
+                descriptor.placement_capacity.actors.reserved
+                  += reserved_count;
+                continue;
+            }
+            descriptor.placement_capacity.spots.active
+              += active_count;
+            descriptor.placement_capacity.spots.reserved
+              += reserved_count;
+            const auto typed = std::find_if (
+              descriptor.placement_capacity.spot_types.begin (),
+              descriptor.placement_capacity.spot_types.end (),
+              [&] (const spot_type_capacity_t &candidate) {
+                  return candidate.object_kind
+                           == capability.object_kind
+                         && candidate.stable_type
+                              == capability.stable_type;
+              });
+            if (typed
+                != descriptor.placement_capacity.spot_types.end ()) {
+                typed->usage.active = active_count;
+                typed->usage.reserved = reserved_count;
+            }
+        }
     }
 
     static std::string allocation_capacity_key (
@@ -2656,7 +2990,7 @@ class in_memory_location_store_t final : public location_store_t,
         return (!filter.mesh_name || row.mesh_name == *filter.mesh_name)
                && (!filter.actor_type || row.actor_type == *filter.actor_type)
                && (!filter.owner_node_rid || row.owner_node_rid == *filter.owner_node_rid)
-               && (!filter.spot_rid || row.spot_rid == *filter.spot_rid)
+               && (!filter.spot_id || row.spot_id == *filter.spot_id)
                && (!filter.spot_kind || row.spot_kind == *filter.spot_kind);
     }
 
@@ -2684,6 +3018,8 @@ class in_memory_location_store_t final : public location_store_t,
     std::map<std::string, authority_snapshot_t> _authorities;
     std::map<std::string, std::string> _object_types;
     std::map<std::string, reservation_state_t> _reservations;
+    std::map<std::string, creation_terminal_record_t>
+      _creation_terminals;
     std::map<std::string, relocation_capacity_state_t>
       _relocation_capacity_reservations;
     std::map<std::string, std::string>

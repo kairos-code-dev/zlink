@@ -9,7 +9,7 @@ namespace GameQuest.GameApi.Infrastructure.ZLink;
 
 [ZLinkHandlerGroup(SampleNames.GameApiHandlerGroup)]
 internal sealed class QuestProgressNotifyHandler(
-    IZLinkActorDirectory actors,
+    IZLinkActorManager actors,
     IZLinkActorClient actorClient)
     : IZLinkSendHandler<QuestProgressNotify>
 {
@@ -28,7 +28,7 @@ internal sealed class QuestProgressNotifyHandler(
 
 [ZLinkHandlerGroup(SampleNames.GameApiHandlerGroup)]
 internal sealed class QuestCompletedNotifyHandler(
-    IZLinkActorDirectory actors,
+    IZLinkActorManager actors,
     IZLinkActorClient actorClient)
     : IZLinkSendHandler<QuestCompletedNotify>
 {

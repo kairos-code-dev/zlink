@@ -50,9 +50,9 @@ public interface IZLinkMeshNodeBuilder
     IZLinkMeshNodeBuilder SetRoutingId(RoutingId routingId);
     IZLinkMeshNodeBuilder SetRoutingIdPrefix(string prefix);
     IZLinkMeshNodeBuilder SetPlacementWeight(int weight);
-    IZLinkMeshNodeBuilder SetObjectCapacity(
-        int maxActiveObjects,
-        int maxPendingActivations);
+    IZLinkMeshNodeBuilder SetActorLimit(int limit);
+    IZLinkMeshNodeBuilder SetSpotLimit(int limit);
+    IZLinkMeshNodeBuilder SetActivationConcurrency(int limit);
     IZLinkMeshObjectRoleBuilder Objects();
     IZLinkMeshNodeSocketConfig ConfigureRouterSocket();
     IZLinkSpotPublisherConfig ConfigureSpotPublisher();
@@ -88,28 +88,45 @@ public interface IZLinkMeshObjectServerBuilder
         where TEntrySpot : class, IZLinkEntrySpot;
     IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
         string spotType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkUserSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkSpot;
     IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkInstanceSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkInstanceSpot;
     IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkActorFactoryOptions? options,
         ZLinkRelocationPolicy<TActor> relocation)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>;
 }
 
-public sealed record ZLinkObjectPlacementOptions
+public enum ZLinkUserSpotExecutionMode
 {
-    public IReadOnlyCollection<string> PlacementProfiles { get; init; }
+    SpotWide = 0,
+    PerActor = 1
+}
+
+public sealed record ZLinkActorFactoryOptions
+{
         = Array.Empty<string>();
-    public int? MaxActiveObjects { get; init; }
-    public int? MaxPendingActivations { get; init; }
+}
+
+public sealed record ZLinkUserSpotFactoryOptions
+{
+        = Array.Empty<string>();
+    public int StableTypeLimit { get; init; }
+    public ZLinkUserSpotExecutionMode ExecutionMode { get; init; }
+        = ZLinkUserSpotExecutionMode.SpotWide;
+}
+
+public sealed record ZLinkInstanceSpotFactoryOptions
+{
+        = Array.Empty<string>();
+    public int StableTypeLimit { get; init; }
 }
 
 public interface IZLinkNetworkOptions
@@ -275,9 +292,10 @@ Publisher는 descriptor만 게시하고 subscriber endpoint로 outbound connect�
 publisher endpoint로 connect하며 automatic subscriber는 Publisher RID와 lifecycle generation마다 connection
 intent 하나를 만든다.
 
-Automatic RID는 `prefix-<32 lowercase hex>` 형식이다. Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자이고 full
-RID는 UTF-8 255 bytes 이하다. Active owner 충돌은 새 suffix로 최대 8회 재시도하며 모두 충돌하면
-`RoutingIdConflict`다. Fixed `SetRoutingId(...)`는 object role과 Store descriptor가 없는 manual topology에서만
+Automatic RID는 `prefix-<uuid-v4>` 형식이다. `<uuid-v4>`는 RFC 4122 UUID v4를 lowercase canonical
+36-character `8-4-4-4-12` 형식으로 encode한 값이다. Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자이고 full
+RID는 UTF-8 255 bytes 이하다. 첫 active owner 충돌에서 기존 record를 변경하지 않고 startup을
+`RoutingIdConflict`로 실패시킨다. Fixed `SetRoutingId(...)`는 object role과 Store descriptor가 없는 manual topology에서만
 허용한다. Slot count, allocation group과 public allocation provider는 제공하지 않는다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
@@ -313,13 +331,29 @@ MeshNode가 이 값을 게시하며 음수는 startup 전에 `ZLinkConfiguration
 client를 제공하지만 placement target이 되지 않는다. `Server()`는 Client capability를 포함하며 Entry Spot과
 factory를 등록한다. 두 role은 Location Store가 필수다. Role은 한 번만 선택할 수 있다.
 
-Actor·User Spot·Instance Spot factory는 stable type, placement option과 explicit relocation policy를 같은
-registration에서 고정한다. Policy를 생략하는 overload는 없다. Stable type과 placement profile은 UTF-8
-1..255 bytes이고 중복 type은 startup 오류다. Entry Spot RID는 Framework가 발급한다.
+Actor·User Spot·Instance Spot factory는 stable type, typed factory option과 explicit relocation policy를 같은
+registration에서 고정한다. Policy를 생략하는 overload는 없다. Stable type은 UTF-8
+1..255 bytes이고 중복 type은 startup 오류다. User Spot execution mode는 factory registration에서 고정하며
+기본값은 `SpotWide`다. `PerActor`에서는 Actor별 lane, Spot direct·lifecycle lane과 timer별 lane이 독립적으로
+진행하고 close·relocation·snapshot은 모든 lane의 active claim이 끝난 all-lane barrier에서만 진행한다.
+정의되지 않은 execution mode 값은 startup 전에 `ZLinkConfigurationException`이다.
+Entry Spot ID는 Framework가 발급한다.
 
-Node placement weight는 0..100이고 기본값은 100이다. Node capacity 기본값은 active 10,000, pending 128이다.
-Type별 limit은 `null`이면 node limit을 공유하고 값이 있으면 1..`int.MaxValue`이며 node limit보다 작은 값을
-적용한다. Capacity를 weight보다 먼저 적용하고 eligible node가 없으면 `PlacementCapacityExhausted`다.
+Entry Spot ID를 설정하는 builder member는 제공하지 않는다. Object Server는 MeshNode diagnostic prefix를
+사용해 `<prefix>-entry-<uuid-v4>` 형식의 RID를 lifecycle마다 발급한다. `<uuid-v4>`는 RFC 4122 UUID v4의
+lowercase canonical 36-character `8-4-4-4-12` 표현이며 MeshNode RID의 UUID와 독립적으로 발급한다. 같은
+lifecycle에서는 유지하고 replacement lifecycle에서는 새 UUID를 발급한다. Global Spot namespace의 첫
+active conflict에서 기존 record를 변경하지 않고 socket bind 전에 `RoutingIdConflict`로 startup을 실패한다.
+
+Node placement weight는 signed `int` `0..10000`이고 기본값은 `100`이다. 범위 밖 startup 설정은
+`ZLinkConfigurationException`이다. Positive 값은 eligible node 사이의 상대적 선택 비중이다. Actor limit과
+Spot limit은 각각 기본값 `0`이며 제한
+없음을 뜻한다. User·Instance Spot의 `StableTypeLimit`도 기본값 `0`이며 Actor stable type별 limit은 제공하지
+않는다. 이 limit은 `0` 또는 양수여야 하고 음수는 socket bind 전에 `ZLinkConfigurationException`이다.
+Activation concurrency는 기본값 128인 별도 process-local gate이며 양수만 허용한다. Population capacity를
+weight보다 먼저 적용하고 eligible node가 없으면 `PlacementCapacityExhausted`다.
+모든 population limit과 activation concurrency limit은 MeshNode lifecycle 시작 전에 고정하고 실행 중에
+변경하지 않는다.
 
 ## 3. Manual peer
 
@@ -337,12 +371,14 @@ public interface IZLinkMeshPeerConnections
 }
 ```
 
-`AddInstanceSpotFactory`의 type 이름은 비어 있을 수 없고 UTF-8로 255 byte 이하여야 한다. Type별 active와
-pending limit은 생략할 수 있지만 명시한 값은 1..`int.MaxValue`다.
+`AddInstanceSpotFactory`의 type 이름은 비어 있을 수 없고 UTF-8로 255 byte 이하여야 한다.
+`StableTypeLimit`은 `0`이면 제한 없음이고 양수이면 해당 Instance Spot type의 population 상한이다. 음수는
+startup configuration error다.
 같은 MeshNode에서 같은 stable type 또는 같은 implementation class를
 User Spot factory와 Instance factory에 중복 등록할 수 없다. `TSpot`이 닫힌 generic
 `IZLinkSpotActorLifecycle<TActor>`도 구현하면
-actor-free 계약과 충돌하므로 startup이 실패한다. 두 option은 local MeshNode와 Instance type별로 적용한다.
+actor-free 계약과 충돌하므로 startup이 실패한다.
+`StableTypeLimit`은 local MeshNode의 해당 Instance type에 적용한다.
 등록한 type set은 descriptor를 처음 게시하기 전에 고정하며 startup 이후 변경하지 않는다.
 
 `ZLinkRelocationPolicy<TInstance>.Snapshot<TAdapter>()`은 state type이나 state contract ID를 받지 않는다. Actor
@@ -364,9 +400,11 @@ handler는 MeshNode builder에 등록하며 source RID를 제공하는 route han
 send/request handler를 해당 ChannelName에 노출한다. TicTacToe처럼 수동 등록을 보여 주는 경우에만
 typed `AddSendHandler(...)`·`AddRequestHandler(...)`를 직접 사용한다.
 
-`IZLinkMeshChannelServerBuilder`와 `IZLinkClientServerChannelServerBuilder`의 weight는 0부터 100까지다.
-0은 해당 channel의 새 select-one과 RouteMesh Logical Multicast remote target에서만
-제외한다. RID direct route, 다른 membership과 이미 제출한 operation에는 영향을 주지 않는다.
+`IZLinkMeshChannelServerBuilder`와 `IZLinkClientServerChannelServerBuilder`의 weight는 signed `int`
+`0..10000`이고 기본값은 `100`이다. `1..10000`은 eligible target 사이의 상대적 선택 비중이다. 범위 밖
+startup 설정은 `ZLinkConfigurationException`이다. 0은 해당
+channel의 새 select-one과 RouteMesh Logical Multicast remote target에서만 제외한다. RID direct route,
+다른 membership과 이미 제출한 operation에는 영향을 주지 않는다.
 
 ## 5. Publisher와 runtime option
 
@@ -464,7 +502,10 @@ mailbox의 메시지 수와 byte 수 상한이다. 0은 Framework profile의 유
 두 weight는 서로 독립적이며 node weight는 object create·relocation target selection에만 사용한다.
 ChannelName은 local RouteMesh 또는 ClientServer Server 등록을 유일하게 고른다. HWM과 timeout은
 `ConfigureRouterSocket()`에서 startup 전에 설정한다. MeshNode가 지원하지 않는 raw ROUTER option을 이
-interface에 노출하지 않는다.
+interface에 노출하지 않는다. Runtime weight도 `0..10000`이며 범위 밖 값은
+`ZLinkConfigurationException`이다. 변경은 descriptor revision으로 순서화하고 이후 target 선택에만
+적용한다. Eligibility와 capacity를 먼저 적용한 뒤 weight 합계를 최소 64-bit integer로 계산한다.
+Logical Multicast는 positive member를 각각 한 번만 포함한다.
 
 `MaxMessageSize`는 startup 전에만 설정하며 실행 중 setter를 제공하지 않는다. `0`은 bindings 또는
 transport가 수신할 수 있는 최대 complete message 크기로 정규화한다. Transport가 unlimited이면 service

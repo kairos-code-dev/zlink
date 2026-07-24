@@ -142,12 +142,12 @@ final class ActorRuntimeFakeBackendTest {
                 node.addSpotFactory(GameSpot.class); node.addActorFactory("player", PlayerActorFactory.class); }; };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
-        RoutingId spotRid = RoutingId.from("game-1");
+        String spotId = RoutingId.from("game-1");
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
             runtime.spotManager()
-                .create(GameSpot.class, spotRid)
+                .create(GameSpot.class, spotId)
                 .toCompletableFuture()
                 .join();
             ZLinkActor actor = managedActor(runtime, "player-1", "player");
@@ -156,7 +156,7 @@ final class ActorRuntimeFakeBackendTest {
                 .generation();
 
             var joined = actor.context()
-                .joinSpot(spotRid, "join-request")
+                .joinSpot(spotId, "join-request")
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -166,15 +166,15 @@ final class ActorRuntimeFakeBackendTest {
             assertEquals("player-1", accepted(joined).actor().actorId());
             assertEquals(RoutingId.from("spot-node"), accepted(joined).actor().nodeRid());
             assertEquals(sourceGeneration, accepted(joined).actor().generation());
-            assertEquals(Optional.of(spotRid), actor.context().spotRid());
-            assertEquals(Optional.of(spotRid), actor.context().spotRid());
+            assertEquals(Optional.of(spotId), actor.context().spotId());
+            assertEquals(Optional.of(spotId), actor.context().spotId());
 
             actor.context()
                 .joinEntrySpot(RoutingId.from("entry-node"), ZLinkMessage.empty())
                 .submit(Message.class)
                 .toCompletableFuture()
                 .join();
-            assertEquals(Optional.of(RoutingId.from("entry-node")), actor.context().spotRid());
+            assertEquals(Optional.of(RoutingId.from("entry-node")), actor.context().spotId());
         }
 
         assertEquals(
@@ -194,7 +194,7 @@ final class ActorRuntimeFakeBackendTest {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         CustomJoinSerializer serializer = new CustomJoinSerializer();
-        RoutingId spotRid = RoutingId.from("custom-codec-room");
+        String spotId = RoutingId.from("custom-codec-room");
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.newFrameworkRuntime(
@@ -209,13 +209,13 @@ final class ActorRuntimeFakeBackendTest {
                 reply.close();
             }
             runtime.spotManager()
-                .create(CustomCodecJoinSpot.class, spotRid)
+                .create(CustomCodecJoinSpot.class, spotId)
                 .toCompletableFuture()
                 .join();
             ZLinkActor actor = managedActor(runtime, "player-custom", "player");
 
             ZLinkActorJoinResult<CustomJoinReply> joined = actor.context()
-                .joinSpot(spotRid, new CustomJoinRequest("custom"))
+                .joinSpot(spotId, new CustomJoinRequest("custom"))
                 .submit(CustomJoinReply.class)
                 .toCompletableFuture()
                 .join();
@@ -236,7 +236,7 @@ final class ActorRuntimeFakeBackendTest {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         ZLinkMessageSerializer serializer = serializerWith(ZLinkProtobufCodec.defaultCodec());
-        RoutingId spotRid = RoutingId.from("protobuf-codec-room");
+        String spotId = RoutingId.from("protobuf-codec-room");
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
@@ -247,13 +247,13 @@ final class ActorRuntimeFakeBackendTest {
                 reply.close();
             }
             runtime.spotManager()
-                .create(ProtobufJoinSpot.class, spotRid)
+                .create(ProtobufJoinSpot.class, spotId)
                 .toCompletableFuture()
                 .join();
             ZLinkActor actor = managedActor(runtime, "player-protobuf", "player");
 
             ZLinkActorJoinResult<StringValue> joined = actor.context()
-                .joinSpot(spotRid, StringValue.of("proto"))
+                .joinSpot(spotId, StringValue.of("proto"))
                 .submit(StringValue.class)
                 .toCompletableFuture()
                 .join();
@@ -273,7 +273,7 @@ final class ActorRuntimeFakeBackendTest {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         ZLinkMessageSerializer serializer = serializerWith(ZLinkMessagePackCodec.defaultCodec());
-        RoutingId spotRid = RoutingId.from("messagepack-codec-room");
+        String spotId = RoutingId.from("messagepack-codec-room");
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
@@ -284,13 +284,13 @@ final class ActorRuntimeFakeBackendTest {
                 reply.close();
             }
             runtime.spotManager()
-                .create(MessagePackJoinSpot.class, spotRid)
+                .create(MessagePackJoinSpot.class, spotId)
                 .toCompletableFuture()
                 .join();
             ZLinkActor actor = managedActor(runtime, "player-messagepack", "player");
 
             ZLinkActorJoinResult<PackedJoinReply> joined = actor.context()
-                .joinSpot(spotRid, new PackedJoinRequest("msgpack"))
+                .joinSpot(spotId, new PackedJoinRequest("msgpack"))
                 .submit(PackedJoinReply.class)
                 .toCompletableFuture()
                 .join();
@@ -314,7 +314,7 @@ final class ActorRuntimeFakeBackendTest {
             stream.registerSession(DestroySession.class); };
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
-        RoutingId spotRid = RoutingId.from("game-1");
+        String spotId = RoutingId.from("game-1");
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, backendFactory)) {
@@ -396,12 +396,12 @@ final class ActorRuntimeFakeBackendTest {
             assertEquals(0, EntrySpot.leftCount);
 
             runtime.spotManager()
-                .create(GameSpot.class, spotRid)
+                .create(GameSpot.class, spotId)
                 .toCompletableFuture()
                 .join();
             ZLinkActor roomActor = managedActor(runtime, "player-room-destroy", "player");
             roomActor.context()
-                .joinSpot(spotRid, "join-request")
+                .joinSpot(spotId, "join-request")
                 .submit(String.class)
                 .toCompletableFuture()
                 .join();
@@ -585,7 +585,7 @@ final class ActorRuntimeFakeBackendTest {
                 .join();
 
             assertEquals(RoutingId.from("native-remote-node"), accepted(joined).actor().nodeRid());
-            assertEquals(Optional.of(RoutingId.from("native-remote-room")), actor.context().spotRid());
+            assertEquals(Optional.of(RoutingId.from("native-remote-room")), actor.context().spotId());
         }
 
         assertEquals(

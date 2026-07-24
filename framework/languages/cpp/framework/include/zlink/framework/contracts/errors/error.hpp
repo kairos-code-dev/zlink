@@ -46,7 +46,8 @@ enum class framework_error_kind_t
     routing_id_conflict = 31,
     spot_generation_stale = 32,
     spot_moving = 33,
-    relocation_data_lost = 34
+    relocation_data_lost = 34,
+    spot_id_conflict = 35
 };
 
 namespace detail

@@ -37,6 +37,14 @@ public interface IZLinkRequestCall : IZLinkMetadataCall<IZLinkRequestCall>
     IZLinkRequestCall Timeout(TimeSpan timeout);
     ValueTask<TReply> Async<TReply>(
         CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkChannelRequestCall :
+    IZLinkMetadataCall<IZLinkChannelRequestCall>
+{
+    IZLinkChannelRequestCall Timeout(TimeSpan timeout);
+    ValueTask<TReply> Async<TReply>(
+        CancellationToken cancellationToken = default);
     ValueTask<TReply> Yield<TReply>(
         CancellationToken cancellationToken = default);
 }
@@ -142,6 +150,17 @@ completion으로 처리한다. Timeout이나 cancellation 뒤에는 operation을
 Worker call의 `Submit`, `Async`와 `Yield`는
 [비동기 실행 정책 §1.2](../../../../04-async-execution-policy.ko.md#12-worker-offload)의 완료 의미를 따른다.
 Worker option은 host가 시작되기 전에만 설정할 수 있다.
+
+`Yield` terminal은 `RequestToChannel`, `RequestToSpot`, `RequestToActor`, `RunIoWorker`와
+`RunCpuWorker`가 만든 call에만 존재한다. Actor join, Node direct request, create·get-or-create, send,
+publish, timer 등록, close와 destroy에는 제공하지 않는다. 공통 request·worker call이더라도 Runtime은
+operation submit 전에 current execution context를 확인한다. `SpotWide` User Spot 또는 Instance Spot
+application handler가 아니면 outbound admission, queue 변경과 gate 반환 없이
+`InvalidConfiguration`으로 완료한다.
+
+`SpotWide` Member Actor가 `Yield`하면 Actor queue claim은 유지하고 User Spot gate만 반환한다. Terminal
+continuation은 같은 gate를 다시 얻어 현재 Actor job을 끝낸 뒤 Actor claim을 해제한다. 같은 Actor의 다음
+job은 그 전에 시작하지 않는다. `PerActor` User Spot과 Entry Spot에서는 `Yield`를 허용하지 않는다.
 
 Assembly scan에서 사용하는 최소 attribute 표면은 다음과 같다.
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using System.Reflection;
 using Zlink.Framework.AspNetCore;
 using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.Runtime.Actors;
 using Zlink.Framework.Runtime.Handlers;
 using Zlink.Framework.Runtime.Locations;
 using Zlink.Framework.Runtime.Streams;
@@ -753,7 +754,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public async Task AddZLinkFramework_Registers_ActorDirectory_With_LocationStore_Without_ActorFactory()
+    public async Task AddZLinkFramework_Registers_Internal_ActorResolver_With_LocationStore_Without_ActorFactory()
     {
         var services = new ServiceCollection();
 
@@ -763,7 +764,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         });
 
         await using var provider = services.BuildServiceProvider();
-        Assert.NotNull(provider.GetService<IZLinkActorDirectory>());
+        Assert.NotNull(provider.GetService<IZLinkActorResolver>());
         Assert.Null(provider.GetService<IZLinkActorManager>());
     }
 
@@ -888,7 +889,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 options.AddRouteMesh("spot")
                     .Listen("inproc://allocated-entry")
                     .UseAllocatedRoutingId(10)
-                    .SetEntrySpotRoutingId(RoutingId.From("entry")).ChannelName("spot");
+                    .SetEntrySpotId(RoutingId.From("entry")).ChannelName("spot");
             }));
 
         Assert.Throws<ZLinkConfigurationException>(() =>

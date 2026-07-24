@@ -63,11 +63,7 @@ export interface ZLinkBackendMeshNode {
     readonly pendingCapacityLimit: number;
     readonly objectCapabilities: readonly string[];
   }): void;
-  selectObjectPlacement(
-    stableType: string,
-    placementProfile?: string,
-    affinityKey?: string
-  ): {
+  selectObjectPlacement(stableType: string): {
     readonly targetNodeRid: string;
     readonly targetNodeGeneration: bigint;
     readonly descriptorVersion: string;

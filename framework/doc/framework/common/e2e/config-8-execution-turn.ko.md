@@ -4,8 +4,8 @@
 
 # Config 8 — 실행 turn과 terminator 배포
 
-Spot과 Entry Spot handler가 request, actor join, worker, HTTP client 호출을 기다릴 때
-**실행 줄의 turn을 어떻게 다루는지**를 실제 배포 구성에서 검증한다.
+User Spot, Instance Spot과 Actor handler가 request, actor join과 worker 완료를 기다릴 때
+**실행 lane의 권한을 어떻게 다루는지**를 실제 배포 구성에서 검증한다.
 
 **핵심 계약은 하나다** — [04 §1.1](../../spec/04-async-execution-policy.ko.md).
 
@@ -13,19 +13,21 @@ Spot과 Entry Spot handler가 request, actor join, worker, HTTP client 호출을
 |---|---|
 | **submit 의미** | one-way. 완료를 기다리지 않는다 |
 | **async 의미** | **turn을 유지한다.** 대기 중 같은 owner의 다른 callback이 시작하지 않는다. **handler = 하나의 turn** |
-| **yield 의미** | **turn을 반납한다.** 대기 중 같은 owner의 다른 callback이 실행되고, 완료된 continuation은 큐에 재삽입되어 새 turn으로 재개된다 |
+| **yield 의미** | `SpotWide` User Spot 또는 Instance Spot의 **공유 execution gate만 반납한다.** 완료된 continuation은 같은 gate의 queue에 재삽입되어 새 turn으로 재개된다. Member Actor의 FIFO claim은 반납하지 않는다 |
 
-Call object는 operation 종류에 맞는 terminator만 제공한다. 언어별 API 이름은 달라도 위 완료 의미를
-섞지 않는다. Mutable state를 가로질러 기다려야 하는 호출자는 turn 유지 의미를 사용하고, turn을 반납한
+`Yield`는 Channel·Spot·Actor request와 I/O·CPU worker call에만 제공한다. `SpotWide` User Spot과
+Instance Spot 밖에서 공통 call type의 `Yield`를 호출하면 operation을 제출하기 전에
+`InvalidConfiguration`으로 끝난다. Actor join, create, send, publish, timer 등록, close와 destroy에는
+`Yield`가 없다. Mutable state를 가로질러 기다려야 하는 호출자는 `Async`를 사용하고, 공유 gate를 반납한
 뒤에는 대기 전에 읽은 상태를 다시 확인한다.
 
 ## 1. 목적과 범위
 
-- 다룬다: 세 terminator의 실행 줄 의미, actor·timer mailbox 격리, CPU/IO worker 분리,
-  HTTP client의 `yield`, local/remote Spot topology, MeshNode routed path 경유 handler,
+- 다룬다: 세 terminator의 실행 줄 의미, `SpotWide` 이중 claim, `PerActor` actor·timer lane,
+  CPU/IO worker 분리, local/remote Spot topology, MeshNode routed path 경유 handler,
   timeout·cancellation·shutdown 때의 cleanup.
 - 다루지 않는다: 처리량 수치(공통 perf 문서), codec 변주(Config 4), store 장애·복구(Config 6).
-- **turn 관리 대상**: Spot outbound request, actor join, worker offload, framework HTTP client 호출.
+- **turn 관리 대상**: Channel·Spot·Actor outbound request, actor join과 worker offload.
   일반 send/publish는 one-way submit 계약을 검증한다. 사용자가 만든 임의 async 작업을 framework
   terminator로 가장하지 않는다.
 
@@ -34,7 +36,7 @@ Call object는 operation 종류에 맞는 terminator만 제공한다. 언어별 
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 쓰는 공유 Redis. 실행마다 전용 key prefix. 각 노드는 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록한다. |
-| play 노드 | 2 (`play-a`, `play-b`) | Location Store를 등록한 Object Server. Entry Spot, stable User Spot type `turn-probe.spot`, stable Actor type `turn-probe.actor`의 factory를 제공한다. 두 factory는 명시적 `Disabled` policy를 사용하고 placement weight `100`, node capacity active `128`·pending `32`를 고정한다. `TurnProbeSpot` + actor mailbox + timer + worker를 실행하고 descriptor와 Spot·Actor location row를 자동 게시한다. |
+| play 노드 | 2 (`play-a`, `play-b`) | Location Store를 등록한 Object Server. Entry Spot, `SpotWide`와 `PerActor` stable User Spot type, stable Actor type의 factory를 제공한다. Factory는 명시적 `Disabled` policy를 사용하고 placement weight `100`, Actor limit `128`, Spot limit `32`, activation concurrency `32`를 고정한다. `TurnProbeSpot` + actor mailbox + timer + worker를 실행하고 descriptor와 Spot·Actor location row를 자동 게시한다. |
 | delay service | 2 (`delay-a`, `delay-b`) | ChannelName request를 받아 지정한 시간 뒤 reply한다. handler가 기다릴 **framework request** 역할이다. |
 | **external API** | 1 (`ext-api`) | **framework 밖의 순수 HTTP 서버.** 지정한 시간 뒤 JSON을 돌려준다. framework HTTP client가 호출할 **외부·레거시 API** 역할이다. zlink channel이 아니다. |
 | session gateway | 2 (`session-a`, `session-b`) | Location Store를 등록한 Object Client. stream session을 받고 global Actor·Spot address로 play 노드에 시나리오 packet을 relay하며 factory와 placement target은 제공하지 않는다. |
@@ -173,30 +175,31 @@ session gateway·stream framing·actor bind/relay 경로를 건너뛰므로 통�
 - 검증: 대기 구간 동안 timer tick이 정상 실행된다. TD-A5와 정확히 대비된다.
 - 세부 동작: yield가 head-of-line 지연을 해소한다.
 
-### Track C — HTTP client와 worker
+### Track C — 외부 I/O와 worker
 
-#### TD-C1 HTTP client의 yield로 외부 API를 호출한다
+#### TD-C1 외부 API는 I/O worker의 yield로 호출한다
 
 우선순위: `P0`
 
-**검증 질문:** spot handler가 외부 HTTP API를 부를 때 room 전체가 멈추지 않는가.
+**검증 질문:** spot handler가 외부 HTTP API를 부를 때 User Spot 전체가 멈추지 않는가.
 
-- 절차: `TurnProbeSpot` handler가 **framework HTTP client**로 `ext-api`(framework 밖의 순수 HTTP
-  서버)를 호출하고 `.Yield(...)`로 기다린다. 대기 중에 같은 spot으로 probe packet을 보내고 timer도
-  실행된다. HTTP client는 **DI로 주입받는다** — handler 안에서 정적 팩토리로 만들지 않는다.
+- 절차: `TurnProbeSpot` handler가 `RunIoWorker` 안에서 DI로 주입받은 HTTP client로 `ext-api`를
+  호출하고 worker call의 `.Yield(...)`로 기다린다. 대기 중에 같은 Spot으로 probe packet을 보내고
+  timer도 실행한다.
 - 검증: 대기 중 probe와 timer가 정상 실행되고, 응답 뒤 continuation이 큐 순서대로 재개된다.
-  evidence에 `http-yield-released` / `http-yield-resumed` marker가 남는다.
-- 세부 동작: **actor 입·퇴장 시 외부·레거시 API 조회**의 표준 경로.
+  evidence에 `io-worker-yield-released` / `io-worker-yield-resumed` marker가 남는다.
+- 검증: HTTP client call 자체에는 `Yield` terminal이 없다. `Yield` 권한은 worker call이 소유한다.
+- 세부 동작: 외부 I/O와 execution gate의 책임 분리.
 
-#### TD-C2 HTTP client의 async는 turn을 유지한다
+#### TD-C2 I/O worker의 async는 turn을 유지한다
 
 우선순위: `P1`
 
 **검증 질문:** 같은 HTTP 호출을 `.Async(...)`로 하면 turn이 유지되는가.
 
-- 절차: TD-C1과 같되 `.Async(...)`로 기다린다.
+- 절차: TD-C1의 worker call을 `.Async(...)`로 기다린다.
 - 검증: 대기 중 probe가 끼어들지 않고 timer도 지연된다. TD-C1과 대비된다.
-- 세부 동작: HTTP client도 같은 terminator 의미를 갖는다.
+- 세부 동작: HTTP client `Async`는 worker 안에서 실행되고 turn 유지·반납은 worker terminator가 결정한다.
 
 #### TD-C3 I/O worker는 스레드를 점유하지 않는다
 
@@ -238,28 +241,30 @@ terminator가 정하는가.
 
 - 절차: 구현 코드를 검사한다.
 - 검증: CPU worker 델리게이트 안에 blocking I/O 대기(`GetAwaiter().GetResult()`, `.join()`,
-  `runBlocking` 등)가 없다. 외부 I/O는 `RunIoWorker` 또는 HTTP client terminator를 쓴다.
+  `runBlocking` 등)가 없다. 외부 I/O는 `RunIoWorker` 안에서 HTTP client `Async`를 사용한다.
 - 세부 동작: pool 고갈 방지 규칙.
 
 ### Track D — mailbox 격리
 
-#### TD-D1 한 actor가 yield 중이어도 다른 actor는 처리된다
+#### TD-D1 SpotWide Actor가 yield하면 다른 Actor와 Spot callback은 처리된다
 
 우선순위: `P0`
 
-- 절차: actor A의 handler가 `.Yield(...)`로 기다리는 동안 actor B에게 packet을 보낸다.
-- 검증: B의 handler가 A의 대기 중에 실행된다.
-- 세부 동작: actor mailbox 간 독립.
+- 절차: 같은 `SpotWide` User Spot의 Actor A handler가 `.Yield(...)`로 기다리는 동안 Actor B, Spot direct
+  handler와 timer record를 제출한다.
+- 검증: B, Spot handler와 timer가 A의 대기 중에 실행된다. A의 continuation은 같은 User Spot gate를
+  다시 얻은 뒤 다른 callback과 겹치지 않고 실행된다.
+- 세부 동작: Actor claim 유지와 User Spot gate 반납.
 
-#### TD-D2 같은 actor의 다음 record가 yield 대기 중 실행된다
+#### TD-D2 같은 Actor의 다음 record는 yield 대기 중 실행되지 않는다
 
 우선순위: `P0`
 
-- 절차: actor A의 handler가 `.Yield(...)`로 기다리는 동안 같은 actor A에게 packet을 하나 더 보낸다.
-- 검증: 첫 handler가 turn을 반납한 뒤 두 번째 packet이 새 turn에서 실행되고 완료된다. 이후 첫 handler의
-  continuation이 Actor queue 순서에 따라 다시 시작하며, 재개 시 대기 전에 읽은 mutable state를 다시
-  확인한다. 두 turn이 동시에 실행되면 실패다.
-- 세부 동작: 같은 Actor owner의 yield와 새 turn 재개.
+- 절차: `SpotWide` User Spot의 Actor A handler가 `.Yield(...)`로 기다리는 동안 같은 Actor A에 packet을
+  하나 더 보낸다.
+- 검증: 두 번째 packet은 첫 handler의 continuation과 terminal completion 뒤에만 시작한다. Evidence는
+  `job1-started → job1-yielded → job1-resumed → job1-completed → job2-started` 순서이며 overlap은 0이다.
+- 세부 동작: `Yield`가 반납하지 않는 Actor FIFO claim.
 
 #### TD-D3 같은 Spot의 다음 timer record가 yield 대기 중 실행된다
 
@@ -270,6 +275,38 @@ terminator가 정하는가.
   Yield continuation과 timer turn은 동시에 실행되지 않으며, 같은 timer key의 중복 만료는 공통 timer
   계약에 따라 한 pending record로 합칠 수 있다.
 - 세부 동작: Spot timer의 yield와 순차 turn 실행.
+
+#### TD-D4 PerActor의 Async는 같은 Actor만 막는다
+
+우선순위: `P0`
+
+- 절차: `PerActor` User Spot에서 Actor A가 `.Async(...)`로 장시간 기다리는 동안 Actor A의 다음 packet,
+  Actor B packet, 같은 timer의 연속 두 callback, 서로 다른 두 timer, Spot direct handler와 lifecycle
+  callback을 제출한다. Test barrier로 각 callback의 실행 구간을 겹치거나 유지할 수 있게 한다.
+- 검증: Actor B와 다른 timer lane은 진행하지만 Actor A의 다음 packet은 첫 job 완료 뒤에만 시작한다.
+  같은 timer의 두 callback은 제출 순서를 유지하며 겹치지 않고 서로 다른 timer는 겹칠 수 있다.
+  Spot direct handler와 lifecycle callback은 같은 Spot lane에서 순서대로 실행되며 서로 겹치지 않는다.
+- 세부 동작: Actor별 FIFO lane, timer별 FIFO lane과 Spot direct·lifecycle 공용 lane.
+
+#### TD-D5 지원하지 않는 문맥의 Yield는 제출 전에 실패한다
+
+우선순위: `P0`
+
+- 절차: Entry Spot, Entry Actor, `PerActor` User Spot, Node·Channel handler와 owner turn 밖의 client에서
+  request·worker call의 `Yield`를 호출한다.
+- 검증: 모두 `InvalidConfiguration`으로 한 번 완료되고 operation ID 할당, outbound admission, worker
+  scheduling, queue mutation과 gate release가 0건이다. 같은 call을 `Async`로 실행한 결과와 구분한다.
+- 세부 동작: runtime execution-context allowlist와 submit 전 validation.
+
+#### TD-D6 self awaited request와 same-gate Async를 선검증한다
+
+우선순위: `P0`
+
+- 절차: Actor가 자신에게 awaited request를 `Async`와 `Yield`로 각각 제출하고, `SpotWide` handler가
+  같은 User Spot gate가 필요한 target을 `Async`로 기다린다.
+- 검증: operation submission 전에 닫힌 오류로 끝나며 handler inline·reentrant 실행과 timeout 의존
+  deadlock이 없다. One-way send는 FIFO queue에 정상 제출된다.
+- 세부 동작: same-claim deadlock 제거와 one-way 구분.
 
 ### Track E — actor join
 
@@ -283,21 +320,24 @@ terminator가 정하는가.
 - 검증: join이 timeout 없이 완료되고 evidence 순서는 `target OnActorJoin → location CAS commit →
   source OnLeaveActor → target OnJoinedActor`다([23 §4](../../spec/server/23-spot-actor.ko.md#4-join-의미와-commit-순서)).
   Entry Spot도 이 join의 source이므로 source leave를 생략하지 않는다. 다른 actor의 join·packet이 그 사이
-  막히지 않는다.
-- 세부 동작: Actor packet은 Actor turn에서 실행되며 Spot control turn을 점유하지 않는다.
+  막히지 않는다. 같은 Entry Actor에 뒤이어 제출한 packet은 join job의 terminal 완료 전에는 시작하지
+  않으며, 두 job의 handler 실행 구간은 겹치지 않는다.
+- 세부 동작: Entry Actor별 FIFO·non-overlap과 서로 다른 Actor의 독립 진행.
 
-#### TD-E2 user Spot에서 다른 user Spot으로 join한다 (async)
+#### TD-E2 PerActor user Spot에서 다른 user Spot으로 join한다 (async)
 
 우선순위: `P0`
 
 **검증 질문:** Actor turn을 유지하는 `async`로 방 이동을 기다려도 Spot lifecycle control이 정체되지 않는가.
 
-- 절차: user Spot A membership을 가진 actor의 handler가 자기 Actor turn을 유지한 채
+- 절차: `PerActor` User Spot A membership을 가진 Actor handler가 자기 Actor turn을 유지한 채
   `JoinSpot(B).Async(...)`를 호출한다.
 - 검증: **join이 timeout 없이 완료된다.** evidence 순서는 `target OnActorJoin → location CAS commit →
   source OnLeaveActor → target OnJoinedActor`다([23 §4](../../spec/server/23-spot-actor.ko.md#4-join-의미와-commit-순서)).
   CAS 실패 주입에서는 source leave와 target membership evidence가 없어야 한다. 세 lifecycle callback은
-  각각 해당 Spot의 control claim에서 실행되고 caller의 Actor turn id와 달라야 한다.
+  각각 해당 Spot의 control claim에서 실행되고 caller의 Actor turn id와 달라야 한다. 같은 호출을
+  `SpotWide` member Actor에서 awaited operation으로 시작하면 source lifecycle이 current gate를 필요로 하므로
+  submit 전에 same-gate 오류로 끝나야 한다.
 - 세부 동작: Actor caller turn과 Spot lifecycle control claim의 독립 진행.
 
 #### TD-E3 반대 방향 join 두 개가 동시에 진행된다
@@ -308,7 +348,8 @@ terminator가 정하는가.
 
 - 절차: actor X가 A→B로, actor Y가 B→A로 **동시에** join한다.
 - 검증: 둘 다 timeout 없이 완료된다. 두 Spot의 timer도 계속 실행된다. **local join을 노드 전역에서
-  직렬화하지 않는다** — 서로 다른 spot 쌍의 join은 병행 진행된다.
+  직렬화하지 않는다** — 서로 다른 Spot 쌍의 join은 병행 진행된다. 두 join은 `PerActor` source 또는
+  owner 밖의 controller에서 시작해 `SpotWide` same-gate awaited cycle을 만들지 않는다.
 - 세부 동작: join 사이클 부재. 노드 전역 join 세마포어가 필요 없음을 고정한다.
 
 ### Track F — topology와 실패 경로
@@ -364,16 +405,16 @@ terminator가 정하는가.
   진행된다”고 단언하지 않는다. Host는 bounded `Stopped/None` 또는 `ForceStopped/DeadlineExceeded`로 끝나며
   무한 대기하지 않는다.
 
-#### TD-F6 wait-for 사이클은 timeout으로 끝난다
+#### TD-F6 wait-for 사이클은 제출 전에 거부한다
 
 우선순위: `P1`
 
-**검증 질문:** 자기 spot으로 되돌아오는 요청을 `async`로 기다리면 정해진 timeout 오류로 실패하는가.
+**검증 질문:** 현재 claim 없이는 처리할 수 없는 target을 기다리는 요청을 timeout에 의존하지 않고 거부하는가.
 
 - 절차: spot A의 handler가 **A 자신에게** request를 보내고 `.Async(...)`로 기다린다.
-- 검증: request timeout으로 실패한다. 실패 뒤 A의 다음 작업이 정상 진행된다. **이것은 application
-  설계 오류이며 timeout이 올바른 결과다**([04 §1.1](../../spec/04-async-execution-policy.ko.md)).
-- 세부 동작: 사이클의 관측 가능한 결과를 고정한다.
+- 검증: outbound admission과 target queue mutation 전에 닫힌 same-claim 오류로 끝난다. Handler inline
+  실행과 timeout timer 할당은 0건이며 실패 뒤 A의 다음 작업이 정상 진행된다.
+- 세부 동작: 구조적으로 완료할 수 없는 cycle을 operation 정의에서 제거한다.
 
 ### Track G — 언어 동등성
 

@@ -24,8 +24,8 @@
     },
     {
       "objectKind": "spot",
-      "identityHex": "00ff3a",
-      "encoded": "zla1:s:3:%00%FF%3A",
+      "identityHex": "726f6f6d3ac3a9",
+      "encoded": "zla1:s:7:room%3A%C3%A9",
       "sharedBySpotKinds": ["entry", "user", "instance"]
     },
     {

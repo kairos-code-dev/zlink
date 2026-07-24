@@ -205,9 +205,9 @@ Instance cold activation에만 사용하며 Actor·User Spot generic create에�
 Command 39 route는 첫 byte와 `u16` body length로 닫힌 union을 이룬다. Kind `1`은 기존 Ready authority의
 object·owner·lease generation과 StoreVersion을 포함하므로 이전 wire와 byte-compatible하다. Kind `2`는 Missing
 cold activation 전용이며 target Mesh·node RID·lifecycle, Spot RID, stable type, descriptor version,
-placement profile·affinity key와 deadline을 포함하고 authority fence를 금지한다. Kind `2` route와 ZLIA의
-placement profile·affinity key·deadline, operation identity와 metadata presence·bytes가 다르면 reservation 전에
-protocol error로 거부한다.
+deadline을 포함하고 authority fence를 금지한다. Kind `2` route와 ZLIA의 target Mesh·stable type·descriptor
+version·deadline, operation identity와 metadata presence·bytes가 다르면 reservation 전에 protocol error로
+거부한다.
 
 Target host는 startup
 initial scan과 bounded background scan에서 자신이 소유한 Pending projection 또는 Ready Instance activation

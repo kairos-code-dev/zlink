@@ -35,7 +35,7 @@ internal static class ZLinkMessageFlowLogger
         logger.Log(
             level,
             HandlerMissingEvent,
-            "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotRid}",
+            "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotId}",
             "handler-missing",
             surfaceName,
             kindName,
@@ -45,7 +45,7 @@ internal static class ZLinkMessageFlowLogger
             flow.ChannelName,
             flow.ActorId,
             actorType,
-            flow.SpotRid);
+            flow.SpotId);
     }
 
     public static void PayloadDecodeFailed(
@@ -77,7 +77,7 @@ internal static class ZLinkMessageFlowLogger
         logger.LogWarning(
             PayloadDecodeFailedEvent,
             exception,
-            "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotRid}",
+            "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotId}",
             "failed",
             surfaceName,
             kindName,
@@ -87,7 +87,7 @@ internal static class ZLinkMessageFlowLogger
             flow.ChannelName,
             flow.ActorId,
             actorType,
-            flow.SpotRid);
+            flow.SpotId);
     }
 
     public static void Dropped(
@@ -115,7 +115,7 @@ internal static class ZLinkMessageFlowLogger
         logger.Log(
             level,
             MessageDroppedEvent,
-            "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotRid}",
+            "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotId}",
             "dropped",
             surfaceName,
             kindName,
@@ -125,7 +125,7 @@ internal static class ZLinkMessageFlowLogger
             flow.ChannelName,
             flow.ActorId,
             actorType,
-            flow.SpotRid);
+            flow.SpotId);
     }
 
     public static void Rejected(
@@ -156,7 +156,7 @@ internal static class ZLinkMessageFlowLogger
             level,
             MessageRejectedEvent,
             exception,
-            "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotRid}",
+            "ZLink message flow {Event} {Surface} {Kind} {PacketName} {Action} {Reason} {ChannelName} {ActorId} {ActorType} {SpotId}",
             "rejected",
             surfaceName,
             kindName,
@@ -166,6 +166,6 @@ internal static class ZLinkMessageFlowLogger
             flow.ChannelName,
             flow.ActorId,
             actorType,
-            flow.SpotRid);
+            flow.SpotId);
     }
 }

@@ -34,28 +34,28 @@ public final class ZLinkStoreSpotHandleResolver
     @Override
     public CompletionStage<Optional<SpotHandle>> resolveSpotHandle(
         String meshName,
-        RoutingId spotRid) {
-        return flowAware(addresses.resolveSpotRow(meshName, spotRid))
+        String spotId) {
+        return flowAware(addresses.resolveSpotRow(meshName, spotId))
             .thenCompose(row -> row == null
-                ? resolveAuthority(spotRid)
+                ? resolveAuthority(spotId)
                     .thenApply(value -> value.filter(
                         resolved -> resolved.meshName().equals(meshName))
                         .map(SpotHandle.class::cast))
                 : java.util.concurrent.CompletableFuture.completedFuture(
                     Optional.<SpotHandle>of(new FrameworkSpotHandle(
-                        row.meshName(), row.spotRid(), row.nodeRid(),
+                        row.meshName(), row.spotId(), row.nodeRid(),
                         row.spotGeneration()))));
     }
 
     @Override
-    public CompletionStage<Optional<SpotHandle>> resolveSpotHandle(RoutingId spotRid) {
-        return flowAware(addresses.resolveAnySpotRow(spotRid))
+    public CompletionStage<Optional<SpotHandle>> resolveSpotHandle(String spotId) {
+        return flowAware(addresses.resolveAnySpotRow(spotId))
             .thenCompose(row -> row == null
-                ? resolveAuthority(spotRid)
+                ? resolveAuthority(spotId)
                     .thenApply(value -> value.map(SpotHandle.class::cast))
                 : java.util.concurrent.CompletableFuture.completedFuture(
                     Optional.<SpotHandle>of(new FrameworkSpotHandle(
-                        row.meshName(), row.spotRid(), row.nodeRid(),
+                        row.meshName(), row.spotId(), row.nodeRid(),
                         row.spotGeneration()))));
     }
 
@@ -65,41 +65,41 @@ public final class ZLinkStoreSpotHandleResolver
             if (row == null) {
                 return java.util.concurrent.CompletableFuture.completedFuture(Optional.empty());
             }
-            RoutingId spotRid = targetSpot(row.locationKind(), row.nodeRid(), row.spotRid());
-            return flowAware(addresses.resolveAnySpotRow(spotRid)).thenApply(spot -> spot == null
+            String spotId = targetSpot(row.locationKind(), row.nodeRid(), row.spotId());
+            return flowAware(addresses.resolveAnySpotRow(spotId)).thenApply(spot -> spot == null
                 ? Optional.empty()
                 : Optional.of(new FrameworkSpotHandle(
-                    spot.meshName(), spot.spotRid(), spot.nodeRid(), spot.spotGeneration())));
+                    spot.meshName(), spot.spotId(), spot.nodeRid(), spot.spotGeneration())));
         });
     }
 
     @Override
     public CompletionStage<Optional<SpotTransportAddress>> resolve(SpotHandle handle) {
-        return flowAware(addresses.resolveSpotRow(handle.meshName(), handle.spotRid()))
+        return flowAware(addresses.resolveSpotRow(handle.meshName(), handle.spotId()))
             .thenCompose(row -> row == null
                 ? resolveAuthoritySnapshot(handle)
                 : java.util.concurrent.CompletableFuture.completedFuture(
                     Optional.of(new SpotTransportAddress(
                         addresses.routerChannelId(row.meshName()),
                         row.nodeRid(),
-                        row.spotRid(),
+                        row.spotId(),
                         row.spotGeneration(),
                         row.generation(),
                         row.spotKind()))));
     }
 
     private CompletionStage<Optional<FrameworkSpotHandle>> resolveAuthority(
-        RoutingId spotRid) {
+        String spotId) {
         if (authorities == null) {
             return java.util.concurrent.CompletableFuture.completedFuture(
                 Optional.empty());
         }
         return authorities.read(
-                ZLinkAuthorityKeyCodec.spot(spotRid), () -> false)
+                ZLinkAuthorityKeyCodec.spot(spotId), () -> false)
             .thenApply(read -> readyAuthority(read)
                 .map(value -> new FrameworkSpotHandle(
                     value.authority().meshName(),
-                    value.authority().spotRid(),
+                    value.authority().spotId(),
                     value.authority().nodeRid(),
                     value.snapshot().objectGeneration())));
     }
@@ -111,7 +111,7 @@ public final class ZLinkStoreSpotHandleResolver
                 Optional.empty());
         }
         return authorities.read(
-                ZLinkAuthorityKeyCodec.spot(handle.spotRid()), () -> false)
+                ZLinkAuthorityKeyCodec.spot(handle.spotId()), () -> false)
             .thenApply(read -> readyAuthority(read)
                 .filter(value ->
                     value.authority().meshName().equals(handle.meshName())
@@ -122,7 +122,7 @@ public final class ZLinkStoreSpotHandleResolver
                     addresses.routerChannelId(
                         value.authority().meshName()),
                     value.authority().nodeRid(),
-                    value.authority().spotRid(),
+                    value.authority().spotId(),
                     value.snapshot().objectGeneration(),
                     value.snapshot().authorityOwnerGeneration(),
                     ZLinkSpotKind.USER)));
@@ -156,7 +156,12 @@ public final class ZLinkStoreSpotHandleResolver
         return systems.zlink.framework.runtime.internal.diagnostics.ZLinkFlowContext.propagate(source);
     }
 
-    private static RoutingId targetSpot(ZLinkSpotKind kind, RoutingId nodeRid, RoutingId spotRid) {
-        return kind == ZLinkSpotKind.ENTRY || spotRid == null ? nodeRid : spotRid;
+    private static String targetSpot(
+        ZLinkSpotKind kind,
+        RoutingId nodeRid,
+        String spotId) {
+        return kind == ZLinkSpotKind.ENTRY || spotId == null
+            ? nodeRid.toString()
+            : spotId;
     }
 }

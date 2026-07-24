@@ -337,7 +337,7 @@ class location_runtime_t
     {
         spot.owner_id = _owner_id;
         auto canonical = location_key_codec_t::encode_spot_key (
-          spot_location_key_t{spot.mesh_name, spot.spot_rid});
+          spot_location_key_t{spot.spot_id});
         auto result = store_call (
           [&] { return _store->update_spot (std::move (spot), intent).result ().value (); });
         notify_if_stale (result, location_kind_t::spot, canonical);

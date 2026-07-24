@@ -42,6 +42,7 @@ struct mesh_node_builder_state_t
     std::string mesh_name;
     std::string listen_endpoint;
     std::optional<zlink::routing_id_t> routing_id;
+    int placement_weight = 100;
     std::map<std::string, mesh_channel_registration_t> channels;
     std::function<void (const std::string &)> channel_name_observer;
     route_handler_registry_t handlers;
@@ -74,6 +75,10 @@ class mesh_node_runtime_t
     void start ();
     void stop () noexcept;
     void bind_serializers (serializer_registry_t &serializers) noexcept;
+    void bind_descriptor_publisher (
+      std::function<void (const std::map<std::string, int> &,
+                          int,
+                          std::uint64_t)> publisher);
     void configure_user_spot_operations (
       std::shared_ptr<location_store_t> store,
       host::user_spot_materializer_t materializer);
@@ -119,18 +124,18 @@ class mesh_node_runtime_t
       host::operation_id_t &operation_id,
       std::chrono::milliseconds timeout,
       const std::map<std::string, std::string> &metadata);
-    host::spot_handle_t get_or_create_spot (const zlink::routing_id_t &spot_rid);
+    host::spot_handle_t get_or_create_spot (std::string spot_id);
     zlink::submit_result_t send_to_spot (
-      const zlink::routing_id_t &source_spot_rid,
+      const std::string &source_spot_id,
       const zlink::routing_id_t &target_node_rid,
-      const zlink::routing_id_t &target_spot_rid,
+      const std::string &target_spot_id,
       std::uint64_t target_spot_generation,
       const std::vector<zlink::message_t> &parts,
       std::vector<std::uint8_t> metadata = {});
     zlink::submit_result_t request_to_spot (
-      const zlink::routing_id_t &source_spot_rid,
+      const std::string &source_spot_id,
       const zlink::routing_id_t &target_node_rid,
-      const zlink::routing_id_t &target_spot_rid,
+      const std::string &target_spot_id,
       std::uint64_t target_spot_generation,
       const std::vector<zlink::message_t> &parts,
       host::operation_id_t &operation_id,
@@ -175,7 +180,7 @@ class mesh_node_runtime_t
     result_t<actor_join_reply_t> join_application_actor_to_spot (
       actor_ref_t actor,
       const node_rid_t &target_node,
-      const spot_rid_t &target_spot,
+      const spot_id_t &target_spot,
       std::uint64_t target_spot_generation,
       const zlink::message_t &request,
       std::chrono::milliseconds timeout,
@@ -209,6 +214,8 @@ class mesh_node_runtime_t
     std::map<std::string, int> channel_weights () const;
     std::size_t max_pending () const noexcept;
     void set_channel_weight (const std::string &channel_name, int weight);
+    int placement_weight () const;
+    void set_placement_weight (int weight);
     void application_work_enqueued () noexcept;
     void application_work_started () noexcept;
     void application_work_finished () noexcept;
@@ -229,6 +236,9 @@ class mesh_node_runtime_t
     serializer_registry_t *_serializers = nullptr;
     std::shared_ptr<location_store_t> _user_spot_store;
     host::user_spot_materializer_t _user_spot_materializer;
+    std::function<void (const std::map<std::string, int> &,
+                        int,
+                        std::uint64_t)> _descriptor_publisher;
     std::shared_ptr<host::public_host_runtime_t> _node;
     std::map<std::string, host::spot_handle_t> _spots;
     std::map<std::string, host::actor_handle_t> _actors;

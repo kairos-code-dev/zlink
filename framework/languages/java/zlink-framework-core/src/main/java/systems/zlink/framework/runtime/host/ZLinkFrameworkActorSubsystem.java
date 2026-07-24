@@ -45,7 +45,11 @@ final class ZLinkFrameworkActorSubsystem {
         ZLinkSpotRuntime spots,
         ZLinkLocationLifecycle locationLifecycle,
         ZLinkStoreLocationResolvers storeLocationResolvers,
-        SpotTransportAddressResolver remoteAddressResolver) {
+        SpotTransportAddressResolver remoteAddressResolver,
+        systems.zlink.framework.locations.ZLinkLocationStore locationStore,
+        java.util.Map<String,
+            systems.zlink.framework.runtime.internal.backend
+                .ZLinkInternalMeshNode> meshNodes) {
         var legacyActorNode = registration.spotNodes().stream()
             .filter(node -> !node.actorFactories().isEmpty())
             .findFirst()
@@ -87,6 +91,24 @@ final class ZLinkFrameworkActorSubsystem {
             actors.setMetadataPolicy(
                 registration.metadataPolicy().sessionToActorKeys(),
                 registration.metadataPolicy().actorToSessionKeys());
+            if (meshActorNode != null
+                && !meshActorNode.relocatableActorFactories().isEmpty()
+                && locationStore != null) {
+                var meshNode = meshNodes.get(meshActorNode.meshName());
+                if (meshNode != null) {
+                    var creation =
+                        new systems.zlink.framework.runtime.actors
+                            .ZLinkActorCreationCoordinator(
+                                meshActorNode.meshName(),
+                                meshNode,
+                                locationStore,
+                                actors,
+                                serializer,
+                                registration.defaultRequestTimeout());
+                    meshNode.setActorCreateOperationHandler(creation);
+                    actors.setCreationSubmitter(creation);
+                }
+            }
         }
         ZLinkActorClient actorClient = spots != null && storeLocationResolvers != null
             ? new ZLinkActorClientRuntime(

@@ -327,11 +327,13 @@ internal sealed class FixtureActorPacketSession(
 
     public async ValueTask OnConnectedAsync(CancellationToken cancellationToken)
     {
-        var actor = await actors.GetOrCreateAsync(
-                "fixture",
-                "hero",
-                cancellationToken)
-            .ConfigureAwait(false);
+        var actor = (await actors.GetOrCreate("fixture", "hero")
+                .Async(cancellationToken).ConfigureAwait(false)) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Actor creation was rejected.")
+        };
 
         _actor = await Context.Actors.BindAsync(
             actor,

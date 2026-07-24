@@ -22,11 +22,15 @@ internal sealed class EnsureActorHandler(
         CancellationToken cancellationToken)
     {
         _ = context;
-        var actor = await actors.GetOrCreateAsync(
-            request.ActorId,
-            SpotServiceNames.ActorType,
-            new ScenarioActorCreateReq(request.DisplayName),
-            cancellationToken);
+        var actor = await actors
+            .GetOrCreate(request.ActorId, SpotServiceNames.ActorType)
+            .Request(new ScenarioActorCreateReq(request.DisplayName))
+            .Async(cancellationToken) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Actor creation was rejected.")
+        };
 
         evidence.Add($"ensure-actor|rid={node.Rid}|actor={request.ActorId}");
         evidence.Add($"entry-joined|rid={node.Rid}|actor={request.ActorId}");

@@ -6,6 +6,7 @@ namespace Zlink.Framework.Runtime.Configuration;
 internal sealed class ZLinkSocketConfig : IZLinkSocketConfig, IZLinkMeshNodeSocketConfig
 {
     internal const int DefaultPeerWeight = 100;
+    internal const int MaximumPeerWeight = 10_000;
 
     private TimeSpan? _sendTimeout;
     private int _weight = DefaultPeerWeight;
@@ -74,8 +75,9 @@ internal sealed class ZLinkSocketConfig : IZLinkSocketConfig, IZLinkMeshNodeSock
 
     internal static void ValidatePeerWeight(int value)
     {
-        if (value is < 0 or > DefaultPeerWeight)
-            throw new ZLinkConfigurationException($"Weight must be between 0 and {DefaultPeerWeight}.");
+        if (value is < 0 or > MaximumPeerWeight)
+            throw new ZLinkConfigurationException(
+                $"Weight must be between 0 and {MaximumPeerWeight}.");
     }
 }
 

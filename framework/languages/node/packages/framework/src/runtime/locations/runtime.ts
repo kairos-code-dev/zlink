@@ -31,6 +31,7 @@ import {
   type ZLinkLocationRuntimeStatus,
   type ZLinkLocationServiceSummary,
   type ZLinkLocationServiceSummaryFilter,
+  type ZLinkMeshNodeDescriptor,
   type ZLinkLocationTopologyEntry,
   type ZLinkLocationTopologyFilter,
   type ZLinkLocationWriteResult,
@@ -305,6 +306,34 @@ export class ZLinkLocationRuntime implements ZLinkLocationRuntimeQuery {
       this.recordFailure(errorMessage(error));
       return false;
     }
+  }
+
+  async writeMeshNode(
+    descriptor: Omit<
+      ZLinkMeshNodeDescriptor,
+      'ownerId' | 'leaseGeneration' | 'updatedAt'
+    >,
+    intent: ZLinkLocationWriteIntent,
+    signal?: AbortSignal
+  ): Promise<ZLinkLocationWriteResult> {
+    const owner = this.ownerToken;
+    if (owner === undefined) {
+      throw new Error('MeshNode descriptor write requires a claimed owner token.');
+    }
+    const stamped: ZLinkMeshNodeDescriptor = {
+      ...descriptor,
+      ownerId: owner.ownerId,
+      leaseGeneration: owner.leaseGeneration,
+      updatedAt: new Date(0)
+    };
+    const result = await this.guardWrite(() =>
+      this.stores.locationStore.updateMeshNode(stamped, intent, signal));
+    this.notifyIfStale(
+      result,
+      ZLinkLocationKind.Peer,
+      `${descriptor.meshName}\0${String(descriptor.rid)}`
+    );
+    return result;
   }
 
   async writePeer(

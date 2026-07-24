@@ -201,7 +201,7 @@ internal static class GatewayHostFactory
         });
         app.MapPost("/actor/push", async (
             ActorPushByActorReq request,
-            IZLinkActorDirectory actorDirectory,
+            IZLinkActorManager actorDirectory,
             IZLinkActorClient actors,
             EvidenceStore evidence,
             CancellationToken cancellationToken) =>
@@ -249,7 +249,7 @@ internal static class GatewayHostFactory
         });
         app.MapPost("/actor/wait-missing", async (
             ActorMissingWaitReq request,
-            IZLinkActorDirectory actorDirectory,
+            IZLinkActorManager actorDirectory,
             CancellationToken cancellationToken) =>
         {
             var deadline = DateTimeOffset.UtcNow
@@ -267,7 +267,7 @@ internal static class GatewayHostFactory
         });
         app.MapPost("/actor/capture-ref", async (
             ActorRefSnapshotReq request,
-            IZLinkActorDirectory actors,
+            IZLinkActorManager actors,
             CancellationToken cancellationToken) =>
         {
             var actor = await actors.FindAsync(request.ActorId, cancellationToken)
@@ -364,7 +364,7 @@ internal static class GatewayHostFactory
             EntryJoinRouteReq request,
             IZLinkSpotClient spotsClient,
             IZLinkSpotHandleResolver handles,
-            IZLinkActorDirectory actors,
+            IZLinkActorManager actors,
             CancellationToken cancellationToken) =>
         {
             var entry = await handles.ResolveSpotHandleAsync(

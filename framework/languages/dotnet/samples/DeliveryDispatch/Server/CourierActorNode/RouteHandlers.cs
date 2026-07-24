@@ -38,11 +38,13 @@ internal sealed class EnsureCourierActorRouteHandler(
         EnsureCourierActorReq request,
         CancellationToken cancellationToken)
     {
-        var actor = await actorManager.GetOrCreateAsync(
-            request.CourierId,
-            SampleNames.CourierActorType,
-            request,
-            cancellationToken);
+        var actor = (await actorManager.GetOrCreate(request.CourierId, SampleNames.CourierActorType)
+            .Request(request).Async(cancellationToken)) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Courier Actor creation was rejected.")
+        };
         logger.LogInformation(
             "deliverydispatch courier-route: ensured courier={CourierId} node={NodeRid}",
             request.CourierId,

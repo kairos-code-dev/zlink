@@ -87,17 +87,17 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
     }
 
     task_t<std::optional<spot_address_t>>
-    resolve_spot_address (std::string mesh_name, zlink::routing_id_t spot_rid) override
+    resolve_spot_address (std::string, std::string spot_id) override
     {
         auto row =
-          _store->resolve_spot (spot_location_key_t{std::move (mesh_name), spot_rid})
+          _store->resolve_spot (spot_location_key_t{std::move (spot_id)})
             .result ()
             .value ();
         if (!row) {
             return completed (std::optional<spot_address_t>{});
         }
         return completed (std::optional<spot_address_t>{spot_address_t{
-          row->mesh_name, row->node_rid, row->spot_rid, row->spot_generation}});
+          row->mesh_name, row->node_rid, row->spot_id, row->spot_generation}});
     }
 
     task_t<std::optional<spot_address_t>>
@@ -111,28 +111,26 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         return completed (std::optional<spot_address_t>{std::move (*address)});
     }
 
-    /* The spot rid is searched across every mesh registered in the store, so
-     * callers do not carry mesh names. The returned opaque handle keeps its
-     * logical lookup key and refreshes its snapshot from the same row. */
-    task_t<std::optional<spot_handle_t>> resolve_spot_handle (spot_rid_t spot_rid) override
+    /* SpotId is a global Location Store key, so callers do not carry mesh
+     * names. The returned opaque handle refreshes from that same exact key. */
+    task_t<std::optional<spot_handle_t>> resolve_spot_handle (spot_id_t spot_id) override
     {
-        auto address = find_spot_row (zlink::routing_id_t::from (std::string (spot_rid.value ())));
+        auto address = resolve_spot_row (*_store, spot_id);
         if (!address) {
             return completed (std::optional<spot_handle_t>{});
         }
         auto *store = _store;
-        const auto key_mesh = address->mesh_name;
-        const auto key_rid = address->spot_rid;
-        const auto router_channel = router_channel_for (key_mesh);
+        const auto key_id = address->spot_id;
+        const auto router_channel = router_channel_for (address->mesh_name);
         auto handle = detail::spot_handle_access_t::make (
-          spot_address_t{router_channel, address->node_rid, address->spot_rid,
+          spot_address_t{router_channel, address->node_rid, address->spot_id,
                          address->spot_generation},
-          [store, key_mesh, key_rid, router_channel] () -> std::optional<spot_address_t> {
-              auto row = resolve_spot_row (*store, key_mesh, key_rid);
+          [store, key_id, router_channel] () -> std::optional<spot_address_t> {
+              auto row = resolve_spot_row (*store, key_id);
               if (!row) {
                   return std::nullopt;
               }
-              return spot_address_t{router_channel, row->node_rid, row->spot_rid,
+              return spot_address_t{router_channel, row->node_rid, row->spot_id,
                                     row->spot_generation};
           });
         return completed (std::optional<spot_handle_t>{std::move (handle)});
@@ -151,7 +149,7 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         const auto actor_locations = _actor_locations;
         const auto actor_mesh_name = _actor_mesh_name;
         auto handle = detail::spot_handle_access_t::make (
-          spot_address_t{router_channel, address->node_rid, address->spot_rid,
+          spot_address_t{router_channel, address->node_rid, address->spot_id,
                          address->spot_generation},
           [store, actor_mesh_name, actor_id = std::move (actor_id), options,
            actor_locations] () -> std::optional<spot_address_t> {
@@ -160,7 +158,7 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
                   return std::nullopt;
               }
               return spot_address_t{router_channel_for (options, row->mesh_name), row->node_rid,
-                                    row->spot_rid, row->spot_generation};
+                                    row->spot_id, row->spot_generation};
           });
         return completed (std::optional<spot_handle_t>{std::move (handle)});
     }
@@ -207,39 +205,20 @@ class store_location_resolvers_t final : public peer_location_resolver_t,
         if (!row || !actor_locations->accepts (*row)) {
             return std::nullopt;
         }
-        return spot_address_t{row->mesh_name, row->owner_node_rid, row->spot_rid,
+        return spot_address_t{row->mesh_name, row->owner_node_rid, row->spot_id,
                               row->spot_generation};
     }
 
-    static std::optional<spot_address_t> resolve_spot_row (live_location_reader_t &store,
-                                                           const std::string &mesh_name,
-                                                           const zlink::routing_id_t &spot_rid)
+    static std::optional<spot_address_t>
+    resolve_spot_row (live_location_reader_t &store, const std::string &spot_id)
     {
         auto row =
-          store.resolve_spot (spot_location_key_t{mesh_name, spot_rid}).result ().value ();
+          store.resolve_spot (spot_location_key_t{spot_id}).result ().value ();
         if (!row) {
             return std::nullopt;
         }
-        return spot_address_t{row->mesh_name, row->node_rid, row->spot_rid,
+        return spot_address_t{row->mesh_name, row->node_rid, row->spot_id,
                               row->spot_generation};
-    }
-
-    std::optional<spot_address_t> find_spot_row (const zlink::routing_id_t &spot_rid) const
-    {
-        location_page_request_t page;
-        while (true) {
-            auto rows = _store->list_spots (spot_location_filter_t{}, page).result ().value ();
-            for (const auto &row : rows.items) {
-                if (row.spot_rid.to_string () == spot_rid.to_string ()) {
-                    return spot_address_t{row.mesh_name, row.node_rid, row.spot_rid,
-                                          row.spot_generation};
-                }
-            }
-            if (!rows.continuation_token || rows.items.empty ()) {
-                return std::nullopt;
-            }
-            page.continuation_token = rows.continuation_token;
-        }
     }
 
     static std::string router_channel_for (const location_options_t &options,
@@ -380,7 +359,7 @@ class store_location_runtime_query_t final : public location_runtime_query_t
                     .kind = location_kind_t::spot,
                     .mesh_name = row.mesh_name,
                     .node_rid = row.node_rid,
-                    .spot_rid = row.spot_rid,
+                    .spot_id = row.spot_id,
                     .endpoint = row.route_endpoint,
                     .state = live ? location_topology_state_t::ready
                                   : location_topology_state_t::lost,
@@ -408,7 +387,7 @@ class store_location_runtime_query_t final : public location_runtime_query_t
                     .kind = location_kind_t::actor,
                     .mesh_name = row.mesh_name,
                     .node_rid = row.owner_node_rid,
-                    .spot_rid = row.spot_rid,
+                    .spot_id = row.spot_id,
                     .actor_id = row.actor_id,
                     .state = live ? location_topology_state_t::ready
                                   : location_topology_state_t::lost,

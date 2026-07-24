@@ -211,7 +211,9 @@ export interface ZLinkNestMeshNodeBuilder extends ZLinkNestFrameworkOptionsBuild
     routingId(routingId: string | undefined): this;
     setRoutingIdPrefix(prefix: string): this;
     setPlacementWeight(weight: number): this;
-    setObjectCapacity(maxActiveObjects: number, maxPendingActivations: number): this;
+    setActorLimit(limit: number): this;
+    setSpotLimit(limit: number): this;
+    setActivationConcurrency(limit: number): this;
     objects(): ZLinkNestMeshObjectRoleBuilder;
     configureRouterSocket(): ZLinkMeshNodeSocketConfig;
     configureSpotPublisher(): ZLinkSpotPublisherConfig;
@@ -233,17 +235,17 @@ export interface ZLinkNestMeshObjectServerBuilder extends ZLinkNestFrameworkOpti
     addSpotFactory<TSpot extends ZLinkSpot>(
         spotType: string,
         implementation: Type<TSpot>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkUserSpotFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TSpot>): this;
     addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
         instanceSpotType: string,
         implementation: Type<TSpot>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkInstanceSpotFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TSpot>): this;
     addActorFactory<TActor extends ZLinkActor>(
         actorType: string,
         factoryType: Type<ZLinkActorFactory<TActor>>,
-        placement: ZLinkObjectPlacementOptions | undefined,
+        options: ZLinkActorFactoryOptions | undefined,
         relocation: ZLinkRelocationPolicy<TActor>): this;
 }
 
@@ -352,8 +354,8 @@ export declare function zlinkSpotTimerHandler<TSpot extends ZLinkSpot = ZLinkSpo
 ## 7. Server HTTP client integration
 
 서버 handler에서 HTTP 요청을 실행할 때는 이름으로 등록한 client를 주입받는다. 실행 scheduler는
-framework가 소유하므로 handler는 명시적으로 `yield()`를 선택할 수 있고, 등록한 client는 Nest module의
-수명과 함께 정리된다.
+framework가 소유하며 등록한 client는 Nest module의 수명과 함께 정리된다. HTTP request는 Spot execution
+gate를 반환하는 `yield()` operation family가 아니다.
 
 ```ts
 export interface ZLinkNamedHttpClientOptions {
@@ -369,7 +371,6 @@ export interface ZLinkHttpClientModuleOptions {
 
 export interface ZLinkServerHttpRequestBuilder extends ZLinkHttpRequestBuilder {
     submit(): void;
-    yield<T>(): Promise<HttpResponse<T>>;
 }
 
 export interface ZLinkServerHttpClient extends Omit<ZLinkHttpClient, 'get' | 'post' | 'put' | 'delete' | 'patch' | 'head' | 'options'> {

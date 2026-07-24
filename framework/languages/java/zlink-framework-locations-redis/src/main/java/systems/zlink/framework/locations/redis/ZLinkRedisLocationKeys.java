@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.util.HexFormat;
 import systems.zlink.framework.locations.ZLinkLocationKind;
+import systems.zlink.framework.locations.ZLinkCreationOperationIdentity;
 
 final class ZLinkRedisLocationKeys {
     private final String prefix;
@@ -126,6 +127,20 @@ final class ZLinkRedisLocationKeys {
     String creationKey(String reservationId) {
         return domainBase() + ":creation:"
             + reservationId.toLowerCase(java.util.Locale.ROOT);
+    }
+
+    String creationTerminalKey(
+        ZLinkCreationOperationIdentity operation) {
+        byte[] sourceRid = operation.sourceNodeRid().toBytes();
+        return prefix + ":{zlink-location-v3}:creation-terminal:"
+            + sourceRid.length + ":"
+            + HexFormat.of().formatHex(sourceRid) + ":"
+            + operation.sourceLifecycleGeneration() + ":"
+            + String.format(
+                java.util.Locale.ROOT,
+                "%016x%016x",
+                operation.operationIdHigh(),
+                operation.operationIdLow());
     }
 
     String authorityAggregateKey(

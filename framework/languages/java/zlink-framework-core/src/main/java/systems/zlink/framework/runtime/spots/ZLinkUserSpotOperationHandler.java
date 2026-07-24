@@ -56,7 +56,7 @@ final class ZLinkUserSpotOperationHandler
     @Override
     public CompletionStage<ZLinkInternalMeshNode.UserSpotCreateResponse> create(
         ZLinkInternalMeshNode.UserSpotCreateRequest request) {
-        String key = ZLinkAuthorityKeyCodec.spot(request.intent().spotRid());
+        String key = ZLinkAuthorityKeyCodec.spot(request.intent().spotId());
         return authorityStore.read(key, OPEN)
             .thenCompose(read -> {
                 if (!(read instanceof ZLinkAuthoritySnapshot snapshot)) {
@@ -94,7 +94,7 @@ final class ZLinkUserSpotOperationHandler
                     (Class<? extends ZLinkSpot<?>>) admission.factory().spotType();
                 return lifecycle.prepareReserved(
                         spotType,
-                        request.intent().spotRid(),
+                        request.intent().spotId(),
                         snapshot.objectGeneration(),
                         createRequest)
                     .thenCompose(prepared -> finish(
@@ -112,7 +112,7 @@ final class ZLinkUserSpotOperationHandler
     public CompletionStage<ZLinkInternalMeshNode.UserSpotCloseResponse> close(
         ZLinkInternalMeshNode.UserSpotCloseRequest request) {
         var fence = request.intent().target();
-        String key = ZLinkAuthorityKeyCodec.spot(fence.spotRid());
+        String key = ZLinkAuthorityKeyCodec.spot(fence.spotId());
         return authorityStore.read(key, OPEN)
             .thenCompose(read -> {
                 if (!(read instanceof ZLinkAuthoritySnapshot snapshot)) {
@@ -124,7 +124,7 @@ final class ZLinkUserSpotOperationHandler
                 require(
                     authority.kind() == ZLinkServiceAuthorityPayloadCodec.Kind.USER
                         && authority.state() == ZLinkServiceAuthorityPayloadCodec.State.READY
-                        && authority.spotRid().equals(fence.spotRid())
+                        && authority.spotId().equals(fence.spotId())
                         && authority.meshName().equals(meshName)
                         && authority.nodeRid().equals(node.status().routingId())
                         && authority.nodeGeneration()
@@ -140,7 +140,7 @@ final class ZLinkUserSpotOperationHandler
                     "stale User Spot close fence");
                 ZLinkSpotLifecycle.CloseReadiness readiness =
                     lifecycle.closeReadiness(
-                        fence.spotRid(), fence.objectGeneration());
+                        fence.spotId(), fence.objectGeneration());
                 if (readiness == ZLinkSpotLifecycle.CloseReadiness.HAS_ACTORS) {
                     return CompletableFuture.completedFuture(
                         new ZLinkInternalMeshNode.UserSpotCloseResponse(false));
@@ -161,7 +161,7 @@ final class ZLinkUserSpotOperationHandler
                 byte[] closing = authorities.encodeUser(
                     ZLinkServiceAuthorityPayloadCodec.State.CLOSING,
                     authority.stableType(),
-                    fence.spotRid(),
+                    fence.spotId(),
                     snapshot.ownerId(),
                     snapshot.ownerLeaseGeneration(),
                     meshName,
@@ -182,7 +182,7 @@ final class ZLinkUserSpotOperationHandler
                                 "User Spot authority changed before Closing");
                         }
                         return lifecycle.closeReserved(
-                                fence.spotRid(), fence.objectGeneration())
+                                fence.spotId(), fence.objectGeneration())
                             .handle((closed, failure) ->
                                 new CloseAttempt(
                                     failure == null
@@ -240,7 +240,7 @@ final class ZLinkUserSpotOperationHandler
         byte[] ready = authorities.encodeUser(
             ZLinkServiceAuthorityPayloadCodec.State.READY,
             request.intent().stableType(),
-            request.intent().spotRid(),
+            request.intent().spotId(),
             snapshot.ownerId(),
             snapshot.ownerLeaseGeneration(),
             meshName,
@@ -276,7 +276,7 @@ final class ZLinkUserSpotOperationHandler
             factory != null
                 && authority.kind() == ZLinkServiceAuthorityPayloadCodec.Kind.USER
                 && authority.state() == ZLinkServiceAuthorityPayloadCodec.State.CREATING
-                && authority.spotRid().equals(request.intent().spotRid())
+                && authority.spotId().equals(request.intent().spotId())
                 && authority.stableType().equals(request.intent().stableType())
                 && authority.meshName().equals(meshName)
                 && authority.nodeRid().equals(node.status().routingId())
@@ -330,7 +330,7 @@ final class ZLinkUserSpotOperationHandler
         List<Message> parts = reply == null ? List.of() : List.of(
             Message.from(reply.toEncodedPayload(serializer).bytes()));
         return new ZLinkInternalMeshNode.UserSpotCreateResponse(
-            result, request.intent().spotRid(), generation, parts);
+            result, request.intent().spotId(), generation, parts);
     }
 
     private static byte[] sha256(byte[] value) {
@@ -367,7 +367,7 @@ final class ZLinkUserSpotOperationHandler
         byte[] ready = authorities.encodeUser(
             ZLinkServiceAuthorityPayloadCodec.State.READY,
             authority.stableType(),
-            authority.spotRid(),
+            authority.spotId(),
             snapshot.ownerId(),
             snapshot.ownerLeaseGeneration(),
             meshName,

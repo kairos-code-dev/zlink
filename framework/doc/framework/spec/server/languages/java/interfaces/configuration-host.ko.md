@@ -70,7 +70,9 @@ public interface ZLinkMeshNodeBuilder {
     ZLinkMeshNodeBuilder setRoutingId(RoutingId routingId);
     ZLinkMeshNodeBuilder setRoutingIdPrefix(String prefix);
     ZLinkMeshNodeBuilder setPlacementWeight(int weight);
-    ZLinkMeshNodeBuilder setObjectCapacity(int maxActiveObjects, int maxPendingActivations);
+    ZLinkMeshNodeBuilder setActorCapacity(int maxActors);
+    ZLinkMeshNodeBuilder setSpotCapacity(int maxSpots);
+    ZLinkMeshNodeBuilder setActivationConcurrency(int maxConcurrentActivations);
     ZLinkMeshObjectRoleBuilder objects();
     ZLinkMeshNodeSocketConfig configureRouterSocket();
     ZLinkSpotPublisherConfig configureSpotPublisher();
@@ -100,22 +102,36 @@ public interface ZLinkMeshObjectServerBuilder {
     ZLinkMeshObjectServerBuilder addEntrySpot(Class<? extends ZLinkEntrySpot> entrySpotClass);
     <TSpot extends ZLinkSpot> ZLinkMeshObjectServerBuilder addSpotFactory(
         String spotType, Class<TSpot> spotClass,
-        ZLinkObjectPlacementOptions placement, ZLinkRelocationPolicy<TSpot> relocation);
+        ZLinkUserSpotFactoryOptions options, ZLinkRelocationPolicy<TSpot> relocation);
     <TSpot extends ZLinkInstanceSpot> ZLinkMeshObjectServerBuilder addInstanceSpotFactory(
         String instanceSpotType, Class<TSpot> spotClass,
-        ZLinkObjectPlacementOptions placement, ZLinkRelocationPolicy<TSpot> relocation);
+        ZLinkInstanceSpotFactoryOptions options, ZLinkRelocationPolicy<TSpot> relocation);
     <TActor extends ZLinkActor> ZLinkMeshObjectServerBuilder addActorFactory(
         String actorType,
         Class<TActor> actorClass,
         Class<? extends ZLinkActorFactory> factoryClass,
-        ZLinkObjectPlacementOptions placement,
+        ZLinkActorFactoryOptions options,
         ZLinkRelocationPolicy<TActor> relocation);
 }
 
-public record ZLinkObjectPlacementOptions(
-    Set<String> placementProfiles,
-    Integer maxActiveObjects,
-    Integer maxPendingActivations) {}
+public enum ZLinkUserSpotExecutionMode {
+    SPOT_WIDE(0), PER_ACTOR(1);
+    private final int value;
+    ZLinkUserSpotExecutionMode(int value) { this.value = value; }
+    public int value() { return value; }
+}
+
+public record ZLinkActorFactoryOptions() {}
+
+public record ZLinkUserSpotFactoryOptions(
+    int stableTypeLimit,
+    ZLinkUserSpotExecutionMode executionMode) {
+    public ZLinkUserSpotFactoryOptions(int stableTypeLimit) {
+        this(stableTypeLimit, ZLinkUserSpotExecutionMode.SPOT_WIDE);
+    }
+}
+
+public record ZLinkInstanceSpotFactoryOptions(int stableTypeLimit) {}
 
 public interface FanoutChannelBuilder {
     FanoutChannelBuilder enablePublisher(String endpoint);
@@ -162,9 +178,28 @@ Actor factory에는 같은 Actor type의 `ZLinkActorRelocationAdapter`, User·In
 type의 `ZLinkSpotRelocationAdapter`가 필요하다. `Disabled`와 `Recreate`에는 adapter class를 연결하지 않는다.
 Type mismatch는 startup configuration error이며 application traffic을 받기 전에 끝난다.
 
-Node placement weight는 0..100이고 기본값은 100이다. Node capacity 기본값은 active 10,000, pending 128이다.
-Type별 limit은 `null`이면 node limit을 공유하고 명시하면 1..`Integer.MAX_VALUE`이며 node limit보다 작은 값을
-적용한다. Placement profile은 UTF-8 1..255 bytes다. Capacity filter를 weight보다 먼저 적용한다.
+Node placement weight는 signed `int` `0..10000`이고 기본값은 `100`이다. 범위 밖 startup 설정은
+configuration error다. Actor 전체와 Spot 전체 limit의 기본값은 `0`이며
+제한을 두지 않는다는 뜻이다. User·Instance Spot의 `stableTypeLimit`도 `0`이면 별도 stable type limit을 두지
+않는다. 양수는 `1..Integer.MAX_VALUE`이고 음수는 startup configuration error다. Entry Spot은 Spot
+capacity에서 제외하지만 Entry Spot의 Actor는 Actor capacity에 포함한다. Actor stable type별 limit은
+제공하지 않는다. Activation concurrency 기본값은 128이고 양수만 허용한다. Stable type은 UTF-8
+1..255 bytes다. Typed population capacity filter를 weight보다 먼저 적용하고 남은 후보의 weight 합계는
+최소 64-bit integer로 계산한다.
+
+User Spot execution mode는 factory registration에서 고정하고 `SPOT_WIDE`가 기본값이다. `PER_ACTOR`는 Actor별
+lane, Spot direct·lifecycle lane과 timer별 lane을 사용한다. Close·relocation·snapshot은 새 admission과
+participant 변경을 seal한 뒤 모든 lane의 active claim과 continuation이 안전한 turn 경계에 도달해야
+진행한다. 일부 lane만 멈춘 상태를 capture하지 않는다.
+
+Object Server의 Entry Spot ID는 caller가 설정하지 않고 Framework가
+`<prefix>-entry-<uuid-v4>`로 발급한다. `<uuid-v4>`는 RFC 4122 UUID v4를 lowercase canonical
+36-character `8-4-4-4-12` 형식으로 encode한 값이며 MeshNode RID의 UUID와 독립적으로 발급한다. 같은
+MeshNode lifecycle에서는 유지하고 replacement lifecycle에서는 새 UUID를 발급한다. Global Spot namespace의
+첫 active conflict에서 기존 record를 변경하지 않고 startup을 `RoutingIdConflict`로 실패시킨다. Descriptor는
+Entry Spot ID와 lifecycle generation의 exact mapping을 게시하고 runtime은 RID 문자열을 parse해 관계를
+추론하지 않는다. Caller가 reserved Entry pattern의 User·Instance Spot ID를 제시하면 Store를 읽거나
+mutation하기 전에 `InvalidConfiguration`으로 거부한다.
 `enableActorDispatch()`는 인자가 없으며 global ActorId가 Mesh를 resolve한다.
 
 Location provider는 `ZLinkLocationStore`를 통해 descriptor·location 기능과 authority CAS capability를 함께
@@ -193,8 +228,9 @@ effective bound를 complete message allocation 전에 적용한다. 이 negotiat
 선택한다. 음수는 startup 설정 오류다. Logical Multicast의 local target도 이 용량 제한으로 admission을
 판단한다.
 
-Automatic RID는 `prefix-<32 lowercase hex>` 형식이다. Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자이며 active
-owner 충돌은 새 suffix로 최대 8회 재시도한다. Fixed RID는 object role과 Store descriptor가 없는 manual
+Automatic RID는 `prefix-<uuid-v4>` 형식이다. `<uuid-v4>`는 RFC 4122 UUID v4의 lowercase canonical
+36-character `8-4-4-4-12` 표현이다. Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자이며 첫 active owner 충돌에서
+기존 record를 변경하지 않고 startup을 `RoutingIdConflict`로 실패시킨다. Fixed RID는 object role과 Store descriptor가 없는 manual
 topology에서만 허용한다. Slot count, allocation group과 public allocation provider는 제공하지 않는다.
 
 Framework가 모든 registration에서 만든 fully encoded MeshNode descriptor는 1 MiB 이하여야 한다.
@@ -328,7 +364,7 @@ public final class systems.zlink.framework.configuration.ZLinkMessageFlowEvent e
   public java.lang.String topic();
   public java.lang.String correlationId();
   public java.lang.String sourceRid();
-  public java.lang.String spotRid();
+  public java.lang.String spotId();
   public java.lang.String actorId();
   public java.lang.Long messageSize();
   public systems.zlink.framework.configuration.ZLinkDispatchErrorReason errorReason();
@@ -448,7 +484,7 @@ public final class systems.zlink.framework.configuration.ZLinkDispatchFailure ex
   public java.lang.String packetName();
   public java.lang.String channelName();
   public java.lang.String topic();
-  public java.lang.String spotRid();
+  public java.lang.String spotId();
   public java.lang.String actorId();
   public java.lang.String sourceRid();
   public java.lang.String correlationId();
@@ -510,7 +546,9 @@ public interface systems.zlink.framework.configuration.ZLinkMeshNodeBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingId(systems.zlink.contracts.core.RoutingId);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setRoutingIdPrefix(java.lang.String);
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setPlacementWeight(int);
-  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setObjectCapacity(int, int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setActorCapacity(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setSpotCapacity(int);
+  public abstract systems.zlink.framework.configuration.ZLinkMeshNodeBuilder setActivationConcurrency(int);
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectRoleBuilder objects();
   public abstract systems.zlink.framework.configuration.ZLinkMeshNodeSocketConfig configureRouterSocket();
   public abstract systems.zlink.framework.configuration.ZLinkSpotPublisherConfig configureSpotPublisher();
@@ -527,15 +565,29 @@ public interface systems.zlink.framework.configuration.ZLinkMeshObjectClientBuil
 }
 public interface systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder {
   public abstract systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addEntrySpot(java.lang.Class<? extends systems.zlink.framework.spots.ZLinkEntrySpot<?>>);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
-  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
-  public abstract <TActor extends systems.zlink.framework.actors.ZLinkActor> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addActorFactory(java.lang.String, java.lang.Class<TActor>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>, systems.zlink.framework.configuration.ZLinkObjectPlacementOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
+  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkSpot<?>> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
+  public abstract <TSpot extends systems.zlink.framework.spots.ZLinkInstanceSpot> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addInstanceSpotFactory(java.lang.String, java.lang.Class<TSpot>, systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TSpot>);
+  public abstract <TActor extends systems.zlink.framework.actors.ZLinkActor> systems.zlink.framework.configuration.ZLinkMeshObjectServerBuilder addActorFactory(java.lang.String, java.lang.Class<TActor>, java.lang.Class<? extends systems.zlink.framework.actors.ZLinkActorFactory>, systems.zlink.framework.configuration.ZLinkActorFactoryOptions, systems.zlink.framework.actors.ZLinkRelocationPolicy<TActor>);
 }
-public final class systems.zlink.framework.configuration.ZLinkObjectPlacementOptions extends java.lang.Record {
-  public systems.zlink.framework.configuration.ZLinkObjectPlacementOptions(java.util.Set<java.lang.String>, java.lang.Integer, java.lang.Integer);
-  public java.util.Set<java.lang.String> placementProfiles();
-  public java.lang.Integer maxActiveObjects();
-  public java.lang.Integer maxPendingActivations();
+public final class systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode> {
+  public static final systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode SPOT_WIDE;
+  public static final systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode PER_ACTOR;
+  public static systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode[] values();
+  public static systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode valueOf(java.lang.String);
+  public int value();
+}
+public final class systems.zlink.framework.configuration.ZLinkActorFactoryOptions extends java.lang.Record {
+  public systems.zlink.framework.configuration.ZLinkActorFactoryOptions(java.util.Set<java.lang.String>);
+}
+public final class systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions extends java.lang.Record {
+  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(java.util.Set<java.lang.String>, int, systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode);
+  public systems.zlink.framework.configuration.ZLinkUserSpotFactoryOptions(java.util.Set<java.lang.String>, int);
+  public int stableTypeLimit();
+  public systems.zlink.framework.configuration.ZLinkUserSpotExecutionMode executionMode();
+}
+public final class systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions extends java.lang.Record {
+  public systems.zlink.framework.configuration.ZLinkInstanceSpotFactoryOptions(java.util.Set<java.lang.String>, int);
+  public int stableTypeLimit();
 }
 public final class systems.zlink.framework.configuration.ZLinkMessageFlowOutcome extends java.lang.Enum<systems.zlink.framework.configuration.ZLinkMessageFlowOutcome> {
   public static final systems.zlink.framework.configuration.ZLinkMessageFlowOutcome RECEIVED;

@@ -281,7 +281,7 @@ class route_channel_host_service_t::route_loop_t
     struct completed_reply_t
     {
         std::optional<zlink::routing_id_t> target_rid;
-        std::optional<zlink::routing_id_t> target_spot_rid;
+        std::optional<zlink::routing_id_t> target_spot_id;
         std::uint64_t request_seq = 0;
         zlink::framework::runtime::messaging::message_parts_t parts;
     };
@@ -514,9 +514,9 @@ class route_channel_host_service_t::route_loop_t
         }
         std::lock_guard route_lock (_backend->router_mutex ());
         auto operation =
-          completed.target_spot_rid
+          completed.target_spot_id
             ? _router
-                ->reply_to_spot (*completed.target_rid, *completed.target_spot_rid,
+                ->reply_to_spot (*completed.target_rid, *completed.target_spot_id,
                                  completed.request_seq)
                 .message (copied[0])
             : _router->reply (*completed.target_rid, completed.request_seq).message (copied[0]);
@@ -529,7 +529,7 @@ class route_channel_host_service_t::route_loop_t
     void dispatch_async (zlink::received_t received, std::vector<zlink::message_t> copied)
     {
         auto routing_id = *received.routing_id ();
-        auto spot_rid = received.spot_rid ();
+        auto spot_id = received.spot_id ();
         const auto request_seq = received.request_seq ();
         trace_route_channel ("dispatch-submit channel=" + _route_channel_id
                              + " source=" + routing_id.to_string ()
@@ -538,7 +538,7 @@ class route_channel_host_service_t::route_loop_t
                              + " parts=" + std::to_string (copied.size ()));
         std::lock_guard<std::mutex> lock (_workers_mutex);
         _workers.emplace_back ([this, routing_id = std::move (routing_id),
-                                spot_rid = std::move (spot_rid), request_seq,
+                                spot_id = std::move (spot_id), request_seq,
                                 copied = std::move (copied)] () mutable {
             auto dispatched = _dispatcher.dispatch (detail::route_received_packet_t{
               routing_id, request_seq,
@@ -557,7 +557,7 @@ class route_channel_host_service_t::route_loop_t
             }
             const auto reply_source = routing_id.to_string ();
             std::lock_guard<std::mutex> reply_lock (_replies_mutex);
-            _replies.push_back (completed_reply_t{std::move (routing_id), std::move (spot_rid),
+            _replies.push_back (completed_reply_t{std::move (routing_id), std::move (spot_id),
                                                   *request_seq,
                                                   std::move (dispatched.value ()->parts)});
             trace_route_channel ("dispatch-complete channel=" + _route_channel_id

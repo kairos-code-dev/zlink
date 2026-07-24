@@ -64,6 +64,7 @@ struct channel_capability_snapshot_t
     std::optional<zlink::message_count_t> receive_high_water_mark;
     std::optional<zlink::byte_size_t> max_message_size;
     std::optional<zlink::peer_weight_t> peer_weight;
+    int service_weight = 100;
     std::vector<std::string> bind_endpoints;
     std::vector<std::string> connect_endpoints;
 };
@@ -124,6 +125,7 @@ class capability_builder_t
     capability_builder_t &receive_high_water_mark (zlink::message_count_t value);
     capability_builder_t &max_message_size (zlink::byte_size_t value);
     capability_builder_t &peer_weight (zlink::peer_weight_t value);
+    capability_builder_t &service_weight (int value);
 
     channel_capability_snapshot_t snapshot () const;
 
@@ -549,6 +551,7 @@ class channel_server_socket_runtime_options_t
     operator= (const channel_server_socket_runtime_options_t &) = default;
 
     channel_server_socket_runtime_options_t &peer_weight (zlink::peer_weight_t value);
+    channel_server_socket_runtime_options_t &weight (int value);
 
   private:
     friend class client_server_channel_runtime_options_t;
@@ -824,7 +827,7 @@ class route_client_t
     submit_spot_send_erased (const std::shared_ptr<detail::route_client_state_t> &state,
                              const std::string &router_channel_id,
                              const zlink::routing_id_t &target_node_rid,
-                             const spot_rid_t &spot_target,
+                             const spot_id_t &spot_target,
                              std::uint64_t target_spot_generation,
                              const std::string &packet_name,
                              std::type_index message_type,
@@ -835,7 +838,7 @@ class route_client_t
     submit_spot_request_erased (const std::shared_ptr<detail::route_client_state_t> &state,
                                 const std::string &router_channel_id,
                                 const zlink::routing_id_t &target_node_rid,
-                                const spot_rid_t &spot_target,
+                                const spot_id_t &spot_target,
                                 const std::string &packet_name,
                                 std::type_index request_type,
                                 payload_encoder_t encode_payload,
@@ -877,7 +880,7 @@ class route_client_t
       const std::shared_ptr<detail::route_client_state_t> &state,
       std::string router_channel_id,
       zlink::routing_id_t target_node_rid,
-      spot_rid_t spot_target,
+      spot_id_t spot_target,
       std::uint64_t target_spot_generation,
       std::string packet_name,
       std::type_index request_type,

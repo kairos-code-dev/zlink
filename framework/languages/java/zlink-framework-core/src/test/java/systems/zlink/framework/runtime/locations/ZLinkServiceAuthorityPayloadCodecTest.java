@@ -1,6 +1,8 @@
 package systems.zlink.framework.runtime.locations;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -10,13 +12,13 @@ final class ZLinkServiceAuthorityPayloadCodecTest {
     @Test
     void readyUserSpotRoundTripsIntoDurableRouteFields() {
         var codec = new ZLinkServiceAuthorityPayloadCodec();
-        RoutingId spotRid = RoutingId.from("spot-17");
+        String spotId = "spot-17";
         RoutingId nodeRid = RoutingId.from("node-b");
 
         byte[] payload = codec.encodeUser(
             ZLinkServiceAuthorityPayloadCodec.State.READY,
             "game.player",
-            spotRid,
+            spotId,
             "owner-b",
             31,
             "game",
@@ -27,7 +29,7 @@ final class ZLinkServiceAuthorityPayloadCodecTest {
         assertEquals(ZLinkServiceAuthorityPayloadCodec.Kind.USER, decoded.kind());
         assertEquals(ZLinkServiceAuthorityPayloadCodec.State.READY, decoded.state());
         assertEquals("game.player", decoded.stableType());
-        assertEquals(spotRid, decoded.spotRid());
+        assertEquals(spotId, decoded.spotId());
         assertEquals("owner-b", decoded.ownerId());
         assertEquals(31, decoded.ownerLeaseGeneration());
         assertEquals("game", decoded.meshName());
@@ -41,7 +43,7 @@ final class ZLinkServiceAuthorityPayloadCodecTest {
         byte[] payload = codec.encodeUser(
             ZLinkServiceAuthorityPayloadCodec.State.CREATING,
             "game.player",
-            RoutingId.from("spot-17"),
+            "spot-17",
             "owner-b",
             31,
             "game",
@@ -55,8 +57,29 @@ final class ZLinkServiceAuthorityPayloadCodecTest {
     @Test
     void spotAuthorityKeyUsesCanonicalLengthAndEscaping() {
         assertEquals(
-            "zla1:s:4:a%3Ab%00",
-            ZLinkAuthorityKeyCodec.spot(
-                RoutingId.from(new byte[] {'a', ':', 'b', 0})));
+            "zla1:s:3:a%3Ab",
+            ZLinkAuthorityKeyCodec.spot("a:b"));
+    }
+
+    @Test
+    void spotIdUsesExactUtf8IdentityAndEnforcesByteBoundary() {
+        assertNotEquals(
+            ZLinkAuthorityKeyCodec.spot("Room"),
+            ZLinkAuthorityKeyCodec.spot("room"));
+        assertNotEquals(
+            ZLinkAuthorityKeyCodec.spot("\u00e9"),
+            ZLinkAuthorityKeyCodec.spot("e\u0301"));
+        assertEquals(
+            "zla1:s:255:" + "a".repeat(255),
+            ZLinkAuthorityKeyCodec.spot("a".repeat(255)));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> ZLinkAuthorityKeyCodec.spot(""));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> ZLinkAuthorityKeyCodec.spot("a".repeat(256)));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> ZLinkAuthorityKeyCodec.spot("\u0000"));
     }
 }

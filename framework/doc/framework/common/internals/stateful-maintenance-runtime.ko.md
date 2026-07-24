@@ -89,12 +89,13 @@ authority와 다르면 message, timer, reply completion과 CAS write를 거부�
 ## 4. Explicit creation과 reactivation
 
 Actor와 User Spot은 manager의 explicit `Create`·`GetOrCreate`만 생성 intent를 만든다. Instance Spot은 manager
-creation 대상이 아니다. Spot direct fluent call이 Instance marker를 명시했고 global SpotRid가 `Missing`일 때만
+creation 대상이 아니다. Spot의 global SpotId는 Location Store transaction domain 전체에서 owner location과
+독립된 logical identity다. Spot direct fluent call이 Instance marker를 명시했고 global SpotId가 `Missing`일 때만
 cold activation intent를 만든다. Marker가 없는 일반 send·request와 manager `Find`는 existing `Ready`
 authority만 사용하며, `Missing`이면 factory나 creation reservation을 시작하지 않는다.
 
 두 creation 진입점은 같은 generic `Reserve`를 사용한다. `Reserve`는 object kind, global ActorId, global
-SpotRid, stable type, target descriptor, capacity delta와 provider-issued fence를 원자적으로 기록한다. Pending
+SpotId, stable type, target descriptor, capacity delta와 provider-issued fence를 원자적으로 기록한다. Pending
 snapshot은 fence와 complete request envelope의 reference·hash·encoded size를 반환한다. `Reserve`는 final
 `ObjectGeneration`, `AuthorityOwnerGeneration`과 `Creating` row를 만든다. Factory·initialize와 initial
 membership이 끝나면 같은 fence로 reservation을 commit하고 `Ready`를 publish한다. Target-owned Instance cold
@@ -106,8 +107,8 @@ operation은 drop event를 남긴다. Coordinator는 exact Store version, object
 삭제한다. Delete 결과가 불명확하면 read로 reconcile하며 `Missing`을 확인할 때까지 local registry를 failed로
 유지한다. 그 다음 caller만 새 `NewObject`를 시작한다.
 
-Creation intent는 최대 1 MiB complete request envelope의 content reference와 hash, placement input을 durable하게
-보존한다. Instance activation envelope에는 source·target lifecycle, operation identity, reply correlation,
+Creation intent는 최대 1 MiB complete request envelope의 content reference와 hash, target Mesh와 stable type을
+durable하게 보존한다. Instance activation envelope에는 source·target lifecycle, operation identity, reply correlation,
 deadline, optional metadata presence·frame과 application payload가 들어간다. Target host의 initial scan과 bounded
 background scan은 자신이 소유한 `Creating` intent와 Ready activation recovery root를 재개한다. 이 ZLIA root와
 durable inbox 절차는 target-owned Instance cold activation에만 적용한다. Runtime은 durable inbox first record를

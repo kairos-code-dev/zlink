@@ -1,13 +1,8 @@
 import type { Type } from '../Common';
 import type { ZLinkActor } from '../Actors';
 import type { ZLinkInstanceSpot, ZLinkSpot } from '../Spots';
-import type {
-  ZLinkAffinityKey,
-  ZLinkPlacementProfile
-} from '../Locations';
 
 export interface ZLinkObjectPlacementOptions {
-  readonly placementProfiles?: readonly ZLinkPlacementProfile[];
   readonly maxActiveObjects?: number;
   readonly maxPendingActivations?: number;
 }
@@ -65,9 +60,4 @@ export function zlinkSnapshotRelocation<T>(
   adapterType: Type
 ): ZLinkSnapshotRelocationPolicy<T> {
   return Object.freeze({ kind: 'snapshot', adapterType }) as ZLinkSnapshotRelocationPolicy<T>;
-}
-
-export interface ZLinkObjectPlacementIntent {
-  readonly placementProfile?: ZLinkPlacementProfile;
-  readonly affinityKey?: ZLinkAffinityKey;
 }

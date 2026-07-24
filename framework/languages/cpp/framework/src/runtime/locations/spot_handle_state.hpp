@@ -56,7 +56,7 @@ namespace runtime
 {
 
 /* Internal fixed-address handle for coordination paths that already know the
- * (route channel, node rid, spot rid) triple; no refresh source exists. */
+ * (route channel, node rid, spot id) triple; no refresh source exists. */
 inline spot_handle_t make_fixed_spot_handle (spot_address_t address)
 {
     return framework::detail::spot_handle_access_t::make (std::move (address), nullptr);

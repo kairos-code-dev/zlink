@@ -36,8 +36,8 @@ config에서는 Channel egress index가 그 경로를 가로채지 않는 회귀
 |---|---:|---|
 | location store | 1 | Automatic RouteMesh·ClientServer discovery와 Object Client·Server authority가 공유하는 공식 Redis Location Store. 실행마다 전용 key prefix를 사용한다. |
 | relocation store | 1 | CH-REG-02의 Snapshot Actor join에 사용하는 공식 Redis Relocation Store. Location Store와 별도 key prefix를 사용하며 `Session`·`Play` root가 등록한다. |
-| `Session` | 1 | `game` RouteMesh의 `game.session` Server, `game.play` Client, `game.api` Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode를 Object Server로 구성한다. Entry Spot과 stable Actor type `channel.player` factory를 명시적 `Snapshot` policy, Actor relocation adapter, placement weight `100`, active `128`·pending `32` capacity로 제공한다. |
-| `Play` | 1 | `game` RouteMesh의 `game.play` Server, `game.session` Client, `game.api` Client, `audit` RouteMesh의 `audit.record` Client, `workflow.command` ClientServer Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode만 Object Server로 구성한다. Entry Spot, stable Actor type `channel.player`과 User Spot type `channel.room` factory를 명시적 `Snapshot` policy로 제공한다. Actor·Spot factory에는 kind에 맞는 relocation adapter를 지정하고 placement weight `100`, active `128`·pending `32` capacity를 사용한다. `audit` MeshNode의 object role은 `None`이다. |
+| `Session` | 1 | `game` RouteMesh의 `game.session` Server, `game.play` Client, `game.api` Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode를 Object Server로 구성한다. Entry Spot과 stable Actor type `channel.player` factory를 명시적 `Snapshot` policy, Actor relocation adapter, placement weight `100`, Actor total·Spot total limit `128`, activation concurrency `32`로 제공한다. |
+| `Play` | 1 | `game` RouteMesh의 `game.play` Server, `game.session` Client, `game.api` Client, `audit` RouteMesh의 `audit.record` Client, `workflow.command` ClientServer Client. Location Store와 Relocation Store를 등록하고 `game` MeshNode만 Object Server로 구성한다. Entry Spot, stable Actor type `channel.player`과 User Spot type `channel.room` factory를 명시적 `Snapshot` policy로 제공한다. Actor·Spot factory에는 kind에 맞는 relocation adapter를 지정하고 placement weight `100`, Actor total·Spot total limit `128`, activation concurrency `32`를 사용한다. `audit` MeshNode의 object role은 `None`이다. |
 | `Api` | 2 | `game` RouteMesh의 `game.api` Server. 서로 다른 weight와 lifecycle generation 사용 |
 | `WorkflowClient` | 1 | `workflow.command` ClientServer Client |
 | `WorkflowServer` | 2 | `workflow.command` ClientServer Server, `game` RouteMesh membership 0개. Location Store를 등록하고 `game` MeshNode를 Object Client로 구성해 Spot·Actor direct 호출을 시작하지만 factory와 placement target은 제공하지 않는다. 서로 다른 weight와 `Draining` 상태를 사용한다. |
@@ -117,10 +117,13 @@ Play Entry Spot의 packet handler는 `workflow.command` request를 `async`로 �
 
 ### CH-E2E-04 — ClientServer server 선택, Shutdown과 재시작
 
-두 WorkflowServer를 positive weight로 시작해 선택 비율과 같은 weight의 순환 순서를 확인한다. 한
-server의 weight를 0으로 바꾸고 `Shutdown`하면 새 request 대상에서 제외되지만 이미 수락한 request는 deadline
-안에서 끝나야 한다. 같은 논리 역할을 다시 시작하면 automatic topology가 새 RID와 lifecycle generation을
-발급하고 이전 generation의 늦은 reply가 새 request를 완료하지 않아야 한다.
+두 WorkflowServer를 `100`, `300` weight로 시작해 장기 선택 비율이 `1:3`에 수렴하는지 확인한다. Startup과
+runtime update에서 `0`, 기본값 `100`, 상한 `10000`을 허용하고 `-1`, `10001`은 descriptor mutation 전
+configuration error로 거부한다. 많은 `10000` member를 사용해 합계가 32-bit 범위를 넘더라도 최소 64-bit
+합산으로 overflow하지 않는지 확인한다. 한 server의 weight를 0으로 바꾸고 `Shutdown`하면 새 request
+대상에서 제외되지만 이미 수락한 request는 deadline 안에서 끝나야 한다. 같은 논리 역할을 다시 시작하면
+automatic topology가 새 RID와 lifecycle generation을 발급하고 이전 generation의 늦은 reply가 새 request를
+완료하지 않아야 한다.
 
 ### CH-E2E-05 — ClientServer 방향 제한
 

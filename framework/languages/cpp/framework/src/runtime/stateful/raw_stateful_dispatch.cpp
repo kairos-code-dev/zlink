@@ -214,14 +214,7 @@ std::string raw_stateful_dispatch_t::mailbox_owner (
     if (owner.kind == object_kind_t::actor) {
         return "actor:" + owner.key;
     }
-    std::ostringstream stream;
-    stream << "spot:" << std::hex << std::setfill ('0');
-    for (const auto byte : owner.key) {
-        stream << std::setw (2)
-               << static_cast<unsigned int> (
-                    static_cast<unsigned char> (byte));
-    }
-    return stream.str ();
+    return "spot:" + owner.key;
 }
 
 bool raw_stateful_dispatch_t::exact_fence (
@@ -240,9 +233,7 @@ bool raw_stateful_dispatch_t::exact_fence (
   const protocol::spot_route_fence_t &fence)
 {
     return owner.kind != object_kind_t::actor
-           && std::vector<std::uint8_t> (
-                owner.key.begin (), owner.key.end ())
-                == fence.spot_routing_id
+           && owner.key == fence.spot_id
            && owner.object_generation == fence.object_generation
            && owner.authority_owner_generation
                 == fence.authority_owner_generation;

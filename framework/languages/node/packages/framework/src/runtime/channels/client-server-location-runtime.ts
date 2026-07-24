@@ -95,7 +95,7 @@ export class ZLinkClientServerLocationRuntime {
       if (channel.server === undefined) continue;
       const current = this.localDescriptors.get(channelName);
       if (current !== undefined) {
-        const runtimeWeight = this.sockets.clientServerServerSocket(channelName).peerWeight;
+        const runtimeWeight = this.sockets.clientServerServerWeight(channelName);
         const candidate = runtimeWeight === current.weight
           ? current
           : {

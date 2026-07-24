@@ -1,6 +1,7 @@
 import type {
   Type,
   ZLinkActor,
+  ZLinkActorFactory,
   ZLinkActorTransferAdapter,
   ZLinkCodecExtension,
   ZLinkCodecRegistrar,
@@ -11,6 +12,8 @@ import type {
   ZLinkLocationOptionValues,
   ZLinkLocationOptions,
   ZLinkRelocationStore,
+  ZLinkRelocationPolicy,
+  ZLinkObjectPlacementOptions,
   ZLinkMeshNodeSocketConfig,
   ZLinkMeshPeerConnection,
   ZLinkMeshPeerConnections,
@@ -18,6 +21,7 @@ import type {
   ZLinkSession,
   ZLinkSessionFactory,
   ZLinkSpot,
+  ZLinkInstanceSpot,
   ZLinkSpotPublisherConfig,
   ZLinkStreamCompressionBuilder,
 } from '@zlink-systems/framework';
@@ -46,6 +50,9 @@ import {
   type ZLinkNestFrameworkOptionsBuilder,
   type ZLinkNestModuleRegistrationOptions,
   type ZLinkNestMeshChannelBuilder,
+  type ZLinkNestMeshObjectClientBuilder,
+  type ZLinkNestMeshObjectRoleBuilder,
+  type ZLinkNestMeshObjectServerBuilder,
   type ZLinkNestMeshNodeBuilder,
   type ZLinkNestStreamNodeBuilder
 } from './contracts';
@@ -595,6 +602,14 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
     return new DefaultZLinkNestMeshPeerConnections(this.spotOptions.router);
   }
 
+  objects(): ZLinkNestMeshObjectRoleBuilder {
+    return new DefaultZLinkNestMeshObjectRoleBuilder(
+      this.state,
+      this.name,
+      this.spotOptions
+    );
+  }
+
   addSendHandler(packetName: string, handlerType: Type): this {
     this.spotOptions.routeSendHandlers = [
       ...(this.spotOptions.routeSendHandlers ?? []),
@@ -651,6 +666,180 @@ class DefaultZLinkNestMeshNodeBuilder extends ZLinkNestOptionsBuilder implements
     return this;
   }
 
+}
+
+class DefaultZLinkNestMeshObjectRoleBuilder
+  extends ZLinkNestOptionsBuilder
+  implements ZLinkNestMeshObjectRoleBuilder {
+  constructor(
+    state: ZLinkNestBuilderState,
+    private readonly meshName: string,
+    private readonly node: Mutable<ZLinkSpotNodeOptions>
+  ) {
+    super(state);
+  }
+
+  client(): ZLinkNestMeshObjectClientBuilder {
+    this.node.objectRole = 'client';
+    return new DefaultZLinkNestMeshObjectClientBuilder(this.state);
+  }
+
+  server(): ZLinkNestMeshObjectServerBuilder {
+    this.node.objectRole = 'server';
+    return new DefaultZLinkNestMeshObjectServerBuilder(
+      this.state,
+      this.meshName,
+      this.node
+    );
+  }
+}
+
+class DefaultZLinkNestMeshObjectClientBuilder
+  extends ZLinkNestOptionsBuilder
+  implements ZLinkNestMeshObjectClientBuilder {}
+
+class DefaultZLinkNestMeshObjectServerBuilder
+  extends ZLinkNestOptionsBuilder
+  implements ZLinkNestMeshObjectServerBuilder {
+  constructor(
+    state: ZLinkNestBuilderState,
+    private readonly meshName: string,
+    private readonly node: Mutable<ZLinkSpotNodeOptions>
+  ) {
+    super(state);
+  }
+
+  addEntrySpot<TEntrySpot extends ZLinkEntrySpot>(
+    entrySpotType: Type<TEntrySpot>
+  ): this {
+    framework.registerEntrySpot(this.node, entrySpotType);
+    return this;
+  }
+
+  addSpotFactory<TSpot extends ZLinkSpot>(
+    spotType: string,
+    implementation: Type<TSpot>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TSpot>
+  ): this {
+    const stableType = validateObjectFactory(
+      spotType,
+      'User Spot type',
+      placement,
+      relocation
+    );
+    const registrations = {
+      ...(this.node.spotFactoryRegistrations ?? {})
+    };
+    rejectDuplicateObjectType(registrations, stableType, this.meshName);
+    registrations[stableType] = { implementation, placement, relocation };
+    this.node.spotFactoryRegistrations = registrations;
+    const factories = [...(this.node.spotFactories ?? [])];
+    framework.registerSpotFactory({ spotFactories: factories }, implementation);
+    this.node.spotFactories = factories;
+    return this;
+  }
+
+  addInstanceSpotFactory<TSpot extends ZLinkInstanceSpot>(
+    instanceSpotType: string,
+    implementation: Type<TSpot>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TSpot>
+  ): this {
+    const stableType = validateObjectFactory(
+      instanceSpotType,
+      'Instance Spot type',
+      placement,
+      relocation
+    );
+    const factories = {
+      ...(this.node.instanceSpotFactories ?? {})
+    };
+    if (Object.hasOwn(factories, stableType)) {
+      throw new framework.ZLinkConfigurationException(
+        `Duplicate Instance Spot factory '${stableType}' on RouteMesh '${this.meshName}'.`
+      );
+    }
+    factories[stableType] = implementation;
+    this.node.instanceSpotFactories = factories;
+    this.node.instanceSpotFactoryRegistrations = {
+      ...(this.node.instanceSpotFactoryRegistrations ?? {}),
+      [stableType]: { implementation, placement, relocation }
+    };
+    return this;
+  }
+
+  addActorFactory<TActor extends ZLinkActor>(
+    actorType: string,
+    implementation: Type<ZLinkActorFactory<TActor>>,
+    placement: ZLinkObjectPlacementOptions | undefined,
+    relocation: ZLinkRelocationPolicy<TActor>
+  ): this {
+    const stableType = validateObjectFactory(
+      actorType,
+      'Actor type',
+      placement,
+      relocation
+    );
+    const registrations = {
+      ...(this.node.actorFactoryRegistrations ?? {})
+    };
+    rejectDuplicateObjectType(registrations, stableType, this.meshName);
+    const actorFactories = {
+      ...(this.node.actorFactories as Readonly<Record<string, Type>> | undefined)
+    };
+    framework.registerActorFactory({ actorFactories }, stableType, implementation);
+    this.node.actorFactories = actorFactories;
+    registrations[stableType] = { implementation, placement, relocation };
+    this.node.actorFactoryRegistrations = registrations;
+    return this;
+  }
+}
+
+function validateObjectFactory<T>(
+  stableType: string,
+  label: string,
+  placement: ZLinkObjectPlacementOptions | undefined,
+  relocation: ZLinkRelocationPolicy<T>
+): string {
+  if (
+    typeof stableType !== 'string'
+    || Buffer.byteLength(stableType) < 1
+    || Buffer.byteLength(stableType) > 255
+    || stableType.includes('\0')
+  ) {
+    throw new framework.ZLinkConfigurationException(
+      `${label} must contain 1..255 UTF-8 bytes and no NUL.`
+    );
+  }
+  for (const [name, value] of [
+    ['maxActiveObjects', placement?.maxActiveObjects],
+    ['maxPendingActivations', placement?.maxPendingActivations]
+  ] as const) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
+      throw new framework.ZLinkConfigurationException(
+        `${name} must be a positive safe integer.`
+      );
+    }
+  }
+  if (relocation.kind === 'snapshot' && typeof relocation.adapterType !== 'function') {
+    throw new framework.ZLinkConfigurationException(
+      'Snapshot relocation requires an adapter type.'
+    );
+  }
+  return stableType;
+}
+
+function rejectDuplicateObjectType(
+  registrations: Readonly<Record<string, unknown>>,
+  stableType: string,
+  meshName: string
+): void {
+  if (Object.hasOwn(registrations, stableType)) {
+    throw new framework.ZLinkConfigurationException(
+      `Duplicate object factory '${stableType}' on RouteMesh '${meshName}'.`
+    );
+  }
 }
 
 class DefaultZLinkNestMeshChannelBuilder extends ZLinkNestOptionsBuilder implements ZLinkNestMeshChannelBuilder {

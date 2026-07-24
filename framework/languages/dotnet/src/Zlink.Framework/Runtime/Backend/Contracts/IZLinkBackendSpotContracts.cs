@@ -57,7 +57,7 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     IZLinkBackendSpot CreateSpot();
 
-    IZLinkBackendSpot GetOrCreateSpot(RoutingId spotRid, out bool created);
+    IZLinkBackendSpot GetOrCreateSpot(string spotId, out bool created);
 
     ZLinkSpotNodeStatus Status();
 
@@ -112,12 +112,19 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
 
     ZLinkBackendActorRef CreateActor(string actorId, Message createRequest);
 
+    ZLinkBackendActorRef CreateReservedActor(
+        string actorId,
+        ulong objectGeneration,
+        Message createRequest) =>
+        throw new NotSupportedException(
+            "This MeshNode backend does not support reservation-fenced Actor creation.");
+
     ZLinkBackendActorRef? ActorLookup(string actorId);
 
     bool JoinActor(
         ZLinkBackendActorRef actor,
         RoutingId destNodeRid,
-        RoutingId destSpotRid,
+        string destSpotId,
         Message message,
         RequestCallback callback,
         TimeSpan? timeout);
@@ -125,7 +132,7 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     bool JoinActor(
         ZLinkBackendActorRef actor,
         RoutingId destNodeRid,
-        RoutingId destSpotRid,
+        string destSpotId,
         IReadOnlyList<Message> parts,
         ActorJoinCallback callback,
         TimeSpan? timeout);
@@ -214,6 +221,10 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
         throw new NotSupportedException(
             "This MeshNode backend does not support User Spot service operations.");
 
+    void SetActorCreateOperationTarget(IActorCreateOperationTarget target) =>
+        throw new NotSupportedException(
+            "This MeshNode backend does not support Actor create service operations.");
+
     void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target) =>
         throw new NotSupportedException(
             "This MeshNode backend does not support Instance Spot activation.");
@@ -221,9 +232,20 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
     ValueTask<(UserSpotCreateCompletion Completion, IReadOnlyList<Message> Reply)>
         CreateUserSpotAsync(
             RoutingId targetNodeRid,
-            RoutingId spotRid,
+            string spotId,
             string stableType,
-            UserSpotReservationFence reservation,
+            ObjectReservationFence reservation,
+            ulong deadlineUnixMs,
+            TimeSpan timeout,
+            CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    ValueTask<(ActorCreateCompletion Completion, IReadOnlyList<Message> Reply)>
+        CreateActorRemoteAsync(
+            RoutingId targetNodeRid,
+            string actorId,
+            string stableType,
+            ObjectReservationFence reservation,
             ulong deadlineUnixMs,
             TimeSpan timeout,
             CancellationToken cancellationToken) =>
@@ -315,7 +337,7 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
     //  resolved handle snapshot; the Core contract rejects 0 (03-spot §5).
     SubmitResult SendToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        string spotId,
         ulong spotGeneration,
         Message message,
         SendFlags flags,
@@ -323,7 +345,7 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
 
     SubmitResult SendToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        string spotId,
         ulong spotGeneration,
         IReadOnlyList<Message> parts,
         SendFlags flags,
@@ -331,7 +353,7 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
 
     bool RequestToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        string spotId,
         ulong spotGeneration,
         Message message,
         RequestCallback callback,
@@ -341,7 +363,7 @@ internal interface IZLinkBackendSpot : IAsyncDisposable
 
     bool RequestToSpot(
         RoutingId targetRid,
-        RoutingId spotRid,
+        string spotId,
         ulong spotGeneration,
         IReadOnlyList<Message> parts,
         RequestCallback callback,

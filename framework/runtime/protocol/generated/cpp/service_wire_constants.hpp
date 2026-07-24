@@ -48,11 +48,12 @@ enum class command : std::uint8_t {
     replyRelayAck = 46,
     userSpotCreate = 47,
     userSpotClose = 48,
+    actorCreate = 49,
 };
 enum class flag : std::uint8_t {
     metadata = 1,
     boundSession = 2,
-    sourceSpotRid = 4,
+    sourceSpotId = 4,
     extension = 8,
 };
 enum class framework_error_code : std::uint32_t {
@@ -108,6 +109,7 @@ inline constexpr std::uint64_t relocationManifestBytes = 33554432ULL;
 inline constexpr std::uint64_t relocationControlEnvelopeBytes = 1048576ULL;
 inline constexpr std::uint64_t weightMax = 100ULL;
 inline constexpr std::uint64_t creationIntentBytes = 1048576ULL;
+inline constexpr std::uint64_t creationTerminalEnvelopeBytes = 1048576ULL;
 inline constexpr std::uint64_t maintenanceAggregateParticipants = 1024ULL;
 inline constexpr std::uint64_t relocationResourceParticipants = 2048ULL;
 inline constexpr std::uint64_t maintenanceAggregateBytes = 1048576ULL;

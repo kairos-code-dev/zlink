@@ -39,28 +39,28 @@ final class SpotManagerTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-manager-router-" + suffix).setRoutingId(RoutingId.from("spot-manager-node-" + suffix));
                 node.addSpotFactory(GameSpot.class); }; };
-        RoutingId spotRid = RoutingId.from("game-1-" + suffix);
+        String spotId = RoutingId.from("game-1-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
-                .create(GameSpot.class, spotRid)
+                .create(GameSpot.class, spotId)
                 .toCompletableFuture()
                 .join()
                 .state());
-            assertEquals(spotRid, runtime.spotManager()
-                .find(spotRid)
+            assertEquals(spotId, runtime.spotManager()
+                .find(spotId)
                 .toCompletableFuture()
                 .join()
                 .orElseThrow()
-                .spotRid());
+                .spotId());
             assertEquals(1, runtime.spotManager()
                 .list()
                 .toCompletableFuture()
                 .join()
                 .size());
             assertTrue(runtime.spotManager()
-                .close(spotRid)
+                .close(spotId)
                 .toCompletableFuture()
                 .join());
         }
@@ -73,17 +73,17 @@ final class SpotManagerTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-once-router-" + suffix).setRoutingId(RoutingId.from("spot-once-node-" + suffix));
                 node.addSpotFactory(GameSpot.class); }; };
-        RoutingId spotRid = RoutingId.from("game-once-" + suffix);
+        String spotId = RoutingId.from("game-once-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
-                .getOrCreate(GameSpot.class, spotRid)
+                .getOrCreate(GameSpot.class, spotId)
                 .toCompletableFuture()
                 .join()
                 .state());
             assertEquals(ZLinkSpotCreateState.EXISTING, runtime.spotManager()
-                .getOrCreate(GameSpot.class, spotRid)
+                .getOrCreate(GameSpot.class, spotId)
                 .toCompletableFuture()
                 .join()
                 .state());
@@ -98,16 +98,16 @@ final class SpotManagerTest {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-concurrent-router-" + suffix).setRoutingId(RoutingId.from("spot-concurrent-node-" + suffix));
                 node.addSpotFactory(SlowCreateSpot.class); }; };
-        RoutingId spotRid = RoutingId.from("game-concurrent-" + suffix);
+        String spotId = RoutingId.from("game-concurrent-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             CompletionStage<ZLinkSpotCreateResult> first = runtime.spotManager()
-                .getOrCreate(SlowCreateSpot.class, spotRid, ZLinkMessage.of("first"));
+                .getOrCreate(SlowCreateSpot.class, spotId, ZLinkMessage.of("first"));
             assertTrue(SlowCreateSpot.createStarted.await(3, TimeUnit.SECONDS));
 
             CompletionStage<ZLinkSpotCreateResult> second = runtime.spotManager()
-                .getOrCreate(SlowCreateSpot.class, spotRid, ZLinkMessage.of("second"));
+                .getOrCreate(SlowCreateSpot.class, spotId, ZLinkMessage.of("second"));
             SlowCreateSpot.release.complete(null);
 
             ZLinkSpotCreateState firstState =
@@ -131,12 +131,12 @@ final class SpotManagerTest {
         { var mesh = options.addSpotMesh("game"); { var node = mesh; node.enableRouter("inproc://spot-timer-router-" + suffix).setRoutingId(RoutingId.from("spot-timer-router-node-" + suffix));
                 node.enablePubSub("inproc://spot-pub-" + suffix);
                 node.addSpotFactory(PublishingSpot.class); }; };
-        RoutingId spotRid = RoutingId.from("timer-room-" + suffix);
+        String spotId = RoutingId.from("timer-room-" + suffix);
 
         try (ZLinkFrameworkRuntime runtime =
                  RuntimeTestSupport.startFramework(options, new ZLinkJavaBackendAdapterFactory())) {
             assertEquals(ZLinkSpotCreateState.CREATED, runtime.spotManager()
-                .create(PublishingSpot.class, spotRid)
+                .create(PublishingSpot.class, spotId)
                 .toCompletableFuture()
                 .join()
                 .state());
@@ -145,7 +145,7 @@ final class SpotManagerTest {
             assertTrue(PublishingSpot.timerOnVirtualThread.get());
 
             assertTrue(runtime.spotManager()
-                .close(spotRid)
+                .close(spotId)
                 .toCompletableFuture()
                 .join());
             assertTrue(PublishingSpot.closed.await(1, TimeUnit.SECONDS));
@@ -175,7 +175,7 @@ final class SpotManagerTest {
             assertEquals(ZLinkSpotCreateState.REJECTED, rejected.state());
             assertEquals("reject:closed", rejected.reply().decode(String.class));
             assertTrue(runtime.spotManager()
-                .find(rejected.spotRid())
+                .find(rejected.spotId())
                 .toCompletableFuture()
                 .join()
                 .isEmpty());

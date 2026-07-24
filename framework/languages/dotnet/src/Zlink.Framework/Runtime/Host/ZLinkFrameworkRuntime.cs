@@ -6,7 +6,8 @@ namespace Zlink.Framework.Runtime.Host;
 internal readonly record struct CreateActorResult(
     IZLinkActor Actor,
     bool Created,
-    ZLinkMessage CreateRequest);
+    ZLinkMessage CreateRequest,
+    ZLinkActorCreateResponse? Response = null);
 
 internal readonly record struct ZLinkDrainRemainderCounts(
     int Actors,

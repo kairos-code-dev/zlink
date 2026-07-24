@@ -210,7 +210,8 @@ test('in-memory exact MeshNode descriptor and Actor transfer stores enforce thei
       stableType: 'room',
       policy: 'recreate',
       hasSnapshotAdapter: false,
-      placementProfiles: ['default'],
+      active: 0,
+      reserved: 0,
       activeLimit: 100,
       pendingLimit: 100
     }],

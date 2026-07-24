@@ -4,30 +4,28 @@ public interface IZLinkActorContext
 {
     string MeshName { get; }
 
-    RoutingId? SpotRid { get; }
+    string? SpotId { get; }
 
     IZLinkBoundSession BoundSession { get; }
 
     IZLinkActorJoinSpotCall JoinSpot(
-        RoutingId spotRid,
+        string spotId,
         ZLinkMessage request);
 
     IZLinkActorJoinSpotCall JoinSpot<TRequest>(
-        RoutingId spotRid,
+        string spotId,
         TRequest request)
     {
-        return JoinSpot(spotRid, ZLinkMessage.From(request));
+        return JoinSpot(spotId, ZLinkMessage.From(request));
     }
 
     IZLinkActorJoinEntrySpotCall JoinEntrySpot(
-        RoutingId spotNodeRid,
         ZLinkMessage request);
 
     IZLinkActorJoinEntrySpotCall JoinEntrySpot<TRequest>(
-        RoutingId spotNodeRid,
         TRequest request)
     {
-        return JoinEntrySpot(spotNodeRid, ZLinkMessage.From(request));
+        return JoinEntrySpot(ZLinkMessage.From(request));
     }
 }
 

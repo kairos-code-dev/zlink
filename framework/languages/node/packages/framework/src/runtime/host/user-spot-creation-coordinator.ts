@@ -6,6 +6,7 @@ import type {
   ZLinkAuthorityStore,
   ZLinkLocationOwnerToken,
   ZLinkObjectCreationStore,
+  ZLinkObjectReserveResult,
   ZLinkSpotCreateResult
 } from '../../contracts';
 import {
@@ -31,8 +32,8 @@ export interface ZLinkUserSpotCreationCoordinatorOptions {
   readonly store: ZLinkObjectCreationStore & ZLinkAuthorityStore;
   readonly target: (request: Pick<
     ZLinkUserSpotCreationRequest,
-    'meshName' | 'stableType' | 'placementProfile' | 'affinityKey'
-  >, signal?: AbortSignal) => Promise<{
+    'meshName' | 'stableType'
+  >, signal?: AbortSignal, excludedNodeRids?: ReadonlySet<string>) => Promise<{
     readonly meshName: string;
     readonly nodeRid: RoutingId;
     readonly nodeGeneration: bigint;
@@ -54,8 +55,6 @@ export interface ZLinkUserSpotCreationRequest {
   readonly meshName?: string;
   readonly spotRid: RoutingId;
   readonly stableType: string;
-  readonly placementProfile?: import('../../contracts').ZLinkPlacementProfile;
-  readonly affinityKey?: import('../../contracts').ZLinkAffinityKey;
   readonly requestPayload: Uint8Array;
   readonly timeoutMs: number;
   readonly signal?: AbortSignal;
@@ -65,6 +64,11 @@ export interface ZLinkUserSpotCreationRequest {
 export interface ZLinkUserSpotCreationResult {
   readonly result: ZLinkSpotCreateResult;
   readonly spot: SpotRef;
+}
+
+export interface ZLinkUserSpotCloseTarget {
+  readonly spot: SpotRef;
+  readonly snapshot: ZLinkAuthoritySnapshot;
 }
 
 /**
@@ -103,71 +107,83 @@ export class ZLinkUserSpotCreationCoordinator {
     const deadlineUnixMs = Date.now() + request.timeoutMs;
     const signal = deadline.signal;
     signal.throwIfAborted();
-    let target;
-    try {
-      target = await this.options.target(request, signal);
-    } catch (error) {
-      deadline.close();
-      if (error instanceof ZLinkFrameworkException) throw error;
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
-        'User Spot placement provider failed.',
-        false,
-        error
-      );
-    }
-    if (target === undefined) {
-      deadline.close();
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
-        'No eligible User Spot placement target is ready.',
-        true
-      );
-    }
-    const owner = target.owner;
     const checksum = crc32c(request.requestPayload);
     const sha256 = createHash('sha256').update(request.requestPayload).digest();
     const contentReference = encodeLocationCreationContent(request.requestPayload, checksum);
-    const authorityTarget = {
-      meshName: target.meshName,
-      nodeRid: target.nodeRid,
-      nodeLifecycleGeneration: target.nodeGeneration,
-      owner
-    };
-    let reserved;
-    try {
-      reserved = await this.options.store.reserve({
-        key: { kind: 'user_spot', globalId: String(request.spotRid) },
-        intent: {
-          stableType: request.stableType,
-          placementProfile: request.placementProfile,
-          affinityKey: request.affinityKey,
-          requestContentReference: contentReference,
-          requestSha256: sha256,
-          requestEncodedSize: BigInt(request.requestPayload.byteLength)
-        },
-        target: authorityTarget,
-        creatingPayload: encodeServiceUserSpotAuthorityPayload({
-          state: 'creating',
-          stableType: request.stableType,
-          spotRid: String(request.spotRid),
-          ownerId: owner.ownerId,
-          ownerLeaseGeneration: owner.leaseGeneration,
-          ownerMeshName: target.meshName,
-          ownerNodeRid: String(target.nodeRid),
-          ownerNodeGeneration: target.nodeGeneration
-        }),
-        pendingCapacityDelta: 1
-      }, signal);
-    } catch (error) {
-      deadline.close();
-      if (error instanceof ZLinkFrameworkException) throw error;
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RequestFailed,
-        'User Spot reservation Store operation failed.',
-        false,
-        error
-      );
+    const excludedNodeRids = new Set<string>();
+    let target: Awaited<ReturnType<ZLinkUserSpotCreationCoordinatorOptions['target']>>;
+    let authorityTarget;
+    let reserved: ZLinkObjectReserveResult;
+    while (true) {
+      try {
+        target = await this.options.target(request, signal, excludedNodeRids);
+      } catch (error) {
+        deadline.close();
+        if (error instanceof ZLinkFrameworkException) throw error;
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.RequestFailed,
+          'User Spot placement provider failed.',
+          false,
+          error
+        );
+      }
+      if (target === undefined) {
+        deadline.close();
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+          'No eligible User Spot placement target is ready.',
+          true
+        );
+      }
+      if (excludedNodeRids.has(String(target.nodeRid))) {
+        deadline.close();
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+          'No additional User Spot placement target is ready.',
+          true
+        );
+      }
+      const owner = target.owner;
+      authorityTarget = {
+        meshName: target.meshName,
+        nodeRid: target.nodeRid,
+        nodeLifecycleGeneration: target.nodeGeneration,
+        owner
+      };
+      try {
+        reserved = await this.options.store.reserve({
+          key: { kind: 'user_spot', globalId: String(request.spotRid) },
+          intent: {
+            stableType: request.stableType,
+            requestContentReference: contentReference,
+            requestSha256: sha256,
+            requestEncodedSize: BigInt(request.requestPayload.byteLength)
+          },
+          target: authorityTarget,
+          creatingPayload: encodeServiceUserSpotAuthorityPayload({
+            state: 'creating',
+            stableType: request.stableType,
+            spotRid: String(request.spotRid),
+            ownerId: owner.ownerId,
+            ownerLeaseGeneration: owner.leaseGeneration,
+            ownerMeshName: target.meshName,
+            ownerNodeRid: String(target.nodeRid),
+            ownerNodeGeneration: target.nodeGeneration
+          }),
+          pendingCapacityDelta: 1
+        }, signal);
+      } catch (error) {
+        deadline.close();
+        if (error instanceof ZLinkFrameworkException) throw error;
+        throw new ZLinkFrameworkException(
+          ZLinkFrameworkErrorKind.RequestFailed,
+          'User Spot reservation Store operation failed.',
+          false,
+          error
+        );
+      }
+      if (reserved.kind !== 'placementCapacityExhausted') break;
+      excludedNodeRids.add(String(target.nodeRid));
     }
     if (
       reserved.kind === 'alreadyExists'
@@ -275,13 +291,6 @@ export class ZLinkUserSpotCreationCoordinator {
     }
     if (reserved.kind !== 'reserved') {
       deadline.close();
-      if (reserved.kind === 'placementCapacityExhausted') {
-        throw new ZLinkFrameworkException(
-          ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
-          'User Spot placement capacity is exhausted.',
-          true
-        );
-      }
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.RequestFailed,
         `User Spot reservation failed: ${reserved.kind}.`
@@ -321,31 +330,10 @@ export class ZLinkUserSpotCreationCoordinator {
     ownerPresent?: (current: SpotRef) => boolean,
     ownerCanClose?: (current: SpotRef) => boolean
   ): Promise<boolean> {
+    const resolved = await this.resolveCloseTarget(spot, signal);
+    if (resolved === undefined) return false;
+    const { spot: currentRef, snapshot: current } = resolved;
     const key = encodeAuthorityKey('user_spot', String(spot.spotRid));
-    const current = await this.options.store.readAuthority(key, signal);
-    if (current.kind === 'missing') return false;
-    if (current.objectGeneration !== spot.objectGeneration) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotGenerationStale,
-        `User Spot '${String(spot.spotRid)}' generation is stale.`
-      );
-    }
-    const currentRef = spotRef(current, {
-      meshName: current.allocation.descriptor.meshName,
-      spotRid: spot.spotRid,
-      stableType: current.allocation.stableType,
-      requestPayload: Buffer.alloc(0),
-      timeoutMs: 1
-    });
-    if (
-      String(current.allocation.descriptor.rid) !== String(spot.nodeRid)
-      || current.allocation.descriptor.meshName !== spot.meshName
-    ) {
-      throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.SpotGenerationStale,
-        `User Spot '${String(spot.spotRid)}' owner route is stale.`
-      );
-    }
     if (ownerPresent?.(currentRef) === false) {
       throw new ZLinkFrameworkException(
         ZLinkFrameworkErrorKind.SpotMoving,
@@ -384,6 +372,38 @@ export class ZLinkUserSpotCreationCoordinator {
       ZLinkFrameworkErrorKind.SpotGenerationStale,
       `User Spot '${String(spot.spotRid)}' generation cannot be closed.`
     );
+  }
+
+  async resolveCloseTarget(
+    spot: SpotRef,
+    signal?: AbortSignal
+  ): Promise<ZLinkUserSpotCloseTarget | undefined> {
+    const key = encodeAuthorityKey('user_spot', String(spot.spotRid));
+    const current = await this.options.store.readAuthority(key, signal);
+    if (current.kind === 'missing') return undefined;
+    if (current.objectGeneration !== spot.objectGeneration) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotGenerationStale,
+        `User Spot '${String(spot.spotRid)}' generation is stale.`
+      );
+    }
+    const currentRef = spotRef(current, {
+      meshName: current.allocation.descriptor.meshName,
+      spotRid: spot.spotRid,
+      stableType: current.allocation.stableType,
+      requestPayload: Buffer.alloc(0),
+      timeoutMs: 1
+    });
+    if (
+      String(current.allocation.descriptor.rid) !== String(spot.nodeRid)
+      || current.allocation.descriptor.meshName !== spot.meshName
+    ) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.SpotGenerationStale,
+        `User Spot '${String(spot.spotRid)}' owner route is stale.`
+      );
+    }
+    return { spot: currentRef, snapshot: current };
   }
 
   async handleRemoteCreate(
@@ -997,29 +1017,30 @@ function remoteUserSpotFailure(
   failureCode: number,
   message: string
 ): ZLinkFrameworkException {
+  const detail = `${message} terminalResult=${terminalResult}, failureCode=${failureCode}.`;
   if (failureCode === 33) {
     return new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.SpotGenerationStale,
-      message
+      detail
     );
   }
   if (failureCode === 34) {
     return new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.SpotMoving,
-      message,
+      detail,
       true
     );
   }
   if (terminalResult === 101) {
     return new ZLinkFrameworkException(
       ZLinkFrameworkErrorKind.DeadlineExceeded,
-      message,
+      detail,
       true
     );
   }
   return new ZLinkFrameworkException(
     ZLinkFrameworkErrorKind.RequestFailed,
-    message
+    detail
   );
 }
 

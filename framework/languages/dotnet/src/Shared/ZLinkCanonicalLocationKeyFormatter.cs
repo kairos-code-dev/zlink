@@ -19,8 +19,11 @@ internal static class ZLinkCanonicalLocationKeyFormatter
     internal static string EncodeMeshNodeKey(ZLinkMeshNodeDescriptorKey key) =>
         Encode(key.MeshName, key.Rid.ToHex());
 
-    internal static string EncodeSpotKey(ZLinkSpotLocationKey key) =>
-        Encode(key.MeshName, key.SpotRid.ToHex());
+    internal static string EncodeSpotKey(ZLinkSpotLocationKey key)
+    {
+        RequireSpotId(key.SpotId);
+        return Encode(key.SpotId);
+    }
 
     internal static string EncodeActorKey(ZLinkActorLocationKey key) =>
         Encode(key.MeshName, key.ActorId);
@@ -78,5 +81,30 @@ internal static class ZLinkCanonicalLocationKeyFormatter
         }
 
         return builder.ToString();
+    }
+
+    private static void RequireSpotId(string spotId)
+    {
+        int size;
+        try
+        {
+            size = new UTF8Encoding(
+                encoderShouldEmitUTF8Identifier: false,
+                throwOnInvalidBytes: true).GetByteCount(spotId);
+        }
+        catch (EncoderFallbackException exception)
+        {
+            throw new ArgumentException(
+                "SpotId must contain valid UTF-8 text.",
+                nameof(spotId),
+                exception);
+        }
+
+        if (size is < 1 or > 255 || spotId.Contains('\0'))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(spotId),
+                "SpotId must be 1 to 255 UTF-8 bytes without NUL.");
+        }
     }
 }

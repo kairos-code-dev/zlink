@@ -6,12 +6,12 @@ import systems.zlink.contracts.core.RoutingId;
 public record ZLinkBackendActorLifecycleInfo(
     ZLinkBackendActorRef previousActor,
     ZLinkBackendActorRef currentActor,
-    Optional<RoutingId> previousSpotRid,
-    Optional<RoutingId> currentSpotRid,
+    Optional<String> previousSpotId,
+    Optional<String> currentSpotId,
     long joinEpoch,
     int flags) {
     public ZLinkBackendActorLifecycleInfo {
-        previousSpotRid = previousSpotRid == null ? Optional.empty() : previousSpotRid;
-        currentSpotRid = currentSpotRid == null ? Optional.empty() : currentSpotRid;
+        previousSpotId = previousSpotId == null ? Optional.empty() : previousSpotId;
+        currentSpotId = currentSpotId == null ? Optional.empty() : currentSpotId;
     }
 }

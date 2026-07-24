@@ -15,6 +15,7 @@ export interface ZLinkSpotAcceptRejectResponse {
 export interface ZLinkSpotActorJoinResponse extends ZLinkSpotAcceptRejectResponse {}
 
 export interface ZLinkSpotCreateResponse extends ZLinkSpotAcceptRejectResponse {}
+export interface ZLinkActorCreateResponse extends ZLinkSpotAcceptRejectResponse {}
 
 export enum ZLinkSpotCloseReason {
   ExplicitClose = 0,
@@ -27,14 +28,17 @@ export interface ZLinkSpotClosingContext {
   readonly deadline: Date;
 }
 
-export interface ZLinkSpotActorLifecycle {
-  onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+export interface ZLinkSpotActorMembershipLifecycle {
   onJoinedActor(actor: ZLinkActorMembership): Promise<void>;
   onLeaveActor(actor: ZLinkActorMembership): Promise<void>;
   onDisconnectActor(actor: ZLinkActorMembership): Promise<void>;
 }
 
-export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkSpotActorLifecycle {
+export interface ZLinkUserSpotActorLifecycle extends ZLinkSpotActorMembershipLifecycle {
+  onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse>;
+}
+
+export interface ZLinkSpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkUserSpotActorLifecycle {
   readonly context: ZLinkSpotContext<TActor>;
   configure?(): void;
   onCreate?(request: ZLinkMessage): Promise<ZLinkSpotCreateResponse>;
@@ -49,10 +53,15 @@ export interface ZLinkInstanceSpot {
   onClosing?(context: ZLinkSpotClosingContext, cleanupSignal: AbortSignal): Promise<void>;
 }
 
-export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor> extends ZLinkSpotActorLifecycle {
+export interface ZLinkEntrySpot<TActor extends ZLinkActor = ZLinkActor>
+  extends ZLinkSpotActorMembershipLifecycle {
   readonly context: ZLinkEntrySpotContext<TActor>;
   configure?(): void;
   onInitialize?(): Promise<void>;
   onClosing?(context: ZLinkSpotClosingContext, cleanupSignal: AbortSignal): Promise<void>;
-  onCreateActor?(actor: ZLinkActorMembership, createRequest: ZLinkMessage): Promise<void>;
+  onCreateActor?(
+    actor: ZLinkActorMembership,
+    createRequest: ZLinkMessage
+  ): Promise<ZLinkActorCreateResponse>;
+  onActorRelocated?(actor: ZLinkActorMembership): Promise<void>;
 }

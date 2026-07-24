@@ -269,10 +269,34 @@ class KotlinLocationExtensionsTest {
             cancellation: ZLinkStoreCancellation,
         ): ZLinkObjectCommitResult = ZLinkObjectCommitResult.STALE
 
+        override suspend fun commitSuspending(
+            reservation: ZLinkObjectReservation,
+            readyPayload: ByteArray,
+            terminal: ZLinkCreationOperationTerminal,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkObjectCommitResult = ZLinkObjectCommitResult.STALE
+
+        override suspend fun rejectSuspending(
+            reservation: ZLinkObjectReservation,
+            terminal: ZLinkCreationOperationTerminal,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkObjectRejectResult = ZLinkObjectRejectResult.STALE
+
         override suspend fun abortSuspending(
             reservation: ZLinkObjectReservation,
             cancellation: ZLinkStoreCancellation,
         ): ZLinkObjectAbortResult = ZLinkObjectAbortResult.STALE
+
+        override suspend fun abortSuspending(
+            reservation: ZLinkObjectReservation,
+            terminal: ZLinkCreationOperationTerminal,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkObjectAbortResult = ZLinkObjectAbortResult.STALE
+
+        override suspend fun readCreationTerminalSuspending(
+            operation: ZLinkCreationOperationIdentity,
+            cancellation: ZLinkStoreCancellation,
+        ): ZLinkCreationTerminalReadResult = ZLinkCreationTerminalMissing()
 
         override suspend fun reserveRelocationCapacitySuspending(
             request: ZLinkRelocationCapacityReservationRequest,
@@ -345,7 +369,9 @@ class KotlinLocationExtensionsTest {
 
         @Suppress("unused")
         private fun spot(ownerId: String): ZLinkSpotLocation =
-            ZLinkSpotLocation("mesh", NODE_RID, "spot", NODE_RID, ZLinkSpotKind.USER, null, ownerId, 0, NOW)
+            ZLinkSpotLocation(
+                "mesh", "spot", "spot", NODE_RID,
+                ZLinkSpotKind.USER, null, ownerId, 0, NOW)
 
         @Suppress("unused")
         private fun route(ownerId: String): ZLinkRouteLocation =

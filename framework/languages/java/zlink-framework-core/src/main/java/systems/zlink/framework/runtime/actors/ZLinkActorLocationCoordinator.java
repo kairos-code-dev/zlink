@@ -17,7 +17,7 @@ import systems.zlink.framework.runtime.locations.ZLinkStoreLocationResolvers;
 
 final class ZLinkActorLocationCoordinator {
     private final Function<String, String> actorTypeResolver;
-    private Function<RoutingId, String> spotMeshResolver = ignored -> null;
+    private Function<String, String> spotMeshResolver = ignored -> null;
     private ZLinkLocationLifecycle lifecycle;
     private ZLinkStoreLocationResolvers resolvers;
 
@@ -33,7 +33,7 @@ final class ZLinkActorLocationCoordinator {
         this.resolvers = resolvers;
     }
 
-    void setSpotMeshResolver(Function<RoutingId, String> spotMeshResolver) {
+    void setSpotMeshResolver(Function<String, String> spotMeshResolver) {
         this.spotMeshResolver = spotMeshResolver == null ? ignored -> null : spotMeshResolver;
     }
 
@@ -81,7 +81,7 @@ final class ZLinkActorLocationCoordinator {
                 : Optional.of(row.actorRef()));
     }
 
-    CompletionStage<Void> actorJoinedSpot(ZLinkActor actor, RoutingId spotRid) {
+    CompletionStage<Void> actorJoinedSpot(ZLinkActor actor, String spotId) {
         if (lifecycle == null) {
             return CompletableFuture.completedFuture(null);
         }
@@ -89,11 +89,11 @@ final class ZLinkActorLocationCoordinator {
         if (actorType == null) {
             return CompletableFuture.completedFuture(null);
         }
-        String meshName = spotMeshResolver.apply(spotRid);
+        String meshName = spotMeshResolver.apply(spotId);
         if (meshName == null || meshName.isBlank()) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.notifyActorJoinedSpot(actorType, actor.actorId(), meshName, spotRid);
+        return lifecycle.notifyActorJoinedSpot(actorType, actor.actorId(), meshName, spotId);
     }
 
     CompletionStage<Void> actorLeftSpot(ZLinkActor actor) {

@@ -229,13 +229,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
                 ZLinkSpotCreateCall.class,
                 manager.create("room-v1")
                     .inMesh("game")
-                    .placementProfile("default")
-                    .affinityKey("tenant-a")
                     .timeout(Duration.ofSeconds(1)));
             assertInstanceOf(
                 ZLinkSpotGetOrCreateCall.class,
                 manager.getOrCreate(
-                        RoutingId.from("spring-room"),
+                        "spring-room",
                         "room-v1")
                     .inMesh("game")
                     .request(ZLinkMessage.empty()));

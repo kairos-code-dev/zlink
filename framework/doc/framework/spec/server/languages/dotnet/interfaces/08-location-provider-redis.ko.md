@@ -101,7 +101,7 @@ length-prefix key, `channel` HASH field와 canonical JSON을 사용한다. 다�
 API를 재사용하지 않는다.
 
 `ZLinkRedisLocationStore`는 `IZLinkLocationStore`가 상속한 `IZLinkAuthorityStore` capability를 같은 Redis
-connection과 key namespace에서 제공한다. Entry·User·Instance Spot은 global `SpotRid` 하나의 authority
+connection과 key namespace에서 제공한다. Entry·User·Instance Spot은 global `SpotId` 하나의 authority
 row와 object generation을 공유하고 Actor relocation도 opaque authority payload로 저장한다. Redis extension은
 Spot kind별 write나 phase별 method를 제공하거나 payload를 해석하지 않고 generic placement
 `Reserve`·`Commit`·`Abort`, bounded aggregate operation과 expected StoreVersion CAS를 같은 transaction domain에서

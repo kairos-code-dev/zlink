@@ -9,7 +9,7 @@ public record ZLinkBackendActorJoinEntrySpotResult(
     int joinResultCode,
     ZLinkBackendActorRef actor,
     RoutingId targetNodeRid,
-    RoutingId joinedSpotRid,
+    String joinedSpotId,
     long joinEpoch,
     int flags,
     List<Message> replyParts) {

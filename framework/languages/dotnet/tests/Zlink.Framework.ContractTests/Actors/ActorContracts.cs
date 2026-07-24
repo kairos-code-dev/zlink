@@ -18,26 +18,32 @@ public sealed class ActorContracts
         typeof(IZLinkActorRequestCall),
         typeof(IZLinkActorFactory),
         typeof(IZLinkActorManager),
-        typeof(IZLinkActorDirectory))]
-    public async Task Actor_context_creates_actors_and_joins_a_spot_by_routing_id()
+        typeof(IZLinkActorCreateCall),
+        typeof(IZLinkActorGetOrCreateCall),
+        typeof(ZLinkActorCreateResult))]
+    public async Task Actor_context_creates_actors_and_joins_a_spot_by_spot_id()
     {
         var spot = new RoomSpot();
         var context = new ActorContext("player-1");
         var factory = new ActorFactory();
         var manager = new ActorManager(factory, context);
-        var directory = new ActorDirectory(manager);
         var actorClient = new ActorClient();
 
         var actor = new PlayerActor("player-1", context);
-        var actorRef = await manager.GetOrCreateAsync("player-1", "player");
-        var foundActorRef = await directory.FindAsync("player-1");
-        var ensuredActorRef = await directory.EnsureAsync(
-            "player-1",
-            ZLinkMessage.From(new JoinRoom("room-1")),
-            new ZLinkActorPlacement(RoutingId.From("actor-node")));
+        var actorRef = (await manager.GetOrCreate("player-1", "player")
+            .InMesh("actors")
+            .Request(new JoinRoom("room-1"))
+            .Timeout(TimeSpan.FromSeconds(1))
+            .Async()) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Actor creation was rejected.")
+        };
+        var foundActorRef = await manager.FindAsync("player-1");
         var snapshot = ActorRefSnapshot.From(actorRef);
         var joinReply = await actor.Context
-            .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
+            .JoinSpot("room-1", new JoinRoom("room-1"))
             .Async();
         var typedJoinReply = await actor.Context
             .JoinSpot(RoutingId.From("room-1"), new JoinRoom("room-1"))
@@ -62,7 +68,6 @@ public sealed class ActorContracts
 
         Assert.Equal("player-1", actorRef.ActorId);
         Assert.Equal(actorRef, foundActorRef);
-        Assert.Equal(actorRef, ensuredActorRef);
         Assert.Equal(actorRef, snapshot.ToActorRef());
         Assert.Equal("player-1", actor.ActorId);
         var acceptedJoin = Assert.IsType<ZLinkActorJoinResult.Accepted>(joinReply);
@@ -140,27 +145,6 @@ public sealed class ActorContracts
         }
     }
 
-    private sealed class ActorDirectory(IZLinkActorManager manager) : IZLinkActorDirectory
-    {
-        public ValueTask<ActorRef?> FindAsync(
-            string actorId,
-            CancellationToken cancellationToken = default)
-        {
-            return manager.FindAsync(actorId, cancellationToken);
-        }
-
-        public async ValueTask<ActorRef> EnsureAsync(
-            string actorId,
-            ZLinkMessage createRequest,
-            ZLinkActorPlacement placement = default,
-            CancellationToken cancellationToken = default)
-        {
-            _ = placement;
-            return await manager.FindAsync(actorId, cancellationToken)
-                   ?? await manager.GetOrCreateAsync(actorId, "player", createRequest, cancellationToken);
-        }
-    }
-
     private sealed record JoinRoom(string RoomId);
 
     private sealed record JoinedRoom(string RoomId);
@@ -180,30 +164,11 @@ public sealed class ActorContracts
     {
         private readonly Dictionary<string, ActorRef> _actors = [];
 
-        public async ValueTask<ActorRef> CreateAsync(
-            string actorId,
-            string actorType,
-            CancellationToken cancellationToken = default)
-        {
-            return await CreateAsync(
-                actorId,
-                actorType,
-                ZLinkMessage.Empty,
-                cancellationToken);
-        }
+        public IZLinkActorCreateCall Create(string actorId, string actorType) =>
+            new ActorCreateCall(this, actorId, actorType, getOrCreate: false);
 
-        public async ValueTask<ActorRef> CreateAsync(
-            string actorId,
-            string actorType,
-            ZLinkMessage createRequest,
-            CancellationToken cancellationToken = default)
-        {
-            _ = createRequest;
-            var actor = await factory.CreateAsync(actorId, context, cancellationToken);
-            var actorRef = new ActorRef(RoutingId.From("actor-node"), actor.ActorId, 1);
-            _actors[actorId] = actorRef;
-            return actorRef;
-        }
+        public IZLinkActorGetOrCreateCall GetOrCreate(string actorId, string actorType) =>
+            new ActorCreateCall(this, actorId, actorType, getOrCreate: true);
 
         public ValueTask<ActorRef?> FindAsync(
             string actorId,
@@ -215,26 +180,89 @@ public sealed class ActorContracts
                     : null);
         }
 
-        public async ValueTask<ActorRef> GetOrCreateAsync(
+        public ValueTask<SpotRef?> FindSpotAsync(
+            string actorId,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<SpotRef?>(null);
+
+        public ValueTask<bool> DestroyAsync(
+            ActorRef actor,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(_actors.Remove(actor.ActorId));
+
+        private async ValueTask<ZLinkActorCreateResult> SubmitAsync(
             string actorId,
             string actorType,
-            CancellationToken cancellationToken = default)
+            bool getOrCreate,
+            CancellationToken cancellationToken)
         {
-            return await GetOrCreateAsync(
-                actorId,
-                actorType,
-                ZLinkMessage.Empty,
-                cancellationToken);
+            if (getOrCreate && await FindAsync(actorId, cancellationToken) is { } existing)
+                return new ZLinkActorCreateResult.Existing(existing);
+
+            _ = actorType;
+            var actor = await factory.CreateAsync(actorId, context, cancellationToken);
+            var actorRef = new ActorRef(RoutingId.From("actor-node"), actor.ActorId, 1);
+            _actors[actorId] = actorRef;
+            return new ZLinkActorCreateResult.Created(actorRef, null);
         }
 
-        public async ValueTask<ActorRef> GetOrCreateAsync(
+        private sealed class ActorCreateCall(
+            ActorManager manager,
             string actorId,
             string actorType,
-            ZLinkMessage createRequest,
-            CancellationToken cancellationToken = default)
+            bool getOrCreate) : IZLinkActorCreateCall, IZLinkActorGetOrCreateCall
         {
-            return await FindAsync(actorId, cancellationToken)
-                   ?? await CreateAsync(actorId, actorType, createRequest, cancellationToken);
+            public IZLinkActorCreateCall InMesh(string meshName)
+            {
+                _ = meshName;
+                return this;
+            }
+
+            IZLinkActorGetOrCreateCall IZLinkActorGetOrCreateCall.InMesh(string meshName)
+            {
+                _ = meshName;
+                return this;
+            }
+
+            public IZLinkActorCreateCall Request(ZLinkMessage request)
+            {
+                _ = request;
+                return this;
+            }
+
+            IZLinkActorGetOrCreateCall IZLinkActorGetOrCreateCall.Request(ZLinkMessage request)
+            {
+                _ = request;
+                return this;
+            }
+
+            public IZLinkActorCreateCall Request<TRequest>(TRequest request)
+            {
+                _ = request;
+                return this;
+            }
+
+            IZLinkActorGetOrCreateCall IZLinkActorGetOrCreateCall.Request<TRequest>(TRequest request)
+            {
+                _ = request;
+                return this;
+            }
+
+            public IZLinkActorCreateCall Timeout(TimeSpan timeout)
+            {
+                _ = timeout;
+                return this;
+            }
+
+            IZLinkActorGetOrCreateCall IZLinkActorGetOrCreateCall.Timeout(TimeSpan timeout)
+            {
+                _ = timeout;
+                return this;
+            }
+
+            public ValueTask<ZLinkActorCreateResult> Async(
+                CancellationToken cancellationToken = default) =>
+                manager.SubmitAsync(actorId, actorType, getOrCreate, cancellationToken);
         }
     }
 
@@ -242,20 +270,22 @@ public sealed class ActorContracts
     {
         public string MeshName => "play";
 
-        public RoutingId? SpotRid => RoutingId.From("room-1");
+        public string? SpotId => "room-1";
 
         public IZLinkBoundSession BoundSession { get; } = new BoundSession();
 
         public IZLinkActorJoinSpotCall JoinSpot(
-            RoutingId spotRid,
+            string spotId,
             ZLinkMessage request)
         {
             return new JoinSpotCall(ZLinkMessage.From(new JoinedRoom("room-1")));
         }
 
-        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(RoutingId spotNodeRid, ZLinkMessage request)
+        public IZLinkActorJoinEntrySpotCall JoinEntrySpot(ZLinkMessage request)
         {
-            return new JoinEntrySpotCall(new ActorRef(spotNodeRid, actorId, 1), request);
+            return new JoinEntrySpotCall(
+                new ActorRef(RoutingId.From("entry-node"), actorId, 1),
+                request);
         }
     }
 

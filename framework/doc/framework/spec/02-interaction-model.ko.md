@@ -17,7 +17,7 @@
 | channel send | ChannelName에 등록된 RouteMesh 또는 ClientServer 송신 경로의 ready target 하나 | message submit 결과 |
 | channel request | ChannelName에 등록된 RouteMesh 또는 ClientServer 송신 경로의 ready target 하나 | reply, timeout 또는 route 오류 |
 | Logical Multicast | ChannelName의 remote member와 local Spot match | publish admission 결과 |
-| Spot message | global Spot RID | current Ready authority의 submit 또는 reply 결과 |
+| Spot message | global Spot ID | current Ready authority의 submit 또는 reply 결과 |
 | Actor message | global Actor ID | current Ready authority의 submit 또는 reply 결과 |
 | Object create·get-or-create | global ID·stable type과 optional placement intent | exact ActorRef·SpotRef 또는 typed creation 오류 |
 | classic fanout | 준비된 subscriber 집합 | local publisher transport의 수락 |
@@ -66,7 +66,7 @@ local outbound admission으로 submit을 완료한다. Cache hit도 같은 publi
 동기 submit을 제공하거나 caller에게 owner node와 generation을 요구하지 않는다. Message call은 Missing
 object의 creation intent를 기본적으로 만들지 않는다. Spot 전용 fluent call에서 Instance intent를 명시한
 경우에만 Missing Spot의 cold activation을 같은 terminal operation 안에서 시작한다. 시작 method는 계속 global
-Spot RID만 받으며 optional stable type과 initial Mesh는 fluent call의 cold activation option이다.
+Spot ID만 받으며 optional stable type과 initial Mesh는 fluent call의 cold activation option이다.
 
 유효한 one-way call은 `Submitted`, `Backpressured`, `TimedOut`, `TargetNotFound`, `RouteNotConnected`,
 `Shutdown` 가운데 하나로 완료한다. 잘못된 argument·handle·state와 중복 submit은 local exceptional

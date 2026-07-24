@@ -133,7 +133,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         if (descriptor.ServerRid.Size == 0
             || descriptor.LifecycleGeneration == 0
             || descriptor.DescriptorRevision == 0
-            || descriptor.Weight is < 0 or > 100)
+            || descriptor.Weight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight)
             throw new ArgumentOutOfRangeException(nameof(descriptor));
         cancellationToken.ThrowIfCancellationRequested();
         lock (_gate)
@@ -235,25 +235,63 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         var key = new ZLinkMeshNodeDescriptorKey(
             descriptor.MeshName,
             descriptor.Rid);
-        var active = _activePlacementCapacity
-            .Where(pair =>
-                pair.Key.Descriptor == key
-                && pair.Key.DescriptorLifecycleGeneration
-                == descriptor.LifecycleGeneration)
-            .Sum(static pair => pair.Value);
-        var pending = _pendingPlacementCapacity
-            .Where(pair =>
-                pair.Key.Descriptor == key
-                && pair.Key.DescriptorLifecycleGeneration
-                == descriptor.LifecycleGeneration)
-            .Sum(static pair => pair.Value);
+        var actorActive = PlacementCapacityUsage(
+            _activePlacementCapacity,
+            key,
+            descriptor.LifecycleGeneration,
+            ZLinkPlacementObjectKind.Actor);
+        var actorReserved = PlacementCapacityUsage(
+            _pendingPlacementCapacity,
+            key,
+            descriptor.LifecycleGeneration,
+            ZLinkPlacementObjectKind.Actor);
+        var spotActive = PlacementCapacityUsage(
+            _activePlacementCapacity,
+            key,
+            descriptor.LifecycleGeneration,
+            ZLinkPlacementObjectKind.UserSpot,
+            ZLinkPlacementObjectKind.InstanceSpot);
+        var spotReserved = PlacementCapacityUsage(
+            _pendingPlacementCapacity,
+            key,
+            descriptor.LifecycleGeneration,
+            ZLinkPlacementObjectKind.UserSpot,
+            ZLinkPlacementObjectKind.InstanceSpot);
+        var spotTypes = descriptor.ObjectCapabilities
+            .Where(static capability =>
+                capability.ObjectKind is ZLinkPlacementObjectKind.UserSpot
+                    or ZLinkPlacementObjectKind.InstanceSpot)
+            .Select(capability =>
+            {
+                var typeKey = new PlacementCapacityKey(
+                    key,
+                    descriptor.LifecycleGeneration,
+                    capability.ObjectKind,
+                    capability.StableType);
+                return new ZLinkSpotTypeCapacity(
+                    capability.ObjectKind,
+                    capability.StableType,
+                    checked((int)_activePlacementCapacity
+                        .GetValueOrDefault(typeKey)),
+                    checked((int)_pendingPlacementCapacity
+                        .GetValueOrDefault(typeKey)),
+                    capability.Limit);
+            })
+            .ToArray();
         return descriptor with
         {
-            Capacity = descriptor.Capacity with
-            {
-                Active = checked((int)active),
-                Pending = checked((int)pending)
-            }
+            Capacity = new ZLinkPlacementCapacity(
+                descriptor.Capacity.Actors with
+                {
+                    Active = checked((int)actorActive),
+                    Reserved = checked((int)actorReserved)
+                },
+                descriptor.Capacity.Spots with
+                {
+                    Active = checked((int)spotActive),
+                    Reserved = checked((int)spotReserved)
+                },
+                spotTypes)
         };
     }
 
@@ -274,8 +312,9 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         && ObjectCapabilitiesEqual(
             current.ObjectCapabilities,
             incoming.ObjectCapabilities)
-        && current.Capacity.ActiveLimit == incoming.Capacity.ActiveLimit
-        && current.Capacity.PendingLimit == incoming.Capacity.PendingLimit;
+        && current.Capacity.Actors.Limit == incoming.Capacity.Actors.Limit
+        && current.Capacity.Spots.Limit == incoming.Capacity.Spots.Limit;
+
 
     private static ZLinkMeshNodeDescriptor CanonicalizeMeshNodeDescriptor(
         ZLinkMeshNodeDescriptor descriptor) =>
@@ -311,10 +350,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
                 || left.StableType != right.StableType
                 || left.Policy != right.Policy
                 || left.HasSnapshotAdapter != right.HasSnapshotAdapter
-                || left.ActiveLimit != right.ActiveLimit
-                || left.PendingLimit != right.PendingLimit
-                || !left.PlacementProfiles.SetEquals(
-                    right.PlacementProfiles))
+                || left.Limit != right.Limit)
                 return false;
         }
         return true;
@@ -334,16 +370,17 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             || descriptor.LeaseGeneration <= 0
             || !Enum.IsDefined(descriptor.State)
             || !Enum.IsDefined(descriptor.ObjectRole)
-            || descriptor.PlacementWeight is < 0 or > 100
-            || descriptor.Capacity is not
+            || descriptor.PlacementWeight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight
+            || !IsValidCapacity(descriptor.Capacity.Actors)
+            || !IsValidCapacity(descriptor.Capacity.Spots)
+            || descriptor.Capacity.SpotTypes is null
+            || descriptor.ActivationConcurrency is not
             {
                 Active: >= 0,
-                Pending: >= 0,
-                ActiveLimit: > 0,
-                PendingLimit: > 0
+                Limit: > 0
             }
-            || descriptor.Capacity.Active > descriptor.Capacity.ActiveLimit
-            || descriptor.Capacity.Pending > descriptor.Capacity.PendingLimit
+            || descriptor.ActivationConcurrency.Active
+                > descriptor.ActivationConcurrency.Limit
             || descriptor.ObjectCapabilities is null
             || descriptor.ObjectCapabilities.Count > 1024
             || descriptor.ObjectRole != ZLinkMeshNodeObjectRole.Server
@@ -351,6 +388,14 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             throw new ArgumentException(
                 "The MeshNode descriptor is invalid.",
                 nameof(descriptor));
+        foreach (var (channelName, weight) in descriptor.ChannelWeights)
+        {
+            ValidateUtf8Value(channelName, "ChannelName");
+            if (weight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight)
+                throw new ArgumentOutOfRangeException(
+                    nameof(descriptor),
+                    "Channel weight must be between 0 and 10000.");
+        }
         if (descriptor.MaintenanceWave is { } wave)
             ValidateUtf8Value(wave, nameof(descriptor.MaintenanceWave));
         var identities =
@@ -358,7 +403,6 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         foreach (var capability in descriptor.ObjectCapabilities)
         {
             if (capability is null
-                || capability.PlacementProfiles is null
                 || !Enum.IsDefined(capability.ObjectKind)
                 || !Enum.IsDefined(capability.Policy)
                 || !identities.Add((
@@ -367,19 +411,49 @@ internal sealed partial class ZLinkInMemoryLocationStore :
                 || capability.Policy
                 == ZLinkObjectMaintenancePolicyKind.Snapshot
                 != capability.HasSnapshotAdapter
-                || capability.ActiveLimit is <= 0
-                || capability.PendingLimit is <= 0
-                || capability.PlacementProfiles.Count > 1024)
+                || capability.Limit < 0
+                || capability.ObjectKind == ZLinkPlacementObjectKind.Actor
+                    && capability.Limit != 0)
                 throw new ArgumentException(
                     "The MeshNode object capabilities are invalid.",
                     nameof(descriptor));
             ValidateUtf8Value(
                 capability.StableType,
                 nameof(capability.StableType));
-            foreach (var profile in capability.PlacementProfiles)
-                ValidateUtf8Value(profile, "PlacementProfile");
+        }
+        var expectedSpotTypes = descriptor.ObjectCapabilities
+            .Where(static capability =>
+                capability.ObjectKind is ZLinkPlacementObjectKind.UserSpot
+                    or ZLinkPlacementObjectKind.InstanceSpot)
+            .Select(static capability =>
+                (capability.ObjectKind, capability.StableType, capability.Limit))
+            .ToArray();
+        if (descriptor.Capacity.SpotTypes.Count != expectedSpotTypes.Length)
+            throw new ArgumentException(
+                "The MeshNode Spot type capacity projection is invalid.",
+                nameof(descriptor));
+        for (var index = 0; index < expectedSpotTypes.Length; index++)
+        {
+            var capacity = descriptor.Capacity.SpotTypes[index];
+            var expected = expectedSpotTypes[index];
+            if (capacity.ObjectKind != expected.ObjectKind
+                || capacity.StableType != expected.StableType
+                || capacity.Limit != expected.Limit
+                || capacity.Active < 0
+                || capacity.Reserved < 0
+                || capacity.Limit > 0
+                    && capacity.Active + (long)capacity.Reserved
+                    > capacity.Limit)
+                throw new ArgumentException(
+                    "The MeshNode Spot type capacity projection is invalid.",
+                    nameof(descriptor));
         }
     }
+
+    private static bool IsValidCapacity(ZLinkPopulationCapacity capacity) =>
+        capacity is { Active: >= 0, Reserved: >= 0, Limit: >= 0 }
+        && (capacity.Limit == 0
+            || capacity.Active + (long)capacity.Reserved <= capacity.Limit);
 
     private static void ValidateUtf8Value(string value, string name)
     {
@@ -412,21 +486,35 @@ internal sealed partial class ZLinkInMemoryLocationStore :
     public ValueTask<ZLinkLocationWriteResult> UpdateSpotAsync(
         ZLinkSpotLocation spot,
         ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken = default) =>
-        ValueTask.FromResult(Write(
-            _spots,
-            ZLinkLocationKeyCodec.EncodeSpotKey(new ZLinkSpotLocationKey(spot.MeshName, spot.SpotRid)),
-            spot,
-            intent,
-            spot.OwnerId,
-            static row => row.OwnerId,
-            static (row, now, generation) => row with
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var key = ZLinkLocationKeyCodec.EncodeSpotKey(
+            new ZLinkSpotLocationKey(spot.SpotId));
+        lock (_gate)
+        {
+            if (_instanceSpots.Rows.ContainsKey(key))
             {
-                UpdatedAt = now,
-                AuthorityOwnerGeneration = generation
-            },
-            ZLinkLocationChangeScopeKind.Spot,
-            spot.MeshName));
+                return ValueTask.FromResult(
+                    ZLinkLocationWriteResult.RejectedConflict);
+            }
+
+            return ValueTask.FromResult(Write(
+                _spots,
+                key,
+                spot,
+                intent,
+                spot.OwnerId,
+                static row => row.OwnerId,
+                static (row, now, generation) => row with
+                {
+                    UpdatedAt = now,
+                    AuthorityOwnerGeneration = generation
+                },
+                ZLinkLocationChangeScopeKind.Spot,
+                spot.MeshName));
+        }
+    }
 
     public ValueTask<ZLinkLocationWriteStatus> RemoveSpotAsync(
         ZLinkSpotLocationKey key,
@@ -438,7 +526,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
             owner,
             static row => row.OwnerId,
             ZLinkLocationChangeScopeKind.Spot,
-            key.MeshName));
+            null));
 
     public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
         ZLinkSpotLocationKey key,
@@ -466,7 +554,12 @@ internal sealed partial class ZLinkInMemoryLocationStore :
                     new InstanceSpotClaimResult.Conflict());
 
             var key = ZLinkLocationKeyCodec.EncodeSpotKey(
-                new ZLinkSpotLocationKey(request.MeshName, request.SpotRid));
+                new ZLinkSpotLocationKey(request.SpotId));
+            if (_spots.Rows.ContainsKey(key))
+            {
+                return ValueTask.FromResult<InstanceSpotClaimResult>(
+                    new InstanceSpotClaimResult.Conflict());
+            }
             if (_instanceSpots.Rows.TryGetValue(key, out var current)
                 && _leases.TryGetValue(current.OwnerId, out var currentLease)
                 && currentLease.LeaseExpiresAt > now)
@@ -483,7 +576,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
                 : checked(current.ActivationEpoch + 1);
             var claimed = new InstanceSpotLocation(
                 request.MeshName,
-                request.SpotRid,
+                request.SpotId,
                 0,
                 request.TargetNodeRid,
                 request.TargetNodeGeneration,
@@ -516,7 +609,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         {
             var now = _time.GetUtcNow();
             var key = ZLinkLocationKeyCodec.EncodeSpotKey(
-                new ZLinkSpotLocationKey(fence.MeshName, fence.SpotRid));
+                new ZLinkSpotLocationKey(fence.SpotId));
             if (!_instanceSpots.Rows.TryGetValue(key, out var current)
                 || !MatchesFence(current, fence))
                 return ValueTask.FromResult<InstanceSpotWriteResult>(
@@ -555,7 +648,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         {
             var now = _time.GetUtcNow();
             var key = ZLinkLocationKeyCodec.EncodeSpotKey(
-                new ZLinkSpotLocationKey(fence.MeshName, fence.SpotRid));
+                new ZLinkSpotLocationKey(fence.SpotId));
             if (!_instanceSpots.Rows.TryGetValue(key, out var current)
                 || !MatchesFence(current, fence))
                 return ValueTask.FromResult(ZLinkLocationWriteResult.IgnoredStale);
@@ -580,7 +673,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         lock (_gate)
         {
             var key = ZLinkLocationKeyCodec.EncodeSpotKey(
-                new ZLinkSpotLocationKey(fence.MeshName, fence.SpotRid));
+                new ZLinkSpotLocationKey(fence.SpotId));
             if (!_instanceSpots.Rows.TryGetValue(key, out var current)
                 || !MatchesFence(current, fence))
                 return ValueTask.FromResult(ZLinkLocationWriteStatus.IgnoredStale);
@@ -618,7 +711,7 @@ internal sealed partial class ZLinkInMemoryLocationStore :
         InstanceSpotLocation location,
         InstanceSpotFence fence) =>
         string.Equals(location.MeshName, fence.MeshName, StringComparison.Ordinal)
-        && location.SpotRid == fence.SpotRid
+        && location.SpotId == fence.SpotId
         && string.Equals(location.OwnerId, fence.OwnerId, StringComparison.Ordinal)
         && location.OwnerNodeGeneration == fence.OwnerNodeGeneration
         && location.LocationGeneration == fence.LocationGeneration

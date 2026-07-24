@@ -5,8 +5,6 @@ import {
   type RoutingId,
   type SpotRef,
   type Type,
-  type ZLinkAffinityKey,
-  type ZLinkPlacementProfile,
   type ZLinkSpot,
   type ZLinkSpotCreateCall,
   type ZLinkSpotCreateResult,
@@ -96,63 +94,65 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
   }
 
   async close(spot: SpotRef, signal?: AbortSignal): Promise<boolean> {
-    return await this.options.coordinator.close(
-      spot,
-      async (current, snapshot) => {
-        if (!this.options.isLocalNode(current.meshName, current.nodeRid)) {
-          if (this.options.remoteClose === undefined) {
-            throw new ZLinkFrameworkException(
-              ZLinkFrameworkErrorKind.RequestFailed,
-              'Remote User Spot close transport is not configured.'
-            );
-          }
-          const timeoutMs = this.options.defaultTimeoutMs;
-          const result = await this.options.remoteClose(
-            current.meshName,
-            String(current.nodeRid),
-            {
-              sourceNodeRid: '',
-              sourceNodeGeneration: 1n,
-              target: {
-                spotRid: String(current.spotRid),
-                objectGeneration: current.objectGeneration,
-                targetNodeRid: String(current.nodeRid),
-                targetNodeGeneration: snapshot.allocation.descriptorLifecycleGeneration,
-                authorityOwnerGeneration: snapshot.authorityOwnerGeneration,
-                expectedStoreVersion: snapshot.storeVersion.value
-              },
-              deadlineUnixMs: BigInt(Date.now() + timeoutMs)
-            },
-            timeoutMs
-          );
-          if (
-            result.terminalResult !== 0
-            || result.tail?.kind !== 'userSpotClose'
-          ) {
-            const kind = result.failureCode === 33
-              ? ZLinkFrameworkErrorKind.SpotGenerationStale
-              : result.failureCode === 34
-                ? ZLinkFrameworkErrorKind.SpotMoving
-                : result.terminalResult === 101
-                  ? ZLinkFrameworkErrorKind.DeadlineExceeded
-                  : ZLinkFrameworkErrorKind.RequestFailed;
-            throw new ZLinkFrameworkException(
-              kind,
-              'Remote User Spot close failed.',
-              kind === ZLinkFrameworkErrorKind.SpotMoving
-                || kind === ZLinkFrameworkErrorKind.DeadlineExceeded
-            );
-          }
-          return result.tail.closed;
-        }
-        return this.options.local.close(current.meshName, current.spotRid, signal);
+    const resolved = await this.options.coordinator.resolveCloseTarget(spot, signal);
+    if (resolved === undefined) return false;
+    const current = resolved.spot;
+    if (this.options.isLocalNode(current.meshName, current.nodeRid)) {
+      return await this.options.coordinator.close(
+        spot,
+        (local) => this.options.local.close(local.meshName, local.spotRid, signal),
+        signal,
+        (local) => this.options.local.hasActiveSpot(local.spotRid),
+        (local) =>
+          this.options.local.canCloseUserSpot?.(local.meshName, local.spotRid)
+          ?? true
+      );
+    }
+    if (this.options.remoteClose === undefined) {
+      throw new ZLinkFrameworkException(
+        ZLinkFrameworkErrorKind.RequestFailed,
+        'Remote User Spot close transport is not configured.'
+      );
+    }
+    const timeoutMs = this.options.defaultTimeoutMs;
+    const snapshot = resolved.snapshot;
+    const result = await this.options.remoteClose(
+      current.meshName,
+      String(current.nodeRid),
+      {
+        sourceNodeRid: '',
+        sourceNodeGeneration: 1n,
+        target: {
+          spotRid: String(current.spotRid),
+          objectGeneration: current.objectGeneration,
+          targetNodeRid: String(current.nodeRid),
+          targetNodeGeneration: snapshot.allocation.descriptorLifecycleGeneration,
+          authorityOwnerGeneration: snapshot.authorityOwnerGeneration,
+          expectedStoreVersion: snapshot.storeVersion.value
+        },
+        deadlineUnixMs: BigInt(Date.now() + timeoutMs)
       },
-      signal,
-      (current) => !this.options.isLocalNode(current.meshName, current.nodeRid)
-        || this.options.local.hasActiveSpot(current.spotRid),
-      (current) => !this.options.isLocalNode(current.meshName, current.nodeRid)
-        || (this.options.local.canCloseUserSpot?.(current.meshName, current.spotRid) ?? true)
+      timeoutMs
     );
+    if (
+      result.terminalResult !== 0
+      || result.tail?.kind !== 'userSpotClose'
+    ) {
+      const kind = result.failureCode === 33
+        ? ZLinkFrameworkErrorKind.SpotGenerationStale
+        : result.failureCode === 34
+          ? ZLinkFrameworkErrorKind.SpotMoving
+          : result.terminalResult === 101
+            ? ZLinkFrameworkErrorKind.DeadlineExceeded
+            : ZLinkFrameworkErrorKind.RequestFailed;
+      throw new ZLinkFrameworkException(
+        kind,
+        `Remote User Spot close failed. terminalResult=${result.terminalResult}, failureCode=${result.failureCode}.`,
+        kind === ZLinkFrameworkErrorKind.SpotMoving
+          || kind === ZLinkFrameworkErrorKind.DeadlineExceeded
+      );
+    }
+    return result.tail.closed;
   }
 
   private call(
@@ -174,16 +174,6 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
       request: (request) => {
         selectOnce(state, 'request');
         state.request = request;
-        return call;
-      },
-      placementProfile: (profile) => {
-        selectOnce(state, 'placementProfile');
-        state.placementProfile = requireText(profile, 'Placement profile');
-        return call;
-      },
-      affinityKey: (key) => {
-        selectOnce(state, 'affinityKey');
-        state.affinityKey = requireText(key, 'Affinity key');
         return call;
       },
       timeout: (timeoutMs) => {
@@ -243,8 +233,6 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
           meshName: state.meshName,
           spotRid: candidateRid,
           stableType,
-          placementProfile: state.placementProfile,
-          affinityKey: state.affinityKey,
           requestPayload: requestBytes,
           timeoutMs: remainingMs,
           signal,
@@ -316,8 +304,6 @@ interface MutableCreateCall {
   readonly selected: Set<string>;
   meshName?: string;
   request?: unknown;
-  placementProfile?: ZLinkPlacementProfile;
-  affinityKey?: ZLinkAffinityKey;
   timeoutMs?: number;
 }
 

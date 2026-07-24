@@ -1,8 +1,9 @@
 package systems.zlink.framework.locations;
 
-import systems.zlink.contracts.core.RoutingId;
+public record ZLinkSpotLocationKey(String spotId) {
+    public ZLinkSpotLocationKey {
+        systems.zlink.framework.runtime.internal.spots.ZLinkSpotIdValidator
+            .requireValid(spotId);
+    }
 
-public record ZLinkSpotLocationKey(
-    String meshName,
-    RoutingId spotRid) {
 }

@@ -293,7 +293,7 @@ internal sealed record ZLinkChannelHandlerRegistration(
     string? PacketName);
 
 // One logical channel membership on a MeshNode (spec 05-route-mesh §4). The
-// membership is (MeshName, ChannelName) scoped; weight is 0..100 (0 excludes the
+// membership is (MeshName, ChannelName) scoped; weight is 0..10000 (0 excludes the
 // channel from new select-one/multicast targeting). Handlers are the channel's
 // IZLinkSendHandler/IZLinkRequestHandler namespace.
 internal sealed class ZLinkMeshChannelMembership
@@ -373,7 +373,7 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public ZLinkEntrySpotOptions EntrySpotOptions { get; } = new();
 
-    public bool HasExplicitEntrySpotRoutingId { get; set; }
+    public string EntrySpotId { get; set; } = string.Empty;
 
     public Type? EntrySpotType { get; set; }
 
@@ -461,7 +461,6 @@ internal sealed class ZLinkActorCatalog
 
 internal sealed class ZLinkEntrySpotOptions : IZLinkEntrySpotOptions
 {
-    public RoutingId RoutingId { get; set; }
 }
 
 internal sealed class ZLinkSpotRouterCapabilityRegistration

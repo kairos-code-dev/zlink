@@ -10,6 +10,79 @@ namespace Zlink.Framework.UnitTests;
 public sealed class StatefulServiceRuntimeTests
 {
     [Fact]
+    public void ActorCreationWireAndDurableTerminalPreserveIdentityAndRejectedReply()
+    {
+        var target = RoutingId.From("actor-target");
+        var actor = new ActorRef(target, "actor-1", 17);
+        var completion = new ActorCreateCompletion(ActorCreateResult.Created, actor);
+        var replyFrame = ZLinkServiceWireCodec.EncodeActorCreateReply(
+            31,
+            RequestResult.Ok,
+            ServiceWireConstants.FrameworkErrorCode.None,
+            completion);
+        Assert.True(ZLinkServiceWireCodec.TryDecodeReply(
+            replyFrame,
+            out var reply,
+            out _));
+        Assert.True(ZLinkServiceWireCodec.TryDecodeActorCreateReply(
+            reply,
+            out var decoded,
+            out _));
+        Assert.Equal(actor, decoded!.Actor);
+
+        var authority = new ZLinkActorAuthorityPayload(
+            ZLinkActorAuthorityState.Creating,
+            "player",
+            "actor-1",
+            "entry-1",
+            13,
+            ZLinkSpotKind.Entry,
+            "owner-1",
+            23,
+            "mesh-a",
+            target,
+            29);
+        var encodedAuthority = ZLinkActorAuthorityPayloadCodec.Encode(authority);
+        Assert.True(ZLinkActorAuthorityPayloadCodec.TryDecode(
+            encodedAuthority,
+            out var decodedAuthority));
+        Assert.Equal(authority, decodedAuthority);
+
+        var codecs = new ZLinkCodecRegistryBuilder();
+        var applicationReply = ZLinkEnvelopeCodec.EncodeParts(
+            new ZLinkEnvelopeHeader(
+                ZLinkMessageKind.Response,
+                string.Empty,
+                string.Empty,
+                ZLinkEnvelopeCodec.DefaultContentType,
+                "31",
+                null, null, null, null),
+            ZLinkMessage.From(new byte[] { 7, 8, 9 }),
+            typeof(ZLinkMessage),
+            codecs);
+        var terminal = new ActorCreateOperationTerminal(
+            RequestResult.Ok,
+            ServiceWireConstants.FrameworkErrorCode.None,
+            new ActorCreateCompletion(ActorCreateResult.Rejected, default),
+            applicationReply.Select(static part =>
+                (ReadOnlyMemory<byte>)part.AsReadOnlyMemory().ToArray()).ToArray());
+        try
+        {
+            var encodedTerminal = ZLinkActorCreationTerminalCodec.Encode(terminal, codecs);
+            Assert.True(ZLinkActorCreationTerminalCodec.TryDecode(
+                encodedTerminal,
+                codecs,
+                out var decodedTerminal));
+            Assert.Equal(ActorCreateResult.Rejected, decodedTerminal.Completion!.Result);
+            Assert.Equal(2, decodedTerminal.ReplyParts!.Count);
+        }
+        finally
+        {
+            ZLinkMessageParts.DisposeAll(applicationReply);
+        }
+    }
+
+    [Fact]
     public void RelocationApplicationPayloadEnvelopePreservesContentTypeAndPayload()
     {
         var encoded = ZLinkApplicationPayloadEnvelopeCodec.Encode(
@@ -88,8 +161,8 @@ public sealed class StatefulServiceRuntimeTests
     {
         var sourceRid = RoutingId.From("create-source");
         var targetRid = RoutingId.From("create-target");
-        var spotRid = RoutingId.From("created-spot");
-        var reservation = new UserSpotReservationFence(
+        var spotId = RoutingId.From("created-spot");
+        var reservation = new ObjectReservationFence(
             "reservation-1",
             "store-17",
             19,
@@ -104,7 +177,7 @@ public sealed class StatefulServiceRuntimeTests
             new MeshOperationId(41, 43),
             sourceRid,
             47,
-            spotRid,
+            spotId,
             "Sample.UserSpot",
             reservation,
             4_102_444_800_000);
@@ -124,7 +197,7 @@ public sealed class StatefulServiceRuntimeTests
             sourceRid,
             47,
             new UserSpotCloseFence(
-                spotRid,
+                spotId,
                 19,
                 targetRid,
                 29,
@@ -146,7 +219,7 @@ public sealed class StatefulServiceRuntimeTests
             ServiceWireConstants.FrameworkErrorCode.None,
             new UserSpotCreateCompletion(
                 UserSpotCreateResult.Created,
-                spotRid,
+                spotId,
                 19));
         Assert.True(ZLinkServiceWireCodec.TryDecodeReply(
             createReply,
@@ -160,7 +233,7 @@ public sealed class StatefulServiceRuntimeTests
             out var createTailError));
         Assert.Equal(ZLinkServiceWireCodec.DecodeError.None, createTailError);
         Assert.Equal(
-            new UserSpotCreateCompletion(UserSpotCreateResult.Created, spotRid, 19),
+            new UserSpotCreateCompletion(UserSpotCreateResult.Created, spotId, 19),
             createCompletion);
 
         var closeReply = ZLinkServiceWireCodec.EncodeUserSpotCloseReply(
@@ -197,13 +270,13 @@ public sealed class StatefulServiceRuntimeTests
     public void StatefulWireRoundTripsExactSpotAndActorFences()
     {
         var nodeRid = RoutingId.From("wire-node");
-        var spotRid = RoutingId.From("wire-spot");
-        var sourceSpotRid = RoutingId.From("wire-source");
+        var spotId = RoutingId.From("wire-spot");
+        var sourceSpotId = RoutingId.From("wire-source");
         var spot = ZLinkServiceWireCodec.EncodeSpot(
             ServiceWireConstants.Command.SpotRequest,
             9,
-            sourceSpotRid,
-            spotRid,
+            sourceSpotId,
+            spotId,
             10,
             nodeRid,
             11,
@@ -215,8 +288,8 @@ public sealed class StatefulServiceRuntimeTests
             out var spotError));
         Assert.Equal(ZLinkServiceWireCodec.DecodeError.None, spotError);
         Assert.Equal(9UL, spotRecord.Correlation);
-        Assert.Equal(sourceSpotRid, spotRecord.SourceSpotRid);
-        Assert.Equal(spotRid, spotRecord.TargetSpotRid);
+        Assert.Equal(sourceSpotId, spotRecord.SourceSpotId);
+        Assert.Equal(spotId, spotRecord.TargetSpotId);
         Assert.Equal(10UL, spotRecord.TargetSpotGeneration);
 
         var actor = new ActorRef(nodeRid, "wire-actor", 13);
@@ -304,6 +377,53 @@ public sealed class StatefulServiceRuntimeTests
     }
 
     [Fact]
+    public async Task LogicalMulticastSubmitsEachPositiveRemoteOnceRegardlessOfWeight()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = NewNode(context, "multicast-source");
+        await using var light = NewNode(context, "multicast-light");
+        await using var heavy = NewNode(context, "multicast-heavy");
+        var suffix = Guid.NewGuid().ToString("N");
+        var sourceEndpoint = $"inproc://multicast-source-{suffix}";
+        var lightEndpoint = $"inproc://multicast-light-{suffix}";
+        var heavyEndpoint = $"inproc://multicast-heavy-{suffix}";
+        source.SetBind(sourceEndpoint);
+        light.SetBind(lightEndpoint);
+        heavy.SetBind(heavyEndpoint);
+        source.AddChannel("events");
+        light.AddChannel("events");
+        heavy.AddChannel("events");
+        light.SetChannelWeight("events", 1);
+        heavy.SetChannelWeight("events", 10_000);
+        source.ConnectPeer(lightEndpoint, light.RoutingId);
+        source.ConnectPeer(heavyEndpoint, heavy.RoutingId);
+        light.ConnectPeer(sourceEndpoint, source.RoutingId);
+        heavy.ConnectPeer(sourceEndpoint, source.RoutingId);
+        source.Start();
+        light.Start();
+        heavy.Start();
+        await WaitUntilAsync(
+            () => source.Status().AdmittedPeerCount == 2
+                  && light.Status().AdmittedPeerCount == 1
+                  && heavy.Status().AdmittedPeerCount == 1);
+
+        var publisher = source.CreateSpot();
+        using var payload = Message.From(new byte[] { 2 });
+        var result = publisher.Publish(
+            "events",
+            "room.updated",
+            [payload]);
+
+        Assert.Equal(SubmitResult.Ok, result.Result);
+        Assert.Equal(2UL, result.Detail.SnapshotRemoteTargets);
+        await WaitUntilAsync(
+            () => light.Status().PendingApplicationMessages == 1
+                  && heavy.Status().PendingApplicationMessages == 1);
+        Assert.Single(DrainRecords(light));
+        Assert.Single(DrainRecords(heavy));
+    }
+
+    [Fact]
     public async Task JoinCommitsMembershipOnlyAfterAcceptedReply()
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();
@@ -320,12 +440,12 @@ public sealed class StatefulServiceRuntimeTests
             targetRid,
             target.LifecycleGeneration);
         Assert.True(node.ActorLookup(actor.ActorId, out var before));
-        Assert.NotEqual(targetRid, before.SpotRid);
+        Assert.NotEqual(targetRid, before.SpotId);
 
         using var ready = new MeshReadyBatch();
         node.DrainReady(MeshReadyDomains.All, ready, RecvFlags.DontWait);
         var joinIndex = Enumerable.Range(0, ready.Count)
-            .Single(index => ready[index].SpotRid == targetRid);
+            .Single(index => ready[index].SpotId == targetRid);
         using var claim = ready.TakeClaim(joinIndex);
         using var received = new MeshReceiveBatch();
         Assert.True(claim.Receive(received, RecvFlags.DontWait));
@@ -338,7 +458,7 @@ public sealed class StatefulServiceRuntimeTests
                 Array.Empty<Message>()));
 
         Assert.True(node.ActorLookup(actor.ActorId, out var after));
-        Assert.Equal(targetRid, after.SpotRid);
+        Assert.Equal(targetRid, after.SpotId);
         Assert.Equal(before.MembershipEpoch + 1, after.MembershipEpoch);
 
         var completions = DrainRecords(node);
@@ -498,9 +618,9 @@ public sealed class StatefulServiceRuntimeTests
     {
         await using var context = Systems.Zlink.Zlink.CreateContext();
         await using var node = NewNode(context, "instance-node");
-        var spotRid = RoutingId.From("instance-cart-1");
-        var first = node.GetOrCreateSpot(spotRid, out var firstCreated);
-        var second = node.GetOrCreateSpot(spotRid, out var secondCreated);
+        var spotId = RoutingId.From("instance-cart-1");
+        var first = node.GetOrCreateSpot(spotId, out var firstCreated);
+        var second = node.GetOrCreateSpot(spotId, out var secondCreated);
         Assert.True(firstCreated);
         Assert.False(secondCreated);
         Assert.Equal(first.LifecycleGeneration, second.LifecycleGeneration);
@@ -510,19 +630,19 @@ public sealed class StatefulServiceRuntimeTests
             SubmitResult.InvalidState,
             first.SendToSpot(
                 node.RoutingId,
-                spotRid,
+                spotId,
                 first.LifecycleGeneration + 1,
                 [payload]));
         Assert.Equal(
             SubmitResult.Ok,
             first.SendToSpot(
                 node.RoutingId,
-                spotRid,
+                spotId,
                 first.LifecycleGeneration,
                 [payload]));
         DrainAndDispose(node);
         await first.DisposeAsync();
-        var reactivated = node.GetOrCreateSpot(spotRid, out var reactivatedCreated);
+        var reactivated = node.GetOrCreateSpot(spotId, out var reactivatedCreated);
         Assert.True(reactivatedCreated);
         Assert.NotEqual(
             first.LifecycleGeneration,
@@ -549,8 +669,8 @@ public sealed class StatefulServiceRuntimeTests
                   && target.Status().AdmittedPeerCount == 1);
 
         var actor = target.CreateActor("remote-player");
-        var spotRid = RoutingId.From("remote-room");
-        var spot = (ZLinkManagedSpot)target.GetOrCreateSpot(spotRid, out _);
+        var spotId = RoutingId.From("remote-room");
+        var spot = (ZLinkManagedSpot)target.GetOrCreateSpot(spotId, out _);
         DrainAndDispose(target);
 
         using var payload = Message.From(new byte[] { 8 });
@@ -558,7 +678,7 @@ public sealed class StatefulServiceRuntimeTests
         source.ObserveActorAuthority(actor, actorAuthority);
         source.ObserveSpotAuthority(
             target.RoutingId,
-            spotRid,
+            spotId,
             spot.LifecycleGeneration,
             spot.AuthorityOwnerGeneration);
         Assert.Equal(SubmitResult.Ok, source.SendToActor(actor, [payload]));
@@ -566,7 +686,7 @@ public sealed class StatefulServiceRuntimeTests
             SubmitResult.Ok,
             source.EntrySpot().SendToSpot(
                 target.RoutingId,
-                spotRid,
+                spotId,
                 spot.LifecycleGeneration,
                 [payload]));
 
@@ -589,7 +709,7 @@ public sealed class StatefulServiceRuntimeTests
             index => finalReady[index].OwnerKind == MeshOwnerKind.Actor);
         Assert.Contains(
             Enumerable.Range(0, finalReady.Count),
-            index => finalReady[index].SpotRid == spotRid);
+            index => finalReady[index].SpotId == spotId);
         finalReady.Reset();
         DrainAndDispose(target);
 
@@ -708,10 +828,19 @@ public sealed class StatefulServiceRuntimeTests
                         stableType,
                         ZLinkObjectMaintenancePolicyKind.Disabled,
                         false,
-                        new HashSet<string>(StringComparer.Ordinal),
-                        null,
-                        null)
-                ]
+                        0)
+                ],
+                Capacity = new ZLinkPlacementCapacity(
+                    new ZLinkPopulationCapacity(0, 0, 0),
+                    new ZLinkPopulationCapacity(0, 0, 0),
+                    [
+                        new ZLinkSpotTypeCapacity(
+                            ZLinkPlacementObjectKind.UserSpot,
+                            stableType,
+                            0,
+                            0,
+                            0)
+                    ])
             };
             Assert.Equal(
                 ZLinkLocationWriteStatus.Stored,
@@ -719,8 +848,8 @@ public sealed class StatefulServiceRuntimeTests
                     descriptor,
                     ZLinkLocationWriteIntent.NewClaim)).Status);
 
-            var spotRid = RoutingId.From($"production-spot-{suffix}");
-            var authorityKey = ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(spotRid);
+            var spotId = RoutingId.From($"production-spot-{suffix}");
+            var authorityKey = ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(spotId);
             var creationPayload = ZLinkApplicationPayloadEnvelopeCodec.Encode(
                 string.Empty,
                 ZLinkEnvelopeCodec.DefaultContentType,
@@ -745,14 +874,14 @@ public sealed class StatefulServiceRuntimeTests
                             new ZLinkUserSpotAuthorityPayload(
                                 ZLinkUserSpotAuthorityState.Creating,
                                 stableType,
-                                spotRid,
+                                spotId,
                                 owner.Token.OwnerId,
                                 checked((ulong)owner.Token.LeaseGeneration),
                                 "objects",
                                 targetRid,
                                 targetGeneration)),
                         1)));
-            var fence = new UserSpotReservationFence(
+            var fence = new ObjectReservationFence(
                 reservation.Reservation.ReservationVersion,
                 reservation.Reservation.StoreVersion,
                 reservation.Reservation.ObjectGeneration,
@@ -769,7 +898,7 @@ public sealed class StatefulServiceRuntimeTests
                 SubmitResult.Ok,
                 source.CreateUserSpot(
                     targetRid,
-                    spotRid,
+                    spotId,
                     stableType,
                     fence,
                     deadline,
@@ -805,7 +934,7 @@ public sealed class StatefulServiceRuntimeTests
             var active = Assert.IsType<ZLinkAuthorityReadResult.Found>(
                 await store.ReadAuthorityAsync(authorityKey));
             var closeFence = new UserSpotCloseFence(
-                spotRid,
+                spotId,
                 active.Snapshot.ObjectGeneration,
                 targetRid,
                 targetGeneration,
@@ -1016,13 +1145,22 @@ public sealed class StatefulServiceRuntimeTests
                                 "Tests.ProductionUserSpot",
                                 ZLinkObjectMaintenancePolicyKind.Disabled,
                                 false,
-                                new HashSet<string>(StringComparer.Ordinal),
-                                null,
-                                null)
-                        ]
+                                0)
+                        ],
+                        Capacity = new ZLinkPlacementCapacity(
+                            new ZLinkPopulationCapacity(0, 0, 0),
+                            new ZLinkPopulationCapacity(0, 0, 0),
+                            [
+                                new ZLinkSpotTypeCapacity(
+                                    ZLinkPlacementObjectKind.UserSpot,
+                                    "Tests.ProductionUserSpot",
+                                    0,
+                                    0,
+                                    0)
+                            ])
                     },
                     ZLinkLocationWriteIntent.NewClaim)).Status);
-            var spotRid = RoutingId.From($"public-spot-{suffix}");
+            var spotId = RoutingId.From($"public-spot-{suffix}");
             using var operationTimeout = new CancellationTokenSource(
                 TimeSpan.FromSeconds(10));
             using var customPayload = Message.From([9, 8, 7]);
@@ -1037,29 +1175,29 @@ public sealed class StatefulServiceRuntimeTests
             Assert.Equal(
                 "application/x-zlink-test",
                 ProductionUserSpot.LastCreateContentType);
-            Assert.Equal(allocated.Spot, await source.FindAsync(allocated.Spot.SpotRid));
-            Assert.NotNull(await target.FindAsync(allocated.Spot.SpotRid));
+            Assert.Equal(allocated.Spot, await source.FindAsync(allocated.Spot.SpotId));
+            Assert.NotNull(await target.FindAsync(allocated.Spot.SpotId));
             Assert.True(await source.CloseAsync(
                 allocated.Spot,
                 operationTimeout.Token));
-            Assert.Null(await target.FindAsync(allocated.Spot.SpotRid));
+            Assert.Null(await target.FindAsync(allocated.Spot.SpotId));
 
             var created = await source
-                .GetOrCreate(spotRid, "Tests.ProductionUserSpot")
+                .GetOrCreate(spotId, "Tests.ProductionUserSpot")
                 .Request(new { Name = "created" })
                 .Async(operationTimeout.Token);
             Assert.Equal(ZLinkSpotCreateState.Created, created.State);
-            Assert.Equal(created.Spot, await source.FindAsync(spotRid));
-            Assert.NotNull(await target.FindAsync(spotRid));
+            Assert.Equal(created.Spot, await source.FindAsync(spotId));
+            Assert.NotNull(await target.FindAsync(spotId));
             var existing = await source
-                .GetOrCreate(spotRid, "Tests.ProductionUserSpot")
+                .GetOrCreate(spotId, "Tests.ProductionUserSpot")
                 .Async(operationTimeout.Token);
             Assert.Equal(ZLinkSpotCreateState.Existing, existing.State);
             Assert.Equal(created.Spot, existing.Spot);
             Assert.True(await source.CloseAsync(
                 created.Spot,
                 operationTimeout.Token));
-            Assert.Null(await target.FindAsync(spotRid));
+            Assert.Null(await target.FindAsync(spotId));
 
             var joiningRid = RoutingId.From($"joining-spot-{suffix}");
             var createGate = ProductionUserSpot.BlockNextCreate();
@@ -1125,8 +1263,8 @@ public sealed class StatefulServiceRuntimeTests
 
         var sourceGeneration = source.Status().LifecycleGeneration;
         var targetGeneration = target.Status().LifecycleGeneration;
-        var spotRid = RoutingId.From("remote-created-spot");
-        var reservation = new UserSpotReservationFence(
+        var spotId = RoutingId.From("remote-created-spot");
+        var reservation = new ObjectReservationFence(
             "reservation-runtime",
             "store-runtime-1",
             71,
@@ -1143,7 +1281,7 @@ public sealed class StatefulServiceRuntimeTests
             SubmitResult.Ok,
             source.CreateUserSpot(
                 target.RoutingId,
-                spotRid,
+                spotId,
                 "Sample.RemoteSpot",
                 reservation,
                 deadline,
@@ -1159,7 +1297,7 @@ public sealed class StatefulServiceRuntimeTests
         Assert.Equal(
             new UserSpotCreateCompletion(
                 UserSpotCreateResult.Created,
-                spotRid,
+                spotId,
                 reservation.ObjectGeneration),
             createCompletion.UserSpotCreateCompletion);
         Assert.Equal(1, createCompletion.PartCount);
@@ -1169,7 +1307,7 @@ public sealed class StatefulServiceRuntimeTests
         Assert.Equal(reservation, operationTarget.LastCreate.Reservation);
 
         var closeFence = new UserSpotCloseFence(
-            spotRid,
+            spotId,
             reservation.ObjectGeneration,
             target.RoutingId,
             targetGeneration,
@@ -1321,7 +1459,7 @@ public sealed class StatefulServiceRuntimeTests
                   && target.Status().AdmittedPeerCount == 1);
 
         var targetGeneration = target.Status().LifecycleGeneration;
-        var reservation = new UserSpotReservationFence(
+        var reservation = new ObjectReservationFence(
             "retention-reservation",
             "retention-store",
             101,
@@ -1334,12 +1472,12 @@ public sealed class StatefulServiceRuntimeTests
         var deadline = checked(
             (ulong)DateTimeOffset.UtcNow.AddMilliseconds(500)
                 .ToUnixTimeMilliseconds());
-        var spotRid = RoutingId.From("retention-spot");
+        var spotId = RoutingId.From("retention-spot");
         Assert.Equal(
             SubmitResult.Ok,
             source.CreateUserSpot(
                 target.RoutingId,
-                spotRid,
+                spotId,
                 "Sample.RetentionSpot",
                 reservation,
                 deadline,
@@ -1358,7 +1496,7 @@ public sealed class StatefulServiceRuntimeTests
                 operationId,
                 source.RoutingId,
                 source.Status().LifecycleGeneration,
-                spotRid,
+                spotId,
                 "Sample.RetentionSpot",
                 reservation,
                 deadline),
@@ -1491,7 +1629,7 @@ public sealed class StatefulServiceRuntimeTests
                 ServiceWireConstants.FrameworkErrorCode.None,
                 new UserSpotCreateCompletion(
                     UserSpotCreateResult.Created,
-                    operation.SpotRid,
+                    operation.SpotId,
                     operation.Reservation.ObjectGeneration),
                 [new byte[] { 0x51 }]));
         }

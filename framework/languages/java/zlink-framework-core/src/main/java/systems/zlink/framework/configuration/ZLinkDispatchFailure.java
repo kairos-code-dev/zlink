@@ -8,7 +8,7 @@ public record ZLinkDispatchFailure(
     String packetName,
     String channelName,
     String topic,
-    String spotRid,
+    String spotId,
     String actorId,
     String sourceRid,
     String correlationId,

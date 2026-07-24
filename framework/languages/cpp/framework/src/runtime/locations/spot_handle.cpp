@@ -5,13 +5,13 @@
 namespace zlink::framework
 {
 
-spot_rid_t spot_handle_t::spot_rid () const noexcept
+spot_id_t spot_handle_t::spot_id () const noexcept
 {
     if (!_state) {
-        return spot_rid_t{};
+        return spot_id_t{};
     }
     const auto address = _state->snapshot ();
-    return spot_rid_t::from_string (address.spot_rid.to_string ());
+    return spot_id_t (address.spot_id);
 }
 
 } // namespace zlink::framework

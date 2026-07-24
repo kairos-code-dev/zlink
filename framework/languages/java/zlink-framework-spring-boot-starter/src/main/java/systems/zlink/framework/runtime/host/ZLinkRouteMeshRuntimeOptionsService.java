@@ -3,6 +3,7 @@ package systems.zlink.framework.runtime.host;
 import java.util.Map;
 import java.util.function.Supplier;
 import systems.zlink.framework.channels.ZLinkMeshChannelRuntimeOptions;
+import systems.zlink.framework.channels.ZLinkMeshPlacementRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkMeshNodeRuntimeOptions;
 import systems.zlink.framework.channels.ZLinkRouteMeshRuntimeOptions;
 import systems.zlink.framework.errors.ZLinkConfigurationException;
@@ -62,13 +63,56 @@ public final class ZLinkRouteMeshRuntimeOptionsService
 
             @Override
             public void weight(int value) {
-                if (value < 0 || value > 100) {
+                if (value < 0 || value > 10_000) {
                     throw new ZLinkConfigurationException(
-                        "channel weight must be in range 0..100");
+                        "channel weight must be in range 0..10000");
                 }
                 node.setChannelWeight(channelName, value);
             }
         };
+    }
+
+    @Override
+    public ZLinkMeshPlacementRuntimeOptions mesh(String meshName) {
+        ZLinkInternalMeshNode node = requireNode(meshName);
+        return new ZLinkMeshPlacementRuntimeOptions() {
+            @Override
+            public int placementWeight() {
+                return node.placementWeight();
+            }
+
+            @Override
+            public void setPlacementWeight(int value) {
+                if (value < 0 || value > 10_000) {
+                    throw new ZLinkConfigurationException(
+                        "placement weight must be in range 0..10000");
+                }
+                node.setPlacementWeight(value);
+            }
+        };
+    }
+
+    @Override
+    public ZLinkMeshChannelRuntimeOptions channel(String channelName) {
+        if (channelName == null || channelName.isBlank()) {
+            throw new IllegalArgumentException("channelName is required");
+        }
+        ZLinkInternalMeshNode matched = null;
+        for (ZLinkInternalMeshNode node : nodes.get().values()) {
+            if (!node.channelWeights().containsKey(channelName)) {
+                continue;
+            }
+            if (matched != null && matched != node) {
+                throw new ZLinkConfigurationException(
+                    "RouteMesh channel is ambiguous: " + channelName);
+            }
+            matched = node;
+        }
+        if (matched == null) {
+            throw new ZLinkConfigurationException(
+                "RouteMesh channel is not configured: " + channelName);
+        }
+        return channel(matched.name(), channelName);
     }
 
     private ZLinkInternalMeshNode requireNode(String meshName) {

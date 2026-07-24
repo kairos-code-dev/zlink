@@ -236,7 +236,7 @@ public final class ZLinkRedisLocationStore implements
         ZLinkLocationWriteIntent intent) {
         return scripts.write(
             "spot",
-            ZLinkRedisLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spot.meshName(), spot.spotRid())),
+            ZLinkRedisLocationKeyCodec.encodeSpotKey(new ZLinkSpotLocationKey(spot.spotId())),
             spot.meshName(),
             spot.ownerId(),
             spot.generation(),
@@ -248,7 +248,13 @@ public final class ZLinkRedisLocationStore implements
     public CompletionStage<ZLinkLocationWriteResult> removeSpot(
         ZLinkSpotLocationKey key,
         systems.zlink.framework.locations.ZLinkLocationOwnerToken owner) {
-        return scripts.remove("spot", ZLinkRedisLocationKeyCodec.encodeSpotKey(key), key.meshName(), owner);
+        String rowKey = ZLinkRedisLocationKeyCodec.encodeSpotKey(key);
+        return rows.resolve("spot", rowKey, ZLinkRedisLocationRowJson::deserializeSpot)
+            .thenCompose(current -> scripts.remove(
+                "spot",
+                rowKey,
+                current == null ? null : current.meshName(),
+                owner));
     }
 
     @Override
@@ -451,10 +457,47 @@ public final class ZLinkRedisLocationStore implements
     }
 
     @Override
+    public CompletionStage<ZLinkObjectCommitResult> commit(
+        ZLinkObjectReservation reservation,
+        byte[] readyPayload,
+        systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation) {
+        return authority.commit(
+            reservation,
+            readyPayload,
+            terminal,
+            cancellation);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkObjectRejectResult> reject(
+        ZLinkObjectReservation reservation,
+        systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation) {
+        return authority.reject(reservation, terminal, cancellation);
+    }
+
+    @Override
     public CompletionStage<ZLinkObjectAbortResult> abort(
         ZLinkObjectReservation reservation,
         ZLinkStoreCancellation cancellation) {
         return authority.abort(reservation, cancellation);
+    }
+
+    @Override
+    public CompletionStage<ZLinkObjectAbortResult> abort(
+        ZLinkObjectReservation reservation,
+        systems.zlink.framework.locations.ZLinkCreationOperationTerminal terminal,
+        ZLinkStoreCancellation cancellation) {
+        return authority.abort(reservation, terminal, cancellation);
+    }
+
+    @Override
+    public CompletionStage<systems.zlink.framework.locations.ZLinkCreationTerminalReadResult>
+        readCreationTerminal(
+            systems.zlink.framework.locations.ZLinkCreationOperationIdentity operation,
+            ZLinkStoreCancellation cancellation) {
+        return authority.readCreationTerminal(operation, cancellation);
     }
 
     @Override

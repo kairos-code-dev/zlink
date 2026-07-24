@@ -34,7 +34,7 @@ snapshot의 필드와 state enum을 host lifecycle에 맞춰 바꾸거나 모든
 | Channel | ChannelName, local weight, ready member 수, 선택 가능 여부 |
 | Logical Multicast | submit·backpressure·drop 누계, remote·local snapshot/admitted/dropped 수 |
 | Mailbox | application·infrastructure domain별 active turn과 pending work 수 |
-| Object placement | Actor·User Spot·Instance Spot의 kind·stable type별 active·pending·maximum capacity, reservation failure와 최근 placement outcome |
+| Object placement | Actor 전체·Spot 전체·Spot kind·stable type별 active·reserved·limit capacity, activation concurrency, reservation failure와 최근 placement outcome |
 | Location | store configured 여부, ready·degraded state, 마지막 성공·실패 시각 |
 | Host termination | intent, runtime state, deadline, sealed work, blocker, pending request·relocation·STREAM barrier 수와 terminal result |
 
@@ -74,8 +74,11 @@ event는 실제 native disconnect 또는 15초 inbound timeout을 관찰한 뒤 
 
 RID와 endpoint는 진단 snapshot에 포함할 수 있지만 metric label로 사용하지 않는다. snapshot은 호출이
 끝난 뒤에도 안전한 immutable value이며 native handle이나 caller buffer를 보유하지 않는다.
+RouteMesh Channel, ClientServer Server와 node-wide placement weight는 public configuration과 같은 signed
+integer `0..10000` 값을 제공한다. Monitoring projection이 값을 좁은 unsigned type으로 변환하거나
+truncate하면 안 된다.
 
-Operational query는 global ActorId 또는 SpotRid의 current ref를 exact 조회하거나 object kind·stable type별 current
+Operational query는 global ActorId 또는 SpotId의 current ref를 exact 조회하거나 object kind·stable type별 current
 authority를 page로 열거한다. Page size는 1..1000이고 encoded 결과는 4 MiB 이하다. Query item은 global ID,
 ObjectGeneration, MeshName, NodeRid, state와 stable type을 제공한다. 이 query는 application messaging target 목록이나
 placement selector가 아니며 unbounded list를 제공하지 않는다. Missing, Creating과 Store failure를 monitoring
@@ -117,8 +120,12 @@ variant로 표현한다. 해당 event에 필요한 경우에만 peer RID, lifecy
 mailbox domain, message kind, remote·local snapshot/admitted/dropped count, reason과 service state를 추가한다. Payload와
 application metadata를 event에 복사하지 않는다.
 
-Placement event는 object kind, stable type, outcome, reason, capacity delta와 현재 node aggregate만 제공한다.
-Global ActorId, SpotRid, owner token과 generation은 event나 metric label에 넣지 않는다. 개별 create·message 실패는
+Placement event는 object kind, stable type, outcome, reason, typed capacity bundle과 현재 node aggregate만
+제공한다. Capacity snapshot의 `limit`은 설정값 `0`을 그대로 사용하며 제한이 없다는 뜻이다. Spot type
+목록은 등록한 User·Instance Spot capability로 제한하고 Actor stable type별 capacity를 만들지 않는다.
+Entry Spot은 Spot 집계에서 제외하지만 Entry Spot에 존재하는 Actor는 Actor 전체 집계에 포함한다.
+Activation concurrency의 active·limit은 별도 field로 제공하며 population reserved count와 합치지 않는다.
+Global ActorId, SpotId, owner token과 generation은 event나 metric label에 넣지 않는다. 개별 create·message 실패는
 [message flow tracing](52-message-flow-tracing.ko.md)의 기존 `zlink.message_flow` event와 operation result에서
 관찰한다. RID conflict event는 retry attempt, configured prefix와 terminal 여부를 제공하지만 생성한 RID 후보는
 metric label에 넣지 않는다.
@@ -230,8 +237,11 @@ Reactive Streams subscription cancel 또는 observation handle close로 표현�
 - sequence gap 뒤 snapshot 재조회로 최신 상태를 복원할 수 있다.
 - observer 하나를 취소하거나 close해도 다른 observer, automatic connection, manual endpoint 집합과
   message dispatch가 유지되며 취소한 observer에는 새 event가 전달되지 않는다.
-- snapshot의 RID, endpoint, topic, Actor ID와 Spot RID가 metric label로 복사되지 않는다.
-- Actor·User Spot·Instance Spot placement 집계가 active·pending·maximum capacity를 kind·stable type별로 구분한다.
+- snapshot의 RID, endpoint, topic, Actor ID와 Spot ID가 metric label로 복사되지 않는다.
+- Actor 전체·Spot 전체·Spot kind·stable type placement 집계가 active·reserved·limit을 구분하고 Location
+  Store count와 일치한다.
+- Entry Spot 자체는 Spot 집계에서 제외되고 Entry Spot의 Actor는 Actor 전체 집계에 포함된다.
+- Activation concurrency 집계가 population capacity와 분리된다.
 - Placement weight 0, capacity exhaustion과 reservation recovery가 descriptor projection 및 event와 일치한다.
 - Operational query가 1000 item·4 MiB bound를 지키고 global ID의 current location만 반환한다.
-- ActorId, SpotRid, owner token과 generation이 event 또는 metric label에 포함되지 않는다.
+- ActorId, SpotId, owner token과 generation이 event 또는 metric label에 포함되지 않는다.

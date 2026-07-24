@@ -20,7 +20,7 @@ class channel_runtime_bundle_t
     void remove_manual_connection (const std::string &endpoint);
     bool contains_manual_connection (const std::string &endpoint) const;
     std::vector<std::string> list_manual_connections () const;
-    bool try_add_auto_connection (std::string endpoint, std::uint32_t weight = 100);
+    bool try_add_auto_connection (std::string endpoint, int weight = 100);
     void remove_auto_connection (const std::string &endpoint);
     bool contains_auto_connection (const std::string &endpoint) const;
     std::vector<std::string> list_auto_connections () const;
@@ -36,9 +36,9 @@ class channel_runtime_bundle_t
   private:
     mutable std::mutex _mutex;
     std::set<std::string> _manual_connections;
-    std::map<std::string, std::uint32_t> _auto_connections;
+    std::map<std::string, int> _auto_connections;
     std::size_t _next_manual_connection = 0;
-    std::size_t _next_connection = 0;
+    std::uint64_t _next_connection = 0;
     std::uint64_t _connection_version = 0;
     std::atomic_bool _receive_active = false;
 };

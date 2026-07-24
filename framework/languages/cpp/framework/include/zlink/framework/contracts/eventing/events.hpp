@@ -189,7 +189,7 @@ struct location_event_payload_t : runtime_event_base_t
 
 struct spot_timer_diagnostic_t
 {
-    spot_rid_t spot_rid;
+    spot_id_t spot_id;
     bool entry_spot = false;
     std::string timer_name;
     std::string handler_type;

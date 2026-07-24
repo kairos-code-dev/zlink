@@ -39,7 +39,7 @@ Public generation, revision, epoch와 sequence ordinal은 Java 계약의 양수 
 
 ## RouteMesh 11 object runtime 기준
 
-Kotlin exact interface는 Java와 같은 global ActorId·SpotRid, immutable `ActorRef`·`SpotRef`, ID-only 일반
+Kotlin exact interface는 Java와 같은 global ActorId·SpotId, immutable `ActorRef`·`SpotRef`, ID-only 일반
 messaging과 exact-ref mutation·session bind를 사용한다. Actor와 User Spot의 create/get-or-create는 single-use
 fluent operation이다. Spot manager는 User Spot 전용이며 Instance Spot creation member를 제공하지 않는다.
 Missing Instance Spot의 cold activation은 Spot 전용 send/request call에서 `instanceSpot()` 또는
@@ -49,7 +49,7 @@ authority는 등록 type 수와 관계없이 저장된 type을 사용한다. Mes
 구분한다. 모든 server factory는 명시적인 relocation policy와 typed placement option을 받는다. Kotlin extension은
 이 계약을 축약하거나 local fallback을 추가하지 않는다.
 
-Global ref의 JSON field는 `actorId` 또는 `spotRid`, `objectGeneration`, `meshName`, `nodeRid`다.
+Global ref의 JSON field는 `actorId` 또는 `spotId`, `objectGeneration`, `meshName`, `nodeRid`다.
 `objectGeneration`은 decimal string이며 unknown field는 무시하지만 duplicate field, required field 누락,
 0 또는 `Long.MAX_VALUE` 초과 값은 거부한다. String identity는 exact value를 유지하며 normalization하지 않는다.
 허용하는 shape는 다음 두 가지다. `objectGeneration`은 leading zero가 없는
@@ -60,5 +60,5 @@ Global ref의 JSON field는 `actorId` 또는 `spotRid`, `objectGeneration`, `mes
 ```
 
 ```json
-{"spotRid":"room-7","objectGeneration":"42","meshName":"game","nodeRid":"game-0123456789abcdef0123456789abcdef"}
+{"spotId":"room-7","objectGeneration":"42","meshName":"game","nodeRid":"game-0123456789abcdef0123456789abcdef"}
 ```

@@ -13,18 +13,26 @@ import { requireValidSendTimeoutMs } from '../../contracts/Configuration/SendTim
 interface ZLinkChannelSocketOptionsRuntime {
   clientServerServerSocket(channelName: string): ZLinkBackendRouterSocket;
   routeMeshSocket(channelName: string): ZLinkBackendRouterSocket;
+  clientServerServerWeight?(channelName: string): number;
+  setClientServerServerWeight?(channelName: string, weight: number): void;
+  routeMeshWeight?(channelName: string): number;
+  setRouteMeshWeight?(channelName: string, weight: number): void;
 }
 
 class ZLinkLiveSocketConfig implements ZLinkSocketConfig {
-  constructor(private readonly socket: ZLinkBackendRouterSocket) {}
+  constructor(
+    private readonly socket: ZLinkBackendRouterSocket,
+    private readonly readWeight: () => number,
+    private readonly writeWeight: (weight: number) => void
+  ) {}
 
   get weight(): number {
-    return this.socket.peerWeight;
+    return this.readWeight();
   }
 
   set weight(value: number) {
-    validatePeerWeight(value);
-    this.socket.peerWeight = value;
+    validatePublicWeight(value);
+    this.writeWeight(value);
   }
 
   get sendHighWaterMark(): number {
@@ -85,15 +93,39 @@ export class DefaultZLinkChannelRuntimeOptions {
 
   serverChannel(channelName: string): ZLinkRuntimeSocketConfig {
     requireChannelName(channelName);
+    const manager = this.requireManager();
+    const socket = manager.clientServerServerSocket(channelName);
     return new ZLinkServerRuntimeOptions(
-      new ZLinkLiveSocketConfig(this.requireManager().clientServerServerSocket(channelName))
+      new ZLinkLiveSocketConfig(
+        socket,
+        () => manager.clientServerServerWeight?.(channelName) ?? socket.peerWeight,
+        (weight) => {
+          if (manager.setClientServerServerWeight !== undefined) {
+            manager.setClientServerServerWeight(channelName, weight);
+          } else {
+            socket.peerWeight = weight;
+          }
+        }
+      )
     ).configureServerSocket();
   }
 
   routeChannel(channelName: string): ZLinkRuntimeSocketConfig {
     requireChannelName(channelName);
+    const manager = this.requireManager();
+    const socket = manager.routeMeshSocket(channelName);
     return new ZLinkRouteRuntimeOptions(
-      new ZLinkLiveSocketConfig(this.requireManager().routeMeshSocket(channelName))
+      new ZLinkLiveSocketConfig(
+        socket,
+        () => manager.routeMeshWeight?.(channelName) ?? socket.peerWeight,
+        (weight) => {
+          if (manager.setRouteMeshWeight !== undefined) {
+            manager.setRouteMeshWeight(channelName, weight);
+          } else {
+            socket.peerWeight = weight;
+          }
+        }
+      )
     ).configureSocket();
   }
 
@@ -112,9 +144,9 @@ function requireChannelName(channelName: string): void {
   }
 }
 
-function validatePeerWeight(value: number): void {
-  if (!Number.isInteger(value) || value < 0 || value > 100) {
-    throw new ZLinkConfigurationException('Weight must be between 0 and 100.');
+function validatePublicWeight(value: number): void {
+  if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+    throw new ZLinkConfigurationException('Weight must be an integer in 0..10000.');
   }
 }
 

@@ -127,6 +127,22 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
 - 세부 동작: [Location Runtime §8](../../spec/server/40-location-runtime.ko.md#8-store-outage와-cancellation)의
   health projection.
 
+#### MON-A6 typed capacity snapshot과 projection lag
+
+우선순위: `P0`
+
+**검증 질문:** Actor·Spot population과 activation concurrency를 서로 다른 값으로 관찰할 수 있는가.
+
+- 절차: 작은 Actor total, Spot total과 Spot stable type limit을 설정하고 creation을 factory gate에서
+  대기시킨다. Entry Spot에 Actor를 추가하고 descriptor publication을 의도적으로 한 polling interval
+  지연시킨 상태에서 authoritative Location Store reservation과 runtime snapshot을 읽는다.
+- 검증: Snapshot은 Actor total, Spot total과 stable type별 `active`, `reserved`, `limit`을 구분한다.
+  Entry Spot은 Spot count에 없고 member Actor는 Actor count에 있다. `limit=0`은 unlimited로 표현하며
+  숫자 0개의 여유로 해석하지 않는다. Activation concurrency의 active·limit은 population
+  capacity와 다른 field에 있다. Descriptor projection이 stale해도 authoritative reservation 결과와
+  혼합하지 않고 다음 snapshot에서 수렴한다.
+- 세부 동작: typed capacity와 stale descriptor projection의 관측 경계.
+
 ### Track B — Logical Multicast backpressure와 drop
 
 #### MON-B1 remote ROUTER backpressure
@@ -201,7 +217,7 @@ completion과 다른 observer가 진행되는가.
 
 ## 5. 완료 기준
 
-- `P0`인 MON-A1·A2·A3·B1·B2를 모두 통과한다.
+- `P0`인 MON-A1·A2·A3·A6·B1·B2를 모두 통과한다.
 - 각 판정은 public operation result, typed event와 후속 snapshot을 함께 사용한다.
 - Event identifier와 닫힌 state 값은 Runtime Monitoring 정식 계약과 byte 단위로 일치한다.
 - publish operation의 backpressure와 target별 drop을 같은 결과·event로 합치지 않는다.

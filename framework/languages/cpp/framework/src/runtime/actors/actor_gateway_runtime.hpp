@@ -84,7 +84,7 @@ class actor_gateway_state_t
     using create_dispatcher_t = std::function<result_t<actor_ref_t> (
       std::string, std::string, const std::optional<zlink::message_t> &)>;
     using join_spot_dispatcher_t = std::function<result_t<actor_join_reply_t> (
-      const actor_ref_t &, spot_rid_t, const zlink::message_t &)>;
+      const actor_ref_t &, spot_id_t, const zlink::message_t &)>;
     using join_entry_spot_dispatcher_t = std::function<result_t<actor_join_reply_t> (
       const actor_ref_t &, node_rid_t, const zlink::message_t &)>;
     using relay_dispatcher_t = std::function<result_t<std::optional<zlink::message_t>> (
@@ -93,7 +93,7 @@ class actor_gateway_state_t
     using bound_session_registrar_t = std::function<result_t<void> (const actor_ref_t &)>;
     using bound_session_sender_t = std::function<result_t<void> (
       const actor_ref_t &, std::uint64_t, const stream_header_t &, const zlink::message_t &)>;
-    using membership_query_t = std::function<std::optional<spot_rid_t> (const actor_ref_t &)>;
+    using membership_query_t = std::function<std::optional<spot_id_t> (const actor_ref_t &)>;
 
     std::map<std::string, actor_record_t> actors_by_id;
     std::map<std::string, std::function<task_t<void> (std::string, const zlink::message_t &)>>

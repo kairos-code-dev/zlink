@@ -116,7 +116,7 @@ internal static class PlayHostFactory
             IZLinkDrainControl drain,
             IZLinkLocationRuntimeQuery locations,
             IZLinkSpotHandleResolver spots,
-            IZLinkActorDirectory actors,
+            IZLinkActorManager actors,
             EvidenceStore evidence,
             IServiceProvider services,
             string? spotRid,

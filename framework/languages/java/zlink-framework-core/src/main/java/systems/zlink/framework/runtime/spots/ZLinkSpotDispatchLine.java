@@ -7,7 +7,7 @@ import systems.zlink.contracts.core.RoutingId;
 interface SpotDispatchLine {
     CompletionStage<Void> enqueueDispatch(Supplier<CompletionStage<Void>> operation);
 
-    RoutingId spotRid();
+    String spotId();
 
     DefaultSpotOutbound dispatchOutbound();
 

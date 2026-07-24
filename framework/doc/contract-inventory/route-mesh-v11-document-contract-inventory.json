@@ -43,7 +43,7 @@
         "public interface IZLinkFrameworkRuntime",
         "public interface IZLinkMeshChannelRoleBuilder",
         "public interface IZLinkSendCall",
-        "public interface IZLinkSpotActorLifecycle<TActor>",
+        "public interface IZLinkUserSpotActorLifecycle<TActor>",
         "public interface IZLinkActorRelocationAdapter<TActor>",
         "public interface IZLinkSpotRelocationAdapter<TSpot>",
         "ValueTask OnActorRelocatedAsync(",
@@ -119,7 +119,7 @@
         "class ZLinkFrameworkRuntime",
         "interface ZLinkMeshChannelBuilder",
         "ZLinkSendCall {",
-        "ZLinkSpotActorLifecycle<TActor extends",
+        "ZLinkUserSpotActorLifecycle<TActor extends",
         "interface ZLinkActorRelocationAdapter<TActor extends",
         "interface ZLinkSpotRelocationAdapter<TSpot>",
         "default CompletionStage<Void> onActorRelocated(TActor actor)",
@@ -263,7 +263,7 @@
         "export interface ZLinkFrameworkRuntime",
         "export interface ZLinkMeshChannelBuilder",
         "export interface ZLinkSendCall",
-        "export interface ZLinkSpotActorLifecycle",
+        "export interface ZLinkUserSpotActorLifecycle",
         "export interface ZLinkActorRelocationAdapter<TActor extends ZLinkActor>",
         "export interface ZLinkSpotRelocationAdapter<TSpot extends ZLinkSpot | ZLinkInstanceSpot>",
         "onActorRelocated?(actor: TActor): Promise<void>;",
@@ -271,7 +271,7 @@
         "Retiring = 2,",
         "export interface ZLinkInstanceSpot {",
         "readonly context: ZLinkInstanceSpotContext;",
-        "sendToSpot(spotRid: SpotRid",
+        "sendToSpot(spotId: SpotId",
         "export interface ActorRef",
         "export interface SpotRef",
         "export interface ZLinkActorManager",
@@ -372,7 +372,7 @@
         ],
         "stateful-maintenance-runtime.ko.md": [
           "global ActorId",
-          "global SpotRid",
+          "global SpotId",
           "aggregate",
           "reservation"
         ]
@@ -685,12 +685,12 @@
     },
     {
       "path": "framework/doc/framework/spec/server/24-spot-address-messaging.ko.md",
-      "required_fragments": ["global SpotRid", "creation intent", "activation barrier", "existing-only operation", "distinct Instance type"],
+      "required_fragments": ["global SpotId", "creation intent", "activation barrier", "existing-only operation", "distinct Instance type"],
       "forbidden_fragments": ["InstanceSpotAddress의 첫", "address cold activation", "ReleaseAndRecreate"]
     },
     {
       "path": "framework/doc/framework/spec/server/40-location-runtime.ko.md",
-      "required_fragments": ["global ActorId", "global SpotRid", "owner lease", "Reserve", "Commit", "Abort"],
+      "required_fragments": ["global ActorId", "global SpotId", "owner lease", "Reserve", "Commit", "Abort"],
       "forbidden_fragments": ["Instance Spot authority row"]
     },
     {

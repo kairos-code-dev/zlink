@@ -45,6 +45,10 @@ ChannelName select-one은 다음 기준을 하나의 원자적 operation으로 �
 3. Weight가 0인 target과 drain 중인 target을 새 선택에서 제외한다.
 4. Positive weight 선택으로 한 target을 고르고 즉시 submit한다.
 
+Framework는 capacity와 eligibility 조건을 weight보다 먼저 적용한다. 남은 후보의 weight 합계는 최소 64-bit
+정수로 계산하여 overflow를 방지한다. Weight는 처리량이나 백분율이 아니라 상대적 선택 비중이며
+`100`과 `300` 후보만 eligible이면 장기 선택 비율은 약 `1:3`이다.
+
 ClientServer의 local Server도 remote Server와 같은 후보다. Listener와 ClientServer service admission이
 ready이고 weight가 양수이며 draining이 아닐 때만 후보에 포함한다. 같은 process라는 이유로 먼저 선택하거나
 제외하지 않는다. 선택되면 local handler를 직접 호출하지 않고 Client DEALER에서 Server ROUTER로 실제
@@ -128,6 +132,7 @@ label로 사용하지 않는다.
 - Node direct가 지정한 RID 이외의 node로 전달되지 않는다.
 - ChannelName이 process-local 송신 경로 하나만 선택하고 미등록 이름을 다른 경로로 fallback하지 않는다.
 - ChannelName select-one이 RouteMesh membership 또는 ClientServer server의 weight, ready와 drain 상태를 함께 반영한다.
+- Eligibility filter가 weight 계산보다 먼저 적용되고 후보 합계를 최소 64-bit 정수로 overflow 없이 계산한다.
 - 같은 process의 ClientServer Server도 remote와 같은 후보 집합과 transport 경로를 사용하며 local 우선 선택,
   local 제외와 direct handler 호출이 없다.
 - RouteMesh의 Node direct와 ChannelName이 같은 MeshNode ROUTER를 사용하고 ChannelName별 소켓을 만들지

@@ -9,7 +9,7 @@ namespace DeliveryDispatch.Server.Tracking;
 [ZLinkHandlerGroup(SampleNames.TrackingRouteChannel)]
 internal sealed class DeliveryStatusChangedHandler(
     EvidenceStore evidence,
-    IZLinkActorDirectory actorDirectory,
+    IZLinkActorManager actorDirectory,
     IZLinkActorClient actors,
     ILogger<DeliveryStatusChangedHandler> logger)
     : IZLinkRequestHandler<DeliveryStatusChangedReq, DeliveryStatusChangedRes>

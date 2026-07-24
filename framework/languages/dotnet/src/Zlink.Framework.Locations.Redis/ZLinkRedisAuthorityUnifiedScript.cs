@@ -13,14 +13,14 @@ local MAX = '9223372036854775807'
 local schemaFormat = redis.call('HGET', KEYS[19], 'format')
 local schemaEpoch = redis.call('HGET', KEYS[19], 'epoch')
 if schemaFormat then
-    if schemaFormat ~= 'location-authority-hybrid-v1'
-        or schemaEpoch ~= '1' then
+    if schemaFormat ~= 'location-authority-hybrid-v3'
+        or schemaEpoch ~= '3' then
         error('incompatible Redis location authority schema')
     end
 else
     redis.call('HSET', KEYS[19],
-        'format', 'location-authority-hybrid-v1',
-        'epoch', '1')
+        'format', 'location-authority-hybrid-v3',
+        'epoch', '3')
 end
 
 local function mapOf(values)
@@ -291,10 +291,12 @@ local function sameDescriptor(row, descriptorKey, lifecycle)
        and row.descriptorLifecycleGeneration == tostring(lifecycle)
 end
 
-local function capacityNodeBucket(descriptorKey, lifecycle)
+local function capacityNodeBucket(descriptorKey, lifecycle, objectKind)
     local lifecycleValue = tostring(lifecycle)
+    local population = objectKind == 'actor' and 'actor' or 'spot'
     return string.len(descriptorKey) .. ':' .. descriptorKey
         .. string.len(lifecycleValue) .. ':' .. lifecycleValue
+        .. string.len(population) .. ':' .. population
 end
 
 local function capacityTypeBucket(nodeBucket, objectKind, stableType)
@@ -318,8 +320,7 @@ local function descriptorAdmission(target, descriptorKey, admissionKey, leaseKey
     local public = redis.call('HMGET', descriptorKey, 'owner', 'mesh')
     local metadata = redis.call('HMGET', admissionKey,
         'lifecycleGeneration', 'ownerId', 'ownerLeaseGeneration', 'objectRole',
-        'runtimeState', 'capabilities', 'nodeActiveLimit',
-        'nodePendingLimit')
+        'runtimeState', 'capabilities', 'actorLimit', 'spotLimit')
     if not public[1] or public[1] ~= target.owner.ownerId
         or public[2] ~= target.descriptor.meshName
         or not metadata[1]
@@ -348,16 +349,8 @@ local function descriptorAdmission(target, descriptorKey, admissionKey, leaseKey
         end
     end
     if not matched then return nil, 'targetUnavailable' end
-    if request.placementProfile and request.placementProfile ~= '' then
-        local found = false
-        for _, profile in ipairs(
-            matched.placementProfiles or matched.PlacementProfiles or {}) do
-            if profile == request.placementProfile then found = true break end
-        end
-        if not found then return nil, 'targetUnavailable' end
-    end
     local nodeBucket = capacityNodeBucket(
-        target.descriptorKey, target.lifecycleGeneration)
+        target.descriptorKey, target.lifecycleGeneration, request.objectKind)
     local typeBucket = capacityTypeBucket(
         nodeBucket, request.objectKind, request.stableType)
     local delta = tonumber(request.capacityDelta)
@@ -365,16 +358,16 @@ local function descriptorAdmission(target, descriptorKey, admissionKey, leaseKey
     local nodePending = tonumber(redis.call('HGET', KEYS[8], nodeBucket) or '0')
     local typeActive = tonumber(redis.call('HGET', KEYS[9], typeBucket) or '0')
     local typePending = tonumber(redis.call('HGET', KEYS[10], typeBucket) or '0')
-    local matchedActiveLimit = tonumber(
-        matched.activeLimit or matched.ActiveLimit)
-    local matchedPendingLimit = tonumber(
-        matched.pendingLimit or matched.PendingLimit)
-    if nodeActive + delta > tonumber(metadata[7] or '2147483647')
-        or nodePending + delta > tonumber(metadata[8] or '2147483647')
-        or (matchedActiveLimit
-            and typeActive + delta > matchedActiveLimit)
-        or (matchedPendingLimit
-            and typePending + delta > matchedPendingLimit) then
+    local populationLimit = request.objectKind == 'actor'
+        and tonumber(metadata[7] or '0')
+        or tonumber(metadata[8] or '0')
+    local matchedLimit = request.objectKind == 'actor'
+        and 0
+        or tonumber(matched.limit or matched.Limit or '0')
+    if (populationLimit > 0
+            and nodeActive + nodePending + delta > populationLimit)
+        or (matchedLimit > 0
+            and typeActive + typePending + delta > matchedLimit) then
         return nil, 'placementCapacityExhausted'
     end
     return {node = nodeBucket, type = typeBucket}, nil
@@ -392,7 +385,7 @@ end
 
 local function rowBuckets(row)
     local node = capacityNodeBucket(
-        row.descriptorKey, row.descriptorLifecycleGeneration)
+        row.descriptorKey, row.descriptorLifecycleGeneration, row.objectKind)
     return node, capacityTypeBucket(node, row.objectKind, row.stableType)
 end
 
@@ -470,6 +463,117 @@ if op == 'reserve' then
     local result = snapshot(row)
     return cjson.encode({kind = 'reserved',
         reservationId = request.reservationId, creating = result})
+end
+
+if op == 'readCreationTerminal' then
+    local terminal = rowAt(KEYS[14])
+    if not terminal then
+        return cjson.encode({kind = 'missing', storeNowMs = nowMs})
+    end
+    if tonumber(terminal.expiresAtUnixMs) <= nowMs then
+        redis.call('DEL', KEYS[14])
+        return cjson.encode({kind = 'missing', storeNowMs = nowMs})
+    end
+    return cjson.encode({
+        kind = 'found',
+        storeNowMs = nowMs,
+        terminal = terminal
+    })
+end
+
+if op == 'completeCreation' then
+    local terminalKey = KEYS[20]
+    local existingTerminal = rowAt(terminalKey)
+    if existingTerminal then
+        if existingTerminal.reservationId == request.reservationId
+            and existingTerminal.state == request.terminal.state
+            and existingTerminal.terminalEnvelopeSha256
+                == request.terminal.terminalEnvelopeSha256
+            and existingTerminal.expiresAtUnixMs
+                == request.terminal.expiresAtUnixMs then
+            return cjson.encode({
+                kind = 'alreadyCompleted',
+                storeNowMs = nowMs,
+                terminal = existingTerminal
+            })
+        end
+        return cjson.encode({kind = 'stale'})
+    end
+    if tonumber(request.terminal.expiresAtUnixMs) <= nowMs then
+        return cjson.encode({kind = 'invalidExpiry', storeNowMs = nowMs})
+    end
+    local row = rowAt(KEYS[1])
+    local reservation = readReservation(KEYS[14])
+    if not row or not reservation or reservation.status ~= 'reserved'
+        or row.allocationState ~= 'pending'
+        or reservation.request.reservationId ~= request.reservationId
+        or row.storeVersion ~= tostring(request.expectedStoreVersion) then
+        return cjson.encode({kind = 'stale'})
+    end
+    if not counterAvailable('storeRevision', 1) then
+        return cjson.encode({kind = 'generationExhausted'})
+    end
+
+    local completedKind = nil
+    if request.terminal.state == 'Created' then
+        request.objectKind = row.objectKind
+        request.stableType = row.stableType
+        request.capacityDelta = 0
+        local _, failure = descriptorAdmission(request.target)
+        if failure then return cjson.encode({kind = 'stale'}) end
+        archiveCurrent(KEYS[1], KEYS[2], KEYS[3])
+        row.storeVersion = nextCounter('storeRevision')
+        row.payload = request.payload
+        row.allocationState = 'active'
+        row.reservationId = nil
+        row.requestContentReference = nil
+        row.requestSha256 = nil
+        row.requestEncodedSize = nil
+        writeRow(KEYS[1], row)
+        capacityAdd(KEYS[8], reservation.nodeBucket, -tonumber(row.capacityDelta))
+        capacityAdd(KEYS[10], reservation.typeBucket, -tonumber(row.capacityDelta))
+        capacityAdd(KEYS[7], reservation.nodeBucket, tonumber(row.capacityDelta))
+        capacityAdd(KEYS[9], reservation.typeBucket, tonumber(row.capacityDelta))
+        redis.call('HSET', KEYS[14], 'status', 'committed')
+        indexCurrent(request.key, row.storeVersion)
+        completedKind = 'created'
+    elseif request.terminal.state == 'Rejected'
+        or request.terminal.state == 'Failed' then
+        archiveCurrent(KEYS[1], KEYS[2], KEYS[3])
+        row.storeVersion = nextCounter('storeRevision')
+        local revision = decimalToHex(row.storeVersion)
+        writeTombstone(KEYS[2], KEYS[3], revision, request.key)
+        redis.call('DEL', KEYS[1])
+        capacityAdd(KEYS[8], reservation.nodeBucket, -tonumber(row.capacityDelta))
+        capacityAdd(KEYS[10], reservation.typeBucket, -tonumber(row.capacityDelta))
+        redis.call(
+            'HSET', KEYS[14], 'status',
+            request.terminal.state == 'Rejected' and 'rejected' or 'failed')
+        indexCurrent(request.key, row.storeVersion)
+        completedKind = request.terminal.state == 'Rejected'
+            and 'rejected' or 'failed'
+    else
+        return cjson.encode({kind = 'stale'})
+    end
+
+    redis.call('HSET', terminalKey,
+        'state', request.terminal.state,
+        'sourceNodeRid', request.terminal.sourceNodeRid,
+        'sourceNodeGeneration', request.terminal.sourceNodeGeneration,
+        'operationIdHigh', request.terminal.operationIdHigh,
+        'operationIdLow', request.terminal.operationIdLow,
+        'reservationId', request.reservationId,
+        'objectKind', row.objectKind,
+        'terminalEnvelope', request.terminal.terminalEnvelope,
+        'terminalEnvelopeSha256', request.terminal.terminalEnvelopeSha256,
+        'expiresAtUnixMs', request.terminal.expiresAtUnixMs)
+    redis.call('PEXPIREAT', terminalKey, request.terminal.expiresAtUnixMs)
+    return cjson.encode({
+        kind = completedKind,
+        storeNowMs = nowMs,
+        terminal = rowAt(terminalKey),
+        ready = request.terminal.state == 'Created' and snapshot(row) or nil
+    })
 end
 
 if op == 'commit' then
@@ -712,7 +816,6 @@ if op == 'prepareAggregate' then
         request.objectKind = reservation.request.objectKind
         request.stableType = reservation.request.stableType
         request.capacityDelta = reservation.request.capacityDelta
-        request.placementProfile = reservation.request.placementProfile
         local descriptorOffset =
             19 + participantCount * 2 + reservationCount + index
         local _, failure = descriptorAdmission(
@@ -772,7 +875,6 @@ if op == 'commitAggregate' then
             request.objectKind = reservation.request.objectKind
             request.stableType = reservation.request.stableType
             request.capacityDelta = reservation.request.capacityDelta
-            request.placementProfile = reservation.request.placementProfile
             local descriptorOffset =
                 19 + participantCount * 6 + reservationCount
                     + reservationIndex
@@ -956,7 +1058,9 @@ if op == 'capacityProjection' then
     return cjson.encode({
         kind = 'capacityProjection',
         nodeActive = mapOf(redis.call('HGETALL', KEYS[7])),
-        nodePending = mapOf(redis.call('HGETALL', KEYS[8]))
+        nodePending = mapOf(redis.call('HGETALL', KEYS[8])),
+        typeActive = mapOf(redis.call('HGETALL', KEYS[9])),
+        typePending = mapOf(redis.call('HGETALL', KEYS[10]))
     })
 end
 

@@ -6,7 +6,7 @@ import systems.zlink.framework.spots.ZLinkSpotKind;
 
 public record ZLinkSpotLocation(
     String meshName,
-    RoutingId spotRid,
+    String spotId,
     long spotGeneration,
     String spotType,
     RoutingId nodeRid,
@@ -15,10 +15,14 @@ public record ZLinkSpotLocation(
     String ownerId,
     long generation,
     Instant updatedAt) {
+    public ZLinkSpotLocation {
+        systems.zlink.framework.runtime.internal.spots.ZLinkSpotIdValidator
+            .requireValid(spotId);
+    }
 
     public ZLinkSpotLocation(
         String meshName,
-        RoutingId spotRid,
+        String spotId,
         String spotType,
         RoutingId nodeRid,
         ZLinkSpotKind spotKind,
@@ -28,7 +32,7 @@ public record ZLinkSpotLocation(
         Instant updatedAt) {
         this(
             meshName,
-            spotRid,
+            spotId,
             generation,
             spotType,
             nodeRid,

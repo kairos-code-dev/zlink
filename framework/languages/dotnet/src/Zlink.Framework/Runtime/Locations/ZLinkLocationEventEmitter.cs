@@ -64,7 +64,7 @@ internal sealed class ZLinkLocationEventEmitter
         _handles?.UpdateSpot(spot);
         return EmitAsync(_spotSources, source => new ZLinkLocationSpotEvent.RowUpdated(
             source, DateTimeOffset.UtcNow,
-            new ZLinkSpotLocationKey(spot.MeshName, spot.SpotRid), spot), ct);
+            new ZLinkSpotLocationKey(spot.SpotId), spot), ct);
     }
 
     internal ValueTask SpotRowRemovedAsync(

@@ -34,12 +34,23 @@ export interface ZLinkRemoteActorPacketTarget {
 }
 
 export interface ZLinkActorCreationOperation {
-  readonly task: Promise<ZLinkActor>;
+  readonly task: Promise<ZLinkActorCreationAttemptResult>;
   readonly created: boolean;
 }
 
+export type ZLinkActorCreationAttemptResult =
+  | {
+      readonly status: 'created';
+      readonly actor: ZLinkActor;
+      readonly reply?: unknown;
+    }
+  | {
+      readonly status: 'rejected';
+      readonly reply?: unknown;
+    };
+
 export class ZLinkActorRuntimeState {
-  private creationTask: Promise<ZLinkActor> | undefined;
+  private creationTask: Promise<ZLinkActorCreationAttemptResult> | undefined;
   private configured = false;
   private context: ZLinkActorContext | undefined;
   private actorTypeValue: string | undefined;
@@ -191,7 +202,7 @@ export class ZLinkActorRuntimeState {
   getOrStartCreation(
     actorType: string,
     failIfExists: boolean,
-    createActor: () => Promise<ZLinkActor>
+    createActor: () => Promise<ZLinkActorCreationAttemptResult>
   ): ZLinkActorCreationOperation {
     if (this.actorTypeValue !== undefined && this.actorTypeValue !== actorType) {
       throw new ZLinkFrameworkException(
@@ -207,7 +218,10 @@ export class ZLinkActorRuntimeState {
           `Actor '${this.actorId}' already exists.`
         );
       }
-      return { task: Promise.resolve(this.actorValue), created: false };
+      return {
+        task: Promise.resolve({ status: 'created', actor: this.actorValue }),
+        created: false
+      };
     }
 
     if (this.creationTask !== undefined) {
@@ -225,13 +239,17 @@ export class ZLinkActorRuntimeState {
     return { task: this.creationTask, created: true };
   }
 
-  clearFailedCreation(task: Promise<ZLinkActor>): void {
+  clearFailedCreation(task: Promise<ZLinkActorCreationAttemptResult>): boolean {
     if (this.creationTask === task && this.actorValue === undefined) {
       this.creationTask = undefined;
       this.actorTypeValue = undefined;
       this.createRequestPayloadValue = undefined;
       this.configured = false;
+      this.nativeActorRefValue = undefined;
+      this.entryNodeRidValue = undefined;
+      return true;
     }
+    return false;
   }
 
   bindActor(actor: ZLinkActor, context: ZLinkActorContext): void {

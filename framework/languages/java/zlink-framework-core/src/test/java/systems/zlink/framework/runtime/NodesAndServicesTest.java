@@ -19,6 +19,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.actors.ActorRef;
@@ -87,12 +88,60 @@ final class NodesAndServicesTest {
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
-            ActorRef actor = runtime.actorManager()
+            systems.zlink.framework.actors.ZLinkActorCreateResult result = runtime.actorManager()
                 .create("player-1", "player")
                 .toCompletableFuture()
                 .join();
+            ActorRef actor = ((systems.zlink.framework.actors.ZLinkActorCreateResult.Created) result)
+                .actor();
 
             assertEquals("player-1", actor.actorId());
+            assertTrue(
+                runtime.actorManager()
+                    .getOrCreate("player-1", "player")
+                    .toCompletableFuture()
+                    .join()
+                    instanceof systems.zlink.framework.actors.ZLinkActorCreateResult.Existing);
+        }
+    }
+
+    @Test
+    void concurrentGetOrCreateWaitsForCreatingThenReturnsExisting() {
+        BlockingPlayerActorFactory.reset();
+        DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
+        var mesh = options.addRouteMesh("game")
+            .listen("inproc://creating-actor")
+            .setRoutingId(RoutingId.from("creating-node"));
+        mesh.channelName("game");
+        mesh.addActorFactory(
+            "blocking-player",
+            BlockingPlayerActorFactory.class);
+
+        try (ZLinkFrameworkRuntime runtime =
+                 ZLinkFrameworkRuntime.start(
+                     options,
+                     new ZLinkJavaBackendAdapterFactory())) {
+            CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult>
+                first = runtime.actorManager().getOrCreate(
+                    "player-serial",
+                    "blocking-player");
+            CompletionStage<systems.zlink.framework.actors.ZLinkActorCreateResult>
+                second = runtime.actorManager().getOrCreate(
+                    "player-serial",
+                    "blocking-player");
+
+            assertEquals(1, BlockingPlayerActorFactory.invocations.get());
+            assertTrue(!second.toCompletableFuture().isDone());
+
+            BlockingPlayerActorFactory.release.complete(null);
+
+            assertTrue(first.toCompletableFuture().join()
+                instanceof systems.zlink.framework.actors
+                    .ZLinkActorCreateResult.Created);
+            assertTrue(second.toCompletableFuture().join()
+                instanceof systems.zlink.framework.actors
+                    .ZLinkActorCreateResult.Existing);
+            assertEquals(1, BlockingPlayerActorFactory.invocations.get());
         }
     }
 
@@ -131,18 +180,18 @@ final class NodesAndServicesTest {
             .addSpotFactory(
                 "room",
                 RoomSpot.class,
-                new ZLinkObjectPlacementOptions(Set.of(), null, null),
+                new ZLinkObjectPlacementOptions(null, null),
                 ZLinkRelocationPolicy.disabled())
             .addSpotFactory(
                 "client",
                 ClientSpot.class,
-                new ZLinkObjectPlacementOptions(Set.of(), null, null),
+                new ZLinkObjectPlacementOptions(null, null),
                 ZLinkRelocationPolicy.disabled());
 
         try (ZLinkFrameworkRuntime runtime =
                  ZLinkFrameworkRuntime.start(options, new ZLinkJavaBackendAdapterFactory())) {
             runtime.spotManager()
-                .getOrCreate(roomRid, "room")
+                .getOrCreate(roomRid.toString(), "room")
                 .submit()
                 .toCompletableFuture()
                 .get(2, TimeUnit.SECONDS);
@@ -299,7 +348,7 @@ final class NodesAndServicesTest {
 
         @Override
         public CompletionStage<Void> onInitialize() {
-            return handles.resolveSpotHandle(targetMeshName, targetRoomRid)
+            return handles.resolveSpotHandle(targetMeshName, targetRoomRid.toString())
                 .thenCompose(handle -> context.outbound()
                     .requestToSpot(
                         handle.orElseThrow(() -> new IllegalStateException("target Spot handle not found")),
@@ -378,6 +427,26 @@ final class NodesAndServicesTest {
             String actorId,
             ZLinkActorContext context) {
             return CompletableFuture.completedFuture(new PlayerActor(actorId, context));
+        }
+    }
+
+    public static final class BlockingPlayerActorFactory
+        implements ZLinkActorFactory {
+        static final AtomicInteger invocations = new AtomicInteger();
+        static CompletableFuture<Void> release;
+
+        static void reset() {
+            invocations.set(0);
+            release = new CompletableFuture<>();
+        }
+
+        @Override
+        public CompletionStage<ZLinkActor> create(
+            String actorId,
+            ZLinkActorContext context) {
+            invocations.incrementAndGet();
+            return release.thenApply(
+                ignored -> new PlayerActor(actorId, context));
         }
     }
 

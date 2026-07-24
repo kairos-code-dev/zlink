@@ -15,7 +15,7 @@ public sealed class BuilderContracts
         typeof(IZLinkMeshPeerConnections),
         typeof(IZLinkMeshNodeSocketConfig),
         typeof(IZLinkRouteMeshRuntimeOptions),
-        typeof(IZLinkMeshNodeRuntimeOptions),
+        typeof(IZLinkMeshPlacementRuntimeOptions),
         typeof(IZLinkMeshChannelRuntimeOptions),
         typeof(IZLinkRouteMeshRuntime),
         typeof(IZLinkMetadataPolicyBuilder),

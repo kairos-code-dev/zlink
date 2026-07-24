@@ -63,14 +63,14 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
 
     ZLinkBackendSpot createSpot();
 
-    default ZLinkBackendSpot createSpot(RoutingId spotRid) {
+    default ZLinkBackendSpot createSpot(String spotId) {
         ZLinkBackendSpot spot = createSpot();
-        spot.setRoutingId(spotRid);
+        spot.setRoutingId(spotId);
         return spot;
     }
 
     default ZLinkBackendSpot createSpot(
-        RoutingId spotRid,
+        String spotId,
         long objectGeneration) {
         throw new UnsupportedOperationException(
             "Exact-generation Spot creation is unavailable");
@@ -191,18 +191,18 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
     CompletionStage<ZLinkBackendActorJoinResult> joinActor(
         ZLinkBackendActorRef actor,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<Message> parts,
         Duration timeout);
 
     default CompletionStage<ZLinkBackendActorJoinResult> joinActor(
         ZLinkBackendActorRef actor,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         long targetSpotGeneration,
         List<Message> parts,
         Duration timeout) {
-        return joinActor(actor, targetNodeRid, targetSpotRid, parts, timeout);
+        return joinActor(actor, targetNodeRid, targetSpotId, parts, timeout);
     }
 
     CompletionStage<ZLinkBackendActorJoinEntrySpotResult> joinActorEntrySpot(
@@ -213,7 +213,7 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
 
     CompletionStage<List<Message>> leaveActor(
         ZLinkBackendActorRef actor,
-        RoutingId currentSpotRid,
+        String currentSpotId,
         Duration timeout);
 
     CompletionStage<Void> destroyActor(
@@ -243,7 +243,7 @@ public interface ZLinkInternalSpotNode extends ZLinkBackendObject {
     }
 
     default void registerTransferredActor(
-        ZLinkBackendActorRef actor, RoutingId spotRid, long membershipEpoch) {
+        ZLinkBackendActorRef actor, String spotId, long membershipEpoch) {
         throw new UnsupportedOperationException("Core actor transfer is unavailable");
     }
 

@@ -27,7 +27,7 @@ public sealed class ZoneSpot(
     NodeMaintenancePolicy maintenance,
     NodePlayerCensus census,
     IZLinkActorClient actors,
-    IZLinkActorDirectory directory,
+    IZLinkActorManager directory,
     ILogger<ZoneSpot> logger) : IZLinkSpot<PlayerActor>
 {
     private readonly ZoneState _state = new(DecodeZoneId(context.SpotRid));

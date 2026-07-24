@@ -25,7 +25,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         actorSessionManager);
 
     public async ValueTask<ZLinkActorJoinResult> JoinActorAsync(
-        RoutingId spotRid,
+        string spotId,
         IZLinkActor actor,
         ZLinkMessage request,
         CancellationToken cancellationToken = default)
@@ -33,14 +33,14 @@ internal sealed class ZLinkFrameworkActorFacade(
         var state = getState();
         var actorState = actorSessionManager.GetOrCreateState(actor.ActorId);
         var node = getActorSpotNode();
-        var localActivation = spots.GetActivationBySpotRid(state, spotRid);
+        var localActivation = spots.GetActivationBySpotId(state, spotId);
 
         if (localActivation is null
             && node is not null
             && actorState.NativeActorRef is { } actorRef)
             return await _remoteJoiner.JoinAsync(
                 state,
-                spotRid,
+                spotId,
                 actor,
                 actorRef,
                 node,
@@ -77,7 +77,7 @@ internal sealed class ZLinkFrameworkActorFacade(
         else
             joinResult = await spots.JoinActorAsync(
                 state,
-                spotRid,
+                spotId,
                 actor,
                 request,
                 cancellationToken).ConfigureAwait(false);

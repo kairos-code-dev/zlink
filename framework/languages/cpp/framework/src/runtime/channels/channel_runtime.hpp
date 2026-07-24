@@ -119,12 +119,12 @@ class channel_runtime_state_t
       std::chrono::milliseconds)>;
     using spot_mesh_send_t = std::function<result_t<void> (
       const zlink::routing_id_t &,
-      const zlink::routing_id_t &,
+      const std::string &,
       std::uint64_t,
       runtime::messaging::message_parts_t)>;
     using spot_mesh_request_t = std::function<result_t<runtime::messaging::message_parts_t> (
       const zlink::routing_id_t &,
-      const zlink::routing_id_t &,
+      const std::string &,
       std::uint64_t,
       runtime::messaging::message_parts_t,
       std::chrono::milliseconds)>;
@@ -163,7 +163,7 @@ class channel_runtime_state_t
     std::map<std::string, spot_mesh_request_t> spot_mesh_requesters;
     std::vector<std::weak_ptr<runtime::offload_executor_t>> route_client_executors;
     std::map<std::string, route_handler_registry_t> route_handlers;
-    std::map<std::string, zlink::peer_weight_t> server_peer_weight_overrides;
+    std::map<std::string, int> server_peer_weight_overrides;
     std::map<std::string, std::uint64_t> weighted_discovery_cursors;
     std::map<std::string, std::string> last_discovery_request_endpoints;
     std::vector<outbound_call_record_t> outbound_calls;
@@ -262,8 +262,8 @@ class channel_runtime_t
                                std::string remote_address = {},
                                std::uint32_t native_event = 0,
                                std::uint32_t native_value = 0) const;
-    void set_server_peer_weight (const std::string &channel_name, zlink::peer_weight_t value);
-    std::optional<zlink::peer_weight_t>
+    void set_server_weight (const std::string &channel_name, int value);
+    std::optional<int>
     server_peer_weight_override (const std::string &channel_name) const;
 
     static channel_runtime_t from (const message_bus_t &bus);

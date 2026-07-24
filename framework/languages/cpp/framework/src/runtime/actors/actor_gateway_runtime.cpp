@@ -285,7 +285,7 @@ const actor_ref_t &actor_context_t::actor_ref () const noexcept
     return *_actor_ref;
 }
 
-std::optional<spot_rid_t> actor_context_t::spot_rid () const
+std::optional<spot_id_t> actor_context_t::spot_id () const
 {
     detail::actor_gateway_state_t::membership_query_t query;
     {
@@ -319,7 +319,7 @@ bound_session_t actor_context_t::bound_session () const
 }
 
 result_t<detail::actor_join_reply_t>
-actor_context_t::join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &request)
+actor_context_t::join_spot_erased (spot_id_t spot_id, const zlink::message_t &request)
 {
     detail::actor_gateway_state_t::join_spot_dispatcher_t dispatcher;
     {
@@ -328,9 +328,9 @@ actor_context_t::join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &
             return result_t<detail::actor_join_reply_t>::failure (
               framework_error_kind_t::actor_route_not_found, "actor ref is empty");
         }
-        if (spot_rid.empty ()) {
+        if (spot_id.empty ()) {
             return result_t<detail::actor_join_reply_t>::failure (
-              framework_error_kind_t::spot_route_not_found, "spot rid is empty");
+              framework_error_kind_t::spot_route_not_found, "spot id is empty");
         }
         if (!_state->join_spot_dispatcher) {
             return result_t<detail::actor_join_reply_t>::failure (
@@ -348,11 +348,11 @@ actor_context_t::join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &
                                     std::nullopt,
                                     std::nullopt,
                                     std::nullopt,
-                                    std::string (spot_rid.value ()),
+                                    std::string (spot_id),
                                     std::string (_actor_ref->actor_id ()),
                                     std::nullopt};
     });
-    auto joined = dispatcher (*_actor_ref, spot_rid, request);
+    auto joined = dispatcher (*_actor_ref, spot_id, request);
     if (!joined) {
         const auto *error = joined.error ();
         return result_t<detail::actor_join_reply_t>::failure (
@@ -368,7 +368,7 @@ actor_context_t::join_spot_erased (spot_rid_t spot_rid, const zlink::message_t &
                                       std::nullopt,
                                       std::nullopt,
                                       std::nullopt,
-                                      std::string (spot_rid.value ()),
+                                      std::string (spot_id),
                                       std::string (_actor_ref->actor_id ()),
                                       std::nullopt};
       });

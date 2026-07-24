@@ -1,5 +1,6 @@
 import type { ActorRef, RoutingId } from '../../contracts/Common';
 import type {
+  ZLinkMeshNodeLocationStore,
   ZLinkPeerLocationStore,
   ZLinkRouteLocationStore
 } from '../../contracts/Locations/Stores';
@@ -9,6 +10,8 @@ import {
   ZLinkLocationKind,
   ZLinkLocationRole,
   ZLinkLocationTopologyState,
+  ZLinkFrameworkRuntimeState,
+  ZLinkObjectRole,
   type ZLinkActorLocationStore,
   type ZLinkLocationReadiness,
   type ZLinkLocationRuntimeQuery,
@@ -50,6 +53,7 @@ import {
 import { routingIdsEqual } from '../routing-id';
 
 export interface ZLinkStoreLocationResolverStores {
+  readonly locationStore: ZLinkMeshNodeLocationStore;
   readonly peerStore: ZLinkPeerLocationStore;
   readonly spotStore: ZLinkSpotLocationStore;
   readonly actorStore: ZLinkActorLocationStore;
@@ -94,24 +98,40 @@ export class ZLinkStoreLocationResolvers implements
     meshName: string,
     actorType: string,
     excludedNodeRid: RoutingId,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    excludedCandidateRids: ReadonlySet<string> = new Set()
   ): Promise<RoutingId | undefined> {
-    const capability = `actor:${actorType}`;
-    const peers = await this.listLivePeers({
-      autoConnectType: ZLinkLocationAutoConnectType.RouteMesh,
-      meshName,
-      role: ZLinkLocationRole.Router
-    }, signal);
-    const candidates = peers.filter((peer) =>
-      !peer.draining
-      && peer.nodeRid !== undefined
-      && !routingIdsEqual(peer.nodeRid, excludedNodeRid)
-      && peer.capabilities?.includes(capability) === true
+    const descriptors = await this.options.stores.locationStore.listMeshNodes(meshName, signal);
+    const liveDescriptors = await this.liveRows.filter(
+      descriptors,
+      (descriptor) => descriptor.ownerId,
+      signal
     );
+    const candidates = liveDescriptors.filter((descriptor) => {
+      const capacity = descriptor.objectCapacity;
+      return descriptor.state === ZLinkFrameworkRuntimeState.Serving
+        && descriptor.objectRole === ZLinkObjectRole.Server
+        && descriptor.placementWeight > 0
+        && !routingIdsEqual(descriptor.rid, excludedNodeRid)
+        && !excludedCandidateRids.has(String(descriptor.rid))
+        && capacity.activeObjects < capacity.maxActiveObjects
+        && capacity.pendingActivations < capacity.maxPendingActivations
+        && descriptor.objectCapabilities.some((candidate) =>
+          candidate.objectKind === 'actor' && candidate.stableType === actorType
+        );
+    });
     if (candidates.length === 0) return undefined;
-    const selected = candidates[this.nextActorPlacement % candidates.length]?.nodeRid;
+    const totalWeight = candidates.reduce(
+      (total, candidate) => total + candidate.placementWeight,
+      0
+    );
+    let ticket = this.nextActorPlacement % totalWeight;
     this.nextActorPlacement = (this.nextActorPlacement + 1) % Number.MAX_SAFE_INTEGER;
-    return selected;
+    for (const candidate of candidates) {
+      if (ticket < candidate.placementWeight) return candidate.rid;
+      ticket -= candidate.placementWeight;
+    }
+    return candidates[candidates.length - 1]?.rid;
   }
 
   async resolveRoute(key: ZLinkRouteLocationKey, signal?: AbortSignal): Promise<ZLinkRouteLocation | undefined> {

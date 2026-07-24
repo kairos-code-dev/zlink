@@ -49,7 +49,7 @@ internal static class ZLinkRedisLocationKinds
     {
         Tag = "spot",
         EncodeKey = static row => ZLinkRedisLocationKeyCodec.EncodeSpotKey(
-            new ZLinkSpotLocationKey(row.MeshName, row.SpotRid)),
+            new ZLinkSpotLocationKey(row.SpotId)),
         MeshOf = static row => row.MeshName,
         OwnerOf = static row => row.OwnerId,
         GenerationOf = static _ => 0,

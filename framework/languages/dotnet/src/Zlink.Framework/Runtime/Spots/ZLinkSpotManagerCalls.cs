@@ -5,15 +5,11 @@ internal abstract class ZLinkSpotCall
     private readonly Func<
         string?,
         ZLinkMessage,
-        string?,
-        string?,
         TimeSpan,
         CancellationToken,
         ValueTask<ZLinkSpotCreateResult>> _submit;
     private string? _meshName;
     private ZLinkMessage _request = ZLinkMessage.Empty;
-    private string? _placementProfile;
-    private string? _affinityKey;
     private TimeSpan? _timeout;
     private bool _requestSet;
     private int _submitted;
@@ -22,8 +18,6 @@ internal abstract class ZLinkSpotCall
         Func<
             string?,
             ZLinkMessage,
-            string?,
-            string?,
             TimeSpan,
             CancellationToken,
             ValueTask<ZLinkSpotCreateResult>> submit)
@@ -43,18 +37,6 @@ internal abstract class ZLinkSpotCall
         if (_requestSet) Duplicate("Request");
         _request = value;
         _requestSet = true;
-    }
-
-    protected void SetPlacementProfile(string value)
-    {
-        if (_placementProfile is not null) Duplicate("PlacementProfile");
-        _placementProfile = Required(value, nameof(value));
-    }
-
-    protected void SetAffinityKey(string value)
-    {
-        if (_affinityKey is not null) Duplicate("AffinityKey");
-        _affinityKey = Required(value, nameof(value));
     }
 
     protected void SetTimeout(TimeSpan value)
@@ -78,8 +60,6 @@ internal abstract class ZLinkSpotCall
         return _submit(
             _meshName,
             _request,
-            _placementProfile,
-            _affinityKey,
             _timeout ?? defaultTimeout,
             cancellationToken);
     }
@@ -106,8 +86,6 @@ internal sealed class ZLinkSpotCreateCall(
     Func<
         string?,
         ZLinkMessage,
-        string?,
-        string?,
         TimeSpan,
         CancellationToken,
         ValueTask<ZLinkSpotCreateResult>> submit)
@@ -131,18 +109,6 @@ internal sealed class ZLinkSpotCreateCall(
         return this;
     }
 
-    public IZLinkSpotCreateCall PlacementProfile(string placementProfile)
-    {
-        SetPlacementProfile(placementProfile);
-        return this;
-    }
-
-    public IZLinkSpotCreateCall AffinityKey(string affinityKey)
-    {
-        SetAffinityKey(affinityKey);
-        return this;
-    }
-
     public IZLinkSpotCreateCall Timeout(TimeSpan timeout)
     {
         SetTimeout(timeout);
@@ -159,8 +125,6 @@ internal sealed class ZLinkSpotGetOrCreateCall(
     Func<
         string?,
         ZLinkMessage,
-        string?,
-        string?,
         TimeSpan,
         CancellationToken,
         ValueTask<ZLinkSpotCreateResult>> submit)
@@ -181,18 +145,6 @@ internal sealed class ZLinkSpotGetOrCreateCall(
     public IZLinkSpotGetOrCreateCall Request<TRequest>(TRequest request)
     {
         SetRequest(ZLinkMessage.From(request));
-        return this;
-    }
-
-    public IZLinkSpotGetOrCreateCall PlacementProfile(string placementProfile)
-    {
-        SetPlacementProfile(placementProfile);
-        return this;
-    }
-
-    public IZLinkSpotGetOrCreateCall AffinityKey(string affinityKey)
-    {
-        SetAffinityKey(affinityKey);
         return this;
     }
 

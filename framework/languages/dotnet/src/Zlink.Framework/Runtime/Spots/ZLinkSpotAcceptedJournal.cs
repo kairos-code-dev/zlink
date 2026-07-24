@@ -6,7 +6,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed record ZLinkSpotAcceptedJournalRecord(
     RoutingId? SourceNodeRid,
-    RoutingId? SpotRid,
+    string? SpotId,
     ulong? RequestSequence,
     ZLinkMessageMetadata Metadata,
     IReadOnlyList<ReadOnlyMemory<byte>> Parts);
@@ -14,7 +14,7 @@ internal sealed record ZLinkSpotAcceptedJournalRecord(
 internal static class ZLinkSpotAcceptedJournal
 {
     private const uint Magic = 0x5a4a5231; // ZJR1
-    private const ushort Version = 1;
+    private const ushort Version = 2;
     private const int MaxRecordBytes = 64 * 1024 * 1024;
     private const int MaxParts = 65_536;
 
@@ -26,7 +26,7 @@ internal static class ZLinkSpotAcceptedJournal
         writer.Write(Magic);
         writer.Write(Version);
         WriteRoutingId(writer, received.SourceNodeRid);
-        WriteRoutingId(writer, received.SpotRid);
+        WriteSpotId(writer, received.SpotId);
         writer.Write(received.RequestSeq.HasValue);
         if (received.RequestSeq is { } requestSequence)
             writer.Write(requestSequence);
@@ -55,7 +55,7 @@ internal static class ZLinkSpotAcceptedJournal
             throw new InvalidDataException(
                 "The accepted Spot journal record header is invalid.");
         var sourceNodeRid = ReadRoutingId(reader);
-        var spotRid = ReadRoutingId(reader);
+        var spotId = ReadSpotId(reader);
         var requestSequence = reader.ReadBoolean()
             ? reader.ReadUInt64()
             : (ulong?)null;
@@ -75,7 +75,7 @@ internal static class ZLinkSpotAcceptedJournal
                 "The accepted Spot journal record contains trailing bytes.");
         return new ZLinkSpotAcceptedJournalRecord(
             sourceNodeRid,
-            spotRid,
+            spotId,
             requestSequence,
             metadata,
             parts);
@@ -93,6 +93,31 @@ internal static class ZLinkSpotAcceptedJournal
         return reader.ReadBoolean()
             ? RoutingId.From(ReadBytes(reader))
             : null;
+    }
+
+    private static void WriteSpotId(BinaryWriter writer, string? value)
+    {
+        writer.Write(value is not null);
+        if (value is null) return;
+        WriteBytes(writer, Encoding.UTF8.GetBytes(
+            ZLinkSpotId.Require(value, nameof(value))));
+    }
+
+    private static string? ReadSpotId(BinaryReader reader)
+    {
+        if (!reader.ReadBoolean()) return null;
+        var encoded = ReadBytes(reader);
+        try
+        {
+            var value = new UTF8Encoding(false, true).GetString(encoded);
+            return ZLinkSpotId.IsValid(value)
+                ? value
+                : throw new InvalidDataException("The accepted Spot ID is invalid.");
+        }
+        catch (DecoderFallbackException error)
+        {
+            throw new InvalidDataException("The accepted Spot ID is not valid UTF-8.", error);
+        }
     }
 
     private static void WriteBytes(BinaryWriter writer, ReadOnlySpan<byte> value)

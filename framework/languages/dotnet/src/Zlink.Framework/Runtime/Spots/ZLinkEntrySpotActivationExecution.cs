@@ -146,7 +146,7 @@ internal sealed partial class ZLinkEntrySpotActivation
         return _runtime.PublishRuntimeEventAsync(
             ZLinkSpotTimerFailureEventFactory.Create(
                 SpotNodeName,
-                SpotRid,
+                SpotId,
                 true,
                 descriptor,
                 tick,

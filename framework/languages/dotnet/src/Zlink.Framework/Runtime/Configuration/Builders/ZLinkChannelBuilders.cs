@@ -74,6 +74,7 @@ internal sealed class ZLinkClientServerChannelServerBuilder(
 
     public IZLinkClientServerChannelServerBuilder SetWeight(int weight)
     {
+        ZLinkSocketConfig.ValidatePeerWeight(weight);
         server.SocketConfig.Weight = weight;
         return this;
     }

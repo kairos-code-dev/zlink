@@ -15,7 +15,7 @@ public final class ZLinkServiceWireCodec {
     private static final int KNOWN_FLAGS =
         ServiceWireConstants.FLAG_METADATA
             | ServiceWireConstants.FLAG_BOUND_SESSION
-            | ServiceWireConstants.FLAG_SOURCE_SPOT_RID
+            | ServiceWireConstants.FLAG_SOURCE_SPOT_ID
             | ServiceWireConstants.FLAG_EXTENSION;
     private static final int PREFIX_BYTES = 5;
 
@@ -145,7 +145,8 @@ public final class ZLinkServiceWireCodec {
                  ServiceWireConstants.COMMAND_SESSION_RELOCATION_ROUTED,
                  ServiceWireConstants.COMMAND_REPLY_RELAY_ACK,
                  ServiceWireConstants.COMMAND_USER_SPOT_CREATE,
-                 ServiceWireConstants.COMMAND_USER_SPOT_CLOSE -> true;
+                 ServiceWireConstants.COMMAND_USER_SPOT_CLOSE,
+                 ServiceWireConstants.COMMAND_ACTOR_CREATE -> true;
             default -> false;
         };
     }

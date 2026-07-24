@@ -3,8 +3,8 @@
 # 7. 비동기
 
 `AsyncRaw()` / `Async<T>()` / `DownloadAsync(sink)`는 `ValueTask<T>`를 돌려준다.
-완료를 기다리지 않는 server 호출에는 `Submit()`, Spot turn을 반납하며 기다리는 server
-호출에는 `Yield<T>()`를 사용한다.
+완료를 기다리지 않는 server 호출에는 `Submit()`을 사용한다. HTTP request builder에는 Spot turn을
+반납하는 `Yield<T>()`가 없다.
 
 ## non-blocking 보장
 
@@ -35,15 +35,21 @@ public async ValueTask NotifyMatchResultAsync(ZLinkHttpClient client, MatchResul
 `Async<T>()`는 현재 Spot turn을 유지한다. 응답을 기다리는 동안 같은 Spot의 다음 callback이
 시작하지 않으므로, 요청 전후의 상태 불변식을 유지해야 할 때 사용한다.
 
-`Yield<T>()`는 DI로 주입받은 `ZLinkHttpServerClient`에만 있다. 외부 HTTP 응답을 기다리는 동안
-Spot turn을 반납하고, 완료된 continuation을 같은 실행 줄의 큐에서 재개한다. 이 경로를 넘으면
-다른 callback이 Spot 상태를 바꿀 수 있으므로 상태를 다시 확인한다.
+외부 HTTP 응답을 기다리는 동안 shared Spot gate를 반납하려면 `RunIoWorker(...)` 안에서
+`Async<T>()`를 실행하고 worker call의 `Yield()`로 기다린다. Gate를 다시 얻은 continuation에서는 다른
+callback이 Spot 상태를 바꿨을 수 있으므로 상태를 다시 확인한다.
 
 ```csharp
-public async ValueTask<PlayerProfile> LoadProfileAsync(ZLinkHttpServerClient client, string playerId)
+public async ValueTask<PlayerProfile> LoadProfileAsync(
+    IZLinkSpotContext context,
+    ZLinkHttpServerClient client,
+    string playerId)
 {
-    var response = await client.Get($"/players/{playerId}")
-        .Yield<PlayerProfile>(); // 외부 API 대기 동안 다른 Spot callback을 처리할 수 있다.
+    var response = await context
+        .RunIoWorker(async workerCancellation =>
+            await client.Get($"/players/{playerId}")
+                .Async<PlayerProfile>(workerCancellation))
+        .Yield(); // Gate 반납은 HTTP client가 아니라 worker call이 수행한다.
     return response.Body;
 }
 ```
@@ -54,7 +60,7 @@ public async ValueTask<PlayerProfile> LoadProfileAsync(ZLinkHttpServerClient cli
 | 호출 위치 | 권장 |
 |-----------|------|
 | framework handler의 상태 보존 요청 | `await Async<T>()` |
-| framework handler의 독립된 외부 I/O | `await Yield<T>()` |
+| framework handler의 독립된 외부 I/O와 gate 반납 | `RunIoWorker(...).Yield()` 안에서 `await Async<T>()` |
 | 테스트·client 시나리오·CLI·배치 | `await Async<T>()` |
 
 ## callback 완료

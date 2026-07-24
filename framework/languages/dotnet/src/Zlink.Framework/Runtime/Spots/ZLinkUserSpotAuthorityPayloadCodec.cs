@@ -13,7 +13,7 @@ internal enum ZLinkUserSpotAuthorityState : byte
 internal sealed record ZLinkUserSpotAuthorityPayload(
     ZLinkUserSpotAuthorityState State,
     string StableType,
-    RoutingId SpotRid,
+    string SpotId,
     string OwnerId,
     ulong OwnerLeaseGeneration,
     string MeshName,
@@ -29,7 +29,7 @@ internal static class ZLinkUserSpotAuthorityPayloadCodec
     internal static byte[] Encode(ZLinkUserSpotAuthorityPayload value)
     {
         var spot = new Writer();
-        spot.Rid(value.SpotRid);
+        spot.Text8(value.SpotId);
         spot.Text8(value.StableType);
         spot.U8((byte)value.State);
         var identity = new Writer();
@@ -100,7 +100,7 @@ internal static class ZLinkUserSpotAuthorityPayloadCodec
             if (identity.U8() != 2)
                 return false;
             var spot = identity.Slice(identity.U16());
-            var rid = spot.Rid();
+            var spotId = spot.Text8();
             var stableType = spot.Text8();
             var state = (ZLinkUserSpotAuthorityState)spot.U8();
             if (!spot.End || !identity.End
@@ -122,7 +122,7 @@ internal static class ZLinkUserSpotAuthorityPayloadCodec
                 || body.U8() != 0 || body.U32() != 0 || !body.End)
                 return false;
             value = new ZLinkUserSpotAuthorityPayload(
-                state, stableType, rid, ownerId, ownerLease,
+                state, stableType, spotId, ownerId, ownerLease,
                 meshName, nodeRid, nodeGeneration);
             return true;
         }
@@ -134,11 +134,12 @@ internal static class ZLinkUserSpotAuthorityPayloadCodec
         }
     }
 
-    internal static ZLinkAuthorityKey AuthorityKey(RoutingId spotRid)
+    internal static ZLinkAuthorityKey AuthorityKey(string spotId)
     {
-        var bytes = spotRid.ToBytes();
+        var bytes = new UTF8Encoding(false, true).GetBytes(
+            ZLinkSpotId.Require(spotId, nameof(spotId)));
         if (bytes.Length is 0 or > byte.MaxValue)
-            throw new ArgumentOutOfRangeException(nameof(spotRid));
+            throw new ArgumentOutOfRangeException(nameof(spotId));
         var builder = new StringBuilder($"zla1:s:{bytes.Length}:");
         foreach (var item in bytes)
         {

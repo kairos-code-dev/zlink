@@ -313,7 +313,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
         return await ExecuteLocationWriteAsync(
                 () => _spotStore.UpdateSpotAsync(stamped, intent, cancellationToken),
                 ZLinkLocationKind.Spot,
-                ZLinkLocationKeyCodec.EncodeSpotKey(new ZLinkSpotLocationKey(spot.MeshName, spot.SpotRid)),
+                ZLinkLocationKeyCodec.EncodeSpotKey(new ZLinkSpotLocationKey(spot.SpotId)),
                 result => _events.SpotRowUpdatedAsync(
                 stamped with { UpdatedAt = result.UpdatedAt },
                 cancellationToken))

@@ -201,11 +201,11 @@ final class ZLinkClientServerM6ARuntimeTest {
         ZLinkClientServerServerDescriptor firstDescriptor =
             descriptor(
                 "orders", RoutingId.from("first"), 1, 1,
-                "tcp://127.0.0.1:7001", 1);
+                "tcp://127.0.0.1:7001", 100);
         ZLinkClientServerServerDescriptor secondDescriptor =
             descriptor(
                 "orders", RoutingId.from("second"), 1, 1,
-                "tcp://127.0.0.1:7002", 3);
+                "tcp://127.0.0.1:7002", 300);
         sockets.addClientServerConnection("first", firstDescriptor, first);
         sockets.addClientServerConnection("second", secondDescriptor, second);
 
@@ -213,11 +213,19 @@ final class ZLinkClientServerM6ARuntimeTest {
         sockets.admitClientServerConnection("first", firstDescriptor);
         sockets.admitClientServerConnection("second", secondDescriptor);
 
-        assertSame(first, sockets.clientForOutbound("orders"));
-        assertSame(second, sockets.clientForOutbound("orders"));
-        assertSame(second, sockets.clientForOutbound("orders"));
-        assertSame(second, sockets.clientForOutbound("orders"));
-        assertSame(first, sockets.clientForOutbound("orders"));
+        int firstSelections = 0;
+        int secondSelections = 0;
+        for (int index = 0; index < 400; index++) {
+            ZLinkBackendDealerSocket selected =
+                sockets.clientForOutbound("orders");
+            if (selected == first) {
+                firstSelections++;
+            } else if (selected == second) {
+                secondSelections++;
+            }
+        }
+        assertEquals(100, firstSelections);
+        assertEquals(300, secondSelections);
     }
 
     @Test

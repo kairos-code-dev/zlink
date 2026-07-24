@@ -186,9 +186,13 @@ final class HandlerContractTest {
         ZLinkSpot.class.getMethod("onJoinedActor", ZLinkActor.class);
         ZLinkSpot.class.getMethod("onLeaveActor", ZLinkActor.class);
         ZLinkSpot.class.getMethod("onDisconnectActor", ZLinkActor.class);
-        ZLinkEntrySpot.class.getMethod(
+        assertThrows(NoSuchMethodException.class, () -> ZLinkEntrySpot.class.getMethod(
             "onActorJoin",
             String.class,
+            ZLinkMessage.class));
+        ZLinkEntrySpot.class.getMethod(
+            "onCreateActor",
+            ZLinkActor.class,
             ZLinkMessage.class);
         assertEquals(CompletionStage.class,
             ZLinkSpot.class.getMethod("onJoinedActor", ZLinkActor.class).getReturnType());
@@ -226,7 +230,7 @@ final class HandlerContractTest {
 
     @Test
     void actorJoinContractsSupportDtoAndNoReplyJoins() throws NoSuchMethodException {
-        ZLinkActorContext.class.getMethod("joinSpot", RoutingId.class, Object.class);
+        ZLinkActorContext.class.getMethod("joinSpot", String.class, Object.class);
         ZLinkActorContext.class.getMethod("joinEntrySpot", RoutingId.class, Object.class);
         ZLinkActorJoinCall.class.getMethod("timeout", java.time.Duration.class);
         ZLinkActorJoinCall.class.getMethod("submit");

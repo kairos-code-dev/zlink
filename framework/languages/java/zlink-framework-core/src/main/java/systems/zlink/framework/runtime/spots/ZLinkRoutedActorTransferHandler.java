@@ -21,7 +21,7 @@ import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse;
 final class ZLinkRoutedActorTransferHandler {
     private final ZLinkSpotRuntime host;
     private final ZLinkInternalSpotNode node;
-    private final RoutingId targetSpotRid;
+    private final String targetSpotId;
     private final Object targetSurface;
     private final BiFunction<String, ZLinkMessage, CompletionStage<ZLinkSpotActorJoinResponse>> admission;
     private final Function<ZLinkActor, CompletionStage<Void>> joined;
@@ -29,13 +29,13 @@ final class ZLinkRoutedActorTransferHandler {
     ZLinkRoutedActorTransferHandler(
         ZLinkSpotRuntime host,
         ZLinkInternalSpotNode node,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         Object targetSurface,
         BiFunction<String, ZLinkMessage, CompletionStage<ZLinkSpotActorJoinResponse>> admission,
         Function<ZLinkActor, CompletionStage<Void>> joined) {
         this.host = host;
         this.node = node;
-        this.targetSpotRid = targetSpotRid;
+        this.targetSpotId = targetSpotId;
         this.targetSurface = targetSurface;
         this.admission = admission;
         this.joined = joined;
@@ -74,7 +74,7 @@ final class ZLinkRoutedActorTransferHandler {
                     ZLinkMessagePayloads.encoded(phasePayload),
                     host.serializerForSpot()),
                 node,
-                targetSpotRid,
+                targetSpotId,
                 targetSurface,
                 joined,
                 actorRef -> replay(actorRef, backlog))

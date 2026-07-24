@@ -1,7 +1,7 @@
 {
   "format": "authority-payload-v1",
   "consumers": ["cpp", "dotnet", "jvm", "node"],
-  "encodedHex": "5a4c41550100000000007b0002000d03000a02000704636861740173076f776e65722d610000000000000005046d61696e016e0000000000000001000000000001000000410c61637469766174696f6e2d31569c10f669fb4cdf6a76fa6c7328c3188c79b10a9017c91f4a922988b6fe7dab000000c2000000000000000100000000000000000d845ab6",
+  "encodedHex": "5a4c41550100000000007b0002000d03000a02000704636861740173076f776e65722d610000000000000005046d61696e016e0000000000000001000000000001000000410c61637469766174696f6e2d31d71bdc8539d184b7ea5a91006b49bee290fcd6a5811bb2061a29c5a09ec9399e000000af00000000000000010000000000000000c3b98f92",
   "decoded": {
     "operationKind": "steady",
     "object": {
@@ -9,7 +9,7 @@
       "spotKind": "instance",
       "authorityState": "ready",
       "instanceType": "chat",
-      "spotRidUtf8Fixture": "s"
+      "spotIdUtf8Fixture": "s"
     },
     "ownerId": "owner-a",
     "ownerLeaseGeneration": "5",
@@ -19,8 +19,8 @@
     "relocationState": null,
     "activationRecoveryState": {
       "referenceUtf8Fixture": "activation-1",
-      "sha256Hex": "569c10f669fb4cdf6a76fa6c7328c3188c79b10a9017c91f4a922988b6fe7dab",
-      "encodedSize": 194,
+      "sha256Hex": "d71bdc8539d184b7ea5a91006b49bee290fcd6a5811bb2061a29c5a09ec9399e",
+      "encodedSize": 175,
       "inboxSequence": "1",
       "replayCursor": "0"
     }

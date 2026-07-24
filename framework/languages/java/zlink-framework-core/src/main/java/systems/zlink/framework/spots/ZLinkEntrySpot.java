@@ -5,7 +5,8 @@ import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.actors.ZLinkActor;
 import systems.zlink.framework.messaging.ZLinkMessage;
 
-public interface ZLinkEntrySpot<TActor extends ZLinkActor> extends ZLinkSpotActorLifecycle<TActor> {
+public interface ZLinkEntrySpot<TActor extends ZLinkActor>
+    extends ZLinkSpotActorMembershipLifecycle<TActor> {
     ZLinkEntrySpotContext context();
 
     default void configure() {
@@ -28,10 +29,10 @@ public interface ZLinkEntrySpot<TActor extends ZLinkActor> extends ZLinkSpotActo
         return CompletableFuture.completedFuture(null);
     }
 
-    default CompletionStage<Void> onCreateActor(
+    default CompletionStage<ZLinkActorCreateResponse> onCreateActor(
         TActor actor,
         ZLinkMessage createRequest) {
-        return CompletableFuture.completedFuture(null);
+        return CompletableFuture.completedFuture(ZLinkActorCreateResponse.accept());
     }
 
 }

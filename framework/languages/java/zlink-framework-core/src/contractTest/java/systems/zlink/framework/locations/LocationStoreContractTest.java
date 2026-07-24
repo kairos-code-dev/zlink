@@ -28,7 +28,7 @@ final class LocationStoreContractTest {
     private static final Instant STORE_NOW = Instant.parse("2026-07-03T00:00:00Z");
     private static final RoutingId NODE_A = RoutingId.from("node-a");
     private static final RoutingId NODE_B = RoutingId.from("node-b");
-    private static final RoutingId SPOT_RID = RoutingId.from("spot-1");
+    private static final String SPOT_ID = "spot-1";
 
     @Test
     void storeIssuesGenerationsAndGuardsWritesWithOwnerTokens() throws Exception {
@@ -116,10 +116,10 @@ final class LocationStoreContractTest {
             .toCompletableFuture()
             .get()
             .size());
-        assertEquals(SPOT_RID, store.resolveSpot(new ZLinkSpotLocationKey("play", SPOT_RID))
+        assertEquals(SPOT_ID, store.resolveSpot(new ZLinkSpotLocationKey(SPOT_ID))
             .toCompletableFuture()
             .get()
-            .spotRid());
+            .spotId());
 
         ZLinkLocationPage<ZLinkRouteLocation> routePage = store.listRouteLocations(
                 new ZLinkRouteLocationFilter(ZLinkRouteKind.ACTOR_SESSION, NODE_A, null),
@@ -152,7 +152,7 @@ final class LocationStoreContractTest {
             .toCompletableFuture()
             .get());
         assertTrue(new ZLinkStoreSpotHandleResolver(addresses)
-            .resolveSpotHandle(SPOT_RID)
+            .resolveSpotHandle(SPOT_ID)
             .toCompletableFuture()
             .get().isEmpty());
 
@@ -173,10 +173,10 @@ final class LocationStoreContractTest {
             .toCompletableFuture()
             .get()
             .size());
-        assertEquals(SPOT_RID,
-            new ZLinkStoreSpotHandleResolver(addresses).resolveSpotHandle(SPOT_RID)
+        assertEquals(SPOT_ID,
+            new ZLinkStoreSpotHandleResolver(addresses).resolveSpotHandle(SPOT_ID)
                 .toCompletableFuture()
-                .get().orElseThrow().spotRid());
+                .get().orElseThrow().spotId());
     }
 
     @Test
@@ -236,7 +236,7 @@ final class LocationStoreContractTest {
         try (runtime) {
             for (int index = 1; index <= 3; index++) {
                 store.updateSpot(
-                        spot(runtime.ownerId(), 0, RoutingId.from("spot-" + index)),
+                        spot(runtime.ownerId(), 0, "spot-" + index),
                         ZLinkLocationWriteIntent.NEW_CLAIM)
                     .toCompletableFuture()
                     .get();
@@ -296,16 +296,16 @@ final class LocationStoreContractTest {
     }
 
     private static ZLinkSpotLocation spot(String ownerId, long generation) {
-        return spot(ownerId, generation, SPOT_RID);
+        return spot(ownerId, generation, SPOT_ID);
     }
 
     private static ZLinkSpotLocation spot(
         String ownerId,
         long generation,
-        RoutingId spotRid) {
+        String spotId) {
         return new ZLinkSpotLocation(
             "play",
-            spotRid,
+            spotId,
             1,
             "game",
             NODE_A,

@@ -500,20 +500,20 @@ bool raw_mesh_node_owner_t::send_to_channel (
 
 bool raw_mesh_node_owner_t::send_to_spot (
   const std::vector<std::uint8_t> &target_routing_id,
-  const std::vector<std::uint8_t> &source_spot_routing_id,
+  const std::string &source_spot_id,
   const protocol::spot_route_fence_t &target,
   const protocol::application_payload_t &application_payload)
 {
     return send_with_header (
       target_routing_id,
       protocol::encode_spot_message_header (
-        protocol::command::spotSend, source_spot_routing_id, target),
+        protocol::command::spotSend, source_spot_id, target),
       application_payload);
 }
 
 bool raw_mesh_node_owner_t::request_to_spot (
   const std::vector<std::uint8_t> &target_routing_id,
-  const std::vector<std::uint8_t> &source_spot_routing_id,
+  const std::string &source_spot_id,
   const protocol::spot_route_fence_t &target,
   const protocol::application_payload_t &application_payload,
   std::chrono::milliseconds timeout,
@@ -521,9 +521,9 @@ bool raw_mesh_node_owner_t::request_to_spot (
 {
     return request_with_header (
       target_routing_id,
-      [source_spot_routing_id, target] (std::uint64_t correlation) {
+      [source_spot_id, target] (std::uint64_t correlation) {
           return protocol::encode_spot_message_header (
-            protocol::command::spotRequest, source_spot_routing_id,
+            protocol::command::spotRequest, source_spot_id,
             target, correlation);
       },
       application_payload, timeout, std::move (callback));
@@ -778,7 +778,7 @@ bool raw_mesh_node_owner_t::reply_user_spot_create (
             reply.header.terminal_result,
             reply.header.failure_code,
             reply.result,
-            reply.spot_routing_id,
+            reply.spot_id,
             reply.object_generation)};
         if (application_reply)
             parts.push_back (
@@ -796,7 +796,7 @@ bool raw_mesh_node_owner_t::reply_user_spot_create (
           protocol::encode_user_spot_create_reply (
             reply.header.correlation, reply.header.terminal_result,
             reply.header.failure_code, reply.result,
-            reply.spot_routing_id, reply.object_generation));
+            reply.spot_id, reply.object_generation));
     std::shared_ptr<detail::backend::raw_route_port_t> port;
     {
         std::lock_guard lifecycle_lock (_lifecycle_mutex);
@@ -809,7 +809,7 @@ bool raw_mesh_node_owner_t::reply_user_spot_create (
              {protocol::encode_user_spot_create_reply (
                 reply.header.correlation, reply.header.terminal_result,
                 reply.header.failure_code, reply.result,
-                reply.spot_routing_id, reply.object_generation),
+                reply.spot_id, reply.object_generation),
               protocol::encode_application_payload (*application_reply)});
 }
 
@@ -1080,7 +1080,7 @@ raw_mesh_pump_result_t raw_mesh_node_owner_t::pump_one (
                 return raw_mesh_pump_result_t::protocol_error;
             }
             correlation = spot.correlation;
-            mailbox_owner = owner_key (spot.target.spot_routing_id);
+            mailbox_owner = spot.target.spot_id;
             mailbox_owner.insert (0, "spot:");
         } else {
             if (header.kind == protocol::command::actorRequest

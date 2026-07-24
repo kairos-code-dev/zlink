@@ -20,12 +20,41 @@ request, reservation, factory와 Ready barrier 전체에 적용할 하나의 end
 |---|---|---|
 | one-way submit | local outbound admission 결과가 확정되면 비동기 결과를 완료한다. remote handler 완료는 기다리지 않는다 | await하지 않으면 현재 turn을 기다리게 하지 않는다 |
 | `Async` | request, join 또는 worker 결과가 terminal 상태가 될 때까지 기다린다 | 완료 continuation이 끝날 때까지 현재 owner turn을 유지한다 |
-| `Yield` | operation을 제출한 뒤 현재 owner turn을 반납하고 terminal 결과를 기다린다 | 같은 owner의 다음 application record를 실행할 수 있으며, 완료 continuation은 owner queue에 다시 들어가 새 turn에서 재개한다 |
+| `Yield` | 허용된 Spot 실행 문맥에서 operation을 제출한 뒤 shared Spot execution gate를 반납하고 terminal 결과를 기다린다 | 완료 continuation은 같은 gate를 다시 얻은 뒤 새 turn에서 재개한다 |
 
-`Yield` 뒤에는 같은 owner의 다른 handler가 상태를 바꿀 수 있으므로 호출자는 대기 전에 읽은 mutable state를
-그대로 신뢰하지 않는다. One-way call은 비동기 submit terminator 하나만 제공하고, 즉시 한 번만 시도하는
+`Yield`는 `SpotWide` User Spot과 Instance Spot의 application callback에서만 사용할 수 있다. `SpotWide`
+Member Actor는 Actor queue claim과 shared User Spot gate를 함께 얻어 handler를 실행한다. 이 Actor가
+`Yield`하면 Actor queue claim은 유지하고 shared User Spot gate만 반납한다. 따라서 같은 Actor의 다음
+record는 시작하지 않지만 다른 member Actor, Spot handler, timer와 lifecycle callback은 실행할 수 있다.
+완료 continuation은 같은 User Spot gate를 다시 얻고 현재 Actor record를 끝낸 뒤에만 Actor queue claim을
+해제한다.
+
+`PerActor` User Spot, Entry Spot과 그 Actor, Node·Channel handler 및 owner callback 밖에서는 `Yield`를
+허용하지 않는다. 언어의 공통 call type 때문에 해당 member를 정적으로 숨길 수 없으면 Framework는
+operation을 제출하기 전에 현재 execution context를 검사한다. 허용되지 않은 호출은 outbound admission,
+worker enqueue, queue 변경과 gate release를 수행하지 않고 `InvalidConfiguration`으로 완료한다.
+
+`Yield` terminator는 Channel request, Spot request, Actor request, CPU worker와 I/O worker call에만
+제공한다. Actor join, Actor·Spot create·get-or-create, send, publish, timer 등록, close와 destroy에는
+제공하지 않는다. 여러 operation이 공통 request call type을 사용하는 언어에서는 Channel·Spot·Actor
+request가 아닌 operation의 `Yield`도 submit 전에 `InvalidConfiguration`으로 거부한다.
+
+`Yield` 뒤에는 같은 gate를 사용하는 다른 handler가 상태를 바꿀 수 있으므로 호출자는 대기 전에 읽은
+mutable state를 그대로 신뢰하지 않는다. One-way call은 비동기 submit terminator 하나만 제공하고, 즉시 한 번만 시도하는
 동기 `TrySubmit` 계열을 제공하지 않는다. 언어별 API는 `submit`, `async`, `yield`, `await`처럼 자연스러운
 이름을 사용할 수 있지만 위 세 완료 의미를 섞지 않는다.
+
+`SpotWide` callback이 `Async`로 같은 User Spot gate가 필요한 Actor 또는 Spot을 기다리면 target handler가
+실행될 수 없다. Framework는 target resolve 뒤 outbound admission 전에 이 same-gate wait를
+`InvalidConfiguration`으로 거부한다. Member Actor가 자기 Actor에 제출한 awaited request도 Actor queue
+claim 때문에 실행될 수 없으므로 `Async`와 `Yield` 모두 같은 방식으로 거부한다. 같은 Actor에 보내는
+one-way message는 현재 record 뒤 Actor FIFO에 추가할 수 있다. Framework는 이 경우 handler를 inline으로
+호출하거나 재진입 실행으로 바꾸지 않는다.
+
+`SpotWide` Member Actor가 현재 User Spot을 떠나는 `JoinSpot(...).Async`를 기다리는 경우도 same-gate wait다.
+Join의 source lifecycle callback이 같은 User Spot gate를 얻어야 하므로 Framework는 operation submission,
+outbound admission과 source·target queue 변경 전에 `InvalidConfiguration`으로 거부한다. Join callback을
+inline 또는 재진입 방식으로 실행해 이 규칙을 우회하지 않는다.
 
 ### 1.2 Worker offload
 
@@ -33,7 +62,7 @@ CPU 작업과 비동기 I/O 작업은 Framework가 소유한 bounded worker sche
 동기 함수, I/O 작업은 해당 언어의 비동기 함수로 받으며 둘 다 cancellation 신호를 전달한다. Application은
 scheduler thread, queue storage 또는 실행 executor를 선택하지 않는다.
 
-Worker call은 timeout을 설정하고 `Submit`, `Async` 또는 `Yield`로 끝낸다. Queue가 가득 차면
+Worker call은 timeout을 설정하고 `Submit`, `Async` 또는 허용된 Spot 실행 문맥의 `Yield`로 끝낸다. Queue가 가득 차면
 `WorkerQueueFull`, deadline을 넘으면 `WorkerTimedOut`, 작업이 실패하면 `WorkerFailed`로 완료한다. Timeout이나
 cancellation 뒤 늦게 끝난 작업은 두 번째 terminal 결과를 만들지 않는다. Worker pool의 최소·최대 동시성,
 idle timeout과 queue 상한은 root configuration에서 host start 전에만 바꿀 수 있다.
@@ -155,7 +184,9 @@ Global object request timeout은 current Ready authority resolve, outbound admis
 
 같은 handler turn에서 보낸 request를 기다릴 수 있다. reply completion과 send-ready 같은 infrastructure
 작업은 application turn과 분리되어 진행되므로 해당 Spot이나 Actor의 다음 application message를 실행하지
-않고도 현재 turn을 재개할 수 있다.
+않고도 현재 turn을 재개할 수 있다. 다만 `SpotWide` callback이 같은 User Spot gate가 필요한 target을
+`Async`로 기다리는 경우와 Actor가 자기 Actor의 awaited request를 기다리는 경우는 §1.1의 교착 방지 규칙으로
+submit 전에 거부한다.
 
 Channel request의 target이 다른 RouteMesh 또는 ClientServer Channel이어도 이 규칙은 같다. Framework는
 ChannelName으로 선택한 송신 경로의 completion을 원래 Spot activation과 generation에 연결한다. `Async`는
@@ -171,10 +202,16 @@ Target 연결 종료나 timeout 뒤 다른 RouteMesh member, ClientServer server
 ## 3. Handler turn과 claim
 
 Node handler, ChannelName handler, 각 Spot과 각 Actor는 자기 application queue를 순서대로 처리한다. `Async`로
-기다리는 handler는 완료 continuation이 끝날 때까지 같은 owner의 다음 application record를 실행하지 않는다.
-`Yield`로 기다리면 현재 turn을 반납하므로 같은 owner의 다음 record를 실행할 수 있고, 완료 continuation은
-owner queue에 들어가 새 turn으로 재개한다. 어느 경우에도 한 owner의 application turn 두 개를 동시에
-실행하지 않는다. 서로 다른 owner의 handler는 scheduler가 병렬로 실행할 수 있다.
+기다리는 handler는 완료 continuation이 끝날 때까지 현재 claim과 gate를 유지한다. `SpotWide` Member Actor의
+Actor claim과 User Spot gate는 서로 다른 직렬성 경계다. `Yield`는 User Spot gate만 반납하며 Actor claim은
+유지하므로 같은 Actor의 FIFO와 non-overlap을 바꾸지 않는다. Spot handler·timer·lifecycle 또는 Instance
+Spot의 `Yield`는 해당 Spot gate를 반납하고 completion을 같은 gate에 다시 제출한다. Gate를 다시 얻지 못한
+application continuation을 completion thread에서 inline으로 실행하면 안 된다.
+
+`PerActor` User Spot에서는 Actor별 queue, Spot direct·lifecycle lane과 timer별 lane을 구분한다. 같은 Actor와
+같은 timer의 callback은 각각 순서대로 하나씩 실행하지만 서로 다른 Actor lane, Spot lane과 서로 다른 timer
+lane은 동시에 실행할 수 있다. Entry Spot Actor도 Actor별 claim만 사용한다. 이 문맥의 `Async`는 같은
+Actor의 다음 record만 기다리게 하며 다른 Actor의 진행을 막지 않는다.
 
 각 언어 service runtime은 application domain과 infrastructure domain을 독립적으로 진행한다. Payload decoding,
 user callback과 exception mapping은 application turn에서 처리한다. Completion, send-ready, peer lifecycle,

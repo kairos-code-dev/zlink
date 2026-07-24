@@ -104,7 +104,7 @@ internal sealed partial class ZLinkSpotActivation
             "JoinSpot",
             ChannelName,
             ActorId: actorId,
-            SpotRid: SpotRid.ToString()));
+            SpotId: SpotId.ToString()));
     }
 
     public async ValueTask<ZLinkSpotActorJoinResult> AdmitRemoteActorJoinAsync(
@@ -312,10 +312,10 @@ internal sealed partial class ZLinkSpotActivation
             .ConfigureAwait(false);
         if (_runtime.LocationLifecycle is { } locations)
         {
-            _ = locations.SpotLocations.TryGetTrackedGeneration(SpotRid, out var spotGeneration);
+            _ = locations.SpotLocations.TryGetTrackedGeneration(SpotId, out var spotGeneration);
             await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
                     actor.ActorId,
-                    SpotRid,
+                    SpotId,
                     spotGeneration,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -381,15 +381,15 @@ internal sealed partial class ZLinkSpotActivation
         if (_runtime.LocationLifecycle is { } locations)
         {
             var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
-            _ = locations.SpotLocations.TryGetTrackedGeneration(SpotRid, out var spotGeneration);
+            _ = locations.SpotLocations.TryGetTrackedGeneration(SpotId, out var spotGeneration);
             await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
                     actor.ActorId,
-                    SpotRid,
+                    SpotId,
                     spotGeneration,
                     cancellationToken)
                 .ConfigureAwait(false);
             ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"location_committed actor={actor.ActorId} spot={SpotRid}");
+                $"location_committed actor={actor.ActorId} spot={SpotId}");
         }
     }
 

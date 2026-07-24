@@ -32,7 +32,7 @@ actor의 현재 bind 상태와 무관하게 같은 의미로 처리되는지 본
 | 역할 | 수 | 구성 |
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix. Actor authority와 owner lease는 framework lifecycle이 관리한다. |
-| actor 노드 | 2 (`actor-a`, `actor-b`) | Location Store를 등록한 Object Server. Entry Spot과 stable Actor type `to-actor.probe` factory를 명시적 `Disabled` policy로 등록하고 placement weight `100`, node capacity active `128`·pending `32`를 사용한다. actor handler는 no-bind send/request 수신 evidence와 reply를 남기고 actor→bound session push를 발생시킨다. |
+| actor 노드 | 2 (`actor-a`, `actor-b`) | Location Store를 등록한 Object Server. Entry Spot과 stable Actor type `to-actor.probe` factory를 명시적 `Disabled` policy로 등록하고 placement weight `100`, Actor 전체 population limit `128`, activation concurrency limit `32`를 사용한다. actor handler는 no-bind send/request 수신 evidence와 reply를 남기고 actor→bound session push를 발생시킨다. |
 | session gateway | 2 (`session-a`, `session-b`) | Location Store를 등록한 Object Client. stream session을 받고 global Actor binding을 만들며 client connector와 actor bound-session push 경로를 검증한다. factory와 placement target은 제공하지 않는다. |
 | 외부 caller 서버 | 1 | Location Store를 등록한 Object Client. session을 만들지 않고 app endpoint 안에서 언어별 public actor client로 global Actor ID 기반 send/request를 실행한다. factory와 placement target은 제공하지 않는다. |
 | consumer | 시나리오별 | stream connector로 session gateway에 연결해 bind와 push를 관찰하고, HTTP client wrapper로 외부 caller 서버의 app endpoint를 호출한다. framework actor client를 직접 들고 호출하지 않는다. |

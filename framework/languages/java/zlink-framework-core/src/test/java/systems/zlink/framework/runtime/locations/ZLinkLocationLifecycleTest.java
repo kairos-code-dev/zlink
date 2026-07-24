@@ -40,13 +40,13 @@ class ZLinkLocationLifecycleTest {
             runtime.start(NODE_A).toCompletableFuture().get();
 
             ZLinkLocationWriteStatus status = lifecycle.claimSpot(
-                    "mesh", SPOT_RID, "room", NODE_A, ZLinkSpotKind.USER, "tcp://127.0.0.1:6000", null)
+                    "mesh", SPOT_RID.toString(), "room", NODE_A, ZLinkSpotKind.USER, "tcp://127.0.0.1:6000", null)
                 .toCompletableFuture()
                 .get();
 
             assertEquals(ZLinkLocationWriteStatus.STORED, status);
             assertTrue(runtime.ownerLeaseHealthy());
-            assertEquals("owner-a", store.resolveSpot(new systems.zlink.framework.locations.ZLinkSpotLocationKey("mesh", SPOT_RID))
+            assertEquals("owner-a", store.resolveSpot(new systems.zlink.framework.locations.ZLinkSpotLocationKey(SPOT_RID.toString()))
                 .toCompletableFuture()
                 .get()
                 .ownerId());
@@ -97,13 +97,13 @@ class ZLinkLocationLifecycleTest {
         ZLinkLocationRuntime runtime = newRuntime(store, "owner-a");
         try (runtime; ZLinkLocationLifecycle lifecycle = new ZLinkLocationLifecycle(runtime)) {
             runtime.start(NODE_A).toCompletableFuture().get();
-            lifecycle.claimSpot("mesh", SPOT_RID, "room", NODE_A, ZLinkSpotKind.USER, null, null)
+            lifecycle.claimSpot("mesh", SPOT_RID.toString(), "room", NODE_A, ZLinkSpotKind.USER, null, null)
                 .toCompletableFuture()
                 .get();
 
             runtime.stop().toCompletableFuture().get();
 
-            assertNull(store.resolveSpot(new systems.zlink.framework.locations.ZLinkSpotLocationKey("mesh", SPOT_RID))
+            assertNull(store.resolveSpot(new systems.zlink.framework.locations.ZLinkSpotLocationKey(SPOT_RID.toString()))
                 .toCompletableFuture()
                 .get());
             assertTrue(store.readOwnerLease("owner-a")

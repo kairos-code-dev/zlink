@@ -16,6 +16,7 @@ final class ZLinkSpotLocationCoordinator {
     void registerNode(
         String meshName,
         RoutingId nodeRid,
+        String entrySpotId,
         long entrySpotGeneration,
         String routeEndpoint,
         boolean publisherEnabled) {
@@ -24,6 +25,7 @@ final class ZLinkSpotLocationCoordinator {
             new NodeLocation(
                 meshName,
                 nodeRid,
+                entrySpotId,
                 entrySpotGeneration,
                 routeEndpoint,
                 publisherEnabled));
@@ -44,19 +46,24 @@ final class ZLinkSpotLocationCoordinator {
     }
 
     String meshNameForSpot(
-        RoutingId spotRid,
+        String spotId,
         RoutingId primaryNodeRid,
         boolean localUserSpot) {
-        if (spotRid == null) {
+        if (spotId == null) {
             return null;
         }
-        NodeLocation node = nodes.get(localUserSpot ? primaryNodeRid : spotRid);
+        NodeLocation node = localUserSpot
+            ? nodes.get(primaryNodeRid)
+            : nodes.values().stream()
+                .filter(candidate -> candidate.entrySpotId().equals(spotId))
+                .findFirst()
+                .orElse(null);
         return node == null ? null : node.meshName();
     }
 
     CompletionStage<ZLinkLocationWriteStatus> claimUserSpotAsync(
         RoutingId primaryNodeRid,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         Class<?> spotType,
         Runnable deactivate) {
@@ -70,7 +77,7 @@ final class ZLinkSpotLocationCoordinator {
         }
         return lifecycle.claimSpot(
             node.meshName(),
-            spotRid,
+            spotId,
             spotGeneration,
             spotType.getName(),
             node.nodeRid(),
@@ -90,7 +97,7 @@ final class ZLinkSpotLocationCoordinator {
         return chain;
     }
 
-    CompletionStage<Void> releaseUserSpotAsync(RoutingId primaryNodeRid, RoutingId spotRid) {
+    CompletionStage<Void> releaseUserSpotAsync(RoutingId primaryNodeRid, String spotId) {
         if (lifecycle == null) {
             return CompletableFuture.completedFuture(null);
         }
@@ -98,7 +105,7 @@ final class ZLinkSpotLocationCoordinator {
         if (node == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.releaseSpot(node.meshName(), spotRid);
+        return lifecycle.releaseSpot(node.meshName(), spotId);
     }
 
     CompletionStage<Void> releaseEntrySpotAsync(RoutingId nodeRid) {
@@ -106,7 +113,7 @@ final class ZLinkSpotLocationCoordinator {
         if (lifecycle == null || node == null || !node.hasRouteEndpoint()) {
             return CompletableFuture.completedFuture(null);
         }
-        return lifecycle.releaseSpot(node.meshName(), node.nodeRid());
+        return lifecycle.releaseSpot(node.meshName(), node.entrySpotId());
     }
 
     private CompletionStage<ZLinkLocationWriteStatus> claimEntrySpotAsync(NodeLocation node) {
@@ -115,7 +122,7 @@ final class ZLinkSpotLocationCoordinator {
         }
         return lifecycle.claimSpot(
             node.meshName(),
-            node.nodeRid(),
+            node.entrySpotId(),
             node.entrySpotGeneration(),
             null,
             node.nodeRid(),
@@ -127,6 +134,7 @@ final class ZLinkSpotLocationCoordinator {
     private record NodeLocation(
         String meshName,
         RoutingId nodeRid,
+        String entrySpotId,
         long entrySpotGeneration,
         String routeEndpoint,
         boolean publisherEnabled) {

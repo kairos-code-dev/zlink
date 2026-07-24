@@ -143,6 +143,12 @@ notification으로 예약한다. 이 notification은 application callback을 호
 permit을 nonblocking으로 얻지 못하면 seal하지 않고 다음 notification을 예약하며 application message와 timer turn을
 계속 처리한다.
 
+`SpotWide` User Spot aggregate는 공유 Spot gate 경계에서 notification을 처리한다. `PerActor` aggregate는
+Spot lane, seal 시점의 모든 member Actor lane과 timer별 lane을 포함하는 barrier generation을 예약한다.
+각 lane은 현재 claim을 마친 뒤 barrier에 도착하며, `Yield`로 Spot gate를 반납한 `SpotWide` Actor callback은
+Actor FIFO claim이 끝나지 않았으므로 barrier 도착으로 보지 않는다. Framework는 준비된 lane만 먼저
+capture하거나 일부 participant만 seal하지 않는다.
+
 하나라도 준비할 수 없으면 preflight read와 tentative coordination을 정리하고 `Blocked`를 반환한다. 이 경우 host state는
 `Serving`이고 readiness, descriptor와 application admission도 그대로 유지된다. 한 process에
 여러 MeshNode가 있으면 한 Mesh의 blocker가 host 전체 `Retire`를 차단한다.
@@ -163,8 +169,11 @@ Coordinator는 ready unit을 한꺼번에 seal하지 않고 permit이 허용하�
    수 있는 최대 64 MiB와 Framework가 이미 소유한 queue·journal bytes, timer·manifest·metadata의 deterministic
    encoded upper bound를 더한 값이다. 어느 permit이든 실패하면 provisional permit을 모두 즉시 반환하고 unit을
    seal하지 않는다.
-2. Permit을 모두 얻은 같은 turn 경계에서 application ingress와 timer dispatch를 원자적으로 seal한다. 실행 중인
-   turn은 이미 끝났으므로 새 application callback을 시작하지 않는다.
+2. Permit을 모두 얻으면 해당 unit의 barrier generation을 게시하고 신규 application ingress, timer dispatch와
+   아직 시작하지 않은 continuation admission을 원자적으로 seal한다. `SpotWide`에서는 공유 gate claim이 0이 될
+   때까지 기다리고, `PerActor`에서는 Spot lane, 모든 member Actor lane과 timer별 lane의 active claim이 0이
+   될 때까지 기다린다.
+   모든 lane이 같은 generation에 도착하기 전에는 새 application callback이나 `Capture`를 시작하지 않는다.
 3. Seal 시점에 실행하지 않은 message queue, accepted journal, timer logical registration·pending tick과 Framework
    manifest·metadata를 exact boundary로 고정한다. `Snapshot`이면 `Capture`를 실행해 application state를 추가한다.
 4. Immutable relocation root를 저장하고 `Captured` authority를 연결한 뒤 exact inventory로 target reservation,
@@ -208,6 +217,11 @@ Seal 뒤 source로 들어온 application ingress는 relocation payload에 추가
 보관한다. Commit 전 abort는 hold를 source queue에 arrival order로 되돌리고, commit 뒤에는 target으로 relay한다.
 Hold의 message·byte 상한을 넘은 request는 `TargetMoving`, one-way operation은 moving drop으로 끝낸다. Source는
 commit 전에 hold를 target application handler로 전달하지 않는다.
+
+Barrier 또는 precommit 단계가 실패하면 Framework는 모든 lane의 seal을 같은 generation에서 해제하고 ingress
+hold를 원래 FIFO 순서로 source queue에 되돌린다. 일부 lane만 재개하거나 늦게 도착한 continuation을 application
+callback thread에서 inline 실행하지 않는다. Commit 뒤에는 target이 Spot lane, Actor별 FIFO queue와 timer를
+복원한 다음 admission을 연다.
 
 모든 relocation unit이 source dispatch에서 분리되고 source ingress hold가 commit 또는 abort로 정리된 뒤 host를
 `Draining`으로 전환한다. 이후 local Spot·owner authority와 descriptor lease, ClientServer listener, fanout publisher,
@@ -359,7 +373,7 @@ observer overflow로 잃지 않는다.
 | `zlink.termination.forced` | counter | `intent`, `reason` | bounded teardown으로 끝난 operation 수 |
 | `zlink.relocation.completed` | counter | `object_kind`, `policy` | Retire에서 완료한 object relocation 수 |
 
-Metric label에는 Actor ID, Spot RID, node RID, endpoint, session ID와 relocation ID를 넣지 않는다. 개별 blocker와
+Metric label에는 Actor ID, Spot ID, node RID, endpoint, session ID와 relocation ID를 넣지 않는다. 개별 blocker와
 relocation 상태는 bounded diagnostic query와 trace에서 확인한다. Observer callback 실패는 termination과
 relocation 진행을 막지 않는다.
 

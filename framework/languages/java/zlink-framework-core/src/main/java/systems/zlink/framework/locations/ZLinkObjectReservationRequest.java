@@ -1,14 +1,11 @@
 package systems.zlink.framework.locations;
 
 import java.util.Objects;
-import java.util.Optional;
 
 public record ZLinkObjectReservationRequest(
     ZLinkPlacementObjectKind objectKind,
     String authorityKey,
     String stableType,
-    Optional<String> placementProfile,
-    Optional<String> affinityKey,
     String creationIntentReference,
     byte[] creationIntentHash,
     int creationIntentEncodedSize,
@@ -29,8 +26,6 @@ public record ZLinkObjectReservationRequest(
             throw new IllegalArgumentException(
                 "stableType must not be blank");
         }
-        Objects.requireNonNull(placementProfile, "placementProfile");
-        Objects.requireNonNull(affinityKey, "affinityKey");
         Objects.requireNonNull(
             creationIntentReference,
             "creationIntentReference");

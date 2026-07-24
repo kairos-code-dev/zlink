@@ -17,7 +17,7 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Handlers;
 /// </summary>
 [ZLinkHandlerGroup(HandlerGroups.ZoneActors)]
 internal sealed class EnsurePlayerActorHandler(
-    IZLinkActorDirectory actors,
+    IZLinkActorManager actors,
     ILogger<EnsurePlayerActorHandler> logger)
     : IZLinkRequestHandler<EnsurePlayerActorReq, EnsurePlayerActorRes>
 {
@@ -29,10 +29,15 @@ internal sealed class EnsurePlayerActorHandler(
         // The directory owns world-wide player identity and returns a transferred actor when
         // one already exists. World entry remains a separate step after session binding so
         // the actor's current node receives the route used for server push.
-        var actorRef = await actors.EnsureAsync(
-            request.PlayerId,
-            ZLinkMessage.Empty,
-            cancellationToken: cancellationToken);
+        var actorRef = await actors
+            .GetOrCreate(request.PlayerId, ZoneWorldNames.PlayerActorType)
+            .Request(ZLinkMessage.Empty)
+            .Async(cancellationToken) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Player Actor creation was rejected.")
+        };
 
         logger.LogInformation("player actor ensured. player={PlayerId}", request.PlayerId);
 

@@ -43,8 +43,8 @@ weight를 다르게 준 provider를 따로 시작한다(공유 provider는 기�
 |------|----|------|
 | location store | 1 | 공식 Redis location store extension이 사용하는 공유 Redis instance. 실행마다 전용 key prefix로 격리한다. 별도 registry process는 실행하지 않는다. |
 | relocation store | 1 (`RM-C10` 전용) | Snapshot adapter capability bound를 검증하는 Object Server root가 등록하는 공식 Redis relocation store extension. Location Store와 별도 key prefix를 사용한다. 다른 시나리오의 `Disabled` factory는 이 Store를 요구하지 않는다. |
-| provider (api 노드) | 2 (`api-a`, `api-b`) | `AddRouteMesh(meshName)`으로 MeshNode를 만들고 profile `ChannelName` membership에 request handler(`ProfileRequest`)·send handler(`ProfileCommand`)를 등록한다. RID direct route handler(`ScenarioRoutePing`)는 같은 MeshNode에 등록한다. Automatic routing ID는 역할 prefix `api-a`·`api-b` 뒤에 lifecycle별 32-hex suffix를 붙여 발급하며 application이 exact RID를 고정하지 않는다. Dispatch-error observer로 evidence를 기록하며 테스트용 `/evidence`·`/health` HTTP endpoint를 함께 제공한다. |
-| object authority 노드 | 2 (`profile-object`, `workflow-object`) | 각각 `profile`·`workflow` Mesh의 Object Server다. 두 노드는 같은 stable Actor type `cfg1.actor`과 User Spot type `cfg1.user-spot` factory를 `Disabled` policy로 등록하고 placement weight `100`, node capacity active `128`·pending `32`를 사용한다. RM-A7의 manager call과 direct request를 시작할 Client capability는 Server role에 포함된다. |
+| provider (api 노드) | 2 (`api-a`, `api-b`) | `AddRouteMesh(meshName)`으로 MeshNode를 만들고 profile `ChannelName` membership에 request handler(`ProfileRequest`)·send handler(`ProfileCommand`)를 등록한다. RID direct route handler(`ScenarioRoutePing`)는 같은 MeshNode에 등록한다. Automatic routing ID는 역할 prefix `api-a`·`api-b` 뒤에 lifecycle별 lowercase canonical UUID v4를 붙여 발급하며 application이 exact RID를 고정하지 않는다. Dispatch-error observer로 evidence를 기록하며 테스트용 `/evidence`·`/health` HTTP endpoint를 함께 제공한다. |
+| object authority 노드 | 2 (`profile-object`, `workflow-object`) | 각각 `profile`·`workflow` Mesh의 Object Server다. 두 노드는 같은 stable Actor type `cfg1.actor`과 User Spot type `cfg1.user-spot` factory를 `Disabled` policy로 등록하고 placement weight `100`, Actor total·Spot total limit `128`과 activation concurrency `32`를 사용한다. RM-A7의 manager call과 direct request를 시작할 Client capability는 Server role에 포함된다. |
 | consumer | 시나리오별 | Location Store를 사용하는 automatic topology에서는 같은 MeshName의 descriptor에서 peer를 확인하고 RID prefix만 설정한다. Manual topology에서는 role `None` MeshNode에 fixed RID와 peer endpoint를 언어별 peer-connection interface로 등록한다. Inbound가 필요한 MeshNode만 endpoint를 bind하며 양쪽에 endpoint가 있으면 pairwise initiator 한쪽만 연결을 시작한다. |
 
 각 provider는 MeshName, RID, lifecycle generation, ROUTER endpoint와 `ChannelWeights`를 포함한
@@ -120,7 +120,7 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 - 세부 동작: 수동 연결이 자동 연결과 동일 의미임을 고정.
 
 > ChannelName은 process-local egress index가 선택하고 MeshName을 호출자에게 요구하지 않는다.
-> Spot direct는 global Spot RID를 받고 current owner를 Location Store에서 resolve한다. `SpotRef`는
+> Spot direct는 global Spot ID를 받고 current owner를 Location Store에서 resolve한다. `SpotRef`는
 > create·find·exact close에 사용하는 immutable snapshot이며 messaging target은 아니다.
 
 #### RM-A4 새 RID·endpoint replacement
@@ -135,12 +135,15 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
   같은 `api-a` 역할 prefix와 새 automatic RID `api-a-<suffix2>`/endpoint p2로 시작 →
   `ListMeshNodesAsync(meshName)` 결과가 새 RID와 p2를 보여줄 때까지 대기 → consumer 재시작 없이 다시 request.
   Crash 뒤 lease 만료를 거치는 replacement는
-  Config 5 RL-A2가 별도로 검증한다.
+  Config 5 RL-A2가 별도로 검증한다. 별도 반복에서는 첫 descriptor `NewClaim`에 같은 `(MeshName, RID)`의
+  active conflict를 주입하고 UUID 생성 횟수와 Store claim 횟수를 기록한다.
 - 검증: v2 시작 전 v1 descriptor가 성공 조회에서 제외된다. v2 시작 뒤
   `ListMeshNodesAsync(meshName)` 결과에서 `suffix2 != suffix1`인 새 RID의 유효한 descriptor 하나가 보이고
+  두 suffix는 모두 RFC 4122 version 4·variant bit와 lowercase canonical `8-4-4-4-12` 형식을 만족하며
   endpoint가 p2다.
   교체 뒤 신규 request는 p2 evidence에 기록되고 consumer가 p1 stale endpoint로 요청하지 않는다. 이후
-  연속 20개 request가 모두 성공한다.
+  연속 20개 request가 모두 성공한다. Active conflict 반복은 기존 descriptor mutation 없이 startup
+  `RoutingIdConflict`로 끝나고 두 번째 UUID 생성과 두 번째 descriptor claim은 0건이다.
 - 세부 동작: application 역할 replacement의 새 automatic identity 반영 + stale 회피. 이미 실행 중인 다른 provider가
   장애 직후 처리를 계속하는 failover는 RM-B3에서 별도로 검증한다.
 
@@ -164,10 +167,10 @@ key를 정리하거나 disposable Redis instance를 버린다. scale·failover �
 
 우선순위: `P0`
 
-**검증 질문:** 서로 다른 Mesh에서 같은 Actor ID 또는 Spot RID를 동시에 생성해도 Location Store
+**검증 질문:** 서로 다른 Mesh에서 같은 Actor ID 또는 Spot ID를 동시에 생성해도 Location Store
 namespace 전체에서 authority 하나로 수렴하는가.
 
-- 절차: `profile`과 `workflow` Object Server에서 같은 global Actor ID와 Spot RID의 `GetOrCreate`를
+- 절차: `profile`과 `workflow` Object Server에서 같은 global Actor ID와 Spot ID의 `GetOrCreate`를
   각각 동시에 시작하되 서로 다른 initial `InMesh`를 지정한다. 그 뒤 manager `Find`와
   Actor·Spot direct request를 각각 실행한다.
 - 검증: ID별 authority CAS winner 하나만 성공하고 loser는 이미 고정된 stable type·kind과 다르면
@@ -294,12 +297,17 @@ public error로 실패하는가.
 **검증 질문:** 두 ChannelName member의 weight를 다르게 설정하면 select-one 분포가 높은 weight의
 member를 더 자주 선택하는가.
 
-- 절차: startup의 `Channel("profile").Server().SetWeight(...)`로 `api-a=75`, `api-b=25`를
+- 절차: startup의 `Channel("profile").Server().SetWeight(...)`로 `api-a=300`, `api-b=100`을
   설정한다. 실행 중 변경 시나리오는 `IZLinkRouteMeshRuntimeOptions.Channel(channelName).Weight`를
-  사용한다.
+  사용한다. 별도 반복에서 startup과 runtime update에 `0`, 기본값 `100`, `10000`, `-1`, `10001`을
+  적용하고, 많은 member의 `10000`을 합산해 32-bit 범위를 넘기는 fixture도 사용한다.
   `ListMeshNodesAsync(meshName)`의 descriptor `ChannelWeights`와 local runtime option getter가 같은 값을
   제공하는지 확인한 뒤 충분한 수의 request(예: 200개)를 보낸다.
-- 검증: 두 provider 모두 처리 대상이 되고(어느 쪽도 0이 아님), 각 provider evidence 합이 전체 request 수와 일치한다. 분산은 weight 비율을 따라 `api-a`가 `api-b`보다 **뚜렷이 많이** 처리한다(정확한 75/25는 보장값이 아니므로 "고weight가 저weight보다 분명히 많음 + 양쪽 모두 처리 + 합계 일치"로 검증한다).
+- 검증: 두 provider 모두 처리 대상이 되고(어느 쪽도 0이 아님), 각 provider evidence 합이 전체 request 수와
+  일치한다. 장기 분포는 `300:100`에 수렴하되 요청별 정확한 순서는 단언하지 않는다. `0`, `100`, `10000`은
+  startup과 runtime update에서 허용하고 `-1`, `10001`은 descriptor mutation 없이 configuration error다.
+  Weight `0`은 새 target에서 제외하고 이미 제출한 operation은 유지한다. 합계는 최소 64-bit로 계산해 overflow나
+  음수 wrap 없이 모든 positive member를 선택 후보로 유지한다.
 - 세부 동작: descriptor의 ChannelName weight에 따른 select-one 부하 분산.
 
 > ChannelName select-one은 ready positive-weight member만 후보로 사용한다. weight `0`은 신규 select-one과
@@ -362,7 +370,7 @@ admission 결과를 유한 시간 안에 관찰하고, 적체 해소 뒤 연결�
   bound fixture는 Object Server에 `Disabled` policy의 distinct stable factory type 1,024개와 1,025개를
   등록한다. Snapshot adapter bound fixture는 Object Server에 `Snapshot` policy와 factory kind에 맞는
   distinct adapter capability를 1,024개와 1,025개 등록한다. 모든 fixture는 Location Store, positive
-  placement weight와 active `2,048`·pending `128` capacity를 사용한다. Snapshot fixture는 별도 Relocation
+  placement weight와 Actor total·Spot total limit `2,048`, activation concurrency `128`을 사용한다. Snapshot fixture는 별도 Relocation
   Store도 등록해 Store 누락 오류가 descriptor bound 결과를 가리지 않게 한다.
 - 검증: 경계 이하는 descriptor 하나로 게시되고 모든 entry가 보존된다. 한 상한이라도 넘으면 host startup이
   stable configuration error로 전체 실패하며 descriptor, owner lease와 partial capability가 Store에 남지 않는다.

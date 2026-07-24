@@ -21,7 +21,7 @@ namespace ZoneWorld.Server.ZoneNode.Infrastructure.ZLink.Actors;
 /// </summary>
 internal sealed class ZoneNodeBootstrap(
     IZLinkSpotManager spots,
-    IZLinkActorDirectory directory,
+    IZLinkActorManager directory,
     IZLinkActorClient actors,
     IMaintenanceStorePort store,
     NodeMaintenancePolicy maintenance,
@@ -88,10 +88,15 @@ internal sealed class ZoneNodeBootstrap(
         // returns the winner; and if the actor genuinely cannot be placed — the location store
         // is unreachable, say — it throws. That distinction matters: swallowing the failure here
         // would let the node log topology=ready over a world with no bots in it (§2.7).
-        var actorRef = await directory.EnsureAsync(
-            route.PlayerId,
-            ZLinkMessage.Empty,
-            cancellationToken: cancellationToken);
+        var actorRef = await directory
+            .GetOrCreate(route.PlayerId, ZoneWorldNames.PlayerActorType)
+            .Request(ZLinkMessage.Empty)
+            .Async(cancellationToken) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Bot Actor creation was rejected.")
+        };
 
         var entered = await actors
             .RequestToActor(

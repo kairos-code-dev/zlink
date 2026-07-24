@@ -31,6 +31,7 @@ import type { ZLinkSpotRouteResolver } from '../spots/spot-routing-internal';
 import {
   ZLinkFrameworkErrorKind,
   ZLinkFrameworkException,
+  ZLinkFrameworkRuntimeState,
   ZLinkMessageFlowLogMode,
   ZLinkSpotCreateState,
   ZLinkSubmitStatus
@@ -170,6 +171,7 @@ export class ZLinkFrameworkRuntimeHost implements
   private readonly entryActorRuntime: ZLinkEntryActorRuntimeService;
   private actorManager?: DefaultZLinkActorManager;
   private spotManager?: DefaultZLinkSpotManager;
+  private registerUserSpotHandlers?: (runtime: ZLinkSpotNodeRuntimeManager) => void;
   private readonly destroyedActorRefs = new Map<string, ActorRef>();
   private readonly runtimeEventPublisher: ZLinkRuntimeEventPublisher;
   private readonly metrics: ZLinkRuntimeMetrics;
@@ -376,7 +378,8 @@ export class ZLinkFrameworkRuntimeHost implements
       meshOptions: options.registration.spotNodes,
       meshNode: (meshName) => this.spotNodeRuntime?.meshNode(meshName),
       admission: this.admission,
-      publishDraining: (meshName) => this.publishMeshDraining(meshName),
+      publishDraining: (meshName, signal) =>
+        this.publishMeshDraining(meshName, signal),
       publishHostDraining: (signal) => this.publishHostDraining(signal),
       drainResources: (meshName, signal) => this.performMeshDrain(meshName, signal),
       cleanupHostResources: (signal) => this.cleanupOwnerForDrain(signal),
@@ -511,6 +514,7 @@ export class ZLinkFrameworkRuntimeHost implements
         this.createSpotNodeRuntimeOptions(context, dispatchErrors)
       );
       await spotNodeRuntime.start();
+      this.registerUserSpotHandlers?.(spotNodeRuntime);
       channelRuntime.bindRouteMeshRouters();
       // Start bound receivers before publishing Serving descriptors. A
       // discovered ClientServer endpoint must already be able to dispatch.
@@ -523,6 +527,10 @@ export class ZLinkFrameworkRuntimeHost implements
       startedLocationRuntime = locationRuntime;
       const locationStore = this.locationOwner.currentStores?.locationStore;
       if (locationStore !== undefined) {
+        await spotNodeRuntime.publishMeshNodeState(
+          ZLinkFrameworkRuntimeState.Preparing,
+          this.state.abortController.signal
+        );
         for (const [meshName, node] of spotNodeRuntime.meshNodesByName) {
           const activationNode = node as typeof node & {
             registerAsyncInstanceActivationAuthority?: (
@@ -609,6 +617,10 @@ export class ZLinkFrameworkRuntimeHost implements
         });
         this.monitoringRuntime.start(this.state);
       }
+      await spotNodeRuntime.publishMeshNodeState(
+        ZLinkFrameworkRuntimeState.Serving,
+        this.state.abortController.signal
+      );
       this.routeMeshCoordinator.markServing();
       this.lifecycleSink?.push('framework:started');
       allocatedRoutingIdRuntime?.markReady();
@@ -702,13 +714,21 @@ export class ZLinkFrameworkRuntimeHost implements
     await this.drainSpots(meshName, signal);
   }
 
-  private async publishMeshDraining(meshName: string): Promise<void> {
+  private async publishMeshDraining(
+    meshName: string,
+    signal?: AbortSignal
+  ): Promise<void> {
     const node = this.spotNodeRuntime?.meshNode(meshName);
     for (const channelName of Object.keys(
       this.options.registration.spotNodes.get(meshName)?.meshChannels ?? {}
     )) {
       node?.setChannelWeight(channelName, 0);
     }
+    await this.spotNodeRuntime?.publishMeshNodeState(
+      ZLinkFrameworkRuntimeState.Draining,
+      signal,
+      meshName
+    );
   }
 
   private async publishHostDraining(signal: AbortSignal): Promise<void> {
@@ -786,14 +806,32 @@ export class ZLinkFrameworkRuntimeHost implements
       const meshName = this.meshRouters.actorMeshName(actorType);
       if (meshName !== drainingMeshName) continue;
       try {
-        const target = await this.locationOwner.createRefResolver([meshName])
-          ?.selectActorPlacement(meshName, actorType, sourceNodeRid, signal);
-        if (target === undefined) {
-          allMoved = false;
-          continue;
+        const resolver = this.locationOwner.createRefResolver([meshName]);
+        const excludedTargets = new Set<string>();
+        let moved = false;
+        while (true) {
+          const target = await resolver?.selectActorPlacement(
+            meshName,
+            actorType,
+            sourceNodeRid,
+            signal,
+            excludedTargets
+          );
+          if (target === undefined) break;
+          try {
+            const result = await actor.context.joinEntrySpot(target, undefined).submit(signal);
+            if (result.status !== 'accepted') break;
+            moved = true;
+            break;
+          } catch (error) {
+            if (!(error instanceof ZLinkFrameworkException)
+              || error.kind !== ZLinkFrameworkErrorKind.PlacementCapacityExhausted) {
+              throw error;
+            }
+            excludedTargets.add(String(target));
+          }
         }
-        const result = await actor.context.joinEntrySpot(target, undefined).submit(signal);
-        if (result.status !== 'accepted') {
+        if (!moved) {
           allMoved = false;
           continue;
         }
@@ -923,7 +961,7 @@ export class ZLinkFrameworkRuntimeHost implements
           message.close();
         }
       },
-      target: async (request, signal) => {
+      target: async (request, signal, excludedNodeRids) => {
         const clientMeshes = [...this.options.registration.spotNodes]
           .filter(([, node]) => hasObjectClientCapability(node.objectRole))
           .map(([meshName]) => meshName);
@@ -957,23 +995,21 @@ export class ZLinkFrameworkRuntimeHost implements
           .filter(descriptor => {
             const capability = descriptor.objectCapabilities.find(candidate =>
               candidate.objectKind === 'user_spot'
-              && candidate.stableType === request.stableType
-              && (
-                request.placementProfile === undefined
-                || candidate.placementProfiles.includes(request.placementProfile)
-              ));
+              && candidate.stableType === request.stableType);
             return descriptor.state === 1
               && descriptor.objectRole === 'server'
               && descriptor.placementWeight > 0
+              && excludedNodeRids?.has(String(descriptor.rid)) !== true
               && descriptor.objectCapacity.activeObjects < descriptor.objectCapacity.maxActiveObjects
               && descriptor.objectCapacity.pendingActivations
                 < descriptor.objectCapacity.maxPendingActivations
-              && capability !== undefined;
+              && capability !== undefined
+              && (capability.activeLimit === undefined
+                || capability.active + capability.reserved < capability.activeLimit)
+              && (capability.pendingLimit === undefined
+                || capability.reserved < capability.pendingLimit);
           });
-        const selected = selectLocationPlacementDescriptor(
-          descriptors,
-          request.affinityKey
-        );
+        const selected = selectLocationPlacementDescriptor(descriptors);
         if (selected === undefined) return undefined;
         const localStatus = this.spotNodeRuntime?.meshNode(meshName)?.status();
         return {
@@ -996,10 +1032,11 @@ export class ZLinkFrameworkRuntimeHost implements
         new Map(Object.entries(node.spotFactoryRegistrations ?? {}))
       ])
     );
-    for (const [meshName] of this.options.registration.spotNodes) {
-      const node = this.spotNodeRuntime?.meshNode(meshName);
-      if (node === undefined) continue;
-      node.registerUserSpotOperationHandler({
+    const registerUserSpotHandlers = (runtime: ZLinkSpotNodeRuntimeManager) => {
+      for (const [meshName] of this.options.registration.spotNodes) {
+        const node = runtime.meshNode(meshName);
+        if (node === undefined) continue;
+        node.registerUserSpotOperationHandler({
         create: async (record, signal) => {
           const coordinated = await coordinator.handleRemoteCreate(
             record,
@@ -1117,7 +1154,12 @@ export class ZLinkFrameworkRuntimeHost implements
             }
           };
         }
-      });
+        });
+      }
+    };
+    this.registerUserSpotHandlers = registerUserSpotHandlers;
+    if (this.spotNodeRuntime !== undefined) {
+      registerUserSpotHandlers(this.spotNodeRuntime);
     }
     return new ZLinkPublicSpotManager({
       local,
@@ -1157,7 +1199,8 @@ export class ZLinkFrameworkRuntimeHost implements
       meshNode: (meshName) => this.spotNodeRuntime?.meshNode(meshName),
       meshCompletions: (meshName) => this.spotNodeRuntime?.meshCompletionTable(meshName),
       notifyEntrySpotActorCreated: (nodeRid, actor, createRequest, signal) =>
-        this.spotNodeRuntime?.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal) ?? Promise.resolve(),
+        this.spotNodeRuntime?.notifyEntrySpotActorCreated(nodeRid, actor, createRequest, signal)
+          ?? Promise.resolve(undefined),
       locationLifecycle: () => this.locationOwner.currentLifecycle,
       primaryMeshName: () => this.meshRouters.primaryMeshName(),
       actorMeshName: (actorType) => this.meshRouters.actorMeshName(actorType),
@@ -1588,30 +1631,18 @@ function isStreamPayloadCodec(codec: unknown): codec is ZLinkStreamPayloadCodec 
 }
 
 function selectLocationPlacementDescriptor(
-  descriptors: readonly ZLinkMeshNodeDescriptor[],
-  affinityKey?: string
+  descriptors: readonly ZLinkMeshNodeDescriptor[]
 ): ZLinkMeshNodeDescriptor | undefined {
   const total = descriptors.reduce(
     (sum, descriptor) => sum + BigInt(descriptor.placementWeight),
     0n
   );
   if (total === 0n) return undefined;
-  let point = affinityKey === undefined
-    ? BigInt(Math.floor(Math.random() * Number(total)))
-    : stablePlacementHash(affinityKey) % total;
+  let point = BigInt(Math.floor(Math.random() * Number(total)));
   for (const descriptor of descriptors) {
     const weight = BigInt(descriptor.placementWeight);
     if (point < weight) return descriptor;
     point -= weight;
   }
   return descriptors.at(-1);
-}
-
-function stablePlacementHash(value: string): bigint {
-  let hash = 0xcbf29ce484222325n;
-  for (const byte of Buffer.from(value)) {
-    hash ^= BigInt(byte);
-    hash = BigInt.asUintN(64, hash * 0x100000001b3n);
-  }
-  return hash;
 }

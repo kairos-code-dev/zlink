@@ -31,12 +31,12 @@ class native_route_backend_t
                             dispatch_options_t dispatch);
 
     result_t<void> submit_send (const zlink::routing_id_t &target_node_rid,
-                                const std::optional<zlink::routing_id_t> &target_spot_rid,
+                                const std::optional<std::string> &target_spot_id,
                                 const runtime::messaging::message_parts_t &parts);
 
     result_t<runtime::messaging::message_parts_t>
     submit_request (const zlink::routing_id_t &target_node_rid,
-                    const std::optional<zlink::routing_id_t> &target_spot_rid,
+                    const std::optional<std::string> &target_spot_id,
                     const runtime::messaging::message_parts_t &parts,
                     std::chrono::milliseconds timeout);
 

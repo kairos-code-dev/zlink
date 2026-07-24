@@ -214,7 +214,7 @@ function decodeServerAdmission(reader: Reader): ZLinkClientServerAdmission {
   const lifecycleGeneration = reader.nonZeroU64('lifecycleGeneration');
   const descriptorRevision = reader.nonZeroU64('descriptorRevision');
   const weight = reader.u32('weight');
-  if (weight > 100) fail('ClientServer weight is invalid.');
+  if (weight > 10_000) fail('ClientServer weight is invalid.');
   return {
     channelName,
     serverRid,

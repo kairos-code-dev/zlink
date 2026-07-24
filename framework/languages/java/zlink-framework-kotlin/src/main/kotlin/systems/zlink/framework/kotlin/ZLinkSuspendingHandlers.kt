@@ -18,6 +18,7 @@ import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.spots.ZLinkEntrySpot
 import systems.zlink.framework.spots.ZLinkSpot
 import systems.zlink.framework.spots.ZLinkSpotActorJoinResponse
+import systems.zlink.framework.spots.ZLinkActorCreateResponse
 import systems.zlink.framework.spots.ZLinkSpotActorRequestContext
 import systems.zlink.framework.spots.ZLinkSpotActorSendContext
 import systems.zlink.framework.spots.ZLinkSpotContext
@@ -236,12 +237,8 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> : ZLinkEntrySpot<TA
     final override fun onCreateActor(
         actor: TActor,
         createRequest: ZLinkMessage,
-    ): CompletionStage<Void> = coroutineVoidStage { onCreateActorSuspending(actor, createRequest) }
-
-    final override fun onActorJoin(
-        actorId: String,
-        request: ZLinkMessage,
-    ): CompletionStage<ZLinkSpotActorJoinResponse> = coroutineStage { onActorJoinSuspending(actorId, request) }
+    ): CompletionStage<ZLinkActorCreateResponse> =
+        coroutineStage { onCreateActorSuspending(actor, createRequest) }
 
     final override fun onJoinedActor(actor: TActor): CompletionStage<Void> =
         coroutineVoidStage { onJoinedActorSuspending(actor) }
@@ -258,15 +255,10 @@ abstract class ZLinkSuspendingEntrySpot<TActor : ZLinkActor> : ZLinkEntrySpot<TA
     protected open suspend fun onClosingSuspending() {
     }
 
-    protected abstract suspend fun onCreateActorSuspending(
+    protected open suspend fun onCreateActorSuspending(
         actor: TActor,
         createRequest: ZLinkMessage,
-    )
-
-    protected abstract suspend fun onActorJoinSuspending(
-        actorId: String,
-        request: ZLinkMessage,
-    ): ZLinkSpotActorJoinResponse
+    ): ZLinkActorCreateResponse = ZLinkActorCreateResponse.accept()
 
     protected abstract suspend fun onJoinedActorSuspending(actor: TActor)
 

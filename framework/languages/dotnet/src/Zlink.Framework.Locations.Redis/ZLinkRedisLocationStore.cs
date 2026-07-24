@@ -1,4 +1,5 @@
 using StackExchange.Redis;
+using Zlink.Framework.Runtime.Configuration;
 using Zlink.Framework.Runtime.Locations;
 
 namespace Zlink.Framework.Locations.Redis;
@@ -119,33 +120,56 @@ public sealed partial class ZLinkRedisLocationStore :
                     for (var index = 0; index < selected.Length; index++)
                     {
                         var row = selected[index];
-                        var capacity = (RedisResult[])(await database
-                            .ScriptEvaluateAsync(
-                                ZLinkRedisAuthorityScripts
-                                    .ReadCapacityProjection,
-                                [
-                                    _keys.HybridCapacityKey(
-                                        type: false,
-                                        pending: false),
-                                    _keys.HybridCapacityKey(
-                                        type: false,
-                                        pending: true)
-                                ],
-                                [CapacityNodeBucket(row)])
-                            .ConfigureAwait(false))!;
+                        var actorCapacity = await ReadCapacityProjectionAsync(
+                                database,
+                                CapacityPopulationBucket(
+                                    row,
+                                    ZLinkPlacementObjectKind.Actor),
+                                string.Empty)
+                            .ConfigureAwait(false);
+                        var spotBucket = CapacityPopulationBucket(
+                            row,
+                            ZLinkPlacementObjectKind.UserSpot);
+                        RedisResult[]? spotCapacity = null;
+                        var spotTypes = new List<ZLinkSpotTypeCapacity>();
+                        foreach (var capability in row.ObjectCapabilities)
+                        {
+                            if (capability.ObjectKind
+                                is not (ZLinkPlacementObjectKind.UserSpot
+                                    or ZLinkPlacementObjectKind.InstanceSpot))
+                                continue;
+                            var capacity = await ReadCapacityProjectionAsync(
+                                    database,
+                                    spotBucket,
+                                    CapacityTypeBucket(row, capability))
+                                .ConfigureAwait(false);
+                            spotCapacity ??= capacity;
+                            spotTypes.Add(new ZLinkSpotTypeCapacity(
+                                capability.ObjectKind,
+                                capability.StableType,
+                                ParseCapacity(capacity[2]),
+                                ParseCapacity(capacity[3]),
+                                capability.Limit));
+                        }
+                        spotCapacity ??= await ReadCapacityProjectionAsync(
+                                database,
+                                spotBucket,
+                                string.Empty)
+                            .ConfigureAwait(false);
                         selected[index] = row with
                         {
-                            Capacity = row.Capacity with
-                            {
-                                Active = int.Parse(
-                                    (string)capacity[0]!,
-                                    System.Globalization.CultureInfo
-                                        .InvariantCulture),
-                                Pending = int.Parse(
-                                    (string)capacity[1]!,
-                                    System.Globalization.CultureInfo
-                                        .InvariantCulture)
-                            }
+                            Capacity = new ZLinkPlacementCapacity(
+                                row.Capacity.Actors with
+                                {
+                                    Active = ParseCapacity(actorCapacity[0]),
+                                    Reserved = ParseCapacity(actorCapacity[1])
+                                },
+                                row.Capacity.Spots with
+                                {
+                                    Active = ParseCapacity(spotCapacity[0]),
+                                    Reserved = ParseCapacity(spotCapacity[1])
+                                },
+                                spotTypes)
                         };
                     }
                     return (IReadOnlyList<ZLinkMeshNodeDescriptor>)selected;
@@ -154,14 +178,47 @@ public sealed partial class ZLinkRedisLocationStore :
             .ConfigureAwait(false);
     }
 
-    private static string CapacityNodeBucket(
-        ZLinkMeshNodeDescriptor descriptor) =>
-        ZLinkRedisLocationKeys.HybridCapacityNodeBucket(
+    private async ValueTask<RedisResult[]> ReadCapacityProjectionAsync(
+        IDatabase database,
+        string populationBucket,
+        string typeBucket) =>
+        (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisAuthorityScripts.ReadCapacityProjection,
+            [
+                _keys.HybridCapacityKey(type: false, pending: false),
+                _keys.HybridCapacityKey(type: false, pending: true),
+                _keys.HybridCapacityKey(type: true, pending: false),
+                _keys.HybridCapacityKey(type: true, pending: true)
+            ],
+            [populationBucket, typeBucket]).ConfigureAwait(false))!;
+
+    private static string CapacityPopulationBucket(
+        ZLinkMeshNodeDescriptor descriptor,
+        ZLinkPlacementObjectKind objectKind) =>
+        ZLinkRedisLocationKeys.HybridCapacityPopulationBucket(
             ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(
                 new ZLinkMeshNodeDescriptorKey(
                     descriptor.MeshName,
                     descriptor.Rid)),
-            descriptor.LifecycleGeneration);
+            descriptor.LifecycleGeneration,
+            objectKind);
+
+    private static string CapacityTypeBucket(
+        ZLinkMeshNodeDescriptor descriptor,
+        ZLinkObjectCapability capability) =>
+        ZLinkRedisLocationKeys.HybridCapacityTypeBucket(
+            ZLinkRedisLocationKeyCodec.EncodeMeshNodeKey(
+                new ZLinkMeshNodeDescriptorKey(
+                    descriptor.MeshName,
+                    descriptor.Rid)),
+            descriptor.LifecycleGeneration,
+            capability.ObjectKind,
+            capability.StableType);
+
+    private static int ParseCapacity(RedisResult value) =>
+        int.Parse(
+            (string)value!,
+            System.Globalization.CultureInfo.InvariantCulture);
 
     // ----- ClientServer server descriptor store ---------------------------
 
@@ -297,7 +354,7 @@ public sealed partial class ZLinkRedisLocationStore :
         RemoveAsync(
             ZLinkRedisLocationKinds.Spot.Tag,
             ZLinkRedisLocationKeyCodec.EncodeSpotKey(key),
-            key.MeshName,
+            meshName: null,
             owner, cancellationToken);
 
     public ValueTask<ZLinkSpotLocation?> ResolveSpotAsync(
@@ -587,7 +644,7 @@ public sealed partial class ZLinkRedisLocationStore :
             || descriptor.LifecycleGeneration == 0
             || descriptor.DescriptorRevision == 0
             || descriptor.LeaseGeneration <= 0
-            || descriptor.Weight is < 0 or > 100
+            || descriptor.Weight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight
             || !Enum.IsDefined(descriptor.State))
             throw new ArgumentOutOfRangeException(nameof(descriptor));
     }

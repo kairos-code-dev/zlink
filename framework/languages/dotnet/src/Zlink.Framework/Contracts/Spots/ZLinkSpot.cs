@@ -27,6 +27,33 @@ public readonly record struct ZLinkSpotActorJoinResult(bool Accepted, ZLinkMessa
     }
 }
 
+public readonly record struct ZLinkActorCreateResponse(bool Accepted, ZLinkMessage? Reply)
+{
+    public static ZLinkActorCreateResponse Accept(ZLinkMessage? reply = null)
+    {
+        var result = ZLinkSpotAcceptRejectResult.Accept(reply);
+        return new ZLinkActorCreateResponse(result.Accepted, result.Reply);
+    }
+
+    public static ZLinkActorCreateResponse Accept<TReply>(TReply reply)
+    {
+        var result = ZLinkSpotAcceptRejectResult.Accept(reply);
+        return new ZLinkActorCreateResponse(result.Accepted, result.Reply);
+    }
+
+    public static ZLinkActorCreateResponse Reject(ZLinkMessage? reply = null)
+    {
+        var result = ZLinkSpotAcceptRejectResult.Reject(reply);
+        return new ZLinkActorCreateResponse(result.Accepted, result.Reply);
+    }
+
+    public static ZLinkActorCreateResponse Reject<TReply>(TReply reply)
+    {
+        var result = ZLinkSpotAcceptRejectResult.Reject(reply);
+        return new ZLinkActorCreateResponse(result.Accepted, result.Reply);
+    }
+}
+
 public interface IZLinkActorTransferAdapter<TActor>
     where TActor : IZLinkActor
 {
@@ -160,14 +187,9 @@ public interface IZLinkSpot
     }
 }
 
-public interface IZLinkSpotActorLifecycle<TActor>
+public interface IZLinkSpotActorMembershipLifecycle<TActor>
     where TActor : IZLinkActor
 {
-    ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
-        string actorId,
-        ZLinkMessage request,
-        CancellationToken cancellationToken);
-
     ValueTask OnJoinedActorAsync(
         TActor actor,
         CancellationToken cancellationToken);
@@ -184,7 +206,17 @@ public interface IZLinkSpotActorLifecycle<TActor>
     }
 }
 
-public interface IZLinkSpot<TActor> : IZLinkSpot, IZLinkSpotActorLifecycle<TActor>
+public interface IZLinkUserSpotActorLifecycle<TActor>
+    : IZLinkSpotActorMembershipLifecycle<TActor>
+    where TActor : IZLinkActor
+{
+    ValueTask<ZLinkSpotActorJoinResult> OnActorJoinAsync(
+        string actorId,
+        ZLinkMessage request,
+        CancellationToken cancellationToken);
+}
+
+public interface IZLinkSpot<TActor> : IZLinkSpot, IZLinkUserSpotActorLifecycle<TActor>
     where TActor : IZLinkActor;
 
 public interface IZLinkActorHandlerRegistry
@@ -277,7 +309,7 @@ public interface IZLinkSpotCommonContext
 {
     string MeshName { get; }
 
-    RoutingId SpotRid { get; }
+    string SpotId { get; }
 
     RoutingId NodeRid { get; }
 
@@ -328,12 +360,20 @@ public interface IZLinkEntrySpot
     }
 }
 
-public interface IZLinkEntrySpot<TActor> : IZLinkEntrySpot, IZLinkSpotActorLifecycle<TActor>
+public interface IZLinkEntrySpot<TActor>
+    : IZLinkEntrySpot, IZLinkSpotActorMembershipLifecycle<TActor>
     where TActor : IZLinkActor
 {
-    ValueTask OnCreateActorAsync(
+    ValueTask<ZLinkActorCreateResponse> OnCreateActorAsync(
         TActor actor,
         ZLinkMessage createRequest,
+        CancellationToken cancellationToken)
+    {
+        return ValueTask.FromResult(ZLinkActorCreateResponse.Accept());
+    }
+
+    ValueTask OnActorRelocatedAsync(
+        TActor actor,
         CancellationToken cancellationToken)
     {
         return ValueTask.CompletedTask;

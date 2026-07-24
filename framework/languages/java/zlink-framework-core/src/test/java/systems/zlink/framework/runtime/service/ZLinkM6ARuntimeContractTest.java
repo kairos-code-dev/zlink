@@ -53,6 +53,116 @@ final class ZLinkM6ARuntimeContractTest {
     }
 
     @Test
+    void commonWeightsUseExactRangeRatioRevisionAndCapacityEligibility() {
+        assertEquals(
+            10_000,
+            new ZLinkServiceNodeDescriptor.Channel(
+                "maximum",
+                10_000).weight());
+        org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () -> new ZLinkServiceNodeDescriptor.Channel("negative", -1));
+        org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () -> new ZLinkServiceNodeDescriptor.Channel(
+                "too-large",
+                10_001));
+
+        var topology = new ZLinkServiceTopologyRegistry(
+            descriptor("mesh", "local", 1, 1, List.of(), 100));
+        topology.admit(
+            descriptor(
+                "mesh",
+                "peer-a",
+                1,
+                1,
+                List.of(new ZLinkServiceNodeDescriptor.Channel(
+                    "orders",
+                    100)),
+                100),
+            "pipe-a");
+        topology.admit(
+            descriptor(
+                "mesh",
+                "peer-b",
+                1,
+                1,
+                List.of(new ZLinkServiceNodeDescriptor.Channel(
+                    "orders",
+                    300)),
+                300),
+            "pipe-b");
+        int selectedA = 0;
+        int selectedB = 0;
+        for (int index = 0; index < 400; index++) {
+            String rid = topology.selectChannel("orders")
+                .orElseThrow()
+                .descriptor()
+                .nodeRoutingId()
+                .toString();
+            if ("peer-a".equals(rid)) {
+                selectedA++;
+            } else if ("peer-b".equals(rid)) {
+                selectedB++;
+            }
+        }
+        assertEquals(100, selectedA);
+        assertEquals(300, selectedB);
+
+        assertEquals(
+            ZLinkServiceTopologyRegistry.AdmissionResult.STALE_DESCRIPTOR,
+            topology.admit(
+                descriptor(
+                    "mesh",
+                    "peer-b",
+                    1,
+                    1,
+                    List.of(new ZLinkServiceNodeDescriptor.Channel(
+                        "orders",
+                        0)),
+                    0),
+                "stale-pipe"));
+        assertEquals(
+            ZLinkServiceTopologyRegistry.AdmissionResult.ADMITTED,
+            topology.admit(
+                descriptor(
+                    "mesh",
+                    "peer-b",
+                    1,
+                    2,
+                    List.of(new ZLinkServiceNodeDescriptor.Channel(
+                        "orders",
+                        0)),
+                    0),
+                "current-pipe"));
+        for (int index = 0; index < 16; index++) {
+            assertEquals(
+                RoutingId.from("peer-a"),
+                topology.selectChannel("orders")
+                    .orElseThrow()
+                    .descriptor()
+                    .nodeRoutingId());
+        }
+
+        var capacityTopology = new ZLinkServiceTopologyRegistry(
+            descriptor("mesh", "local", 1, 1, List.of(), 100));
+        capacityTopology.admit(
+            descriptorWithCapacity(
+                "full", 10_000, 100, 10, 100, 10),
+            "full-pipe");
+        capacityTopology.admit(
+            descriptorWithCapacity(
+                "eligible", 1, 100, 0, 100, 0),
+            "eligible-pipe");
+        assertEquals(
+            RoutingId.from("eligible"),
+            capacityTopology.selectPlacement()
+                .orElseThrow()
+                .descriptor()
+                .nodeRoutingId());
+    }
+
+    @Test
     void livenessResendsOneProbeAndOnlyMatchingAckRenewsDeadline() {
         var liveness = new ZLinkServiceLivenessRegistry(
             Duration.ofSeconds(5), Duration.ofSeconds(15));
@@ -186,5 +296,32 @@ final class ZLinkM6ARuntimeContractTest {
             10,
             0,
             0);
+    }
+
+    private static ZLinkServiceNodeDescriptor descriptorWithCapacity(
+        String rid,
+        int placementWeight,
+        int activeLimit,
+        int activeUsed,
+        int pendingLimit,
+        int pendingUsed) {
+        return new ZLinkServiceNodeDescriptor(
+            "mesh",
+            RoutingId.from(rid),
+            1,
+            1,
+            "inproc://" + rid,
+            List.of(),
+            ZLinkServiceNodeDescriptor.State.SERVING,
+            "default",
+            4 * 1024 * 1024,
+            0,
+            List.of(ZLinkServiceNodeDescriptor.REQUIRED_CAPABILITY),
+            ZLinkServiceNodeDescriptor.ObjectRole.SERVER,
+            placementWeight,
+            activeLimit,
+            pendingLimit,
+            activeUsed,
+            pendingUsed);
     }
 }

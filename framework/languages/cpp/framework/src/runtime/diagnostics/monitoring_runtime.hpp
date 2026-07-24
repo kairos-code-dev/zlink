@@ -71,7 +71,7 @@ class monitoring_runtime_t
     void publish_stream (stream_event_payload_t event) const;
     void publish_actor (actor_event_payload_t event) const;
     void publish_timer_failure (std::string source_name,
-                                spot_rid_t spot_rid,
+                                spot_id_t spot_id,
                                 timer_failure_event_t failure) const;
     void publish_metric (metric_event_payload_t event) const;
 

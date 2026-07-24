@@ -263,12 +263,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         entrySpot.dispatchActorLifecycleReadable();
     }
 
-    public void dispatchEntrySpotActorLifecycleJoined(String actorId, RoutingId spotRid) {
+    public void dispatchEntrySpotActorLifecycleJoined(String actorId, String spotId) {
         FakeSpot entrySpot = spots.stream()
             .filter(spot -> "entrySpot".equals(spot.name()))
             .findFirst()
             .orElseThrow(() -> new IllegalStateException("no fake entry spot is available"));
-        entrySpot.enqueueActorLifecycleJoined(actorId, spotRid);
+        entrySpot.enqueueActorLifecycleJoined(actorId, spotId);
         entrySpot.dispatchActorLifecycleReadable();
     }
 
@@ -313,7 +313,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
     public void dispatchRouteMeshSpotRequest(
         RoutingId sourceRid,
-        RoutingId targetSpotRid,
+        String targetSpotId,
         List<Message> spotParts,
         long requestSeq) {
         if (routers.isEmpty()) {
@@ -936,12 +936,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         @Override public CompletionStage<ZLinkBackendActorJoinResult> joinActor(
             ZLinkBackendActorRef actor,
             RoutingId targetNodeRid,
-            RoutingId targetSpotRid,
+            String targetSpotId,
             List<Message> parts,
             Duration timeout) {
-            record("joinActor." + actor.actorId() + "." + targetNodeRid + "." + targetSpotRid);
+            record("joinActor." + actor.actorId() + "." + targetNodeRid + "." + targetSpotId);
             FakeSpot localSpot = owner.spots.stream()
-                .filter(spot -> spot.routingId().equals(targetSpotRid))
+                .filter(spot -> spot.routingId().equals(targetSpotId))
                 .findFirst()
                 .orElse(null);
             if (localSpot != null && routingId.equals(targetNodeRid)) {
@@ -956,12 +956,12 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     ZLinkBackendRequestResult.OK,
                     reply.resultCode(),
                     targetActor,
-                    targetSpotRid,
+                    targetSpotId,
                     1,
                     0,
                     reply.parts()));
             }
-            RoutingId joinedNodeRid = targetSpotRid.toString().contains("native-remote")
+            RoutingId joinedNodeRid = targetSpotId.toString().contains("native-remote")
                 ? RoutingId.from("native-remote-node")
                 : targetNodeRid;
             Message reply = owner.nextActorJoinReply == null
@@ -975,7 +975,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 ZLinkBackendRequestResult.OK,
                 0,
                 new ZLinkBackendActorRef(joinedNodeRid, actor.actorId(), actor.generation()),
-                targetSpotRid,
+                targetSpotId,
                 1,
                 0,
                 List.of(reply)));
@@ -987,13 +987,13 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                 0,
                 new ZLinkBackendActorRef(targetNodeRid, actor.actorId(), actor.generation()),
                 targetNodeRid,
-                targetNodeRid,
+                targetNodeRid.toString(),
                 1,
                 0,
                 List.of(Message.from("entry-joined".getBytes(StandardCharsets.UTF_8)))));
         }
-        @Override public CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, RoutingId currentSpotRid, Duration timeout) {
-            record("leaveActor." + actor.actorId() + "." + currentSpotRid);
+        @Override public CompletionStage<List<Message>> leaveActor(ZLinkBackendActorRef actor, String currentSpotId, Duration timeout) {
+            record("leaveActor." + actor.actorId() + "." + currentSpotId);
             return CompletableFuture.completedFuture(List.of());
         }
         @Override public CompletionStage<Void> destroyActor(ZLinkBackendActorRef actor, Duration timeout) {
@@ -1030,7 +1030,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public void registerTransferredActor(
             ZLinkBackendActorRef actor,
-            RoutingId spotRid,
+            String spotId,
             long membershipEpoch) {
             record("registerTransferredActor." + actor.actorId());
             owner.actors.put(actor.actorId(), actor);
@@ -1112,13 +1112,13 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             record("bridge.attachRouterChannel." + channelName);
         }
 
-        @Override public boolean send(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, SendFlags flags) {
-            record("bridge.send." + channelName + "." + targetNodeRid + "." + targetSpotRid + "." + firstPart(parts));
+        @Override public boolean send(String channelName, RoutingId targetNodeRid, String targetSpotId, List<Message> parts, SendFlags flags) {
+            record("bridge.send." + channelName + "." + targetNodeRid + "." + targetSpotId + "." + firstPart(parts));
             return true;
         }
 
-        @Override public boolean request(String channelName, RoutingId targetNodeRid, RoutingId targetSpotRid, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
-            record("bridge.request." + channelName + "." + targetNodeRid + "." + targetSpotRid + "." + firstPart(parts));
+        @Override public boolean request(String channelName, RoutingId targetNodeRid, String targetSpotId, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            record("bridge.request." + channelName + "." + targetNodeRid + "." + targetSpotId + "." + firstPart(parts));
             if (isRoutedActorJoinRequest(parts)) {
                 ZLinkActorSpotRoutePackets.TransferRequest request =
                     ZLinkActorSpotRoutePackets.decodeTransferRequest(parts.get(1));
@@ -1190,7 +1190,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
 
     private static final class FakeSpot extends FakeBackendObject implements ZLinkBackendSpot {
         private final FakeZLinkBackendAdapterFactory owner;
-        private RoutingId routingId;
+        private String routingId;
         private final Deque<ZLinkBackendActorJoinRequest> actorJoins = new ArrayDeque<>();
         private final Map<String, CompletableFuture<FakeActorJoinReply>> actorJoinReplies =
             new ConcurrentHashMap<>();
@@ -1206,7 +1206,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             FakeZLinkBackendAdapterFactory owner) {
             super(calls, name);
             this.owner = owner;
-            this.routingId = RoutingId.from(name);
+            this.routingId = name;
         }
 
         void enqueueActorJoin(String actorId, String packetName, String payload) {
@@ -1260,7 +1260,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     0)));
         }
 
-        void enqueueActorLifecycleJoined(String actorId, RoutingId spotRid) {
+        void enqueueActorLifecycleJoined(String actorId, String spotId) {
             ZLinkBackendActorRef actor =
                 new ZLinkBackendActorRef(RoutingId.from("spot-node"), actorId, 1);
             actorLifecycles.add(new ZLinkBackendActorLifecycleEvent(
@@ -1269,7 +1269,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                     actor,
                     actor,
                     Optional.empty(),
-                    Optional.of(spotRid),
+                    Optional.of(spotId),
                     0,
                     1)));
         }
@@ -1295,7 +1295,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             routes.add(new ZLinkBackendReceived(
                 ZLinkBackendRequestResult.OK,
                 Optional.of(RoutingId.from("source")),
-                Optional.of(RoutingId.from(name())),
+                Optional.of(name()),
                 requestSeq,
                 metadata,
                 List.of(Message.from(packetName), Message.from(payload)),
@@ -1393,9 +1393,9 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
                         false))));
         }
 
-        @Override public RoutingId routingId() { return routingId; }
-        @Override public void setRoutingId(RoutingId routingId) {
-            this.routingId = routingId;
+        @Override public String routingId() { return routingId; }
+        @Override public void setRoutingId(String spotId) {
+            this.routingId = spotId;
             record("setRoutingId");
         }
         @Override public void setSubscription(String topic) { record("setSubscription." + topic); }
@@ -1411,20 +1411,20 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             owner.captureApplicationMetadata(metadata);
             return publish(channelName, topic, parts, flags);
         }
-        @Override public boolean sendToSpot(RoutingId targetNodeRid, RoutingId spotRid, long spotGeneration, List<Message> parts, SendFlags flags) { record("sendToSpot." + targetNodeRid + "." + spotRid + "." + firstPart(parts)); return true; }
+        @Override public boolean sendToSpot(RoutingId targetNodeRid, String spotId, long spotGeneration, List<Message> parts, SendFlags flags) { record("sendToSpot." + targetNodeRid + "." + spotId + "." + firstPart(parts)); return true; }
         @Override public boolean sendToSpot(
             RoutingId targetNodeRid,
-            RoutingId spotRid,
+            String spotId,
             long spotGeneration,
             byte[] metadata,
             List<Message> parts,
             SendFlags flags) {
             owner.captureApplicationMetadata(metadata);
             return sendToSpot(
-                targetNodeRid, spotRid, spotGeneration, parts, flags);
+                targetNodeRid, spotId, spotGeneration, parts, flags);
         }
-        @Override public boolean requestToSpot(RoutingId targetNodeRid, RoutingId spotRid, long spotGeneration, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
-            record("requestToSpot." + targetNodeRid + "." + spotRid + "." + firstPart(parts));
+        @Override public boolean requestToSpot(RoutingId targetNodeRid, String spotId, long spotGeneration, List<Message> parts, ZLinkBackendRequestCallback callback, SendFlags flags, Duration timeout) {
+            record("requestToSpot." + targetNodeRid + "." + spotId + "." + firstPart(parts));
             List<Message> replyParts = owner.nextSpotRequestReplyParts == null
                 ? List.of(jsonStringMessage("reply"))
                 : owner.nextSpotRequestReplyParts.stream().map(Message::from).toList();
@@ -1437,7 +1437,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
         }
         @Override public boolean requestToSpot(
             RoutingId targetNodeRid,
-            RoutingId spotRid,
+            String spotId,
             long spotGeneration,
             byte[] metadata,
             List<Message> parts,
@@ -1447,7 +1447,7 @@ public final class FakeZLinkBackendAdapterFactory implements ZLinkBackendAdapter
             owner.captureApplicationMetadata(metadata);
             return requestToSpot(
                 targetNodeRid,
-                spotRid,
+                spotId,
                 spotGeneration,
                 parts,
                 callback,

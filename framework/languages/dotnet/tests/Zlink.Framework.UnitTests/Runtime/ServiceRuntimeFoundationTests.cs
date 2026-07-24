@@ -403,7 +403,7 @@ public sealed class ServiceRuntimeFoundationTests
         var location = claim.Snapshot.Location;
         var fence = new InstanceSpotFence(
             location.MeshName,
-            location.SpotRid,
+            location.SpotId,
             location.OwnerId,
             location.OwnerNodeGeneration,
             location.LocationGeneration,

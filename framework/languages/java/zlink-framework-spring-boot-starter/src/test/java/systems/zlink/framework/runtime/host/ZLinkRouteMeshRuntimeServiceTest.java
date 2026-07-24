@@ -150,16 +150,21 @@ final class ZLinkRouteMeshRuntimeServiceTest {
     }
 
     @Test
-    void runtimeOptionsApplyLiveMaxMessageSizeAndChannelWeight() {
+    void runtimeOptionsApplyLiveMessageSizeChannelAndPlacementWeights() {
         FakeNode node = new FakeNode();
         var options = new ZLinkRouteMeshRuntimeOptionsService(
             () -> Map.of("mesh", node));
 
         options.meshNode("mesh").maxMessageSize(4096);
-        options.channel("mesh", "channel").weight(0);
+        options.channel("channel").weight(10_000);
+        options.mesh("mesh").setPlacementWeight(0);
 
         assertEquals(4096, options.meshNode("mesh").maxMessageSize());
-        assertEquals(0, options.channel("mesh", "channel").weight());
+        assertEquals(10_000, options.channel("channel").weight());
+        assertEquals(0, options.mesh("mesh").placementWeight());
+        assertThrows(
+            ZLinkConfigurationException.class,
+            () -> options.mesh("mesh").setPlacementWeight(10_001));
     }
 
     private static ZLinkRouteMeshRuntimeService runtime(FakeNode node) {
@@ -196,6 +201,7 @@ final class ZLinkRouteMeshRuntimeServiceTest {
         private final RoutingId local = RoutingId.from("local");
         private volatile long maxMessageSize;
         private volatile int channelWeight = 7;
+        private volatile int placementWeight = 100;
         private final MeshNodeStatus status = new MeshNodeStatus(
             MeshNodeState.READY,
             local,
@@ -231,6 +237,16 @@ final class ZLinkRouteMeshRuntimeServiceTest {
         @Override
         public void setChannelWeight(String channelName, int weight) {
             channelWeight = weight;
+        }
+
+        @Override
+        public int placementWeight() {
+            return placementWeight;
+        }
+
+        @Override
+        public void setPlacementWeight(int weight) {
+            placementWeight = weight;
         }
 
         @Override

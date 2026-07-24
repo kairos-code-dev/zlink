@@ -41,11 +41,13 @@ internal sealed class JoinSessionHandler(
         JoinSessionReq request,
         CancellationToken cancellationToken)
     {
-        var actor = await actors.GetOrCreateAsync(
-            request.PlayerId,
-            SampleNames.SessionActorType,
-            request,
-            cancellationToken);
+        var actor = (await actors.GetOrCreate(request.PlayerId, SampleNames.SessionActorType)
+            .Request(request).Async(cancellationToken)) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Session Actor creation was rejected.")
+        };
         _ = await context.Actors.BindOrGetAsync(actor, cancellationToken);
         await context.Client.Reply(await joinSessions.ExecuteAsync(request.PlayerId, cancellationToken))
             .SubmitAsync(cancellationToken);

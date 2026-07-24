@@ -4,7 +4,7 @@
 
 ```java
 public record SpotRef(
-    RoutingId spotRid,
+    String spotId,
     long objectGeneration,
     String meshName,
     RoutingId nodeRid) {}
@@ -38,7 +38,7 @@ public interface ZLinkInstanceSpotHandlerRegistry {
 
 public interface ZLinkInstanceSpotContext {
     String meshName();
-    RoutingId spotRid();
+    String spotId();
     RoutingId nodeRid();
     ZLinkInstanceSpotHandlerRegistry handlers();
     ZLinkSpotOutbound outbound();
@@ -60,8 +60,14 @@ public interface ZLinkSpotRelocationAdapter<TSpot> {
 }
 
 public interface ZLinkEntrySpot<TActor extends ZLinkActor>
-    extends ZLinkSpotActorLifecycle<TActor> {
+    extends ZLinkSpotActorMembershipLifecycle<TActor> {
     ZLinkEntrySpotContext context();
+    default CompletionStage<ZLinkActorCreateResponse> onCreateActor(
+        TActor actor,
+        ZLinkMessage createRequest) {
+        return CompletableFuture.completedFuture(
+            ZLinkActorCreateResponse.accept());
+    }
     default CompletionStage<Void> onClosing(
         ZLinkSpotClosingContext context) {
         return CompletableFuture.completedFuture(null);
@@ -75,8 +81,6 @@ public interface ZLinkSpotSendCall extends ZLinkSendCall {
     ZLinkSpotSendCall instanceSpot();
     ZLinkSpotSendCall instanceSpot(String stableType);
     ZLinkSpotSendCall inMesh(String meshName);
-    ZLinkSpotSendCall placementProfile(String placementProfile);
-    ZLinkSpotSendCall affinityKey(String affinityKey);
     @Override ZLinkSpotSendCall metadata(String key, String value);
     @Override ZLinkSpotSendCall metadata(Map<String, String> metadata);
 }
@@ -85,8 +89,6 @@ public interface ZLinkSpotRequestCall extends ZLinkRequestCall {
     ZLinkSpotRequestCall instanceSpot();
     ZLinkSpotRequestCall instanceSpot(String stableType);
     ZLinkSpotRequestCall inMesh(String meshName);
-    ZLinkSpotRequestCall placementProfile(String placementProfile);
-    ZLinkSpotRequestCall affinityKey(String affinityKey);
     @Override ZLinkSpotRequestCall metadata(String key, String value);
     @Override ZLinkSpotRequestCall metadata(Map<String, String> metadata);
     @Override ZLinkSpotRequestCall timeout(Duration timeout);
@@ -94,8 +96,8 @@ public interface ZLinkSpotRequestCall extends ZLinkRequestCall {
 
 public interface ZLinkSpotManager {
     ZLinkSpotCreateCall create(String spotType);
-    ZLinkSpotGetOrCreateCall getOrCreate(RoutingId spotRid, String spotType);
-    CompletionStage<Optional<SpotRef>> find(RoutingId spotRid);
+    ZLinkSpotGetOrCreateCall getOrCreate(String spotId, String spotType);
+    CompletionStage<Optional<SpotRef>> find(String spotId);
     CompletionStage<Boolean> close(SpotRef spot);
 }
 
@@ -103,10 +105,17 @@ public interface ZLinkSpotManager {
 
 Factory registration의 정확한 builder member는 [구성과 host](configuration-host.ko.md)가 소유한다.
 Actor·User Spot·Instance Spot factory는 explicit relocation policy를 받으며 생략 overload는 제공하지 않는다.
-Spot manager는 User Spot 전용이다. `create(spotType)`과 `getOrCreate(spotRid, spotType)`만 User Spot의
+Spot manager는 User Spot 전용이다. `create(spotType)`과 `getOrCreate(spotId, spotType)`만 User Spot의
 creation intent를 만들며 Instance Spot create/get-or-create member와 kind marker를 제공하지 않는다.
+Caller가 `<prefix>-entry-<uuid-v4>` reserved pattern의 RID를 User Spot get-or-create 또는 Instance Spot
+address로 제시하면 Location Store를 읽거나 mutation하기 전에 `InvalidConfiguration`으로 거부한다.
+`<uuid-v4>`는 RFC 4122 UUID v4의 lowercase canonical 36-character `8-4-4-4-12` 표현이다. Entry mapping은
+descriptor의 exact RID를 사용하며 문자열 parsing으로 소유 MeshNode를 찾지 않는다.
+`create(spotType)`의 RID는 UUID v4 random identity다. 첫 active authority 충돌은 기존 record를 변경하지
+않고 `RoutingIdConflict`로 즉시 끝나며 UUID 생성과 reservation은 각각 1건, factory 실행은 0건이다.
+두 번째 UUID나 reservation을 만들지 않는다.
 
-일반 Spot send/request의 address는 global SpotRid 하나다. 두 operation은 각각 `ZLinkSpotSendCall`과
+일반 Spot send/request의 address는 global SpotId 하나다. 두 operation은 각각 `ZLinkSpotSendCall`과
 `ZLinkSpotRequestCall`을 반환한다. `instanceSpot()` 또는 `instanceSpot(stableType)`을 호출한 operation만
 Missing Instance Spot의 cold activation을 시작할 수 있다. Marker가 없는 operation은 Missing authority를
 `TARGET_NOT_FOUND` 또는 request target-not-found 오류로 끝내며 creation intent를 만들지 않는다.
@@ -118,7 +127,7 @@ type을 사용한다. Missing authority라면 placement가 선택한 Mesh에서 
 사용한다. Existing authority를 resolve하는 데 type은 필요하지 않지만 caller가 명시한 type이 stored type과
 다르거나 authority의 kind가 User이면 type-mismatch 오류다.
 
-`inMesh`, `placementProfile`과 `affinityKey`는 Missing Instance cold activation의 placement intent다. Existing
+`inMesh`는 Missing Instance cold activation의 Mesh 선택 intent다. Existing
 authority를 다른 owner로 재배치하지 않으며 일반 User Spot messaging에도 적용하지 않는다. 각 option과
 Instance marker는 한 번만 설정할 수 있고 terminal `submit`도 한 번만 호출할 수 있다.
 
@@ -150,30 +159,54 @@ callback이 exception으로 끝나도 commit을 rollback하거나 source owner�
 복원하지 않고 target을 sealed 상태로 유지한 채 같은 relocation fence에서 retry한다. 따라서 두 callback은
 at-least-once와 retry-safe 계약을 따른다.
 
-`onActorRelocated`는 maintenance relocation 전용 callback이다. 일반 same-node·remote join은 기존 `onActorJoin`과
-`onJoinedActor`를 사용하고 `onActorRelocated`를 호출하지 않는다. Maintenance relocation에서는 target의 일반 join
-callback을 호출하지 않는다. Whole User Spot aggregate relocation에서는 member Actor에 대한
-Entry/User Spot membership callback을 호출하지 않는다.
+`ZLinkSpotActorMembershipLifecycle<TActor>`는 User Spot과 Entry Spot이 공유하는 membership notification을
+정의한다. `ZLinkUserSpotActorLifecycle<TActor>`만 application join admission인 `onActorJoin(...)`을 추가한다.
+따라서 Entry Spot에는 `onActorJoin(...)`이 없다. 새 Actor의 첫 생성은 `onCreateActor(...)`의 승인과 선택적
+reply만 사용하며 join/joined callback을 호출하지 않는다. User Spot에서 Entry Spot으로 돌아갈 때는 target의
+`onJoinedActor(...)`와 source의 `onLeaveActor(...)`를 호출한다.
+
+`onActorRelocated`는 maintenance relocation 전용 callback이다. Maintenance relocation에서는 target의
+`onActorRelocated(...)`와 source의 `onLeaveActor(...)`만 호출한다. Whole User Spot aggregate relocation에서는
+member Actor에 대한 Entry/User Spot membership callback을 호출하지 않는다.
+
+User Spot의 기본 execution mode는 `SPOT_WIDE`다. Member Actor는 Actor FIFO claim을 유지한 뒤 User Spot
+gate를 얻으며 Spot direct handler, member Actor handler, timer와 lifecycle callback은 전체 직렬화된다.
+`PER_ACTOR`는 Actor별 FIFO lane, Spot direct·lifecycle lane과 timer별 FIFO lane을 사용한다. 서로 다른 Actor와
+서로 다른 timer는 동시에 실행할 수 있다. Close·relocation·snapshot은 새 admission과 participant 변경을
+seal하고 모든 lane이 안전한 turn 경계에 도달한 all-lane barrier 뒤에만 진행한다. Barrier를 완성하지
+못하면 같은 generation의 seal 전체를 abort하고 application admission을 정확히 복원한다.
+
+`yield(...)`는 Channel·Spot·Actor request와 I/O·CPU worker call에만 제공한다. `SPOT_WIDE` User Spot과
+Instance Spot application handler에서만 operation을 제출한다. Entry Spot·Entry Actor·`PER_ACTOR`·Node·Channel·
+owner context 밖에서는 admission, queue mutation과 gate 반환 전에 `InvalidConfiguration`으로 완료한다.
+Member Actor는 Yield 중에도 Actor claim을 유지하며 continuation이 같은 gate를 다시 얻어 현재 job을 끝낸 뒤
+다음 job을 시작한다. Java의 request·worker `yield(...)`는 runtime validation을 구현하는 abstract member이며
+submit을 먼저 호출하는 default method가 아니다.
+
+같은 Actor 자신에게 보내는 awaited request와 현재 User Spot gate가 필요한 target을 기다리는 `SPOT_WIDE`
+`submit(...)`은 submission 전에 `InvalidConfiguration`으로 완료한다. Handler를 inline 또는 reentrant하게
+호출하지 않는다. One-way는 target queue의 FIFO admission을 유지하고 handler를 inline 호출하지 않는다.
 
 User Spot은 manager operation이 generic placement reservation을 시작한다. Instance Spot은 source-side
 reservation을 사용하지 않는다. Source는 Ready authority가 있으면 current owner에게 일반 message를 보내고,
-Missing authority와 Instance intent가 있으면 eligible target을 선택해 SpotRid, stable type, creation intent와
+Missing authority와 Instance intent가 있으면 eligible target을 선택해 SpotId, stable type, creation intent와
 first message를 포함한 activation envelope를 보낸다. 이 envelope는 Ready 전에도 target transport로 전달할 수
 있는 Framework infrastructure message이며 application handler로 dispatch하지 않는다.
 
 Command 39 route kind `1`은 Ready authority의 exact generation fence를 사용한다. Missing cold activation은
-route kind `2`로 target Mesh·node RID·lifecycle, Spot RID, stable type, descriptor version, placement
-profile·affinity key와 deadline을 전달하며 authority fence를 포함하지 않는다. Kind `2` route와
-`instance-activation-recovery-v1`의 placement profile·affinity key·deadline, operation identity와 metadata
+route kind `2`로 target Mesh·node RID·lifecycle, Spot ID, stable type, descriptor version, placement
+descriptor version과 deadline을 전달하며 authority fence를 포함하지 않는다. Kind `2` route와
+`instance-activation-recovery-v1`의 deadline, operation identity와 metadata
 presence·frame은 byte 단위로 같아야 한다. Cold activation send와 request는 모두 nonzero operation identity를
 사용한다.
 
 Target runtime은 metadata presence·frame을 포함한 complete envelope를 Relocation Store에 immutable recovery root로 먼저 저장하고 local exact
-instance를 확인한다. Instance가 없을 때만 자신을 owner로 `CREATING` authority와 pending capacity를
-Reserve하며 Pending snapshot은 provider가 발급한 reservation fence와 recovery root receipt를 반환한다. CAS
+instance를 확인한다. Instance가 없을 때만 자신을 owner로 `CREATING` authority와 Spot 전체·해당 Instance
+Spot stable type reserved slot을 하나의 typed bundle로 Reserve하며 Reserved snapshot은 provider가 발급한
+reservation fence와 recovery root receipt를 반환한다. CAS
 winner가 factory, initialize와 durable activation inbox first record 확정을 수행한다. CAS loser는 factory를
 시작하지 않고 current authority를 읽어 owner에게 reroute하거나 진행 중인 attempt에 합류한다. Commit은 handler
-barrier를 유지한 채 recovery root·cursor와 Ready, active capacity를 게시한다. Runtime은 first record를 local
+barrier를 유지한 채 recovery root·cursor와 Ready, reserved-to-active capacity 전환을 게시한다. Runtime은 first record를 local
 queue head로 복원한 뒤 barrier를 열며 source는 Ready 뒤 같은 message를 다시 전송하지 않는다. Authority와
 일치하지 않는 local-only instance는 message를 처리하지 못하도록 fence한다. Target activation이 실패하면 exact
 reservation을 abort한다.
@@ -208,8 +241,10 @@ failed barrier를 유지하고 exact authority fence로 delete한 뒤 read해 re
 호출은 같은 typed failure를 반환하며 hidden retry는 0이다. `MISSING` 확인 뒤 다음 caller만 새
 `COLD_ACTIVATING` claim을 시작한다. 이 recovery 상태를 조작하는 public API는 없다.
 
-SpotRid는 global logical ID다. `SpotRef.objectGeneration()`은 `1..Long.MAX_VALUE`이고 MeshName·NodeRid는
-조회 시점의 location snapshot이다. Typed JSON은 required property `spotRid`, `objectGeneration`, `meshName`,
+SpotId는 UTF-8 encoded 크기 1..255 bytes의 `String`이며 global logical ID다. 비교는 case-sensitive
+exact match이고 Unicode normalization과 case folding을 적용하지 않는다.
+`SpotRef.objectGeneration()`은 `1..Long.MAX_VALUE`이고 MeshName·NodeRid는
+조회 시점의 location snapshot이다. Typed JSON은 required property `spotId`, `objectGeneration`, `meshName`,
 `nodeRid`를 사용하며 generation은 leading-zero 없는 decimal string으로 encode한다. Public handle, resolver와
 unbounded list는 제공하지 않는다. User Spot Create/GetOrCreate call과 Instance cold activation call은 option
 중복을 `INVALID_CONFIGURATION`, submit 중복을 `ALREADY_SUBMITTED`로 끝낸다.
@@ -227,7 +262,7 @@ public final class systems.zlink.framework.spots.SpotRef extends java.lang.Recor
   public final java.lang.String toString();
   public final int hashCode();
   public final boolean equals(java.lang.Object);
-  public systems.zlink.contracts.core.RoutingId spotRid();
+  public java.lang.String spotId();
   public long objectGeneration();
   public java.lang.String meshName();
   public systems.zlink.contracts.core.RoutingId nodeRid();
@@ -256,7 +291,7 @@ public interface systems.zlink.framework.spots.ZLinkInstanceSpot {
 }
 public interface systems.zlink.framework.spots.ZLinkInstanceSpotContext {
   public abstract java.lang.String meshName();
-  public abstract systems.zlink.contracts.core.RoutingId spotRid();
+  public abstract java.lang.String spotId();
   public abstract systems.zlink.contracts.core.RoutingId nodeRid();
   public abstract systems.zlink.framework.spots.ZLinkInstanceSpotHandlerRegistry handlers();
   public abstract systems.zlink.framework.spots.ZLinkSpotOutbound outbound();
@@ -272,12 +307,12 @@ public interface systems.zlink.framework.spots.ZLinkSpotRelocationAdapter<TSpot>
   public abstract java.util.concurrent.CompletionStage<byte[]> capture(TSpot, systems.zlink.framework.actors.ZLinkRelocationCancellation);
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> restore(TSpot, byte[], systems.zlink.framework.actors.ZLinkRelocationCancellation);
 }
-public interface systems.zlink.framework.spots.ZLinkEntrySpot<TActor extends systems.zlink.framework.actors.ZLinkActor> extends systems.zlink.framework.spots.ZLinkSpotActorLifecycle<TActor> {
+public interface systems.zlink.framework.spots.ZLinkEntrySpot<TActor extends systems.zlink.framework.actors.ZLinkActor> extends systems.zlink.framework.spots.ZLinkSpotActorMembershipLifecycle<TActor> {
   public abstract systems.zlink.framework.spots.ZLinkEntrySpotContext context();
   public default void configure();
   public default java.util.concurrent.CompletionStage<java.lang.Void> onInitialize();
   public default java.util.concurrent.CompletionStage<java.lang.Void> onClosing(systems.zlink.framework.spots.ZLinkSpotClosingContext);
-  public default java.util.concurrent.CompletionStage<java.lang.Void> onCreateActor(TActor, systems.zlink.framework.messaging.ZLinkMessage);
+  public default java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkActorCreateResponse> onCreateActor(TActor, systems.zlink.framework.messaging.ZLinkMessage);
   public default java.util.concurrent.CompletionStage<java.lang.Void> onActorRelocated(TActor);
 }
 public interface systems.zlink.framework.spots.ZLinkEntrySpotActorRequestHandler<TEntrySpot extends systems.zlink.framework.spots.ZLinkEntrySpot<?>, TActor extends systems.zlink.framework.actors.ZLinkActor, TRequest, TReply> {
@@ -287,7 +322,7 @@ public interface systems.zlink.framework.spots.ZLinkEntrySpotActorSendHandler<TE
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TEntrySpot, TActor, systems.zlink.framework.spots.ZLinkSpotActorSendContext, TMessage);
 }
 public interface systems.zlink.framework.spots.ZLinkEntrySpotContext {
-  public abstract systems.zlink.contracts.core.RoutingId spotRid();
+  public abstract java.lang.String spotId();
   public abstract systems.zlink.contracts.core.RoutingId nodeRid();
   public default systems.zlink.framework.spots.ZLinkSpotHandlerRegistry handlers();
   public abstract systems.zlink.framework.spots.ZLinkSpotOutbound outbound();
@@ -299,7 +334,7 @@ public interface systems.zlink.framework.spots.ZLinkEntrySpotContext {
 public interface systems.zlink.framework.spots.ZLinkIoWorkerTask<T> {
   public abstract java.util.concurrent.CompletionStage<T> run(systems.zlink.framework.spots.ZLinkWorkerCancellation) throws java.lang.Exception;
 }
-public interface systems.zlink.framework.spots.ZLinkSpot<TActor extends systems.zlink.framework.actors.ZLinkActor> extends systems.zlink.framework.spots.ZLinkSpotActorLifecycle<TActor> {
+public interface systems.zlink.framework.spots.ZLinkSpot<TActor extends systems.zlink.framework.actors.ZLinkActor> extends systems.zlink.framework.spots.ZLinkUserSpotActorLifecycle<TActor> {
   public abstract systems.zlink.framework.spots.ZLinkSpotContext context();
   public default void configure();
   public default java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResponse> onCreate(systems.zlink.framework.messaging.ZLinkMessage);
@@ -320,11 +355,24 @@ public final class systems.zlink.framework.spots.ZLinkSpotActorJoinResponse exte
   public boolean accepted();
   public systems.zlink.framework.messaging.ZLinkMessage reply();
 }
-public interface systems.zlink.framework.spots.ZLinkSpotActorLifecycle<TActor extends systems.zlink.framework.actors.ZLinkActor> {
-  public default java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
+public interface systems.zlink.framework.spots.ZLinkSpotActorMembershipLifecycle<TActor extends systems.zlink.framework.actors.ZLinkActor> {
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> onJoinedActor(TActor);
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> onLeaveActor(TActor);
   public default java.util.concurrent.CompletionStage<java.lang.Void> onDisconnectActor(TActor);
+}
+public interface systems.zlink.framework.spots.ZLinkUserSpotActorLifecycle<TActor extends systems.zlink.framework.actors.ZLinkActor> extends systems.zlink.framework.spots.ZLinkSpotActorMembershipLifecycle<TActor> {
+  public default java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotActorJoinResponse> onActorJoin(java.lang.String, systems.zlink.framework.messaging.ZLinkMessage);
+}
+public final class systems.zlink.framework.spots.ZLinkActorCreateResponse extends java.lang.Record {
+  public systems.zlink.framework.spots.ZLinkActorCreateResponse(boolean, systems.zlink.framework.messaging.ZLinkMessage);
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse accept();
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse accept(systems.zlink.framework.messaging.ZLinkMessage);
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse accept(java.lang.Object);
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse reject();
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse reject(systems.zlink.framework.messaging.ZLinkMessage);
+  public static systems.zlink.framework.spots.ZLinkActorCreateResponse reject(java.lang.Object);
+  public boolean accepted();
+  public systems.zlink.framework.messaging.ZLinkMessage reply();
 }
 public interface systems.zlink.framework.spots.ZLinkSpotActorRequestContext extends systems.zlink.framework.ZLinkHandlerContext {
 }
@@ -337,7 +385,7 @@ public interface systems.zlink.framework.spots.ZLinkSpotActorSendHandler<TSpot e
   public abstract java.util.concurrent.CompletionStage<java.lang.Void> handle(TSpot, TActor, systems.zlink.framework.spots.ZLinkSpotActorSendContext, TMessage);
 }
 public interface systems.zlink.framework.spots.ZLinkSpotContext {
-  public abstract systems.zlink.contracts.core.RoutingId spotRid();
+  public abstract java.lang.String spotId();
   public abstract systems.zlink.contracts.core.RoutingId nodeRid();
   public default systems.zlink.framework.spots.ZLinkSpotHandlerRegistry handlers();
   public abstract systems.zlink.framework.spots.ZLinkSpotOutbound outbound();
@@ -387,8 +435,6 @@ public interface systems.zlink.framework.spots.ZLinkSpotCreateCall {
   public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall inMesh(java.lang.String);
   public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall request(java.lang.Object);
   public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
-  public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall placementProfile(java.lang.String);
-  public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall affinityKey(java.lang.String);
   public abstract systems.zlink.framework.spots.ZLinkSpotCreateCall timeout(java.time.Duration);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> submit();
 }
@@ -396,8 +442,6 @@ public interface systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall {
   public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall inMesh(java.lang.String);
   public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall request(java.lang.Object);
   public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall request(systems.zlink.framework.messaging.ZLinkMessage);
-  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall placementProfile(java.lang.String);
-  public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall affinityKey(java.lang.String);
   public abstract systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall timeout(java.time.Duration);
   public abstract java.util.concurrent.CompletionStage<systems.zlink.framework.spots.ZLinkSpotCreateResult> submit();
 }
@@ -405,8 +449,6 @@ public interface systems.zlink.framework.spots.ZLinkSpotRequestCall extends syst
   public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall instanceSpot();
   public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall instanceSpot(java.lang.String);
   public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall inMesh(java.lang.String);
-  public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall placementProfile(java.lang.String);
-  public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall affinityKey(java.lang.String);
   public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall metadata(java.lang.String, java.lang.String);
   public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall metadata(java.util.Map<java.lang.String, java.lang.String>);
   public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall timeout(java.time.Duration);
@@ -415,14 +457,12 @@ public interface systems.zlink.framework.spots.ZLinkSpotSendCall extends systems
   public abstract systems.zlink.framework.spots.ZLinkSpotSendCall instanceSpot();
   public abstract systems.zlink.framework.spots.ZLinkSpotSendCall instanceSpot(java.lang.String);
   public abstract systems.zlink.framework.spots.ZLinkSpotSendCall inMesh(java.lang.String);
-  public abstract systems.zlink.framework.spots.ZLinkSpotSendCall placementProfile(java.lang.String);
-  public abstract systems.zlink.framework.spots.ZLinkSpotSendCall affinityKey(java.lang.String);
   public abstract systems.zlink.framework.spots.ZLinkSpotSendCall metadata(java.lang.String, java.lang.String);
   public abstract systems.zlink.framework.spots.ZLinkSpotSendCall metadata(java.util.Map<java.lang.String, java.lang.String>);
 }
 public interface systems.zlink.framework.spots.ZLinkSpotOutbound {
-  public abstract systems.zlink.framework.spots.ZLinkSpotSendCall sendToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
-  public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(systems.zlink.contracts.core.RoutingId, java.lang.Object);
+  public abstract systems.zlink.framework.spots.ZLinkSpotSendCall sendToSpot(java.lang.String, java.lang.Object);
+  public abstract systems.zlink.framework.spots.ZLinkSpotRequestCall requestToSpot(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkPublishCall publish(java.lang.String, java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkSendCall sendToChannel(java.lang.String, java.lang.Object);
   public abstract systems.zlink.framework.channels.ZLinkRequestCall requestToChannel(java.lang.String, java.lang.Object);
@@ -486,7 +526,7 @@ public final class systems.zlink.framework.spots.ZLinkTimerTick extends java.lan
 public interface systems.zlink.framework.spots.ZLinkWorkerCall<T> {
   public abstract systems.zlink.framework.spots.ZLinkWorkerCall<T> timeout(java.time.Duration);
   public abstract java.util.concurrent.CompletionStage<T> submit();
-  public default java.util.concurrent.CompletionStage<T> yield();
+  public abstract java.util.concurrent.CompletionStage<T> yield();
 }
 public interface systems.zlink.framework.spots.ZLinkWorkerCancellation {
   public abstract boolean isCancellationRequested();

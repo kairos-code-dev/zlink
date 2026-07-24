@@ -203,6 +203,7 @@ public final class systems.zlink.framework.errors.ZLinkFrameworkErrorKind extend
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_GENERATION_STALE;
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_MOVING;
   public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind RELOCATION_DATA_LOST;
+  public static final systems.zlink.framework.errors.ZLinkFrameworkErrorKind SPOT_ID_CONFLICT;
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind[] values();
   public static systems.zlink.framework.errors.ZLinkFrameworkErrorKind valueOf(java.lang.String);
   public int value();
@@ -224,7 +225,9 @@ public class systems.zlink.framework.errors.ZLinkFrameworkException extends java
 `OBJECT_CLIENT_NOT_CONFIGURED=22`, `MESH_SELECTION_REQUIRED=23`, `MESH_NOT_FOUND=24`,
 `INVALID_CONFIGURATION=25`, `ALREADY_SUBMITTED=26`, `ACTOR_GENERATION_STALE=27`, `ACTOR_MOVING=28`,
 `DEADLINE_EXCEEDED=29`, `PLACEMENT_CAPACITY_EXHAUSTED=30`, `ROUTING_ID_CONFLICT=31`,
-`SPOT_GENERATION_STALE=32`, `SPOT_MOVING=33`, `RELOCATION_DATA_LOST=34`를 고정한다. `fromValue(int)`도 같은
+`SPOT_GENERATION_STALE=32`, `SPOT_MOVING=33`, `RELOCATION_DATA_LOST=34`,
+`SPOT_ID_CONFLICT=35`를 고정한다. `ROUTING_ID_CONFLICT`는 MeshNode RID 충돌에만 사용하고
+Spot·Entry Spot identity 충돌은 `SPOT_ID_CONFLICT`로 반환한다. `fromValue(int)`도 같은
 mapping을 사용한다. `RELOCATION_DATA_LOST`는 Location authority가 공개한 Relocation payload가 영구적으로
 없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 재시도하거나 이전 owner로 rollback하지 않는다.
 
@@ -237,6 +240,7 @@ public final class systems.zlink.framework.ZLinkEncodedPayload {
 }
 public final class systems.zlink.framework.errors.ZLinkConfigurationException extends systems.zlink.framework.errors.ZLinkFrameworkException {
   public systems.zlink.framework.errors.ZLinkConfigurationException(java.lang.String);
+  public systems.zlink.framework.errors.ZLinkConfigurationException(systems.zlink.framework.errors.ZLinkFrameworkErrorKind, java.lang.String);
   public systems.zlink.framework.errors.ZLinkConfigurationException(java.lang.String, java.lang.Throwable);
 }
 public final class systems.zlink.framework.errors.ZLinkOperationCanceledException extends systems.zlink.framework.errors.ZLinkFrameworkException {

@@ -33,7 +33,7 @@ export interface ZLinkSpotSubscriptionHandler<TSpot, TEvent> {
 }
 
 export interface ZLinkSpotTimerDiagnostic {
-    readonly spotRid: RoutingId;
+    readonly spotId: SpotId;
     readonly isEntrySpot: boolean;
     readonly timerName: string;
     readonly handlerType: string;
@@ -171,4 +171,6 @@ export interface ZLinkWorkerOptions {
 
 Request와 join의 result-bearing `submit()`은 공통 `Async` 의미이며 terminal reply 또는 결과까지 현재
 owner turn을 유지한다. Worker call은 결과를 기다리지 않는 `submit()`, 결과까지 현재 turn을 유지하는
-`async()`, 현재 turn을 반납하는 `yield()`를 별도로 제공한다.
+`async()`, 허용된 Spot execution gate를 반납하는 `yield()`를 별도로 제공한다. Worker `yield()`는
+`SpotWide` User Spot 또는 Instance Spot application handler에서만 operation을 제출한다. 그 밖의 context는
+worker queue 변경과 gate 반환 전에 `InvalidConfiguration`으로 완료한다.

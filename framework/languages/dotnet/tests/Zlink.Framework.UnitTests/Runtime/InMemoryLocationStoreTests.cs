@@ -330,16 +330,16 @@ public sealed class InMemoryLocationStoreTests
         new ActorRef(RoutingId.From("node-1"), actorId, 1),
         OwnerNodeRid: RoutingId.From("node-1"),
         OwnerNodeGeneration: 0,
-        SpotRid: default,
+        SpotId: default,
         SpotGeneration: 0,
         SpotKind: ZLinkSpotKind.Entry,
         MembershipEpoch: 0,
         OwnerId: ownerId,
         UpdatedAt: default);
 
-    internal static ZLinkSpotLocation Spot(string ownerId, string spotRid) => new(
+    internal static ZLinkSpotLocation Spot(string ownerId, string spotId) => new(
         "play",
-        RoutingId.From(spotRid),
+        RoutingId.From(spotId),
         SpotGeneration: 0,
         OwnerNodeRid: RoutingId.From("node-1"),
         OwnerNodeGeneration: 0,

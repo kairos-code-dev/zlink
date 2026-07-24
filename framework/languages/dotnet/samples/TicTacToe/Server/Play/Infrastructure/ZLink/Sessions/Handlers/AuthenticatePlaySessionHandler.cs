@@ -55,11 +55,13 @@ internal sealed class AuthenticatePlaySessionHandler(
             "play stream: creating actor before dispatch. sessionId={SessionId}, actor={ActorId}",
             context.SessionId,
             player.ActorId);
-        var playerActor = await actors.GetOrCreateAsync(
-            player.ActorId,
-            SampleTypes.PlayerActor,
-            player,
-            cancellationToken);
+        var playerActor = (await actors.GetOrCreate(player.ActorId, SampleTypes.PlayerActor)
+            .Request(player).Async(cancellationToken)) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Player Actor creation was rejected.")
+        };
         logger.LogInformation(
             "play stream: binding actor to session. sessionId={SessionId}, actor={ActorId}",
             context.SessionId,

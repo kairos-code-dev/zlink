@@ -6,7 +6,8 @@ public final class SpotHandles {
     private SpotHandles() {
     }
 
-    public static SpotHandle create(RoutingId spotRid) {
-        return new FrameworkSpotHandle("test-mesh", spotRid, spotRid, 1L);
+    public static SpotHandle create(String spotId) {
+        return new FrameworkSpotHandle(
+            "test-mesh", spotId, RoutingId.from("test-node"), 1L);
     }
 }

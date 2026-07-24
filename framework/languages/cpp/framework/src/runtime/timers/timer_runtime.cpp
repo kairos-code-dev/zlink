@@ -186,7 +186,7 @@ void record_timer_failure (const std::shared_ptr<spot_context_state_t> &context,
     state->failure_events.push_back (failure);
     if (context && context->node && context->node->monitoring) {
         monitoring_runtime_t (context->node->monitoring)
-          .publish_timer_failure (context->node->snapshot.name, context->spot_rid,
+          .publish_timer_failure (context->node->snapshot.name, context->spot_id,
                                   std::move (failure));
     }
 }

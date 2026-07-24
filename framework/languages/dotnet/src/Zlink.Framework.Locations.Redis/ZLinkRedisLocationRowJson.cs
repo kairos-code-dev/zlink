@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Zlink.Framework.Contracts.Configuration;
+using Zlink.Framework.Runtime.Configuration;
 
 namespace Zlink.Framework.Locations.Redis;
 
@@ -26,8 +27,7 @@ internal static class ZLinkRedisLocationRowJson
 
     internal static string Serialize<TRow>(TRow row)
     {
-        if (row is ZLinkMeshNodeDescriptor descriptor)
-            ValidateDescriptor(descriptor);
+        ValidateRow(row);
         var json = row is ZLinkClientServerServerDescriptor clientServer
             ? JsonSerializer.Serialize(
                 ClientServerDescriptorJson.From(clientServer),
@@ -56,9 +56,24 @@ internal static class ZLinkRedisLocationRowJson
         var row = JsonSerializer.Deserialize<TRow>(json, Options)
                   ?? throw new InvalidOperationException(
                       "Location row payload deserialized to null.");
-        if (row is ZLinkMeshNodeDescriptor descriptor)
-            ValidateDescriptor(descriptor);
+        ValidateRow(row);
         return row;
+    }
+
+    private static void ValidateRow<TRow>(TRow row)
+    {
+        switch (row)
+        {
+            case ZLinkMeshNodeDescriptor descriptor:
+                ValidateDescriptor(descriptor);
+                break;
+            case ZLinkSpotLocation spot:
+                RequireUtf8Value(spot.SpotId, nameof(spot.SpotId));
+                break;
+            case InstanceSpotLocation instanceSpot:
+                RequireUtf8Value(instanceSpot.SpotId, nameof(instanceSpot.SpotId));
+                break;
+        }
     }
 
     private sealed record ClientServerDescriptorJson(
@@ -131,6 +146,7 @@ internal static class ZLinkRedisLocationRowJson
             "MaintenanceWave",
             "State",
             "ObjectRole",
+            "EntrySpotId",
             "PlacementWeight",
             "Capacity"
         ];
@@ -156,22 +172,41 @@ internal static class ZLinkRedisLocationRowJson
             || descriptor.LeaseGeneration <= 0
             || !Enum.IsDefined(descriptor.State)
             || !Enum.IsDefined(descriptor.ObjectRole)
-            || descriptor.PlacementWeight is < 0 or > 100)
+            || descriptor.PlacementWeight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight)
             throw new JsonException("MeshNode descriptor identity or placement fields are invalid.");
         if (descriptor.MaintenanceWave is { } maintenanceWave)
             RequireUtf8Value(
                 maintenanceWave,
                 nameof(descriptor.MaintenanceWave));
-        if (descriptor.Capacity is not
+        if (descriptor.ObjectRole == ZLinkMeshNodeObjectRole.Server)
+            RequireUtf8Value(
+                descriptor.EntrySpotId
+                ?? throw new JsonException(
+                    "Object Server descriptor EntrySpotId is required."),
+                nameof(descriptor.EntrySpotId));
+        else if (descriptor.EntrySpotId is not null)
+            throw new JsonException(
+                "Only an Object Server descriptor can publish EntrySpotId.");
+        foreach (var (channelName, weight) in descriptor.ChannelWeights)
+        {
+            RequireUtf8Value(channelName, "ChannelName");
+            if (weight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight)
+                throw new JsonException(
+                    "Channel weight must be between 0 and 10000.");
+        }
+        if (!IsValidCapacity(descriptor.Capacity.Actors)
+            || !IsValidCapacity(descriptor.Capacity.Spots)
+            || descriptor.Capacity.SpotTypes is null)
+            throw new JsonException("MeshNode descriptor capacity is invalid.");
+        if (descriptor.ActivationConcurrency is not
             {
                 Active: >= 0,
-                Pending: >= 0,
-                ActiveLimit: > 0,
-                PendingLimit: > 0
+                Limit: > 0
             }
-            || descriptor.Capacity.Active > descriptor.Capacity.ActiveLimit
-            || descriptor.Capacity.Pending > descriptor.Capacity.PendingLimit)
-            throw new JsonException("MeshNode descriptor capacity is invalid.");
+            || descriptor.ActivationConcurrency.Active
+                > descriptor.ActivationConcurrency.Limit)
+            throw new JsonException(
+                "MeshNode descriptor activation concurrency is invalid.");
         if (descriptor.ObjectCapabilities is null
             || descriptor.ObjectCapabilities.Count > 1024)
             throw new JsonException(
@@ -185,7 +220,6 @@ internal static class ZLinkRedisLocationRowJson
         foreach (var capability in descriptor.ObjectCapabilities)
         {
             if (capability is null
-                || capability.PlacementProfiles is null
                 || !Enum.IsDefined(capability.ObjectKind)
                 || !Enum.IsDefined(capability.Policy)
                 || !identities.Add((
@@ -201,19 +235,58 @@ internal static class ZLinkRedisLocationRowJson
                 != capability.HasSnapshotAdapter)
                 throw new JsonException(
                     "Snapshot capability and adapter presence are inconsistent.");
-            if (capability.ActiveLimit is <= 0
-                || capability.PendingLimit is <= 0
-                || capability.PlacementProfiles.Count > 1024)
+            if (capability.Limit < 0
+                || capability.ObjectKind == ZLinkPlacementObjectKind.Actor
+                    && capability.Limit != 0)
                 throw new JsonException(
-                    "Object capability limits or placement profiles are invalid.");
-            foreach (var profile in capability.PlacementProfiles)
-                RequireUtf8Value(profile, "PlacementProfile");
+                    "Object capability limit is invalid.");
+        }
+        var expectedSpotTypes = descriptor.ObjectCapabilities
+            .Where(static capability =>
+                capability.ObjectKind is ZLinkPlacementObjectKind.UserSpot
+                    or ZLinkPlacementObjectKind.InstanceSpot)
+            .Select(static capability =>
+                (capability.ObjectKind, capability.StableType, capability.Limit))
+            .ToArray();
+        if (descriptor.Capacity.SpotTypes.Count != expectedSpotTypes.Length)
+            throw new JsonException(
+                "MeshNode descriptor Spot type capacity is invalid.");
+        for (var index = 0; index < expectedSpotTypes.Length; index++)
+        {
+            var capacity = descriptor.Capacity.SpotTypes[index];
+            var expected = expectedSpotTypes[index];
+            if (capacity.ObjectKind != expected.ObjectKind
+                || capacity.StableType != expected.StableType
+                || capacity.Limit != expected.Limit
+                || capacity.Active < 0
+                || capacity.Reserved < 0
+                || capacity.Limit > 0
+                    && capacity.Active + (long)capacity.Reserved
+                    > capacity.Limit)
+                throw new JsonException(
+                    "MeshNode descriptor Spot type capacity is invalid.");
         }
     }
 
+    private static bool IsValidCapacity(ZLinkPopulationCapacity capacity) =>
+        capacity is { Active: >= 0, Reserved: >= 0, Limit: >= 0 }
+        && (capacity.Limit == 0
+            || capacity.Active + (long)capacity.Reserved <= capacity.Limit);
+
     private static void RequireUtf8Value(string value, string name)
     {
-        var size = System.Text.Encoding.UTF8.GetByteCount(value);
+        int size;
+        try
+        {
+            size = new System.Text.UTF8Encoding(
+                encoderShouldEmitUTF8Identifier: false,
+                throwOnInvalidBytes: true).GetByteCount(value);
+        }
+        catch (System.Text.EncoderFallbackException exception)
+        {
+            throw new JsonException($"{name} must contain valid UTF-8 text.", exception);
+        }
+
         if (size is < 1 or > 255 || value.Contains('\0'))
             throw new JsonException(
                 $"{name} must be 1 to 255 UTF-8 bytes without NUL.");
@@ -235,7 +308,11 @@ internal static class ZLinkRedisLocationRowJson
                 var name = reader.GetString()
                            ?? throw new JsonException("ChannelWeights property name expected.");
                 reader.Read();
-                if (!weights.TryAdd(name, reader.GetInt32()))
+                var weight = reader.GetInt32();
+                if (weight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight)
+                    throw new JsonException(
+                        "Channel weight must be between 0 and 10000.");
+                if (!weights.TryAdd(name, weight))
                     throw new JsonException($"Duplicate ChannelWeights entry '{name}'.");
             }
 
@@ -248,7 +325,12 @@ internal static class ZLinkRedisLocationRowJson
             writer.WriteStartObject();
             foreach (var (name, weight) in value.OrderBy(
                          static pair => pair.Key, Utf8StringComparer.Instance))
+            {
+                if (weight is < 0 or > ZLinkSocketConfig.MaximumPeerWeight)
+                    throw new JsonException(
+                        "Channel weight must be between 0 and 10000.");
                 writer.WriteNumber(name, weight);
+            }
             writer.WriteEndObject();
         }
     }

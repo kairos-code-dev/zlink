@@ -51,13 +51,11 @@ class KotlinFrameworkExtensionsContractTest {
         val created = manager.create("room-v1")
             .inMesh("mesh-a")
             .request(ZLinkMessage.of(CreateActor("create")))
-            .placementProfile("ssd")
-            .affinityKey("tenant-a")
             .timeout(Duration.ofSeconds(3))
             .submit()
             .toCompletableFuture()
             .join()
-        val existing = manager.getOrCreate(SPOT_RID, "room-v1")
+        val existing = manager.getOrCreate(SPOT_ID, "room-v1")
             .request(CreateActor("get-or-create"))
             .submit()
             .toCompletableFuture()
@@ -66,7 +64,7 @@ class KotlinFrameworkExtensionsContractTest {
         assertEquals(SPOT_REF, created.spot())
         assertEquals(SPOT_REF, existing.spot())
         assertEquals(
-            listOf("mesh-a", "ssd", "tenant-a", "PT3S"),
+            listOf("mesh-a", "PT3S"),
             manager.createOptions,
         )
         assertThrows<IllegalStateException> { manager.lastCreateCall.submit() }
@@ -314,12 +312,12 @@ class KotlinFrameworkExtensionsContractTest {
             RecordingCreateCall(createOptions).also { lastCreateCall = it }
 
         override fun getOrCreate(
-            spotRid: RoutingId,
+            spotId: String,
             spotType: String,
         ): ZLinkSpotGetOrCreateCall =
             RecordingGetOrCreateCall().also { lastGetOrCreateCall = it }
 
-        override fun find(spotRid: RoutingId): CompletionStage<Optional<SpotRef>> =
+        override fun find(spotId: String): CompletionStage<Optional<SpotRef>> =
             CompletableFuture.completedFuture(Optional.of(SPOT_REF))
 
         override fun close(spot: SpotRef): CompletionStage<Boolean> =
@@ -334,10 +332,6 @@ class KotlinFrameworkExtensionsContractTest {
         override fun inMesh(meshName: String) = apply { options += meshName }
         override fun request(request: Any) = apply {}
         override fun request(request: ZLinkMessage) = apply {}
-        override fun placementProfile(placementProfile: String) =
-            apply { options += placementProfile }
-        override fun affinityKey(affinityKey: String) =
-            apply { options += affinityKey }
         override fun timeout(timeout: Duration) =
             apply { options += timeout.toString() }
         override fun submit(): CompletionStage<ZLinkSpotCreateResult> {
@@ -353,8 +347,6 @@ class KotlinFrameworkExtensionsContractTest {
         override fun inMesh(meshName: String) = this
         override fun request(request: Any) = this
         override fun request(request: ZLinkMessage) = this
-        override fun placementProfile(placementProfile: String) = this
-        override fun affinityKey(affinityKey: String) = this
         override fun timeout(timeout: Duration) = this
         override fun submit(): CompletionStage<ZLinkSpotCreateResult> {
             check(!submitted)
@@ -365,8 +357,8 @@ class KotlinFrameworkExtensionsContractTest {
 
     companion object {
         private val NODE_RID: RoutingId = RoutingId.from(byteArrayOf(0x01))
-        private val SPOT_RID: RoutingId = RoutingId.from(byteArrayOf(0x02))
-        private val SPOT_REF = SpotRef(SPOT_RID, 7, "mesh-a", NODE_RID)
+        private const val SPOT_ID: String = "spot-02"
+        private val SPOT_REF = SpotRef(SPOT_ID, 7, "mesh-a", NODE_RID)
         private val RESULT = ZLinkSpotCreateResult(
             SPOT_REF,
             ZLinkSpotCreateState.CREATED,

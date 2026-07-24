@@ -156,7 +156,7 @@ struct peer_location_t {
     std::optional<zlink::routing_id_t> node_rid;
     location_role_t role = location_role_t::invalid;
     std::string endpoint;
-    std::uint32_t weight = 0;
+    int weight = 100;
     std::int64_t value = 0;
     std::map<std::string, std::string> metadata;
     std::vector<std::string> capabilities;
@@ -200,14 +200,31 @@ struct object_capability_t {
     std::string stable_type;
     maintenance_policy_kind_t policy;
     bool has_snapshot_adapter;
-    std::set<std::string> placement_profiles;
-    std::optional<std::uint32_t> active_limit;
-    std::optional<std::uint32_t> pending_limit;
+    std::int32_t spot_limit = 0;
+};
+
+struct capacity_usage_t {
+    std::uint64_t active;
+    std::uint64_t reserved;
+    std::int32_t limit;
+};
+
+struct spot_type_capacity_t {
+    placement_object_kind_t object_kind;
+    std::string stable_type;
+    capacity_usage_t usage;
+};
+
+struct placement_capacity_t {
+    capacity_usage_t actors;
+    capacity_usage_t spots;
+    std::vector<spot_type_capacity_t> spot_types;
 };
 
 struct mesh_node_descriptor_t {
     std::string mesh_name;
     zlink::routing_id_t rid;
+    std::optional<std::string> entry_spot_id;
     std::uint64_t lifecycle_generation;
     std::uint64_t descriptor_revision;
     std::string endpoint;
@@ -215,8 +232,8 @@ struct mesh_node_descriptor_t {
     std::int64_t application_version;
     std::vector<object_capability_t> object_capabilities;
     object_role_t object_role = object_role_t::none;
-    std::uint8_t placement_weight = 100;
-    object_capacity_options_t object_capacity{};
+    int placement_weight = 100;
+    placement_capacity_t capacity{};
     std::optional<std::string> maintenance_wave;
     framework_runtime_state_t state;
     std::string security_identity;
@@ -232,7 +249,7 @@ struct client_server_server_descriptor_t {
     std::uint64_t lifecycle_generation;
     std::uint64_t descriptor_revision;
     std::string endpoint;
-    int weight;
+    int weight = 100;
     framework_runtime_state_t state;
     std::string security_identity;
     std::string owner_id;
@@ -263,8 +280,7 @@ struct fanout_publisher_descriptor_key_t {
 
 struct spot_location_t {
     std::string mesh_name;
-    zlink::routing_id_t spot_rid =
-      zlink::routing_id_t::from(std::uint32_t{0});
+    std::string spot_id;
     std::uint64_t spot_generation = 0;
     zlink::routing_id_t owner_node_rid =
       zlink::routing_id_t::from(std::uint32_t{0});
@@ -276,7 +292,7 @@ struct spot_location_t {
     std::chrono::system_clock::time_point updated_at{};
 };
 struct spot_location_key_t {
-    spot_rid_t spot_rid;
+    spot_id_t spot_id;
 };
 
 struct spot_location_filter_t {
@@ -294,8 +310,7 @@ struct actor_location_t {
     zlink::routing_id_t owner_node_rid =
       zlink::routing_id_t::from(std::uint32_t{0});
     std::uint64_t owner_node_generation = 0;
-    zlink::routing_id_t spot_rid =
-      zlink::routing_id_t::from(std::uint32_t{0});
+    std::string spot_id;
     std::uint64_t spot_generation = 0;
     zlink::spot_kind spot_kind = zlink::spot_kind::invalid;
     std::string owner_id;
@@ -308,7 +323,7 @@ struct actor_location_filter_t {
     std::optional<std::string> mesh_name;
     std::optional<std::string> actor_type;
     std::optional<zlink::routing_id_t> owner_node_rid;
-    std::optional<zlink::routing_id_t> spot_rid;
+    std::optional<std::string> spot_id;
     std::optional<zlink::spot_kind> spot_kind;
 };
 
@@ -460,9 +475,38 @@ option은 제공하지 않는다. Framework reconciler는 scope change stamp를 
 적용하고 다르면 부분 결과를 버리고 first page부터 다시 읽는다. Page 조립과 retry는 Framework 내부 동작이며
 application에 별도 reconciliation API를 제공하지 않는다.
 
-User·Instance Spot owner state는 global SpotRid에서 파생한 하나의 opaque authority key를 공유한다. Manager
-Create·GetOrCreate의 generic `reserve(...)`가 kind conflict, object generation과 pending capacity를 원자적으로
-결정한다. Entry Spot은 host descriptor에 속하며 caller creation authority를 갖지 않는다. `spot_location_t`는 Framework가 authority
+`capacity_usage_t`는 Location Store가 계산한 `active`, `reserved`, `limit` projection을 제공하며 limit `0`은
+제한 없음을 뜻한다. Limit은 `0..2147483647`이며 음수인 descriptor는 invalid provider data로 거부한다.
+`placement_capacity_t::actors`에는 Entry·User Spot의 Actor를 모두 포함하고,
+`spots`와 `spot_types`에는 User·Instance Spot만 포함한다. Entry Spot은 두 Spot 집계에서 제외한다.
+`spot_types`는 `(object_kind, stable_type)`의 UTF-8 byte 순서이며 Actor 항목을 포함하지 않는다.
+Descriptor capacity는 candidate를 빠르게 거르는 비권위 projection이다. 최종 수락 여부는 Location Store의
+같은 transaction에서 current counter와 reservation을 검사해 결정한다.
+
+Object Server descriptor의 `entry_spot_id`는 Framework가 해당 lifecycle에 발급하고 global Spot namespace에
+예약한 exact RID다. Automatic MeshNode RID는 RFC 4122 UUID v4의 lowercase canonical 36자
+형식(`8-4-4-4-12`)으로 `<prefix>-<uuid>`를 사용한다. Entry Spot ID는 MeshNode UUID와 독립적인 UUID v4로
+`<prefix>-entry-<entry-uuid>`를 사용한다. Object role이 `server`이면 값을 가져야 하고 `none`·`client`이면
+`nullopt`다. Actor placement·Entry join과 relocation은 descriptor key, lifecycle generation과 이 field를
+하나의 mapping으로 사용한다. Provider와 Framework는 RID 문자열을 parse해 MeshNode나 lifecycle을 추론하지
+않는다.
+
+기존 `update_mesh_node(descriptor, location_write_intent_t::new_claim)`은 Object Server descriptor identity와
+`entry_spot_id` global Spot identity를 exact owner lease·lifecycle로 한 transaction에서 claim한다. 별도 Entry
+claim public method는 제공하지 않는다. 어느 identity라도 active owner와 충돌하면 descriptor, Entry claim과
+index를 바꾸지 않고 첫 claim에서 startup을 `RoutingIdConflict`로 끝낸다. 두 번째 UUID나 claim은 만들지
+않는다.
+
+`entry_spot_id`는 descriptor immutable field와 digest에 포함되며 renew나 mutable update로 바꿀 수 없다.
+`remove_mesh_node`와 `remove_all_by_owner`는 exact owner lease·lifecycle이 일치할 때만 Entry claim을 함께
+해제한다. Stale cleanup은 successor descriptor나 Entry claim을 제거할 수 없다. User Spot과 Instance Spot의
+generic `reserve(...)`는 같은 global identity claim과 충돌하는 RID를 거부하며 authority나 capacity를 일부
+변경하지 않는다. Contract test는 두 identity claim의 원자성, 충돌 무변경, exact cleanup, stale successor
+보호, immutable digest, UUID v4 형식, 첫 claim 즉시 실패와 두 번째 UUID·claim 미생성을 검증한다.
+
+User·Instance Spot owner state는 global SpotId에서 파생한 하나의 opaque authority key를 공유한다. Manager
+Create·GetOrCreate의 generic `reserve(...)`가 kind conflict, object generation과 typed reserved capacity
+bundle을 원자적으로 결정한다. Entry Spot은 host descriptor에 속하며 caller creation authority를 갖지 않는다. `spot_location_t`는 Framework가 authority
 payload와 page를 decode해서 만드는 운영 조회 projection이며 provider write·remove·resolve interface가 아니다.
 Provider는 Spot kind, type, owner state와 Actor relocation phase를 해석하지 않는다.
 `spot_ref_t::object_generation()`과 `actor_ref_t::object_generation()`은 provider의
@@ -560,7 +604,7 @@ struct location_topology_entry_t {
     std::optional<std::string> mesh_name;
     std::optional<location_role_t> role;
     std::optional<zlink::routing_id_t> node_rid;
-    std::optional<zlink::routing_id_t> spot_rid;
+    std::optional<std::string> spot_id;
     std::optional<std::string> actor_id;
     std::optional<std::string> endpoint;
     location_topology_state_t state = location_topology_state_t::discovered;
@@ -688,6 +732,19 @@ public:
 class는 제공하지 않으며 두 Store 사이 Redis transaction도 요구하지 않는다. 각 Store의 소멸이 시작된 뒤 해당
 Store의 새 operation은 closed-store 오류로 완료된다.
 
+Redis Location transaction domain의 schema marker는 format
+`location-authority-hybrid-v3`, epoch decimal `3`를 사용한다. 비어 있는 domain만 marker 없이 초기화할 수
+있다. Marker가 없는데 domain key가 있거나 format·epoch가 다르면 startup configuration error다. Provider는
+이전 layout을 자동으로 읽거나 dual-write하지 않는다. `location-authority-hybrid-v1`은 serving을 닫은 offline
+migration에서 scalar capacity를 typed bundle로 바꾸고 전체 invariant와 digest를 검증한 뒤 epoch `2`를
+마지막 CAS로 publish해야 한다.
+
+Epoch `2`는 MeshNode lifecycle별 Actor 전체, Spot 전체와 `(Spot kind, stable type)`별
+`active`·`reserved`·`limit`을 별도 counter로 저장한다. Creation·relocation reservation은 exact typed bundle과
+state를 durable하게 보존하며 TTL로 capacity를 반환하지 않는다. Reserve, commit, abort, delete와 aggregate
+commit은 authority와 관련 counter 전체를 같은 Redis transaction domain에서 변경한다. Descriptor의
+`placement_capacity_t`는 이 authoritative state에서 만든 projection이며 별도 scalar object counter가 아니다.
+
 Redis의 ClientServer descriptor kind는 `channel-server`이다. Key는 ChannelName과 ServerRid를
 함께 사용하고 endpoint와 weight, generation, revision, runtime state, security identity, owner 정보를
 전용 descriptor field로 저장한다. RouteMesh `mesh_node_descriptor_t`로 대체하지 않는다.
@@ -699,9 +756,10 @@ descriptor를 모두 연결한다.
 
 MeshNode descriptor의 `object_capabilities`는 startup 전에 등록한 stable ID를 UTF-8 byte
 순서로 정렬해 기록한다. Actor와 User·Instance Spot capability는 object kind와 type별 maintenance policy와 현재
-Snapshot adapter 등록 여부, placement profile과 optional active·pending limit을 한 항목에 함께 둔다.
+Snapshot adapter 등록 여부와 Spot stable-type limit을 한 항목에 함께 둔다. Actor
+capability의 `spot_limit`은 항상 `0`이다.
 `application_version`은 0 이상인 signed 64-bit
-deployment ordinal이다. Object capacity, maintenance wave와 runtime state는
+deployment ordinal이다. Capacity projection의 active·reserved count, maintenance wave와 runtime state는
 descriptor revision을 증가시켜 갱신한다. `spot_location_t`는 authority row를 Framework가 decode한
 projection이며 endpoint를 복제하지 않고 owner node RID와 object generation을 보존한다. Redis provider는
 `redis_location_store_t`는 authority CAS만 구현하고 `redis_relocation_store_t`는 opaque state, accepted journal,
@@ -716,13 +774,17 @@ delete 순서를 지킨다. Relocation payload 사용을 끝낼 때는 Location 
 Relocation Store에서 payload를 삭제한다. 참조된 payload가 없거나 digest가 다르면 `RelocationDataLost`로 종료하고 이전 owner로
 rollback하지 않는다.
 
-Descriptor의 key, RID, lifecycle generation, endpoint, security identity, owner token, application version,
+Descriptor의 key, RID, Entry Spot ID, lifecycle generation, endpoint, security identity, owner token, application version,
 ChannelName key set, Spot type set와 object capability의 kind·stable type·policy·Snapshot adapter·profile·limit은
 첫 admission 뒤 해당 lifecycle에서 바뀌지 않는다. Channel weight와 placement weight, maintenance wave와 runtime
-state만 mutable하다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고
+state, capacity projection의 active·reserved count만 mutable하다. Capacity projection의 limit은 lifecycle
+동안 바뀌지 않는다. Mutable update는 current owner token과 같은 lifecycle generation을 제시하고
 `descriptor_revision`을 strictly 증가시켜야 한다. Provider는 stale revision이나 immutable field 변경을 원자적으로
 거부하며 일부 field만 적용하지 않는다. ClientServer와 fanout descriptor도 같은 identity·revision fence를
 적용한다.
+
+`channel_weights`, `placement_weight`와 ClientServer descriptor의 `weight`는 signed `int` `0..10000`이다.
+Provider는 범위 밖 값을 거부하며 좁은 unsigned type으로 변환하거나 truncate하지 않는다.
 
 `lifecycle_generation`은 0이 아닌 opaque equality token이다. 크기를 비교하거나 증가 순서를 추론하지 않는다.
 Store-backed descriptor에서는 exact current owner lease와 descriptor lifecycle token을 사용한다. Manual
@@ -731,3 +793,9 @@ Caller가 값을 선택하는 option은 없다. Source lifetime 종류를 합치
 interface로 노출하지 않는다. 수치 순서를 사용하는 field는 `descriptor_revision`뿐이다. 새 revision이 필요한데
 값이 `9223372036854775807`이면 wrap하지 않고 host를 `error`로 seal한다. 이 exhaustion은 authority generation
 exhaustion이나 routing ID `group_exhausted`와 서로 다른 실패다.
+
+`redis_location_store_t`는 [공통 Redis 계약](../../../41-location-store-redis.ko.md)의
+`location-authority-hybrid-v3`, schema epoch `3`, creation·standalone relocation·aggregate HASH field set과
+typed `capacityBundle` encoding을 그대로 사용한다. C++ member 이름이나 binary layout에서 Redis field 이름과
+value bytes를 만들지 않는다. 공통 fixture의 unordered field-to-bytes map을 raw Redis write/read 양방향으로
+검증해야 한다.

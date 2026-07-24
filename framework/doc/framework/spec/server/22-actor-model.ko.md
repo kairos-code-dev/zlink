@@ -47,15 +47,31 @@ user Spot membership은 bound session을 요구하지 않는다. session bind와
 모든 Actor 업무 payload는 target Actor의 application queue에 직접 제출한다. Actor가 Entry Spot 또는
 user Spot에 있거나 remote MeshNode에 있더라도 이 규칙은 같다.
 
-- 같은 Actor에 수락된 payload는 Actor turn에서 순서대로 처리한다. `Yield`로 turn을 반납하면 다음 payload가
-  먼저 실행될 수 있고 완료 continuation은 새 turn에서 재개한다([Async 실행 정책 §1.1](../04-async-execution-policy.ko.md#11-submit-async와-yield)).
-- 서로 다른 Actor는 하나의 Spot queue 때문에 서로 기다리지 않는다.
+- 같은 Actor에 수락된 payload는 Actor queue claim에서 FIFO로 하나씩 처리한다. Actor queue claim을 보유한
+  handler가 끝나기 전에는 같은 Actor의 다음 payload를 시작하지 않는다.
+- Entry Spot과 `PerActor` User Spot에서는 서로 다른 Actor가 독립적으로 실행된다. `SpotWide` User Spot에서는
+  각 Actor queue head가 User Spot 공통 execution gate도 얻어야 하므로 member Actor, Spot handler, timer와
+  lifecycle callback이 한 번에 하나만 실행된다.
 - Actor send/request, STREAM session relay와 Actor 간 호출은 같은 Actor queue로 합류한다.
 - Actor payload를 Spot application queue에 넣거나 Spot callback으로 변환하지 않는다.
+
+`SpotWide` Member Actor가 `Yield`하면 Actor queue claim은 유지하고 User Spot gate만 반납한다. 다른 Actor,
+Spot handler와 timer는 실행할 수 있지만 같은 Actor의 다음 payload는 실행할 수 없다. Terminal continuation이
+같은 User Spot gate를 다시 얻어 현재 payload를 완료한 뒤에만 Actor claim을 해제한다. `PerActor`와 Entry
+Spot Actor에서는 `Yield`를 허용하지 않으며 공통 call type의 호출은 operation submit 전에
+`InvalidConfiguration`으로 끝난다.
 
 Actor handler는 Actor 자신의 상태를 소유한다. Actor handler가 room·stage·zone 같은 Spot 소유 상태를
 읽거나 바꾸려면 명시적인 Spot send/request를 제출해야 한다. 그 작업은 target Spot turn에서 실행된다.
 Actor handler에 mutable Spot object를 직접 제공해서 두 실행 문맥의 직렬성 경계를 우회하지 않는다.
+
+`SpotWide` Member Actor가 같은 User Spot gate가 필요한 Spot 또는 다른 member Actor의 request를 `Async`로
+기다리면 target을 실행할 수 없으므로 Framework는 resolve 뒤 outbound admission 전에
+`InvalidConfiguration`으로 거부한다. 현재 User Spot을 떠나는 `JoinSpot(...).Async`도 source lifecycle
+callback이 같은 gate를 얻어야 하므로 operation submission과 queue 변경 전에 같은 오류로 거부한다.
+같은 Actor 자신에 대한 awaited request도 Actor queue claim 때문에 실행할 수 없으므로 `Async`와 `Yield`
+모두 거부한다. 같은 Actor에 보내는 one-way payload는 현재 payload 뒤 FIFO에 넣을 수 있으며 inline 또는
+재진입 handler 호출로 바꾸지 않는다.
 
 ready notification, request completion, relocation barrier와 session-binding progress 같은 infrastructure
 작업은 Actor application claim과 분리한다. application handler가 대기 중이어도 infrastructure progress가
@@ -83,7 +99,7 @@ Actor send/request는 global `ActorId`만 대상으로 받는다. Framework는 p
 Store에서 current Ready incarnation과 owner route를 resolve하고, 선택한 ObjectGeneration과 owner fence를
 target admission에 고정한다. local과 remote Actor의 handler 및 completion 의미는 같다.
 
-- 호출자는 MeshName, `ActorRef`, owner RID나 현재 Spot RID를 messaging target으로 넘기지 않는다.
+- 호출자는 MeshName, `ActorRef`, owner RID나 현재 Spot ID를 messaging target으로 넘기지 않는다.
 - Missing, Creating과 Store failure는 negative cache에 저장하지 않는다. Positive Ready cache도 current owner
   lease의 local admission deadline과 공개 `RouteCacheMaxAge` 안에서만 사용한다.
 - Higher StoreVersion, stale result 또는 Store recovery event를 확인하면 positive cache를 즉시 invalidate한다.
@@ -104,28 +120,42 @@ Actor type에 맞는 `ActorRelocationAdapter`를 같은 등록에서 요구한�
 opaque byte sequence만 capture·restore하며 Framework는 별도 state contract ID를 관리하지 않는다.
 
 Actor manager의 `Create`와 `GetOrCreate`는 required `ActorId`와 stable Actor type을 받는 single-use fluent
-call이다. `InMesh`, encoded creation request, `PlacementProfile`, `AffinityKey`와 timeout은 선택 항목이다.
-`PlacementProfile`과 `AffinityKey`는 UTF-8 1..255 bytes의 stable value이며 caller가 target RID, predicate,
-factory class 또는 placement callback을 지정할 수 없다. 같은 option을 두 번 설정하면
+call이다. `InMesh`, encoded creation request와 timeout만 선택 항목이다. Caller가 target RID, predicate,
+factory class 또는 별도 placement selector를 지정할 수 없다. 같은 option을 두 번 설정하면
 `InvalidConfiguration`, terminal submit을 두 번 실행하면 `AlreadySubmitted`다. Terminal submit을 시작할 때
 resolve, reservation, factory와 Ready barrier 전체에 적용할 end-to-end deadline 하나를 고정한다.
 
 `InMesh`를 지정하면 해당 Mesh를 사용한다. 생략했을 때 object Client 또는 Server role을 가진 Mesh가 하나면
 자동 선택한다. 후보가 0개이면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`, 명시한 Mesh가
-없으면 `MeshNotFound`로 끝난다. Framework는 role, registered type, placement profile, active·pending capacity를
-먼저 검사하고 남은 후보를 node-wide placement weight로 선택한다. Caller가 target node나 endpoint를 고르지
-않는다.
+없으면 `MeshNotFound`로 끝난다. Framework는 role, registered stable type과 typed population
+capacity를 먼저 검사하고 남은 후보를 node-wide placement weight로 선택한다. Caller가 target node나
+endpoint를 고르지 않는다.
 
 Encoded creation request는 최대 1 MiB다. Reservation 전에 immutable content reference와 hash를 durable
 creation intent에 기록하며 Ready 또는 fenced failure cleanup까지 유지한다. Authority CAS winner만 request를
 factory에 전달한다. Factory는 `(ActorId, ObjectGeneration, creation attempt)` 기준 at-least-once로 실행될 수
-있으므로 retry-safe해야 한다.
+있으므로 retry-safe해야 한다. Target은 factory가 만든 staging Actor를 Entry Spot의 Actor creation callback에
+전달한다. Callback은 생성 승인 여부와 최대 1 MiB의 optional reply를 반환하며 application rejection과 callback
+exception은 서로 다른 결과다. Callback exception은 기존 typed creation failure로 끝난다.
 
 Exclusive `Create`에서 같은 type의 Ready object가 있으면 `ActorAlreadyExists`, 다른 type이면
-`ActorTypeMismatch`다. `GetOrCreate`는 같은 type의 Ready 또는 Creating attempt에 합류하고 같은 incarnation의
-`ActorRef`를 반환한다. Creating CAS loser는 다른 target에서 factory를 시작하지 않는다. Deadline까지 같은
-attempt가 terminal state가 되지 않으면 `DeadlineExceeded`로 끝나며 다음 call이 exact authority를
-reconcile한다.
+`ActorTypeMismatch`다. 새 attempt는 `Created` 또는 `Rejected` terminal result를 반환한다. `Created`는 Ready로
+commit한 `ActorRef`와 callback reply를, `Rejected`는 Actor 없이 callback reply를 가진다.
+`GetOrCreate`는 같은 type의 Ready Actor를 찾으면 factory와 creation callback을 호출하지 않고 `Existing`과
+`ActorRef`를 반환한다. 같은 type의 Creating attempt가 있으면 authority 변경을 기다린 뒤 다시 조회한다.
+기존 attempt가 Ready로 commit됐으면 `Existing`을 반환한다. 기존 attempt가 거절되거나 실패하여 Creating
+authority가 정리됐으면 남은 deadline 안에서 새 reservation을 경쟁하고, winner가 자신의 creation request로
+factory와 callback을 실행한다. 서로 다른 operation은 앞선 attempt의 `Rejected` state나 application reply를
+공유하지 않는다. 동일한 `OperationId`가 재전달된 경우에만 operation terminal record에서 기존 결과를
+재전송한다.
+
+Creation callback이 승인하면 Framework는 initial Entry membership과 Ready authority, reserved-to-active
+capacity와 `Created` terminal record를 하나의 commit으로 공개한다. 이 최초 생성 과정에서는
+`OnActorJoin`과 joined notification을 호출하지 않는다. 거절하면 staging Actor를 폐기하고 Ready publication과
+message admission을 열지 않은 채 exact Creating authority와 pending capacity를 정리하며 `Rejected` terminal
+record를 같은 transaction에서 공개한다. 거절된 Actor는 `Find`에서 조회되지 않고 active capacity와 destroy
+lifecycle에 포함되지 않는다. 정리가 끝난 뒤 같은 Actor ID의 새 `GetOrCreate`는 새 reservation ID로 attempt를
+시작할 수 있다. 이전 operation의 중복 전달만 operation retention 동안 이전 terminal result를 읽는다.
 
 Manager `Find(ActorId)`는 current Ready authority의 `ActorRef`를 반환하며 creation을 시작하지 않는다. 별도
 Actor directory는 제공하지 않는다.
@@ -179,5 +209,6 @@ session-binding state와 dispatch 결과를 구분해야 한다. Actor ID는 met
 - session bind와 Spot membership이 독립적으로 바뀌며 서로를 암묵적으로 변경하지 않는다.
 - 같은 ActorId를 서로 다른 MeshName에 중복 생성하지 않는다.
 - Actor messaging이 ActorId만 받고 owner route와 generation을 application에 요구하지 않는다.
-- concurrent create의 CAS loser가 factory를 추가로 실행하지 않고 같은 attempt에 합류한다.
+- concurrent create의 CAS loser가 현재 callback과 동시에 factory를 실행하지 않으며, Ready면 `Existing`,
+  rejection cleanup이면 새 reservation으로 자신의 callback을 실행한다.
 - destroy가 exact generation을 검사하고 새 incarnation으로 retarget하지 않는다.

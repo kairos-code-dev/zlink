@@ -185,7 +185,7 @@ public sealed partial class EntrySpotActorDispatchTests
         dispatcher.Dispatch(new ZLinkBackendRouteReceived(
             parts,
             sourceNodeRid: RoutingId.From("source-node"),
-            spotRid: null,
+            spotId: null,
             requestSeq: 41,
             reply: (replyParts, _) =>
             {

@@ -216,11 +216,7 @@ export class ZLinkHostSpotAddressTransport implements ZLinkSpotAddressTransport 
     for (const meshName of meshNames) {
       if (!this.options.instanceTypes(meshName).includes(stableType)) continue;
       const node = this.options.meshNode(meshName);
-      const placement = node?.selectObjectPlacement(
-        stableType,
-        call.placementProfile,
-        call.affinityKey
-      );
+      const placement = node?.selectObjectPlacement(stableType);
       if (node !== undefined && placement !== undefined) {
         return {
           meshName,

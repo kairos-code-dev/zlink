@@ -6,6 +6,8 @@
 `@zlink-systems/nestjs`가 내보내는 Location, monitoring과 metrics 관련 정확한 TypeScript declaration을 고정한다.
 동작 의미는 [공통 스펙](../../../../README.ko.md)이 소유하며, 이 문서는 이름, generic, overload,
 상속, member, parameter와 반환형만 정의한다.
+Monitoring의 Channel, ClientServer와 placement weight는 정수 `number` `0..10000`이며 configuration과
+descriptor 값을 변환 없이 제공한다.
 
 ## 1. Framework error, handler와 location event
 
@@ -47,7 +49,8 @@ export declare enum ZLinkFrameworkErrorKind {
     RoutingIdConflict = "routingIdConflict",
     SpotGenerationStale = "spotGenerationStale",
     SpotMoving = "spotMoving",
-    RelocationDataLost = "relocationDataLost"
+    RelocationDataLost = "relocationDataLost",
+    SpotIdConflict = "spotIdConflict"
 }
 
 export declare const ZLINK_FRAMEWORK_ERROR_KIND_VALUES:
@@ -134,7 +137,7 @@ export declare enum ZLinkLocationAutoConnectType {
 `MeshNotFound=24`, `InvalidConfiguration=25`, `AlreadySubmitted=26`,
 `ActorGenerationStale=27`, `ActorMoving=28`, `DeadlineExceeded=29`,
 `PlacementCapacityExhausted=30`, `RoutingIdConflict=31`, `SpotGenerationStale=32`,
-`SpotMoving=33`, `RelocationDataLost=34`를 반환한다. `RelocationDataLost`는 Location authority가 공개한 Relocation
+`SpotMoving=33`, `RelocationDataLost=34`, `SpotIdConflict=35`를 반환한다. `RelocationDataLost`는 Location authority가 공개한 Relocation
 payload가 영구적으로 없거나 checksum·inventory digest가 일치하지 않을 때 반환하며 이전 owner로 rollback하지
 않는다. 기본 retriable kind는 `RouteNotConnected`, `ActorLocationStale`,
 `ActorMoving`, `DeadlineExceeded`, `PlacementCapacityExhausted`, `SpotMoving`이다.
@@ -327,7 +330,7 @@ export interface ZLinkLocationTopologyEntry {
     readonly meshName?: string;
     readonly role?: ZLinkLocationRole;
     readonly nodeRid?: RoutingId;
-    readonly spotRid?: RoutingId;
+    readonly spotId?: SpotId;
     readonly actorId?: string;
     readonly endpoint?: string;
     readonly state: ZLinkLocationTopologyState;
@@ -401,7 +404,7 @@ export interface ZLinkMessageFlowEvent {
     readonly serverRid?: RoutingId;
     readonly flowId?: string;
     readonly flowOrigin?: import('../Eventing/Contracts').ZLinkFlowOrigin;
-    readonly spotRid?: RoutingId;
+    readonly spotId?: SpotId;
     readonly instanceSpotType?: string;
     readonly activationState?: ZLinkSpotActivationState;
     readonly actorId?: string;
@@ -653,11 +656,14 @@ export interface ZLinkMeshNodeSnapshot {
     readonly endpoint: string;
     readonly objectRole: ZLinkObjectRole;
     readonly placementWeight: number;
-    readonly objectCapacity: {
-        readonly maxActiveObjects: number;
-        readonly maxPendingActivations: number;
-        readonly activeObjects: number;
-        readonly pendingActivations: number;
+    readonly populationCapacity: {
+        readonly actors: ZLinkPopulationCapacity;
+        readonly spots: ZLinkPopulationCapacity;
+        readonly spotTypes: readonly ZLinkSpotTypeCapacity[];
+    };
+    readonly activationConcurrency: {
+        readonly active: number;
+        readonly limit: number;
     };
     readonly applicationVersion: bigint;
     readonly placementReservationFailureCount: bigint;
@@ -694,6 +700,17 @@ export interface ZLinkMeshRuntimeEvent {
     readonly localSnapshotCount?: bigint;
     readonly localAdmittedCount?: bigint;
     readonly localDroppedCount?: bigint;
+    readonly placementOutcome?: string;
+    readonly capacity?: ZLinkCapacityVector;
+    readonly populationCapacity?: {
+        readonly actors: ZLinkPopulationCapacity;
+        readonly spots: ZLinkPopulationCapacity;
+        readonly spotTypes: readonly ZLinkSpotTypeCapacity[];
+    };
+    readonly activationConcurrency?: {
+        readonly active: number;
+        readonly limit: number;
+    };
     readonly reason?: string;
     readonly state?: ZLinkMeshNodeState;
 }
@@ -811,6 +828,12 @@ export interface ZLinkFanoutRuntime {
 }
 
 ```
+
+`populationCapacity`는 Actor 전체, Spot 전체와 등록한 User·Instance Spot type별
+active·reserved·limit을 구분한다. Limit `0`은 제한 없음이다. Entry Spot 자체는 Spot count에서 제외하고
+Entry Spot의 Actor는 Actor 전체 count에 포함한다. `activationConcurrency`의 active·limit은 population
+reservation과 별도로 제공한다. Placement event의 `capacity`는 해당 operation의 typed vector이고
+`populationCapacity`는 관찰 시점의 node aggregate다.
 
 같은 ChannelName에 Client와 Server를 함께 등록한 snapshot의 `localRole`은
 `"clientAndServer"`다. 이 값은 `(ChannelName, Role)`의 별도 registration 두 개가 하나의 ClientServer

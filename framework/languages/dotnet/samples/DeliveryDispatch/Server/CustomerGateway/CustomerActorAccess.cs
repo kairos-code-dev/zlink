@@ -30,11 +30,13 @@ internal sealed class CustomerActorAccess(
         EnsureCustomerActorReq request,
         CancellationToken cancellationToken)
     {
-        var actor = await actorManager.GetOrCreateAsync(
-            request.CustomerId,
-            SampleNames.CustomerActorType,
-            request,
-            cancellationToken);
+        var actor = (await actorManager.GetOrCreate(request.CustomerId, SampleNames.CustomerActorType)
+            .Request(request).Async(cancellationToken)) switch
+        {
+            ZLinkActorCreateResult.Existing value => value.Actor,
+            ZLinkActorCreateResult.Created value => value.Actor,
+            _ => throw new InvalidOperationException("Customer Actor creation was rejected.")
+        };
         logger.LogInformation(
             "deliverydispatch customer-access: ensured customer={CustomerId} node={NodeRid}",
             request.CustomerId,

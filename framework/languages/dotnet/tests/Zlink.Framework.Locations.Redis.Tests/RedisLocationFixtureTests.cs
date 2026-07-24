@@ -45,13 +45,13 @@ public sealed class RedisLocationFixtureTests
         var keys = new ZLinkRedisLocationKeys("P");
         var canonicalKey = RequiredString(row, "key");
         Assert.Equal(
-            RequiredString(physicalKeys, "descriptor"),
+            V3Key(RequiredString(physicalKeys, "descriptor")),
             keys.HybridDescriptorKey(canonicalKey).ToString());
         Assert.Equal(
-            RequiredString(physicalKeys, "admission"),
+            V3Key(RequiredString(physicalKeys, "admission")),
             keys.HybridDescriptorAdmissionKey(canonicalKey).ToString());
         Assert.Equal(
-            RequiredString(physicalKeys, "ownerLease"),
+            V3Key(RequiredString(physicalKeys, "ownerLease")),
             keys.HybridOwnerLeaseKey(descriptor.OwnerId).ToString());
 
         var hash = row.GetProperty("hash");
@@ -121,11 +121,11 @@ public sealed class RedisLocationFixtureTests
     public void Authority_Store_V1_Fixture_Uses_Hybrid_Physical_Schema()
     {
         using var document = JsonDocument.Parse(
-            File.ReadAllText(FixturePath("authority-store-v1.json")));
+            File.ReadAllText(FixturePath("authority-store-v3.json")));
         var root = document.RootElement;
 
         Assert.Equal(
-            "location-authority-hybrid-v1",
+            "location-authority-hybrid-v3",
             RequiredString(root, "format"));
         Assert.False(root.TryGetProperty("newObject", out _));
 
@@ -160,7 +160,7 @@ public sealed class RedisLocationFixtureTests
                 "stableType",
                 "descriptorKey",
                 "descriptorLifecycleGeneration",
-                "capacityDelta"
+                "capacityBundle"
             },
             ReadStringArray(root.GetProperty("currentHashFields")));
 
@@ -171,18 +171,19 @@ public sealed class RedisLocationFixtureTests
             System.Globalization.CultureInfo.InvariantCulture);
         Assert.Equal(
             RequiredString(capacity, "node"),
-            ZLinkRedisLocationKeys.HybridCapacityNodeBucket(
+            ZLinkRedisLocationKeys.HybridCapacityPopulationBucket(
                 descriptorKey,
-                lifecycle));
+                lifecycle,
+                ZLinkPlacementObjectKind.UserSpot));
         Assert.Equal(
-            RequiredString(capacity, "type"),
+            RequiredString(capacity, "spotType"),
             ZLinkRedisLocationKeys.HybridCapacityTypeBucket(
                 descriptorKey,
                 lifecycle,
                 ZLinkPlacementObjectKind.UserSpot,
                 RequiredString(capacity, "stableType")));
         Assert.Equal(
-            RequiredString(capacity, "unicodeType"),
+            RequiredString(capacity, "unicodeSpotType"),
             ZLinkRedisLocationKeys.HybridCapacityTypeBucket(
                 descriptorKey,
                 lifecycle,
@@ -252,6 +253,12 @@ public sealed class RedisLocationFixtureTests
     private static string RequiredString(JsonElement element, string propertyName) =>
         element.GetProperty(propertyName).GetString()
         ?? throw new InvalidOperationException($"Fixture property '{propertyName}' is null.");
+
+    private static string V3Key(string legacyKey) =>
+        legacyKey.Replace(
+            "{zlink-location-v1}",
+            "{zlink-location-v3}",
+            StringComparison.Ordinal);
 
     private static string[] ReadStringArray(JsonElement element) =>
         element.EnumerateArray().Select(item => item.GetString() ?? string.Empty).ToArray();

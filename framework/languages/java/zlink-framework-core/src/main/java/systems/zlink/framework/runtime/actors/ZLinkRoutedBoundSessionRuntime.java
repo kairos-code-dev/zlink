@@ -23,7 +23,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
     private final ZLinkChannelRuntime routedTransport;
     private final String routeChannelName;
     private final RoutingId targetNodeRid;
-    private final RoutingId targetEntrySpotRid;
+    private final String targetEntrySpotId;
     private final ZLinkBackendActorRef actorRef;
     private final ZLinkMessageSerializer serializer;
     private final ZLinkActorRuntime actorRuntime;
@@ -38,7 +38,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         ZLinkChannelRuntime routedTransport,
         String routeChannelName,
         RoutingId targetNodeRid,
-        RoutingId targetEntrySpotRid,
+        String targetEntrySpotId,
         ZLinkBackendActorRef actorRef,
         ZLinkMessageSerializer serializer,
         ZLinkActorRuntime actorRuntime,
@@ -50,7 +50,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         this.routedTransport = routedTransport;
         this.routeChannelName = routeChannelName;
         this.targetNodeRid = targetNodeRid;
-        this.targetEntrySpotRid = targetEntrySpotRid;
+        this.targetEntrySpotId = targetEntrySpotId;
         this.actorRef = actorRef;
         this.serializer = serializer;
         this.actorRuntime = actorRuntime;
@@ -74,7 +74,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             routedTransport,
             routeChannelName,
             targetNodeRid,
-            targetEntrySpotRid,
+            targetEntrySpotId,
             actorRef,
             encoded.payload(),
             timeout,
@@ -89,7 +89,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                 routedTransport,
                 routeChannelName,
                 targetNodeRid,
-                targetEntrySpotRid,
+                targetEntrySpotId,
                 actorRef,
                 frame);
         }
@@ -106,7 +106,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         ZLinkChannelRuntime routedTransport,
         String routeChannelName,
         RoutingId targetNodeRid,
-        RoutingId targetEntrySpotRid,
+        String targetEntrySpotId,
         ZLinkBackendActorRef actorRef,
         Message frame) {
         List<Message> parts = ZLinkActorSpotRoutePackets.createBoundSessionSendParts(actorRef, frame);
@@ -115,12 +115,12 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                 return routedTransport.sendToSpotViaRouterChannel(
                     routeChannelName,
                     targetNodeRid,
-                    targetEntrySpotRid,
+                    targetEntrySpotId,
                     parts);
             }
             boolean submitted = sourceEntrySpot.sendToSpot(
                     targetNodeRid,
-                    targetEntrySpotRid,
+                    targetEntrySpotId,
                     0L,
                     parts,
                     SendFlags.NONE);
@@ -140,7 +140,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
         ZLinkChannelRuntime routedTransport,
         String routeChannelName,
         RoutingId targetNodeRid,
-        RoutingId targetEntrySpotRid,
+        String targetEntrySpotId,
         ZLinkBackendActorRef actorRef,
         Message payload,
         Duration timeout,
@@ -153,14 +153,14 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
             ZLinkChannelRuntime routedTransport,
             String routeChannelName,
             RoutingId targetNodeRid,
-            RoutingId targetEntrySpotRid,
+            String targetEntrySpotId,
             ZLinkBackendActorRef actorRef,
             Message payload,
             Duration timeout,
             ZLinkBoundSessionSendOptions options,
             ZLinkRelayMetadataPolicy metadataPolicy) {
             this(sourceEntrySpot, routedTransport, routeChannelName, targetNodeRid,
-                targetEntrySpotRid, actorRef, payload, timeout, options, metadataPolicy,
+                targetEntrySpotId, actorRef, payload, timeout, options, metadataPolicy,
                 new systems.zlink.framework.runtime.messaging.ZLinkOneWayCallGate());
         }
         public ZLinkBoundSessionSendCall packetName(String packetName) {
@@ -169,7 +169,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                 routedTransport,
                 routeChannelName,
                 targetNodeRid,
-                targetEntrySpotRid,
+                targetEntrySpotId,
                 actorRef,
                 payload,
                 timeout,
@@ -184,7 +184,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                 routedTransport,
                 routeChannelName,
                 targetNodeRid,
-                targetEntrySpotRid,
+                targetEntrySpotId,
                 actorRef,
                 payload,
                 timeout,
@@ -213,7 +213,7 @@ final class ZLinkRoutedBoundSessionRuntime implements ZLinkBoundSession {
                         routedTransport,
                         routeChannelName,
                         targetNodeRid,
-                        targetEntrySpotRid,
+                        targetEntrySpotId,
                         actorRef,
                         frame).whenComplete((ignored, error) -> frame.close()));
             } catch (RuntimeException error) {

@@ -903,7 +903,7 @@ class user_spot_manager_client_t final
             auto &manager =
               services.get_required<zlink::framework::spot_manager_t> ();
             const auto rid =
-              zlink::framework::spot_rid_t::from_string (
+              zlink::framework::spot_id_t (
                 "local-user-spot");
             auto created =
               manager.get_or_create (rid, "room")
@@ -969,7 +969,7 @@ class generated_user_spot_collision_client_t final
               services.get_required<
                 zlink::framework::spot_manager_t> ();
             const auto collision =
-              zlink::framework::spot_rid_t::from_string (
+              zlink::framework::spot_id_t (
                 "user:spot-collision-node:1");
             auto occupied =
               manager.get_or_create (collision, "occupied")
@@ -1000,9 +1000,9 @@ class generated_user_spot_collision_client_t final
             if (generated.value ().state
                   != zlink::framework::spot_create_state_t::
                        created
-                || generated.value ().spot.spot_rid ().value ()
+                || generated.value ().spot.spot_id ().value ()
                      == collision.value ()
-                || generated.value ().spot.spot_rid ().value ()
+                || generated.value ().spot.spot_id ().value ()
                      != "user:spot-collision-node:2") {
                 last_error =
                   "Generated User Spot did not retry the occupied RID";
@@ -1077,7 +1077,7 @@ class source_cleanup_client_t final
         const auto result =
           manager
             .get_or_create (
-              zlink::framework::spot_rid_t::from_string (
+              zlink::framework::spot_id_t (
                 "source-cleanup"),
               "failing")
             .timeout (std::chrono::seconds (2))
@@ -1230,7 +1230,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressFromStore)
     (void) claim_test_owner (store, "owner-a");
     ASSERT_EQ (location_write_status_t::stored,
                store.update_spot (spot_location_t{.mesh_name = "mesh-a",
-                                                  .spot_rid =
+                                                  .spot_id =
                                                     zlink::routing_id_t::from ("spot-a"),
                                                   .spot_type = "play",
                                                   .node_rid =
@@ -1251,7 +1251,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesSpotAddressFromStore)
     ASSERT_TRUE (address.has_value ());
     EXPECT_EQ ("mesh-a", address->mesh_name);
     EXPECT_EQ ("node-a", address->node_rid.to_string ());
-    EXPECT_EQ ("spot-a", address->spot_rid.to_string ());
+    EXPECT_EQ ("spot-a", address->spot_id);
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers, AddLocationStoreRegistersUnifiedInstance)
@@ -1331,7 +1331,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, PendingActorEntrySpotResolvesAsMiss)
                                                     .owner_node_rid =
                                                       zlink::routing_id_t::from ("node-a"),
                                                     .owner_node_generation = 1,
-                                                    .spot_rid = zlink::routing_id_t::from (
+                                                    .spot_id = zlink::routing_id_t::from (
                                                       "entry-spot"),
                                                     .spot_generation = 1,
                                                     .spot_kind = zlink::spot_kind::entry,
@@ -1356,7 +1356,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesOpaqueSpotHandleAcrossMeshes
     (void) claim_test_owner (store, "owner-a");
     const auto initial_write =
       store.update_spot (spot_location_t{.mesh_name = "mesh-b",
-                                         .spot_rid = zlink::routing_id_t::from ("spot-b"),
+                                         .spot_id = zlink::routing_id_t::from ("spot-b"),
                                          .spot_generation = 41,
                                          .spot_type = "play",
                                          .node_rid = zlink::routing_id_t::from ("node-a"),
@@ -1370,18 +1370,18 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesOpaqueSpotHandleAcrossMeshes
 
     /* No mesh name in the lookup: the rid is searched across every mesh. */
     const auto handle =
-      resolvers.resolve_spot_handle (zlink::framework::spot_rid_t::from_string ("spot-b"))
+      resolvers.resolve_spot_handle (zlink::framework::spot_id_t ("spot-b"))
         .result ()
         .value ();
     ASSERT_TRUE (handle.has_value ());
-    EXPECT_EQ ("spot-b", std::string (handle->spot_rid ().value ()));
+    EXPECT_EQ ("spot-b", std::string (handle->spot_id ().value ()));
     auto handle_state = zlink::framework::detail::spot_handle_access_t::state (*handle);
     ASSERT_TRUE (handle_state);
     EXPECT_EQ (41u, handle_state->snapshot ().spot_generation);
 
     ASSERT_EQ (location_write_status_t::stored,
                store.update_spot (spot_location_t{.mesh_name = "mesh-b",
-                                                  .spot_rid =
+                                                  .spot_id =
                                                     zlink::routing_id_t::from ("spot-b"),
                                                   .spot_generation = 42,
                                                   .spot_type = "play",
@@ -1398,7 +1398,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesOpaqueSpotHandleAcrossMeshes
     EXPECT_EQ (42u, handle_state->snapshot ().spot_generation);
 
     const auto missing =
-      resolvers.resolve_spot_handle (zlink::framework::spot_rid_t::from_string ("missing"))
+      resolvers.resolve_spot_handle (zlink::framework::spot_id_t ("missing"))
         .result ()
         .value ();
     EXPECT_FALSE (missing.has_value ());
@@ -1419,7 +1419,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorSpotHandle)
                                                     .owner_node_rid =
                                                       zlink::routing_id_t::from ("node-a"),
                                                     .owner_node_generation = 1,
-                                                    .spot_rid =
+                                                    .spot_id =
                                                       zlink::routing_id_t::from ("spot-b"),
                                                     .spot_generation = 1,
                                                     .spot_kind = zlink::spot_kind::user,
@@ -1434,7 +1434,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, ResolvesActorSpotHandle)
 
     const auto handle = resolvers.resolve_actor_spot_handle ("actor-b").result ().value ();
     ASSERT_TRUE (handle.has_value ());
-    EXPECT_EQ ("spot-b", std::string (handle->spot_rid ().value ()));
+    EXPECT_EQ ("spot-b", std::string (handle->spot_id ().value ()));
 
     const auto missing = resolvers.resolve_actor_spot_handle ("nobody").result ().value ();
     EXPECT_FALSE (missing.has_value ());
@@ -1459,7 +1459,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RejectsPendingAndRegressedActorGener
                                 .actor_ref = std::move (actor_ref),
                                 .owner_node_rid = zlink::routing_id_t::from (node),
                                 .owner_node_generation = 1,
-                                .spot_rid = zlink::routing_id_t::from ("spot-observed"),
+                                .spot_id = zlink::routing_id_t::from ("spot-observed"),
                                 .spot_generation = 1,
                                 .spot_kind = zlink::spot_kind::user,
                                 .membership_epoch = membership_epoch,
@@ -1693,7 +1693,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryProjectsEveryLocationKin
     ASSERT_EQ (location_write_status_t::stored,
                store
                  .update_spot (spot_location_t{.mesh_name = "mesh-topology",
-                                               .spot_rid = zlink::routing_id_t::from ("spot-1"),
+                                               .spot_id = zlink::routing_id_t::from ("spot-1"),
                                                .node_rid = zlink::routing_id_t::from (
                                                  "node-topology"),
                                                .owner_id = owner},
@@ -1712,7 +1712,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers, RuntimeQueryProjectsEveryLocationKin
                                                  .owner_node_rid = zlink::routing_id_t::from (
                                                    "node-topology"),
                                                  .owner_node_generation = 1,
-                                                 .spot_rid = zlink::routing_id_t::from ("spot-1"),
+                                                 .spot_id = zlink::routing_id_t::from ("spot-1"),
                                                  .spot_generation = 1,
                                                  .spot_kind = zlink::spot_kind::user,
                                                  .membership_epoch = 1,
@@ -2027,7 +2027,7 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
 }
 
 TEST (ZLinkFrameworkStoreLocationResolvers,
-      GeneratedUserSpotRidRetriesActiveCollisionWithinCreateCall)
+      GeneratedUserSpotIdRetriesActiveCollisionWithinCreateCall)
 {
     auto app = zlink::framework::app_t::create ();
     generated_user_spot_collision_client_t *client = nullptr;

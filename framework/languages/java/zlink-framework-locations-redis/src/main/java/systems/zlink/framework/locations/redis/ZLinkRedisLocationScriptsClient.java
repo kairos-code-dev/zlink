@@ -328,9 +328,9 @@ final class ZLinkRedisLocationScriptsClient {
                     .serializeMeshNodeAdmissionCapabilities(
                         descriptor.objectCapabilities()),
                 Integer.toString(
-                    descriptor.capacity().activeLimit()),
+                    descriptor.capacity().actors().limit()),
                 Integer.toString(
-                    descriptor.capacity().pendingLimit())));
+                    descriptor.capacity().spots().limit())));
                 }))
             .thenApply(ZLinkRedisLocationScriptsClient::toWriteResult)
             .exceptionally(

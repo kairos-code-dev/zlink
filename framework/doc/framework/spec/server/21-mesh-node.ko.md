@@ -24,7 +24,7 @@ MeshNode 하나는 다음 identity와 설정을 가진다.
 | Lifecycle generation | 같은 transport identity의 lifecycle을 구분하는 non-zero fence |
 | Descriptor revision | 같은 lifecycle에서 mutable descriptor snapshot 변경을 구분하는 non-zero 값 |
 
-MeshName은 ActorId나 SpotRid의 identity key가 아니다. ActorId와 User·Instance SpotRid는 Location Store
+MeshName은 ActorId나 SpotId의 identity key가 아니다. ActorId와 User·Instance SpotId는 Location Store
 transaction domain 전체에서 각각 전역 key이며, MeshName은 initial placement와 현재 물리 route의 attribute다.
 
 같은 process에는 같은 MeshName의 MeshNode를 하나만 등록할 수 있다. 서로 다른 MeshName의 MeshNode는 여러 개
@@ -38,16 +38,25 @@ Automatic discovery를 사용하는 MeshNode의 RID는 Framework가 매 lifecycl
 사용할 prefix만 지정할 수 있으며 생략하면 Framework가 listener 종류에 맞는 기본 prefix를 사용한다.
 
 - Prefix는 ASCII `[A-Za-z0-9._-]` 1..64자다.
-- Full RID는 `prefix-<32 lowercase hex>` 형식이며 UTF-8 encoded 크기는 255 bytes 이하다.
-- Suffix는 128-bit CSPRNG 값이다. Prefix와 suffix를 placement, shard, stable application identity로 해석하지
-  않는다.
-- Descriptor owner CAS가 `(MeshName, RID)`의 active owner 충돌을 확인한다. 충돌하면 새 suffix로 최대 8회
-  시도하고, 모두 충돌하면 startup을 `RoutingIdConflict`로 끝낸다.
+- Full RID는 `prefix-<lowercase-canonical-uuid-v4>` 형식이며 UTF-8 encoded 크기는 255 bytes 이하다.
+- Suffix는 RFC 4122 UUID v4 bit layout을 사용하는 16-byte random value를 `8-4-4-4-12` lowercase canonical
+  문자열로 표현한다. Prefix와 UUID를 placement, shard, stable application identity로 해석하지 않는다.
+- Descriptor owner CAS가 `(MeshName, RID)`의 active owner 충돌을 확인한다. 충돌하면 기존 record를
+  변경하지 않고 startup을 즉시 `RoutingIdConflict`로 끝낸다. Framework는 두 번째 UUID를 만들거나
+  두 번째 claim을 시도하지 않는다.
 - Replacement lifecycle은 이전 RID를 재사용하지 않고 새 RID를 만든다.
 
 Fixed RID는 Location Store descriptor와 automatic discovery를 사용하지 않는 explicit manual topology에서만
 허용한다. Object role이 `Client` 또는 `Server`이거나 automatic mode와 fixed RID를 함께 설정하면 startup
 configuration error다.
+
+Object Server의 Entry Spot ID는 같은 diagnostic prefix와 독립적인 UUID v4를 사용해
+`<prefix>-entry-<lowercase-canonical-uuid-v4>` 형식으로 발급한다. 같은 lifecycle에서는 유지하고 replacement
+lifecycle에서는 endpoint가 같아도 새로 발급한다. Global Spot namespace의 active 충돌은 기존 record를
+변경하지 않고 startup을 즉시 `SpotIdConflict`로 끝내며 두 번째 UUID나 claim을 만들지 않는다.
+Descriptor는 exact Entry Spot ID와 lifecycle
+generation을 함께 게시하며 consumer는 이 mapping을 사용하고 RID 문자열을 parse하지 않는다. Framework는
+full MeshNode RID를 이어 붙여 Entry Spot ID를 만들지 않는다.
 
 ## 4. Object role과 registration
 
@@ -60,7 +69,7 @@ Object role은 MeshNode마다 한 번 선택한다.
 | `Server` | `Client` capability 포함 | 등록한 type을 host함 | eligible type에 포함 |
 
 `Client`와 `Server`는 Location Store가 필수다. `None`은 manager, factory, placement와 hidden local object
-runtime을 만들지 않는다. Factory와 Entry Spot 등록은 `Server` builder만 제공한다. Entry Spot RID는 Framework가
+runtime을 만들지 않는다. Factory와 Entry Spot 등록은 `Server` builder만 제공한다. Entry Spot ID는 Framework가
 발급하며 caller가 생성하거나 fixed RID를 지정하지 않는다.
 
 Actor, User Spot과 Instance Spot factory는 stable type과 relocation policy를 반드시 등록한다. Stable type은 UTF-8
@@ -72,22 +81,32 @@ Actor, User Spot과 Instance Spot factory는 stable type과 relocation policy를
 
 Object Server descriptor는 node-wide placement weight, node capacity와 등록한 type별 capability를 게시한다.
 
-- Placement weight는 0..100이고 기본값은 100이다. Channel weight와 분리한다. 0은 신규 create와 relocation
-  target에서만 제외하며 existing traffic과 이미 완료된 reservation은 취소하지 않는다.
-- Node capacity 기본값은 active 10,000, pending 128이다.
-- Type별 limit은 생략하면 node limit을 공유한다. 명시하면 1..`2^31-1`이고 node limit보다 작은 값을 적용한다.
-- Active·pending capacity filter를 weight보다 먼저 적용한다. Eligible node가 없으면
+- Placement weight는 signed integer `0..10000`이고 기본값은 `100`이다. `1..10000`은 eligible node 사이의
+  상대적 선택 비중이며 Channel weight와 분리한다. Startup 설정이나 runtime 변경에 범위 밖 값을 지정하면
+  configuration error다. 0은 신규 create와 relocation target에서만 제외하며 existing traffic과 이미
+  제출했거나 완료된 reservation은 취소하지 않는다.
+- Node의 Actor 전체와 Spot 전체 population limit 기본값은 각각 `0`이며 제한을 두지 않는다는 뜻이다.
+  양수는 `1..2^31-1` 범위의 상한이고 음수는 startup configuration error다.
+- User Spot과 Instance Spot factory는 `(object kind, stable type)`별 Spot limit을 같은 규칙으로 등록한다.
+  Entry Spot은 Spot capacity에서 제외하지만 Entry Spot에 존재하는 Actor는 Actor 전체 capacity에 포함한다.
+  Actor stable type별 limit은 제공하지 않는다.
+- Location Store가 Actor 전체, Spot 전체와 Spot stable type별 active·reserved count의 권한 원본이다.
+  Descriptor count는 이 값의 projection이다.
+- Factory 실행을 제한하는 activation concurrency는 population capacity와 별도이며 기본값은 128이다.
+  양수만 허용하고 실행 중인 factory와 초기화에만 적용한다.
+- Typed population capacity filter를 weight보다 먼저 적용한다. Eligible node가 없으면
   `PlacementCapacityExhausted`다.
 - Startup builder, runtime option, descriptor와 monitoring snapshot은 같은 weight·capacity 값을 사용한다.
 
-Logical create는 optional `PlacementProfile`과 `AffinityKey`만 caller placement input으로 받는다. 두 값은 UTF-8
-1..255 bytes의 stable value다. Capability, region·zone과 deployment 정책은 Server가 등록한 profile 안에서
-해석한다. Caller가 target RID, predicate나 placement callback을 넘기는 표면은 제공하지 않는다.
+최초 배치는 caller가 target RID, predicate 또는 별도 placement selector를 지정하지 않는다. Deployment
+정책은 Framework runtime 내부에서 처리하며 public factory option이나 creation intent에 포함하지 않는다.
 
-Framework는 `Serving` 상태, current owner lease, type capability, placement profile, capacity와 weight를 사용해
+Framework는 `Serving` 상태, current owner lease, stable type capability, capacity와 node-wide weight를 사용해
 target을 선택한다. 선택 결과는 generic placement reservation으로 확정하며 application에 target RID나 owner
 token 선택을 요구하지 않는다. `GetOrCreate`가 Ready object를 찾은 경우 current owner의 capacity와 weight를 다시
-적용하지 않는다.
+적용하지 않는다. Typed capacity와 다른 eligibility filter를 먼저 적용한 뒤 positive weight 합계를 최소
+64-bit 정수로 계산한다. Factory option과 descriptor capability에는 stable type, relocation policy, Snapshot
+adapter 존재 여부와 type별 capacity만 기록한다.
 
 ## 6. 등록과 startup
 
@@ -118,6 +137,8 @@ MeshNode만 connect를 시작한다. Manual 양방향 connect 또는 automatic �
 Handshake는 channel별 weight도 전달한다. Channel weight를 실행 중 바꾸면 lifecycle generation은 유지하고
 descriptor revision만 증가한다. Peer는 더 큰 revision의 complete weight snapshot만 적용한다. Weight 변경은
 connection 재생성이나 application message replay를 일으키지 않으며 node-wide placement weight를 바꾸지 않는다.
+Node placement weight의 runtime 변경도 같은 descriptor revision으로 순서화하며 이후 create·relocation target
+선택에만 적용한다.
 
 | Target | Selection과 delivery |
 |---|---|
@@ -125,7 +146,7 @@ connection 재생성이나 application message replay를 일으키지 않으며 
 | Channel | process-local ChannelName index가 고른 Mesh에서 ready Server member 가운데 positive channel weight 비율로 한 node를 선택 |
 | Logical Multicast | target ChannelName의 ready remote node 전체와 조건부 local Spot subscription에 전달 |
 | Actor direct | global ActorId의 current authority와 ObjectGeneration을 확인한 owner route로 제출 |
-| Spot direct | global SpotRid의 current authority와 ObjectGeneration을 확인한 owner route로 제출 |
+| Spot direct | global SpotId의 current authority와 ObjectGeneration을 확인한 owner route로 제출 |
 
 Selection과 submit은 하나의 operation이다. 선택한 RID 목록을 application에 반환한 뒤 별도 send를 요구하지 않는다.
 Node·Channel·Actor·Spot의 send와 request는 같은 MeshNode ROUTER를 사용한다. Classic fanout은 별도 PUB/SUB socket
@@ -133,7 +154,7 @@ Node·Channel·Actor·Spot의 send와 request는 같은 MeshNode ROUTER를 사�
 
 Node direct는 exact MeshName과 RID가 operation 의미에 포함되는 infrastructure·진단 또는 manual topology에
 사용한다. 여러 node가 제공하는 application request는 ChannelName으로 선택한다. Actor와 Spot 메시징은 global
-ActorId 또는 SpotRid를 target으로 사용하며 NodeRid와 MeshName을 caller target으로 받지 않는다.
+ActorId 또는 SpotId를 target으로 사용하며 NodeRid와 MeshName을 caller target으로 받지 않는다.
 
 기존 Actor·Spot의 current MeshName과 NodeRid는 Location Store authority가 제공한다. Missing Instance Spot만
 Spot direct fluent call의 Instance intent에서 optional initial Mesh와 stable type을 받는다. Initial Mesh는 cold
@@ -166,7 +187,8 @@ Spot을 이전한다. Node weight 0 또는 drain 전환은 existing object를 �
 ## 9. 관측
 
 Snapshot과 event는 MeshName, RID, lifecycle generation, endpoint, object role, node-wide placement weight,
-active·pending·maximum capacity, capability, reservation failure와 drain state를 제공한다. RID와 endpoint는 진단
+Actor 전체·Spot 전체·Spot stable type별 active·reserved·limit capacity, activation concurrency, capability,
+reservation failure와 drain state를 제공한다. RID와 endpoint는 진단
 값이며 metric label에는 사용하지 않는다. 세부 계약은 [50 Runtime Monitoring](50-runtime-monitoring.ko.md)이
 소유한다.
 
@@ -175,10 +197,16 @@ active·pending·maximum capacity, capability, reservation failure와 drain stat
 - 같은 process의 중복 MeshName과 잘못된 object role 구성이 startup에서 실패한다.
 - `None`, `Client`, `Server`가 manager, factory와 placement capability를 계약대로 제한한다.
 - Object role과 Location Store, automatic discovery와 fixed RID의 잘못된 조합이 startup에서 실패한다.
-- Automatic RID가 prefix와 128-bit random suffix 형식을 따르고 active conflict를 최대 8회 재시도한다.
+- Automatic RID가 prefix와 lowercase canonical UUID v4 형식을 따르고 active conflict에서 기존 record를
+  변경하거나 두 번째 claim을 시도하지 않고 즉시 실패한다.
 - Replacement lifecycle이 새 RID를 사용한다.
 - Stable type 중복과 policy 생략이 startup에서 실패한다.
-- Capacity가 weight보다 먼저 적용되고 weight 0이 existing object와 accepted reservation을 취소하지 않는다.
+- Typed population capacity가 weight보다 먼저 적용되고 weight 0이 existing object와 accepted reservation을
+  취소하지 않는다.
+- 세 public weight가 `0`, 기본값 `100`과 상한 `10000`을 허용하고 범위 밖 startup·runtime 설정을 거부한다.
+- Placement 후보 합계를 최소 64-bit 정수로 overflow 없이 계산한다.
+- Entry Spot 자체는 Spot capacity에서 제외되고 그 안의 Actor는 Actor capacity에 포함된다.
+- Population capacity와 activation concurrency가 서로의 count와 limit을 대신하지 않는다.
 - Channel weight 변경이 placement weight를 바꾸지 않는다.
 - Channel select-one이 channel weight와 drain을 반영하고 Node direct에는 영향을 주지 않는다.
 - Logical Multicast가 remote node마다 한 번 전송되고 node-local Spot queue가 immutable storage를 공유한다.

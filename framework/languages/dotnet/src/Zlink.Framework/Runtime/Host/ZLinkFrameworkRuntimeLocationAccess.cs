@@ -17,7 +17,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         var store = Registration.Locations.ResolveStore() as IZLinkInstanceSpotLocationStore;
         if (store is null) return null;
 
-        var key = new ZLinkSpotLocationKey(address.MeshName, address.SpotRid);
+        var key = new ZLinkSpotLocationKey(address.SpotId);
         var resolved = await store.ResolveInstanceSpotAsync(key, cancellationToken)
             .ConfigureAwait(false);
         if (resolved is not InstanceSpotResolveResult.Found found
@@ -33,7 +33,7 @@ internal sealed partial class ZLinkFrameworkRuntime
             new ZLinkSpotHandleSnapshot(
                 row.MeshName,
                 row.OwnerNodeRid,
-                row.SpotRid,
+                row.SpotId,
                 row.SpotGeneration,
                 ZLinkSpotKind.Instance,
                 row.LocationGeneration),
@@ -51,7 +51,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                     new ZLinkSpotHandleSnapshot(
                         location.MeshName,
                         location.OwnerNodeRid,
-                        location.SpotRid,
+                        location.SpotId,
                         location.SpotGeneration,
                         ZLinkSpotKind.Instance,
                         location.LocationGeneration),

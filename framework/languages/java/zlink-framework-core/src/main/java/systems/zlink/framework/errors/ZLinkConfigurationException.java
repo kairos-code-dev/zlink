@@ -5,6 +5,12 @@ public final class ZLinkConfigurationException extends ZLinkFrameworkException {
         super(message);
     }
 
+    public ZLinkConfigurationException(
+        ZLinkFrameworkErrorKind kind,
+        String message) {
+        super(kind, message);
+    }
+
     public ZLinkConfigurationException(String message, Throwable cause) {
         super(message, cause);
     }

@@ -42,7 +42,7 @@ internal sealed class ZLinkDispatchErrorReporter(
                 error.Topic,
                 error.CorrelationId,
                 error.SourceRid,
-                SpotRid: error.SpotRid,
+                SpotId: error.SpotId,
                 ActorId: error.ActorId,
                 ErrorReason: error.Reason,
                 ErrorAction: error.Action,

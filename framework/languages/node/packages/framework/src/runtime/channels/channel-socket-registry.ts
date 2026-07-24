@@ -116,6 +116,8 @@ export class ZLinkChannelSocketRegistry {
   }>();
   private readonly clientServerServerDescriptors =
     new Map<string, ZLinkClientServerServerDescriptor>();
+  private readonly clientServerPublicWeights = new Map<string, number>();
+  private readonly routeMeshPublicWeights = new Map<string, number>();
   private readonly clientServerAdmittedClients = new Map<string, Set<RoutingId>>();
   private readonly clientServerServerPeers = new Map<string, {
     readonly channelName: string;
@@ -160,6 +162,8 @@ export class ZLinkChannelSocketRegistry {
     this.clientServerConnections.clear();
     this.clientServerReadyIdentities.clear();
     this.clientServerServerDescriptors.clear();
+    this.clientServerPublicWeights.clear();
+    this.routeMeshPublicWeights.clear();
     this.clientServerAdmittedClients.clear();
     this.clientServerServerPeers.clear();
     this.clientServerMonitorHandlers.clear();
@@ -241,9 +245,9 @@ export class ZLinkChannelSocketRegistry {
     };
     this.clientServerIdentities.set(channelName, identity);
     router.setRoutingId(identity.serverRid);
-    if (channel.server.weight !== undefined) {
-      router.peerWeight = channel.server.weight;
-    }
+    const publicWeight = channel.server.weight ?? 100;
+    this.clientServerPublicWeights.set(channelName, publicWeight);
+    router.peerWeight = rawAvailabilityWeight(publicWeight);
     applySocketConfig(router, channel.server);
     this.trackSubmitter(router);
     router.bind(channel.server.bind);
@@ -271,7 +275,7 @@ export class ZLinkChannelSocketRegistry {
         lifecycleGeneration: identity.lifecycleGeneration,
         descriptorRevision: 1n,
         endpoint: advertisedEndpoint(boundEndpoint, channel.server.advertiseHost),
-        weight: channel.server.weight ?? 100,
+        weight: publicWeight,
         state: ZLinkFrameworkRuntimeState.Serving,
         securityIdentity: 'default',
         ownerId: 'manual',
@@ -303,6 +307,18 @@ export class ZLinkChannelSocketRegistry {
 
   clientServerServerSocket(channelName: string): ZLinkBackendRouterSocket {
     return this.channelRouter(channelName);
+  }
+
+  clientServerServerWeight(channelName: string): number {
+    this.channelRouter(channelName);
+    return this.clientServerPublicWeights.get(channelName) ?? 100;
+  }
+
+  setClientServerServerWeight(channelName: string, weight: number): void {
+    requirePublicWeight(weight);
+    const router = this.channelRouter(channelName);
+    this.clientServerPublicWeights.set(channelName, weight);
+    router.peerWeight = rawAvailabilityWeight(weight);
   }
 
   openClientServerConnection(
@@ -1316,9 +1332,9 @@ export class ZLinkChannelSocketRegistry {
     if (routeChannel.routingId !== undefined && routeChannel.routingId.length > 0) {
       router.setRoutingId(routeChannel.routingId);
     }
-    if (routeChannel.weight !== undefined) {
-      router.peerWeight = routeChannel.weight;
-    }
+    const publicWeight = routeChannel.weight ?? 100;
+    this.routeMeshPublicWeights.set(routerChannelId, publicWeight);
+    router.peerWeight = rawAvailabilityWeight(publicWeight);
     applySocketConfig(router, routeChannel);
     this.trackSubmitter(router);
     this.trackRouteMonitor(routerChannelId, router);
@@ -1337,6 +1353,18 @@ export class ZLinkChannelSocketRegistry {
 
   routeMeshSocket(routerChannelId: string): ZLinkBackendRouterSocket {
     return this.routeRouter(routerChannelId);
+  }
+
+  routeMeshWeight(routerChannelId: string): number {
+    this.routeRouter(routerChannelId);
+    return this.routeMeshPublicWeights.get(routerChannelId) ?? 100;
+  }
+
+  setRouteMeshWeight(routerChannelId: string, weight: number): void {
+    requirePublicWeight(weight);
+    const router = this.routeRouter(routerChannelId);
+    this.routeMeshPublicWeights.set(routerChannelId, weight);
+    router.peerWeight = rawAvailabilityWeight(weight);
   }
 
   requireSubmitter(socket: ZLinkBackendDealerSocket | ZLinkBackendPublisherSocket | ZLinkBackendRouterSocket): ZLinkAsyncSubmitter {
@@ -1553,6 +1581,18 @@ function normalizedMessageLimit(value: number): number {
   return Number.isSafeInteger(value) && value > 0
     ? Math.min(value, 0xffff_ffff)
     : 0x7fff_ffff;
+}
+
+function requirePublicWeight(weight: number): void {
+  if (!Number.isInteger(weight) || weight < 0 || weight > 10_000) {
+    throw new ZLinkConfigurationException('Weight must be an integer in 0..10000.');
+  }
+}
+
+function rawAvailabilityWeight(weight: number): number {
+  // Core raw peer weight remains a transport availability signal in 0..100.
+  // Framework descriptors and selectors retain the exact public weight.
+  return weight === 0 ? 0 : 100;
 }
 
 function applySocketConfig(

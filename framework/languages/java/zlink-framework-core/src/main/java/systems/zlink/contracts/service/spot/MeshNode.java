@@ -147,7 +147,7 @@ public interface MeshNode extends AutoCloseable {
     OperationId joinActorSpot(
         ActorRef actor,
         RoutingId targetNodeRid,
-        RoutingId targetSpotRid,
+        RoutingId targetSpotId,
         long targetSpotGeneration,
         List<Message> creationParts,
         Duration timeout);
@@ -194,10 +194,10 @@ public interface MeshNode extends AutoCloseable {
     Spot entrySpot();
 
     /** Gets or creates a spot with the given routing id. */
-    SpotGetOrCreateResult getOrCreateSpot(RoutingId spotRid);
+    SpotGetOrCreateResult getOrCreateSpot(RoutingId spotId);
 
     /** Looks up an existing spot by routing id. */
-    Optional<Spot> spotLookup(RoutingId spotRid);
+    Optional<Spot> spotLookup(RoutingId spotId);
 
     /** Creates a node-level publisher. */
     MeshNodePublisher createPublisher();

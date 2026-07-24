@@ -23,8 +23,8 @@ struct spot_actor_admission_route_request_t
     std::string actor_type;
     std::string actor_id;
     std::uint64_t actor_generation = 0;
-    std::string source_spot_rid;
-    std::string target_spot_rid;
+    std::string source_spot_id;
+    std::string target_spot_id;
     std::vector<std::uint8_t> payload;
 };
 
@@ -55,7 +55,7 @@ struct spot_actor_commit_route_request_t
     std::string actor_type;
     std::string actor_id;
     std::uint64_t actor_generation = 0;
-    std::string target_spot_rid;
+    std::string target_spot_id;
     std::string bound_session_node_rid;
     std::string bound_session_rid;
     std::vector<std::uint8_t> transfer_state;
@@ -79,7 +79,7 @@ struct spot_actor_join_route_request_t
     std::string actor_type;
     std::string actor_id;
     std::uint64_t actor_generation = 0;
-    std::string spot_rid;
+    std::string spot_id;
     std::vector<std::uint8_t> payload;
     bool actor_snapshot_present = false;
     std::vector<std::uint8_t> actor_snapshot;
@@ -103,7 +103,7 @@ struct spot_actor_packet_route_request_t
     std::string actor_type;
     std::string actor_id;
     std::uint64_t actor_generation = 0;
-    std::string spot_rid;
+    std::string spot_id;
     std::string packet_name_value;
     std::string content_type = "application/json";
     std::map<std::string, std::string> metadata;
@@ -171,7 +171,7 @@ result_t<zlink::message_t> encode_actor_bound_session_frame (
 
 spot_actor_join_route_request_t make_spot_actor_join_route_request (
   const actor_ref_t &actor_ref,
-  spot_rid_t spot_rid,
+  spot_id_t spot_id,
   const zlink::message_t &payload,
   const std::optional<zlink::message_t> &actor_snapshot = std::nullopt);
 
@@ -186,7 +186,7 @@ actor_join_reply_t actor_join_reply_from_spot_route (const spot_actor_join_route
 
 spot_actor_packet_route_request_t
 make_spot_actor_packet_route_request (const actor_ref_t &actor_ref,
-                                      spot_rid_t spot_rid,
+                                      spot_id_t spot_id,
                                       std::string_view packet_name,
                                       const zlink::message_t &payload,
                                       const spot_actor_message_metadata_t &metadata);

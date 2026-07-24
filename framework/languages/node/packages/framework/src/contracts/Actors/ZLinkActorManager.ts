@@ -1,21 +1,29 @@
 import type { ActorRef } from '../Common';
+import type { SpotRef } from '../Spots';
 
 export interface ZLinkActorManager {
-  create(meshName: string, actorId: string, actorType: string, signal?: AbortSignal): Promise<ActorRef>;
-  create(
-    meshName: string,
-    actorId: string,
-    actorType: string,
-    createRequest: unknown,
-    signal?: AbortSignal
-  ): Promise<ActorRef>;
-  find(meshName: string, actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
-  getOrCreate(meshName: string, actorId: string, actorType: string, signal?: AbortSignal): Promise<ActorRef>;
-  getOrCreate(
-    meshName: string,
-    actorId: string,
-    actorType: string,
-    createRequest: unknown,
-    signal?: AbortSignal
-  ): Promise<ActorRef>;
+  create(actorId: string, actorType: string): ZLinkActorCreateCall;
+  getOrCreate(actorId: string, actorType: string): ZLinkActorGetOrCreateCall;
+  find(actorId: string, signal?: AbortSignal): Promise<ActorRef | undefined>;
+  findSpot(actorId: string, signal?: AbortSignal): Promise<SpotRef | undefined>;
+  destroy(actor: ActorRef, signal?: AbortSignal): Promise<boolean>;
 }
+
+export interface ZLinkActorCreateCall {
+  inMesh(meshName: string): this;
+  request(request: unknown): this;
+  timeout(timeoutMs: number): this;
+  submit(signal?: AbortSignal): Promise<ZLinkActorCreateResult>;
+}
+
+export interface ZLinkActorGetOrCreateCall {
+  inMesh(meshName: string): this;
+  request(request: unknown): this;
+  timeout(timeoutMs: number): this;
+  submit(signal?: AbortSignal): Promise<ZLinkActorCreateResult>;
+}
+
+export type ZLinkActorCreateResult =
+  | { readonly status: 'existing'; readonly actor: ActorRef }
+  | { readonly status: 'created'; readonly actor: ActorRef; readonly reply?: unknown }
+  | { readonly status: 'rejected'; readonly reply?: unknown };

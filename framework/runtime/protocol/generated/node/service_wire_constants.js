@@ -45,11 +45,12 @@ exports.ServiceWireCommand = {
     replyRelayAck: 46,
     userSpotCreate: 47,
     userSpotClose: 48,
+    actorCreate: 49,
 };
 exports.ServiceWireFlag = {
     metadata: 1,
     boundSession: 2,
-    sourceSpotRid: 4,
+    sourceSpotId: 4,
     extension: 8,
 };
 exports.ServiceWireFrameworkErrorCode = {

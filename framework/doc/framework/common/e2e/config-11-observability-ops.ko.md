@@ -33,15 +33,16 @@ Bingo형 3역할에 owner-spot 서비스를 더한 구성을 쓴다.
 | location store | 1 | 공식 Redis location store extension. 실행마다 전용 key prefix. |
 | relocation store | 1 | 공식 Redis relocation store extension. location store와 같은 Redis deployment를 쓰되 별도 key prefix를 사용한다. |
 | `Session` | 1 | Location Store를 등록한 Object Client. client STREAM endpoint, global Actor binding과 packet relay를 제공하며 factory와 placement target은 제공하지 않는다. STREAM 세션이 CCU·재접속 계기의 소스다. |
-| `Play` | 2 (`play-a`, `play-b`) | Location Store와 Relocation Store를 등록한 Object Server. Entry Spot, stable User Spot type `play.room`, Actor type `play.player`, Instance Spot type `play.instance` factory를 모두 명시적 `Snapshot` policy로 등록한다. Actor factory에는 Actor relocation adapter를, 두 Spot factory에는 각 concrete Spot type의 Spot relocation adapter를 지정한다. 두 노드는 같은 capability set, placement weight `100`, node capacity active `128`·pending `32`를 제공한다. actor 이동·룸 타이머·bound push와 `Retire` handoff의 source·target이다. |
-| `OrderWorkflow` | 2 | Location Store를 등록한 Object Server. Stable User Spot type `order.workflow` factory를 명시적 `Disabled` policy, placement weight `100`, node capacity active `64`·pending `16`으로 등록하고 event-sourcing owner Spot과 projection fan-out을 제공한다. 이 역할은 Play의 maintenance relocation target이 아니다. |
+| `Play` | 2 (`play-a`, `play-b`) | Location Store와 Relocation Store를 등록한 Object Server. Entry Spot, stable User Spot type `play.room`, Actor type `play.player`, Instance Spot type `play.instance` factory를 모두 명시적 `Snapshot` policy로 등록한다. Actor factory에는 Actor relocation adapter를, 두 Spot factory에는 각 concrete Spot type의 Spot relocation adapter를 지정한다. 두 노드는 같은 capability set, placement weight `100`, Actor total·Spot total limit `128`, 두 Spot stable type별 limit `128`과 activation concurrency `32`를 제공한다. actor 이동·룸 타이머·bound push와 `Retire` handoff의 source·target이다. |
+| `OrderWorkflow` | 2 | Location Store를 등록한 Object Server. Stable User Spot type `order.workflow` factory를 명시적 `Disabled` policy, placement weight `100`, Actor total·Spot total·`order.workflow` stable type limit `64`, activation concurrency `16`으로 등록하고 event-sourcing owner Spot과 projection fan-out을 제공한다. 이 역할은 Play의 maintenance relocation target이 아니다. |
 | trigger client | 시나리오별 | STREAM 접속·게임 진행·주문 흐름·연결 해제를 유발한다. |
 
 Store instance는 공통 Redis deployment를 사용할 수 있지만 각 Framework root가 필요한 capability를
 명시적으로 등록한다. `Play`의 `Snapshot` factory 때문에 두 Play root에는 Relocation Store가 필수다.
 `Session`과 `OrderWorkflow`에는 Snapshot 또는 Recreate factory가 없으므로 Relocation Store를 등록하지 않는다.
 OBS-C6의 `ApplicationVersion=N+1` target과 OBS-C7의 동일 version target은 source와 같은 세 stable type,
-factory·adapter kind를 게시하고 source inventory보다 큰 active·pending headroom을 유지한다.
+factory·adapter kind를 게시하고 source inventory보다 큰 Actor total, Spot total과 Spot stable type의
+`Active+Reserved+Requested` headroom을 유지한다.
 
 각 host는 기존 message-flow 설정, 언어별 표준 meter/registry와 host framework runtime을 사용한다.
 `Retire` 또는 `Shutdown`으로 `Draining` 중에는 새 ChannelName·Logical Multicast 선택에서 해당
@@ -179,7 +180,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 - 검증: `zlink.fanout.published`/`received`가 1:N로 계수된다. backend가 drop을 관찰할 수 없으면
   `fanout.dropped` instrument가 없고 0을 방출하지 않는다. 관찰 가능한 backend에서는
   queue 제한으로 drop을 유발해 실제 수와 일치하는지 확인한다. `zlink.location.owner_lease.renew.lateness`가
-  갱신 지연을 기록한다. **어떤 계기에도 `correlation_id`/`flow_id`/`actor_id`/`spot_rid` 라벨을
+  갱신 지연을 기록한다. **어떤 계기에도 `correlation_id`/`flow_id`/`actor_id`/`spot_id` 라벨을
   포함하지 않는다
   ([Runtime Metrics §6~7](../../spec/server/51-runtime-metrics.ko.md#6-location과-classic-fanout-계기)).
 - 세부 동작: fanout/lease 계기 + 카디널리티 규약.
@@ -250,7 +251,7 @@ ObjectGeneration을 유지하는가.
      deadline 안에 해제한다.
   3. `play-b`의 target factory·adapter `Restore`, participant별 staging과 모든 `Prepared`가 끝난 뒤에만
      `Draining`이 게시되는지 확인한다. Location Store의 aggregate commit 전에는 target handler를 열지 않는다.
-  4. Aggregate commit 뒤 같은 global Spot RID와 Actor ID로 request를 보내 `play-b` handler에서 처리되는지
+  4. Aggregate commit 뒤 같은 global Spot ID와 Actor ID로 request를 보내 `play-b` handler에서 처리되는지
      확인하고 bound STREAM route ACK와 steady normalization까지 기다린다.
 - 검증: User Spot과 모든 member Actor는 ObjectGeneration을 유지하고 AuthorityOwnerGeneration만 증가한다.
   Location Store의 canonical participant set·membership·owner와 aggregate generation은 한 commit에서 target으로

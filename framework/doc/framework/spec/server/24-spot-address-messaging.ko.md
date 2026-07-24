@@ -6,7 +6,7 @@
 
 ## 1. 범위
 
-이 문서는 ZLink Framework 11.0.0에서 global SpotRid identity를 생성·조회하고 직접 호출하는 공개 계약을
+이 문서는 ZLink Framework 11.0.0에서 global SpotId identity를 생성·조회하고 직접 호출하는 공개 계약을
 정의한다. User Spot과 Instance Spot은 같은 logical address와 placement lifecycle을 사용하지만 Actor
 membership 지원 여부는 다르다.
 
@@ -16,52 +16,88 @@ activation barrier는 Framework가 소유한다.
 
 ## 2. Spot identity와 reference
 
-User·Instance Spot의 logical key는 Location Store namespace 전체에서 전역인 Spot RID다. RID는 RoutingId의
-1..255-byte exact value다. MeshName은 최초 placement attribute이며 identity key가 아니다. 같은 RID를
-서로 다른 MeshName, Spot kind 또는 stable type에 동시에 사용할 수 없다.
+Entry·User·Instance Spot의 logical key는 Location Store transaction domain 전체에서 전역인
+`SpotId`다. `SpotId`는 UTF-8 encoded 크기 1..255 bytes인 string이며 case-sensitive exact byte
+sequence로 비교한다. Framework와 provider는 Unicode normalization이나 case folding을 적용하지 않는다.
+MeshName, Spot kind와 stable type은 identity key가 아니다. 따라서 같은 `SpotId`를 서로 다른
+MeshName, Spot kind 또는 stable type에 동시에 사용할 수 없다.
+
+`SpotId`는 transport routing identity가 아니다. MeshNode의 `NodeRid`만 Core `RoutingId`를 사용한다.
+Framework는 Spot address를 Core routing ID로 변환하거나 Spot ID 문자열을 parse해서 owner node를
+추론하지 않는다. Location Store에서 current authority를 조회하고 그 결과의 `NodeRid`를 transport
+route로 사용한다.
+
+Service wire에서 Spot ID와 모든 source·target Spot ID 파생 field는 `text8` 또는
+`optional-text8`로 encode한다. Length prefix 뒤의 bytes는 well-formed UTF-8이어야 한다. v11은 이전
+binary Spot RID를 decode하거나 base64·replacement character string으로 변환하지 않는다. Invalid UTF-8,
+0-byte와 256-byte 이상 값은 application admission과 Store mutation 전에 protocol 또는 configuration
+failure로 거부한다. Node RID field만 `rid` 또는 `optional-rid` encoding을 유지한다.
 
 User·Instance Spot type은 UTF-8 1..255 bytes의 case-sensitive stable name이다. Framework는 normalization이나
 case folding을 적용하지 않으며 언어 class FQN을 Store 또는 wire identity로 사용하지 않는다. 같은 Object
-Server에 같은 stable type을 중복 등록하면 startup 오류다. Entry Spot RID는 Framework가 발급하며 caller가
+Server에 같은 stable type을 중복 등록하면 startup 오류다. Entry Spot ID는 Framework가 발급하며 caller가
 create 대상으로 지정하지 않는다.
+
+`<diagnostic-prefix>-entry-<lowercase-canonical-uuid-v4>` 형식은 Framework가 발급하는 Entry Spot ID용으로
+예약한다. Caller가 `GetOrCreate` 또는 Instance Spot direct intent에 이 형식의 User·Instance Spot ID를
+지정하면 Framework는 Location Store reservation, target 선택과 factory 실행 전에 `InvalidConfiguration`으로
+거부한다. Framework와 provider는 Entry Spot owner를 찾기 위해 Spot ID를 parse하거나 full MeshNode RID에서
+Entry Spot ID를 조합하지 않고 MeshNode descriptor의 exact mapping을 사용한다.
+
+Entry Spot ID는 같은 Object Server lifecycle 동안 바뀌지 않는다. Endpoint가 같은 replacement
+lifecycle도 새 MeshNode RID와 새 Entry Spot ID를 각각 발급한다. Object Server descriptor의
+`NewClaim`은 `(MeshName, NodeRid)` descriptor identity와 `EntrySpotId`의 global Spot identity claim을
+exact owner lease·lifecycle에 연결해 한 Location Store transaction에서 생성한다. 둘 중 하나라도 active
+claim과 충돌하면 descriptor, Entry claim과 index를 모두 변경하지 않고 첫 claim에서
+`SpotIdConflict`를 반환한다. 두 번째 Entry UUID나 claim은 만들지 않는다.
+
+Descriptor remove와 owner cleanup은 stored descriptor의 exact owner lease와 lifecycle이 요청과 일치할
+때만 연결된 Entry claim을 같은 transaction에서 해제한다. 이전 lifecycle의 stale cleanup은 replacement
+lifecycle의 descriptor나 Entry claim을 삭제할 수 없다. `EntrySpotId`는 descriptor immutable field와
+immutable digest에 포함하며 `Renew` 또는 mutable descriptor update로 바꿀 수 없다. User·Instance
+Spot의 generic `Reserve`도 같은 global namespace를 검사하므로 active Entry Spot ID를 caller-created
+Spot authority로 사용할 수 없다.
 
 `SpotRef`는 다음 값을 담는 immutable location snapshot이다.
 
-- global `SpotRid`
+- global `SpotId`
 - non-zero unsigned 63-bit `ObjectGeneration`
 - 조회 시점의 `MeshName`과 `NodeRid`
 
 ObjectGeneration은 JSON에서 decimal string으로 표현한다. `SpotRef`는 messaging target이나 owner
 capability가 아니며 owner가 이동하면 위치 field가 stale할 수 있다. Application이 현재 위치를 관측하려면
-Spot RID로 다시 조회한다. `SpotHandle`, 별도 resolver handle과 `InstanceSpotAddress`는 제공하지 않는다.
+Spot ID로 다시 조회한다. `SpotHandle`, 별도 resolver handle과 `InstanceSpotAddress`는 제공하지 않는다.
 
 Instance Spot은 Actor membership이 없는 Spot이다. Direct packet handler, timer와 outbound call은 사용할 수
 있지만 Actor create·join·leave·relocation과 Logical Multicast subscription은 사용할 수 없다.
 
 ## 3. User Spot Create와 GetOrCreate
 
-Spot manager의 `Create`와 `GetOrCreate`는 User Spot만 명시적으로 생성한다. `Create`는 Framework가 global
-RID를 생성하고 required stable type을 받는다. `GetOrCreate`는 caller가 지정한 global RID와 stable type을
+Spot manager의 `Create`와 `GetOrCreate`는 User Spot만 명시적으로 생성한다. `Create`는 Framework가
+lowercase canonical UUID v4 문자열의 global Spot ID를 생성하고 required stable type을 받는다.
+`GetOrCreate`는 caller가 지정한 global Spot ID와 stable type을
 받는다. Instance Spot kind를 받는 manager overload와 Instance Spot 전용 create operation은 제공하지 않는다.
 두 operation은 target node나 endpoint를 받지 않는 single-use fluent call이다.
 
-`InMesh`, encoded creation request, `PlacementProfile`, `AffinityKey`와 timeout은 선택 항목이다.
-`PlacementProfile`과 `AffinityKey`는 UTF-8 1..255 bytes의 stable value이며 caller callback, target RID와
-predicate를 받지 않는다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal submit을 두 번
+`InMesh`, encoded creation request와 timeout만 선택 항목이다. Caller callback, target RID, predicate와
+별도 placement selector를 받지 않는다. 같은 option을 두 번 설정하면 `InvalidConfiguration`, terminal submit을 두 번
 실행하면 `AlreadySubmitted`다. Terminal submit을 시작할 때 resolve, reservation, factory와 Ready barrier
 전체에 적용할 end-to-end deadline 하나를 고정한다.
 
 `InMesh`를 지정하면 해당 Mesh를 사용한다. 생략했을 때 object Client 또는 Server role의 Mesh가 하나면
 자동 선택한다. 후보가 0개이면 `ObjectClientNotConfigured`, 둘 이상이면 `MeshSelectionRequired`, 명시한
-Mesh가 없으면 `MeshNotFound`로 끝난다. Framework는 role, stable type capability, placement profile,
-active·pending capacity를 먼저 검사하고 남은 후보를 node-wide placement weight로 선택한다.
+Mesh가 없으면 `MeshNotFound`로 끝난다. Framework는 role, stable type capability,
+Actor 전체·Spot 전체·Spot stable type capacity를 먼저 검사하고 남은 후보를 node-wide placement weight로
+선택한다. User Spot 생성은 Spot slot 하나와 `(UserSpot, stable type)` slot 하나를 같은 typed bundle로
+예약한다.
 
 Encoded creation request는 최대 1 MiB다. Reservation 전에 immutable content reference와 hash를 creation
 intent에 기록하며 Ready 또는 fenced failure cleanup까지 유지한다. Authority CAS winner만 request를 factory에
-전달한다. Factory는 `(SpotRid, ObjectGeneration, creation attempt)` 기준 at-least-once로 실행될 수 있으므로
+전달한다. Factory는 `(SpotId, ObjectGeneration, creation attempt)` 기준 at-least-once로 실행될 수 있으므로
 retry-safe해야 한다.
 
-`Create`의 automatic RID가 active authority와 충돌하면 public 결과를 만들기 전에 새 RID로 다시 시도한다.
+`Create`의 automatic RID는 UUID v4 random identity를 사용한다. Active authority와 충돌하면 기존 record를
+변경하지 않고 `SpotIdConflict`로 즉시 끝내며 새 UUID 생성이나 두 번째 reservation을 시도하지 않는다.
 같은 caller RID의 kind 또는 stable type이 다르면 `SpotTypeMismatch`다. `GetOrCreate`는 같은 User Spot
 type의 Ready 또는 Creating attempt에
 합류하고 같은 incarnation의 `SpotRef`를 반환한다. CAS loser는 다른 target에서 factory를 시작하지 않는다.
@@ -77,10 +113,10 @@ callback이 거부해 reservation과 authority를 정리했다는 뜻이다. `Re
 
 Owner가 다른 MeshNode이면 source는 generic reservation을 만든 뒤 command 47 `userSpotCreate`를 exact target으로
 보낸다. 이 command는 correlation과 terminal-once operation ID, source node RID·lifecycle generation, global
-Spot RID, stable type, provider-issued reservation fence와 하나의 deadline을 전달한다. Reservation fence에는
+Spot ID, stable type, provider-issued reservation fence와 하나의 deadline을 전달한다. Reservation fence에는
 expected StoreVersion, ObjectGeneration, AuthorityOwnerGeneration, target node RID·lifecycle generation,
-target owner lease와 pending capacity delta가 모두 들어간다. Creation request bytes는 command payload로 다시
-보내지 않는다. Target은 Location Store의 Pending creation projection에서 reference·hash·encoded size를 exact
+target owner lease와 typed capacity bundle이 모두 들어간다. Creation request bytes는 command payload로 다시
+보내지 않는다. Target은 Location Store의 Reserved creation projection에서 reference·hash·encoded size를 exact
 read하고 immutable content를 확인한 뒤에만 factory와 initialize를 실행한다.
 
 Target은 같은 reservation으로 Commit한 결과를 command 20 `reply`로 한 번만 반환한다. 기존 reply의
@@ -89,7 +125,7 @@ Target은 같은 reservation으로 Commit한 결과를 command 20 `reply`로 한
 `Created`와 `Rejected`에는 callback이 만든 reply가 선택적으로 존재할 수 있다. Source는 Location row polling을
 terminal reply로 간주하지 않으며 application packet으로 create control을 흉내 내지 않는다.
 
-Manager `Find(SpotRid)`는 current Ready authority의 `SpotRef`를 반환하며 creation을 시작하지 않는다. Manager가
+Manager `Find(SpotId)`는 current Ready authority의 `SpotRef`를 반환하며 creation을 시작하지 않는다. Manager가
 제공하는 current Spot query와 page size 1..1000, encoded 4 MiB 이하의 operational query 외에 unbounded list와
 별도 resolver는 제공하지 않는다.
 
@@ -99,13 +135,13 @@ Spot direct call은 기본적으로 existing-only operation이다. Call builder�
 send·request는 Missing RID의 factory를 실행하거나 creation intent를 만들지 않는다.
 
 Instance Spot cold activation을 허용하려면 같은 Spot direct call builder에서 Instance intent를 명시한다.
-Builder는 stable type을 생략하는 형식과 명시하는 형식을 제공한다. `InMesh`, `PlacementProfile`과 `AffinityKey`는
-Instance intent를 명시한 call에서만 사용할 수 있으며 Missing object의 최초 placement에만 적용한다. Existing
+Builder는 stable type을 생략하는 형식과 명시하는 형식을 제공한다. `InMesh`는 Instance intent를 명시한
+call에서만 사용할 수 있으며 Missing object의 최초 Mesh 선택에만 적용한다. Existing
 Ready owner를 다른 Mesh로 옮기거나 현재 placement를 제한하는 option으로 해석하지 않는다.
 
 Terminal call은 별도 check와 send로 나누지 않고 다음 순서로 resolve와 activation을 수행한다.
 
-1. global Spot RID의 current authority를 조회한다.
+1. global Spot ID의 current authority를 조회한다.
 2. Ready authority가 있으면 저장된 kind와 stable type을 사용해 current owner로 전송한다.
 3. authority가 Missing이고 Instance intent가 없으면 target-not-found로 끝낸다.
 4. authority가 Missing이고 Instance intent가 있으면 eligible Object Mesh를 선택한다. `InMesh`를 생략했고 후보가
@@ -113,15 +149,14 @@ Terminal call은 별도 check와 send로 나누지 않고 다음 순서로 resol
 5. stable type을 명시하면 해당 capability를 가진 serving node만 후보로 사용한다.
 6. stable type을 생략하면 선택한 Mesh의 serving descriptor에 등록된 distinct Instance type을 계산한다. 하나면
    자동 선택하고, 0개이면 target-not-found, 둘 이상이면 required type을 생략한 `InvalidConfiguration`이다.
-7. Source는 global Spot RID, 선택한 Mesh·stable type과 target descriptor fence, source node RID·lifecycle
-   generation·optional source Spot RID, operation identity·reply correlation·deadline, command 39의 optional
+7. Source는 global Spot ID, 선택한 Mesh·stable type과 target descriptor fence, source node RID·lifecycle
+   generation·optional source Spot ID, operation identity·reply correlation·deadline, command 39의 optional
    metadata presence·frame 및 최초 application message를 하나의 activation envelope에 넣어 선택한 target으로
    전송한다. Source는 target transport 전 owner claim이나 `Creating` authority를 만들지 않는다.
    Command 39의 route kind `1`은 이미 Ready인 authority의 exact generation fence를 사용한다. Missing cold
-   activation은 route kind `2`를 사용하며 target Mesh·node RID·lifecycle, Spot RID, stable type, descriptor
-   version, placement profile·affinity key와 deadline만 전달하고 아직 존재하지 않는 authority generation은
-   포함하지 않는다. Route kind `2`의 placement profile·affinity key·deadline은 Relocation Store에 쓰는
-   `instance-activation-recovery-v1`의 값과 byte 단위로 같아야 한다. Cold activation send와 request는 모두
+   activation은 route kind `2`를 사용하며 target Mesh·node RID·lifecycle, Spot ID, stable type, descriptor
+   version과 deadline만 전달하고 아직 존재하지 않는 authority generation은 포함하지 않는다. Route kind `2`의
+   deadline은 Relocation Store에 쓰는 `instance-activation-recovery-v1`의 값과 같아야 한다. Cold activation send와 request는 모두
    중복 실행을 막는 nonzero operation identity를 사용하며 metadata flag와 ZLIA metadata presence도 같아야 한다.
 8. Target runtime은 current authority와 local Instance registry를 함께 확인한다. Ready authority가 자신과
    local exact instance를 가리키면 기존 queue에 envelope message를 제출한다. Local instance만 있고 current
@@ -130,10 +165,11 @@ Terminal call은 별도 check와 send로 나누지 않고 다음 순서로 resol
    Relocation Store에 immutable recovery root로 저장하고 reference·hash·encoded size와 retention을 검증한다.
    그 뒤 자신을 owner로 generic `Reserve`를 호출한다. Store는 target descriptor lifecycle·owner lease·type·capacity를
    다시 확인하고 `Missing → Creating` authority, recovery receipt, provider-issued reservation fence와 target
-   pending capacity를 한 transaction으로 기록한다.
+   Spot 전체·`(InstanceSpot, stable type)` reserved capacity를 한 transaction으로 기록한다.
 10. CAS winner target만 factory와 initialize를 실행한다. Target은 recovery root의 최초 message를 durable
     activation inbox의 첫 record로 확정하되 handler는 barrier로 계속 막는다. 같은 reservation의 `Commit`은
-    recovery root·replay cursor를 유지하는 `Ready` authority와 active capacity를 게시한다. Runtime은 첫 record를
+   recovery root·replay cursor를 유지하는 `Ready` authority와 reserved-to-active capacity 전환을 게시한다.
+   Runtime은 첫 record를
     local queue head로 복원한 뒤 barrier를 열며, 후속 message는 이 record를 추월하지 않는다. Source가 Ready 뒤
     두 번째 direct message를 만들지 않는다.
 11. 첫 handler terminal completion을 durable하게 기록하고 replay cursor를 inbox sequence까지 갱신한 뒤에만
@@ -149,7 +185,7 @@ User Spot이거나 builder에 명시한 stable type과 다르면 `SpotTypeMismat
 
 ## 5. Existing-owner resolve와 direct call
 
-Spot direct send/request의 시작 method는 global Spot RID와 typed payload만 받는다. Framework는 positive route cache 또는
+Spot direct send/request의 시작 method는 global Spot ID와 typed payload만 받는다. Framework는 positive route cache 또는
 Location Store에서 current Ready incarnation과 owner route를 resolve하고 selected ObjectGeneration을 wire
 admission에 고정한다. Local과 remote owner는 같은 handler, metadata와 completion 의미를 가진다.
 
@@ -173,7 +209,7 @@ cache와 forwarding을 끈다. 두 값이 양수이면 cache max age가 forwardi
 Runtime 변경은 새 cache entry와 새 relocation에만 적용한다.
 
 Relocation commit 뒤 source는 committed source→target mapping만 사용해 stale physical route를 relay한다. Relay
-중 Store를 읽거나 application handler를 실행하지 않는다. Mapping은 Spot RID, ObjectGeneration, source와
+중 Store를 읽거나 application handler를 실행하지 않는다. Mapping은 Spot ID, ObjectGeneration, source와
 target AuthorityOwnerGeneration과 owner fence를 exact 검증한다. Target owner generation은 hop마다 증가하며
 최대 8 hops다.
 
@@ -241,23 +277,26 @@ registration·pending tick은 relocation payload에 포함하며 target Framewor
 - Ready authority가 없으면 not-found, exact generation이나 owner fence가 다르면 typed stale error다.
 - `Closing`, relocation seal 이후 또는 `Draining` owner는 신규 admission을 거부한다. `Retiring`이지만 아직 seal하지
   않은 unit은 기존 owner admission을 유지한다.
-- Request failure를 다른 Spot RID, MeshName이나 owner로 우회하지 않는다.
+- Request failure를 다른 Spot ID, MeshName이나 owner로 우회하지 않는다.
 - Expired owner는 신규 message·timer admission과 location update를 수행할 수 없다.
 
 관측 정보는 global logical RID, current MeshName, ObjectGeneration, resolve·cache 결과, creation attempt,
-cold activation·close·maintenance operation kind, forwarding hop·drop과 stale 분류를 구분한다. Spot RID는 metric
+cold activation·close·maintenance operation kind, forwarding hop·drop과 stale 분류를 구분한다. Spot ID는 metric
 label로 사용하지 않는다.
 
 ## 10. 검증 요구
 
-- Spot RID가 Store namespace 전체의 global key이고 MeshName별 중복을 허용하지 않는다.
+- Spot ID가 Store namespace 전체의 global key이고 MeshName별 중복을 허용하지 않는다.
 - User Spot Create·GetOrCreate가 target RID와 endpoint를 application에 요구하지 않는다.
 - Spot manager가 Instance Spot create·get-or-create를 제공하지 않는다.
 - Concurrent create가 authority attempt와 factory execution 하나로 수렴한다.
-- Remote User Spot create가 provider reservation과 target lifecycle을 command 47에 고정하고 Pending content를
+- User Spot과 Instance Spot 생성이 Spot 전체와 해당 Spot kind·stable type slot을 한 typed reservation으로
+  확보하고, factory 실행 전에 capacity exhaustion을 확정한다.
+- Entry Spot 자체는 Spot capacity를 소비하지 않지만 Entry Spot의 Actor 생성은 Actor slot을 소비한다.
+- Remote User Spot create가 provider reservation과 target lifecycle을 command 47에 고정하고 Reserved content를
   exact read한 뒤 command 20으로 terminal-once 완료한다.
 - `SpotRef`가 public exact generation을 보존하되 messaging target으로 사용되지 않는다.
-- Spot direct 시작 method가 Spot RID만 받고 owner route를 요구하지 않는다.
+- Spot direct 시작 method가 Spot ID만 받고 owner route를 요구하지 않는다.
 - Instance intent가 없는 Missing Spot message가 creation intent를 만들지 않는다.
 - Instance intent가 Missing Spot에서만 optional initial Mesh와 stable type을 사용해 cold activation을 시작한다.
 - 선택한 Mesh의 distinct Instance type이 하나면 type을 자동 선택하고 여러 개면 type 명시를 요구한다.

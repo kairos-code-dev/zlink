@@ -96,7 +96,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
             if (localActor.isEmpty()) {
                 host.reportSpotActorHandlerMissing(
                     packetHeader,
-                    context.spotRid(),
+                    context.spotId(),
                     headerPart.actor().actorId(),
                     headerPart.sourceNodeRid());
                 if (packetHeader.requestSeq().isPresent()) {
@@ -161,12 +161,12 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 host.replySpotRouteDispatchError(
                     received,
                     packet.packetName(),
-                    context.spotRid(),
+                    context.spotId(),
                     ZLinkDispatchErrorReason.INVALID_FRAME,
                     error);
             } else {
                 host.reportSpotRouteSendDropped(
-                    received, packet.packetName(), context.spotRid());
+                    received, packet.packetName(), context.spotId());
             }
             closeRouteReceived(received);
             return java.util.concurrent.CompletableFuture.completedFuture(null);
@@ -178,11 +178,11 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 host.replySpotRouteDispatchError(
                     received,
                     packet.packetName(),
-                    context.spotRid(),
+                    context.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_MISSING,
                     null);
             } else {
-                host.reportSpotRouteSendDropped(received, packet.packetName(), context.spotRid());
+                host.reportSpotRouteSendDropped(received, packet.packetName(), context.spotId());
             }
             closeRouteReceived(received);
             return java.util.concurrent.CompletableFuture.completedFuture(null);
@@ -192,7 +192,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 host.replySpotRouteDispatchError(
                     received,
                     packet.packetName(),
-                    context.spotRid(),
+                    context.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_MISSING,
                     null);
                 closeRouteReceived(received);
@@ -212,7 +212,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                             host.replySpotRouteDispatchError(
                                 received,
                                 packet.packetName(),
-                                context.spotRid(),
+                                context.spotId(),
                                 ZLinkDispatchErrorReason.HANDLER_EXCEPTION,
                                 error);
                         }
@@ -228,13 +228,13 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                                 null,
                                 received.requestSeq().map(String::valueOf).orElse(null),
                                 null,
-                                context.spotRid().toString(),
+                                context.spotId().toString(),
                                 null);
                         }
                     }));
         }
         if (handler.request()) {
-            host.reportSpotRouteSendDropped(received, packet.packetName(), context.spotRid());
+            host.reportSpotRouteSendDropped(received, packet.packetName(), context.spotId());
             closeRouteReceived(received);
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
@@ -259,7 +259,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                             null,
                             null,
                             null,
-                            context.spotRid().toString(),
+                            context.spotId().toString(),
                             null);
                     }
                 }));
@@ -319,7 +319,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 host.reportSpotSubscriptionDropped(
                     received.topic(),
                     null,
-                    context.spotRid(),
+                    context.spotId(),
                     ZLinkDispatchErrorReason.INVALID_FRAME);
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             }
@@ -332,7 +332,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 host.reportSpotSubscriptionDropped(
                     received.topic(),
                     null,
-                    context.spotRid(),
+                    context.spotId(),
                     ZLinkDispatchErrorReason.INVALID_FRAME);
                 return java.util.concurrent.CompletableFuture.completedFuture(null);
             }
@@ -345,7 +345,7 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                 received.topic(),
                 null,
                 null,
-                context.spotRid().toString(),
+                context.spotId().toString(),
                 null);
             CompletionStage<Void> tail =
                 java.util.concurrent.CompletableFuture.completedFuture(null);
@@ -380,13 +380,13 @@ abstract class SpotActivationBase<C extends SpotDispatchLine> implements AutoClo
                     received.topic(),
                     null,
                     null,
-                    context.spotRid().toString(),
+                    context.spotId().toString(),
                     null);
             } else {
                 host.reportSpotSubscriptionDropped(
                     received.topic(),
                     packet.packetName(),
-                    context.spotRid(),
+                    context.spotId(),
                     ZLinkDispatchErrorReason.HANDLER_MISSING);
             }
             return tail;

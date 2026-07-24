@@ -45,15 +45,30 @@ internal sealed class ZLinkActorRuntimeState(
 
     private volatile ZLinkActorDestroyPhase _destroyPhase;
     private volatile bool _teardownPending;
+    private volatile bool _reservedCreationPending;
 
-    public bool IsDispatchBlocked => _destroyPhase != ZLinkActorDestroyPhase.None || _teardownPending;
+    public bool IsDispatchBlocked =>
+        _destroyPhase != ZLinkActorDestroyPhase.None
+        || _teardownPending
+        || _reservedCreationPending;
 
     public bool IsTeardownPending => _teardownPending;
+
+    public void BeginReservedCreation()
+    {
+        EnsureReusable();
+        _reservedCreationPending = true;
+    }
+
+    public void PublishReservedCreation()
+    {
+        _reservedCreationPending = false;
+    }
 
     public ZLinkSpotActivation? LiveActivation
         => Activation is { IsDisposed: false } activation ? activation : null;
 
-    public RoutingId? SpotRid => LiveActivation?.SpotRid;
+    public string? SpotId => LiveActivation?.SpotId;
 
     public void AttachStream(IZLinkStream stream)
     {
@@ -574,7 +589,11 @@ internal sealed class ZLinkActorRuntimeState(
 
     private void EnsureReusable()
     {
-        if (!IsDispatchBlocked) return;
+        // Reserved creation deliberately blocks public dispatch until the
+        // authority Ready commit, but the factory, context and native Actor
+        // binding that prepare that reservation must still mutate this state.
+        if (_destroyPhase == ZLinkActorDestroyPhase.None && !_teardownPending)
+            return;
 
         throw new ZLinkFrameworkException(
             ZLinkFrameworkErrorKind.ActorRouteNotFound,

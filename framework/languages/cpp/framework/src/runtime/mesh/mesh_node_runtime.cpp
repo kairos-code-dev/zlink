@@ -42,9 +42,9 @@ std::string channel_submit_target (const std::string &channel)
 }
 
 std::string spot_submit_target (const zlink::routing_id_t &node,
-                                const zlink::routing_id_t &spot)
+                                const std::string &spot)
 {
-    return "mesh:spot:" + node.to_hex () + ":" + spot.to_hex ();
+    return "mesh:spot:" + node.to_hex () + ":" + spot;
 }
 
 std::string actor_submit_target (const actor_ref_t &actor)
@@ -63,7 +63,7 @@ std::string send_ready_target (const host::send_ready_data_t &ready)
         case kind_t::channel:
             return channel_submit_target (ready.channel_name);
         case kind_t::spot:
-            return spot_submit_target (ready.target_node_rid, ready.target_spot_rid);
+            return spot_submit_target (ready.target_node_rid, ready.target_spot_id);
         case kind_t::actor:
         case kind_t::bound_session:
             return actor_submit_target (ready.target_actor);
@@ -139,6 +139,15 @@ void mesh_node_runtime_t::bind_serializers (serializer_registry_t &serializers) 
     _serializers = &serializers;
 }
 
+void mesh_node_runtime_t::bind_descriptor_publisher (
+  std::function<void (const std::map<std::string, int> &,
+                      int,
+                      std::uint64_t)> publisher)
+{
+    std::lock_guard lock (_state->mutex);
+    _descriptor_publisher = std::move (publisher);
+}
+
 void mesh_node_runtime_t::start ()
 {
     if (_node) {
@@ -172,7 +181,7 @@ void mesh_node_runtime_t::start ()
     for (const auto &[channel_name, channel] : _state->channels) {
         channels.push_back (
           runtime::mesh::service_channel_descriptor_t{
-            channel_name, static_cast<std::uint32_t> (channel.weight)});
+            channel_name, channel.weight});
     }
     std::sort (channels.begin (), channels.end (),
                [] (const auto &left, const auto &right) {
@@ -192,7 +201,8 @@ void mesh_node_runtime_t::start ()
             .effective_max_message_bytes =
               _state->socket.max_message_size > 0
                 ? static_cast<std::uint32_t> (_state->socket.max_message_size)
-                : 4u * 1024u * 1024u},
+                : 4u * 1024u * 1024u,
+            .placement_weight = _state->placement_weight},
           _state->socket.mailbox_message_budget,
           _state->socket.mailbox_byte_budget,
           1024,
@@ -291,48 +301,48 @@ void mesh_node_runtime_t::disconnect_peer (const std::string &endpoint) noexcept
 }
 
 host::spot_handle_t
-mesh_node_runtime_t::get_or_create_spot (const zlink::routing_id_t &spot_rid)
+mesh_node_runtime_t::get_or_create_spot (std::string spot_id)
 {
     if (!_node) {
         throw configuration_error ("MeshNode has not started");
     }
-    const auto key = spot_rid.to_hex ();
+    const auto &key = spot_id;
     if (const auto found = _spots.find (key); found != _spots.end ())
         return found->second;
-    auto spot = _node->get_or_create_spot (spot_rid);
+    auto spot = _node->get_or_create_spot (spot_id);
     _spots.emplace (key, spot);
     return spot;
 }
 
 zlink::submit_result_t mesh_node_runtime_t::send_to_spot (
-  const zlink::routing_id_t &source_spot_rid,
+  const std::string &source_spot_id,
   const zlink::routing_id_t &target_node_rid,
-  const zlink::routing_id_t &target_spot_rid,
+  const std::string &target_spot_id,
   std::uint64_t target_spot_generation,
   const std::vector<zlink::message_t> &parts,
   std::vector<std::uint8_t> metadata)
 {
     runtime::messaging::note_submit_attempt (
-      spot_submit_target (target_node_rid, target_spot_rid), this,
+      spot_submit_target (target_node_rid, target_spot_id), this,
       one_way_send_timeout (*_state), _state->max_pending);
-    return get_or_create_spot (source_spot_rid)
-      .send_to_spot (target_node_rid, target_spot_rid,
+    return get_or_create_spot (source_spot_id)
+      .send_to_spot (target_node_rid, target_spot_id,
                      target_spot_generation, parts,
                      zlink::send_flags_t::dontwait, metadata);
 }
 
 zlink::submit_result_t mesh_node_runtime_t::request_to_spot (
-  const zlink::routing_id_t &source_spot_rid,
+  const std::string &source_spot_id,
   const zlink::routing_id_t &target_node_rid,
-  const zlink::routing_id_t &target_spot_rid,
+  const std::string &target_spot_id,
   std::uint64_t target_spot_generation,
   const std::vector<zlink::message_t> &parts,
   host::operation_id_t &operation_id,
   std::chrono::milliseconds timeout,
   std::vector<std::uint8_t> metadata)
 {
-    return get_or_create_spot (source_spot_rid)
-      .request_to_spot (target_node_rid, target_spot_rid,
+    return get_or_create_spot (source_spot_id)
+      .request_to_spot (target_node_rid, target_spot_id,
                         target_spot_generation, parts, operation_id,
                         zlink::send_flags_t::none, timeout, metadata);
 }
@@ -487,7 +497,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_entr
 result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot (
   actor_ref_t actor,
   const node_rid_t &target_node,
-  const spot_rid_t &target_spot,
+  const spot_id_t &target_spot,
   std::uint64_t target_spot_generation,
   const zlink::message_t &request,
   std::chrono::milliseconds timeout,
@@ -511,7 +521,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
         const std::vector<zlink::message_t> parts{request};
         const auto submitted = found->second.join_spot (
           zlink::routing_id_t::from (std::string (target_node.value ())),
-          zlink::routing_id_t::from (std::string (target_spot.value ())),
+          target_spot,
           target_spot_generation, parts, operation, timeout);
         if (submitted != zlink::submit_result_t::ok) {
             return result_t<actor_join_reply_t>::failure (
@@ -540,12 +550,12 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
             std::move (packet_name), timeout);
           auto encoded =
             codec.encode_envelope_parts (header, route_request, *_serializers);
-          auto origin = get_or_create_spot (zlink::routing_id_t::from (
-            routing_id ()->to_string () + ":__zlink-route-origin"));
+          auto origin = get_or_create_spot (
+            "__zlink-route-origin-" + routing_id ()->to_hex ());
           host::operation_id_t operation;
           const auto submitted = origin.request_to_spot (
             zlink::routing_id_t::from (std::string (target_node.value ())),
-            zlink::routing_id_t::from (std::string (target_spot.value ())),
+            target_spot,
             target_spot_generation, encoded.items (), operation,
             zlink::send_flags_t::none, timeout);
           if (submitted != zlink::submit_result_t::ok) {
@@ -581,8 +591,8 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
       .actor_generation = actor.generation (),
-      .source_spot_rid = std::string (source_spot->value ()),
-      .target_spot_rid = std::string (target_spot.value ()),
+      .source_spot_id = *source_spot,
+      .target_spot_id = target_spot,
       .payload = request.to_bytes ()};
     auto admission_parts = request_route (
       admission_request, spot_actor_admission_route_request_t::packet_name);
@@ -621,7 +631,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
       .actor_generation = actor.generation (),
-      .target_spot_rid = std::string (target_spot.value ()),
+      .target_spot_id = target_spot,
       .transfer_state = prepared.value ().state.to_bytes (),
       .core_transfer = true,
       .prepare = true};
@@ -655,10 +665,8 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
     core_prepare.role = host::actor_transfer_role_t::source;
     core_prepare.transfer_id = transfer_id;
     core_prepare.actor = native_actor;
-    core_prepare.source_spot_rid =
-      zlink::routing_id_t::from (std::string (source_spot->value ()));
-    core_prepare.target_spot_rid =
-      zlink::routing_id_t::from (std::string (target_spot.value ()));
+    core_prepare.source_spot_id = *source_spot;
+    core_prepare.target_spot_id = target_spot;
     core_prepare.target_node_rid =
       zlink::routing_id_t::from (std::string (target_node.value ()));
     host::actor_transfer_token_t core_token;
@@ -685,7 +693,7 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
       .actor_type = std::string (actor.actor_type ()),
       .actor_id = std::string (actor.actor_id ()),
       .actor_generation = actor.generation (),
-      .target_spot_rid = std::string (target_spot.value ()),
+      .target_spot_id = target_spot,
       .bound_session_node_rid =
         bound_session_node_rid ? bound_session_node_rid->to_string () : std::string{},
       .bound_session_rid =
@@ -1003,7 +1011,7 @@ mesh_node_runtime_t::forward_straggler_actor (const actor_ref_t &actor)
         return std::nullopt;
     }
     runtime.emit_actor_transfer_marker (
-      "straggler_forward", actor, {}, forwarding->route.spot_rid,
+      "straggler_forward", actor, {}, forwarding->route.spot_id,
       forwarding->route.node_rid);
     return forwarding->actor;
 }
@@ -1206,6 +1214,46 @@ std::map<std::string, int> mesh_node_runtime_t::channel_weights () const
     return result;
 }
 
+int mesh_node_runtime_t::placement_weight () const
+{
+    std::lock_guard lock (_state->mutex);
+    return _state->placement_weight;
+}
+
+void mesh_node_runtime_t::set_placement_weight (int weight)
+{
+    if (!_node)
+        throw configuration_error ("MeshNode has not started");
+    if (weight < 0 || weight > 10000)
+        throw configuration_error (
+          "placement weight must be in range 0..10000");
+    auto descriptor =
+      native_node ().transport ().topology ()
+        .local_descriptor ();
+    if (descriptor.descriptor_revision
+          == std::numeric_limits<std::uint64_t>::max ())
+        throw configuration_error (
+          "MeshNode descriptor revision is exhausted");
+    descriptor.placement_weight = weight;
+    ++descriptor.descriptor_revision;
+    std::function<void (const std::map<std::string, int> &,
+                        int,
+                        std::uint64_t)> publisher;
+    std::map<std::string, int> channel_weights;
+    {
+        std::lock_guard lock (_state->mutex);
+        publisher = _descriptor_publisher;
+        for (const auto &[name, registration] : _state->channels)
+            channel_weights.emplace (name, registration.weight);
+    }
+    if (publisher)
+        publisher (channel_weights, weight, descriptor.descriptor_revision);
+    native_node ().transport ().topology ().publish_local (
+      std::move (descriptor));
+    std::lock_guard lock (_state->mutex);
+    _state->placement_weight = weight;
+}
+
 std::size_t mesh_node_runtime_t::max_pending () const noexcept
 {
     return _state->max_pending;
@@ -1216,16 +1264,47 @@ void mesh_node_runtime_t::set_channel_weight (const std::string &channel_name,
 {
     if (!_node)
         throw configuration_error ("MeshNode has not started");
-    if (weight < 0 || weight > 100)
-        throw configuration_error ("channel weight must be in range 0..100");
-    _node->set_channel_weight (channel_name,
-                               static_cast<std::uint32_t> (weight));
-    std::lock_guard lock (_state->mutex);
-    const auto found = _state->channels.find (channel_name);
-    if (found == _state->channels.end ())
+    if (weight < 0 || weight > 10000)
+        throw configuration_error (
+          "channel weight must be in range 0..10000");
+    auto descriptor =
+      native_node ().transport ().topology ().local_descriptor ();
+    const auto descriptor_channel = std::find_if (
+      descriptor.channels.begin (), descriptor.channels.end (),
+      [&] (const auto &candidate) { return candidate.name == channel_name; });
+    if (descriptor_channel == descriptor.channels.end ())
         throw configuration_error ("RouteMesh channel is not configured: "
-                                   + _state->mesh_name + "/" + channel_name);
-    found->second.weight = weight;
+                                   + mesh_name () + "/" + channel_name);
+    descriptor_channel->weight = weight;
+    if (descriptor.descriptor_revision
+          == std::numeric_limits<std::uint64_t>::max ())
+        throw configuration_error (
+          "MeshNode descriptor revision is exhausted");
+    ++descriptor.descriptor_revision;
+    std::function<void (const std::map<std::string, int> &,
+                        int,
+                        std::uint64_t)> publisher;
+    std::map<std::string, int> channel_weights;
+    int placement_weight = 100;
+    {
+        std::lock_guard lock (_state->mutex);
+        const auto found = _state->channels.find (channel_name);
+        if (found == _state->channels.end ())
+            throw configuration_error ("RouteMesh channel is not configured: "
+                                       + _state->mesh_name + "/" + channel_name);
+        for (const auto &[name, registration] : _state->channels)
+            channel_weights.emplace (
+              name, name == channel_name ? weight : registration.weight);
+        placement_weight = _state->placement_weight;
+        publisher = _descriptor_publisher;
+    }
+    if (publisher)
+        publisher (
+          channel_weights, placement_weight, descriptor.descriptor_revision);
+    native_node ().transport ().topology ().publish_local (
+      std::move (descriptor));
+    std::lock_guard lock (_state->mutex);
+    _state->channels.at (channel_name).weight = weight;
 }
 
 void mesh_node_runtime_t::application_work_enqueued () noexcept
@@ -1329,8 +1408,9 @@ mesh_channel_builder_t::mesh_channel_builder_t (
 
 mesh_channel_builder_t &mesh_channel_builder_t::set_weight (int weight)
 {
-    if (weight < 0) {
-        throw detail::configuration_error ("ChannelName weight must not be negative");
+    if (weight < 0 || weight > 10000) {
+        throw detail::configuration_error (
+          "ChannelName weight must be in range 0..10000");
     }
     std::lock_guard lock (_state->mutex);
     _state->channels[_channel_name].weight = weight;
@@ -1401,6 +1481,17 @@ mesh_node_builder_t &mesh_node_builder_t::set_routing_id (zlink::routing_id_t ro
     std::lock_guard lock (_state->mutex);
     _state->spot_state->snapshot.routing_id = routing_id;
     _state->routing_id = std::move (routing_id);
+    return *this;
+}
+
+mesh_node_builder_t &
+mesh_node_builder_t::set_placement_weight (int weight)
+{
+    if (weight < 0 || weight > 10000)
+        throw detail::configuration_error (
+          "placement weight must be in range 0..10000");
+    std::lock_guard lock (_state->mutex);
+    _state->placement_weight = weight;
     return *this;
 }
 

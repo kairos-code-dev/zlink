@@ -2,6 +2,7 @@ import type {
   RoutingId,
   Type,
   ZLinkActor,
+  ZLinkActorFactory,
   ZLinkEntrySpot,
   ZLinkEntrySpotOptions,
   ZLinkHandlerFilter,
@@ -233,7 +234,7 @@ export interface ZLinkSpotNodeOptions {
   >;
   readonly actorFactories?: Readonly<Record<string, Type> | Map<string, Type>>;
   readonly actorFactoryRegistrations?: Readonly<
-    Record<string, ZLinkObjectFactoryRegistration<ZLinkActor>>
+    Record<string, ZLinkObjectFactoryRegistration<ZLinkActor, ZLinkActorFactory>>
   >;
   readonly meshChannels?: Readonly<Record<string, ZLinkMeshChannelOptions>>;
   readonly routeSendHandlers?: readonly ZLinkRouteMeshSendHandlerRegistration[];
@@ -256,8 +257,8 @@ export interface ZLinkSpotNodeOptions {
   readonly spotActorRequestHandlers?: readonly ZLinkSpotActorRequestHandlerRegistration[];
 }
 
-export interface ZLinkObjectFactoryRegistration<T> {
-  readonly implementation: Type<T>;
+export interface ZLinkObjectFactoryRegistration<T, TImplementation = T> {
+  readonly implementation: Type<TImplementation>;
   readonly placement?: ZLinkObjectPlacementOptions;
   readonly relocation: ZLinkRelocationPolicy<T>;
 }

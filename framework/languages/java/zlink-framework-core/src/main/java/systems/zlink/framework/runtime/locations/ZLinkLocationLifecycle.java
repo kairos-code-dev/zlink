@@ -26,7 +26,7 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
 
     public CompletionStage<ZLinkLocationWriteStatus> claimSpot(
         String meshName,
-        RoutingId spotRid,
+        String spotId,
         long spotGeneration,
         String spotType,
         RoutingId nodeRid,
@@ -35,7 +35,7 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         Runnable deactivate) {
         return spots.claim(
             meshName,
-            spotRid,
+            spotId,
             spotGeneration,
             spotType,
             nodeRid,
@@ -46,7 +46,7 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
 
     public CompletionStage<ZLinkLocationWriteStatus> claimSpot(
         String meshName,
-        RoutingId spotRid,
+        String spotId,
         String spotType,
         RoutingId nodeRid,
         ZLinkSpotKind spotKind,
@@ -54,7 +54,7 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         Runnable deactivate) {
         return claimSpot(
             meshName,
-            spotRid,
+            spotId,
             1L,
             spotType,
             nodeRid,
@@ -63,8 +63,8 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
             deactivate);
     }
 
-    public CompletionStage<Void> releaseSpot(String meshName, RoutingId spotRid) {
-        return spots.release(meshName, spotRid);
+    public CompletionStage<Void> releaseSpot(String meshName, String spotId) {
+        return spots.release(meshName, spotId);
     }
 
     public CompletionStage<ZLinkLocationWriteStatus> claimActor(
@@ -95,8 +95,8 @@ public final class ZLinkLocationLifecycle implements AutoCloseable {
         String actorType,
         String actorId,
         String meshName,
-        RoutingId spotRid) {
-        return actors.notifyJoinedSpot(actorType, actorId, meshName, spotRid);
+        String spotId) {
+        return actors.notifyJoinedSpot(actorType, actorId, meshName, spotId);
     }
 
     public CompletionStage<Void> notifyActorLeftSpot(String actorType, String actorId) {

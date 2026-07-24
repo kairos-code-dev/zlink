@@ -14,7 +14,7 @@ namespace Zlink.Framework.Locations.Redis;
 ///   P:gen:{kind}:{rowKey}   STRING generation counter, never deleted
 ///   P:keys:{kind}           SET   all row keys of the kind (list index)
 ///   P:own:{kind}:{ownerId}  SET   row keys owned by one owner (bulk remove)
-///   P:{zlink-location-v1}:owner-lease:{digest}
+///   P:{zlink-location-v3}:owner-lease:{digest}
 ///                            HASH ownerId, generation, expiresAt with PX TTL
 ///   P:stamp:{kind}[:{mesh}] STRING change stamp counter per scope
 ///
@@ -189,12 +189,18 @@ internal static class ZLinkRedisLocationScripts
                 and deepEqual(
                     value(left, 'ObjectCapabilities', 'objectCapabilities'),
                     value(right, 'ObjectCapabilities', 'objectCapabilities'))
-                and tostring(value(leftCapacity, 'ActiveLimit', 'activeLimit'))
+                and tostring(value(
+                    value(leftCapacity, 'Actors', 'actors'),
+                    'Limit', 'limit'))
                     == tostring(value(
-                        rightCapacity, 'ActiveLimit', 'activeLimit'))
-                and tostring(value(leftCapacity, 'PendingLimit', 'pendingLimit'))
+                        value(rightCapacity, 'Actors', 'actors'),
+                        'Limit', 'limit'))
+                and tostring(value(
+                    value(leftCapacity, 'Spots', 'spots'),
+                    'Limit', 'limit'))
                     == tostring(value(
-                        rightCapacity, 'PendingLimit', 'pendingLimit'))
+                        value(rightCapacity, 'Spots', 'spots'),
+                        'Limit', 'limit'))
         end
         local function bumpStamps()
             redis.call('INCR', ARGV[7])
@@ -223,8 +229,8 @@ internal static class ZLinkRedisLocationScripts
                 'runtimeState', ARGV[14],
                 'applicationVersion', ARGV[15],
                 'capabilities', ARGV[16],
-                'nodeActiveLimit', ARGV[17],
-                'nodePendingLimit', ARGV[18],
+                'actorLimit', ARGV[17],
+                'spotLimit', ARGV[18],
                 'immutableDigest', ARGV[19])
             redis.call('SADD', KEYS[3], ARGV[5])
             redis.call('SADD', KEYS[7], ARGV[5])

@@ -98,6 +98,8 @@ mesh_node_host_service_t::create_user_spot (
   std::optional<affinity_key_t> affinity,
   std::chrono::milliseconds timeout)
 {
+    const auto deadline =
+      std::chrono::steady_clock::now () + timeout;
     if (!_location_store || stable_type.empty ())
         return task_t<spot_create_result_t> (
           result_t<spot_create_result_t>::failure (
@@ -218,8 +220,8 @@ mesh_node_host_service_t::create_user_spot (
     object_reserve_request_t reserve_request;
     reserve_request.key = key;
     reserve_request.intent.stable_type = stable_type;
-    reserve_request.intent.placement_profile = std::move (profile);
-    reserve_request.intent.affinity_key = std::move (affinity);
+    reserve_request.intent.placement_profile = profile;
+    reserve_request.intent.affinity_key = affinity;
     reserve_request.intent.request_content_reference =
       encode_inline_creation_content (application_bytes);
     reserve_request.intent.request_sha256 = sha256 (application_bytes);
@@ -237,13 +239,30 @@ mesh_node_host_service_t::create_user_spot (
         ->reserve (std::move (reserve_request))
         .result ()
         .value ();
+    const auto retry_generated_collision =
+      [&] () -> task_t<spot_create_result_t> {
+        const auto now = std::chrono::steady_clock::now ();
+        if (now >= deadline)
+            return task_t<spot_create_result_t> (
+              result_t<spot_create_result_t>::failure (
+                framework_error_kind_t::deadline_exceeded,
+                "User Spot automatic RID collision exhausted the create deadline"));
+        const auto remaining =
+          std::chrono::duration_cast<std::chrono::milliseconds> (
+            deadline - now);
+        if (remaining <= std::chrono::milliseconds::zero ())
+            return task_t<spot_create_result_t> (
+              result_t<spot_create_result_t>::failure (
+                framework_error_kind_t::deadline_exceeded,
+                "User Spot automatic RID collision exhausted the create deadline"));
+        return create_user_spot (
+          source, true, std::nullopt, stable_type, mesh_name,
+          std::move (request), profile, affinity, remaining);
+      };
     if (const auto *ready =
           std::get_if<object_already_exists_t> (&reserved)) {
         if (exclusive)
-            return task_t<spot_create_result_t> (
-              result_t<spot_create_result_t>::failure (
-                framework_error_kind_t::spot_create_failed,
-                "User Spot already exists"));
+            return retry_generated_collision ();
         return task_t<spot_create_result_t> (
           result_t<spot_create_result_t>::success (
             {spot_ref_t{
@@ -254,11 +273,17 @@ mesh_node_host_service_t::create_user_spot (
              spot_create_state_t::existing,
              std::nullopt}));
     }
-    if (std::holds_alternative<object_type_mismatch_t> (reserved))
+    if (const auto *mismatch =
+          std::get_if<object_type_mismatch_t> (&reserved)) {
+        if (exclusive
+            && mismatch->current.allocation.capacity_state
+                 == placement_capacity_state_t::active)
+            return retry_generated_collision ();
         return task_t<spot_create_result_t> (
           result_t<spot_create_result_t>::failure (
             framework_error_kind_t::spot_type_mismatch,
             "User Spot stable type does not match"));
+    }
     if (std::holds_alternative<
           object_placement_capacity_exhausted_t> (reserved))
         return task_t<spot_create_result_t> (

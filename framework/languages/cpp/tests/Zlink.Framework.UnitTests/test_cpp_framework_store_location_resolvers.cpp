@@ -868,6 +868,10 @@ class local_user_spot_t final : public zlink::framework::spot_t
 {
 };
 
+class occupied_user_spot_t final : public zlink::framework::spot_t
+{
+};
+
 class user_spot_manager_client_t final
     : public zlink::framework::hosted_service_t
 {
@@ -913,6 +917,113 @@ class user_spot_manager_client_t final
                 last_error =
                   closed.error () ? closed.error ()->what ()
                                   : "User Spot close failed";
+                _app->stop ();
+                return;
+            }
+            observed = true;
+        }
+        catch (const std::exception &error) {
+            last_error = error.what ();
+        }
+        _app->stop ();
+    }
+
+    void stop () noexcept override {}
+
+    bool observed = false;
+    std::string last_error;
+
+  private:
+    zlink::framework::app_t *_app;
+};
+
+class generated_user_spot_collision_client_t final
+    : public zlink::framework::hosted_service_t
+{
+  public:
+    explicit generated_user_spot_collision_client_t (
+      zlink::framework::app_t &app) :
+        _app (&app)
+    {
+    }
+
+    void start (
+      zlink::framework::service_provider_t &services) override
+    {
+        try {
+            auto &manager =
+              services.get_required<
+                zlink::framework::spot_manager_t> ();
+            const auto collision =
+              zlink::framework::spot_rid_t::from_string (
+                "user:spot-collision-node:1");
+            auto occupied =
+              manager.get_or_create (collision, "occupied")
+                .timeout (std::chrono::seconds (2))
+                .submit ()
+                .result ();
+            if (!occupied) {
+                last_error =
+                  occupied.error ()
+                    ? occupied.error ()->what ()
+                    : "Failed to create the collision identity";
+                _app->stop ();
+                return;
+            }
+            auto generated =
+              manager.create ("room")
+                .timeout (std::chrono::seconds (2))
+                .submit ()
+                .result ();
+            if (!generated) {
+                last_error =
+                  generated.error ()
+                    ? generated.error ()->what ()
+                    : "Generated User Spot create failed";
+                _app->stop ();
+                return;
+            }
+            if (generated.value ().state
+                  != zlink::framework::spot_create_state_t::
+                       created
+                || generated.value ().spot.spot_rid ().value ()
+                     == collision.value ()
+                || generated.value ().spot.spot_rid ().value ()
+                     != "user:spot-collision-node:2") {
+                last_error =
+                  "Generated User Spot did not retry the occupied RID";
+                _app->stop ();
+                return;
+            }
+            auto existing =
+              manager.get_or_create (collision, "occupied")
+                .timeout (std::chrono::seconds (2))
+                .submit ()
+                .result ();
+            if (!existing
+                || existing.value ().state
+                     != zlink::framework::spot_create_state_t::
+                          existing
+                || existing.value ().spot.object_generation ()
+                     != occupied.value ().spot.object_generation ()) {
+                last_error =
+                  "GetOrCreate did not preserve the caller RID incarnation";
+                _app->stop ();
+                return;
+            }
+            auto mismatch =
+              manager.get_or_create (collision, "room")
+                .timeout (std::chrono::seconds (2))
+                .submit ()
+                .result ();
+            if (mismatch
+                || !mismatch.error ()
+                || mismatch.error ()->kind ()
+                     != zlink::framework::
+                          framework_error_kind_t::
+                            spot_type_mismatch) {
+                last_error =
+                  "GetOrCreate changed caller RID type mismatch semantics";
                 _app->stop ();
                 return;
             }
@@ -1846,6 +1957,37 @@ TEST (ZLinkFrameworkStoreLocationResolvers,
     });
     auto service =
       std::make_unique<user_spot_manager_client_t> (app);
+    client = service.get ();
+    app.add_hosted_service (std::move (service));
+
+    EXPECT_EQ (0, app.run (0, nullptr));
+    ASSERT_NE (nullptr, client);
+    EXPECT_TRUE (client->observed) << client->last_error;
+}
+
+TEST (ZLinkFrameworkStoreLocationResolvers,
+      GeneratedUserSpotRidRetriesActiveCollisionWithinCreateCall)
+{
+    auto app = zlink::framework::app_t::create ();
+    generated_user_spot_collision_client_t *client = nullptr;
+    const auto endpoint =
+      std::string ("tcp://127.0.0.1:")
+      + std::to_string (bindable_loopback_port (29703));
+
+    app.add_zlink_framework ([&] (
+                               zlink::framework::zlink_framework_options_t &options) {
+        auto node = options.add_route_mesh ("spot-collision-mesh");
+        node.channel_name ("spot-collision-route");
+        node.set_routing_id (
+              zlink::routing_id_t::from (
+                "spot-collision-node"))
+          .listen (endpoint)
+          .add_spot<occupied_user_spot_t> ("occupied")
+          .add_spot<local_user_spot_t> ("room");
+    });
+    auto service =
+      std::make_unique<
+        generated_user_spot_collision_client_t> (app);
     client = service.get ();
     app.add_hosted_service (std::move (service));
 

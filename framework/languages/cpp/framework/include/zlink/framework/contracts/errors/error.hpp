@@ -48,7 +48,10 @@ enum class framework_error_kind_t
     spot_moving = 33,
     relocation_data_lost = 34,
     spot_id_conflict = 35,
-    runtime_shutdown = 36
+    runtime_shutdown = 36,
+    relocation_disabled = 37,
+    relocation_target_unavailable = 38,
+    relocation_failed = 39
 };
 
 namespace detail
@@ -128,7 +131,9 @@ class framework_exception_t : public std::exception
                || kind == framework_error_kind_t::actor_moving
                || kind == framework_error_kind_t::deadline_exceeded
                || kind == framework_error_kind_t::placement_capacity_exhausted
-               || kind == framework_error_kind_t::spot_moving;
+               || kind == framework_error_kind_t::spot_moving
+               || kind == framework_error_kind_t::relocation_target_unavailable
+               || kind == framework_error_kind_t::relocation_failed;
     }
 
     framework_error_kind_t _kind;

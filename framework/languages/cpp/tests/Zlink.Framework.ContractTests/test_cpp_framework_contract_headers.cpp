@@ -747,6 +747,9 @@ static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_
 static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::relocation_data_lost) == 34);
 static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::spot_id_conflict) == 35);
 static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::runtime_shutdown) == 36);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::relocation_disabled) == 37);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::relocation_target_unavailable) == 38);
+static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::relocation_failed) == 39);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::location_changed_t> ().key),
                               zlink::framework::location_key_t>);
@@ -1706,44 +1709,64 @@ int main ()
         return 2;
     }
 
-    const zlink::framework::framework_error_kind_t retriable_kinds[] = {
-      zlink::framework::framework_error_kind_t::route_not_connected,
-      zlink::framework::framework_error_kind_t::actor_location_stale,
-      zlink::framework::framework_error_kind_t::actor_moving,
-      zlink::framework::framework_error_kind_t::deadline_exceeded,
-      zlink::framework::framework_error_kind_t::placement_capacity_exhausted,
-      zlink::framework::framework_error_kind_t::spot_moving};
-    for (const auto kind : retriable_kinds) {
-        if (!zlink::framework::framework_exception_t (kind, "retriable").is_retriable ()) {
-            return 3;
-        }
-    }
-
-    const zlink::framework::framework_error_kind_t non_retriable_kinds[] = {
-      zlink::framework::framework_error_kind_t::actor_route_not_found,
-      zlink::framework::framework_error_kind_t::actor_create_failed,
-      zlink::framework::framework_error_kind_t::actor_already_exists,
-      zlink::framework::framework_error_kind_t::actor_type_mismatch,
-      zlink::framework::framework_error_kind_t::spot_create_failed,
-      zlink::framework::framework_error_kind_t::spot_route_not_found,
-      zlink::framework::framework_error_kind_t::spot_type_mismatch,
-      zlink::framework::framework_error_kind_t::actor_session_not_bound,
-      zlink::framework::framework_error_kind_t::handler_not_found,
-      zlink::framework::framework_error_kind_t::route_handler_not_found,
-      zlink::framework::framework_error_kind_t::actor_dispatch_handler_not_found,
-      zlink::framework::framework_error_kind_t::payload_decode_failed,
-      zlink::framework::framework_error_kind_t::request_target_not_found,
-      zlink::framework::framework_error_kind_t::request_rejected,
-      zlink::framework::framework_error_kind_t::request_protocol_error,
-      zlink::framework::framework_error_kind_t::request_failed,
-      zlink::framework::framework_error_kind_t::worker_queue_full,
-      zlink::framework::framework_error_kind_t::worker_timed_out,
-      zlink::framework::framework_error_kind_t::worker_failed,
-      zlink::framework::framework_error_kind_t::actor_create_rejected,
-      zlink::framework::framework_error_kind_t::runtime_shutdown};
-    for (const auto kind : non_retriable_kinds) {
-        if (zlink::framework::framework_exception_t (kind, "non-retriable").is_retriable ()) {
-            return 4;
+    // Exhaustive over every declared kind, not a hand-listed subset. The retriable
+    // column is fixed by 05-framework-api.ko.md 13. A subset list silently stops
+    // covering whatever is added after it, which is how the v11 additions went
+    // unverified in every language.
+    struct error_kind_expectation_t
+    {
+        zlink::framework::framework_error_kind_t kind;
+        bool retriable;
+    };
+    const error_kind_expectation_t error_kind_expectations[] = {
+      {zlink::framework::framework_error_kind_t::actor_route_not_found, false},
+      {zlink::framework::framework_error_kind_t::actor_create_failed, false},
+      {zlink::framework::framework_error_kind_t::actor_already_exists, false},
+      {zlink::framework::framework_error_kind_t::actor_type_mismatch, false},
+      {zlink::framework::framework_error_kind_t::spot_create_failed, false},
+      {zlink::framework::framework_error_kind_t::spot_route_not_found, false},
+      {zlink::framework::framework_error_kind_t::spot_type_mismatch, false},
+      {zlink::framework::framework_error_kind_t::actor_session_not_bound, false},
+      {zlink::framework::framework_error_kind_t::handler_not_found, false},
+      {zlink::framework::framework_error_kind_t::route_handler_not_found, false},
+      {zlink::framework::framework_error_kind_t::actor_dispatch_handler_not_found, false},
+      {zlink::framework::framework_error_kind_t::payload_decode_failed, false},
+      {zlink::framework::framework_error_kind_t::route_not_connected, true},
+      {zlink::framework::framework_error_kind_t::request_target_not_found, false},
+      {zlink::framework::framework_error_kind_t::request_rejected, false},
+      {zlink::framework::framework_error_kind_t::request_protocol_error, false},
+      {zlink::framework::framework_error_kind_t::request_failed, false},
+      {zlink::framework::framework_error_kind_t::worker_queue_full, false},
+      {zlink::framework::framework_error_kind_t::worker_timed_out, false},
+      {zlink::framework::framework_error_kind_t::worker_failed, false},
+      {zlink::framework::framework_error_kind_t::actor_location_stale, true},
+      {zlink::framework::framework_error_kind_t::actor_create_rejected, false},
+      {zlink::framework::framework_error_kind_t::object_client_not_configured, false},
+      {zlink::framework::framework_error_kind_t::mesh_selection_required, false},
+      {zlink::framework::framework_error_kind_t::mesh_not_found, false},
+      {zlink::framework::framework_error_kind_t::invalid_configuration, false},
+      {zlink::framework::framework_error_kind_t::already_submitted, false},
+      {zlink::framework::framework_error_kind_t::actor_generation_stale, false},
+      {zlink::framework::framework_error_kind_t::actor_moving, true},
+      {zlink::framework::framework_error_kind_t::deadline_exceeded, true},
+      {zlink::framework::framework_error_kind_t::placement_capacity_exhausted, true},
+      {zlink::framework::framework_error_kind_t::routing_id_conflict, false},
+      {zlink::framework::framework_error_kind_t::spot_generation_stale, false},
+      {zlink::framework::framework_error_kind_t::spot_moving, true},
+      {zlink::framework::framework_error_kind_t::relocation_data_lost, false},
+      {zlink::framework::framework_error_kind_t::spot_id_conflict, false},
+      {zlink::framework::framework_error_kind_t::runtime_shutdown, false},
+      {zlink::framework::framework_error_kind_t::relocation_disabled, false},
+      {zlink::framework::framework_error_kind_t::relocation_target_unavailable, true},
+      {zlink::framework::framework_error_kind_t::relocation_failed, true}};
+    static_assert (sizeof (error_kind_expectations) / sizeof (error_kind_expectations[0]) == 40);
+    // Guards the table above: adding a kind past 39 fails here until it is listed.
+    static_assert (static_cast<int> (zlink::framework::framework_error_kind_t::relocation_failed) == 39);
+    for (const auto expectation : error_kind_expectations) {
+        const bool actual
+          = zlink::framework::framework_exception_t (expectation.kind, "kind").is_retriable ();
+        if (actual != expectation.retriable) {
+            return expectation.retriable ? 3 : 4;
         }
     }
 

@@ -11,6 +11,7 @@ import {
   ZLinkSpotCreateState
 } from '../../contracts';
 import type { ZLinkSpotActivation } from './spot-activation-state';
+import { ZLinkSpotCloseOccupiedError } from './spot-activation-state';
 import { ZLinkConfigurationException } from '../configuration';
 import { createAbortError } from '../abort';
 import { ZLinkSpotLifecycleMetrics } from './spot-lifecycle-metrics';
@@ -28,7 +29,8 @@ export interface ZLinkSpotActivationOperation {
 
 export interface ZLinkSpotCloseOperation {
   readonly activation: ZLinkSpotActivation;
-  readonly ready: Promise<void>;
+  /** Resolves to `false` when a post-quiescence occupancy recheck aborted the close. */
+  readonly ready: Promise<boolean>;
   readonly started: boolean;
 }
 
@@ -191,12 +193,29 @@ export class ZLinkSpotActivationRegistry {
     }
     const operation = {} as ZLinkSpotCloseOperation;
     let completed = false;
+    let occupiedAfterQuiescence = false;
     const ready = Promise.resolve()
       .then(() => close(activation))
       .then(() => { completed = true; })
+      .catch((error: unknown) => {
+        // The seal's post-quiescence recheck (spot-activation.ts
+        // closeAfterSeal) found a new join and released the seal instead of
+        // closing. The activation is already back to normal operation, so
+        // this is a "did not close" outcome, not a close failure.
+        if (error instanceof ZLinkSpotCloseOccupiedError) {
+          occupiedAfterQuiescence = true;
+          return;
+        }
+        throw error;
+      })
       .finally(() => {
         if (this.closing.get(key) === operation) {
           this.closing.delete(key);
+          if (occupiedAfterQuiescence) {
+            this.resolveEmptyWaiters();
+            this.resolveMeshEmptyWaiters(meshName);
+            return;
+          }
           if (completed || resourcesReleased(activation)) {
             this.activations.delete(key);
             this.staged.delete(key);
@@ -208,7 +227,8 @@ export class ZLinkSpotActivationRegistry {
           this.resolveEmptyWaiters();
           this.resolveMeshEmptyWaiters(meshName);
         }
-      });
+      })
+      .then(() => !occupiedAfterQuiescence);
     Object.assign(operation, { activation, ready, started: true });
     this.closing.set(key, operation);
     return operation;

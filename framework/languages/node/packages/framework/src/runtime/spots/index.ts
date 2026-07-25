@@ -514,8 +514,7 @@ export class DefaultZLinkSpotManager {
     requireMeshName(meshName);
     const closing = this.activations.closingOperation(meshName, spotId);
     if (closing !== undefined) {
-      await closing.ready;
-      return true;
+      return await closing.ready;
     }
     const activation = this.activations.resolve(meshName, spotId);
     if (activation === undefined) {
@@ -543,7 +542,7 @@ export class DefaultZLinkSpotManager {
       if (operation.started) {
         this.options.detachedTaskRunner?.runDetached(
           `spot close ${String(spotId)}`,
-          () => operation.ready
+          async () => { await operation.ready; }
         );
         if (this.options.detachedTaskRunner === undefined) {
           void operation.ready.catch(() => undefined);
@@ -551,8 +550,7 @@ export class DefaultZLinkSpotManager {
       }
       return true;
     }
-    await operation.ready;
-    return true;
+    return await operation.ready;
   }
 
   async executeOnSpot<TSpot extends ZLinkSpot, TResult>(

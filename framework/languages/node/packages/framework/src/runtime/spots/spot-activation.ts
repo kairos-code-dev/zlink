@@ -62,7 +62,7 @@ import { ZLinkSpotSerialExecutor } from './spot-serial-executor';
 import { createInstanceSpotContext, createSpotContext } from './spot-context';
 import type { ZLinkSpotActorJoinDispatch, ZLinkDetachedTaskRunner } from './spot-actor-join-dispatch';
 import { ZLinkSpotActorAdmissionCoordinator } from './spot-actor-admission-coordinator';
-import { ZLinkSpotActivation } from './spot-activation-state';
+import { ZLinkSpotActivation, ZLinkSpotCloseOccupiedError } from './spot-activation-state';
 import type { ZLinkSpotLocationClaim } from './spot-location-claim';
 import type {
   ZLinkSpotActorHandoffRuntime,
@@ -541,6 +541,15 @@ export class ZLinkSpotActivationLifecycle {
     } catch (error) {
       activation.abortExecutionSeal(seal);
       throw error;
+    }
+    // The eager occupancy check that authorized this seal (startClose ->
+    // canClose()) ran before quiescence, so it can miss an actor join that
+    // was already queued on the serial executor at that moment. Recheck now
+    // that every turn admitted before the seal has finished, and release the
+    // seal instead of closing an occupied Spot.
+    if (!activation.canClose()) {
+      activation.abortExecutionSeal(seal);
+      throw new ZLinkSpotCloseOccupiedError(activation.spotId);
     }
     if (!activation.commitExecutionSeal(seal)) {
       throw new Error(`Spot '${String(activation.spotId)}' close seal is stale.`);

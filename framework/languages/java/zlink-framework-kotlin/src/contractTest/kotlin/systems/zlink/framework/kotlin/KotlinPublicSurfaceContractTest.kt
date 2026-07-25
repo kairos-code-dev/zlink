@@ -91,10 +91,13 @@ class KotlinPublicSurfaceContractTest {
                     it.returnType == ZLinkKotlinMessageSendCall::class.java
             } >= 2,
         )
-        assertTrue(
-            ZLinkKotlinSessionActor::class.java.methods.any {
+        // kotlin/interfaces/stream-session.ko.md:83-84 projects both relay overloads onto
+        // ZLinkKotlinSubmissionCall, not onto the channel send call.
+        assertEquals(
+            2,
+            ZLinkKotlinSessionActor::class.java.methods.count {
                 it.name == "relay" &&
-                    it.returnType == ZLinkKotlinMessageSendCall::class.java
+                    it.returnType == ZLinkKotlinSubmissionCall::class.java
             },
         )
     }
@@ -139,8 +142,16 @@ class KotlinPublicSurfaceContractTest {
             method.name to method.parameterTypes.toList()
         }
         assertEqualsDistinct(signatures)
-        assertTrue(methods.any { it.name == "awaitReply" })
-        assertTrue(methods.count { it.name == "await" } >= 3)
+        // The typed terminator is awaitReply and the raw terminator is await. Keeping a typed
+        // await() overload is what produced the JvmName("awaitTyped") clash, so the raw name
+        // must never carry a typed receiver.
+        assertEquals(2, methods.count { it.name == "awaitReply" })
+        assertEquals(2, methods.count { it.name == "await" })
+        assertFalse(methods.any { it.name == "awaitTyped" })
+        assertFalse(methods.any { method ->
+            method.name == "await" &&
+                method.parameterTypes.first().simpleName == "ZLinkTypedStreamRequestCall"
+        })
     }
 
     @Test
@@ -179,15 +190,22 @@ class KotlinPublicSurfaceContractTest {
             .filter { Modifier.isPublic(it.modifiers) }
             .map { it.name }
             .toSet()
+        // This set only covers the top-level *Kt facades listed in facadeClasses. The spec puts
+        // create/getOrCreate on the ZLinkKotlinActorManager and ZLinkKotlinSpotManager
+        // interfaces (actors.ko.md:213-216, spots.ko.md:345-348), which the Kotlin module does
+        // not declare yet, so they are tracked as a contract gap rather than asserted here.
         val expectedFunctionNames = setOf(
             "actorRef", "addHandler", "actors", "asFlow", "await", "awaitReply",
             "bindOrGetActor", "changes",
-            "configureStreamCompression", "configureDispatch", "create", "decode",
-            "ensureActor", "errors", "findActor", "getOrCreate", "isPeerReady", "kotlin",
-            "listActorLocations", "listLivePeers", "awaitOwnerLeases", "listPeerLocations",
+            "configureStreamCompression", "configureDispatch", "decode",
+            "ensureActor", "errors", "findActor", "isPeerReady", "kotlin",
+            "listActorLocations", "listLivePeers", "listPeerLocations",
             "listRouteLocations", "listServiceSummaries", "listSpotLocations", "listTopology",
             "locationPages", "messageOf", "messages", "onMessageFlow", "publishToTopic",
-            "request", "removeActor", "removeAllByOwner", "removeOwnerLease", "removePeer",
+            // location-maintenance.ko.md:551-555 fixes the owner-lease vocabulary as
+            // claim / read / renew / release plus removeAllByOwner.
+            "claimOwnerLease", "readOwnerLease", "releaseOwnerLease",
+            "request", "removeActor", "removeAllByOwner", "removePeer",
             "removeRoute", "removeSpot", "renewOwnerLease", "requestToActorAwait",
             "resolveActor", "resolveActorSpotHandle", "resolveRoute", "resolveSpot",
             "resolveSpotHandle", "routes", "send", "snapshot", "spots", "status", "topology",
@@ -208,8 +226,8 @@ class KotlinPublicSurfaceContractTest {
             mapOf(
                 "kotlin" to 1, "withDefaultStreamCompression" to 1,
                 "withLz4StreamCompression" to 1, "withStreamCompression" to 1,
-                "withoutStreamCompression" to 1, "await" to 3,
-                "awaitReply" to 2, "awaitTyped" to 1, "waitFor" to 1,
+                "withoutStreamCompression" to 1, "await" to 2,
+                "awaitReply" to 2, "waitFor" to 1,
                 "messages" to 1, "errors" to 1,
             ),
         )
@@ -225,11 +243,13 @@ class KotlinPublicSurfaceContractTest {
         assertFacadeMethodCounts(
             "ZLinkFrameworkExtensionsKt",
             mapOf(
-                "awaitReply" to 4, "requestToActorAwait" to 2,
+                "awaitReply" to 4, "yieldReply" to 4, "yieldWorker" to 1,
+                "requestToActorAwait" to 2,
                 "findActor" to 1, "ensureActor" to 2, "snapshot" to 1,
                 "actorRef" to 1, "isPeerReady" to 1, "bindOrGetActor" to 1,
-                "send" to 3, "request" to 3,
-                "publishToTopic" to 1, "create" to 3, "getOrCreate" to 2,
+                "send" to 3, "request" to 2,
+                "sendToSpotCall" to 1, "requestToSpotAwait" to 1,
+                "publishToTopic" to 1,
                 "configureStreamCompression" to 1,
             ),
         )
@@ -244,9 +264,13 @@ class KotlinPublicSurfaceContractTest {
                 "removeActor" to 1, "resolveActor" to 1,
                 "listActorLocations" to 2, "updateRoute" to 1,
                 "removeRoute" to 1, "resolveRoute" to 1,
-                "listRouteLocations" to 2, "renewOwnerLease" to 1,
-                "removeOwnerLease" to 1, "removeAllByOwner" to 1,
-                "awaitOwnerLeases" to 1, "listLivePeers" to 1,
+                "listRouteLocations" to 2,
+                // location-maintenance.ko.md:131-147 adds the MeshNode descriptor store and
+                // :551-555 fixes the owner-lease vocabulary as claim / read / renew / release.
+                "updateMeshNode" to 1, "removeMeshNode" to 1, "listMeshNodes" to 1,
+                "claimOwnerLease" to 1, "readOwnerLease" to 1,
+                "renewOwnerLease" to 1, "releaseOwnerLease" to 1,
+                "removeAllByOwner" to 1, "listLivePeers" to 1,
                 "resolveSpotHandle" to 1, "resolveActorSpotHandle" to 1,
                 "status" to 1, "listTopology" to 1,
                 "listServiceSummaries" to 1, "changes" to 1, "asFlow" to 1,
@@ -294,9 +318,12 @@ class KotlinPublicSurfaceContractTest {
                 "getPendingDispatchCount" to 1, "receivedCount" to 1,
                 "observeInbound" to 1, "on" to 2, "onErrorReceived" to 1,
                 "onDisconnected" to 1, "onConnectionStateChanged" to 1,
-                "connect" to 1, "disconnect" to 1, "reconnect" to 1,
+                "connect" to 1,
                 "close" to 1, "dispatch" to 1, "send" to 2, "request" to 2,
-                "waitFor" to 2, "messages" to 1, "errors" to 1,
+                // stream-connector/languages/java/03-stream-connector.ko.md:460-463 declares
+                // waitFor, expectNone and waitForSequence on the Kotlin connector.
+                "waitFor" to 2, "expectNone" to 1, "waitForSequence" to 1,
+                "messages" to 1, "errors" to 1,
             ),
         )
         assertPublicMethodCounts("ZLinkKotlinLifecycleCall", mapOf("await" to 1))
@@ -305,35 +332,46 @@ class KotlinPublicSurfaceContractTest {
             "ZLinkStreamTypedWaitCall",
             mapOf("timeout" to 1, "where" to 1, "await" to 1),
         )
+        assertPublicMethodCounts(
+            "ZLinkStreamTypedExpectNoneCall",
+            mapOf("within" to 1, "await" to 1),
+        )
+        assertPublicMethodCounts(
+            "ZLinkStreamTypedSequenceCall",
+            mapOf("expect" to 1, "timeout" to 1, "await" to 1),
+        )
     }
 
     @Test
     fun `documented Kotlin APIs retain their exact JVM descriptors`() {
         val expectedHashes = mapOf(
-            "ZLinkConnectorExtensionsKt" to "f07a413711383a5a33db844b62d4b08b39d834b4c29e13aa252af39606d6d19c",
+            "ZLinkConnectorExtensionsKt" to "a83aa6550a9fd806bd21496bfd1eafac476f4ae368cd99fb624b22bc1931a76f",
             "ZLinkCoroutineHandlerOptionsKt" to "67fda6a26015bcd374098db883ec13f012b2536da914e6b3e8fb0f6aea9e86f4",
             "ZLinkCoroutineTurnAwaitKt" to "0e58ca9d82f2e14d26e4763e955296534d7ce8e863c8fdd5b5231148a5661d5f",
             "ZLinkDispatchOptionsExtensionsKt" to "eb26c767da350a140c90c974e5485a3ba7af9265bb0f6badec8a381efb591443",
-            "ZLinkFrameworkExtensionsKt" to "8ff8d8d4fed0323aa8f769e1caa1d7ecdbf3825d5e7a5d977af28652de1039de",
-            "ZLinkLocationExtensionsKt" to "b2995174d76b4185bc8e7deb741fbc3e27ae9b94833ba6cb6f8b6325b2e31af6",
+            "ZLinkFrameworkExtensionsKt" to "70879a004d357017503c6c3ed9824fb4cdd75875969631d054c2b857c1bd118c",
+            "ZLinkLocationExtensionsKt" to "46e8044eb9e9cfb26fb9f97aaf78dd537574d00ddc7f53ffd0ebde3c1ae80873",
             "ZLinkMessageExtensionsKt" to "836b0c8038be8ee1beae9f8cf1f59cbd7e0811e936d1a4d47e7625b37abdaa9e",
             "ZLinkSpotHandlerRegistryExtensionsKt" to "0cc8a319eb99070b97332cab96c480fc74c14b9b160b022fa8d60ab4de814196",
-            "ZLinkKotlinStreamConnector" to "c8e8a1bd37072daba92df701ed3cfc41b9649884244cb957f1d536643fbba82a",
+            "ZLinkKotlinStreamConnector" to "eaf3cd7485e7e0a2bbf9d4db7ff5268422637947f00718083684002034c00993",
             "ZLinkKotlinLifecycleCall" to "bef9eb581a23386b7802f54c64e3fec57c9920a17745c00c59195f7e67949aa5",
             "ZLinkKotlinSendCall" to "bef9eb581a23386b7802f54c64e3fec57c9920a17745c00c59195f7e67949aa5",
             "ZLinkStreamTypedWaitCall" to "6385a73bc528712e6d0f31512ba8f29c1951b2c347c48b6001f03c34e80d84f4",
         )
-        expectedHashes.forEach { (typeName, expectedHash) ->
+        // Report every drifted type at once. Failing on the first one left the remaining
+        // goldens unverified for as long as the first entry stayed red.
+        val drifted = expectedHashes.mapNotNull { (typeName, expectedHash) ->
             val signatures = publicJvmSignatures(typeName)
             val actualHash = MessageDigest.getInstance("SHA-256")
                 .digest((signatures.joinToString("\n") + "\n").toByteArray())
                 .joinToString("") { byte -> "%02x".format(byte) }
-            assertEquals(
-                expectedHash,
-                actualHash,
-                "$typeName JVM descriptors changed: $signatures",
-            )
+            if (actualHash == expectedHash) {
+                null
+            } else {
+                "$typeName expected=$expectedHash actual=$actualHash signatures=$signatures"
+            }
         }
+        assertTrue(drifted.isEmpty(), "Kotlin JVM descriptors changed:\n${drifted.joinToString("\n")}")
     }
 
     private fun publicJvmSignatures(typeName: String): List<String> =

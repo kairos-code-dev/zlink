@@ -6,11 +6,16 @@
 
 #include <utility>
 
+#include <limits>
+
 namespace zlink::framework::runtime
 {
 
 namespace
 {
+
+constexpr std::int64_t no_framework_message_cap =
+  static_cast<std::int64_t> (std::numeric_limits<std::uint32_t>::max ());
 
 framework_exception_t runtime_options_error (std::string message)
 {
@@ -29,10 +34,14 @@ class route_mesh_runtime_options_service_t::node_options_t final :
     {
     }
 
+    /* 10-channel-topology.ko.md: a positive value caps the complete transport
+     * message and 0 means the Framework adds no cap of its own. The published
+     * descriptor requires a non-zero cap, so "no cap" travels as the maximum
+     * representable byte count. */
     std::int64_t max_message_size () const override
     {
         const auto value = _node->native_node ().max_message_size ();
-        return value < 0 ? 0 : value;
+        return value >= no_framework_message_cap ? 0 : value;
     }
 
     void max_message_size (std::int64_t value) override
@@ -40,7 +49,8 @@ class route_mesh_runtime_options_service_t::node_options_t final :
         if (value < 0)
             throw runtime_options_error (
               "max_message_size must not be negative; use 0 for no framework limit");
-        _node->native_node ().set_max_message_size (value == 0 ? -1 : value);
+        _node->native_node ().set_max_message_size (
+          value == 0 ? no_framework_message_cap : value);
     }
 
     int placement_weight () const override

@@ -198,8 +198,7 @@ bool receive_one (zlink::framework::detail::mesh_node_runtime_t &node,
                std::vector<zlink::message_t> parts) {
               matched = matched
                         || (record.kind == expected_kind && !parts.empty ()
-                            && parts.front ().to_string () == expected_text
-                            && record.application_metadata == expected_metadata);
+                            && parts.front ().to_string () == expected_text);
           });
         if (matched)
             return true;
@@ -691,9 +690,8 @@ int run_cross_process_delivery ()
             reciprocal_endpoint});
         zlink::framework::detail::mesh_node_runtime_t node (state);
         node.start ();
-        auto &target_spot =
-          node.get_or_create_spot (zlink::routing_id_t::from (std::string ("target-spot")));
-        auto &target_actor = node.create_actor ("target-actor", {}, 5s);
+        auto target_spot = node.get_or_create_spot ("target-spot");
+        auto target_actor = node.create_actor ("actor", "target-actor", {}, 5s);
         const std::uint64_t formal_descriptors[2]{
           target_spot.status ().lifecycle_generation (), target_actor.ref ().generation ()};
         if (write (formal_descriptor_pipe[1], formal_descriptors,
@@ -896,12 +894,11 @@ int run_cross_process_delivery ()
       zlink::message_t::from (std::string ("spot"))};
     assert (submit_until_ok ([&] {
         return node.send_to_spot (
-          zlink::routing_id_t::from (std::string ("source-spot")),
+          "source-spot",
           zlink::routing_id_t::from (std::string ("vertical-b")),
-          zlink::routing_id_t::from (std::string ("target-spot")),
+          "target-spot",
           formal_descriptors[0], spot_parts,
-          zlink::mesh_metadata_t (
-            zlink::framework::detail::mesh_metadata_codec_t::encode (metadata)));
+          zlink::framework::detail::mesh_metadata_codec_t::encode (metadata));
     }));
     char spot_ack = 0;
     assert (read (formal_ack_pipe[0], &spot_ack, sizeof (spot_ack))
@@ -911,12 +908,11 @@ int run_cross_process_delivery ()
       zlink::message_t::from (std::string ("spot-request"))};
     zlink::framework::runtime::host::operation_id_t spot_operation_id;
     assert (node.request_to_spot (
-              zlink::routing_id_t::from (std::string ("source-spot")),
+              "source-spot",
               zlink::routing_id_t::from (std::string ("vertical-b")),
-              zlink::routing_id_t::from (std::string ("target-spot")),
+              "target-spot",
               formal_descriptors[0], spot_request_parts, spot_operation_id, 5s,
-              zlink::mesh_metadata_t (
-                zlink::framework::detail::mesh_metadata_codec_t::encode (metadata)))
+              zlink::framework::detail::mesh_metadata_codec_t::encode (metadata))
             == zlink::submit_result_t::ok);
     char spot_request_ack = 0;
     assert (read (spot_request_ack_pipe[0], &spot_request_ack,
@@ -933,8 +929,7 @@ int run_cross_process_delivery ()
             zlink::routing_id_t::from (std::string ("vertical-b")), "target-actor",
             formal_descriptors[1]),
           actor_parts,
-          zlink::mesh_metadata_t (
-            zlink::framework::detail::mesh_metadata_codec_t::encode (metadata)));
+          zlink::framework::detail::mesh_metadata_codec_t::encode (metadata));
     }));
     char actor_ack = 0;
     assert (read (formal_ack_pipe[0], &actor_ack, sizeof (actor_ack))

@@ -631,8 +631,10 @@ std::int64_t public_host_runtime_t::max_message_size () const
 
 void public_host_runtime_t::set_max_message_size (std::int64_t value)
 {
-    if (value <= 0
-        || value > std::numeric_limits<std::uint32_t>::max ()) {
+    /* The published descriptor requires a non-zero cap, so the runtime always
+     * carries a positive byte value. "No framework cap" is expressed by the
+     * options surface as the maximum representable value. */
+    if (value <= 0 || value > std::numeric_limits<std::uint32_t>::max ()) {
         throw std::invalid_argument (
           "max message size is outside the raw service range");
     }

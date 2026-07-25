@@ -1491,7 +1491,7 @@ public sealed partial class EntrySpotActorDispatchTests
             // 52-message-flow-tracing.ko.md §3·§9: Logical Multicast publish는
             // message-flow event를 만들지 않는다. 외부 publisher identity는 envelope
             // header와 내부 publisher Spot으로만 관찰한다.
-            Assert.NotNull(node.PublisherRoutingId);
+            Assert.False(node.PublisherRoutingId.IsEmpty);
             Assert.False(File.Exists(logPath));
         }
         finally

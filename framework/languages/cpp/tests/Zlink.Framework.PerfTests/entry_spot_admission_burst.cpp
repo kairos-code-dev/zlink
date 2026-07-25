@@ -58,7 +58,7 @@ struct admission_entry_spot_t : public zlink::framework::entry_spot_t
     }
 
     void on_admission (player_actor_t &actor,
-                       const zlink::framework::spot_actor_send_context_t &context,
+                       const zlink::framework::message_context_t &context,
                        const admission_request_t &request)
     {
         admitted.fetch_add (1, std::memory_order_relaxed);

@@ -53,12 +53,11 @@ class handler_t
     }
 
     reply_t get_context_reply (const request_t &request,
-                               const zlink::framework::request_context_t &context)
+                               const zlink::framework::message_context_t &context)
     {
         last_thread = std::this_thread::get_id ();
         last_request = request.value;
-        last_context_channel = context.channel_name;
-        last_context_packet = context.packet_name;
+        capture_context (context);
         return {request.value + 2};
     }
 
@@ -69,12 +68,11 @@ class handler_t
     }
 
     void on_context_command (const command_t &command,
-                             const zlink::framework::send_context_t &context)
+                             const zlink::framework::message_context_t &context)
     {
         last_thread = std::this_thread::get_id ();
         last_command = command.value;
-        last_context_channel = context.channel_name;
-        last_context_packet = context.packet_name;
+        capture_context (context);
     }
 
     zlink::framework::task_t<void> on_event (const event_t &event)
@@ -85,13 +83,14 @@ class handler_t
     }
 
     zlink::framework::task_t<void>
-    on_context_event (const event_t &event, const zlink::framework::publish_context_t &context)
+    on_context_event (const event_t &event,
+                      const zlink::framework::publish_message_context_t &context)
     {
         last_thread = std::this_thread::get_id ();
         last_event = event.value;
-        last_context_channel = context.channel_name;
-        last_context_packet = context.packet_name;
+        capture_context (context);
         last_context_topic = context.topic;
+        last_context_source = context.source.value_or ("<none>");
         co_return;
     }
 
@@ -128,12 +127,29 @@ class handler_t
         throw std::runtime_error ("boom");
     }
 
+    void capture_context (const zlink::framework::message_context_t &context)
+    {
+        last_context_mesh = context.mesh_name.value_or ("<none>");
+        last_context_channel = context.channel_name.value_or ("<none>");
+        last_context_packet = context.packet_name;
+        last_context_content_type = context.content_type.value_or ("<none>");
+        last_context_correlation = context.correlation_id.value_or ("<none>");
+        last_context_trace = std::string (context.metadata.find ("trace-id").value_or ("<none>"));
+        last_context_metadata_size = context.metadata.values ().size ();
+    }
+
     int last_request = 0;
     int last_command = 0;
     int last_event = 0;
+    std::string last_context_mesh;
     std::string last_context_channel;
     std::string last_context_packet;
+    std::string last_context_content_type;
+    std::string last_context_correlation;
+    std::string last_context_trace;
+    std::size_t last_context_metadata_size = 0;
     std::string last_context_topic;
+    std::string last_context_source;
     std::thread::id last_thread;
 };
 
@@ -141,14 +157,14 @@ class auditing_filter_t
 {
   public:
     zlink::framework::task_t<zlink::message_t>
-    invoke (const zlink::framework::handler_invocation_context_t &context,
+    invoke (const zlink::framework::handler_invocation_t &invocation,
             zlink::framework::handler_next_t next)
     {
         ++before_count;
-        last_packet_name = context.descriptor.packet_name;
-        last_context_channel = context.context.channel_name;
-        last_context_packet = context.context.packet_name;
-        last_message = context.message ? context.message->to_string () : "";
+        last_packet_name = invocation.descriptor.packet_name;
+        last_context_channel = invocation.message_context.channel_name.value_or ("<none>");
+        last_context_packet = invocation.message_context.packet_name;
+        last_message = invocation.message ? invocation.message->to_string () : "";
         auto message = co_await next ();
         ++after_count;
         co_return message;
@@ -166,10 +182,10 @@ class short_circuit_filter_t
 {
   public:
     zlink::framework::task_t<zlink::message_t>
-    invoke (const zlink::framework::handler_invocation_context_t &context,
+    invoke (const zlink::framework::handler_invocation_t &invocation,
             zlink::framework::handler_next_t next)
     {
-        if (context.descriptor.packet_name == "blocked") {
+        if (invocation.descriptor.packet_name == "blocked") {
             ++short_circuit_count;
             co_return zlink::message_t::from (std::string ("99"));
         }
@@ -325,9 +341,15 @@ int main ()
         return 38;
     }
 
+    zlink::framework::detail::inbound_message_context_t inbound;
+    inbound.message.mesh_name = "rooms";
+    inbound.message.content_type = "application/json";
+    inbound.message.correlation_id = "corr-77";
+    inbound.message.metadata =
+      zlink::framework::message_metadata_t ({{"trace-id", "trace-abc"}});
     auto context_request_result =
       handlers.invoke ("game", "context-move", "context-request", provider, serializers,
-                       zlink::message_t::from (std::string ("8")));
+                       zlink::message_t::from (std::string ("8")), inbound);
     auto &handler = provider.get_required<handler_t> ();
     if (!context_request_result
         || serializers.get<reply_t> ()
@@ -335,8 +357,12 @@ int main ()
                  context_request_result.value ()))
                .value
              != 10
-        || handler.last_context_channel != "game"
-        || handler.last_context_packet != "context-request") {
+        || handler.last_context_mesh != "rooms" || handler.last_context_channel != "game"
+        || handler.last_context_packet != "context-request"
+        || handler.last_context_content_type != "application/json"
+        || handler.last_context_correlation != "corr-77"
+        || handler.last_context_trace != "trace-abc"
+        || handler.last_context_metadata_size != 1) {
         return 39;
     }
 
@@ -348,9 +374,12 @@ int main ()
 
     auto context_send_result =
       handlers.invoke ("game", "context-command", "context-command", provider, serializers,
-                       zlink::message_t::from (std::string ("10")));
-    if (!context_send_result || handler.last_command != 10 || handler.last_context_channel != "game"
-        || handler.last_context_packet != "context-command") {
+                       zlink::message_t::from (std::string ("10")), inbound);
+    if (!context_send_result || handler.last_command != 10 || handler.last_context_mesh != "rooms"
+        || handler.last_context_channel != "game"
+        || handler.last_context_packet != "context-command"
+        || handler.last_context_correlation != "corr-77"
+        || handler.last_context_trace != "trace-abc") {
         return 40;
     }
 
@@ -365,12 +394,18 @@ int main ()
         return 6;
     }
 
+    auto publish_inbound = inbound;
+    publish_inbound.source = "node-a";
     auto context_event_result =
       handlers.invoke ("game", "context-event", "context-event", provider, serializers,
-                       zlink::message_t::from (std::string ("12")));
-    if (!context_event_result || handler.last_event != 12 || handler.last_context_channel != "game"
+                       zlink::message_t::from (std::string ("12")), publish_inbound);
+    if (!context_event_result || handler.last_event != 12 || handler.last_context_mesh != "rooms"
+        || handler.last_context_channel != "game"
         || handler.last_context_packet != "context-event"
-        || handler.last_context_topic != "context-event") {
+        || handler.last_context_correlation != "corr-77"
+        || handler.last_context_trace != "trace-abc"
+        || handler.last_context_topic != "context-event"
+        || handler.last_context_source != "node-a") {
         return 41;
     }
 

@@ -213,7 +213,7 @@ class local_handler_t
     void handle_send (const event_t &event) { last_event = event.value; }
 
     reply_t handle_route_request (const request_t &request,
-                                  const zlink::framework::route_handler_context_t &context)
+                                  const zlink::framework::route_message_context_t &context)
     {
         last_route_request = request.value;
         last_route_source = context.source_node_rid.to_string ();
@@ -221,7 +221,7 @@ class local_handler_t
     }
 
     void handle_route_send (const event_t &event,
-                            const zlink::framework::route_handler_context_t &context)
+                            const zlink::framework::route_message_context_t &context)
     {
         last_route_event = event.value;
         last_route_source = context.source_node_rid.to_string ();

@@ -48,6 +48,7 @@
 #include <zlink/framework/contracts/locations/watch.hpp>
 #include <zlink/framework/contracts/locations/writes.hpp>
 #include <zlink/framework/contracts/messaging/message.hpp>
+#include <zlink/framework/contracts/messaging/message_context.hpp>
 #include <zlink/framework/contracts/monitoring/route_mesh_runtime.hpp>
 #include <zlink/framework/contracts/placement.hpp>
 #include <zlink/framework/contracts/spots/spot.hpp>
@@ -918,12 +919,12 @@ struct contract_spot_t : public zlink::framework::spot_t
     zlink::framework::task_t<void> on_actor_joined (contract_actor_t &) { co_return; }
     zlink::framework::task_t<void> on_leave_actor (contract_actor_t &) { co_return; }
     void on_actor_send (contract_actor_t &,
-                        zlink::framework::spot_actor_send_context_t &,
+                        zlink::framework::message_context_t &,
                         const named_request_t &)
     {
     }
     named_reply_t on_actor_request (contract_actor_t &,
-                                    zlink::framework::spot_actor_request_context_t &,
+                                    zlink::framework::message_context_t &,
                                     const named_request_t &)
     {
         return {};
@@ -1012,12 +1013,12 @@ struct named_publish_handler_t
 struct named_route_handler_t
 {
     named_reply_t handle_request (const named_request_t &,
-                                  const zlink::framework::route_handler_context_t &)
+                                  const zlink::framework::route_message_context_t &)
     {
         return {};
     }
 
-    void handle_send (const named_request_t &, const zlink::framework::route_handler_context_t &) {}
+    void handle_send (const named_request_t &, const zlink::framework::route_message_context_t &) {}
 };
 
 class named_session_t final : public zlink::framework::packet_stream_session_t
@@ -1538,19 +1539,47 @@ static_assert (
                  zlink::framework::message_metadata_policy_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ()
+  std::is_same_v<decltype (std::declval<const zlink::framework::message_metadata_t &> ()
                              .find ("trace-id")),
                  std::optional<std::string_view>>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ()
+  std::is_same_v<decltype (std::declval<const zlink::framework::message_metadata_t &> ()
                              .contains ("trace-id")),
                  bool>);
 
 static_assert (
-  std::is_same_v<
-    decltype (std::declval<const zlink::framework::spot_actor_message_metadata_t &> ().empty ()),
-    bool>);
+  std::is_same_v<decltype (std::declval<const zlink::framework::message_metadata_t &> ().empty ()),
+                 bool>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<const zlink::framework::message_metadata_t &> ().values ()),
+                 const std::map<std::string, std::string> &>);
+
+static_assert (std::is_same_v<decltype (zlink::framework::message_context_t::mesh_name),
+                              std::optional<std::string>>);
+static_assert (std::is_same_v<decltype (zlink::framework::message_context_t::channel_name),
+                              std::optional<std::string>>);
+static_assert (
+  std::is_same_v<decltype (zlink::framework::message_context_t::packet_name), std::string>);
+static_assert (std::is_same_v<decltype (zlink::framework::message_context_t::content_type),
+                              std::optional<std::string>>);
+static_assert (std::is_same_v<decltype (zlink::framework::message_context_t::metadata),
+                              zlink::framework::message_metadata_t>);
+static_assert (std::is_same_v<decltype (zlink::framework::message_context_t::correlation_id),
+                              std::optional<std::string>>);
+
+static_assert (std::is_base_of_v<zlink::framework::message_context_t,
+                                 zlink::framework::publish_message_context_t>);
+static_assert (
+  std::is_same_v<decltype (zlink::framework::publish_message_context_t::topic), std::string>);
+static_assert (std::is_same_v<decltype (zlink::framework::publish_message_context_t::source),
+                              std::optional<std::string>>);
+
+static_assert (std::is_base_of_v<zlink::framework::message_context_t,
+                                 zlink::framework::route_message_context_t>);
+static_assert (std::is_same_v<decltype (zlink::framework::route_message_context_t::source_node_rid),
+                              zlink::routing_id_t>);
 
 static_assert (
   std::is_same_v<decltype (std::declval<zlink::framework::metadata_policy_builder_t &> ()
@@ -1583,12 +1612,15 @@ class named_handler_t
   public:
     named_reply_t handle (const named_request_t &) { return {}; }
     named_reply_t handle_context (const named_context_request_t &,
-                                  const zlink::framework::request_context_t &)
+                                  const zlink::framework::message_context_t &)
     {
         return {};
     }
-    void send_context (const named_request_t &, const zlink::framework::send_context_t &) {}
-    void publish_context (const named_request_t &, const zlink::framework::publish_context_t &) {}
+    void send_context (const named_request_t &, const zlink::framework::message_context_t &) {}
+    void publish_context (const named_request_t &,
+                          const zlink::framework::publish_message_context_t &)
+    {
+    }
 };
 
 class alias_registered_handler_t
@@ -1605,7 +1637,7 @@ class named_filter_t
 {
   public:
     zlink::framework::task_t<zlink::message_t>
-    invoke (const zlink::framework::handler_invocation_context_t &,
+    invoke (const zlink::framework::handler_invocation_t &,
             zlink::framework::handler_next_t next)
     {
         return next ();
@@ -1617,11 +1649,15 @@ static_assert (std::is_same_v<decltype (std::declval<zlink::framework::handler_r
                               zlink::framework::handler_registry_t &>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_context_t> ().context),
-                 zlink::framework::handler_context_t>);
+  std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_t> ().descriptor),
+                 zlink::framework::handler_descriptor_t>);
 
 static_assert (
-  std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_context_t> ().message),
+  std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_t> ().message_context),
+                 zlink::framework::message_context_t>);
+
+static_assert (
+  std::is_same_v<decltype (std::declval<zlink::framework::handler_invocation_t> ().message),
                  std::shared_ptr<const zlink::message_t>>);
 
 static_assert (std::is_same_v<decltype (std::declval<zlink::framework::route_client_t &> ().send_to_spot (
@@ -1737,3 +1773,55 @@ int main ()
 
     return 0;
 }
+
+/* Negative coverage for the MessageContext unification: every per-operation marker context the
+ * unification removed must stay removed. Each probe below declares a fallback type with the removed
+ * name. If a framework header declared the same name again, the unqualified use would become
+ * ambiguous and this translation unit would stop compiling. */
+namespace removed_context_probe
+{
+struct handler_context_t
+{
+};
+struct request_context_t
+{
+};
+struct send_context_t
+{
+};
+struct publish_context_t
+{
+};
+struct handler_invocation_context_t
+{
+};
+struct route_handler_context_t
+{
+};
+struct spot_packet_context_t
+{
+};
+struct spot_actor_send_context_t
+{
+};
+struct spot_actor_request_context_t
+{
+};
+struct spot_actor_reply_options_t
+{
+};
+} // namespace removed_context_probe
+
+using namespace removed_context_probe;
+using namespace zlink::framework;
+
+static_assert (sizeof (handler_context_t) == 1);
+static_assert (sizeof (request_context_t) == 1);
+static_assert (sizeof (send_context_t) == 1);
+static_assert (sizeof (publish_context_t) == 1);
+static_assert (sizeof (handler_invocation_context_t) == 1);
+static_assert (sizeof (route_handler_context_t) == 1);
+static_assert (sizeof (spot_packet_context_t) == 1);
+static_assert (sizeof (spot_actor_send_context_t) == 1);
+static_assert (sizeof (spot_actor_request_context_t) == 1);
+static_assert (sizeof (spot_actor_reply_options_t) == 1);

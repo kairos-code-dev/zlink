@@ -332,7 +332,7 @@ class local_route_probe_handler_t
     }
 
     void handle (const local_route_probe_message_t &message,
-                 const zlink::framework::route_handler_context_t &)
+                 const zlink::framework::route_message_context_t &)
     {
         std::unique_lock lock (_state->mutex);
         ++_state->entered;

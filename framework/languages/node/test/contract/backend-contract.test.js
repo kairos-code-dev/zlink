@@ -109,7 +109,7 @@ test('backend mesh dispatch pump drains a local channel record through claim and
       zlink.SubmitResult.Ok
     );
     const record = await received;
-    assert.equal(record.kind, zlink.ReceiveKind.ChannelSend);
+    assert.equal(record.kind, framework.ReceiveKind.ChannelSend);
     assert.equal(record.channelName, 'backend.dispatch');
     assert.equal(record.payload, 'mesh-pump');
   } finally {
@@ -154,7 +154,7 @@ test('backend mesh dispatch pump yields between continuous receive batches', asy
       return {
         ok: true,
         hasResidue: false,
-        records: [{ ownerKind: zlink.ReadyOwnerKind.Node }]
+        records: [{ ownerKind: framework.ReadyOwnerKind.Node }]
       };
     }
   };
@@ -167,7 +167,7 @@ test('backend mesh dispatch pump yields between continuous receive batches', asy
   try {
     pump.start();
     setTimeout(() => { timerObservedAt = receivedBatches; }, 0);
-    readyHandler(zlink.ReadyDomain.Application);
+    readyHandler(framework.ReadyDomain.Application);
     await completed;
     assert.ok(timerObservedAt < totalBatches, `timer ran after ${timerObservedAt} batches`);
   } finally {
@@ -208,7 +208,7 @@ test('backend mesh dispatch pump yields between continuous ready batches without
       return {
         ok: true,
         hasResidue: drainedBatches < totalBatches,
-        records: [{ ownerKind: zlink.ReadyOwnerKind.Node }]
+        records: [{ ownerKind: framework.ReadyOwnerKind.Node }]
       };
     }
   };
@@ -217,7 +217,7 @@ test('backend mesh dispatch pump yields between continuous ready batches without
   try {
     pump.start();
     setTimeout(() => { timerObservedAt = drainedBatches; }, 0);
-    readyHandler(zlink.ReadyDomain.Application);
+    readyHandler(framework.ReadyDomain.Application);
     await completed;
     assert.ok(timerObservedAt < totalBatches, `timer ran after ${timerObservedAt} ready batches`);
   } finally {
@@ -261,7 +261,7 @@ test('backend mesh dispatch pump yields before recursively signaled dispatch wor
       return {
         ok: true,
         hasResidue: false,
-        records: [{ ownerKind: zlink.ReadyOwnerKind.Node }]
+        records: [{ ownerKind: framework.ReadyOwnerKind.Node }]
       };
     }
   };
@@ -271,7 +271,7 @@ test('backend mesh dispatch pump yields before recursively signaled dispatch wor
       if (dispatches === totalDispatches) {
         complete();
       } else {
-        readyHandler(zlink.ReadyDomain.Application);
+        readyHandler(framework.ReadyDomain.Application);
       }
     }
   });
@@ -279,7 +279,7 @@ test('backend mesh dispatch pump yields before recursively signaled dispatch wor
   try {
     pump.start();
     setTimeout(() => { timerObservedAt = dispatches; }, 0);
-    readyHandler(zlink.ReadyDomain.Application);
+    readyHandler(framework.ReadyDomain.Application);
     await completed;
     assert.ok(timerObservedAt < totalDispatches, `timer ran after ${timerObservedAt} recursive dispatches`);
   } finally {
@@ -323,12 +323,12 @@ test('backend mesh dispatch pump drains ready work queued before an async handle
     drainReady() {
       drainedBatches += 1;
       if (drainedBatches === 1) {
-        readyHandler(zlink.ReadyDomain.Application);
+        readyHandler(framework.ReadyDomain.Application);
       }
       return {
         ok: true,
         hasResidue: false,
-        records: [{ ownerKind: zlink.ReadyOwnerKind.Node }]
+        records: [{ ownerKind: framework.ReadyOwnerKind.Node }]
       };
     }
   };
@@ -345,7 +345,7 @@ test('backend mesh dispatch pump drains ready work queued before an async handle
 
   try {
     pump.start();
-    readyHandler(zlink.ReadyDomain.Application);
+    readyHandler(framework.ReadyDomain.Application);
     await Promise.race([
       secondDispatched,
       new Promise((_, reject) => setTimeout(
@@ -373,23 +373,23 @@ test('backend mesh record dispatcher routes node, spot, actor, and infrastructur
   const owner = (ownerKind) => ({ ownerKind });
   const record = (kind) => ({ kind });
 
-  await dispatcher.dispatch(owner(zlink.ReadyOwnerKind.Node), record(zlink.ReceiveKind.ChannelRequest));
-  await dispatcher.dispatch(owner(zlink.ReadyOwnerKind.Spot), record(zlink.ReceiveKind.SpotControl));
-  await dispatcher.dispatch(owner(zlink.ReadyOwnerKind.Actor), record(zlink.ReceiveKind.ActorSend));
-  await dispatcher.dispatch(owner(zlink.ReadyOwnerKind.Node), record(zlink.ReceiveKind.Completion));
-  await dispatcher.dispatch(owner(zlink.ReadyOwnerKind.Node), record(zlink.ReceiveKind.SendReady));
-  await dispatcher.dispatch(owner(zlink.ReadyOwnerKind.Node), record(zlink.ReceiveKind.TransferControl));
+  await dispatcher.dispatch(owner(framework.ReadyOwnerKind.Node), record(framework.ReceiveKind.ChannelRequest));
+  await dispatcher.dispatch(owner(framework.ReadyOwnerKind.Spot), record(framework.ReceiveKind.SpotControl));
+  await dispatcher.dispatch(owner(framework.ReadyOwnerKind.Actor), record(framework.ReceiveKind.ActorSend));
+  await dispatcher.dispatch(owner(framework.ReadyOwnerKind.Node), record(framework.ReceiveKind.Completion));
+  await dispatcher.dispatch(owner(framework.ReadyOwnerKind.Node), record(framework.ReceiveKind.SendReady));
+  await dispatcher.dispatch(owner(framework.ReadyOwnerKind.Node), record(framework.ReceiveKind.TransferControl));
 
   assert.deepEqual(routed, [
-    ['node', zlink.ReceiveKind.ChannelRequest],
-    ['spot', zlink.ReadyOwnerKind.Spot, zlink.ReceiveKind.SpotControl],
-    ['actor', zlink.ReadyOwnerKind.Actor, zlink.ReceiveKind.ActorSend],
-    ['completion', zlink.ReceiveKind.Completion],
-    ['sendReady', zlink.ReceiveKind.SendReady],
-    ['transferControl', zlink.ReceiveKind.TransferControl]
+    ['node', framework.ReceiveKind.ChannelRequest],
+    ['spot', framework.ReadyOwnerKind.Spot, framework.ReceiveKind.SpotControl],
+    ['actor', framework.ReadyOwnerKind.Actor, framework.ReceiveKind.ActorSend],
+    ['completion', framework.ReceiveKind.Completion],
+    ['sendReady', framework.ReceiveKind.SendReady],
+    ['transferControl', framework.ReceiveKind.TransferControl]
   ]);
   assert.throws(
-    () => dispatcher.dispatch(owner(zlink.ReadyOwnerKind.Spot), record(zlink.ReceiveKind.ChannelSend)),
+    () => dispatcher.dispatch(owner(framework.ReadyOwnerKind.Spot), record(framework.ReceiveKind.ChannelSend)),
     /requires owner kind/
   );
 });
@@ -438,7 +438,7 @@ test('MeshNode runtime manager owns lifecycle and forwards pull-dispatch records
         );
       })
     ]);
-    assert.equal(record.kind, zlink.ReceiveKind.ChannelSend);
+    assert.equal(record.kind, framework.ReceiveKind.ChannelSend);
     assert.equal(record.channelName, meshName);
     assert.equal(record.payload, 'runtime-pump');
   } finally {
@@ -746,8 +746,8 @@ test('framework host dispatches MeshNode node-direct send and request records', 
       'DirectNotice',
       { value: 'sent' }
     ).map((part) => zlink.Message.from(part));
-    await host.dispatchMeshRecord(meshName, { ownerKind: zlink.ReadyOwnerKind.Node }, {
-      kind: zlink.ReceiveKind.NodeSend,
+    await host.dispatchMeshRecord(meshName, { ownerKind: framework.ReadyOwnerKind.Node }, {
+      kind: framework.ReceiveKind.NodeSend,
       sourceNodeRid: target,
       parts: sendParts
     });
@@ -763,8 +763,8 @@ test('framework host dispatches MeshNode node-direct send and request records', 
       { value: 'asked' }
     ).map((part) => zlink.Message.from(part));
     let replyParts;
-    await host.dispatchMeshRecord(meshName, { ownerKind: zlink.ReadyOwnerKind.Node }, {
-      kind: zlink.ReceiveKind.NodeRequest,
+    await host.dispatchMeshRecord(meshName, { ownerKind: framework.ReadyOwnerKind.Node }, {
+      kind: framework.ReceiveKind.NodeRequest,
       sourceNodeRid: target,
       parts: requestParts,
       reply(parts) {

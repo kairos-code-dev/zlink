@@ -45,15 +45,21 @@ test('location key codec matches the dotnet canonical segment format', () => {
 });
 
 test('location canonical names reject values outside the shared contract', () => {
+  // ZLinkLocationAutoConnectType only has Invalid/RouteMesh/Fanout
+  // (contracts/Locations/Values.ts); ClientServer and SpotMesh discovery
+  // is not an auto-connect peer type in v11 and canonical-codec.ts has no
+  // entry for either, so exercise the two auto-connect types that still
+  // exist instead of the removed ones.
   assert.equal(
-    internal.zlinkLocationAutoConnectTypeName(framework.ZLinkLocationAutoConnectType.ClientServer),
-    'client-server'
+    internal.zlinkLocationAutoConnectTypeName(framework.ZLinkLocationAutoConnectType.Fanout),
+    'fanout'
   );
   assert.equal(internal.zlinkLocationRoleName(framework.ZLinkLocationRole.Dealer), 'dealer');
   assert.equal(
-    internal.tryParseZLinkLocationAutoConnectType('spot-mesh'),
-    framework.ZLinkLocationAutoConnectType.SpotMesh
+    internal.tryParseZLinkLocationAutoConnectType('route-mesh'),
+    framework.ZLinkLocationAutoConnectType.RouteMesh
   );
+  assert.equal(internal.tryParseZLinkLocationAutoConnectType('spot-mesh'), undefined);
   assert.equal(internal.tryParseZLinkLocationRole('pub'), framework.ZLinkLocationRole.Pub);
   assert.throws(() => internal.zlinkLocationAutoConnectTypeName(999), /Unknown location auto-connect type/);
   assert.throws(() => internal.zlinkLocationRoleName(999), /Unknown location role/);

@@ -214,7 +214,7 @@ internal sealed class ZLinkClientServerDiscovery : IAsyncDisposable
         ZLinkClientServerClientRuntime runtime,
         ZLinkLocationOptions options,
         ZLinkOwnerLeaseTracker? leases,
-        IZLinkRuntimeErrorSink errorSink) : IAsyncDisposable
+        IZLinkRuntimeFailureReporter errorSink) : IAsyncDisposable
     {
         private readonly Dictionary<string, ulong> _observedRevisions = new(StringComparer.Ordinal);
         private CancellationTokenSource? _stop;

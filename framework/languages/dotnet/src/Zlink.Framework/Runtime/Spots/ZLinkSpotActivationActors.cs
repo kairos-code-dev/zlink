@@ -199,10 +199,7 @@ internal sealed partial class ZLinkSpotActivation
             // Materialize membership during prepare, but do not expose the join to application
             // code until the distributed handoff has committed. A joined callback may push a
             // client notification, and that notification must not overtake source cutover.
-            await JoinActorToSpotCoreAsync(
-                    actor,
-                    notifyJoined: false,
-                    cancellationToken: cancellationToken)
+            _ = await StageActorMembershipAsync(actor, cancellationToken)
                 .ConfigureAwait(false);
 
         }
@@ -306,11 +303,9 @@ internal sealed partial class ZLinkSpotActivation
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        await JoinActorToSpotCoreAsync(
-                actor,
-                notifyJoined: true,
-                cancellationToken: cancellationToken)
+        _ = await StageActorMembershipAsync(actor, cancellationToken)
             .ConfigureAwait(false);
+        await NotifyJoinedActorCoreAsync(actor, cancellationToken).ConfigureAwait(false);
         if (_runtime.LocationLifecycle is { } locations)
         {
             _ = locations.SpotLocations.TryGetTrackedGeneration(SpotId, out var spotGeneration);
@@ -369,48 +364,74 @@ internal sealed partial class ZLinkSpotActivation
                 cancellationToken);
     }
 
+    internal ValueTask NotifyActorLeftAfterCommittedMembershipAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(actor);
+        return ReferenceEquals(ZLinkSpotAmbientContext.CurrentOrDefault, this)
+            ? NotifyActorLeftAfterCommittedMembershipCoreAsync(actor, cancellationToken)
+            : ExecuteSerializedAsync(
+                static (activation, state, ct) =>
+                    activation.NotifyActorLeftAfterCommittedMembershipCoreAsync(state, ct),
+                actor,
+                cancellationToken);
+    }
+
     private async ValueTask CommitActorJoinCoreAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        await JoinActorToSpotCoreAsync(
-                actor,
-                notifyJoined: true,
-                cancellationToken: cancellationToken)
+        var previousActivation = await StageActorMembershipAsync(actor, cancellationToken)
             .ConfigureAwait(false);
-
-        if (_runtime.LocationLifecycle is { } locations)
-        {
-            var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
-            _ = locations.SpotLocations.TryGetTrackedGeneration(SpotId, out var spotGeneration);
-            await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
-                    actor.ActorId,
-                    SpotId,
-                    spotGeneration,
-                    cancellationToken)
-                .ConfigureAwait(false);
-            ZLinkFrameworkDebugLog.SpotDiscovery(
-                $"location_committed actor={actor.ActorId} spot={SpotId}");
-        }
-    }
-
-    private async ValueTask JoinActorToSpotCoreAsync(
-        IZLinkActor actor,
-        bool notifyJoined,
-        CancellationToken cancellationToken)
-    {
-        _actorsLeavingForEntrySpot.Remove(actor.ActorId);
-        var previousActivation = _runtime.GetOrCreateActorState(actor.ActorId).Activation;
-        _actors.Add(actor);
-        await _runtime.JoinActorToSpotAsync(this, actor, cancellationToken).ConfigureAwait(false);
         if (ReferenceEquals(previousActivation, this)) return;
+        try
+        {
+            if (_runtime.LocationLifecycle is { } locations)
+            {
+                _ = locations.SpotLocations.TryGetTrackedGeneration(SpotId, out var spotGeneration);
+                await locations.ActorOwnership.NotifyActorJoinedSpotAsync(
+                        actor.ActorId,
+                        SpotId,
+                        spotGeneration,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                ZLinkFrameworkDebugLog.SpotDiscovery(
+                    $"location_committed actor={actor.ActorId} spot={SpotId}");
+            }
+        }
+        catch
+        {
+            _actors.RemoveIfCurrent(actor);
+            await _runtime.RestoreActorSpotAfterFailedCommitAsync(
+                    this,
+                    previousActivation,
+                    actor,
+                    CancellationToken.None)
+                .ConfigureAwait(false);
+            throw;
+        }
 
+        await NotifyJoinedActorCoreAsync(actor, cancellationToken).ConfigureAwait(false);
         if (previousActivation is null)
             await _runtime.NotifyEntrySpotActorLeftAsync(actor, NodeRid, cancellationToken)
                 .ConfigureAwait(false);
+        else if (!ReferenceEquals(previousActivation, this)
+                 && !previousActivation.IsDisposed)
+            await previousActivation.NotifyActorLeftAfterCommittedMembershipAsync(
+                    actor,
+                    cancellationToken)
+                .ConfigureAwait(false);
+    }
 
-        if (notifyJoined)
-            await NotifyJoinedActorCoreAsync(actor, cancellationToken).ConfigureAwait(false);
+    private async ValueTask<ZLinkSpotActivation?> StageActorMembershipAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        _actorsLeavingForEntrySpot.Remove(actor.ActorId);
+        _actors.Add(actor);
+        return await _runtime.JoinActorToSpotAsync(this, actor, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask NotifyJoinedActorCoreAsync(
@@ -462,6 +483,21 @@ internal sealed partial class ZLinkSpotActivation
                     actor.ActorId,
                     cancellationToken)
                 .ConfigureAwait(false);
+
+        if (_actorHandlers is not null
+            && _actorHandlers.TryResolveLeft(actor.GetType(), out var descriptor)
+            && descriptor is not null)
+            await HandlerInvoker.InvokeActorLifecycleAsync(descriptor, actor, cancellationToken)
+                .ConfigureAwait(false);
+    }
+
+    private async ValueTask NotifyActorLeftAfterCommittedMembershipCoreAsync(
+        IZLinkActor actor,
+        CancellationToken cancellationToken)
+    {
+        _actors.RemoveIfCurrent(actor);
+        var actorState = _runtime.GetOrCreateActorState(actor.ActorId);
+        actorState.LeaveSpotIfCurrent(this);
 
         if (_actorHandlers is not null
             && _actorHandlers.TryResolveLeft(actor.GetType(), out var descriptor)

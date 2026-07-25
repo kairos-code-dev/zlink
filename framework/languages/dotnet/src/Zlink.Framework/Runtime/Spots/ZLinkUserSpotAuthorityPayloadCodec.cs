@@ -154,6 +154,57 @@ internal static class ZLinkUserSpotAuthorityPayloadCodec
         return new ZLinkAuthorityKey(builder.ToString());
     }
 
+    internal static bool TryGetSpotId(
+        ZLinkAuthorityKey key,
+        out string spotId)
+    {
+        spotId = string.Empty;
+        const string prefix = "zla1:s:";
+        if (!key.Value.StartsWith(prefix, StringComparison.Ordinal))
+            return false;
+        var lengthEnd = key.Value.IndexOf(':', prefix.Length);
+        if (lengthEnd < 0
+            || !int.TryParse(
+                key.Value.AsSpan(prefix.Length, lengthEnd - prefix.Length),
+                out var expectedLength)
+            || expectedLength is < 1 or > byte.MaxValue)
+            return false;
+
+        var encoded = key.Value.AsSpan(lengthEnd + 1);
+        var bytes = new List<byte>(expectedLength);
+        for (var index = 0; index < encoded.Length;)
+        {
+            if (encoded[index] != '%')
+            {
+                if (encoded[index] > 0x7f)
+                    return false;
+                bytes.Add((byte)encoded[index++]);
+                continue;
+            }
+            if (index + 2 >= encoded.Length
+                || !byte.TryParse(
+                    encoded.Slice(index + 1, 2),
+                    System.Globalization.NumberStyles.HexNumber,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var value))
+                return false;
+            bytes.Add(value);
+            index += 3;
+        }
+        if (bytes.Count != expectedLength)
+            return false;
+        try
+        {
+            spotId = new UTF8Encoding(false, true).GetString([.. bytes]);
+            return ZLinkSpotId.IsValid(spotId);
+        }
+        catch (DecoderFallbackException)
+        {
+            spotId = string.Empty;
+            return false;
+        }
+    }
+
     private sealed class Writer
     {
         private readonly MemoryStream _stream = new();

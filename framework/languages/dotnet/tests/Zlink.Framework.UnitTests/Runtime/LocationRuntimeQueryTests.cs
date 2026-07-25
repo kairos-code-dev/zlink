@@ -54,7 +54,7 @@ public sealed class LocationRuntimeQueryTests
         fixture.Time.Advance(ShortLease + TimeSpan.FromSeconds(1));
 
         var (row, rowPresent) = await fixture.Resolvers.ResolveActorRowWithPresenceAsync(
-            new ZLinkActorLocationKey("play", "actor-2"));
+            new ZLinkActorLocationKey("actor-2"));
 
         Assert.Null(row);
         Assert.False(rowPresent);
@@ -67,7 +67,7 @@ public sealed class LocationRuntimeQueryTests
         await fixture.Store.UpdateActorAsync(
             InMemoryLocationStoreTests.Actor(LiveOwner), ZLinkLocationWriteIntent.NewClaim);
 
-        var key = new ZLinkActorLocationKey("play", "actor-1");
+        var key = new ZLinkActorLocationKey("actor-1");
         Assert.Equal(LiveOwner, (await fixture.Resolvers.ResolveActorRowAsync(key))!.OwnerId);
 
         await fixture.Store.UpdateActorAsync(
@@ -100,7 +100,7 @@ public sealed class LocationRuntimeQueryTests
         var resolvers = new ZLinkStoreLocationResolvers(
             store, store, lagging, tracker, observed);
 
-        var key = new ZLinkActorLocationKey("play", "actor-1");
+        var key = new ZLinkActorLocationKey("actor-1");
         var first = await resolvers.ResolveActorRowAsync(key);
         Assert.Equal(2UL, first!.MembershipEpoch);
 

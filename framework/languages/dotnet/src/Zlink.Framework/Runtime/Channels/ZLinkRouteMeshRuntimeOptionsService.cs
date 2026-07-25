@@ -40,6 +40,7 @@ internal sealed class ZLinkMeshChannelRuntimeOptions(
     ZLinkFrameworkRuntime runtime,
     IZLinkBackendSpotNode? node,
     ZLinkMeshChannelMembership? membership,
+    string? meshName,
     ZLinkChannelServerCapabilityRegistration? clientServer,
     ZLinkClientServerServerIdentity? clientServerIdentity)
     : IZLinkMeshChannelRuntimeOptions
@@ -51,7 +52,7 @@ internal sealed class ZLinkMeshChannelRuntimeOptions(
         {
             ZLinkSocketConfig.ValidatePeerWeight(value);
             if (membership is not null)
-                runtime.SetMeshChannelWeight(node!, membership, value);
+                runtime.SetMeshChannelWeight(node!, membership, meshName!, value);
             else
                 runtime.SetClientServerWeight(
                     clientServer!,

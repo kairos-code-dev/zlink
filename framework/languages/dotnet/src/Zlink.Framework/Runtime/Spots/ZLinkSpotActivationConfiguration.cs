@@ -71,19 +71,40 @@ internal sealed partial class ZLinkSpotActivation
             _runtime.Registration.StreamCompressionCodec);
     }
 
+    public void AttachInstanceSpot(IZLinkInstanceSpot spot)
+    {
+        ArgumentNullException.ThrowIfNull(spot);
+        if (_spot is not null)
+            throw new InvalidOperationException("SPOT has already been attached to this context.");
+        if (!ReferenceEquals(spot.Context, this))
+            throw new InvalidOperationException(
+                $"Instance Spot '{spot.GetType().FullName}' must expose the context provided by the runtime.");
+
+        _spot = spot;
+        _handlerInvoker = new ZLinkSpotHandlerInvoker(
+            _handlerInstances,
+            spot,
+            SpotNodeName,
+            _runtime.Registration.Codecs,
+            _runtime.Registration.StreamCompressionCodec);
+    }
+
     public async ValueTask BindDescriptorsAsync(CancellationToken cancellationToken)
     {
         _configurationOpen = false;
 
         _packets.Bind(Spot);
-        await _subscriptions.BindAsync(
-                Spot,
-                NativeSpot,
-                DefaultRequestTimeout,
-                cancellationToken)
-            .ConfigureAwait(false);
-        _actorJoins.Bind(Spot);
-        _actorHandlers?.Bind();
+        if (Spot is IZLinkSpot)
+        {
+            await _subscriptions.BindAsync(
+                    Spot,
+                    NativeSpot,
+                    DefaultRequestTimeout,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            _actorJoins.Bind(Spot);
+            _actorHandlers?.Bind();
+        }
     }
 
     internal async ValueTask ApplyScannedHandlerAsync(
@@ -99,6 +120,9 @@ internal sealed partial class ZLinkSpotActivation
                 _packets.Add(handler);
                 return;
             case ZLinkScannedSpotHandlerKind.Subscription:
+                if (Spot is IZLinkInstanceSpot)
+                    throw new ZLinkConfigurationException(
+                        $"Instance Spot '{Spot.GetType()}' cannot register subscription handlers.");
                 if (handler.SpotNodeName is not null
                     && !string.Equals(handler.SpotNodeName, SpotNodeName, StringComparison.Ordinal)) return;
                 var topic = handler.Topic
@@ -113,6 +137,9 @@ internal sealed partial class ZLinkSpotActivation
                 return;
             case ZLinkScannedSpotHandlerKind.ActorSend:
             case ZLinkScannedSpotHandlerKind.ActorRequest:
+                if (Spot is IZLinkInstanceSpot)
+                    throw new ZLinkConfigurationException(
+                        $"Instance Spot '{Spot.GetType()}' cannot register Actor handlers.");
                 RequireActorHandlers().AddPacket(
                     handler.HandlerType,
                     handler.ActorType ??

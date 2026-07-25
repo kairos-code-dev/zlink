@@ -236,7 +236,23 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
         throw new NotSupportedException(
             "This MeshNode backend does not support Actor create service operations.");
 
+    void SetActorDestroyOperationTarget(IActorDestroyOperationTarget target) =>
+        throw new NotSupportedException(
+            "This MeshNode backend does not support Actor destroy service operations.");
+
     void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target) =>
+        throw new NotSupportedException(
+            "This MeshNode backend does not support Instance Spot activation.");
+
+    ValueTask<IReadOnlyList<Message>> ActivateInstanceSpotAsync(
+        InstanceSpotActivationTarget target,
+        string sourceSpotId,
+        IReadOnlyList<Message> parts,
+        bool request,
+        ulong deadlineUnixMs,
+        TimeSpan timeout,
+        ReadOnlyMemory<byte> metadata,
+        CancellationToken cancellationToken) =>
         throw new NotSupportedException(
             "This MeshNode backend does not support Instance Spot activation.");
 
@@ -266,6 +282,14 @@ internal interface IZLinkBackendSpotNode : IAsyncDisposable
         RoutingId targetNodeRid,
         UserSpotCloseFence target,
         ulong deadlineUnixMs,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    ValueTask<bool> DestroyActorRemoteAsync(
+        ZLinkBackendActorRef actor,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
         TimeSpan timeout,
         CancellationToken cancellationToken) =>
         throw new NotSupportedException();

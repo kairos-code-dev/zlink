@@ -12,7 +12,7 @@ internal sealed class ZLinkStreamNodeRuntime : IAsyncDisposable
     private readonly ZLinkStreamSessionSerialExecutor _sessionIngress;
     private readonly CancellationTokenSource _stopSource = new();
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
-    private readonly IZLinkRuntimeErrorSink _errorSink;
+    private readonly IZLinkRuntimeFailureReporter _errorSink;
     private readonly TimeProvider _timeProvider;
     private readonly string _transport;
     private readonly object _disposeGate = new();

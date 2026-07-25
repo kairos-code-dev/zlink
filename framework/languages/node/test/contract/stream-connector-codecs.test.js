@@ -33,25 +33,30 @@ test('stream connector messagepack codec decodes replies through connector', asy
     codec: msgpack.zlinkStreamMessagePackCodec
   });
 
-  await instance.connect();
-  const pending = instance.request(new Join()).timeout(1000).submit();
+  try {
+    await instance.connect();
+    const pending = instance.request(new Join()).timeout(1000).submit();
 
-  const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
-  const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
-  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
-    protocolCodecs.ZlinkStreamHeaderCodec.encode({
-      kind: connector.ZlinkStreamMessageKind.Response,
-      codec: connector.ZlinkStreamCodec.MessagePack,
-      flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
-      requestSeq: requestHeader.requestSeq,
-      name: 'Join',
-      metadata: connector.ZlinkStreamMetadataMap.empty
-    }),
-    msgpack.toMsgPack({ accepted: true }).payload
-  ));
+    const requestFrame = protocolCodecs.ZlinkStreamFrameCodec.decode(transportFactory.connection.frames[0]);
+    const requestHeader = protocolCodecs.ZlinkStreamHeaderCodec.decode(requestFrame.header);
+    transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Response,
+        codec: connector.ZlinkStreamCodec.MessagePack,
+        flags: connector.ZlinkStreamHeaderFlags.HasRequestSeq,
+        requestSeq: requestHeader.requestSeq,
+        name: 'Join',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      msgpack.toMsgPack({ accepted: true }).payload
+    ));
 
-  await instance.dispatch();
-  assert.deepEqual(await pending, { accepted: true });
+    await instance.dispatch();
+    assert.deepEqual(await pending, { accepted: true });
+  } finally {
+    // A connected connector holds its heartbeat interval until close().
+    await instance.close();
+  }
 });
 
 test('stream connector protobuf codec uses supplied protobuf type', () => {
@@ -80,20 +85,25 @@ test('stream connector protobuf codec dispatches typed payloads through connecto
     received.push(message.payload);
   });
 
-  await instance.connect();
-  transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
-    protocolCodecs.ZlinkStreamHeaderCodec.encode({
-      kind: connector.ZlinkStreamMessageKind.Send,
-      codec: connector.ZlinkStreamCodec.Protobuf,
-      flags: connector.ZlinkStreamHeaderFlags.None,
-      name: 'Notice',
-      metadata: connector.ZlinkStreamMetadataMap.empty
-    }),
-    protobuf.toProto({ notice: 1 }, type).payload
-  ));
+  try {
+    await instance.connect();
+    transportFactory.connection.pushFrame(protocolCodecs.ZlinkStreamFrameCodec.encode(
+      protocolCodecs.ZlinkStreamHeaderCodec.encode({
+        kind: connector.ZlinkStreamMessageKind.Send,
+        codec: connector.ZlinkStreamCodec.Protobuf,
+        flags: connector.ZlinkStreamHeaderFlags.None,
+        name: 'Notice',
+        metadata: connector.ZlinkStreamMetadataMap.empty
+      }),
+      protobuf.toProto({ notice: 1 }, type).payload
+    ));
 
-  await instance.dispatch();
-  assert.deepEqual(received, [{ notice: 1 }]);
+    await instance.dispatch();
+    assert.deepEqual(received, [{ notice: 1 }]);
+  } finally {
+    // A connected connector holds its heartbeat interval until close().
+    await instance.close();
+  }
 });
 
 test('protobuf envelope extension registers the schema-backed envelope serializer', () => {

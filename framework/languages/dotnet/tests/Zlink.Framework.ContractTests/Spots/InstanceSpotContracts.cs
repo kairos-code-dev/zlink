@@ -43,8 +43,10 @@ public sealed class InstanceSpotContracts
             .Async();
         await context.Outbound
             .SendToSpot(
-                new InstanceSpotAddress("play", "leaderboard", "leaderboard-us-east"),
+                "leaderboard-us-east",
                 new ScorePosted("player-8821", 1901))
+            .InstanceSpot("leaderboard")
+            .InMesh("play")
             .Async();
 
         // Closing carries why and by when, and the instance closes itself
@@ -167,7 +169,7 @@ public sealed class InstanceSpotContracts
         Assert.False(await manager.CloseAsync(first.Spot));
 
         // The manager has no Instance Spot overload; that path is the
-        // explicit InstanceSpotAddress marker on a Spot message call.
+        // explicit InstanceSpot marker on a Spot message call.
         Assert.Equal(
             new[] { "CloseAsync", "Create", "FindAsync", "GetOrCreate" },
             typeof(IZLinkSpotManager).GetMethods().Select(method => method.Name).Order().ToArray());
@@ -399,18 +401,17 @@ public sealed class InstanceSpotContracts
 
     private sealed class ExampleSpotOutbound : IZLinkSpotOutbound
     {
+        public IZLinkSpotSendCall SendToSpot<TMessage>(string spotId, TMessage message) =>
+            new ExampleSpotSendCall();
+
+        public IZLinkSpotRequestCall RequestToSpot<TRequest>(string spotId, TRequest request) =>
+            new ExampleSpotRequestCall();
+
         public IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message) =>
             new ExampleSendCall();
 
         public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request) =>
             new ExampleRequestCall();
-
-        public IZLinkSendCall SendToSpot<TMessage>(InstanceSpotAddress target, TMessage message) =>
-            new ExampleSendCall();
-
-        public IZLinkRequestCall RequestToSpot<TRequest>(
-            InstanceSpotAddress target,
-            TRequest request) => new ExampleRequestCall();
 
         public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message) =>
             new ExamplePublishCall();
@@ -420,6 +421,31 @@ public sealed class InstanceSpotContracts
 
         public IZLinkRequestCall RequestToChannel<TRequest>(string channelName, TRequest request) =>
             new ExampleRequestCall();
+    }
+
+    private sealed class ExampleSpotSendCall : IZLinkSpotSendCall
+    {
+        public IZLinkSpotSendCall InstanceSpot() => this;
+        public IZLinkSpotSendCall InstanceSpot(string instanceSpotType) => this;
+        public IZLinkSpotSendCall InMesh(string meshName) => this;
+        public IZLinkSpotSendCall Metadata(string key, string value) => this;
+        public IZLinkSpotSendCall Metadata(ZLinkMessageMetadata metadata) => this;
+        public ValueTask Async(CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class ExampleSpotRequestCall : IZLinkSpotRequestCall
+    {
+        public IZLinkSpotRequestCall InstanceSpot() => this;
+        public IZLinkSpotRequestCall InstanceSpot(string instanceSpotType) => this;
+        public IZLinkSpotRequestCall InMesh(string meshName) => this;
+        public IZLinkSpotRequestCall Metadata(string key, string value) => this;
+        public IZLinkSpotRequestCall Metadata(ZLinkMessageMetadata metadata) => this;
+        public IZLinkSpotRequestCall Timeout(TimeSpan timeout) => this;
+        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<TReply>(default!);
+        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<TReply>(default!);
     }
 
     private sealed class ExampleSendCall : IZLinkSendCall

@@ -135,7 +135,7 @@ internal static class ZLinkLogicalMulticastSubmitter
         CancellationToken shutdownToken,
         TimeSpan admissionTimeout,
         Action release,
-        IZLinkRuntimeErrorSink errorSink)
+        IZLinkRuntimeFailureReporter errorSink)
     {
         ArgumentNullException.ThrowIfNull(workerPool);
         ArgumentNullException.ThrowIfNull(publish);
@@ -188,7 +188,7 @@ internal static class ZLinkLogicalMulticastSubmitter
         private const int Terminal = 2;
 
         private readonly CancellationToken _cancellationToken;
-        private readonly IZLinkRuntimeErrorSink _errorSink;
+        private readonly IZLinkRuntimeFailureReporter _errorSink;
         private readonly Action _publish;
         private readonly Action _release;
         private readonly CancellationToken _shutdownToken;
@@ -202,7 +202,7 @@ internal static class ZLinkLogicalMulticastSubmitter
         public LogicalMulticastOperation(
             Action publish,
             Action release,
-            IZLinkRuntimeErrorSink errorSink,
+            IZLinkRuntimeFailureReporter errorSink,
             CancellationToken cancellationToken,
             CancellationToken shutdownToken)
         {

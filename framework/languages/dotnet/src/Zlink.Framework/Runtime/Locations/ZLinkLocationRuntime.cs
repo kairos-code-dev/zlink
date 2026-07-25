@@ -335,7 +335,7 @@ internal sealed class ZLinkLocationRuntime : IAsyncDisposable
                 () => _actorStore.UpdateActorAsync(stamped, intent, cancellationToken),
                 ZLinkLocationKind.Actor,
                 ZLinkLocationKeyCodec.EncodeActorKey(
-                    new ZLinkActorLocationKey(stamped.MeshName, stamped.ActorId)),
+                    new ZLinkActorLocationKey(stamped.ActorId)),
                 result => _events.ActorRowUpdatedAsync(
                 stamped with { UpdatedAt = result.UpdatedAt },
                 cancellationToken))

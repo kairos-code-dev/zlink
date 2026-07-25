@@ -47,6 +47,7 @@
         <Compile Include="Configuration/BuilderContracts.cs"/>
         <Compile Include="Configuration/ConnectionAndConfigContracts.cs"/>
         <Compile Include="Configuration/FrameworkRuntimeContracts.cs"/>
+        <Compile Include="Configuration/MonitoringExactContracts.cs"/>
         <Compile Include="Configuration/ObjectAndChannelRoleBuilderContracts.cs"/>
         <Compile Include="Configuration/RouteMeshRuntimeContracts.cs"/>
         <Compile Include="Coverage/ContractSurfaceCoverage.cs"/>

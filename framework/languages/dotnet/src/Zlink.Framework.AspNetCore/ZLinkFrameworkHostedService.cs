@@ -13,7 +13,6 @@ internal sealed class ZLinkFrameworkHostedService(
     ZLinkLocationLifecycle? locationLifecycle,
     ZLinkAllocatedRoutingIdRuntime? allocatedRoutingIds,
     IHostApplicationLifetime? applicationLifetime,
-    ZLinkDrainCoordinator drain,
     ZLinkFrameworkMaintenanceRuntime maintenance) : IHostedService
 {
     private readonly RoutingId _locationNodeRid = RoutingId.From(Guid.NewGuid().ToString("n"));
@@ -76,7 +75,8 @@ internal sealed class ZLinkFrameworkHostedService(
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await drain.AwaitDrainedAsync(CancellationToken.None).ConfigureAwait(false);
+            await maintenance.ShutdownAsync(cancellationToken: CancellationToken.None)
+                .ConfigureAwait(false);
         }
         await StopCoreAsync().ConfigureAwait(false);
     }

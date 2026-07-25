@@ -50,6 +50,8 @@ internal sealed class ZLinkAutoConnectReconciler
     private long _discoveredPeerCount;
     private long _pendingLocalWeight = -1;
     private long _pendingPlacementWeight = -1;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int>
+        _pendingChannelWeights = new(StringComparer.Ordinal);
 
     /// <summary>
     /// <paramref name="localRow"/> is null for a dial-only capability that
@@ -114,6 +116,9 @@ internal sealed class ZLinkAutoConnectReconciler
 
     internal void SetLocalWeight(uint weight) => Volatile.Write(ref _pendingLocalWeight, weight);
 
+    internal void SetLocalChannelWeight(string channelName, int weight) =>
+        _pendingChannelWeights[channelName] = weight;
+
     internal void SetLocalPlacementWeight(int weight) =>
         Volatile.Write(ref _pendingPlacementWeight, weight);
 
@@ -122,6 +127,13 @@ internal sealed class ZLinkAutoConnectReconciler
         CancellationToken cancellationToken = default) =>
         PublishLocalMutationAsync(
             row => WithWeight(row, weight),
+            cancellationToken);
+
+    internal ValueTask<bool> SetAllLocalChannelWeightsAsync(
+        uint weight,
+        CancellationToken cancellationToken = default) =>
+        PublishLocalMutationAsync(
+            row => WithAllChannelWeights(row, weight),
             cancellationToken);
 
     internal bool HasPendingTargets
@@ -138,6 +150,11 @@ internal sealed class ZLinkAutoConnectReconciler
             if (_localRow is { } placementRow
                 && pendingPlacementWeight >= 0
                 && placementRow.PlacementWeight != pendingPlacementWeight)
+                return true;
+            if (_localRow is { } channelRow
+                && _pendingChannelWeights.Any(entry =>
+                    !channelRow.ChannelWeights.TryGetValue(entry.Key, out var current)
+                    || current != entry.Value))
                 return true;
 
             foreach (var (key, desired) in _lastDesired)
@@ -254,6 +271,18 @@ internal sealed class ZLinkAutoConnectReconciler
             _localRow = WithWeight(localRow, (uint)pendingWeight)
                 with { DescriptorRevision = ++_localRevision };
             _localPublished = false;
+        }
+        if (_localRow is { } channelRow)
+        {
+            var pendingChannels = _pendingChannelWeights.ToArray();
+            if (pendingChannels.Any(entry =>
+                    !channelRow.ChannelWeights.TryGetValue(entry.Key, out var current)
+                    || current != entry.Value))
+            {
+                _localRow = WithChannelWeights(channelRow, pendingChannels)
+                    with { DescriptorRevision = ++_localRevision };
+                _localPublished = false;
+            }
         }
         var pendingPlacementWeight =
             Volatile.Read(ref _pendingPlacementWeight);
@@ -412,6 +441,29 @@ internal sealed class ZLinkAutoConnectReconciler
         {
             [_local.MeshName] = (int)weight
         };
+        return row with { ChannelWeights = weights };
+    }
+
+    private static ZLinkMeshNodeDescriptor WithChannelWeights(
+        ZLinkMeshNodeDescriptor row,
+        IReadOnlyList<KeyValuePair<string, int>> updates)
+    {
+        var weights = new Dictionary<string, int>(
+            row.ChannelWeights,
+            StringComparer.Ordinal);
+        foreach (var update in updates)
+            weights[update.Key] = update.Value;
+        return row with { ChannelWeights = weights };
+    }
+
+    private static ZLinkMeshNodeDescriptor WithAllChannelWeights(
+        ZLinkMeshNodeDescriptor row,
+        uint weight)
+    {
+        var weights = row.ChannelWeights.Keys.ToDictionary(
+            static channelName => channelName,
+            _ => (int)weight,
+            StringComparer.Ordinal);
         return row with { ChannelWeights = weights };
     }
 

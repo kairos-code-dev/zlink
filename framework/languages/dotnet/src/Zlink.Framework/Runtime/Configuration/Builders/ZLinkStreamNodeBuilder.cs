@@ -8,20 +8,43 @@ internal sealed class ZLinkStreamNodeBuilder(ZLinkStreamNodeRegistration registr
             throw new ZLinkConfigurationException("STREAM bind endpoint must not be empty.");
 
         registration.BindEndpoint = endpoint;
+        registration.ListenPort = null;
         return this;
     }
 
-    public IZLinkStreamNodeBuilder EnableActorDispatch(string meshName)
+    public IZLinkStreamNodeBuilder Bind(int port = 0)
     {
-        if (string.IsNullOrWhiteSpace(meshName))
-            throw new ZLinkConfigurationException("Actor dispatch MeshName must not be empty.");
-
-        if (registration.ActorDispatchMeshName is not null)
+        if (port is < 0 or > 65535)
             throw new ZLinkConfigurationException(
-                $"STREAM node '{registration.StreamNodeName}' already enabled actor dispatch for "
-                + $"MeshName '{registration.ActorDispatchMeshName}'.");
+                "STREAM bind port must be between 0 and 65535.");
+        registration.ListenPort = port;
+        registration.BindEndpoint = null;
+        return this;
+    }
 
-        registration.ActorDispatchMeshName = meshName;
+    public IZLinkStreamNodeBuilder SetBindHost(string bindHost)
+    {
+        registration.BindHost = ZLinkChannelEndpointBuilderSupport.Validate(
+            bindHost,
+            "STREAM bind host must not be empty.");
+        return this;
+    }
+
+    public IZLinkStreamNodeBuilder SetAdvertiseHost(string advertiseHost)
+    {
+        registration.AdvertiseHost = ZLinkChannelEndpointBuilderSupport.Validate(
+            advertiseHost,
+            "STREAM advertise host must not be empty.");
+        return this;
+    }
+
+    public IZLinkStreamNodeBuilder EnableActorDispatch()
+    {
+        if (registration.ActorDispatchEnabled)
+            throw new ZLinkConfigurationException(
+                $"STREAM node '{registration.StreamNodeName}' already enabled actor dispatch.");
+
+        registration.ActorDispatchEnabled = true;
         return this;
     }
 

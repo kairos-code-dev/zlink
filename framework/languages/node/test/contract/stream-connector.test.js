@@ -4,8 +4,28 @@ const test = require('node:test');
 const connector = require('../../packages/stream-connector/dist');
 const protocolCodecs = require('./helpers/stream-protocol-codecs');
 
+// A connected connector owns a heartbeat interval that keeps the Node event
+// loop alive until close() stops it (ZlinkStreamConnectorLifecycle.closeOnce).
+// Every scenario below opens connectors, so the file tracks them and closes
+// them once the whole suite has finished asserting.
+const openedConnectors = [];
+
+function createStreamConnector(options) {
+  const instance = connector.zlinkStreamConnectorFactory.create(options);
+  openedConnectors.push(instance);
+  return instance;
+}
+
+test.after(async () => {
+  for (const instance of openedConnectors.splice(0).reverse()) {
+    // A scenario may already have closed the connector or driven its transport
+    // into a failure that close() re-reports; neither is a cleanup failure.
+    await instance.close().catch(() => undefined);
+  }
+});
+
 test('stream connector exposes dotnet-shaped enums factory and default options', () => {
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: new MemoryTransportFactory()
   });
@@ -58,7 +78,7 @@ test('stream connector rejects outbound metadata above the fixed 1024-byte limit
   }));
 
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -80,7 +100,7 @@ test('stream connector rejects outbound metadata above the fixed 1024-byte limit
 
 test('stream connector send builder writes a dotnet-compatible send frame once', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -110,7 +130,7 @@ test('stream connector send builder writes a dotnet-compatible send frame once',
 
 test('stream connector disconnected send fails before transport write', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -124,7 +144,7 @@ test('stream connector disconnected send fails before transport write', async ()
 
 test('stream connector send and request enforce payload limit before transport write', async () => {
   const sendTransportFactory = new MemoryTransportFactory();
-  const sendInstance = connector.zlinkStreamConnectorFactory.create({
+  const sendInstance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: sendTransportFactory,
     maxSendPayloadSize: 1
@@ -138,7 +158,7 @@ test('stream connector send and request enforce payload limit before transport w
   assert.equal(sendTransportFactory.connection.frames.length, 0);
 
   const requestTransportFactory = new MemoryTransportFactory();
-  const requestInstance = connector.zlinkStreamConnectorFactory.create({
+  const requestInstance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: requestTransportFactory,
     maxSendPayloadSize: 1
@@ -158,7 +178,7 @@ test('stream connector send and request enforce payload limit before transport w
 
 test('stream connector default compression uses LZ4 before transport write', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -178,7 +198,7 @@ test('stream connector default compression uses LZ4 before transport write', asy
 
 test('stream connector disabled compression rejects compressed sends before transport write', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     compression: connector.ZlinkStreamCompression.None
@@ -194,7 +214,7 @@ test('stream connector disabled compression rejects compressed sends before tran
 
 test('stream connector compressed sends write dotnet LZ4-pickled payloads', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     compression: connector.ZlinkStreamCompression.Lz4
@@ -232,7 +252,7 @@ test('stream connector custom compression codec handles outbound and inbound pay
     }
   };
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     compressionCodec
@@ -271,7 +291,7 @@ test('stream connector custom compression codec handles outbound and inbound pay
 
 test('stream connector custom decompression result is checked against receive limit', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     maxReceivePayloadSize: 4,
@@ -308,7 +328,7 @@ test('stream connector custom decompression result is checked against receive li
 
 test('stream connector applies the receive limit to each decoded frame payload', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     maxReceivePayloadSize: 1
@@ -328,7 +348,7 @@ test('stream connector applies the receive limit to each decoded frame payload',
 
 test('stream connector request resolves when dispatch reads matching response frame', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -372,7 +392,7 @@ test('stream connector request resolves when dispatch reads matching response fr
 
 test('stream connector accepts a legacy response packet name and matches by sequence', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -403,7 +423,7 @@ test('stream connector accepts a legacy response packet name and matches by sequ
 
 test('stream connector reports a response whose request sequence has no pending request', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -433,7 +453,7 @@ test('stream connector reports a response whose request sequence has no pending 
 
 test('stream connector decodes correlated Error JSON without a packet name', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -472,7 +492,7 @@ test('stream connector decodes correlated Error JSON without a packet name', asy
 
 test('stream connector rejects malformed correlated Error JSON', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -506,7 +526,7 @@ test('stream connector rejects malformed correlated Error JSON', async () => {
 
 test('stream connector accepts a legacy correlated Error packet name and matches by sequence', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -553,7 +573,7 @@ function encodeLegacyNamedReplyHeader({ kind, codec, requestSeq, name }) {
 
 test('stream connector inbound observer sees response before pending request completes without waiting for callback', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -611,7 +631,7 @@ test('stream connector inbound observer sees response before pending request com
 
 test('stream connector inbound observer sees send and control frames', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -662,7 +682,7 @@ test('stream connector inbound observer sees send and control frames', async () 
 
 test('stream connector inbound observer metadata snapshot cannot change handler metadata', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -697,7 +717,7 @@ test('stream connector inbound observer metadata snapshot cannot change handler 
 
 test('stream connector inbound observer rejects after connect and stops after dispose', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -725,7 +745,7 @@ test('stream connector inbound observer rejects after connect and stops after di
 
 test('stream connector inbound observer failure reports observer-failed and dispatch continues', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -751,7 +771,7 @@ test('stream connector inbound observer failure reports observer-failed and disp
 
 test('stream connector inbound observer overflow reports observer-dropped and request still completes', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     maxInboundObserverNotifications: 1
@@ -809,7 +829,7 @@ test('stream connector inbound observer overflow reports observer-dropped and re
 
 test('stream connector received-message queue overflow is separate from inbound observer queue', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     maxReceivedMessages: 1,
@@ -846,7 +866,7 @@ test('stream connector received-message queue overflow is separate from inbound 
 
 test('stream connector received-message cap does not block request response frames', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     maxReceivedMessages: 1
@@ -907,7 +927,7 @@ test('stream connector received-message cap does not block request response fram
 
 test('stream connector test helpers observe absence and ordered payloads through the received queue', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -978,7 +998,7 @@ test('zlinkStreamAssert classifies failures and timeouts without pre-started pro
 
 test('stream connector request resolves compressed response payloads', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     compression: connector.ZlinkStreamCompression.Lz4
@@ -1018,7 +1038,7 @@ test('stream connector request resolves compressed response payloads', async () 
 
 test('stream connector rejects compressed response payloads above receive limit', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     compression: connector.ZlinkStreamCompression.Lz4,
@@ -1061,7 +1081,7 @@ test('stream connector rejects compressed response payloads above receive limit'
 
 test('stream connector dispatch invokes typed handlers for send frames', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -1100,7 +1120,7 @@ test('stream connector dispatch invokes typed handlers for send frames', async (
 
 test('stream connector dispatch decompresses send frames for handlers', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     compression: connector.ZlinkStreamCompression.Lz4
@@ -1130,7 +1150,7 @@ test('stream connector dispatch decompresses send frames for handlers', async ()
 
 test('stream connector publishes decompression error for compressed frames when compression is disabled', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     compression: connector.ZlinkStreamCompression.None
@@ -1163,7 +1183,7 @@ test('stream connector publishes decompression error for compressed frames when 
 
 test('stream connector dispatch publishes decode errors for invalid header frames', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -1188,7 +1208,7 @@ test('stream connector dispatch publishes decode errors for invalid header frame
 
 test('stream connector dispatch publishes uncorrelated remote error packets', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -1221,7 +1241,7 @@ test('stream connector dispatch publishes uncorrelated remote error packets', as
 
 test('stream connector publishes remote errors whose request sequence has no pending request', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -1255,7 +1275,7 @@ test('stream connector publishes remote errors whose request sequence has no pen
 
 test('stream connector reports malformed Error JSON with no pending request as a decode failure', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -1287,7 +1307,7 @@ test('stream connector reports malformed Error JSON with no pending request as a
 
 test('stream connector dispatch publishes user callback failures without throwing', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -1320,7 +1340,7 @@ test('stream connector dispatch publishes user callback failures without throwin
 });
 
 test('stream connector rejects reserved packet names for user handlers', () => {
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: new MemoryTransportFactory()
   });
@@ -1342,7 +1362,7 @@ test('DRAIN-018 session-closing exposes ServerDrain before disconnected callback
   });
   const frame = protocolCodecs.ZlinkStreamFrameCodec.encode(header, payload);
   let delivered = false;
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:7998',
     reconnect: { enabled: false },
     heartbeat: { enabled: false },
@@ -1370,7 +1390,7 @@ test('DRAIN-018 session-closing exposes ServerDrain before disconnected callback
 
 test('stream connector dispatch replies to heartbeat ping control frames with pong', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory
   });
@@ -1398,30 +1418,30 @@ test('stream connector dispatch replies to heartbeat ping control frames with po
 
 test('stream connector validates endpoint and lifecycle options like dotnet transport factory', () => {
   assert.throws(
-    () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'http://127.0.0.1:1' }),
+    () => createStreamConnector({ endpoint: 'http://127.0.0.1:1' }),
     /supports only ws:\/\/ and wss:\/\//
   );
   assert.throws(
-    () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'tcp://127.0.0.1:1' }),
+    () => createStreamConnector({ endpoint: 'tcp://127.0.0.1:1' }),
     /supports only ws:\/\/ and wss:\/\//
   );
   assert.throws(
-    () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'ws://127.0.0.1:1', heartbeat: { intervalMs: 5, timeoutMs: 5 } }),
+    () => createStreamConnector({ endpoint: 'ws://127.0.0.1:1', heartbeat: { intervalMs: 5, timeoutMs: 5 } }),
     /Heartbeat timeout must be greater/
   );
   assert.throws(
-    () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'ws://127.0.0.1:1', reconnect: { backoffFactor: 0.5 } }),
+    () => createStreamConnector({ endpoint: 'ws://127.0.0.1:1', reconnect: { backoffFactor: 0.5 } }),
     /BackoffFactor/
   );
   assert.throws(
-    () => connector.zlinkStreamConnectorFactory.create({ endpoint: 'ws://127.0.0.1:1', maxReceivePayloadSize: 0 }),
+    () => createStreamConnector({ endpoint: 'ws://127.0.0.1:1', maxReceivePayloadSize: 0 }),
     /MaxReceivePayloadSize/
   );
 });
 
 test('stream connector heartbeat loop sends ping control frames after connect', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     heartbeat: { intervalMs: 1, timeoutMs: 1000 }
@@ -1438,7 +1458,7 @@ test('stream connector heartbeat loop sends ping control frames after connect', 
 test('stream connector connect retries through reconnect options before succeeding', async () => {
   const transportFactory = new FlakyTransportFactory(1);
   const states = [];
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     reconnect: { initialDelayMs: 1, maxDelayMs: 1, backoffFactor: 1, maxAttempts: 2 },
@@ -1460,7 +1480,7 @@ test('stream connector reports exhausted reconnect state transitions', async () 
   const transportFactory = new FlakyTransportFactory(3);
   const states = [];
   const errors = [];
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     reconnect: { initialDelayMs: 1, maxDelayMs: 1, backoffFactor: 1, maxAttempts: 2 },
@@ -1487,7 +1507,7 @@ test('stream connector reports exhausted reconnect state transitions', async () 
 test('stream connector close publishes closed state before one disconnected callback', async () => {
   const events = [];
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     heartbeat: { enabled: false }
@@ -1512,7 +1532,7 @@ test('stream connector shares concurrent connect and closes a connection that co
   let resolveConnection;
   const connectionReady = new Promise((resolve) => { resolveConnection = resolve; });
   const connection = new MemoryConnection();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: {
       async connect() {
@@ -1542,7 +1562,7 @@ test('stream connector close reports failure to clean up a late connect result',
   const connectionReady = new Promise((resolve) => { resolveConnection = resolve; });
   const connection = new MemoryConnection();
   connection.close = async () => { throw new Error('late connection close failed'); };
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: { async connect() { return await connectionReady; } },
     heartbeat: { enabled: false }
@@ -1565,7 +1585,7 @@ test('stream connector concurrent close shares cleanup and remains closed when t
     closeCalls++;
     throw new Error('transport close failed');
   };
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: { async connect() { return connection; } },
     heartbeat: { enabled: false }
@@ -1596,7 +1616,7 @@ test('stream connector pong write failure disconnects instead of reporting a dec
       throw new Error('pong write failed');
     }
   };
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: { async connect() { return connection; } },
     dispatchMode: connector.ZlinkStreamDispatchMode.Manual,
@@ -1635,7 +1655,7 @@ test('stream connector connect waits for an in-progress disconnect before reconn
   };
   const newConnection = new MemoryConnection();
   let connectCalls = 0;
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: { async connect() { return ++connectCalls === 1 ? oldConnection : newConnection; } },
     dispatchMode: connector.ZlinkStreamDispatchMode.Manual,
@@ -1660,7 +1680,7 @@ test('late dispatch failure from an old connection does not disconnect a replace
   oldConnection.read = () => new Promise((_resolve, reject) => reads.push(reject));
   const newConnection = new MemoryConnection();
   let connectCalls = 0;
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: { async connect() { return ++connectCalls === 1 ? oldConnection : newConnection; } },
     dispatchMode: connector.ZlinkStreamDispatchMode.Manual,
@@ -1684,7 +1704,7 @@ test('late successful dispatch from an old connection is discarded after reconne
   const oldConnection = new MemoryConnection();
   oldConnection.read = () => new Promise((resolve, reject) => reads.push({ resolve, reject }));
   let connectCalls = 0;
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: { async connect() { connectCalls++; return oldConnection; } },
     dispatchMode: connector.ZlinkStreamDispatchMode.Manual,
@@ -1722,7 +1742,7 @@ test('stream connector immediate receive failure closes transport and fails pend
   connection.read = () => new Promise((_resolve, reject) => {
     rejectRead = reject;
   });
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: { async connect() { return connection; } },
     dispatchMode: connector.ZlinkStreamDispatchMode.Immediate,
@@ -1747,7 +1767,7 @@ test('stream connector immediate receive failure closes transport and fails pend
 
 test('stream connector heartbeat timeout closes transport and fails pending request', async () => {
   const transportFactory = new MemoryTransportFactory();
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory,
     dispatchMode: connector.ZlinkStreamDispatchMode.Manual,
@@ -1777,7 +1797,7 @@ test('stream connector heartbeat send failure closes transport and fails pending
     }
     await originalWrite(frame);
   };
-  const instance = connector.zlinkStreamConnectorFactory.create({
+  const instance = createStreamConnector({
     endpoint: 'ws://127.0.0.1:19000',
     transportFactory: { async connect() { return connection; } },
     dispatchMode: connector.ZlinkStreamDispatchMode.Manual,

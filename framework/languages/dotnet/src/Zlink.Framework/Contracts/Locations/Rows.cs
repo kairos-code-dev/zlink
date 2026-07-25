@@ -66,6 +66,22 @@ public readonly record struct ZLinkClientServerServerDescriptorKey(
     string ChannelName,
     RoutingId ServerRid);
 
+public sealed record ZLinkFanoutPublisherDescriptor(
+    string ChannelName,
+    RoutingId PublisherRid,
+    ulong LifecycleGeneration,
+    ulong DescriptorRevision,
+    string Endpoint,
+    ZLinkFrameworkRuntimeState State,
+    string SecurityIdentity,
+    string OwnerId,
+    long LeaseGeneration,
+    DateTimeOffset UpdatedAt);
+
+public readonly record struct ZLinkFanoutPublisherDescriptorKey(
+    string ChannelName,
+    RoutingId PublisherRid);
+
 public enum ZLinkMeshNodeObjectRole
 {
     None = 0,

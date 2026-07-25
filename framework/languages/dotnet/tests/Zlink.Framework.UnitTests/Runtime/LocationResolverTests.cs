@@ -8,7 +8,7 @@ public sealed class LocationResolverTests
     private const string OwnerA = "owner-a";
     private const string OwnerB = "owner-b";
     private static readonly TimeSpan LeaseTtl = TimeSpan.FromSeconds(15);
-    private static readonly ZLinkActorLocationKey ActorKey = new("play", "actor-1");
+    private static readonly ZLinkActorLocationKey ActorKey = new("actor-1");
 
     [Fact]
     public async Task Every_Resolve_Reads_The_Store()
@@ -294,7 +294,7 @@ public sealed class LocationResolverTests
     }
 
     [Fact]
-    public async Task Actor_Handles_With_The_Same_Id_Are_Isolated_By_MeshName()
+    public async Task Actor_Handles_With_The_Same_Id_Are_Global_Across_MeshNames()
     {
         var fixture = await FixtureAsync();
         var play = InMemoryLocationStoreTests.Actor(OwnerA, "shared-actor") with
@@ -310,8 +310,16 @@ public sealed class LocationResolverTests
             SpotKind = ZLinkSpotKind.User,
             SpotId = "external-spot"
         };
-        await fixture.Store.UpdateActorAsync(play, ZLinkLocationWriteIntent.NewClaim);
-        await fixture.Store.UpdateActorAsync(external, ZLinkLocationWriteIntent.NewClaim);
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await fixture.Store.UpdateActorAsync(
+                play,
+                ZLinkLocationWriteIntent.NewClaim)).Status);
+        Assert.Equal(
+            ZLinkLocationWriteStatus.RejectedConflict,
+            (await fixture.Store.UpdateActorAsync(
+                external,
+                ZLinkLocationWriteIntent.NewClaim)).Status);
         var handles = new ZLinkSpotHandleRegistry();
         var addresses = new ZLinkLocationAddressResolvers(fixture.Resolvers, handles);
 
@@ -326,7 +334,8 @@ public sealed class LocationResolverTests
             MembershipEpoch = external.MembershipEpoch + 1
         });
 
-        Assert.Equal("play-spot", playHandle.SpotId);
+        Assert.Equal(playHandle.MeshName, externalHandle.MeshName);
+        Assert.Equal("external-moved", playHandle.SpotId);
         Assert.Equal("external-moved", externalHandle.SpotId);
     }
 

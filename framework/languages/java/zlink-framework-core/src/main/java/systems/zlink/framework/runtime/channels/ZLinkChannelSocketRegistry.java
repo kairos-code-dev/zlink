@@ -683,13 +683,11 @@ final class ZLinkChannelSocketRegistry {
         reconnectClientServer(connection);
     }
 
+    // Transport liveness spec 55 section 6: terminal cleanup never leaves a
+    // monitor subscription behind its connection, so the monitor closes before
+    // the DEALER it observes.
     private void closeClientServerPhysical(
         ClientServerConnection connection) {
-        ownedSockets.removeIf(candidate -> candidate == connection.dealer);
-        try {
-            connection.dealer.close();
-        } catch (RuntimeException ignored) {
-        }
         if (connection.monitor != null) {
             ownedSockets.removeIf(
                 candidate -> candidate == connection.monitor);
@@ -698,6 +696,11 @@ final class ZLinkChannelSocketRegistry {
             } catch (RuntimeException ignored) {
             }
             connection.monitor = null;
+        }
+        ownedSockets.removeIf(candidate -> candidate == connection.dealer);
+        try {
+            connection.dealer.close();
+        } catch (RuntimeException ignored) {
         }
     }
 

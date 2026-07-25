@@ -379,7 +379,7 @@ internal sealed class ZLinkSpotRuntimeManager(
                         authority.NodeRid),
                     ZLinkSpotCreateState.Existing,
                     null);
-            if (current.Allocation.State != ZLinkPlacementAllocationState.Pending
+            if (current.Allocation.State != ZLinkPlacementAllocationState.Reserved
                 || authority.State != ZLinkUserSpotAuthorityState.Creating)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.SpotMoving,
@@ -537,7 +537,7 @@ internal sealed class ZLinkSpotRuntimeManager(
         return false;
     }
 
-    internal ValueTask<bool> CloseLegacyAsync(
+    internal ValueTask<bool> CloseLocalByIdAsync(
         ZLinkFrameworkComponentState state,
         string spotId,
         CancellationToken cancellationToken) =>

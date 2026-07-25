@@ -5,6 +5,12 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     ZLinkSpotOutboundTransport outbound,
     ZLinkFrameworkRuntime runtime) : IZLinkSpotOutbound
 {
+    public IZLinkSpotSendCall SendToSpot<TMessage>(string spotId, TMessage message) =>
+        new ZLinkInstanceSpotSendCall<TMessage>(runtime, spotId, message);
+
+    public IZLinkSpotRequestCall RequestToSpot<TRequest>(string spotId, TRequest request) =>
+        new ZLinkInstanceSpotRequestCall<TRequest>(runtime, spotId, request);
+
     public IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message)
     {
         return new ZLinkRoutedSpotSendCall<TMessage>(activation, RequireResolvedHandle(target), message);
@@ -13,16 +19,6 @@ internal sealed class ZLinkSpotOutboundEndpoint(
     public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request)
     {
         return new ZLinkRoutedSpotRequestCall<TRequest>(activation, RequireResolvedHandle(target), request);
-    }
-
-    public IZLinkSendCall SendToSpot<TMessage>(InstanceSpotAddress target, TMessage message)
-    {
-        return new ZLinkInstanceSpotSendCall<TMessage>(runtime, target, message);
-    }
-
-    public IZLinkRequestCall RequestToSpot<TRequest>(InstanceSpotAddress target, TRequest request)
-    {
-        return new ZLinkInstanceSpotRequestCall<TRequest>(runtime, target, request);
     }
 
     public IZLinkPublishCall Publish<TEvent>(string channelName, string topic, TEvent message)
@@ -129,7 +125,7 @@ internal sealed class ZLinkSpotOutboundEndpoint(
         CancellationToken cancellationToken,
         ReadOnlyMemory<byte> metadata,
         Action release,
-        IZLinkRuntimeErrorSink errorSink)
+        IZLinkRuntimeFailureReporter errorSink)
     {
         using var operation = runtime.EnterOperation();
         return await ZLinkLogicalMulticastSubmitter.SubmitAsync(

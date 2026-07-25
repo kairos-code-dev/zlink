@@ -42,6 +42,7 @@
         <Compile Include="Configuration/Registration/NodesAndServices.cs"/>
         <Compile Include="Configuration/Registration/Monitoring.cs"/>
         <Compile Include="Configuration/Registration/Support.cs"/>
+        <Compile Include="Configuration/Registration/TopologyExactSurface.cs"/>
         <Compile Include="Contracts/LocationContractTests.cs"/>
         <Compile Include="Contracts/MessageContextContractTests.cs"/>
         <Compile Include="Contracts/ScaffoldSmokeTests.cs"/>
@@ -66,8 +67,11 @@
         <Compile Include="Runtime/DeferredActorJoinContractTests.cs"/>
         <Compile Include="Runtime/DeferredActorJoinDurabilityTests.cs"/>
         <Compile Include="Runtime/EntrySpotActorDispatchTests.cs"/>
+        <Compile Include="Runtime/EntrySpotIdentityStoreTests.cs"/>
+        <Compile Include="Runtime/FanoutAutomaticDiscoveryTests.cs"/>
         <Compile Include="Runtime/EnvelopeCodecTests.cs"/>
         <Compile Include="Runtime/EndpointConnectionsTests.cs"/>
+        <Compile Include="Runtime/ExactMessageFlowRuntimeTests.cs"/>
         <Compile Include="Runtime/FlowCorrelationTests.cs"/>
         <Compile Include="Runtime/HandlerResultAwaiterTests.cs"/>
         <Compile Include="Runtime/HttpExecutionSchedulerTests.cs"/>
@@ -77,6 +81,7 @@
         <Compile Include="Runtime/LocationRuntimePollingDiffTests.cs"/>
         <Compile Include="Runtime/LocationResolverTests.cs"/>
         <Compile Include="Runtime/LocationRuntimeQueryTests.cs"/>
+        <Compile Include="Runtime/InstanceSpotActivationJournalTests.cs"/>
         <Compile Include="Runtime/LocationRuntimeTests.cs"/>
         <Compile Include="Runtime/MaintenanceRuntimeTests.cs"/>
         <Compile Include="Runtime/LogicalMulticastSubmitTests.cs"/>

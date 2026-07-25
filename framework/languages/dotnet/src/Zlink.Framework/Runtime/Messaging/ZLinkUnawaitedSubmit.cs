@@ -12,7 +12,7 @@ internal static class ZLinkUnawaitedSubmit
     public static void Observe(
         ValueTask task,
         string operationName,
-        IZLinkRuntimeErrorSink errorSink,
+        IZLinkRuntimeFailureReporter errorSink,
         string? metricSurface = null,
         string? metricKind = null)
     {
@@ -24,7 +24,7 @@ internal static class ZLinkUnawaitedSubmit
     private static async Task ObserveAsync(
         ValueTask task,
         string operationName,
-        IZLinkRuntimeErrorSink errorSink,
+        IZLinkRuntimeFailureReporter errorSink,
         string? metricSurface,
         string? metricKind)
     {

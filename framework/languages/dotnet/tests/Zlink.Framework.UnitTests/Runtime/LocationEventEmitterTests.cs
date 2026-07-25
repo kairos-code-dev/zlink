@@ -20,7 +20,7 @@ public sealed class LocationEventEmitterTests
         var actor = InMemoryLocationStoreTests.Actor("ignored");
         var claimed = await fixture.Runtime.WriteActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
         await fixture.Runtime.RemoveActorAsync(
-            new ZLinkActorLocationKey("play", "actor-1"), claimed.Generation);
+            new ZLinkActorLocationKey("actor-1"), claimed.Generation);
 
         var updated = Assert.IsType<ZLinkLocationActorEvent.RowUpdated>(fixture.Publisher.Events[0]);
         Assert.Equal("actors", updated.SourceName);
@@ -49,7 +49,7 @@ public sealed class LocationEventEmitterTests
     {
         var fixture = await FixtureAsync();
 
-        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("play", "ghost")));
+        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("ghost")));
 
         var miss = Assert.Single(fixture.Publisher.Events.OfType<ZLinkLocationActorEvent.ResolveMiss>());
         Assert.Equal("ghost", miss.Key.ActorId);
@@ -87,7 +87,7 @@ public sealed class LocationEventEmitterTests
 
         var actor = InMemoryLocationStoreTests.Actor("ignored");
         await fixture.Runtime.WriteActorAsync(actor, ZLinkLocationWriteIntent.NewClaim);
-        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("play", "ghost")));
+        Assert.Null(await fixture.Resolvers.ResolveActorRowAsync(new ZLinkActorLocationKey("ghost")));
         await fixture.Reconciler.TickAsync();
 
         Assert.Empty(fixture.Publisher.Events);

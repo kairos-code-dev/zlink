@@ -47,7 +47,7 @@ internal sealed class ZLinkLocationAddressResolvers :
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
         ArgumentException.ThrowIfNullOrWhiteSpace(actorId);
-        var key = new ZLinkActorLocationKey(meshName, actorId);
+        var key = new ZLinkActorLocationKey(actorId);
         var row = await _rows.ResolveActorRowAsync(key, cancellationToken)
             .ConfigureAwait(false);
         if (row is null)

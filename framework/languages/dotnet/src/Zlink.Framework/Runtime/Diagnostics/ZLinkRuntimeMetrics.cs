@@ -38,12 +38,18 @@ internal static class ZLinkRuntimeMetrics
         Meter.CreateUpDownCounter<long>("zlink.actor.count", "{actor}");
     private static readonly UpDownCounter<long> ActorMailboxDepth =
         Meter.CreateUpDownCounter<long>("zlink.actor.mailbox.depth", "{item}");
-    private static readonly Counter<long> ActorTransfers =
-        Meter.CreateCounter<long>("zlink.actor.transfers", "{transfer}");
-    private static readonly Histogram<double> ActorTransferDuration =
-        Meter.CreateHistogram<double>("zlink.actor.transfer.duration", "s");
-    private static readonly Histogram<long> ActorTransferPendingRequests =
-        Meter.CreateHistogram<long>("zlink.actor.transfer.pending_requests.count", "{request}");
+    private static readonly Counter<long> RelocationStarted =
+        Meter.CreateCounter<long>("zlink.relocation.started", "{relocation}");
+    private static readonly Counter<long> RelocationCompleted =
+        Meter.CreateCounter<long>("zlink.relocation.completed", "{relocation}");
+    private static readonly Histogram<double> RelocationDuration =
+        Meter.CreateHistogram<double>("zlink.relocation.duration", "s");
+    private static readonly Counter<long> RelocationRecovered =
+        Meter.CreateCounter<long>("zlink.relocation.recovered", "{relocation}");
+    private static readonly Histogram<long> RelocationJournalMessages =
+        Meter.CreateHistogram<long>("zlink.relocation.journal.messages", "{message}");
+    private static readonly Histogram<long> RelocationBytes =
+        Meter.CreateHistogram<long>("zlink.relocation.bytes", "By");
 
     private static readonly Histogram<double> ChannelRequestDuration =
         Meter.CreateHistogram<double>("zlink.channel.request.duration", "s");
@@ -164,17 +170,32 @@ internal static class ZLinkRuntimeMetrics
     public static void RecordActorMailboxEnqueued() => SafeAdd(ActorMailboxDepth, 1);
     public static void RecordActorMailboxStarted() => SafeAdd(ActorMailboxDepth, -1);
 
-    public static long StartActorTransfer(long pendingRequests)
+    public static ZLinkRelocationMetricOperation CreateRelocation(
+        string meshName,
+        ZLinkRelocationMetricObjectKind objectKind,
+        ZLinkRelocationMetricPolicy policy)
     {
-        if (ActorTransferPendingRequests.Enabled)
-            SafeRecord(ActorTransferPendingRequests, Math.Max(0, pendingRequests));
-        return StartTimestamp(ActorTransferDuration);
+        ArgumentException.ThrowIfNullOrWhiteSpace(meshName);
+        if (!RelocationStarted.Enabled
+            && !RelocationCompleted.Enabled
+            && !RelocationDuration.Enabled
+            && !RelocationRecovered.Enabled)
+            return ZLinkRelocationMetricOperation.Disabled;
+
+        return new ZLinkRelocationMetricOperation(
+            meshName,
+            RelocationObjectKind(objectKind),
+            RelocationPolicy(policy));
     }
 
-    public static void CompleteActorTransfer(long startedTimestamp)
+    public static ZLinkRelocationMetricOperation StartRelocation(
+        string meshName,
+        ZLinkRelocationMetricObjectKind objectKind,
+        ZLinkRelocationMetricPolicy policy)
     {
-        SafeAdd(ActorTransfers, 1);
-        RecordElapsed(ActorTransferDuration, startedTimestamp);
+        var operation = CreateRelocation(meshName, objectKind, policy);
+        operation.Start();
+        return operation;
     }
 
     public static long StartChannelRequest()
@@ -416,6 +437,18 @@ internal static class ZLinkRuntimeMetrics
         }
     }
 
+    private static void SafeAdd(Counter<long> counter, long value, in TagList tags)
+    {
+        if (!counter.Enabled) return;
+        try
+        {
+            counter.Add(value, tags);
+        }
+        catch
+        {
+        }
+    }
+
     private static void SafeAdd(
         Counter<long> counter,
         long value,
@@ -541,4 +574,190 @@ internal static class ZLinkRuntimeMetrics
         {
         }
     }
+
+    private static void SafeRecord(Histogram<long> histogram, long value, in TagList tags)
+    {
+        if (!histogram.Enabled) return;
+        try
+        {
+            histogram.Record(value, tags);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void CompleteRelocation(
+        ZLinkRelocationMetricOperation operation,
+        ZLinkRelocationMetricOutcome outcome)
+    {
+        var outcomeValue = RelocationOutcome(outcome);
+        var terminalTags = operation.TerminalTags(outcomeValue);
+        SafeAdd(RelocationCompleted, 1, terminalTags);
+        if (operation.StartedTimestamp != 0 && RelocationDuration.Enabled)
+            try
+            {
+                RelocationDuration.Record(
+                    Stopwatch.GetElapsedTime(operation.StartedTimestamp).TotalSeconds,
+                    terminalTags);
+            }
+            catch
+            {
+            }
+
+        if (outcome == ZLinkRelocationMetricOutcome.Recovered)
+            SafeAdd(RelocationRecovered, 1, operation.ObjectTags);
+    }
+
+    private static string RelocationObjectKind(ZLinkRelocationMetricObjectKind objectKind) =>
+        objectKind switch
+        {
+            ZLinkRelocationMetricObjectKind.Actor => "actor",
+            ZLinkRelocationMetricObjectKind.UserSpot => "user_spot",
+            ZLinkRelocationMetricObjectKind.InstanceSpot => "instance_spot",
+            _ => throw new ArgumentOutOfRangeException(nameof(objectKind))
+        };
+
+    private static string RelocationPolicy(ZLinkRelocationMetricPolicy policy) =>
+        policy switch
+        {
+            ZLinkRelocationMetricPolicy.Recreate => "recreate",
+            ZLinkRelocationMetricPolicy.Snapshot => "snapshot",
+            _ => throw new ArgumentOutOfRangeException(nameof(policy))
+        };
+
+    private static string RelocationOutcome(ZLinkRelocationMetricOutcome outcome) =>
+        outcome switch
+        {
+            ZLinkRelocationMetricOutcome.Completed => "completed",
+            ZLinkRelocationMetricOutcome.Aborted => "aborted",
+            ZLinkRelocationMetricOutcome.Recovered => "recovered",
+            ZLinkRelocationMetricOutcome.Failed => "failed",
+            ZLinkRelocationMetricOutcome.Shutdown => "shutdown",
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome))
+        };
+
+    internal sealed class ZLinkRelocationMetricOperation
+    {
+        internal static readonly ZLinkRelocationMetricOperation Disabled = new();
+
+        private const int Created = 0;
+        private const int Starting = 1;
+        private const int Started = 2;
+        private const int Completed = 3;
+
+        private int _state;
+        private long _startedTimestamp;
+
+        private ZLinkRelocationMetricOperation()
+        {
+            MeshName = string.Empty;
+            ObjectKind = string.Empty;
+            Policy = string.Empty;
+        }
+
+        internal ZLinkRelocationMetricOperation(
+            string meshName,
+            string objectKind,
+            string policy)
+        {
+            MeshName = meshName;
+            ObjectKind = objectKind;
+            Policy = policy;
+        }
+
+        private string MeshName { get; }
+        private string ObjectKind { get; }
+        private string Policy { get; }
+        internal long StartedTimestamp => _startedTimestamp;
+
+        internal TagList StartTags =>
+            new()
+            {
+                { "mesh_name", MeshName },
+                { "object_kind", ObjectKind },
+                { "policy", Policy }
+            };
+
+        internal TagList ObjectTags =>
+            new()
+            {
+                { "mesh_name", MeshName },
+                { "object_kind", ObjectKind }
+            };
+
+        internal TagList TerminalTags(string outcome) =>
+            new()
+            {
+                { "mesh_name", MeshName },
+                { "object_kind", ObjectKind },
+                { "policy", Policy },
+                { "outcome", outcome }
+            };
+
+        internal void Complete(ZLinkRelocationMetricOutcome outcome)
+        {
+            if (ReferenceEquals(this, Disabled))
+                return;
+            var spinner = new SpinWait();
+            while (Volatile.Read(ref _state) == Starting)
+                spinner.SpinOnce();
+            if (Interlocked.CompareExchange(ref _state, Completed, Started) != Started)
+                return;
+            CompleteRelocation(this, outcome);
+        }
+
+        internal void RecordJournalMessages(long messageCount)
+        {
+            if (messageCount < 0)
+                throw new ArgumentOutOfRangeException(nameof(messageCount));
+            if (Volatile.Read(ref _state) != Started
+                || !RelocationJournalMessages.Enabled)
+                return;
+            SafeRecord(RelocationJournalMessages, messageCount, ObjectTags);
+        }
+
+        internal void RecordBytes(long byteCount)
+        {
+            if (byteCount < 0)
+                throw new ArgumentOutOfRangeException(nameof(byteCount));
+            if (Volatile.Read(ref _state) != Started || !RelocationBytes.Enabled)
+                return;
+            SafeRecord(RelocationBytes, byteCount, StartTags);
+        }
+
+        internal void Start()
+        {
+            if (ReferenceEquals(this, Disabled)
+                || Interlocked.CompareExchange(ref _state, Starting, Created) != Created)
+                return;
+            _startedTimestamp = RelocationDuration.Enabled
+                ? Stopwatch.GetTimestamp()
+                : 0;
+            SafeAdd(RelocationStarted, 1, StartTags);
+            Volatile.Write(ref _state, Started);
+        }
+    }
+}
+
+internal enum ZLinkRelocationMetricObjectKind
+{
+    Actor,
+    UserSpot,
+    InstanceSpot
+}
+
+internal enum ZLinkRelocationMetricPolicy
+{
+    Recreate,
+    Snapshot
+}
+
+internal enum ZLinkRelocationMetricOutcome
+{
+    Completed,
+    Aborted,
+    Recovered,
+    Failed,
+    Shutdown
 }

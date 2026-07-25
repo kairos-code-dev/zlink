@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Runtime.Diagnostics;
 
-internal interface IZLinkRuntimeErrorSink
+internal interface IZLinkRuntimeFailureReporter
 {
     void ReportHandlerException(Exception exception);
 

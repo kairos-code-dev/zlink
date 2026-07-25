@@ -477,9 +477,74 @@ public sealed class ActorHandoffTests
         Assert.False(duplicatePreparation.IsCompleted);
 
         var reply = ZLinkRemoteActorJoinPackets.CreateJoinReply(true, ActorRef("node-b", 2));
+        state.Handoff.MarkAuthorityCommitted("handoff-1", 2, 2);
+        Assert.True(state.Handoff.TryBeginJoinedNotification("handoff-1"));
         state.Handoff.AcceptPreparation("handoff-1", reply);
 
         Assert.Same(reply, await duplicatePreparation);
+    }
+
+    [Fact]
+    public async Task TargetAuthorityCommit_PrecedesJoinedNotification_AndRetryKeepsTheCommit()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        var commit = CommitRequest("handoff-order", []);
+        Assert.True(state.Handoff.Import(commit, out var preparation));
+
+        Assert.False(state.Handoff.TryBeginJoinedNotification("handoff-order"));
+        state.Handoff.MarkAuthorityCommitted("handoff-order", 7, 7);
+        Assert.True(state.Handoff.IsAuthorityCommitted("handoff-order"));
+        Assert.True(state.Handoff.TryBeginJoinedNotification("handoff-order"));
+
+        state.Handoff.RetryJoinedNotification("handoff-order");
+
+        Assert.True(state.Handoff.IsAuthorityCommitted("handoff-order"));
+        Assert.True(state.Handoff.TryBeginJoinedNotification("handoff-order"));
+        var reply = ZLinkRemoteActorJoinPackets.CreateJoinReply(
+            true,
+            ActorRef("node-b", 7));
+        state.Handoff.AcceptPreparation("handoff-order", reply);
+
+        Assert.Same(reply, await preparation);
+    }
+
+    [Fact]
+    public void TargetAuthorityCommit_RejectsObjectGenerationChange()
+    {
+        var state = new ZLinkActorRuntimeState("actor-1");
+        Assert.True(state.Handoff.Import(CommitRequest("handoff-generation", []), out _));
+
+        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+            state.Handoff.MarkAuthorityCommitted("handoff-generation", 7, 8));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.ActorGenerationStale, exception.Kind);
+        Assert.False(state.Handoff.IsAuthorityCommitted("handoff-generation"));
+    }
+
+    [Fact]
+    public void TargetReplay_PreservesAcceptedQueueArrivalOrder_AfterAuthorityCommit()
+    {
+        var initial = new[]
+        {
+            HandoffFrame(2, arrivalIndex: 0),
+            HandoffFrame(1, arrivalIndex: 1)
+        };
+        var state = new ZLinkActorRuntimeState("actor-1");
+        Assert.True(
+            state.Handoff.Import(
+                CommitRequest("handoff-queue", initial),
+                out _));
+        state.Handoff.MarkAuthorityCommitted("handoff-queue", 1, 1);
+        Assert.True(state.Handoff.TryBeginJoinedNotification("handoff-queue"));
+        state.Handoff.AcceptPreparation(
+            "handoff-queue",
+            ZLinkRemoteActorJoinPackets.CreateJoinReply(true, ActorRef("node-b", 1)));
+
+        var replay = state.Handoff.PrepareImportedReplay(
+            [HandoffFrame(3, arrivalIndex: 2)]);
+
+        Assert.Equal(new ulong[] { 2, 1, 3 }, replay.Select(static frame => frame.RequestId));
+        Assert.Equal(new long[] { 0, 1, 2 }, replay.Select(static frame => frame.ArrivalIndex));
     }
 
     [Fact]
@@ -840,6 +905,11 @@ public sealed class ActorHandoffTests
 
     private static string DecodeBody(ZLinkActorHandoffFrame frame)
         => System.Text.Encoding.UTF8.GetString(frame.Body);
+
+    private static ZLinkActorHandoffFrame HandoffFrame(
+        ulong requestId,
+        long arrivalIndex)
+        => new([], 0, [], [], requestId, 0, [], [], arrivalIndex);
 
     private static ZlinkStreamHeader Header(string packetName)
         => new(

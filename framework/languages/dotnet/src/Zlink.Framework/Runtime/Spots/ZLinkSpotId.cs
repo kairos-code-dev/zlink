@@ -1,10 +1,14 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Zlink.Framework.Runtime.Spots;
 
 internal static class ZLinkSpotId
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly Regex ReservedEntrySpotId = new(
+        @"^.+-entry-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     internal static bool IsValid(string? value)
     {
@@ -29,6 +33,30 @@ internal static class ZLinkSpotId
                 "Spot ID must be valid UTF-8 with an encoded size of 1..255 bytes.",
                 paramName);
         return value!;
+    }
+
+    internal static string RequireCallerProvided(string? value, string paramName)
+    {
+        var spotId = Require(value, paramName);
+        if (IsReservedEntrySpotId(spotId))
+        {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                $"Spot ID '{spotId}' uses the Framework-reserved Entry Spot ID format.");
+        }
+
+        return spotId;
+    }
+
+    internal static bool IsReservedEntrySpotId(string value) =>
+        ReservedEntrySpotId.IsMatch(value);
+
+    internal static string CreateEntrySpotId(string diagnosticPrefix)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(diagnosticPrefix);
+        return Require(
+            $"{diagnosticPrefix}-entry-{Guid.NewGuid():D}",
+            nameof(diagnosticPrefix));
     }
 
     internal static RoutingId ToNativeRoutingId(string value) =>

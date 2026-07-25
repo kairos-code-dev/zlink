@@ -3,7 +3,8 @@ namespace Zlink.Framework.Runtime.Channels;
 internal sealed class ZLinkChannelRuntimeManager(
     IZLinkBackendAdapterFactory backendAdapterFactory,
     ZLinkFrameworkRegistration registration,
-    ZLinkChannelReceiveLoop receiveLoop)
+    ZLinkChannelReceiveLoop receiveLoop,
+    ZLinkFanoutRuntimeService fanoutRuntime)
 {
     private readonly ZLinkChannelBundleFactory _bundleFactory = new(backendAdapterFactory, registration);
 
@@ -86,6 +87,22 @@ internal sealed class ZLinkChannelRuntimeManager(
 
             if (channel.Subscriber is not null)
             {
+                if (channel.Subscriber.AcquisitionMode
+                    == ZLinkPeerAcquisitionMode.AutoConnect)
+                {
+                    state.AutomaticFanoutSubscriberRuntimes.Add(
+                        channelName,
+                        new ZLinkAutomaticFanoutSubscriberRuntime(
+                            channelName,
+                            backendAdapterFactory,
+                            state.Context,
+                            channel.Subscriber.SocketConfig,
+                            receiveLoop,
+                            fanoutRuntime,
+                            state.StopTokenSource.Token));
+                    continue;
+                }
+
                 var bundle = await _bundleFactory.CreateSubscriberBundleAsync(state, adapter, channelName, channel)
                     .ConfigureAwait(false);
                 state.SubscriberBundles.Add(channelName, bundle);
@@ -138,10 +155,37 @@ internal sealed class ZLinkChannelRuntimeManager(
 
             if (entry.Value.Publisher is null) continue;
 
-            state.PublisherBundles.Add(
-                entry.Key,
-                await _bundleFactory.CreatePublisherBundleAsync(state, entry.Key, entry.Value, adapter)
-                    .ConfigureAwait(false));
+            var publisherBundle =
+                await _bundleFactory.CreatePublisherBundleAsync(
+                        state,
+                        entry.Key,
+                        entry.Value,
+                        adapter)
+                    .ConfigureAwait(false);
+            state.PublisherBundles.Add(entry.Key, publisherBundle);
+            state.ListenerTasks.Add(state.TaskRunner.Run(
+                $"fanout-beacon:{entry.Key}",
+                cancellationToken => RunFanoutBeaconLoopAsync(
+                    (IZLinkBackendPublisherSocket)publisherBundle.Socket,
+                    cancellationToken)));
+        }
+    }
+
+    private static async ValueTask RunFanoutBeaconLoopAsync(
+        IZLinkBackendPublisherSocket publisher,
+        CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(
+            ZLinkFanoutLivenessProtocol.BeaconInterval);
+        while (await timer.WaitForNextTickAsync(cancellationToken)
+                   .ConfigureAwait(false))
+        {
+            using var payload = Message.From(
+                ZLinkFanoutLivenessProtocol.Payload);
+            _ = publisher.Publish(
+                ZLinkFanoutLivenessProtocol.Topic,
+                payload,
+                SendFlags.DontWait);
         }
     }
 

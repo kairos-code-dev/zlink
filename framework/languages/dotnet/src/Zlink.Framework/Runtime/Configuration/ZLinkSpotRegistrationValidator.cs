@@ -9,20 +9,15 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         ISet<Type> globalEntrySpots,
         ZLinkHandlerExposureCatalog handlerExposure)
     {
-        if (spotNode.Router is not null && string.IsNullOrWhiteSpace(spotNode.Router.BindEndpoint))
+        if (spotNode.Router is not null
+            && string.IsNullOrWhiteSpace(spotNode.Router.BindEndpoint)
+            && spotNode.Router.ListenPort is null)
             throw new ZLinkConfigurationException(
                 $"SPOT node '{spotNode.SpotNodeName}' enables router capability but does not define a router bind endpoint.");
 
         if (spotNode.Router is null)
             throw new ZLinkConfigurationException(
                 $"MeshNode '{spotNode.SpotNodeName}' must define its ROUTER endpoint via Listen(...).");
-
-        // spec 05-route-mesh §2: a MeshNode must register at least one logical
-        // channel membership (ChannelName). Memberships join the node's ROUTER at
-        // startup, so a serving node with none cannot Start.
-        if (spotNode.Router is not null && spotNode.ChannelMemberships.Count == 0)
-            throw new ZLinkConfigurationException(
-                $"MeshNode '{spotNode.SpotNodeName}' must register at least one channel via ChannelName(...).");
 
         if (spotNode.Router is null && spotNode.ActorFactories.Count > 0)
             throw new ZLinkConfigurationException(

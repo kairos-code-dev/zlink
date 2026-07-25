@@ -14,7 +14,6 @@ public readonly record struct ZLinkSpotLocationKey(
 /// diagnostic information, and does not participate in identity.
 /// </summary>
 public readonly record struct ZLinkActorLocationKey(
-    string MeshName,
     string ActorId);
 
 

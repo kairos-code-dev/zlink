@@ -171,6 +171,27 @@ internal interface IActorCreateOperationTarget
         CancellationToken cancellationToken);
 }
 
+internal readonly record struct ActorDestroyOperation(
+    ulong Correlation,
+    ActorRef Actor,
+    RoutingId TargetNodeRid,
+    ulong TargetNodeGeneration,
+    ulong AuthorityOwnerGeneration);
+
+internal sealed record ActorDestroyCompletion(bool Destroyed) : MeshRecordPayload;
+
+internal sealed record ActorDestroyOperationTerminal(
+    RequestResult Result,
+    ServiceWireConstants.FrameworkErrorCode FailureCode,
+    ActorDestroyCompletion? Completion = null);
+
+internal interface IActorDestroyOperationTarget
+{
+    ValueTask<ActorDestroyOperationTerminal> DestroyAsync(
+        ActorDestroyOperation operation,
+        CancellationToken cancellationToken);
+}
+
 internal readonly record struct InstanceSpotActivationTarget(
     string MeshName,
     RoutingId TargetNodeRid,
@@ -178,6 +199,11 @@ internal readonly record struct InstanceSpotActivationTarget(
     string TargetSpotId,
     string StableType,
     string DescriptorVersion);
+
+internal readonly record struct InstanceSpotIntentAddress(
+    string MeshName,
+    string InstanceSpotType,
+    string SpotId);
 
 internal readonly record struct InstanceSpotActivationOperation(
     InstanceSpotActivationTarget Target,
@@ -367,6 +393,8 @@ internal readonly struct MeshReceiveRecord
         KindData as UserSpotCloseCompletion;
     public ActorCreateCompletion? ActorCreateCompletion =>
         KindData as ActorCreateCompletion;
+    public ActorDestroyCompletion? ActorDestroyCompletion =>
+        KindData as ActorDestroyCompletion;
     public MeshSendReadyData? SendReady => KindData as MeshSendReadyData;
     public ActorTransferControl? TransferControl => (KindData as ActorTransferControlRecord)?.Control;
     public SubmitResult Reply(IReadOnlyList<Message> parts, SendFlags flags = SendFlags.None) =>
@@ -462,6 +490,7 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
     void AbortActorTransfer(ActorTransferToken token);
     void SetUserSpotOperationTarget(IUserSpotOperationTarget target);
     void SetActorCreateOperationTarget(IActorCreateOperationTarget target);
+    void SetActorDestroyOperationTarget(IActorDestroyOperationTarget target);
     void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target);
     SubmitResult ActivateInstanceSpot(
         InstanceSpotActivationTarget target,
@@ -493,6 +522,12 @@ internal interface IMeshNode : IDisposable, IAsyncDisposable
         string stableType,
         ObjectReservationFence reservation,
         ulong deadlineUnixMs,
+        out MeshOperationId operationId,
+        TimeSpan timeout = default);
+    SubmitResult DestroyActorRemote(
+        ActorRef actor,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
         out MeshOperationId operationId,
         TimeSpan timeout = default);
     IStreamSessionService CreateStreamSessionService(IStreamSocket stream);

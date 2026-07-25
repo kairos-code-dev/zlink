@@ -265,6 +265,18 @@ public sealed class DeferredActorJoinDurabilityTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public ValueTask<ZLinkRelocationCapacityReserveResult>
+            ReserveRelocationCapacityAsync(
+                ZLinkRelocationCapacityReservationRequest request,
+                CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkRelocationCapacityAbortResult>
+            AbortRelocationCapacityAsync(
+                ZLinkRelocationCapacityFence fence,
+                CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
             ZLinkAggregatePrepareRequest request,
             CancellationToken cancellationToken = default) =>

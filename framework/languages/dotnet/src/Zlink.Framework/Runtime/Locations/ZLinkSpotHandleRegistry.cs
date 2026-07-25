@@ -36,7 +36,7 @@ internal sealed class ZLinkSpotHandleRegistry
     internal void UpdateActor(ZLinkActorLocation row)
         => Apply(
             _actors,
-            new ZLinkActorLocationKey(row.MeshName, row.ActorId),
+            new ZLinkActorLocationKey(row.ActorId),
             handle => handle.Update(ToSnapshot(row), row.MembershipEpoch));
 
     private ZLinkSpotHandleSnapshot ToSnapshot(ZLinkActorLocation row)

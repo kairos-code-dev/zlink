@@ -16,7 +16,8 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         IDatabase database,
         ZLinkRedisLocationKind<TRow> kind,
         TRow row,
-        ZLinkLocationWriteIntent intent)
+        ZLinkLocationWriteIntent intent,
+        string? spotId = null)
         where TRow : class
     {
         var intentName = intent switch
@@ -43,7 +44,10 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                     rowHashKey,
                     keys.GenerationKey(kind.Tag, rowKey),
                     keys.KindIndexKey(kind.Tag),
-                    keys.HybridOwnerLeaseKey(ownerForLeaseKey)
+                    keys.HybridOwnerLeaseKey(ownerForLeaseKey),
+                    spotId is null
+                        ? keys.HybridSchemaKey()
+                        : keys.HybridEntrySpotIdClaimKey(spotId)
                 ],
                 [
                     intentName,
@@ -56,7 +60,8 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                     meshName is null ? string.Empty : keys.StampKey(kind.Tag, meshName: null),
                     meshName is null ? "0" : "1",
                     meshName ?? string.Empty,
-                    expectedOwner.IsNull ? string.Empty : expectedOwner
+                    expectedOwner.IsNull ? string.Empty : expectedOwner,
+                    spotId is null ? "0" : "1"
                 ]).ConfigureAwait(false))!;
             if ((string)result[0]! != "retry")
                 return ToWriteResult(result);
@@ -88,6 +93,7 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         var ownerIndex = DescriptorOwnerIndexKey(rowKey, ownerToken);
         var immutableDigest = ImmutableDescriptorDigest(descriptor);
         var rowHashKey = keys.RowHashKey(kind.Tag, rowKey);
+        var entrySpotId = descriptor.EntrySpotId ?? string.Empty;
         while (true)
         {
             var currentValues = await database.HashGetAsync(
@@ -102,6 +108,8 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                     ? descriptor.OwnerId
                     : expectedOwner);
             var oldOwnerIndex = ownerIndex;
+            var oldEntrySpotId = entrySpotId;
+            ulong oldLifecycleGeneration = descriptor.LifecycleGeneration;
             if (!currentValues[1].IsNull)
             {
                 var current = ZLinkRedisLocationRowJson
@@ -112,6 +120,8 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                     OwnerTokenDigest(
                         current.OwnerId,
                         current.LeaseGeneration));
+                oldEntrySpotId = current.EntrySpotId ?? string.Empty;
+                oldLifecycleGeneration = current.LifecycleGeneration;
             }
             var result = (RedisResult[])(await database.ScriptEvaluateAsync(
                 ZLinkRedisLocationScripts.WriteMeshNode,
@@ -125,7 +135,28 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                     descriptorIndex,
                     ownerIndex,
                     currentLeaseKey,
-                    oldOwnerIndex
+                    oldOwnerIndex,
+                    keys.HybridEntrySpotIdClaimKey(
+                        entrySpotId.Length == 0
+                            ? "__none__"
+                            : entrySpotId),
+                    keys.HybridEntrySpotIdClaimKey(
+                        oldEntrySpotId.Length == 0
+                            ? "__none__"
+                            : oldEntrySpotId),
+                    keys.HybridEntrySpotIdClaimIndexKey(),
+                    keys.RowHashKey(
+                        ZLinkRedisLocationKinds.Spot.Tag,
+                        entrySpotId.Length == 0
+                            ? "__none__"
+                            : ZLinkRedisLocationKeyCodec.EncodeSpotKey(
+                                new ZLinkSpotLocationKey(entrySpotId))),
+                    keys.HybridAuthorityCurrentKey(
+                        entrySpotId.Length == 0
+                            ? "__none__"
+                            : Zlink.Framework.Runtime.Spots
+                                .ZLinkUserSpotAuthorityPayloadCodec
+                                .AuthorityKey(entrySpotId).Value)
                 ],
                 [
                     intentName,
@@ -151,7 +182,8 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                     descriptor.ActivationConcurrency.Limit,
                     descriptor.EntrySpotId ?? string.Empty,
                     immutableDigest,
-                    expectedOwner
+                    expectedOwner,
+                    oldLifecycleGeneration
                 ]).ConfigureAwait(false))!;
             if ((string)result[0]! != "retry")
                 return ToWriteResult(result);
@@ -252,6 +284,79 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         return ToWriteResult(result);
     }
 
+    public async ValueTask<ZLinkLocationWriteResult> WriteFanoutAsync(
+        IDatabase database,
+        ZLinkFanoutPublisherDescriptor descriptor,
+        ZLinkLocationWriteIntent intent)
+    {
+        var intentName = intent switch
+        {
+            ZLinkLocationWriteIntent.NewClaim => "new",
+            ZLinkLocationWriteIntent.Renew => "renew",
+            ZLinkLocationWriteIntent.Takeover => "takeover",
+            _ => throw new ArgumentOutOfRangeException(nameof(intent))
+        };
+        var kind = ZLinkRedisLocationKinds.Fanout;
+        var rowKey = kind.EncodeKey(descriptor);
+        var rowHashKey = keys.RowHashKey(kind.Tag, rowKey);
+        var json = ZLinkRedisLocationRowJson.Serialize(descriptor);
+        while (true)
+        {
+            var expectedOwner = await database.HashGetAsync(
+                    rowHashKey,
+                    "owner")
+                .ConfigureAwait(false);
+            var currentOwner = expectedOwner.IsNull
+                ? descriptor.OwnerId
+                : expectedOwner.ToString();
+            var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+                ZLinkRedisLocationScripts.WriteClientServer,
+                [
+                    rowHashKey,
+                    keys.GenerationKey(kind.Tag, rowKey),
+                    keys.KindIndexKey(kind.Tag),
+                    keys.HybridOwnerLeaseKey(descriptor.OwnerId),
+                    keys.HybridOwnerLeaseKey(currentOwner),
+                    keys.FanoutChannelIndexKey(descriptor.ChannelName)
+                ],
+                [
+                    intentName,
+                    descriptor.OwnerId,
+                    descriptor.LeaseGeneration,
+                    json,
+                    rowKey,
+                    keys.OwnerIndexKeyPrefix(kind.Tag),
+                    descriptor.ChannelName,
+                    expectedOwner.IsNull ? string.Empty : expectedOwner
+                ]).ConfigureAwait(false))!;
+            if ((string)result[0]! != "retry")
+                return ToWriteResult(result);
+        }
+    }
+
+    public async ValueTask<ZLinkLocationWriteResult> RemoveFanoutAsync(
+        IDatabase database,
+        string rowKey,
+        string channelName,
+        ZLinkLocationOwnerToken owner)
+    {
+        var kind = ZLinkRedisLocationKinds.Fanout;
+        var result = (RedisResult[])(await database.ScriptEvaluateAsync(
+            ZLinkRedisLocationScripts.RemoveClientServer,
+            [
+                keys.RowHashKey(kind.Tag, rowKey),
+                keys.KindIndexKey(kind.Tag),
+                keys.FanoutChannelIndexKey(channelName)
+            ],
+            [
+                owner.OwnerId,
+                owner.LeaseGeneration,
+                rowKey,
+                keys.OwnerIndexKeyPrefix(kind.Tag)
+            ]).ConfigureAwait(false))!;
+        return ToWriteResult(result);
+    }
+
     public async ValueTask<ZLinkLocationWriteResult> RemoveMeshNodeAsync(
         IDatabase database,
         string rowKey,
@@ -266,6 +371,8 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
         var ownerIndex = DescriptorOwnerIndexKey(
             rowKey,
             OwnerTokenDigest(owner.OwnerId, owner.LeaseGeneration));
+        var entrySpotId = string.Empty;
+        ulong lifecycleGeneration = 0;
         if (!json.IsNull)
         {
             var current = ZLinkRedisLocationRowJson
@@ -275,6 +382,8 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                 OwnerTokenDigest(
                     current.OwnerId,
                     current.LeaseGeneration));
+            entrySpotId = current.EntrySpotId ?? string.Empty;
+            lifecycleGeneration = current.LifecycleGeneration;
         }
         var result = (RedisResult[])(await database.ScriptEvaluateAsync(
             ZLinkRedisLocationScripts.RemoveMeshNode,
@@ -284,7 +393,12 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                 keys.HybridDescriptorKey(rowKey),
                 keys.HybridDescriptorAdmissionKey(rowKey),
                 DescriptorIndexKey(rowKey),
-                ownerIndex
+                ownerIndex,
+                keys.HybridEntrySpotIdClaimKey(
+                    entrySpotId.Length == 0
+                        ? "__none__"
+                        : entrySpotId),
+                keys.HybridEntrySpotIdClaimIndexKey()
             ],
             [
                 owner.OwnerId,
@@ -297,7 +411,9 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                     meshName),
                 keys.StampKey(
                     ZLinkRedisLocationKinds.MeshNode.Tag,
-                    meshName: null)
+                    meshName: null),
+                entrySpotId,
+                lifecycleGeneration
             ]).ConfigureAwait(false))!;
         return ToWriteResult(result);
     }
@@ -432,22 +548,28 @@ internal sealed class ZLinkRedisLocationCommands(ZLinkRedisLocationKeys keys)
                 (RedisKey)(keys.OwnerIndexKeyPrefix(ZLinkRedisLocationKinds.Spot.Tag) + ownerId),
                 (RedisKey)(keys.OwnerIndexKeyPrefix(ZLinkRedisLocationKinds.Actor.Tag) + ownerId),
                 (RedisKey)(keys.OwnerIndexKeyPrefix(ZLinkRedisLocationKinds.ClientServer.Tag) + ownerId),
+                (RedisKey)(keys.OwnerIndexKeyPrefix(ZLinkRedisLocationKinds.Fanout.Tag) + ownerId),
                 keys.KindIndexKey(ZLinkRedisLocationKinds.MeshNode.Tag),
                 keys.KindIndexKey(ZLinkRedisLocationKinds.Spot.Tag),
                 keys.KindIndexKey(ZLinkRedisLocationKinds.Actor.Tag),
                 keys.KindIndexKey(ZLinkRedisLocationKinds.ClientServer.Tag),
-                keys.HybridOwnerLeaseKey(ownerId)
+                keys.KindIndexKey(ZLinkRedisLocationKinds.Fanout.Tag),
+                keys.HybridOwnerLeaseKey(ownerId),
+                keys.HybridEntrySpotIdClaimIndexKey()
             ],
             [
                 keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.MeshNode.Tag),
                 keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.Spot.Tag),
                 keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.Actor.Tag),
                 keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.ClientServer.Tag),
+                keys.RowHashKeyPrefix(ZLinkRedisLocationKinds.Fanout.Tag),
                 keys.StampKey(ZLinkRedisLocationKinds.MeshNode.Tag, meshName: null),
                 keys.StampKey(ZLinkRedisLocationKinds.Spot.Tag, meshName: null),
                 keys.StampKey(ZLinkRedisLocationKinds.Actor.Tag, meshName: null),
                 string.Empty,
-                owner.LeaseGeneration
+                string.Empty,
+                owner.LeaseGeneration,
+                ownerId
             ]).ConfigureAwait(false);
         return (long)removed;
     }

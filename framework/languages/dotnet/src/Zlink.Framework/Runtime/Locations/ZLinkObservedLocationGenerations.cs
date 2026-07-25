@@ -48,12 +48,12 @@ internal sealed class ZLinkObservedLocationGenerations
     // would reject the post-transfer row as a lagging replica forever.
     internal bool AcceptActor(ZLinkActorLocation row) =>
         _actors.Accept(
-            new ZLinkActorLocationKey(row.MeshName, row.ActorId),
+            new ZLinkActorLocationKey(row.ActorId),
             new ObservedVersion(row.MembershipEpoch, row.ActorRef.Generation));
 
     internal void ObserveActor(ZLinkActorLocation row) =>
         _actors.Observe(
-            new ZLinkActorLocationKey(row.MeshName, row.ActorId),
+            new ZLinkActorLocationKey(row.ActorId),
             new ObservedVersion(row.MembershipEpoch, row.ActorRef.Generation));
 
     /// <summary>A completed store listing is a confirmed view of the mesh:

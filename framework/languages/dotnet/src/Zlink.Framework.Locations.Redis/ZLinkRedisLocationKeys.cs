@@ -45,6 +45,12 @@ internal sealed class ZLinkRedisLocationKeys
         string canonicalDescriptorKey) =>
         $"{HybridBase}:descriptor-admission:mesh:{Digest(canonicalDescriptorKey)}";
 
+    public RedisKey HybridEntrySpotIdClaimKey(string spotId) =>
+        $"{HybridBase}:entry-spot-id:{Digest(spotId)}";
+
+    public RedisKey HybridEntrySpotIdClaimIndexKey() =>
+        $"{HybridBase}:entry-spot-ids";
+
     public RedisKey HybridAuthorityCurrentKey(string canonicalAuthorityKey) =>
         $"{HybridBase}:authority:current:{Digest(canonicalAuthorityKey)}";
 
@@ -189,6 +195,9 @@ internal sealed class ZLinkRedisLocationKeys
 
     public RedisKey ClientServerChannelIndexKey(string channelName) =>
         $"{prefix}:clientserver:channel:{Convert.ToHexString(Encoding.UTF8.GetBytes(channelName)).ToLowerInvariant()}";
+
+    public RedisKey FanoutChannelIndexKey(string channelName) =>
+        $"{prefix}:fanout:channel:{Convert.ToHexString(Encoding.UTF8.GetBytes(channelName)).ToLowerInvariant()}";
 
     public RedisKey LeaseKey(string ownerId) => LeaseKeyPrefix() + ownerId;
 

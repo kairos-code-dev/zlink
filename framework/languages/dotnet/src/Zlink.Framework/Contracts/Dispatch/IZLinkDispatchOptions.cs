@@ -24,6 +24,19 @@ public interface IZLinkDispatchOptions
 
     // Human-readable trace label stamped on trace lines as label=.
     IZLinkDispatchOptions TraceLabel(string label);
+
+    IZLinkDispatchOptions SetRuntimeMessageFlowObserver<TObserver>()
+        where TObserver : class, IZLinkRuntimeMessageFlowObserver;
+
+    IZLinkDispatchOptions SetRuntimeMessageFlowObserver(
+        IZLinkRuntimeMessageFlowObserver observer);
+
+    IZLinkDispatchOptions SetRuntimeErrorSink<TSink>()
+        where TSink : class, IZLinkRuntimeErrorSink;
+
+    IZLinkDispatchOptions SetRuntimeErrorSink(IZLinkRuntimeErrorSink sink);
+
+    IZLinkDispatchOptions MessageFlow(ZLinkRuntimeMessageFlowMode mode);
 }
 
 public interface IZLinkMessageFlowObserver

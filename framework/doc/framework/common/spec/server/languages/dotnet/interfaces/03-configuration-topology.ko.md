@@ -331,7 +331,8 @@ policy를 같은 registration에서 고정한다. Policy를 생략하는 overloa
 1..255 bytes이고 중복 type은 startup 오류다. Entry Spot ID는 Framework가 발급한다.
 
 Node placement weight는 0..10000이고 기본값은 100이다. 범위 밖 값은 startup 설정과 runtime 변경에서
-`ZLinkConfigurationException`이다. Node capacity 기본값은 active 10,000, pending 128이다.
+`ZLinkConfigurationException`이다. Actor·Spot population limit의 기본값 `0`은 제한 없음이며,
+pending activation concurrency 기본값은 128이다.
 Type별 limit은 `null`이면 node limit을 공유하고 값이 있으면 1..`int.MaxValue`이며 node limit보다 작은 값을
 적용한다. Capacity를 weight보다 먼저 적용하고 eligible node가 없으면 `PlacementCapacityExhausted`다.
 

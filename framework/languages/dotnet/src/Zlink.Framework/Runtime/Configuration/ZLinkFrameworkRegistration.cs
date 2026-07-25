@@ -30,6 +30,8 @@ internal sealed class ZLinkFrameworkRegistration
 
     public ZLinkWorkerOptionsModel WorkerOptions { get; } = new();
 
+    public ZLinkNetworkOptionsModel NetworkOptions { get; } = new();
+
     public List<Type> Filters { get; } = [];
 
     public ZLinkLocationRegistration Locations { get; } = new();
@@ -220,11 +222,9 @@ internal sealed class ZLinkChannelServerCapabilityRegistration
 
     public int ListenPort { get; set; }
 
-    public string BindHost { get; set; } = "127.0.0.1";
+    public string? BindHost { get; set; }
 
     public string? AdvertiseHost { get; set; }
-
-    public string BindEndpoint => $"tcp://{BindHost}:{ListenPort}";
 
     public ZLinkSocketConfig SocketConfig { get; } = new();
 
@@ -247,11 +247,23 @@ internal sealed class ZLinkChannelPublisherCapabilityRegistration
 {
     public string? BindEndpoint { get; set; }
 
+    public int? ListenPort { get; set; }
+
+    public string? BindHost { get; set; }
+
+    public string? AdvertiseHost { get; set; }
+
+    public RoutingId FixedRoutingId { get; set; }
+
+    public string? RoutingIdPrefix { get; set; }
+
     public ZLinkSocketConfig SocketConfig { get; } = new();
 }
 
 internal sealed class ZLinkChannelSubscriberCapabilityRegistration
 {
+    public bool AutomaticDiscoveryEnabled { get; set; }
+
     public ZLinkPeerAcquisitionMode AcquisitionMode { get; set; } = ZLinkPeerAcquisitionMode.Manual;
 
     public ZLinkSocketConfig SocketConfig { get; } = new();
@@ -264,6 +276,14 @@ internal sealed class ZLinkStreamNodeRegistration
     public required string StreamNodeName { get; init; }
 
     public string? BindEndpoint { get; set; }
+
+    public int? ListenPort { get; set; }
+
+    public string? BindHost { get; set; }
+
+    public string? AdvertiseHost { get; set; }
+
+    public bool ActorDispatchEnabled { get; set; }
 
     // MeshName pinned by EnableActorDispatch(meshName); null means this STREAM node
     // does not dispatch session Actors (spec 31 §2). Session resolve/bind/dispatch
@@ -299,6 +319,8 @@ internal sealed record ZLinkChannelHandlerRegistration(
 internal sealed class ZLinkMeshChannelMembership
 {
     public required string ChannelName { get; init; }
+
+    public bool IsServer { get; init; } = true;
 
     private int _weight = ZLinkSocketConfig.DefaultPeerWeight;
 
@@ -371,6 +393,8 @@ internal sealed class ZLinkSpotNodeRegistration
 
     public bool HasExplicitRoutingId { get; set; }
 
+    public string? RoutingIdPrefix { get; set; }
+
     public ZLinkRoutingIdAllocationRegistration? RoutingIdAllocation { get; set; }
 
     public ZLinkEntrySpotOptions EntrySpotOptions { get; } = new();
@@ -384,6 +408,12 @@ internal sealed class ZLinkSpotNodeRegistration
     public bool ObjectRoleSelected { get; set; }
 
     public int PlacementWeight { get; set; } = 100;
+
+    public int ActorLimit { get; set; }
+
+    public int SpotLimit { get; set; }
+
+    public int ActivationConcurrencyLimit { get; set; } = 128;
 
     public int MaxActiveObjects { get; set; } = 10_000;
 
@@ -414,6 +444,13 @@ internal sealed record ZLinkObjectRelocationRegistration(
     byte PolicyKind,
     Type? AdapterType,
     IZLinkRelocationAdapterInvoker? AdapterInvoker);
+
+internal sealed record ZLinkObjectPlacementOptions
+{
+    public int? MaxActiveObjects { get; init; }
+
+    public int? MaxPendingActivations { get; init; }
+}
 
 internal sealed class ZLinkActorCatalog
 {
@@ -471,6 +508,12 @@ internal sealed class ZLinkSpotRouterCapabilityRegistration
 
     public string? BindEndpoint { get; set; }
 
+    public int? ListenPort { get; set; }
+
+    public string? BindHost { get; set; }
+
+    public string? AdvertiseHost { get; set; }
+
     public ZLinkSocketConfig SocketConfig { get; } = new();
 
     public ZLinkRouteConfig RoutingConfig { get; } = new();
@@ -478,4 +521,31 @@ internal sealed class ZLinkSpotRouterCapabilityRegistration
     public ZLinkEndpointConnections ManualConnections { get; } = new();
 
     public Dictionary<string, RoutingId> PeerRoutingIds { get; } = new(StringComparer.Ordinal);
+}
+
+internal sealed class ZLinkNetworkOptionsModel : IZLinkNetworkOptions
+{
+    private string _bindHost = "127.0.0.1";
+    private string? _advertiseHost;
+
+    public string BindHost
+    {
+        get => _bindHost;
+        set => _bindHost = ValidateHost(value, nameof(BindHost));
+    }
+
+    public string? AdvertiseHost
+    {
+        get => _advertiseHost;
+        set => _advertiseHost = value is null
+            ? null
+            : ValidateHost(value, nameof(AdvertiseHost));
+    }
+
+    private static string ValidateHost(string host, string name)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            throw new ZLinkConfigurationException($"{name} must not be empty.");
+        return host;
+    }
 }

@@ -1316,10 +1316,20 @@ class FakeStreamSocket {
     this.disconnects = [];
     this.sent = [];
     this.handler = undefined;
+    this.sendReadyHandler = undefined;
+    // ZLinkBackendStreamSocket declares sendTimeoutMs and sendHighWaterMark as
+    // required numbers. The runtime derives its outbound admission budget from
+    // them, so a fake that omits them is not a backend socket.
+    this.sendTimeoutMs = 0;
+    this.sendHighWaterMark = 0;
   }
 
   onFramedPacket(handler) {
     this.handler = handler;
+  }
+
+  onSendReady(handler) {
+    this.sendReadyHandler = handler;
   }
 
   send(routingId, payload, flags) {

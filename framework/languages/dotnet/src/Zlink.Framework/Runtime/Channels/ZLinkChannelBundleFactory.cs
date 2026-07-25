@@ -60,7 +60,11 @@ internal sealed class ZLinkChannelBundleFactory(
             ApplySocketConfig(router, channel.Server!.SocketConfig);
             router.SetMandatory(true);
             router.SetHandover(true);
-            router.Bind(channel.Server.BindEndpoint);
+            router.Bind(ZLinkNetworkEndpointResolver.Bind(
+                explicitEndpoint: null,
+                channel.Server.ListenPort,
+                channel.Server.BindHost,
+                registration.NetworkOptions));
             var actualEndpoint = router.GetLastEndpoint();
             var identity = new ZLinkClientServerServerIdentity(
                 channelName,
@@ -70,7 +74,11 @@ internal sealed class ZLinkChannelBundleFactory(
                 channel.Server.SocketConfig.Weight,
                 ZLinkClientServerControlProtocol.NormalizeMaximumMessageBytes(
                     channel.Server.SocketConfig.MaxMessageSize),
-                actualEndpoint);
+                ZLinkNetworkEndpointResolver.Advertise(
+                    actualEndpoint,
+                    channel.Server.AdvertiseHost,
+                    channel.Server.BindHost,
+                    registration.NetworkOptions));
             bundle = new ZLinkChannelRuntimeBundle(
                 router,
                 localRid: serverRid,
@@ -138,15 +146,18 @@ internal sealed class ZLinkChannelBundleFactory(
             publisher = adapter.CreatePublisherSocket(state.Context);
             publisher.SetChannelName(channelName);
             ApplySocketConfig(publisher, channel.Publisher!.SocketConfig);
-            RoutingId localRid = default;
-            if (channel.RoutingId.Size > 0)
-            {
-                localRid = ZLinkRoutingIdPolicy.Derive(channel.RoutingId, "pub");
-                // PUB has no addressable routing-id socket option. The framework retains this
-                // identity for packet tracking and diagnostics only.
-            }
-
-            publisher.Bind(channel.Publisher!.BindEndpoint!);
+            var localRid = ResolvePublisherRid(channelName, channel.Publisher);
+            publisher.SetRoutingId(localRid);
+            publisher.Bind(ResolvePublisherBindEndpoint(channel.Publisher));
+            var publisherIdentity = new ZLinkFanoutPublisherIdentity(
+                channelName,
+                localRid,
+                CreateLifecycleGeneration(),
+                ZLinkNetworkEndpointResolver.Advertise(
+                    publisher.GetLastEndpoint(),
+                    channel.Publisher.AdvertiseHost,
+                    channel.Publisher.BindHost,
+                    registration.NetworkOptions));
             bundle = new ZLinkChannelRuntimeBundle(
                 socket: publisher,
                 submitter: new ZLinkAsyncSubmitter(
@@ -154,7 +165,8 @@ internal sealed class ZLinkChannelBundleFactory(
                     channel.Publisher.SocketConfig.SendTimeout ?? registration.DefaultSocketSendTimeout,
                     state.StopTokenSource.Token),
                 localRid: localRid,
-                socketRole: "pub");
+                socketRole: "pub",
+                fanoutPublisher: publisherIdentity);
 
             return bundle;
         }
@@ -164,6 +176,24 @@ internal sealed class ZLinkChannelBundleFactory(
             throw new InvalidOperationException("Unreachable after startup cleanup failure propagation.");
         }
     }
+
+    private static RoutingId ResolvePublisherRid(
+        string channelName,
+        ZLinkChannelPublisherCapabilityRegistration publisher)
+    {
+        if (publisher.FixedRoutingId.Size > 0)
+            return publisher.FixedRoutingId;
+        return ZLinkFanoutRoutingIdPolicy.Create(
+            publisher.RoutingIdPrefix ?? channelName);
+    }
+
+    private string ResolvePublisherBindEndpoint(
+        ZLinkChannelPublisherCapabilityRegistration publisher) =>
+        ZLinkNetworkEndpointResolver.Bind(
+            publisher.BindEndpoint,
+            publisher.ListenPort,
+            publisher.BindHost,
+            registration.NetworkOptions);
 
     internal static void ApplySocketConfig(
         IZLinkBackendSocketOptions socket,

@@ -15,6 +15,8 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
     private readonly Dictionary<string, Connection> _connections =
         new(StringComparer.Ordinal);
     private readonly List<Task> _retired = [];
+    private int _pendingRequests;
+    private bool _disposed;
     private Task? _disposeTask;
 
     internal ZLinkClientServerClientRuntime(
@@ -145,27 +147,50 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var target = await WaitForReadyAsync(cancellationToken)
-            .ConfigureAwait(false);
-        if (target is null)
+        Interlocked.Increment(ref _pendingRequests);
+        try
         {
-            ZLinkMessageParts.DisposeAll(parts);
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestTargetNotFound,
-                $"ClientServer channel '{_channelName}' has no ready server.");
+            var target = await WaitForReadyAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (target is null)
+            {
+                ZLinkMessageParts.DisposeAll(parts);
+                throw new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RequestTargetNotFound,
+                    $"ClientServer channel '{_channelName}' has no ready server.");
+            }
+            return await ZLinkRawRequestSubmitter.SubmitAsync(
+                    target.Submitter,
+                    parts,
+                    (pending, callback, nativeTimeout) => target.Socket.Request(
+                        pending,
+                        callback,
+                        SendFlags.DontWait,
+                        nativeTimeout),
+                    timeout,
+                    $"ClientServer request failed for '{_channelName}': {{0}}.",
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
-        return await ZLinkRawRequestSubmitter.SubmitAsync(
-                target.Submitter,
-                parts,
-                (pending, callback, nativeTimeout) => target.Socket.Request(
-                    pending,
-                    callback,
-                    SendFlags.DontWait,
-                    nativeTimeout),
-                timeout,
-                $"ClientServer request failed for '{_channelName}': {{0}}.",
-                cancellationToken)
-            .ConfigureAwait(false);
+        finally
+        {
+            Interlocked.Decrement(ref _pendingRequests);
+        }
+    }
+
+    internal int PendingRequestCount => Volatile.Read(ref _pendingRequests);
+
+    internal IReadOnlyList<ZLinkClientServerConnectionSnapshot>
+        SnapshotConnections()
+    {
+        lock (_gate)
+            return DistinctConnections()
+                .Select(static connection => connection.Snapshot())
+                .OrderBy(
+                    static value => value.ServerRid?.ToHex(),
+                    StringComparer.Ordinal)
+                .ThenBy(static value => value.Endpoint, StringComparer.Ordinal)
+                .ToArray();
     }
 
     internal int ReadyCount
@@ -258,6 +283,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         {
             if (_disposeTask is null)
             {
+                _disposed = true;
                 start = new TaskCompletionSource(
                     TaskCreationOptions.RunContinuationsAsynchronously);
                 _disposeTask = DisposeCoreAsync(start.Task);
@@ -301,6 +327,8 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         Connection created;
         lock (_gate)
         {
+            if (_disposed)
+                return;
             if (_connections.TryGetValue(key, out var existing)
                 && existing.Matches(endpoint, expected))
             {
@@ -321,9 +349,9 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             _connections[key] = created;
             retirePrevious = previous is not null
                 && !IsReferenced(previous);
+            if (retirePrevious)
+                RegisterRetirement(previous!);
         }
-        if (retirePrevious)
-            Retire(previous!);
         created.Start();
     }
 
@@ -332,22 +360,21 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         Connection? removed;
         lock (_gate)
         {
+            if (_disposed)
+                return;
             if (!_connections.Remove(key, out removed))
                 return;
             if (IsReferenced(removed))
                 return;
+            RegisterRetirement(removed);
         }
-        Retire(removed);
     }
 
-    private void Retire(Connection connection)
+    private void RegisterRetirement(Connection connection)
     {
         var task = connection.DisposeAsync().AsTask();
-        lock (_gate)
-        {
-            _retired.RemoveAll(static candidate => candidate.IsCompleted);
-            _retired.Add(task);
-        }
+        _retired.RemoveAll(static candidate => candidate.IsCompleted);
+        _retired.Add(task);
     }
 
     private Connection? SelectReady()
@@ -390,6 +417,8 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         Connection? duplicate = null;
         lock (_gate)
         {
+            if (_disposed)
+                return;
             if (!IsReferenced(admitted))
                 return;
             var canonical = DistinctConnections().FirstOrDefault(
@@ -407,9 +436,8 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                          .ToArray())
                 _connections[key] = canonical;
             duplicate = admitted;
+            RegisterRetirement(duplicate);
         }
-        if (duplicate is not null)
-            Retire(duplicate);
     }
 
     private async ValueTask<Connection?> WaitForReadyAsync(
@@ -440,6 +468,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         private readonly CancellationToken _stopToken;
         private readonly uint _normalizedEffectiveMaxMessageBytes;
         private readonly object _gate = new();
+        private readonly object _socketLifecycleGate = new();
         private readonly IZLinkBackendSocketMonitor _monitor;
         private ZLinkClientServerServerDescriptor? _expected;
         private bool _disposed;
@@ -455,6 +484,8 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         private readonly CancellationTokenSource _admissionStop;
         private Task? _admissionTask;
         private readonly List<Task> _admissionTasks = [];
+        private readonly List<Task> _retryTasks = [];
+        private bool _retryScheduled;
         private Task? _controlTask;
         private Task? _livenessTask;
         private Task? _reconnectTask;
@@ -539,6 +570,44 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
         internal long SentLivenessProbeCount =>
             Interlocked.Read(ref _sentLivenessProbeCount);
 
+        internal ZLinkClientServerConnectionSnapshot Snapshot()
+        {
+            lock (_gate)
+            {
+                var admission = _currentAdmission;
+                var expected = _expected;
+                var state = _rejected
+                    ? ZLinkClientServerServerState.Rejected
+                    : _ready
+                        ? ZLinkClientServerServerState.Ready
+                        : admission?.State == ZLinkFrameworkRuntimeState.Draining
+                            ? ZLinkClientServerServerState.Draining
+                            : _admissionStarted
+                                ? ZLinkClientServerServerState.Connecting
+                                : _admissionCompleted
+                                    ? ZLinkClientServerServerState.Disconnected
+                                    : ZLinkClientServerServerState.Configured;
+                return new ZLinkClientServerConnectionSnapshot(
+                    admission?.ServerRid ?? expected?.ServerRid,
+                    admission?.LifecycleGeneration
+                    ?? expected?.LifecycleGeneration,
+                    admission?.DescriptorRevision
+                    ?? expected?.DescriptorRevision,
+                    admission?.AdvertisedEndpoint
+                    ?? expected?.Endpoint
+                    ?? _endpoint,
+                    _weight,
+                    _ready,
+                    state,
+                    expected?.OwnerId == "process-local"
+                        ? "manual"
+                        : expected is null
+                            ? "manual"
+                            : "redis",
+                    _ready ? null : _diagnostics);
+            }
+        }
+
         internal bool Matches(
             string endpoint,
             ZLinkClientServerServerDescriptor? expected)
@@ -598,12 +667,18 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
 
         internal void Start()
         {
-            Socket.Connect(_endpoint);
+            lock (_socketLifecycleGate)
+            {
+                lock (_gate)
+                    if (_disposed)
+                        return;
+                Socket.Connect(_endpoint);
+            }
             // The monitor normally starts admission. This delayed fallback
             // covers a connection that became ready before the monitor
             // subscriber observed its first event without submitting a native
             // request against a pipe that is still being established.
-            _ = RetryAdmissionAsync();
+            ScheduleAdmissionRetry();
         }
 
         public ValueTask DisposeAsync()
@@ -634,11 +709,21 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                     () => new ValueTask(_admissionStop.CancelAsync()))
                 .ConfigureAwait(false);
             Task[] admissionTasks;
-            lock (_gate) admissionTasks = _admissionTasks.ToArray();
+            Task[] retryTasks;
+            lock (_gate)
+            {
+                admissionTasks = _admissionTasks.ToArray();
+                retryTasks = _retryTasks.ToArray();
+            }
             foreach (var admissionTask in admissionTasks)
                 await failures.CaptureAsync(
                         () => new ValueTask(
                             IgnoreCancellationAsync(admissionTask)))
+                    .ConfigureAwait(false);
+            foreach (var retryTask in retryTasks)
+                await failures.CaptureAsync(
+                        () => new ValueTask(
+                            IgnoreCancellationAsync(retryTask)))
                     .ConfigureAwait(false);
             if (_controlTask is not null)
                 await failures.CaptureAsync(
@@ -655,21 +740,49 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                         () => new ValueTask(
                             IgnoreCancellationAsync(_reconnectTask)))
                     .ConfigureAwait(false);
-            try
+            lock (_socketLifecycleGate)
             {
-                Socket.Disconnect(_endpoint);
-            }
-            catch
-            {
+                try
+                {
+                    Socket.Disconnect(_endpoint);
+                }
+                catch
+                {
+                }
             }
             await failures.CaptureAsync(_monitor.DisposeAsync)
                 .ConfigureAwait(false);
             await failures.CaptureAsync(Submitter.DisposeAsync)
                 .ConfigureAwait(false);
-            await failures.CaptureAsync(Socket.DisposeAsync)
+            await failures.CaptureAsync(DisposeSocketAsync)
                 .ConfigureAwait(false);
             failures.Capture(_admissionStop.Dispose);
             failures.ThrowIfAny();
+        }
+
+        private async ValueTask DisposeSocketAsync()
+        {
+            while (true)
+            {
+                try
+                {
+                    await Socket.DisposeAsync().ConfigureAwait(false);
+                    return;
+                }
+                catch (ZlinkCloseException exception)
+                    when (exception.Result is ZlinkCloseException.ErrorCode.Busy
+                        or ZlinkCloseException.ErrorCode.Ok)
+                {
+                    // Binding cancellation completes the managed request
+                    // before Core has delivered its terminal callback. Core
+                    // retains the socket until that bounded request completes.
+                    // Older local Core packages report this close race with
+                    // errno 0, which the binding projects as Ok despite the
+                    // failed close. Join either form before disposing context.
+                    await Task.Delay(TimeSpan.FromMilliseconds(10))
+                        .ConfigureAwait(false);
+                }
+            }
         }
 
         private static async Task IgnoreCancellationAsync(Task task)
@@ -804,7 +917,21 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                         _admissionStarted = false;
             }
             if (retry)
-                _ = RetryAdmissionAsync();
+                ScheduleAdmissionRetry();
+        }
+
+        private void ScheduleAdmissionRetry()
+        {
+            lock (_gate)
+            {
+                if (_disposed || _retryScheduled)
+                    return;
+                _retryScheduled = true;
+                var retryTask = RetryAdmissionAsync();
+                _retryTasks.RemoveAll(
+                    static candidate => candidate.IsCompleted);
+                _retryTasks.Add(retryTask);
+            }
         }
 
         private async Task RetryAdmissionAsync()
@@ -819,6 +946,11 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             }
             catch (OperationCanceledException)
             {
+            }
+            finally
+            {
+                lock (_gate)
+                    _retryScheduled = false;
             }
         }
 
@@ -1046,59 +1178,55 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                 var probe =
                     ZLinkClientServerControlProtocol.EncodeLivenessProbe(
                         probeId);
+                IReadOnlyList<Message> reply;
                 try
                 {
-                    if (Socket.Request(
+                    reply = await Socket.RequestAsync(
                             probe,
-                            (result, reply) =>
-                            {
-                                try
-                                {
-                                    if (result != RequestResult.Ok
-                                        || !ZLinkClientServerControlProtocol
-                                            .TryDecodeLivenessAck(
-                                                reply,
-                                                out var ackId))
-                                        return;
-                                    lock (_gate)
-                                    {
-                                        if (_physicalGeneration
-                                                != physicalGeneration
-                                            || _outstandingProbeId != ackId)
-                                            return;
-                                        _outstandingProbeId = null;
-                                        _peerDeadline =
-                                            DateTimeOffset.UtcNow
-                                            + TimeSpan.FromSeconds(15);
-                                        if (_currentAdmission is
-                                            {
-                                                State:
-                                                ZLinkFrameworkRuntimeState
-                                                    .Serving,
-                                                Weight: > 0
-                                            })
-                                            _ready = true;
-                                    }
-                                    Interlocked.Increment(
-                                        ref _livenessAckCount);
-                                }
-                                finally
-                                {
-                                    ZLinkMessageParts.DisposeAll(reply);
-                                }
-                            },
-                            SendFlags.DontWait,
-                            TimeSpan.FromSeconds(15)))
-                    {
-                        Interlocked.Increment(
-                            ref _sentLivenessProbeCount);
-                        continue;
-                    }
+                            TimeSpan.FromSeconds(15),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                    when (cancellationToken.IsCancellationRequested)
+                {
+                    probe.Dispose();
+                    return;
                 }
                 catch
                 {
+                    probe.Dispose();
+                    continue;
                 }
-                probe.Dispose();
+                try
+                {
+                    Interlocked.Increment(ref _sentLivenessProbeCount);
+                    if (!ZLinkClientServerControlProtocol.TryDecodeLivenessAck(
+                            reply,
+                            out var ackId))
+                        continue;
+                    lock (_gate)
+                    {
+                        if (_disposed
+                            || _physicalGeneration != physicalGeneration
+                            || _outstandingProbeId != ackId)
+                            continue;
+                        _outstandingProbeId = null;
+                        _peerDeadline =
+                            DateTimeOffset.UtcNow + TimeSpan.FromSeconds(15);
+                        if (_currentAdmission is
+                            {
+                                State: ZLinkFrameworkRuntimeState.Serving,
+                                Weight: > 0
+                            })
+                            _ready = true;
+                    }
+                    Interlocked.Increment(ref _livenessAckCount);
+                }
+                finally
+                {
+                    ZLinkMessageParts.DisposeAll(reply);
+                }
             }
         }
 
@@ -1136,14 +1264,31 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             }
             try
             {
-                Socket.Disconnect(_endpoint);
+                lock (_socketLifecycleGate)
+                {
+                    lock (_gate)
+                        if (_disposed)
+                        {
+                            _reconnectInProgress = false;
+                            return;
+                        }
+                    Socket.Disconnect(_endpoint);
+                }
             }
             catch
             {
             }
-            _reconnectTask = ReconnectAsync(
-                physicalGeneration,
-                admissionAttempt);
+            lock (_gate)
+            {
+                if (_disposed)
+                {
+                    _reconnectInProgress = false;
+                    return;
+                }
+                _reconnectTask = ReconnectAsync(
+                    physicalGeneration,
+                    admissionAttempt);
+            }
         }
 
         private async Task ReconnectAsync(
@@ -1159,12 +1304,15 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                         TimeSpan.FromMilliseconds(25),
                         _admissionStop.Token)
                     .ConfigureAwait(false);
-                lock (_gate)
-                    if (_disposed
-                        || _physicalGeneration != physicalGeneration
-                        || _admissionAttempt != admissionAttempt)
-                        return;
-                Socket.Connect(_endpoint);
+                lock (_socketLifecycleGate)
+                {
+                    lock (_gate)
+                        if (_disposed
+                            || _physicalGeneration != physicalGeneration
+                            || _admissionAttempt != admissionAttempt)
+                            return;
+                    Socket.Connect(_endpoint);
+                }
             }
             catch (OperationCanceledException)
                 when (_admissionStop.IsCancellationRequested)
@@ -1179,7 +1327,7 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
                 lock (_gate)
                     _reconnectInProgress = false;
             }
-            _ = RetryAdmissionAsync();
+            ScheduleAdmissionRetry();
         }
 
         private void ApplyUpdate(
@@ -1264,3 +1412,14 @@ internal sealed class ZLinkClientServerClientRuntime : IAsyncDisposable
             $"{serverRid.ToHex()}:{lifecycleGeneration}";
     }
 }
+
+internal sealed record ZLinkClientServerConnectionSnapshot(
+    RoutingId? ServerRid,
+    ulong? LifecycleGeneration,
+    ulong? DescriptorRevision,
+    string Endpoint,
+    int Weight,
+    bool Ready,
+    ZLinkClientServerServerState State,
+    string DescriptorSource,
+    string? LastFailure);

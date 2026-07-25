@@ -74,7 +74,7 @@ public sealed class AuthorityStoreContracts
                         StoreNow.AddHours(1)))));
         Assert.Equal(ZLinkPlacementAllocationState.Active, created.Snapshot.Allocation.State);
         Assert.Equal(OwnerB.OwnerId, created.Snapshot.OwnerId);
-        Assert.Null(created.Snapshot.PendingCreation);
+        Assert.Null(created.Snapshot.ReservedCreation);
 
         var replayed = Assert.IsType<ZLinkCreationTerminalReadResult.Found>(
             await store.ReadCreationTerminalAsync(operation));
@@ -563,7 +563,7 @@ public sealed class AuthorityStoreContracts
                 return ValueTask.FromResult<ZLinkObjectReserveResult>(
                     existing.Allocation.State switch
                     {
-                        ZLinkPlacementAllocationState.Pending =>
+                        ZLinkPlacementAllocationState.Reserved =>
                             new ZLinkObjectReserveResult.Conflict(Read(request.Key)),
                         _ when !string.Equals(
                             existing.Allocation.StableType,
@@ -583,13 +583,13 @@ public sealed class AuthorityStoreContracts
                 request.TargetOwner.OwnerId,
                 request.TargetOwner.LeaseGeneration,
                 new ZLinkPlacementAllocation(
-                    ZLinkPlacementAllocationState.Pending,
+                    ZLinkPlacementAllocationState.Reserved,
                     request.ObjectKind,
                     request.StableType,
                     request.TargetDescriptor,
                     request.TargetNodeLifecycleGeneration,
                     request.Capacity),
-                new ZLinkPendingObjectCreation(
+                new ZLinkReservedObjectCreation(
                     reservationId,
                     request.CreationIntentReference,
                     request.CreationIntentHash,
@@ -835,7 +835,7 @@ public sealed class AuthorityStoreContracts
         private bool TryTakeReservation(ZLinkObjectReservation reservation, out Row row)
         {
             if (_rows.TryGetValue(reservation.Key.Value, out var current)
-                && current.Allocation.State == ZLinkPlacementAllocationState.Pending
+                && current.Allocation.State == ZLinkPlacementAllocationState.Reserved
                 && string.Equals(
                     current.StoreVersion,
                     reservation.StoreVersion,
@@ -866,7 +866,7 @@ public sealed class AuthorityStoreContracts
                 {
                     State = ZLinkPlacementAllocationState.Active
                 },
-                PendingCreation = null
+                ReservedCreation = null
             };
             _rows[key.Value] = active;
             return active.ToSnapshot();
@@ -883,9 +883,10 @@ public sealed class AuthorityStoreContracts
             string OwnerId,
             long OwnerLeaseGeneration,
             ZLinkPlacementAllocation Allocation,
-            ZLinkPendingObjectCreation? PendingCreation)
+            ZLinkReservedObjectCreation? ReservedCreation)
         {
-            public string? PendingReservationId => PendingCreation?.ReservationId;
+            public string? PendingReservationId =>
+                ReservedCreation?.ReservationId;
 
             public ZLinkAuthoritySnapshot ToSnapshot() => new(
                 StoreVersion,
@@ -895,7 +896,7 @@ public sealed class AuthorityStoreContracts
                 OwnerId,
                 OwnerLeaseGeneration,
                 Allocation,
-                PendingCreation,
+                ReservedCreation,
                 StoreNow);
         }
     }

@@ -16,6 +16,7 @@ import type {
 } from '../contracts';
 import {
   closeWithBusyRetry,
+  isContextTerminatedError,
   zlink,
   type ZLinkBindingModule
 } from './node-backend-adapter-support';
@@ -110,6 +111,18 @@ class ZLinkNodeBackendContext implements ZLinkBackendContext {
   }
 
   async dispose(): Promise<void> {
+    // Terminal cleanup shuts the context down before terminating it, the same
+    // sequence the .NET reference binding runs inside `Context.Dispose()`
+    // (`zlink_ctx_shutdown` then `zlink_ctx_term`). Without the shutdown signal
+    // termination can block forever waiting on the reaper even after every
+    // socket this runtime owns has been closed.
+    try {
+      this.nativeInstance.shutdown();
+    } catch (error) {
+      if (!isContextTerminatedError(error)) {
+        throw error;
+      }
+    }
     await closeWithBusyRetry(this.nativeInstance);
   }
 

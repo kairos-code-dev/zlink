@@ -254,6 +254,13 @@ internal static class ZLinkEnvelopeCodec
         string contentType,
         ZLinkCodecRegistryBuilder? codecs)
     {
+        IZLinkMessageSerializer? customSerializer = null;
+        if (!contentType.Equals(JsonContentType, StringComparison.OrdinalIgnoreCase)
+            && (codecs is null || !codecs.TryGetSerializer(contentType, out customSerializer)))
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.PayloadDecodeFailed,
+                $"No payload serializer is registered for received content type '{contentType}'.");
+
         if (bodyType == typeof(Message)) return bodyMessage;
 
         if (bodyType == typeof(ZLinkMessage))
@@ -267,8 +274,7 @@ internal static class ZLinkEnvelopeCodec
                 ? Activator.CreateInstance(bodyType)
                 : null;
 
-        if (codecs is not null
-            && codecs.TryGetSerializer(contentType, out var customSerializer))
+        if (customSerializer is not null)
         {
             // Hot path: span deserializers parse directly from the native message
             // buffer. Avoid routing this through ZLinkEncodedPayload unless the

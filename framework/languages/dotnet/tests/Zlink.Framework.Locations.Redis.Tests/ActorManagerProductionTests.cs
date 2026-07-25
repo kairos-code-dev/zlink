@@ -49,9 +49,15 @@ public sealed class ActorManagerProductionTests
         try
         {
             await PublishServerDescriptorAsync(
-                inner, first, firstRid, firstEndpoint);
+                inner,
+                first,
+                firstRid,
+                firstEndpoint);
             await PublishServerDescriptorAsync(
-                inner, second, secondRid, secondEndpoint);
+                inner,
+                second,
+                secondRid,
+                secondEndpoint);
             await WaitUntilAsync(() =>
                 source.GetSpotNodeRuntime("objects").Node.MeshStatus()
                     .AdmittedPeerCount == 2);
@@ -90,7 +96,10 @@ public sealed class ActorManagerProductionTests
         try
         {
             await PublishServerDescriptorAsync(
-                store, runtime, rid, endpoint);
+                store,
+                runtime,
+                rid,
+                endpoint);
 
             using var timeout = new CancellationTokenSource(
                 TimeSpan.FromSeconds(10));
@@ -121,7 +130,7 @@ public sealed class ActorManagerProductionTests
             var node = options.AddRouteMesh("objects")
                 .Listen(endpoint)
                 .SetRoutingId(rid);
-            node.ChannelName("objects");
+            node.Channel("objects").Server();
             node.Objects().Server()
                 .AddEntrySpot<TestEntrySpot>()
                 .AddActorFactory<TestActor, TestActorFactory>(
@@ -145,7 +154,7 @@ public sealed class ActorManagerProductionTests
             var node = options.AddRouteMesh("objects")
                 .Listen(endpoint)
                 .SetRoutingId(rid);
-            node.ChannelName("objects");
+            node.Channel("objects").Client();
             foreach (var target in targets)
                 node.PeerConnections.Connect(target.Rid, target.Endpoint);
             node.Objects().Client();
@@ -177,14 +186,18 @@ public sealed class ActorManagerProductionTests
                 new ZLinkSpotLocationKey(entrySpotId));
             return entry is not null;
         });
-        var claimedOwner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
-            await store.ClaimOwnerLeaseAsync(
-                $"actor-owner-{Guid.NewGuid():N}",
-                TimeSpan.FromMinutes(1)));
-        var owner = claimedOwner.Token;
         Assert.Equal(rid, entry!.OwnerNodeRid);
         var generation = node.Node.MeshStatus().LifecycleGeneration;
         Assert.Equal(generation, entry.OwnerNodeGeneration);
+        var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                $"actor-owner-{Guid.NewGuid():N}",
+                TimeSpan.FromMinutes(1))).Token;
+        Assert.Equal(
+            ZLinkLocationWriteStatus.Stored,
+            (await store.UpdateSpotAsync(
+                entry with { OwnerId = owner.OwnerId },
+                ZLinkLocationWriteIntent.Takeover)).Status);
         var result = await store.UpdateMeshNodeAsync(
             new ZLinkMeshNodeDescriptor(
                 "objects",

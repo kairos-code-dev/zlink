@@ -13,6 +13,7 @@ namespace Zlink.Framework.Locations.Redis;
 public sealed partial class ZLinkRedisLocationStore :
     IZLinkLocationStore,
     IZLinkClientServerLocationStore,
+    IZLinkFanoutLocationStore,
     IZLinkRoutingIdSlotAllocationStore,
     IZLinkLocationChangeStampStore,
     IAsyncDisposable
@@ -345,7 +346,12 @@ public sealed partial class ZLinkRedisLocationStore :
         ZLinkSpotLocation spot,
         ZLinkLocationWriteIntent intent,
         CancellationToken cancellationToken = default) =>
-        WriteAsync(ZLinkRedisLocationKinds.Spot, spot, intent, cancellationToken);
+        WriteAsync(
+            ZLinkRedisLocationKinds.Spot,
+            spot,
+            intent,
+            cancellationToken,
+            spot.SpotId);
 
     public ValueTask<ZLinkLocationWriteStatus> RemoveSpotAsync(
         ZLinkSpotLocationKey key,
@@ -377,7 +383,7 @@ public sealed partial class ZLinkRedisLocationStore :
         RemoveAsync(
             ZLinkRedisLocationKinds.Actor.Tag,
             ZLinkRedisLocationKeyCodec.EncodeActorKey(key),
-            key.MeshName,
+            null,
             owner, cancellationToken);
 
     public ValueTask<ZLinkActorLocation?> ResolveActorAsync(
@@ -590,11 +596,17 @@ public sealed partial class ZLinkRedisLocationStore :
         ZLinkRedisLocationKind<TRow> kind,
         TRow row,
         ZLinkLocationWriteIntent intent,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? spotId = null)
         where TRow : class
     {
         return await ExecuteAsync(
-                database => _commands.WriteAsync(database, kind, row, intent),
+                database => _commands.WriteAsync(
+                    database,
+                    kind,
+                    row,
+                    intent,
+                    spotId),
                 cancellationToken)
             .ConfigureAwait(false);
     }

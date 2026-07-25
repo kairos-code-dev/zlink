@@ -4,12 +4,14 @@ using Systems.Zlink.Framework.Runtime.Protocol;
 
 namespace Zlink.Framework.Runtime.Actors;
 
-internal sealed class ZLinkActorCreateOperationTarget(
+internal sealed class ZLinkActorOperationTarget(
     IZLinkAuthorityStore authorityStore,
     ZLinkFrameworkRuntime runtime,
     IZLinkBackendSpotNode node,
     string meshName,
-    ZLinkCodecRegistryBuilder codecs) : IActorCreateOperationTarget
+    ZLinkCodecRegistryBuilder codecs) :
+    IActorCreateOperationTarget,
+    IActorDestroyOperationTarget
 {
     private static readonly TimeSpan TerminalRetention = TimeSpan.FromMinutes(5);
 
@@ -43,7 +45,7 @@ internal sealed class ZLinkActorCreateOperationTarget(
             || authority.NodeRid != node.RoutingId
             || authority.NodeGeneration != node.MeshStatus().LifecycleGeneration)
             throw Protocol(operation.ActorId, "The pending Actor authority payload is invalid.");
-        if (snapshot.PendingCreation is not { } pending
+        if (snapshot.ReservedCreation is not { } pending
             || !string.Equals(
                 pending.ReservationId,
                 operation.Reservation.ReservationId,
@@ -153,6 +155,77 @@ internal sealed class ZLinkActorCreateOperationTarget(
                 .ConfigureAwait(false);
         return completed;
     }
+
+    public async ValueTask<ActorDestroyOperationTerminal> DestroyAsync(
+        ActorDestroyOperation operation,
+        CancellationToken cancellationToken)
+    {
+        var key = ZLinkActorAuthorityPayloadCodec.AuthorityKey(
+            operation.Actor.ActorId);
+        var read = await authorityStore.ReadAuthorityAsync(key, cancellationToken)
+            .ConfigureAwait(false);
+        if (read is ZLinkAuthorityReadResult.Missing)
+            return Destroyed(false);
+
+        var snapshot = ((ZLinkAuthorityReadResult.Found)read).Snapshot;
+        if (snapshot.ObjectGeneration != operation.Actor.Generation
+            || snapshot.AuthorityOwnerGeneration
+                != operation.AuthorityOwnerGeneration
+            || snapshot.Allocation.ObjectKind
+                != ZLinkPlacementObjectKind.Actor)
+            throw Stale(
+                operation.Actor.ActorId,
+                "The Actor destroy authority fence is stale.");
+        if (!ZLinkActorAuthorityPayloadCodec.TryDecode(
+                snapshot.Payload.Span,
+                out var authority)
+            || authority.State != ZLinkActorAuthorityState.Ready
+            || authority.NodeRid != operation.TargetNodeRid
+            || authority.NodeGeneration != operation.TargetNodeGeneration
+            || authority.NodeRid != node.RoutingId
+            || authority.NodeGeneration
+                != node.MeshStatus().LifecycleGeneration)
+            throw Stale(
+                operation.Actor.ActorId,
+                "The Actor is moving or its current owner changed.");
+        if (!runtime.TryGetCreatedActorState(
+                operation.Actor.ActorId,
+                out var state)
+            || state.NativeActorRef is not { } current
+            || state.Actor is not { } instance
+            || current.Generation != operation.Actor.Generation
+            || current.NodeRid != node.RoutingId)
+            throw Stale(
+                operation.Actor.ActorId,
+                "The current owner does not contain the exact Actor incarnation.");
+
+        await runtime.DestroyActorAsync(
+                node.RoutingId,
+                instance,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var deleted = await authorityStore.CompareExchangeAuthorityAsync(
+                key,
+                snapshot.StoreVersion,
+                new ZLinkAuthorityMutation.Delete(),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (deleted is ZLinkAuthorityCompareExchangeResult.Deleted
+            or ZLinkAuthorityCompareExchangeResult.Conflict
+            {
+                Current: ZLinkAuthorityReadResult.Missing
+            })
+            return Destroyed(true);
+        throw Stale(
+            operation.Actor.ActorId,
+            "The Actor authority changed during destroy.");
+    }
+
+    private static ActorDestroyOperationTerminal Destroyed(bool value) =>
+        new(
+            RequestResult.Ok,
+            ServiceWireConstants.FrameworkErrorCode.None,
+            new ActorDestroyCompletion(value));
 
     private async ValueTask<ActorCreateOperationTerminal> FailAsync(
         ActorCreateOperation operation,

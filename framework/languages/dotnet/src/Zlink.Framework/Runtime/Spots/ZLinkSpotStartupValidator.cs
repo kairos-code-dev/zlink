@@ -60,6 +60,8 @@ internal static class ZLinkSpotStartupValidator
 
         public string SpotId => default;
 
+        public ulong ObjectGeneration => default;
+
         public RoutingId NodeRid => default;
 
         public IZLinkSpotOutbound Outbound => throw ConfigurationOnly();

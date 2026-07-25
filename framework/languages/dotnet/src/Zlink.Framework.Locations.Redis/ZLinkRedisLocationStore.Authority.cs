@@ -315,6 +315,15 @@ public sealed partial class ZLinkRedisLocationStore
                     System.Globalization.CultureInfo.InvariantCulture),
             owner = OwnerJson(request.TargetOwner)
         };
+        RedisKey entrySpotClaimKey = _keys.HybridSchemaKey();
+        if (request.ObjectKind is ZLinkPlacementObjectKind.UserSpot
+                or ZLinkPlacementObjectKind.InstanceSpot
+            && Zlink.Framework.Runtime.Spots
+                .ZLinkUserSpotAuthorityPayloadCodec.TryGetSpotId(
+                    request.Key,
+                    out var spotId))
+            entrySpotClaimKey =
+                _keys.HybridEntrySpotIdClaimKey(spotId);
         var result = await ExecuteAsync(
                 database => AuthorityCallAsync(
                     database,
@@ -324,6 +333,10 @@ public sealed partial class ZLinkRedisLocationStore
                     {
                         key = request.Key.Value,
                         objectKind = ObjectKindToken(request.ObjectKind),
+                        checkEntrySpotClaim =
+                            request.ObjectKind is
+                                ZLinkPlacementObjectKind.UserSpot
+                                or ZLinkPlacementObjectKind.InstanceSpot,
                         stableType = request.StableType,
                         capacity = CapacityJson(request.Capacity),
                         capacityBundle = EncodeCapacityBundle(request.Capacity),
@@ -347,7 +360,8 @@ public sealed partial class ZLinkRedisLocationStore
                     _keys.HybridDescriptorAdmissionKey(descriptorKey),
                     _keys.HybridOwnerLeaseKey(
                         request.TargetOwner.OwnerId),
-                    _keys.HybridCreationKey(reservationVersion)),
+                    _keys.HybridCreationKey(reservationVersion),
+                    extraKeys: [entrySpotClaimKey]),
                 cancellationToken)
             .ConfigureAwait(false);
         var status = result.GetProperty("kind").GetString();
@@ -1133,11 +1147,11 @@ public sealed partial class ZLinkRedisLocationStore
     {
         var allocation = value.GetProperty("allocation");
         var descriptor = allocation.GetProperty("descriptor");
-        ZLinkPendingObjectCreation? pendingCreation = null;
+        ZLinkReservedObjectCreation? pendingCreation = null;
         if (value.TryGetProperty("pendingCreation", out var pending)
             && pending.ValueKind == JsonValueKind.Object)
         {
-            pendingCreation = new ZLinkPendingObjectCreation(
+            pendingCreation = new ZLinkReservedObjectCreation(
                 pending.GetProperty("reservationId").GetString()!,
                 pending.GetProperty("requestContentReference").GetString()!,
                 Convert.FromBase64String(
@@ -1160,7 +1174,7 @@ public sealed partial class ZLinkRedisLocationStore
             new ZLinkPlacementAllocation(
                 allocation.GetProperty("state").GetString() switch
                 {
-                    "pending" => ZLinkPlacementAllocationState.Pending,
+                    "pending" => ZLinkPlacementAllocationState.Reserved,
                     "active" => ZLinkPlacementAllocationState.Active,
                     var state => throw new InvalidDataException(
                         $"Redis authority allocation state '{state}' is invalid.")

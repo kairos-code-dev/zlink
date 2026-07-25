@@ -14,7 +14,7 @@ internal interface IZLinkCurrentSpotActivation
 
     ZLinkMessageFlowTracer Flow { get; }
 
-    IZLinkRuntimeErrorSink ErrorSink { get; }
+    IZLinkRuntimeFailureReporter ErrorSink { get; }
 
     IZLinkSpotOutbound Outbound { get; }
 

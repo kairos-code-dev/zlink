@@ -50,14 +50,14 @@ public sealed class RedisInMemoryParityTests
             trace.Add($"{step}={result.Status}:{result.Generation}");
         void RecordStatus(string step, ZLinkLocationWriteStatus status) =>
             trace.Add($"{step}={status}");
-        void RecordLease(string step, ZLinkOwnerLeaseRenewal renewal) =>
-            trace.Add($"{step}=renewed:{renewal.LeaseExpiresAt > renewal.StoreNow}");
+        void RecordLease(string step, ZLinkOwnerLeaseClaimResult result) =>
+            trace.Add($"{step}=claimed:{result is ZLinkOwnerLeaseClaimResult.Claimed}");
         void RecordBool(string step, bool removed) =>
             trace.Add($"{step}=removed:{removed}");
 
         var leaseTtl = TimeSpan.FromSeconds(30);
-        RecordLease("lease-a", await leases.RenewOwnerLeaseAsync(OwnerA, RoutingId.From("node-1"), leaseTtl));
-        RecordLease("lease-b", await leases.RenewOwnerLeaseAsync(OwnerB, RoutingId.From("node-2"), leaseTtl));
+        RecordLease("lease-a", await leases.ClaimOwnerLeaseAsync(OwnerA, leaseTtl));
+        RecordLease("lease-b", await leases.ClaimOwnerLeaseAsync(OwnerB, leaseTtl));
         var ownerAToken = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
             await leases.ReadOwnerLeaseAsync(OwnerA)).Token;
 
@@ -74,10 +74,10 @@ public sealed class RedisInMemoryParityTests
         Record("actor-old-owner-renew",
             await actors.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.Renew));
         RecordStatus("actor-old-owner-remove", await actors.RemoveActorAsync(
-            new ZLinkActorLocationKey("play", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerA, claim.Generation)));
         RecordStatus("actor-remove", await actors.RemoveActorAsync(
-            new ZLinkActorLocationKey("play", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerB, takeover.Generation)));
         Record("actor-reclaim",
             await actors.UpdateActorAsync(TestRows.Actor(OwnerA), ZLinkLocationWriteIntent.NewClaim));
@@ -97,7 +97,10 @@ public sealed class RedisInMemoryParityTests
         var descriptorClaim = await meshNodes.UpdateMeshNodeAsync(
             TestRows.MeshNode(OwnerA), ZLinkLocationWriteIntent.NewClaim);
         Record("mesh-node-claim", descriptorClaim);
-        RecordBool("lease-a-remove", await leases.RemoveOwnerLeaseAsync(OwnerA));
+        RecordBool(
+            "lease-a-remove",
+            await leases.ReleaseOwnerLeaseAsync(ownerAToken)
+                == ZLinkOwnerLeaseReleaseResult.Released);
         Record("mesh-node-claim-after-lease-removed",
             await meshNodes.UpdateMeshNodeAsync(TestRows.MeshNode(OwnerB), ZLinkLocationWriteIntent.NewClaim));
 

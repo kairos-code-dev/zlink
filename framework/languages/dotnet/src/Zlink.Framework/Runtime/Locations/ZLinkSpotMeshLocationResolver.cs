@@ -35,7 +35,7 @@ internal sealed class ZLinkSpotMeshLocationResolver
         foreach (var meshName in _meshNames)
         {
             var (row, rowPresent) = await _rows.ResolveActorRowWithPresenceAsync(
-                    new ZLinkActorLocationKey(meshName, actorId),
+                    new ZLinkActorLocationKey(actorId),
                     cancellationToken)
                 .ConfigureAwait(false);
             if (row is not null) return (row, true);

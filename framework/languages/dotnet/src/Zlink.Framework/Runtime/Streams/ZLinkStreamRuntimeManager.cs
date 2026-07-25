@@ -36,7 +36,11 @@ internal sealed class ZLinkStreamRuntimeManager(
                 if (streamNodeRegistration.TlsServer is { } tlsServer)
                     socket.SetTlsServer(tlsServer.CertPath, tlsServer.KeyPath, tlsServer.RequireClientCert);
 
-                socket.Bind(streamNodeRegistration.BindEndpoint!);
+                socket.Bind(ZLinkNetworkEndpointResolver.Bind(
+                    streamNodeRegistration.BindEndpoint,
+                    streamNodeRegistration.ListenPort,
+                    streamNodeRegistration.BindHost,
+                    registration.NetworkOptions));
                 monitor = monitoringAdapter.OpenSocketMonitor(socket);
 
                 runtime = new ZLinkStreamNodeRuntime(

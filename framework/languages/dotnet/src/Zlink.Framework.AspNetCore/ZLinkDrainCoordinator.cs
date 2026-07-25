@@ -3,6 +3,25 @@ using Zlink.Framework.Runtime.Host;
 
 namespace Zlink.Framework.AspNetCore;
 
+internal enum ZLinkDrainForceReason
+{
+    DeadlineExceeded = 0,
+    DrainingStatePublishFailed = 1,
+    OwnerCleanupFailed = 2,
+    TeardownFailed = 3
+}
+
+internal abstract record ZLinkDrainResult
+{
+    private protected ZLinkDrainResult()
+    {
+    }
+}
+
+internal sealed record Drained : ZLinkDrainResult;
+
+internal sealed record ForceStopped(ZLinkDrainForceReason Reason) : ZLinkDrainResult;
+
 internal interface IZLinkDrainExecutor
 {
     ValueTask<ZLinkDrainForceReason?> ExecuteAsync(
@@ -23,7 +42,7 @@ internal sealed class ZLinkDrainForceException(
     public ZLinkDrainForceReason Reason { get; } = reason;
 }
 
-internal sealed class ZLinkDrainCoordinator : IZLinkDrainControl, IDisposable
+internal sealed class ZLinkDrainCoordinator : IDisposable
 {
     internal static readonly TimeSpan DefaultDeadline = TimeSpan.FromSeconds(30);
 

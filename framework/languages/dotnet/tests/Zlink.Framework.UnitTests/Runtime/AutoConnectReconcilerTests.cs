@@ -118,6 +118,34 @@ public sealed class AutoConnectReconcilerTests
             channel.DescriptorRevision > placement.DescriptorRevision);
     }
 
+    [Fact]
+    public async Task RouteMeshChannelWeightMutation_UpdatesTheNamedMembershipOnly()
+    {
+        var fixture = await FixtureAsync(
+            channelWeights: new Dictionary<string, int>(StringComparer.Ordinal)
+            {
+                ["play"] = 100,
+                ["orders"] = 100
+            });
+        await fixture.Reconciler.TickAsync();
+
+        fixture.Reconciler.SetLocalChannelWeight("orders", 300);
+        await fixture.Reconciler.TickAsync();
+
+        var updated = Assert.Single(
+            await fixture.Store.ListMeshNodesAsync("play"),
+            row => row.Rid.Equals(RoutingId.From("local")));
+        Assert.Equal(100, updated.ChannelWeights["play"]);
+        Assert.Equal(300, updated.ChannelWeights["orders"]);
+
+        Assert.True(await fixture.Reconciler.SetAllLocalChannelWeightsAsync(0));
+        var drained = Assert.Single(
+            await fixture.Store.ListMeshNodesAsync("play"),
+            row => row.Rid.Equals(RoutingId.From("local")));
+        Assert.All(drained.ChannelWeights.Values, static weight => Assert.Equal(0, weight));
+        Assert.True(drained.DescriptorRevision > updated.DescriptorRevision);
+    }
+
     [Theory]
     [InlineData(ZLinkLocationAutoConnectType.DealerMesh, ZLinkLocationRole.Dealer)]
     [InlineData(ZLinkLocationAutoConnectType.RouteMesh, ZLinkLocationRole.Router)]
@@ -602,7 +630,8 @@ public sealed class AutoConnectReconcilerTests
 
     private static async Task<ReconcilerFixture> FixtureAsync(
         Action<ZLinkLocationOptions>? configure = null,
-        bool retainRemovedMembers = false)
+        bool retainRemovedMembers = false,
+        IReadOnlyDictionary<string, int>? channelWeights = null)
     {
         var time = new ManualTimeProvider();
         var store = new ZLinkInMemoryLocationStore(time);
@@ -620,7 +649,16 @@ public sealed class AutoConnectReconcilerTests
         var local = new ZLinkAutoConnectLocal(
             ZLinkLocationAutoConnectType.ClientServer, "play", ZLinkLocationRole.Dealer,
             RoutingId.From("local"), "tcp://l:1");
-        var localRow = Descriptor("local", "tcp://l:1") with { OwnerId = "ignored" };
+        var localRow = Descriptor("local", "tcp://l:1") with
+        {
+            OwnerId = "ignored",
+            ChannelWeights = channelWeights is null
+                ? new Dictionary<string, int>(StringComparer.Ordinal)
+                {
+                    ["play"] = 100
+                }
+                : new Dictionary<string, int>(channelWeights, StringComparer.Ordinal)
+        };
         var reconciler = new ZLinkAutoConnectReconciler(
             local, localRow, runtime, failable, executor, options, time,
             retainRemovedMembers: retainRemovedMembers);

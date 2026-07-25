@@ -26,6 +26,10 @@ public sealed class ContractSurfaceCoverage
         Assert.Null(assembly.GetType("Zlink.Framework.Contracts.Assembly.ZLinkFrameworkAssemblyMarker"));
         Assert.Null(assembly.GetType("Zlink.Framework.Contracts.Codecs.Json.ZLinkJsonCodecNamespace"));
         Assert.Null(assembly.GetType("Zlink.Framework.Contracts.Handlers.ZLinkStreamRawAttribute"));
+        Assert.Null(assembly.GetType("Zlink.Framework.Contracts.Configuration.IZLinkDrainControl"));
+        Assert.Null(assembly.GetType("Zlink.Framework.Contracts.Configuration.ZLinkDrainResult"));
+        Assert.Null(assembly.GetType("Zlink.Framework.Contracts.Configuration.ZLinkMeshDrainResult"));
+        Assert.Null(assembly.GetType("Zlink.Framework.Contracts.Configuration.ZLinkMeshDrainSnapshot"));
 
         Assert.DoesNotContain(typeof(IZLinkSendCall).GetMethods(), method => method.Name == "PacketName");
         Assert.DoesNotContain(typeof(IZLinkRequestCall).GetMethods(), method => method.Name == "PacketName");
@@ -57,7 +61,7 @@ public sealed class ContractSurfaceCoverage
         Type[] roots =
         [
             typeof(ZLinkActorJoinCompletion),
-            typeof(ZLinkDrainResult), typeof(ZLinkLocationRuntimeEvent),
+            typeof(ZLinkLocationRuntimeEvent),
             typeof(ZLinkLocationPeerEvent), typeof(ZLinkLocationSpotEvent),
             typeof(ZLinkLocationActorEvent),
             typeof(ZLinkSpotEvent), typeof(ZLinkRoutingIdSlotAcquireResult)

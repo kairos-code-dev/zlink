@@ -787,7 +787,7 @@ test('ClientServer server publishes its concrete endpoint then drains and remove
         disconnect(endpoint) { dealerCalls.push(`disconnect:${endpoint}`); }
       };
     },
-    clientServerServerSocket() { return { peerWeight: this.serverWeight }; },
+    clientServerServerWeight() { return this.serverWeight; },
     setClientServerServerDescriptor() {}
   };
   const discovery = new internal.ZLinkClientServerLocationRuntime(

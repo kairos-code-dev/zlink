@@ -2,6 +2,8 @@ namespace Zlink.Framework.Runtime.Backend.DotNet.Wrappers;
 
 internal sealed class ZLinkBackendPublisherSocketWrapper(IPubSocket nativeSocket) : IZLinkBackendPublisherSocket
 {
+    public string GetLastEndpoint() => nativeSocket.Options.LastEndpoint;
+
     public void ApplySocketConfig(IZLinkSocketConfig config) =>
         ZLinkBackendSocketOptionsMapper.Apply(nativeSocket.Options, config);
     internal IPubSocket NativeSocket => nativeSocket;

@@ -44,6 +44,10 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
 
     public Dictionary<string, ZLinkChannelRuntimeBundle> PublisherBundles { get; } = new(StringComparer.Ordinal);
 
+    public Dictionary<string, ZLinkAutomaticFanoutSubscriberRuntime>
+        AutomaticFanoutSubscriberRuntimes { get; } =
+        new(StringComparer.Ordinal);
+
     public Dictionary<string, ZLinkChannelRuntimeBundle> ClientServerClientBundles { get; } =
         new(StringComparer.Ordinal);
 
@@ -102,6 +106,7 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
                     ClientServerClientRuntimes.Values.ToArray(),
                     ClientServerServerBundles.Values.ToArray(),
                     PublisherBundles.Values.ToArray(),
+                    AutomaticFanoutSubscriberRuntimes.Values.ToArray(),
                     SubscriberBundles.Values.ToArray(),
                     ListenerTasks.ToArray());
             }
@@ -143,6 +148,9 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
 
         foreach (var bundle in resources.PublisherBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
+
+        foreach (var runtime in resources.AutomaticFanoutSubscriberRuntimes)
+            await CaptureAsync(() => DisposeSafelyAsync(runtime)).ConfigureAwait(false);
 
         foreach (var bundle in resources.SubscriberBundles)
             await CaptureAsync(() => DisposeSafelyAsync(bundle)).ConfigureAwait(false);
@@ -209,6 +217,7 @@ internal sealed class ZLinkFrameworkComponentState : IAsyncDisposable
         ZLinkClientServerClientRuntime[] ClientServerClientRuntimes,
         ZLinkChannelRuntimeBundle[] ClientServerServerBundles,
         ZLinkChannelRuntimeBundle[] PublisherBundles,
+        ZLinkAutomaticFanoutSubscriberRuntime[] AutomaticFanoutSubscriberRuntimes,
         ZLinkChannelRuntimeBundle[] SubscriberBundles,
         Task[] ListenerTasks);
 

@@ -40,18 +40,34 @@ internal static class ZLinkRedisLocationScripts
     /// with status 'stored' | 'stale' | 'conflict'.
     ///
     /// KEYS[1] row hash, KEYS[2] generation counter, KEYS[3] kind index set,
-    /// KEYS[4] exact current-owner lease HASH.
+    /// KEYS[4] exact current-owner lease HASH, KEYS[5] Entry Spot ID claim
+    /// HASH for Spot rows (schema sentinel for other row kinds).
     /// ARGV[1] intent 'new'|'renew'|'takeover', ARGV[2] caller owner id,
     /// ARGV[3] caller generation (renew guard), ARGV[4] row json,
     /// ARGV[5] row key, ARGV[6] owner index key prefix, ARGV[7] stamp key
     /// (kind, mesh scope), ARGV[8] stamp key (kind, null scope) or '' when
     /// the kind has no mesh, ARGV[9] '1' when the row carries a mesh name,
-    /// ARGV[10] mesh name, ARGV[11] expected current owner.
+    /// ARGV[10] mesh name, ARGV[11] expected current owner, ARGV[12] '1'
+    /// for a Spot row.
     /// </summary>
     internal const string Write = Prologue + """
 
         local intent = ARGV[1]
         local owner = ARGV[2]
+        if ARGV[12] == '1' and redis.call('EXISTS', KEYS[5]) == 1 then
+            local incoming = cjson.decode(ARGV[4])
+            local spotKind = incoming.SpotKind or incoming.spotKind
+            local ownerNodeGeneration =
+                incoming.OwnerNodeGeneration or incoming.ownerNodeGeneration
+            local claimOwner = redis.call('HGET', KEYS[5], 'ownerId')
+            local claimLifecycle = redis.call(
+                'HGET', KEYS[5], 'descriptorLifecycleGeneration')
+            if tonumber(spotKind) ~= 1
+                or claimOwner ~= owner
+                or tostring(ownerNodeGeneration) ~= claimLifecycle then
+                return {'conflict', 0, nowMs}
+            end
+        end
         local currentOwner = redis.call('HGET', KEYS[1], 'owner')
         local expectedOwner = ARGV[11]
         if (currentOwner or '') ~= expectedOwner then
@@ -126,6 +142,40 @@ internal static class ZLinkRedisLocationScripts
         if not incomingLeaseGeneration
             or incomingLeaseGeneration ~= leaseGeneration then
             return {'stale', 0, nowMs}
+        end
+
+        if ARGV[20] ~= '' then
+            if redis.call('EXISTS', KEYS[15]) == 1 then
+                return {'conflict', 0, nowMs}
+            end
+            if redis.call('EXISTS', KEYS[11]) == 1 then
+                local claimDescriptor =
+                    redis.call('HGET', KEYS[11], 'descriptorKey')
+                local claimLifecycle = redis.call(
+                    'HGET', KEYS[11], 'descriptorLifecycleGeneration')
+                local claimOwner = redis.call('HGET', KEYS[11], 'ownerId')
+                local claimLease = redis.call(
+                    'HGET', KEYS[11], 'ownerLeaseGeneration')
+                if claimDescriptor ~= ARGV[5]
+                    or claimLifecycle ~= ARGV[12]
+                    or claimOwner ~= owner
+                    or claimLease ~= leaseGeneration then
+                    return {'conflict', 0, nowMs}
+                end
+            end
+            local spotJson = redis.call('HGET', KEYS[14], 'json')
+            if spotJson then
+                local spot = cjson.decode(spotJson)
+                local spotKind = spot.SpotKind or spot.spotKind
+                local spotOwner = spot.OwnerId or spot.ownerId
+                local spotNodeGeneration =
+                    spot.OwnerNodeGeneration or spot.ownerNodeGeneration
+                if tonumber(spotKind) ~= 1
+                    or tostring(spotOwner) ~= owner
+                    or tostring(spotNodeGeneration) ~= ARGV[12] then
+                    return {'conflict', 0, nowMs}
+                end
+            end
         end
 
         local function value(row, upper, lower)
@@ -215,12 +265,33 @@ internal static class ZLinkRedisLocationScripts
             if ARGV[8] ~= '' then redis.call('INCR', ARGV[8]) end
         end
         local function storeRow(generation)
+            if KEYS[12] ~= KEYS[11]
+                and redis.call('HGET', KEYS[12], 'descriptorKey') == ARGV[5]
+                and redis.call(
+                    'HGET',
+                    KEYS[12],
+                    'descriptorLifecycleGeneration') == ARGV[23] then
+                redis.call('DEL', KEYS[12])
+                redis.call('SREM', KEYS[13], KEYS[12])
+            end
+            if ARGV[20] ~= '' then
+                redis.call('HSET', KEYS[11],
+                    'state', 'Claimed',
+                    'spotId', ARGV[20],
+                    'descriptorKey', ARGV[5],
+                    'descriptorLifecycleGeneration', ARGV[12],
+                    'ownerId', owner,
+                    'ownerLeaseGeneration', leaseGeneration)
+                redis.call('SADD', KEYS[13], KEYS[11])
+            end
             redis.call('HSET', KEYS[1],
                 'owner', owner,
                 'gen', generation,
                 'json', incomingJson,
                 'updatedAtMs', nowMs,
-                'mesh', ARGV[10])
+                'mesh', ARGV[10],
+                'entryClaimKey', ARGV[20] == '' and '' or KEYS[11],
+                'entrySpotId', ARGV[20])
             redis.call('HSET', KEYS[5],
                 'owner', owner,
                 'gen', generation,
@@ -265,12 +336,14 @@ internal static class ZLinkRedisLocationScripts
         end
         if intent == 'renew' then
             if not currentJson or currentOwner ~= owner then
-                return {'stale', 0, nowMs}
+                return {'conflict', 0, nowMs}
             end
             local current = cjson.decode(currentJson)
             if tostring(value(current, 'LeaseGeneration', 'leaseGeneration'))
-                    ~= leaseGeneration
-                or tostring(value(current, 'LifecycleGeneration',
+                    ~= leaseGeneration then
+                return {'conflict', 0, nowMs}
+            end
+            if tostring(value(current, 'LifecycleGeneration',
                     'lifecycleGeneration'))
                     ~= tostring(value(incoming, 'LifecycleGeneration',
                         'lifecycleGeneration'))
@@ -356,15 +429,31 @@ internal static class ZLinkRedisLocationScripts
             end
             local current = cjson.decode(currentJson)
             local incoming = cjson.decode(incomingJson)
-            if tostring(value(current, 'LeaseGeneration', 'leaseGeneration'))
-                    ~= leaseGeneration
-                or tostring(value(current, 'LifecycleGeneration',
+            local currentLeaseGeneration = value(
+                current,
+                'OwnerLeaseGeneration',
+                'ownerLeaseGeneration')
+            if currentLeaseGeneration == nil then
+                currentLeaseGeneration = value(
+                    current,
+                    'LeaseGeneration',
+                    'leaseGeneration')
+            end
+            if tostring(currentLeaseGeneration)
+                    ~= leaseGeneration then
+                return {'stale', 0, nowMs}
+            end
+            if tostring(value(current, 'LifecycleGeneration',
                     'lifecycleGeneration'))
                     ~= tostring(value(incoming, 'LifecycleGeneration',
-                        'lifecycleGeneration'))
-                or tostring(value(current, 'Endpoint', 'endpoint'))
-                    ~= tostring(value(incoming, 'Endpoint', 'endpoint'))
-                or tostring(value(current, 'SecurityIdentity',
+                        'lifecycleGeneration')) then
+                return {'stale', 0, nowMs}
+            end
+            if tostring(value(current, 'Endpoint', 'endpoint'))
+                    ~= tostring(value(incoming, 'Endpoint', 'endpoint')) then
+                return {'stale', 0, nowMs}
+            end
+            if tostring(value(current, 'SecurityIdentity',
                     'securityIdentity'))
                     ~= tostring(value(incoming, 'SecurityIdentity',
                         'securityIdentity')) then
@@ -425,6 +514,16 @@ internal static class ZLinkRedisLocationScripts
             return {'stale', 0, nowMs}
         end
 
+        if ARGV[7] ~= ''
+            and redis.call('HGET', KEYS[7], 'spotId') == ARGV[7]
+            and redis.call('HGET', KEYS[7], 'descriptorKey') == ARGV[3]
+            and redis.call(
+                'HGET',
+                KEYS[7],
+                'descriptorLifecycleGeneration') == ARGV[8] then
+            redis.call('DEL', KEYS[7])
+            redis.call('SREM', KEYS[8], KEYS[7])
+        end
         redis.call('DEL', KEYS[1], KEYS[3], KEYS[4])
         redis.call('SREM', KEYS[2], ARGV[3])
         redis.call('SREM', KEYS[5], ARGV[3])
@@ -444,7 +543,10 @@ internal static class ZLinkRedisLocationScripts
         end
         local current = cjson.decode(currentJson)
         local leaseGeneration =
-            current.LeaseGeneration or current.leaseGeneration
+            current.OwnerLeaseGeneration
+            or current.ownerLeaseGeneration
+            or current.LeaseGeneration
+            or current.leaseGeneration
         if tonumber(leaseGeneration) ~= tonumber(ARGV[2]) then
             return {'stale', 0, nowMs}
         end
@@ -461,32 +563,51 @@ internal static class ZLinkRedisLocationScripts
     /// Bulk remove of one owner's rows across all location kinds in one
     /// atomic script. Generation counters survive.
     ///
-    /// KEYS[1..4] owner index sets for mesh, spot, actor, ClientServer.
-    /// KEYS[5..8] kind index sets in the same order.
-    /// KEYS[9] exact owner lease hash.
-    /// ARGV[1..4] row hash key prefixes in the same order.
-    /// ARGV[5..8] stamp key bases. ClientServer does not use a stamp.
-    /// ARGV[9] exact owner lease generation.
+    /// KEYS[1..5] owner index sets for mesh, spot, actor, ClientServer, Fanout.
+    /// KEYS[6..10] kind index sets in the same order.
+    /// KEYS[11] exact owner lease hash, KEYS[12] Entry Spot ID claim index.
+    /// ARGV[1..5] row hash key prefixes in the same order.
+    /// ARGV[6..10] stamp key bases. Channel descriptors do not use a stamp.
+    /// ARGV[11] exact owner lease generation, ARGV[12] owner id.
     /// </summary>
     internal const string RemoveAllByOwner = """
         if redis.replicate_commands then redis.replicate_commands() end
-        local leaseGeneration = redis.call('HGET', KEYS[9], 'generation')
+        local leaseGeneration = redis.call('HGET', KEYS[11], 'generation')
         if not leaseGeneration
-            or leaseGeneration ~= ARGV[9] then
+            or leaseGeneration ~= ARGV[11] then
             return 0
         end
         local removed = 0
-        for i = 1, 4 do
+        for i = 1, 5 do
             local ownerIndex = KEYS[i]
-            local kindIndex = KEYS[i + 4]
+            local kindIndex = KEYS[i + 5]
             local rowPrefix = ARGV[i]
-            local stampBase = ARGV[i + 4]
+            local stampBase = ARGV[i + 5]
             local rowKeys = redis.call('SMEMBERS', ownerIndex)
             for _, rowKey in ipairs(rowKeys) do
                 local rowHash = rowPrefix .. rowKey
                 local mesh = redis.call('HGET', rowHash, 'mesh')
                 local channelIndex =
                     redis.call('HGET', rowHash, 'channelIndex')
+                local entryClaimKey =
+                    i == 1 and redis.call(
+                        'HGET', rowHash, 'entryClaimKey') or nil
+                if entryClaimKey and entryClaimKey ~= ''
+                    and redis.call(
+                        'HGET',
+                        entryClaimKey,
+                        'descriptorKey') == rowKey
+                    and redis.call(
+                        'HGET',
+                        entryClaimKey,
+                        'ownerId') == ARGV[12]
+                    and redis.call(
+                        'HGET',
+                        entryClaimKey,
+                        'ownerLeaseGeneration') == ARGV[11] then
+                    redis.call('DEL', entryClaimKey)
+                    redis.call('SREM', KEYS[12], entryClaimKey)
+                end
                 if redis.call('DEL', rowHash) == 1 then
                     removed = removed + 1
                     redis.call('SREM', kindIndex, rowKey)

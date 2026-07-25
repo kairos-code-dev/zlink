@@ -45,5 +45,30 @@ public sealed class ZLinkLocationOptions
     /// </summary>
     public TimeSpan OwnerLeaseRenewTimeout { get; set; } = TimeSpan.FromSeconds(3);
 
+    /// <summary>
+    /// Maximum number of source relocation units that may be active in this process.
+    /// </summary>
+    public int MaxActiveOutboundRelocations { get; set; } = 64;
+
+    /// <summary>
+    /// Maximum number of target relocation units that may be active in this process.
+    /// </summary>
+    public int MaxActiveInboundRelocations { get; set; } = 64;
+
+    /// <summary>
+    /// Maximum number of application relocation capture callbacks that may run concurrently.
+    /// </summary>
+    public int MaxConcurrentRelocationCaptures { get; set; } = 8;
+
+    /// <summary>
+    /// Maximum number of application relocation restore callbacks that may run concurrently.
+    /// </summary>
+    public int MaxConcurrentRelocationRestores { get; set; } = 8;
+
+    /// <summary>
+    /// Maximum encoded relocation payload bytes retained by active payload stages.
+    /// </summary>
+    public long MaxRelocationPayloadInFlightBytes { get; set; } = 268_435_456;
+
     internal bool AllocatedRoutingIdsEnabled { get; set; }
 }

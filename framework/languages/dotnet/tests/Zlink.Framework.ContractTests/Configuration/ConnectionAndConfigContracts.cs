@@ -193,6 +193,36 @@ public sealed class ConnectionAndConfigContracts
         {
             return this;
         }
+
+        public IZLinkDispatchOptions SetRuntimeMessageFlowObserver<TObserver>()
+            where TObserver : class, IZLinkRuntimeMessageFlowObserver
+        {
+            return this;
+        }
+
+        public IZLinkDispatchOptions SetRuntimeMessageFlowObserver(
+            IZLinkRuntimeMessageFlowObserver observer)
+        {
+            return this;
+        }
+
+        public IZLinkDispatchOptions SetRuntimeErrorSink<TSink>()
+            where TSink : class, IZLinkRuntimeErrorSink
+        {
+            return this;
+        }
+
+        public IZLinkDispatchOptions SetRuntimeErrorSink(
+            IZLinkRuntimeErrorSink sink)
+        {
+            return this;
+        }
+
+        public IZLinkDispatchOptions MessageFlow(
+            ZLinkRuntimeMessageFlowMode mode)
+        {
+            return this;
+        }
     }
 
     private sealed class UnhandledDispatchOptions : IZLinkUnhandledDispatchOptions

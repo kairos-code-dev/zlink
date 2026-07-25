@@ -120,11 +120,24 @@ public interface IZLinkSpot
         return ValueTask.CompletedTask;
     }
 
-    ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
         return ValueTask.CompletedTask;
     }
 }
+
+public enum ZLinkSpotCloseReason
+{
+    ExplicitClose = 0,
+    HostShutdown = 1,
+    RelocationOut = 2
+}
+
+public readonly record struct ZLinkSpotClosingContext(
+    ZLinkSpotCloseReason Reason,
+    DateTimeOffset Deadline);
 
 public interface IZLinkSpotActorMembershipLifecycle<TActor>
     where TActor : IZLinkActor
@@ -184,8 +197,22 @@ public interface IZLinkSpotHandlerRegistry : IZLinkActorHandlerRegistry
         where THandler : class;
 }
 
+public interface IZLinkInstanceSpotHandlerRegistry
+{
+    void AddPacket<THandler>()
+        where THandler : class;
+}
+
 public interface IZLinkSpotOutbound
 {
+    IZLinkSpotSendCall SendToSpot<TMessage>(
+        string spotId,
+        TMessage message);
+
+    IZLinkSpotRequestCall RequestToSpot<TRequest>(
+        string spotId,
+        TRequest request);
+
     /// <summary>
     /// Sends through the current address held by the spot handle. The framework
     /// refreshes the handle from location updates, but does not retry a one-way
@@ -202,14 +229,6 @@ public interface IZLinkSpotOutbound
     /// </summary>
     IZLinkRequestCall RequestToSpot<TRequest>(
         SpotHandle target,
-        TRequest request);
-
-    IZLinkSendCall SendToSpot<TMessage>(
-        InstanceSpotAddress target,
-        TMessage message);
-
-    IZLinkRequestCall RequestToSpot<TRequest>(
-        InstanceSpotAddress target,
         TRequest request);
 
     IZLinkPublishCall Publish<TEvent>(
@@ -231,17 +250,40 @@ public interface IZLinkSpotOutbound
 /// </summary>
 public interface IZLinkSpotClient
 {
+    IZLinkSpotSendCall SendToSpot<TMessage>(string spotId, TMessage message);
+
+    IZLinkSpotRequestCall RequestToSpot<TRequest>(string spotId, TRequest request);
+
     IZLinkSendCall SendToSpot<TMessage>(SpotHandle target, TMessage message);
 
     IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle target, TRequest request);
 
-    IZLinkSendCall SendToSpot<TMessage>(
-        InstanceSpotAddress target,
-        TMessage message);
+}
 
-    IZLinkRequestCall RequestToSpot<TRequest>(
-        InstanceSpotAddress target,
-        TRequest request);
+public interface IZLinkSpotSendCall : IZLinkMetadataCall<IZLinkSpotSendCall>
+{
+    IZLinkSpotSendCall InstanceSpot();
+
+    IZLinkSpotSendCall InstanceSpot(string instanceSpotType);
+
+    IZLinkSpotSendCall InMesh(string meshName);
+
+    ValueTask Async(CancellationToken cancellationToken = default);
+}
+
+public interface IZLinkSpotRequestCall : IZLinkMetadataCall<IZLinkSpotRequestCall>
+{
+    IZLinkSpotRequestCall InstanceSpot();
+
+    IZLinkSpotRequestCall InstanceSpot(string instanceSpotType);
+
+    IZLinkSpotRequestCall InMesh(string meshName);
+
+    IZLinkSpotRequestCall Timeout(TimeSpan timeout);
+
+    ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default);
+
+    ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default);
 }
 
 public interface IZLinkSpotCommonContext
@@ -250,9 +292,9 @@ public interface IZLinkSpotCommonContext
 
     string SpotId { get; }
 
-    RoutingId NodeRid { get; }
+    ulong ObjectGeneration { get; }
 
-    IZLinkSpotHandlerRegistry Handlers { get; }
+    RoutingId NodeRid { get; }
 
     IZLinkSpotOutbound Outbound { get; }
 
@@ -272,6 +314,8 @@ public interface IZLinkSpotCommonContext
 
 public interface IZLinkSpotContext : IZLinkSpotCommonContext
 {
+    IZLinkSpotHandlerRegistry Handlers { get; }
+
     ValueTask LeaveActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default);
@@ -293,7 +337,9 @@ public interface IZLinkEntrySpot
         return ValueTask.CompletedTask;
     }
 
-    ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
         return ValueTask.CompletedTask;
     }
@@ -321,6 +367,8 @@ public interface IZLinkEntrySpot<TActor>
 
 public interface IZLinkEntrySpotContext : IZLinkSpotCommonContext
 {
+    IZLinkSpotHandlerRegistry Handlers { get; }
+
     ValueTask DestroyActorAsync(
         IZLinkActor actor,
         CancellationToken cancellationToken = default);

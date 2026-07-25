@@ -253,7 +253,7 @@ public sealed class LogicalMulticastSubmitTests
         }
     }
 
-    private sealed class RecordingErrorSink : IZLinkRuntimeErrorSink
+    private sealed class RecordingErrorSink : IZLinkRuntimeFailureReporter
     {
         public Exception? Error { get; private set; }
 

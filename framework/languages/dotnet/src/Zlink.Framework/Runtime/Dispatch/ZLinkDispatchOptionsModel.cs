@@ -9,6 +9,18 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
     public Type? MessageFlowObserverType { get; private set; }
 
     public IZLinkMessageFlowObserver? MessageFlowObserver { get; private set; }
+
+    public Type? RuntimeMessageFlowObserverType { get; private set; }
+
+    public IZLinkRuntimeMessageFlowObserver? RuntimeMessageFlowObserver { get; private set; }
+
+    public Type? RuntimeErrorSinkType { get; private set; }
+
+    public Zlink.Framework.Contracts.Dispatch.IZLinkRuntimeErrorSink? RuntimeErrorSink
+    {
+        get;
+        private set;
+    }
     IZLinkUnhandledDispatchOptions IZLinkDispatchOptions.Unhandled => Unhandled;
 
     IZLinkDiagnosticsOptions IZLinkDispatchOptions.Diagnostics => Diagnostics;
@@ -58,6 +70,53 @@ internal sealed class ZLinkDispatchOptionsModel : IZLinkDispatchOptions
     {
         ArgumentException.ThrowIfNullOrEmpty(label);
         Diagnostics.Label = label;
+        return this;
+    }
+
+    public IZLinkDispatchOptions SetRuntimeMessageFlowObserver<TObserver>()
+        where TObserver : class, IZLinkRuntimeMessageFlowObserver
+    {
+        RuntimeMessageFlowObserverType = typeof(TObserver);
+        RuntimeMessageFlowObserver = null;
+        return this;
+    }
+
+    public IZLinkDispatchOptions SetRuntimeMessageFlowObserver(
+        IZLinkRuntimeMessageFlowObserver observer)
+    {
+        ArgumentNullException.ThrowIfNull(observer);
+        RuntimeMessageFlowObserver = observer;
+        RuntimeMessageFlowObserverType = null;
+        return this;
+    }
+
+    public IZLinkDispatchOptions SetRuntimeErrorSink<TSink>()
+        where TSink : class, Zlink.Framework.Contracts.Dispatch.IZLinkRuntimeErrorSink
+    {
+        RuntimeErrorSinkType = typeof(TSink);
+        RuntimeErrorSink = null;
+        return this;
+    }
+
+    public IZLinkDispatchOptions SetRuntimeErrorSink(
+        Zlink.Framework.Contracts.Dispatch.IZLinkRuntimeErrorSink sink)
+    {
+        ArgumentNullException.ThrowIfNull(sink);
+        RuntimeErrorSink = sink;
+        RuntimeErrorSinkType = null;
+        return this;
+    }
+
+    public IZLinkDispatchOptions MessageFlow(ZLinkRuntimeMessageFlowMode mode)
+    {
+        Diagnostics.MessageFlow = mode switch
+        {
+            ZLinkRuntimeMessageFlowMode.Off => ZLinkMessageFlowLogMode.Off,
+            ZLinkRuntimeMessageFlowMode.ErrorsOnly => ZLinkMessageFlowLogMode.ErrorsOnly,
+            ZLinkRuntimeMessageFlowMode.KeyTransitions => ZLinkMessageFlowLogMode.KeyTransitions,
+            ZLinkRuntimeMessageFlowMode.Verbose => ZLinkMessageFlowLogMode.Verbose,
+            _ => throw new ArgumentOutOfRangeException(nameof(mode))
+        };
         return this;
     }
 }

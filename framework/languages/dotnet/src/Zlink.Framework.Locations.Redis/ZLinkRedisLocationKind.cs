@@ -64,7 +64,7 @@ internal static class ZLinkRedisLocationKinds
     {
         Tag = "actor",
         EncodeKey = static row => ZLinkRedisLocationKeyCodec.EncodeActorKey(
-            new ZLinkActorLocationKey(row.MeshName, row.ActorId)),
+            new ZLinkActorLocationKey(row.ActorId)),
         MeshOf = static row => row.MeshName,
         OwnerOf = static row => row.OwnerId,
         GenerationOf = static _ => 0,
@@ -84,6 +84,24 @@ internal static class ZLinkRedisLocationKinds
                     new ZLinkClientServerServerDescriptorKey(
                         row.ChannelName,
                         row.ServerRid)),
+            MeshOf = static _ => null,
+            OwnerOf = static row => row.OwnerId,
+            GenerationOf = static _ => 0,
+            Finalize = static (row, updatedAt, _) => row with
+            {
+                UpdatedAt = updatedAt
+            }
+        };
+
+    internal static readonly ZLinkRedisLocationKind<ZLinkFanoutPublisherDescriptor>
+        Fanout = new()
+        {
+            Tag = "fanout",
+            EncodeKey = static row =>
+                ZLinkRedisLocationKeyCodec.EncodeFanoutKey(
+                    new ZLinkFanoutPublisherDescriptorKey(
+                        row.ChannelName,
+                        row.PublisherRid)),
             MeshOf = static _ => null,
             OwnerOf = static row => row.OwnerId,
             GenerationOf = static _ => 0,

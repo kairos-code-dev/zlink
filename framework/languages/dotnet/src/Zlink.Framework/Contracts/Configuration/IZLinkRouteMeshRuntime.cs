@@ -37,18 +37,19 @@ public sealed record ZLinkMeshClaimSnapshot(
     bool InfrastructureActive,
     ulong PendingInfrastructureWork);
 
-public sealed record ZLinkMeshDrainSnapshot(
-    ZLinkMeshNodeState State,
-    DateTimeOffset? Deadline,
-    bool WorkSealed,
-    ulong PendingRequestCount,
-    ulong PendingTransferCount,
-    ulong PendingStreamBarrierCount);
-
 public sealed record ZLinkLocationRuntimeSnapshot(
     string State,
     DateTimeOffset? LastSuccessAt,
     DateTimeOffset? LastFailureAt);
+
+public sealed record ZLinkInstanceSpotTypeSnapshot(
+    string InstanceSpotType,
+    ulong ActiveCount,
+    ulong ActivatingCount,
+    ulong ClosingCount,
+    ulong PendingMessageCount,
+    ulong PendingByteCount,
+    string? LastActivationOutcome);
 
 public sealed record ZLinkMeshNodeSnapshot(
     string MeshName,
@@ -63,8 +64,7 @@ public sealed record ZLinkMeshNodeSnapshot(
     IReadOnlyList<ZLinkMeshPeerSnapshot> Peers,
     IReadOnlyList<ZLinkMeshChannelSnapshot> Channels,
     ZLinkMeshClaimSnapshot Claims,
-    ZLinkLocationRuntimeSnapshot Location,
-    ZLinkMeshDrainSnapshot Drain)
+    ZLinkLocationRuntimeSnapshot Location)
 {
     public long ApplicationVersion { get; init; }
     public ZLinkMeshNodeObjectRole ObjectRole { get; init; }
@@ -80,6 +80,8 @@ public sealed record ZLinkMeshNodeSnapshot(
     public string? LastPlacementReservationFailure { get; init; }
     public IReadOnlyList<ZLinkObjectCapability> ObjectCapabilities { get; init; }
         = Array.Empty<ZLinkObjectCapability>();
+    public IReadOnlyList<ZLinkInstanceSpotTypeSnapshot> InstanceSpots { get; init; }
+        = Array.Empty<ZLinkInstanceSpotTypeSnapshot>();
 }
 
 public sealed record ZLinkMeshRuntimeEvent(
@@ -105,21 +107,10 @@ public sealed record ZLinkMeshRuntimeEvent(
     public string SourceName => MeshName;
 }
 
-public abstract record ZLinkMeshDrainResult
-{
-    private protected ZLinkMeshDrainResult() { }
-
-    public sealed record Drained : ZLinkMeshDrainResult;
-
-    public sealed record ForceStopped(string Reason) : ZLinkMeshDrainResult;
-}
-
 /// <summary>
 /// Runtime monitoring service for registered RouteMesh nodes (spec 50):
-/// one consistent MeshNode snapshot per MeshName, an ordered event stream,
-/// and the shared graceful-drain entry point. Event identifiers and closed
-/// state values are owned by the runtime-monitoring spec; drain terminal
-/// reasons by the graceful-drain spec.
+/// one consistent MeshNode snapshot per MeshName and an ordered event stream.
+/// Host termination is owned exclusively by <see cref="IZLinkFrameworkRuntime"/>.
 /// </summary>
 public interface IZLinkRouteMeshRuntime
 {
@@ -131,16 +122,69 @@ public interface IZLinkRouteMeshRuntime
         CancellationToken cancellationToken = default);
 
     bool IsReady(string meshName);
+}
 
-    /// <summary>`deadline == null` is 30 seconds. The first call fixes the
-    /// shared drain deadline; later calls and <see cref="AwaitDrainedAsync"/>
-    /// await the same terminal result. Cancellation ends only that waiter.</summary>
-    ValueTask<ZLinkMeshDrainResult> DrainAsync(
-        string meshName,
-        TimeSpan? deadline = null,
+public enum ZLinkClientServerRole
+{
+    Client = 1,
+    Server = 2,
+    ClientAndServer = 3
+}
+
+public enum ZLinkClientServerServerState
+{
+    Configured = 0,
+    Connecting = 1,
+    Ready = 2,
+    Draining = 3,
+    Disconnected = 4,
+    Rejected = 5
+}
+
+public sealed record ZLinkClientServerServerSnapshot(
+    RoutingId ServerRid,
+    ulong LifecycleGeneration,
+    ulong DescriptorRevision,
+    string Endpoint,
+    int Weight,
+    bool Ready,
+    ZLinkClientServerServerState State,
+    string DescriptorSource,
+    string? LastFailure);
+
+public sealed record ZLinkClientServerChannelSnapshot(
+    string ChannelName,
+    ZLinkClientServerRole LocalRole,
+    bool Selectable,
+    int ReadyServerCount,
+    int ConnectionIntentCount,
+    int PendingRequestCount,
+    ulong Sequence,
+    DateTimeOffset ObservedAt,
+    IReadOnlyList<ZLinkClientServerServerSnapshot> Servers,
+    ZLinkLocationRuntimeSnapshot Location);
+
+public sealed record ZLinkClientServerRuntimeEvent(
+    string Identifier,
+    ulong Sequence,
+    DateTimeOffset Timestamp,
+    string ChannelName,
+    RoutingId? ServerRid,
+    ulong? LifecycleGeneration,
+    ulong? DescriptorRevision,
+    int? Weight,
+    bool? Ready,
+    ZLinkClientServerServerState? State,
+    string? Reason);
+
+public interface IZLinkClientServerRuntime
+{
+    ZLinkClientServerChannelSnapshot Snapshot(string channelName);
+
+    IAsyncEnumerable<ZLinkClientServerRuntimeEvent> ObserveAsync(
+        string channelName,
+        int capacity = 1024,
         CancellationToken cancellationToken = default);
 
-    ValueTask<ZLinkMeshDrainResult> AwaitDrainedAsync(
-        string meshName,
-        CancellationToken cancellationToken = default);
+    bool IsReady(string channelName);
 }

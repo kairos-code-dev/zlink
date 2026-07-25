@@ -83,69 +83,81 @@ internal sealed class ZLinkActorManagerService(ZLinkFrameworkRuntime runtime) : 
     {
         using var operation = runtime.EnterOperation();
         cancellationToken.ThrowIfCancellationRequested();
-        if (!runtime.TryGetCreatedActorState(actor.ActorId, out var state)
-            || state.NativeActorRef is not { } current
-            || state.Actor is not { } instance)
+        var store = runtime.Registration.Locations.ResolveStore();
+        if (store is null)
         {
-            var resolved = await FindAsync(actor.ActorId, cancellationToken)
-                .ConfigureAwait(false);
-            if (resolved is null)
+            if (!runtime.TryGetCreatedActorState(actor.ActorId, out var state)
+                || state.NativeActorRef is not { } current
+                || state.Actor is not { } instance)
                 return false;
-            if (resolved.Value != actor)
+            if (current.Generation != actor.Generation)
                 throw new ZLinkFrameworkException(
                     ZLinkFrameworkErrorKind.ActorGenerationStale,
                     $"Actor '{actor.ActorId}' generation is stale.");
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.RequestTargetNotFound,
-                $"Remote Actor destroy is not connected for owner node '{actor.NodeRid}'.");
+            await runtime.DestroyActorAsync(
+                    state.LiveActivation?.NodeRid ?? current.NodeRid,
+                    instance,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return true;
         }
-        if (current.Generation != actor.Generation || current.NodeRid != actor.NodeRid)
+
+        var authorityKey = ZLinkActorAuthorityPayloadCodec.AuthorityKey(actor.ActorId);
+        var read = await store.ReadAuthorityAsync(
+                authorityKey,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (read is ZLinkAuthorityReadResult.Missing)
+            return false;
+        var snapshot = ((ZLinkAuthorityReadResult.Found)read).Snapshot;
+        if (snapshot.ObjectGeneration != actor.Generation)
             throw new ZLinkFrameworkException(
                 ZLinkFrameworkErrorKind.ActorGenerationStale,
                 $"Actor '{actor.ActorId}' generation is stale.");
+        if (snapshot.Allocation.State != ZLinkPlacementAllocationState.Active
+            || snapshot.Allocation.ObjectKind != ZLinkPlacementObjectKind.Actor
+            || !ZLinkActorAuthorityPayloadCodec.TryDecode(
+                snapshot.Payload.Span,
+                out var authority)
+            || authority.State != ZLinkActorAuthorityState.Ready)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorMoving,
+                $"Actor '{actor.ActorId}' is moving.",
+                true);
 
-        var store = runtime.Registration.Locations.ResolveStore();
-        ZLinkAuthoritySnapshot? authority = null;
-        var authorityKey = ZLinkActorAuthorityPayloadCodec.AuthorityKey(actor.ActorId);
-        if (store is not null)
+        // MeshName and NodeRid in ActorRef are route snapshots. Exact destroy
+        // fences the logical incarnation by ActorId + ObjectGeneration and
+        // always targets the current authority owner.
+        var currentRef = new ActorRef(
+            authority.NodeRid,
+            actor.ActorId,
+            snapshot.ObjectGeneration);
+        var source = runtime.ResolveActorCreationSource(authority.MeshName);
+        if (authority.NodeRid == source.Node.RoutingId)
         {
-            var read = await store.ReadAuthorityAsync(
-                    authorityKey,
+            var local = await source.DestroyActorLocalAsync(
+                    new ActorDestroyOperation(
+                        1,
+                        currentRef,
+                        authority.NodeRid,
+                        authority.NodeGeneration,
+                        snapshot.AuthorityOwnerGeneration),
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (read is not ZLinkAuthorityReadResult.Found found
-                || found.Snapshot.ObjectGeneration != actor.Generation)
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorGenerationStale,
-                    $"Actor '{actor.ActorId}' authority generation is stale.");
-            authority = found.Snapshot;
+            return local.Completion?.Destroyed
+                   ?? throw new ZLinkFrameworkException(
+                       ZLinkFrameworkErrorKind.ActorLocationStale,
+                       $"Actor '{actor.ActorId}' local destroy did not produce a terminal result.",
+                       true);
         }
 
-        await runtime.DestroyActorAsync(
-                state.LiveActivation?.NodeRid ?? actor.NodeRid,
-                instance,
+        return await source.Node.DestroyActorRemoteAsync(
+                currentRef.ToBackend(),
+                authority.NodeGeneration,
+                snapshot.AuthorityOwnerGeneration,
+                runtime.Registration.DefaultRequestTimeout,
                 cancellationToken)
             .ConfigureAwait(false);
-        if (store is not null && authority is not null)
-        {
-            var deleted = await store.CompareExchangeAuthorityAsync(
-                    authorityKey,
-                    authority.StoreVersion,
-                    new ZLinkAuthorityMutation.Delete(),
-                    cancellationToken)
-                .ConfigureAwait(false);
-            if (deleted is ZLinkAuthorityCompareExchangeResult.Conflict
-                {
-                    Current: ZLinkAuthorityReadResult.Missing
-                })
-                return true;
-            if (deleted is not ZLinkAuthorityCompareExchangeResult.Deleted)
-                throw new ZLinkFrameworkException(
-                    ZLinkFrameworkErrorKind.ActorLocationStale,
-                    $"Actor '{actor.ActorId}' authority changed during destroy.",
-                    true);
-        }
-        return true;
     }
 
     private async ValueTask<ZLinkActorCreateResult> SubmitAsync(

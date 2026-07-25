@@ -161,7 +161,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 try
                 {
                     var existing = await resolver.ResolveActorRowAsync(
-                            new ZLinkActorLocationKey(meshName, actorId),
+                            new ZLinkActorLocationKey(actorId),
                             cancellationToken)
                         .ConfigureAwait(false);
                     if (existing is not null)
@@ -767,7 +767,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
             foreach (var (actorId, actor) in _actors)
             {
                 var encoded = ZLinkLocationKeyCodec.EncodeActorKey(
-                    new ZLinkActorLocationKey(actor.Row.MeshName, actorId));
+                    new ZLinkActorLocationKey(actorId));
                 if (!string.Equals(encoded, canonicalKey, StringComparison.Ordinal)) continue;
                 _actors.Remove(actorId);
                 return actor.Deactivate;
@@ -786,7 +786,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
         try
         {
             return await resolver.ResolveActorRowWithPresenceAsync(
-                    new ZLinkActorLocationKey(meshName, actorId),
+                    new ZLinkActorLocationKey(actorId),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -890,7 +890,7 @@ internal sealed class ZLinkActorOwnershipCoordinator(
                 storeGeneration = tracked.StoreGeneration;
             }
 
-            var key = new ZLinkActorLocationKey(row.MeshName, row.ActorId);
+            var key = new ZLinkActorLocationKey(row.ActorId);
             var result = await runtime.RemoveActorAsync(
                     key,
                     storeGeneration,

@@ -19,7 +19,10 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     private Task? _disposeTask;
     private bool _stopSourceDisposed;
     private IActorCreateOperationTarget? _actorCreateOperationTarget;
+    private IActorDestroyOperationTarget? _actorDestroyOperationTarget;
+    private ZLinkInstanceSpotActivationTarget? _instanceSpotActivationTarget;
     private long _nextLocalActorCreateOperation;
+    private long _nextLocalInstanceActivationOperation;
     private IUserSpotOperationTarget? _userSpotOperationTarget;
     private long _nextLocalUserSpotOperation;
     private IZLinkBackendSpot? _entrySpot;
@@ -84,13 +87,32 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         if (registration.ActorFactories.Count > 0
             && frameworkRegistration.Locations.ResolveStore() is { } actorAuthorityStore)
         {
-            _actorCreateOperationTarget = new ZLinkActorCreateOperationTarget(
+            var actorOperationTarget = new ZLinkActorOperationTarget(
                 actorAuthorityStore,
                 runtime,
                 node,
                 spotChannelName,
                 frameworkRegistration.Codecs);
+            _actorCreateOperationTarget = actorOperationTarget;
+            _actorDestroyOperationTarget = actorOperationTarget;
             node.SetActorCreateOperationTarget(_actorCreateOperationTarget);
+            node.SetActorDestroyOperationTarget(_actorDestroyOperationTarget);
+        }
+        if (registration.InstanceSpotFactories.Count > 0
+            && frameworkRegistration.Locations.ResolveStore()
+                is IZLinkAuthorityStore instanceAuthorityStore
+            && frameworkRegistration.Locations.RelocationStoreInstance
+                is { } relocationStore
+            && locationLifecycle is not null)
+        {
+            _instanceSpotActivationTarget = new ZLinkInstanceSpotActivationTarget(
+                instanceAuthorityStore,
+                relocationStore,
+                _spots,
+                node,
+                registration,
+                locationLifecycle.OwnerToken);
+            node.SetInstanceSpotActivationTarget(_instanceSpotActivationTarget);
         }
     }
 
@@ -151,6 +173,38 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
         return (completion, reply);
     }
 
+    internal ValueTask<InstanceSpotActivationTerminal> ActivateInstanceSpotLocalAsync(
+        InstanceSpotActivationTarget target,
+        RoutingId sourceNodeRid,
+        ulong sourceNodeGeneration,
+        string sourceSpotId,
+        IReadOnlyList<ReadOnlyMemory<byte>> payload,
+        bool request,
+        ulong deadlineUnixMs,
+        ReadOnlyMemory<byte>? metadata,
+        CancellationToken cancellationToken)
+    {
+        var activationTarget = _instanceSpotActivationTarget
+                               ?? throw new ZLinkFrameworkException(
+                                   ZLinkFrameworkErrorKind.InvalidConfiguration,
+                                   $"MeshNode '{Name}' does not host Instance Spot factories.");
+        var operationId = checked((ulong)Interlocked.Increment(
+            ref _nextLocalInstanceActivationOperation));
+        return activationTarget.ActivateAsync(
+            new InstanceSpotActivationOperation(
+                target,
+                sourceNodeRid,
+                sourceNodeGeneration,
+                sourceSpotId,
+                new MeshOperationId(sourceNodeGeneration, operationId),
+                request,
+                request ? operationId : 0,
+                deadlineUnixMs),
+            metadata,
+            payload,
+            cancellationToken);
+    }
+
     internal async ValueTask<(
         ActorCreateCompletion Completion,
         IReadOnlyList<Message> Reply)> CreateActorLocalAsync(
@@ -198,6 +252,17 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
             ? Array.Empty<Message>()
             : terminal.ReplyParts.Select(static part => Message.From(part.Span)).ToArray();
         return (terminal.Completion, reply);
+    }
+
+    internal ValueTask<ActorDestroyOperationTerminal> DestroyActorLocalAsync(
+        ActorDestroyOperation operation,
+        CancellationToken cancellationToken)
+    {
+        var target = _actorDestroyOperationTarget
+                     ?? throw new ZLinkFrameworkException(
+                         ZLinkFrameworkErrorKind.InvalidConfiguration,
+                         $"MeshNode '{Name}' does not host Actor factories.");
+        return target.DestroyAsync(operation, cancellationToken);
     }
 
     internal bool UsesManualRouterAcquisition =>
@@ -473,6 +538,9 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public async ValueTask InitializeEntrySpotAsync()
     {
         WireNodeRouteDispatch();
+        if (_instanceSpotActivationTarget is not null)
+            await _instanceSpotActivationTarget.RecoverAsync(_stopSource.Token)
+                .ConfigureAwait(false);
         _entrySpot ??= Node.EntrySpot();
         _entryOutbound ??= new ZLinkSpotOutboundTransport(
             _entrySpot,
@@ -514,6 +582,33 @@ internal sealed class ZLinkSpotNodeRuntime : IAsyncDisposable
     public ZLinkSpotMonitoringSnapshot GetMonitoringSnapshot()
     {
         return _monitoringSnapshots.MonitorStatus();
+    }
+
+    internal IReadOnlyList<ZLinkInstanceSpotTypeSnapshot>
+        GetInstanceSpotMonitoringSnapshots()
+    {
+        if (Registration.InstanceSpotFactories.Count == 0)
+            return Array.Empty<ZLinkInstanceSpotTypeSnapshot>();
+
+        var activationTarget = _instanceSpotActivationTarget
+            ?? throw new InvalidOperationException(
+                $"MeshNode '{Name}' has Instance Spot factories without an activation target.");
+        return Registration.InstanceSpotFactories.Keys
+            .Order(StringComparer.Ordinal)
+            .Select(stableType =>
+            {
+                var catalog = _spots.InstanceSpotSnapshot(stableType);
+                var operations = activationTarget.MonitoringSnapshot(stableType);
+                return new ZLinkInstanceSpotTypeSnapshot(
+                    stableType,
+                    catalog.ActiveCount,
+                    catalog.ActivatingCount,
+                    catalog.ClosingCount,
+                    operations.PendingMessageCount,
+                    operations.PendingByteCount,
+                    operations.LastActivationOutcome);
+            })
+            .ToArray();
     }
 
     public ZLinkSpotPublisherBundle GetOrCreatePublisherBundle(string channelName)

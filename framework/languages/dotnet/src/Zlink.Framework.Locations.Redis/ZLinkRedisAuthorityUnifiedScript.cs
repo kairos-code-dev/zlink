@@ -470,6 +470,10 @@ if op == 'read' then
 end
 
 if op == 'reserve' then
+    if request.checkEntrySpotClaim
+        and redis.call('EXISTS', KEYS[20]) == 1 then
+        return cjson.encode({kind = 'conflict', current = missing()})
+    end
     local current = rowAt(KEYS[1])
     if current then
         local result = snapshot(current)

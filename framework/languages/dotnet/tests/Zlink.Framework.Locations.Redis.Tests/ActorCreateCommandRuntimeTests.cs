@@ -137,6 +137,50 @@ public sealed class ActorCreateCommandRuntimeTests
         Assert.Equal(2, operationTarget.Count);
     }
 
+    [Fact]
+    public async Task TwoNodeDestroyCarriesExactActorAndAuthorityFences()
+    {
+        await using var context = Systems.Zlink.Zlink.CreateContext();
+        await using var source = NewNode(context, "actor-destroy-source");
+        await using var target = NewNode(context, "actor-destroy-target");
+        var suffix = Guid.NewGuid().ToString("N");
+        var sourceEndpoint = $"inproc://actor-destroy-source-{suffix}";
+        var targetEndpoint = $"inproc://actor-destroy-target-{suffix}";
+        source.SetBind(sourceEndpoint);
+        target.SetBind(targetEndpoint);
+        source.ConnectPeer(targetEndpoint, target.RoutingId);
+        target.ConnectPeer(sourceEndpoint, source.RoutingId);
+        var operationTarget = new DestroyingTarget();
+        target.SetActorDestroyOperationTarget(operationTarget);
+        source.Start();
+        target.Start();
+        await WaitUntilAsync(() =>
+            source.Status().AdmittedPeerCount == 1
+            && target.Status().AdmittedPeerCount == 1);
+
+        var actor = new ActorRef(target.RoutingId, "actor-27", 17);
+        var targetGeneration = target.Status().LifecycleGeneration;
+        Assert.Equal(
+            SubmitResult.Ok,
+            source.DestroyActorRemote(
+                actor,
+                targetGeneration,
+                23,
+                out var operationId,
+                TimeSpan.FromSeconds(5)));
+        await WaitUntilAsync(() =>
+            source.Status().PendingInfrastructureMessages > 0);
+
+        var completion = DrainCompletion(source, operationId);
+        Assert.True(completion.ActorDestroyCompletion!.Destroyed);
+        Assert.Equal(actor, operationTarget.Last.Actor);
+        Assert.Equal(target.RoutingId, operationTarget.Last.TargetNodeRid);
+        Assert.Equal(
+            targetGeneration,
+            operationTarget.Last.TargetNodeGeneration);
+        Assert.Equal(23UL, operationTarget.Last.AuthorityOwnerGeneration);
+    }
+
     private static ZLinkManagedMeshNode NewNode(IContext context, string rid)
     {
         var node = new ZLinkManagedMeshNode(context, "mesh");
@@ -186,6 +230,22 @@ public sealed class ActorCreateCommandRuntimeTests
                 RequestResult.Ok,
                 ServiceWireConstants.FrameworkErrorCode.None,
                 new ActorCreateCompletion(ActorCreateResult.Rejected, default)));
+        }
+    }
+
+    private sealed class DestroyingTarget : IActorDestroyOperationTarget
+    {
+        public ActorDestroyOperation Last { get; private set; }
+
+        public ValueTask<ActorDestroyOperationTerminal> DestroyAsync(
+            ActorDestroyOperation operation,
+            CancellationToken cancellationToken)
+        {
+            Last = operation;
+            return ValueTask.FromResult(new ActorDestroyOperationTerminal(
+                RequestResult.Ok,
+                ServiceWireConstants.FrameworkErrorCode.None,
+                new ActorDestroyCompletion(true)));
         }
     }
 }

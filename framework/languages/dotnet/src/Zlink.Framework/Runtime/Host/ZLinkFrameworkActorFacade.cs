@@ -67,6 +67,12 @@ internal sealed class ZLinkFrameworkActorFacade(
         ZLinkSpotActorJoinResult joinResult;
         var sourceActivation = actorState.Activation;
         if (localActivation is not null
+            && ReferenceEquals(sourceActivation, localActivation))
+            return new ZLinkActorJoinResult.Accepted(
+                ToActorRef(actorState),
+                ZLinkMessage.Empty);
+
+        if (localActivation is not null
             && sourceActivation is not null
             && !ReferenceEquals(sourceActivation, localActivation))
         {
@@ -76,17 +82,8 @@ internal sealed class ZLinkFrameworkActorFacade(
                     cancellationToken)
                 .ConfigureAwait(false);
             if (joinResult.Accepted)
-            {
-                // The caller owns the source actor turn. Commit source lifecycle
-                // there before entering the target commit so the target never
-                // posts back into a queue held by this join call.
-                await sourceActivation.NotifyActorLeftAfterManagedJoinSpotAsync(
-                        actor,
-                        cancellationToken)
-                    .ConfigureAwait(false);
                 await localActivation.CommitActorJoinFromCallerTurnAsync(actor, cancellationToken)
                     .ConfigureAwait(false);
-            }
         }
         else if (localActivation is not null)
             joinResult = await localActivation.JoinActorAsync(actor, request, cancellationToken)

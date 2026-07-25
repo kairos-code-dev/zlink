@@ -22,7 +22,13 @@ public interface IZLinkStreamNodeBuilder
     // inferred from the endpoint, the first MeshNode, or an ActorRef. Calling it
     // twice on the same builder, or naming a MeshName with no local MeshNode, is a
     // startup configuration error. STREAM nodes that do not dispatch actors omit it.
-    IZLinkStreamNodeBuilder EnableActorDispatch(string meshName);
+    IZLinkStreamNodeBuilder Bind(int port = 0);
+
+    IZLinkStreamNodeBuilder SetBindHost(string bindHost);
+
+    IZLinkStreamNodeBuilder SetAdvertiseHost(string advertiseHost);
+
+    IZLinkStreamNodeBuilder EnableActorDispatch();
 
     IZLinkStreamNodeBuilder SetTlsServer(
         string certificatePath,
@@ -37,7 +43,21 @@ public interface IZLinkFanoutChannelBuilder
 {
     IZLinkFanoutChannelBuilder EnablePublisher(string endpoint);
 
+    IZLinkFanoutChannelBuilder EnablePublisher(int port = 0);
+
+    IZLinkFanoutChannelBuilder SetBindHost(string bindHost);
+
+    IZLinkFanoutChannelBuilder SetAdvertiseHost(string advertiseHost);
+
+    IZLinkFanoutChannelBuilder SetRoutingId(RoutingId publisherRoutingId);
+
+    IZLinkFanoutChannelBuilder SetRoutingIdPrefix(string prefix);
+
+    IZLinkFanoutChannelBuilder EnableSubscriber();
+
     IZLinkFanoutChannelBuilder ConnectSubscriber(string endpoint);
+
+    IZLinkEndpointConnections SubscriberConnections { get; }
 
     IZLinkFanoutChannelBuilder AddHandler<THandler, TEvent>(string? packetName = null)
         where THandler : class, IZLinkFanoutHandler<TEvent>;
@@ -89,10 +109,6 @@ public interface IZLinkFrameworkOptions
     ///     default is five seconds. Zero disables forwarding after the commit;
     ///     negative values are rejected.
     /// </summary>
-    TimeSpan? ActorTransferTimeout { get; set; }
-
-    TimeSpan? ActorTransferForwardWindow { get; set; }
-
     TimeSpan DefaultSocketSendTimeout { get; set; }
 
     long ApplicationVersion { get; set; }
@@ -134,6 +150,8 @@ public interface IZLinkFrameworkOptions
 
     Locations.ZLinkLocationOptions ConfigureLocations();
 
+    IZLinkNetworkOptions ConfigureNetwork();
+
     void UseFilter<TFilter>()
         where TFilter : class, IZLinkHandlerFilter;
 
@@ -148,6 +166,13 @@ public interface IZLinkFrameworkOptions
     // ROUTER endpoint, logical channel memberships, RID-direct route handlers and
     // Spot/Actor registry.
     IZLinkMeshNodeBuilder AddRouteMesh(string meshName);
+}
+
+public interface IZLinkNetworkOptions
+{
+    string BindHost { get; set; }
+
+    string? AdvertiseHost { get; set; }
 }
 
 public interface IZLinkMetadataPolicyBuilder

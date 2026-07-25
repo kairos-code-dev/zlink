@@ -1,6 +1,6 @@
 namespace Zlink.Framework.Runtime.Diagnostics;
 
-internal sealed class ZLinkRuntimeErrorSink : IZLinkRuntimeErrorSink, IDisposable
+internal sealed class ZLinkRuntimeErrorSink : IZLinkRuntimeFailureReporter, IDisposable
 {
     private Action<Exception>? _unhandledCallbackException;
     private int _disposed;

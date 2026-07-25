@@ -178,9 +178,65 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         _node.SetActorCreateOperationTarget(target);
     }
 
+    public void SetActorDestroyOperationTarget(IActorDestroyOperationTarget target)
+    {
+        _node.SetActorDestroyOperationTarget(target);
+    }
+
     public void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target)
     {
         _node.SetInstanceSpotActivationTarget(target);
+    }
+
+    public async ValueTask<IReadOnlyList<Message>> ActivateInstanceSpotAsync(
+        InstanceSpotActivationTarget target,
+        string sourceSpotId,
+        IReadOnlyList<Message> parts,
+        bool request,
+        ulong deadlineUnixMs,
+        TimeSpan timeout,
+        ReadOnlyMemory<byte> metadata,
+        CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        var submit = RequireManagedNode().ActivateInstanceSpot(
+            target,
+            sourceSpotId,
+            parts,
+            request,
+            out var operationId,
+            deadlineUnixMs,
+            timeout,
+            SendFlags.None,
+            metadata);
+        if (submit != SubmitResult.Ok)
+            throw new ZlinkSubmitException(
+                (ZlinkSubmitException.ErrorCode)(int)submit);
+        if (!request) return Array.Empty<Message>();
+
+        var terminal = new TaskCompletionSource<IReadOnlyList<Message>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_completions.Register(operationId, (record, reply) =>
+        {
+            if (record.TerminalResult == (int)RequestResult.Ok)
+                terminal.TrySetResult(reply);
+            else
+            {
+                ZLinkMessageParts.DisposeAll(reply);
+                terminal.TrySetException(new ZLinkFrameworkException(
+                    record.FailureErrno
+                    == (int)ServiceWireConstants.FrameworkErrorCode.SpotGenerationStale
+                        ? ZLinkFrameworkErrorKind.SpotGenerationStale
+                        : ZLinkFrameworkErrorKind.SpotCreateFailed,
+                    "Remote Instance Spot activation failed."));
+            }
+        }))
+            throw new InvalidOperationException(
+                "Remote Instance Spot activation did not return an operation id.");
+        await using (cancellationToken.Register(
+                         () => terminal.TrySetCanceled(cancellationToken))
+                     .ConfigureAwait(false))
+            return await terminal.Task.ConfigureAwait(false);
     }
 
     public async ValueTask<(
@@ -275,6 +331,52 @@ internal sealed class ZLinkBackendSpotNodeWrapper :
         }))
             throw new InvalidOperationException(
                 "Remote Actor create did not return an operation id.");
+        await using (cancellationToken.Register(
+                         () => terminal.TrySetCanceled(cancellationToken))
+                     .ConfigureAwait(false))
+            return await terminal.Task.ConfigureAwait(false);
+    }
+
+    public async ValueTask<bool> DestroyActorRemoteAsync(
+        ZLinkBackendActorRef actor,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        EnsureStarted();
+        var submit = RequireManagedNode().DestroyActorRemote(
+            actor.ToNative(),
+            targetNodeGeneration,
+            authorityOwnerGeneration,
+            out var operationId,
+            timeout);
+        if (submit != SubmitResult.Ok)
+            throw new ZlinkSubmitException(
+                (ZlinkSubmitException.ErrorCode)(int)submit);
+
+        var terminal = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_completions.Register(operationId, (record, parts) =>
+        {
+            ZLinkMessageParts.DisposeAll(parts);
+            if (record.TerminalResult == (int)RequestResult.Ok
+                && record.ActorDestroyCompletion is { } completion)
+            {
+                terminal.TrySetResult(completion.Destroyed);
+                return;
+            }
+            terminal.TrySetException(new ZLinkFrameworkException(
+                record.FailureErrno
+                == (int)ServiceWireConstants.FrameworkErrorCode.ActorRouteNotFound
+                    ? ZLinkFrameworkErrorKind.ActorRouteNotFound
+                    : ZLinkFrameworkErrorKind.ActorLocationStale,
+                $"Remote Actor destroy failed for '{actor.ActorId}'.",
+                record.FailureErrno
+                != (int)ServiceWireConstants.FrameworkErrorCode.ActorRouteNotFound));
+        }))
+            throw new InvalidOperationException(
+                "Remote Actor destroy did not return an operation id.");
         await using (cancellationToken.Register(
                          () => terminal.TrySetCanceled(cancellationToken))
                      .ConfigureAwait(false))

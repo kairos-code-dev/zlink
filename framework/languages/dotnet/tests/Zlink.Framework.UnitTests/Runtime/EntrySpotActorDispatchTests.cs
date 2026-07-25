@@ -410,7 +410,7 @@ public sealed partial class EntrySpotActorDispatchTests
 
         Assert.False(sessions.TryGetCreatedActorState(state.ActorId, out _));
         Assert.Single(node.DestroyedActors);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
     }
 
     [Fact]
@@ -467,7 +467,7 @@ public sealed partial class EntrySpotActorDispatchTests
 
         Assert.Equal("native destroy failed", failure.Message);
         Assert.Equal(nativeActor, state.NativeActorRef);
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
         Assert.Null(await sessions.FindActorAsync(state.ActorId));
         await Assert.ThrowsAsync<ZLinkFrameworkException>(async () =>
             await state.GetOrStartActorCreationAsync(
@@ -490,7 +490,7 @@ public sealed partial class EntrySpotActorDispatchTests
         await sessions.DestroyActorAsync(node.RoutingId, actor);
 
         Assert.Equal(2, node.DestroyedActors.Count);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
     }
 
     [Fact]
@@ -561,14 +561,14 @@ public sealed partial class EntrySpotActorDispatchTests
         Assert.Equal(nativeActor, state.NativeActorRef);
         Assert.True(state.IsTeardownPending);
         Assert.Null(await sessions.FindActorAsync(state.ActorId));
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
 
         allowRetry.TrySetResult();
         await retry.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.False(state.IsTeardownPending);
         Assert.Null(state.NativeActorRef);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
         Assert.Equal(2, node.DestroyedActors.Count);
     }
 
@@ -630,7 +630,7 @@ public sealed partial class EntrySpotActorDispatchTests
 
         Assert.False(sessions.TryGetCreatedActorState(state.ActorId, out _));
         Assert.Single(node.DestroyedActors);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", state.ActorId)));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey(state.ActorId)));
     }
 
     [Fact]
@@ -1296,7 +1296,7 @@ public sealed partial class EntrySpotActorDispatchTests
             var created = await runtime.CreateAsync<EmptyUserSpot>();
 
             Assert.Equal(1, deltas.Sum());
-            Assert.True(await runtime.CloseAsync(created.Spot.SpotId));
+            Assert.True(await runtime.CloseAsync(created.Spot));
             Assert.Equal(0, deltas.Sum());
         }
         finally
@@ -1331,7 +1331,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 .AsTask();
             await probe.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-            var close = runtime.CloseAsync(created.Spot.SpotId).AsTask();
+            var close = runtime.CloseAsync(created.Spot).AsTask();
             Assert.False(close.IsCompleted);
 
             probe.Release.TrySetResult();
@@ -1483,6 +1483,10 @@ public sealed partial class EntrySpotActorDispatchTests
                 .Publish("entry", "entry", "events", new ProbeRouteMessage("published"))
                 .Async();
 
+            Assert.True(SpinWait.SpinUntil(
+                () => node.CreatedSpots.Count == 1
+                      && node.CreatedSpots[0].PublishedHeader is not null,
+                TimeSpan.FromSeconds(5)));
             var publisher = Assert.Single(node.CreatedSpots);
             var header = Assert.IsType<ZLinkEnvelopeHeader>(publisher.PublishedHeader);
             Assert.Null(header.CorrelationId);
@@ -4280,7 +4284,7 @@ public sealed partial class EntrySpotActorDispatchTests
         public IZLinkMonitoringBackendAdapter CreateMonitoringAdapter() => throw new NotSupportedException();
     }
 
-    private sealed class ThrowingRuntimeErrorSink : IZLinkRuntimeErrorSink
+    private sealed class ThrowingRuntimeErrorSink : IZLinkRuntimeFailureReporter
     {
         public void ReportHandlerException(Exception exception)
         {

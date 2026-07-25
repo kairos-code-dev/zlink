@@ -12,7 +12,7 @@ public sealed class RedisCrossLanguageTests
             "Cross-language Redis harness environment is not configured.");
         await using var store = CreateStore("node");
 
-        var actor = await store.ResolveActorAsync(new ZLinkActorLocationKey("cross", "node-actor"));
+        var actor = await store.ResolveActorAsync(new ZLinkActorLocationKey("node-actor"));
         Assert.NotNull(actor);
         Assert.Equal("node-actor", actor!.ActorRef.ActorId);
         Assert.Equal(RoutingId.From("node-node"), actor.ActorRef.NodeRid);

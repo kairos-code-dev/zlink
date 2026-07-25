@@ -51,9 +51,9 @@ internal sealed class ZLinkUserSpotOperationTarget(
                 operation,
                 reply: null);
         }
-        if (snapshot.Allocation.State != ZLinkPlacementAllocationState.Pending
+        if (snapshot.Allocation.State != ZLinkPlacementAllocationState.Reserved
             || authority.State != ZLinkUserSpotAuthorityState.Creating
-            || snapshot.PendingCreation is not { } pending
+            || snapshot.ReservedCreation is not { } pending
             || !string.Equals(
                 pending.ReservationId,
                 operation.Reservation.ReservationId,
@@ -242,6 +242,8 @@ internal sealed class ZLinkUserSpotOperationTarget(
         {
             closed = await catalog.CloseAsync(
                     operation.Target.SpotId,
+                    DateTimeOffset.FromUnixTimeMilliseconds(
+                        checked((long)operation.DeadlineUnixMs)),
                     cancellationToken)
                 .ConfigureAwait(false);
         }

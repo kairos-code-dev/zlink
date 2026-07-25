@@ -67,6 +67,16 @@ internal static class TestRows
             new ZLinkPopulationCapacity(12, 2, 1_000),
             new ZLinkPopulationCapacity(0, 0, 1_000),
             Array.Empty<ZLinkSpotTypeCapacity>()),
-        EntrySpotId = "play-entry-00000000-0000-4000-8000-000000000001"
+        EntrySpotId = EntrySpotId(meshName, nodeRid)
     };
+
+    private static string EntrySpotId(string meshName, string nodeRid)
+    {
+        var hex = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(nodeRid)))
+            .ToLowerInvariant();
+        return $"{meshName}-entry-{hex[..8]}-{hex[8..12]}-4{hex[13..16]}"
+               + $"-a{hex[17..20]}-{hex[20..32]}";
+    }
 }

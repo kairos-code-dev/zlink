@@ -150,6 +150,12 @@ internal sealed class ZLinkActorRemoteJoiner(
         var sourceActivation = actorState.LiveActivation;
         var sourceLeft = false;
         var sourceCaptureStarted = false;
+        var relocationMetric = ZLinkRuntimeMetrics.CreateRelocation(
+            actor.Context.MeshName,
+            ZLinkRelocationMetricObjectKind.Actor,
+            transfer is null
+                ? ZLinkRelocationMetricPolicy.Recreate
+                : ZLinkRelocationMetricPolicy.Snapshot);
         try
         {
             var result = await SubmitRoutedJoinActorTransactionAsync(
@@ -165,6 +171,7 @@ internal sealed class ZLinkActorRemoteJoiner(
                     accepted => targetAccepted = accepted,
                     () => sourceCaptureStarted = true,
                     () => sourceLeft = true,
+                    relocationMetric,
                     cancellationToken)
                 .ConfigureAwait(false);
             if (result is not ZLinkActorJoinResult.Accepted)
@@ -176,7 +183,10 @@ internal sealed class ZLinkActorRemoteJoiner(
                         sourceLeft,
                         sourceCaptureStarted)
                     .ConfigureAwait(false);
+                relocationMetric.Complete(ZLinkRelocationMetricOutcome.Aborted);
             }
+            else
+                relocationMetric.Complete(ZLinkRelocationMetricOutcome.Completed);
 
             return result;
         }
@@ -196,9 +206,14 @@ internal sealed class ZLinkActorRemoteJoiner(
                 }
                 catch (Exception rollbackFailure)
                 {
+                    relocationMetric.Complete(ZLinkRelocationMetricOutcome.Failed);
                     throw new AggregateException(transactionFailure, rollbackFailure);
                 }
             }
+            relocationMetric.Complete(
+                IsRuntimeShutdown(transactionFailure)
+                    ? ZLinkRelocationMetricOutcome.Shutdown
+                    : ZLinkRelocationMetricOutcome.Failed);
             throw;
         }
     }
@@ -255,6 +270,7 @@ internal sealed class ZLinkActorRemoteJoiner(
         Action<bool> setTargetAccepted,
         Action markSourceCaptureStarted,
         Action markSourceLeft,
+        ZLinkRuntimeMetrics.ZLinkRelocationMetricOperation relocationMetric,
         CancellationToken cancellationToken)
     {
         var sourceSpotId = ResolveSourceSpotId(actorState);
@@ -324,9 +340,9 @@ internal sealed class ZLinkActorRemoteJoiner(
         var actorAuthorityOwnerGeneration =
             authority.Snapshot.AuthorityOwnerGeneration;
 
-        var pendingRequests = await actorState.BeginHandoffCaptureAsync(cancellationToken)
+        relocationMetric.Start();
+        _ = await actorState.BeginHandoffCaptureAsync(cancellationToken)
             .ConfigureAwait(false);
-        var transferMetricStarted = ZLinkRuntimeMetrics.StartActorTransfer(pendingRequests);
         markSourceCaptureStarted();
 
         var transferState = await CaptureTransferStateAsync(
@@ -334,10 +350,6 @@ internal sealed class ZLinkActorRemoteJoiner(
                 transfer,
                 actor,
                 cancellationToken)
-            .ConfigureAwait(false);
-
-        markSourceLeft();
-        await NotifySourceActorLeftAsync(actor, actorState, cancellationToken)
             .ConfigureAwait(false);
 
         var header = ZLinkClientCallCodec.CreateEnvelope(
@@ -381,11 +393,23 @@ internal sealed class ZLinkActorRemoteJoiner(
             return new ZLinkActorJoinResult.Rejected(admissionReplyMessage);
 
         var resultActorRef = ZLinkRemoteActorJoinPackets.ToActorRef(reply);
+        setTargetAccepted(true);
+        if (resultActorRef.Generation != actorRef.Generation)
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.ActorGenerationStale,
+                $"Actor '{actor.ActorId}' target changed ObjectGeneration during handoff.");
         var trailingFrames = actorState.Handoff.CutoverCaptureToForwarding(
             committedFrames.Count,
             actorRef,
             resultActorRef);
-        setTargetAccepted(true);
+        relocationMetric.RecordJournalMessages(
+            checked(committedFrames.Count + trailingFrames.Count));
+        markSourceLeft();
+        await ReconcileCommittedSourceLeaveAsync(
+                actor,
+                actorState,
+                CancellationToken.None)
+            .ConfigureAwait(false);
         actorState.Handoff.CommitForwardingCutover(
             registration.ActorTransferForwardWindow ?? TimeSpan.Zero);
         await ReconcileCommittedSourceHandoffAsync(
@@ -409,11 +433,17 @@ internal sealed class ZLinkActorRemoteJoiner(
                     routerChannelId,
                 CancellationToken.None)
                 .ConfigureAwait(false);
-        ZLinkRuntimeMetrics.CompleteActorTransfer(transferMetricStarted);
         return new ZLinkActorJoinResult.Accepted(
             resultActorRef.ToNative(),
             admissionReplyMessage);
     }
+
+    private bool IsRuntimeShutdown(Exception exception) =>
+        runtime.ShutdownToken.IsCancellationRequested
+        || exception is ZLinkFrameworkException
+        {
+            Kind: ZLinkFrameworkErrorKind.RuntimeShutdown
+        };
 
     internal static ValueTask<ZLinkMessage> CaptureTransferStateAsync(
         IServiceProvider services,
@@ -478,6 +508,21 @@ internal sealed class ZLinkActorRemoteJoiner(
                 },
                 exception => ReportCommittedHandoffFailure(
                     "actor-source-handoff-cleanup",
+                    exception),
+                cancellationToken,
+                static exception => exception is OperationCanceledException)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask ReconcileCommittedSourceLeaveAsync(
+        IZLinkActor actor,
+        ZLinkActorRuntimeState actorState,
+        CancellationToken cancellationToken)
+    {
+        await ZLinkReconciliationRunner.RunAsync(
+                token => NotifySourceActorLeftAsync(actor, actorState, token),
+                exception => ReportCommittedHandoffFailure(
+                    "actor-source-leave",
                     exception),
                 cancellationToken,
                 static exception => exception is OperationCanceledException)
@@ -686,7 +731,9 @@ internal sealed class ZLinkActorRemoteJoiner(
         CancellationToken cancellationToken)
     {
         if (actorState.LiveActivation is { } previousActivation)
-            await previousActivation.NotifyActorLeftAfterManagedJoinSpotAsync(actor, cancellationToken)
+            await previousActivation.NotifyActorLeftAfterCommittedMembershipAsync(
+                    actor,
+                    cancellationToken)
                 .ConfigureAwait(false);
         else
             await runtime.NotifyEntrySpotActorLeftAsync(actor, cancellationToken: cancellationToken)

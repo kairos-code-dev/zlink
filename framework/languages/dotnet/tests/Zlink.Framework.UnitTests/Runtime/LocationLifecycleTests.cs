@@ -16,7 +16,7 @@ public sealed class LocationLifecycleTests
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var activatedB = 0;
-        var key = new ZLinkActorLocationKey(MeshName, ActorId);
+        var key = new ZLinkActorLocationKey(ActorId);
 
         var winner = await nodeA.ActorOwnership.ExecuteActorClaimThenActivateAsync(
             MeshName,
@@ -124,7 +124,7 @@ public sealed class LocationLifecycleTests
                 CancellationToken.None));
 
         // The rolled-back key is claimable again, by anyone.
-        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(MeshName, ActorId)));
+        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId)));
         var reclaim = await node.ActorOwnership.ExecuteActorClaimThenActivateAsync(
             MeshName,
             ActorType,
@@ -164,7 +164,7 @@ public sealed class LocationLifecycleTests
             await Task.Delay(20);
 
         Assert.False(node.ActorOwnership.OwnsActor(ActorId));
-        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(MeshName, ActorId)));
+        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId)));
         var reclaim = await node.ActorOwnership.ExecuteActorClaimThenActivateAsync(
             MeshName,
             ActorType,
@@ -181,7 +181,7 @@ public sealed class LocationLifecycleTests
     {
         await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
-        var key = new ZLinkActorLocationKey(MeshName, ActorId);
+        var key = new ZLinkActorLocationKey(ActorId);
 
         var first = await node.ActorOwnership.ExecuteActorClaimThenActivateAsync(
             MeshName,
@@ -219,7 +219,7 @@ public sealed class LocationLifecycleTests
     {
         await using var fixture = await LifecycleFixture.CreateAsync();
         var node = await fixture.NodeAsync("node-a");
-        var key = new ZLinkActorLocationKey(MeshName, ActorId);
+        var key = new ZLinkActorLocationKey(ActorId);
 
         await CreateTrackedActorAsync(node);
 
@@ -253,7 +253,7 @@ public sealed class LocationLifecycleTests
 
         await CreateTrackedActorAsync(node);
         await node.ActorOwnership.ReleaseActorAsync(ActorId);
-        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(MeshName, ActorId)));
+        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId)));
 
         var status = await node.SpotLocations.ClaimAsync(
             "mesh",
@@ -317,7 +317,7 @@ public sealed class LocationLifecycleTests
             "spot-1",
             spotGeneration: 1);
 
-        var row = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(MeshName, ActorId));
+        var row = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId));
         Assert.NotNull(row);
         // The rejected reference publish is not part of the committed base.
         Assert.Equal(0UL, row.ActorRef.Generation);
@@ -351,7 +351,7 @@ public sealed class LocationLifecycleTests
         Assert.Equal(1, controlled.RemoveCalls);
         Assert.NotNull(controlled.LastRemoveOwner);
         Assert.True(controlled.LastRemoveOwner.Value.Generation > 0);
-        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(MeshName, ActorId)));
+        Assert.Null(await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId)));
     }
 
     [Fact]
@@ -472,7 +472,7 @@ public sealed class LocationLifecycleTests
 
         // The stale owner must not be able to damage the new row.
         await nodeA.ActorOwnership.ReleaseActorAsync(ActorId);
-        var row = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(MeshName, ActorId));
+        var row = await fixture.Store.ResolveActorAsync(new ZLinkActorLocationKey(ActorId));
         Assert.Equal(nodeB.Runtime.OwnerId, row!.OwnerId);
     }
 
@@ -561,7 +561,7 @@ public sealed class LocationLifecycleTests
         var nodeA = await fixture.NodeAsync("node-a");
         var nodeB = await fixture.NodeAsync("node-b");
         var nodeC = await fixture.NodeAsync("node-c");
-        var key = new ZLinkActorLocationKey(MeshName, ActorId);
+        var key = new ZLinkActorLocationKey(ActorId);
 
         var activation = await nodeA.ActorOwnership.ExecuteActorClaimThenActivateAsync(
             MeshName, ActorType, ActorId, RoutingId.From("node-a"),

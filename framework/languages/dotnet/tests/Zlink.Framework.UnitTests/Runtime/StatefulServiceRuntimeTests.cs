@@ -766,7 +766,6 @@ public sealed class StatefulServiceRuntimeTests
             var node = options.AddRouteMesh("objects")
                 .Listen(targetEndpoint)
                 .SetRoutingId(targetRid);
-            node.ChannelName("objects");
             node.Objects().Server().AddSpotFactory<ProductionUserSpot>(
                 stableType,
                 null,
@@ -814,6 +813,7 @@ public sealed class StatefulServiceRuntimeTests
                 DateTimeOffset.UtcNow)
             {
                 ObjectRole = ZLinkMeshNodeObjectRole.Server,
+                EntrySpotId = $"production-entry-{Guid.NewGuid():D}",
                 State = ZLinkFrameworkRuntimeState.Serving,
                 ObjectCapabilities =
                 [
@@ -914,6 +914,9 @@ public sealed class StatefulServiceRuntimeTests
                     UserSpotCreateResult.Created,
                     createCompletion.UserSpotCreateCompletion?.Result);
                 Assert.Equal(1, ProductionUserSpot.CreateCount);
+                Assert.Equal(
+                    reservation.Reservation.ObjectGeneration,
+                    ProductionUserSpot.ObjectGenerationObservedDuringCreate);
                 Assert.Equal(2, replyParts.Count);
                 var replyHeader = ZLinkEnvelopeCodec.DecodeHeader(replyParts);
                 Assert.Equal(ZLinkMessageKind.Response, replyHeader.Kind);
@@ -956,6 +959,13 @@ public sealed class StatefulServiceRuntimeTests
                 new UserSpotCloseCompletion(true),
                 closeCompletion.UserSpotCloseCompletion);
             Assert.Equal(1, ProductionUserSpot.CloseCount);
+            Assert.Equal(
+                ZLinkSpotCloseReason.ExplicitClose,
+                ProductionUserSpot.LastClosingContext?.Reason);
+            Assert.True(
+                ProductionUserSpot.LastClosingContext?.Deadline
+                > DateTimeOffset.UtcNow);
+            Assert.False(ProductionUserSpot.CleanupTokenWasCanceledAtInvocation);
             Assert.IsType<ZLinkAuthorityReadResult.Missing>(
                 await store.ReadAuthorityAsync(authorityKey));
 
@@ -1071,7 +1081,6 @@ public sealed class StatefulServiceRuntimeTests
                 var node = options.AddRouteMesh("objects")
                     .Listen(endpoint)
                     .SetRoutingId(rid);
-                node.ChannelName("objects");
                 if (peer is { } connection)
                 {
                     node.PeerConnections.Connect(
@@ -1103,8 +1112,22 @@ public sealed class StatefulServiceRuntimeTests
             new ZLinkMeshPeerConnection(targetEndpoint, targetRid));
         var target = targetProvider.GetRequiredService<ZLinkFrameworkRuntime>();
         var source = sourceProvider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var targetLocations = targetProvider.GetRequiredService<ZLinkLocationRuntime>();
+        var sourceLocations = sourceProvider.GetRequiredService<ZLinkLocationRuntime>();
+        var targetAutoConnect =
+            targetProvider.GetRequiredService<ZLinkLocationAutoConnectHost>();
+        var sourceAutoConnect =
+            sourceProvider.GetRequiredService<ZLinkLocationAutoConnectHost>();
+        await targetLocations.StartAsync(targetRid, CancellationToken.None);
+        await sourceLocations.StartAsync(sourceRid, CancellationToken.None);
         await target.StartAsync(CancellationToken.None);
         await source.StartAsync(CancellationToken.None);
+        await targetAutoConnect.StartAsync(
+            await target.GetStartedStateForRoutingAsync(CancellationToken.None),
+            CancellationToken.None);
+        await sourceAutoConnect.StartAsync(
+            await source.GetStartedStateForRoutingAsync(CancellationToken.None),
+            CancellationToken.None);
         try
         {
             target.GetSpotNodeRuntime("objects").Node.ConnectPeer(
@@ -1113,55 +1136,20 @@ public sealed class StatefulServiceRuntimeTests
             await WaitUntilAsync(() =>
                 source.GetSpotNodeRuntime("objects").Node.MeshStatus()
                     .AdmittedPeerCount > 0);
-            var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
-                await locationStore.ClaimOwnerLeaseAsync(
-                    $"public-owner-{suffix}",
-                    TimeSpan.FromMinutes(1)));
-            var targetGeneration =
-                target.GetSpotNodeRuntime("objects").Node.MeshStatus()
-                    .LifecycleGeneration;
-            Assert.Equal(
-                ZLinkLocationWriteStatus.Stored,
-                (await locationStore.UpdateMeshNodeAsync(
-                    new ZLinkMeshNodeDescriptor(
-                        "objects",
-                        targetRid,
-                        targetGeneration,
-                        1,
-                        targetEndpoint,
-                        new Dictionary<string, int>(StringComparer.Ordinal)
-                        {
-                            ["objects"] = 100
-                        },
-                        string.Empty,
-                        owner.Token.OwnerId,
-                        owner.Token.LeaseGeneration,
-                        DateTimeOffset.UtcNow)
-                    {
-                        ObjectRole = ZLinkMeshNodeObjectRole.Server,
-                        State = ZLinkFrameworkRuntimeState.Serving,
-                        ObjectCapabilities =
-                        [
-                            new ZLinkObjectCapability(
-                                ZLinkPlacementObjectKind.UserSpot,
-                                "Tests.ProductionUserSpot",
-                                ZLinkObjectMaintenancePolicyKind.Disabled,
-                                false,
-                                0)
-                        ],
-                        Capacity = new ZLinkPlacementCapacity(
-                            new ZLinkPopulationCapacity(0, 0, 0),
-                            new ZLinkPopulationCapacity(0, 0, 0),
-                            [
-                                new ZLinkSpotTypeCapacity(
-                                    ZLinkPlacementObjectKind.UserSpot,
-                                    "Tests.ProductionUserSpot",
-                                    0,
-                                    0,
-                                    0)
-                            ])
-                    },
-                    ZLinkLocationWriteIntent.NewClaim)).Status);
+            ZLinkMeshNodeDescriptor? currentDescriptor = null;
+            for (var attempt = 0; attempt < 500 && currentDescriptor is null; attempt++)
+            {
+                currentDescriptor = (await locationStore.ListMeshNodesAsync("objects"))
+                    .SingleOrDefault(row => row.Rid == targetRid);
+                if (currentDescriptor is null)
+                    await Task.Delay(10);
+            }
+            var descriptor = Assert.IsType<ZLinkMeshNodeDescriptor>(currentDescriptor);
+            Assert.Contains(
+                descriptor.ObjectCapabilities,
+                capability =>
+                    capability.ObjectKind == ZLinkPlacementObjectKind.UserSpot
+                    && capability.StableType == "Tests.ProductionUserSpot");
             var spotId = $"public-spot-{suffix}";
             using var operationTimeout = new CancellationTokenSource(
                 TimeSpan.FromSeconds(10));
@@ -1213,11 +1201,11 @@ public sealed class StatefulServiceRuntimeTests
                     ZLinkUserSpotAuthorityPayloadCodec.AuthorityKey(joiningRid),
                     operationTimeout.Token));
             Assert.Equal(
-                ZLinkPlacementAllocationState.Pending,
+                ZLinkPlacementAllocationState.Reserved,
                 joiningPending.Snapshot.Allocation.State);
             Assert.StartsWith(
                 "inline-v1:",
-                joiningPending.Snapshot.PendingCreation!
+                joiningPending.Snapshot.ReservedCreation!
                     .RequestContentReference,
                 StringComparison.Ordinal);
             var joinedCreate = source
@@ -1237,8 +1225,16 @@ public sealed class StatefulServiceRuntimeTests
         }
         finally
         {
+            await sourceAutoConnect.StopAsync(CancellationToken.None);
             await source.StopAsync(CancellationToken.None);
+            await sourceLocations.RemoveOwnedRowsBeforeRoutingIdReleaseAsync(
+                CancellationToken.None);
+            await sourceLocations.StopAsync(CancellationToken.None);
+            await targetAutoConnect.StopAsync(CancellationToken.None);
             await target.StopAsync(CancellationToken.None);
+            await targetLocations.RemoveOwnedRowsBeforeRoutingIdReleaseAsync(
+                CancellationToken.None);
+            await targetLocations.StopAsync(CancellationToken.None);
         }
     }
 
@@ -1683,20 +1679,32 @@ public sealed class StatefulServiceRuntimeTests
     {
         private static int _createCount;
         private static int _closeCount;
+        private static int _cleanupTokenWasCanceledAtInvocation;
         private static string? _lastCreateContentType;
+        private static ZLinkSpotClosingContext? _lastClosingContext;
+        private static ulong _objectGenerationObservedDuringCreate;
         private static CreateGate? _nextCreateGate;
 
         public IZLinkSpotContext Context { get; } = context;
         internal static int CreateCount => Volatile.Read(ref _createCount);
         internal static int CloseCount => Volatile.Read(ref _closeCount);
+        internal static bool CleanupTokenWasCanceledAtInvocation =>
+            Volatile.Read(ref _cleanupTokenWasCanceledAtInvocation) != 0;
         internal static string? LastCreateContentType =>
             Volatile.Read(ref _lastCreateContentType);
+        internal static ZLinkSpotClosingContext? LastClosingContext =>
+            _lastClosingContext;
+        internal static ulong ObjectGenerationObservedDuringCreate =>
+            _objectGenerationObservedDuringCreate;
 
         internal static void Reset()
         {
             Volatile.Write(ref _createCount, 0);
             Volatile.Write(ref _closeCount, 0);
+            Volatile.Write(ref _cleanupTokenWasCanceledAtInvocation, 0);
             Volatile.Write(ref _lastCreateContentType, null);
+            _lastClosingContext = null;
+            _objectGenerationObservedDuringCreate = 0;
             Volatile.Write(ref _nextCreateGate, null);
         }
 
@@ -1716,6 +1724,7 @@ public sealed class StatefulServiceRuntimeTests
             cancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref _createCount);
             Volatile.Write(ref _lastCreateContentType, request.ContentType);
+            _objectGenerationObservedDuringCreate = Context.ObjectGeneration;
             if (Interlocked.Exchange(ref _nextCreateGate, null) is { } gate)
             {
                 gate.Entered.TrySetResult();
@@ -1725,9 +1734,15 @@ public sealed class StatefulServiceRuntimeTests
                 new ProductionCreateReply("production-created"));
         }
 
-        public ValueTask OnClosingAsync(CancellationToken cancellationToken)
+        public ValueTask OnClosingAsync(
+            ZLinkSpotClosingContext context,
+            CancellationToken cleanupCancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            _lastClosingContext = context;
+            Volatile.Write(
+                ref _cleanupTokenWasCanceledAtInvocation,
+                cleanupCancellationToken.IsCancellationRequested ? 1 : 0);
+            cleanupCancellationToken.ThrowIfCancellationRequested();
             Interlocked.Increment(ref _closeCount);
             return ValueTask.CompletedTask;
         }

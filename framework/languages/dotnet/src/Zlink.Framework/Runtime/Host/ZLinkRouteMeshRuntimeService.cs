@@ -15,8 +15,7 @@ namespace Zlink.Framework.Runtime.Host;
 internal sealed class ZLinkRouteMeshRuntimeService(
     ZLinkFrameworkRuntime runtime,
     ZLinkLocationStoreHealth? storeHealth,
-    IZLinkLocationRuntimeQuery? locationQuery,
-    Func<IZLinkDrainControl?> drainControl) : IZLinkRouteMeshRuntime, IDisposable
+    IZLinkLocationRuntimeQuery? locationQuery) : IZLinkRouteMeshRuntime, IDisposable
 {
     private static readonly TimeSpan MonitorIdleDelay = TimeSpan.FromMilliseconds(10);
 
@@ -59,14 +58,7 @@ internal sealed class ZLinkRouteMeshRuntimeService(
                 status.PendingApplicationMessages,
                 InfrastructureActive: state is ZLinkMeshNodeState.Serving or ZLinkMeshNodeState.Draining,
                 status.PendingInfrastructureMessages),
-            LocationSnapshot(),
-            new ZLinkMeshDrainSnapshot(
-                state,
-                Deadline: null,
-                WorkSealed: state is ZLinkMeshNodeState.Drained or ZLinkMeshNodeState.Stopped,
-                status.PendingApplicationMessages,
-                PendingTransferCount: 0,
-                PendingStreamBarrierCount: 0))
+            LocationSnapshot())
         {
             ApplicationVersion = placement?.ApplicationVersion
                 ?? runtime.Registration.ApplicationVersion,
@@ -78,9 +70,10 @@ internal sealed class ZLinkRouteMeshRuntimeService(
             ActivationConcurrency = placement?.ActivationConcurrency
                 ?? new ZLinkActivationConcurrency(
                     0,
-                    nodeRuntime.Registration.MaxPendingActivations),
+                    nodeRuntime.Registration.ActivationConcurrencyLimit),
             ObjectCapabilities = placement?.ObjectCapabilities
-                ?? Array.Empty<ZLinkObjectCapability>()
+                ?? Array.Empty<ZLinkObjectCapability>(),
+            InstanceSpots = nodeRuntime.GetInstanceSpotMonitoringSnapshots()
         };
     }
 
@@ -244,84 +237,13 @@ internal sealed class ZLinkRouteMeshRuntimeService(
         if (nativeEvent.Kind != MeshMonitorEventKind.StateChanged)
             return [mapped];
 
-        // A Core lifecycle transition changes both the general node state and
-        // the drain snapshot. Framework exposes both stable identifiers.
-        return
-        [
-            mapped,
-            mapped with
-            {
-                Identifier = "zlink.runtime.mesh_node.drain_changed",
-                Sequence = NextSequence(meshName)
-            }
-        ];
+        return [mapped];
     }
 
     public bool IsReady(string meshName)
     {
         return runtime.GetMeshNodeRuntime(meshName).Node.MeshStatus().State
             is MeshNodeState.Started or MeshNodeState.PartialReady or MeshNodeState.Ready;
-    }
-
-    public async ValueTask<ZLinkMeshDrainResult> DrainAsync(
-        string meshName,
-        TimeSpan? deadline = null,
-        CancellationToken cancellationToken = default)
-    {
-        EnsureHostDrainMatchesMeshScope(meshName);
-        _ = runtime.GetMeshNodeRuntime(meshName);
-        var control = RequireDrainControl();
-        var result = deadline is { } fixedDeadline
-            ? await control.DrainAsync(fixedDeadline, cancellationToken).ConfigureAwait(false)
-            : await control.DrainAsync(TimeSpan.FromSeconds(30), cancellationToken).ConfigureAwait(false);
-        return MapDrainResult(result);
-    }
-
-    public async ValueTask<ZLinkMeshDrainResult> AwaitDrainedAsync(
-        string meshName,
-        CancellationToken cancellationToken = default)
-    {
-        EnsureHostDrainMatchesMeshScope(meshName);
-        _ = runtime.GetMeshNodeRuntime(meshName);
-        var control = RequireDrainControl();
-        return MapDrainResult(await control.AwaitDrainedAsync(cancellationToken).ConfigureAwait(false));
-    }
-
-    private IZLinkDrainControl RequireDrainControl()
-    {
-        return drainControl()
-               ?? throw new ZLinkConfigurationException(
-                   "Graceful drain requires the framework host drain control.");
-    }
-
-    private void EnsureHostDrainMatchesMeshScope(string meshName)
-    {
-        if (!runtime.Registration.SpotNodes.ContainsKey(meshName))
-            throw new ZLinkConfigurationException(
-                $"RouteMesh '{meshName}' is not registered.");
-        if (runtime.Registration.SpotNodes.Count != 1)
-            throw new ZLinkConfigurationException(
-                "Mesh-scoped drain is not available when the host contains multiple RouteMesh registrations.");
-    }
-
-    private static ZLinkMeshDrainResult MapDrainResult(ZLinkDrainResult result)
-    {
-        return result switch
-        {
-            Drained => new ZLinkMeshDrainResult.Drained(),
-            ForceStopped forced => new ZLinkMeshDrainResult.ForceStopped(
-                forced.Reason switch
-                {
-                    ZLinkDrainForceReason.DeadlineExceeded => "deadline_exceeded",
-                    ZLinkDrainForceReason.DrainingStatePublishFailed => "drain_state_publish_failed",
-                    ZLinkDrainForceReason.OwnerCleanupFailed => "owner_cleanup_failed",
-                    ZLinkDrainForceReason.TeardownFailed => "teardown_failed",
-                    _ => throw new InvalidOperationException(
-                        $"Unknown drain force reason '{forced.Reason}'.")
-                }),
-            _ => throw new InvalidOperationException(
-                $"Unknown drain result '{result.GetType().Name}'.")
-        };
     }
 
     private ulong NextSequence(string meshName)
@@ -404,8 +326,8 @@ internal sealed class ZLinkRouteMeshRuntimeService(
             .ThenBy(static entry => entry.StableType, StringComparer.Ordinal)
             .ToArray();
         return new ZLinkPlacementCapacity(
-            new ZLinkPopulationCapacity(0, 0, registration.MaxActiveObjects),
-            new ZLinkPopulationCapacity(0, 0, registration.MaxActiveObjects),
+            new ZLinkPopulationCapacity(0, 0, registration.ActorLimit),
+            new ZLinkPopulationCapacity(0, 0, registration.SpotLimit),
             spotTypes);
     }
 
@@ -479,11 +401,13 @@ internal sealed class ZLinkRouteMeshRuntimeService(
         IReadOnlyList<MeshPeerChannel>[] peerChannels)
     {
         var localMemberships = nodeRuntime.Registration.ChannelMemberships
+            .Where(static membership => membership.IsServer)
             .ToDictionary(
                 static membership => membership.ChannelName,
                 static membership => membership.Weight,
                 StringComparer.Ordinal);
-        var channelNames = localMemberships.Keys
+        var channelNames = nodeRuntime.Registration.ChannelMemberships
+            .Select(static membership => membership.ChannelName)
             .Concat(peerChannels.SelectMany(static channels =>
                 channels.Select(static channel => channel.Name)))
             .Distinct(StringComparer.Ordinal)

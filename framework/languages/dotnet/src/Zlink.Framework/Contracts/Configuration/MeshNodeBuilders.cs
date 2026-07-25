@@ -2,8 +2,8 @@ namespace Zlink.Framework.Contracts.Configuration;
 
 // 10.0.0 unified RouteMesh·MeshNode registration surface.
 // Owned by spec server/languages/dotnet/05-route-mesh.ko.md §2·§3·§4·§5.
-// AddRouteMesh(meshName) registers one process-local MeshNode; ChannelName(...)
-// adds an immutable logical membership + handler namespace without a new socket.
+// AddRouteMesh(meshName) registers one process-local MeshNode. Channel(...)
+// adds an immutable logical membership without creating another socket.
 
 public readonly record struct ZLinkMeshPeerConnection(
     string Endpoint,
@@ -40,25 +40,40 @@ public interface IZLinkMeshNodeSocketConfig
     TimeSpan? SendTimeout { get; set; }
 }
 
-public interface IZLinkMeshChannelBuilder
+public interface IZLinkMeshChannelRoleBuilder
 {
-    IZLinkMeshChannelBuilder SetWeight(int weight);
+    IZLinkMeshChannelClientBuilder Client();
 
-    IZLinkMeshChannelBuilder AddHandlerGroup(string groupName);
+    IZLinkMeshChannelServerBuilder Server();
+}
 
-    IZLinkMeshChannelBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
+public interface IZLinkMeshChannelClientBuilder
+{
+}
+
+public interface IZLinkMeshChannelServerBuilder
+{
+    IZLinkMeshChannelServerBuilder SetWeight(int weight);
+
+    IZLinkMeshChannelServerBuilder AddHandlerGroup(string groupName);
+
+    IZLinkMeshChannelServerBuilder AddSendHandler<THandler, TMessage>(string? packetName = null)
         where THandler : class, IZLinkSendHandler<TMessage>;
 
-    IZLinkMeshChannelBuilder AddSendHandler<THandler>(string? packetName = null)
+    IZLinkMeshChannelServerBuilder AddSendHandler<THandler>(string? packetName = null)
         where THandler : class;
 
-    IZLinkMeshChannelBuilder AddRequestHandler<THandler, TRequest, TReply>(string? packetName = null)
+    IZLinkMeshChannelServerBuilder AddRequestHandler<THandler, TRequest, TReply>(
+        string? packetName = null)
         where THandler : class, IZLinkRequestHandler<TRequest, TReply>;
 
-    IZLinkMeshChannelBuilder AddRequestHandler<THandler>(string? packetName = null)
+    IZLinkMeshChannelServerBuilder AddRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
 }
 
+// Temporary source-compatibility alias while existing samples and internal
+// tests move to Channel(...).Server(). It does not define a second runtime
+// Channel(...).Server() is the only serving membership surface.
 public interface IZLinkMeshObjectServerBuilder
 {
     IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
@@ -72,13 +87,13 @@ public interface IZLinkMeshObjectServerBuilder
 
     IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
         string instanceSpotType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkInstanceSpotFactoryOptions? options,
         ZLinkRelocationPolicy<TSpot> relocation)
         where TSpot : class, IZLinkInstanceSpot;
 
     IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
         string actorType,
-        ZLinkObjectPlacementOptions? placement,
+        ZLinkActorFactoryOptions? options,
         ZLinkRelocationPolicy<TActor> relocation)
         where TActor : class, IZLinkActor
         where TFactory : class, IZLinkActorFactory<TActor>;
@@ -95,11 +110,8 @@ public interface IZLinkMeshObjectClientBuilder
 {
 }
 
-public sealed record ZLinkObjectPlacementOptions
+public sealed record ZLinkActorFactoryOptions
 {
-    public int? MaxActiveObjects { get; init; }
-
-    public int? MaxPendingActivations { get; init; }
 }
 
 public enum ZLinkUserSpotExecutionMode
@@ -118,23 +130,27 @@ public sealed record ZLinkUserSpotFactoryOptions
 
 public interface IZLinkMeshNodeBuilder : IZLinkMeshObjectServerBuilder
 {
-    IZLinkMeshChannelBuilder ChannelName(string channelName);
+    IZLinkMeshChannelRoleBuilder Channel(string channelName);
 
     IZLinkMeshNodeBuilder Listen(string endpoint);
 
+    IZLinkMeshNodeBuilder Listen(int port = 0);
+
+    IZLinkMeshNodeBuilder SetBindHost(string bindHost);
+
+    IZLinkMeshNodeBuilder SetAdvertiseHost(string advertiseHost);
+
     IZLinkMeshNodeBuilder SetRoutingId(RoutingId routingId);
 
-    IZLinkMeshNodeBuilder UseAllocatedRoutingId(int slotCount);
-
-    IZLinkMeshNodeBuilder UseAllocatedRoutingId(int slotCount, string routingIdPrefix);
-
-    IZLinkMeshNodeBuilder SetRoutingIdAllocationGroup(string groupName);
+    IZLinkMeshNodeBuilder SetRoutingIdPrefix(string prefix);
 
     IZLinkMeshNodeBuilder SetPlacementWeight(int weight);
 
-    IZLinkMeshNodeBuilder SetObjectCapacity(
-        int maxActiveObjects,
-        int maxPendingActivations);
+    IZLinkMeshNodeBuilder SetActorLimit(int limit);
+
+    IZLinkMeshNodeBuilder SetSpotLimit(int limit);
+
+    IZLinkMeshNodeBuilder SetActivationConcurrency(int limit);
 
     IZLinkMeshObjectRoleBuilder Objects();
 
@@ -158,23 +174,4 @@ public interface IZLinkMeshNodeBuilder : IZLinkMeshObjectServerBuilder
     IZLinkMeshNodeBuilder AddRouteRequestHandler<THandler>(string? packetName = null)
         where THandler : class;
 
-    IZLinkEntrySpotOptions ConfigureEntrySpot();
-
-    IZLinkMeshNodeBuilder AddSpotFactory<TSpot>()
-        where TSpot : IZLinkSpot;
-
-    IZLinkMeshNodeBuilder AddInstanceSpotFactory<TSpot>(
-        string instanceSpotType,
-        ZLinkInstanceSpotFactoryOptions? options = null)
-        where TSpot : class, IZLinkInstanceSpot;
-
-    new IZLinkMeshNodeBuilder AddEntrySpot<TEntrySpot>()
-        where TEntrySpot : IZLinkEntrySpot;
-
-    IZLinkMeshNodeBuilder AddActorFactory<TFactory>(string actorType)
-        where TFactory : class, IZLinkActorFactory;
-
-    IZLinkMeshNodeBuilder AddActorTransferAdapter<TActor, TAdapter>(string actorType)
-        where TActor : IZLinkActor
-        where TAdapter : class, IZLinkActorTransferAdapter<TActor>;
 }

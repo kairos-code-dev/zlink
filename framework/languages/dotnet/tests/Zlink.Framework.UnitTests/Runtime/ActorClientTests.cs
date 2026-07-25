@@ -114,7 +114,10 @@ public sealed class ActorClientTests
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.AddRouteMesh("play").Listen("inproc://actor-client").ChannelName("play");
+            options.AddRouteMesh("play")
+                .Listen("inproc://actor-client")
+                .Channel("play")
+                .Server();
         });
 
         await using var provider = services.BuildServiceProvider();
@@ -128,7 +131,10 @@ public sealed class ActorClientTests
         var services = new ServiceCollection();
         services.AddZLinkFramework(options =>
         {
-            options.AddRouteMesh("play").Listen("inproc://actor-client").ChannelName("play");
+            options.AddRouteMesh("play")
+                .Listen("inproc://actor-client")
+                .Channel("play")
+                .Server();
         });
 
         await using var provider = services.BuildServiceProvider();

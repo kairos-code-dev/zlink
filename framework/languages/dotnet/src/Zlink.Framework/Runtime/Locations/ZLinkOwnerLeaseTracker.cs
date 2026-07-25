@@ -1,11 +1,9 @@
 namespace Zlink.Framework.Runtime.Locations;
 
 /// <summary>
-/// Caches the owner lease snapshot and answers "is this owner alive" for
-/// row validity joins. Expiry is computed from the store's own time plus
-/// locally measured monotonic elapsed time, never from the application wall
-/// clock. The snapshot refreshes at most once per polling interval, which
-/// bounds its staleness.
+/// Reads exact owner tokens for descriptor admission. The provider does not
+/// expose a global lease list; each descriptor supplies the owner identity
+/// that must be fenced.
 /// </summary>
 internal sealed class ZLinkOwnerLeaseTracker
 {
@@ -13,10 +11,9 @@ internal sealed class ZLinkOwnerLeaseTracker
     private readonly ZLinkLocationOptions _options;
     private readonly TimeProvider _time;
     private readonly ZLinkLocationStoreHealth? _health;
-    private readonly SemaphoreSlim _refreshGate = new(1, 1);
-    private readonly object _liveSetGate = new();
-    private volatile Snapshot? _snapshot;
-    private string? _liveSetFingerprint;
+    private readonly object _cacheGate = new();
+    private readonly Dictionary<string, Snapshot> _cache =
+        new(StringComparer.Ordinal);
     private long _liveSetVersion;
 
     internal ZLinkOwnerLeaseTracker(
@@ -35,28 +32,19 @@ internal sealed class ZLinkOwnerLeaseTracker
         string ownerId,
         CancellationToken cancellationToken = default)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        if (!snapshot.Leases.TryGetValue(ownerId, out var lease))
-        {
-            return false;
-        }
-
-        var elapsedSinceFetch = _time.GetElapsedTime(snapshot.FetchedAt);
-        return lease.LeaseExpiresAt - snapshot.StoreNow - elapsedSinceFetch > TimeSpan.Zero;
+        var snapshot = await GetSnapshotAsync(ownerId, cancellationToken)
+            .ConfigureAwait(false);
+        return snapshot.Token is not null
+               && IsUnexpired(snapshot);
     }
 
     internal async ValueTask<bool> IsOwnerTokenLiveAsync(
         ZLinkLocationOwnerToken token,
         CancellationToken cancellationToken = default)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken)
+        var snapshot = await GetSnapshotAsync(token.OwnerId, cancellationToken)
             .ConfigureAwait(false);
-        if (!snapshot.Leases.TryGetValue(token.OwnerId, out var lease)
-            || lease.LeaseGeneration != token.LeaseGeneration)
-            return false;
-        var elapsedSinceFetch = _time.GetElapsedTime(snapshot.FetchedAt);
-        return lease.LeaseExpiresAt - snapshot.StoreNow - elapsedSinceFetch
-               > TimeSpan.Zero;
+        return snapshot.Token == token && IsUnexpired(snapshot);
     }
 
     /// <summary>
@@ -71,63 +59,57 @@ internal sealed class ZLinkOwnerLeaseTracker
     internal async ValueTask<long> GetLiveOwnerSetVersionAsync(
         CancellationToken cancellationToken = default)
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
-        var elapsedSinceFetch = _time.GetElapsedTime(snapshot.FetchedAt);
-        var live = snapshot.Leases.Values
-            .Where(lease => lease.LeaseExpiresAt - snapshot.StoreNow - elapsedSinceFetch > TimeSpan.Zero)
-            .Select(static lease => lease.OwnerId)
-            .Order(StringComparer.Ordinal);
-        var fingerprint = string.Join('\n', live);
-
-        lock (_liveSetGate)
-        {
-            if (!string.Equals(fingerprint, _liveSetFingerprint, StringComparison.Ordinal))
-            {
-                _liveSetFingerprint = fingerprint;
-                _liveSetVersion++;
-            }
-
-            return _liveSetVersion;
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        await Task.CompletedTask.ConfigureAwait(false);
+        return Interlocked.Increment(ref _liveSetVersion);
     }
 
-    private async ValueTask<Snapshot> GetSnapshotAsync(CancellationToken cancellationToken)
+    private async ValueTask<Snapshot> GetSnapshotAsync(
+        string ownerId,
+        CancellationToken cancellationToken)
     {
-        var current = _snapshot;
-        if (current is not null && _time.GetElapsedTime(current.FetchedAt) < _options.PollingInterval)
+        Snapshot? current;
+        lock (_cacheGate)
+            _cache.TryGetValue(ownerId, out current);
+        if (current is not null
+            && _time.GetElapsedTime(current.FetchedAt) < _options.PollingInterval)
         {
             return current;
         }
 
-        await _refreshGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+        var fetchedAt = _time.GetTimestamp();
+        var read = await ZLinkLocationStoreRead.ExecuteAsync(
+                _health,
+                "owner-lease-read",
+                cancellationToken,
+                storeToken => _store.ReadOwnerLeaseAsync(ownerId, storeToken))
+            .ConfigureAwait(false);
+        var refreshed = read switch
         {
-            current = _snapshot;
-            if (current is not null && _time.GetElapsedTime(current.FetchedAt) < _options.PollingInterval)
-            {
-                return current;
-            }
-
-            var fetchedAt = _time.GetTimestamp();
-            var listed = await ZLinkLocationStoreRead.ExecuteAsync(
-                    _health,
-                    "owner-lease-read",
-                    cancellationToken,
-                    storeToken => _store.ListOwnerLeasesAsync(storeToken))
-                .ConfigureAwait(false);
-            var byOwner = listed.Leases.ToDictionary(lease => lease.OwnerId, StringComparer.Ordinal);
-            var refreshed = new Snapshot(byOwner, listed.StoreNow, fetchedAt);
-            _snapshot = refreshed;
-            return refreshed;
-        }
-        finally
-        {
-            _refreshGate.Release();
-        }
+            ZLinkOwnerLeaseReadResult.Found found => new Snapshot(
+                found.Token,
+                found.LeaseExpiresAt,
+                found.StoreNow,
+                fetchedAt),
+            ZLinkOwnerLeaseReadResult.Missing => new Snapshot(
+                null,
+                DateTimeOffset.MinValue,
+                DateTimeOffset.MinValue,
+                fetchedAt),
+            _ => throw new ArgumentOutOfRangeException(nameof(read))
+        };
+        lock (_cacheGate)
+            _cache[ownerId] = refreshed;
+        return refreshed;
     }
 
+    private bool IsUnexpired(Snapshot snapshot) =>
+        snapshot.LeaseExpiresAt - snapshot.StoreNow
+        - _time.GetElapsedTime(snapshot.FetchedAt) > TimeSpan.Zero;
+
     private sealed record Snapshot(
-        IReadOnlyDictionary<string, ZLinkOwnerLease> Leases,
+        ZLinkLocationOwnerToken? Token,
+        DateTimeOffset LeaseExpiresAt,
         DateTimeOffset StoreNow,
         long FetchedAt);
 }

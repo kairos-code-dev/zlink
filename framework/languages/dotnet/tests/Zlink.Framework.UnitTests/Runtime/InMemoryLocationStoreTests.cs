@@ -137,7 +137,7 @@ public sealed class InMemoryLocationStoreTests
         Assert.Equal(ZLinkLocationWriteStatus.RejectedConflict, conflict.Status);
 
         var removed = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("play", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerA, first.Generation));
         Assert.Equal(ZLinkLocationWriteStatus.Stored, removed);
 
@@ -199,7 +199,7 @@ public sealed class InMemoryLocationStoreTests
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, staleRenew.Status);
 
         var staleRemove = await store.RemoveActorAsync(
-            new ZLinkActorLocationKey("play", "actor-1"),
+            new ZLinkActorLocationKey("actor-1"),
             new ZLinkLocationOwnerToken(OwnerA, claimed.Generation));
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, staleRemove);
     }
@@ -225,8 +225,8 @@ public sealed class InMemoryLocationStoreTests
         var removed = await store.RemoveAllByOwnerAsync(ownerAToken);
 
         Assert.Equal(2, removed);
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-1")));
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-3")));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-1")));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-3")));
     }
 
     [Fact]
@@ -256,8 +256,8 @@ public sealed class InMemoryLocationStoreTests
         Assert.Contains(await store.ListMeshNodesAsync("play"), row => row.OwnerId == OwnerB);
         Assert.Null(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("spot-a")));
         Assert.NotNull(await store.ResolveSpotAsync(new ZLinkSpotLocationKey("spot-b")));
-        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-a")));
-        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("play", "actor-b")));
+        Assert.Null(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-a")));
+        Assert.NotNull(await store.ResolveActorAsync(new ZLinkActorLocationKey("actor-b")));
     }
 
     [Fact]

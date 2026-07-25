@@ -14,7 +14,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             var mesh = options.AddRouteMesh("profile")
                 .Listen("tcp://127.0.0.1:7101")
                 .SetRoutingId(RoutingId.From("profile"));
-            mesh.ChannelName("profile")
+            mesh.Channel("profile").Server()
                 .AddSendHandler<TestSendHandler, TestMessage>("send")
                 .AddRequestHandler<TestRequestHandler, TestRequest, TestReply>("request");
         });
@@ -39,7 +39,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             options.AddRouteMesh("profile")
                 .Listen("tcp://127.0.0.1:7101")
                 .SetRoutingId(RoutingId.From("profile"))
-                .ChannelName("profile")
+                .Channel("profile").Server()
                 .AddHandlerGroup("mesh-handler-exposure-test");
         });
 
@@ -61,7 +61,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
             var mesh = options.AddRouteMesh("profile")
                 .Listen("tcp://127.0.0.1:7101")
                 .SetRoutingId(RoutingId.From("profile"));
-            mesh.ChannelName("profile");
+            mesh.Channel("profile").Server();
             mesh.AddRouteSendHandler<TestRouteSendHandler, TestMessage>("route-send")
                 .AddRouteRequestHandler<ExplicitRouteRequestHandler, TestRequest, TestReply>("route-request");
         });
@@ -83,7 +83,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 var mesh = options.AddRouteMesh("profile")
                     .Listen("tcp://127.0.0.1:7101")
                     .SetRoutingId(RoutingId.From("profile"));
-                mesh.ChannelName("profile")
+                mesh.Channel("profile").Server()
                     .AddRequestHandler<TestRequestHandler, TestRequest, TestReply>("request")
                     .AddRequestHandler<AlternateTestRequestHandler, TestRequest, TestReply>("request");
             }));
@@ -102,7 +102,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
                 var mesh = options.AddRouteMesh("profile")
                     .Listen("tcp://127.0.0.1:7101")
                     .SetRoutingId(RoutingId.From("profile"));
-                mesh.ChannelName("profile");
+                mesh.Channel("profile").Server();
                 mesh.AddRouteRequestHandler<ExplicitRouteRequestHandler, TestRequest, TestReply>("route-request")
                     .AddRouteRequestHandler<AlternateRouteRequestHandler, TestRequest, TestReply>("route-request");
             }));

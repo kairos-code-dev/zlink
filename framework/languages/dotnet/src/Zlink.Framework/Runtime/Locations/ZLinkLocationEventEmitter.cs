@@ -87,7 +87,7 @@ internal sealed class ZLinkLocationEventEmitter
         _handles?.UpdateActor(actor);
         return EmitAsync(_actorSources, source => new ZLinkLocationActorEvent.RowUpdated(
             source, DateTimeOffset.UtcNow,
-            new ZLinkActorLocationKey(actor.MeshName, actor.ActorId), actor), ct);
+            new ZLinkActorLocationKey(actor.ActorId), actor), ct);
     }
 
     internal ValueTask ActorRowRemovedAsync(

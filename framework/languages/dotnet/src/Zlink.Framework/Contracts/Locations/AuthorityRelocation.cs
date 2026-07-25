@@ -11,7 +11,7 @@ public readonly record struct ZLinkAuthorityKey(string Value);
 
 public enum ZLinkPlacementAllocationState
 {
-    Pending = 1,
+    Reserved = 1,
     Active = 2
 }
 
@@ -33,7 +33,7 @@ public sealed record ZLinkPlacementAllocation(
     ulong DescriptorLifecycleGeneration,
     ZLinkCapacityVector Capacity);
 
-public sealed record ZLinkPendingObjectCreation(
+public sealed record ZLinkReservedObjectCreation(
     string ReservationId,
     string RequestContentReference,
     ReadOnlyMemory<byte> RequestSha256,
@@ -47,7 +47,7 @@ public sealed record ZLinkAuthoritySnapshot(
     string OwnerId,
     long OwnerLeaseGeneration,
     ZLinkPlacementAllocation Allocation,
-    ZLinkPendingObjectCreation? PendingCreation,
+    ZLinkReservedObjectCreation? ReservedCreation,
     DateTimeOffset StoreNow);
 
 public abstract record ZLinkAuthorityReadResult
@@ -439,13 +439,11 @@ public interface IZLinkAuthorityStore
 
     ValueTask<ZLinkRelocationCapacityReserveResult> ReserveRelocationCapacityAsync(
         ZLinkRelocationCapacityReservationRequest request,
-        CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException();
+        CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkRelocationCapacityAbortResult> AbortRelocationCapacityAsync(
         ZLinkRelocationCapacityFence fence,
-        CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException();
+        CancellationToken cancellationToken = default);
 
     ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(
         ZLinkAggregatePrepareRequest request,

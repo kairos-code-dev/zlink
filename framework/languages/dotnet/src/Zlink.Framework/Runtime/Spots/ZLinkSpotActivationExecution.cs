@@ -140,7 +140,12 @@ internal sealed partial class ZLinkSpotActivation
 
     ValueTask<bool> IZLinkSpotContext.CloseAsync(CancellationToken cancellationToken)
     {
-        return _runtime.CloseAsync(SpotId, cancellationToken);
+        return _runtime.CloseCurrentSpotAsync(SpotId, cancellationToken);
+    }
+
+    ValueTask<bool> IZLinkInstanceSpotContext.CloseAsync(CancellationToken cancellationToken)
+    {
+        return _runtime.CloseCurrentSpotAsync(SpotId, cancellationToken);
     }
 
     public async ValueTask<ZLinkSpotCreateResponse> InitializeAsync(
@@ -203,14 +208,121 @@ internal sealed partial class ZLinkSpotActivation
         await ExecuteSerializedAsync(
             static async (activation, state, ct) =>
             {
-                state.Response = await activation.Spot.OnCreateAsync(state.Request, ct);
+                state.Response = await activation.UserSpot.OnCreateAsync(state.Request, ct);
                 if (!state.Response.Accepted) return;
 
-                await activation.Spot.OnInitializeAsync(ct);
+                await activation.UserSpot.OnInitializeAsync(ct);
             },
             create,
             cancellationToken);
         return create.Response;
+    }
+
+    internal ValueTask InitializeInstanceAsync(CancellationToken cancellationToken)
+    {
+        if (Spot is not IZLinkInstanceSpot instance)
+            throw new InvalidOperationException("The current activation is not an Instance Spot.");
+        return ExecuteSerializedAsync(
+            static (activation, state, ct) => state.OnInitializeAsync(ct),
+            instance,
+            cancellationToken);
+    }
+
+    internal async ValueTask<InstanceSpotActivationTerminal>
+        DispatchDurableActivationAsync(
+            MeshOperationId operationId,
+            IReadOnlyList<ReadOnlyMemory<byte>> payload,
+            ReadOnlyMemory<byte>? metadata,
+            bool request,
+            CancellationToken cancellationToken)
+    {
+        _ = operationId;
+        var parts = payload.Select(Message.From).ToArray();
+        var completion = new TaskCompletionSource<InstanceSpotActivationTerminal>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var metadataBytes = metadata.HasValue
+            ? metadata.Value
+            : ReadOnlyMemory<byte>.Empty;
+        if (!ZLinkMeshMetadataCodec.TryDecode(
+                metadataBytes.Span,
+                out var decodedMetadata))
+            throw new ArgumentException(
+                "Application metadata is malformed.",
+                nameof(metadata));
+        Func<IReadOnlyList<Message>, SendFlags, SubmitResult>? replyCallback = null;
+        if (request)
+            replyCallback = (reply, _) =>
+            {
+                completion.TrySetResult(new InstanceSpotActivationTerminal(
+                    RequestResult.Ok,
+                    Systems.Zlink.Framework.Runtime.Protocol.ServiceWireConstants
+                        .FrameworkErrorCode.None,
+                    reply.Select(static item =>
+                            (ReadOnlyMemory<byte>)item.ToArray())
+                        .ToArray()));
+                return SubmitResult.Ok;
+            };
+        var received = new ZLinkBackendRouteReceived(
+            parts,
+            NodeRid,
+            SpotId,
+            null,
+            replyCallback,
+            metadata: decodedMetadata);
+        byte[] accepted;
+        try
+        {
+            accepted = ZLinkSpotAcceptedJournal.Encode(received);
+        }
+        catch
+        {
+            received.Dispose();
+            throw;
+        }
+
+        var queued = QueueApplicationSerialized(
+            static async (activation, state, ct) =>
+            {
+                try
+                {
+                    await activation._dispatcher.DispatchRouteAsync(
+                            state.Received,
+                            ct)
+                        .ConfigureAwait(false);
+                    if (!state.Request)
+                        state.Completion.TrySetResult(new InstanceSpotActivationTerminal(
+                            RequestResult.Ok,
+                            Systems.Zlink.Framework.Runtime.Protocol.ServiceWireConstants
+                                .FrameworkErrorCode.None,
+                            []));
+                    else if (!state.Completion.Task.IsCompleted)
+                        state.Completion.TrySetResult(new InstanceSpotActivationTerminal(
+                            RequestResult.InternalError,
+                            Systems.Zlink.Framework.Runtime.Protocol.ServiceWireConstants
+                                .FrameworkErrorCode.RequestFailed,
+                            []));
+                }
+                catch (Exception error)
+                {
+                    state.Completion.TrySetException(error);
+                }
+            },
+            new DurableActivationDispatch(received, completion, request),
+            accepted,
+            request,
+            () =>
+            {
+                received.Dispose();
+                completion.TrySetException(new ZLinkFrameworkException(
+                    ZLinkFrameworkErrorKind.RuntimeShutdown,
+                    "The Instance Spot activation queue stopped before admission."));
+            },
+            received.Dispose);
+        if (!queued)
+            return await completion.Task.ConfigureAwait(false);
+        // Admission is durable at this point. Caller cancellation no longer
+        // removes the accepted queue record or prevents terminal publication.
+        return await completion.Task.ConfigureAwait(false);
     }
 
     public ValueTask SubmitActorAsync(
@@ -222,6 +334,11 @@ internal sealed partial class ZLinkSpotActivation
     {
         return _actorDispatchSubmitter.Async(actor, runtimeState, header, body, cancellationToken);
     }
+
+    private sealed record DurableActivationDispatch(
+        ZLinkBackendRouteReceived Received,
+        TaskCompletionSource<InstanceSpotActivationTerminal> Completion,
+        bool Request);
 
     public ValueTask<ZLinkActorReply> SubmitActorForReplyAsync(
         IZLinkActor actor,
@@ -240,12 +357,25 @@ internal sealed partial class ZLinkSpotActivation
 
     public async ValueTask CloseAsync(CancellationToken cancellationToken)
     {
+        await CloseAsync(
+                ZLinkSpotCloseReason.ExplicitClose,
+                DateTimeOffset.UtcNow + DefaultRequestTimeout,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal async ValueTask CloseAsync(
+        ZLinkSpotCloseReason reason,
+        DateTimeOffset deadline,
+        CancellationToken cancellationToken)
+    {
         if (Interlocked.Exchange(ref _closingInvoked, 1) != 0)
             return;
         _ = await _serial.ExecuteQuiescentLifecycleAsync(
-                async static (activation, ct) =>
+                async (activation, ct) =>
                 {
-                    await activation.Spot.OnClosingAsync(ct).ConfigureAwait(false);
+                    await activation.InvokeClosingAsync(reason, deadline)
+                        .ConfigureAwait(false);
                     return true;
                 },
                 cancellationToken)
@@ -253,6 +383,8 @@ internal sealed partial class ZLinkSpotActivation
     }
 
     internal async ValueTask<bool> TryCloseIfNoActorsAsync(
+        ZLinkSpotCloseReason reason,
+        DateTimeOffset deadline,
         CancellationToken cancellationToken)
     {
         return await _serial.ExecuteQuiescentLifecycleAsync(
@@ -261,11 +393,30 @@ internal sealed partial class ZLinkSpotActivation
                     if (activation._actors.Count > 0) return false;
 
                     if (Interlocked.Exchange(ref activation._closingInvoked, 1) == 0)
-                        await activation.Spot.OnClosingAsync(ct).ConfigureAwait(false);
+                        await activation.InvokeClosingAsync(reason, deadline)
+                            .ConfigureAwait(false);
                     return true;
                 },
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    private ValueTask InvokeClosingAsync(
+        ZLinkSpotCloseReason reason,
+        DateTimeOffset deadline)
+    {
+        return Spot switch
+        {
+            IZLinkSpot user => ZLinkSpotClosingInvocation.InvokeAsync(
+                user.OnClosingAsync,
+                reason,
+                deadline),
+            IZLinkInstanceSpot instance => ZLinkSpotClosingInvocation.InvokeAsync(
+                instance.OnClosingAsync,
+                reason,
+                deadline),
+            _ => throw new InvalidOperationException("The SPOT lifecycle is not attached.")
+        };
     }
 
     private ValueTask ExecuteSerializedAsync(

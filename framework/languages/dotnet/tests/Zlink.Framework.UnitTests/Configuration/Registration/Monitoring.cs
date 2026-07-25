@@ -17,7 +17,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             var mesh = options.AddRouteMesh("gateway")
                 .Listen("tcp://127.0.0.1:7101")
                 .SetRoutingId(RoutingId.From("gateway"));
-            mesh.ChannelName("gateway").SetWeight(0);
+            mesh.Channel("gateway").Server().SetWeight(0);
         });
 
         using (var provider = withoutEgress.BuildServiceProvider())
@@ -32,7 +32,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             var mesh = options.AddRouteMesh("gateway.route")
                 .Listen("tcp://127.0.0.1:7301")
                 .SetRoutingId(RoutingId.From("gateway-route"));
-            mesh.ChannelName("gateway.route");
+            mesh.Channel("gateway.route").Server();
             mesh.PeerConnections.Connect("tcp://127.0.0.1:7201");
         });
 
@@ -78,7 +78,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             var profile = options.AddRouteMesh("profile")
                 .Listen("tcp://127.0.0.1:7101")
                 .SetRoutingId(RoutingId.From("profile"));
-            profile.ChannelName("profile")
+            profile.Channel("profile").Server()
                 .AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
 
             {
@@ -95,13 +95,16 @@ public sealed class MonitoringTests : RegistrationValidationSupport
 
             {
                 var mesh = options.AddRouteMesh("game.stage");
-                mesh.ChannelName("game.stage");
+                mesh.Channel("game.stage").Server();
                 {
                     var spot = mesh;
                     {
                         var router = spot.Listen("tcp://127.0.0.1:9000");
                     }
-                    spot.AddSpotFactory<TestSpot>();
+                    spot.Objects().Server().AddSpotFactory<TestSpot>(
+                        "test",
+                        null,
+                        ZLinkRelocationPolicy<TestSpot>.Disabled);
                 }
             }
         });
@@ -132,7 +135,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
                 .Listen("tcp://127.0.0.1:7201")
                 .SetRoutingId(RoutingId.From("route"))
                 .SetDefaultRequestTimeout(TimeSpan.FromSeconds(3));
-            mesh.ChannelName("api");
+            mesh.Channel("api").Server();
         });
 
         using var provider = services.BuildServiceProvider();
@@ -173,7 +176,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
             var mesh = options.AddRouteMesh("profile")
                 .Listen(endpoint)
                 .SetRoutingId(RoutingId.From("profile"));
-            mesh.ChannelName("profile")
+            mesh.Channel("profile").Server()
                 .AddRequestHandler<TestChannelRequestHandler, TestChannelRequest, TestChannelReply>();
         });
 
@@ -197,7 +200,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
         builder.Services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.AddRouteMesh("game.stage").Listen(endpoint).ChannelName("game.stage");
+            options.AddRouteMesh("game.stage").Listen(endpoint).Channel("game.stage").Server();
         });
         builder.Services.AddZLinkMonitoring(options =>
         {
@@ -249,7 +252,7 @@ public sealed class MonitoringTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.AddRouteMesh("game.stage").Listen("tcp://127.0.0.1:9000").ChannelName("game.stage");
+            options.AddRouteMesh("game.stage").Listen("tcp://127.0.0.1:9000").Channel("game.stage").Server();
         });
         services.AddZLinkMonitoring(options =>
         {

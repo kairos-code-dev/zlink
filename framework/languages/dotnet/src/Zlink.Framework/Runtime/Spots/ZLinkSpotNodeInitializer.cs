@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-
 namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed class ZLinkSpotNodeInitializer(
@@ -44,10 +42,15 @@ internal sealed class ZLinkSpotNodeInitializer(
             // MeshNode startup ordering (spec 21-mesh-node §3): set routing id
             // (above), bind the ROUTER endpoint, add each configured channel
             // membership with its weight, then Start — before any spot/entry-spot
-            // use. IMeshNode.Start requires a bind endpoint and at least one
-            // channel, so a node with a ROUTER endpoint is started explicitly here
-            // instead of lazily on first spot use.
-            var routerEndpoint = spotNodeRegistration.Router?.BindEndpoint;
+            // use. A node with no Channel role still starts so RID-direct
+            // messaging remains available.
+            var routerEndpoint = spotNodeRegistration.Router is { } routerRegistration
+                ? ZLinkNetworkEndpointResolver.Bind(
+                    routerRegistration.BindEndpoint,
+                    routerRegistration.ListenPort,
+                    routerRegistration.BindHost,
+                    registration.NetworkOptions)
+                : null;
             var hasRouterBind = routerEndpoint is { Length: > 0 };
             if (hasRouterBind)
                 node.SetRouterBind(routerEndpoint!);
@@ -66,12 +69,13 @@ internal sealed class ZLinkSpotNodeInitializer(
             {
                 // spec 05-route-mesh §4: each logical membership joins the node's
                 // single ROUTER with its build-time weight (0 = excluded from new
-                // select-one/multicast targeting). ValidateSpotNode guarantees at
-                // least one membership before startup reaches here.
+                // select-one/multicast targeting).
                 foreach (var membership in spotNodeRegistration.ChannelMemberships)
                 {
                     node.AddChannel(membership.ChannelName);
-                    node.SetChannelWeight(membership.ChannelName, (uint)membership.Weight);
+                    node.SetChannelWeight(
+                        membership.ChannelName,
+                        membership.IsServer ? (uint)membership.Weight : 0);
                 }
 
                 node.Start();
@@ -175,17 +179,16 @@ internal sealed class ZLinkSpotNodeInitializer(
     {
         if (registration.RoutingId.Size > 0) return registration.RoutingId;
 
-        var bytes = RandomNumberGenerator.GetBytes(16);
-        bytes[0] = 0x10;
-        return RoutingId.From(bytes);
+        var prefix = registration.RoutingIdPrefix ?? registration.SpotNodeName;
+        return RoutingId.From($"{prefix}-{Guid.NewGuid():D}");
     }
 
     private static string CreateEntrySpotId(ZLinkSpotNodeRegistration registration)
     {
-        var spotId = $"{registration.SpotNodeName}-entry-{Guid.NewGuid():D}";
+        var prefix = registration.RoutingIdPrefix ?? registration.SpotNodeName;
         try
         {
-            return ZLinkSpotId.Require(spotId, nameof(registration));
+            return ZLinkSpotId.CreateEntrySpotId(prefix);
         }
         catch (ArgumentException error)
         {

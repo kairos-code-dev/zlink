@@ -12,7 +12,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, ZLinkSerialExecutionQueue> _timerLanes =
         new(StringComparer.Ordinal);
-    private readonly IZLinkRuntimeErrorSink _errorSink;
+    private readonly IZLinkRuntimeFailureReporter _errorSink;
     private readonly CancellationToken _stopToken;
     private readonly object _executionOwner;
     private readonly ZLinkRuntimeTaskRunner _taskRunner;
@@ -26,7 +26,7 @@ internal sealed class ZLinkSpotSerialExecutor : IAsyncDisposable
         ZLinkSpotActivation activation,
         Func<bool> isDisposed,
         CancellationToken stopToken,
-        IZLinkRuntimeErrorSink errorSink,
+        IZLinkRuntimeFailureReporter errorSink,
         Func<bool>? flowCaptureEnabled = null,
         object? executionOwner = null,
         ZLinkUserSpotExecutionMode executionMode = ZLinkUserSpotExecutionMode.SpotWide)

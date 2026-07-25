@@ -9,11 +9,6 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     {
         ValidateChannelShape(channel);
 
-        if (channel.Server is not null
-            && string.IsNullOrWhiteSpace(channel.Server.BindEndpoint))
-            throw new ZLinkConfigurationException(
-                $"ClientServer channel '{channel.ChannelName}' server must define a bind endpoint.");
-
         if (channel.Client is not null)
         {
             // A process-local Server is a complete peer source for the Client.
@@ -30,19 +25,39 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             channel.Client.ManualConnections.Freeze(channel.Client.AcquisitionMode);
         }
 
-        if (channel.Publisher is not null && string.IsNullOrWhiteSpace(channel.Publisher.BindEndpoint))
-            throw new ZLinkConfigurationException(
-                $"channel '{channel.ChannelName}' publisher must define a bind endpoint.");
+        if (channel.Publisher is { } publisher)
+        {
+            if (string.IsNullOrWhiteSpace(publisher.BindEndpoint)
+                && publisher.ListenPort is null)
+                throw new ZLinkConfigurationException(
+                    $"fanout channel '{channel.ChannelName}' publisher must define a listener.");
+            if (publisher.FixedRoutingId.Size > 0
+                && publisher.RoutingIdPrefix is not null)
+                throw new ZLinkConfigurationException(
+                    $"fanout channel '{channel.ChannelName}' publisher cannot combine a fixed routing id and a routing-id prefix.");
+            if (autoConnectConfigured && publisher.FixedRoutingId.Size > 0)
+                throw new ZLinkConfigurationException(
+                    $"fanout channel '{channel.ChannelName}' automatic publisher cannot use a fixed routing id.");
+            if (!autoConnectConfigured && publisher.RoutingIdPrefix is not null)
+                throw new ZLinkConfigurationException(
+                    $"fanout channel '{channel.ChannelName}' manual publisher cannot allocate a routing id without a location store.");
+        }
 
         if (channel.Subscriber is not null)
         {
-            ZLinkPeerAcquisitionPolicy.RequirePeerSource(
-                $"channel '{channel.ChannelName}' subscriber",
-                autoConnectConfigured,
-                channel.Subscriber.ManualConnections);
-            channel.Subscriber.AcquisitionMode = ZLinkPeerAcquisitionPolicy.Resolve(
-                autoConnectConfigured,
-                channel.Subscriber.ManualConnections);
+            var automatic = channel.Subscriber.AutomaticDiscoveryEnabled;
+            if (automatic && channel.Subscriber.ManualConnections.Count > 0)
+                throw new ZLinkConfigurationException(
+                    $"fanout channel '{channel.ChannelName}' cannot combine automatic and manual subscriber endpoints.");
+            if (automatic && !autoConnectConfigured)
+                throw new ZLinkConfigurationException(
+                    $"fanout channel '{channel.ChannelName}' automatic subscriber requires a location store.");
+            if (!automatic && channel.Subscriber.ManualConnections.Count == 0)
+                throw new ZLinkConfigurationException(
+                    $"fanout channel '{channel.ChannelName}' manual subscriber requires at least one endpoint.");
+            channel.Subscriber.AcquisitionMode = automatic
+                ? ZLinkPeerAcquisitionMode.AutoConnect
+                : ZLinkPeerAcquisitionMode.Manual;
             channel.Subscriber.ManualConnections.Freeze(channel.Subscriber.AcquisitionMode);
         }
 

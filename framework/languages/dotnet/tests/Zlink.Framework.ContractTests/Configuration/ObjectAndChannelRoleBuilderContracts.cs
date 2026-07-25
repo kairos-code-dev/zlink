@@ -108,17 +108,13 @@ public sealed class ObjectAndChannelRoleBuilderContracts
             server,
             server.AddInstanceSpotFactory<LeaderboardSpot>(
                 "leaderboard",
-                new ZLinkObjectPlacementOptions
-                {
-                    MaxActiveObjects = 64,
-                    MaxPendingActivations = 8
-                },
+                new ZLinkInstanceSpotFactoryOptions { StableTypeLimit = 64 },
                 ZLinkRelocationPolicy<LeaderboardSpot>.Disabled));
         Assert.Same(
             server,
             server.AddActorFactory<PlayerActor, PlayerActorFactory>(
                 "player",
-                new ZLinkObjectPlacementOptions { MaxActiveObjects = 20_000 },
+                new ZLinkActorFactoryOptions(),
                 ZLinkRelocationPolicy<PlayerActor>.Snapshot<PlayerRelocationAdapter>()));
 
         var registered = playObjects.ServerBuilder;
@@ -126,14 +122,12 @@ public sealed class ObjectAndChannelRoleBuilderContracts
         Assert.Equal(["battle-room"], registered.SpotTypes);
         Assert.Equal(["leaderboard"], registered.InstanceSpotTypes);
         Assert.Equal(["player"], registered.ActorTypes);
-        Assert.Equal(64, registered.InstanceSpotPlacement!.MaxActiveObjects);
+        Assert.Equal(64, registered.InstanceSpotOptions!.StableTypeLimit);
         Assert.Equal(
             ZLinkUserSpotExecutionMode.SpotWide,
             registered.SpotOptions!.ExecutionMode);
 
-        // Placement capacity is per registration, not a second global switch.
-        Assert.Equal(20_000, registered.ActorPlacement!.MaxActiveObjects);
-        Assert.Null(registered.ActorPlacement.MaxPendingActivations);
+        Assert.NotNull(registered.ActorOptions);
     }
 
     private sealed record ItemGranted(string ActorId, string ItemId);
@@ -288,9 +282,9 @@ public sealed class ObjectAndChannelRoleBuilderContracts
 
         public ZLinkUserSpotFactoryOptions? SpotOptions { get; private set; }
 
-        public ZLinkObjectPlacementOptions? InstanceSpotPlacement { get; private set; }
+        public ZLinkInstanceSpotFactoryOptions? InstanceSpotOptions { get; private set; }
 
-        public ZLinkObjectPlacementOptions? ActorPlacement { get; private set; }
+        public ZLinkActorFactoryOptions? ActorOptions { get; private set; }
 
         public IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
             where TEntrySpot : class, IZLinkEntrySpot
@@ -312,24 +306,24 @@ public sealed class ObjectAndChannelRoleBuilderContracts
 
         public IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
             string instanceSpotType,
-            ZLinkObjectPlacementOptions? placement,
+            ZLinkInstanceSpotFactoryOptions? options,
             ZLinkRelocationPolicy<TSpot> relocation)
             where TSpot : class, IZLinkInstanceSpot
         {
             InstanceSpotTypes.Add(instanceSpotType);
-            InstanceSpotPlacement = placement;
+            InstanceSpotOptions = options;
             return this;
         }
 
         public IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
             string actorType,
-            ZLinkObjectPlacementOptions? placement,
+            ZLinkActorFactoryOptions? options,
             ZLinkRelocationPolicy<TActor> relocation)
             where TActor : class, IZLinkActor
             where TFactory : class, IZLinkActorFactory<TActor>
         {
             ActorTypes.Add(actorType);
-            ActorPlacement = placement;
+            ActorOptions = options;
             return this;
         }
     }

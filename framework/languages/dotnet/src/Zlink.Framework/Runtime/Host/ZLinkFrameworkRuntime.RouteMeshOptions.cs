@@ -31,7 +31,8 @@ internal sealed partial class ZLinkFrameworkRuntime
             foreach (var registration in Registration.SpotNodes.Values)
             {
                 var membership = registration.ChannelMemberships.FirstOrDefault(
-                    candidate => string.Equals(
+                    candidate => candidate.IsServer
+                        && string.Equals(
                         candidate.ChannelName,
                         channelName,
                         StringComparison.Ordinal));
@@ -45,6 +46,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                     this,
                     nodeRuntime.Node,
                     membership,
+                    registration.SpotNodeName,
                     null,
                     null);
             }
@@ -56,6 +58,7 @@ internal sealed partial class ZLinkFrameworkRuntime
                 && bundle.ClientServerServer is { } identity)
                 return new ZLinkMeshChannelRuntimeOptions(
                     this,
+                    null,
                     null,
                     null,
                     server,
@@ -84,17 +87,17 @@ internal sealed partial class ZLinkFrameworkRuntime
     internal void SetMeshChannelWeight(
         IZLinkBackendSpotNode node,
         ZLinkMeshChannelMembership membership,
+        string meshName,
         int weight)
     {
         ExecuteOperation(() =>
         {
             node.SetChannelWeight(membership.ChannelName, (uint)weight);
             membership.Weight = weight;
-            _autoConnect?.SetLocalWeight(
-                ZLinkLocationAutoConnectType.SpotMesh,
+            _autoConnect?.SetLocalChannelWeight(
+                meshName,
                 membership.ChannelName,
-                ZLinkLocationRole.Spot,
-                (uint)weight);
+                weight);
             return true;
         });
     }

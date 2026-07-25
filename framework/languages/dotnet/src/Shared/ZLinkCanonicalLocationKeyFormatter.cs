@@ -25,12 +25,19 @@ internal static class ZLinkCanonicalLocationKeyFormatter
         return Encode(key.SpotId);
     }
 
-    internal static string EncodeActorKey(ZLinkActorLocationKey key) =>
-        Encode(key.MeshName, key.ActorId);
+    internal static string EncodeActorKey(ZLinkActorLocationKey key)
+    {
+        RequireGlobalId(key.ActorId, nameof(key.ActorId));
+        return Encode(key.ActorId);
+    }
 
     internal static string EncodeClientServerKey(
         ZLinkClientServerServerDescriptorKey key) =>
         Encode(key.ChannelName, key.ServerRid.ToHex());
+
+    internal static string EncodeFanoutKey(
+        ZLinkFanoutPublisherDescriptorKey key) =>
+        Encode(key.ChannelName, key.PublisherRid.ToHex());
 
     internal static string CanonicalName(ZLinkLocationAutoConnectType type) => type switch
     {
@@ -84,27 +91,30 @@ internal static class ZLinkCanonicalLocationKeyFormatter
     }
 
     private static void RequireSpotId(string spotId)
+        => RequireGlobalId(spotId, nameof(spotId));
+
+    private static void RequireGlobalId(string value, string parameterName)
     {
         int size;
         try
         {
             size = new UTF8Encoding(
                 encoderShouldEmitUTF8Identifier: false,
-                throwOnInvalidBytes: true).GetByteCount(spotId);
+                throwOnInvalidBytes: true).GetByteCount(value);
         }
         catch (EncoderFallbackException exception)
         {
             throw new ArgumentException(
-                "SpotId must contain valid UTF-8 text.",
-                nameof(spotId),
+                "The logical ID must contain valid UTF-8 text.",
+                parameterName,
                 exception);
         }
 
-        if (size is < 1 or > 255 || spotId.Contains('\0'))
+        if (size is < 1 or > 255 || value.Contains('\0'))
         {
             throw new ArgumentOutOfRangeException(
-                nameof(spotId),
-                "SpotId must be 1 to 255 UTF-8 bytes without NUL.");
+                parameterName,
+                "The logical ID must be 1 to 255 UTF-8 bytes without NUL.");
         }
     }
 }

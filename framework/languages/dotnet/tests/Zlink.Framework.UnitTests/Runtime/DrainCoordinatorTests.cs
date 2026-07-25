@@ -377,39 +377,6 @@ public sealed class DrainCoordinatorTests
     }
 
     [Fact]
-    public async Task RouteMesh_Runtime_Rejects_Host_Global_Drain_For_Multiple_Meshes()
-    {
-        await using var services = new ServiceCollection().BuildServiceProvider();
-        var registration = new ZLinkFrameworkRegistration();
-        registration.SpotNodes.Add(
-            "orders",
-            new ZLinkSpotNodeRegistration { SpotNodeName = "orders" });
-        registration.SpotNodes.Add(
-            "billing",
-            new ZLinkSpotNodeRegistration { SpotNodeName = "billing" });
-        var framework = new ZLinkFrameworkRuntime(
-            services,
-            null!,
-            registration,
-            new ZLinkHandlerRegistry([]),
-            new ZLinkHandlerDispatcher(
-                services.GetRequiredService<IServiceScopeFactory>(),
-                registration));
-        var drain = new CountingDrainControl();
-        using var meshRuntime = new ZLinkRouteMeshRuntimeService(
-            framework,
-            storeHealth: null,
-            locationQuery: null,
-            () => drain);
-
-        await Assert.ThrowsAsync<ZLinkConfigurationException>(
-            () => meshRuntime.DrainAsync("orders").AsTask());
-        await Assert.ThrowsAsync<ZLinkConfigurationException>(
-            () => meshRuntime.AwaitDrainedAsync("orders").AsTask());
-        Assert.Equal(0, drain.CallCount);
-    }
-
-    [Fact]
     public async Task Default_Drain_Uses_Thirty_Seconds_Without_Event_Registration()
     {
         var executor = new FakeDrainExecutor();
@@ -550,10 +517,10 @@ public sealed class DrainCoordinatorTests
     [Fact]
     public async Task Drain_Health_Check_Projects_Readiness_Without_Starting_Drain()
     {
-        var drain = new MutableDrainControl();
+        var runtime = new MutableFrameworkRuntime();
         var registrations = new ServiceCollection()
             .AddLogging()
-            .AddSingleton<IZLinkDrainControl>(drain);
+            .AddSingleton<IZLinkFrameworkRuntime>(runtime);
         await using var services = registrations
             .AddHealthChecks()
             .AddZLinkDrainHealthCheck()
@@ -565,32 +532,34 @@ public sealed class DrainCoordinatorTests
         Assert.Equal(HealthStatus.Healthy, serving.Status);
         Assert.Equal(HealthStatus.Healthy, serving.Entries["zlink-drain"].Status);
 
-        drain.IsReady = false;
+        runtime.IsReady = false;
         var draining = await health.CheckHealthAsync();
         Assert.Equal(HealthStatus.Unhealthy, draining.Status);
         Assert.Equal(HealthStatus.Unhealthy, draining.Entries["zlink-drain"].Status);
     }
 
     [Fact]
-    public async Task Framework_Registration_Resolves_Production_Drain_Without_Locations()
+    public async Task Framework_Registration_Resolves_Host_Termination_Without_Locations()
     {
         var registrations = new ServiceCollection();
         registrations.AddZLinkFramework(_ => { });
         await using var services = registrations.BuildServiceProvider();
 
-        var drain = services.GetRequiredService<IZLinkDrainControl>();
-        var result = await drain.DrainAsync(TimeSpan.FromSeconds(1));
+        var runtime = services.GetRequiredService<IZLinkFrameworkRuntime>();
+        var result = await runtime.ShutdownAsync(TimeSpan.FromSeconds(1));
 
-        Assert.IsType<Drained>(result);
-        Assert.False(drain.IsReady);
+        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, result.Outcome);
+        Assert.False(runtime.IsReady);
     }
 
     [Fact]
-    public void Drain_Result_Base_Has_No_Externally_Callable_Constructor()
+    public void Legacy_Drain_Contracts_Are_Not_Public()
     {
-        Assert.Empty(typeof(ZLinkDrainResult).GetConstructors(
-            System.Reflection.BindingFlags.Public
-            | System.Reflection.BindingFlags.Instance));
+        var contracts = typeof(IZLinkFrameworkRuntime).Assembly;
+        Assert.Null(contracts.GetType(
+            "Zlink.Framework.Contracts.Configuration.IZLinkDrainControl"));
+        Assert.Null(contracts.GetType(
+            "Zlink.Framework.Contracts.Configuration.ZLinkDrainResult"));
     }
 
     [Fact]
@@ -636,10 +605,10 @@ public sealed class DrainCoordinatorTests
             .Async();
         await sessionProbe.Connected.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        var result = await host.Services.GetRequiredService<IZLinkDrainControl>()
-            .DrainAsync(TimeSpan.FromSeconds(5));
+        var result = await host.Services.GetRequiredService<IZLinkFrameworkRuntime>()
+            .ShutdownAsync(TimeSpan.FromSeconds(5));
 
-        Assert.IsType<Drained>(result);
+        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, result.Outcome);
         await closingObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Equal(
             ZlinkStreamCloseReason.ServerDrain,
@@ -659,9 +628,9 @@ public sealed class DrainCoordinatorTests
         using var host = builder.Build();
         await host.StartAsync();
 
-        var result = await host.Services.GetRequiredService<IZLinkDrainControl>()
-            .DrainAsync(TimeSpan.FromSeconds(5));
-        Assert.IsType<Drained>(result);
+        var result = await host.Services.GetRequiredService<IZLinkFrameworkRuntime>()
+            .ShutdownAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(ZLinkFrameworkTerminationOutcome.Stopped, result.Outcome);
 
         var disconnected = new TaskCompletionSource<ZlinkStreamCloseReason>(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -865,50 +834,36 @@ public sealed class DrainCoordinatorTests
         }
     }
 
-    private sealed class CountingDrainControl : IZLinkDrainControl
-    {
-        public int CallCount { get; private set; }
-
-        public bool IsReady => true;
-
-        public ValueTask<ZLinkDrainResult> DrainAsync(
-            CancellationToken cancellationToken = default) =>
-            DrainAsync(TimeSpan.FromSeconds(30), cancellationToken);
-
-        public ValueTask<ZLinkDrainResult> DrainAsync(
-            TimeSpan deadline,
-            CancellationToken cancellationToken = default)
-        {
-            _ = deadline;
-            cancellationToken.ThrowIfCancellationRequested();
-            CallCount++;
-            return ValueTask.FromResult<ZLinkDrainResult>(new Drained());
-        }
-
-        public ValueTask<ZLinkDrainResult> AwaitDrainedAsync(
-            CancellationToken cancellationToken = default)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            CallCount++;
-            return ValueTask.FromResult<ZLinkDrainResult>(new Drained());
-        }
-    }
-
-    private sealed class MutableDrainControl : IZLinkDrainControl
+    private sealed class MutableFrameworkRuntime : IZLinkFrameworkRuntime
     {
         public bool IsReady { get; set; } = true;
 
-        public ValueTask<ZLinkDrainResult> DrainAsync(CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("The readiness check must not start drain.");
+        public ZLinkFrameworkRuntimeState State =>
+            IsReady
+                ? ZLinkFrameworkRuntimeState.Serving
+                : ZLinkFrameworkRuntimeState.Draining;
 
-        public ValueTask<ZLinkDrainResult> DrainAsync(
-            TimeSpan deadline,
-            CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("The readiness check must not start drain.");
+        public ZLinkFrameworkRuntimeSnapshot Snapshot() =>
+            throw new InvalidOperationException(
+                "The readiness check must not read the termination snapshot.");
 
-        public ValueTask<ZLinkDrainResult> AwaitDrainedAsync(
+        public IAsyncEnumerable<ZLinkFrameworkRuntimeEvent> ObserveAsync(
+            int capacity = 1024,
             CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("The readiness check must not await drain.");
+            throw new InvalidOperationException(
+                "The readiness check must not start observation.");
+
+        public ValueTask<ZLinkFrameworkTerminationResult> RetireAsync(
+            TimeSpan? deadline = null,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The readiness check must not start termination.");
+
+        public ValueTask<ZLinkFrameworkTerminationResult> ShutdownAsync(
+            TimeSpan? deadline = null,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(
+                "The readiness check must not start termination.");
     }
 
     private static int FindFreeTcpPort()

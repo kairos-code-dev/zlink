@@ -16,13 +16,15 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
         ZLinkAsyncSubmitter? submitter = null,
         RoutingId localRid = default,
         string? socketRole = null,
-        ZLinkClientServerServerIdentity? clientServerServer = null)
+        ZLinkClientServerServerIdentity? clientServerServer = null,
+        ZLinkFanoutPublisherIdentity? fanoutPublisher = null)
     {
         Socket = socket;
         Submitter = submitter;
         LocalRid = localRid.Size > 0 ? localRid.ToString() : null;
         SocketRole = socketRole;
         ClientServerServer = clientServerServer;
+        FanoutPublisher = fanoutPublisher;
     }
 
     public IZLinkBackendSocket Socket { get; }
@@ -34,6 +36,8 @@ internal sealed class ZLinkChannelRuntimeBundle : IAsyncDisposable
     public string? SocketRole { get; }
 
     internal ZLinkClientServerServerIdentity? ClientServerServer { get; }
+
+    internal ZLinkFanoutPublisherIdentity? FanoutPublisher { get; }
 
     public SemaphoreSlim ReceiveGate { get; } = new(1, 1);
 

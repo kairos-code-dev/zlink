@@ -5,7 +5,7 @@ internal sealed class ZLinkRuntimeTaskRunner
     private static readonly AsyncLocal<ExecutionLease?> AmbientExecution = new();
     private readonly object _gate = new();
     private readonly HashSet<Task> _active = [];
-    private readonly IZLinkRuntimeErrorSink _errorSink;
+    private readonly IZLinkRuntimeFailureReporter _errorSink;
     private readonly object _executionOwner;
     private readonly ZLinkRuntimeTaskSupervisor _supervisor;
     private readonly bool _ownsSupervisor;
@@ -23,7 +23,7 @@ internal sealed class ZLinkRuntimeTaskRunner
            && ReferenceEquals(lease.Owner, executionOwner);
 
     public ZLinkRuntimeTaskRunner(
-        IZLinkRuntimeErrorSink errorSink,
+        IZLinkRuntimeFailureReporter errorSink,
         CancellationToken shutdownToken,
         object? executionOwner = null,
         bool ownsSupervisor = false)
@@ -167,13 +167,13 @@ internal sealed class ZLinkRuntimeTaskRunner
         ZLinkFrameworkDebugLog.TaskFailure(name, exception);
     }
 
-    internal IZLinkRuntimeErrorSink ErrorSink => _errorSink;
+    internal IZLinkRuntimeFailureReporter ErrorSink => _errorSink;
 
     private sealed record TaskState(
         ZLinkRuntimeTaskRunner Runner,
         string Name,
         Func<CancellationToken, ValueTask> Callback,
-        IZLinkRuntimeErrorSink ErrorSink,
+        IZLinkRuntimeFailureReporter ErrorSink,
         CancellationToken ShutdownToken);
 
     private sealed class ExecutionLease(object owner, ZLinkRuntimeTaskRunner runner)

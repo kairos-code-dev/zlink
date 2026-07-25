@@ -35,8 +35,8 @@ public sealed class LocationKeyCodecGoldenVectorTests
             ZLinkLocationKeyCodec.EncodeSpotKey(spot),
             ZLinkRedisLocationKeyCodec.EncodeSpotKey(spot));
 
-        var actor = new ZLinkActorLocationKey("play", "actor-1");
-        Assert.Equal("4:play7:actor-1", ZLinkLocationKeyCodec.EncodeActorKey(actor));
+        var actor = new ZLinkActorLocationKey("actor-1");
+        Assert.Equal("7:actor-1", ZLinkLocationKeyCodec.EncodeActorKey(actor));
         Assert.Equal(
             ZLinkLocationKeyCodec.EncodeActorKey(actor),
             ZLinkRedisLocationKeyCodec.EncodeActorKey(actor));
@@ -61,13 +61,13 @@ public sealed class LocationKeyCodecGoldenVectorTests
     }
 
     [Fact]
-    public void Length_Prefixes_Disambiguate_Adjacent_Segments()
+    public void Actor_Key_Uses_The_Global_Actor_Id()
     {
-        var first = new ZLinkActorLocationKey("ab", "c");
-        var second = new ZLinkActorLocationKey("a", "bc");
+        var first = new ZLinkActorLocationKey("c");
+        var second = new ZLinkActorLocationKey("bc");
 
-        Assert.Equal("2:ab1:c", ZLinkLocationKeyCodec.EncodeActorKey(first));
-        Assert.Equal("1:a2:bc", ZLinkLocationKeyCodec.EncodeActorKey(second));
+        Assert.Equal("1:c", ZLinkLocationKeyCodec.EncodeActorKey(first));
+        Assert.Equal("2:bc", ZLinkLocationKeyCodec.EncodeActorKey(second));
         Assert.NotEqual(
             ZLinkLocationKeyCodec.EncodeActorKey(first),
             ZLinkLocationKeyCodec.EncodeActorKey(second));

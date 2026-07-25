@@ -55,6 +55,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     private Func<MeshReadyDomains, MeshReadyDomains>? _readyHandler;
     private IUserSpotOperationTarget? _userSpotOperationTarget;
     private IActorCreateOperationTarget? _actorCreateOperationTarget;
+    private IActorDestroyOperationTarget? _actorDestroyOperationTarget;
     private IInstanceSpotActivationTarget? _instanceSpotActivationTarget;
     private RoutingId _routingId;
     private string _bindEndpoint = string.Empty;
@@ -276,6 +277,20 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         }
     }
 
+    public void SetActorDestroyOperationTarget(IActorDestroyOperationTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            if (_actorDestroyOperationTarget is not null
+                && !ReferenceEquals(_actorDestroyOperationTarget, target))
+                throw new InvalidOperationException(
+                    "An Actor destroy operation target is already registered.");
+            _actorDestroyOperationTarget = target;
+        }
+    }
+
     public void SetInstanceSpotActivationTarget(IInstanceSpotActivationTarget target)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -411,7 +426,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             throw new ArgumentException(
                 "The reservation target must match the command target.",
                 nameof(reservation));
-        return SubmitReservedCreationOperation(
+        return SubmitInfrastructureOperation(
             targetNodeRid,
             reservation.TargetNodeGeneration,
             MeshOperationKind.UserSpotCreate,
@@ -444,7 +459,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             throw new ArgumentException(
                 "The close fence target must match the command target.",
                 nameof(target));
-        return SubmitReservedCreationOperation(
+        return SubmitInfrastructureOperation(
             targetNodeRid,
             target.TargetNodeGeneration,
             MeshOperationKind.UserSpotClose,
@@ -477,7 +492,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             throw new ArgumentException(
                 "The reservation target must match the command target.",
                 nameof(reservation));
-        return SubmitReservedCreationOperation(
+        return SubmitInfrastructureOperation(
             targetNodeRid,
             reservation.TargetNodeGeneration,
             MeshOperationKind.ActorCreate,
@@ -491,6 +506,32 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                     stableType,
                     reservation,
                     deadlineUnixMs)),
+            out operationId,
+            timeout);
+    }
+
+    public SubmitResult DestroyActorRemote(
+        ActorRef actor,
+        ulong targetNodeGeneration,
+        ulong authorityOwnerGeneration,
+        out MeshOperationId operationId,
+        TimeSpan timeout = default)
+    {
+        if (actor.NodeRid == _routingId)
+            throw new ArgumentException(
+                "Command 27 is reserved for a remote Actor owner.",
+                nameof(actor));
+        return SubmitInfrastructureOperation(
+            actor.NodeRid,
+            targetNodeGeneration,
+            MeshOperationKind.ActorDestroy,
+            (correlation, _) => ZLinkServiceWireCodec.EncodeActorDestroy(
+                new ActorDestroyOperation(
+                    correlation,
+                    actor,
+                    actor.NodeRid,
+                    targetNodeGeneration,
+                    authorityOwnerGeneration)),
             out operationId,
             timeout);
     }
@@ -2114,6 +2155,17 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             ProcessActorCreateOperation(sourceRid, actorCreateOperation);
             return;
         }
+        if (ZLinkServiceWireCodec.TryDecodeActorDestroy(
+                head,
+                out var actorDestroyOperation,
+                out _))
+        {
+            ProcessActorDestroyOperation(
+                sourceRid,
+                actorDestroyOperation,
+                received.Parts.Count);
+            return;
+        }
         if (!ZLinkServiceWireCodec.TryDecodeApplication(
                 head,
                 out var application,
@@ -2967,6 +3019,117 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             invocation);
     }
 
+    private void ProcessActorDestroyOperation(
+        RoutingId sourceRid,
+        ZLinkServiceWireCodec.ActorDestroyOperationRecord record,
+        int partCount)
+    {
+        Peer? peer;
+        IActorDestroyOperationTarget? target;
+        lock (_gate)
+        {
+            _peersByRid.TryGetValue(sourceRid, out peer);
+            target = _actorDestroyOperationTarget;
+        }
+        var operation = record.Operation;
+        if (partCount != 1)
+        {
+            SendActorDestroyFailure(
+                sourceRid,
+                operation.Correlation,
+                RequestResult.ProtocolError,
+                ServiceWireConstants.FrameworkErrorCode.RequestProtocolError);
+            return;
+        }
+        if (peer is null
+            || !peer.Admitted
+            || operation.TargetNodeRid != _routingId
+            || operation.TargetNodeGeneration != _lifecycleGeneration)
+        {
+            SendActorDestroyFailure(
+                sourceRid,
+                operation.Correlation,
+                RequestResult.Conflict,
+                ServiceWireConstants.FrameworkErrorCode.ActorLocationStale);
+            return;
+        }
+        if (target is null)
+        {
+            SendActorDestroyFailure(
+                sourceRid,
+                operation.Correlation,
+                RequestResult.InvalidState,
+                ServiceWireConstants.FrameworkErrorCode.None);
+            return;
+        }
+        _ = ReplyActorDestroyOperationAsync(
+            sourceRid,
+            operation.Correlation,
+            target,
+            operation);
+    }
+
+    private async Task ReplyActorDestroyOperationAsync(
+        RoutingId sourceRid,
+        ulong correlation,
+        IActorDestroyOperationTarget target,
+        ActorDestroyOperation operation)
+    {
+        ActorDestroyOperationTerminal terminal;
+        try
+        {
+            terminal = await target.DestroyAsync(
+                    operation,
+                    _stop?.Token ?? CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (ZLinkFrameworkException exception)
+        {
+            terminal = exception.Kind switch
+            {
+                ZLinkFrameworkErrorKind.ActorRouteNotFound =>
+                    new ActorDestroyOperationTerminal(
+                        RequestResult.NotFound,
+                        ServiceWireConstants.FrameworkErrorCode.ActorRouteNotFound),
+                _ => new ActorDestroyOperationTerminal(
+                    RequestResult.Conflict,
+                    ServiceWireConstants.FrameworkErrorCode.ActorLocationStale)
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            terminal = new ActorDestroyOperationTerminal(
+                RequestResult.Terminated,
+                ServiceWireConstants.FrameworkErrorCode.None);
+        }
+        catch
+        {
+            terminal = new ActorDestroyOperationTerminal(
+                RequestResult.InternalError,
+                ServiceWireConstants.FrameworkErrorCode.RequestFailed);
+        }
+        var head = ZLinkServiceWireCodec.EncodeActorDestroyReply(
+            correlation,
+            terminal.Result,
+            terminal.FailureCode,
+            terminal.Completion);
+        await SendServiceTerminalAsync(sourceRid, [head]).ConfigureAwait(false);
+    }
+
+    private void SendActorDestroyFailure(
+        RoutingId sourceRid,
+        ulong correlation,
+        RequestResult result,
+        ServiceWireConstants.FrameworkErrorCode failure)
+    {
+        var head = ZLinkServiceWireCodec.EncodeActorDestroyReply(
+            correlation,
+            result,
+            failure,
+            null);
+        _ = TrySend(sourceRid, [head], SendFlags.DontWait);
+    }
+
     private async Task<ActorCreateOperationTerminal> ExecuteActorCreateOperationAsync(
         IActorCreateOperationTarget target,
         ActorCreateOperation operation,
@@ -3313,7 +3476,7 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
         return SubmitResult.Ok;
     }
 
-    private SubmitResult SubmitReservedCreationOperation(
+    private SubmitResult SubmitInfrastructureOperation(
         RoutingId targetRid,
         ulong targetNodeGeneration,
         MeshOperationKind kind,
@@ -3323,7 +3486,8 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
     {
         if (kind is not (MeshOperationKind.UserSpotCreate
             or MeshOperationKind.UserSpotClose
-            or MeshOperationKind.ActorCreate))
+            or MeshOperationKind.ActorCreate
+            or MeshOperationKind.ActorDestroy))
             throw new ArgumentOutOfRangeException(nameof(kind));
 
         Peer? peer;
@@ -3510,6 +3674,14 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
                 out var actorCreateCompletion,
                 out _);
             completion = actorCreateCompletion;
+        }
+        else if (pending.Kind == MeshOperationKind.ActorDestroy)
+        {
+            decoded = ZLinkServiceWireCodec.TryDecodeActorDestroyReply(
+                reply,
+                out var actorDestroyCompletion,
+                out _);
+            completion = actorDestroyCompletion;
         }
         else
         {
@@ -3886,9 +4058,6 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
 
     private void ThrowIfDisposed() =>
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
-    private static NotSupportedException StatefulSlicePending() =>
-        new("The stateful object runtime is implemented by the M6B slice.");
 
     private static ulong NewNonZeroToken()
     {

@@ -54,16 +54,13 @@ public sealed class EventingContracts
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkDrainControl))]
-    public void Observability_and_drain_contracts_match_the_frozen_surface()
+    [ContractExample(typeof(IZLinkFrameworkRuntime))]
+    public void Observability_and_termination_contracts_match_the_exact_surface()
     {
         Assert.Equal("zlink.framework", ZLinkMeters.Framework);
         Assert.Equal(
             new[] { "Application", "Inbound", "Lifecycle", "Timer" },
             Enum.GetNames<ZLinkFlowOrigin>().Order(StringComparer.Ordinal).ToArray());
-        Assert.Equal(
-            new[] { "DeadlineExceeded", "DrainingStatePublishFailed", "OwnerCleanupFailed", "TeardownFailed" },
-            Enum.GetNames<ZLinkDrainForceReason>());
         AssertEnumValues<ZLinkMessageFlowOutcome>(
             ("Received", 0), ("Dispatched", 1), ("Replied", 2), ("Dropped", 3),
             ("Sent", 4), ("ReplyReceived", 5), ("Error", 6));
@@ -81,33 +78,17 @@ public sealed class EventingContracts
         AssertEnumValues<ZLinkDrainState>(
             ("Serving", 0), ("Draining", 1), ("Drained", 2), ("ForceStopping", 3));
 
-        var contract = typeof(IZLinkDrainControl);
-        var isReady = contract.GetProperty(nameof(IZLinkDrainControl.IsReady));
+        var contract = typeof(IZLinkFrameworkRuntime);
+        var isReady = contract.GetProperty(nameof(IZLinkFrameworkRuntime.IsReady));
         Assert.NotNull(isReady);
         Assert.Equal(typeof(bool), isReady!.PropertyType);
         Assert.True(isReady.CanRead);
         Assert.False(isReady.CanWrite);
 
-        AssertDrainMethod(
-            contract.GetMethod(nameof(IZLinkDrainControl.DrainAsync), [typeof(CancellationToken)]),
-            (typeof(CancellationToken), true));
-        AssertDrainMethod(
-            contract.GetMethod(
-                nameof(IZLinkDrainControl.DrainAsync),
-                [typeof(TimeSpan), typeof(CancellationToken)]),
-            (typeof(TimeSpan), false),
-            (typeof(CancellationToken), true));
-        AssertDrainMethod(
-            contract.GetMethod(nameof(IZLinkDrainControl.AwaitDrainedAsync), [typeof(CancellationToken)]),
-            (typeof(CancellationToken), true));
-
-        Assert.True(typeof(ZLinkDrainResult).IsAbstract);
-        Assert.Empty(typeof(ZLinkDrainResult).GetConstructors());
-        Assert.True(typeof(Drained).IsSealed);
-        Assert.True(typeof(ForceStopped).IsSealed);
-        Assert.Equal(
-            typeof(ZLinkDrainForceReason),
-            typeof(ForceStopped).GetProperty(nameof(ForceStopped.Reason))!.PropertyType);
+        Assert.NotNull(contract.GetMethod(nameof(IZLinkFrameworkRuntime.RetireAsync)));
+        Assert.NotNull(contract.GetMethod(nameof(IZLinkFrameworkRuntime.ShutdownAsync)));
+        Assert.Null(contract.GetMethod("DrainAsync"));
+        Assert.Null(contract.GetMethod("AwaitDrainedAsync"));
 
         var healthExtension = typeof(ServiceCollectionExtensions).GetMethod(
             nameof(ServiceCollectionExtensions.AddZLinkDrainHealthCheck),
@@ -185,21 +166,6 @@ public sealed class EventingContracts
         Assert.Equal(
             expected,
             Enum.GetValues<TEnum>().Select(static value => (value.ToString(), Convert.ToInt32(value))).ToArray());
-    }
-
-    private static void AssertDrainMethod(
-        System.Reflection.MethodInfo? method,
-        params (Type Type, bool HasDefault)[] expectedParameters)
-    {
-        Assert.NotNull(method);
-        Assert.Equal(typeof(ValueTask<ZLinkDrainResult>), method!.ReturnType);
-        var parameters = method.GetParameters();
-        Assert.Equal(expectedParameters.Length, parameters.Length);
-        for (var index = 0; index < parameters.Length; index++)
-        {
-            Assert.Equal(expectedParameters[index].Type, parameters[index].ParameterType);
-            Assert.Equal(expectedParameters[index].HasDefault, parameters[index].HasDefaultValue);
-        }
     }
 
     private sealed class ExampleMonitoringOptions : IZLinkMonitoringOptions

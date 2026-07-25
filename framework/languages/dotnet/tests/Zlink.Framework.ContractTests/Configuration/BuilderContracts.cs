@@ -7,9 +7,13 @@ public sealed class BuilderContracts
     [Fact]
     [ContractExample(
         typeof(IZLinkFrameworkOptions),
+        typeof(IZLinkNetworkOptions),
         typeof(IZLinkMeshNodeBuilder),
-        typeof(IZLinkMeshChannelBuilder),
+        typeof(IZLinkMeshChannelRoleBuilder),
+        typeof(IZLinkMeshChannelClientBuilder),
+        typeof(IZLinkMeshChannelServerBuilder),
         typeof(IZLinkFanoutChannelBuilder),
+        typeof(IZLinkFanoutRuntime),
         typeof(IZLinkStreamNodeBuilder),
         typeof(IZLinkStreamCompressionBuilder),
         typeof(IZLinkMeshPeerConnections),
@@ -20,7 +24,6 @@ public sealed class BuilderContracts
         typeof(IZLinkRouteMeshRuntime),
         typeof(IZLinkMetadataPolicyBuilder),
         typeof(IZLinkEndpointConnections),
-        typeof(IZLinkDrainControl),
         typeof(IZLinkSocketConfig),
         typeof(IZLinkRouteConfig),
         typeof(IZLinkOutboundRouteConfig),
@@ -53,28 +56,47 @@ public sealed class BuilderContracts
 
         Assert.Contains(nameof(IZLinkMeshNodeBuilder.Listen), methods);
         Assert.Contains(nameof(IZLinkMeshNodeBuilder.SetRoutingId), methods);
-        Assert.Contains(nameof(IZLinkMeshNodeBuilder.UseAllocatedRoutingId), methods);
-        Assert.Contains(nameof(IZLinkMeshNodeBuilder.ChannelName), methods);
+        Assert.Contains(nameof(IZLinkMeshNodeBuilder.SetRoutingIdPrefix), methods);
+        Assert.Contains(nameof(IZLinkMeshNodeBuilder.SetActorLimit), methods);
+        Assert.Contains(nameof(IZLinkMeshNodeBuilder.SetSpotLimit), methods);
+        Assert.Contains(nameof(IZLinkMeshNodeBuilder.SetActivationConcurrency), methods);
+        Assert.Contains(nameof(IZLinkMeshNodeBuilder.Channel), methods);
+        Assert.Contains(nameof(IZLinkMeshNodeBuilder.SetBindHost), methods);
+        Assert.Contains(nameof(IZLinkMeshNodeBuilder.SetAdvertiseHost), methods);
         Assert.Contains(nameof(IZLinkMeshNodeBuilder.AddRouteSendHandler), methods);
         Assert.Contains(nameof(IZLinkMeshNodeBuilder.AddRouteRequestHandler), methods);
+        Assert.DoesNotContain("ChannelName", methods);
+        Assert.DoesNotContain("UseAllocatedRoutingId", methods);
+        Assert.DoesNotContain("SetObjectCapacity", methods);
         Assert.NotNull(typeof(IZLinkMeshNodeBuilder).GetProperty(nameof(IZLinkMeshNodeBuilder.PeerConnections)));
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkMeshChannelBuilder))]
-    public void Mesh_channel_builder_owns_weight_and_typed_channel_handlers()
+    [ContractExample(
+        typeof(IZLinkMeshChannelRoleBuilder),
+        typeof(IZLinkMeshChannelClientBuilder),
+        typeof(IZLinkMeshChannelServerBuilder))]
+    public void Mesh_channel_role_separates_client_from_server_configuration()
     {
-        var methods = typeof(IZLinkMeshChannelBuilder)
+        Assert.Equal(
+            typeof(IZLinkMeshChannelClientBuilder),
+            typeof(IZLinkMeshChannelRoleBuilder)
+                .GetMethod(nameof(IZLinkMeshChannelRoleBuilder.Client))!
+                .ReturnType);
+        Assert.Equal(
+            typeof(IZLinkMeshChannelServerBuilder),
+            typeof(IZLinkMeshChannelRoleBuilder)
+                .GetMethod(nameof(IZLinkMeshChannelRoleBuilder.Server))!
+                .ReturnType);
+
+        Assert.Empty(typeof(IZLinkMeshChannelClientBuilder).GetMethods());
+        var serverMethods = typeof(IZLinkMeshChannelServerBuilder)
             .GetMethods()
             .Select(static method => method.Name)
             .ToHashSet(StringComparer.Ordinal);
-
-        Assert.Contains(nameof(IZLinkMeshChannelBuilder.SetWeight), methods);
-        Assert.Contains(nameof(IZLinkMeshChannelBuilder.AddHandlerGroup), methods);
-        Assert.Contains(nameof(IZLinkMeshChannelBuilder.AddSendHandler), methods);
-        Assert.Contains(nameof(IZLinkMeshChannelBuilder.AddRequestHandler), methods);
-        Assert.DoesNotContain("Listen", methods);
-        Assert.DoesNotContain("SetRoutingId", methods);
+        Assert.Contains(nameof(IZLinkMeshChannelServerBuilder.SetWeight), serverMethods);
+        Assert.Contains(nameof(IZLinkMeshChannelServerBuilder.AddSendHandler), serverMethods);
+        Assert.Contains(nameof(IZLinkMeshChannelServerBuilder.AddRequestHandler), serverMethods);
     }
 
 }

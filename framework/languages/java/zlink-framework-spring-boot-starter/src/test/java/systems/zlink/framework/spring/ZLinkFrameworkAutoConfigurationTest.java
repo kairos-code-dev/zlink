@@ -598,7 +598,7 @@ final class ZLinkFrameworkAutoConfigurationTest {
     }
 
     @Test
-    void monitoringOptionsBeanExistsWithoutCustomizerAndDoesNotOpenBackend() {
+    void monitoringOptionsBeanExistsWithoutCustomizerAndOpensNoRuntimeMonitoringSocketMonitor() {
         FakeZLinkBackendAdapterFactory backendFactory =
             new FakeZLinkBackendAdapterFactory();
         try (AnnotationConfigApplicationContext context =
@@ -611,7 +611,16 @@ final class ZLinkFrameworkAutoConfigurationTest {
             assertTrue(context.getBean(DefaultZLinkMonitoringOptions.class)
                 .socketSourceNames()
                 .isEmpty());
-            assertFalse(backendFactory.calls().contains("factory.monitoring"));
+            // Runtime monitoring registers no socket source, so it opens nothing.
+            // The single remaining monitor belongs to the ClientServer client
+            // DEALER: spec 12 section 4.4 makes even a manual connection verify
+            // ChannelName, server RID and lifecycle generation on the transport,
+            // and spec 55 section 3 only marks it ready after that admission.
+            assertEquals(
+                List.of("monitoring.open.dealer"),
+                backendFactory.calls().stream()
+                    .filter(call -> call.startsWith("monitoring.open."))
+                    .toList());
         }
     }
 

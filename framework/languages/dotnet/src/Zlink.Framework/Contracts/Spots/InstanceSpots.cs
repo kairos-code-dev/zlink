@@ -1,24 +1,12 @@
 namespace Zlink.Framework.Contracts.Spots;
 
-/// <summary>
-///     A stable logical address whose first direct call may activate an
-///     actor-free Instance Spot.
-/// </summary>
-public sealed record InstanceSpotAddress(
-    string MeshName,
-    string InstanceSpotType,
-    string SpotId);
-
-/// <summary>Per-MeshNode limits for one registered Instance Spot type.</summary>
 public sealed record ZLinkInstanceSpotFactoryOptions
 {
-    public int MaxActiveInstances { get; init; } = 4096;
-    public TimeSpan ActivationTimeout { get; init; } = TimeSpan.FromSeconds(3);
+    public int StableTypeLimit { get; init; }
 }
 
 /// <summary>
-///     Actor-free lifecycle for a Spot activated through an
-///     <see cref="InstanceSpotAddress" />.
+///     Actor-free lifecycle for a Spot activated by an Instance Spot intent.
 /// </summary>
 public interface IZLinkInstanceSpot
 {
@@ -33,7 +21,9 @@ public interface IZLinkInstanceSpot
         return ValueTask.CompletedTask;
     }
 
-    ValueTask OnClosingAsync(CancellationToken cancellationToken)
+    ValueTask OnClosingAsync(
+        ZLinkSpotClosingContext context,
+        CancellationToken cleanupCancellationToken)
     {
         return ValueTask.CompletedTask;
     }
@@ -45,6 +35,8 @@ public interface IZLinkInstanceSpot
 /// </summary>
 public interface IZLinkInstanceSpotContext : IZLinkSpotCommonContext
 {
+    IZLinkInstanceSpotHandlerRegistry Handlers { get; }
+
     ValueTask<bool> CloseAsync(
         CancellationToken cancellationToken = default);
 }

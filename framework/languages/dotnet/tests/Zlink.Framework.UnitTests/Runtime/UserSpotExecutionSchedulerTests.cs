@@ -495,7 +495,7 @@ public sealed class UserSpotExecutionSchedulerTests
     }
 
     private static ZLinkSpotSerialExecutor CreateExecutor(
-        IZLinkRuntimeErrorSink errorSink,
+        IZLinkRuntimeFailureReporter errorSink,
         ZLinkUserSpotExecutionMode mode)
     {
         return new ZLinkSpotSerialExecutor(

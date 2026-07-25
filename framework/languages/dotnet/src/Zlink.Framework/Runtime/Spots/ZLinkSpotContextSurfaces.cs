@@ -57,3 +57,12 @@ internal sealed class ZLinkSpotHandlerRegistrySurface(IZLinkSpotHandlerRegistryS
     }
 
 }
+
+internal sealed class ZLinkInstanceSpotHandlerRegistrySurface(
+    IZLinkSpotHandlerRegistrySink activation) : IZLinkInstanceSpotHandlerRegistry
+{
+    public void AddPacket<THandler>() where THandler : class
+    {
+        activation.AddPacket<THandler>();
+    }
+}

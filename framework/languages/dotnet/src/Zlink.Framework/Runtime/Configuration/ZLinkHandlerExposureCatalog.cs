@@ -50,6 +50,9 @@ internal sealed class ZLinkHandlerExposureCatalog
     {
         foreach (var membership in node.ChannelMemberships)
         {
+            if (!membership.IsServer)
+                continue;
+
             ValidateMappedGroups(
                 $"channel '{node.SpotNodeName}:{membership.ChannelName}'",
                 membership.HandlerGroups,

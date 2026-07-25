@@ -618,6 +618,9 @@ internal sealed class ZLinkMeshNodeRouteDispatcher
     {
         foreach (var membership in spotNode.ChannelMemberships)
         {
+            if (!membership.IsServer)
+                continue;
+
             foreach (var endpoint in registration.ScannedHandlerCatalog.ChannelEndpoints)
                 if (endpoint.Groups.Any(membership.HandlerGroups.Contains)
                     && endpoint.Kind is ZLinkMessageKind.Command or ZLinkMessageKind.Request)

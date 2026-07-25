@@ -5,6 +5,7 @@ namespace Zlink.Framework.Runtime.Spots;
 
 internal sealed partial class ZLinkSpotActivation :
     IZLinkSpotContext,
+    IZLinkInstanceSpotContext,
     IZLinkCurrentSpotActivation,
     IZLinkSpotHandlerRegistrySink,
     IAsyncDisposable
@@ -31,7 +32,7 @@ internal sealed partial class ZLinkSpotActivation :
     private int _closingInvoked;
     private ZLinkSpotHandlerInvoker? _handlerInvoker;
     private Task? _finalization;
-    private IZLinkSpot? _spot;
+    private object? _spot;
 
     public ZLinkSpotActivation(
         ZLinkFrameworkRuntime runtime,
@@ -65,6 +66,7 @@ internal sealed partial class ZLinkSpotActivation :
             _outbound,
             _runtime);
         Handlers = new ZLinkSpotHandlerRegistrySurface(this);
+        InstanceHandlers = new ZLinkInstanceSpotHandlerRegistrySurface(this);
         Outbound = _outboundEndpoint;
         _serial = new ZLinkSpotSerialExecutor(
             this,
@@ -87,10 +89,13 @@ internal sealed partial class ZLinkSpotActivation :
         _actorDispatchSubmitter = new ZLinkSpotActorDispatchSubmitter(_serial, _dispatcher.ActorPackets);
     }
 
-    public IZLinkSpot Spot => _spot
+    public object Spot => _spot
                               ?? throw new InvalidOperationException("SPOT has not been attached to this context.");
 
-    public IZLinkRuntimeErrorSink ErrorSink => _runtime.ErrorSink;
+    internal IZLinkSpot UserSpot => Spot as IZLinkSpot
+        ?? throw new InvalidOperationException("The current activation is not a User Spot.");
+
+    public IZLinkRuntimeFailureReporter ErrorSink => _runtime.ErrorSink;
 
     private ZLinkSpotHandlerInvoker HandlerInvoker => _handlerInvoker
                                                       ?? throw new InvalidOperationException(
@@ -121,11 +126,17 @@ internal sealed partial class ZLinkSpotActivation :
 
     public IZLinkSpotHandlerRegistry Handlers { get; }
 
+    private IZLinkInstanceSpotHandlerRegistry InstanceHandlers { get; }
+
+    IZLinkInstanceSpotHandlerRegistry IZLinkInstanceSpotContext.Handlers => InstanceHandlers;
+
     public IZLinkSpotOutbound Outbound { get; }
 
     ZLinkSpotOutboundEndpoint IZLinkCurrentSpotActivation.OutboundEndpoint => _outboundEndpoint;
 
     public string SpotId => _spotId;
+
+    public ulong ObjectGeneration => NativeSpot.LifecycleGeneration;
 
     public RoutingId NodeRid { get; }
 
@@ -140,9 +151,6 @@ internal sealed partial class ZLinkSpotActivation :
         IZLinkActor actor,
         CancellationToken cancellationToken)
     {
-        return JoinActorToSpotCoreAsync(
-            actor,
-            notifyJoined: true,
-            cancellationToken: cancellationToken);
+        return CommitActorJoinCoreAsync(actor, cancellationToken);
     }
 }

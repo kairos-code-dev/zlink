@@ -30,6 +30,8 @@ internal sealed class ZLinkLocationLifecycle : IAsyncDisposable
 
     internal ZLinkSpotLocationLifecycle SpotLocations { get; }
 
+    internal ZLinkLocationOwnerToken OwnerToken => _runtime.OwnerToken;
+
     public ValueTask DisposeAsync()
     {
         lock (_disposeStartGate)

@@ -11423,7 +11423,7 @@
     {
       "heading": "3. Manual peer",
       "ordinal": 1,
-      "startLine": 341,
+      "startLine": 342,
       "tag": "csharp",
       "categoryIds": [
         "topology-discovery"
@@ -11801,7 +11801,7 @@
     {
       "heading": "5. Publisher와 runtime option",
       "ordinal": 2,
-      "startLine": 390,
+      "startLine": 391,
       "tag": "csharp",
       "categoryIds": [
         "topology-discovery"
@@ -12044,7 +12044,7 @@
     {
       "heading": "6. 메시징 metadata",
       "ordinal": 3,
-      "startLine": 496,
+      "startLine": 497,
       "tag": "csharp",
       "categoryIds": [
         "topology-discovery"
@@ -131623,7 +131623,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkMeshPeerConnections.Connect#32c3f452fe645fa2",
       "kind": "method",
       "language": "dotnet",
-      "line": 346,
+      "line": 347,
       "memberName": "Connect",
       "ownerIdentity": "Zlink.Framework::IZLinkMeshPeerConnections",
       "packages": [
@@ -131658,7 +131658,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkMeshPeerConnections.Connect#6c42a7b09b3f36a5",
       "kind": "method",
       "language": "dotnet",
-      "line": 347,
+      "line": 348,
       "memberName": "Connect",
       "ownerIdentity": "Zlink.Framework::IZLinkMeshPeerConnections",
       "packages": [
@@ -131691,7 +131691,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkMeshPeerConnections.Disconnect#a655f0f59d946fdb",
       "kind": "method",
       "language": "dotnet",
-      "line": 348,
+      "line": 349,
       "memberName": "Disconnect",
       "ownerIdentity": "Zlink.Framework::IZLinkMeshPeerConnections",
       "packages": [
@@ -131724,7 +131724,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkMeshPeerConnections.ListConnections#42aa0fda4d51ab18",
       "kind": "method",
       "language": "dotnet",
-      "line": 349,
+      "line": 350,
       "memberName": "ListConnections",
       "ownerIdentity": "Zlink.Framework::IZLinkMeshPeerConnections",
       "packages": [
@@ -131958,7 +131958,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkMetadataCall.Metadata#98ef93789ac0e4dc",
       "kind": "method",
       "language": "dotnet",
-      "line": 498,
+      "line": 499,
       "memberName": "Metadata",
       "ownerIdentity": "Zlink.Framework::IZLinkMetadataCall",
       "packages": [
@@ -131993,7 +131993,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkMetadataCall.Metadata#ee51fa02344cd4ad",
       "kind": "method",
       "language": "dotnet",
-      "line": 497,
+      "line": 498,
       "memberName": "Metadata",
       "ownerIdentity": "Zlink.Framework::IZLinkMetadataCall",
       "packages": [
@@ -132980,7 +132980,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkRouteMeshRuntimeOptions.Channel#3745c0f7ea061b6d",
       "kind": "method",
       "language": "dotnet",
-      "line": 437,
+      "line": 438,
       "memberName": "Channel",
       "ownerIdentity": "Zlink.Framework::IZLinkRouteMeshRuntimeOptions",
       "packages": [
@@ -133015,7 +133015,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::IZLinkRouteMeshRuntimeOptions.Mesh#1a76f7100b09fbac",
       "kind": "method",
       "language": "dotnet",
-      "line": 436,
+      "line": 437,
       "memberName": "Mesh",
       "ownerIdentity": "Zlink.Framework::IZLinkRouteMeshRuntimeOptions",
       "packages": [
@@ -148887,7 +148887,7 @@
       "identity": "dotnet|Zlink.Framework|Zlink.Framework::ZLinkMeshPeerConnection.ZLinkMeshPeerConnection#469dd31139bd08c2",
       "kind": "constructor",
       "language": "dotnet",
-      "line": 341,
+      "line": 342,
       "memberName": "ZLinkMeshPeerConnection",
       "ownerIdentity": "Zlink.Framework::ZLinkMeshPeerConnection",
       "packages": [

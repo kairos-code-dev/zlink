@@ -37,9 +37,12 @@ public sealed class RuntimeMetricsTests
             ["zlink.spot.closed"] = (typeof(Counter<>), "{spot}"),
             ["zlink.actor.count"] = (typeof(UpDownCounter<>), "{actor}"),
             ["zlink.actor.mailbox.depth"] = (typeof(UpDownCounter<>), "{item}"),
-            ["zlink.actor.transfers"] = (typeof(Counter<>), "{transfer}"),
-            ["zlink.actor.transfer.duration"] = (typeof(Histogram<>), "s"),
-            ["zlink.actor.transfer.pending_requests.count"] = (typeof(Histogram<>), "{request}"),
+            ["zlink.relocation.started"] = (typeof(Counter<>), "{relocation}"),
+            ["zlink.relocation.completed"] = (typeof(Counter<>), "{relocation}"),
+            ["zlink.relocation.duration"] = (typeof(Histogram<>), "s"),
+            ["zlink.relocation.recovered"] = (typeof(Counter<>), "{relocation}"),
+            ["zlink.relocation.journal.messages"] = (typeof(Histogram<>), "{message}"),
+            ["zlink.relocation.bytes"] = (typeof(Histogram<>), "By"),
             ["zlink.channel.request.duration"] = (typeof(Histogram<>), "s"),
             ["zlink.channel.request.inflight"] = (typeof(UpDownCounter<>), "{request}"),
             ["zlink.channel.request.timeouts"] = (typeof(Counter<>), "{request}"),
@@ -68,6 +71,14 @@ public sealed class RuntimeMetricsTests
         }
 
         Assert.DoesNotContain(instruments, instrument => instrument.Name == "zlink.fanout.dropped");
+        Assert.DoesNotContain(
+            instruments,
+            instrument => instrument.Name.StartsWith(
+                "zlink.actor.transfer",
+                StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            instruments,
+            instrument => instrument.Name == "zlink.actor.transfers");
     }
 
     [Fact]
@@ -215,42 +226,145 @@ public sealed class RuntimeMetricsTests
     }
 
     [Fact]
-    public async Task Actor_Transfer_Metric_Uses_The_Moving_Snapshot_Once()
+    public void Relocation_Metric_Uses_Closed_Labels_And_Records_Terminal_Once()
     {
-        var pendingSamples = new List<long>();
-        var transferSamples = new List<long>();
-        var durationSamples = new List<double>();
-        using var pendingListener = Listen<long>(
-            "zlink.actor.transfer.pending_requests.count",
-            (_, value, _) => pendingSamples.Add(value));
-        using var transferListener = Listen<long>(
-            "zlink.actor.transfers",
-            (_, value, _) => transferSamples.Add(value));
+        var counterSamples = new List<(string Name, IReadOnlyDictionary<string, string> Tags)>();
+        var durationSamples =
+            new List<(double Value, IReadOnlyDictionary<string, string> Tags)>();
+        using var counterListener = Listen<long>(
+            ["zlink.relocation.started", "zlink.relocation.completed"],
+            (instrument, _, tags) => counterSamples.Add((instrument.Name, Tags(tags))));
         using var durationListener = Listen<double>(
-            "zlink.actor.transfer.duration",
-            (_, value, _) => durationSamples.Add(value));
-        var mailbox = new ZLinkActorDispatchMailbox();
-        var active = await mailbox.EnterAsync(CancellationToken.None);
-        var pendingSend = mailbox.EnterAsync(
-                CancellationToken.None,
-                countAsPendingMessage: true)
-            .AsTask();
-        var pendingRequest = mailbox.EnterAsync(
-                CancellationToken.None,
-                countAsPendingMessage: true,
-                countAsPendingRequest: true)
-            .AsTask();
+            "zlink.relocation.duration",
+            (_, value, tags) => durationSamples.Add((value, Tags(tags))));
 
-        var movingSnapshot = mailbox.PendingRequestCount;
-        var started = ZLinkRuntimeMetrics.StartActorTransfer(movingSnapshot);
-        ZLinkRuntimeMetrics.CompleteActorTransfer(started);
+        var operation = ZLinkRuntimeMetrics.StartRelocation(
+            "game",
+            ZLinkRelocationMetricObjectKind.Actor,
+            ZLinkRelocationMetricPolicy.Snapshot);
+        operation.Complete(ZLinkRelocationMetricOutcome.Aborted);
+        operation.Complete(ZLinkRelocationMetricOutcome.Completed);
 
-        Assert.Equal([1L], pendingSamples);
-        Assert.Equal([1L], transferSamples);
-        Assert.Single(durationSamples);
-        active.Dispose();
-        (await pendingSend).Dispose();
-        (await pendingRequest).Dispose();
+        var started = Assert.Single(
+            counterSamples,
+            sample => sample.Name == "zlink.relocation.started");
+        Assert.Equal(
+            new Dictionary<string, string>
+            {
+                ["mesh_name"] = "game",
+                ["object_kind"] = "actor",
+                ["policy"] = "snapshot"
+            },
+            started.Tags);
+        var completed = Assert.Single(
+            counterSamples,
+            sample => sample.Name == "zlink.relocation.completed");
+        Assert.Equal("game", completed.Tags["mesh_name"]);
+        Assert.Equal("actor", completed.Tags["object_kind"]);
+        Assert.Equal("snapshot", completed.Tags["policy"]);
+        Assert.Equal("aborted", completed.Tags["outcome"]);
+        var duration = Assert.Single(durationSamples);
+        Assert.True(duration.Value >= 0);
+        Assert.Equal(completed.Tags, duration.Tags);
+    }
+
+    [Fact]
+    public void Relocation_Metric_Uses_Only_The_Closed_Terminal_Outcomes()
+    {
+        var terminal = new List<IReadOnlyDictionary<string, string>>();
+        var recovered = new List<IReadOnlyDictionary<string, string>>();
+        using var listener = Listen<long>(
+            ["zlink.relocation.completed", "zlink.relocation.recovered"],
+            (instrument, _, tags) =>
+            {
+                if (instrument.Name == "zlink.relocation.completed")
+                    terminal.Add(Tags(tags));
+                else
+                    recovered.Add(Tags(tags));
+            });
+
+        var outcomes = new[]
+        {
+            ZLinkRelocationMetricOutcome.Completed,
+            ZLinkRelocationMetricOutcome.Aborted,
+            ZLinkRelocationMetricOutcome.Recovered,
+            ZLinkRelocationMetricOutcome.Failed,
+            ZLinkRelocationMetricOutcome.Shutdown
+        };
+        foreach (var outcome in outcomes)
+            ZLinkRuntimeMetrics.StartRelocation(
+                    "mesh",
+                    ZLinkRelocationMetricObjectKind.UserSpot,
+                    ZLinkRelocationMetricPolicy.Recreate)
+                .Complete(outcome);
+
+        Assert.Equal(
+            ["completed", "aborted", "recovered", "failed", "shutdown"],
+            terminal.Select(static sample => sample["outcome"]));
+        var recoveryTags = Assert.Single(recovered);
+        Assert.Equal("mesh", recoveryTags["mesh_name"]);
+        Assert.Equal("user_spot", recoveryTags["object_kind"]);
+        Assert.DoesNotContain("policy", recoveryTags);
+        Assert.DoesNotContain("outcome", recoveryTags);
+    }
+
+    [Fact]
+    public void Relocation_Metric_Records_One_Terminal_When_Outcomes_Compete()
+    {
+        var terminalCount = 0;
+        var durationCount = 0;
+        using var terminalListener = Listen<long>(
+            "zlink.relocation.completed",
+            (_, _, _) => Interlocked.Increment(ref terminalCount));
+        using var durationListener = Listen<double>(
+            "zlink.relocation.duration",
+            (_, _, _) => Interlocked.Increment(ref durationCount));
+        var operation = ZLinkRuntimeMetrics.StartRelocation(
+            "mesh",
+            ZLinkRelocationMetricObjectKind.Actor,
+            ZLinkRelocationMetricPolicy.Recreate);
+        var outcomes = Enum.GetValues<ZLinkRelocationMetricOutcome>();
+
+        Parallel.For(
+            0,
+            256,
+            index => operation.Complete(outcomes[index % outcomes.Length]));
+
+        Assert.Equal(1, Volatile.Read(ref terminalCount));
+        Assert.Equal(1, Volatile.Read(ref durationCount));
+    }
+
+    [Fact]
+    public void Relocation_Journal_And_Bytes_Use_Their_Exact_Label_Sets()
+    {
+        var samples = new List<(string Name, long Value, IReadOnlyDictionary<string, string> Tags)>();
+        using var listener = Listen<long>(
+            ["zlink.relocation.journal.messages", "zlink.relocation.bytes"],
+            (instrument, value, tags) => samples.Add((instrument.Name, value, Tags(tags))));
+
+        var operation = ZLinkRuntimeMetrics.StartRelocation(
+            "mesh",
+            ZLinkRelocationMetricObjectKind.InstanceSpot,
+            ZLinkRelocationMetricPolicy.Snapshot);
+        operation.RecordJournalMessages(7);
+        operation.RecordBytes(4096);
+        operation.Complete(ZLinkRelocationMetricOutcome.Completed);
+
+        var journal = Assert.Single(
+            samples,
+            sample => sample.Name == "zlink.relocation.journal.messages");
+        Assert.Equal(7, journal.Value);
+        Assert.Equal("mesh", journal.Tags["mesh_name"]);
+        Assert.Equal("instance_spot", journal.Tags["object_kind"]);
+        Assert.DoesNotContain("policy", journal.Tags);
+
+        var bytes = Assert.Single(
+            samples,
+            sample => sample.Name == "zlink.relocation.bytes");
+        Assert.Equal(4096, bytes.Value);
+        Assert.Equal("mesh", bytes.Tags["mesh_name"]);
+        Assert.Equal("instance_spot", bytes.Tags["object_kind"]);
+        Assert.Equal("snapshot", bytes.Tags["policy"]);
     }
 
     [Fact]

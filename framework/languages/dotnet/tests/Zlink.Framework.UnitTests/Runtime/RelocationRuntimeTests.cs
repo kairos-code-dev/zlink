@@ -11,6 +11,93 @@ namespace Zlink.Framework.UnitTests;
 public sealed class RelocationRuntimeTests
 {
     [Fact]
+    public void RelocationPermitAdmissionIsAllOrNothing()
+    {
+        var options = new ZLinkLocationOptions
+        {
+            MaxActiveOutboundRelocations = 2,
+            MaxActiveInboundRelocations = 1,
+            MaxConcurrentRelocationCaptures = 1,
+            MaxConcurrentRelocationRestores = 1,
+            MaxRelocationPayloadInFlightBytes = 100
+        };
+        var permits = new ZLinkRelocationPermitPool(options);
+        Assert.True(permits.TryAcquire(
+            new ZLinkRelocationPermitRequest(1, 1, 1, 1, 60),
+            out var first));
+
+        Assert.False(permits.TryAcquire(
+            new ZLinkRelocationPermitRequest(1, 1, 0, 0, 40),
+            out _));
+        Assert.Equal(
+            new ZLinkRelocationPermitSnapshot(1, 1, 1, 1, 60, false),
+            permits.Snapshot());
+
+        first.Dispose();
+        Assert.Equal(default, permits.Snapshot());
+    }
+
+    [Fact]
+    public void OversizedAggregateOwnsThePayloadWindowExclusively()
+    {
+        var options = new ZLinkLocationOptions
+        {
+            MaxActiveOutboundRelocations = 4,
+            MaxActiveInboundRelocations = 4,
+            MaxConcurrentRelocationCaptures = 4,
+            MaxConcurrentRelocationRestores = 4,
+            MaxRelocationPayloadInFlightBytes = 100
+        };
+        var permits = new ZLinkRelocationPermitPool(options);
+        Assert.True(permits.TryAcquire(
+            ZLinkRelocationPermitRequest.Outbound(40, capture: true),
+            out var normal));
+        Assert.False(permits.TryAcquire(
+            ZLinkRelocationPermitRequest.Outbound(
+                101,
+                capture: true,
+                allowOversizedPayload: true),
+            out _));
+        normal.Dispose();
+
+        Assert.False(permits.TryAcquire(
+            ZLinkRelocationPermitRequest.Outbound(101, capture: true),
+            out _));
+        Assert.True(permits.TryAcquire(
+            ZLinkRelocationPermitRequest.Outbound(
+                101,
+                capture: true,
+                allowOversizedPayload: true),
+            out var oversized));
+        Assert.True(permits.Snapshot().OversizedPayloadActive);
+        Assert.False(permits.TryAcquire(
+            ZLinkRelocationPermitRequest.Inbound(1, restore: true),
+            out _));
+
+        oversized.Dispose();
+        Assert.True(permits.TryAcquire(
+            ZLinkRelocationPermitRequest.Inbound(100, restore: true),
+            out var after));
+        after.Dispose();
+        Assert.Equal(default, permits.Snapshot());
+    }
+
+    [Fact]
+    public void RelocationPermitLeaseReleasesExactlyOnce()
+    {
+        var permits = new ZLinkRelocationPermitPool(new ZLinkLocationOptions());
+        Assert.True(permits.TryAcquire(
+            ZLinkRelocationPermitRequest.Outbound(1, capture: true),
+            out var lease));
+
+        var copiedLease = lease;
+        lease.Dispose();
+        copiedLease.Dispose();
+
+        Assert.Equal(default, permits.Snapshot());
+    }
+
+    [Fact]
     public async Task Authority_relocation_uses_exact_owner_and_capacity_fence_with_opaque_payloads()
     {
         var store = new ZLinkInMemoryLocationStore();
@@ -604,7 +691,6 @@ public sealed class RelocationRuntimeTests
         var node = new ZLinkFrameworkOptionsBuilder(registration)
             .AddRouteMesh("objects")
             .Listen("inproc://objects");
-        node.ChannelName("objects");
         server = node.Objects().Server();
         return registration;
     }
@@ -649,16 +735,14 @@ public sealed class RelocationRuntimeTests
         };
         var node = options.AddRouteMesh("objects");
         node.SetPlacementWeight(75)
-            .SetObjectCapacity(500, 25);
+            .SetActorLimit(500)
+            .SetSpotLimit(500)
+            .SetActivationConcurrency(25);
         node.Objects().Server().AddActorFactory<
             TestRelocatableActor,
             TestRelocatableActorFactory>(
             "Game.Actor",
-            new ZLinkObjectPlacementOptions
-            {
-                MaxActiveObjects = 100,
-                MaxPendingActivations = 10
-            },
+            new ZLinkActorFactoryOptions(),
             ZLinkRelocationPolicy<TestRelocatableActor>.Recreate);
 
         Assert.Equal(42, registration.ApplicationVersion);
@@ -666,39 +750,34 @@ public sealed class RelocationRuntimeTests
         var configured = registration.SpotNodes["objects"];
         Assert.Equal(ZLinkMeshNodeObjectRole.Server, configured.ObjectRole);
         Assert.Equal(75, configured.PlacementWeight);
-        Assert.Equal(500, configured.MaxActiveObjects);
-        Assert.Equal(25, configured.MaxPendingActivations);
+        Assert.Equal(500, configured.ActorLimit);
+        Assert.Equal(500, configured.SpotLimit);
+        Assert.Equal(25, configured.ActivationConcurrencyLimit);
         Assert.Throws<ZLinkConfigurationException>(
             () => node.Objects().Client());
     }
 
     [Fact]
-    public void Placement_limits_reject_non_positive_values()
+    public void ExactCapacityLimitsAllowUnlimitedPopulationAndRejectInvalidValues()
     {
         var registration = new ZLinkFrameworkRegistration();
         var options = new ZLinkFrameworkOptionsBuilder(registration);
-        var server = options.AddRouteMesh("objects").Objects().Server();
+        var node = options.AddRouteMesh("objects");
 
+        node.SetActorLimit(0);
+        node.SetSpotLimit(0);
         Assert.Throws<ZLinkConfigurationException>(
-            () => server.AddActorFactory<
-                TestRelocatableActor,
-                TestRelocatableActorFactory>(
-                "Game.Actor",
-                new ZLinkObjectPlacementOptions
-                {
-                    MaxActiveObjects = 0
-                },
-                ZLinkRelocationPolicy<TestRelocatableActor>.Recreate));
+            () => node.SetActorLimit(-1));
         Assert.Throws<ZLinkConfigurationException>(
-            () => server.AddActorFactory<
-                TestRelocatableActor,
-                TestRelocatableActorFactory>(
-                "Game.Actor.Nul",
-                new ZLinkObjectPlacementOptions
-                {
-                    MaxPendingActivations = 0
-                },
-                ZLinkRelocationPolicy<TestRelocatableActor>.Recreate));
+            () => node.SetSpotLimit(-1));
+        Assert.Throws<ZLinkConfigurationException>(
+            () => node.SetActivationConcurrency(0));
+        Assert.Throws<ZLinkConfigurationException>(
+            () => node.SetActivationConcurrency(-1));
+
+        var configured = registration.SpotNodes["objects"];
+        Assert.Equal(0, configured.ActorLimit);
+        Assert.Equal(0, configured.SpotLimit);
     }
 
     [Fact]
@@ -1087,6 +1166,8 @@ public sealed class RelocationRuntimeTests
                     Limit: 0)
             ],
             State = ZLinkFrameworkRuntimeState.Serving,
+            EntrySpotId =
+                $"{rid}-entry-00000000-0000-4000-8000-000000000001",
             Capacity = new(
                 new ZLinkPopulationCapacity(
                     0,
@@ -1310,6 +1391,18 @@ public sealed class RelocationRuntimeTests
         public ValueTask<ZLinkObjectAbortResult> AbortAsync(
             ZLinkObjectReservation reservation,
             CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkRelocationCapacityReserveResult>
+            ReserveRelocationCapacityAsync(
+                ZLinkRelocationCapacityReservationRequest request,
+                CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkRelocationCapacityAbortResult>
+            AbortRelocationCapacityAsync(
+                ZLinkRelocationCapacityFence fence,
+                CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
         public ValueTask<ZLinkAggregatePrepareResult> PrepareAggregateAsync(

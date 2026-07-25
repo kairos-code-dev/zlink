@@ -22,7 +22,7 @@ public sealed class WeightContractTests
 
         options.AddRouteMesh("mesh")
             .SetPlacementWeight(weight)
-            .ChannelName("route")
+            .Channel("route").Server()
             .SetWeight(weight);
         options.AddClientServerChannel("rpc")
             .Server()
@@ -49,7 +49,7 @@ public sealed class WeightContractTests
         Assert.Throws<ZLinkConfigurationException>(
             () => mesh.SetPlacementWeight(weight));
         Assert.Throws<ZLinkConfigurationException>(
-            () => mesh.ChannelName("route").SetWeight(weight));
+            () => mesh.Channel("route").Server().SetWeight(weight));
         Assert.Throws<ZLinkConfigurationException>(
             () => options.AddClientServerChannel("rpc")
                 .Server()

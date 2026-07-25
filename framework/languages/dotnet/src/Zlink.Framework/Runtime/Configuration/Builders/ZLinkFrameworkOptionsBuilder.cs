@@ -21,26 +21,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
         }
     }
 
-    public TimeSpan? ActorTransferTimeout
-    {
-        get => _registration.ActorTransferTimeout;
-        set
-        {
-            ValidateOptionalPositiveTimeout(value, nameof(ActorTransferTimeout));
-            _registration.ActorTransferTimeout = value;
-        }
-    }
-
-    public TimeSpan? ActorTransferForwardWindow
-    {
-        get => _registration.ActorTransferForwardWindow;
-        set
-        {
-            ValidateOptionalPositiveTimeout(value, nameof(ActorTransferForwardWindow));
-            _registration.ActorTransferForwardWindow = value;
-        }
-    }
-
     public TimeSpan DefaultSocketSendTimeout
     {
         get => _registration.DefaultSocketSendTimeout;
@@ -78,15 +58,6 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
             }
             _registration.MaintenanceWave = value;
         }
-    }
-
-    private static void ValidateOptionalPositiveTimeout(TimeSpan? value, string name)
-    {
-        if (value is { } timeout && timeout <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(
-                name,
-                value,
-                "Actor transfer timeout values must be greater than zero.");
     }
 
     public IZLinkCodecRegistryBuilder Codecs => _registration.Codecs;
@@ -184,6 +155,11 @@ internal sealed class ZLinkFrameworkOptionsBuilder : IZLinkFrameworkOptions
     public ZLinkLocationOptions ConfigureLocations()
     {
         return _registration.Locations.Options;
+    }
+
+    public IZLinkNetworkOptions ConfigureNetwork()
+    {
+        return _registration.NetworkOptions;
     }
 
     public void UseFilter<TFilter>()

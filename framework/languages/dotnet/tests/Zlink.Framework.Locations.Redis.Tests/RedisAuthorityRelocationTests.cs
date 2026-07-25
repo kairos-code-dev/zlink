@@ -54,7 +54,7 @@ public sealed class RedisAuthorityRelocationTests(
             current["capacityBundle"]);
         Assert.Equal(key.Value, current["authorityKey"]);
         var pending = Assert.IsType<ZLinkAuthorityReadResult.Found>(
-            await store.ReadAuthorityAsync(key)).Snapshot.PendingCreation;
+            await store.ReadAuthorityAsync(key)).Snapshot.ReservedCreation;
         Assert.NotNull(pending);
         Assert.Equal(
             reserved.Reservation.ReservationVersion,
@@ -83,7 +83,7 @@ public sealed class RedisAuthorityRelocationTests(
                 "physical-ready"u8.ToArray()));
         var active = Assert.IsType<ZLinkAuthorityReadResult.Found>(
             await store.ReadAuthorityAsync(key)).Snapshot;
-        Assert.Null(active.PendingCreation);
+        Assert.Null(active.ReservedCreation);
         const string revision = "0000000000000001";
         var history = await fixture.HashGetAllAsync(
             keys.HybridAuthorityHistoryKey(key.Value).ToString());
@@ -332,16 +332,14 @@ public sealed class RedisAuthorityRelocationTests(
     {
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
         await using var store = fixture.CreateStore(out var keyPrefix);
-        var source = new ZLinkLocationOwnerToken("source-owner", 1);
-        var target = new ZLinkLocationOwnerToken("target-owner", 2);
-        await store.RenewOwnerLeaseAsync(
-            source.OwnerId,
-            RoutingId.From("source"),
-            TimeSpan.FromMinutes(1));
-        await store.RenewOwnerLeaseAsync(
-            target.OwnerId,
-            RoutingId.From("target"),
-            TimeSpan.FromMinutes(1));
+        var source = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "source-owner",
+                TimeSpan.FromMinutes(1))).Token;
+        var target = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "target-owner",
+                TimeSpan.FromMinutes(1))).Token;
         await PublishDescriptorAsync(
             store,
             source,
@@ -594,16 +592,14 @@ public sealed class RedisAuthorityRelocationTests(
     {
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
         await using var store = fixture.CreateStore();
-        var source = new ZLinkLocationOwnerToken("relocation-source", 1);
-        var target = new ZLinkLocationOwnerToken("relocation-target", 2);
-        await store.RenewOwnerLeaseAsync(
-            source.OwnerId,
-            RoutingId.From(source.OwnerId),
-            TimeSpan.FromMinutes(1));
-        await store.RenewOwnerLeaseAsync(
-            target.OwnerId,
-            RoutingId.From(target.OwnerId),
-            TimeSpan.FromMinutes(1));
+        var source = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "relocation-source",
+                TimeSpan.FromMinutes(1))).Token;
+        var target = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "relocation-target",
+                TimeSpan.FromMinutes(1))).Token;
         await PublishDescriptorAsync(
             store,
             source,
@@ -671,11 +667,10 @@ public sealed class RedisAuthorityRelocationTests(
     {
         Skip.IfNot(fixture.RedisAvailable, fixture.SkipReason);
         await using var store = fixture.CreateStore(out var keyPrefix);
-        await store.RenewOwnerLeaseAsync(
-            "spot-capacity-owner",
-            RoutingId.From("spot-capacity-node"),
-            TimeSpan.FromMinutes(1));
-        var owner = new ZLinkLocationOwnerToken("spot-capacity-owner", 1);
+        var owner = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await store.ClaimOwnerLeaseAsync(
+                "spot-capacity-owner",
+                TimeSpan.FromMinutes(1))).Token;
         var descriptor = SpotDescriptor(owner, RoutingId.From("spot-capacity-node"));
         Assert.Equal(
             ZLinkLocationWriteStatus.Stored,
@@ -685,7 +680,9 @@ public sealed class RedisAuthorityRelocationTests(
         var descriptorKey = new ZLinkMeshNodeDescriptorKey(
             descriptor.MeshName,
             descriptor.Rid);
-        var firstKey = new ZLinkAuthorityKey("zla1:s:spot-capacity-1");
+        var firstKey =
+            Zlink.Framework.Runtime.Spots.ZLinkUserSpotAuthorityPayloadCodec
+                .AuthorityKey("spot-capacity-1");
         var first = Assert.IsType<ZLinkObjectReserveResult.Reserved>(
             await store.ReserveAsync(
                 SpotRequest(firstKey, owner, descriptorKey, "room")));
@@ -719,7 +716,9 @@ public sealed class RedisAuthorityRelocationTests(
         Assert.IsType<ZLinkObjectReserveResult.PlacementCapacityExhausted>(
             await store.ReserveAsync(
                 SpotRequest(
-                    new ZLinkAuthorityKey("zla1:s:spot-capacity-2"),
+                    Zlink.Framework.Runtime.Spots
+                        .ZLinkUserSpotAuthorityPayloadCodec
+                        .AuthorityKey("spot-capacity-2"),
                     owner,
                     descriptorKey,
                     "room")));
@@ -731,7 +730,9 @@ public sealed class RedisAuthorityRelocationTests(
         Assert.IsType<ZLinkObjectReserveResult.Reserved>(
             await store.ReserveAsync(
                 SpotRequest(
-                    new ZLinkAuthorityKey("zla1:s:spot-capacity-2"),
+                    Zlink.Framework.Runtime.Spots
+                        .ZLinkUserSpotAuthorityPayloadCodec
+                        .AuthorityKey("spot-capacity-2"),
                     owner,
                     descriptorKey,
                     "room")));
@@ -861,8 +862,7 @@ public sealed class RedisAuthorityRelocationTests(
             DateTimeOffset.UnixEpoch)
         {
             ObjectRole = ZLinkMeshNodeObjectRole.Server,
-            EntrySpotId =
-                "game-entry-00000000-0000-4000-8000-000000000001",
+            EntrySpotId = $"test-entry-{Guid.NewGuid():D}",
             ObjectCapabilities =
             [
                 new ZLinkObjectCapability(
@@ -898,8 +898,7 @@ public sealed class RedisAuthorityRelocationTests(
             DateTimeOffset.UnixEpoch)
         {
             ObjectRole = ZLinkMeshNodeObjectRole.Server,
-            EntrySpotId =
-                "game-entry-00000000-0000-4000-8000-000000000002",
+            EntrySpotId = $"test-entry-{Guid.NewGuid():D}",
             ObjectCapabilities =
             [
                 new ZLinkObjectCapability(

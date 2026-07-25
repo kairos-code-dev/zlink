@@ -31,6 +31,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private ZLinkRuntimeExecutionScope? _executionScope;
     private readonly object _operationGate = new();
     private readonly ZLinkLocationLifecycle? _locationLifecycle;
+    private readonly ZLinkRelocationPermitPool _relocationPermits;
     private readonly IZLinkAutoConnectTopologyQuery? _topologyQuery;
     private readonly ZLinkSpotRouteRouterDispatcher _spotRouteRouter;
     private readonly ZLinkSpotRuntimeManager _spots;
@@ -47,6 +48,7 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     private int _activeOperations;
     private int _activeRequests;
     private bool _acceptingOperations;
+    private long _nextInstanceActivationSelection;
 
     public ZLinkFrameworkRuntime(
         IServiceProvider services,
@@ -64,6 +66,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
         _drainAdmission = services.GetService<ZLinkDrainAdmissionGate>() ?? new ZLinkDrainAdmissionGate();
         _locationLifecycle = services.GetService<ZLinkLocationLifecycle>();
         _topologyQuery = services.GetService<IZLinkAutoConnectTopologyQuery>();
+        _relocationPermits = new ZLinkRelocationPermitPool(
+            registration.Locations.Options);
         var components = ZLinkFrameworkRuntimeComponentFactory.Create(
             this,
             services,
@@ -93,7 +97,8 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
             _actors,
             _actorSessionManager,
             services,
-            registration);
+            registration,
+            _relocationPermits);
         _actorStragglerForwarder = new ZLinkActorStragglerForwarder(this);
         _spotRouteRouter = new ZLinkSpotRouteRouterDispatcher(GetOrStartState);
     }
@@ -140,6 +145,9 @@ internal sealed partial class ZLinkFrameworkRuntime : IZLinkSpotManager
     internal IServiceProvider Services { get; }
 
     internal ZLinkDrainAdmissionGate DrainAdmission => _drainAdmission;
+
+    internal ZLinkRelocationPermitPool RelocationPermits =>
+        _relocationPermits;
 
     internal async ValueTask<bool> DrainStreamSessionsAsync(CancellationToken cancellationToken)
     {

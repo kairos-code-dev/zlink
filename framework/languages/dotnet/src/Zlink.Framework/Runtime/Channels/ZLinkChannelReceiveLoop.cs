@@ -8,7 +8,7 @@ internal sealed class ZLinkChannelReceiveLoop(
         string channelName,
         IZLinkBackendRouterSocket router,
         ZLinkClientServerServerIdentity identity,
-        IZLinkRuntimeErrorSink errorSink,
+        IZLinkRuntimeFailureReporter errorSink,
         CancellationToken cancellationToken)
     {
         var backoff = new ZLinkPollingBackoff();
@@ -183,6 +183,58 @@ internal sealed class ZLinkChannelReceiveLoop(
 
                 backoff.Reset();
                 await dispatcher.DispatchEventMessageAsync(channelName, topicMessage, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (ObjectDisposedException)
+            {
+                break;
+            }
+        }
+    }
+
+    public async Task RunFanoutConnectionLoopAsync(
+        string channelName,
+        IZLinkBackendSubscriberSocket subscriber,
+        Action onActivity,
+        Action onProtocolError,
+        CancellationToken cancellationToken)
+    {
+        var backoff = new ZLinkPollingBackoff();
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            using var topicMessage = new TopicMessage();
+            try
+            {
+                if (!subscriber.Subscribe(topicMessage, RecvFlags.DontWait))
+                {
+                    await backoff.NoDataAsync(cancellationToken)
+                        .ConfigureAwait(false);
+                    continue;
+                }
+
+                backoff.Reset();
+                if (ZLinkFanoutLivenessProtocol.IsReservedTopic(
+                        topicMessage.Topic))
+                {
+                    if (ZLinkFanoutLivenessProtocol.IsValidBeacon(topicMessage))
+                    {
+                        onActivity();
+                        continue;
+                    }
+
+                    onProtocolError();
+                    return;
+                }
+
+                onActivity();
+                await dispatcher.DispatchEventMessageAsync(
+                        channelName,
+                        topicMessage,
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (Exception) when (cancellationToken.IsCancellationRequested)

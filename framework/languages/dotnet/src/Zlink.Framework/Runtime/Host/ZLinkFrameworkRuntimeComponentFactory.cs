@@ -65,7 +65,9 @@ internal static class ZLinkFrameworkRuntimeComponentFactory
                         registration.Codecs,
                         channelDispatchErrors,
                         channelLogger),
-                    registration.Codecs)));
+                    registration.Codecs)),
+            services.GetService<ZLinkFanoutRuntimeService>()
+            ?? new ZLinkFanoutRuntimeService(registration));
         var streams = new ZLinkStreamRuntimeManager(services, backendAdapterFactory, registration);
         var spots = new ZLinkSpotRuntimeManager(
             services,

@@ -171,7 +171,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                         relocationCapacity.Request.TargetNodeLifecycleGeneration,
                         relocationCapacity.Request.Capacity)
                     : current.Allocation,
-                current.PendingCreation,
+                current.ReservedCreation,
                 now);
             _authorities[key.Value] = stored;
             if (put.RelocationCapacityFence is { } capacityFence)
@@ -260,6 +260,16 @@ internal sealed partial class ZLinkInMemoryLocationStore
         {
             var now = _time.GetUtcNow();
             RemoveExpiredCreationTerminals(now);
+            if (request.ObjectKind is ZLinkPlacementObjectKind.UserSpot
+                    or ZLinkPlacementObjectKind.InstanceSpot
+                && Zlink.Framework.Runtime.Spots
+                    .ZLinkUserSpotAuthorityPayloadCodec.TryGetSpotId(
+                        request.Key,
+                        out var spotId)
+                && _entrySpotIdClaims.ContainsKey(spotId))
+                return ValueTask.FromResult<ZLinkObjectReserveResult>(
+                    new ZLinkObjectReserveResult.Conflict(
+                        new ZLinkAuthorityReadResult.Missing(now)));
             if (_authorities.TryGetValue(request.Key.Value, out var existing))
                 return ValueTask.FromResult<ZLinkObjectReserveResult>(
                     new ZLinkObjectReserveResult.AlreadyExists(existing));
@@ -302,13 +312,13 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 request.TargetOwner.OwnerId,
                 request.TargetOwner.LeaseGeneration,
                 new ZLinkPlacementAllocation(
-                    ZLinkPlacementAllocationState.Pending,
+                    ZLinkPlacementAllocationState.Reserved,
                     request.ObjectKind,
                     request.StableType,
                     request.TargetDescriptor,
                     request.TargetNodeLifecycleGeneration,
                     request.Capacity),
-                new ZLinkPendingObjectCreation(
+                new ZLinkReservedObjectCreation(
                     reservationVersion,
                     request.CreationIntentReference,
                     request.CreationIntentHash.ToArray(),
@@ -362,7 +372,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     out var current)
                 || current.StoreVersion != reservation.StoreVersion
                 || current.Allocation.State
-                != ZLinkPlacementAllocationState.Pending)
+                != ZLinkPlacementAllocationState.Reserved)
                 return ValueTask.FromResult<ZLinkObjectCommitResult>(
                     new ZLinkObjectCommitResult.Stale());
             var now = _time.GetUtcNow();
@@ -385,7 +395,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                 {
                     State = ZLinkPlacementAllocationState.Active
                 },
-                PendingCreation = null,
+                ReservedCreation = null,
                 StoreNow = now
             };
             AdjustAllocationCapacity(
@@ -446,7 +456,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     out var current)
                 || current.StoreVersion != reservation.StoreVersion
                 || current.Allocation.State
-                != ZLinkPlacementAllocationState.Pending)
+                != ZLinkPlacementAllocationState.Reserved)
                 return ValueTask.FromResult<ZLinkObjectCreationCompleteResult>(
                     new ZLinkObjectCreationCompleteResult.Stale());
             if (!MatchesLiveTarget(
@@ -491,7 +501,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     {
                         State = ZLinkPlacementAllocationState.Active
                     },
-                    PendingCreation = null,
+                    ReservedCreation = null,
                     StoreNow = now
                 };
                 AdjustAllocationCapacity(
@@ -573,7 +583,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
                     out var current)
                 || current.StoreVersion != reservation.StoreVersion
                 || current.Allocation.State
-                != ZLinkPlacementAllocationState.Pending)
+                != ZLinkPlacementAllocationState.Reserved)
                 return ValueTask.FromResult<ZLinkObjectAbortResult>(
                     new ZLinkObjectAbortResult.Stale());
             if (!CanIncrement(_authorityRevision))
@@ -1231,7 +1241,7 @@ internal sealed partial class ZLinkInMemoryLocationStore
     private static ZLinkPlacementAllocation TargetAllocation(
         ZLinkRelocationCapacityReservationRequest request) =>
         new(
-            ZLinkPlacementAllocationState.Pending,
+            ZLinkPlacementAllocationState.Reserved,
             request.ObjectKind,
             request.StableType,
             request.TargetDescriptor,

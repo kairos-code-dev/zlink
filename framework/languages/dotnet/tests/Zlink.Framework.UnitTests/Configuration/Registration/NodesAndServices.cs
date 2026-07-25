@@ -33,12 +33,12 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                options.AddRouteMesh("entry-a")
-                    .Listen("inproc://entry-a")
-                    .AddEntrySpot<TestEntrySpot>().ChannelName("entry-a");
-                options.AddRouteMesh("entry-b")
-                    .Listen("inproc://entry-b")
-                    .AddEntrySpot<TestEntrySpot>().ChannelName("entry-b");
+                var first = options.AddRouteMesh("entry-a").Listen("inproc://entry-a");
+                first.Channel("entry-a").Server();
+                first.Objects().Server().AddEntrySpot<TestEntrySpot>();
+                var second = options.AddRouteMesh("entry-b").Listen("inproc://entry-b");
+                second.Channel("entry-b").Server();
+                second.Objects().Server().AddEntrySpot<TestEntrySpot>();
             }));
 
         Assert.Contains("Duplicate Entry Spot", exception.Message, StringComparison.Ordinal);
@@ -74,13 +74,16 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.UseTestLocationStore();
             {
                 var mesh = options.AddRouteMesh("stage-node");
-                mesh.ChannelName("stage-node");
+                mesh.Channel("stage-node").Server();
                 {
                     var spot = mesh;
                     {
                         var router = spot.Listen("tcp://127.0.0.1:9000");
                     }
-                    spot.AddSpotFactory<TestSpot>();
+                    spot.Objects().Server().AddSpotFactory<TestSpot>(
+                        "test",
+                        null,
+                        ZLinkRelocationPolicy<TestSpot>.Disabled);
                 }
             }
         });
@@ -97,9 +100,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.AddRouteMesh("stage-node")
-                .Listen("tcp://127.0.0.1:9000")
-                .AddSpotFactory<TestSpot>().ChannelName("stage-node");
+            var node = options.AddRouteMesh("stage-node")
+                .Listen("tcp://127.0.0.1:9000");
+            node.Channel("stage-node").Server();
+            node.Objects().Server().AddSpotFactory<TestSpot>(
+                "test",
+                null,
+                ZLinkRelocationPolicy<TestSpot>.Disabled);
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -117,12 +124,20 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.AddRouteMesh("play-node")
-                .Listen("tcp://127.0.0.1:9001")
-                .AddSpotFactory<TestSpot>().ChannelName("play-node");
-            options.AddRouteMesh("session-node")
-                .Listen("tcp://127.0.0.1:9002")
-                .AddSpotFactory<OtherTestSpot>().ChannelName("session-node");
+            var play = options.AddRouteMesh("play-node")
+                .Listen("tcp://127.0.0.1:9001");
+            play.Channel("play-node").Server();
+            play.Objects().Server().AddSpotFactory<TestSpot>(
+                "play",
+                null,
+                ZLinkRelocationPolicy<TestSpot>.Disabled);
+            var session = options.AddRouteMesh("session-node")
+                .Listen("tcp://127.0.0.1:9002");
+            session.Channel("session-node").Server();
+            session.Objects().Server().AddSpotFactory<OtherTestSpot>(
+                "session",
+                null,
+                ZLinkRelocationPolicy<OtherTestSpot>.Disabled);
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -140,8 +155,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                options.AddRouteMesh("play-node").Listen("tcp://127.0.0.1:9001").ChannelName("play-node");
-                options.AddRouteMesh("play-node").Listen("tcp://127.0.0.1:9002").ChannelName("play-node");
+                options.AddRouteMesh("play-node").Listen("tcp://127.0.0.1:9001").Channel("play-node").Server();
+                options.AddRouteMesh("play-node").Listen("tcp://127.0.0.1:9002").Channel("play-node").Server();
             }));
 
         Assert.Contains("Duplicate RouteMesh name 'play-node'", exception.Message, StringComparison.Ordinal);
@@ -156,24 +171,21 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                {
-                    var mesh = options.AddRouteMesh("game.stage");
-                    mesh.ChannelName("game.stage");
-                    {
-                        var spot = mesh;
-                        {
-                            var router = spot.Listen("tcp://127.0.0.1:6101");
-                        }
-                        spot.AddSpotFactory<TestSpot>();
-                    }
-                    {
-                        var spot = mesh;
-                        {
-                            var router = spot.Listen("tcp://127.0.0.1:6102");
-                        }
-                        spot.AddSpotFactory<TestSpot>();
-                    }
-                }
+                var first = options.AddRouteMesh("game.stage-a")
+                    .Listen("tcp://127.0.0.1:6101");
+                first.Channel("game.stage").Server();
+                first.Objects().Server().AddSpotFactory<TestSpot>(
+                    "test-a",
+                    null,
+                    ZLinkRelocationPolicy<TestSpot>.Disabled);
+
+                var second = options.AddRouteMesh("game.stage-b")
+                    .Listen("tcp://127.0.0.1:6102");
+                second.Channel("game.stage").Server();
+                second.Objects().Server().AddSpotFactory<TestSpot>(
+                    "test-b",
+                    null,
+                    ZLinkRelocationPolicy<TestSpot>.Disabled);
             }));
 
         Assert.Contains("Duplicate SPOT factory", exception.Message, StringComparison.Ordinal);
@@ -190,14 +202,15 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
                 options.UseTestLocationStore();
                 {
                     var mesh = options.AddRouteMesh("game.stage");
-                    mesh.ChannelName("game.stage");
+                    mesh.Channel("game.stage").Server();
                     {
                         var spot = mesh;
                         {
                             var router = spot.Listen("tcp://127.0.0.1:6101");
                         }
-                        spot.AddEntrySpot<TestEntrySpot>();
-                        spot.AddEntrySpot<TestEntrySpot>();
+                        var server = spot.Objects().Server();
+                        server.AddEntrySpot<TestEntrySpot>();
+                        server.AddEntrySpot<TestEntrySpot>();
                     }
                 }
             }));
@@ -214,10 +227,14 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                options.AddRouteMesh("actor-node")
-                    .Listen("tcp://127.0.0.1:6102")
-                    .AddActorFactory<TestActorFactory>("warrior")
-                    .AddActorFactory<TestActorFactory>("warrior").ChannelName("actor-node");
+                var node = options.AddRouteMesh("actor-node")
+                    .Listen("tcp://127.0.0.1:6102");
+                node.Channel("actor-node").Server();
+                var server = node.Objects().Server();
+                server.AddActorFactory<TestActor, TestActorFactory>(
+                    "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
+                server.AddActorFactory<TestActor, TestActorFactory>(
+                    "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
             }));
 
         Assert.Contains("Duplicate actor factory 'warrior'", exception.Message, StringComparison.Ordinal);
@@ -232,8 +249,9 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                options.AddRouteMesh("actor-node")
-                    .AddActorFactory<TestActorFactory>("warrior");
+                options.AddRouteMesh("actor-node").Objects().Server()
+                    .AddActorFactory<TestActor, TestActorFactory>(
+                        "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
             }));
 
         Assert.Contains("ROUTER endpoint", exception.Message, StringComparison.Ordinal);
@@ -248,12 +266,16 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                options.AddRouteMesh("actor-node-a")
-                    .Listen("tcp://127.0.0.1:6103")
-                    .AddActorFactory<TestActorFactory>("warrior").ChannelName("actor-node-a");
-                options.AddRouteMesh("actor-node-b")
-                    .Listen("tcp://127.0.0.1:6104")
-                    .AddActorFactory<TestActorFactory>("mage").ChannelName("actor-node-b");
+                var first = options.AddRouteMesh("actor-node-a")
+                    .Listen("tcp://127.0.0.1:6103");
+                first.Channel("actor-node-a").Server();
+                first.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                    "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
+                var second = options.AddRouteMesh("actor-node-b")
+                    .Listen("tcp://127.0.0.1:6104");
+                second.Channel("actor-node-b").Server();
+                second.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                    "mage", null, ZLinkRelocationPolicy<TestActor>.Disabled);
             }));
 
         Assert.Contains("more than one SpotNode owns actor factories", exception.Message, StringComparison.Ordinal);
@@ -293,7 +315,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.UseTestLocationStore();
             {
                 var mesh = options.AddRouteMesh("stage-node");
-                mesh.ChannelName("stage-node");
+                mesh.Channel("stage-node").Server();
                 {
                     var spot = mesh;
                     {
@@ -318,7 +340,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.UseTestLocationStore();
             {
                 var mesh = options.AddRouteMesh("stage-node");
-                mesh.ChannelName("stage-node");
+                mesh.Channel("stage-node").Server();
                 {
                     var spot = mesh;
                     {
@@ -340,11 +362,12 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
-            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
-            options.AddRouteMesh("actor-node")
-                .Listen("tcp://127.0.0.1:6201")
-                .AddActorFactory<TestActorFactory>("warrior").ChannelName("actor-node");
+            options.AddRelocationStore(new TestRelocationStore());
+            var node = options.AddRouteMesh("actor-node")
+                .Listen("tcp://127.0.0.1:6201");
+            node.Channel("actor-node").Server();
+            node.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                "warrior", null, ZLinkRelocationPolicy<TestActor>.Disabled);
         });
 
         await using var provider = services.BuildServiceProvider();
@@ -352,19 +375,21 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddActorTransferAdapter_Registers_Adapter_As_Scoped_Service()
+    public void SnapshotRelocation_Registers_Adapter_As_Scoped_Service()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
-            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
-            options.AddRouteMesh("actor-node")
-                .Listen("tcp://127.0.0.1:6202")
-                .AddActorFactory<TestActorFactory>("warrior")
-                .AddActorTransferAdapter<TestActor, TestActorTransferAdapter>("warrior").ChannelName("actor-node");
+            options.AddRelocationStore(new TestRelocationStore());
+            var node = options.AddRouteMesh("actor-node")
+                .Listen("tcp://127.0.0.1:6202");
+            node.Channel("actor-node").Server();
+            node.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                "warrior",
+                null,
+                ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
         });
 
         using var provider = services.BuildServiceProvider();
@@ -373,7 +398,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public void AddZLinkFramework_Throws_WhenActorTransferTypeIsDuplicatedAcrossNodes()
+    public void AddZLinkFramework_Throws_WhenActorTypeIsDuplicatedAcrossNodes()
     {
         var services = new ServiceCollection();
 
@@ -381,37 +406,41 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             services.AddZLinkFramework(options =>
             {
                 options.UseTestLocationStore();
-                options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
-                options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
-                options.AddRouteMesh("actor-node-a")
-                    .Listen("tcp://127.0.0.1:6201")
-                    .AddActorTransferAdapter<TestActor, TestActorTransferAdapter>("warrior").ChannelName("actor-node-a");
-                options.AddRouteMesh("actor-node-b")
-                    .Listen("tcp://127.0.0.1:6202")
-                    .AddActorTransferAdapter<TestActor, TestActorTransferAdapter>("warrior").ChannelName("actor-node-b");
+                options.AddRelocationStore(new TestRelocationStore());
+                var first = options.AddRouteMesh("actor-node-a")
+                    .Listen("tcp://127.0.0.1:6201");
+                first.Channel("actor-node-a").Server();
+                first.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                    "warrior", null, ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
+                var second = options.AddRouteMesh("actor-node-b")
+                    .Listen("tcp://127.0.0.1:6202");
+                second.Channel("actor-node-b").Server();
+                second.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                    "warrior", null, ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
             }));
 
-        Assert.Contains("Duplicate actor transfer 'warrior'", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("more than one SpotNode owns actor factories", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void AddZLinkFramework_AllowsTransferAdaptersWithoutFactoriesOnTheSameNode()
+    public void AddZLinkFramework_RegistersSnapshotPolicyWithItsActorFactory()
     {
         var services = new ServiceCollection();
 
         services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.ActorTransferTimeout = TimeSpan.FromSeconds(15);
-            options.ActorTransferForwardWindow = TimeSpan.FromSeconds(5);
-            options.AddRouteMesh("actor-node-a")
-                .Listen("tcp://127.0.0.1:6203")
-                .AddActorTransferAdapter<TestActor, TestActorTransferAdapter>("warrior").ChannelName("actor-node-a");
+            options.AddRelocationStore(new TestRelocationStore());
+            var node = options.AddRouteMesh("actor-node-a")
+                .Listen("tcp://127.0.0.1:6203");
+            node.Channel("actor-node-a").Server();
+            node.Objects().Server().AddActorFactory<TestActor, TestActorFactory>(
+                "warrior", null, ZLinkRelocationPolicy<TestActor>.Snapshot<TestActorTransferAdapter>());
         });
 
         var registration = services.BuildServiceProvider()
             .GetRequiredService<ZLinkFrameworkRegistration>();
-        Assert.True(registration.ActorCatalog.TryGetTransfer("warrior", out _));
+        Assert.True(registration.SpotNodes["actor-node-a"].ActorRelocations.ContainsKey("warrior"));
     }
 
     [Fact]
@@ -424,7 +453,8 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.UseTestLocationStore();
             {
                 var mesh = options.AddRouteMesh("actor-node");
-                mesh.ChannelName("actor-node");
+                mesh.Channel("actor-node").Server();
+                mesh.Objects().Client();
                 {
                     var spot = mesh;
                     {
@@ -462,14 +492,18 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             }
             {
                 var mesh = options.AddRouteMesh("stage-node");
-                mesh.ChannelName("stage-node");
+                mesh.Channel("stage-node").Server();
                 {
                     var spot = mesh;
                     {
                         var router = spot.Listen("tcp://127.0.0.1:6204");
                     }
-                    spot.AddSpotFactory<TestSpot>();
-                    spot.AddEntrySpot<TestEntrySpot>();
+                    var server = spot.Objects().Server();
+                    server.AddSpotFactory<TestSpot>(
+                        "test",
+                        null,
+                        ZLinkRelocationPolicy<TestSpot>.Disabled);
+                    server.AddEntrySpot<TestEntrySpot>();
                 }
             }
         });
@@ -594,10 +628,15 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.AddStreamNode("client.stream")
                 .Bind("tcp://127.0.0.1:9100")
                 .AddSession<TestHeaderSession>();
-            options.AddRouteMesh("stage-node")
-                .Listen("tcp://127.0.0.1:9000")
-                .AddSpotFactory<TestSpot>()
-                .AddEntrySpot<TestEntrySpot>().ChannelName("stage-node");
+            var node = options.AddRouteMesh("stage-node")
+                .Listen("tcp://127.0.0.1:9000");
+            node.Channel("stage-node").Server();
+            node.Objects().Server()
+                .AddSpotFactory<TestSpot>(
+                    "test",
+                    null,
+                    ZLinkRelocationPolicy<TestSpot>.Disabled)
+                .AddEntrySpot<TestEntrySpot>();
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -662,9 +701,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.AddStreamNode("client.stream")
                 .Bind("tcp://127.0.0.1:9100")
                 .AddSession<TestHeaderSession>();
-            options.AddRouteMesh("stage-node")
-                .Listen("tcp://127.0.0.1:9000")
-                .AddSpotFactory<TestSpot>().ChannelName("stage-node");
+            var node = options.AddRouteMesh("stage-node")
+                .Listen("tcp://127.0.0.1:9000");
+            node.Channel("stage-node").Server();
+            node.Objects().Server().AddSpotFactory<TestSpot>(
+                "test",
+                null,
+                ZLinkRelocationPolicy<TestSpot>.Disabled);
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -682,9 +725,13 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.UseTestLocationStore();
             options.DisableImplicitHandlerAutoRegistration();
             options.AddHandlersFromAssembly(typeof(TestSessionPacketHandler).Assembly);
-            options.AddRouteMesh("stage-node")
-                .Listen("tcp://127.0.0.1:9000")
-                .AddSpotFactory<TestSpot>().ChannelName("stage-node");
+            var node = options.AddRouteMesh("stage-node")
+                .Listen("tcp://127.0.0.1:9000");
+            node.Channel("stage-node").Server();
+            node.Objects().Server().AddSpotFactory<TestSpot>(
+                "test",
+                null,
+                ZLinkRelocationPolicy<TestSpot>.Disabled);
         });
 
         var registration = services.BuildServiceProvider().GetRequiredService<ZLinkFrameworkRegistration>();
@@ -723,7 +770,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             options.UseTestLocationStore();
             {
                 var mesh = options.AddRouteMesh("stage-node");
-                mesh.ChannelName("stage-node");
+                mesh.Channel("stage-node").Server();
                 {
                     var spot = mesh;
                     {
@@ -747,7 +794,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
             var mesh = options.AddRouteMesh("gateway")
                 .Listen("tcp://127.0.0.1:6202")
                 .SetRoutingId(RoutingId.From("gateway"));
-            mesh.ChannelName("gateway");
+            mesh.Channel("gateway").Server();
         });
 
         using var provider = services.BuildServiceProvider();
@@ -800,33 +847,6 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
     }
 
     [Fact]
-    public async Task AddZLinkFramework_RegistersOneAllocatedRoutingIdCapabilityForAllBuilders()
-    {
-        var services = new ServiceCollection();
-        services.AddZLinkFramework(options =>
-        {
-            options.UseTestLocationStore();
-            options.AddRouteMesh("events")
-                .Listen("inproc://allocated-events")
-                .UseAllocatedRoutingId(10)
-                .SetRoutingIdAllocationGroup("node")
-                .ChannelName("events");
-            options.AddRouteMesh("spot")
-                .Listen("inproc://allocated-spot")
-                .UseAllocatedRoutingId(10)
-                .SetRoutingIdAllocationGroup("node").ChannelName("spot");
-        });
-
-        await using var provider = services.BuildServiceProvider();
-        Assert.Same(
-            provider.GetRequiredService<ZLinkInMemoryLocationStore>(),
-            provider.GetRequiredService<IZLinkRoutingIdSlotAllocationStore>());
-        Assert.Same(
-            provider.GetRequiredService<ZLinkAllocatedRoutingIdRuntime>(),
-            provider.GetRequiredService<IZLinkAllocatedRoutingIdProvider>());
-    }
-
-    [Fact]
     public void AllocatedRoutingIdPolicy_UsesTheContractDefaults()
     {
         var options = new ZLinkLocationOptions();
@@ -835,125 +855,46 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         Assert.Equal(TimeSpan.FromSeconds(30), options.OwnerLeaseTtl);
         Assert.Equal(TimeSpan.FromSeconds(5), options.RoutingIdFencingMargin);
         Assert.Equal(TimeSpan.FromSeconds(3), options.OwnerLeaseRenewTimeout);
+        Assert.Equal(64, options.MaxActiveOutboundRelocations);
+        Assert.Equal(64, options.MaxActiveInboundRelocations);
+        Assert.Equal(8, options.MaxConcurrentRelocationCaptures);
+        Assert.Equal(8, options.MaxConcurrentRelocationRestores);
+        Assert.Equal(268_435_456, options.MaxRelocationPayloadInFlightBytes);
     }
 
-    [Fact]
-    public void AddZLinkFramework_RejectsInvalidAllocatedRoutingIdConfigurations()
+    [Theory]
+    [InlineData("outbound")]
+    [InlineData("inbound")]
+    [InlineData("capture")]
+    [InlineData("restore")]
+    [InlineData("payload")]
+    public void AddZLinkFramework_RejectsNonPositiveRelocationLimits(string limit)
     {
-        var missingStore = Assert.Throws<ZLinkConfigurationException>(() =>
-            new ServiceCollection().AddZLinkFramework(options =>
-                options.AddRouteMesh("events")
-                    .Listen("inproc://allocated-no-store")
-                    .UseAllocatedRoutingId(10)
-                    .ChannelName("events")));
-        Assert.Contains("require", missingStore.Message, StringComparison.OrdinalIgnoreCase);
-
-        var storeWithoutCapability = DispatchProxy.Create<ITrackedLocationStore, TrackedLocationStoreProxy>();
-        var missingCapability = Assert.Throws<ZLinkConfigurationException>(() =>
+        var exception = Assert.Throws<ZLinkConfigurationException>(() =>
             new ServiceCollection().AddZLinkFramework(options =>
             {
-                options.AddLocationStore(storeWithoutCapability);
-                options.AddRouteMesh("events")
-                    .Listen("inproc://allocated-no-capability")
-                    .UseAllocatedRoutingId(10)
-                    .ChannelName("events");
-            }));
-        Assert.Contains("does not provide", missingCapability.Message, StringComparison.Ordinal);
-
-        Assert.Throws<ZLinkConfigurationException>(() =>
-            new ServiceCollection().AddZLinkFramework(options =>
-            {
-                options.UseTestLocationStore();
-                options.AddRouteMesh("events")
-                    .Listen("inproc://allocated-fixed")
-                    .SetRoutingId(RoutingId.From("fixed"))
-                    .UseAllocatedRoutingId(10)
-                    .ChannelName("events");
-            }));
-
-        Assert.Throws<ZLinkConfigurationException>(() =>
-            new ServiceCollection().AddZLinkFramework(options =>
-            {
-                options.UseTestLocationStore();
-                options.AddRouteMesh("events")
-                    .Listen("inproc://allocated-fixed-reversed")
-                    .UseAllocatedRoutingId(10)
-                    .SetRoutingId(RoutingId.From("fixed"))
-                    .ChannelName("events");
+                var locations = options.ConfigureLocations();
+                switch (limit)
+                {
+                    case "outbound":
+                        locations.MaxActiveOutboundRelocations = 0;
+                        break;
+                    case "inbound":
+                        locations.MaxActiveInboundRelocations = 0;
+                        break;
+                    case "capture":
+                        locations.MaxConcurrentRelocationCaptures = 0;
+                        break;
+                    case "restore":
+                        locations.MaxConcurrentRelocationRestores = 0;
+                        break;
+                    case "payload":
+                        locations.MaxRelocationPayloadInFlightBytes = 0;
+                        break;
+                }
             }));
 
-        Assert.Throws<ZLinkConfigurationException>(() =>
-            new ServiceCollection().AddZLinkFramework(options =>
-            {
-                options.UseTestLocationStore();
-                options.AddRouteMesh("events")
-                    .Listen("inproc://allocated-group-only")
-                    .SetRoutingIdAllocationGroup("group")
-                    .ChannelName("events");
-            }));
-    }
-
-    [Fact]
-    public async Task HostStartup_AllocatesRoutingIdBeforeBindingAndPublishesReadyResult()
-    {
-        var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddZLinkFramework(options =>
-        {
-            options.UseTestLocationStore();
-            options.AddRouteMesh("events")
-                .Listen($"inproc://allocated-ready-{Guid.NewGuid():N}")
-                .UseAllocatedRoutingId(2)
-                .ChannelName("events");
-        });
-        using var host = builder.Build();
-
-        await host.StartAsync();
-        var allocation = await host.Services
-            .GetRequiredService<IZLinkAllocatedRoutingIdProvider>()
-            .WaitForReadyAllocationAsync("events");
-
-        Assert.Equal(1, allocation.Slot);
-        Assert.Equal(RoutingId.From("events1"), allocation.MemberRoutingIds["events"]);
-        await host.StopAsync();
-    }
-
-    [Fact]
-    public async Task AllocatedRoutingIdRuntime_RetriesTransientStoreFailureWithTheSameOwner()
-    {
-        var services = new ServiceCollection();
-        services.AddZLinkFramework(options =>
-        {
-            options.UseTestLocationStore();
-            options.ConfigureLocations().PollingInterval = TimeSpan.FromMilliseconds(1);
-            options.AddRouteMesh("events")
-                .Listen($"inproc://allocated-retry-{Guid.NewGuid():N}")
-                .UseAllocatedRoutingId(2)
-                .ChannelName("events");
-        });
-        await using var provider = services.BuildServiceProvider();
-        var locations = provider.GetRequiredService<ZLinkLocationRuntime>();
-        var innerStore = provider.GetRequiredService<IZLinkRoutingIdSlotAllocationStore>();
-        var flakyStore = new FailOnceRoutingIdSlotStore(innerStore);
-        var allocation = new ZLinkAllocatedRoutingIdRuntime(
-            provider.GetRequiredService<ZLinkFrameworkRegistration>(),
-            flakyStore,
-            locations,
-            provider.GetRequiredService<ZLinkLocationOptions>());
-
-        await locations.StartAsync(RoutingId.From("retry-node"));
-        try
-        {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await allocation.StartAsync(timeout.Token);
-
-            Assert.Equal(2, flakyStore.AcquireAttempts);
-            Assert.Single((await innerStore.ListRoutingIdSlotsAsync("events")).Allocations);
-        }
-        finally
-        {
-            await allocation.StopAsync(CancellationToken.None);
-            await locations.StopAsync(CancellationToken.None);
-        }
+        Assert.Contains("greater than zero", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -995,9 +936,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         {
             options.UseTestLocationStore();
             options.DisableImplicitHandlerAutoRegistration();
-            options.AddRouteMesh("duplicate-packet")
-                .Listen($"inproc://duplicate-packet-{Guid.NewGuid():N}")
-                .AddSpotFactory<DuplicatePacketSpot>().ChannelName("duplicate-packet");
+            var node = options.AddRouteMesh("duplicate-packet")
+                .Listen($"inproc://duplicate-packet-{Guid.NewGuid():N}");
+            node.Channel("duplicate-packet").Server();
+            node.Objects().Server().AddSpotFactory<DuplicatePacketSpot>(
+                "duplicate-packet", null, ZLinkRelocationPolicy<DuplicatePacketSpot>.Disabled);
         });
         using var host = builder.Build();
 
@@ -1017,9 +960,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         {
             options.UseTestLocationStore();
             options.DisableImplicitHandlerAutoRegistration();
-            options.AddRouteMesh("duplicate-subscription")
-                .Listen($"inproc://duplicate-subscription-{Guid.NewGuid():N}")
-                .AddSpotFactory<DuplicateSubscriptionSpot>().ChannelName("duplicate-subscription");
+            var node = options.AddRouteMesh("duplicate-subscription")
+                .Listen($"inproc://duplicate-subscription-{Guid.NewGuid():N}");
+            node.Channel("duplicate-subscription").Server();
+            node.Objects().Server().AddSpotFactory<DuplicateSubscriptionSpot>(
+                "duplicate-subscription", null, ZLinkRelocationPolicy<DuplicateSubscriptionSpot>.Disabled);
         });
         using var host = builder.Build();
 
@@ -1037,9 +982,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         {
             options.UseTestLocationStore();
             options.DisableImplicitHandlerAutoRegistration();
-            options.AddRouteMesh("duplicate-actor")
-                .Listen($"inproc://duplicate-actor-{Guid.NewGuid():N}")
-                .AddSpotFactory<DuplicateActorSpot>().ChannelName("duplicate-actor");
+            var node = options.AddRouteMesh("duplicate-actor")
+                .Listen($"inproc://duplicate-actor-{Guid.NewGuid():N}");
+            node.Channel("duplicate-actor").Server();
+            node.Objects().Server().AddSpotFactory<DuplicateActorSpot>(
+                "duplicate-actor", null, ZLinkRelocationPolicy<DuplicateActorSpot>.Disabled);
         });
         using var host = builder.Build();
 
@@ -1056,9 +1003,11 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         builder.Services.AddZLinkFramework(options =>
         {
             options.UseTestLocationStore();
-            options.AddRouteMesh("invalid-timer")
-                .Listen($"inproc://invalid-timer-{Guid.NewGuid():N}")
-                .AddSpotFactory<InvalidTimerSpot>().ChannelName("invalid-timer");
+            var node = options.AddRouteMesh("invalid-timer")
+                .Listen($"inproc://invalid-timer-{Guid.NewGuid():N}");
+            node.Channel("invalid-timer").Server();
+            node.Objects().Server().AddSpotFactory<InvalidTimerSpot>(
+                "invalid-timer", null, ZLinkRelocationPolicy<InvalidTimerSpot>.Disabled);
         });
         using var host = builder.Build();
 

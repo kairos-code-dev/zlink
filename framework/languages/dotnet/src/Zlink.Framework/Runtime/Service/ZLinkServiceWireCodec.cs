@@ -54,6 +54,9 @@ internal static class ZLinkServiceWireCodec
     internal readonly record struct ActorCreateOperationRecord(
         ActorCreateOperation Operation);
 
+    internal readonly record struct ActorDestroyOperationRecord(
+        ActorDestroyOperation Operation);
+
     internal readonly record struct InstanceSpotActivationRecord(
         InstanceSpotActivationOperation Operation,
         bool HasMetadata);
@@ -311,6 +314,55 @@ internal static class ZLinkServiceWireCodec
             terminalResult,
             failureCode,
             span.Slice(18, tailLength).ToArray());
+        error = DecodeError.None;
+        return true;
+    }
+
+    internal static byte[] EncodeActorDestroyReply(
+        ulong correlation,
+        RequestResult terminalResult,
+        ServiceWireConstants.FrameworkErrorCode failureCode,
+        ActorDestroyCompletion? completion)
+    {
+        if (terminalResult != RequestResult.Ok)
+            return EncodeReply(correlation, (int)terminalResult, (uint)failureCode);
+        if (failureCode != ServiceWireConstants.FrameworkErrorCode.None
+            || completion is null)
+            throw new ArgumentOutOfRangeException(nameof(completion));
+        return EncodeReply(
+            correlation,
+            (int)terminalResult,
+            (uint)failureCode,
+            [completion.Destroyed ? (byte)1 : (byte)0]);
+    }
+
+    internal static bool TryDecodeActorDestroyReply(
+        ReplyRecord reply,
+        out ActorDestroyCompletion? completion,
+        out DecodeError error)
+    {
+        completion = null;
+        if (reply.TerminalResult != (int)RequestResult.Ok)
+        {
+            // Transport boundary terminals such as cancellation and shutdown
+            // intentionally have no framework error code. Typed domain
+            // failures carry one, but neither form may carry a success tail.
+            if (reply.Tail.Length != 0)
+            {
+                error = DecodeError.InvalidField;
+                return false;
+            }
+            error = DecodeError.None;
+            return true;
+        }
+        if (reply.FailureCode != 0
+            || reply.Tail.Length != 1
+            || reply.Tail[0] > 1)
+        {
+            error = DecodeError.InvalidField;
+            return false;
+        }
+        completion = new ActorDestroyCompletion(reply.Tail[0] == 1);
         error = DecodeError.None;
         return true;
     }
@@ -638,6 +690,78 @@ internal static class ZLinkServiceWireCodec
             body.Count);
         body.CopyTo(result.AsSpan(5));
         return result;
+    }
+
+    internal static byte[] EncodeActorDestroy(ActorDestroyOperation operation)
+    {
+        if (operation.Correlation == 0
+            || operation.Actor.Generation == 0
+            || operation.TargetNodeRid.IsEmpty
+            || operation.TargetNodeGeneration == 0
+            || operation.AuthorityOwnerGeneration == 0)
+            throw new ArgumentOutOfRangeException(nameof(operation));
+        var body = new WireWriter();
+        body.U64(operation.Correlation);
+        body.Text8(operation.Actor.ActorId);
+        body.U64(operation.Actor.Generation);
+        body.Rid(operation.TargetNodeRid);
+        body.U64(operation.TargetNodeGeneration);
+        body.U64(operation.AuthorityOwnerGeneration);
+        var result = Prefix(
+            ServiceWireConstants.Command.ActorDestroy,
+            ServiceWireConstants.Flag.None,
+            body.Count);
+        body.CopyTo(result.AsSpan(5));
+        return result;
+    }
+
+    internal static bool TryDecodeActorDestroy(
+        ReadOnlySpan<byte> bytes,
+        out ActorDestroyOperationRecord record,
+        out DecodeError error)
+    {
+        record = default;
+        if (!TryDecodePrefix(bytes, out var command, out var flags, out error))
+            return false;
+        if (command != ServiceWireConstants.Command.ActorDestroy)
+        {
+            error = DecodeError.UnknownCommand;
+            return false;
+        }
+        if (flags != ServiceWireConstants.Flag.None)
+        {
+            error = DecodeError.ForbiddenFlag;
+            return false;
+        }
+        var reader = new WireReader(bytes[5..]);
+        if (!reader.TryU64(out var correlation)
+            || correlation == 0
+            || !reader.TryText8(out var actorId)
+            || !reader.TryU64(out var objectGeneration)
+            || objectGeneration == 0
+            || !reader.TryRid(out var targetNodeRid)
+            || !reader.TryU64(out var targetNodeGeneration)
+            || targetNodeGeneration == 0
+            || !reader.TryU64(out var authorityOwnerGeneration)
+            || authorityOwnerGeneration == 0
+            || reader.Remaining != 0)
+        {
+            error = reader.Truncated
+                ? DecodeError.TruncatedField
+                : reader.Remaining != 0
+                    ? DecodeError.TrailingByte
+                    : DecodeError.InvalidField;
+            return false;
+        }
+        record = new ActorDestroyOperationRecord(
+            new ActorDestroyOperation(
+                correlation,
+                new ActorRef(targetNodeRid, actorId, objectGeneration),
+                targetNodeRid,
+                targetNodeGeneration,
+                authorityOwnerGeneration));
+        error = DecodeError.None;
+        return true;
     }
 
     internal static bool TryDecodeStateful(

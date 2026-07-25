@@ -9,7 +9,7 @@ namespace Zlink.Framework.Runtime.Execution;
 internal sealed class ZLinkWorkerCall<TResult>(
     ZLinkWorkerPool pool,
     Func<CancellationToken, TResult> work,
-    IZLinkRuntimeErrorSink errorSink) : IZLinkWorkerCall<TResult>
+    IZLinkRuntimeFailureReporter errorSink) : IZLinkWorkerCall<TResult>
 {
     private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private int _terminated;

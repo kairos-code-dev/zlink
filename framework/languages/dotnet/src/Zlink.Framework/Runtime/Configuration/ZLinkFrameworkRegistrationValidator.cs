@@ -45,6 +45,17 @@ internal static partial class ZLinkFrameworkRegistrationValidator
             throw new ZLinkConfigurationException(
                 "ClientServer automatic discovery requires the registered "
                 + "location store to implement IZLinkClientServerLocationStore.");
+        var requiresFanoutStore = registration.Channels.Values.Any(static channel =>
+            channel.AutoConnectType == ZLinkLocationAutoConnectType.Fanout
+            && (channel.Subscriber?.AutomaticDiscoveryEnabled == true
+                || channel.Publisher is not null));
+        if (requiresFanoutStore
+            && registration.Locations.Enabled
+            && !registration.Locations.UseInMemoryStores
+            && registration.Locations.StoreInstance is not IZLinkFanoutLocationStore)
+            throw new ZLinkConfigurationException(
+                "Fanout automatic discovery requires the registered "
+                + "location store to implement IZLinkFanoutLocationStore.");
         foreach (var node in registration.SpotNodes.Values)
         foreach (var membership in node.ChannelMemberships)
             if (clientServerChannels.Contains(membership.ChannelName))
@@ -115,12 +126,27 @@ internal static partial class ZLinkFrameworkRegistrationValidator
         ZLinkStreamNodeRegistration streamNode,
         ZLinkFrameworkRegistration registration)
     {
-        if (string.IsNullOrWhiteSpace(streamNode.BindEndpoint))
+        if (string.IsNullOrWhiteSpace(streamNode.BindEndpoint)
+            && streamNode.ListenPort is null)
             throw new ZLinkConfigurationException(
                 $"STREAM node '{streamNode.StreamNodeName}' must define a bind endpoint.");
 
         if (streamNode.HeaderSessionType is null)
             throw new ZLinkConfigurationException(
                 $"STREAM node '{streamNode.StreamNodeName}' must register a header stream session.");
+
+        if (!streamNode.ActorDispatchEnabled)
+            return;
+        if (!registration.Locations.Enabled)
+            throw new ZLinkConfigurationException(
+                $"STREAM node '{streamNode.StreamNodeName}' enables Actor dispatch but no Location Store is registered.");
+
+        var objectMeshes = registration.SpotNodes.Values
+            .Where(static node => node.ObjectRoleSelected)
+            .ToArray();
+        if (objectMeshes.Length != 1)
+            throw new ZLinkConfigurationException(
+                $"STREAM node '{streamNode.StreamNodeName}' requires exactly one local Object Client or Server MeshNode.");
+        streamNode.ActorDispatchMeshName = objectMeshes[0].SpotNodeName;
     }
 }

@@ -13,7 +13,7 @@ internal sealed class ZLinkStreamSessionSerialExecutor : IAsyncDisposable
 
     public ZLinkStreamSessionSerialExecutor(
         object executionOwner,
-        IZLinkRuntimeErrorSink errorSink)
+        IZLinkRuntimeFailureReporter errorSink)
     {
         _queue = new ZLinkSerialExecutionQueue(
             new ZLinkRuntimeTaskRunner(errorSink, _stopSource.Token, executionOwner),

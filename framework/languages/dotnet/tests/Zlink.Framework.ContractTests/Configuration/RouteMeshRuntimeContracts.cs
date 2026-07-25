@@ -9,7 +9,7 @@ public sealed class RouteMeshRuntimeContracts
 {
     [Fact]
     [ContractExample(typeof(IZLinkRouteMeshRuntime))]
-    public async Task Mesh_runtime_surfaces_one_snapshot_event_stream_and_shared_drain_per_mesh()
+    public async Task Mesh_runtime_surfaces_one_snapshot_and_event_stream_per_mesh()
     {
         IZLinkRouteMeshRuntime meshRuntime = new ExampleMeshRuntime();
 
@@ -36,18 +36,15 @@ public sealed class RouteMeshRuntimeContracts
             Assert.Equal(peer.Rid, runtimeEvent.PeerRid);
             break;
         }
-
-        var drained = await meshRuntime.DrainAsync("orders", TimeSpan.FromSeconds(5));
-        Assert.IsType<ZLinkMeshDrainResult.Drained>(drained);
-        Assert.Same(drained, await meshRuntime.AwaitDrainedAsync("orders"));
+        Assert.DoesNotContain(
+            typeof(IZLinkRouteMeshRuntime).GetMethods(),
+            static method => method.Name is "DrainAsync" or "AwaitDrainedAsync");
     }
 
     private sealed class ExampleMeshRuntime : IZLinkRouteMeshRuntime
     {
         private static readonly RoutingId NodeRid = RoutingId.From("orders-a");
         private static readonly RoutingId PeerRid = RoutingId.From("orders-b");
-        private ZLinkMeshDrainResult? _terminal;
-
         public ZLinkMeshNodeSnapshot Snapshot(string meshName)
         {
             return new ZLinkMeshNodeSnapshot(
@@ -75,9 +72,7 @@ public sealed class RouteMeshRuntimeContracts
                 [new ZLinkMeshChannelSnapshot("orders", LocalWeight: 100, ReadyMemberCount: 2, Selectable: true)],
                 new ZLinkMeshClaimSnapshot(
                     ApplicationActive: true, 0, InfrastructureActive: true, 0),
-                new ZLinkLocationRuntimeSnapshot("ready", DateTimeOffset.UtcNow, null),
-                new ZLinkMeshDrainSnapshot(
-                    ZLinkMeshNodeState.Serving, null, WorkSealed: false, 0, 0, 0))
+                new ZLinkLocationRuntimeSnapshot("ready", DateTimeOffset.UtcNow, null))
             {
                 PopulationCapacity = new ZLinkPlacementCapacity(
                     new ZLinkPopulationCapacity(4, 2, 0),
@@ -122,24 +117,5 @@ public sealed class RouteMeshRuntimeContracts
         }
 
         public bool IsReady(string meshName) => true;
-
-        // The first drain call fixes the shared terminal; later calls and
-        // AwaitDrainedAsync observe the same result instance.
-        public ValueTask<ZLinkMeshDrainResult> DrainAsync(
-            string meshName,
-            TimeSpan? deadline = null,
-            CancellationToken cancellationToken = default)
-        {
-            _terminal ??= new ZLinkMeshDrainResult.Drained();
-            return ValueTask.FromResult(_terminal);
-        }
-
-        public ValueTask<ZLinkMeshDrainResult> AwaitDrainedAsync(
-            string meshName,
-            CancellationToken cancellationToken = default)
-        {
-            return ValueTask.FromResult(
-                _terminal ?? throw new InvalidOperationException("Drain has not started."));
-        }
     }
 }

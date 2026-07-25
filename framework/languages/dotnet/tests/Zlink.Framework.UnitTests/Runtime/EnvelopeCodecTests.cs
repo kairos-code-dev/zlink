@@ -1,5 +1,6 @@
 using Systems.Zlink.Stream.Connector.Contracts;
 using Zlink.Framework.Contracts.Actors;
+using Zlink.Framework.Runtime.Codecs;
 
 namespace Zlink.Framework.UnitTests.Runtime;
 
@@ -140,6 +141,22 @@ public sealed class EnvelopeCodecTests
     }
 
     [Fact]
+    public void DecodeBody_Rejects_Unregistered_NonJson_ContentType_Before_Json_Decode()
+    {
+        using var body = Message.From("""{"Value":"valid-json"}""");
+
+        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkEnvelopeCodec.DecodeBody(
+                body,
+                typeof(object),
+                "application/x-unregistered",
+                new ZLinkCodecRegistryBuilder()));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, exception.Kind);
+        Assert.Null(exception.InnerException);
+    }
+
+    [Fact]
     public void EncodeBody_Copies_Message_When_BodyType_Is_Message()
     {
         using var body = Message.From("raw-join-reply");
@@ -248,6 +265,34 @@ public sealed class EnvelopeCodecTests
                 null));
 
         Assert.Equal(ZLinkFrameworkErrorKind.RequestProtocolError, exception.Kind);
+    }
+
+    [Fact]
+    public void DecodeEnvelopeReply_Rejects_Unregistered_NonJson_ContentType_As_PayloadDecodeFailed()
+    {
+        var header = new ZLinkEnvelopeHeader(
+            ZLinkMessageKind.Response,
+            "route",
+            "Reply",
+            "application/x-unregistered",
+            "correlation",
+            null,
+            null,
+            null,
+            null);
+        var parts = ZLinkMessageParts.Create(
+            ZLinkEnvelopeCodec.EncodeHeader(header),
+            Message.From("""{"Value":"valid-json"}"""));
+
+        var exception = Assert.Throws<ZLinkFrameworkException>(() =>
+            ZLinkClientCallCodec.DecodeEnvelopeReplyAndDispose<object>(
+                parts,
+                "empty",
+                "failed",
+                new ZLinkCodecRegistryBuilder()));
+
+        Assert.Equal(ZLinkFrameworkErrorKind.PayloadDecodeFailed, exception.Kind);
+        Assert.Null(exception.InnerException);
     }
 
     [Theory]

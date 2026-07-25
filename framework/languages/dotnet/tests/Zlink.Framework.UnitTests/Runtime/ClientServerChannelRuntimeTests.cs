@@ -152,6 +152,64 @@ public sealed class ClientServerChannelRuntimeTests
     }
 
     [Fact]
+    public async Task ExactRuntimeProjectsLiveLocalServerAndPublishesDrainingEvent()
+    {
+        await using var provider = CreateLocalClientAndServer();
+        var runtime = provider.GetRequiredService<ZLinkFrameworkRuntime>();
+        var monitoring =
+            provider.GetRequiredService<IZLinkClientServerRuntime>();
+
+        await runtime.StartAsync(CancellationToken.None);
+        try
+        {
+            var transport = runtime.GetClientServerClientRuntime("work");
+            await WaitUntilAsync(
+                () => transport.ReadyCount == 1,
+                TimeSpan.FromSeconds(5));
+
+            var ready = monitoring.Snapshot("work");
+            Assert.Equal(
+                Zlink.Framework.Contracts.Configuration
+                    .ZLinkClientServerRole.ClientAndServer,
+                ready.LocalRole);
+            Assert.True(ready.Selectable);
+            var readyServer = Assert.Single(ready.Servers);
+            Assert.True(readyServer.Ready);
+            Assert.Equal(
+                ZLinkClientServerServerState.Ready,
+                readyServer.State);
+            Assert.Equal("manual", readyServer.DescriptorSource);
+
+            using var timeout = new CancellationTokenSource(
+                TimeSpan.FromSeconds(8));
+            await using var events = monitoring.ObserveAsync(
+                    "work",
+                    capacity: 4,
+                    timeout.Token)
+                .GetAsyncEnumerator(timeout.Token);
+            var state = await runtime.EnsureStartedStateAsync(
+                CancellationToken.None);
+            state.ClientServerServerBundles["work"]
+                .ClientServerServer!
+                .MarkDraining();
+
+            Assert.True(await events.MoveNextAsync());
+            Assert.Equal(
+                "zlink.runtime.client_server.server_changed",
+                events.Current.Identifier);
+            Assert.Equal(
+                ZLinkClientServerServerState.Draining,
+                events.Current.State);
+            Assert.False(events.Current.Ready);
+            Assert.False(monitoring.IsReady("work"));
+        }
+        finally
+        {
+            await runtime.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
     public async Task LocalOnlyClient_DoesNotSelectZeroWeightServer()
     {
         await using var provider = CreateLocalClientAndServer(weight: 0);
@@ -547,7 +605,8 @@ public sealed class ClientServerChannelRuntimeTests
             {
                 options.AddRouteMesh("mesh")
                     .Listen("tcp://127.0.0.1:0")
-                    .ChannelName("orders");
+                    .Channel("orders")
+                    .Server();
                 options.AddClientServerChannel("orders")
                     .Client()
                     .Connect("tcp://127.0.0.1:7001");

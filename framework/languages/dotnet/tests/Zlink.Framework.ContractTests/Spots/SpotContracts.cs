@@ -27,7 +27,7 @@ public sealed class SpotContracts
         Assert.True(lifecycle.IsAssignableTo(membership));
         Assert.Null(typeof(IZLinkSpot).Assembly.GetType("Zlink.Framework.Contracts.Spots.ZLinkActorJoinAdmission"));
         Assert.Null(typeof(IZLinkMeshNodeBuilder).GetMethod("AddStatelessActorTransfer"));
-        Assert.NotNull(typeof(IZLinkMeshNodeBuilder).GetMethod("AddActorTransferAdapter"));
+        Assert.Null(typeof(IZLinkMeshNodeBuilder).GetMethod("AddActorTransferAdapter"));
     }
 
     [Fact]
@@ -41,6 +41,7 @@ public sealed class SpotContracts
         typeof(IZLinkEntrySpot<>),
         typeof(IZLinkActorHandlerRegistry),
         typeof(IZLinkSpotHandlerRegistry),
+        typeof(IZLinkInstanceSpotHandlerRegistry),
         typeof(IZLinkSpotOutbound),
         typeof(IZLinkWorkerCall<>),
         typeof(IZLinkWorkerOptions),
@@ -78,9 +79,18 @@ public sealed class SpotContracts
 
         await spot.OnCreateAsync(ZLinkMessage.Empty, CancellationToken.None);
         await spot.OnInitializeAsync(CancellationToken.None);
-        await spot.OnClosingAsync(CancellationToken.None);
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(1);
+        await spot.OnClosingAsync(
+            new ZLinkSpotClosingContext(
+                ZLinkSpotCloseReason.ExplicitClose,
+                deadline),
+            CancellationToken.None);
         await entrySpot.OnInitializeAsync(CancellationToken.None);
-        await entrySpot.OnClosingAsync(CancellationToken.None);
+        await entrySpot.OnClosingAsync(
+            new ZLinkSpotClosingContext(
+                ZLinkSpotCloseReason.HostShutdown,
+                deadline),
+            CancellationToken.None);
 
         Assert.Equal(["player-1"], context.LeftActors);
         Assert.Equal(["player-1"], entryContext.DestroyedActors);
@@ -108,6 +118,24 @@ public sealed class SpotContracts
     }
 
     [Fact]
+    public void Spot_context_identity_and_handler_surfaces_match_each_spot_kind()
+    {
+        Assert.NotNull(typeof(IZLinkSpotCommonContext).GetProperty("ObjectGeneration"));
+        Assert.Null(typeof(IZLinkSpotCommonContext).GetProperty("Handlers"));
+        Assert.Equal(
+            typeof(IZLinkSpotHandlerRegistry),
+            typeof(IZLinkSpotContext).GetProperty("Handlers")!.PropertyType);
+        Assert.Equal(
+            typeof(IZLinkSpotHandlerRegistry),
+            typeof(IZLinkEntrySpotContext).GetProperty("Handlers")!.PropertyType);
+        Assert.Equal(
+            typeof(IZLinkInstanceSpotHandlerRegistry),
+            typeof(IZLinkInstanceSpotContext).GetProperty("Handlers")!.PropertyType);
+        Assert.Null(typeof(IZLinkInstanceSpotHandlerRegistry).GetMethod("AddActorPacket"));
+        Assert.Null(typeof(IZLinkInstanceSpotHandlerRegistry).GetMethod("AddSubscribe"));
+    }
+
+    [Fact]
     [ContractExample(typeof(IZLinkSpotOutbound), typeof(IZLinkPublishCall))]
     public async Task Spot_outbound_context_exposes_all_routed_channel_and_publish_methods()
     {
@@ -131,6 +159,8 @@ public sealed class SpotContracts
     [ContractExample(
         typeof(IZLinkSpotManager),
         typeof(IZLinkSpotClient),
+        typeof(IZLinkSpotSendCall),
+        typeof(IZLinkSpotRequestCall),
         typeof(IZLinkSpotOutbound),
         typeof(IZLinkSpotPublisherClient))]
     public async Task Spot_clients_separate_local_spot_api_routed_egress_and_publisher_channels()
@@ -449,6 +479,8 @@ public sealed class SpotContracts
         public List<string> Timers { get; } = [];
         public string SpotId { get; } = spotId;
 
+        public ulong ObjectGeneration => 1;
+
         public RoutingId NodeRid => RoutingId.From("spot-node");
 
         public IZLinkSpotHandlerRegistry Handlers => this;
@@ -523,26 +555,18 @@ public sealed class SpotContracts
         {
         }
 
+        public IZLinkSpotSendCall SendToSpot<TMessage>(string spotId, TMessage message) =>
+            new SpotSendCall();
+
+        public IZLinkSpotRequestCall RequestToSpot<TMessage>(string spotId, TMessage request) =>
+            new SpotRequestCall();
+
         public IZLinkSendCall SendToSpot<TMessage>(SpotHandle address, TMessage message)
         {
             return new SendCall();
         }
 
         public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle address, TRequest request)
-        {
-            return new RequestCall(new JoinedRoom("room-1"));
-        }
-
-        public IZLinkSendCall SendToSpot<TMessage>(
-            InstanceSpotAddress address,
-            TMessage message)
-        {
-            return new SendCall();
-        }
-
-        public IZLinkRequestCall RequestToSpot<TRequest>(
-            InstanceSpotAddress address,
-            TRequest request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -572,6 +596,8 @@ public sealed class SpotContracts
 
         public List<string> DestroyedActors { get; } = [];
         public string SpotId { get; } = spotId;
+
+        public ulong ObjectGeneration => 1;
 
         public RoutingId NodeRid => RoutingId.From("spot-node");
 
@@ -641,26 +667,18 @@ public sealed class SpotContracts
         {
         }
 
+        public IZLinkSpotSendCall SendToSpot<TMessage>(string spotId, TMessage message) =>
+            new SpotSendCall();
+
+        public IZLinkSpotRequestCall RequestToSpot<TMessage>(string spotId, TMessage request) =>
+            new SpotRequestCall();
+
         public IZLinkSendCall SendToSpot<TMessage>(SpotHandle address, TMessage message)
         {
             return new SendCall();
         }
 
         public IZLinkRequestCall RequestToSpot<TRequest>(SpotHandle address, TRequest request)
-        {
-            return new RequestCall(new JoinedRoom("room-1"));
-        }
-
-        public IZLinkSendCall SendToSpot<TMessage>(
-            InstanceSpotAddress address,
-            TMessage message)
-        {
-            return new SendCall();
-        }
-
-        public IZLinkRequestCall RequestToSpot<TRequest>(
-            InstanceSpotAddress address,
-            TRequest request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -803,26 +821,18 @@ public sealed class SpotContracts
 
     private sealed class SpotOutbound : IZLinkSpotOutbound, IZLinkSpotClient
     {
+        public IZLinkSpotSendCall SendToSpot<TMessage>(string spotId, TMessage message) =>
+            new SpotSendCall();
+
+        public IZLinkSpotRequestCall RequestToSpot<TMessage>(string spotId, TMessage request) =>
+            new SpotRequestCall();
+
         public IZLinkSendCall SendToSpot<TMessage>(SpotHandle address, TMessage message)
         {
             return new SendCall();
         }
 
         public IZLinkRequestCall RequestToSpot<TMessage>(SpotHandle address, TMessage request)
-        {
-            return new RequestCall(new JoinedRoom("room-1"));
-        }
-
-        public IZLinkSendCall SendToSpot<TMessage>(
-            InstanceSpotAddress address,
-            TMessage message)
-        {
-            return new SendCall();
-        }
-
-        public IZLinkRequestCall RequestToSpot<TMessage>(
-            InstanceSpotAddress address,
-            TMessage request)
         {
             return new RequestCall(new JoinedRoom("room-1"));
         }
@@ -863,6 +873,31 @@ public sealed class SpotContracts
 
         public ValueTask Async(CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
+    }
+
+    private sealed class SpotSendCall : IZLinkSpotSendCall
+    {
+        public IZLinkSpotSendCall InstanceSpot() => this;
+        public IZLinkSpotSendCall InstanceSpot(string instanceSpotType) => this;
+        public IZLinkSpotSendCall InMesh(string meshName) => this;
+        public IZLinkSpotSendCall Metadata(string key, string value) => this;
+        public IZLinkSpotSendCall Metadata(ZLinkMessageMetadata metadata) => this;
+        public ValueTask Async(CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+    }
+
+    private sealed class SpotRequestCall : IZLinkSpotRequestCall
+    {
+        public IZLinkSpotRequestCall InstanceSpot() => this;
+        public IZLinkSpotRequestCall InstanceSpot(string instanceSpotType) => this;
+        public IZLinkSpotRequestCall InMesh(string meshName) => this;
+        public IZLinkSpotRequestCall Metadata(string key, string value) => this;
+        public IZLinkSpotRequestCall Metadata(ZLinkMessageMetadata metadata) => this;
+        public IZLinkSpotRequestCall Timeout(TimeSpan timeout) => this;
+        public ValueTask<TReply> Async<TReply>(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<TReply>(default!);
+        public ValueTask<TReply> Yield<TReply>(CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult<TReply>(default!);
     }
 
     private sealed class RequestCall(object reply) : IZLinkRequestCall

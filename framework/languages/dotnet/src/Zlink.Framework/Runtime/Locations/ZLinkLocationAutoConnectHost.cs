@@ -16,6 +16,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     private readonly IZLinkMeshNodeLocationResolver _peers;
     private readonly ZLinkLocationOptions _options;
     private readonly IZLinkClientServerLocationStore? _clientServerStore;
+    private readonly IZLinkFanoutLocationStore? _fanoutStore;
     private readonly IZLinkLocationChangeStampStore? _stampStore;
     private readonly IZLinkLocationWatchStore? _watchStore;
     private readonly ZLinkOwnerLeaseTracker? _leaseTracker;
@@ -31,6 +32,7 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         ZLinkAutoConnectReconciler> _localReconcilers = new();
     private readonly object _disposeGate = new();
     private ZLinkClientServerDiscovery? _clientServerDiscovery;
+    private ZLinkFanoutDiscovery? _fanoutDiscovery;
     private int _disposed;
     private Task? _disposeTask;
 
@@ -43,12 +45,14 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         TimeProvider? timeProvider = null,
         ZLinkLocationEventEmitter? events = null,
         ZLinkOwnerLeaseTracker? leaseTracker = null,
-        IZLinkClientServerLocationStore? clientServerStore = null)
+        IZLinkClientServerLocationStore? clientServerStore = null,
+        IZLinkFanoutLocationStore? fanoutStore = null)
     {
         _runtime = runtime;
         _peers = peers;
         _options = options;
         _clientServerStore = clientServerStore;
+        _fanoutStore = fanoutStore;
         _stampStore = stampStore;
         _watchStore = watchStore;
         _leaseTracker = leaseTracker;
@@ -81,43 +85,21 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 }
             }
 
-        foreach (var (name, channel) in registration.Channels)
-        {
-            switch (channel.AutoConnectType)
+            if (_fanoutStore is not null
+                && registration.Channels.Values.Any(static channel =>
+                    channel.AutoConnectType == ZLinkLocationAutoConnectType.Fanout
+                    && (channel.Publisher is not null
+                        || channel.Subscriber?.AcquisitionMode
+                            == ZLinkPeerAcquisitionMode.AutoConnect)))
             {
-                case ZLinkLocationAutoConnectType.Fanout:
-                    if (channel.Publisher is { } publisher
-                        && state.PublisherBundles.TryGetValue(name, out var publisherBundle))
-                    {
-                        AddLoop(
-                            ZLinkLocationAutoConnectType.Fanout,
-                            channel.ChannelName,
-                            ZLinkLocationRole.Pub,
-                            BundleRid(publisherBundle.LocalRid, channel.RoutingId),
-                            publisher.BindEndpoint ?? string.Empty,
-                            (uint)publisher.SocketConfig.Weight,
-                            NullExecutor.Instance);
-                    }
-
-                    if (channel.Subscriber is { } subscriber
-                        && state.SubscriberBundles.TryGetValue(name, out var subscriberBundle)
-                        && subscriberBundle.Socket is IZLinkBackendConnectableSocket subscriberSocket)
-                    {
-                        AddLoop(
-                            ZLinkLocationAutoConnectType.Fanout,
-                            channel.ChannelName,
-                            ZLinkLocationRole.Sub,
-                            BundleRid(subscriberBundle.LocalRid, channel.RoutingId),
-                            string.Empty,
-                            (uint)subscriber.SocketConfig.Weight,
-                            subscriber.AcquisitionMode == ZLinkPeerAcquisitionMode.AutoConnect
-                                ? new ConnectableSocketExecutor(subscriberSocket, subscriberBundle)
-                                : NullExecutor.Instance);
-                    }
-
-                    break;
+                _fanoutDiscovery = new ZLinkFanoutDiscovery(
+                    _fanoutStore,
+                    _runtime,
+                    _options,
+                    _leaseTracker);
+                await _fanoutDiscovery.StartAsync(state, cancellationToken)
+                    .ConfigureAwait(false);
             }
-        }
 
         foreach (var (name, spot) in registration.SpotNodes)
         {
@@ -126,10 +108,11 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             var meshName = spot.SpotMeshChannelName ?? spot.SpotNodeName;
             // An ephemeral bind (port 0) must advertise the endpoint Core
             // actually bound — peers dial the descriptor row verbatim.
-            var endpoint = spot.Router.BindEndpoint is { } configured
-                           && !configured.EndsWith(":0", StringComparison.Ordinal)
-                ? configured
-                : node.Node.Status().LocalEndpoint;
+            var endpoint = ZLinkNetworkEndpointResolver.Advertise(
+                node.Node.Status().LocalEndpoint ?? string.Empty,
+                spot.Router.AdvertiseHost,
+                spot.Router.BindHost,
+                registration.NetworkOptions);
             AddLoop(
                 ZLinkLocationAutoConnectType.SpotMesh,
                 meshName,
@@ -155,15 +138,21 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                     new ZLinkPopulationCapacity(
                         0,
                         0,
-                        spot.MaxActiveObjects),
+                        spot.ActorLimit),
                     new ZLinkPopulationCapacity(
                         0,
                         0,
-                        spot.MaxActiveObjects),
+                        spot.SpotLimit),
                     BuildSpotTypeCapacities(spot)),
                 activationConcurrency: new ZLinkActivationConcurrency(
                     0,
-                    spot.MaxPendingActivations));
+                    spot.ActivationConcurrencyLimit),
+                channelWeights: spot.ChannelMemberships
+                    .Where(static membership => membership.IsServer)
+                    .ToDictionary(
+                        static membership => membership.ChannelName,
+                        static membership => membership.Weight,
+                        StringComparer.Ordinal));
         }
 
             try
@@ -215,6 +204,10 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             var published = true;
             if (_clientServerDiscovery is not null)
                 published &= await _clientServerDiscovery
+                    .MarkDrainingAsync(cancellationToken)
+                    .ConfigureAwait(false);
+            if (_fanoutDiscovery is not null)
+                published &= await _fanoutDiscovery
                     .MarkDrainingAsync(cancellationToken)
                     .ConfigureAwait(false);
             foreach (var reconciler in _reconcilers)
@@ -280,6 +273,8 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
     {
         var clientServerDiscovery = _clientServerDiscovery;
         _clientServerDiscovery = null;
+        var fanoutDiscovery = _fanoutDiscovery;
+        _fanoutDiscovery = null;
         var loops = _loops.ToArray();
         var reconcilers = _reconcilers.ToArray();
         _loops.Clear();
@@ -291,6 +286,17 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             try
             {
                 await clientServerDiscovery.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                (failures ??= []).Add(exception);
+            }
+        }
+        if (fanoutDiscovery is not null)
+        {
+            try
+            {
+                await fanoutDiscovery.DisposeAsync().ConfigureAwait(false);
             }
             catch (Exception exception)
             {
@@ -332,18 +338,12 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         string? entrySpotId = null,
         int placementWeight = 100,
         ZLinkPlacementCapacity? capacity = null,
-        ZLinkActivationConcurrency? activationConcurrency = null)
+        ZLinkActivationConcurrency? activationConcurrency = null,
+        IReadOnlyDictionary<string, int>? channelWeights = null)
     {
-        // A descriptor is keyed by (MeshName, Rid), so a capability without
-        // an identity cannot be advertised (an endpoint-less member still
-        // publishes for mesh-membership classification; planners skip its
-        // empty endpoint as a dial target). When it also never dials
-        // (advertise-only server roles) there is nothing to reconcile; a
-        // dialing capability (a client dealer or subscriber without a
-        // configured identity) still gets a dial-only loop that connects to
-        // remote descriptors.
+        // MeshNode descriptors always require a physical node identity.
         var advertisable = nodeRid is { Size: > 0 };
-        if (!advertisable && ReferenceEquals(executor, NullExecutor.Instance)) return;
+        if (!advertisable) return;
 
         var local = new ZLinkAutoConnectLocal(type, meshName, role, nodeRid, endpoint);
         var effectiveLifecycleGeneration = lifecycleGeneration == 0
@@ -354,7 +354,14 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 meshName, nodeRid!.Value,
                 effectiveLifecycleGeneration, DescriptorRevision: 1,
                 endpoint,
-                new Dictionary<string, int>(StringComparer.Ordinal) { [meshName] = (int)weight },
+                channelWeights is null
+                    ? new Dictionary<string, int>(StringComparer.Ordinal)
+                    {
+                        [meshName] = (int)weight
+                    }
+                    : new Dictionary<string, int>(
+                        channelWeights,
+                        StringComparer.Ordinal),
                 SecurityIdentity: ZLinkTransportSecurityIdentity.Plaintext,
                 OwnerId: string.Empty,
                 LeaseGeneration: 0,
@@ -414,6 +421,17 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
             reconciler.SetLocalPlacementWeight(weight);
     }
 
+    internal void SetLocalChannelWeight(
+        string meshName,
+        string channelName,
+        int weight)
+    {
+        if (_localReconcilers.TryGetValue(
+                (ZLinkLocationAutoConnectType.SpotMesh, meshName, ZLinkLocationRole.Spot),
+                out var reconciler))
+            reconciler.SetLocalChannelWeight(channelName, weight);
+    }
+
     internal void SetClientServerWeight(string channelName, int weight)
     {
         _clientServerDiscovery?.SetLocalWeight(channelName, weight);
@@ -426,9 +444,11 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
         uint weight,
         CancellationToken cancellationToken)
     {
-        return _localReconcilers.TryGetValue((type, meshName, role), out var reconciler)
-            ? reconciler.SetLocalWeightAsync(weight, cancellationToken)
-            : ValueTask.FromResult(true);
+        if (!_localReconcilers.TryGetValue((type, meshName, role), out var reconciler))
+            return ValueTask.FromResult(true);
+        return type == ZLinkLocationAutoConnectType.SpotMesh
+            ? reconciler.SetAllLocalChannelWeightsAsync(weight, cancellationToken)
+            : reconciler.SetLocalWeightAsync(weight, cancellationToken);
     }
 
     private static RoutingId? RidOrNull(RoutingId routingId) =>
@@ -511,29 +531,6 @@ internal sealed class ZLinkLocationAutoConnectHost : IAsyncDisposable, IZLinkAut
                 0,
                 capability.Limit))
             .ToArray();
-
-    private static RoutingId? BundleRid(string? bundleRid, RoutingId fallback) =>
-        bundleRid is { Length: > 0 } value ? RoutingId.From(value) : RidOrNull(fallback);
-
-    private sealed class NullExecutor : IZLinkAutoConnectExecutor
-    {
-        internal static readonly NullExecutor Instance = new();
-
-        public bool Connect(ZLinkAutoConnectTarget target) => true;
-
-        public bool Disconnect(ZLinkAutoConnectTarget target) => true;
-    }
-
-    private sealed class ConnectableSocketExecutor(
-        IZLinkBackendConnectableSocket socket,
-        ZLinkChannelRuntimeBundle bundle) : IZLinkAutoConnectExecutor
-    {
-        public bool Connect(ZLinkAutoConnectTarget target)
-            => bundle.ConnectAuto(socket, target.Endpoint);
-
-        public bool Disconnect(ZLinkAutoConnectTarget target)
-            => bundle.DisconnectAuto(socket, target.Endpoint);
-    }
 
     private sealed class SpotRouterExecutor(
         ZLinkSpotNodeRuntime node,

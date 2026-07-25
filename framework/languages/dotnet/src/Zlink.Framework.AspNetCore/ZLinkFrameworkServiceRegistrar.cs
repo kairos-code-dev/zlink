@@ -140,8 +140,6 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetRequiredService<IZLinkRuntimeEventPublisher>(),
                 () => provider.GetRequiredService<ZLinkFrameworkRuntime>().Flow.CaptureEnabled,
                 provider.GetService<ILogger<ZLinkDrainCoordinator>>()));
-        services.TryAddSingleton<IZLinkDrainControl>(static provider =>
-            provider.GetRequiredService<ZLinkDrainCoordinator>());
         services.TryAddSingleton<ZLinkFrameworkMaintenanceRuntime>(static provider =>
             new ZLinkFrameworkMaintenanceRuntime(
                 provider.GetRequiredService<ZLinkDrainCoordinator>(),
@@ -159,7 +157,6 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetService<ZLinkLocationLifecycle>(),
                 provider.GetService<ZLinkAllocatedRoutingIdRuntime>(),
                 provider.GetService<IHostApplicationLifetime>(),
-                provider.GetRequiredService<ZLinkDrainCoordinator>(),
                 provider.GetRequiredService<ZLinkFrameworkMaintenanceRuntime>()));
 
         return services;
@@ -176,15 +173,31 @@ internal static class ZLinkFrameworkServiceRegistrar
             new ZLinkRouteMeshRuntimeService(
                 provider.GetRequiredService<ZLinkFrameworkRuntime>(),
                 provider.GetService<ZLinkLocationStoreHealth>(),
-                provider.GetService<IZLinkLocationRuntimeQuery>(),
-                () => provider.GetService<IZLinkDrainControl>()));
+                provider.GetService<IZLinkLocationRuntimeQuery>()));
         services.AddSingleton<IZLinkRouteMeshRuntime>(static provider =>
             provider.GetRequiredService<ZLinkRouteMeshRuntimeService>());
+        services.AddSingleton(static provider =>
+            new ZLinkClientServerRuntimeService(
+                provider.GetRequiredService<ZLinkFrameworkRuntime>(),
+                provider.GetService<ZLinkLocationStoreHealth>()));
+        services.AddSingleton<IZLinkClientServerRuntime>(static provider =>
+            provider.GetRequiredService<ZLinkClientServerRuntimeService>());
+        services.AddSingleton(static provider =>
+            new ZLinkMessageFlowRuntimeService(
+                provider.GetRequiredService<ZLinkFrameworkRegistration>()
+                    .DispatchOptions));
+        services.AddSingleton<IZLinkMessageFlowRuntime>(static provider =>
+            provider.GetRequiredService<ZLinkMessageFlowRuntimeService>());
         services.AddSingleton<ZLinkRouteClient>();
         services.AddSingleton<IZLinkRouteClient>(static provider => provider.GetRequiredService<ZLinkRouteClient>());
         services.AddSingleton<IZLinkSpotClient, ZLinkSpotClient>();
         services.AddSingleton<ZLinkFanoutClient>();
         services.AddSingleton<IZLinkFanoutClient>(static provider => provider.GetRequiredService<ZLinkFanoutClient>());
+        services.AddSingleton(static provider =>
+            new ZLinkFanoutRuntimeService(
+                provider.GetRequiredService<ZLinkFrameworkRegistration>()));
+        services.AddSingleton<IZLinkFanoutRuntime>(static provider =>
+            provider.GetRequiredService<ZLinkFanoutRuntimeService>());
 
         if (HasSpotNode(registration))
         {
@@ -315,6 +328,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkOwnerLeaseStore>(store);
             if (store is IZLinkClientServerLocationStore clientServerStore)
                 services.AddSingleton(clientServerStore);
+            if (store is IZLinkFanoutLocationStore fanoutStore)
+                services.AddSingleton(fanoutStore);
             if (store is IZLinkLocationChangeStampStore changeStamps)
                 services.AddSingleton(changeStamps);
             if (store is IZLinkLocationWatchStore watch)
@@ -336,6 +351,8 @@ internal static class ZLinkFrameworkServiceRegistrar
             services.AddSingleton<IZLinkOwnerLeaseStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
             services.AddSingleton<IZLinkClientServerLocationStore>(
+                static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
+            services.AddSingleton<IZLinkFanoutLocationStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
             services.AddSingleton<IZLinkLocationChangeStampStore>(
                 static provider => provider.GetRequiredService<ZLinkInMemoryLocationStore>());
@@ -450,7 +467,8 @@ internal static class ZLinkFrameworkServiceRegistrar
                 provider.GetService<IZLinkLocationWatchStore>(),
                 events: provider.GetRequiredService<ZLinkLocationEventEmitter>(),
                 leaseTracker: provider.GetRequiredService<ZLinkOwnerLeaseTracker>(),
-                clientServerStore: provider.GetService<IZLinkClientServerLocationStore>());
+                clientServerStore: provider.GetService<IZLinkClientServerLocationStore>(),
+                fanoutStore: provider.GetService<IZLinkFanoutLocationStore>());
             // The store owner enforces this dependency even when host startup
             // fails and the DI container starts disposing services concurrently.
             owner?.RegisterBeforeStoreDispose(host);

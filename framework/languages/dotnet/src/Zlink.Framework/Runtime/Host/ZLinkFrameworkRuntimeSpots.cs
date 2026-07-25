@@ -2,6 +2,32 @@ namespace Zlink.Framework.Runtime.Host;
 
 internal sealed partial class ZLinkFrameworkRuntime
 {
+    internal InstanceSpotIntentAddress ResolveInstanceSpotIntent(
+        InstanceSpotIntentAddress address)
+    {
+        var source = ResolveActorCreationSource(
+            string.IsNullOrEmpty(address.MeshName) ? null : address.MeshName);
+        var meshName = source.Registration.SpotMeshChannelName
+                       ?? source.Registration.SpotNodeName;
+        if (!string.IsNullOrEmpty(address.InstanceSpotType))
+            return address with { MeshName = meshName };
+        var types = source.Registration.InstanceSpotFactories.Keys.ToArray();
+        return types.Length switch
+        {
+            1 => address with
+            {
+                MeshName = meshName,
+                InstanceSpotType = types[0]
+            },
+            0 => throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.RequestTargetNotFound,
+                $"Mesh '{meshName}' has no registered Instance Spot type."),
+            _ => throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.InvalidConfiguration,
+                "InstanceSpot(instanceSpotType) is required when a Mesh registers multiple Instance Spot types.")
+        };
+    }
+
     internal ZLinkSpotNodeRuntime ResolveActorCreationSource(string? meshName)
     {
         var state = _state
@@ -52,7 +78,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         string spotType)
     {
         var stableType = RequireSpotType(spotType);
-        ZLinkSpotId.Require(spotId, nameof(spotId));
+        ZLinkSpotId.RequireCallerProvided(spotId, nameof(spotId));
         return new ZLinkSpotGetOrCreateCall(
             Registration.DefaultRequestTimeout,
             (mesh, request, timeout, cancellation) =>
@@ -118,6 +144,7 @@ internal sealed partial class ZLinkFrameworkRuntime
         CancellationToken cancellationToken = default)
         where TSpot : IZLinkSpot
     {
+        ZLinkSpotId.RequireCallerProvided(spotId, nameof(spotId));
         using var operation = EnterOperation();
         _drainAdmission.RequireSpotAdmission();
         return await _spots.GetOrCreateAsync(
@@ -168,12 +195,12 @@ internal sealed partial class ZLinkFrameworkRuntime
             .ConfigureAwait(false);
     }
 
-    public async ValueTask<bool> CloseAsync(
+    internal async ValueTask<bool> CloseCurrentSpotAsync(
         string spotId,
         CancellationToken cancellationToken = default)
     {
         using var operation = EnterOperation();
-        return await _spots.CloseLegacyAsync(GetOrStartState(), spotId, cancellationToken)
+        return await _spots.CloseLocalByIdAsync(GetOrStartState(), spotId, cancellationToken)
             .ConfigureAwait(false);
     }
 

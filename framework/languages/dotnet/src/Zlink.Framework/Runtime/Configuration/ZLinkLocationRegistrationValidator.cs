@@ -5,6 +5,7 @@ internal static partial class ZLinkFrameworkRegistrationValidator
     private static void ValidateLocations(ZLinkFrameworkRegistration registration)
     {
         var locations = registration.Locations;
+        ValidateRelocationLimits(locations.Options);
         if (locations.StoreInstance is not null && locations.UseInMemoryStores)
         {
             throw new ZLinkConfigurationException(
@@ -40,6 +41,17 @@ internal static partial class ZLinkFrameworkRegistrationValidator
                 throw new ZLinkConfigurationException(
                     $"Routing-id allocation group '{group.Key}' contains duplicate member '{duplicate.Key}'.");
         }
+    }
+
+    private static void ValidateRelocationLimits(ZLinkLocationOptions options)
+    {
+        if (options.MaxActiveOutboundRelocations <= 0
+            || options.MaxActiveInboundRelocations <= 0
+            || options.MaxConcurrentRelocationCaptures <= 0
+            || options.MaxConcurrentRelocationRestores <= 0
+            || options.MaxRelocationPayloadInFlightBytes <= 0)
+            throw new ZLinkConfigurationException(
+                "Relocation unit, callback, and payload in-flight limits must all be greater than zero.");
     }
 
     private static void ValidateAllocationTimes(ZLinkLocationOptions options)

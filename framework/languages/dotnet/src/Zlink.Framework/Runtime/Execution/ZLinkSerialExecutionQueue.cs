@@ -11,7 +11,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private readonly SemaphoreSlim _drainGate = new(1, 1);
-    private readonly IZLinkRuntimeErrorSink _errorSink;
+    private readonly IZLinkRuntimeFailureReporter _errorSink;
     private readonly CancellationToken _executionToken;
     private readonly string? _spotMetricKind;
     private readonly Queue<ZLinkSerialWorkItem> _queue = new();
@@ -31,7 +31,7 @@ internal sealed class ZLinkSerialExecutionQueue : IAsyncDisposable
 
     public ZLinkSerialExecutionQueue(
         ZLinkRuntimeTaskRunner taskRunner,
-        IZLinkRuntimeErrorSink errorSink,
+        IZLinkRuntimeFailureReporter errorSink,
         CancellationToken executionToken,
         int capacity = DefaultCapacity,
         string? spotMetricKind = null)

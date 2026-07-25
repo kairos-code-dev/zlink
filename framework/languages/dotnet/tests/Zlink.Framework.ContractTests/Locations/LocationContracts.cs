@@ -83,14 +83,16 @@ public sealed class LocationContracts
             ZLinkLocationWriteIntent.Renew);
         Assert.Equal(ZLinkLocationWriteStatus.IgnoredStale, stale.Status);
 
-        // Owner lease: one row per runtime, snapshot carries the store time
-        // so expiry is never judged against an application wall clock.
+        // Owner lease: the provider issues the exact generation token and
+        // returns its own clock with each read.
         var leases = new ExampleOwnerLeaseStore();
-        await leases.RenewOwnerLeaseAsync(
-            ownerB, RoutingId.From("node-b"), TimeSpan.FromSeconds(15));
-        var snapshot = await leases.ListOwnerLeasesAsync();
-        Assert.Equal(StoreNow, snapshot.StoreNow);
-        Assert.Single(snapshot.Leases);
+        var leaseClaim = Assert.IsType<ZLinkOwnerLeaseClaimResult.Claimed>(
+            await leases.ClaimOwnerLeaseAsync(
+                ownerB, TimeSpan.FromSeconds(15)));
+        var read = Assert.IsType<ZLinkOwnerLeaseReadResult.Found>(
+            await leases.ReadOwnerLeaseAsync(ownerB));
+        Assert.Equal(StoreNow, read.StoreNow);
+        Assert.Equal(leaseClaim.Token, read.Token);
 
         var removedCount = await store.RemoveAllByOwnerAsync(
             new ZLinkLocationOwnerToken(ownerB, takeover.Generation));
@@ -101,6 +103,8 @@ public sealed class LocationContracts
     [ContractExample(
         typeof(IZLinkLocationStore),
         typeof(IZLinkMeshNodeLocationStore),
+        typeof(IZLinkFanoutLocationStore),
+        typeof(IZLinkInstanceSpotLocationStore),
         typeof(IZLinkSpotLocationStore))]
     public async Task MeshNode_lists_are_snapshots_and_spot_actor_rows_are_resolve_only()
     {
@@ -301,29 +305,76 @@ public sealed class LocationContracts
     private sealed class ExampleOwnerLeaseStore : IZLinkOwnerLeaseStore
     {
         private readonly Dictionary<string, ZLinkOwnerLease> _leases = [];
+        private long _generation;
 
-        public ValueTask<ZLinkOwnerLeaseRenewal> RenewOwnerLeaseAsync(
+        public ValueTask<ZLinkOwnerLeaseClaimResult> ClaimOwnerLeaseAsync(
             string ownerId,
-            RoutingId nodeRid,
             TimeSpan leaseTtl,
             CancellationToken cancellationToken = default)
         {
-            // The store computes the absolute expiry from its own clock.
+            if (_leases.TryGetValue(ownerId, out var current)
+                && current.LeaseExpiresAt > StoreNow)
+                return ValueTask.FromResult<ZLinkOwnerLeaseClaimResult>(
+                    new ZLinkOwnerLeaseClaimResult.Conflict());
             var expiresAt = StoreNow + leaseTtl;
-            _leases[ownerId] = new ZLinkOwnerLease(ownerId, nodeRid, expiresAt, StoreNow);
-            return ValueTask.FromResult(new ZLinkOwnerLeaseRenewal(expiresAt, StoreNow));
+            var token = new ZLinkLocationOwnerToken(ownerId, ++_generation);
+            _leases[ownerId] = new ZLinkOwnerLease(
+                ownerId, default, expiresAt, StoreNow)
+            {
+                LeaseGeneration = token.LeaseGeneration
+            };
+            return ValueTask.FromResult<ZLinkOwnerLeaseClaimResult>(
+                new ZLinkOwnerLeaseClaimResult.Claimed(
+                    token, expiresAt, StoreNow));
         }
 
-        public ValueTask<bool> RemoveOwnerLeaseAsync(
+        public ValueTask<ZLinkOwnerLeaseReadResult> ReadOwnerLeaseAsync(
             string ownerId,
             CancellationToken cancellationToken = default)
         {
-            return ValueTask.FromResult(_leases.Remove(ownerId));
+            if (!_leases.TryGetValue(ownerId, out var lease)
+                || lease.LeaseExpiresAt <= StoreNow)
+                return ValueTask.FromResult<ZLinkOwnerLeaseReadResult>(
+                    new ZLinkOwnerLeaseReadResult.Missing());
+            return ValueTask.FromResult<ZLinkOwnerLeaseReadResult>(
+                new ZLinkOwnerLeaseReadResult.Found(
+                    new ZLinkLocationOwnerToken(
+                        ownerId, lease.LeaseGeneration),
+                    lease.LeaseExpiresAt,
+                    StoreNow));
         }
 
-        public ValueTask<ZLinkOwnerLeaseSnapshot> ListOwnerLeasesAsync(
-            CancellationToken cancellationToken = default) =>
-            ValueTask.FromResult(new ZLinkOwnerLeaseSnapshot([.. _leases.Values], StoreNow));
+        public ValueTask<ZLinkOwnerLeaseRenewResult> RenewOwnerLeaseAsync(
+            ZLinkLocationOwnerToken token,
+            TimeSpan leaseTtl,
+            CancellationToken cancellationToken = default)
+        {
+            if (!_leases.TryGetValue(token.OwnerId, out var lease)
+                || lease.LeaseGeneration != token.LeaseGeneration)
+                return ValueTask.FromResult<ZLinkOwnerLeaseRenewResult>(
+                    new ZLinkOwnerLeaseRenewResult.Stale());
+            var expiresAt = StoreNow + leaseTtl;
+            _leases[token.OwnerId] = lease with
+            {
+                LeaseExpiresAt = expiresAt,
+                UpdatedAt = StoreNow
+            };
+            return ValueTask.FromResult<ZLinkOwnerLeaseRenewResult>(
+                new ZLinkOwnerLeaseRenewResult.Renewed(
+                    expiresAt, StoreNow));
+        }
+
+        public ValueTask<ZLinkOwnerLeaseReleaseResult> ReleaseOwnerLeaseAsync(
+            ZLinkLocationOwnerToken token,
+            CancellationToken cancellationToken = default)
+        {
+            if (!_leases.TryGetValue(token.OwnerId, out var lease)
+                || lease.LeaseGeneration != token.LeaseGeneration)
+                return ValueTask.FromResult(ZLinkOwnerLeaseReleaseResult.Stale);
+            _leases.Remove(token.OwnerId);
+            return ValueTask.FromResult(
+                ZLinkOwnerLeaseReleaseResult.Released);
+        }
     }
 
     private sealed class ExampleMeshNodeLocationStore : IZLinkMeshNodeLocationStore

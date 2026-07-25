@@ -97,7 +97,7 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     public IZLinkEntrySpot EntrySpot { get; }
 
-    public IZLinkRuntimeErrorSink ErrorSink => _runtime.ErrorSink;
+    public IZLinkRuntimeFailureReporter ErrorSink => _runtime.ErrorSink;
 
     public string SpotNodeName { get; }
 
@@ -218,6 +218,8 @@ internal sealed partial class ZLinkEntrySpotActivation :
 
     public string SpotId { get; }
 
+    public ulong ObjectGeneration => _nativeSpot.LifecycleGeneration;
+
     public RoutingId NodeRid { get; }
 
     public ValueTask DestroyActorAsync(
@@ -302,7 +304,11 @@ internal sealed partial class ZLinkEntrySpotActivation :
                     null,
                     activation._runtime.Flow.CaptureEnabled,
                     ZLinkFlowOrigin.Lifecycle);
-                await activation.EntrySpot.OnClosingAsync(ct).ConfigureAwait(false);
+                await ZLinkSpotClosingInvocation.InvokeAsync(
+                        activation.EntrySpot.OnClosingAsync,
+                        ZLinkSpotCloseReason.HostShutdown,
+                        DateTimeOffset.UtcNow + activation.DefaultRequestTimeout)
+                    .ConfigureAwait(false);
             },
             cancellationToken).ConfigureAwait(false);
     }

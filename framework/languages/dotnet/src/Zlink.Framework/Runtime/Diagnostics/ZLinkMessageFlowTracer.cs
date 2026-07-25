@@ -19,14 +19,14 @@ internal sealed class ZLinkMessageFlowTracer
     private readonly ZLinkDispatchOptionsModel _options;
     private readonly ZLinkMessageFlowObserverPump? _observerPump;
     private readonly ZLinkFrameworkRuntime? _runtime;
-    private readonly IZLinkRuntimeErrorSink? _errorSink;
+    private readonly IZLinkRuntimeFailureReporter? _errorSink;
 
     public ZLinkMessageFlowTracer(
         ZLinkDispatchOptionsModel options,
         ILogger? logger = null,
         ZLinkFrameworkRuntime? runtime = null,
         ZLinkMessageFlowObserverPump? observerPump = null,
-        IZLinkRuntimeErrorSink? errorSink = null)
+        IZLinkRuntimeFailureReporter? errorSink = null)
     {
         _options = options;
         _runtime = runtime;
@@ -37,20 +37,22 @@ internal sealed class ZLinkMessageFlowTracer
 
     public bool CaptureEnabled =>
         _options.Diagnostics.EffectiveMessageFlow != ZLinkMessageFlowLogMode.Off
-        || ObserverEnabled;
+        || ObserverEnabled
+        || RuntimeObserverEnabled;
 
     // Cheap mode gate (relaxed/volatile read of the live mode). Build the event only
     // after this returns true.
     public bool Enabled(ZLinkMessageFlowOutcome outcome)
     {
-        return ShouldLog(outcome) || ObserverEnabled;
+        return ShouldLog(outcome) || ObserverEnabled || RuntimeObserverEnabled;
     }
 
     public void Trace(ZLinkMessageFlowEvent flow)
     {
         var logEnabled = ShouldLog(flow.Outcome);
         var observerEnabled = ObserverEnabled;
-        if (!logEnabled && !observerEnabled) return;
+        var runtimeObserverEnabled = RuntimeObserverEnabled;
+        if (!logEnabled && !observerEnabled && !runtimeObserverEnabled) return;
 
         flow = NormalizeFlowPair(flow);
         if (string.IsNullOrEmpty(flow.FlowId))
@@ -64,7 +66,7 @@ internal sealed class ZLinkMessageFlowTracer
         var logSampled = logEnabled
                          && (flow.Outcome is ZLinkMessageFlowOutcome.Dropped or ZLinkMessageFlowOutcome.Error
                              || Sample(ZLinkTraceFormat.FlowIdKey(flow) ?? string.Empty));
-        if (!logSampled && !observerEnabled) return;
+        if (!logSampled && !observerEnabled && !runtimeObserverEnabled) return;
 
         if (logSampled)
         {
@@ -78,16 +80,33 @@ internal sealed class ZLinkMessageFlowTracer
             }
         }
 
-        if (!observerEnabled) return;
+        if (observerEnabled)
+        {
+            if (_runtime is not null)
+                _runtime.TryEnqueueMessageFlowObserver(flow);
+            else
+                _observerPump?.Enqueue(flow);
+        }
 
-        if (_runtime is not null)
-            _runtime.TryEnqueueMessageFlowObserver(flow);
-        else
-            _observerPump?.Enqueue(flow);
+        if (runtimeObserverEnabled
+            && ZLinkRuntimeMessageFlowProjection.TryProject(
+                flow,
+                out var projected))
+        {
+            if (_runtime is not null)
+                _runtime.PublishRuntimeMessageFlow(projected);
+            else
+                _observerPump?.EnqueueRuntime(projected);
+        }
     }
 
     private bool ObserverEnabled =>
         _options.MessageFlowObserver is not null || _options.MessageFlowObserverType is not null;
+
+    private bool RuntimeObserverEnabled =>
+        _options.RuntimeMessageFlowObserver is not null
+        || _options.RuntimeMessageFlowObserverType is not null
+        || _runtime?.HasRuntimeMessageFlowObservers == true;
 
     private void ReportUnhandledCallbackException(Exception exception)
     {
@@ -221,7 +240,7 @@ internal static class ZLinkTraceFileWriter
     public static void Write(
         string path,
         string line,
-        IZLinkRuntimeErrorSink? errorSink,
+        IZLinkRuntimeFailureReporter? errorSink,
         ZLinkFrameworkRuntime? runtime)
     {
         try

@@ -757,17 +757,19 @@ int main ()
         return 128;
     }
     zlink::framework::route_client_t default_route_client;
-    bool default_route_send_rejected = false;
-    try {
-        default_route_client
-          .send_to_node ("missing.route", zlink::routing_id_t::from ("missing-node"), request_t{1})
-          .metadata ("trace", "default")
-          .submit ();
-    }
-    catch (const zlink::framework::framework_exception_t &) {
-        default_route_send_rejected = true;
-    }
-    if (!default_route_send_rejected) {
+    /* Common spec 04-async-execution-policy.ko.md §1.3 (and its terminal table at the top
+     * of §1) makes the one-way submit terminator complete exceptionally on failure rather
+     * than throw out of submit(); the C++ terminal is task_t<void>, so the admission
+     * failure is observed on the returned task. */
+    const auto default_route_send =
+      default_route_client
+        .send_to_node ("missing.route", zlink::routing_id_t::from ("missing-node"), request_t{1})
+        .metadata ("trace", "default")
+        .submit ()
+        .result ();
+    if (default_route_send
+        || default_route_send.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_protocol_error) {
         return 411;
     }
     auto default_route_request =
@@ -782,7 +784,7 @@ int main ()
         .request_to_spot (zlink::framework::runtime::make_fixed_spot_handle (
                             zlink::framework::runtime::spot_address_t{
                               "missing.route", zlink::routing_id_t::from ("missing-node"),
-                              zlink::routing_id_t::from ("missing-spot")}),
+                              std::string ("missing-spot")}),
                           request_t{3})
         .submit<reply_t> ()
         .result ();
@@ -839,7 +841,7 @@ int main ()
     auto runtime_options_weight =
       zlink::framework::detail::channel_runtime_t::from (zlink.message_bus ())
         .server_peer_weight_override ("runtime-options");
-    if (!runtime_options_weight || runtime_options_weight->value () != 8) {
+    if (!runtime_options_weight || *runtime_options_weight != 8) {
         return 132;
     }
 
@@ -1022,22 +1024,25 @@ int main ()
       zlink::framework::detail::channel_runtime_t::from (shutdown_outbound.message_bus ());
     shutdown_runtime.bind_serializers (serializers);
     shutdown_runtime.shutdown ();
-    const auto throws_shutdown = [] (auto &&submit_fn) {
-        try {
-            submit_fn ();
-            return false;
-        }
-        catch (const zlink::framework::framework_exception_t &error) {
-            return zlink::framework::detail::boundary_state (error) == zlink::framework::detail::boundary_error_t::shutdown;
-        }
+    /* One-way send and publish report shutdown on the returned terminal instead of
+     * throwing out of submit(): common spec 04-async-execution-policy.ko.md §1.3 says the
+     * one-way terminator "실패하면 예외로 완료한다", and the failure table in the same
+     * section maps "runtime이 새 admission을 받지 않음" to the public kind
+     * `RuntimeShutdown`(`36`). The internal boundary facet is no longer the observable
+     * surface, so the terminal is asserted on the public kind. */
+    const auto completes_shutdown = [] (auto &&submit_fn) {
+        const auto submitted = submit_fn ().result ();
+        return !submitted
+               && submitted.error_kind ()
+                    == zlink::framework::framework_error_kind_t::runtime_shutdown;
     };
-    if (!throws_shutdown ([&] {
-            shutdown_outbound.message_bus ()
+    if (!completes_shutdown ([&] {
+            return shutdown_outbound.message_bus ()
               .send ("shutdown-client", event_t{1})
               .submit ();
         })
-        || !throws_shutdown ([&] {
-            shutdown_outbound.message_bus ()
+        || !completes_shutdown ([&] {
+            return shutdown_outbound.message_bus ()
               .publish ("shutdown-client", "events", event_t{2})
               .submit ();
         })) {
@@ -1052,15 +1057,12 @@ int main ()
     }
 
     zlink::framework::route_send_call_t unbound_route_send ("event", {});
-    bool unbound_route_send_rejected = false;
-    try {
-        unbound_route_send.submit ();
-    }
-    catch (const zlink::framework::framework_exception_t &error) {
-        unbound_route_send_rejected =
-          error.kind () == zlink::framework::framework_error_kind_t::request_protocol_error;
-    }
-    if (!unbound_route_send_rejected) {
+    /* One-way terminal rule again (04-async-execution-policy.ko.md §1.3): the unbound send
+     * call reports its admission failure on the returned task_t<void>. */
+    const auto unbound_route_send_result = unbound_route_send.submit ().result ();
+    if (unbound_route_send_result
+        || unbound_route_send_result.error_kind ()
+             != zlink::framework::framework_error_kind_t::request_protocol_error) {
         return 408;
     }
     zlink::framework::channel_request_call_t unbound_route_request ("request", nullptr, {});
@@ -1074,19 +1076,18 @@ int main ()
     const auto unconfigured_target = zlink::routing_id_t::from (std::string ("unconfigured-node"));
     const auto unconfigured_spot = zlink::framework::runtime::make_fixed_spot_handle (
       zlink::framework::runtime::spot_address_t{
-        "game.route", unconfigured_target, zlink::routing_id_t::from (std::uint32_t{0})});
+        "game.route", unconfigured_target, std::string ("unconfigured-spot")});
+    /* Same one-way terminal rule as the default-constructed client above: common spec
+     * 04-async-execution-policy.ko.md §1.3 completes the failure on the returned task. */
     const auto route_send_rejected = [] (auto &&send_fn) {
-        try {
-            send_fn ();
-            return false;
-        }
-        catch (const zlink::framework::framework_exception_t &error) {
-            return error.kind ()
-                   == zlink::framework::framework_error_kind_t::request_protocol_error;
-        }
+        const auto submitted = send_fn ().result ();
+        return !submitted
+               && submitted.error_kind ()
+                    == zlink::framework::framework_error_kind_t::request_protocol_error;
     };
     if (!route_send_rejected ([&] {
-            unconfigured_route_client.send_to_node ("game.route", unconfigured_target, event_t{7})
+            return unconfigured_route_client
+              .send_to_node ("game.route", unconfigured_target, event_t{7})
               .submit ();
         })) {
         return 409;
@@ -1101,7 +1102,7 @@ int main ()
         return 408;
     }
     if (!route_send_rejected ([&] {
-            unconfigured_route_client.send_to_spot (unconfigured_spot, event_t{9})
+            return unconfigured_route_client.send_to_spot (unconfigured_spot, event_t{9})
               .submit ();
         })) {
         return 410;
@@ -2077,7 +2078,7 @@ int main ()
         || !route_request_header.value ().deadline.has_value ()) {
         return 37;
     }
-    const auto target_spot = zlink::routing_id_t::from (std::string ("remote-spot"));
+    const std::string target_spot = "remote-spot";
     auto spot_request =
       route_runtime.request_to_spot_parts (target_node, target_spot, request_parts);
     if (!spot_request || route_runtime.pending_request_count () != 2
@@ -2090,7 +2091,7 @@ int main ()
     int spot_backend_sends = 0;
     int spot_backend_requests = 0;
     spot_backend_runtime.set_send_backend (
-      [&] (const zlink::routing_id_t &target, const std::optional<zlink::routing_id_t> &spot,
+      [&] (const zlink::routing_id_t &target, const std::optional<std::string> &spot,
            const zlink::framework::runtime::messaging::message_parts_t &parts) {
           if (target != target_node || spot != target_spot || parts.size () == 0) {
               return zlink::framework::result_t<void>::failure (
@@ -2101,7 +2102,7 @@ int main ()
           return zlink::framework::result_t<void>::success ();
       });
     spot_backend_runtime.set_request_backend (
-      [&] (const zlink::routing_id_t &target, const std::optional<zlink::routing_id_t> &spot,
+      [&] (const zlink::routing_id_t &target, const std::optional<std::string> &spot,
            const zlink::framework::runtime::messaging::message_parts_t &parts,
            std::chrono::milliseconds timeout) {
           if (target != target_node || spot != target_spot || parts.size () == 0
@@ -2134,7 +2135,7 @@ int main ()
     auto_backend_runtime.start ();
     int auto_backend_requests = 0;
     auto_backend_runtime.set_request_backend (
-      [&] (const zlink::routing_id_t &target, const std::optional<zlink::routing_id_t> &spot,
+      [&] (const zlink::routing_id_t &target, const std::optional<std::string> &spot,
            const zlink::framework::runtime::messaging::message_parts_t &parts,
            std::chrono::milliseconds timeout) {
           if (target != target_node || spot || parts.size () == 0
@@ -2155,266 +2156,14 @@ int main ()
         return 383;
     }
 
-    const auto session_route_endpoint = unique_tcp_endpoint ();
-    const auto play_a_route_endpoint = unique_tcp_endpoint ();
-    const auto play_b_route_endpoint = unique_tcp_endpoint ();
-    const auto api_a_route_endpoint = unique_tcp_endpoint ();
-    const auto api_b_route_endpoint = unique_tcp_endpoint ();
-    zlink::framework::zlink_builder_t session_route_builder;
-    zlink::framework::zlink_builder_t play_a_route_builder;
-    zlink::framework::zlink_builder_t play_b_route_builder;
-    zlink::framework::zlink_builder_t api_a_route_builder;
-    zlink::framework::zlink_builder_t api_b_route_builder;
-    session_route_builder.route_channel ("bingo.play")
-      .bind (session_route_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (std::string ("1201")))
-      .connect (play_a_route_endpoint)
-      .connect (play_b_route_endpoint);
-    play_a_route_builder.route_channel ("bingo.play")
-      .bind (play_a_route_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (std::string ("2201")))
-      .add_request_handler<local_handler_t, request_t, reply_t> (
-        request_t::packet_name, &local_handler_t::handle_route_request);
-    play_b_route_builder.route_channel ("bingo.play")
-      .bind (play_b_route_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (std::string ("2202")))
-      .add_request_handler<local_handler_t, request_t, reply_t> (
-        request_t::packet_name, &local_handler_t::handle_route_request);
-    api_a_route_builder.route_channel ("bingo.play")
-      .bind (api_a_route_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (std::string ("3301")))
-      .connect (play_a_route_endpoint)
-      .connect (play_b_route_endpoint);
-    api_b_route_builder.route_channel ("bingo.play")
-      .bind (api_b_route_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (std::string ("3302")))
-      .connect (play_a_route_endpoint)
-      .connect (play_b_route_endpoint);
-    zlink::framework::detail::channel_runtime_manager_t::from (session_route_builder.message_bus ())
-      .initialize_route_channels (session_route_builder);
-    zlink::framework::detail::channel_runtime_manager_t::from (play_a_route_builder.message_bus ())
-      .initialize_route_channels (play_a_route_builder);
-    zlink::framework::detail::channel_runtime_manager_t::from (play_b_route_builder.message_bus ())
-      .initialize_route_channels (play_b_route_builder);
-    zlink::framework::detail::channel_runtime_manager_t::from (api_a_route_builder.message_bus ())
-      .initialize_route_channels (api_a_route_builder);
-    zlink::framework::detail::channel_runtime_manager_t::from (api_b_route_builder.message_bus ())
-      .initialize_route_channels (api_b_route_builder);
-
-    zlink::framework::runtime::route_channel_host_service_t session_route_service (
-      session_route_builder.message_bus (), serializers, {}, {});
-    zlink::framework::runtime::route_channel_host_service_t play_a_route_service (
-      play_a_route_builder.message_bus (), serializers, {}, {});
-    zlink::framework::runtime::route_channel_host_service_t play_b_route_service (
-      play_b_route_builder.message_bus (), serializers, {}, {});
-    zlink::framework::runtime::route_channel_host_service_t api_a_route_service (
-      api_a_route_builder.message_bus (), serializers, {}, {});
-    zlink::framework::runtime::route_channel_host_service_t api_b_route_service (
-      api_b_route_builder.message_bus (), serializers, {}, {});
-    api_a_route_service.start (provider);
-    api_b_route_service.start (provider);
-    session_route_service.start (provider);
-    play_a_route_service.start (provider);
-    play_b_route_service.start (provider);
-
-    auto wait_route_reply = [&] (zlink::framework::zlink_builder_t &builder, int value) {
-        const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (6);
-        while (std::chrono::steady_clock::now () < deadline) {
-            auto reply = builder.route_client (serializers)
-                           .request_to_node (
-                             "bingo.play", zlink::routing_id_t::from (std::string ("2201")),
-                             request_t{value})
-                           .timeout (std::chrono::milliseconds (500))
-                           .submit<reply_t> ()
-                           .result ();
-            if (reply) {
-                return reply.value ().value;
-            }
-            std::this_thread::sleep_for (std::chrono::milliseconds (25));
-        }
-        return -1;
-    };
-
-    const auto session_route_reply = wait_route_reply (session_route_builder, 41);
-    const auto api_a_route_reply = wait_route_reply (api_a_route_builder, 42);
-    const auto api_b_route_reply = wait_route_reply (api_b_route_builder, 43);
-    session_route_service.stop ();
-    play_a_route_service.stop ();
-    play_b_route_service.stop ();
-    api_a_route_service.stop ();
-    api_b_route_service.stop ();
-    if (session_route_reply != 241) {
-        return 384;
-    }
-    if (api_a_route_reply != 242) {
-        return 385;
-    }
-    if (api_b_route_reply != 243) {
-        return 386;
-    }
-
-    const auto reentrant_play_route_endpoint = unique_tcp_endpoint ();
-    const auto reentrant_api_route_endpoint = unique_tcp_endpoint ();
-
-    zlink::framework::zlink_builder_t reentrant_play_builder;
-    zlink::framework::zlink_builder_t reentrant_api_builder;
-    reentrant_play_builder.route_channel ("bingo.play")
-      .bind (reentrant_play_route_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (std::string ("2201")))
-      .add_request_handler<reentrant_play_route_handler_t, outer_route_request_t, reply_t> (
-        "outer", &reentrant_play_route_handler_t::handle_outer)
-      .add_request_handler<reentrant_play_route_handler_t, inner_route_request_t, reply_t> (
-        "inner", &reentrant_play_route_handler_t::handle_inner);
-    reentrant_api_builder.route_channel ("bingo.play")
-      .bind (reentrant_api_route_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (std::string ("3302")))
-      .connect (reentrant_play_route_endpoint)
-      .add_request_handler<reentrant_api_route_handler_t, api_hop_request_t, reply_t> (
-        "api-hop", &reentrant_api_route_handler_t::handle_api_hop);
-
-    zlink::framework::service_collection_t reentrant_services;
-    reentrant_services.add_factory<reentrant_play_route_handler_t> (
-      [routes = reentrant_play_builder.route_client (serializers)] (
-        zlink::framework::service_provider_t &) mutable {
-          return std::make_unique<reentrant_play_route_handler_t> (routes);
-      },
-      zlink::framework::service_lifetime_t::singleton);
-    reentrant_services.add_factory<reentrant_api_route_handler_t> (
-      [routes = reentrant_api_builder.route_client (serializers)] (
-        zlink::framework::service_provider_t &) mutable {
-          return std::make_unique<reentrant_api_route_handler_t> (routes);
-      },
-      zlink::framework::service_lifetime_t::singleton);
-    auto reentrant_provider = reentrant_services.build_provider ();
-
-    zlink::framework::detail::channel_runtime_manager_t::from (
-      reentrant_play_builder.message_bus ())
-      .initialize_route_channels (reentrant_play_builder);
-    zlink::framework::detail::channel_runtime_manager_t::from (reentrant_api_builder.message_bus ())
-      .initialize_route_channels (reentrant_api_builder);
-    zlink::framework::runtime::route_channel_host_service_t reentrant_play_route_service (
-      reentrant_play_builder.message_bus (), serializers, {}, {});
-    zlink::framework::runtime::route_channel_host_service_t reentrant_api_route_service (
-      reentrant_api_builder.message_bus (), serializers, {}, {});
-    reentrant_play_route_service.start (reentrant_provider);
-    reentrant_api_route_service.start (reentrant_provider);
-
-    int reentrant_reply = -1;
-    const auto reentrant_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (6);
-    while (std::chrono::steady_clock::now () < reentrant_deadline) {
-        auto reply =
-          reentrant_api_builder.route_client (serializers)
-            .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
-                              outer_route_request_t{45})
-            .timeout (std::chrono::milliseconds (500))
-            .submit<reply_t> ()
-            .result ();
-        if (reply) {
-            reentrant_reply = reply.value ().value;
-            break;
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (25));
-    }
-    reentrant_api_route_service.stop ();
-    reentrant_play_route_service.stop ();
-    if (reentrant_reply != 249) {
-        return 388;
-    }
-
-    const auto orchestrated_api_endpoint = unique_tcp_endpoint ();
-    const auto orchestrated_api_route_endpoint = unique_tcp_endpoint ();
-    const auto orchestrated_play_route_endpoint = unique_tcp_endpoint ();
-    zlink::framework::zlink_builder_t orchestrated_api_builder;
-    zlink::framework::zlink_builder_t orchestrated_play_builder;
-    orchestrated_api_builder.channel ("bingo.api")
-      .enable_server ()
-      .bind (orchestrated_api_endpoint);
-    orchestrated_api_builder.route_channel ("bingo.play")
-      .bind (orchestrated_api_route_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (std::string ("3301")))
-      .connect (orchestrated_play_route_endpoint);
-    orchestrated_play_builder.route_channel ("bingo.play")
-      .bind (orchestrated_play_route_endpoint)
-      .set_routing_id (zlink::routing_id_t::from (std::string ("2201")))
-      .add_request_handler<local_handler_t, request_t, reply_t> (
-        request_t::packet_name, &local_handler_t::handle_route_request);
-    zlink::framework::detail::channel_runtime_t::from (orchestrated_api_builder.message_bus ())
-      .bind_serializers (serializers);
-    zlink::framework::detail::channel_runtime_manager_t::from (
-      orchestrated_api_builder.message_bus ())
-      .initialize_route_channels (orchestrated_api_builder);
-    zlink::framework::detail::channel_runtime_manager_t::from (
-      orchestrated_play_builder.message_bus ())
-      .initialize_route_channels (orchestrated_play_builder);
-
-    zlink::framework::service_collection_t orchestrated_services;
-    orchestrated_services.add_singleton<local_handler_t> ();
-    auto orchestrated_route_client = orchestrated_api_builder.route_client (serializers);
-    orchestrated_services.add_factory<route_orchestrating_handler_t> (
-      [routes = orchestrated_route_client] (zlink::framework::service_provider_t &) mutable {
-          return std::make_unique<route_orchestrating_handler_t> (routes);
-      },
-      zlink::framework::service_lifetime_t::singleton);
-    auto orchestrated_provider = orchestrated_services.build_provider ();
-    zlink::framework::handler_registry_t orchestrated_handlers;
-    orchestrated_handlers.on_request<route_orchestrating_handler_t, request_t, reply_t> (
-      "bingo.api", "request", &route_orchestrating_handler_t::handle_request,
-      {.packet_name = request_t::packet_name});
-
-    zlink::framework::runtime::channel_host_service_t orchestrated_api_channel_service (
-      orchestrated_api_builder.message_bus (),
-      zlink::framework::detail::channel_runtime_t::from (orchestrated_api_builder.message_bus ())
-        .channel_snapshots (),
-      orchestrated_handlers, serializers);
-    zlink::framework::runtime::route_channel_host_service_t orchestrated_api_route_service (
-      orchestrated_api_builder.message_bus (), serializers, {}, {});
-    zlink::framework::runtime::route_channel_host_service_t orchestrated_play_route_service (
-      orchestrated_play_builder.message_bus (), serializers, {}, {});
-    orchestrated_api_channel_service.start (orchestrated_provider);
-    orchestrated_api_route_service.start (orchestrated_provider);
-    orchestrated_play_route_service.start (orchestrated_provider);
-
-    bool orchestrated_route_ready = false;
-    const auto orchestrated_route_deadline =
-      std::chrono::steady_clock::now () + std::chrono::seconds (6);
-    while (std::chrono::steady_clock::now () < orchestrated_route_deadline) {
-        auto route_ready =
-          orchestrated_api_builder.route_client (serializers)
-            .request_to_node ("bingo.play", zlink::routing_id_t::from (std::string ("2201")),
-                              request_t{44})
-            .timeout (std::chrono::milliseconds (500))
-            .submit<reply_t> ()
-            .result ();
-        if (route_ready && route_ready.value ().value == 244) {
-            orchestrated_route_ready = true;
-            break;
-        }
-        std::this_thread::sleep_for (std::chrono::milliseconds (25));
-    }
-    if (!orchestrated_route_ready) {
-        orchestrated_api_channel_service.stop ();
-        orchestrated_api_route_service.stop ();
-        orchestrated_play_route_service.stop ();
-        return 386;
-    }
-
-    zlink::framework::zlink_builder_t orchestrated_client_builder;
-    orchestrated_client_builder.channel ("bingo.api")
-      .enable_client ()
-      .connect (orchestrated_api_endpoint);
-    zlink::framework::detail::channel_runtime_t::from (orchestrated_client_builder.message_bus ())
-      .bind_serializers (serializers);
-    auto orchestrated_reply = orchestrated_client_builder.request_client ("bingo.api")
-                                .request (request_t{44})
-                                .timeout (std::chrono::milliseconds (3000))
-                                .submit<reply_t> ()
-                                .result ();
-    orchestrated_api_channel_service.stop ();
-    orchestrated_api_route_service.stop ();
-    orchestrated_play_route_service.stop ();
-    if (!orchestrated_reply || orchestrated_reply.value ().value != 244) {
-        return 387;
-    }
+    /* The RouteChannel host-service scenarios that used to run here (failure gates 384,
+     * 385, 386 twice, 387 and 388) are retained verbatim in
+     * pending/route_channel_host_service_scenarios.pending.inc and are held out of the
+     * build graph as pending-disabled-by-contract-amendment (ledger v11.0 §2 rules 13-14).
+     * They drive runtime::route_channel_host_service_t, which 1de8f43917 removed from the
+     * zlink_framework source list and which no longer compiles against Core 11, and no
+     * document under framework/doc/framework/common/spec/ defines a RouteChannel. See
+     * BLK-031 for the evidence and the contract decision that is owed. */
 
     if (!route_runtime.complete_request (route_request.value ())
         || route_runtime.pending_request_count () != 1) {
@@ -2755,7 +2504,7 @@ int main ()
     std::atomic_int send_backend_seen = 0;
     public_route.set_send_backend (
       [&send_backend_seen, &envelope_codec] (
-        const zlink::routing_id_t &target, const std::optional<zlink::routing_id_t> &spot,
+        const zlink::routing_id_t &target, const std::optional<std::string> &spot,
         const zlink::framework::runtime::messaging::message_parts_t &parts)
         -> zlink::framework::result_t<void> {
           auto header = envelope_codec.decode_header (parts);
@@ -2796,7 +2545,7 @@ int main ()
     }
     public_route.set_request_backend (
       [&envelope_codec, &serializers] (
-        const zlink::routing_id_t &target, const std::optional<zlink::routing_id_t> &spot,
+        const zlink::routing_id_t &target, const std::optional<std::string> &spot,
         const zlink::framework::runtime::messaging::message_parts_t &parts,
         std::chrono::milliseconds timeout)
         -> zlink::framework::result_t<zlink::framework::runtime::messaging::message_parts_t> {
@@ -2858,7 +2607,7 @@ int main ()
         return 61;
     }
     public_route.set_request_backend (
-      [] (const zlink::routing_id_t &, const std::optional<zlink::routing_id_t> &,
+      [] (const zlink::routing_id_t &, const std::optional<std::string> &,
           const zlink::framework::runtime::messaging::message_parts_t &,
           std::chrono::milliseconds)
         -> zlink::framework::result_t<zlink::framework::runtime::messaging::message_parts_t> {
@@ -2882,7 +2631,7 @@ int main ()
     }
     public_route.set_request_backend (
       [&envelope_codec, &serializers] (
-        const zlink::routing_id_t &target, const std::optional<zlink::routing_id_t> &spot,
+        const zlink::routing_id_t &target, const std::optional<std::string> &spot,
         const zlink::framework::runtime::messaging::message_parts_t &parts,
         std::chrono::milliseconds timeout)
         -> zlink::framework::result_t<zlink::framework::runtime::messaging::message_parts_t> {
@@ -2935,12 +2684,12 @@ int main ()
     std::atomic_int spot_send_backend_seen = 0;
     public_route.set_send_backend (
       [&spot_send_backend_seen, &envelope_codec] (
-        const zlink::routing_id_t &target, const std::optional<zlink::routing_id_t> &spot,
+        const zlink::routing_id_t &target, const std::optional<std::string> &spot,
         const zlink::framework::runtime::messaging::message_parts_t &parts)
         -> zlink::framework::result_t<void> {
           auto header = envelope_codec.decode_header (parts);
           if (target.to_string () != "target-node" || !spot
-              || spot->to_string () != "target-spot" || !header
+              || *spot != "target-spot" || !header
               || header.value ().message_name != event_t::packet_name
               || header.value ().metadata.find ("trace-id") == header.value ().metadata.end ()
               || header.value ().metadata.at ("trace-id") != "trace-spot-send") {
@@ -2955,7 +2704,7 @@ int main ()
       .send_to_spot (zlink::framework::runtime::make_fixed_spot_handle (
                        zlink::framework::runtime::spot_address_t{
                          "public.route", zlink::routing_id_t::from (std::string ("target-node")),
-                         zlink::routing_id_t::from ("target-spot")}),
+                         std::string ("target-spot")}),
                      event_t{32})
       .metadata ("trace-id", "trace-spot-send")
       .submit ();
@@ -2971,12 +2720,12 @@ int main ()
 
     public_route.set_request_backend (
       [&envelope_codec, &serializers] (
-        const zlink::routing_id_t &target, const std::optional<zlink::routing_id_t> &spot,
+        const zlink::routing_id_t &target, const std::optional<std::string> &spot,
         const zlink::framework::runtime::messaging::message_parts_t &parts,
         std::chrono::milliseconds timeout)
         -> zlink::framework::result_t<zlink::framework::runtime::messaging::message_parts_t> {
           if (target.to_string () != "target-node" || !spot
-              || spot->to_string () != "target-spot"
+              || *spot != "target-spot"
               || timeout != std::chrono::milliseconds (50)) {
               return zlink::framework::
                 result_t<zlink::framework::runtime::messaging::message_parts_t>::failure (
@@ -3014,7 +2763,7 @@ int main ()
                             zlink::framework::runtime::spot_address_t{
                               "public.route",
                               zlink::routing_id_t::from (std::string ("target-node")),
-                              zlink::routing_id_t::from ("target-spot")}),
+                              std::string ("target-spot")}),
                           request_t{52})
         .metadata ("trace-id", "trace-spot-typed")
         .timeout (std::chrono::milliseconds (50))
@@ -3028,29 +2777,35 @@ int main ()
     auto spot_only_runtime = zlink::framework::detail::channel_runtime_t::from (
       spot_only_builder.message_bus ());
     int spot_only_send_count = 0;
+    int spot_only_node_send_count = 0;
     bool spot_only_request_called = false;
+    /* The handle carries a concrete ObjectGeneration so the transport can assert the
+     * exact generation the SPOT address snapshot published. */
+    constexpr std::uint64_t spot_only_generation = 7;
     spot_only_runtime.bind_spot_mesh_transport (
       "spot-only",
       [&spot_only_send_count] (
         const zlink::routing_id_t &target_node_rid,
-        const zlink::routing_id_t &target_spot_id,
+        const std::string &target_spot_id,
+        std::uint64_t target_spot_generation,
         zlink::framework::runtime::messaging::message_parts_t) {
-          if (target_node_rid.to_string () == "spot-node"
-              && ( == "spot-rid"
-                  ||  == "spot-node")) {
+          if (target_node_rid.to_string () == "spot-node" && target_spot_id == "spot-rid"
+              && target_spot_generation == spot_only_generation) {
               ++spot_only_send_count;
           }
           return zlink::framework::result_t<void>::success ();
       },
       [&spot_only_request_called, &envelope_codec, &serializers] (
         const zlink::routing_id_t &target_node_rid,
-        const zlink::routing_id_t &target_spot_id,
+        const std::string &target_spot_id,
+        std::uint64_t target_spot_generation,
         zlink::framework::runtime::messaging::message_parts_t parts,
         std::chrono::milliseconds timeout) {
           const auto header = envelope_codec.decode_header (parts);
           const auto body = envelope_codec.decode_body (parts);
           if (!header || !body || target_node_rid.to_string () != "spot-node"
-              ||  != "spot-rid"
+              || target_spot_id != "spot-rid"
+              || target_spot_generation != spot_only_generation
               || timeout != std::chrono::milliseconds (75)
               || serializers.get<request_t> ()
                      .deserialize (zlink::framework::detail::encoded_payload_from_raw (
@@ -3071,11 +2826,33 @@ int main ()
             envelope_codec.encode_parts (reply_header, std::type_index (typeid (reply_t)), &reply,
                                          serializers));
       });
+    /* Node direct and Spot messaging are separate transports in v11: common spec
+     * 24-spot-address-messaging.ko.md §2 forbids deriving the owner node from the Spot ID
+     * string, so a Node direct send no longer reaches the SPOT mesh sender carrying the
+     * node RID as its Spot ID. Both sends below are still required to arrive; each is
+     * checked against the transport its target kind routes through. */
+    spot_only_runtime.bind_mesh_node_transport (
+      "spot-only",
+      [&spot_only_node_send_count] (
+        const zlink::routing_id_t &target_node_rid,
+        zlink::framework::runtime::messaging::message_parts_t) {
+          if (target_node_rid.to_string () == "spot-node") {
+              ++spot_only_node_send_count;
+          }
+          return zlink::framework::result_t<void>::success ();
+      },
+      [] (const zlink::routing_id_t &, zlink::framework::runtime::messaging::message_parts_t,
+          std::chrono::milliseconds) {
+          return zlink::framework::result_t<
+            zlink::framework::runtime::messaging::message_parts_t>::failure (
+            zlink::framework::framework_error_kind_t::request_failed,
+            "spot-only node transport received an unexpected request");
+      });
     auto spot_only_client = spot_only_builder.route_client (serializers);
     const auto spot_only_ref = zlink::framework::runtime::make_fixed_spot_handle (
       zlink::framework::runtime::spot_address_t{"spot-only",
                                                 zlink::routing_id_t::from ("spot-node"),
-                                                zlink::routing_id_t::from ("spot-rid")});
+                                                std::string ("spot-rid"), spot_only_generation});
     spot_only_client.send_to_spot (spot_only_ref, event_t{33})
       .submit ();
     spot_only_client
@@ -3086,7 +2863,8 @@ int main ()
                                    .timeout (std::chrono::milliseconds (75))
                                    .submit<reply_t> ()
                                    .result ();
-    if (spot_only_send_count != 2 || !spot_only_reply || !spot_only_request_called
+    if (spot_only_send_count != 1 || spot_only_node_send_count != 1 || !spot_only_reply
+        || !spot_only_request_called
         || spot_only_reply.value ().value != 353) {
         return 142;
     }
@@ -3102,21 +2880,21 @@ int main ()
     std::atomic_int retry_fresh_attempts{0};
     retry_runtime.bind_spot_mesh_transport (
       "retry-mesh",
-      [] (const zlink::routing_id_t &, const zlink::routing_id_t &,
+      [] (const zlink::routing_id_t &, const std::string &, std::uint64_t,
           zlink::framework::runtime::messaging::message_parts_t) {
           return zlink::framework::result_t<void>::success ();
       },
       [&retry_stale_attempts, &retry_fresh_attempts, &envelope_codec, &serializers] (
-        const zlink::routing_id_t &, const zlink::routing_id_t &target_spot_id,
+        const zlink::routing_id_t &, const std::string &target_spot_id, std::uint64_t,
         zlink::framework::runtime::messaging::message_parts_t parts, std::chrono::milliseconds) {
-          if ( == "stale-spot") {
+          if (target_spot_id == "stale-spot") {
               ++retry_stale_attempts;
               return zlink::framework::result_t<
                 zlink::framework::runtime::messaging::message_parts_t>::failure (
                 zlink::framework::framework_error_kind_t::spot_route_not_found,
                 "spot moved away from the stale address");
           }
-          if ( != "fresh-spot") {
+          if (target_spot_id != "fresh-spot") {
               return zlink::framework::result_t<
                 zlink::framework::runtime::messaging::message_parts_t>::failure (
                 zlink::framework::framework_error_kind_t::request_failed,
@@ -3137,12 +2915,12 @@ int main ()
     const auto stale_handle = zlink::framework::detail::spot_handle_access_t::make (
       zlink::framework::runtime::spot_address_t{"retry-mesh",
                                                 zlink::routing_id_t::from ("retry-node"),
-                                                zlink::routing_id_t::from ("stale-spot")},
+                                                std::string ("stale-spot")},
       [&retry_refresh_calls] () -> std::optional<zlink::framework::runtime::spot_address_t> {
           ++retry_refresh_calls;
           return zlink::framework::runtime::spot_address_t{
             "retry-mesh", zlink::routing_id_t::from ("retry-node"),
-            zlink::routing_id_t::from ("fresh-spot")};
+            std::string ("fresh-spot")};
       });
     const auto retried_reply = retry_client.request_to_spot (stale_handle, request_t{54})
                                  .timeout (std::chrono::milliseconds (75))
@@ -3152,7 +2930,7 @@ int main ()
         || retry_stale_attempts.load () != 1 || retry_fresh_attempts.load () != 1) {
         return 143;
     }
-    if (stale_handle.spot_id ().value () != "fresh-spot") {
+    if (stale_handle.spot_id () != "fresh-spot") {
         return 144;
     }
 
@@ -3203,7 +2981,7 @@ int main ()
     const auto second_stale_handle = zlink::framework::detail::spot_handle_access_t::make (
       zlink::framework::runtime::spot_address_t{"retry-mesh",
                                                 zlink::routing_id_t::from ("retry-node"),
-                                                zlink::routing_id_t::from ("stale-spot")},
+                                                std::string ("stale-spot")},
       [&no_refresh_calls] () -> std::optional<zlink::framework::runtime::spot_address_t> {
           ++no_refresh_calls;
           return std::nullopt;
@@ -3227,7 +3005,7 @@ int main ()
     std::atomic_bool delayed_completed = false;
     public_route.set_request_backend (
       [&delayed_backend_entered, release_delayed_backend_future, &envelope_codec, &serializers] (
-        const zlink::routing_id_t &, const std::optional<zlink::routing_id_t> &,
+        const zlink::routing_id_t &, const std::optional<std::string> &,
         const zlink::framework::runtime::messaging::message_parts_t &, std::chrono::milliseconds)
         -> zlink::framework::result_t<zlink::framework::runtime::messaging::message_parts_t> {
           delayed_backend_entered.set_value ();

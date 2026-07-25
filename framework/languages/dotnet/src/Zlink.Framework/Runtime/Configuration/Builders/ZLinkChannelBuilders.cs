@@ -111,22 +111,76 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
 {
     public IZLinkFanoutChannelBuilder EnablePublisher(string endpoint)
     {
-        registration.Publisher ??= new ZLinkChannelPublisherCapabilityRegistration();
-        registration.Publisher.BindEndpoint = ZLinkChannelEndpointBuilderSupport.Validate(
+        var publisher = Publisher();
+        publisher.BindEndpoint = ZLinkChannelEndpointBuilderSupport.Validate(
             endpoint,
             "Channel publisher bind endpoint must not be empty.");
+        publisher.ListenPort = null;
+        return this;
+    }
+
+    public IZLinkFanoutChannelBuilder EnablePublisher(int port = 0)
+    {
+        if (port is < 0 or > 65535)
+            throw new ZLinkConfigurationException(
+                "Fanout publisher port must be between 0 and 65535.");
+        var publisher = Publisher();
+        publisher.ListenPort = port;
+        publisher.BindEndpoint = null;
+        return this;
+    }
+
+    public IZLinkFanoutChannelBuilder SetBindHost(string bindHost)
+    {
+        Publisher().BindHost = ZLinkChannelEndpointBuilderSupport.Validate(
+            bindHost,
+            "Fanout publisher bind host must not be empty.");
+        return this;
+    }
+
+    public IZLinkFanoutChannelBuilder SetAdvertiseHost(string advertiseHost)
+    {
+        Publisher().AdvertiseHost = ZLinkChannelEndpointBuilderSupport.Validate(
+            advertiseHost,
+            "Fanout publisher advertise host must not be empty.");
+        return this;
+    }
+
+    public IZLinkFanoutChannelBuilder SetRoutingId(RoutingId publisherRoutingId)
+    {
+        if (publisherRoutingId.Size == 0)
+            throw new ZLinkConfigurationException(
+                "Fanout publisher routing id must not be empty.");
+        Publisher().FixedRoutingId = publisherRoutingId;
+        return this;
+    }
+
+    public IZLinkFanoutChannelBuilder SetRoutingIdPrefix(string prefix)
+    {
+        ZLinkFanoutRoutingIdPolicy.ValidatePrefix(prefix);
+        Publisher().RoutingIdPrefix = prefix;
+        return this;
+    }
+
+    public IZLinkFanoutChannelBuilder EnableSubscriber()
+    {
+        var subscriber = Subscriber();
+        subscriber.AutomaticDiscoveryEnabled = true;
         return this;
     }
 
     public IZLinkFanoutChannelBuilder ConnectSubscriber(string endpoint)
     {
-        registration.Subscriber ??= new ZLinkChannelSubscriberCapabilityRegistration();
+        var subscriber = Subscriber();
         ZLinkChannelEndpointBuilderSupport.AddManualConnection(
-            registration.Subscriber.ManualConnections,
+            subscriber.ManualConnections,
             endpoint,
             "Channel subscriber endpoint must not be empty.");
         return this;
     }
+
+    public IZLinkEndpointConnections SubscriberConnections =>
+        Subscriber().ManualConnections;
 
     public IZLinkFanoutChannelBuilder AddHandler<THandler, TEvent>(string? packetName = null)
         where THandler : class, IZLinkFanoutHandler<TEvent>
@@ -136,44 +190,12 @@ internal sealed class ZLinkFanoutChannelBuilder(ZLinkChannelRegistration registr
             packetName);
         return this;
     }
-}
 
-internal static class ZLinkRoutingIdAllocationBuilderSupport
-{
-    public static ZLinkRoutingIdAllocationRegistration Create(
-        int slotCount,
-        string routingIdPrefix,
-        string? groupName)
-    {
-        if (slotCount < 1)
-            throw new ZLinkConfigurationException("Routing-id allocation slot count must be at least one.");
-        if (string.IsNullOrWhiteSpace(routingIdPrefix))
-            throw new ZLinkConfigurationException("Routing-id allocation prefix must not be empty.");
+    private ZLinkChannelPublisherCapabilityRegistration Publisher() =>
+        registration.Publisher ??= new ZLinkChannelPublisherCapabilityRegistration();
 
-        return new ZLinkRoutingIdAllocationRegistration
-        {
-            SlotCount = slotCount,
-            RoutingIdPrefix = routingIdPrefix,
-            GroupName = groupName
-        };
-    }
-
-    public static ZLinkRoutingIdAllocationRegistration WithGroup(
-        string groupName,
-        ZLinkRoutingIdAllocationRegistration? allocation,
-        string defaultPrefix)
-    {
-        if (string.IsNullOrWhiteSpace(groupName))
-            throw new ZLinkConfigurationException("Routing-id allocation group name must not be empty.");
-
-        allocation ??= new ZLinkRoutingIdAllocationRegistration
-        {
-            SlotCount = 0,
-            RoutingIdPrefix = defaultPrefix
-        };
-        allocation.GroupName = groupName;
-        return allocation;
-    }
+    private ZLinkChannelSubscriberCapabilityRegistration Subscriber() =>
+        registration.Subscriber ??= new ZLinkChannelSubscriberCapabilityRegistration();
 }
 
 internal static class ZLinkChannelEndpointBuilderSupport

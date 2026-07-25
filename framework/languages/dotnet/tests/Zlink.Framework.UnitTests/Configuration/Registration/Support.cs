@@ -359,31 +359,30 @@ public abstract class RegistrationValidationSupport
         public IZLinkEntrySpotContext Context { get; } = context;
     }
 
-    protected sealed class TestActorFactory : IZLinkActorFactory
+    protected sealed class TestActorFactory : IZLinkActorFactory<TestActor>
     {
-        public ValueTask<IZLinkActor> CreateAsync(
+        public ValueTask<TestActor> CreateAsync(
             string actorId,
             IZLinkActorContext context,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult<IZLinkActor>(new TestActor(actorId, context));
+            return ValueTask.FromResult(new TestActor(actorId, context));
         }
     }
 
-    protected sealed class TestActorTransferAdapter : IZLinkActorTransferAdapter<TestActor>
+    protected sealed class TestActorTransferAdapter : IZLinkActorRelocationAdapter<TestActor>
     {
-        public ValueTask<ZLinkMessage> TransferOutAsync(
+        public ValueTask<byte[]> CaptureAsync(
             TestActor actor,
             CancellationToken cancellationToken) =>
-            ValueTask.FromResult(ZLinkMessage.Empty);
+            ValueTask.FromResult(Array.Empty<byte>());
 
-        public ValueTask<TestActor> TransferInAsync(
-            string actorId,
-            IZLinkActorContext context,
-            ZLinkMessage state,
+        public ValueTask RestoreAsync(
+            TestActor actor,
+            ReadOnlyMemory<byte> payload,
             CancellationToken cancellationToken) =>
-            ValueTask.FromResult(new TestActor(actorId, context));
+            ValueTask.CompletedTask;
     }
 
     protected sealed class TestActor(
@@ -393,5 +392,30 @@ public abstract class RegistrationValidationSupport
         public string ActorId { get; } = actorId;
 
         public IZLinkActorContext Context { get; } = context;
+    }
+
+    protected sealed class TestRelocationStore : IZLinkRelocationStore
+    {
+        public ValueTask<ZLinkRelocationStored> PutRelocationAsync(
+            ReadOnlyMemory<byte> payload,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkRelocationReadResult> GetRelocationAsync(
+            string reference,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkRelocationRenewResult> RenewRelocationAsync(
+            string reference,
+            TimeSpan retention,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ValueTask<ZLinkRelocationDeleteResult> DeleteRelocationAsync(
+            string reference,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

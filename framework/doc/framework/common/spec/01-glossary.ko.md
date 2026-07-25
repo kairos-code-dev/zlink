@@ -357,7 +357,7 @@ Source가 target을 선택할 때 확인한 target 등록 정보의 version이�
 | .NET 표기 | Public type 없음 |
 | 공개 구성 | Ready object key, current owner route와 admission에 필요한 generation fence를 보관한다. 내부 storage 형식은 공개 계약이 아니다. |
 | 생성·관리 | Framework가 성공한 Ready authority 조회 결과로 만들고 source runtime에서 관리한다. |
-| 수명 | `RouteCacheMaxAge`, owner admission deadline과 forwarding window의 제한을 넘지 않는다. Missing, Creating과 Store failure는 positive cache로 저장하지 않는다. |
+| 수명 | `RouteCacheMaxAge`, owner admission deadline과 [forwarding window](#forwarding-window)의 제한을 넘지 않는다. Missing, Creating과 Store failure는 positive cache로 저장하지 않는다. |
 
 <a id="creation-attempt"></a>
 ### Creation attempt
@@ -525,6 +525,43 @@ transaction으로 함께 확정하는 commit 경계다. Actor owner만 먼저 �
 | 공개 구성 | Actor authority, source·target membership, capacity와 aggregate generation을 함께 검증하고 변경한다. |
 | 생성·관리 | Framework relocation coordinator가 target staging을 끝낸 뒤 한 번 실행한다. |
 | 수명 | 성공한 commit이 logical relocation의 확정점이다. Callback, relay와 cleanup 완료를 기록하려고 같은 aggregate를 두 번째로 commit하지 않는다. |
+
+<a id="message-forwarding"></a>
+### Message forwarding
+
+Actor나 Spot이 다른 MeshNode로 relocation된 뒤에도 이전 owner node로 도착한
+message를 새 owner에게 대신 전달하는 동작이다. 보내는 쪽이 옛 위치를 캐시하고
+있어도 message를 잃지 않게 하는 것이 목적이며, 새 주소를 알려 주고 재전송을
+요구하는 redirect가 아니라 이전 owner가 대신 전달하는 forward다.
+
+늦게 도착해 forwarding 대상이 되는 개별 message를 straggler라고 한다. Forwarding은
+무기한 유지하지 않고 [forwarding window](#forwarding-window) 안에서만 유효하며,
+window가 끝난 뒤 도착한 message는 일반 stale route 실패로 처리한다.
+
+Relocation 중 source가 seal한 뒤 보관하는
+[relocation ingress hold](#relocation-ingress-hold)와는 다르다. Hold는 commit 전까지
+source가 보관했다가 target queue로 넘기는 임시 저장이고, forwarding은 commit이
+끝나 owner가 바뀐 뒤 옛 owner에게 도착한 message를 처리한다.
+
+| 항목 | 내용 |
+|---|---|
+| 형태 | Framework가 관리하는 owner 이전 뒤 message 전달 |
+| .NET 표기 | Public type 없음 |
+| 공개 구성 | 새 owner의 `ActorRef` 또는 Spot 위치와 forwarding window 만료 시각을 유지한다. |
+| 생성·관리 | Relocation commit이 끝난 뒤 이전 owner runtime이 만든다. |
+| 수명 | Forwarding window가 끝나면 제거하고, 이후 같은 위치로 온 message는 stale route 실패로 처리한다. |
+
+<a id="forwarding-window"></a>
+### Forwarding window
+
+[Message forwarding](#message-forwarding)이 유효한 기간이다. Relocation commit
+시점부터 시작하며 이 기간이 지나면 이전 owner는 더 이상 전달하지 않는다.
+
+| 항목 | 내용 |
+|---|---|
+| 형태 | Framework가 관리하는 기간 |
+| .NET 표기 | Public 설정 없음 |
+| 수명 | Relocation commit에서 시작해 만료로 끝난다. 만료 뒤 forwarding 항목을 제거한다. |
 
 <a id="relocation-ingress-hold"></a>
 ### Relocation ingress hold

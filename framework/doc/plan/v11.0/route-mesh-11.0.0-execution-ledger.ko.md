@@ -207,6 +207,20 @@ C++·.NET·JVM(Java·Kotlin)·Node.js lane이 같은 기능을 병렬로 구현�
    같은 state machine, 같은 오류 분류와 같은 test 구성을 갖게 한다. 수렴 뒤 정식 spec·common internals·
    다섯 exact interface에 반영하고, 남는 차이는 다음 단락의 허용 사유와 함께 기록한다.
 
+한 개념에는 한 이름만 쓴다. 이름의 기준은 정식 spec과
+[공통 용어집](../../framework/common/spec/01-glossary.ko.md)이며, 코드 식별자·test 이름·문서 산문이 그 용어를
+따른다. 반대 방향으로 코드에서 굳어진 이름을 근거로 spec 용어를 바꾸지 않는다. 새 이름을 붙이기 전에 용어집과
+다섯 언어 식별자를 먼저 찾아 이미 쓰는 이름이 있으면 그것을 쓴다. 새 개념이라 이름이 필요하면 용어집과 정식
+spec을 먼저 고치고, 그 다음에 다섯 언어 식별자·test 이름·guide 산문을 그 용어로 정렬한다. 코드에 먼저 이름을
+붙이고 나중에 문서를 맞추지 않는다. 이미 쓰는 이름이 부정확하다고 판단하면
+동의어를 새로 추가하지 않고 용어집·정식 spec·다섯 언어 식별자·test 이름을 한 번에 바꾼 뒤 옛 이름을
+제거한다. 이름은 대상을 드러내야 하며, 다른 기능이 이미 점유한 단어를 재사용하지 않는다. 예를 들어
+relocation 뒤 이전 owner로 도착한 message를 새 owner에게 전달하는 동작의 이름은
+[message forwarding](../../framework/common/spec/01-glossary.ko.md#message-forwarding)이고 유효 기간은
+forwarding window다. 관측 기능인 message flow tracing이나 다른 개념이 쓰는 relay와 이름을 겹치지 않게 한다. 언어 사이에 이름이
+갈리면 용어집 쪽으로 정렬한다. 예를 들어 .NET이 forwarding 유효 기간을 `ZLinkActorForwardingLease`로,
+C++가 `actor_transfer_forward_window`로 부르는데 용어집이 forwarding window이므로 lease 표기를 window로 맞춘다.
+
 언어 고유 idiom은 억지로 통일하지 않는다. 리플렉션·attribute·`suspend`·`Flow`·`Promise`·template처럼
 언어가 제공하는 표현 수단의 차이는 유지하고, 그 차이가 만드는 public signature 차이도 exact interface가
 소유한다. 동형으로 맞추는 대상은 구조와 의미다. 즉 component 경계, 책임 분배, state machine, ordering과

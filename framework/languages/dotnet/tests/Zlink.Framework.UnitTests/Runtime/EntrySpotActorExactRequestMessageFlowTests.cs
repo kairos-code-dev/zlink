@@ -37,6 +37,11 @@ public sealed partial class EntrySpotActorDispatchTests
 
             Assert.Null(ZLinkFlowContext.Current);
             Assert.Equal("flow-actor", actor.ActorId);
+            // Ledger §2.3: deferred Join은 handler terminal 이후에 실행한다.
+            // C++·Node·.NET 모두 dispatch 완료와 결합하지 않으므로 관찰 전에 기다린다.
+            var joinDeadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+            while (probe.JoinFlow is null && DateTime.UtcNow < joinDeadline)
+                await Task.Delay(5);
             var joinFlow = Assert.IsType<ZLinkFlowValue>(probe.JoinFlow);
             Assert.True(ZlinkStreamFlowId.IsValid(joinFlow.FlowId));
             Assert.Equal(ZLinkFlowOrigin.Inbound, joinFlow.Origin);

@@ -110,9 +110,16 @@ internal sealed class ZLinkDeferredActorJoin(
     private readonly long _registeredTimestamp = Stopwatch.GetTimestamp();
     private readonly ZLinkActorJoinOperationId _operationId = CreateOperationId();
 
-    // The deferred Join runs detached from the callback that submitted it, so the
-    // causal flow of that callback is captured here and re-entered in RunAsync.
+    // The deferred Join runs after the submitting callback, so the causal flow of
+    // that callback is captured here and re-entered in RunAsync.
     private readonly ZLinkFlowValue? _flow = ZLinkFlowContext.Current;
+
+    // Ledger §2.3: C++ posts the deferred work back onto the serial queue that
+    // owns the turn, Java chains it after the handler stage and Node runs it on
+    // the next event-loop tick. All three keep registration order and run the
+    // join right after the handler terminal, so .NET posts onto the submitting
+    // turn instead of detaching an unordered task.
+    private readonly ZLinkSerialTurn? _turn = ZLinkSerialTurn.Current;
     private ZLinkActorDispatchMailbox.BarrierReservation? _barrier;
 
     public void ReserveBarrier()
@@ -127,6 +134,7 @@ internal sealed class ZLinkDeferredActorJoin(
 
     public void Activate()
     {
+        if (_turn is { } turn && turn.TryPost(RunAsync)) return;
         if (!runtime.TryRunDetached("actor-deferred-join", RunAsync))
             Discard();
     }

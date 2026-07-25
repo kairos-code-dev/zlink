@@ -852,7 +852,8 @@ if(ZLINK_FRAMEWORK_CPP_BUILD_TESTS)
     tests/Zlink.Framework.UnitTests/test_cpp_framework_mesh_node_vertical.cpp)
   target_include_directories(zlink_cpp_framework_mesh_node_vertical_test PRIVATE
     ${ZLINK_FRAMEWORK_CPP_DIR}/framework/include
-    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src)
+    ${ZLINK_FRAMEWORK_CPP_DIR}/framework/src
+    ${ZLINK_FRAMEWORK_CPP_REPO_ROOT}/framework/runtime/protocol/generated/cpp)
   target_link_libraries(zlink_cpp_framework_mesh_node_vertical_test PRIVATE
     zlink::framework
     Threads::Threads)

@@ -429,6 +429,14 @@ zlink::context_t &mesh_node_runtime_t::native_context ()
     return _node->transport ().context ();
 }
 
+std::size_t mesh_node_runtime_t::admitted_peer_count () const
+{
+    if (!_node) {
+        return 0;
+    }
+    return _node->transport ().topology ().peers ().size ();
+}
+
 host::public_host_runtime_t &mesh_node_runtime_t::native_node ()
 {
     if (!_node) {

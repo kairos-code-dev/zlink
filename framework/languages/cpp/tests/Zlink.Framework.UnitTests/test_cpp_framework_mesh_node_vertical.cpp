@@ -131,7 +131,7 @@ bool wait_until_admitted (zlink::framework::detail::mesh_node_runtime_t &node)
 {
     const auto deadline = std::chrono::steady_clock::now () + 5s;
     while (std::chrono::steady_clock::now () < deadline) {
-        if (node.status ().admitted_peer_count () > 0)
+        if (node.admitted_peer_count () > 0)
             return true;
         std::this_thread::sleep_for (10ms);
     }
@@ -143,7 +143,7 @@ bool wait_until_admitted_count (zlink::framework::detail::mesh_node_runtime_t &n
 {
     const auto deadline = std::chrono::steady_clock::now () + 5s;
     while (std::chrono::steady_clock::now () < deadline) {
-        if (node.status ().admitted_peer_count () >= expected)
+        if (node.admitted_peer_count () >= expected)
             return true;
         std::this_thread::sleep_for (10ms);
     }
@@ -185,7 +185,7 @@ template <typename TSubmit> bool submit_until_ok (TSubmit submit)
 }
 
 bool receive_one (zlink::framework::detail::mesh_node_runtime_t &node,
-                  zlink::service::record_kind_t expected_kind,
+                  zlink::framework::runtime::host::record_kind_t expected_kind,
                   const std::string &expected_text,
                   const std::vector<std::uint8_t> &expected_metadata)
 {
@@ -193,8 +193,8 @@ bool receive_one (zlink::framework::detail::mesh_node_runtime_t &node,
     while (std::chrono::steady_clock::now () < deadline) {
         bool matched = false;
         (void) node.dispatch_ready (
-          [&] (const zlink::service::ready_record_t &,
-               const zlink::service::receive_record_t &record,
+          [&] (const zlink::framework::runtime::host::ready_record_t &,
+               const zlink::framework::runtime::host::receive_record_t &record,
                std::vector<zlink::message_t> parts) {
               matched = matched
                         || (record.kind == expected_kind && !parts.empty ()
@@ -209,7 +209,7 @@ bool receive_one (zlink::framework::detail::mesh_node_runtime_t &node,
 }
 
 bool reply_to_one_request (zlink::framework::detail::mesh_node_runtime_t &node,
-                           zlink::service::record_kind_t expected_kind,
+                           zlink::framework::runtime::host::record_kind_t expected_kind,
                            const std::string &expected_text,
                            const std::string &reply_text)
 {
@@ -217,15 +217,14 @@ bool reply_to_one_request (zlink::framework::detail::mesh_node_runtime_t &node,
     while (std::chrono::steady_clock::now () < deadline) {
         bool replied = false;
         (void) node.dispatch_ready (
-          [&] (const zlink::service::ready_record_t &,
-               const zlink::service::receive_record_t &record,
+          [&] (const zlink::framework::runtime::host::ready_record_t &,
+               const zlink::framework::runtime::host::receive_record_t &record,
                std::vector<zlink::message_t> parts) {
               if (record.kind == expected_kind && !parts.empty ()
                   && parts.front ().to_string () == expected_text) {
                   const std::vector<zlink::message_t> reply_parts{
                     zlink::message_t::from (reply_text)};
-                  replied = zlink::service::reply (
-                              record.reply_token, reply_parts, zlink::send_flags_t::none)
+                  replied = zlink::framework::runtime::host::reply (record.reply_token, reply_parts)
                             == zlink::submit_result_t::ok;
               }
           });
@@ -237,39 +236,28 @@ bool reply_to_one_request (zlink::framework::detail::mesh_node_runtime_t &node,
 }
 
 bool receive_completion (zlink::framework::detail::mesh_node_runtime_t &node,
-                         const zlink::service::operation_id_t &operation_id,
+                         const zlink::framework::runtime::host::operation_id_t &operation_id,
                          const std::string &expected_text)
 {
+    // v11: Core service pull batches are gone. The Framework MeshNode runtime
+    // pushes ready records through dispatch_ready, so the completion is matched
+    // on that callback instead of drain_ready/recv_batch claims.
     const auto deadline = std::chrono::steady_clock::now () + 5s;
     while (std::chrono::steady_clock::now () < deadline) {
-        zlink::service::ready_batch_t ready (8);
-        bool has_residue = false;
-        const auto ready_result =
-          node.drain_ready (zlink::service::ready_domain_t::infrastructure, ready,
-                            has_residue, zlink::recv_flags_t::dontwait);
-        if (ready_result == static_cast<int> (zlink::recv_result_t::ok)) {
-            for (std::size_t ready_index = 0; ready_index < ready.count (); ++ready_index) {
-                auto claim = ready.take_claim (ready_index);
-                zlink::service::receive_batch_t batch (8, 32, 64 * 1024);
-                zlink::service::receive_requirements_t required;
-                if (claim.recv_batch (batch, required, zlink::recv_flags_t::none)
-                    != static_cast<int> (zlink::recv_result_t::ok)) {
-                    claim.release ();
-                    continue;
-                }
-                for (std::size_t index = 0; index < batch.count (); ++index) {
-                    const auto record = batch.at (index);
-                    const auto parts = batch.retain_message (index);
-                    if (record.kind == zlink::service::record_kind_t::completion
-                        && record.operation_id == operation_id && record.terminal_result == 0
-                        && !parts.empty () && parts.front ().to_string () == expected_text) {
-                        claim.release ();
-                        return true;
-                    }
-                }
-                claim.release ();
-            }
-        }
+        bool matched = false;
+        (void) node.dispatch_ready (
+          [&] (const zlink::framework::runtime::host::ready_record_t &,
+               const zlink::framework::runtime::host::receive_record_t &record,
+               std::vector<zlink::message_t> parts) {
+              matched =
+                matched
+                || (record.kind
+                      == zlink::framework::runtime::host::record_kind_t::completion
+                    && record.operation_id == operation_id && record.terminal_result == 0
+                    && !parts.empty () && parts.front ().to_string () == expected_text);
+          });
+        if (matched)
+            return true;
         std::this_thread::sleep_for (5ms);
     }
     return false;
@@ -735,19 +723,19 @@ int run_cross_process_delivery ()
           zlink::framework::detail::mesh_metadata_codec_t::encode (metadata);
         const bool admitted = wait_until_admitted (node);
         const bool direct =
-          receive_one (node, zlink::service::record_kind_t::node_send, "direct",
+          receive_one (node, zlink::framework::runtime::host::record_kind_t::node_send, "direct",
                        encoded_metadata);
         const char direct_ack = direct ? 1 : 0;
         (void) write (direct_ack_pipe[1], &direct_ack, sizeof (direct_ack));
         close (direct_ack_pipe[1]);
         const bool channel =
-          receive_one (node, zlink::service::record_kind_t::channel_send, "channel",
+          receive_one (node, zlink::framework::runtime::host::record_kind_t::channel_send, "channel",
                        encoded_metadata);
         const char channel_ack = channel ? 1 : 0;
         (void) write (channel_ack_pipe[1], &channel_ack, sizeof (channel_ack));
         close (channel_ack_pipe[1]);
         const bool request =
-          reply_to_one_request (node, zlink::service::record_kind_t::node_request,
+          reply_to_one_request (node, zlink::framework::runtime::host::record_kind_t::node_request,
                                 "request", "reply");
         const char request_ack = request ? 1 : 0;
         (void) write (request_ack_pipe[1], &request_ack, sizeof (request_ack));
@@ -757,18 +745,18 @@ int run_cross_process_delivery ()
             (void) read (completion_ack_pipe[0], &completion_ack, sizeof (completion_ack));
         close (completion_ack_pipe[0]);
         const bool spot =
-          receive_one (node, zlink::service::record_kind_t::spot_send, "spot", encoded_metadata);
+          receive_one (node, zlink::framework::runtime::host::record_kind_t::spot_send, "spot", encoded_metadata);
         const char spot_ack = spot ? 1 : 0;
         (void) write (formal_ack_pipe[1], &spot_ack, sizeof (spot_ack));
         const bool spot_request =
-          reply_to_one_request (node, zlink::service::record_kind_t::spot_request,
+          reply_to_one_request (node, zlink::framework::runtime::host::record_kind_t::spot_request,
                                 "spot-request", "spot-reply");
         const char spot_request_ack = spot_request ? 1 : 0;
         (void) write (spot_request_ack_pipe[1], &spot_request_ack,
                       sizeof (spot_request_ack));
         close (spot_request_ack_pipe[1]);
         const bool actor =
-          receive_one (node, zlink::service::record_kind_t::actor_send, "actor",
+          receive_one (node, zlink::framework::runtime::host::record_kind_t::actor_send, "actor",
                        encoded_metadata);
         const char actor_ack = actor ? 1 : 0;
         (void) write (formal_ack_pipe[1], &actor_ack, sizeof (actor_ack));
@@ -889,7 +877,7 @@ int run_cross_process_delivery ()
     assert (channel_ack == 1);
     const std::vector<zlink::message_t> request_parts{
       zlink::message_t::from (std::string ("request"))};
-    zlink::service::operation_id_t operation_id;
+    zlink::framework::runtime::host::operation_id_t operation_id;
     assert (node.request_to_node (
               zlink::routing_id_t::from (std::string ("vertical-b")), request_parts,
               operation_id, 5s, metadata)
@@ -921,7 +909,7 @@ int run_cross_process_delivery ()
     assert (spot_ack == 1);
     const std::vector<zlink::message_t> spot_request_parts{
       zlink::message_t::from (std::string ("spot-request"))};
-    zlink::service::operation_id_t spot_operation_id;
+    zlink::framework::runtime::host::operation_id_t spot_operation_id;
     assert (node.request_to_spot (
               zlink::routing_id_t::from (std::string ("source-spot")),
               zlink::routing_id_t::from (std::string ("vertical-b")),
@@ -941,7 +929,7 @@ int run_cross_process_delivery ()
       zlink::message_t::from (std::string ("actor"))};
     assert (submit_until_ok ([&] {
         return node.send_to_actor (
-          zlink::service::mesh_node_t::remote_actor_ref (
+          zlink::framework::runtime::host::public_host_runtime_t::remote_actor_ref (
             zlink::routing_id_t::from (std::string ("vertical-b")), "target-actor",
             formal_descriptors[1]),
           actor_parts,

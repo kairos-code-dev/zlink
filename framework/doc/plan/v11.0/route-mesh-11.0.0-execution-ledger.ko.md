@@ -33,6 +33,8 @@ unclassified·ambiguous·unknown owner 0개다.
   bound session으로 보내는 `BoundPushNotify`가 8초 안에 도착하지 않는 relay gap이 남아 있다.
 - Node ObjectContext와 MessageContext는 완료했다. 전체 root typecheck의 남은 2건은 별도 M6C
   `ZLinkAuthoritySnapshot` fixture 오류다.
+- Node contract test 정리는 인수인계 상태다(2026-07-25, 커밋 `73fd7bf041`..`2a362e0b56`). 다음 담당자는
+  §9.1의 "Node contract test suite 정리 checkpoint" 문단과 아래 lane 표의 Node.js 행에서 이어서 진행한다.
 - `V11-M6A-WEIGHT-DN` focused test 7/7은 통과했지만 candidate artifact와 `ROW-GATE` 증거가 없어 상태를
   올리지 않는다. M6C의 exact owner lease·capacity fence와 publish monitoring 제거 뒤 evidence 재생성도 남아 있다.
 
@@ -43,7 +45,7 @@ C++ `FrameworkError:16` 항목은 이미 해소되어 더 이상 유효하지 �
 |---|---|---|
 | .NET | `dotnet test .../Zlink.Framework.UnitTests.csproj` | 789 pass / 2 fail. 남은 2건은 `BLK-004`의 unsolicited ROUTER→DEALER 전달이다 |
 | JVM | `./gradlew :zlink-framework-core:test` | 526 pass / 0 fail |
-| Node.js | `npm test`(framework) | `test/contract/actor-manager.test.js`가 51 pass / 18 fail이고 나머지 파일은 통과한다. 실패는 transfer registry, native join coordinator, Entry Spot 통지, deferred join 순서에 몰려 있다 |
+| Node.js | `npm run build`뒤 `node --test test/contract/<file>`을 파일 단위로 실행(전체 `npm test`는 10분 초과) | 2026-07-25 파일별 정리로 갱신됨: `actor-manager`(69/69)·`actor-transfer-authority`(3/3)·`spot-manager`(58/58)·`spot-activation-state`(4/4)·`entry-spot-serial-dispatch`(22/22)·`location-key-codec`(2/2) 완료. `stream-runtime`은 71/84로 미완료(중간 커밋 메시지가 84/84로 잘못 적은 적 있음, 무시할 것). `backend-contract`는 30/34이며 남은 4건은 `BLK-006`(자기 ChannelName 전송, 계약 판정 대기)로 의도적으로 미해결. `location-{store,host,runtime,autoconnect}`·`nestjs-module`·`message-flow`·`contract-surface`·`deferred-actor-join`·`object-message-context`·`routing-id-allocation`·`runtime-execution`·`tictactoe-session-dispatch`와 `sample-*`·`e2e-*` gate 다수는 아직 미착수. 5개 파일(`channel-client`·`client-server-location-runtime`·`stream-connector`·`stream-connector-codecs`·`stream-session-runtime`)은 hang한다(`BLK-009`). 세부는 §9.1 뒤 checkpoint(커밋 `73fd7bf041`..`2a362e0b56`)와 `blocked-issue-log.md`의 `BLK-008`·`BLK-009` 참고 |
 | C++ | `.artifacts/v11/build/framework-runtime-regression/cpp`에서 `ctest -R "^test_cpp_framework_m6[abc]_runtime$"` | m6a·m6b·m6c 모두 통과. `zlink_cpp_framework_mesh_node_vertical_test`는 compile 실패로 `Not Run`이다 |
 
 C++ vertical test는 generated protocol include 누락(수정함)과 제거된 `zlink::service` type 참조 22곳이
@@ -1274,6 +1276,32 @@ terminal correlation이 없어 local-only 구현을 remote 성공으로 확장�
 `Rejected`·application reply를 보존하지 못하므로 금지하고 두 operation은 명시적으로 실패한다. 이 gap은
 `CA-D56`의 protocol schema·네 runtime owner가 소유하며, 해당 command와 cross-node contract가 구현되기
 전에는 `V11-M6B-NODE`를 완료로 판정하지 않는다. Sample·E2E source는 변경하거나 실행하지 않았다.
+
+Node contract test suite 정리 checkpoint(2026-07-25, 커밋 `73fd7bf041`..`2a362e0b56`, 이후 인수인계로
+세션 종료)에서 `framework/languages/node/test/contract/`를 파일 단위로 실행해 결함을 정리했다.
+`spot-activation-state.test.js`(4/4), `spot-manager.test.js`(35/58→58/58), `entry-spot-serial-dispatch.test.js`
+(4/22→22/22), `location-key-codec.test.js`(1/2→2/2)를 완전 green으로 만들었다. `stream-runtime.test.js`는
+enum re-export 결함 1건만 고치고 여전히 71/84다(중간 커밋 메시지 하나가 이를 84/84로 잘못 적었으니
+착오하지 말 것). Runtime 결함 1건을 근본 수정했다. `DefaultZLinkSpotManager.close()`가 close seal이
+quiescence에 도달하기 전에 occupancy를 eager 판정해, close 호출 직전 큐에 든 actor join이 quiescence
+동안 완료돼도 재확인 없이 Spot을 닫았다. `closeAfterSeal`(spot-activation.ts)이 quiescence 뒤
+`canClose()`를 재확인하고 점유 상태면 seal을 풀도록 고쳤으며 `ZLinkSpotCloseOperation.ready`를
+`Promise<boolean>`으로 바꿨다(spot-activation-registry.ts, spot-activation-state.ts, index.ts). 이전에
+green이던 close·drain 인접 파일 전부(239/239)에 회귀 검증을 마쳤다. `BLK-008`(`onActorJoin`의 spec 문서
+텍스트 vs 이미 shipped된 공개 계약·runtime·14개 샘플의 불일치, contract lane 판정 필요)과 `BLK-009`
+(hang하는 test 파일 5개: `channel-client.test.js`·`client-server-location-runtime.test.js`·
+`stream-connector.test.js`·`stream-connector-codecs.test.js`·`stream-session-runtime.test.js`. 앞 둘은
+정확한 hang 지점을 특정했고 병렬 sweep 포트 경합 가설은 배제했다)를 `blocked-issue-log.md`에 남겼다.
+아직 손대지 않은 파일은 `location-{store,host,runtime,autoconnect}.test.js`(v10 시절 Location Store
+API 전면 재작성 필요 — `updatePeer`·`updateSpot`·`updateActor`·`updateRoute`와 옛 `objectCapacity`
+descriptor shape), `nestjs-module.test.js`(27건), `message-flow.test.js`(8건), `contract-surface.test.js`
+(2건), `deferred-actor-join.test.js`(1건), `object-message-context.test.js`(1건),
+`routing-id-allocation.test.js`(4건), `runtime-execution.test.js`(1건), `tictactoe-session-dispatch.test.js`
+(1건)와 `sample-*`·`e2e-*` gate 약 10개(다수 native artifact·Redis 필요 추정, §2.2 예외 영역)다.
+`backend-contract.test.js`의 4건은 `BLK-006`대로 손대지 않았다(여전히 30/34). 다음 담당자는
+`cd framework/languages/node && npm run build`로 다시 빌드한 뒤 `node --test test/contract/<file>`을
+파일 단위로 이어서 실행하면 된다. 이 checkpoint는 `BLK-008`·`BLK-009`를 `V11-M6A-NODE`·`V11-M6B-NODE`
+행에 아직 상호 참조하지 않았으므로 다음 ledger 동기화 때 반영이 필요하다.
 
 `CA-D16`은 두 값을 공개하지만 invalid 조합을 runtime에 넘기지 않는다. `CA-D61`은 `CA-D23`의 generic
 population capacity를 대체한다. Population 기본값은 unlimited지만 activation concurrency는 별도 admission

@@ -422,10 +422,23 @@ test('framework error kind values and retriable defaults match the shared table'
     ['SpotMoving', 'spotMoving', 33, true],
     ['RelocationDataLost', 'relocationDataLost', 34, false],
     ['SpotIdConflict', 'spotIdConflict', 35, false],
-    ['RuntimeShutdown', 'runtimeShutdown', 36, false]
+    ['RuntimeShutdown', 'runtimeShutdown', 36, false],
+    ['RelocationDisabled', 'relocationDisabled', 37, false],
+    ['RelocationTargetUnavailable', 'relocationTargetUnavailable', 38, true],
+    ['RelocationFailed', 'relocationFailed', 39, true]
   ];
 
-  assert.equal(Object.keys(framework.ZLinkFrameworkErrorKind).length, expected.length);
+  // Pinned to the spec's own count. Comparing against expected.length only proved
+  // the table was self-consistent, so when the enum stopped at 36 the check stayed
+  // green at 37 === 37 and the three v11 kinds went unverified.
+  assert.equal(expected.length, 40);
+  assert.equal(Object.keys(framework.ZLinkFrameworkErrorKind).length, 40);
+  // Bidirectional: an enum member absent from the table must fail here rather than
+  // simply never being visited by the loop below.
+  assert.deepEqual(
+    Object.keys(framework.ZLinkFrameworkErrorKind).sort(),
+    expected.map(([name]) => name).sort()
+  );
   for (const [name, stringValue, numericValue, retriable] of expected) {
     const kind = framework.ZLinkFrameworkErrorKind[name];
     assert.equal(kind, stringValue, name);

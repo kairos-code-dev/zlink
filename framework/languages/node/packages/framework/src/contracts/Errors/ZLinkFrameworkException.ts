@@ -52,7 +52,10 @@ export enum ZLinkFrameworkErrorKind {
   SpotMoving = 'spotMoving',
   RelocationDataLost = 'relocationDataLost',
   SpotIdConflict = 'spotIdConflict',
-  RuntimeShutdown = 'runtimeShutdown'
+  RuntimeShutdown = 'runtimeShutdown',
+  RelocationDisabled = 'relocationDisabled',
+  RelocationTargetUnavailable = 'relocationTargetUnavailable',
+  RelocationFailed = 'relocationFailed'
 }
 
 export const ZLINK_FRAMEWORK_ERROR_KIND_VALUES: Readonly<Record<ZLinkFrameworkErrorKind, number>> = Object.freeze({
@@ -92,7 +95,10 @@ export const ZLINK_FRAMEWORK_ERROR_KIND_VALUES: Readonly<Record<ZLinkFrameworkEr
   [ZLinkFrameworkErrorKind.SpotMoving]: 33,
   [ZLinkFrameworkErrorKind.RelocationDataLost]: 34,
   [ZLinkFrameworkErrorKind.SpotIdConflict]: 35,
-  [ZLinkFrameworkErrorKind.RuntimeShutdown]: 36
+  [ZLinkFrameworkErrorKind.RuntimeShutdown]: 36,
+  [ZLinkFrameworkErrorKind.RelocationDisabled]: 37,
+  [ZLinkFrameworkErrorKind.RelocationTargetUnavailable]: 38,
+  [ZLinkFrameworkErrorKind.RelocationFailed]: 39
 });
 
 export function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErrorKind): boolean {
@@ -101,5 +107,7 @@ export function isZLinkFrameworkErrorRetriableByDefault(kind: ZLinkFrameworkErro
     || kind === ZLinkFrameworkErrorKind.ActorMoving
     || kind === ZLinkFrameworkErrorKind.DeadlineExceeded
     || kind === ZLinkFrameworkErrorKind.PlacementCapacityExhausted
-    || kind === ZLinkFrameworkErrorKind.SpotMoving;
+    || kind === ZLinkFrameworkErrorKind.SpotMoving
+    || kind === ZLinkFrameworkErrorKind.RelocationTargetUnavailable
+    || kind === ZLinkFrameworkErrorKind.RelocationFailed;
 }

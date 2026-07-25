@@ -168,7 +168,8 @@ final class ChannelMessagingTest {
                     .requestToChannel("profile", new EchoRequest("hello")));
 
             assertEquals(
-                systems.zlink.framework.errors.ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
+                systems.zlink.framework.errors.ZLinkFrameworkErrorKind
+                    .REQUEST_TARGET_NOT_FOUND,
                 failure.kind());
         }
     }

@@ -96,6 +96,7 @@ public final class ZLinkChannelRuntime
     implements ZLinkClient, ZLinkFanoutClient, ZLinkRouteClient, ZLinkChannelRuntimeOptions,
         AutoCloseable {
     private static final Logger LOGGER = Logger.getLogger(ZLinkChannelRuntime.class.getName());
+    private static final Duration CLIENT_SERVER_READY_WAIT_CAP = Duration.ofSeconds(5);
     private static final String SPOT_ROUTE_BRIDGE_SEND_PACKET_NAME =
         "__zlink.routed_spot.egress.send";
     private static final String SPOT_ROUTE_BRIDGE_REQUEST_PACKET_NAME =
@@ -875,9 +876,11 @@ public final class ZLinkChannelRuntime
                 Optional.of(encoded.packetName()));
         }
         if (sockets.hasClientRegistration(channelName)) {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
-                "client/server channel has no admitted server: " + channelName);
+            return new SendCall(
+                callRuntime,
+                awaitClientServerTarget(channelName),
+                encoded.payload(),
+                Optional.of(encoded.packetName()));
         }
         throw new ZLinkConfigurationException(
             "channel is not configured: " + channelName);
@@ -907,12 +910,38 @@ public final class ZLinkChannelRuntime
                 defaultRequestTimeout(channelName));
         }
         if (sockets.hasClientRegistration(channelName)) {
-            throw new ZLinkFrameworkException(
-                ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED,
-                "client/server channel has no admitted server: " + channelName);
+            return new RequestCall(
+                callRuntime,
+                awaitClientServerTarget(channelName),
+                encoded.payload(),
+                Optional.of(encoded.packetName()),
+                defaultRequestTimeout(channelName));
         }
         throw new ZLinkConfigurationException(
             "channel is not configured: " + channelName);
+    }
+
+    /**
+     * Resolves the ClientServer send target for a Channel whose ready candidate set is still empty,
+     * per {@code framework/doc/framework/common/spec/11-channel-messaging.ko.md} §3.2: the call
+     * waits a bounded period and then fails with no-target. The bound is the shorter of this
+     * Channel's request timeout and five seconds, mirroring the .NET reference
+     * {@code ZLinkClientServerClientRuntime.WaitForReadyAsync}. Framework startup never waits for
+     * admission, and this wait does not trigger one.
+     */
+    private ZLinkBackendDealerSocket awaitClientServerTarget(String channelName) {
+        Duration channelTimeout = defaultRequestTimeout(channelName);
+        Duration bound = channelTimeout.compareTo(CLIENT_SERVER_READY_WAIT_CAP) < 0
+            ? channelTimeout
+            : CLIENT_SERVER_READY_WAIT_CAP;
+        ZLinkBackendDealerSocket ready =
+            sockets.awaitClientForOutbound(channelName, bound);
+        if (ready == null) {
+            throw new ZLinkFrameworkException(
+                ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND,
+                "client/server channel has no ready server: " + channelName);
+        }
+        return ready;
     }
 
     @Override

@@ -1035,7 +1035,10 @@ final class ZLinkChannelRuntimeTest {
             runtime.requestToChannel(channelName, "probe");
             return true;
         } catch (ZLinkFrameworkException failure) {
-            assertEquals(ZLinkFrameworkErrorKind.ROUTE_NOT_CONNECTED, failure.kind());
+            // 05-framework-api.ko.md §13: an empty selectable-target snapshot on a registered
+            // send route is RequestTargetNotFound, not RouteNotConnected.
+            assertEquals(
+                ZLinkFrameworkErrorKind.REQUEST_TARGET_NOT_FOUND, failure.kind());
             return false;
         }
     }

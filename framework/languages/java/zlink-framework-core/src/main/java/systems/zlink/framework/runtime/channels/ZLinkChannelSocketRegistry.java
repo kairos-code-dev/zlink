@@ -32,6 +32,8 @@ import systems.zlink.framework.runtime.backend.ZLinkBackendSubscriberSocket;
 import systems.zlink.framework.runtime.backend.ZLinkBackendSocketMonitor;
 
 final class ZLinkChannelSocketRegistry {
+    private static final long READY_POLL_INTERVAL_MILLIS = 5;
+
     private final Map<String, ChannelRegistration> registrations = new HashMap<>();
     private final Map<String, ZLinkBackendDealerSocket> clients = new HashMap<>();
     private final Map<String, ZLinkBackendRouterSocket> servers = new HashMap<>();
@@ -157,6 +159,37 @@ final class ZLinkChannelSocketRegistry {
         }
         throw new IllegalStateException(
             "ClientServer weighted selection did not select a connection");
+    }
+
+    /**
+     * Waits for a ClientServer send target to become selectable, as
+     * {@code framework/doc/framework/common/spec/11-channel-messaging.ko.md} §3.2 requires when the
+     * ready candidate set is still empty at call time. The wait observes admission that is already
+     * in flight; it never starts or restarts one, so no connection is opened here.
+     *
+     * <p>Deliberately not {@code synchronized}: admission completes through
+     * {@link #admitClientServerConnection} on the monitor thread, which needs this monitor. Only the
+     * per-attempt {@link #clientForOutbound} call takes it, never the sleep.
+     */
+    ZLinkBackendDealerSocket awaitClientForOutbound(
+        String channelName,
+        Duration bound) {
+        long deadline = System.nanoTime() + bound.toNanos();
+        while (true) {
+            ZLinkBackendDealerSocket ready = clientForOutbound(channelName);
+            if (ready != null) {
+                return ready;
+            }
+            if (System.nanoTime() >= deadline) {
+                return null;
+            }
+            try {
+                Thread.sleep(READY_POLL_INTERVAL_MILLIS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return clientForOutbound(channelName);
+            }
+        }
     }
 
     synchronized void addClientServerConnection(

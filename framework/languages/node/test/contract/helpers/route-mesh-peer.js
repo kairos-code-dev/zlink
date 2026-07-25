@@ -97,7 +97,7 @@ async function runClient(mode) {
     return client.requestToNode('mesh', 'node-a', new RoutePing('ping')).timeout(1000).submit();
   }
   return retryReachable(() =>
-    client.requestToChannel('mesh', 'mesh', new RoutePing('ping')).timeout(1000).submit()
+    client.requestToChannel('mesh', new RoutePing('ping')).timeout(1000).submit()
   );
 }
 

@@ -400,10 +400,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     @Test
     void annotatedHandlerGroupHandlesRequestsInsideSpringLifecycle() {
-        String endpoint = "inproc://zlink-spring-annotated-" + UUID.randomUUID();
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
-            context.registerBean("springAnnotatedEndpoint", String.class, () -> endpoint);
             context.register(
                 ScannedHandlerConfig.class,
                 ZLinkFrameworkAutoConfiguration.class);
@@ -426,10 +424,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     @Test
     void scannedHandlersAndCollectionDependenciesAreSpringBeans() {
-        String endpoint = "inproc://zlink-spring-auto-registered-" + UUID.randomUUID();
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
-            context.registerBean("autoRegisteredEndpoint", String.class, () -> endpoint);
             context.register(
                 AutoRegisteredHandlerConfig.class,
                 ZLinkFrameworkAutoConfiguration.class);
@@ -448,10 +444,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     @Test
     void scannedHandlersAndSetDependenciesAreSpringBeans() {
-        String endpoint = "inproc://zlink-spring-auto-registered-set-" + UUID.randomUUID();
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
-            context.registerBean("autoRegisteredSetEndpoint", String.class, () -> endpoint);
             context.register(
                 AutoRegisteredSetHandlerConfig.class,
                 ZLinkFrameworkAutoConfiguration.class);
@@ -470,10 +464,8 @@ final class ZLinkFrameworkAutoConfigurationTest {
 
     @Test
     void handlerFiltersAreCreatedThroughSpringDependencyInjection() {
-        String endpoint = "inproc://zlink-spring-filtered-" + UUID.randomUUID();
         try (AnnotationConfigApplicationContext context =
                  new AnnotationConfigApplicationContext()) {
-            context.registerBean("filteredEndpoint", String.class, () -> endpoint);
             context.register(
                 FilteredHandlerConfig.class,
                 ZLinkFrameworkAutoConfiguration.class);
@@ -924,11 +916,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkConfigurer scannedHandlerConfigurer(String springAnnotatedEndpoint) {
+        ZLinkFrameworkConfigurer scannedHandlerConfigurer() {
             return options -> {
                 options.addHandlersFromPackageOf(ScannedHandlerConfig.class);
                 var channel = options.addClientServerChannel("profile");
-                channel.client().connect(springAnnotatedEndpoint);
+                channel.client();
                 channel.server().listen().addHandlerGroup("spring-scanned");
             };
         }
@@ -943,12 +935,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkConfigurer autoRegisteredHandlerConfigurer(
-            String autoRegisteredEndpoint) {
+        ZLinkFrameworkConfigurer autoRegisteredHandlerConfigurer() {
             return options -> {
                 options.addHandlersFromPackageOf(AutoRegisteredHandlerConfig.class);
                 var channel = options.addClientServerChannel("profile");
-                channel.client().connect(autoRegisteredEndpoint);
+                channel.client();
                 channel.server().listen().addHandlerGroup("spring-auto-registered");
             };
         }
@@ -963,12 +954,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkConfigurer autoRegisteredSetHandlerConfigurer(
-            String autoRegisteredSetEndpoint) {
+        ZLinkFrameworkConfigurer autoRegisteredSetHandlerConfigurer() {
             return options -> {
                 options.addHandlersFromPackageOf(AutoRegisteredSetHandlerConfig.class);
                 var channel = options.addClientServerChannel("profile");
-                channel.client().connect(autoRegisteredSetEndpoint);
+                channel.client();
                 channel.server().listen().addHandlerGroup("spring-auto-registered-set");
             };
         }
@@ -993,11 +983,11 @@ final class ZLinkFrameworkAutoConfigurationTest {
         }
 
         @Bean
-        ZLinkFrameworkConfigurer filteredHandlerConfigurer(String filteredEndpoint) {
+        ZLinkFrameworkConfigurer filteredHandlerConfigurer() {
             return options -> {
                 options.useFilter(SpringInjectedReplyFilter.class);
                 var channel = options.addClientServerChannel("profile");
-                channel.client().connect(filteredEndpoint);
+                channel.client();
                 channel.server().listen().addRequestHandler(
                         InjectedProfileRequestHandler.class,
                         FilteredProfileRequest.class,

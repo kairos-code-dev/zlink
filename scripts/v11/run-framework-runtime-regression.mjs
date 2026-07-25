@@ -348,9 +348,14 @@ function jvmPlan() {
     command("jvm-public-declarations", "public-declaration", cwd, ...gradle,
       `${runtime}:zlink-framework-core:contractTest`,
       `${runtime}:zlink-framework-kotlin:contractTest`),
+    // Runs the whole core suite rather than a --tests glob. The globs matched only
+    // 35 of the 98 test classes, and what they missed included LocationContractTest,
+    // the only test in the JVM tree that pins the ZLinkFrameworkErrorKind table --
+    // so the error-kind contract was guarded by a test no gate executed. The globs
+    // also could not match EntrySpotActorDispatchTests, since *Dispatch*Test does
+    // not match the plural class name. Measured unfiltered: 528 tests, 0 failures.
     command("jvm-internal-core", "internal", cwd, ...gradle,
-      `${runtime}:zlink-framework-core:test`,
-      "--tests", "*M6*Test", "--tests", "*RuntimeTest", "--tests", "*Dispatch*Test"),
+      `${runtime}:zlink-framework-core:test`),
     command("jvm-internal-kotlin", "internal", cwd, ...gradle,
       `${runtime}:zlink-framework-kotlin:test`),
     command("jvm-resource-regression", "resource", cwd, ...gradle,

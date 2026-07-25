@@ -1739,7 +1739,7 @@ test('runtime host local spot join uses the formal MeshNode completion contract 
         return {
           terminalResult: 0,
           failureErrno: 0,
-          operationKind: zlink.OperationKind.ActorJoin,
+          operationKind: framework.OperationKind.ActorJoin,
           kindData: {
             kind: 'actorJoinCompletion',
             joinResult: 0,

@@ -62,9 +62,9 @@ test('typed packet identity is owned by the packet type and not by call or paylo
   );
 
   const registration = meshChannelRegistration('mesh', 'api');
-  const call = new framework.DefaultZLinkChannelClient(registration, {
+  const call = new framework.DefaultZLinkRouteClient(registration, {
     async submitToChannel() {}, async requestToChannel() {}
-  }).requestToChannel('mesh', 'api', new ConstructorPacket());
+  }).requestToChannel('api', new ConstructorPacket());
   assert.equal('packetName' in call, false);
 });
 
@@ -82,7 +82,7 @@ test('ZLinkChannelClient rejects calls to channels without client capability', a
   const client = new framework.DefaultZLinkChannelClient(framework.createFrameworkRegistration());
 
   await assert.rejects(
-    () => client.sendToChannel('missing', 'api', { ok: true }).submit(),
+    () => client.sendToChannel('api', { ok: true }).submit(),
     framework.ZLinkConfigurationException
   );
 });
@@ -99,14 +99,14 @@ test('ZLinkSendCall snapshots metadata and reports asynchronous admission once',
     async submit() {},
     async request() {}
   };
-  const client = new framework.DefaultZLinkChannelClient(registration, transport);
-  const first = client.sendToChannel('mesh', 'api', typedPacket('Notice', { id: 1 }))
+  const client = new framework.DefaultZLinkRouteClient(registration, transport);
+  const first = client.sendToChannel('api', typedPacket('Notice', { id: 1 }))
     .metadata('trace-id', 'one')
     .metadata(framework.zlinkMessageMetadata({
       'trace-id': 'two',
       tenant: 'blue'
     }));
-  const second = client.sendToChannel('mesh', 'api', typedPacket('Notice', { id: 2 }))
+  const second = client.sendToChannel('api', typedPacket('Notice', { id: 2 }))
     .metadata('tenant', 'green');
 
   assert.equal(await first.submit(), undefined);
@@ -115,13 +115,22 @@ test('ZLinkSendCall snapshots metadata and reports asynchronous admission once',
     /already been submitted/
   );
   assert.equal(await second.submit(), undefined);
-  assert.deepEqual(calls.map(({ kind, metadata }) => ({ kind, metadata })), [
+  assert.deepEqual(calls.map(({ kind, meshName, channelName, metadata }) => ({
+    kind,
+    meshName,
+    channelName,
+    metadata
+  })), [
     {
       kind: 'async',
+      meshName: 'mesh',
+      channelName: 'api',
       metadata: [['trace-id', 'two'], ['tenant', 'blue']]
     },
     {
       kind: 'async',
+      meshName: 'mesh',
+      channelName: 'api',
       metadata: [['tenant', 'green']]
     }
   ]);
@@ -315,10 +324,10 @@ test('ZLinkRouteClient does not refresh or retry an uncertain Spot request failu
   assert.equal(refreshCount, 0);
 });
 
-test('ZLinkChannelClient fluent request call snapshots metadata and passes timeout to transport', async () => {
+test('ZLinkRouteClient channel request call snapshots metadata and passes timeout to transport', async () => {
   const calls = [];
   const registration = meshChannelRegistration('mesh', 'api');
-  const client = new framework.DefaultZLinkChannelClient(registration, {
+  const client = new framework.DefaultZLinkRouteClient(registration, {
     async submitToChannel() {},
     async requestToChannel(meshName, channelName, packetName, request, timeoutMs, _signal, metadata) {
       calls.push({ meshName, channelName, packetName, request, timeoutMs, metadata: [...metadata] });
@@ -329,7 +338,7 @@ test('ZLinkChannelClient fluent request call snapshots metadata and passes timeo
   });
 
   const reply = await client
-    .requestToChannel('mesh', 'api', { id: 7 })
+    .requestToChannel('api', { id: 7 })
     .metadata('trace-id', 'one')
     .metadata(framework.zlinkMessageMetadata({ 'trace-id': 'two', tenant: 'blue' }))
     .timeout(250)
@@ -347,10 +356,10 @@ test('ZLinkChannelClient fluent request call snapshots metadata and passes timeo
   ]);
 });
 
-test('ZLinkChannelClient applies registration request timeout when call timeout is omitted', async () => {
+test('ZLinkRouteClient applies registration request timeout when channel call timeout is omitted', async () => {
   const calls = [];
   const registration = meshChannelRegistration('mesh', 'api', { requestTimeoutMs: 7000 });
-  const client = new framework.DefaultZLinkChannelClient(registration, {
+  const client = new framework.DefaultZLinkRouteClient(registration, {
     async submitToChannel() {},
     async requestToChannel(meshName, channelName, packetName, request, timeoutMs) {
       calls.push({ meshName, channelName, packetName, request, timeoutMs });
@@ -361,7 +370,7 @@ test('ZLinkChannelClient applies registration request timeout when call timeout 
   });
 
   const reply = await client
-    .requestToChannel('mesh', 'api', { id: 7 })
+    .requestToChannel('api', { id: 7 })
     .submit();
 
   assert.deepEqual(reply, { ok: true });
@@ -370,13 +379,13 @@ test('ZLinkChannelClient applies registration request timeout when call timeout 
   ]);
 });
 
-test('ZLinkChannelClient applies channel request timeout before registration default', async () => {
+test('ZLinkRouteClient applies RouteMesh request timeout before registration default', async () => {
   const calls = [];
   const registration = meshChannelRegistration('mesh', 'api', {
     requestTimeoutMs: 7000,
     meshRequestTimeoutMs: 2000
   });
-  const client = new framework.DefaultZLinkChannelClient(registration, {
+  const client = new framework.DefaultZLinkRouteClient(registration, {
     async submitToChannel() {},
     async requestToChannel(meshName, channelName, packetName, request, timeoutMs) {
       calls.push({ meshName, channelName, packetName, request, timeoutMs });
@@ -387,7 +396,7 @@ test('ZLinkChannelClient applies channel request timeout before registration def
   });
 
   const reply = await client
-    .requestToChannel('mesh', 'api', { id: 7 })
+    .requestToChannel('api', { id: 7 })
     .submit();
 
   assert.deepEqual(reply, { ok: true });
@@ -562,8 +571,8 @@ test('ZLinkChannelClient and fanout client reject pre-aborted submit before tran
   const client = new framework.DefaultZLinkChannelClient(registration, transport);
   const fanout = new framework.DefaultZLinkFanoutClient(registration, transport);
 
-  await assertAborted(() => client.sendToChannel('api', 'api', 'hello').submit(controller.signal));
-  await assertAborted(() => client.requestToChannel('api', 'api', typedPacket('Ping', 'ping')).submit(controller.signal));
+  await assertAborted(() => client.sendToChannel('api', 'hello').submit(controller.signal));
+  await assertAborted(() => client.requestToChannel('api', typedPacket('Ping', 'ping')).submit(controller.signal));
   await assertAborted(() => fanout.publish('events', typedPacket('Event', 'event')).submit(controller.signal));
   assert.deepEqual(calls, []);
 });
@@ -588,7 +597,7 @@ test('one-way call validation wins over a pre-aborted signal', async () => {
   const fanout = new framework.DefaultZLinkFanoutClient(registration, transport);
 
   await assert.rejects(
-    () => channel.sendToChannel('missing-mesh', 'missing-channel', 'hello').submit(controller.signal),
+    () => channel.sendToChannel('missing-channel', 'hello').submit(controller.signal),
     framework.ZLinkConfigurationException
   );
   await assert.rejects(
@@ -756,7 +765,7 @@ test('ZLinkChannelClient sends through public dealer/router binding sockets', as
     );
 
     const submit = client
-      .sendToChannel('api', 'api', typedPacket('Greeting', 'hello'))
+      .sendToChannel('api', typedPacket('Greeting', 'hello'))
       .metadata('trace-id', 'send-1')
       .submit();
 
@@ -804,7 +813,7 @@ test('ZLinkChannelClient request/reply round-trips through public binding socket
       new framework.ZLinkDealerChannelClientTransport(dealer)
     );
 
-    const replyPromise = client.requestToChannel('api', 'api', typedPacket('Ping', { value: 'ping' })).timeout(1000).submit();
+    const replyPromise = client.requestToChannel('api', typedPacket('Ping', { value: 'ping' })).timeout(1000).submit();
     const request = await recvRouterMessage(router);
     const envelope = decodeDotnetEnvelope(request.parts);
     assert.equal(envelope.header.kind, 1);
@@ -1667,7 +1676,7 @@ test('ZLinkChannelClient rejects malformed reply envelope json', async () => {
       new framework.ZLinkDealerChannelClientTransport(dealer)
     );
 
-    const invalidKindReply = client.requestToChannel('api', 'api', typedPacket('Ping', { value: 'ping' })).timeout(1000).submit();
+    const invalidKindReply = client.requestToChannel('api', typedPacket('Ping', { value: 'ping' })).timeout(1000).submit();
     const invalidKindRequest = await recvRouterMessage(router);
     submitMultipart(
       router.reply(invalidKindRequest.routingId, invalidKindRequest.requestSeq),
@@ -1686,7 +1695,7 @@ test('ZLinkChannelClient rejects malformed reply envelope json', async () => {
     await assert.rejects(() => withTimeout(invalidKindReply, 1000, 'invalid reply kind'), /kind is not supported/);
     invalidKindRequest.close();
 
-    const unsafeBodyReply = client.requestToChannel('api', 'api', typedPacket('Ping', { value: 'ping' })).timeout(1000).submit();
+    const unsafeBodyReply = client.requestToChannel('api', typedPacket('Ping', { value: 'ping' })).timeout(1000).submit();
     const unsafeBodyRequest = await recvRouterMessage(router);
     submitMultipart(
       router.reply(unsafeBodyRequest.routingId, unsafeBodyRequest.requestSeq),
@@ -1736,7 +1745,7 @@ test('ZLinkModule channel client uses runtime host channel transport after boots
     router.bind(endpoint);
     await runtime.start();
 
-    const replyPromise = client.requestToChannel('api', 'api', typedPacket('Ping', { value: 'ping' })).timeout(1000).submit();
+    const replyPromise = client.requestToChannel('api', typedPacket('Ping', { value: 'ping' })).timeout(1000).submit();
     const request = await recvRouterMessage(router);
     const envelope = decodeDotnetEnvelope(request.parts);
     assert.equal(envelope.header.kind, 1);
@@ -1801,7 +1810,7 @@ test('CH-001 ZLinkFrameworkRuntimeHost dispatches client-server channel request 
     await clientRuntime.start();
     const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
     const reply = await submitWhenReachable(() =>
-      client.requestToChannel('play', 'play', typedPacket('CreateGame', { gameName: 'sample' })).timeout(1000).submit()
+      client.requestToChannel('play', typedPacket('CreateGame', { gameName: 'sample' })).timeout(1000).submit()
     );
 
     assert.deepEqual(calls, [{ created: 'sample' }]);
@@ -1946,7 +1955,7 @@ test('CH-006 ZLinkFrameworkRuntimeHost dispatches client-server send handlers', 
     await clientRuntime.start();
     const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
     await submitWhenReachable(() =>
-      client.sendToChannel('play', 'play', typedPacket('RecordCommand', { gameName: 'sample' })).submit()
+      client.sendToChannel('play', typedPacket('RecordCommand', { gameName: 'sample' })).submit()
     );
 
     await waitFor(() => calls.length === 1, 'CH-006 channel send handler evidence');
@@ -1997,12 +2006,12 @@ test('DERR-001 ZLinkFrameworkRuntimeHost replies error and reports observer for 
     const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
 
     const knownBefore = await submitWhenReachable(() =>
-      client.requestToChannel('play', 'play', typedPacket('KnownReq', { value: 'before' })).timeout(1000).submit()
+      client.requestToChannel('play', typedPacket('KnownReq', { value: 'before' })).timeout(1000).submit()
     );
     assert.deepEqual(knownBefore, { value: 'known:before' });
 
     await assert.rejects(
-      () => client.requestToChannel('play', 'play', typedPacket('UnknownReq', { value: 'missing' })).timeout(1000).submit(),
+      () => client.requestToChannel('play', typedPacket('UnknownReq', { value: 'missing' })).timeout(1000).submit(),
       /No channel request handler is registered for 'play:UnknownReq'/
     );
 
@@ -2016,7 +2025,7 @@ test('DERR-001 ZLinkFrameworkRuntimeHost replies error and reports observer for 
     assert.equal(dispatchEvents[0].channelName, 'play');
 
     const knownAfter = await client
-      .requestToChannel('play', 'play', typedPacket('KnownReq', { value: 'after' }))
+      .requestToChannel('play', typedPacket('KnownReq', { value: 'after' }))
       .timeout(1000)
       .submit();
     assert.deepEqual(knownAfter, { value: 'known:after' });
@@ -2066,11 +2075,11 @@ test('DERR-002 ZLinkFrameworkRuntimeHost reports observer for missing channel se
     const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
 
     const knownBefore = await submitWhenReachable(() =>
-      client.requestToChannel('play', 'play', typedPacket('KnownReq', { value: 'before-send-error' })).timeout(1000).submit()
+      client.requestToChannel('play', typedPacket('KnownReq', { value: 'before-send-error' })).timeout(1000).submit()
     );
     assert.deepEqual(knownBefore, { value: 'known:before-send-error' });
 
-    client.sendToChannel('play', 'play', typedPacket('UnknownCommand', { value: 'missing-send' })).submit();
+    client.sendToChannel('play', typedPacket('UnknownCommand', { value: 'missing-send' })).submit();
 
     await waitUntil(() => dispatchEvents.length === 1, 1000);
     assert.equal(dispatchEvents[0].surface, 'channel');
@@ -2082,7 +2091,7 @@ test('DERR-002 ZLinkFrameworkRuntimeHost reports observer for missing channel se
     assert.equal(dispatchEvents[0].channelName, 'play');
 
     const knownAfter = await client
-      .requestToChannel('play', 'play', typedPacket('KnownReq', { value: 'after-send-error' }))
+      .requestToChannel('play', typedPacket('KnownReq', { value: 'after-send-error' }))
       .timeout(1000)
       .submit();
     assert.deepEqual(knownAfter, { value: 'known:after-send-error' });
@@ -2179,14 +2188,14 @@ test('REG-003 ZLinkFrameworkRuntimeHost dispatches manual channel handlers and r
 
     const reply = await submitWhenReachable(() =>
       client
-        .requestToChannel('manual-reg', 'manual-reg', typedPacket('ManualRegisteredReq', { value: 'registered' }))
+        .requestToChannel('manual-reg', typedPacket('ManualRegisteredReq', { value: 'registered' }))
         .timeout(1000)
         .submit()
     );
     assert.deepEqual(reply, { value: 'manual:registered' });
 
     await client
-      .sendToChannel('manual-reg', 'manual-reg', typedPacket('ManualRegisteredCommand', { value: 'command' }))
+      .sendToChannel('manual-reg', typedPacket('ManualRegisteredCommand', { value: 'command' }))
       .submit();
     await waitFor(() => sendCalls.length === 1, 'REG-003 manual send handler');
     assert.deepEqual(sendCalls, [{
@@ -2212,7 +2221,7 @@ test('REG-003 ZLinkFrameworkRuntimeHost dispatches manual channel handlers and r
 
     await assert.rejects(
       () => client
-        .requestToChannel('manual-reg', 'manual-reg', typedPacket('ManualMissingReq', { value: 'missing' }))
+        .requestToChannel('manual-reg', typedPacket('ManualMissingReq', { value: 'missing' }))
         .timeout(1000)
         .submit(),
       (error) => error instanceof framework.ZLinkFrameworkException
@@ -2221,7 +2230,7 @@ test('REG-003 ZLinkFrameworkRuntimeHost dispatches manual channel handlers and r
     );
 
     await client
-      .sendToChannel('manual-reg', 'manual-reg', typedPacket('ManualMissingCommand', { value: 'missing-command' }))
+      .sendToChannel('manual-reg', typedPacket('ManualMissingCommand', { value: 'missing-command' }))
       .submit();
 
     await publishUntilHandled(
@@ -2321,12 +2330,12 @@ test('DERR-007 ZLinkFrameworkRuntimeHost replies error and reports observer for 
     const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
 
     const knownBefore = await submitWhenReachable(() =>
-      client.requestToChannel('play', 'play', typedPacket('KnownReq', { value: 'before-handler-error' })).timeout(1000).submit()
+      client.requestToChannel('play', typedPacket('KnownReq', { value: 'before-handler-error' })).timeout(1000).submit()
     );
     assert.deepEqual(knownBefore, { value: 'known:before-handler-error' });
 
     await assert.rejects(
-      () => client.requestToChannel('play', 'play', typedPacket('ThrowReq', { value: 'boom' })).timeout(1000).submit(),
+      () => client.requestToChannel('play', typedPacket('ThrowReq', { value: 'boom' })).timeout(1000).submit(),
       /DERR-007 handler exception/
     );
 
@@ -2342,7 +2351,7 @@ test('DERR-007 ZLinkFrameworkRuntimeHost replies error and reports observer for 
     assert.equal(dispatchEvents[0].errorMessage, undefined);
 
     const knownAfter = await client
-      .requestToChannel('play', 'play', typedPacket('KnownReq', { value: 'after-handler-error' }))
+      .requestToChannel('play', typedPacket('KnownReq', { value: 'after-handler-error' }))
       .timeout(1000)
       .submit();
     assert.deepEqual(knownAfter, { value: 'known:after-handler-error' });
@@ -2380,7 +2389,7 @@ test('CH-002 manual endpoint round-robin distributes requests across three serve
     for (let i = 0; i < 30 && seenServers.size < 3; i++) {
       const reply = await submitWhenReachable(() =>
         client
-          .requestToChannel('round-robin', 'round-robin', typedPacket('RoundRobinProbe', { requestId: `warmup-${i}` }))
+          .requestToChannel('round-robin', typedPacket('RoundRobinProbe', { requestId: `warmup-${i}` }))
           .timeout(1000)
           .submit()
       );
@@ -2391,7 +2400,7 @@ test('CH-002 manual endpoint round-robin distributes requests across three serve
     const replies = [];
     for (let i = 0; i < 90; i++) {
       replies.push(await client
-        .requestToChannel('round-robin', 'round-robin', typedPacket('RoundRobinProbe', { requestId: `verify-${i}` }))
+        .requestToChannel('round-robin', typedPacket('RoundRobinProbe', { requestId: `verify-${i}` }))
         .timeout(1000)
         .submit());
     }
@@ -2562,7 +2571,7 @@ test('ZLinkFrameworkRuntimeHost uses channel serializer registry for typed reque
     await clientRuntime.start();
     const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
     const reply = await submitWhenReachable(() =>
-      client.requestToChannel('play', 'play', typedPacket('CreateGame', { gameName: 'sample' })).timeout(1000).submit()
+      client.requestToChannel('play', typedPacket('CreateGame', { gameName: 'sample' })).timeout(1000).submit()
     );
 
     assert.deepEqual(calls, [{ created: 'sample' }]);
@@ -2617,7 +2626,7 @@ test('CDC-001 ZLinkFrameworkRuntimeHost JSON codec round-trips nested arrays and
     await clientRuntime.start();
     const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
     const reply = await submitWhenReachable(() =>
-      client.requestToChannel('codec', 'codec', typedPacket('JsonCodecProbe', request)).timeout(1000).submit()
+      client.requestToChannel('codec', typedPacket('JsonCodecProbe', request)).timeout(1000).submit()
     );
 
     assert.deepEqual(reply, request);
@@ -2677,7 +2686,7 @@ test('ZLinkFrameworkRuntimeHost uses protobuf codec extension for channels', asy
     await clientRuntime.start();
     const client = new framework.DefaultZLinkChannelClient(clientRegistration, clientRuntime.channelTransport);
     const reply = await submitWhenReachable(() =>
-      client.requestToChannel('play', 'play', typedPacket('CreateGame', { gameName: 'sample', players: ['p1', 'p2'] }))
+      client.requestToChannel('play', typedPacket('CreateGame', { gameName: 'sample', players: ['p1', 'p2'] }))
         .timeout(1000)
         .submit()
     );
@@ -3359,7 +3368,7 @@ test('ZLinkChannelRequestDispatcher invokes request handler and replies through 
       }]
     });
 
-    const replyPromise = client.requestToChannel('api', 'api', typedPacket('Ping', 'ping')).timeout(1000).submit();
+    const replyPromise = client.requestToChannel('api', typedPacket('Ping', 'ping')).timeout(1000).submit();
     const received = await recvRouterMessage(router);
     await dispatcher.dispatch(received, router);
 
@@ -4590,7 +4599,7 @@ function requestScaleoutProbe(client, requestId) {
   return withAbortTimeout(
     (signal) => submitWhenReachable(() =>
       client
-        .requestToChannel('scaleout-api', 'scaleout-api', typedPacket('ScaleoutProbe', { requestId }))
+        .requestToChannel('scaleout-api', typedPacket('ScaleoutProbe', { requestId }))
         .timeout(1000)
         .submit(signal)
     ),

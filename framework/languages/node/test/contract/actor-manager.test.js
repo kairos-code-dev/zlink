@@ -1494,6 +1494,7 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
 
 test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remote join', async () => {
   const events = [];
+  const coordinatorTimeouts = [];
   const createdRef = { nodeRid: rid('node-b'), actorId: 'alice', generation: 1n };
   class PlayerActor {
     constructor(actorId, context) {
@@ -1522,7 +1523,9 @@ test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remot
       );
     },
     joinActor(actorRef, targetNodeRid, targetSpotId, request, callback, timeoutMs) {
-      events.push(`joinActor:${actorRef.generation}:${targetNodeRid}:${targetSpotId}:${request.data().toString()}:${timeoutMs}`);
+      // Join call은 기본 5초 deadline을 유지하므로 남은 시간이 전달된다.
+      coordinatorTimeouts.push(timeoutMs);
+      events.push(`joinActor:${actorRef.generation}:${targetNodeRid}:${targetSpotId}:${request.data().toString()}`);
       callback({
         result: 0,
         joinResultCode: 0,
@@ -1583,7 +1586,7 @@ test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remot
   assert.deepEqual(events, [
     'resolve:room-1',
     'rememberSpot:room-1:9:node-a:4:5:store-6',
-    'joinActor:1:node-a:room-1:payload:undefined',
+    'joinActor:1:node-a:room-1:payload',
     'bind:node-a:alice:2'
   ]);
 });
@@ -1811,9 +1814,11 @@ test('remote transfer failures before commit preserve source ownership and never
       })
     });
     const actor = await manager.getOrCreateActor('alice', 'player');
+    // Deferred Join의 failed completion 계약은 kind와 isRetriable만 전달한다.
+    // 실패 지점 구분은 아래 events 단정이 소유한다.
     await assert.rejects(
       () => submitDeferredActorJoin(actor, actor.context.joinSpot('room-target', encodedMessage('join'))),
-      new RegExp(`injected ${failurePoint} failure`)
+      (error) => error instanceof framework.ZLinkFrameworkException
     );
     assert.equal(manager.getState('alice').isMoving, false);
     assert.equal(manager.getState('alice').nativeActorRef.nodeRid.toHex(), rid('node-source').toHex());

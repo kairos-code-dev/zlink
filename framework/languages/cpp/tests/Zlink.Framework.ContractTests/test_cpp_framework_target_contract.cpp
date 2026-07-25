@@ -625,11 +625,58 @@ int main ()
     gate.require (actor_hpp.find ("std::optional<spot_id_t> spot_id") != std::string::npos,
                   "CPP-G0-ACTOR-001", "actor_context_t::spot_id() nullable accessor is missing");
 
-    /* CPP-G0-ACTOR-002 — Actor Join is a deferred, result-free handler terminal. */
+    /* CPP-G0-ACTOR-002 — Actor Join is a deferred, result-free handler terminal whose
+     * outcome arrives later as an exhaustive completion variant. The authority is the
+     * C++ exact interface: 05-actors.ko.md declares actor_join_accepted_t /
+     * actor_join_rejected_t / actor_join_failed_t, the actor_join_completion_t variant
+     * over exactly those three, and actor_t::on_join_completed; 04-spots.ko.md declares
+     * actor_join_call_t with timeout() and void defer() and states that defer() offers
+     * no submit(), async() or yield() terminal. */
     gate.require (actor_hpp.find ("void defer ()") != std::string::npos,
                   "CPP-G0-ACTOR-002", "Actor Join defer terminal is missing");
-    for (const std::string removed : {"actor_join_accepted_t", "actor_join_rejected_t",
-                                      "actor_join_result_t", "task_t<actor_join"}) {
+    for (const std::string required : {"struct actor_join_accepted_t",
+                                       "struct actor_join_rejected_t",
+                                       "struct actor_join_failed_t",
+                                       "on_join_completed"}) {
+        gate.require (actor_hpp.find (required) != std::string::npos, "CPP-G0-ACTOR-002",
+                      "Actor Join completion surface is missing: " + required);
+    }
+
+    /* The completion variant enumerates exactly the three contract alternatives. */
+    const auto completion_begin = actor_hpp.find ("using actor_join_completion_t");
+    const auto completion_end = completion_begin == std::string::npos
+                                  ? std::string::npos
+                                  : actor_hpp.find (';', completion_begin);
+    const auto completion_block
+      = completion_begin == std::string::npos || completion_end == std::string::npos
+          ? std::string ()
+          : actor_hpp.substr (completion_begin, completion_end - completion_begin);
+    gate.require (!completion_block.empty (), "CPP-G0-ACTOR-002",
+                  "actor_join_completion_t alias is missing");
+    for (const std::string alternative : {"actor_join_accepted_t", "actor_join_rejected_t",
+                                          "actor_join_failed_t"}) {
+        gate.require (completion_block.find (alternative) != std::string::npos,
+                      "CPP-G0-ACTOR-002",
+                      "actor_join_completion_t does not carry the alternative: " + alternative);
+    }
+
+    /* The deferred join call carries no result-bearing terminal. */
+    const auto join_call_begin = actor_hpp.find ("class actor_join_call_t");
+    const auto join_call_end = join_call_begin == std::string::npos
+                                 ? std::string::npos
+                                 : actor_hpp.find ("\n};", join_call_begin);
+    const auto join_call_block
+      = join_call_begin == std::string::npos || join_call_end == std::string::npos
+          ? std::string ()
+          : actor_hpp.substr (join_call_begin, join_call_end - join_call_begin);
+    gate.require (!join_call_block.empty (), "CPP-G0-ACTOR-002",
+                  "actor_join_call_t declaration is missing");
+    for (const std::string forbidden : {"submit (", "async (", "yield ("}) {
+        gate.require (join_call_block.find (forbidden) == std::string::npos,
+                      "CPP-G0-ACTOR-002",
+                      "actor_join_call_t still exposes a result-bearing terminal: " + forbidden);
+    }
+    for (const std::string removed : {"actor_join_result_t", "task_t<actor_join"}) {
         gate.require (actor_hpp.find (removed) == std::string::npos,
                       "CPP-G0-ACTOR-002",
                       "legacy result-bearing Actor Join surface remains: " + removed);

@@ -273,6 +273,8 @@ make_node (std::string endpoint, std::string routing_id)
     state->routing_id = zlink::routing_id_t::from (routing_id);
     state->channels.emplace ("work",
                              zlink::framework::detail::mesh_channel_registration_t{});
+    // The host admits object creation only for declared stable types.
+    state->spot_state->snapshot.actor_types.emplace_back ("vertical.actor");
     return state;
 }
 
@@ -286,6 +288,8 @@ make_named_node (std::string mesh_name, std::string routing_id)
     state->routing_id = zlink::routing_id_t::from (std::move (routing_id));
     state->channels.emplace ("work",
                              zlink::framework::detail::mesh_channel_registration_t{});
+    // The host admits object creation only for declared stable types.
+    state->spot_state->snapshot.actor_types.emplace_back ("vertical.actor");
     return state;
 }
 
@@ -706,7 +710,7 @@ int run_cross_process_delivery ()
         zlink::framework::detail::mesh_node_runtime_t node (state);
         node.start ();
         auto target_spot = node.get_or_create_spot ("target-spot");
-        auto target_actor = node.create_actor ("actor", "target-actor", {}, 5s);
+        auto target_actor = node.create_actor ("vertical.actor", "target-actor", {}, 5s);
         const std::uint64_t formal_descriptors[2]{
           target_spot.status ().lifecycle_generation (), target_actor.ref ().generation ()};
         if (write (formal_descriptor_pipe[1], formal_descriptors,

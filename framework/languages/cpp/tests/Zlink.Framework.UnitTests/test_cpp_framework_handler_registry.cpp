@@ -153,6 +153,63 @@ class handler_t
     std::thread::id last_thread;
 };
 
+
+struct spot_actor_t
+{
+    int id = 0;
+};
+
+/// Exercises the Spot dispatch side of the unified MessageContext: the Spot packet member and the
+/// Spot Actor member both take the universal context, and the Spot subscription member takes the
+/// publish context.
+struct dispatch_spot_t : public zlink::framework::spot_t
+{
+    void on_packet (const zlink::framework::message_context_t &context, const request_t &request)
+    {
+        last_payload = request.value;
+        capture (context);
+    }
+
+    void on_actor_packet (spot_actor_t &actor,
+                          const zlink::framework::message_context_t &context,
+                          const request_t &request)
+    {
+        last_actor = actor.id;
+        last_payload = request.value;
+        capture (context);
+    }
+
+    void on_topic_event (const zlink::framework::publish_message_context_t &context,
+                         const event_t &event)
+    {
+        last_payload = event.value;
+        capture (context);
+        last_topic = context.topic;
+        last_source = context.source.value_or ("<none>");
+    }
+
+    void capture (const zlink::framework::message_context_t &context)
+    {
+        last_mesh = context.mesh_name.value_or ("<none>");
+        last_channel = context.channel_name.value_or ("<none>");
+        last_packet = context.packet_name;
+        last_content_type = context.content_type.value_or ("<none>");
+        last_correlation = context.correlation_id.value_or ("<none>");
+        last_trace = std::string (context.metadata.find ("trace-id").value_or ("<none>"));
+    }
+
+    int last_actor = 0;
+    int last_payload = 0;
+    std::string last_mesh;
+    std::string last_channel;
+    std::string last_packet;
+    std::string last_content_type;
+    std::string last_correlation;
+    std::string last_trace;
+    std::string last_topic;
+    std::string last_source;
+};
+
 class auditing_filter_t
 {
   public:
@@ -549,6 +606,51 @@ int main ()
     }
     if (!duplicate_failed) {
         return 17;
+    }
+
+    zlink::framework::spot_handler_registry_t spot_handlers;
+    spot_handlers.add_handler<&dispatch_spot_t::on_packet> ("spot-packet");
+    spot_handlers.add_subscribe<&dispatch_spot_t::on_topic_event> ("spot-topic");
+    spot_handlers.add_actor_send<&dispatch_spot_t::on_actor_packet> ("spot-actor-packet");
+
+    zlink::framework::spot_inbound_message_t spot_inbound;
+    spot_inbound.content_type = "application/json";
+    spot_inbound.values = {{"trace-id", "trace-spot"}};
+    spot_inbound.mesh_name = "rooms";
+    spot_inbound.correlation_id = "corr-spot";
+    spot_inbound.source = "node-b";
+
+    dispatch_spot_t spot;
+    spot_actor_t spot_actor{42};
+    auto spot_actor_result = spot_handlers.invoke_actor_packet (
+      "spot-actor-packet", spot, spot_actor, provider, serializers,
+      zlink::message_t::from (std::string ("21")), spot_inbound);
+    if (!spot_actor_result || spot.last_actor != 42 || spot.last_payload != 21
+        || spot.last_mesh != "rooms" || spot.last_channel != "<none>"
+        || spot.last_packet != "spot-actor-packet" || spot.last_content_type != "application/json"
+        || spot.last_correlation != "corr-spot" || spot.last_trace != "trace-spot") {
+        return 43;
+    }
+
+    const auto projected_packet_context = spot_inbound.to_message_context ("spot-packet");
+    if (projected_packet_context.mesh_name.value_or ("") != "rooms"
+        || projected_packet_context.channel_name.has_value ()
+        || projected_packet_context.packet_name != "spot-packet"
+        || projected_packet_context.content_type.value_or ("") != "application/json"
+        || projected_packet_context.correlation_id.value_or ("") != "corr-spot"
+        || projected_packet_context.metadata.find ("trace-id").value_or ("") != "trace-spot") {
+        return 44;
+    }
+
+    const auto projected_publish_context =
+      spot_inbound.to_publish_context ("spot-event", "spot-topic");
+    if (projected_publish_context.mesh_name.value_or ("") != "rooms"
+        || projected_publish_context.packet_name != "spot-event"
+        || projected_publish_context.correlation_id.value_or ("") != "corr-spot"
+        || projected_publish_context.metadata.find ("trace-id").value_or ("") != "trace-spot"
+        || projected_publish_context.topic != "spot-topic"
+        || projected_publish_context.source.value_or ("") != "node-b") {
+        return 45;
     }
 
     return 0;

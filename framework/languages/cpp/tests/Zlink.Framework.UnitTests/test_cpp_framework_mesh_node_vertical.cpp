@@ -321,6 +321,11 @@ struct local_route_probe_state_t
     int entered = 0;
     int completed = 0;
     std::vector<std::string> values;
+    std::string last_mesh_name;
+    std::string last_channel_name;
+    std::string last_packet_name;
+    std::string last_content_type;
+    std::string last_source_node_rid;
 };
 
 class local_route_probe_handler_t
@@ -332,10 +337,17 @@ class local_route_probe_handler_t
     }
 
     void handle (const local_route_probe_message_t &message,
-                 const zlink::framework::route_message_context_t &)
+                 const zlink::framework::route_message_context_t &context)
     {
         std::unique_lock lock (_state->mutex);
         ++_state->entered;
+        // v11 MessageContext: node-direct dispatch has no ChannelName, so the router channel
+        // identity travels in the Mesh name and only the source node RID is added.
+        _state->last_mesh_name = context.mesh_name.value_or ("<none>");
+        _state->last_channel_name = context.channel_name.value_or ("<none>");
+        _state->last_packet_name = context.packet_name;
+        _state->last_content_type = context.content_type.value_or ("<none>");
+        _state->last_source_node_rid = context.source_node_rid.to_string ();
         _state->values.push_back (message.value);
         _state->changed.notify_all ();
         if (message.value == "throw")
@@ -419,6 +431,12 @@ void verify_local_node_submit_bridge ()
         std::unique_lock lock (probe->mutex);
         assert (probe->changed.wait_for (lock, 1s, [&] { return probe->completed == 1; }));
         assert (probe->values == std::vector<std::string>{"owned-after-return"});
+        assert (probe->last_mesh_name == "vertical-mesh");
+        assert (probe->last_channel_name == "<none>");
+        assert (probe->last_packet_name == "LocalRouteProbe");
+        // The wire content type, not the struct default, so the value really travels.
+        assert (probe->last_content_type == "application/octet-stream");
+        assert (!probe->last_source_node_rid.empty ());
     }
     assert (service.wait_for_accepted_callbacks_until (
       std::chrono::steady_clock::now () + 1s));

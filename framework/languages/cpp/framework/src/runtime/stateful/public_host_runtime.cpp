@@ -1953,18 +1953,41 @@ bool public_host_runtime_t::prepare_actor_transfer (
   actor_transfer_prepare_result_t &result)
 {
     auto actor = resolve_actor (prepare.actor);
-    auto target = resolve_spot (prepare.target_spot_id);
-    if (!actor || !target) {
+    if (!actor) {
         return false;
     }
-    auto [error, membership] =
-      _objects.begin_membership_move (*actor, *target);
+    stateful::stateful_error_t error =
+      stateful::stateful_error_t::invalid;
+    stateful::membership_token_t membership;
+    if (prepare.role
+        == actor_transfer_role_t::source) {
+        std::tie (error, membership) =
+          _objects.begin_remote_membership_move (
+            *actor,
+            stateful::object_ref_t{
+              stateful::object_kind_t::user_spot,
+              prepare.target_spot_id,
+              prepare.target_spot_generation,
+              prepare.target_spot_generation,
+              _options.mesh.descriptor.mesh_name,
+              prepare.target_node_rid.to_string ()});
+    } else {
+        auto target =
+          resolve_spot (
+            prepare.target_spot_id);
+        if (!target)
+            return false;
+        std::tie (error, membership) =
+          _objects.begin_membership_move (
+            *actor, *target);
+    }
     if (error != stateful::stateful_error_t::none) {
         return false;
     }
     token._host = shared_from_this ();
     token._membership = membership;
     token._role = prepare.role;
+    token._membership_epoch = 0;
     token._terminal = false;
     result.current_actor = framework_actor_ref (
       *actor, std::string (prepare.actor.actor_type ()));
@@ -2287,11 +2310,18 @@ bool actor_transfer_token_t::valid () const noexcept
     return !_terminal && _membership.value != 0 && !_host.expired ();
 }
 
-bool actor_transfer_token_t::commit (std::uint64_t)
+bool actor_transfer_token_t::commit (
+  std::uint64_t membership_epoch)
 {
     auto host = _host.lock ();
     if (!host || _terminal) {
         return false;
+    }
+    if (_role == actor_transfer_role_t::target) {
+        if (membership_epoch == 0)
+            return false;
+        _membership_epoch = membership_epoch;
+        return true;
     }
     const auto [error, _] =
       host->objects ().commit_membership_move (_membership);
@@ -2301,7 +2331,18 @@ bool actor_transfer_token_t::commit (std::uint64_t)
 
 bool actor_transfer_token_t::activate ()
 {
-    return commit (_membership.actor.authority_owner_generation);
+    auto host = _host.lock ();
+    if (!host || _terminal
+        || _role
+             != actor_transfer_role_t::target
+        || _membership_epoch == 0)
+        return false;
+    const auto [error, _] =
+      host->objects ().commit_membership_move (
+        _membership);
+    _terminal = true;
+    return error
+           == stateful::stateful_error_t::none;
 }
 
 void actor_transfer_token_t::abort () noexcept

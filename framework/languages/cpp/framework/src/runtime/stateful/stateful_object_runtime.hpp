@@ -212,6 +212,10 @@ class stateful_object_runtime_t
     std::pair<stateful_error_t, membership_token_t> begin_membership_move (
       const object_ref_t &actor,
       const object_ref_t &target_spot);
+    std::pair<stateful_error_t, membership_token_t>
+    begin_remote_membership_move (
+      const object_ref_t &actor,
+      object_ref_t target_spot);
     std::pair<stateful_error_t, object_ref_t> commit_membership_move (
       const membership_token_t &token);
     stateful_error_t abort_membership_move (const membership_token_t &token);

@@ -129,7 +129,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     {
         public ValueTask HandleAsync(
             TestMessage message,
-            ZLinkSendContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
@@ -138,7 +138,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     {
         public ValueTask<TestReply> HandleAsync(
             TestRequest request,
-            ZLinkRequestContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(new TestReply(request.Value));
     }
@@ -147,7 +147,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     {
         public ValueTask<TestReply> HandleAsync(
             TestRequest request,
-            ZLinkRequestContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(new TestReply(request.Value));
     }
@@ -156,7 +156,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     {
         public ValueTask HandleAsync(
             TestMessage message,
-            ZLinkRouteSendContext context,
+            ZLinkRouteMessageContext context,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
@@ -164,7 +164,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     {
         public ValueTask<TestReply> HandleAsync(
             TestRequest request,
-            ZLinkRouteRequestContext context,
+            ZLinkRouteMessageContext context,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(new TestReply(request.Value));
     }
@@ -173,7 +173,7 @@ public sealed class HandlerExposureTests : RegistrationValidationSupport
     {
         public ValueTask<TestReply> HandleAsync(
             TestRequest request,
-            ZLinkRouteRequestContext context,
+            ZLinkRouteMessageContext context,
             CancellationToken cancellationToken) =>
             ValueTask.FromResult(new TestReply(request.Value));
     }

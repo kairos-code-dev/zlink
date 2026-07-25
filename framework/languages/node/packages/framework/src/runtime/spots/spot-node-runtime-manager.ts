@@ -313,9 +313,12 @@ export class ZLinkSpotNodeRuntimeManager {
           objectCapability('instance_spot', stableType, factory)),
         ...actors.map(([stableType, factory]) =>
           objectCapability('actor', stableType, factory))
-      ].sort((left, right) =>
-        left.objectKind.localeCompare(right.objectKind)
-        || left.stableType.localeCompare(right.stableType));
+      ].sort((left, right) => {
+        const kindOrder = left.objectKind.localeCompare(right.objectKind);
+        return kindOrder !== 0
+          ? kindOrder
+          : left.stableType.localeCompare(right.stableType);
+      });
       const current = this.publishedMeshNodeDescriptors.get(meshName);
       const descriptor = {
         meshName,

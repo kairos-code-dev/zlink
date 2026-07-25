@@ -1746,7 +1746,7 @@ export class ZLinkRedisLocationStore implements
     let effectiveTarget = target;
     if (operation === 'cas' && typeof value.fence === 'string') {
       const stored = await this.readHash(recordKey, signal);
-      if (stored.targetDescriptorKey !== undefined) {
+      if (Object.prototype.hasOwnProperty.call(stored, 'targetDescriptorKey')) {
         effectiveTarget = {
           descriptor: decodeMeshNodeKey(stored.targetDescriptorKey),
           descriptorKey: stored.targetDescriptorKey,
@@ -1761,7 +1761,7 @@ export class ZLinkRedisLocationStore implements
     if ((operation === 'commitAggregate' || operation === 'abortAggregate')
       && typeof value.aggregateKey === 'string') {
       const stored = await this.readHash(recordKey, signal);
-      if (stored.targetDescriptorKey !== undefined) {
+      if (Object.prototype.hasOwnProperty.call(stored, 'targetDescriptorKey')) {
         value.participants = JSON.parse(
           Buffer.from(stored.participants, 'hex').toString('utf8')
         );

@@ -232,6 +232,7 @@ struct actor_transfer_prepare_t
     actor_ref_t actor;
     std::string source_spot_id;
     std::string target_spot_id;
+    std::uint64_t target_spot_generation = 0;
     zlink::routing_id_t target_node_rid =
       zlink::routing_id_t::from (std::uint32_t{0});
 };
@@ -256,6 +257,7 @@ class actor_transfer_token_t
     std::weak_ptr<public_host_runtime_t> _host;
     stateful::membership_token_t _membership;
     actor_transfer_role_t _role = actor_transfer_role_t::source;
+    std::uint64_t _membership_epoch = 0;
     bool _terminal = false;
 };
 

@@ -3401,7 +3401,7 @@ public sealed partial class EntrySpotActorDispatchTests
         public async ValueTask HandleAsync(
             ProbeEntrySpot entrySpot,
             ProbeActor actor,
-            ZLinkSpotActorSendContext context,
+            IZLinkMessageContext context,
             string message,
             CancellationToken cancellationToken)
         {
@@ -3431,7 +3431,7 @@ public sealed partial class EntrySpotActorDispatchTests
         public ValueTask<ProbeReply> HandleAsync(
             ProbeEntrySpot entrySpot,
             ProbeActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             string request,
             CancellationToken cancellationToken)
         {
@@ -3448,7 +3448,7 @@ public sealed partial class EntrySpotActorDispatchTests
         public ValueTask<ProbeReply> HandleAsync(
             ProbeEntrySpot entrySpot,
             ProbeActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             string request,
             CancellationToken cancellationToken)
         {
@@ -3472,7 +3472,7 @@ public sealed partial class EntrySpotActorDispatchTests
         public async ValueTask<ProbeReply> HandleAsync(
             ProbeEntrySpot entrySpot,
             ProbeActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             string request,
             CancellationToken cancellationToken)
         {
@@ -3488,7 +3488,7 @@ public sealed partial class EntrySpotActorDispatchTests
         public ValueTask<ProbeReply> HandleAsync(
             ProbeEntrySpot entrySpot,
             ProbeActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             string request,
             CancellationToken cancellationToken)
         {

@@ -177,6 +177,23 @@ make_spot_worker_scheduler (const std::shared_ptr<detail::spot_context_state_t> 
                                                       owner);
 }
 
+std::shared_ptr<runtime::serial_execution_queue_t>
+actor_execution_queue (
+  const std::shared_ptr<detail::spot_node_builder_state_t> &node,
+  const std::string &actor_key)
+{
+    if (!node || actor_key.empty ())
+        return {};
+    std::lock_guard<std::recursive_mutex> lock (node->mutex);
+    auto &queue = node->actor_execution_queues[actor_key];
+    if (!queue) {
+        queue = std::make_shared<runtime::serial_execution_queue_t> (
+          *framework_worker_executor (node), 4096,
+          runtime::serial_execution_queue_t::error_handler_t{}, false);
+    }
+    return queue;
+}
+
 void configure_spot_execution (const std::shared_ptr<detail::spot_context_state_t> &state)
 {
     /* The serial queue, not the executor thread count, owns turn ordering.
@@ -1924,7 +1941,12 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
             detail::task_completion_source_t<zlink::message_t> completion;
             auto task = completion.task ();
             auto state = _state;
-            if (!serial_dispatch) {
+            auto actor_queue =
+              serial_dispatch
+                ? std::shared_ptr<runtime::serial_execution_queue_t>{}
+                : actor_execution_queue (
+                    state->node, actor_execution_key);
+            if (!serial_dispatch && !actor_queue) {
                 state->enter_callback ();
                 try {
                     runtime::actor_execution_scope_t actor_execution (
@@ -1966,8 +1988,7 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
             }
             auto owned_message = zlink::message_t::from (message.bytes ());
             auto dispatch_flow = runtime::flow_context_t::current ();
-            const auto posted = state->try_post_serial_async (
-              "spot-handler",
+            auto work =
               [state, handler_index, spot, actor, &services, &serializers,
                owned_message = std::move (owned_message), metadata = std::move (metadata),
                completion, dispatch_flow = std::move (dispatch_flow),
@@ -2026,12 +2047,20 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
                           completion.complete (result_t<zlink::message_t>::failure (
                             framework_error_kind_t::request_failed,
                             "spot handler threw an exception"));
-                      });
+                          });
                   }
-              });
+              };
+            const auto posted =
+              serial_dispatch
+                ? state->try_post_serial_async (
+                    "spot-handler", std::move (work))
+                : actor_queue->try_post_async (
+                    "actor-handler", std::move (work));
             if (!posted) {
                 return task_t<zlink::message_t> (result_t<zlink::message_t>::failure (
-                  framework_error_kind_t::request_rejected, "spot serial queue is full"));
+                  framework_error_kind_t::request_rejected,
+                  serial_dispatch ? "spot serial queue is full"
+                                  : "actor serial queue is full"));
             }
             return task;
         }
@@ -2889,6 +2918,31 @@ result_t<actor_join_reply_t> spot_node_runtime_t::join_actor_to_spot_erased (
           key, context.value (), committed, actor_factory.value ().get ().actor_type,
           actor_instance.get (), admission.value ().get (), true, request, source_left);
         _state->actor_transfer_coordinator.complete_move (key);
+        auto &registration = actor_factory.value ().get ();
+        if (!source_spot_id.empty ()
+            && registration.on_join_completed) {
+            const auto operation_id =
+              join_completion_operation_id (
+                next_actor_transfer_id ());
+            const auto completed =
+              context.value ()._state->run_serial_task (
+                "actor-join-completed",
+                [&] {
+                    return registration.on_join_completed (
+                      actor_instance.get (),
+                      operation_id.first,
+                      operation_id.second,
+                      committed,
+                      response.reply);
+                });
+            if (!completed) {
+                return result_t<actor_join_reply_t>::failure (
+                  completed.error_kind (),
+                  completed.error ()
+                    ? completed.error ()->what ()
+                    : "Actor Join completion callback failed");
+            }
+        }
     }
     catch (const framework_exception_t &error) {
         fail_local_commit ();
@@ -5740,6 +5794,16 @@ bool spot_node_runtime_t::dispatch_mesh_record (
                 return result_t<actor_join_reply_t>::failure (
                   framework_error_kind_t::request_failed,
                   "target Core MeshNode is unavailable");
+            }
+            try {
+                (void) native->create_actor (
+                  std::string (actor.actor_type ()),
+                  std::string (actor.actor_id ()));
+            }
+            catch (const std::exception &error) {
+                return result_t<actor_join_reply_t>::failure (
+                  framework_error_kind_t::request_failed,
+                  error.what ());
             }
             service::actor_transfer_prepare_t transfer_prepare{
               .role = service::actor_transfer_role_t::target,

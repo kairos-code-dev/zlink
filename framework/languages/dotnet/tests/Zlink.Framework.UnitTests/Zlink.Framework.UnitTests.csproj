@@ -43,6 +43,7 @@
         <Compile Include="Configuration/Registration/Monitoring.cs"/>
         <Compile Include="Configuration/Registration/Support.cs"/>
         <Compile Include="Contracts/LocationContractTests.cs"/>
+        <Compile Include="Contracts/MessageContextContractTests.cs"/>
         <Compile Include="Contracts/ScaffoldSmokeTests.cs"/>
         <Compile Include="Contracts/SpotContractTests.cs"/>
         <Compile Include="Documentation/Regression.cs"/>

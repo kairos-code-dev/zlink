@@ -162,12 +162,13 @@ public sealed partial class UnhandledDispatchPolicyTests
                     null,
                     reporter,
                     logger,
-                    async (_, body, cancellationToken) =>
+                    async (_, body, context, cancellationToken) =>
                     {
                         dispatchA++;
                         await new TestSubscriptionHandler().HandleAsync(
                             owner,
                             Assert.IsType<TestSubscriptionEvent>(body),
+                            context,
                             cancellationToken);
                     },
                     CancellationToken.None);
@@ -176,12 +177,13 @@ public sealed partial class UnhandledDispatchPolicyTests
                     null,
                     reporter,
                     logger,
-                    async (_, body, cancellationToken) =>
+                    async (_, body, context, cancellationToken) =>
                     {
                         dispatchB++;
                         await new TestSubscriptionHandler().HandleAsync(
                             nonOwner,
                             Assert.IsType<TestSubscriptionEvent>(body),
+                            context,
                             cancellationToken);
                     },
                     CancellationToken.None);
@@ -816,7 +818,7 @@ public sealed partial class UnhandledDispatchPolicyTests
                     null,
                     reporter,
                     logger,
-                    (_, _, _) =>
+                    (_, _, _, _) =>
                     {
                         dispatchCount++;
                         return ValueTask.CompletedTask;
@@ -885,6 +887,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         public ValueTask HandleAsync(
             TestSubscriptionSpot spot,
             TestSubscriptionEvent message,
+            ZLinkPublishMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = message;
@@ -944,7 +947,7 @@ public sealed partial class UnhandledDispatchPolicyTests
         public ValueTask HandleAsync(
             TestActorSpot spot,
             TestActor actor,
-            ZLinkSpotActorSendContext context,
+            IZLinkMessageContext context,
             TestRequest message,
             CancellationToken cancellationToken)
         {

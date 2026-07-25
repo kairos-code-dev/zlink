@@ -244,7 +244,7 @@ public sealed partial class EntrySpotActorDispatchTests
     {
         public ValueTask<MeshReply> HandleAsync(
             MeshAutoRequest request,
-            ZLinkRequestContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = request;
@@ -259,7 +259,7 @@ public sealed partial class EntrySpotActorDispatchTests
     {
         public ValueTask<MeshReply> HandleAsync(
             MeshRequest request,
-            ZLinkRequestContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = context;
@@ -273,7 +273,7 @@ public sealed partial class EntrySpotActorDispatchTests
     {
         public ValueTask<MeshReply> HandleAsync(
             MeshRequest request,
-            ZLinkRouteRequestContext context,
+            ZLinkRouteMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = context;
@@ -287,7 +287,7 @@ public sealed partial class EntrySpotActorDispatchTests
     {
         public ValueTask<MeshReply> HandleAsync(
             MeshRequest request,
-            ZLinkRequestContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = request;

@@ -860,14 +860,20 @@ class create_spot_handler_t
     handle (const fw::http_request_t &http_request)
     {
         const auto request = parse_body (http_request).get<e2e::create_spot_req_t> ();
-        (void) co_await _spots
+        const auto created = co_await _spots
           .get_or_create (
             request.spot_rid,
             "transfer-user")
           .creation_request (request)
           .submit ();
         co_return json_response (nlohmann::json (
-          e2e::create_spot_res_t{request.spot_rid, _evidence.node_rid (), "created"}));
+          e2e::create_spot_res_t{
+            request.spot_rid,
+            std::string (created.spot.node_rid ().value ()),
+            created.state
+                == fw::spot_create_state_t::existing
+              ? "existing"
+              : "created"}));
     }
 
   private:

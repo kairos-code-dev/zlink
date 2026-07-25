@@ -156,6 +156,7 @@ public sealed class SpotAutoRegistrationScannerTests
         public ValueTask HandleAsync(
             AutoRoomSpot spot,
             AutoRoomEvent message,
+            ZLinkPublishMessageContext context,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
@@ -165,7 +166,7 @@ public sealed class SpotAutoRegistrationScannerTests
         public ValueTask HandleAsync(
             AutoRoomSpot spot,
             AutoActor actor,
-            ZLinkSpotActorSendContext context,
+            IZLinkMessageContext context,
             AutoActorMessage message,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
@@ -176,7 +177,7 @@ public sealed class SpotAutoRegistrationScannerTests
         public ValueTask<AutoActorReply> HandleAsync(
             AutoEntrySpot entrySpot,
             AutoActor actor,
-            ZLinkSpotActorRequestContext context,
+            IZLinkMessageContext context,
             AutoActorRequest request,
             CancellationToken cancellationToken) => ValueTask.FromResult(new AutoActorReply());
     }

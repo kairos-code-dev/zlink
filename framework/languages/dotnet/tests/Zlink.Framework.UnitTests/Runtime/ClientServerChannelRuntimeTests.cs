@@ -1145,7 +1145,7 @@ public sealed class ClientServerChannelRuntimeTests
     {
         public ValueTask HandleAsync(
             EchoSend message,
-            ZLinkSendContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -1160,7 +1160,7 @@ public sealed class ClientServerChannelRuntimeTests
     {
         public ValueTask<EchoReply> HandleAsync(
             EchoRequest request,
-            ZLinkRequestContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();

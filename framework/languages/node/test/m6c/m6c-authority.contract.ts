@@ -326,7 +326,7 @@ test('User Spot creation applies one deadline signal through factory and abort c
       stableType: 'room',
       requestPayload: Buffer.from('slow'),
       timeoutMs: 5
-    }, async (_target, signal) => await new Promise((_resolve, reject) => {
+    }, async (_target, _authority, signal) => await new Promise((_resolve, reject) => {
       signal.addEventListener('abort', () => reject(signal.reason), { once: true });
     })),
     (error: unknown) => error instanceof Error
@@ -804,7 +804,11 @@ test('exact User Spot manager call is single-use and returns the committed SpotR
   let published = false;
   const manager = new ZLinkPublicSpotManager({
     local: {
-      async getOrCreate(_mesh: string, _type: typeof RoomSpot, spotId: string) {
+      async getOrCreateWithAuthority(
+        _mesh: string,
+        _type: typeof RoomSpot,
+        spotId: string
+      ) {
         assert.equal(staged, true);
         assert.equal(published, false);
         created++;

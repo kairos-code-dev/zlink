@@ -26,7 +26,7 @@ public abstract class RegistrationValidationSupport
     {
         public ValueTask<TestChannelReply> HandleAsync(
             TestChannelRequest request,
-            ZLinkRequestContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = context;
@@ -40,7 +40,7 @@ public abstract class RegistrationValidationSupport
     {
         public ValueTask<TestChannelReply> HandleAsync(
             TestChannelRequest request,
-            ZLinkRequestContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = context;
@@ -55,7 +55,7 @@ public abstract class RegistrationValidationSupport
     {
         public ValueTask HandleAsync(
             TestSendMessage message,
-            ZLinkSendContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = message;
@@ -90,7 +90,7 @@ public abstract class RegistrationValidationSupport
     {
         public ValueTask<TestRouteReply> HandleAsync(
             TestRouteRequest request,
-            ZLinkRouteRequestContext context,
+            ZLinkRouteMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = context;
@@ -104,7 +104,7 @@ public abstract class RegistrationValidationSupport
     {
         public ValueTask<TestRouteReply> HandleAsync(
             TestRouteRequest request,
-            ZLinkRouteRequestContext context,
+            ZLinkRouteMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = context;

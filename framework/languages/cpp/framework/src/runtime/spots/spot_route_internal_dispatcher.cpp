@@ -291,6 +291,16 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
                   .target_node_rid = native->status ().routing_id ()};
                 runtime::host::actor_transfer_token_t transfer_token;
                 runtime::host::actor_transfer_prepare_result_t transfer_result;
+                try {
+                    (void) native->create_actor (
+                      request.actor_type,
+                      request.actor_id);
+                }
+                catch (const std::exception &error) {
+                    return result_t<zlink::message_t>::failure (
+                      framework_error_kind_t::request_failed,
+                      error.what ());
+                }
                 if (!native->prepare_actor_transfer (
                       transfer_prepare, transfer_token, transfer_result)) {
                     return result_t<zlink::message_t>::failure (

@@ -101,9 +101,7 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
         (local) => this.options.local.close(local.meshName, local.spotId, signal),
         signal,
         (local) => this.options.local.hasActiveSpot(local.spotId),
-        (local) =>
-          this.options.local.canCloseUserSpot?.(local.meshName, local.spotId)
-          ?? true
+        (local) => this.options.local.canCloseUserSpot(local.meshName, local.spotId)
       );
     }
     if (this.options.remoteClose === undefined) {
@@ -233,7 +231,7 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
       generatedIdentity
     }, async (target, authority, deadlineSignal) => {
           const selected = selectFactory(this.options.factories, stableType, target.meshName);
-          this.options.local.beginUserSpotPublication?.(target.meshName, spotId);
+          this.options.local.beginUserSpotPublication(target.meshName, spotId);
           try {
             const result = await this.options.local.getOrCreateWithAuthority(
               target.meshName,
@@ -250,18 +248,18 @@ export class ZLinkPublicSpotManager implements ZLinkSpotManager {
             return {
               ...result,
               publication: {
-                publish: () => this.options.local.publishUserSpot?.(
+                publish: () => this.options.local.publishUserSpot(
                   target.meshName,
                   spotId
                 ),
-                abort: () => this.options.local.abortUserSpotPublication?.(
+                abort: () => this.options.local.abortUserSpotPublication(
                   target.meshName,
                   spotId
                 )
               }
             };
           } catch (error) {
-            this.options.local.abortUserSpotPublication?.(target.meshName, spotId);
+            this.options.local.abortUserSpotPublication(target.meshName, spotId);
             throw error;
           }
         }, async (cleanupSignal) => {

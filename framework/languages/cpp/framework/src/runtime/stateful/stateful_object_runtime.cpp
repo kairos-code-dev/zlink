@@ -370,6 +370,45 @@ stateful_object_runtime_t::begin_membership_move (
     return {stateful_error_t::none, token};
 }
 
+std::pair<stateful_error_t, membership_token_t>
+stateful_object_runtime_t::begin_remote_membership_move (
+  const object_ref_t &actor,
+  object_ref_t target_spot)
+{
+    std::lock_guard lock (_mutex);
+    if (_maintenance_inventory_active)
+        return {stateful_error_t::moving, {}};
+    stateful_error_t actor_error = stateful_error_t::none;
+    auto *actor_record =
+      find_record_locked (actor, actor_error);
+    if (actor_record == nullptr)
+        return {actor_error, {}};
+    if (actor.kind != object_kind_t::actor
+        || target_spot.kind != object_kind_t::user_spot
+        || target_spot.key.empty ()
+        || target_spot.object_generation == 0
+        || target_spot.mesh_name.empty ()
+        || target_spot.node_id.empty ()
+        || target_spot.node_id
+             == actor_record->reference.node_id)
+        return {stateful_error_t::invalid, {}};
+    if (actor_record->state == object_state_t::moving)
+        return {stateful_error_t::moving, {}};
+    if (actor_record->queue.application_active
+        || actor_record->state != object_state_t::ready)
+        return {stateful_error_t::conflict, {}};
+    membership_token_t token{
+      _next_membership_token++,
+      actor_record->reference,
+      std::move (target_spot)};
+    actor_record->state = object_state_t::moving;
+    _membership_moves.emplace (
+      token.value,
+      membership_move_t{
+        token, actor_record->membership});
+    return {stateful_error_t::none, token};
+}
+
 std::pair<stateful_error_t, object_ref_t>
 stateful_object_runtime_t::commit_membership_move (
   const membership_token_t &token)
@@ -382,13 +421,28 @@ stateful_object_runtime_t::commit_membership_move (
     }
     stateful_error_t actor_error = stateful_error_t::none;
     auto *actor_record = find_record_locked (token.actor, actor_error);
-    stateful_error_t spot_error = stateful_error_t::none;
+    const bool remote_target =
+      token.target_spot.node_id
+      != token.actor.node_id;
+    stateful_error_t spot_error =
+      stateful_error_t::none;
     auto *spot_record =
-      find_record_locked (token.target_spot, spot_error);
-    if (actor_record == nullptr || spot_record == nullptr
-        || actor_record->state != object_state_t::moving
-        || spot_record->state != object_state_t::ready) {
-        return {actor_record == nullptr ? actor_error : spot_error, {}};
+      remote_target
+        ? nullptr
+        : find_record_locked (
+            token.target_spot, spot_error);
+    if (actor_record == nullptr
+        || actor_record->state
+             != object_state_t::moving
+        || (!remote_target
+            && (spot_record == nullptr
+                || spot_record->state
+                     != object_state_t::ready))) {
+        return {
+          actor_record == nullptr
+            ? actor_error
+            : spot_error,
+          {}};
     }
     actor_record->membership = token.target_spot.key;
     if (actor_record->reference.node_id != token.target_spot.node_id

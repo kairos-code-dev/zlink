@@ -104,7 +104,7 @@ export class ZLinkUserSpotCreationCoordinator {
     let target: Awaited<ReturnType<ZLinkUserSpotCreationCoordinatorOptions['target']>>;
     let authorityTarget;
     let reserved: ZLinkObjectReserveResult;
-    while (true) {
+    for (;;) {
       try {
         target = await this.options.target(request, signal, excludedNodeRids);
       } catch (error) {
@@ -199,7 +199,7 @@ export class ZLinkUserSpotCreationCoordinator {
         current.kind === 'snapshot'
         && current.allocation.state === 'active'
       ) {
-        if (request.generatedIdentity) {
+        if (request.generatedIdentity === true) {
           deadline.close();
           throw spotIdConflict(request.spotId);
         }
@@ -215,7 +215,7 @@ export class ZLinkUserSpotCreationCoordinator {
         || !sameCreationTarget(current, authorityTarget)
       ) {
         deadline.close();
-        if (request.generatedIdentity) {
+        if (request.generatedIdentity === true) {
           throw spotIdConflict(request.spotId);
         }
         throw new ZLinkFrameworkException(
@@ -279,7 +279,7 @@ export class ZLinkUserSpotCreationCoordinator {
     }
     if (reserved.kind === 'typeMismatch') {
       deadline.close();
-      if (request.generatedIdentity) {
+      if (request.generatedIdentity === true) {
         throw spotIdConflict(request.spotId);
       }
       throw new ZLinkFrameworkException(

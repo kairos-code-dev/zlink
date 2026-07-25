@@ -27,7 +27,6 @@ import {
   decodeChannelEnvelope,
   encodeChannelErrorReplyParts,
   encodeChannelReplyParts,
-  JSON_CONTENT_TYPE,
   type ZLinkChannelEnvelopeCodecRegistry,
   ZLinkChannelMessageKind
 } from './channel-envelope';
@@ -631,7 +630,7 @@ export class ZLinkRoutePacketDispatcher {
     return {
       meshName: this.routerChannelId,
       packetName: envelope.packetName!,
-      contentType: envelope.header.contentType ?? JSON_CONTENT_TYPE,
+      contentType: envelope.header.contentType,
       sourceNodeRid,
       metadata: zlinkMessageMetadata(envelope.header.metadata),
       correlationId: envelope.header.correlationId ?? undefined

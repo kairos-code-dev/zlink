@@ -58,7 +58,7 @@ export class ZLinkManagedStream implements ZLinkStream {
       (handler) => socket.onSendReady(handler),
       {
         timeoutMs: socket.sendTimeoutMs > 0 ? socket.sendTimeoutMs : 1000,
-        capacity: Math.max(1, socket.sendHighWaterMark ?? 1)
+        capacity: Math.max(1, socket.sendHighWaterMark)
       }
     );
   }

@@ -1117,6 +1117,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         public ValueTask HandleAsync(
             DuplicateSubscriptionSpot spot,
             DuplicateSubscriptionMessage message,
+            ZLinkPublishMessageContext context,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
 
@@ -1146,7 +1147,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         public ValueTask HandleAsync(
             DuplicateActorSpot spot,
             DuplicateActor actor,
-            ZLinkSpotActorSendContext context,
+            IZLinkMessageContext context,
             DuplicateActorMessage message,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }
@@ -1157,7 +1158,7 @@ public sealed class NodesAndServicesTests : RegistrationValidationSupport
         public ValueTask HandleAsync(
             DuplicateActorSpot spot,
             DuplicateActor actor,
-            ZLinkSpotActorSendContext context,
+            IZLinkMessageContext context,
             DuplicateActorMessage message,
             CancellationToken cancellationToken) => ValueTask.CompletedTask;
     }

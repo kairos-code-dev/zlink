@@ -166,6 +166,9 @@ class spot_node_builder_state_t
      * to a live registration. */
     std::map<const void *, std::pair<std::string, std::string>> actor_instance_index;
     std::map<std::string, std::shared_ptr<std::mutex>> actor_mailboxes;
+    std::map<std::string,
+             std::shared_ptr<runtime::serial_execution_queue_t>>
+      actor_execution_queues;
     std::map<std::string, spot_route_t> actor_routes;
     std::map<std::string, std::unique_ptr<service::actor_t>> native_actors;
     std::unordered_set<std::string> mesh_runtime_owned_native_actor_ids;

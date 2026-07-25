@@ -834,7 +834,7 @@ export class ZLinkFrameworkRuntimeHost implements
         const resolver = this.locationOwner.createRefResolver([meshName]);
         const excludedTargets = new Set<string>();
         let moved = false;
-        while (true) {
+        for (;;) {
           const target = await resolver?.selectActorPlacement(
             meshName,
             actorType,
@@ -1735,7 +1735,7 @@ function randomBigIntBelow(exclusiveUpperBound: bigint): bigint {
   const bitLength = exclusiveUpperBound.toString(2).length;
   const byteLength = Math.ceil(bitLength / 8);
   const highBitMask = 0xff >> (byteLength * 8 - bitLength);
-  while (true) {
+  for (;;) {
     const bytes = randomBytes(byteLength);
     bytes[0] = bytes[0]! & highBitMask;
     const value = BigInt(`0x${bytes.toString('hex')}`);

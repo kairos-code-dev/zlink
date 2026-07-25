@@ -1043,10 +1043,11 @@ function validateUserSpotFactoryOptions(
   options: ZLinkUserSpotFactoryOptions | undefined
 ): void {
   validateStableTypeLimit(options?.stableTypeLimit);
+  const executionMode: unknown = options?.executionMode;
   if (
-    options?.executionMode !== undefined
-    && options.executionMode !== ZLinkUserSpotExecutionMode.SpotWide
-    && options.executionMode !== ZLinkUserSpotExecutionMode.PerActor
+    executionMode !== undefined
+    && executionMode !== ZLinkUserSpotExecutionMode.SpotWide
+    && executionMode !== ZLinkUserSpotExecutionMode.PerActor
   ) {
     throw new ZLinkConfigurationException('User Spot executionMode is invalid.');
   }

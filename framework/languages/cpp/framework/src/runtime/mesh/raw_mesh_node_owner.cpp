@@ -1155,11 +1155,26 @@ std::size_t raw_mesh_node_owner_t::drain_monitor_events (
                 port = _port;
             }
             if (port) {
-                (void) port->send (
-                  node_routing_id,
-                  {protocol::encode_route_mesh_admission (
-                    protocol::command::hello,
-                    _topology.local_descriptor ())});
+                bool hello_sent = false;
+                try {
+                    hello_sent = port->send (
+                      node_routing_id,
+                      {protocol::encode_route_mesh_admission (
+                        protocol::command::hello,
+                        _topology.local_descriptor ())});
+                }
+                catch (const zlink::submit_error_t &) {
+                }
+                if (!hello_sent) {
+                    std::lock_guard lifecycle_lock (
+                      _lifecycle_mutex);
+                    const auto found =
+                      _connections.find (
+                        node_routing_id);
+                    if (found != _connections.end ()
+                        && found->second == connection_id)
+                        _connections.erase (found);
+                }
             }
         } else if (event->event == zlink::monitor_event::disconnected) {
             bool current = false;

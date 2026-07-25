@@ -265,7 +265,7 @@ public sealed class RouteCodecTests
 
         public ValueTask<RouteProbeReply> HandleAsync(
             RouteProbe request,
-            ZLinkRouteRequestContext context,
+            ZLinkRouteMessageContext context,
             CancellationToken cancellationToken)
         {
             _ = context;

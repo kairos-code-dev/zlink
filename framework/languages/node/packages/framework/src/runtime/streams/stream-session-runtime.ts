@@ -554,7 +554,7 @@ export class ZLinkStreamSessionNodeRuntime {
       (handler) => options.socket.onSendReady(handler),
       {
         timeoutMs: options.socket.sendTimeoutMs > 0 ? options.socket.sendTimeoutMs : 1000,
-        capacity: Math.max(1, options.socket.sendHighWaterMark ?? 1)
+        capacity: Math.max(1, options.socket.sendHighWaterMark)
       }
     );
   }

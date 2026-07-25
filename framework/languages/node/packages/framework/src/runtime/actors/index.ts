@@ -63,7 +63,7 @@ export {
 export {
   ZLinkDeferredJoinAcceptedJournal,
   type ZLinkDeferredJoinAcceptedRoot,
-  type ZLinkDeferredJoinDeliveryCurso
+  type ZLinkDeferredJoinDeliveryCursor
 } from './deferred-join-accepted-journal';
 export {
   decodeActorAuthorityIdentity,

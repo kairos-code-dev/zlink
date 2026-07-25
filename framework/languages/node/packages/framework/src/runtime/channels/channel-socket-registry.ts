@@ -1400,7 +1400,7 @@ export class ZLinkChannelSocketRegistry {
       ...('sendTimeoutMs' in socket && socket.sendTimeoutMs !== -1
         ? { timeoutMs: socket.sendTimeoutMs }
         : {}),
-      capacity: Math.max(1, socket.sendHighWaterMark ?? 1),
+      capacity: Math.max(1, socket.sendHighWaterMark),
       onCommandFailure: this.oneWayFailureSink
     });
     this.submitters.set(socket, submitter);

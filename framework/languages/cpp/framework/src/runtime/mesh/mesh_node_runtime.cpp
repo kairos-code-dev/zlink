@@ -691,6 +691,8 @@ result_t<actor_join_reply_t> mesh_node_runtime_t::join_application_actor_to_spot
     core_prepare.actor = native_actor;
     core_prepare.source_spot_id = *source_spot;
     core_prepare.target_spot_id = target_spot;
+    core_prepare.target_spot_generation =
+      target_spot_generation;
     core_prepare.target_node_rid =
       zlink::routing_id_t::from (std::string (target_node.value ()));
     host::actor_transfer_token_t core_token;

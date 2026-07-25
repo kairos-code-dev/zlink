@@ -1059,9 +1059,15 @@ function readyWaitSockets(requestTimeoutMs) {
     locations: { useInMemoryStores: true }
   });
   const dealer = fakeDealer('dealer-0');
+  const created = [];
   const sockets = new ZLinkChannelSocketRegistry(
     registration,
-    { createDealerSocket() { return dealer; } },
+    {
+      createDealerSocket() {
+        created.push(dealer);
+        return dealer;
+      }
+    },
     {},
     {
       openSocketMonitor() {
@@ -1075,12 +1081,13 @@ function readyWaitSockets(requestTimeoutMs) {
     'tcp://10.0.0.1:9401',
     { onTransportReady() {}, onTerminated() {} }
   );
-  return { sockets, dealer };
+  return { sockets, dealer, created };
 }
 
 test('ClientServer send target waits for admission already in flight instead of failing at once', async () => {
-  const { sockets, dealer } = readyWaitSockets(60_000);
+  const { sockets, dealer, created } = readyWaitSockets(60_000);
   assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
+  assert.equal(created.length, 1);
 
   const startedAt = Date.now();
   let admittedAfterMs;
@@ -1098,6 +1105,8 @@ test('ClientServer send target waits for admission already in flight instead of 
   assert.equal(typeof admittedAfterMs, 'number');
   assert.ok(elapsed >= 40, `expected the wait to span admission, waited ${elapsed}ms`);
   assert.ok(elapsed < 5_000, `expected admission to end the wait early, waited ${elapsed}ms`);
+  // The wait observes admission already in flight and never starts one, so it opens no connection.
+  assert.equal(created.length, 1);
   await sockets.dispose();
 });
 
@@ -1157,6 +1166,9 @@ test('ClientServer outbound reports no selectable target as RequestTargetNotFoun
     () => manager.request('orders', 'Lookup', { id: 1 }, 60),
     (error) => error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.RequestTargetNotFound
+      // The kind carries retry policy; RequestTargetNotFound is not retriable by default in any
+      // lane, and the reference throws omit the flag exactly as this one does.
+      && error.isRetriable === false
   );
   await manager.dispose();
 });

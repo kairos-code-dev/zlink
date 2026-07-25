@@ -412,14 +412,9 @@ int main ()
         namespace msg = zlink::framework::runtime::messaging;
         msg::reset_async_submit_runtime_for_tests ();
         std::atomic_int attempts{0};
-        /* The admission deadline is fixed at the first attempt and covers every retry in
-         * this block (two notify/poll round trips through the runtime's timer thread). 100ms
-         * was tight enough that scheduling delays under load could exceed it before the final
-         * notify_submit_ready, throwing this block's uncaught admitted_result.value() and
-         * aborting the process instead of failing the assertion below it. */
         auto admitted = zlink::framework::detail::submit_one_way_task ([&] {
             msg::note_submit_attempt ("mesh:node:01", &attempts,
-                                      std::chrono::milliseconds (2000));
+                                      std::chrono::milliseconds (100));
             const auto attempt = attempts.fetch_add (1) + 1;
             if (attempt < 3) {
                 return zlink::framework::result_t<void>::failure (
@@ -438,7 +433,7 @@ int main ()
         }
         msg::notify_submit_ready ("mesh:node:01", &attempts);
         const auto retry_deadline = std::chrono::steady_clock::now ()
-                                    + std::chrono::milliseconds (1000);
+                                    + std::chrono::milliseconds (100);
         while (attempts.load () != 2
                && std::chrono::steady_clock::now () < retry_deadline) {
             std::this_thread::yield ();
@@ -736,19 +731,30 @@ int main ()
               error.kind ()
               == zlink::framework::framework_error_kind_t::already_submitted;
         }
+        /* The accepted publish completed at worker dequeue, so its publisher
+         * body may still be pending. The call count is settled once the worker
+         * slot has been returned. */
+        msg::wait_for_idle_multicast_executor_for_tests ();
         if (!duplicate_multicast_rejected || multicast_calls.load () != 1) {
             return 80;
         }
         /* Logical Multicast uses direct worker handoff. Saturation must not
-         * retain an unbounded queue of publish payloads. */
-        const auto worker_count = std::max<unsigned int> (
-          2, std::thread::hardware_concurrency ());
+         * retain an unbounded queue of publish payloads.
+         *
+         * A publish task completes at worker dequeue, but the worker slot is
+         * returned only after the job body has run. The slot held by the
+         * preceding publish can therefore still be in use here, which would
+         * turn one of the occupying calls below into an immediate overflow and
+         * saturate the executor one call early. Saturation starts from an
+         * observed idle executor instead of an assumed one. */
+        msg::wait_for_idle_multicast_executor_for_tests ();
+        const auto worker_count = msg::multicast_worker_count_for_tests ();
         std::mutex multicast_gate_mutex;
         std::condition_variable multicast_gate_changed;
         bool release_multicast_workers = false;
         std::vector<zlink::framework::task_t<void>> occupied_workers;
         occupied_workers.reserve (worker_count);
-        for (unsigned int index = 0; index < worker_count; ++index) {
+        for (std::size_t index = 0; index < worker_count; ++index) {
             zlink::framework::publish_call_t occupied (
               [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
                   std::unique_lock lock (multicast_gate_mutex);
@@ -797,6 +803,10 @@ int main ()
             task.result ().value ();
         }
         handoff_task.result ().value ();
+        /* The handoff task completed at dequeue, which is before its publisher
+         * body ran. The call count is only settled once the worker slot has
+         * been returned. */
+        msg::wait_for_idle_multicast_executor_for_tests ();
         if (handoff_calls.load () != 1) {
             return 83;
         }
@@ -804,7 +814,7 @@ int main ()
         bool release_deadline_workers = false;
         std::vector<zlink::framework::task_t<void>> deadline_workers;
         deadline_workers.reserve (worker_count);
-        for (unsigned int index = 0; index < worker_count; ++index) {
+        for (std::size_t index = 0; index < worker_count; ++index) {
             zlink::framework::publish_call_t occupied (
               [&] (const zlink::framework::publish_call_t::metadata_map_t &) {
                   std::unique_lock lock (multicast_gate_mutex);
@@ -844,6 +854,7 @@ int main ()
             return 84;
         }
 
+        msg::wait_for_idle_multicast_executor_for_tests ();
         zlink::framework::publish_call_t recovered (
           [] (const zlink::framework::publish_call_t::metadata_map_t &) {
               return zlink::framework::result_t<void>::success ();

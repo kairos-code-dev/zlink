@@ -629,6 +629,20 @@ class logical_multicast_executor_t
         return task;
     }
 
+    std::size_t worker_count () const noexcept { return _workers.size (); }
+
+    /* Idle means every worker slot has been returned, so no job body from an
+     * earlier publish is still running. */
+    void wait_until_idle ()
+    {
+        std::unique_lock lock (_mutex);
+        _changed.wait (lock, [this] {
+            return _stopping
+                   || (_available == _workers.size () && _jobs.empty ()
+                       && !_handoff);
+        });
+    }
+
   private:
     struct multicast_job_t
     {
@@ -787,6 +801,16 @@ std::size_t submit_attempt_count_for_tests (const std::string &target)
 void reset_async_submit_runtime_for_tests ()
 {
     runtime ().reset_for_tests ();
+}
+
+std::size_t multicast_worker_count_for_tests ()
+{
+    return multicast_executor ().worker_count ();
+}
+
+void wait_for_idle_multicast_executor_for_tests ()
+{
+    multicast_executor ().wait_until_idle ();
 }
 
 } // namespace zlink::framework::runtime::messaging

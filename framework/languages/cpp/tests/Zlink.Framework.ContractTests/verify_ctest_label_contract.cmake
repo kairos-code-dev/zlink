@@ -44,10 +44,14 @@ set(required_labels
   connector-perf-scale
   connector-unreal-contract
   connector-unreal-compile
-  connector-unreal-smoke)
+  connector-unreal-smoke
+  # test_cpp_framework_sample_parity is a contract test that always registers under
+  # ZLINK_FRAMEWORK_CPP_BUILD_TESTS; unlike the sample programs themselves (built only under
+  # ZLINK_FRAMEWORK_CPP_BUILD_SAMPLES), its "framework-sample-parity" label is present
+  # regardless of that flag, so it belongs here rather than in sample_labels below.
+  framework-sample-parity)
 
 set(sample_labels
-  framework-sample-parity
   framework-sample-api
   framework-sample-bingo
   framework-sample-courier
@@ -107,7 +111,26 @@ set(known_labels
   serializer
   spot
   stream
-  framework-actor)
+  framework-actor
+  # foundation and M6 runtime tests build headless of a service-layer framework and label
+  # themselves with these finer-grained categories alongside the framework-unit/-contract tier.
+  framework-foundation
+  framework-m6-runtime
+  liveness
+  mailbox
+  maintenance
+  operation
+  protocol
+  raw-binding
+  recovery
+  relocation
+  resource
+  stateful
+  stream-session
+  submit-admission
+  termination
+  topology
+  yield)
 
 if(ZLINK_FRAMEWORK_CPP_EXPECT_COVERAGE_LABEL)
   list(APPEND required_labels framework-coverage)

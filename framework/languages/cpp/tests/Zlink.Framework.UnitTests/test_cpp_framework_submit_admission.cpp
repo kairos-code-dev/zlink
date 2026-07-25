@@ -61,7 +61,12 @@ int reservation_covers_in_flight_retry ()
         ++rejected_attempts;
         return full ();
     });
-    const bool bounded = !rejected.await_ready () && rejected_attempts.load () == 1;
+    /* 04-async-execution-policy.ko.md §1.3: once the internal bounded waiter capacity is
+     * already fully in use (here, the in-flight retry still holding the owner's one
+     * reservation), a new admission hits the hard overload boundary and completes
+     * immediately with DeadlineExceeded rather than being queued. */
+    const bool hit_hard_overload_boundary =
+      rejected.await_ready () && rejected_attempts.load () == 1;
     {
         std::lock_guard lock (mutex);
         release_retry = true;
@@ -69,7 +74,7 @@ int reservation_covers_in_flight_retry ()
     changed.notify_all ();
     first.result ().value ();
     const auto &rejected_result = rejected.result ();
-    return bounded && !rejected_result
+    return hit_hard_overload_boundary && !rejected_result
              && rejected_result.error_kind ()
                   == framework_error_kind_t::deadline_exceeded
              && admission::pending_submit_count_for_tests () == 0
@@ -198,10 +203,15 @@ int public_call_terminator_is_one_shot ()
     auto copy = call;
     call.submit ().result ().value ();
     try {
+        /* send_call_t::_submission is a shared_ptr specifically so a copy shares the same
+         * one-shot claim as the original -- copying a call must not be a way to bypass
+         * single-use. 04-async-execution-policy.ko.md §1.3's failure table classifies
+         * re-running the same call's terminal as `AlreadySubmitted`, not a protocol error
+         * (that kind is reserved for a call that was never bound to a submit function). */
         (void) copy.submit ().result ().value ();
     }
     catch (const framework_exception_t &error) {
-        return error.kind () == framework_error_kind_t::request_protocol_error
+        return error.kind () == framework_error_kind_t::already_submitted
                  && attempts.load () == 1
                ? 0
                : 2;

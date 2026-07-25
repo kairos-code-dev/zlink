@@ -14,7 +14,6 @@ import {
 import type {
   ActorRef,
   ZLinkActorClient,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
@@ -91,7 +90,7 @@ class PlayEntrySpot implements ZLinkEntrySpot<PlayActor> {
     );
   }
 
-  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
+  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<{ accepted: boolean }> {
     return { accepted: true };
   }
 

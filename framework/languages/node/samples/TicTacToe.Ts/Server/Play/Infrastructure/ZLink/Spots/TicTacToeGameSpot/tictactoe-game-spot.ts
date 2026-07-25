@@ -18,7 +18,6 @@ import { DeliverPlayNotification, PlayActor } from '../../Actors/play-actor';
 import type {
   ActorRef,
   ZLinkActorClient,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpot,
@@ -36,7 +35,6 @@ import type { TicTacToeMatch as TicTacToeMatchType } from '../../../../Domain/Ti
 
 interface GameParticipant {
   readonly actorId: string;
-  readonly actorRef: ActorRef;
   readonly displayName: string;
   readonly level: number;
   readonly wins: number;
@@ -51,6 +49,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
   private roomId = InitialRoomId;
   private match: TicTacToeMatchType<GameParticipant> = new TicTacToeMatch<GameParticipant>(InitialRoomId);
   private readonly pendingJoins = new Map<string, TicTacToeGameJoinReq>();
+  private readonly actorRefs = new Map<string, ActorRef>();
   private gameTick?: ZLinkTimer;
 
   constructor(@Inject(ZLINK_ACTOR_CLIENT) private readonly actorClient: ZLinkActorClient) {}
@@ -76,14 +75,13 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
   }
 
   async onActorJoin(
-    actor: ZLinkActorJoinRequest,
+    actorId: string,
     requestMessage: ZLinkMessage
   ): Promise<ZLinkSpotActorJoinResponse> {
-    const actorId = actor.actor.actorId;
     try {
       console.log(`game spot: onActorJoin received. actor=${actorId} roomId=${this.roomId}`);
       const request = requestMessage.decode<TicTacToeGameJoinReq>();
-      const response = this.admit(actor.actor, request);
+      const response = this.admit(actorId, request);
       console.log(`game spot: onActorJoin completed. actor=${actorId} roomId=${this.roomId}`);
       return { accepted: true, reply: response };
     } catch (error) {
@@ -96,6 +94,9 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
 
   async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
     const actorId = actor.actor.actorId;
+    // Admission observes the joining Actor by id, so the room records the Actor
+    // reference it pushes notifications to at membership time.
+    this.actorRefs.set(actorId, actor.actor);
     const request = this.pendingJoins.get(actorId);
     if (request !== undefined) {
       this.pendingJoins.delete(actorId);
@@ -108,7 +109,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
         for (const player of this.requireMatch().players.values()) {
           if (player.actorId === actorId) continue;
           await this.notifyActor(
-            player.player.actorRef,
+            this.requireActorRef(player.actorId),
             playerJoinedNotify(
               this.roomId,
               actorId,
@@ -118,7 +119,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
               state
             )
           );
-          await this.notifyActor(player.player.actorRef, gameStateNotify(state));
+          await this.notifyActor(this.requireActorRef(player.actorId), gameStateNotify(state));
         }
       }
     }
@@ -127,6 +128,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
 
   async onLeaveActor(actor: ZLinkActorMembership): Promise<void> {
     this.requireMatch().players.delete(actor.actor.actorId);
+    this.actorRefs.delete(actor.actor.actorId);
     if (this.requireMatch().players.size === 0 && isTerminal(this.requireMatch().snapshot().status)) {
       await this.context.close();
     }
@@ -141,7 +143,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
     const state = change.state;
     for (const joined of match.players.values()) {
       if (joined.actorId !== actorId) {
-        await this.notifyActor(joined.player.actorRef, gameStateNotify(state));
+        await this.notifyActor(this.requireActorRef(joined.actorId), gameStateNotify(state));
       }
     }
     await this.publishWinMilestone(actorId, before, state);
@@ -153,7 +155,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
     const change = match.tick();
     if (change.changed) {
       for (const player of match.players.values()) {
-        await this.notifyActor(player.player.actorRef, gameStateNotify(change.state));
+        await this.notifyActor(this.requireActorRef(player.actorId), gameStateNotify(change.state));
       }
     }
   }
@@ -187,8 +189,7 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
       .submit();
   }
 
-  private admit(actorRef: ActorRef, request: TicTacToeGameJoinReq): TicTacToeGameJoinRes {
-    const actorId = actorRef.actorId;
+  private admit(actorId: string, request: TicTacToeGameJoinReq): TicTacToeGameJoinRes {
     const roomId = this.requireRoomId();
     if (request.roomId !== roomId) {
       throw new Error(`Actor requested join for a different room. roomId=${request.roomId}`);
@@ -201,13 +202,20 @@ class TicTacToeGameSpot implements ZLinkSpot<PlayActor> {
     }
     const result = this.requireMatch().joinPlayer({
       actorId,
-      actorRef,
       displayName: request.player.displayName,
       level: request.player.level,
       wins: request.player.wins
     });
     this.pendingJoins.set(actorId, request);
     return { state: result.state };
+  }
+
+  private requireActorRef(actorId: string): ActorRef {
+    const actorRef = this.actorRefs.get(actorId);
+    if (actorRef === undefined) {
+      throw new Error(`TicTacToe actor '${actorId}' has no room membership reference.`);
+    }
+    return actorRef;
   }
 
   private async notifyActor(actor: ActorRef, payload: ConstructorParameters<typeof DeliverPlayNotification>[0]): Promise<void> {

@@ -12,7 +12,6 @@ import {
 } from '../../../../../../Shared/Contracts/bingo-messages.generated';
 import type {
   ZLinkActorClient,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
@@ -44,7 +43,7 @@ class BingoEntrySpot implements ZLinkEntrySpot<PlayerActor> {
   }
 
   async onActorJoin(
-    _actor: ZLinkActorJoinRequest,
+    _actorId: string,
     _request: ZLinkMessage
   ): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };

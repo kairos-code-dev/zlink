@@ -132,11 +132,7 @@ test('TicTacToe closes a terminal room Spot after every actor leaves', async () 
 
 async function joinPlayer(spot, actor) {
   const actorMembership = membership(actor.actorId);
-  const response = await spot.onActorJoin({
-    actor: actorMembership.actor,
-    actorType: actorMembership.actorType,
-    expectedMembershipEpoch: 0n
-  }, {
+  const response = await spot.onActorJoin(actorMembership.actor.actorId, {
     decode: () => ({
       roomId: 'room-1',
       player: {
@@ -153,11 +149,7 @@ async function joinPlayer(spot, actor) {
 
 async function joinConversationActor(spot, actor) {
   const actorMembership = membership(actor.actorId);
-  const response = await spot.onActorJoin({
-    actor: actorMembership.actor,
-    actorType: actorMembership.actorType,
-    expectedMembershipEpoch: 0n
-  }, {
+  const response = await spot.onActorJoin(actorMembership.actor.actorId, {
     decode: () => ({
       participantId: actor.participantId,
       role: actor.role,

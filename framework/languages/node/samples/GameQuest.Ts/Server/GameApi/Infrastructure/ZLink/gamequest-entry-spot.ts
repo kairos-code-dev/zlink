@@ -2,7 +2,6 @@ import { GameQuestPlayerActor } from './gamequest-player-actor';
 import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse
@@ -11,7 +10,7 @@ import type {
 class GameQuestEntrySpot implements ZLinkEntrySpot<GameQuestPlayerActor> {
   readonly context!: ZLinkEntrySpotContext<GameQuestPlayerActor>;
 
-  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
 

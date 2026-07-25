@@ -14,7 +14,6 @@ import { AgentAssignmentService } from '../../../../Application/ConversationAssi
 import { SupportActorDirectory } from '../../Actors/support-actor-directory';
 import type {
   ActorRef,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpot,
@@ -33,12 +32,15 @@ import type { ConversationCreateRequest } from './conversation-create-request';
 import type { ConversationEvent } from '../../../../Domain/SupportChat/conversation-events';
 import type { SupportUserActor } from '../../Actors/support-user-actor';
 
-interface ConversationParticipant {
-  readonly actor: ActorRef;
+interface ConversationJoinIntent {
   readonly actorId: string;
   readonly participantId: string;
   readonly role: SupportRole;
   readonly displayName: string;
+}
+
+interface ConversationParticipant extends ConversationJoinIntent {
+  readonly actor: ActorRef;
 }
 
 @Injectable({ scope: Scope.TRANSIENT })
@@ -46,7 +48,7 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
   readonly context!: ZLinkSpotContext<SupportUserActor, ConversationSpot>;
   private conversation?: Conversation;
   private readonly actors = new Map<string, ConversationParticipant>();
-  private readonly pendingJoins = new Map<string, ConversationParticipant>();
+  private readonly pendingJoins = new Map<string, ConversationJoinIntent>();
   private timer?: ZLinkTimer;
 
   constructor(
@@ -82,13 +84,12 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
   }
 
   async onActorJoin(
-    actor: ZLinkActorJoinRequest,
+    actorId: string,
     request: ZLinkMessage
   ): Promise<ZLinkSpotActorJoinResponse> {
     const join = request.decode<JoinConversationReq>(Object as never);
-    this.pendingJoins.set(actor.actor.actorId, {
-      actor: actor.actor,
-      actorId: actor.actor.actorId,
+    this.pendingJoins.set(actorId, {
+      actorId,
       participantId: join.participantId,
       role: join.role,
       displayName: join.displayName
@@ -97,9 +98,12 @@ class ConversationSpot implements ZLinkSpot<SupportUserActor> {
   }
 
   async onJoinedActor(actor: ZLinkActorMembership): Promise<void> {
-    const participant = this.pendingJoins.get(actor.actor.actorId);
-    if (participant === undefined) return;
+    const intent = this.pendingJoins.get(actor.actor.actorId);
+    if (intent === undefined) return;
     this.pendingJoins.delete(actor.actor.actorId);
+    // Admission decides on identity alone, so the participant record is completed
+    // with the Actor reference here, where membership publishes it.
+    const participant: ConversationParticipant = { ...intent, actor: actor.actor };
     this.actors.set(actor.actor.actorId, participant);
     if (participant.role === SupportChatRoles.Agent) {
       const joined = this.requireConversation().join(

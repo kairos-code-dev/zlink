@@ -1,5 +1,4 @@
 import type {
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
@@ -10,7 +9,7 @@ import type { CourierActor } from './courier-actor';
 
 class CourierEntrySpot implements ZLinkEntrySpot<CourierActor> {
   readonly context!: ZLinkEntrySpotContext<CourierActor>;
-  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
   async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}

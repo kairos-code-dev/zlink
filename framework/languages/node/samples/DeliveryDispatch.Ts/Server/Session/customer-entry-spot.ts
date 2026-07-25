@@ -1,6 +1,5 @@
 import { CustomerActor } from './customer-actor';
 import type {
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
@@ -10,7 +9,7 @@ import type {
 
 class CustomerEntrySpot implements ZLinkEntrySpot<CustomerActor> {
   readonly context!: ZLinkEntrySpotContext<CustomerActor>;
-  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
   async onJoinedActor(_actor: ZLinkActorMembership): Promise<void> {}

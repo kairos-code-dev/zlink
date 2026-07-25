@@ -29,7 +29,6 @@ import { LeaveFinishedBingoRoom } from '../../../../../../Shared/Contracts/bingo
 import type {
   ActorRef,
   ZLinkActorClient,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkMessage,
   ZLinkChannelClient,
@@ -55,10 +54,6 @@ import type {
 type BingoActor = {
   actorId: string;
   displayName: string;
-};
-
-type BingoParticipant = BingoActor & {
-  actorRef: ActorRef;
 };
 
 @Injectable()
@@ -115,10 +110,10 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     this.drawTimer = undefined;
   }
 
-  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     try {
       const joinRequest = request.decode<BingoRoomJoinReq>(Object as never);
-      const joined = this.admitActor(actor.actor, joinRequest);
+      const joined = this.admitActor(actorId, joinRequest);
       return {
         accepted: true,
         reply: joined
@@ -130,8 +125,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     }
   }
 
-  admitActor(actorRef: ActorRef, request: BingoRoomJoinReq): BingoRoomJoinRes {
-    const actorId = actorRef.actorId;
+  admitActor(actorId: string, request: BingoRoomJoinReq): BingoRoomJoinRes {
     if (actorId !== request.actorId) {
       throw new Error('Join request actor id does not match bound actor.');
     }
@@ -145,8 +139,7 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
     if (request.roomId !== this.roomId) {
       throw new Error(`Join request room id '${request.roomId}' does not match '${this.roomId}'.`);
     }
-    const joined = this.game.join({ actorId, actorRef, displayName: request.displayName } as BingoParticipant);
-    this.playerRefs.set(actorId, actorRef);
+    const joined = this.game.join({ actorId, displayName: request.displayName });
     const state = this.snapshot();
     this.pendingPlayerJoins.set(actorId, {
       joined: joined.joined,
@@ -175,6 +168,10 @@ class BingoRoomSpot implements ZLinkSpot<PlayerActor> {
       console.error(`bingo observer joined spot=${this.context.spotRid} actor=${actorId} room=${request.roomId}`);
       return;
     }
+    // The membership callback is the first place the room holds the joining
+    // Actor's reference, so player pushes are wired here rather than during
+    // admission, which observes identity only.
+    this.playerRefs.set(actorId, actor.actor);
     const joined = this.pendingPlayerJoins.get(actorId);
     this.pendingPlayerJoins.delete(actorId);
     const player = this.game.players.find((candidate) => candidate.actor.actorId === actorId);

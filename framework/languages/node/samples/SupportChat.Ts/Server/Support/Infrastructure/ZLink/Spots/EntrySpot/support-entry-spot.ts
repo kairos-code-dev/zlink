@@ -4,7 +4,6 @@ import { SupportActorDirectory } from '../../Actors/support-actor-directory';
 import { SupportUserActor } from '../../Actors/support-user-actor';
 import type { EnsureSupportUserActorReq } from '../../../../../../Shared/Contracts/messages';
 import type {
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
@@ -22,7 +21,7 @@ class SupportEntrySpot implements ZLinkEntrySpot<SupportUserActor> {
   ) {}
 
   async onActorJoin(
-    _actor: ZLinkActorJoinRequest,
+    _actorId: string,
     _request: ZLinkMessage
   ): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };

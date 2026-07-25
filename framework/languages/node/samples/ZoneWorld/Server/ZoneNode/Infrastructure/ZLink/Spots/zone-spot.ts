@@ -12,7 +12,6 @@ import type { EnterZoneMsg } from '../../../../../Shared/contracts';
 import type {
   ZLinkActorClient,
   ActorRef,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpot,
@@ -99,8 +98,7 @@ class ZoneSpot implements ZLinkSpot<PlayerActor> {
     this.botTimer = undefined;
   }
 
-  async onActorJoin(actor: ZLinkActorJoinRequest, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
-    const actorId = actor.actor.actorId;
+  async onActorJoin(actorId: string, request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     const enter = request.decode<EnterZoneMsg>(Object as never);
     if (enter.playerId !== actorId) {
       return { accepted: false };

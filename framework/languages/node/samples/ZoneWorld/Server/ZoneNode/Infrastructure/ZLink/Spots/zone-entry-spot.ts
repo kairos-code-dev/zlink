@@ -1,7 +1,6 @@
 import type {
   ZLinkEntrySpot,
   ZLinkEntrySpotContext,
-  ZLinkActorJoinRequest,
   ZLinkActorMembership,
   ZLinkMessage,
   ZLinkSpotActorJoinResponse
@@ -11,7 +10,7 @@ import type { PlayerActor } from '../Actors/player-actor';
 class ZoneEntrySpot implements ZLinkEntrySpot<PlayerActor> {
   readonly context!: ZLinkEntrySpotContext<PlayerActor, ZoneEntrySpot>;
 
-  async onActorJoin(_actor: ZLinkActorJoinRequest, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
+  async onActorJoin(_actorId: string, _request: ZLinkMessage): Promise<ZLinkSpotActorJoinResponse> {
     return { accepted: true };
   }
 

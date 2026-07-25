@@ -1,0 +1,379 @@
+using Zlink.Framework.Contracts.Messaging;
+using Zlink.Framework.ContractTests.Support;
+
+namespace Zlink.Framework.ContractTests.Configuration;
+
+/// <summary>
+///     Worked examples for the two role-split builder families of
+///     03-configuration-topology: a ClientServer channel registration picks
+///     <c>Client()</c> or <c>Server()</c> before it can be configured, and a
+///     MeshNode's object registrations do the same through
+///     <c>Objects()</c>. Both client builders are deliberately empty because
+///     a client registers nothing beyond its role.
+/// </summary>
+public sealed class ObjectAndChannelRoleBuilderContracts
+{
+    [Fact]
+    [ContractExample(
+        typeof(IZLinkClientServerChannelRoleBuilder),
+        typeof(IZLinkClientServerChannelClientBuilder),
+        typeof(IZLinkClientServerChannelServerBuilder))]
+    public void Client_server_channel_registers_a_connect_side_or_a_listening_handler_side()
+    {
+        // Two processes register the same channel name from opposite sides.
+        // The gateway consumes the inventory API, so it only connects.
+        var gatewayChannel = new ExampleClientServerChannelRoleBuilder("inventory");
+        var client = gatewayChannel.Client();
+        Assert.Same(client, client.Connect("tcp://inventory-1.play.svc:5100"));
+        Assert.Same(client, client.Connect("tcp://inventory-2.play.svc:5100"));
+        Assert.Equal(
+            ["tcp://inventory-1.play.svc:5100", "tcp://inventory-2.play.svc:5100"],
+            gatewayChannel.ClientBuilder.Endpoints);
+
+        // The inventory service registers the serving side: a bound endpoint,
+        // its placement weight and the handlers that answer the channel.
+        var inventoryChannel = new ExampleClientServerChannelRoleBuilder("inventory");
+        var server = inventoryChannel.Server();
+        Assert.Same(server, server.Listen(5100));
+        Assert.Same(server, server.SetBindHost("0.0.0.0"));
+        Assert.Same(server, server.SetAdvertiseHost("inventory-1.play.svc"));
+        Assert.Same(server, server.SetWeight(100));
+        Assert.Same(server, server.AddHandlerGroup("inventory-write"));
+        Assert.Same(
+            server,
+            server.AddSendHandler<ItemGrantedHandler, ItemGranted>("inventory.item-granted"));
+        Assert.Same(
+            server,
+            server.AddRequestHandler<ConsumeItemHandler, ConsumeItem, ItemConsumed>());
+
+        var registered = inventoryChannel.ServerBuilder;
+        Assert.Equal(5100, registered.Port);
+        Assert.Equal("0.0.0.0", registered.BindHost);
+        Assert.Equal("inventory-1.play.svc", registered.AdvertiseHost);
+        Assert.Equal(100, registered.Weight);
+        Assert.Equal(["inventory-write"], registered.HandlerGroups);
+        Assert.Equal(
+            [
+                "inventory.item-granted -> ItemGrantedHandler",
+                "(default) -> ConsumeItemHandler"
+            ],
+            registered.Handlers);
+
+        // The role split is what keeps a connect-only registration from
+        // carrying listen or handler configuration at all.
+        Assert.Equal(
+            new[] { "Connect" },
+            typeof(IZLinkClientServerChannelClientBuilder)
+                .GetMethods()
+                .Select(method => method.Name)
+                .ToArray());
+        Assert.Null(typeof(IZLinkClientServerChannelRoleBuilder).GetMethod("Listen"));
+        Assert.Null(typeof(IZLinkClientServerChannelServerBuilder).GetMethod("Connect"));
+    }
+
+    [Fact]
+    [ContractExample(
+        typeof(IZLinkMeshObjectRoleBuilder),
+        typeof(IZLinkMeshObjectClientBuilder),
+        typeof(IZLinkMeshObjectServerBuilder))]
+    public void Mesh_object_role_builder_puts_every_factory_registration_on_the_server_side()
+    {
+        // A gateway node joins the play mesh to address Spots and Actors but
+        // hosts none of them: Client() is the whole registration, which is
+        // why the client builder declares no members.
+        var gatewayObjects = new ExampleMeshObjectRoleBuilder();
+        var gatewayClient = gatewayObjects.Client();
+        Assert.NotNull(gatewayClient);
+        Assert.Equal(ZLinkMeshNodeObjectRole.Client, gatewayObjects.Role);
+        Assert.Empty(typeof(IZLinkMeshObjectClientBuilder).GetMembers());
+
+        // A play node hosts objects, so every factory registration - and the
+        // relocation policy that governs how each moves - lands on Server().
+        var playObjects = new ExampleMeshObjectRoleBuilder();
+        var server = playObjects.Server();
+        Assert.Equal(ZLinkMeshNodeObjectRole.Server, playObjects.Role);
+
+        Assert.Same(server, server.AddEntrySpot<LobbyEntrySpot>());
+        Assert.Same(
+            server,
+            server.AddSpotFactory<BattleRoomSpot>(
+                "battle-room",
+                new ZLinkUserSpotFactoryOptions
+                {
+                    StableTypeLimit = 2000,
+                    ExecutionMode = ZLinkUserSpotExecutionMode.SpotWide
+                },
+                ZLinkRelocationPolicy<BattleRoomSpot>.Recreate));
+        Assert.Same(
+            server,
+            server.AddInstanceSpotFactory<LeaderboardSpot>(
+                "leaderboard",
+                new ZLinkObjectPlacementOptions
+                {
+                    MaxActiveObjects = 64,
+                    MaxPendingActivations = 8
+                },
+                ZLinkRelocationPolicy<LeaderboardSpot>.Disabled));
+        Assert.Same(
+            server,
+            server.AddActorFactory<PlayerActor, PlayerActorFactory>(
+                "player",
+                new ZLinkObjectPlacementOptions { MaxActiveObjects = 20_000 },
+                ZLinkRelocationPolicy<PlayerActor>.Snapshot<PlayerRelocationAdapter>()));
+
+        var registered = playObjects.ServerBuilder;
+        Assert.Equal(["LobbyEntrySpot"], registered.EntrySpots);
+        Assert.Equal(["battle-room"], registered.SpotTypes);
+        Assert.Equal(["leaderboard"], registered.InstanceSpotTypes);
+        Assert.Equal(["player"], registered.ActorTypes);
+        Assert.Equal(64, registered.InstanceSpotPlacement!.MaxActiveObjects);
+        Assert.Equal(
+            ZLinkUserSpotExecutionMode.SpotWide,
+            registered.SpotOptions!.ExecutionMode);
+
+        // Placement capacity is per registration, not a second global switch.
+        Assert.Equal(20_000, registered.ActorPlacement!.MaxActiveObjects);
+        Assert.Null(registered.ActorPlacement.MaxPendingActivations);
+    }
+
+    private sealed record ItemGranted(string ActorId, string ItemId);
+
+    private sealed record ConsumeItem(string ActorId, string ItemId);
+
+    private sealed record ItemConsumed(string ActorId, int Remaining);
+
+    private sealed class ItemGrantedHandler : IZLinkSendHandler<ItemGranted>
+    {
+        public ValueTask HandleAsync(
+            ItemGranted message,
+            IZLinkMessageContext context,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+
+    private sealed class ConsumeItemHandler : IZLinkRequestHandler<ConsumeItem, ItemConsumed>
+    {
+        public ValueTask<ItemConsumed> HandleAsync(
+            ConsumeItem request,
+            IZLinkMessageContext context,
+            CancellationToken cancellationToken) =>
+            ValueTask.FromResult(new ItemConsumed(request.ActorId, 2));
+    }
+
+    private sealed class ExampleClientServerChannelRoleBuilder(string channelName)
+        : IZLinkClientServerChannelRoleBuilder
+    {
+        public string ChannelName { get; } = channelName;
+
+        public ExampleClientServerChannelClientBuilder ClientBuilder { get; } = new();
+
+        public ExampleClientServerChannelServerBuilder ServerBuilder { get; } = new();
+
+        IZLinkClientServerChannelClientBuilder IZLinkClientServerChannelRoleBuilder.Client() =>
+            ClientBuilder;
+
+        IZLinkClientServerChannelServerBuilder IZLinkClientServerChannelRoleBuilder.Server() =>
+            ServerBuilder;
+
+        public IZLinkClientServerChannelClientBuilder Client() => ClientBuilder;
+
+        public IZLinkClientServerChannelServerBuilder Server() => ServerBuilder;
+    }
+
+    private sealed class ExampleClientServerChannelClientBuilder
+        : IZLinkClientServerChannelClientBuilder
+    {
+        public List<string> Endpoints { get; } = [];
+
+        public IZLinkClientServerChannelClientBuilder Connect(string endpoint)
+        {
+            Endpoints.Add(endpoint);
+            return this;
+        }
+    }
+
+    private sealed class ExampleClientServerChannelServerBuilder
+        : IZLinkClientServerChannelServerBuilder
+    {
+        public int Port { get; private set; }
+
+        public string? BindHost { get; private set; }
+
+        public string? AdvertiseHost { get; private set; }
+
+        public int Weight { get; private set; }
+
+        public List<string> HandlerGroups { get; } = [];
+
+        public List<string> Handlers { get; } = [];
+
+        public IZLinkClientServerChannelServerBuilder Listen(int port = 0)
+        {
+            Port = port;
+            return this;
+        }
+
+        public IZLinkClientServerChannelServerBuilder SetBindHost(string bindHost)
+        {
+            BindHost = bindHost;
+            return this;
+        }
+
+        public IZLinkClientServerChannelServerBuilder SetAdvertiseHost(string advertiseHost)
+        {
+            AdvertiseHost = advertiseHost;
+            return this;
+        }
+
+        public IZLinkClientServerChannelServerBuilder SetWeight(int weight)
+        {
+            Weight = weight;
+            return this;
+        }
+
+        public IZLinkClientServerChannelServerBuilder AddHandlerGroup(string groupName)
+        {
+            HandlerGroups.Add(groupName);
+            return this;
+        }
+
+        public IZLinkClientServerChannelServerBuilder AddSendHandler<THandler, TMessage>(
+            string? packetName = null)
+            where THandler : class, IZLinkSendHandler<TMessage>
+        {
+            Handlers.Add($"{packetName ?? "(default)"} -> {typeof(THandler).Name}");
+            return this;
+        }
+
+        public IZLinkClientServerChannelServerBuilder AddRequestHandler<THandler, TRequest, TReply>(
+            string? packetName = null)
+            where THandler : class, IZLinkRequestHandler<TRequest, TReply>
+        {
+            Handlers.Add($"{packetName ?? "(default)"} -> {typeof(THandler).Name}");
+            return this;
+        }
+    }
+
+    private sealed class ExampleMeshObjectRoleBuilder : IZLinkMeshObjectRoleBuilder
+    {
+        public ZLinkMeshNodeObjectRole Role { get; private set; } = ZLinkMeshNodeObjectRole.None;
+
+        public ExampleMeshObjectClientBuilder ClientBuilder { get; } = new();
+
+        public ExampleMeshObjectServerBuilder ServerBuilder { get; } = new();
+
+        public IZLinkMeshObjectClientBuilder Client()
+        {
+            Role = ZLinkMeshNodeObjectRole.Client;
+            return ClientBuilder;
+        }
+
+        public IZLinkMeshObjectServerBuilder Server()
+        {
+            Role = ZLinkMeshNodeObjectRole.Server;
+            return ServerBuilder;
+        }
+    }
+
+    private sealed class ExampleMeshObjectClientBuilder : IZLinkMeshObjectClientBuilder;
+
+    private sealed class ExampleMeshObjectServerBuilder : IZLinkMeshObjectServerBuilder
+    {
+        public List<string> EntrySpots { get; } = [];
+
+        public List<string> SpotTypes { get; } = [];
+
+        public List<string> InstanceSpotTypes { get; } = [];
+
+        public List<string> ActorTypes { get; } = [];
+
+        public ZLinkUserSpotFactoryOptions? SpotOptions { get; private set; }
+
+        public ZLinkObjectPlacementOptions? InstanceSpotPlacement { get; private set; }
+
+        public ZLinkObjectPlacementOptions? ActorPlacement { get; private set; }
+
+        public IZLinkMeshObjectServerBuilder AddEntrySpot<TEntrySpot>()
+            where TEntrySpot : class, IZLinkEntrySpot
+        {
+            EntrySpots.Add(typeof(TEntrySpot).Name);
+            return this;
+        }
+
+        public IZLinkMeshObjectServerBuilder AddSpotFactory<TSpot>(
+            string spotType,
+            ZLinkUserSpotFactoryOptions? options,
+            ZLinkRelocationPolicy<TSpot> relocation)
+            where TSpot : class, IZLinkSpot
+        {
+            SpotTypes.Add(spotType);
+            SpotOptions = options;
+            return this;
+        }
+
+        public IZLinkMeshObjectServerBuilder AddInstanceSpotFactory<TSpot>(
+            string instanceSpotType,
+            ZLinkObjectPlacementOptions? placement,
+            ZLinkRelocationPolicy<TSpot> relocation)
+            where TSpot : class, IZLinkInstanceSpot
+        {
+            InstanceSpotTypes.Add(instanceSpotType);
+            InstanceSpotPlacement = placement;
+            return this;
+        }
+
+        public IZLinkMeshObjectServerBuilder AddActorFactory<TActor, TFactory>(
+            string actorType,
+            ZLinkObjectPlacementOptions? placement,
+            ZLinkRelocationPolicy<TActor> relocation)
+            where TActor : class, IZLinkActor
+            where TFactory : class, IZLinkActorFactory<TActor>
+        {
+            ActorTypes.Add(actorType);
+            ActorPlacement = placement;
+            return this;
+        }
+    }
+
+    private sealed class LobbyEntrySpot : IZLinkEntrySpot
+    {
+        public IZLinkEntrySpotContext Context => null!;
+    }
+
+    private sealed class BattleRoomSpot : IZLinkSpot
+    {
+        public IZLinkSpotContext Context => null!;
+    }
+
+    private sealed class LeaderboardSpot : IZLinkInstanceSpot
+    {
+        public IZLinkInstanceSpotContext Context => null!;
+    }
+
+    private sealed class PlayerActor : IZLinkActor
+    {
+        public string ActorId => "player-8821";
+
+        public IZLinkActorContext Context => null!;
+    }
+
+    private sealed class PlayerActorFactory : IZLinkActorFactory<PlayerActor>
+    {
+        public ValueTask<PlayerActor> CreateAsync(
+            string actorId,
+            IZLinkActorContext context,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(new PlayerActor());
+    }
+
+    private sealed class PlayerRelocationAdapter : IZLinkActorRelocationAdapter<PlayerActor>
+    {
+        public ValueTask<byte[]> CaptureAsync(
+            PlayerActor actor,
+            CancellationToken cancellationToken) => ValueTask.FromResult(Array.Empty<byte>());
+
+        public ValueTask RestoreAsync(
+            PlayerActor actor,
+            ReadOnlyMemory<byte> payload,
+            CancellationToken cancellationToken) => ValueTask.CompletedTask;
+    }
+}

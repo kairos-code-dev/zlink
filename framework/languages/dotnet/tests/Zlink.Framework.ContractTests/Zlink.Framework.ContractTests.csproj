@@ -41,16 +41,21 @@
     <ItemGroup>
         <Compile Include="AssemblyInfo.cs"/>
         <Compile Include="Actors/ActorContracts.cs"/>
+        <Compile Include="Actors/ActorFactoryContracts.cs"/>
         <Compile Include="Channels/ChannelContracts.cs"/>
         <Compile Include="Codecs/CodecContracts.cs"/>
         <Compile Include="Configuration/BuilderContracts.cs"/>
         <Compile Include="Configuration/ConnectionAndConfigContracts.cs"/>
+        <Compile Include="Configuration/FrameworkRuntimeContracts.cs"/>
+        <Compile Include="Configuration/ObjectAndChannelRoleBuilderContracts.cs"/>
         <Compile Include="Configuration/RouteMeshRuntimeContracts.cs"/>
         <Compile Include="Coverage/ContractSurfaceCoverage.cs"/>
+        <Compile Include="Locations/AuthorityStoreContracts.cs"/>
         <Compile Include="Locations/LocationContracts.cs"/>
         <Compile Include="Handlers/HandlerContracts.cs"/>
         <Compile Include="Eventing/EventingContracts.cs"/>
         <Compile Include="Errors/ErrorContracts.cs"/>
+        <Compile Include="Spots/InstanceSpotContracts.cs"/>
         <Compile Include="Spots/SpotContracts.cs"/>
         <Compile Include="Streams/StreamContracts.cs"/>
         <Compile Include="Support/ContractExampleAttribute.cs"/>

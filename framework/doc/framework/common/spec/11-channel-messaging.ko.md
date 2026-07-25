@@ -105,7 +105,7 @@ timeout으로 끝난다. Framework는 같은 MeshName의 다른 RID로 자동 �
 1. 현재 process에서 ChannelName에 등록된 송신 경로 하나를 찾는다.
 2. RouteMesh 경로이면 같은 ChannelName의 Server membership만 후보로 사용한다.
 3. ClientServer 경로이면 해당 ChannelName의 ready server만 후보로 사용한다.
-4. Weight가 0인 target과 [drain 중인 target](01-glossary.ko.md#drain)을 제외한다.
+4. Weight가 0인 target과 [drain 중인 target](01-glossary.ko.md#drain과-draining)을 제외한다.
 5. [Weight](01-glossary.ko.md#weight) 비율을 반영하여 weight가 0보다 큰 ready target 중 하나를 고르고 즉시
    message를 submit한다.
 
@@ -313,7 +313,7 @@ Framework의 내부 신호와 application event를 구분하기 위한 제한이
 Subscriber는 이 topic의 신호를 application event로 처리하지 않는다. Framework가
 연결 상태를 확인하는 데만 사용하므로 등록된 fanout handler를 실행하지 않으며,
 application message의 전달 흐름을 기록하는 message-flow 관측에도 게시하지 않는다.
-이 [liveness beacon](01-glossary.ko.md#liveness-beacon)의 byte 형식과 연결이
+이 [liveness beacon](01-glossary.ko.md#liveness와-liveness-beacon)의 byte 형식과 연결이
 끊어졌다고 판단하는 시간 기준은
 [Transport liveness](55-transport-liveness.ko.md)가 정의한다.
 

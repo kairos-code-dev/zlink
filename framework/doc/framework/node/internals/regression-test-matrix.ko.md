@@ -344,8 +344,8 @@ dotnet 의 문서 회귀 테스트처럼, Node 에서도 구현 기준 문서가
 
 대상은 현재 실제로 존재하는 Node 공개 계약과 구현 기준 문서다.
 
-- `framework/spec/server/languages/node/README.ko.md`
-- `framework/spec/server/languages/node/interfaces/README.ko.md`와 그 범주별 interface 문서
+- `framework/common/spec/server/languages/node/README.ko.md`
+- `framework/common/spec/server/languages/node/interfaces/README.ko.md`와 그 범주별 interface 문서
 - `framework/node/README.ko.md`
 - `framework/node/internals/regression-test-matrix.ko.md`
 - `framework/node/internals/runtime-lifecycle.ko.md`

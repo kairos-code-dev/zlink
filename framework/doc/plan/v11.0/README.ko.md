@@ -1,18 +1,19 @@
 # RouteMesh 11.0 구현 기준과 migration crosswalk
 
 이 디렉터리는 RouteMesh 11.0 migration 대조 자료와 구현 진행 상태를 관리한다. Application이 관찰하는
-공개 계약은 [Framework 정식 spec](../../framework/spec/README.ko.md)이 소유하고, 네 언어 runtime이 지켜야 하는
+공개 계약은 [Framework 정식 spec](../../framework/common/spec/README.ko.md)이 소유하고, 네 언어 runtime이 지켜야 하는
 내부 불변 조건은 [Framework 공통 internals](../../framework/common/internals/README.ko.md)가 소유한다.
 
 ## 문서 구성
 
 | 문서 | 역할 |
 |---|---|
-| [Framework 정식 spec](../../framework/spec/README.ko.md) | Service 공개 동작과 package별 계약의 단일 기준 |
+| [Framework 정식 spec](../../framework/common/spec/README.ko.md) | Service 공개 동작과 package별 계약의 단일 기준 |
 | [Framework 공통 internals](../../framework/common/internals/README.ko.md) | Protocol, queue, ownership, fencing, recovery와 resource 불변 조건의 단일 기준 |
 | [Core service migration inventory](../../contract-inventory/route-mesh-v11-core-service-migration-inventory.json) | Core 10 service 공개 의미와 구현 입력을 정식 Framework spec·internals owner에 연결하는 machine-readable 대조 자료 |
-| [다섯 언어 exact interface](../../framework/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js public signature의 정식 계약. 각 언어의 `interfaces/`가 정확한 선언을 소유한다. |
+| [다섯 언어 exact interface](../../framework/common/spec/server/languages/README.ko.md) | C++·.NET·Java·Kotlin·Node.js public signature의 정식 계약. 각 언어의 `interfaces/`가 정확한 선언을 소유한다. |
 | [통합 execution ledger](route-mesh-11.0.0-execution-ledger.ko.md) | 선행 조건, 병렬 lane, 상태, 구현 차이와 완료 증거의 단일 기준 |
+| [blocked issue log](blocked-issue-log.md) | 자율 실행 중 발생한 blocker의 원인, 수정 내용과 재검증 결과 기록. 진행 상태는 소유하지 않는다 |
 
 정식 spec과 정식 internals가 현재 계약과 runtime 구조를 소유한다. Core 10 migration의 no-loss 대조와 분류는
 machine inventory가 소유하고, 현재 구현과의 차이, review finding, test 결과와 package 증거는 execution ledger에
@@ -39,7 +40,7 @@ machine inventory가 소유하고, 현재 구현과의 차이, review finding, t
    같은 계약 snapshot에서 병렬 구현한다. Java와 Kotlin은 JVM runtime과 build 파일을 공유한다. 이 구간은
    internal unit·contract·resource·protocol regression만 실행한다.
 9. 네 runtime과 production placeholder 제거가 끝나면 공통 E2E와 sample spec을 최종 확정한다.
-   Codex 5.6 sol `high`와 Claude Sonnet이 같은 candidate를 독립 review하고 assertion·coverage·다섯 언어 parity를 승인한
+   Codex `gpt-5.6-sol medium` 단독 reviewer가 candidate를 독립 review하고 assertion·coverage·다섯 언어 parity를 승인한
    뒤에만 E2E source와 registration을 변경한다.
 10. E2E는 topology, stateful object, maintenance, race·`4 x 4` 순서로 활성화하고 전체 E2E 통과 뒤 sample을
    실행한다.

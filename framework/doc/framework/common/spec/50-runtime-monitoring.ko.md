@@ -133,7 +133,7 @@ socket을 사용한다.
 
 `Ready=true`와 `ReadyConnectionCount`는 socket 연결이 준비되고, 같은 socket에서
 정상 application fanout record나 Framework의 연결 확인 신호인
-[liveness beacon](01-glossary.ko.md#liveness-beacon)을 하나 이상 받은 뒤에만
+[liveness beacon](01-glossary.ko.md#liveness와-liveness-beacon)을 하나 이상 받은 뒤에만
 반영한다. 실제 disconnect를 확인하거나 15초 동안 아무것도 받지 못하면
 `disconnected` publisher event를 기록한다. 연결 계획에 포함되었다는 사실이나
 `connect` 호출의 수락 결과 또는 내부 active target 목록만으로 ready라고 표시하지

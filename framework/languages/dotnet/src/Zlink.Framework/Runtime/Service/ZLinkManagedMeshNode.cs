@@ -2703,7 +2703,17 @@ internal sealed class ZLinkManagedMeshNode : IMeshNode
             .ToArray();
         try
         {
-            var header = ZLinkEnvelopeCodec.DecodeHeader(messages);
+            ZLinkEnvelopeHeader header;
+            try
+            {
+                header = ZLinkEnvelopeCodec.DecodeHeader(messages);
+            }
+            catch (ZLinkEnvelopeProtocolException)
+            {
+                // Raw terminal payloads carry no envelope header, so there is no
+                // correlation to rewrite. They travel unchanged.
+                return replyParts;
+            }
             using var encodedHeader = ZLinkEnvelopeCodec.EncodeHeader(
                 header with
                 {

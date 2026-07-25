@@ -2,8 +2,8 @@
 
 > **이 트리는 사용 안내만 갖는다. 계약은 여기 없다.**
 >
-> HTTP client의 공개 계약은 [`framework/spec/http-client/`](../framework/spec/http-client/README.ko.md)가
-> 소유한다 — framework-facing 계약([12](../framework/spec/http-client/12-http-client.ko.md)), 상세
+> HTTP client의 공개 계약은 [`framework/common/spec/http-client/`](../framework/common/spec/http-client/README.ko.md)가
+> 소유한다 — framework-facing 계약([12](../framework/common/spec/http-client/12-http-client.ko.md)), 상세
 > 계약(01~11), 언어별 public API(`languages/<lang>/`). **가이드와 계약이 어긋나면 계약이 이긴다.**
 
 ## 언어별 가이드

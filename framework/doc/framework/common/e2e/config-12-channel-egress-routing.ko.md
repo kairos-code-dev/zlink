@@ -6,10 +6,10 @@
 
 ChannelName 하나가 process 안의 정확한 RouteMesh 또는 ClientServer 송신 경로를 선택하는지 실제 다중
 process 배포에서 검증한다. 이 config는 새 공개 API의 근거가 아니다. 공개 계약은
-[Channel topology](../../spec/server/10-channel-topology.ko.md),
-[Channel messaging](../../spec/server/11-channel-messaging.ko.md),
-[ClientServer Channel](../../spec/server/12-client-server-channel.ko.md),
-[network listener identity](../../spec/server/13-network-listener-identity.ko.md)가 소유한다.
+[Channel topology](../spec/10-channel-topology.ko.md),
+[Channel messaging](../spec/11-channel-messaging.ko.md),
+[ClientServer Channel](../spec/12-client-server-channel.ko.md),
+[network listener identity](../spec/13-network-listener-identity.ko.md)가 소유한다.
 
 ## 1. 목적과 범위
 

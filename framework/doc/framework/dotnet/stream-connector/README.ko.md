@@ -6,8 +6,8 @@
 | 문서 | 내용 |
 |------|------|
 | [가이드 INDEX](INDEX.ko.md) | 개요, Unity, Godot C# |
-| [.NET 공개 계약](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | public 타입과 시그니처 |
-| [Stream Connector 공통 스펙](../../spec/stream-connector/32-stream-connector.ko.md) | **정본** — 대상 환경, transport, wire 계약 |
+| [.NET 공개 계약](../../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md) | public 타입과 시그니처 |
+| [Stream Connector 공통 스펙](../../common/spec/stream-connector/32-stream-connector.ko.md) | **정본** — 대상 환경, transport, wire 계약 |
 
 > **웹(브라우저·WASM) 빌드에는 이 connector를 쓸 수 없다.** Unity WebGL과 Godot Web은
 > [TypeScript connector](../../../stream-connector/typescript/README.ko.md)를 사용한다.

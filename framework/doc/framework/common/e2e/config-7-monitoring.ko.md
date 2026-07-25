@@ -6,18 +6,18 @@
 
 운영 중인 MeshNode의 peer·channel readiness, Logical Multicast backpressure·drop과 runtime health를
 공개 snapshot과 typed event로 관찰한다. 의미의 정본은
-[Runtime Monitoring](../../spec/server/50-runtime-monitoring.ko.md)이며, 이 문서는 새로운 monitoring
+[Runtime Monitoring](../spec/50-runtime-monitoring.ko.md)이며, 이 문서는 새로운 monitoring
 source나 event kind를 정의하지 않는다.
 
 언어별 E2E는 아래 exact interface가 정한 public runtime 표면만 사용한다.
 
 | 언어 | 정식 interface |
 |---|---|
-| C++ | [`route_mesh_runtime_t`](../../spec/server/languages/cpp/interfaces/08-monitoring.ko.md) |
-| .NET | [`IZLinkRouteMeshRuntime`](../../spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md) |
-| Java | [Java monitoring](../../spec/server/languages/java/interfaces/monitoring.ko.md) |
-| Kotlin | [Kotlin monitoring](../../spec/server/languages/kotlin/interfaces/monitoring.ko.md) |
-| Node.js | [`ZLinkRouteMeshRuntime`](../../spec/server/languages/node/interfaces/03-location-observability.ko.md) |
+| C++ | [`route_mesh_runtime_t`](../spec/server/languages/cpp/interfaces/08-monitoring.ko.md) |
+| .NET | [`IZLinkRouteMeshRuntime`](../spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md) |
+| Java | [Java monitoring](../spec/server/languages/java/interfaces/monitoring.ko.md) |
+| Kotlin | [Kotlin monitoring](../spec/server/languages/kotlin/interfaces/monitoring.ko.md) |
+| Node.js | [`ZLinkRouteMeshRuntime`](../spec/server/languages/node/interfaces/03-location-observability.ko.md) |
 
 ## 1. 목적과 범위
 
@@ -70,7 +70,7 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
   terminal result를 한 번 제공한다. 두 번째 MeshNode snapshot sequence는 같은 MeshName source의 첫 값보다
   크고, host sequence는 같은 host source 안에서만 비교한다. 반환된 snapshot은 후속 호출 뒤에도 바뀌지 않는
   immutable value다.
-- 세부 동작: [Runtime Monitoring §2](../../spec/server/50-runtime-monitoring.ko.md#2-snapshot)의 source별
+- 세부 동작: [Runtime Monitoring §2](../spec/50-runtime-monitoring.ko.md#2-snapshot)의 source별
   snapshot과 sequence 계약.
 
 #### MON-A2 peer admission과 ready 전이
@@ -124,7 +124,7 @@ snapshot field, event identifier와 operation result를 대신하지 않는다.
 - 검증: `zlink.runtime.location.store_changed` event와 snapshot의 location state, last success, last
   failure가 실제 장애·복구와 일치한다. Store 장애만으로 이미 admitted된 peer와 local queue의 메시지를
   즉시 중단하지 않으며, 복구 뒤 descriptor를 현재 owner token으로 재검증한다.
-- 세부 동작: [Location Runtime §8](../../spec/server/40-location-runtime.ko.md#8-store-outage와-cancellation)의
+- 세부 동작: [Location Runtime §8](../spec/40-location-runtime.ko.md#8-store-outage와-cancellation)의
   health projection.
 
 #### MON-A6 typed capacity snapshot과 projection lag
@@ -159,8 +159,8 @@ event를 만들지 않는가.
   `zlink.runtime.mesh_node.multicast_backpressured`, `zlink.runtime.mesh_node.multicast_dropped`와
   `zlink.mesh_node.multicast.*` metric은 발생하지 않는다. 앞에서 수락된 target의 payload는 취소되지 않고
   전체 publish를 rollback하거나 자동 재시도하지 않는다.
-- 세부 동작: [Spot Messaging §4.1](../../spec/server/20-spot-messaging.ko.md#41-publish-시작과-완료)과
-  [Runtime Monitoring §3](../../spec/server/50-runtime-monitoring.ko.md#3-event-identifiers)의
+- 세부 동작: [Spot Messaging §4.1](../spec/20-spot-messaging.ko.md#41-publish-시작과-완료)과
+  [Runtime Monitoring §3](../spec/50-runtime-monitoring.ko.md#3-event-identifiers)의
   publish 전용 monitoring 제거 계약.
 
 #### MON-B2 local target drop과 monitoring 부재
@@ -196,7 +196,7 @@ completion과 다른 observer가 진행되는가.
   backpressure·drop 누계 증가분을 잃지 않는다. Sequence gap을
   발견한 observer가 snapshot을 다시 읽으면 최신 peer·channel·multicast 상태와 일치한다.
 - 세부 동작: application·infrastructure claim 분리와
-  [Runtime Monitoring §4~5](../../spec/server/50-runtime-monitoring.ko.md#4-event-ordering과-coalescing)의
+  [Runtime Monitoring §4~5](../spec/50-runtime-monitoring.ko.md#4-event-ordering과-coalescing)의
   coalescing·observer 격리.
 
 ### Track D — validation과 반복 장애

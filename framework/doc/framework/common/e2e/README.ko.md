@@ -305,7 +305,7 @@ C++처럼 같은 config를 여러 start order로 반복하는 runner는 config �
 - `AddZLinkFramework` 설정과 Store 등록은 `*HostFactory.cs`에서 바로 보이게 작성한다.
   Location capability는 `AddLocationStore(instance)`, Relocation capability는
   `AddRelocationStore(instance)`로 각각 등록한다. Redis 전용 또는 두 capability를 묶는 등록 함수는
-  사용하지 않는다([05 §10](../../spec/05-framework-api.ko.md#10-location-store와-relocation-store)).
+  사용하지 않는다([05 §10](../spec/05-framework-api.ko.md#10-location-store와-relocation-store)).
   얇은 wrapper/extension 메서드 뒤에 framework 설정을 숨기지 않는다.
 - `Server/Driver`, `Server/TestRunner`, `Server/ScenarioRunner` 같은 별도 실행 프로젝트는 만들지
   않는다. 폴더 이름이 다르더라도 시나리오 실행만 위임받는 server는 같은 금지 대상이다. 테스트
@@ -602,7 +602,7 @@ e2e가 있었지만 그 구성 조합을 아무도 돌리지 않았던" 경로�
 모든 e2e는 **파일 로깅과 메시지 흐름 추적을 반드시 켜고** 작성·디버깅한다. ad-hoc `printf`나
 콘솔 스크롤로 때우지 않는다. 트레이싱은 "메시지가 도착했나 / 핸들러로 갔나 / 응답이 나갔나"를
 표준 기능으로 찍어 주므로, 테스트를 만들면서 1차 디버깅 도구로 쓴다.
-(기능 스펙: [메시지 흐름 추적과 dispatch 관측](../../spec/server/52-message-flow-tracing.ko.md))
+(기능 스펙: [메시지 흐름 추적과 dispatch 관측](../spec/52-message-flow-tracing.ko.md))
 
 ### 6.1 모든 로그를 파일로 (`log/` 폴더)
 

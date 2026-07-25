@@ -4,9 +4,9 @@
 `framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md`가 소유한다.
 
 [내부 구조 목차](README.ko.md) · [Service wire protocol](service-wire-protocol.ko.md) ·
-[Location runtime](../../spec/server/40-location-runtime.ko.md) ·
-[Redis Relocation Store](../../spec/server/42-relocation-store-redis.ko.md) ·
-[Host 종료 계약](../../spec/server/54-graceful-drain-handoff.ko.md)
+[Location runtime](../spec/40-location-runtime.ko.md) ·
+[Redis Relocation Store](../spec/42-relocation-store-redis.ko.md) ·
+[Host 종료 계약](../spec/54-graceful-drain-handoff.ko.md)
 
 ## 1. 목적과 책임 경계
 

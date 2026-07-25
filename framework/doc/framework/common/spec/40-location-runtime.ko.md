@@ -31,7 +31,7 @@ Relocation Store는 실제로 옮겨야 하는 application state와 아직 실�
 root로 저장한다. 두 Store 모두 Actor용과 Spot용으로 나눈 별도 interface를 제공하지
 않고 공통 operation을 사용한다.
 
-[Object Server](01-glossary.ko.md#object-role) factory에 `Recreate` 또는 `Snapshot` policy를 하나라도 등록했거나
+[Object Server](01-glossary.ko.md#object-client와-object-server-role) factory에 `Recreate` 또는 `Snapshot` policy를 하나라도 등록했거나
 Instance Spot [factory](01-glossary.ko.md#factory)를 하나라도 등록한 Framework root는 Relocation Store를 정확히
 하나 등록해야 한다. 누락되거나 둘 이상이면 socket bind 전에 startup configuration
 error다. [Instance Spot](01-glossary.ko.md#entry-spot-user-spot과-instance-spot) factory가 없고 모든 factory가 `Disabled`일 때만 Relocation
@@ -108,7 +108,7 @@ kind를 closed union으로 구분한다. MeshName은 identity key가 아니라 c
 opaque payload와 다음 provider metadata를 포함한다.
 
 - StoreVersion, ObjectGeneration과 AuthorityOwnerGeneration
-- current OwnerId와 [OwnerLeaseGeneration](01-glossary.ko.md#owner-lease-generation)
+- current OwnerId와 [OwnerLeaseGeneration](01-glossary.ko.md#ownerleasegeneration)
 - provider capacity state `Reserved` 또는 `Active`, object kind·stable type, current descriptor key·lifecycle
   generation과 typed capacity bundle로 구성한 current placement allocation
 - StoreNow
@@ -149,7 +149,7 @@ format이나 version을 포함하지 않는다.
 Descriptor가 connection intent를 만들 수는 있지만 [ready](01-glossary.ko.md#ready)를 증명하지 않는다. RouteMesh와 ClientServer는 current
 physical connection의 service admission을 통과해야 한다. Fanout subscriber는 publisher별 전용 SUB socket에서 첫
 정상 application record 또는 형식이 올바른
-[liveness beacon](01-glossary.ko.md#liveness-beacon)을 받은 뒤 ready다.
+[liveness beacon](01-glossary.ko.md#liveness와-liveness-beacon)을 받은 뒤 ready다.
 
 Object Server descriptor는 `Server` role, node-wide placement weight, node별 Actor·Spot count와 limit,
 Spot stable type별 capability를 포함한다. [Weight](01-glossary.ko.md#weight)는 0..10000이고 기본값은 100이다.

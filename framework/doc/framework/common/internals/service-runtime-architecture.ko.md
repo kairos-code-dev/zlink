@@ -1,7 +1,7 @@
 # Service runtime architecture
 
-[내부 구조 목차](README.ko.md) · [Framework 개요](../../spec/01-overview.ko.md) ·
-[비동기 실행 계약](../../spec/04-async-execution-policy.ko.md)
+[내부 구조 목차](README.ko.md) · [Framework 개요](../spec/01-overview.ko.md) ·
+[비동기 실행 계약](../spec/04-async-execution-policy.ko.md)
 
 이 문서는 RouteMesh 11.0 목표 구조를 설명한다. 현재 구현과의 차이와 완료 상태는
 `framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md`가 소유한다.

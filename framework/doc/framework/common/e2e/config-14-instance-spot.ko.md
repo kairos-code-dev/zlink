@@ -15,11 +15,11 @@ message부터 Instance Spot queue에서 순서대로 처리해야 한다.
 제공하지 않는다. Core와 bindings는 raw socket transport만 제공하며 Instance
 activation, owner claim, barrier와 queue를 해석하지 않는다.
 
-공개 계약은 [비동기 실행 정책](../../spec/04-async-execution-policy.ko.md),
-[Spot 메시징](../../spec/server/20-spot-messaging.ko.md),
-[Spot 주소 메시징](../../spec/server/24-spot-address-messaging.ko.md),
-[Location runtime](../../spec/server/40-location-runtime.ko.md)과
-[Redis location store](../../spec/server/41-location-store-redis.ko.md)가 소유한다.
+공개 계약은 [비동기 실행 정책](../spec/04-async-execution-policy.ko.md),
+[Spot 메시징](../spec/20-spot-messaging.ko.md),
+[Spot 주소 메시징](../spec/24-spot-address-messaging.ko.md),
+[Location runtime](../spec/40-location-runtime.ko.md)과
+[Redis location store](../spec/41-location-store-redis.ko.md)가 소유한다.
 
 ## 1. 검증 범위
 

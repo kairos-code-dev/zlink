@@ -2,7 +2,7 @@
 [문서 목록](../../../README.ko.md) | [다음: Backend Dependency Policy](backend-dependency-policy.ko.md)
 <!-- framework-adapter-nav:end -->
 
-[C++ 묶음](../README.ko.md) | [공개 인터페이스](../../spec/server/languages/cpp/interfaces/README.ko.md)
+[C++ 묶음](../README.ko.md) | [공개 인터페이스](../../common/spec/server/languages/cpp/interfaces/README.ko.md)
 
 # ZLink Framework C++ Runtime Architecture
 

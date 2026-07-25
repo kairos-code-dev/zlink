@@ -3,7 +3,7 @@
 <!-- framework-adapter-nav:end -->
 
 [.NET 묶음](../README.ko.md) | [Backend Policy](backend-dependency-policy.ko.md) |
-[공개 lifecycle 계약](../../spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md)
+[공개 lifecycle 계약](../../common/spec/server/languages/dotnet/interfaces/10-topology-monitoring.ko.md)
 
 # ZLink Framework .NET Runtime Lifecycle
 

@@ -1522,7 +1522,8 @@ int main ()
 
     /* TH-CP-01 — the C++ connector helper surface has a language contract. */
     const auto connector_contract_path =
-      root / "../../doc/framework/spec/stream-connector/languages/cpp/03-stream-connector.ko.md";
+      root
+      / "../../doc/framework/common/spec/stream-connector/languages/cpp/03-stream-connector.ko.md";
     const auto connector_contract = std::filesystem::exists (connector_contract_path)
                                       ? read_file (connector_contract_path)
                                       : std::string{};

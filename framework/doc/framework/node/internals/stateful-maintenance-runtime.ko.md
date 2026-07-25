@@ -1,8 +1,8 @@
 # Node.js stateful maintenance runtime
 
 [Node.js 문서](../README.ko.md) · [Runtime lifecycle](runtime-lifecycle.ko.md) ·
-[Location Runtime 계약](../../spec/server/40-location-runtime.ko.md) ·
-[Host 종료 계약](../../spec/server/54-graceful-drain-handoff.ko.md)
+[Location Runtime 계약](../../common/spec/40-location-runtime.ko.md) ·
+[Host 종료 계약](../../common/spec/54-graceful-drain-handoff.ko.md)
 
 ## 1. 목적
 

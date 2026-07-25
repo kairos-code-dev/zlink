@@ -1650,7 +1650,7 @@ Framework가 lifecycle마다 새 값을 만들고 manual topology에서는 명�
 | 수명 | MeshNode lifecycle 동안 바뀌지 않는다. Replacement lifecycle은 endpoint가 같아도 새 Automatic RID를 사용한다. |
 
 Transport RID와 Spot ID의 발급 형식과 namespace 경계는
-[시스템 전체 Routing ID 정책](13-network-listener-identity.ko.md#7-시스템-전체-routing-id-정책)을 따른다.
+[시스템 전체 Routing ID 정책](13-network-listener-identity.ko.md#7-시스템-전체-transport-rid와-spot-id-정책)을 따른다.
 
 <a id="routing-id-prefix"></a>
 ### Routing ID prefix

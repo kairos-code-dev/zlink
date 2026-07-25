@@ -200,7 +200,7 @@ RID, binding generation(같은 session [owner](01-glossary.ko.md#owner) process 
 authority fence와 command 24·36·38의 codec을 노출하지 않는다. Session을 닫을 때는
 current [binding generation](01-glossary.ko.md#binding-generation)의 tombstone을 제출하므로
 이전 bind에서 늦게 도착한 close가 새 binding을 해제하지 못한다. Command별 정확한
-전달 계약은 [Session–Actor dispatch §4](31-session-actor-dispatch.ko.md#4-binding-authority)가
+전달 계약은 [Session–Actor dispatch §4](31-session-actor-dispatch.ko.md#4-session이-actor-route를-보관하는-방법)가
 정의한다.
 
 Physical disconnect 때 Framework는 current binding snapshot의 모든 Actor에 저장 route로 자동 통지한다.

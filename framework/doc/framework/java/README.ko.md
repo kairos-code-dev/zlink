@@ -2,12 +2,12 @@
 
 > 이 묶음은 `Java`, `Kotlin`, `Spring Boot`용 ZLink Framework 문서다. 이
 > 디렉토리에는 `internals/`의 구현·검증 기준을 두고,
-> 공개 계약은 [중앙 Java spec](../spec/server/languages/java/README.ko.md)에 둔다. 공통 의미는
+> 공개 계약은 [중앙 Java spec](../common/spec/server/languages/java/README.ko.md)에 둔다. 공통 의미는
 > [공통 스펙](../common/README.ko.md)을 따르며, 여기서는 그 의미를
 > Java/Kotlin 표면으로 구체화한다.
 
 비동기 실행, `CompletionStage`, Kotlin coroutine wrapper의 공통 의미는
-[비동기 실행과 coroutine 정책](../spec/04-async-execution-policy.ko.md)을 따른다.
+[비동기 실행과 coroutine 정책](../common/spec/04-async-execution-policy.ko.md)을 따른다.
 
 Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationProperties` binding 기준은
 [Sample/E2E 설정 정책](../common/sample-e2e-configuration-policy.ko.md)을 따른다.
@@ -15,7 +15,7 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationPropertie
 > **Kotlin 사용자**는 [Kotlin 전용 guide](../kotlin/README.ko.md)를 본다.
 > `zlink-framework-kotlin`은 이 런타임을 공유하는 얇은 coroutine idiom 레이어다.
 > Java에서 그대로 사용하는 계약은 Java spec을 따르고, Kotlin 전용 `suspend`/`Flow`
-> 계약은 [Kotlin spec](../spec/server/languages/kotlin/README.ko.md)에 따로 고정한다.
+> 계약은 [Kotlin spec](../common/spec/server/languages/kotlin/README.ko.md)에 따로 고정한다.
 > Java 사용 guide는 11.0 public interface와 sample이 확정된 뒤 이 위치에 다시 작성한다.
 
 ## 2. 공개 계약 spec
@@ -26,11 +26,11 @@ Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationPropertie
 
 | 문서 | 범위 |
 |------|------|
-| [spec 목차](../spec/server/languages/java/README.ko.md) | Java/Kotlin 공개 계약 문서 목록 |
-| [Java interfaces](../spec/server/languages/java/interfaces/README.ko.md) | 기능별 exact public signature와 Spring host lifecycle |
-| [stream-connector](../spec/stream-connector/languages/java/03-stream-connector.ko.md) | client connector |
+| [spec 목차](../common/spec/server/languages/java/README.ko.md) | Java/Kotlin 공개 계약 문서 목록 |
+| [Java interfaces](../common/spec/server/languages/java/interfaces/README.ko.md) | 기능별 exact public signature와 Spring host lifecycle |
+| [stream-connector](../common/spec/stream-connector/languages/java/03-stream-connector.ko.md) | client connector |
 
-**기능의 의미와 동작 규칙은 [공통 스펙](../spec/README.ko.md)이 소유한다.** 언어별 문서는
+**기능의 의미와 동작 규칙은 [공통 스펙](../common/spec/README.ko.md)이 소유한다.** 언어별 문서는
 그 의미가 Java/Kotlin에서 어떤 모양인지만 고정한다.
 
 ## 3. 내부 기준

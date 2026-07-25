@@ -3,7 +3,7 @@
 <!-- framework-adapter-nav:end -->
 
 [.NET 묶음](../README.ko.md) |
-[Session Actor Dispatch 계약](../../spec/server/languages/dotnet/interfaces/07-stream-session.ko.md)
+[Session Actor Dispatch 계약](../../common/spec/server/languages/dotnet/interfaces/07-stream-session.ko.md)
 
 # ZLink Framework .NET Runtime Execution
 

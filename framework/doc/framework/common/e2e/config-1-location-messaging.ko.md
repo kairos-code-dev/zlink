@@ -28,7 +28,7 @@ contract를 직접 호출하고 `ensure`로 단언해서, 실제 사용 흐름�
   admission·ready member 상태를 확인하고, 실제 messaging과 각 역할 server의 evidence를 함께 단언한다.
 
 location row 모델, owner lease, freshness 같은 계약 상세는 이 문서에서 반복하지 않는다.
-[location runtime spec](../../spec/server/40-location-runtime.ko.md)을 기준으로 한다.
+[location runtime spec](../spec/40-location-runtime.ko.md)을 기준으로 한다.
 
 여기서 다루지 않는 것(다른 config로): codec, stream, spot/actor, resilience 세부, store
 장애/복구(Config 6). 이 config는 messaging + 연결/resolve에만 집중한다.

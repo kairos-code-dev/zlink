@@ -181,7 +181,7 @@ authority의 availability와 Relocation payload의 availability는 독립적이�
 - Cross-node Actor Join의 `Accepted` manifest가 public completion `OperationId`,
   optional reply와 retry cursor를 서로 다른 field로 보존한다.
 - Public completion
-  [Actor Join `OperationId`](01-glossary.ko.md#actor-join-operation-id)가
+  [Actor Join `OperationId`](01-glossary.ko.md#actor-join-operationid)가
   `RelocationId`, reservation ID나 aggregate
   commit ID를 재사용하지 않는다.
 - Same-node Join, `Rejected`와 commit 전 `Failed`를 process 재시작 뒤 replay하기

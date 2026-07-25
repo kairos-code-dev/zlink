@@ -281,7 +281,7 @@ SupportChat은 typed handler와 domain event publisher를 함께 사용한다.
 **SupportChat은 자동 등록 샘플이다.** 위 handler들은 typed 계약과 선언형 metadata로 선언하고,
 서버는 스캔으로 자동 등록한다. 구성 코드에 handler 목록을 다시 나열하지 않는다. **C++만 예외**로
 runtime 스캔이 없어 compile-time 명시 등록을 쓴다
-([05 §8](../../../spec/05-framework-api.ko.md#8-handler-등록과-dispatch)).
+([05 §8](../../spec/05-framework-api.ko.md#8-handler-등록과-dispatch)).
 수동 등록을 시연하는 샘플은 TicTacToe 하나뿐이다([샘플 규약](../README.ko.md)).
 
 notification은 handler 안에서 직접 여러 client에게 보내지 않고 domain event publisher 경로로

@@ -2650,7 +2650,7 @@
       "packageGate": "V11-M9-PKG-CPP",
       "baselineDocuments": [
         {
-          "path": "framework/doc/framework/spec/server/languages/cpp/01-system-structure.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/cpp/01-system-structure.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2663,7 +2663,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/cpp/02-framework-interfaces.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/cpp/02-framework-interfaces.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2676,7 +2676,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/cpp/03-location-store.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/cpp/03-location-store.ko.md",
           "categoryIds": [
             "topology-discovery",
             "spot-instance",
@@ -2685,21 +2685,21 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/cpp/60-http-hosting.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/cpp/60-http-hosting.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "messaging-execution"
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/cpp/61-embedded-http-server.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/cpp/61-embedded-http-server.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "messaging-execution"
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/cpp/README.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/cpp/README.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2744,7 +2744,7 @@
       "packageGate": "V11-M9-PKG-DN",
       "baselineDocuments": [
         {
-          "path": "framework/doc/framework/spec/server/languages/dotnet/01-system-structure.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/dotnet/01-system-structure.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2757,7 +2757,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/dotnet/02-handler-interfaces.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/dotnet/02-handler-interfaces.ko.md",
           "categoryIds": [
             "messaging-execution",
             "spot-instance",
@@ -2767,14 +2767,14 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/dotnet/04-routing-id-allocation.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/dotnet/04-routing-id-allocation.ko.md",
           "categoryIds": [
             "topology-discovery",
             "location-authority"
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/dotnet/05-route-mesh.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/dotnet/05-route-mesh.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2787,7 +2787,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/dotnet/06-location-store.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/dotnet/06-location-store.ko.md",
           "categoryIds": [
             "topology-discovery",
             "spot-instance",
@@ -2796,7 +2796,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/dotnet/README.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/dotnet/README.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2841,7 +2841,7 @@
       "packageGate": "V11-M9-PKG-JVM",
       "baselineDocuments": [
         {
-          "path": "framework/doc/framework/spec/server/languages/java/01-system-structure.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/java/01-system-structure.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2854,7 +2854,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/java/02-handler-interfaces.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2866,7 +2866,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/java/03-location-store.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/java/03-location-store.ko.md",
           "categoryIds": [
             "topology-discovery",
             "spot-instance",
@@ -2875,14 +2875,14 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/java/04-routing-id-allocation.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/java/04-routing-id-allocation.ko.md",
           "categoryIds": [
             "topology-discovery",
             "location-authority"
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/java/README.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/java/README.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2929,7 +2929,7 @@
       "packageGate": "V11-M9-PKG-JVM",
       "baselineDocuments": [
         {
-          "path": "framework/doc/framework/spec/server/languages/kotlin/02-handler-interfaces.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/kotlin/02-handler-interfaces.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2941,7 +2941,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/kotlin/03-location-store.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/kotlin/03-location-store.ko.md",
           "categoryIds": [
             "topology-discovery",
             "spot-instance",
@@ -2950,7 +2950,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/kotlin/README.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/kotlin/README.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -2993,7 +2993,7 @@
       "packageGate": "V11-M9-PKG-NODE",
       "baselineDocuments": [
         {
-          "path": "framework/doc/framework/spec/server/languages/node/01-system-structure.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/node/01-system-structure.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -3006,7 +3006,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/node/02-handler-interfaces.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/node/02-handler-interfaces.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",
@@ -3018,14 +3018,14 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/node/03-routing-id-allocation.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/node/03-routing-id-allocation.ko.md",
           "categoryIds": [
             "topology-discovery",
             "location-authority"
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/node/04-location-store.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/node/04-location-store.ko.md",
           "categoryIds": [
             "topology-discovery",
             "spot-instance",
@@ -3034,7 +3034,7 @@
           ]
         },
         {
-          "path": "framework/doc/framework/spec/server/languages/node/README.ko.md",
+          "path": "framework/doc/framework/common/spec/server/languages/node/README.ko.md",
           "categoryIds": [
             "host-lifecycle",
             "topology-discovery",

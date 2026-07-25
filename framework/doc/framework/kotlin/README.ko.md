@@ -3,14 +3,14 @@
 > 이 묶음은 `Kotlin`(Spring Boot) 사용자를 위한 ZLink Framework 문서다.
 > `zlink-framework-kotlin`은 Java `zlink-framework` 런타임을 그대로 재사용하는
 > 얇은 coroutine idiom 레이어다. Java 표면은
-> [Java spec](../spec/server/languages/java/README.ko.md)을 따르고, Kotlin 전용
-> 공개 계약은 [Kotlin spec](../spec/server/languages/kotlin/README.ko.md)에 고정한다.
+> [Java spec](../common/spec/server/languages/java/README.ko.md)을 따르고, Kotlin 전용
+> 공개 계약은 [Kotlin spec](../common/spec/server/languages/kotlin/README.ko.md)에 고정한다.
 > 내부 기준은 [Java/Kotlin 문서](../java/README.ko.md)를 공유한다. Kotlin 사용 guide는 11.0 public
 > interface와 sample이 확정된 뒤 Kotlin 전용으로 다시 작성한다. 공통 의미는
 > [공통 스펙](../common/README.ko.md)을 따른다.
 
 비동기 실행, `CompletionStage`, Kotlin coroutine wrapper의 공통 의미는
-[비동기 실행과 coroutine 정책](../spec/04-async-execution-policy.ko.md)을 따른다.
+[비동기 실행과 coroutine 정책](../common/spec/04-async-execution-policy.ko.md)을 따른다.
 
 Sample과 E2E의 설정 파일, 환경 변수 금지와 `@ConfigurationProperties` binding 기준은
 [Sample/E2E 설정 정책](../common/sample-e2e-configuration-policy.ko.md)을 따른다.
@@ -40,17 +40,17 @@ Java 타입은 Java spec을 따르고, Kotlin에서 새로 노출하는 `suspend
 
 | 문서 | 범위 |
 |------|------|
-| [Kotlin spec 목차](../spec/server/languages/kotlin/README.ko.md) | Kotlin 전용 공개 계약 문서 목록 |
-| [Kotlin interfaces](../spec/server/languages/kotlin/interfaces/README.ko.md) | coroutine·DSL exact public signature |
-| [Java spec 목차](../spec/server/languages/java/README.ko.md) | Kotlin이 그대로 사용하는 Java 공개 계약 |
-| [Java interfaces](../spec/server/languages/java/interfaces/README.ko.md) | Kotlin이 재사용하는 Java 정본 type과 builder |
-| [Channel messaging](../spec/server/languages/java/interfaces/channel-messaging.ko.md) | channel 등록, outbound client와 dispatch |
-| [Spot](../spec/server/languages/java/interfaces/spots.ko.md) | Spot lifecycle와 factory |
-| [Actor](../spec/server/languages/java/interfaces/actors.ko.md) | actor factory, relocation adapter와 bound session |
-| [STREAM](../spec/server/languages/java/interfaces/stream-session.ko.md) | stream node와 header session |
-| [stream-connector](../spec/stream-connector/languages/java/03-stream-connector.ko.md) | Java/Kotlin Stream Connector |
-| [Location과 maintenance](../spec/server/languages/java/interfaces/location-maintenance.ko.md) | discovery, authority와 relocation |
-| [Monitoring](../spec/server/languages/java/interfaces/monitoring.ko.md) | runtime event와 typed handler |
+| [Kotlin spec 목차](../common/spec/server/languages/kotlin/README.ko.md) | Kotlin 전용 공개 계약 문서 목록 |
+| [Kotlin interfaces](../common/spec/server/languages/kotlin/interfaces/README.ko.md) | coroutine·DSL exact public signature |
+| [Java spec 목차](../common/spec/server/languages/java/README.ko.md) | Kotlin이 그대로 사용하는 Java 공개 계약 |
+| [Java interfaces](../common/spec/server/languages/java/interfaces/README.ko.md) | Kotlin이 재사용하는 Java 정본 type과 builder |
+| [Channel messaging](../common/spec/server/languages/java/interfaces/channel-messaging.ko.md) | channel 등록, outbound client와 dispatch |
+| [Spot](../common/spec/server/languages/java/interfaces/spots.ko.md) | Spot lifecycle와 factory |
+| [Actor](../common/spec/server/languages/java/interfaces/actors.ko.md) | actor factory, relocation adapter와 bound session |
+| [STREAM](../common/spec/server/languages/java/interfaces/stream-session.ko.md) | stream node와 header session |
+| [stream-connector](../common/spec/stream-connector/languages/java/03-stream-connector.ko.md) | Java/Kotlin Stream Connector |
+| [Location과 maintenance](../common/spec/server/languages/java/interfaces/location-maintenance.ko.md) | discovery, authority와 relocation |
+| [Monitoring](../common/spec/server/languages/java/interfaces/monitoring.ko.md) | runtime event와 typed handler |
 
 ## 3. 내부 기준 — Java/Kotlin 공유
 

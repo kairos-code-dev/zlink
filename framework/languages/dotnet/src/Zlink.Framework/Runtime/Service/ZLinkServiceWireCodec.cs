@@ -1403,12 +1403,12 @@ internal static class ZLinkServiceWireCodec
 
     private static void WriteOptionalText8(WireWriter writer, string? value)
     {
+        // optional-text8 carries the u8 length itself; length 0 means absent.
         if (value is null)
         {
             writer.U8(0);
             return;
         }
-        writer.U8(1);
         writer.Text8(value);
     }
 

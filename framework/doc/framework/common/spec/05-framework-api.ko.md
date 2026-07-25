@@ -485,7 +485,7 @@ intent를 가진 call은 Location resolve와 [cold activation](01-glossary.ko.md
 STREAM node는 MeshNode와 독립적으로 등록할 수 있다. Session과 Actor binding을 사용하면 STREAM session
 service가 raw STREAM과 MeshNode의 관계를 소유한다. Session ingress는 bound Actor mailbox로 전달되고,
 Actor egress는 bound session FIFO를 사용한다. Actor dispatch capability를 활성화하는 설정은 MeshName을 받지
-않는다. Startup 시 같은 root에 [Object Client](01-glossary.ko.md#object-role) 또는 Server role과 location store가 하나 이상 있어야 한다.
+않는다. Startup 시 같은 root에 [Object Client](01-glossary.ko.md#object-client와-object-server-role) 또는 Server role과 location store가 하나 이상 있어야 한다.
 
 ## 13. 오류 kind
 

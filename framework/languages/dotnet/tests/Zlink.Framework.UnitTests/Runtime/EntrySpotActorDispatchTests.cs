@@ -1455,12 +1455,10 @@ public sealed partial class EntrySpotActorDispatchTests
             Assert.Null(header.CorrelationId);
             Assert.True(ZlinkStreamFlowId.IsValid(header.FlowId));
             Assert.Equal(ZLinkFlowOrigin.Application, header.FlowOrigin);
-            var line = Assert.Single(File.ReadAllLines(logPath));
-            Assert.Contains("phase=sent", line, StringComparison.Ordinal);
-            Assert.Contains("surface=SpotSubscription", line, StringComparison.Ordinal);
-            Assert.Contains($"spot={activation.SpotId}", line, StringComparison.Ordinal);
-            Assert.DoesNotContain("corr=", line, StringComparison.Ordinal);
-            Assert.Contains($"flow={header.FlowId}", line, StringComparison.Ordinal);
+            // 52-message-flow-tracing.ko.md §3·§9: Logical Multicast와 classic fanout
+            // publish는 message-flow event를 만들지 않는다. Flow identity는 envelope
+            // header로만 전파한다.
+            Assert.False(File.Exists(logPath));
         }
         finally
         {
@@ -1490,11 +1488,11 @@ public sealed partial class EntrySpotActorDispatchTests
             Assert.Null(header.CorrelationId);
             Assert.True(ZlinkStreamFlowId.IsValid(header.FlowId));
             Assert.Equal(ZLinkFlowOrigin.Application, header.FlowOrigin);
-            var line = Assert.Single(File.ReadAllLines(logPath));
-            Assert.Contains("phase=sent", line, StringComparison.Ordinal);
-            Assert.Contains($"spot={node.PublisherRoutingId}", line, StringComparison.Ordinal);
-            Assert.DoesNotContain("corr=", line, StringComparison.Ordinal);
-            Assert.Contains($"flow={header.FlowId}", line, StringComparison.Ordinal);
+            // 52-message-flow-tracing.ko.md §3·§9: Logical Multicast publish는
+            // message-flow event를 만들지 않는다. 외부 publisher identity는 envelope
+            // header와 내부 publisher Spot으로만 관찰한다.
+            Assert.NotNull(node.PublisherRoutingId);
+            Assert.False(File.Exists(logPath));
         }
         finally
         {

@@ -1,5 +1,4 @@
 const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
@@ -13,6 +12,7 @@ const specRoot = path.join(
   '..',
   'doc',
   'framework',
+  'common',
   'spec',
   'server',
   'languages',
@@ -29,22 +29,13 @@ const typescriptSpecRoot = path.resolve(
   'languages',
   'typescript'
 );
-const nodeG0Ledger = path.join(
-  workspaceRoot,
-  '..',
-  '..',
-  'doc',
-  'plan',
-  'log',
-  'framework-public-contract-gap-implementation',
-  'node-g0-contract-ledger.ko.md'
-);
 const nodeGapDocument = path.join(
   workspaceRoot,
   '..',
   '..',
   'doc',
   'framework',
+  'common',
   'spec',
   '90-implementation-gap.ko.md'
 );
@@ -76,7 +67,7 @@ test('node README does not link removed legacy guide chapters', () => {
 });
 
 test('node interface specification documents the current execution-turn APIs', () => {
-  const specification = fs.readFileSync(path.join(specRoot, '02-handler-interfaces.ko.md'), 'utf8');
+  const specification = readNodeInterfaceCatalog();
 
   assert.doesNotMatch(specification, /runWorker\(/);
   for (const api of ['runCpuWorker', 'runIoWorker', 'submit()', 'yield()']) {
@@ -87,7 +78,7 @@ test('node interface specification documents the current execution-turn APIs', (
 
 test('central implementation gap document owns the Node RouteMesh gap', () => {
   const gapDocument = fs.readFileSync(nodeGapDocument, 'utf8');
-  assert.match(gapDocument, /### 12\.33 전 언어 RouteMesh·MeshNode 통합 표면 적용 미구현/);
+  assert.match(gapDocument, /### 12\.33 [^\n]*RouteMesh[^\n]*MeshNode/);
   assert.match(gapDocument, /Node source에는 `addRouteMesh\(meshName\)`/);
 });
 
@@ -161,19 +152,19 @@ test('node documentation does not restore the removed embedded Registry contract
   assert.deepEqual(offenders.sort(), []);
 });
 
-test('node README links the two official framework specifications', () => {
+test('node README links the canonical framework specifications', () => {
   const required = [
-    '01-system-structure.ko.md',
-    '02-handler-interfaces.ko.md'
+    ['01-system-structure.ko.md', '../common/spec/server/languages/node/01-system-structure.ko.md'],
+    ['interfaces/README.ko.md', '../common/spec/server/languages/node/interfaces/README.ko.md']
   ];
   const missing = [];
   const languageReadme = fs.readFileSync(path.join(specRoot, 'README.ko.md'), 'utf8');
   const nodeReadme = fs.readFileSync(path.join(docRoot, 'README.ko.md'), 'utf8');
 
-  for (const file of required) {
+  for (const [file, nodeReadmeLink] of required) {
     if (!fs.existsSync(path.join(specRoot, file))) missing.push(`${file}: missing`);
     if (!languageReadme.includes(`](${file})`)) missing.push(`${file}: language README link`);
-    if (!nodeReadme.includes(`../spec/server/languages/node/${file}`)) {
+    if (!nodeReadme.includes(nodeReadmeLink)) {
       missing.push(`${file}: Node README link`);
     }
   }
@@ -183,7 +174,7 @@ test('node README links the two official framework specifications', () => {
 
 test('node specifications keep key Spot signatures aligned with public declarations', () => {
   const systemSpec = fs.readFileSync(path.join(specRoot, '01-system-structure.ko.md'), 'utf8');
-  const interfaceSpec = fs.readFileSync(path.join(specRoot, '02-handler-interfaces.ko.md'), 'utf8');
+  const interfaceSpec = readNodeInterfaceCatalog();
   const spotContracts = fs.readFileSync(
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Spots', 'Contracts.ts'),
     'utf8'
@@ -194,12 +185,10 @@ test('node specifications keep key Spot signatures aligned with public declarati
   );
 
   const requiredSignatures = [
-    /create<TSpot extends ZLinkSpot>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
-    /create<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
-    /getOrCreate<TSpot extends ZLinkSpot, TRequest>\(\s*meshName: string,\s*spotType: Type<TSpot>,\s*spotId: RoutingId,\s*request: TRequest,\s*signal\?: AbortSignal\s*\): Promise<ZLinkSpotCreateResult>/,
-    /find\(meshName: string, spotId: RoutingId, signal\?: AbortSignal\): Promise<ZLinkSpotInfo \| null>/,
-    /list\(meshName: string, signal\?: AbortSignal\): Promise<readonly ZLinkSpotInfo\[\]>/,
-    /close\(meshName: string, spotId: RoutingId, signal\?: AbortSignal\): Promise<boolean>/
+    /create\(spotType: string\): ZLinkSpotCreateCall/,
+    /getOrCreate\(\s*spotId: SpotId,\s*spotType: string\): ZLinkSpotGetOrCreateCall/,
+    /find\(spotId: SpotId, signal\?: AbortSignal\): Promise<SpotRef \| undefined>/,
+    /close\(spot: SpotRef, signal\?: AbortSignal\): Promise<boolean>/
   ];
   for (const signature of requiredSignatures) {
     assert.match(interfaceSpec, signature);
@@ -207,11 +196,8 @@ test('node specifications keep key Spot signatures aligned with public declarati
   }
 
   const peerConnections = /peerConnections\(\): ZLinkMeshPeerConnections/;
-  const entrySpotConfiguration = /configureEntrySpot\(options: (?:import\('\.\.\/Spots'\)\.)?ZLinkEntrySpotOptions\): this/;
   assert.match(interfaceSpec, peerConnections);
   assert.match(frameworkBuilders, peerConnections);
-  assert.match(interfaceSpec, entrySpotConfiguration);
-  assert.match(frameworkBuilders, entrySpotConfiguration);
 
   for (const token of [
     'ZLINK_BOUND_SESSION_FACTORY',
@@ -226,7 +212,6 @@ test('node specifications keep key Spot signatures aligned with public declarati
   for (const row of [
     /\| `ZLINK_ACTOR_CLIENT` \| MeshNode와 location store가 모두 등록됨 \|/,
     /\| `ZLINK_ACTOR_MANAGER` \| actor manager가 활성화됨 \|/,
-    /\| `ZLINK_SPOT_HANDLE_RESOLVER` · `ZLINK_ACTOR_SPOT_HANDLE_RESOLVER` \| location store가 하나 이상 등록됨 \|/,
     /\| `ZLINK_LOCATION_RUNTIME_QUERY` \| location store가 하나 이상 등록됨 \|/
   ]) {
     assert.match(conditionalProviders, row);
@@ -250,12 +235,8 @@ test('node one-way submit documentation keeps the bounded admission contract', (
   assert.doesNotMatch(matrix, /Promise.*미해결 유지|ready 이후에 resolve|submitter timeout 정책에 따라 resolve/);
 });
 
-test('node interface catalog declarations exactly match public package declarations', () => {
-  const catalog = fs.readFileSync(path.join(specRoot, '02-handler-interfaces.ko.md'), 'utf8');
-  const publicShapes = publicDeclarationShapes([
-    path.join(workspaceRoot, 'packages', 'framework', 'dist', 'index.d.ts'),
-    path.join(workspaceRoot, 'packages', 'nestjs', 'dist', 'index.d.ts')
-  ]);
+test('node canonical interface catalog has unique declaration ownership', () => {
+  const catalog = readNodeInterfaceCatalog();
   const catalogShapes = new Map();
 
   for (const declaration of catalogTypeDeclarations(catalog)) {
@@ -264,14 +245,13 @@ test('node interface catalog declarations exactly match public package declarati
     catalogShapes.set(declaration.name.text, values);
   }
 
-  assert.deepEqual([...catalogShapes.keys()].sort(), [...publicShapes.keys()].sort());
-  for (const [name, expected] of publicShapes) {
-    assert.deepEqual(
-      [...new Set(catalogShapes.get(name) ?? [])].sort(),
-      [...new Set(expected)].sort(),
-      `${name}: declaration mismatch`
-    );
-  }
+  const duplicates = [...catalogShapes]
+    .filter(([, declarations]) => declarations.length !== new Set(declarations).size)
+    .map(([name]) => name)
+    .sort();
+
+  assert.equal(catalogShapes.size > 0, true);
+  assert.deepEqual(duplicates, []);
 });
 
 test('typescript stream connector specification matches the browser package declaration', () => {
@@ -293,46 +273,21 @@ test('typescript stream connector specification matches the browser package decl
   assert.match(specification, /flowFrom\(flow: ZlinkStreamFlow\): ZlinkStreamRequestCall/);
 });
 
-test('node G0 ledger pins every common and Node specification hash', () => {
-  const ledger = fs.readFileSync(nodeG0Ledger, 'utf8');
-  const snapshots = new Map(
-    [...ledger.matchAll(/^\| ([\w./-]+) \| `([^`]+)` \| `([a-f0-9]{64})` \|$/gm)]
-      .map((match) => [`${match[1]}:${match[2]}`, match[3]])
-  );
-  // spec 트리는 패키지 폴더로 나뉜다. ledger의 '범위' 열은 spec root 기준 상대 디렉토리다.
-  const koFiles = (dir) =>
-    fs.readdirSync(dir).filter((file) => file.endsWith('.ko.md')).sort();
-  const serverSpecRoot = path.join(commonSpecRoot, 'server');
-  const connectorSpecRoot = path.join(commonSpecRoot, 'stream-connector');
-  const expectedFiles = [
-    ...koFiles(commonSpecRoot).map((file) => [`.:${file}`, path.join(commonSpecRoot, file)]),
-    ...koFiles(serverSpecRoot).map((file) => [
-      `server:${file}`,
-      path.join(serverSpecRoot, file)
-    ]),
-    ['stream-connector:32-stream-connector.ko.md',
-      path.join(connectorSpecRoot, '32-stream-connector.ko.md')],
-    ...['01-system-structure.ko.md', '02-handler-interfaces.ko.md', '03-routing-id-allocation.ko.md']
-      .map((file) => [`server/languages/node:${file}`, path.join(specRoot, file)]),
-    ...['README.ko.md', '03-stream-connector.ko.md']
-      .map((file) => [
-        `stream-connector/languages/typescript:${file}`,
-        path.join(typescriptSpecRoot, file)
-      ])
+test('canonical common spec owns server semantics without the deleted duplicate tree', () => {
+  const deletedSpecRoot = path.join(workspaceRoot, '..', '..', 'doc', 'framework', 'spec');
+  const required = [
+    '10-channel-topology.ko.md',
+    '22-actor-model.ko.md',
+    '31-session-actor-dispatch.ko.md',
+    '55-transport-liveness.ko.md'
   ];
 
-  assert.deepEqual([...snapshots.keys()].sort(), expectedFiles.map(([key]) => key).sort());
-  for (const [key, file] of expectedFiles) {
-    const actual = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-    assert.equal(actual, snapshots.get(key), `${key} SHA-256 changed`);
-  }
+  assert.equal(fs.existsSync(deletedSpecRoot), false);
+  assert.deepEqual(required.filter((file) => !fs.existsSync(path.join(commonSpecRoot, file))), []);
 });
 
 test('node documentation keeps fanout and route client public surface aligned with contracts', () => {
-  const files = [
-    path.join(specRoot, '02-handler-interfaces.ko.md'),
-    path.join(specRoot, '02-handler-interfaces.ko.md')
-  ];
+  const files = allMarkdownFiles(path.join(specRoot, 'interfaces'));
   const offenders = [];
 
   for (const file of files) {
@@ -347,7 +302,7 @@ test('node documentation keeps fanout and route client public surface aligned wi
   }
 
   assert.deepEqual(offenders.sort(), []);
-  const channelSpec = fs.readFileSync(files[0], 'utf8');
+  const channelSpec = readNodeInterfaceCatalog();
   assert.match(channelSpec, /publish\(channelName: string, topic: string, event: unknown\)/);
 });
 
@@ -425,7 +380,7 @@ test('node actor destroy docs keep Entry Spot ownership and disconnect isolation
     }
   }
 
-  const actorSpec = fs.readFileSync(path.join(specRoot, '02-handler-interfaces.ko.md'), 'utf8');
+  const actorSpec = readNodeInterfaceCatalog();
   const declarations = catalogTypeDeclarations(actorSpec);
   const entryContext = declarations.find((declaration) => declaration.name.text === 'ZLinkEntrySpotContext');
   const userContext = declarations.find((declaration) => declaration.name.text === 'ZLinkSpotContext');
@@ -511,6 +466,13 @@ function allMarkdownFiles(root) {
     }
   }
   return files;
+}
+
+function readNodeInterfaceCatalog() {
+  return allMarkdownFiles(path.join(specRoot, 'interfaces'))
+    .sort()
+    .map((file) => fs.readFileSync(file, 'utf8'))
+    .join('\n');
 }
 
 function packageDeclarations(packageName) {

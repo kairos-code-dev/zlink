@@ -251,7 +251,7 @@ stable host 이름으로 해석하지 않는다.
 MeshNode descriptor를 게시할 때 Location Store는 같은 `(MeshName, RID)`가 이미 사용 중인지 확인한다.
 UUID 충돌은 정상적인 운영 상황으로 간주하지 않는다. Active conflict가 확인되면 Framework는 기존
 descriptor를 변경하지 않고 새 UUID claim을 시도하지 않으며
-[`RoutingIdConflict`](01-glossary.ko.md#routing-id-conflict)로 startup을 즉시 끝낸다.
+[`RoutingIdConflict`](01-glossary.ko.md#routingidconflict)로 startup을 즉시 끝낸다.
 
 Replacement MeshNode는 endpoint가 같아도 새 lifecycle과 새 UUID RID를 사용한다. UUID는
 [lifecycle generation](01-glossary.ko.md#lifecycle-generation)을 대체하지 않는다. Generation은 stale

@@ -283,7 +283,7 @@ TicTacToe 샘플은 모든 framework 언어에서 같은 public framework 모델
   push 대기를 대신하지 않는다. observer callback에서는 connector send/request/wait를
   다시 호출하지 않는다.
 - Java와 Kotlin client scenario의 `submit`과 `await` 의미는
-  [framework 공통 비동기 정책](../../../spec/04-async-execution-policy.ko.md)을 따른다.
+  [framework 공통 비동기 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.
   `submit`은 작업을 시작하고 future를 반환하는 이름으로, `await`는 완료를 기다려
   결과를 받는 이름으로 사용한다.
 - sample-local inbox, sleep, 임시 polling 함수로 준비 상태나 push 도착을 숨기면 안 된다.
@@ -349,13 +349,13 @@ observer를 owner가 아닌 Play endpoint에 연결해 remote join 경로와 cro
 **샘플이 자체 Redis 스키마를 만들지 않는다.** Play 서버는 공식 Redis location store를
 `AddLocationStore(new ZLinkRedisLocationStore(...))`로 등록하고, room Spot을 만들면 framework
 lifecycle이 **spot location row**를 자동으로 기록한다. row schema, key 규약, owner lease와
-generation은 [41 Redis location store](../../../spec/server/41-location-store-redis.ko.md)가 소유하며
+generation은 [41 Redis location store](../../spec/41-location-store-redis.ko.md)가 소유하며
 샘플이 다시 정의하지 않는다.
 
 room Spot의 routing id는 `RoomId`에서 파생한다. 다른 노드가 그 room으로 보낼 때는 **spot handle
 resolver**로 spot rid에 해당하는 `SpotHandle`을 얻고, 전송 API는 그 handle을 받는다. handle은
 불투명하며 owner node rid와 전송 mesh는 framework가 소유한다 — 샘플 코드가 owner node rid를 읽거나
-보관하지 않는다([24 spot 주소 메시징](../../../spec/server/24-spot-address-messaging.ko.md)).
+보관하지 않는다([24 spot 주소 메시징](../../spec/24-spot-address-messaging.ko.md)).
 
 모든 언어 샘플은 같은 resolver와 `SpotHandle` 전송 의미를 사용해야 하며, 한 언어만 internal runtime
 객체나 별도 route helper로 이 경로를 우회하면 안 된다.

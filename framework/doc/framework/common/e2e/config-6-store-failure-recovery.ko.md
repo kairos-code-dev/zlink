@@ -19,9 +19,9 @@ descriptor 제외와 복구 순서를 확인한다.
   자체의 HA/복제는 store 구현체(예: Redis) 책임이며 framework가 검증하지 않는다.
 
 fail-static 표, owner lease 모델, watch/polling, 복구 순서 같은 계약 상세는
-[location runtime spec](../../spec/server/40-location-runtime.ko.md)과
-[Redis location store spec](../../spec/server/41-location-store-redis.ko.md),
-[Redis relocation store spec](../../spec/server/42-relocation-store-redis.ko.md)을 기준으로 하고 이 문서에서
+[location runtime spec](../spec/40-location-runtime.ko.md)과
+[Redis location store spec](../spec/41-location-store-redis.ko.md),
+[Redis relocation store spec](../spec/42-relocation-store-redis.ko.md)을 기준으로 하고 이 문서에서
 반복하지 않는다.
 
 판정은 public 표면으로만 한다. 등록한 `IZLinkLocationStore`의 bounded descriptor page를 끝까지 읽고 각
@@ -54,7 +54,7 @@ descriptor의 owner ID를 `ReadOwnerLeaseAsync(ownerId)`로 exact 조회해 desc
 시간 관련 option(owner lease renew interval, owner lease TTL, polling interval, store failure grace)은
 시나리오가 유한 시간 안에 기다릴 수 있도록 짧게 설정한다(예: lease renew 1초, lease TTL 3초,
 polling 0.5초). 값 자체는 언어별 option 표면을 따르되, 의미는
-[40 §4](../../spec/server/40-location-runtime.ko.md#4-owner-lease와-local-admission-deadline)의
+[40 §4](../spec/40-location-runtime.ko.md#4-owner-lease와-local-admission-deadline)의
 option 정의와 같아야 한다. 이 값들은 `run_e2e.sh` 상단의 명시적 config 상수로 두고 시나리오 대기 시간의 근거로
 사용한다.
 
@@ -97,7 +97,7 @@ lease-renew/lease/grace 상수에서 계산한 별도 이름의 시나리오 대
 
 - 절차: watch를 구현하지 않은 Location Store 구현체를 `AddLocationStore(instance)`로 등록한 배포에서,
   provider 하나를 추가로 시작했다가 정상 종료한다. Relocation Store는 별도 `AddRelocationStore(instance)`로
-  등록하며 polling discovery 검증에는 장애를 주입하지 않는다([40 §3](../../spec/server/40-location-runtime.ko.md)).
+  등록하며 polling discovery 검증에는 장애를 주입하지 않는다([40 §3](../spec/40-location-runtime.ko.md)).
 - 검증: watch event 없이 polling만으로 추가·제거가 peer intent와 runtime snapshot에 반영된다.
   추가 후 polling interval 몇 tick 안에 새 provider가 ready member가 되고, 제거 후 그 provider를
   선택하지 않는다. watch를 지원하는 Redis extension 배포와 결과 의미가 같다.
@@ -290,7 +290,7 @@ mesh 전체의 불필요한 재연결이 발생하지 않는가.
   (예: baseline의 N배 이내로 사전 정의). `Snapshot(meshName)` 조회 자체도 무관 요청 경로를 막지
   않는다. 이 결과로 store client가 스레드나 이벤트 루프를 점유하지 않고 실제 비동기·논블로킹으로
   I/O를 수행함을 실측으로 증명한다. 비동기 실행 계약은
-  [공통 비동기 실행 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.
+  [공통 비동기 실행 정책](../spec/04-async-execution-policy.ko.md)을 따른다.
 - 세부 동작: Redis 응답 지연이 코루틴 dispatcher(Kotlin)나 core I/O 스레드(C++, `PERF_IO_THREADS`)를
   점유하지 않음을 검증. 이 트랙은 store 자체의 정상/비정상보다 client 구현의 비블로킹 여부를 보는
   점에서 Track A~D와 다르다.

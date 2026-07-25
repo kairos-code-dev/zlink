@@ -1,6 +1,6 @@
 # .NET v11 public symbol delta
 
-[Exact interface](../../spec/server/languages/dotnet/interfaces/README.ko.md) ·
+[Exact interface](../../common/spec/server/languages/dotnet/interfaces/README.ko.md) ·
 [Runtime lifecycle](runtime-lifecycle.ko.md)
 
 ## 1. 분류 기준

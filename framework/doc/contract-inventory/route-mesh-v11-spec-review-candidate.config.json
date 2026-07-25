@@ -13,7 +13,7 @@
   "ownedPaths": [
     "core/doc/spec/core",
     "core/doc/internals",
-    "framework/doc/framework/spec",
+    "framework/doc/framework/common/spec",
     "framework/doc/framework/common/e2e",
     "framework/doc/framework/common/internals",
     "framework/doc/plan/v11.0",

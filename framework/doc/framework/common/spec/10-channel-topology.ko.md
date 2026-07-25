@@ -425,7 +425,7 @@ Channel handler와 Node direct handler는 같은 packet name을 사용해도 서
 같은 MeshName의 ready MeshNode는 서로 직접 연결되는 `full mesh`를 구성한다. Node가
 `N`개이면 각 MeshNode ROUTER가 관리하는 peer 연결은 최대 `N-1`개다.
 
-[4.2.1 RouteMesh 물리 연결 그림](#physical-routemesh-diagram)처럼 MeshName이 다른
+[4.2.1 RouteMesh 물리 연결 그림](#421-routemesh의-물리-연결)처럼 MeshName이 다른
 MeshNode와는 자동으로 연결되지 않는다. ChannelName을 추가해도 같은 MeshName의
 MeshNode 사이에 새로운 물리 연결을 만들지 않는다.
 
@@ -543,7 +543,7 @@ target에서 제외한다. 이미 제출한 작업과 RID direct의 종료 규�
 MeshNode의 transport 설정은 startup 전에 확정한다. 실행 중에는 ChannelName weight만
 바꿀 수 있다.
 
-[`MaxMessageSize`](01-glossary.ko.md#max-message-size)는 수신할 수 있는 complete
+[`MaxMessageSize`](01-glossary.ko.md#maxmessagesize)는 수신할 수 있는 complete
 transport message의 byte 상한이다.
 
 | 값 | 동작 |

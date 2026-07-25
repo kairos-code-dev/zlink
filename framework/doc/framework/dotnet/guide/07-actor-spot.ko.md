@@ -4,7 +4,7 @@
 
 # 7. Actor & Spot 호스팅
 
-> 정식 계약은 [spec/aspnet-core-actor](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다.
+> 정식 계약은 [spec/aspnet-core-actor](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다.
 > 이 챕터는 actor 모델과 **Spot이 actor를 호스팅하는 면(location 축)** — 즉 spot 쪽에
 > 호출되는 actor lifecycle 콜백과 그 콜백을 부르는 트리거 함수 — 를 다룬다.
 > session ↔ actor relay(binding 축)는 [08-actor-session](08-actor-session.ko.md)이 다룬다.
@@ -222,7 +222,7 @@ Relocation은 내부 `AuthorityOwnerGeneration`을 증가시키지만 이 값은
 destroy 같은 mutation은 `ActorRef`의 `ObjectGeneration`을 검사하며, Actor를 delete한 뒤 같은 ID로 새로 만든
 경우 이전 ref는 새 incarnation을 변경하지 못한다.
 
-fencing 규칙 전체는 [spec/aspnet-core-location](../../spec/server/languages/dotnet/01-system-structure.ko.md)이 다룬다.
+fencing 규칙 전체는 [spec/aspnet-core-location](../../common/spec/server/languages/dotnet/01-system-structure.ko.md)이 다룬다.
 
 > 30초는 `RelocationForwardingWindow`의 기본값이다. 값을 늘리면 stale route를 더 오래
 > 흡수하는 대신 source node가 forwarding mapping을 더 오래 보관한다. 이 값은 bound
@@ -561,7 +561,7 @@ room `OnActorJoin`(admission)/`OnJoined` → 게임 중 actor packet handler →
 
 - session ↔ actor relay(인증·binding·bound session push·등록 코드): [08-actor-session](08-actor-session.ko.md)
 - 이 챕터 계약의 실행 검증 예문(actor/context/factory/handler): [13-interface-catalog](13-interface-catalog.ko.md) §4 — 검증 클래스 `ActorContracts`
-- 정식 계약: [spec/aspnet-core-actor](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)
+- 정식 계약: [spec/aspnet-core-actor](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)
 - 전체 예제: [bingo 샘플](../../common/sample/bingo/README.ko.md), [tictactoe 샘플](../../common/sample/tictactoe/README.ko.md)
 - Spot 자체(생성·메시징·timer): [06-spot](06-spot.ko.md)
 

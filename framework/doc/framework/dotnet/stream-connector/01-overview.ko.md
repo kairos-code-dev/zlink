@@ -67,6 +67,6 @@ connector는 STREAM 서버에 연결하는 client library다. 서버 framework p
 않는다. 양쪽은 STREAM header/payload wire 계약만 공유한다.
 
 wire 계약과 연결 생명주기의 정본은
-[Stream Connector 공통 스펙](../../spec/stream-connector/32-stream-connector.ko.md),
+[Stream Connector 공통 스펙](../../common/spec/stream-connector/32-stream-connector.ko.md),
 `.NET` public 표면의 정본은
-[.NET 공개 계약](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)이다.
+[.NET 공개 계약](../../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)이다.

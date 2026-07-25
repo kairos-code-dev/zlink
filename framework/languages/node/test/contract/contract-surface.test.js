@@ -5,14 +5,15 @@ const test = require('node:test');
 
 const workspaceRoot = path.resolve(__dirname, '..', '..');
 const nodeDocRoot = path.resolve(workspaceRoot, '..', '..', 'doc', 'framework', 'node');
-const specPath = path.join(
+const interfaceSpecRoot = path.join(
   nodeDocRoot,
   '..',
+  'common',
   'spec',
   'server',
   'languages',
   'node',
-  '02-handler-interfaces.ko.md'
+  'interfaces'
 );
 const declarationsRoot = path.join(workspaceRoot, 'packages', 'framework', 'dist', 'contracts');
 const internalLocationCodecHelpers = new Set([
@@ -28,7 +29,7 @@ const internalLocationCodecHelpers = new Set([
 ]);
 
 test('framework contract declarations cover handler interface catalog exports', () => {
-  const spec = fs.readFileSync(specPath, 'utf8');
+  const spec = readTree(interfaceSpecRoot);
   const declarations = readTree(declarationsRoot);
   const missing = [];
 
@@ -44,7 +45,7 @@ test('framework contract declarations cover handler interface catalog exports', 
 
 test('framework runtime exports decorator factories and enums from the catalog', () => {
   const framework = require('../../packages/framework/dist');
-  const spec = fs.readFileSync(specPath, 'utf8');
+  const spec = readTree(interfaceSpecRoot);
   const missing = [];
 
   for (const name of runtimeCatalogNames(frameworkCatalog(spec)).filter((name) => !internalLocationCodecHelpers.has(name))) {
@@ -114,7 +115,7 @@ test('monitoring options expose only common-spec socket location and Spot source
     path.join(workspaceRoot, 'packages', 'framework', 'src', 'contracts', 'Eventing', 'Contracts.ts'),
     'utf8'
   );
-  const spec = fs.readFileSync(specPath, 'utf8');
+  const spec = readTree(interfaceSpecRoot);
 
   assert.doesNotMatch(contracts, /\bregistry\?:\s*ZLinkPollingMonitoringRegistration/);
   assert.doesNotMatch(spec, /\bregistry\?:\s*ZLinkPollingMonitoringRegistration/);

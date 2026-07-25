@@ -516,7 +516,7 @@ final class SampleReleaseGateContractTest {
         }
 
         String handlerSpec = Files.readString(frameworkJavaRoot()
-            .resolve("../../doc/framework/spec/server/languages/java/02-handler-interfaces.ko.md"));
+            .resolve("../../doc/framework/common/spec/server/languages/java/02-handler-interfaces.ko.md"));
         assertTrue(handlerSpec.contains("`destroyActor(actor)`는 Entry Spot context 전용 API이다"),
             "handler spec must keep destroyActor on Entry Spot context");
         assertTrue(handlerSpec.contains("user Spot context에는"),

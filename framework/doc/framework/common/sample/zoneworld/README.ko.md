@@ -63,7 +63,7 @@ ZoneWorld는 multi-node 게임에서 노드 등록 상태 관찰, 전 노드 공
 ### 1.1 표면 선택 기준
 
 이 샘플의 교육 목표다. "여러 노드에 무언가를 한다"가 상황마다 다른 표면을 요구한다.
-선택 기준은 [channel topology spec §2·5](../../../spec/server/10-channel-topology.ko.md)을 따른다.
+선택 기준은 [channel topology spec §2·5](../../spec/10-channel-topology.ko.md)을 따른다.
 
 | 하려는 일 | 쓰는 것 | 다른 것으로 안 되는 이유 |
 |---|---|---|
@@ -667,7 +667,7 @@ Server/Ops/
 
 **`FromNodeId`를 왜 싣는가.** §2.3의 "노드 내부 이동은 허용, 진입만 차단"을 판정하는 것은 목표
 spot의 admission 콜백인데, framework는 **source node를 admission 콜백에 넘기지 않는다**
-([spot-actor spec §3](../../../spec/server/23-spot-actor.ko.md)). 그래서 payload가 그것을 나른다. 새 입장이면
+([spot-actor spec §3](../../spec/23-spot-actor.ko.md)). 그래서 payload가 그것을 나른다. 새 입장이면
 `null`이다.
 
 **lifecycle callback으로 처리하는 동작.** zone 퇴장은 별도 application message를 정의하지 않는다.
@@ -1286,7 +1286,7 @@ Transport 경계는 다음 세 규칙을 따른다.
 3. 별도 browser subpath를 만들지 않고 ESM browser runtime을 package root에서 제공한다.
 
 공개 계약은
-[TypeScript Stream Connector](../../../spec/stream-connector/languages/typescript/03-stream-connector.ko.md)가
+[TypeScript Stream Connector](../../spec/stream-connector/languages/typescript/03-stream-connector.ko.md)가
 소유한다. ZoneWorld runner는 실제 Chromium에서 request/reply, push, reconnect와 명시적 flow 전달을
 검증한다.
 

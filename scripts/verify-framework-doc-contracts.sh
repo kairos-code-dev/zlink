@@ -937,7 +937,7 @@ for (const fixture of inventory.formal_documents || []) {
 // Every formal Korean spec participates in structural validation. The
 // inventory above selects semantic owners; it intentionally does not freeze
 // prose or code-block hashes.
-const allFormalPaths = markdownDocumentsUnder('framework/doc/framework/spec');
+const allFormalPaths = markdownDocumentsUnder('framework/doc/framework/common/spec');
 if (allFormalPaths.length === 0) fail('formal framework spec document set is empty');
 for (const message of codeFenceFailures(root, allFormalPaths)) fail(`formal code fence: ${message}`);
 for (const message of relativeMarkdownLinkFailures(root, allFormalPaths)) fail(`formal link: ${message}`);
@@ -1015,6 +1015,7 @@ let ledgerEdgeCount = 0;
 let ledgerProfileCount = 0;
 let ledgerProfileRowCount = 0;
 let parallelReviewRowCount = 0;
+let codexOnlyReviewRowCount = 0;
 let ledgerExecutionCardCount = 0;
 let ledgerFinalUnreachableCount = 0;
 if (typeof consolidation.directory !== 'string'
@@ -1022,7 +1023,8 @@ if (typeof consolidation.directory !== 'string'
     || !Array.isArray(consolidation.temporary_review_documents)
     || !Array.isArray(consolidation.ledger_required_fragments)
     || !Array.isArray(consolidation.allowed_profiles)
-    || !Array.isArray(consolidation.required_parallel_review_rows)
+    || !Array.isArray(consolidation.completed_parallel_review_rows)
+    || !Array.isArray(consolidation.required_codex_only_review_rows)
     || !Array.isArray(consolidation.required_high_review_rows)
     || !Array.isArray(consolidation.forbidden_fragments)
     || !Array.isArray(consolidation.required_semantic_owners)
@@ -1034,11 +1036,11 @@ if (typeof consolidation.directory !== 'string'
   const temporaryDocuments = consolidation.temporary_review_documents;
   const temporarySet = new Set(temporaryDocuments);
   const allowedSet = new Set([...allowedDocuments, ...temporaryDocuments]);
-  if (allowedDocuments.length !== 3 || stableSet.size !== allowedDocuments.length
+  if (allowedDocuments.length !== 4 || stableSet.size !== allowedDocuments.length
       || allowedDocuments.some(relative => typeof relative !== 'string'
         || relative.length === 0 || path.posix.isAbsolute(relative)
         || relative.split('/').includes('..'))) {
-    fail('v11 consolidated plan must declare 3 unique safe relative document paths');
+    fail('v11 consolidated plan must declare 4 unique safe relative document paths');
   }
   if (temporarySet.size !== temporaryDocuments.length
       || temporaryDocuments.some(relative => typeof relative !== 'string'
@@ -1066,17 +1068,24 @@ if (typeof consolidation.directory !== 'string'
       || consolidation.allowed_profiles.some(profile => !/^P-[A-Z]+$/u.test(profile))) {
     fail('v11 consolidation must declare 4 unique central profile IDs');
   }
-  const parallelReviewRows = new Set(consolidation.required_parallel_review_rows);
-  if (consolidation.required_parallel_review_rows.length !== 12
-      || parallelReviewRows.size !== consolidation.required_parallel_review_rows.length
-      || consolidation.required_parallel_review_rows.some(id => !/^V11-R[A-Z0-9-]*$/u.test(id))) {
-    fail('v11 consolidation must declare 12 unique parallel review row IDs');
+  const parallelReviewRows = new Set(consolidation.completed_parallel_review_rows);
+  if (consolidation.completed_parallel_review_rows.length !== 6
+      || parallelReviewRows.size !== consolidation.completed_parallel_review_rows.length
+      || consolidation.completed_parallel_review_rows.some(id => !/^V11-R[A-Z0-9-]*$/u.test(id))) {
+    fail('v11 consolidation must declare 6 unique completed parallel review row IDs');
+  }
+  const codexOnlyReviewRows = new Set(consolidation.required_codex_only_review_rows);
+  if (consolidation.required_codex_only_review_rows.length !== 6
+      || codexOnlyReviewRows.size !== consolidation.required_codex_only_review_rows.length
+      || consolidation.required_codex_only_review_rows.some(id => !/^V11-R[A-Z0-9-]*$/u.test(id)
+        || parallelReviewRows.has(id))) {
+    fail('v11 consolidation must declare 6 unique Codex-only review row IDs');
   }
   const highReviewRows = new Set(consolidation.required_high_review_rows);
-  if (consolidation.required_high_review_rows.length !== 3
+  if (consolidation.required_high_review_rows.length !== 2
       || highReviewRows.size !== consolidation.required_high_review_rows.length
       || consolidation.required_high_review_rows.some(id => !parallelReviewRows.has(id))) {
-    fail('v11 consolidation must declare 3 unique high parallel review row IDs');
+    fail('v11 consolidation must declare 2 unique high completed parallel review row IDs');
   }
   if (consolidation.forbidden_fragments.length === 0
       || consolidation.forbidden_fragments.some(fragment => typeof fragment !== 'string'
@@ -1179,6 +1188,7 @@ if (typeof consolidation.directory !== 'string'
       rows.set(id, {
         id,
         line: index + 1,
+        taskCell: cells[1],
         assignmentCell: cells[2],
         predecessorCell: cells[3],
         status: cells[4],
@@ -1219,36 +1229,49 @@ if (typeof consolidation.directory !== 'string'
     for (const id of parallelReviewRows) {
       const row = rows.get(id);
       if (!row) {
-        fail(`v11 execution ledger parallel review row is missing: ${id}`);
+        fail(`v11 execution ledger completed parallel review row is missing: ${id}`);
         continue;
       }
       const expectedProfile = highReviewRows.has(id) ? '`P-HIGH`' : '`P-DEEP`';
-      const rowLine = ledgerLines[row.line - 1] || '';
       if (!row.assignmentCell.includes(expectedProfile)
-          || !rowLine.includes('Claude `claude-sonnet-5` 병렬 reviewer')) {
-        fail(`v11 execution ledger parallel review assignment differs: ${id}`);
+          || !row.taskCell.includes('Claude `claude-sonnet-5` 병렬 reviewer')
+          || row.status !== '완료') {
+        fail(`v11 execution ledger completed parallel review assignment differs: ${id}`);
         continue;
       }
       parallelReviewRowCount += 1;
     }
+    for (const id of codexOnlyReviewRows) {
+      const row = rows.get(id);
+      if (!row) {
+        fail(`v11 execution ledger Codex-only review row is missing: ${id}`);
+        continue;
+      }
+      if (!row.assignmentCell.includes('`P-HIGH`')
+          || !row.taskCell.includes('Codex 단독 reviewer')
+          || /Claude|claude-/u.test(row.taskCell)) {
+        fail(`v11 execution ledger Codex-only review assignment differs: ${id}`);
+        continue;
+      }
+      codexOnlyReviewRowCount += 1;
+    }
     const actualReviewRows = new Set(
       [...rows.keys()].filter(id => /^V11-R[0-9]/u.test(id)));
     for (const id of actualReviewRows) {
-      if (!parallelReviewRows.has(id)) {
-        fail(`v11 execution ledger review row is not declared for parallel review: ${id}`);
+      if (!parallelReviewRows.has(id) && !codexOnlyReviewRows.has(id)) {
+        fail(`v11 execution ledger review row is not declared for independent review: ${id}`);
       }
     }
-    for (const id of parallelReviewRows) {
+    for (const id of [...parallelReviewRows, ...codexOnlyReviewRows]) {
       if (!actualReviewRows.has(id)) {
-        fail(`v11 parallel review declaration does not identify a review row: ${id}`);
+        fail(`v11 independent review declaration does not identify a review row: ${id}`);
       }
     }
     for (const row of rows.values()) {
-      const rowLine = ledgerLines[row.line - 1] || '';
       if (!parallelReviewRows.has(row.id)
           && !/-REVIEW$/u.test(row.id)
-          && rowLine.includes('claude-sonnet-5')) {
-        fail(`v11 execution ledger assigns the parallel reviewer outside a review row: ${row.id}`);
+          && row.taskCell.includes('claude-sonnet-5')) {
+        fail(`v11 execution ledger assigns the parallel reviewer outside a completed review row: ${row.id}`);
       }
     }
 
@@ -2280,6 +2303,7 @@ process.stdout.write(
   + ` ledger_rows=${ledgerRowCount} ledger_edges=${ledgerEdgeCount}`
   + ` ledger_profiles=${ledgerProfileCount} ledger_profile_rows=${ledgerProfileRowCount}`
   + ` parallel_review_rows=${parallelReviewRowCount}`
+  + ` codex_only_review_rows=${codexOnlyReviewRowCount}`
   + ` ledger_execution_cards=${ledgerExecutionCardCount}`
   + ` ledger_final_unreachable=${ledgerFinalUnreachableCount}`
   + ` java_kotlin_negative_mutations=${javaKotlinSemanticNegativeTestCount}`

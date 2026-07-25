@@ -1,6 +1,6 @@
 # Framework 공통 내부 구조
 
-[Framework 공통 문서](../README.ko.md) · [정식 spec](../../spec/README.ko.md)
+[Framework 공통 문서](../README.ko.md) · [정식 spec](../spec/README.ko.md)
 
 이 디렉터리는 C++·.NET·JVM·Node.js service runtime이 서로 다른 언어로 구현되더라도 동일하게 지켜야 하는
 내부 경계와 wire 불변 조건을 설명한다. 이 문서는 application public API가 아니다. 공개 동작은 정식 spec과

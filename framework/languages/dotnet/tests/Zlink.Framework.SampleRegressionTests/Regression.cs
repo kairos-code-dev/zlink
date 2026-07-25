@@ -220,7 +220,13 @@ public sealed partial class RegressionTests
         var dotnetRoot = ResolveDotnetRoot();
         var frameworkDocRoot = Path.GetFullPath(Path.Combine(dotnetRoot, "..", "..", "doc", "framework"));
         var dotnetDocRoot = Path.Combine(frameworkDocRoot, "dotnet");
-        var dotnetContractRoot = Path.Combine(frameworkDocRoot, "spec", "server", "languages", "dotnet");
+        var dotnetContractRoot = Path.Combine(
+            frameworkDocRoot,
+            "common",
+            "spec",
+            "server",
+            "languages",
+            "dotnet");
         var docs = EnumerateMarkdownFiles(Path.Combine(dotnetDocRoot, "guide"))
             .Concat(EnumerateMarkdownFiles(dotnetContractRoot))
             .Concat(EnumerateMarkdownFiles(Path.Combine(dotnetDocRoot, "internals")))
@@ -253,7 +259,10 @@ public sealed partial class RegressionTests
                     offenders.Add($"{Path.GetRelativePath(dotnetRoot, file)}: {reason}");
         }
 
-        var actorSpec = File.ReadAllText(Path.Combine(dotnetContractRoot, "02-handler-interfaces.ko.md"));
+        var actorSpec = File.ReadAllText(Path.Combine(
+            dotnetContractRoot,
+            "interfaces",
+            "05-spots.ko.md"));
         var actorGuide = File.ReadAllText(Path.Combine(dotnetDocRoot, "guide", "07-actor-spot.ko.md"));
         Assert.Contains("ValueTask DestroyActorAsync(", actorSpec, StringComparison.Ordinal);
         Assert.Contains("IZLinkEntrySpotContext.DestroyActorAsync(actor)", actorGuide, StringComparison.Ordinal);

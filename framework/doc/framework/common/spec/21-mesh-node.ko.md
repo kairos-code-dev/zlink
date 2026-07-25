@@ -61,7 +61,7 @@ Framework가 listener 종류에 맞는 기본 prefix를 사용한다.
 | Full RID | `prefix-<lowercase-canonical-uuid-v4>` 형식이며 UTF-8로 encode한 크기는 255 bytes 이하다. |
 
 Core binary RID, Framework prefix, Entry Spot과 caller-provided RID를 함께 다루는 전체 규칙은
-[시스템 전체 Routing ID 정책](13-network-listener-identity.ko.md#7-시스템-전체-routing-id-정책)이 정의한다.
+[시스템 전체 Routing ID 정책](13-network-listener-identity.ko.md#7-시스템-전체-transport-rid와-spot-id-정책)이 정의한다.
 
 Prefix와 UUID를 object placement, shard 또는 재시작 뒤에도 유지되는 application
 identity로 해석하지 않는다.

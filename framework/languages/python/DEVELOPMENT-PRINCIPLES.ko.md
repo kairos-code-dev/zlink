@@ -2,7 +2,7 @@
 
 이 문서는 향후 Python framework를 구현할 때 적용할 개발 원칙을 정의한다. 현재 Python
 framework의 공개 계약이나 구현 완료를 뜻하지 않는다. 공개 동작과 정확한 인터페이스는 구현 전에
-[`framework/doc/framework/spec/`](../../doc/framework/spec/) 아래 정식 spec과 Python 언어별
+[`framework/doc/framework/common/spec/`](../../doc/framework/common/spec/) 아래 정식 spec과 Python 언어별
 인터페이스 문서에 먼저 기록한다. 사용자 guide와 internals도 `framework/doc/` 아래에 작성한다.
 
 Python framework는 [Python 바인딩 구현 청사진](../../../bindings/doc/spec/python/README.ko.md)의

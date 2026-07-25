@@ -81,7 +81,7 @@ Binding은 다음 값을 연결하는 runtime 관계다.
 
 - Exact `ActorRef`의 `ActorId`와 `ObjectGeneration`
 - Current `AuthorityOwnerGeneration`과
-  [OwnerLeaseGeneration](01-glossary.ko.md#owner-lease-generation)
+  [OwnerLeaseGeneration](01-glossary.ko.md#ownerleasegeneration)
 - [STREAM session](01-glossary.ko.md#stream-session) identity
 - Binding generation과 token. Binding generation은 같은 session owner lifecycle에서
   binding이 교체된 순서를 구분한다.

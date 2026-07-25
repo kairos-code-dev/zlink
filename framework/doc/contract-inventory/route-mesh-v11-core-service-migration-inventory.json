@@ -31,7 +31,7 @@
         "corePublicSymbols",
         "coreExportSymbols"
       ],
-      "sha256": "77a1a1113088d344a05444dd6698975c89e606eaca59c22cce75defa3b7dd062",
+      "sha256": "e7737432d96d6b3aaba64fdd3ef6ad0914bab9e31b7f48893b96821163c050d6",
       "policy": "The sealed reviewed records preserve Core 10.x removal provenance after the source headers and exports are deleted. The current tree may match this baseline or contain zero Core service surface; partial transitions and mutations fail generation."
     },
     "reviewedCoreRemovalFiles": {
@@ -1251,7 +1251,7 @@
     }
   },
   "summary": {
-    "totalRecords": 1980,
+    "totalRecords": 1966,
     "corePublicSymbols": 523,
     "corePublicSymbolsByKind": {
       "callback": 2,
@@ -1277,26 +1277,26 @@
     "bindingCoreSymbolReferencesByLanguage": {
       "node": 6
     },
-    "files": 1353,
+    "files": 1339,
     "filesByScope": {
       "binding": 137,
       "ci": 5,
       "core": 176,
       "framework-adjacent-component": 18,
-      "framework-consumer": 662,
+      "framework-consumer": 661,
       "framework-shared-runtime": 9,
       "historical-core-service-document": 14,
       "legacy-binding": 262,
-      "package-tooling": 52,
+      "package-tooling": 39,
       "shared-perf": 18
     },
     "filesByDisposition": {
       "out-of-scope-v11-service-migration": 18,
-      "raw-core-prerequisite": 112,
+      "raw-core-prerequisite": 99,
       "remove": 24,
       "retain-10x-only": 289,
       "superseded": 135,
-      "target-contract": 775
+      "target-contract": 774
     },
     "coreServiceDocumentationReviews": 75,
     "coreServiceDocumentationReviewsByDecision": {
@@ -23813,21 +23813,6 @@
       "finalGate": "V11-M9-PKG-DN"
     },
     {
-      "id": "file:framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Documentation/Regression.cs",
-      "file": "framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Documentation/Regression.cs",
-      "scope": "framework-consumer",
-      "language": "dotnet",
-      "category": "framework-service-consumer-test",
-      "disposition": "target-contract",
-      "action": "retain-framework-owned-service-runtime",
-      "targetOwners": [
-        "framework/doc/framework/common/spec/server/languages/dotnet/interfaces/README.ko.md",
-        "framework/doc/framework/common/internals/README.ko.md"
-      ],
-      "removalGate": "V11-M8-CLEAN-DN",
-      "finalGate": "V11-M9-PKG-DN"
-    },
-    {
       "id": "file:framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Runtime/AutoConnectLoopTests.cs",
       "file": "framework/languages/dotnet/tests/Zlink.Framework.UnitTests/Runtime/AutoConnectLoopTests.cs",
       "scope": "framework-consumer",
@@ -31040,201 +31025,6 @@
     {
       "id": "file:scripts/local-package/java/build-wsl.sh",
       "file": "scripts/local-package/java/build-wsl.sh",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/8.9/checksums/checksums.lock",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/8.9/checksums/checksums.lock",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/8.9/dependencies-accessors/gc.properties",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/8.9/dependencies-accessors/gc.properties",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/8.9/fileChanges/last-build.bin",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/8.9/fileChanges/last-build.bin",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/8.9/fileHashes/fileHashes.lock",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/8.9/fileHashes/fileHashes.lock",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/8.9/gc.properties",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/8.9/gc.properties",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/9.2.0/checksums/checksums.lock",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/9.2.0/checksums/checksums.lock",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/9.2.0/fileChanges/last-build.bin",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/9.2.0/fileChanges/last-build.bin",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/9.2.0/fileHashes/fileHashes.bin",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/9.2.0/fileHashes/fileHashes.bin",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/9.2.0/fileHashes/fileHashes.lock",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/9.2.0/fileHashes/fileHashes.lock",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/9.2.0/gc.properties",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/9.2.0/gc.properties",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/buildOutputCleanup/buildOutputCleanup.lock",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/buildOutputCleanup/buildOutputCleanup.lock",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/buildOutputCleanup/cache.properties",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/buildOutputCleanup/cache.properties",
-      "scope": "package-tooling",
-      "language": "java",
-      "category": "binding-local-package-input",
-      "disposition": "raw-core-prerequisite",
-      "action": "review-binding-package-tooling-before-package-execution",
-      "targetOwners": [
-        "framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md",
-        "scripts/local-package/README.ko.md"
-      ],
-      "removalGate": "V11-M4-BIND-JVM",
-      "finalGate": "V11-M4-PKG-JVM"
-    },
-    {
-      "id": "file:scripts/local-package/java/fixtures/public-consumer/.gradle/vcs-1/gc.properties",
-      "file": "scripts/local-package/java/fixtures/public-consumer/.gradle/vcs-1/gc.properties",
       "scope": "package-tooling",
       "language": "java",
       "category": "binding-local-package-input",

@@ -52,7 +52,7 @@ connection에 정확히 연결하고 한 publisher의 장애가 다른 publisher
 
 Publisher는 application fanout record 송신 여부와 관계없이 5초마다 같은 PUB endpoint로
 단방향 연결 확인 신호를 보낸다. 이 신호가
-[liveness beacon](01-glossary.ko.md#liveness-beacon)이다. Topic frame
+[liveness beacon](01-glossary.ko.md#liveness와-liveness-beacon)이다. Topic frame
 `01 5A 4C 46 31`과 payload frame `5A 46 01 01`로 이루어진 두 frame만 사용한다.
 Application은 public fanout publish에서 이 [topic](01-glossary.ko.md#topic)과 정확히 같은 값을 사용할 수
 없으며, 지정하면 호출 인자 오류가 발생한다.

@@ -564,17 +564,18 @@ const blockSimilarity = (left, right) => {
   return union === 0 ? 1 : intersection / union;
 };
 
-const legacySpecDocument = document => {
+const historicalSpecDocument = document => {
   const commonPrefix = 'framework/doc/framework/common/spec/';
   if (!document.startsWith(commonPrefix)) return document;
+  const historicalRoot = ['framework', 'doc', 'framework', 'spec'].join('/');
   const relative = document.slice(commonPrefix.length);
   if (relative.startsWith('server/languages/')) {
-    return `framework/doc/framework/spec/${relative}`;
+    return `${historicalRoot}/${relative}`;
   }
   if (/^\d{2}-/u.test(relative)) {
-    return `framework/doc/framework/spec/server/${relative}`;
+    return `${historicalRoot}/server/${relative}`;
   }
-  return `framework/doc/framework/spec/${relative}`;
+  return `${historicalRoot}/${relative}`;
 };
 
 const refreshBlockRoleOverrides = config => {
@@ -589,7 +590,7 @@ const refreshBlockRoleOverrides = config => {
       if (!revision) continue;
       for (const previousDocument of uniqueSorted([
         rule.document,
-        legacySpecDocument(rule.document),
+        historicalSpecDocument(rule.document),
       ])) {
         try {
           const previousSource = gitText(['show', `${revision}:${previousDocument}`]);
@@ -898,7 +899,10 @@ const buildTrace = (config, {refreshReview = false} = {}) => {
           || !categories.every(categoryId => categoryIds.has(categoryId))) {
         throw new Error(`${languageConfig.id} baseline document has invalid ownership: ${document || '<missing>'}`);
       }
-      const source = gitText(['show', `${baselineRevision}:${document}`]);
+      const source = gitText([
+        'show',
+        `${baselineRevision}:${historicalSpecDocument(document)}`,
+      ]);
       const blocks = headedFencedBlocks(source, languageConfig.acceptedCodeTags);
       for (const block of blocks) {
         const idMaterial = `${baselineRevision}\0${document}\0${block.ordinal}\0${block.tag}\0${block.source}`;

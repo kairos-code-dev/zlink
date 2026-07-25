@@ -194,7 +194,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 ## 6. Stream Regression 항목
 
 별도 client package의 정확한 lifecycle, dispatch, transport와 observer 계약은
-[.NET Stream Connector 공개 계약](../../spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)을
+[.NET Stream Connector 공개 계약](../../common/spec/stream-connector/languages/dotnet/03-stream-connector.ko.md)을
 따른다.
 
 | 항목 | 계층 | 통과 기준 |
@@ -213,7 +213,7 @@ runtime RID 를 기준으로 한다. framework CI gate[^ci-gate] 도 같은 범�
 ## 7. Location / Monitoring Regression 항목
 
 routing id 자동 할당의 정확한 `.NET` public interface와 lifecycle 증거는
-[routing id 자동 할당 공개 계약](../../spec/server/languages/dotnet/interfaces/09-routing-id-allocation.ko.md)을
+[routing id 자동 할당 공개 계약](../../common/spec/server/languages/dotnet/interfaces/09-routing-id-allocation.ko.md)을
 따른다.
 
 | 항목 | 계층 | 통과 기준 |

@@ -227,7 +227,7 @@ Manual connection도 실제 transport 연결에서 다음 정보를 확인한다
 
 - ChannelName
 - Server RID와 lifecycle generation
-- Weight와 [drain state](01-glossary.ko.md#drain)
+- Weight와 [drain state](01-glossary.ko.md#drain과-draining)
 - Security identity
 
 이 정보는 ClientServer 연결만 제어하며 [MeshNode descriptor](01-glossary.ko.md#meshnode-descriptor)나 RouteMesh peer

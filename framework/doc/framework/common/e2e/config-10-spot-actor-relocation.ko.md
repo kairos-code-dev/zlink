@@ -5,7 +5,7 @@
 # Config 10 — Spot actor join/relocation 배포
 
 actor가 Entry Spot과 user Spot 사이를 이동하거나, 다른 MeshNode의 user Spot으로 relocation될 때
-[Spot Actor Join / Relocation 공통 스펙](../../spec/server/23-spot-actor.ko.md)을 실제 배포 형태에서 만족하는지
+[Spot Actor Join / Relocation 공통 스펙](../spec/23-spot-actor.ko.md)을 실제 배포 형태에서 만족하는지
 검증한다. 이 config는 단순 Spot request 성공 여부가 아니라 admission, leave, relocation, joined,
 authority commit, bound session route, failure cleanup이 같은 순서와 의미로 관찰되는지 본다.
 
@@ -353,8 +353,8 @@ completion barrier를 끝내는가.
 
 ### Track F — accepted journal과 stale-route forwarding
 
-[Actor model §3·§8](../../spec/server/22-actor-model.ko.md)과
-[Spot Actor §4·§8](../../spec/server/23-spot-actor.ko.md)에 따라 seal 전에 Actor queue가 수락한 work만
+[Actor model §3·§8](../spec/22-actor-model.ko.md)과
+[Spot Actor §4·§8](../spec/23-spot-actor.ko.md)에 따라 seal 전에 Actor queue가 수락한 work만
 accepted journal로 고정한다. Seal 뒤 새 operation은 `ActorMoving`으로 끝나며 journal이나 forwarding queue에
 숨겨서 보관하지 않는다. Commit 뒤 이전 owner route로 늦게 도착한 stale operation만 bounded forwarding
 대상이다. 모든 시나리오는 operation ID와 accepted sequence로 수락, staging, replay와 terminal 결과를 대조한다.
@@ -450,7 +450,7 @@ seal·route ACK가 Actor binding route를 바꾸지 못하는가.
 우선순위: `P1`
 
 **검증 질문:** window 후 forwarding mapping이 축출되어 누수가 없고, window 안 재이동은 entry를 갱신하는가
-([Spot Actor §8](../../spec/server/23-spot-actor.ko.md#8-route-forwarding)).
+([Spot Actor §8](../spec/23-spot-actor.ko.md#8-route-forwarding)).
 
 - 절차: 두 부분으로 실행한다. (a) `actor-map-evict`를 remote relocation한 뒤 window 경과를 bounded wait로
   두고 `mapping_evicted` marker를 관찰한다. (b) `actor-map-chain`을 window 안에 `actor-a -> actor-b ->
@@ -469,8 +469,8 @@ seal·route ACK가 Actor binding route를 바꾸지 못하는가.
 
 **검증 질문:** seal 전에 수락한 lease-backed request가 replay된 뒤 original reply route로 correlate되고,
 timeout과 seal 뒤 `ActorMoving`이 서로 다른 terminal 결과로 유지되는가
-([Actor model §8](../../spec/server/22-actor-model.ko.md#8-실패와-관측),
-[Flow Correlation §7](../../spec/server/53-flow-correlation.ko.md#7-reply와-failure)).
+([Actor model §8](../spec/22-actor-model.ko.md#8-실패와-관측),
+[Flow Correlation §7](../spec/53-flow-correlation.ko.md#7-reply와-failure)).
 
 - 절차: 세 부분으로 실행한다. (a) 충분히 긴 timeout의 lease-backed request를 source가 수락한 직후 handler
   실행 전에 remote relocation을 시작한다. (b) 같은 accepted-before-seal 흐름에서 caller timeout을 Ready보다

@@ -4,7 +4,7 @@
 > [`.NET` 가이드](../../framework/dotnet/README.ko.md) 하나뿐이다. 이 문서는 그 이전 상태이며,
 > **`.NET` 가이드가 완성되면 이 문서를 삭제하고 그것을 기준으로 다시 쓴다.**
 >
-> **계약을 확인할 때는 이 문서를 믿지 말고 [spec 트리](../../framework/spec/README.ko.md)를 본다.**
+> **계약을 확인할 때는 이 문서를 믿지 말고 [spec 트리](../../framework/common/spec/README.ko.md)를 본다.**
 
 `zlink-http-client-kotlin`은 Kotlin coroutine으로 HTTP API를 호출하는 client다. zlink 스타일
 DSL과 fluent builder로 client·request를 구성하고 모든 제출은 진짜 `suspend` 함수라 응답을
@@ -36,4 +36,4 @@ suspend fun loadProfile(client: ZLinkHttpClient): PlayerProfile =
 | 13 | [에러 처리](13-error-handling.ko.md) | 예외 모델, retriable, 예외 경로 |
 
 정식 계약과 회귀 테스트 축은 spec 문서
-[kotlin-http-client.ko.md](../../framework/spec/http-client/languages/kotlin/kotlin-http-client.ko.md)가 정본이다.
+[kotlin-http-client.ko.md](../../framework/common/spec/http-client/languages/kotlin/kotlin-http-client.ko.md)가 정본이다.

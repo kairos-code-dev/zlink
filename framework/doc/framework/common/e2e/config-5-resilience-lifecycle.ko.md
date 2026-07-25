@@ -212,7 +212,7 @@ endpoint를 선택하지 않으며, 종료 직전에 완료된 request의 reply�
 > 해당 membership만 제외한다. `Retire`와 `Shutdown`의 admission seal은 MeshNode를 신규 자동 선택에서
 > 제외할 뿐 아니라 node-local 신규
 > application admission도 seal하므로, 호출자가 target을 직접 지정해 우회할 수 없다
-> ([54 §4~6](../../spec/server/54-graceful-drain-handoff.ko.md#4-retire-진행-순서)). 이 시나리오는 channel
+> ([54 §4~6](../spec/54-graceful-drain-handoff.ko.md#4-retire-진행-순서)). 이 시나리오는 channel
 > request의 weight 축만 검증하며 Actor·Spot `Retire`·`Shutdown` 동작은 Config 11이 담당한다.
 
 #### RL-B5 ChannelName weight 변경 중 in-flight 완료

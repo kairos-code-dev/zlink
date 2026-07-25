@@ -4,9 +4,9 @@
 
 # 12. 운영 — 런타임 메트릭 · graceful drain · readiness
 
-> 정식 계약은 공통 스펙 [런타임 메트릭](../../spec/server/51-runtime-metrics.ko.md)과
-> [Graceful Drain & Handoff](../../spec/server/54-graceful-drain-handoff.ko.md)가 다룬다.
-> `.NET` 표면의 정식 정의는 [spec/aspnet-core-monitoring §10·§12](../../spec/server/languages/dotnet/01-system-structure.ko.md)다.
+> 정식 계약은 공통 스펙 [런타임 메트릭](../../common/spec/51-runtime-metrics.ko.md)과
+> [Graceful Drain & Handoff](../../common/spec/54-graceful-drain-handoff.ko.md)가 다룬다.
+> `.NET` 표면의 정식 정의는 [spec/aspnet-core-monitoring §10·§12](../../common/spec/server/languages/dotnet/01-system-structure.ko.md)다.
 > 이 챕터는 운영 환경에서 실제로 무엇을 붙이고 무엇을 선언하는지 사용법 중심으로 다룬다.
 
 ## 0. 무엇을 해주는가
@@ -50,8 +50,8 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m
 - 대시보드와 exporter 선택은 앱 몫이다. framework는 내장 scrape 서버를 두지 않는다.
 
 계기 카탈로그는 다음과 같다. MeshNode, object·STREAM, location·fanout 계기의 라벨·단위·종류는
-[Runtime Metrics §§3~5](../../spec/server/51-runtime-metrics.ko.md)가 정하고, drain 계기는
-[Graceful Drain §9](../../spec/server/54-graceful-drain-handoff.ko.md#9-observability-identifiers)가 정한다.
+[Runtime Metrics §§3~5](../../common/spec/51-runtime-metrics.ko.md)가 정하고, drain 계기는
+[Graceful Drain §9](../../common/spec/54-graceful-drain-handoff.ko.md#9-observability-identifiers)가 정한다.
 
 | 계기 | 무엇을 재나 |
 |---|---|

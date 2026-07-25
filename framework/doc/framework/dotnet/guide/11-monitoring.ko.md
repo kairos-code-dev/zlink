@@ -4,7 +4,7 @@
 
 # 11. Monitoring — runtime 이벤트 관찰
 
-> 정식 계약은 [spec/aspnet-core-monitoring](../../spec/server/languages/dotnet/01-system-structure.ko.md)가
+> 정식 계약은 [spec/aspnet-core-monitoring](../../common/spec/server/languages/dotnet/01-system-structure.ko.md)가
 > 다룬다.
 
 handler 호출만으로는 운영을 다 볼 수 없다. socket connect/disconnect, 위치·연결 상태를 runtime이
@@ -254,7 +254,7 @@ spot event는 `StatusChanged`, `PeersChanged`, `SubjectsChanged`,
   send/publish/subscription/actor send 실패는 drop 되지만 로그, metric, observer event로 남는다.
   observer는 관측용이므로 callback이 실패해도 원래 dispatch 결과를 바꾸지 않는다.
 - **handler payload의 정확한 필드** → 가이드는 자주 쓰는 필드만 보였다. 전체는
-  [spec/aspnet-core-monitoring](../../spec/server/languages/dotnet/01-system-structure.ko.md) 참고.
+  [spec/aspnet-core-monitoring](../../common/spec/server/languages/dotnet/01-system-structure.ko.md) 참고.
 
 ## 5. 메시지 흐름 추적 — 메시지 생애주기 관찰
 
@@ -283,8 +283,8 @@ builder.Services.AddZLinkFramework(options =>
 - 콜렉터/OTel 연동: `IZLinkMessageFlowObserver`를 등록해 구조화 이벤트를 받는다(앱 레이어).
   framework는 OTel에 의존하지 않고 `CorrelationId` + 구조화 필드 + observer 훅까지만 제공한다
   (작성법은 바로 아래 "observer로 흐름 이벤트 받기").
-- 정식 계약은 [spec/aspnet-core-monitoring §9](../../spec/server/languages/dotnet/01-system-structure.ko.md), 공통 의미는
-  [공통 스펙 메시지 흐름 추적](../../spec/server/52-message-flow-tracing.ko.md) 참고.
+- 정식 계약은 [spec/aspnet-core-monitoring §9](../../common/spec/server/languages/dotnet/01-system-structure.ko.md), 공통 의미는
+  [공통 스펙 메시지 흐름 추적](../../common/spec/52-message-flow-tracing.ko.md) 참고.
 
 > **샘플에서 보기 — 전 샘플.** [Bingo](../../common/sample/bingo/README.ko.md) ·
 > [TicTacToe](../../common/sample/tictactoe/README.ko.md) ·
@@ -371,13 +371,13 @@ relay되고, spot이 actor를 호출하고, actor가 다른 channel로 send를 �
   callback(`Timer`), 앱이 시작한 호출(`Application`), lifecycle callback(`Lifecycle`).
 - 같은 `FlowId`로 여러 `CorrelationId`가 지나갈 수 있다. "요청 하나"를 볼 때는
   `corr=`, "업무 흐름 하나"를 볼 때는 flow id로 grep 한다.
-- 공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../spec/server/53-flow-correlation.ko.md)가
+- 공통 의미는 [공통 스펙 — 메시지 흐름 상관관계](../../common/spec/53-flow-correlation.ko.md)가
   다룬다.
 
 ## 6. 더 보기
 
 - 이 챕터 계약의 실행 검증 예문(monitoring options/event/handler/publisher): [13-interface-catalog](13-interface-catalog.ko.md) §7 — 검증 클래스 `EventingContracts`
-- 정식 계약: [spec/aspnet-core-monitoring](../../spec/server/languages/dotnet/01-system-structure.ko.md)
+- 정식 계약: [spec/aspnet-core-monitoring](../../common/spec/server/languages/dotnet/01-system-structure.ko.md)
 - location 운영 조회: [10-location](10-location.ko.md)
 - 런타임 메트릭·drain 상태 관측: [12-operations](12-operations.ko.md)
 

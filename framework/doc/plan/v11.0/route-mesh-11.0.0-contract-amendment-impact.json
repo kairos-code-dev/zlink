@@ -6,7 +6,7 @@
   "publicContractTraceDelta": {
     "path": "framework/doc/contract-inventory/route-mesh-v11-public-contract-trace.json",
     "baselineSha256": "24de8fb8d0b4d16cc2b3ae475e16f05e6bae547bc2eaa9bc30fddf1834097c25",
-    "currentSha256": "6027651e81642d9f7d52bac93f339bf76d5569fcf619c04cdce5fa7ea33a5e9a",
+    "currentSha256": "8d361e2173c348619dfe71cb7df87b9f1a57a1d43c6b12575f81b94007fb92cd",
     "added": 2129,
     "removed": 1517,
     "replacementPolicy": {
@@ -864,7 +864,7 @@
       "activationStage": "V11-M6B-E2E",
       "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "22a908fc1df878db98603774f3a8c3911d281f86d51ff2b26b1fbad86120e6e2",
-      "approvedHash": "090f178ed536ec8eb442039f55010fa7cff68a0cfd11efdcd3f90f4b3ea1d39b"
+      "approvedHash": "7956c98287ddd5c1a181fb0ed2f6048e5eaf75685591de29fb01a394ecc9a044"
     },
     {
       "id": "e2e:cpp:SpotService",
@@ -1089,7 +1089,7 @@
       "activationStage": "V11-M6B-E2E",
       "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "c84809ccd0dff9813b011ebd340d8c3c04031c0b737ce84f85063b675deef8e1",
-      "approvedHash": "28e5b84485f41ff4508558076323e4317f0b646566fc22f85b2d5778c2f18608"
+      "approvedHash": "6e96a154668ec46f07289a576f21f453f965e99b5423fbcc51d85924b9c3b329"
     },
     {
       "id": "e2e:dotnet:SpotService",
@@ -1192,9 +1192,9 @@
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M6B-JVM",
       "activationStage": "V11-M6B-E2E",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "1ab6cb15ed19104b06bbad716d79dd6d0fe803d21fd6e6928dc119b22e5c0e52",
-      "approvedHash": null
+      "approvedHash": "e797b7c2bf714945f07995bbf96aed052de60c336ae7e0c961005c8fe772fe6b"
     },
     {
       "id": "e2e:java:InstanceSpot",
@@ -1207,9 +1207,9 @@
       "specOwner": "framework/doc/framework/common/e2e/README.ko.md",
       "runtimeOwner": "V11-M6B-JVM",
       "activationStage": "V11-M6B-E2E",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "83d5fa9e8658f9337ab19289978b5019d2cdae3cb1006b53184590be269a0c13",
-      "approvedHash": null
+      "approvedHash": "a05e37989a4b5d1e356e1899c6ebace750e4cc77bf0df41d0aa4bc5f3888aad6"
     },
     {
       "id": "e2e:java:ObservabilityOps",
@@ -1899,7 +1899,7 @@
       "activationStage": "V11-M6B-E2E",
       "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "9a3978d8a4ade949d2268a21960f23b432726a74c140ba0f968c0617b800c42d",
-      "approvedHash": "7ff0d722a204843e4de59b0fa9fab9082fa60cf7a1940e86ffd1f6e5d087d290"
+      "approvedHash": "a44b3a54cb35932e3b03e9d87fed6e94d405d5c5eeb927b1b9a096d94f799414"
     },
     {
       "id": "e2e:node:SpotService",
@@ -97058,9 +97058,9 @@
       "specOwner": "framework/doc/framework/common/sample/README.ko.md",
       "runtimeOwner": "V11-M6B-JVM",
       "activationStage": "V11-M7-SAMPLES",
-      "quarantineStatus": "pending-disabled-by-contract-amendment",
+      "quarantineStatus": "pending-disabled-reviewed-source",
       "baselineHash": "8bc9c0516d712f1242bab9c08b493f6f7fdddab4c993745707324a17460539c3",
-      "approvedHash": null
+      "approvedHash": "b035baf595e3629bdca05e830f03b4df7add6b5c8934a482e2f1a4fac2722352"
     },
     {
       "id": "sample:java:ShoppingMall",

@@ -22,15 +22,20 @@ topology와 `TD-*` 공개 계약을 직접 증명하지 않으므로 완료 근�
 | `TD-C5` | deferred | 공개 API와 독립 marker로 검증할 대상: CPU worker에서 blocking I/O 금지. |
 | `TD-D1` | deferred | 공개 API와 독립 marker로 검증할 대상: 서로 다른 actor의 진행. |
 | `TD-D2` | deferred | 공개 API와 독립 marker로 검증할 대상: 같은 actor handler 재진입 금지. |
-| `TD-D3` | deferred | 공개 API와 독립 marker로 검증할 대상: 같은 timer handler 재진입 금지. |
+| `TD-D3` | deferred | 공개 API와 독립 marker로 검증할 대상: Actor가 yield한 동안 같은 Spot의 다음 timer record 진행. |
+| `TD-D4` | deferred | 공개 API와 독립 marker로 검증할 대상: PerActor의 Async가 같은 Actor만 차단. |
+| `TD-D5` | deferred | 공개 API와 독립 marker로 검증할 대상: 지원하지 않는 문맥의 Yield를 제출 전에 거부. |
+| `TD-D6` | deferred | 공개 API와 독립 marker로 검증할 대상: self awaited request와 same-gate Async를 제출 전에 거부. |
 | `TD-E1` | deferred | 공개 API와 독립 marker로 검증할 대상: Entry Spot에서 user Spot으로 join하는 비동기 경계. |
 | `TD-E2` | deferred | 공개 API와 독립 marker로 검증할 대상: user Spot 사이 join의 비동기 경계. |
+| `TD-E2A` | deferred | 공개 API와 독립 marker로 검증할 대상: handler 실패 시 비활성 deferred Join barrier 폐기. |
 | `TD-E3` | deferred | 공개 API와 독립 marker로 검증할 대상: 반대 방향 join의 동시 진행. |
 | `TD-F1` | deferred | 공개 API와 독립 marker로 검증할 대상: remote Spot에서도 같은 terminator 의미. |
 | `TD-F2` | deferred | 공개 API와 독립 marker로 검증할 대상: MeshNode routed handler의 같은 terminator 의미. |
 | `TD-F3` | deferred | 공개 API와 독립 marker로 검증할 대상: session relay actor handler의 같은 terminator 의미. |
 | `TD-F4` | deferred | 공개 API와 독립 marker로 검증할 대상: timeout 뒤 turn 해제. |
-| `TD-F5` | deferred | 공개 API와 독립 marker로 검증할 대상: cancellation과 shutdown 뒤 turn 정리. |
+| `TD-F5` | deferred | 공개 API와 독립 marker로 검증할 대상: waiter cancellation 뒤 turn 정리. |
+| `TD-F5A` | deferred | 공개 API와 독립 marker로 검증할 대상: host Shutdown 뒤 turn 정리. |
 | `TD-F6` | deferred | 공개 API와 독립 marker로 검증할 대상: 상호 대기 cycle의 timeout 종료. |
 | `TD-G1` | deferred | 공개 API와 독립 marker로 검증할 대상: 언어별 terminator 공개 의미 일치. |
 

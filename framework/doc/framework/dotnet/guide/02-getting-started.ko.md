@@ -15,7 +15,7 @@ channel request를 보내는 부분만 본다.
 - 처음에는 외부 위치 저장소 없이 **수동 연결**로 endpoint를 직접 지정한다.
 
 등록 시그니처와 옵션 전체는 [05-channel-messaging](05-channel-messaging.ko.md)과
-[spec/aspnet-core-channel-messaging](../../spec/server/languages/dotnet/01-system-structure.ko.md)이
+[spec/aspnet-core-channel-messaging](../../common/spec/server/languages/dotnet/01-system-structure.ko.md)이
 다룬다. 용어가 낯설면 [03-concepts §0](03-concepts.ko.md)을 먼저 펼쳐 둔다.
 
 ## 1. 실제 샘플 위치

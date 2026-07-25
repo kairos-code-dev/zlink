@@ -4,8 +4,8 @@
 
 # 10. Location — store 기반 자동 연결
 
-> 정식 계약은 공통 스펙 [location runtime](../../spec/server/40-location-runtime.ko.md)과
-> [Redis extension](../../spec/server/41-location-store-redis.ko.md)이 다룬다. 이 챕터는
+> 정식 계약은 공통 스펙 [location runtime](../../common/spec/40-location-runtime.ko.md)과
+> [Redis extension](../../common/spec/41-location-store-redis.ko.md)이 다룬다. 이 챕터는
 > .NET에서 store를 등록하고 자동 연결과 운영 조회를 쓰는 방법을 다룬다.
 
 ## 0. 무엇을 해주는가

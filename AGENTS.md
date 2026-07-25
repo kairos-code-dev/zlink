@@ -162,22 +162,6 @@ interface도 `framework/doc/framework/common/spec/<package>/languages/<lang>/`�
 표에 기록하고, 이후 구현과 contract test를 spec에 맞춘다. 구현이 없다는 이유로
 공통 기능을 현재 언어들의 최소 공통분모로 축소하지 않는다.
 
-아직 공개 전인 RouteMesh 10.0.0 작업에서는 구현 전에 Core 10.0.0 계약을 `core/doc/spec/core/`의 정식
-spec에 먼저 기록한다. 정식 spec·guide·internals는 10.0.0 현재 상태만 설명하며 이전 version, AS-IS,
-제거 이력, 구현 진행표와 설계 대안을 포함하지 않는다. RouteMesh 전환 inventory, stage 진행 상태와
-review 기록은 `framework/doc/plan/v10.0/` 아래 임시 문서만 소유하고 정식 문서에서 이 임시 문서를
-참조하지 않는다. framework 목표 계약과 현재 언어별 구현의 차이는 위 framework 규칙에 따라 공개 계약이
-아닌 `90-implementation-gap.ko.md`와 언어별 gap 문서가 소유한다. 이 gap 문서를 목표 계약의 근거나
-완료 증거로 사용하지 않는다.
-public header·구현·contract test를 정식 spec에 맞춘 뒤 실제 구현이 확정된 시점에 internals를 갱신한다.
-
-RouteMesh 10.0.0 실행 상태의 단일 기준은
-`framework/doc/plan/v10.0/route-mesh-10.0.0-execution-ledger.ko.md`다. 에이전트는 10.0.0 작업을 시작할
-때 이 ledger에서 담당 stage·ID, 선행 조건, 정식 spec 주소와 완료 gate를 확인하고, 진행 상태와 증거도
-이 파일의 담당 행에만 갱신한다. 다른 v10.0 plan 문서의 설계 결정, inventory와 test matrix는 입력
-자료이지 별도 진행표가 아니다. 작업 지시는 ledger 경로와 담당 stage 또는 ID 범위만으로 구성할 수
-있어야 하며, 다른 plan의 checklist를 프롬프트에 다시 복사하지 않는다.
-
 RouteMesh 11.0.0의 Core service runtime 이관은 major version의 책임 경계를 다시 정하므로 Core에도
 target-first 예외를 적용한다. `core/doc/spec/core/`의 정식 spec에 Core 11 raw-only 목표 계약을 먼저 기록하고,
 public header·구현과의 차이는
@@ -187,7 +171,7 @@ service C ABI, 제거 이력, 진행 상태와 대안을 남기지 않는다. Se
 실제 구현이 확정되기 전의 internals는 기존 구조를 목표 구조로 오인하게 설명하지 않으며, 구현 완료 뒤
 Core 11에 남는 raw runtime 구조만 기록한다.
 
-이 framework, 공개 전 RouteMesh 10.0.0과 RouteMesh 11.0.0 Core 이관 예외 밖의 core, bindings와 일반
+이 framework와 RouteMesh 11.0.0 Core 이관 예외 밖의 core, bindings와 일반
 `doc/spec/` 작업은 아래 draft 규칙을
 계속 따른다.
 

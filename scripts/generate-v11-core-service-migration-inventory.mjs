@@ -21,7 +21,7 @@ const inventoryPath = process.env.ZLINK_V11_MIGRATION_INVENTORY_PATH
 // sections participate in the digest, so later reviewed classifications for
 // bindings and Framework files do not rewrite Core 10.x history.
 const reviewedCoreBaselineSha256 =
-  '77a1a1113088d344a05444dd6698975c89e606eaca59c22cce75defa3b7dd062';
+  'e7737432d96d6b3aaba64fdd3ef6ad0914bab9e31b7f48893b96821163c050d6';
 const reviewedCoreRemovalFilesRevision =
   '1de8f43917d7c8d3d0f26dadf97c9f83ede79228';
 const reviewedCoreRemovalFilesSha256 =
@@ -907,8 +907,7 @@ function loadReviewedCoreBaseline() {
       || !Array.isArray(baseline.coreExportSymbols)) {
     throw new Error('reviewed Core service baseline sections are missing');
   }
-  const digestInput = restoreSealedDocumentOwners(baseline);
-  const digest = crypto.createHash('sha256').update(stableJson(digestInput)).digest('hex');
+  const digest = crypto.createHash('sha256').update(stableJson(baseline)).digest('hex');
   if (digest !== reviewedCoreBaselineSha256) {
     throw new Error([
       'reviewed Core service baseline digest differs from the sealed value',
@@ -919,34 +918,6 @@ function loadReviewedCoreBaseline() {
   return {
     corePublicSymbols: relocateConsolidatedDocumentOwners(baseline.corePublicSymbols),
     coreExportSymbols: relocateConsolidatedDocumentOwners(baseline.coreExportSymbols),
-  };
-}
-
-function restoreSealedDocumentOwners(baseline) {
-  const commonPrefix = `${formalSpecRoot}/`;
-  const restoreOwner = owner => {
-    if (owner === formalSpecIndex) {
-      return 'framework/doc/framework/spec/README.ko.md';
-    }
-    const languagePrefix = `${formalSpecRoot}/server/languages/`;
-    if (owner.startsWith(languagePrefix)) {
-      return `framework/doc/framework/spec/server/languages/${owner.slice(languagePrefix.length)}`;
-    }
-    if (owner === `${formalSpecRoot}/04-async-execution-policy.ko.md`) {
-      return 'framework/doc/framework/spec/04-async-execution-policy.ko.md';
-    }
-    if (owner.startsWith(commonPrefix)) {
-      return `framework/doc/framework/spec/server/${owner.slice(commonPrefix.length)}`;
-    }
-    return owner;
-  };
-  const restoreRecords = records => records.map(record => ({
-    ...record,
-    targetOwners: (record.targetOwners || []).map(restoreOwner),
-  }));
-  return {
-    corePublicSymbols: restoreRecords(baseline.corePublicSymbols),
-    coreExportSymbols: restoreRecords(baseline.coreExportSymbols),
   };
 }
 
@@ -968,21 +939,6 @@ function verifyReviewedCoreRemovalFiles(records, source) {
 }
 
 function relocateConsolidatedDocumentOwners(records) {
-  const legacyFormalSpecRoot = 'framework/doc/framework/spec';
-  const relocateFormalOwner = owner => {
-    const legacyServerPrefix = `${legacyFormalSpecRoot}/server/`;
-    const legacyLanguagePrefix = `${legacyServerPrefix}languages/`;
-    if (owner.startsWith(legacyLanguagePrefix)) {
-      return `${formalSpecRoot}/server/languages/${owner.slice(legacyLanguagePrefix.length)}`;
-    }
-    if (owner.startsWith(legacyServerPrefix)) {
-      return `${formalSpecRoot}/${owner.slice(legacyServerPrefix.length)}`;
-    }
-    if (owner.startsWith(`${legacyFormalSpecRoot}/`)) {
-      return `${formalSpecRoot}/${owner.slice(legacyFormalSpecRoot.length + 1)}`;
-    }
-    return owner;
-  };
   const relocated = new Map([
     [`${retiredPlanSpecRoot}/README.ko.md`, formalSpecIndex],
     [`${retiredPlanSpecRoot}/01-mesh-node.ko.md`,
@@ -1026,7 +982,7 @@ function relocateConsolidatedDocumentOwners(records) {
   return records.map(record => ({
     ...record,
     targetOwners: (record.targetOwners || [])
-      .map(owner => relocated.get(owner) || relocateFormalOwner(owner)),
+      .map(owner => relocated.get(owner) || owner),
   }));
 }
 

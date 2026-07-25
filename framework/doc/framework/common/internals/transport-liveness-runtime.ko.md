@@ -4,7 +4,7 @@
 `framework/doc/plan/v11.0/route-mesh-11.0.0-execution-ledger.ko.md`가 소유한다.
 
 [내부 구조 목차](README.ko.md) · [Service wire protocol](service-wire-protocol.ko.md) ·
-[Transport liveness 계약](../../spec/server/55-transport-liveness.ko.md) ·
+[Transport liveness 계약](../spec/55-transport-liveness.ko.md) ·
 [Core raw 내부 경계](../../../../../core/doc/internals/runtime-boundary.ko.md)
 
 ## 1. 책임 경계

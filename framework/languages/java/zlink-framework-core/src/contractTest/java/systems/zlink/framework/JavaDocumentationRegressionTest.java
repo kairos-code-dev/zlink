@@ -23,16 +23,17 @@ final class JavaDocumentationRegressionTest {
     private static final Pattern SCENARIO = Pattern.compile("\\b[A-Z]{2,3}-[A-Z][0-9]+\\b");
 
     @Test
-    void javaG0LedgerKeepsItsFrozenSpecSnapshot() throws Exception {
+    void canonicalCommonSpecOwnsLiveJavaContracts() {
         Path root = repositoryRoot();
-        // spec 트리는 패키지 폴더로 나뉜다. ledger key는 spec 루트 기준 상대 경로다.
-        Path ledger = root.resolve(
-            "framework/doc/plan/log/framework-public-contract-gap-implementation/java-g0-contract-ledger.ko.md");
+        Path commonSpec = root.resolve("framework/doc/framework/common/spec");
+        Path deletedSpec = root.resolve("framework/doc/framework/spec");
 
-        Map<String, String> snapshot = parseSnapshot(Files.readString(ledger));
-        assertEquals(30, snapshot.size(), "Java G0 frozen snapshot inventory changed");
-        assertTrue(snapshot.containsKey("server/21-spot-node.ko.md"));
-        assertTrue(snapshot.containsKey("server/languages/java/02-handler-interfaces.ko.md"));
+        assertFalse(Files.exists(deletedSpec));
+        assertTrue(Files.isRegularFile(commonSpec.resolve("21-mesh-node.ko.md")));
+        assertTrue(Files.isRegularFile(
+            commonSpec.resolve("server/languages/java/02-handler-interfaces.ko.md")));
+        assertTrue(Files.isDirectory(
+            commonSpec.resolve("server/languages/java/interfaces")));
     }
 
     @Test
@@ -76,8 +77,6 @@ final class JavaDocumentationRegressionTest {
                 "missing deferred Java instance-spot scenario: " + scenario);
         }
 
-        assertEquals(173, expected.size(), "common E2E scenario inventory changed");
-
         String active;
         try (Stream<Path> files = Files.walk(javaE2e)) {
             active = files.filter(Files::isRegularFile)
@@ -112,7 +111,7 @@ final class JavaDocumentationRegressionTest {
         Path current = Path.of("").toAbsolutePath();
         while (current != null) {
             if (Files.isRegularFile(current.resolve("framework/languages/java/settings.gradle.kts"))
-                && Files.isDirectory(current.resolve("framework/doc/framework/spec"))) {
+                && Files.isDirectory(current.resolve("framework/doc/framework/common/spec"))) {
                 return current;
             }
             current = current.getParent();

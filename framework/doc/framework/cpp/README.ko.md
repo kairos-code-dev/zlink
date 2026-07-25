@@ -4,12 +4,12 @@
 
 | 문서 | 범위 |
 |------|------|
-| [01 시스템 구조](../spec/server/languages/cpp/01-system-structure.ko.md) | 패키지·빌드 타깃, application host, **DI 컨테이너**, configuration, **logging**, HTTP scope·middleware 순서, 기능 등록 |
-| [기능별 exact interface](../spec/server/languages/cpp/interfaces/README.ko.md) | App/Host, builder, messaging, Spot, Actor, STREAM, Location과 monitoring의 exact public 계약 |
-| [60 HTTP hosting](../spec/server/languages/cpp/60-http-hosting.ko.md) | HTTP 호스팅 계약 |
-| [61 내장 HTTP 서버](../spec/server/languages/cpp/61-embedded-http-server.ko.md) | 내장 서버 |
+| [01 시스템 구조](../common/spec/server/languages/cpp/01-system-structure.ko.md) | 패키지·빌드 타깃, application host, **DI 컨테이너**, configuration, **logging**, HTTP scope·middleware 순서, 기능 등록 |
+| [기능별 exact interface](../common/spec/server/languages/cpp/interfaces/README.ko.md) | App/Host, builder, messaging, Spot, Actor, STREAM, Location과 monitoring의 exact public 계약 |
+| [60 HTTP hosting](../common/spec/server/languages/cpp/60-http-hosting.ko.md) | HTTP 호스팅 계약 |
+| [61 내장 HTTP 서버](../common/spec/server/languages/cpp/61-embedded-http-server.ko.md) | 내장 서버 |
 
-**기능의 의미와 동작 규칙은 [공통 스펙](../spec/README.ko.md)이 소유한다.** C++ 문서는 그
+**기능의 의미와 동작 규칙은 [공통 스펙](../common/spec/README.ko.md)이 소유한다.** C++ 문서는 그
 의미가 C++에서 갖는 **정확한 public 표면**을 고정한다.
 
 Sample과 E2E의 JSON 설정 파일, 환경 변수 금지와 typed binding 기준은
@@ -23,7 +23,7 @@ HTTP를 직접 제공한다.**
 
 | 산출물 | 문서 |
 |--------|------|
-| HTTP client (`zlink::http_client`) | [가이드](../../http-client/cpp/README.ko.md) · [spec](../spec/http-client/languages/cpp/cpp-http-client.ko.md) |
+| HTTP client (`zlink::http_client`) | [가이드](../../http-client/cpp/README.ko.md) · [spec](../common/spec/http-client/languages/cpp/cpp-http-client.ko.md) |
 | Stream connector (`zlink::stream_connector`) | [사용자 가이드](../../stream-connector/cpp/guide/INDEX.ko.md) |
 
 ## internals 목록

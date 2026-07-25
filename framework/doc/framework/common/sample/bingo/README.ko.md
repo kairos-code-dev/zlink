@@ -469,7 +469,7 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
 - actor가 room에 join하는 흐름은 각 언어 framework의 public actor/Spot API와 location
   store 기반 **spot handle resolver** 계약을 사용해야 한다. resolver가 돌려주는 값은 불투명한
   `SpotHandle`이며, `SpotRef`(내부 주소 snapshot)는 public 표면에 없다
-  ([24 §2](../../../spec/server/24-spot-address-messaging.ko.md)). 샘플을 통과시키기
+  ([24 §2](../../spec/24-spot-address-messaging.ko.md)). 샘플을 통과시키기
   위해 framework의 internal runtime 객체나 sample-local route helper로 remote join 경로를
   우회하면 안 된다.
 - Logical Multicast 흐름은 각 언어 framework의 public Logical Multicast API를 사용해야 한다.
@@ -485,7 +485,7 @@ TypeScript에서도 작성되어야 한다. 언어 문법과 빌드 도구는 �
   server push 수신을 관찰하기 위한 것이며, payload 검증이나 push 대기를 대신하지 않는다.
   observer callback에서는 connector send/request/wait를 다시 호출하지 않는다.
 - Java와 Kotlin client scenario의 `submit`과 `await` 의미는
-  [framework 공통 비동기 정책](../../../spec/04-async-execution-policy.ko.md)을 따른다.
+  [framework 공통 비동기 정책](../../spec/04-async-execution-policy.ko.md)을 따른다.
   `submit`은 작업을 시작하고 future를 반환하는 이름으로, `await`는 완료를 기다려
   결과를 받는 이름으로 사용한다.
 - sample-local inbox, sleep, 임시 polling 함수로 준비 상태나 push 도착을 숨기면 안 된다.
@@ -586,7 +586,7 @@ player의 **전적(record)은 Api 서버가 소유한다.** room은 전적을 �
 
 **card 제출·draw 진행·winner 판정은 terminator 대상이 아니다.** 그건 room이 소유한 domain
 객체의 동기 호출이라 기다릴 것이 없다. terminator는 **완료를 기다리는 framework 호출**(request,
-actor join, worker, HTTP client)에만 적용된다([04 §1.1](../../../spec/04-async-execution-policy.ko.md)).
+actor join, worker, HTTP client)에만 적용된다([04 §1.1](../../spec/04-async-execution-policy.ko.md)).
 
 **`observer`는 전적을 조회하지 않는다.** observer actor는 `BingoRoomJoinReq.ObserveOnly = true`로
 관전 전용 local room에 join하며, player membership·card·draw·winner 판정에 참여하지 않는다(§14).
@@ -598,7 +598,7 @@ actor join, worker, HTTP client)에만 적용된다([04 §1.1](../../../spec/04-
 `.Async()`로 기다리면 그 왕복 동안 **room 실행 줄이 통째로 멈춘다.** draw timer의 다음 draw,
 같은 room의 card 제출, 다른 player의 leave가 전부 그 뒤로 밀린다. `.Yield()`는 turn을 반납하므로
 그것들이 그대로 진행되고, 조회가 끝난 continuation이 room 실행 줄의 큐에 재삽입되어 순서대로
-재개된다([04 §1.1](../../../spec/04-async-execution-policy.ko.md)).
+재개된다([04 §1.1](../../spec/04-async-execution-policy.ko.md)).
 
 **이 샘플의 스크립트 흐름만으로는 그 차이가 눈에 띄지 않는다.** client 시나리오는 join → 시작 →
 카드 제출 → draw를 순서대로 밟기 때문에, join 왕복과 겹칠 작업이 마침 없다(§10). 실부하에서는
@@ -620,8 +620,8 @@ Api 서버는 이 샘플 안의 channel 서버이므로 framework request의 `.Y
 | 대기의 정체 | 쓰는 표면 |
 |---|---|
 | 이 샘플처럼 ZLink channel request | request의 `.Yield()` |
-| 외부 HTTP·레거시 API | HTTP client의 `.Yield()`([12 §3.1](../../../spec/http-client/12-http-client.ko.md)) — **worker로 감싸지 않는다** |
-| DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기 | `RunIoWorker(...).Yield()`([04 §1.2](../../../spec/04-async-execution-policy.ko.md)) |
+| 외부 HTTP·레거시 API | HTTP client의 `.Yield()`([12 §3.1](../../spec/http-client/12-http-client.ko.md)) — **worker로 감싸지 않는다** |
+| DB 드라이버·외부 SDK처럼 자체 terminator가 없는 비동기 대기 | `RunIoWorker(...).Yield()`([04 §1.2](../../spec/04-async-execution-policy.ko.md)) |
 
 turn 유지/반납의 엄밀한 검증은 [config-8 execution turn](../../e2e/config-8-execution-turn.ko.md)이
 소유한다. 이 샘플은 그 계약을 **실제 흐름에서 어떻게 쓰는지**를 보여 준다.
@@ -640,7 +640,7 @@ handler 목록을 다시 나열하지 않는다.
 
 언어별 표현은 `.NET` attribute, Java/Kotlin annotation, Node decorator다. **C++은 예외**로,
 runtime 스캔이 없으므로 compile-time 타입과 명시 builder 호출로 같은 handler 집합을 등록한다
-([05 §8](../../../spec/05-framework-api.ko.md#8-handler-등록과-dispatch)). 등록 방식이 달라도 handler 역할과 메시지 이름은
+([05 §8](../../spec/05-framework-api.ko.md#8-handler-등록과-dispatch)). 등록 방식이 달라도 handler 역할과 메시지 이름은
 같다.
 
 수동 연결 + 수동 등록을 보여 주는 것은 **TicTacToe** 하나뿐이다([샘플 규약](../README.ko.md)).
@@ -1013,12 +1013,12 @@ Session 서버는 자기 역할에 대응하는 preferred Play node rid를 `Ensu
 
 **이 preferred node rid는 샘플이 정의한 application payload 필드이지 framework 표면이 아니다.**
 framework에는 remote node를 직접 지정하는 actor 생성 API가 없다
-([22 §6](../../../spec/server/22-actor-model.ko.md), [31 §10](../../../spec/server/31-session-actor-dispatch.ko.md)) —
+([22 §6](../../spec/22-actor-model.ko.md), [31 §10](../../spec/31-session-actor-dispatch.ko.md)) —
 배치 결정은 framework runtime이 owner lease·capability·`Draining` 마커로 수행한다. 샘플은 그 위에서
 **application 수준 요청 라우팅**으로 선호 노드를 표현한다: 요청을 그 노드로 보내고, 그 노드가
 자기 local actor runtime에 actor를 만든다. 샘플을 통과시키려고 framework에 노드 지정 생성
 표면을 새로 추가하지 않는다 — 샘플은 새 public contract의 근거가 아니다
-([00 §3](../../../spec/00-public-contract-governance.ko.md)).
+([00 §3](../../spec/00-public-contract-governance.ko.md)).
 
 ## 13. Matching과 카드 제출 흐름
 
@@ -1325,8 +1325,8 @@ RID 구현을 자동 할당 완료로 간주하지 않는다.
 
 Bingo는 이미 세션 게이트웨이(STREAM)·actor 이동·룸 타이머·bound push를 갖춰, 관측·운영 기능이
 관측하는 사건을 그대로 만들어 낸다. 그래서 사용자가 **바로 따라 켜 보기** 좋은 샘플이다. 세
-기능은 각각 [메시지 흐름 상관관계](../../../spec/server/53-flow-correlation.ko.md), [런타임 메트릭](../../../spec/server/51-runtime-metrics.ko.md),
-[Graceful Drain & Handoff](../../../spec/server/54-graceful-drain-handoff.ko.md)이 계약을 소유하고, 언어별 표면은
+기능은 각각 [메시지 흐름 상관관계](../../spec/53-flow-correlation.ko.md), [런타임 메트릭](../../spec/51-runtime-metrics.ko.md),
+[Graceful Drain & Handoff](../../spec/54-graceful-drain-handoff.ko.md)이 계약을 소유하고, 언어별 표면은
 각 언어 monitoring 문서가 소유한다. **셋 다 공통 케이스는 무설정에 가깝다.**
 
 ### 17.1 메시지 흐름 추적 로그 (flow correlation)
@@ -1395,10 +1395,10 @@ lifecycle event는 각각 한 번만 기록한다. 상세 실행 gate와 증거 
 ### 17.4 언어별 표면
 
 같은 세 기능의 언어별 정식 표면은 각 언어 exact interface 문서를 본다:
-[.NET RouteMesh](../../../spec/server/languages/dotnet/05-route-mesh.ko.md) ·
-[Java interfaces](../../../spec/server/languages/java/interfaces/README.ko.md) ·
-[Java Channel](../../../spec/server/languages/java/interfaces/channel-messaging.ko.md) ·
-[Node](../../../spec/server/languages/node/interfaces/README.ko.md) ·
-[C++](../../../spec/server/languages/cpp/interfaces/README.ko.md) ·
-[Kotlin](../../../spec/server/languages/kotlin/interfaces/README.ko.md). 배포 조건에서의 e2e 검증은
+[.NET RouteMesh](../../spec/server/languages/dotnet/05-route-mesh.ko.md) ·
+[Java interfaces](../../spec/server/languages/java/interfaces/README.ko.md) ·
+[Java Channel](../../spec/server/languages/java/interfaces/channel-messaging.ko.md) ·
+[Node](../../spec/server/languages/node/interfaces/README.ko.md) ·
+[C++](../../spec/server/languages/cpp/interfaces/README.ko.md) ·
+[Kotlin](../../spec/server/languages/kotlin/interfaces/README.ko.md). 배포 조건에서의 e2e 검증은
 [Config 11 — 관측·운영 배포](../../e2e/config-11-observability-ops.ko.md)가 다룬다.

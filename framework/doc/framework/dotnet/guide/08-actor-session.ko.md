@@ -4,8 +4,8 @@
 
 # 8. Session Actor Dispatch
 
-> 정식 계약은 [spec/aspnet-core-actor](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)와
-> [spec/session-actor-dispatch](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다.
+> 정식 계약은 [spec/aspnet-core-actor](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)와
+> [spec/session-actor-dispatch](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)가 다룬다.
 > 이 챕터는 actor의 **binding 축** — STREAM session에 bound 된 actor로 client packet을
 > relay 하고, actor가 자기 client로 push 하는 면 — 을 다룬다. actor 모델과 spot 호스팅(location
 > 축)은 [07-actor-spot](07-actor-spot.ko.md)을 먼저 본다.
@@ -411,14 +411,14 @@ builder.Services.AddZLinkFramework(options =>
 });
 ```
 
-> MeshNode/StreamNode 등록 시그니처는 [spec/aspnet-core-actor](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)와 샘플 코드를
+> MeshNode/StreamNode 등록 시그니처는 [spec/aspnet-core-actor](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)와 샘플 코드를
 > 기준으로 확인한다.
 
 ## 7. 더 보기
 
 - actor 모델·spot 호스팅 콜백(location 축): [07-actor-spot](07-actor-spot.ko.md)
 - bound session push 계약: [13-interface-catalog](13-interface-catalog.ko.md) §5.2 — 검증 클래스 `StreamContracts`
-- 정식 계약: [spec/aspnet-core-actor](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md), [spec/session-actor-dispatch](../../spec/server/languages/dotnet/02-handler-interfaces.ko.md)
+- 정식 계약: [spec/aspnet-core-actor](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md), [spec/session-actor-dispatch](../../common/spec/server/languages/dotnet/02-handler-interfaces.ko.md)
 - 전체 예제: [tictactoe 샘플](../../common/sample/tictactoe/README.ko.md), [bingo 샘플](../../common/sample/bingo/README.ko.md)
 - 외부 client를 STREAM으로 받는 법: [09-stream](09-stream.ko.md)
 

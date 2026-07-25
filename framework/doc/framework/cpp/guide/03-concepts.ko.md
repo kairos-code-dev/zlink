@@ -12,7 +12,7 @@ ZLink framework 는 **여섯 가지 핵심 개념**으로 선다:
 
 가이드에 자주 나오는 용어를 먼저 잡아 둔다. 정식 계약은
 [공통 스펙 목차](../../common/README.ko.md)와
-[C++ framework spec](../../spec/server/languages/cpp/interfaces/README.ko.md)이 다룬다.
+[C++ framework spec](../../common/spec/server/languages/cpp/interfaces/README.ko.md)이 다룬다.
 
 | 용어 | 한 줄 풀이 |
 |------|-----------|

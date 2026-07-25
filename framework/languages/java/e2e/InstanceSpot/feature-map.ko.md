@@ -7,6 +7,18 @@
 
 | Scenario | 상태 | 남은 검증 |
 |----------|------|-----------|
+| `IS-R01` | 미구현 | Core·bindings에 Instance activation service 표면이 남지 않음 |
+| `IS-R02` | 미구현 | 공개 raw socket API만으로 multipart·RID·monitor·bounded I/O·close 구현 |
+| `IS-R03` | 미구현 | Binding private symbol·reflection·generated service symbol·Core private header 미사용 |
+| `IS-P01` | 미구현 | Activation recovery envelope의 identity·fence·first packet·deadline 보존 |
+| `IS-P02` | 미구현 | Target descriptor·owner lease exact fence와 단일 CAS winner |
+| `IS-P03` | 미구현 | Activation message·byte 상한, FIFO와 request terminal-once |
+| `IS-P04` | 미구현 | Durable first record와 Ready CAS 사이 handler barrier |
+| `IS-P05` | 미구현 | Stable wire failure code와 네 decoder parity |
+| `IS-P06` | 미구현 | Close·expiry·abort·host terminal 뒤 resource cleanup |
+| `IS-P07` | 미구현 | Activation crash 단계별 orphan·reservation recovery |
+| `IS-P08` | 미구현 | Exact generation·lease 확인 뒤 activation failure release |
+| `IS-P09` | 미구현 | First handler terminal·replay cursor 뒤 recovery pointer release |
 | `IS-C01` | 미구현 | Driver SPI symbol·layout·status prefix |
 | `IS-C02` | 미구현 | Cold placement·activation data 보존 |
 | `IS-C03` | 미구현 | Local registry kind 충돌·single create |

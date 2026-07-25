@@ -26,7 +26,7 @@ ZLinkHttpClient.Create("https://api.internal")
 
 ## 동작 의미론
 
-[공통 spec 7.3](../../spec/http-client/07-auth-tls-proxy.ko.md)을 따른다.
+[공통 spec 7.3](../../common/spec/http-client/07-auth-tls-proxy.ko.md)을 따른다.
 
 - 평문(`http://`) 대상은 absolute-form 요청으로 proxy에 전달된다.
 - `https://` 대상은 **CONNECT tunnel**을 연 뒤 그 위에서 TLS handshake를

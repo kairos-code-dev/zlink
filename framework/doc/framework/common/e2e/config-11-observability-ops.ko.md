@@ -6,8 +6,8 @@
 # Config 11 — 관측·운영 배포 (metrics · flow correlation · host maintenance)
 
 운영 중인 배포에서 새 관측·운영 표면 세 가지를 실제 배포 조건(공유 store·다중 노드·프로세스
-경계)에서 검증한다. 세 표면의 계약은 각각 [메시지 흐름 상관관계](../../spec/server/53-flow-correlation.ko.md),
-[런타임 메트릭](../../spec/server/51-runtime-metrics.ko.md), [Host Retire, Shutdown & Handoff](../../spec/server/54-graceful-drain-handoff.ko.md)이
+경계)에서 검증한다. 세 표면의 계약은 각각 [메시지 흐름 상관관계](../spec/53-flow-correlation.ko.md),
+[런타임 메트릭](../spec/51-runtime-metrics.ko.md), [Host Retire, Shutdown & Handoff](../spec/54-graceful-drain-handoff.ko.md)이
 소유하고, 이 config는 그 계약이 배포 현장에서 의도대로 동작하는지를 확인한다.
 
 기존 [Config 7 — Runtime Monitoring](config-7-monitoring.ko.md)이 MeshNode의 snapshot과 typed runtime
@@ -21,7 +21,7 @@ event를 다룬다면, 이 config는 (1) 한 흐름을 노드 경계 너머로 �
   bounded cleanup을 계약대로 수행하는지.
 - 여기서 다루지 않는 것: 기능 자체의 messaging 정확성(다른 config), MeshNode runtime snapshot·event
   관찰(Config 7), 대시보드·exporter 구성(앱 몫,
-  [Runtime Metrics §8](../../spec/server/51-runtime-metrics.ko.md#8-reader와-성능)).
+  [Runtime Metrics §8](../spec/51-runtime-metrics.ko.md#8-reader와-성능)).
 
 ## 2. 서버 구성 (한 번 구동)
 
@@ -96,9 +96,9 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 - 검증: trigger connector가 별도 설정 없이 `origin=application` flow를 생성한다. 세 노드 로그를 모아
   `grep flow=<id>` 하면 connector outbound→Session STREAM inbound(보존)→actor relay→room-spot 내부
   dispatch가 시간순으로 이어진다. corr이 없는 Spot 경계에서도 `flow=`가 유지된다
-  ([Flow Correlation §2](../../spec/server/53-flow-correlation.ko.md#2-두-식별자)).
+  ([Flow Correlation §2](../spec/53-flow-correlation.ko.md#2-두-식별자)).
 - 세부 동작: Spot·Actor 경계 관통
-  ([Flow Correlation §5](../../spec/server/53-flow-correlation.ko.md#5-propagation)).
+  ([Flow Correlation §5](../spec/53-flow-correlation.ko.md#5-propagation)).
 
 #### OBS-A2 error 라인에도 flow
 
@@ -108,7 +108,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 - 절차: 알 수 없는 packet이나 잘못된 payload로 dispatch 실패를 유발한다.
 - 검증: dispatch error 라인에 `flow=`가 있고, `grep flow=<id>`로 성공 라인과 실패 라인이 함께
-  확인된다([Flow Correlation §7](../../spec/server/53-flow-correlation.ko.md#7-reply와-failure)).
+  확인된다([Flow Correlation §7](../spec/53-flow-correlation.ko.md#7-reply와-failure)).
 - 세부 동작: error reporter flow 기록.
 
 #### OBS-A3 create-if-absent · off 노드 전파
@@ -120,7 +120,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 - 절차: (a) 진입점에서 생성된 flow가 하류 노드에서 그대로 유지되는지, (b) 중간 노드의 트레이싱을 `off`로 두고 흐름을 통과시킨다.
 - 검증: (a) 하류 노드는 flow를 재생성하지 않는다(같은 id 유지). (b) off 노드는 새 flow를 시작하지
   않지만 전파는 유지해, off 노드 이후 노드에서 같은 flow가 다시 나타난다
-  ([Flow Correlation §4](../../spec/server/53-flow-correlation.ko.md#4-flow-생성)).
+  ([Flow Correlation §4](../spec/53-flow-correlation.ko.md#4-flow-생성)).
 - 세부 동작: create-if-absent + 전파 무조건.
 
 #### OBS-A4 publish fan-out 트리 · timer 발원
@@ -131,9 +131,9 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 
 - 절차: (a) `OrderWorkflow`가 projection 갱신을 fanout publish하고 다수 구독자가 받는다. (b) room timer tick이 발생한다.
 - 검증: (a) 구독자 N개 라인이 같은 flow ID를 갖는다
-  ([Flow Correlation §5](../../spec/server/53-flow-correlation.ko.md#5-propagation)). (b) timer 발원
+  ([Flow Correlation §5](../spec/53-flow-correlation.ko.md#5-propagation)). (b) timer 발원
   callback은 `origin=timer`로 새 flow를 시작한다
-  ([Flow Correlation §4](../../spec/server/53-flow-correlation.ko.md#4-flow-생성)).
+  ([Flow Correlation §4](../spec/53-flow-correlation.ko.md#4-flow-생성)).
 - 세부 동작: fan-out 트리 + timer origin.
 
 ### Track B — 런타임 메트릭
@@ -148,8 +148,8 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 - 검증: 서버 reader의 `zlink.stream.connections.active`가 접속/종료에 정확히 증감한다. 재접속을
   수행한 trigger connector의 reader에서 `zlink.stream.reconnects`가 자동 재접속 시도마다 증가한다.
   서버는 새 연결과 재접속을 추측하지 않는다. `close_reason` 라벨은 닫힌 enum에 속한다.
-- 세부 동작: 서버 연결 계기는 [Runtime metrics §4](../../spec/server/51-runtime-metrics.ko.md#4-object와-stream-계기),
-  connector 재접속 계기는 [Stream Connector §6.2](../../spec/stream-connector/32-stream-connector.ko.md#62-connector-reconnect-계기)를 따른다.
+- 세부 동작: 서버 연결 계기는 [Runtime metrics §4](../spec/51-runtime-metrics.ko.md#4-object와-stream-계기),
+  connector 재접속 계기는 [Stream Connector §6.2](../spec/stream-connector/32-stream-connector.ko.md#62-connector-reconnect-계기)를 따른다.
 
 #### OBS-B2 SPOT 큐·actor 이동 계기
 
@@ -166,8 +166,8 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
   이동 전 actor request가 pending이면 `zlink.mesh_node.requests.inflight`의 `surface=actor` 값에
   반영되고, 각 request가 terminal completion에 도달하면 기준값으로 돌아온다. spot 계기는
   `spot_kind`(`entry|user`)로 분리된다
-  ([Runtime Metrics §3.1](../../spec/server/51-runtime-metrics.ko.md#31-peer와-channel),
-  [§4](../../spec/server/51-runtime-metrics.ko.md#4-object와-stream-계기)).
+  ([Runtime Metrics §3.1](../spec/51-runtime-metrics.ko.md#31-peer와-channel),
+  [§4](../spec/51-runtime-metrics.ko.md#4-object와-stream-계기)).
 - 세부 동작: SPOT/actor 계기.
 
 #### OBS-B3 fanout·lease 계기와 카디널리티
@@ -182,7 +182,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
   queue 제한으로 drop을 유발해 실제 수와 일치하는지 확인한다. `zlink.location.owner_lease.renew.lateness`가
   갱신 지연을 기록한다. **어떤 계기에도 `correlation_id`/`flow_id`/`actor_id`/`spot_id` 라벨을
   포함하지 않는다
-  ([Runtime Metrics §6~7](../../spec/server/51-runtime-metrics.ko.md#6-location과-classic-fanout-계기)).
+  ([Runtime Metrics §6~7](../spec/51-runtime-metrics.ko.md#6-location과-classic-fanout-계기)).
 - 세부 동작: fanout/lease 계기 + 카디널리티 규약.
 
 #### OBS-B4 비활성 계측의 최소 비용
@@ -194,7 +194,7 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 - 절차: reader를 등록하지 않은 노드에서 트래픽을 흘린다.
 - 검증: reader 미등록에서도 messaging 정확성이 불변이고, 장시간 트래픽에 계기 저장 공간이 상한 내로
   유지된다(무한 적재 없음,
-  [Runtime Metrics §8](../../spec/server/51-runtime-metrics.ko.md#8-reader와-성능)). Hot path의 clock
+  [Runtime Metrics §8](../spec/51-runtime-metrics.ko.md#8-reader와-성능)). Hot path의 clock
   read 생략은 프로세스 밖 E2E로 관찰할 수 없는 구현 내부 속성이므로 언어별 benchmark·unit test
   `RMETRIC-009`가 소유하며 이 config에서 단언하지 않는다.
 - 세부 동작: 비활성 계측의 최소 비용.
@@ -212,11 +212,11 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 - 검증: `play-a` MeshNode descriptor의 `Draining=true`와 runtime snapshot의
   `State=Draining`이 관측되어 신규 room/actor 배정에서 제외된다. `zlink.termination.state` gauge가
   `state=serving`→`state=draining`으로 전이한다
-  ([Host maintenance §9](../../spec/server/54-graceful-drain-handoff.ko.md#9-observability)).
+  ([Host maintenance §9](../spec/54-graceful-drain-handoff.ko.md#9-observability)).
   descriptor는 `Draining` 중 유지되므로 기존
   연결이 유지되고, 전파 지연 창에 기존 연결로 온 request가 정상 처리된다
-  ([Host maintenance §4~6](../../spec/server/54-graceful-drain-handoff.ko.md#4-bounded-sliding-relocation)). owner lease는
-  draining 동안 계속 갱신된다([§8](../../spec/server/54-graceful-drain-handoff.ko.md#8-location과-resource-cleanup)).
+  ([Host maintenance §4~6](../spec/54-graceful-drain-handoff.ko.md#4-bounded-sliding-relocation)). owner lease는
+  draining 동안 계속 갱신된다([§8](../spec/54-graceful-drain-handoff.ko.md#8-location과-resource-cleanup)).
 - 세부 동작: 마커 기반 배치 제외 + 연결 유지.
 
 #### OBS-C2 actor 핸드오프 + bound session 연속성
@@ -226,14 +226,14 @@ snapshot 중 어느 형식인지 runner가 함께 기록하고 같은 언어 실
 **검증 질문:** `Retire` 중인 actor를 `play-b`로 이동시키고, 이동 중에도 bound session이 이어지는가.
 
 - 절차: `play-a`의 host `Retire` 중 bound actor가 `play-b`로 relocation된다.
-- 검증: relocation이 [Spot Actor §4](../../spec/server/23-spot-actor.ko.md#4-join-의미와-commit-순서) 완료 조건까지
+- 검증: relocation이 [Spot Actor §4](../spec/23-spot-actor.ko.md#4-join-의미와-commit-순서) 완료 조건까지
   진행되고 committed Actor authority가 `play-b`를 target owner로 가리킨다. Bound session push가 이동 후
   `play-b` Actor로 이어진다.
   `zlink.relocation.completed{object_kind=actor}`가 target activation당 한 번 계수된다. 이동 전 pending actor request는
   `zlink.mesh_node.requests.inflight{surface=actor}`에 반영되고, 이동 중 각 request는 원래 reply
   또는 timeout 결과를 유지한 뒤 계기 값에서 제거된다
-  ([Runtime Metrics §3.1](../../spec/server/51-runtime-metrics.ko.md#31-peer와-channel),
-  [Host maintenance §4](../../spec/server/54-graceful-drain-handoff.ko.md#4-bounded-sliding-relocation)).
+  ([Runtime Metrics §3.1](../spec/51-runtime-metrics.ko.md#31-peer와-channel),
+  [Host maintenance §4](../spec/54-graceful-drain-handoff.ko.md#4-bounded-sliding-relocation)).
 - 세부 동작: 핸드오프 + FIFO 연속성.
 
 #### OBS-C3 User Spot aggregate Retire handoff

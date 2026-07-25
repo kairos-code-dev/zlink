@@ -511,7 +511,7 @@ context와 cancellation signal을 보관하지 않는다. `HostShutdown`은 call
 
 ## 5. 모든 이동 경로가 공유하는 relocation policy
 
-Actor·User Spot·Instance Spot의 [Object Server](01-glossary.ko.md#object-role) factory는 다음 policy 중 하나를 반드시 등록한다.
+Actor·User Spot·Instance Spot의 [Object Server](01-glossary.ko.md#object-client와-object-server-role) factory는 다음 policy 중 하나를 반드시 등록한다.
 
 | Policy | 의미 |
 |---|---|
@@ -670,7 +670,7 @@ relocation에만 허용하며 같은 ActorId의 새 incarnation은 explicit bind
 - Same-node outcome, `Rejected`와 commit 전 `Failed` completion은 process 재시작
   뒤 replay를 보장하지 않고, published Relocation manifest가 있는 cross-node
   `Accepted`만 durable at-least-once completion을 보장한다.
-- Public [Actor Join `OperationId`](01-glossary.ko.md#actor-join-operation-id)를
+- Public [Actor Join `OperationId`](01-glossary.ko.md#actor-join-operationid)를
   completion idempotency에만 사용하고 `RelocationId`,
   reservation ID와 aggregate commit ID를 재사용하지 않는다.
 - `Defer()` 뒤 source seal 전 message는 barrier 뒤 Actor queue에 두고, seal 뒤

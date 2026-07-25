@@ -21,7 +21,9 @@ public sealed class ZLinkFrameworkException(
             or ZLinkFrameworkErrorKind.ActorMoving
             or ZLinkFrameworkErrorKind.DeadlineExceeded
             or ZLinkFrameworkErrorKind.PlacementCapacityExhausted
-            or ZLinkFrameworkErrorKind.SpotMoving;
+            or ZLinkFrameworkErrorKind.SpotMoving
+            or ZLinkFrameworkErrorKind.RelocationTargetUnavailable
+            or ZLinkFrameworkErrorKind.RelocationFailed;
     }
 }
 

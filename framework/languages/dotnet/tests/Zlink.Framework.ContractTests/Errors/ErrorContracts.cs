@@ -78,4 +78,35 @@ public sealed class ErrorContracts
         Assert.Equal(typeof(bool),
             typeof(ZLinkFrameworkException).GetProperty(nameof(ZLinkFrameworkException.IsRetriable))!.PropertyType);
     }
+
+    [Fact]
+    public void Default_retriability_matches_the_spec_table_for_every_kind()
+    {
+        // 05-framework-api.ko.md 13 fixes a retriable column per kind. Pinning the
+        // property's TYPE (above) never checked a single value, so RelocationTarget-
+        // Unavailable and RelocationFailed were reported non-retriable. Driving this
+        // from Enum.GetValues means a newly added kind must be classified here or the
+        // test fails, rather than defaulting to unchecked.
+        var retriable = new HashSet<ZLinkFrameworkErrorKind>
+        {
+                ZLinkFrameworkErrorKind.RouteNotConnected,
+                ZLinkFrameworkErrorKind.ActorLocationStale,
+                ZLinkFrameworkErrorKind.ActorMoving,
+                ZLinkFrameworkErrorKind.DeadlineExceeded,
+                ZLinkFrameworkErrorKind.PlacementCapacityExhausted,
+                ZLinkFrameworkErrorKind.SpotMoving,
+                ZLinkFrameworkErrorKind.RelocationTargetUnavailable,
+                ZLinkFrameworkErrorKind.RelocationFailed
+        };
+
+        var actual = Enum.GetValues<ZLinkFrameworkErrorKind>()
+            .ToDictionary(
+                static kind => kind,
+                static kind => new ZLinkFrameworkException(kind, "kind").IsRetriable);
+
+        Assert.Equal(
+            Enum.GetValues<ZLinkFrameworkErrorKind>()
+                .ToDictionary(kind => kind, kind => retriable.Contains(kind)),
+            actual);
+    }
 }

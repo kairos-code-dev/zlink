@@ -358,6 +358,11 @@ function jvmPlan() {
       `${runtime}:zlink-framework-core:test`),
     command("jvm-internal-kotlin", "internal", cwd, ...gradle,
       `${runtime}:zlink-framework-kotlin:test`),
+    // The gate compiled zlink-http-client but never ran its tests.
+    // Measured before wiring: java 41/41, kotlin 9/9, 0 failures.
+    command("jvm-internal-http-client", "internal", cwd, ...gradle,
+      `${runtime}:zlink-http-client:test`,
+      `${runtime}:zlink-http-client-kotlin:test`),
     command("jvm-resource-regression", "resource", cwd, ...gradle,
       `${runtime}:zlink-framework-core:test`,
       "--tests", "*CloseGateTest", "--tests", "*TeardownExecutorTest",

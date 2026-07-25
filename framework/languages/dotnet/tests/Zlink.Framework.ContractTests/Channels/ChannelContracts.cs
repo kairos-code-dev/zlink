@@ -96,11 +96,11 @@ public sealed class ChannelContracts
             .Async<OrderPlaced>();
 
         // gRPC unary returning google.protobuf.Empty -> one-way send (no reply awaited).
-        _ = await orders.SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
+        await orders.SendToChannel("inventory", new ReserveStock("order-1042", "sku-9", 3))
             .Async();
 
         // gRPC server-streaming / event feed -> pub/sub fan-out to many subscribers.
-        _ = await events
+        await events
             .Publish("order.events", "order.status", new OrderStatusChanged("order-1042", "Placed"))
             .Async();
 
@@ -276,7 +276,7 @@ public sealed class ChannelContracts
     {
         public ValueTask HandleAsync(
             RoomEvent message,
-            ZLinkRouteSendContext context,
+            ZLinkRouteMessageContext context,
             CancellationToken cancellationToken)
         {
             return ValueTask.CompletedTask;
@@ -287,7 +287,7 @@ public sealed class ChannelContracts
     {
         public ValueTask<RoomAllocated> HandleAsync(
             AllocateRoom request,
-            ZLinkRouteRequestContext context,
+            ZLinkRouteMessageContext context,
             CancellationToken cancellationToken)
         {
             return ValueTask.FromResult(new RoomAllocated("room-1"));

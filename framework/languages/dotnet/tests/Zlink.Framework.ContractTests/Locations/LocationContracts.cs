@@ -120,7 +120,7 @@ public sealed class LocationContracts
         var spots = new ExampleSpotLocationStore();
         await spots.UpdateSpotAsync(MakeSpot("owner-a"), ZLinkLocationWriteIntent.NewClaim);
         var resolved = await spots.ResolveSpotAsync(
-            new ZLinkSpotLocationKey("play", RoutingId.From("spot-1")));
+            new ZLinkSpotLocationKey("spot-1"));
         Assert.NotNull(resolved);
 
         // Spot and actor rows are resolve-only: no store-level listing
@@ -149,8 +149,7 @@ public sealed class LocationContracts
 
         // Messaging lookup returns an opaque handle. The framework, not the caller,
         // owns its location snapshot updates and the safe request refresh rule.
-        var spotHandle = await resolver.ResolveSpotHandleAsync(
-            "play", RoutingId.From("spot-1"));
+        var spotHandle = await resolver.ResolveSpotHandleAsync("play", "spot-1");
         Assert.Null(spotHandle);
 
         var actorSpotHandle = await resolver.ResolveActorSpotHandleAsync("play", "actor-1");
@@ -202,7 +201,7 @@ public sealed class LocationContracts
         new ActorRef(RoutingId.From("node-1"), "actor-1", 1),
         OwnerNodeRid: RoutingId.From("node-1"),
         OwnerNodeGeneration: 1,
-        SpotRid: default,
+        SpotId: "spot-1",
         SpotGeneration: 0,
         SpotKind: ZLinkSpotKind.Entry,
         MembershipEpoch: 0,
@@ -216,14 +215,14 @@ public sealed class LocationContracts
         DescriptorRevision: 1,
         "tcp://127.0.0.1:5001",
         new Dictionary<string, int>(StringComparer.Ordinal) { ["play"] = 100 },
-        Draining: false,
         SecurityIdentity: "cluster-a",
         OwnerId: ownerId,
+        LeaseGeneration: 1,
         UpdatedAt: StoreNow);
 
     private static ZLinkSpotLocation MakeSpot(string ownerId) => new(
         "play",
-        RoutingId.From("spot-1"),
+        "spot-1",
         SpotGeneration: 1,
         OwnerNodeRid: RoutingId.From("node-1"),
         OwnerNodeGeneration: 1,
@@ -269,7 +268,7 @@ public sealed class LocationContracts
             ZLinkLocationOwnerToken owner,
             CancellationToken cancellationToken = default)
         {
-            if (_row is null || _row.OwnerId != owner.OwnerId || _rowGeneration != owner.Generation)
+            if (_row is null || _row.OwnerId != owner.OwnerId || (long)_rowGeneration != owner.Generation)
             {
                 return ValueTask.FromResult(ZLinkLocationWriteStatus.IgnoredStale);
             }
@@ -289,7 +288,7 @@ public sealed class LocationContracts
         {
             if (_row is null
                 || _row.OwnerId != owner.OwnerId
-                || _rowGeneration != owner.Generation)
+                || (long)_rowGeneration != owner.Generation)
             {
                 return ValueTask.FromResult(0L);
             }
@@ -403,7 +402,7 @@ public sealed class LocationContracts
 
         public ValueTask<SpotHandle?> ResolveSpotHandleAsync(
             string meshName,
-            RoutingId spotRid,
+            string spotId,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<SpotHandle?>(null);
 

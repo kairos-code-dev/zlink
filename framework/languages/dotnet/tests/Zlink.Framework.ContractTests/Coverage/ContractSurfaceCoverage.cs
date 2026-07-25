@@ -33,7 +33,7 @@ public sealed class ContractSurfaceCoverage
         Assert.DoesNotContain(typeof(IZLinkActorSendCall).GetMethods(), method => method.Name is "PacketName" or "Async");
         Assert.DoesNotContain(typeof(IZLinkActorRequestCall).GetMethods(), method => method.Name == "PacketName");
         Assert.Equal(
-            ["Defer"],
+            new[] { "Defer" },
             typeof(IZLinkActorDeferredJoinCall).GetMethods().Select(method => method.Name).ToArray());
         Assert.DoesNotContain(typeof(IZLinkActorContext).GetMembers(), member => member.Name is "IsJoined" or "GetSpot");
         Assert.Contains(typeof(IZLinkWorkerCall<>).GetMethods(), method => method.Name == "Yield");

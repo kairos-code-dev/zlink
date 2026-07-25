@@ -7,7 +7,7 @@ public sealed class HandlerContracts
 {
     [Fact]
     [ContractExample(
-        typeof(IZLinkHandlerContext),
+        typeof(IZLinkMessageContext),
         typeof(IZLinkRequestHandler<,>),
         typeof(IZLinkSendHandler<>),
         typeof(IZLinkFanoutHandler<>),
@@ -34,10 +34,10 @@ public sealed class HandlerContracts
     }
 
     [Fact]
-    [ContractExample(typeof(IZLinkHandlerContext))]
+    [ContractExample(typeof(IZLinkMessageContext))]
     public void Handler_context_exposes_only_dispatch_metadata()
     {
-        var publicProperties = typeof(IZLinkHandlerContext)
+        var publicProperties = typeof(IZLinkMessageContext)
             .GetProperties()
             .Select(static property => property.Name)
             .Order(StringComparer.Ordinal)
@@ -46,12 +46,12 @@ public sealed class HandlerContracts
         Assert.Equal(
             new[]
             {
-                nameof(IZLinkHandlerContext.ChannelName),
-                nameof(IZLinkHandlerContext.ConnectionAborted),
-                nameof(IZLinkHandlerContext.ContentType),
-                nameof(IZLinkHandlerContext.MeshName),
-                nameof(IZLinkHandlerContext.Metadata),
-                nameof(IZLinkHandlerContext.PacketName)
+                nameof(IZLinkMessageContext.ChannelName),
+                nameof(IZLinkMessageContext.ContentType),
+                nameof(IZLinkMessageContext.CorrelationId),
+                nameof(IZLinkMessageContext.MeshName),
+                nameof(IZLinkMessageContext.Metadata),
+                nameof(IZLinkMessageContext.PacketName)
             },
             publicProperties);
 
@@ -73,7 +73,7 @@ public sealed class HandlerContracts
     {
         public ValueTask<Authenticated> HandleAsync(
             Authenticate request,
-            ZLinkRequestContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken)
         {
             return ValueTask.FromResult(new Authenticated(request.PlayerId));
@@ -86,7 +86,7 @@ public sealed class HandlerContracts
 
         public ValueTask HandleAsync(
             PlayerJoined message,
-            ZLinkSendContext context,
+            IZLinkMessageContext context,
             CancellationToken cancellationToken)
         {
             WasCalled = true;

@@ -121,7 +121,7 @@ class conversation_spot_t : public zlink::framework::spot_t,
     }
 
     send_message_res_t send_message (const user_actor_t &actor,
-                                     const zlink::framework::spot_actor_request_context_t &,
+                                     const zlink::framework::message_context_t &,
                                      const send_message_req_t &request)
     {
         return append (actor.user_id, request.text);   // std::mutex 없이 안전

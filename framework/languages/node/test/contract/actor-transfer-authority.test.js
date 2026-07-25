@@ -18,22 +18,22 @@ test('Core transfer-control phases drive durable prepare commit and activation',
 
   await runtime.handle('game', {
     ...control,
-    phase: zlink.ActorTransferPhase.Fenced,
-    role: zlink.ActorTransferRole.Target
+    phase: framework.ActorTransferPhase.Fenced,
+    role: framework.ActorTransferRole.Target
   });
   assert.equal((await store.resolveActorTransfer('game', 'alice')).state, 'prepared');
 
   await runtime.handle('game', {
     ...control,
-    phase: zlink.ActorTransferPhase.Committed,
-    role: zlink.ActorTransferRole.Target
+    phase: framework.ActorTransferPhase.Committed,
+    role: framework.ActorTransferRole.Target
   });
   assert.equal((await store.resolveActorTransfer('game', 'alice')).state, 'committed');
 
   await runtime.handle('game', {
     ...control,
-    phase: zlink.ActorTransferPhase.Activated,
-    role: zlink.ActorTransferRole.Target
+    phase: framework.ActorTransferPhase.Activated,
+    role: framework.ActorTransferRole.Target
   });
   assert.equal(await store.resolveActorTransfer('game', 'alice'), undefined);
 });
@@ -51,8 +51,8 @@ test('successor resumes committed recovery only after the durable lease expires'
   });
   await first.handle('game', {
     ...control,
-    phase: zlink.ActorTransferPhase.Fenced,
-    role: zlink.ActorTransferRole.Target
+    phase: framework.ActorTransferPhase.Fenced,
+    role: framework.ActorTransferRole.Target
   });
 
   const successor = new framework.ZLinkActorTransferAuthorityRuntime({
@@ -63,16 +63,16 @@ test('successor resumes committed recovery only after the durable lease expires'
   });
   await successor.handle('game', {
     ...control,
-    phase: zlink.ActorTransferPhase.Activated,
-    role: zlink.ActorTransferRole.Target
+    phase: framework.ActorTransferPhase.Activated,
+    role: framework.ActorTransferRole.Target
   });
   assert.equal((await store.resolveActorTransfer('game', 'bob')).state, 'prepared');
 
   nowMs += 101;
   await successor.handle('game', {
     ...control,
-    phase: zlink.ActorTransferPhase.Activated,
-    role: zlink.ActorTransferRole.Target
+    phase: framework.ActorTransferPhase.Activated,
+    role: framework.ActorTransferRole.Target
   });
   assert.equal(await store.resolveActorTransfer('game', 'bob'), undefined);
 });
@@ -90,12 +90,12 @@ test('framework host routes Core TransferControl records to the configured autho
   host.locationRuntimeQuery;
   const control = transferControl('carol', 3n);
 
-  await host.dispatchMeshRecord('game', { ownerKind: zlink.ReadyOwnerKind.Node }, {
-    kind: zlink.ReceiveKind.TransferControl,
+  await host.dispatchMeshRecord('game', { ownerKind: framework.ReadyOwnerKind.Node }, {
+    kind: framework.ReceiveKind.TransferControl,
     kindData: {
       ...control,
-      phase: zlink.ActorTransferPhase.Fenced,
-      role: zlink.ActorTransferRole.Target
+      phase: framework.ActorTransferPhase.Fenced,
+      role: framework.ActorTransferRole.Target
     },
     parts: []
   });

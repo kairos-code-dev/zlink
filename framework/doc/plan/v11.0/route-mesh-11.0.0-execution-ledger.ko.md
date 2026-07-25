@@ -1324,6 +1324,14 @@ descriptor shape), `nestjs-module.test.js`(27건), `message-flow.test.js`(8건),
 파일 단위로 이어서 실행하면 된다. 이 checkpoint는 `BLK-008`·`BLK-009`를 `V11-M6A-NODE`·`V11-M6B-NODE`
 행에 아직 상호 참조하지 않았으므로 다음 ledger 동기화 때 반영이 필요하다.
 
+이어진 실행에서 `BLK-008`을 해결했다. 다섯 언어 정식 spec과 §2.3 기준 구현인 .NET이 모두
+`onActorJoin(actorId, request)` identity 형태이고 Node runtime 하나만 객체 형태였으므로 Node를 spec으로
+정렬했다(`ZLinkSpot.ts` 공개 계약, 내부 호출부 6곳, TS 샘플 11개, 관련 test). `spot-manager.test.js` 58/58,
+`actor-manager.test.js` 69/69이며 `actor-transfer-authority`·`spot-activation-state`·
+`entry-spot-serial-dispatch`·`location-key-codec`와 `sample-regression`(44/47)·`sample-spot-lifecycle`(0/3)·
+`contract-surface`(26/28)는 baseline을 유지한다. 이 과정에서 admission callback이 joining Actor의
+`actorType`을 알 경로가 다섯 언어 어디에도 없다는 계약 공백을 `BLK-014`로 새로 열었다.
+
 `CA-D16`은 두 값을 공개하지만 invalid 조합을 runtime에 넘기지 않는다. `CA-D61`은 `CA-D23`의 generic
 population capacity를 대체한다. Population 기본값은 unlimited지만 activation concurrency는 별도 admission
 option으로 bounded default를 유지한다. Descriptor와 Store reservation은 `CA-D62`의 typed capacity vector를

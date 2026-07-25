@@ -68,12 +68,11 @@ async function submitDeferredActorJoin(actor, call) {
         // Deferred Join completion 계약(`status`/`actor`/`reply`/`rejection`)을
         // 그대로 넘긴다. reply는 framework message라 값 비교용으로 decode한다.
         if (completion.status === 'accepted' || completion.status === 'rejected') {
-          resolve({
-            ...completion,
-            reply: completion.reply === undefined
-              ? undefined
-              : completion.reply.decode()
-          });
+          // reply는 계약상 선택 항목이라 없을 때 키 자체를 만들지 않는다.
+          const decoded = completion.reply === undefined
+            ? undefined
+            : { reply: completion.reply.decode() };
+          resolve({ ...completion, ...decoded });
           return;
         }
         reject(new framework.ZLinkFrameworkException(

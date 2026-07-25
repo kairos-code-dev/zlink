@@ -25,6 +25,7 @@ import {
 } from '../actors';
 import type { ZLinkActorRuntimeState } from '../actors/actor-runtime-state';
 import { ZLinkActorRetryDelay } from '../actors/actor-retry-delay';
+import { encodeRoutingIdStorageHex } from '../routing-id';
 import { encodeRemoteActorPacketTarget } from '../actors/actor-packet-relay-wire';
 import { encodeRemoteBoundSessionOwnershipPayload } from '../actors/bound-session-wire';
 import type { ZLinkLocationLifecycle } from '../locations';
@@ -490,11 +491,16 @@ export class ZLinkActorTransferRuntime {
     if (spotGeneration <= 0n || membershipEpoch <= 0n) {
       throw new Error(`Actor '${actor.context.actorId}' committed target location has invalid lifecycle generations.`);
     }
+    // RoutingId is an opaque byte value, so the committed target is compared by
+    // value. Reference equality would reject a matching SPOT read back from the
+    // Core lookup.
     if (
       joinedLocation === undefined
       && (
         location.spotId === null
-        || location.spotId !== spotId
+        || location.spotId === undefined
+        || encodeRoutingIdStorageHex(location.spotId as RoutingId)
+          !== encodeRoutingIdStorageHex(spotId)
       )
     ) {
       throw new Error(`Actor '${actor.context.actorId}' Core location does not match the committed target SPOT.`);

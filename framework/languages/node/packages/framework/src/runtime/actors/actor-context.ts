@@ -407,17 +407,19 @@ async function notifyJoinCompletion(
       messageSerializers
     );
   result.reply?.close();
+  // `reply`는 계약상 선택 항목이라 없을 때는 key 자체를 만들지 않는다.
+  const replyField = reply === undefined ? {} : { reply };
   const completion: ZLinkActorJoinCompletion = result.accepted
     ? {
         status: 'accepted',
         operationId,
         actor: result.actor!,
-        reply
+        ...replyField
       }
     : {
         status: 'rejected',
         operationId,
-        reply
+        ...replyField
       };
   await actor.onJoinCompleted?.(completion);
 }

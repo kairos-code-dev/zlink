@@ -7,10 +7,16 @@ const {
 
 function createActivation(externalActorCount = () => 0) {
   return new ZLinkSpotActivation({
+    meshName: 'play',
     spotId: 'room-1',
     spotType: class Room {},
     spot: {},
-    serial: {},
+    // SpotWide execution mode drives every actor operation through this
+    // shared serial, so the constructor always installs the activation's
+    // execution barrier on it (spot-activation-state.ts). Production always
+    // passes a real ZLinkSpotSerialExecutor; the fake only needs the one
+    // method the constructor calls.
+    serial: { setExecutionBarrier: () => {} },
     timers: {},
     actorHandlers: {},
     handlers: {},
@@ -20,7 +26,7 @@ function createActivation(externalActorCount = () => 0) {
 
 test('spot activation owns join, transfer, departure, and rejoin invariants', () => {
   const activation = createActivation();
-  const actor = { actorId: 'alice' };
+  const actor = { context: { actorId: 'alice' } };
 
   activation.commitActorJoin(actor);
   assert.equal(activation.resolveJoinedActor('alice'), actor);
@@ -50,7 +56,7 @@ test('spot activation owns join, transfer, departure, and rejoin invariants', ()
 
 test('spot activation failed rejoin restores the departed state', () => {
   const activation = createActivation();
-  const actor = { actorId: 'alice' };
+  const actor = { context: { actorId: 'alice' } };
 
   activation.commitActorJoin(actor);
   activation.commitActorDeparture('alice');
@@ -73,13 +79,13 @@ test('spot activation includes external actors in its close decision', () => {
 
 test('explicit close ignores a stale native count only after every tracked actor departs', () => {
   const activation = createActivation(() => 1);
-  const actor = { actorId: 'alice' };
+  const actor = { context: { actorId: 'alice' } };
   activation.commitActorJoin(actor);
 
   activation.requestClose();
   assert.equal(activation.canClose(), false);
 
-  activation.commitActorDeparture(actor.actorId);
-  assert.equal(activation.resolveJoinedActor(actor.actorId), undefined);
+  activation.commitActorDeparture(actor.context.actorId);
+  assert.equal(activation.resolveJoinedActor(actor.context.actorId), undefined);
   assert.equal(activation.canClose(), true);
 });

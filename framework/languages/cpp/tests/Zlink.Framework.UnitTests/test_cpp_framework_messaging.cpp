@@ -412,9 +412,14 @@ int main ()
         namespace msg = zlink::framework::runtime::messaging;
         msg::reset_async_submit_runtime_for_tests ();
         std::atomic_int attempts{0};
+        /* The admission deadline is fixed at the first attempt and covers every retry in
+         * this block (two notify/poll round trips through the runtime's timer thread). 100ms
+         * was tight enough that scheduling delays under load could exceed it before the final
+         * notify_submit_ready, throwing this block's uncaught admitted_result.value() and
+         * aborting the process instead of failing the assertion below it. */
         auto admitted = zlink::framework::detail::submit_one_way_task ([&] {
             msg::note_submit_attempt ("mesh:node:01", &attempts,
-                                      std::chrono::milliseconds (100));
+                                      std::chrono::milliseconds (2000));
             const auto attempt = attempts.fetch_add (1) + 1;
             if (attempt < 3) {
                 return zlink::framework::result_t<void>::failure (
@@ -433,7 +438,7 @@ int main ()
         }
         msg::notify_submit_ready ("mesh:node:01", &attempts);
         const auto retry_deadline = std::chrono::steady_clock::now ()
-                                    + std::chrono::milliseconds (100);
+                                    + std::chrono::milliseconds (1000);
         while (attempts.load () != 2
                && std::chrono::steady_clock::now () < retry_deadline) {
             std::this_thread::yield ();

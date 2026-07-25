@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 
 #include "runtime/mesh/mesh_node_runtime.hpp"
+#include "runtime/locations/in_memory_location_store.hpp"
+#include "runtime/locations/location_runtime.hpp"
 #include "runtime/mesh/mesh_node_host_service.hpp"
 #include "runtime/mesh/mesh_metadata_codec.hpp"
 #include "runtime/mesh/route_mesh_runtime_options_service.hpp"
@@ -347,7 +349,20 @@ void verify_local_node_submit_bridge ()
     zlink::framework::service_collection_t services;
     services.add_singleton<local_route_probe_handler_t> (
       std::make_unique<local_route_probe_handler_t> (probe));
+    // v11: the MeshNode host resolves the Location store from the provider, so
+    // a vertical check registers the in-memory store like any application.
+    auto owned_store =
+      std::make_unique<zlink::framework::runtime::in_memory_location_store_t> ();
+    auto &location_store = *owned_store;
+    services.add_singleton<zlink::framework::location_store_t> (
+      std::unique_ptr<zlink::framework::location_store_t> (owned_store.release ()));
+    services.add_singleton<zlink::framework::runtime::location_runtime_t> (
+      std::make_unique<zlink::framework::runtime::location_runtime_t> (location_store));
     auto provider = services.build_provider ();
+    // The MeshNode publishes its descriptor under an owner lease, so the
+    // Location runtime starts first just as the host does in production.
+    provider.get_required<zlink::framework::runtime::location_runtime_t> ().start (
+      *registration->routing_id);
     zlink::framework::runtime::mesh_node_host_service_t service (
       {registration}, serializers);
     service.start (provider);

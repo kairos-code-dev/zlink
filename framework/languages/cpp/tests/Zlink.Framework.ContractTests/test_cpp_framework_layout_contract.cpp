@@ -227,7 +227,7 @@ bool redesigned_cpp_contract_symbols_do_not_regress (const std::filesystem::path
       std::string ("route_location_") + "resolver_t",
       std::string ("use_registry_") + "spot_resolver",
       std::string ("registry_spot_") + "resolver",
-      std::string ("store_") + "unavailable"};
+      std::string ("location_write_status_t::store_") + "unavailable"};
 
     for (const auto &scan_root : scan_roots) {
         if (!std::filesystem::exists (scan_root)) {
@@ -260,6 +260,36 @@ bool redesigned_cpp_contract_symbols_do_not_regress (const std::filesystem::path
         }
     }
     return ok;
+}
+
+/* location_write_status_t dropped its store_unavailable enumerator when the location store
+ * design was unified: a configured store either works or the runtime does not start it, so a
+ * partial-availability write status no longer exists. `termination_reason_t::store_unavailable`
+ * (54-graceful-drain-handoff.ko.md §5) and `target_preflight_status_t::store_unavailable` are a
+ * separate, still-required public contract, so the scan above only re-checks the qualified old
+ * spelling. This function re-checks the enum body itself so the enumerator cannot come back
+ * unqualified either. */
+bool location_write_status_does_not_regain_store_unavailable (const std::filesystem::path &root)
+{
+    const auto path = root / "framework/include/zlink/framework/contracts/locations/writes.hpp";
+    std::ifstream input (path);
+    const std::string content ((std::istreambuf_iterator<char> (input)),
+                               std::istreambuf_iterator<char> ());
+    const auto enum_at = content.find ("enum class location_write_status_t");
+    if (enum_at == std::string::npos) {
+        std::cerr << "location_write_status_t enum definition is missing: " << path << '\n';
+        return false;
+    }
+    const auto body_start = content.find ('{', enum_at);
+    const auto body_end = content.find ('}', body_start);
+    const auto body = content.substr (body_start, body_end - body_start);
+    if (body.find ("store_unavailable") != std::string::npos) {
+        std::cerr << "location_write_status_t regressed its removed store_unavailable "
+                     "enumerator: "
+                  << path << '\n';
+        return false;
+    }
+    return true;
 }
 
 std::size_t count_occurrences (const std::string &text, const std::string &needle)
@@ -326,17 +356,23 @@ bool actor_model_documents_actor_destroy_lifecycle (const std::filesystem::path 
     buffer << input.rdbuf ();
     const auto text = buffer.str ();
 
+    /* §6.8 prose wraps at column width, so needles that used to span a line break (a space in
+     * the needle over a '\n' in the file) never matched. Each needle below is re-pinned to text
+     * that stays on one physical source line; the semantic coverage is unchanged. */
     bool ok = true;
     const std::string required[] = {
-      "Actor destroy는 Entry Spot context에서만 요청할 수 있다",
-      "Actor가 user Spot에 있으면 먼저 leave 또는",
-      "Destroy는 membership 이동이 아니므로",
-      "`OnLeaveActor`를 다시 호출하지 않는다",
-      "신규 payload admission을 닫고",
-      "session binding, location ownership, Actor reference와 Framework registry를 제거한다",
-      "중복 destroy는 성공으로 끝나며 lifecycle callback을 다시 만들지 않는다",
-      "bound",
-      "session의 연결 종료만으로 Actor를 자동 종료하거나 Spot에서 자동 leave하지 않는다"};
+      "Actor 종료는 새로운 payload admission을 닫고 session binding과 location ownership을",
+      "Bound session의 연결이 종료되었다는 이유만으로 Actor를 자동 종료하거나",
+      "현재 Spot에서 자동 leave하지 않는다.",
+      "Actor destroy는 exact `ActorRef`를 받는다. Actor가 user Spot에 있으면 먼저 leave",
+      "또는 Entry Spot join을 완료해야 한다.",
+      "Destroy는 membership 이동이 아니다.",
+      "성공 과정에서 `OnLeaveActor`를 다시",
+      "새로운 payload admission을 닫는다.",
+      "Session binding을 제거한다.",
+      "Location ownership과 registry entry를 제거한다.",
+      "Idempotent `false`를 반환한다.",
+      "bound"};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
             std::cerr << "actor model lacks actor destroy lifecycle contract: " << needle << '\n';
@@ -355,11 +391,20 @@ bool framework_api_documents_actor_destroy_lifecycle (const std::filesystem::pat
     buffer << input.rdbuf ();
     const auto text = buffer.str ();
 
+    /* The v10 draft cross-referenced 22-actor-model.ko.md by link text and named "transfer
+     * adapter" directly; the v11 common/spec consolidation replaced that with the factory
+     * declaration, the relocation adapter registration call, and the destroy error
+     * classification row below. The underlying facts (destroy-capable factories exist, an
+     * adapter is registered for relocation, and destroy has its own error classification) are
+     * all still present, just under different wording, so the needles are re-pinned rather than
+     * dropped. */
     bool ok = true;
     const std::string required[] = {
-      "[Actor 모델](server/22-actor-model.ko.md)",
-      "Entry Spot, user Spot factory, Actor factory와",
-      "transfer adapter"};
+      "Object Server의 Entry Spot, user Spot, typed Actor와 actor-free Instance Spot factory",
+      "Actor factory에 `ActorRelocationAdapter`, User·Instance Spot factory에 "
+      "`SpotRelocationAdapter`를 지정한다.",
+      "| exact ActorRef destroy | idempotent `false` | `RouteNotConnected` | "
+      "`ActorGenerationStale` | `ActorMoving` |"};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
             std::cerr << "framework API spec lacks actor destroy lifecycle contract: " << needle
@@ -381,13 +426,16 @@ bool session_actor_dispatch_documents_disconnect_destroy_boundary (
     buffer << input.rdbuf ();
     const auto text = buffer.str ();
 
+    /* The v10 draft named an explicit "Actor control message"/"control operation" vocabulary
+     * that the v11 rewrite retired in favor of naming the exact operations
+     * (`OnDisconnectActorAsync`/`NotifyDisconnectedAsync`) directly. The boundary the needles
+     * guard -- disconnect never destroys the Actor or changes Spot membership -- is still
+     * stated twice (§3 and §4.1), so the needles are re-pinned to that current wording. */
     bool ok = true;
     const std::string required[] = {
-      "STREAM disconnect는 해당 session의 binding을 해제한다",
-      "disconnect만으로 Actor를 종료하거나 Actor의",
-      "Spot membership을 바꾸지 않는다",
-      "명시적인 Actor control message를 사용한다",
-      "Actor join·leave와 lifecycle 작업이 필요하면 별도 control operation으로 제출한다"};
+      "binding을 해제하지만 Actor를 destroy하거나 Spot membership을 바꾸지 않는다.",
+      "두 통지는 connection 종료 사실만 알리며",
+      "Actor를 destroy하거나 Spot membership을 변경하지 않는다."};
     for (const auto &needle : required) {
         if (text.find (needle) == std::string::npos) {
             std::cerr << "session actor dispatch spec lacks disconnect/destroy boundary contract: "
@@ -1713,6 +1761,7 @@ int main ()
       root / "e2e/RuntimeMonitoring/Client/Support/client_options.hpp", "--log-dir=",
       "RuntimeMonitoring client file paths and topology must come from typed config");
     ok &= redesigned_cpp_contract_symbols_do_not_regress (root);
+    ok &= location_write_status_does_not_regain_store_unavailable (root);
     ok &= contract_headers_have_compile_coverage (root, "framework/include", "");
     ok &= contract_headers_have_compile_coverage (root, "connector/core/include", "");
     ok &= contract_headers_have_compile_coverage (root, "http-client/include", "");

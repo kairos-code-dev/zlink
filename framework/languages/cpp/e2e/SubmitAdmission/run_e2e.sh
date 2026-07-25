@@ -254,11 +254,13 @@ PY
     python3 - "$output" "$role" "$rid" "$http" "$mesh" "$peer_rid" "$peer" "$fanout" \
       "$client_server" "$client_server_peer" "$stream" "$LOG_DIR" <<'PY'
 import json
+import os
 import pathlib
+import stat
 import sys
 
-output, role, rid, http, mesh, peer_rid, peer, fanout, client_server, client_server_peer, stream, log_dir = sys.argv[1:]
-pathlib.Path(output).write_text(json.dumps({"e2e": {
+path, role, rid, http, mesh, peer_rid, peer, fanout, client_server, client_server_peer, stream, log_dir = sys.argv[1:]
+pathlib.Path(path).write_text(json.dumps({"e2e": {
     "role": role, "rid": rid, "httpEndpoint": http, "meshEndpoint": mesh,
     "peerRid": peer_rid, "peerEndpoint": peer, "fanoutEndpoint": fanout,
     "clientServerEndpoint": client_server,
@@ -266,6 +268,7 @@ pathlib.Path(output).write_text(json.dumps({"e2e": {
     "streamEndpoint": stream,
     "logDir": log_dir
 }}, indent=2), encoding="utf-8")
+os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
 PY
   }
 

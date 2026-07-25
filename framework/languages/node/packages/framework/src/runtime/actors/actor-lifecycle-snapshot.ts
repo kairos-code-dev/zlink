@@ -15,6 +15,7 @@ export interface ZLinkActorLifecycleSnapshotSource {
 }
 
 interface ZLinkActorLifecycleSnapshotContext {
+  readonly actorId?: string;
   readonly [ZLINK_ACTOR_LIFECYCLE_SNAPSHOT]?: () => ZLinkActorLifecycleSnapshotSource;
 }
 
@@ -46,16 +47,20 @@ export function createActorMembership(
 
 function lifecycleSource(actor: ZLinkActor): ZLinkActorLifecycleSnapshotSource {
   const rawContext: unknown = actor.context;
-  const source = typeof rawContext === 'object' && rawContext !== null
-    ? (rawContext as ZLinkActorLifecycleSnapshotContext)[ZLINK_ACTOR_LIFECYCLE_SNAPSHOT]?.()
+  const context = typeof rawContext === 'object' && rawContext !== null
+    ? (rawContext as ZLinkActorLifecycleSnapshotContext)
     : undefined;
+  // A caller can hand in a value that carries no Framework context at all, so the
+  // failure path reports the configuration error instead of dereferencing it.
+  const actorId = context?.actorId ?? '<unknown>';
+  const source = context?.[ZLINK_ACTOR_LIFECYCLE_SNAPSHOT]?.();
   if (source === undefined) {
     throw new ZLinkConfigurationException(
-      `Actor '${actor.context.actorId}' does not expose a framework lifecycle identity snapshot.`
+      `Actor '${actorId}' does not expose a framework lifecycle identity snapshot.`
     );
   }
-  if (source.actorRef.actorId !== actor.context.actorId || source.actorType.length === 0) {
-    throw new ZLinkConfigurationException(`Actor '${actor.context.actorId}' lifecycle identity is invalid.`);
+  if (source.actorRef.actorId !== actorId || source.actorType.length === 0) {
+    throw new ZLinkConfigurationException(`Actor '${actorId}' lifecycle identity is invalid.`);
   }
   return source;
 }

@@ -65,18 +65,14 @@ async function submitDeferredActorJoin(actor, call) {
       actor.onJoinCompleted = previous;
       try {
         await previous?.call(actor, completion);
-        if (completion.status === 'accepted') {
+        // Deferred Join completion 계약(`status`/`actor`/`reply`/`rejection`)을
+        // 그대로 넘긴다. reply는 framework message라 값 비교용으로 decode한다.
+        if (completion.status === 'accepted' || completion.status === 'rejected') {
           resolve({
-            accepted: true,
-            actor: completion.actor,
-            reply: completion.reply
-          });
-          return;
-        }
-        if (completion.status === 'rejected') {
-          resolve({
-            accepted: false,
-            reply: completion.reply
+            ...completion,
+            reply: completion.reply === undefined
+              ? undefined
+              : completion.reply.decode()
           });
           return;
         }
@@ -1075,6 +1071,9 @@ test('ZLinkActorDispatchMailboxSet serializes same actor and allows different ac
 
 test('ZLinkActorContext delegates join calls to coordinator with timeout', async () => {
   const calls = [];
+  // Deferred Join은 절대 deadline을 유지하므로 coordinator는 남은 시간을 받는다.
+  // 네 언어 runtime이 모두 같은 의미라 정확한 ms 대신 상한만 검증한다.
+  const timeouts = [];
   const replyMessage = zlink.Message.from('joined');
   class PlayerActor {
     constructor(actorId, context) {
@@ -1091,11 +1090,13 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   const actorRef = { nodeRid: 'node-b', actorId: 'alice', generation: 1n };
   const joinCoordinator = {
     async joinSpot(actor, state, spotId, request, timeoutMs) {
-      calls.push(`joinSpot:${actor.context.actorId}:${state.actorId}:${spotId}:${request.data().toString()}:${timeoutMs}`);
+      timeouts.push(timeoutMs);
+      calls.push(`joinSpot:${actor.context.actorId}:${state.actorId}:${spotId}:${request.data().toString()}`);
       return { accepted: true, actor: actorRef, reply: replyMessage };
     },
     async joinEntrySpot(actor, state, nodeRid, request, timeoutMs) {
-      calls.push(`joinEntry:${actor.context.actorId}:${state.actorId}:${nodeRid}:${request.data().toString()}:${timeoutMs}`);
+      timeouts.push(timeoutMs);
+      calls.push(`joinEntry:${actor.context.actorId}:${state.actorId}:${nodeRid}:${request.data().toString()}`);
       return { accepted: true, actor: actorRef, reply: replyMessage };
     }
   };
@@ -1125,13 +1126,16 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
   assert.deepEqual(entryResult.actor, actorRef);
   assert.deepEqual(emptyEntryResult.actor, actorRef);
   assert.deepEqual(calls, [
-    'joinSpot:alice:alice:stage-1:hello:25',
-    'joinEntry:alice:alice:undefined:entry:10',
-    'joinEntry:alice:alice:undefined::5'
+    'joinSpot:alice:alice:stage-1:hello',
+    'joinEntry:alice:alice:undefined:entry',
+    'joinEntry:alice:alice:undefined:'
   ]);
-  joinResult.reply?.close();
-  entryResult.reply?.close();
-  emptyEntryResult.reply?.close();
+  assert.equal(timeouts.length, 3);
+  for (const [index, configured] of [25, 10, 5].entries()) {
+    assert.ok(timeouts[index] > 0 && timeouts[index] <= configured,
+      `join timeout ${timeouts[index]} must be within (0, ${configured}]`);
+  }
+  // Deferred completion은 raw reply를 runtime이 닫고 framework message만 넘긴다.
   replyMessage.close();
 });
 
@@ -1338,7 +1342,7 @@ test('ZLinkActorContext joinSpot uses configured custom serializer without raw r
   });
   const actor = await manager.getOrCreateActor('alice', 'player');
 
-  const joinResult = await actor.context.joinSpot('stage-1', 'hello').submit();
+  const joinResult = await submitDeferredActorJoin(actor, actor.context.joinSpot('stage-1', 'hello'));
 
   assert.equal(joinResult.status, 'accepted');
   assert.equal(joinResult.reply, 'joined');
@@ -1385,7 +1389,7 @@ test('ZLinkActorContext joinSpot uses binary codec extensions without raw reques
     });
     const actor = await manager.getOrCreateActor('alice', 'player');
 
-    const joinResult = await actor.context.joinSpot('stage-1', { text: `${name}:hello` }).submit();
+    const joinResult = await submitDeferredActorJoin(actor, actor.context.joinSpot('stage-1', { text: `${name}:hello` }));
 
     assert.equal(joinResult.status, 'accepted');
     assert.deepEqual(joinResult.reply, { text: `${name}:joined` });
@@ -1457,7 +1461,7 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   });
   const actor = await manager.getOrCreateActor('alice', 'player');
   const request = encodedMessage('payload:hello');
-  const result = await actor.context.joinSpot('stage-1', request).timeout(25).submit();
+  const result = await submitDeferredActorJoin(actor, actor.context.joinSpot('stage-1', request).timeout(25));
 
   assert.equal(result.status, 'accepted');
   assert.equal(String(result.actor.nodeRid), 'node-a');
@@ -1567,7 +1571,7 @@ test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remot
   });
   const actor = await manager.getOrCreateActor('alice', 'player');
   const request = encodedMessage('payload');
-  const result = await actor.context.joinSpot('room-1', request).submit();
+  const result = await submitDeferredActorJoin(actor, actor.context.joinSpot('room-1', request));
   assert.equal(result.status, 'accepted');
   assert.equal(result.reply, 'remote-reply');
   assert.deepEqual(events, [
@@ -1686,7 +1690,7 @@ test('ZLinkActorNativeJoinCoordinator keeps remote joins on the formal Core surf
   });
   const actor = await manager.getOrCreateActor('alice', 'player');
   const request = encodedMessage('payload');
-  const result = await actor.context.joinSpot('room-1', request).submit();
+  const result = await submitDeferredActorJoin(actor, actor.context.joinSpot('room-1', request));
 
   assert.equal(result.status, 'accepted');
   assert.equal(result.reply, 'routed-reply');
@@ -1802,7 +1806,7 @@ test('remote transfer failures before commit preserve source ownership and never
     });
     const actor = await manager.getOrCreateActor('alice', 'player');
     await assert.rejects(
-      () => actor.context.joinSpot('room-target', encodedMessage('join')).submit(),
+      () => submitDeferredActorJoin(actor, actor.context.joinSpot('room-target', encodedMessage('join'))),
       new RegExp(`injected ${failurePoint} failure`)
     );
     assert.equal(manager.getState('alice').isMoving, false);
@@ -1904,7 +1908,7 @@ test('formal remote join rejection rolls back prepared source movement and prese
   });
   const actor = await manager.getOrCreateActor('alice', 'player');
 
-  const result = await actor.context.joinSpot('room-target', encodedMessage('join')).submit();
+  const result = await submitDeferredActorJoin(actor, actor.context.joinSpot('room-target', encodedMessage('join')));
 
   assert.equal(result.status, 'rejected');
   assert.equal(result.rejection, undefined);
@@ -2235,7 +2239,7 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
   manager.getState('alice').setJoinedSpot('stage-1');
 
   const entryRequest = encodedMessage('entry');
-  const result = await actor.context.joinEntrySpot('node-b', entryRequest).timeout(50).submit();
+  const result = await submitDeferredActorJoin(actor, actor.context.joinEntrySpot('node-b', entryRequest).timeout(50));
 
   assert.deepEqual(result.actor, { ...entryRef, nodeRid: 'node-b' });
   assert.equal(actor.context.isJoined, false);
@@ -3000,7 +3004,7 @@ test('ZLinkActorNativeJoinCoordinator maps native join failures to framework err
   const actor = await manager.getOrCreateActor('alice', 'player');
 
   await assert.rejects(
-    () => actor.context.joinSpot('stage-1', 'hello').submit(),
+    () => submitDeferredActorJoin(actor, actor.context.joinSpot('stage-1', 'hello')),
     (error) =>
       error instanceof framework.ZLinkFrameworkException
       && error.kind === framework.ZLinkFrameworkErrorKind.ActorRouteNotFound

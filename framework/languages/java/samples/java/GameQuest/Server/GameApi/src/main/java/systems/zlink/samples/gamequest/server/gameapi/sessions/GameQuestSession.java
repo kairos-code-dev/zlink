@@ -6,7 +6,7 @@ import systems.zlink.framework.channels.ZLinkClient;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.samples.gamequest.server.configuration.SampleNames;
 import systems.zlink.samples.gamequest.server.configuration.SampleTopology;
@@ -60,7 +60,7 @@ public final class GameQuestSession implements ZLinkSession {
 
     @Override
     public java.util.concurrent.CompletionStage<Void> onDispatch(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload) {
         return switch (dispatch.packetName()) {
             case "JoinSessionReq" -> handleJoin(payload.decode(Messages.JoinSessionReq.class));

@@ -20,7 +20,7 @@ import systems.zlink.framework.spring.EnableZLinkFramework;
 import systems.zlink.framework.spring.ZLinkFrameworkConfigurer;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
@@ -129,7 +129,7 @@ public final class Program {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             systems.zlink.framework.messaging.ZLinkMessage payload) {
             return handlers.tryHandle(context, dispatch, payload).thenCompose(handled -> {
                 if (handled) {
@@ -167,7 +167,7 @@ public final class Program {
         @Override
         public CompletionStage<Void> handle(
             ZLinkSessionContext context,
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             Contracts.BindActorRequest request) {
             Contracts.ActorRefWire wire = request.actorRef();
             ActorRef actor = new ActorRef(

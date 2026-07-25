@@ -4,7 +4,7 @@ import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext
+import systems.zlink.framework.streams.ZLinkSessionMessageContext
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
 import systems.zlink.samples.kotlin.deliverydispatch.server.customergateway.CustomerActorDirectory
 import systems.zlink.samples.kotlin.deliverydispatch.shared.contracts.EnsureCustomerActorReq
@@ -22,7 +22,7 @@ class SubscribeDeliverySessionHandler(
 
     override suspend fun handle(
         context: ZLinkSessionContext,
-        dispatch: ZLinkSessionDispatchContext,
+        dispatch: ZLinkSessionMessageContext,
         message: SubscribeDeliveryReq,
     ) {
         val find = FindCustomerActorReq(CustomerId)

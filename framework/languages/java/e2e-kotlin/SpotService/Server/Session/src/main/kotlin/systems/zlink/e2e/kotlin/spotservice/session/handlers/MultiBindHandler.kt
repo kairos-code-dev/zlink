@@ -4,7 +4,7 @@ import systems.zlink.e2e.kotlin.spotservice.Contracts
 import systems.zlink.e2e.kotlin.spotservice.ScenarioState
 import systems.zlink.framework.actors.ZLinkActorManager
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext
+import systems.zlink.framework.streams.ZLinkSessionMessageContext
 import kotlinx.coroutines.future.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingTypedSessionPacketHandler
 
@@ -18,7 +18,7 @@ class MultiBindHandler(
 
     override suspend fun handle(
         context: ZLinkSessionContext,
-        dispatch: ZLinkSessionDispatchContext,
+        dispatch: ZLinkSessionMessageContext,
         request: Contracts.MultiBindReq
     ) {
         listOf(request.firstActorId, request.secondActorId).forEach { actorId ->

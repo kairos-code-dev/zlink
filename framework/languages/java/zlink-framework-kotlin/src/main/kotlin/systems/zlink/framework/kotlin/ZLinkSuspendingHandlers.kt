@@ -24,7 +24,7 @@ import systems.zlink.framework.spots.ZLinkTimerTick
 import systems.zlink.framework.streams.ZLinkSession
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkStreamError
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext
+import systems.zlink.framework.streams.ZLinkSessionMessageContext
 
 interface ZLinkSuspendingRequestHandler<TRequest, TReply> {
     suspend fun handle(request: TRequest, context: ZLinkMessageContext): TReply
@@ -139,7 +139,7 @@ interface ZLinkSuspendingTypedSessionPacketHandler<
 
     fun messageType(): Class<TMessage>
 
-    suspend fun handle(context: TSessionContext, dispatch: ZLinkSessionDispatchContext, message: TMessage)
+    suspend fun handle(context: TSessionContext, dispatch: ZLinkSessionMessageContext, message: TMessage)
 }
 
 abstract class ZLinkSuspendingActorFactory : ZLinkActorFactory {
@@ -292,7 +292,7 @@ abstract class ZLinkSuspendingSession : ZLinkSession {
         coroutineVoidStage { onErrorSuspending(error) }
 
     final override fun onDispatch(
-        dispatch: ZLinkSessionDispatchContext,
+        dispatch: ZLinkSessionMessageContext,
         payload: ZLinkMessage,
     ): CompletionStage<Void> = coroutineVoidStage { onDispatchSuspending(dispatch, payload) }
 
@@ -305,7 +305,7 @@ abstract class ZLinkSuspendingSession : ZLinkSession {
     protected open suspend fun onErrorSuspending(error: ZLinkStreamError) {
     }
 
-    protected open suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+    protected open suspend fun onDispatchSuspending(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage) {
     }
 }
 

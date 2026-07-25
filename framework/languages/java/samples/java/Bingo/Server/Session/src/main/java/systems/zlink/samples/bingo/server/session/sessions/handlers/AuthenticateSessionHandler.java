@@ -8,7 +8,7 @@ import systems.zlink.framework.spots.SpotHandle;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.locations.ZLinkAllocatedRoutingIdProvider;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.samples.bingo.server.configuration.SampleNames;
 import systems.zlink.samples.bingo.server.configuration.SampleTimings;
@@ -38,7 +38,7 @@ public final class AuthenticateSessionHandler
     @Override
     public java.util.concurrent.CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         Messages.AuthenticateReq request) {
         if (request.getAccessToken().isBlank()) {
             throw new IllegalArgumentException("access token is required");

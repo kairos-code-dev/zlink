@@ -133,7 +133,7 @@ interface ZLinkKotlinSessionActor {
     fun relay(message: systems.zlink.framework.messaging.ZLinkMessage):
         ZLinkKotlinSubmissionCall
     fun relay(
-        dispatch: systems.zlink.framework.streams.ZLinkSessionDispatchContext,
+        dispatch: systems.zlink.framework.streams.ZLinkSessionMessageContext,
         message: systems.zlink.framework.messaging.ZLinkMessage,
     ): ZLinkKotlinSubmissionCall
 }
@@ -437,7 +437,7 @@ fun ZLinkSessionActor.kotlin(): ZLinkKotlinSessionActor =
             DeferredSubmissionCall { this@kotlin.relay(message) }
 
         override fun relay(
-            dispatch: systems.zlink.framework.streams.ZLinkSessionDispatchContext,
+            dispatch: systems.zlink.framework.streams.ZLinkSessionMessageContext,
             message: systems.zlink.framework.messaging.ZLinkMessage,
         ): ZLinkKotlinSubmissionCall =
             DeferredSubmissionCall { this@kotlin.relay(dispatch, message) }

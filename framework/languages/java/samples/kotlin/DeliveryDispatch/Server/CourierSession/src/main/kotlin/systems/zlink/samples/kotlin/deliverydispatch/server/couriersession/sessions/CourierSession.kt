@@ -7,7 +7,7 @@ import systems.zlink.framework.channels.ZLinkRouteClient
 import systems.zlink.framework.spots.SpotHandleResolver
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext
+import systems.zlink.framework.streams.ZLinkSessionMessageContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
 import systems.zlink.framework.streams.ZLinkStreamError
 import systems.zlink.samples.kotlin.deliverydispatch.server.configuration.SampleNames
@@ -40,7 +40,7 @@ class CourierSession(
     override suspend fun onErrorSuspending(error: ZLinkStreamError) {
     }
 
-    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage) {
         if (dispatch.packetName() == "BindCourierSessionReq") {
             handleBindCourierSessionReq(dispatch, payload)
             return
@@ -55,7 +55,7 @@ class CourierSession(
         actor.relay(dispatch, payload).await()
     }
 
-    private suspend fun handleBindCourierSessionReq(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+    private suspend fun handleBindCourierSessionReq(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage) {
         val request = payload.decode(BindCourierSessionReq::class.java)
         val actorRef = findOrEnsureActor(request.courierId)
         val actor = sessionContext.actors().find(actorRef.actorId).orElse(null)

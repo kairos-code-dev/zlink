@@ -8,7 +8,7 @@ import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.samples.deliverydispatch.server.configuration.SampleNames;
@@ -63,7 +63,7 @@ public final class CourierSession implements ZLinkSession {
 
     @Override
     public CompletionStage<Void> onDispatch(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload) {
         if ("BindCourierSessionReq".equals(dispatch.packetName())) {
             return handleBindCourierSessionReq(dispatch, payload);
@@ -81,7 +81,7 @@ public final class CourierSession implements ZLinkSession {
     }
 
     private CompletionStage<Void> handleBindCourierSessionReq(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload) {
         Messages.BindCourierSessionReq request = payload.decode(Messages.BindCourierSessionReq.class);
         return findOrEnsureActor(request.courierId()).thenCompose(actorRef -> {

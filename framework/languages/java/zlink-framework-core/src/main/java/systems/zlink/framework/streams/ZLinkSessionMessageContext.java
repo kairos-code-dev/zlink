@@ -2,12 +2,12 @@ package systems.zlink.framework.streams;
 
 import java.util.Map;
 
-public record ZLinkSessionDispatchContext(
+public record ZLinkSessionMessageContext(
     String packetName,
     Map<String, String> metadata,
     boolean canReply
 ) {
-    public ZLinkSessionDispatchContext {
+    public ZLinkSessionMessageContext {
         if (packetName == null || packetName.isBlank()) {
             throw new IllegalArgumentException("packetName must be non-empty.");
         }

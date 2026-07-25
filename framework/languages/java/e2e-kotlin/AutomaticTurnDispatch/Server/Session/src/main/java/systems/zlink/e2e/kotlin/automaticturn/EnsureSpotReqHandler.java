@@ -4,7 +4,7 @@ import java.time.Duration;
 import java.util.concurrent.CompletionStage;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class EnsureSpotReqHandler
@@ -23,7 +23,7 @@ public final class EnsureSpotReqHandler
     @Override
     public CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         Contracts.EnsureSpotReq request) {
         return routes.requestToNode(
                 Contracts.SPOT_MESH,

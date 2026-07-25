@@ -5,11 +5,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.WeakHashMap;
 import systems.zlink.framework.runtime.streams.ZLinkStreamHeader;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 
 final class ZLinkSessionRelayHeaders {
     private final ThreadLocal<ZLinkStreamHeader> current = new ThreadLocal<>();
-    private final Map<ZLinkSessionDispatchContext, ZLinkStreamHeader> byDispatch =
+    private final Map<ZLinkSessionMessageContext, ZLinkStreamHeader> byDispatch =
         Collections.synchronizedMap(new WeakHashMap<>());
 
     void enter(ZLinkStreamHeader header) {
@@ -17,7 +17,7 @@ final class ZLinkSessionRelayHeaders {
     }
 
     void enter(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkStreamHeader header) {
         if (dispatch != null && header != null) {
             byDispatch.put(dispatch, header);
@@ -29,7 +29,7 @@ final class ZLinkSessionRelayHeaders {
         current.remove();
     }
 
-    void exit(ZLinkSessionDispatchContext dispatch) {
+    void exit(ZLinkSessionMessageContext dispatch) {
         if (dispatch != null) {
             byDispatch.remove(dispatch);
         }
@@ -40,7 +40,7 @@ final class ZLinkSessionRelayHeaders {
         return Optional.ofNullable(current.get());
     }
 
-    Optional<ZLinkStreamHeader> find(ZLinkSessionDispatchContext dispatch) {
+    Optional<ZLinkStreamHeader> find(ZLinkSessionMessageContext dispatch) {
         if (dispatch == null) {
             return Optional.empty();
         }

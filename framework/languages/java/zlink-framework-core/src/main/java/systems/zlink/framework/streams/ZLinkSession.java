@@ -14,7 +14,7 @@ public interface ZLinkSession {
     CompletionStage<Void> onError(ZLinkStreamError error);
 
     default CompletionStage<Void> onDispatch(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload) {
         return CompletableFuture.completedFuture(null);
     }

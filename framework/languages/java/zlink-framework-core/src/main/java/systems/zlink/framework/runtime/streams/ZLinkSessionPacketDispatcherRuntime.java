@@ -15,7 +15,7 @@ import systems.zlink.framework.runtime.handlers.ZLinkHandlerStages;
 import systems.zlink.framework.runtime.internal.handlers.ZLinkSuspendInvocationAdapter;
 import systems.zlink.framework.runtime.messaging.ZLinkPacketNames;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
@@ -41,7 +41,7 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     @Override
     public CompletionStage<Boolean> tryHandle(
         TSessionContext context,
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload) {
         Object handler =
             handlers.get(dispatch.packetName());
@@ -71,7 +71,7 @@ final class ZLinkSessionPacketDispatcherRuntime<TSessionContext extends ZLinkSes
     private CompletionStage<Void> invokeTypedHandler(
         ZLinkTypedSessionPacketHandler<?, ?> handler,
         TSessionContext context,
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload) {
         ZLinkTypedSessionPacketHandler<TSessionContext, Object> typed =
             (ZLinkTypedSessionPacketHandler<TSessionContext, Object>) handler;

@@ -6,7 +6,7 @@ import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSessionActor
 import systems.zlink.framework.streams.ZLinkSessionContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext
+import systems.zlink.framework.streams.ZLinkSessionMessageContext
 
 class BingoSession(
     private val context: ZLinkSessionContext,
@@ -20,7 +20,7 @@ class BingoSession(
     }
 
     override suspend fun onDispatchSuspending(
-        dispatch: ZLinkSessionDispatchContext,
+        dispatch: ZLinkSessionMessageContext,
         payload: ZLinkMessage,
     ) {
         val handled = handlers.tryHandle(context, dispatch, payload).await()

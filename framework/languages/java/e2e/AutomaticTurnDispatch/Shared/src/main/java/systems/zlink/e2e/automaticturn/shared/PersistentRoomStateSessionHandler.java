@@ -6,7 +6,7 @@ import systems.zlink.contracts.core.RoutingId;
 import systems.zlink.framework.channels.ZLinkRouteClient;
 import systems.zlink.framework.spots.SpotHandleResolver;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 
 public final class PersistentRoomStateSessionHandler
@@ -30,7 +30,7 @@ public final class PersistentRoomStateSessionHandler
     @Override
     public CompletionStage<Void> handle(
         ZLinkSessionContext context,
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         Contracts.PersistentRoomStateReq request) {
         RoutingId spotRid = RoutingId.from(dispatch.metadata().get(Contracts.SPOT_RID_METADATA));
         return spots.resolveSpotHandle(spotRid)

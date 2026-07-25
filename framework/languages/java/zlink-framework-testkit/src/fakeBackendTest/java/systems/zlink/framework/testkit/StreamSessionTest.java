@@ -30,7 +30,7 @@ import systems.zlink.framework.spots.ZLinkSpotContext;
 import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkTypedSessionPacketHandler;
 import systems.zlink.framework.streams.ZLinkStreamCompressionCodec;
@@ -653,7 +653,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             dispatches.add(dispatch.packetName() + ":" + payload.decode(String.class));
             return CompletableFuture.completedFuture(null);
@@ -694,7 +694,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             if ("MustFail".equals(dispatch.packetName())) {
                 throw new IllegalStateException("public failure");
@@ -750,7 +750,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             dispatches.add(dispatch.packetName() + ":" + payload.decode(String.class));
             return CompletableFuture.completedFuture(null);
@@ -787,7 +787,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             dispatches.add(dispatch.packetName() + ":" + payload.decode(StringValue.class).getValue());
             return CompletableFuture.completedFuture(null);
@@ -824,7 +824,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             dispatches.add(dispatch.packetName() + ":" + payload.decode(PackedSessionPayload.class).value());
             return CompletableFuture.completedFuture(null);
@@ -873,7 +873,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             return context.actors()
                 .bind(new ActorRef(
@@ -929,7 +929,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             return handlers.tryHandle(context, dispatch, payload).thenAccept(handled -> {
                 if (!handled) {
@@ -950,7 +950,7 @@ final class StreamSessionTest {
         @Override
         public CompletionStage<Void> handle(
             ZLinkSessionContext context,
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             AuthenticatePacket payload) {
             DispatcherSession.handled.add("handler:" + payload.value());
             context.client()
@@ -998,7 +998,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             try {
                 context.client()
@@ -1040,7 +1040,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             return CompletableFuture.failedFuture(new IllegalStateException("public failure"));
         }
@@ -1100,7 +1100,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             context.client().send("notify")
                 .metadata("trace", "send-trace").compress().submit();
@@ -1144,7 +1144,7 @@ final class StreamSessionTest {
 
         @Override
         public CompletionStage<Void> onDispatch(
-            ZLinkSessionDispatchContext dispatch,
+            ZLinkSessionMessageContext dispatch,
             ZLinkMessage payload) {
             dispatches.add(dispatch.packetName() + ":" + payload.decode(String.class));
             context.client().send("notify").compress().submit();

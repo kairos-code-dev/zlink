@@ -4,7 +4,7 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher;
 import systems.zlink.framework.streams.ZLinkStreamError;
 
@@ -47,7 +47,7 @@ public final class ScenarioSession implements ZLinkSession {
 
     @Override
     public java.util.concurrent.CompletionStage<Void> onDispatch(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload) {
         evidence.record("StreamInbound", "session", dispatch.packetName());
         return handlers.tryHandle(context, dispatch, payload).thenCompose(handled ->
@@ -55,7 +55,7 @@ public final class ScenarioSession implements ZLinkSession {
                 : requireActor(dispatch).relay(dispatch, payload));
     }
 
-    private ZLinkSessionActor requireActor(ZLinkSessionDispatchContext dispatch) {
+    private ZLinkSessionActor requireActor(ZLinkSessionMessageContext dispatch) {
         String actorId = dispatch.metadata().get("actor-id");
         if (actorId != null && !actorId.isBlank()) {
             return context.actors().find(actorId)

@@ -9,7 +9,7 @@ import systems.zlink.framework.messaging.ZLinkMessage;
 import systems.zlink.framework.streams.ZLinkSession;
 import systems.zlink.framework.streams.ZLinkSessionActor;
 import systems.zlink.framework.streams.ZLinkSessionContext;
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext;
+import systems.zlink.framework.streams.ZLinkSessionMessageContext;
 import systems.zlink.framework.streams.ZLinkStreamError;
 import systems.zlink.samples.supportchat.server.configuration.SampleNames;
 import systems.zlink.samples.supportchat.server.configuration.SampleTimings;
@@ -54,7 +54,7 @@ public final class SupportChatSession implements ZLinkSession {
 
     @Override
     public CompletionStage<Void> onDispatch(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload) {
         return switch (dispatch.packetName()) {
             case "AuthenticateReq" -> authenticate(payload.decode(Messages.AuthenticateReq.class));
@@ -100,7 +100,7 @@ public final class SupportChatSession implements ZLinkSession {
     }
 
     private CompletionStage<Void> joinConversation(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload) {
         if (SampleNames.Roles.Customer.equals(identityRole)) {
             return requireIdentityActor().relay(dispatch, payload).thenApply(ignored -> null);
@@ -124,7 +124,7 @@ public final class SupportChatSession implements ZLinkSession {
     }
 
     private CompletionStage<Void> relayConversationPacket(
-        ZLinkSessionDispatchContext dispatch,
+        ZLinkSessionMessageContext dispatch,
         ZLinkMessage payload) {
         String conversationId = dispatch.metadata().get(SampleNames.ConversationIdMetadataKey);
         ZLinkSessionActor target = conversationId == null
@@ -150,7 +150,7 @@ public final class SupportChatSession implements ZLinkSession {
         return identityActor;
     }
 
-    private static String requireConversationId(ZLinkSessionDispatchContext dispatch) {
+    private static String requireConversationId(ZLinkSessionMessageContext dispatch) {
         String conversationId = dispatch.metadata().get(SampleNames.ConversationIdMetadataKey);
         if (conversationId == null || conversationId.isBlank()) {
             throw new IllegalStateException("Conversation packet is missing ConversationId metadata");

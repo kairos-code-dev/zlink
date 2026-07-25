@@ -4,7 +4,7 @@ import systems.zlink.framework.kotlin.await
 import systems.zlink.framework.kotlin.ZLinkSuspendingSession
 import systems.zlink.framework.messaging.ZLinkMessage
 import systems.zlink.framework.streams.ZLinkSessionContext
-import systems.zlink.framework.streams.ZLinkSessionDispatchContext
+import systems.zlink.framework.streams.ZLinkSessionMessageContext
 import systems.zlink.framework.streams.ZLinkSessionPacketDispatcher
 import systems.zlink.framework.streams.ZLinkStreamError
 
@@ -24,7 +24,7 @@ class CustomerSession(
     override suspend fun onErrorSuspending(error: ZLinkStreamError) {
     }
 
-    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionDispatchContext, payload: ZLinkMessage) {
+    override suspend fun onDispatchSuspending(dispatch: ZLinkSessionMessageContext, payload: ZLinkMessage) {
         val handled = handlers.tryHandle(sessionContext, dispatch, payload).await()
         if (handled) {
             return

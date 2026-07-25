@@ -36,6 +36,12 @@ export class ZLinkChannelOutboundOperations {
     private readonly dispatchServices: ZLinkChannelDispatchServices
   ) {}
 
+  /**
+   * Try-style fast-fail counterpart of {@link send}. It reports the current selection instead of
+   * waiting, so the bounded readiness wait that
+   * `framework/doc/framework/common/spec/11-channel-messaging.ko.md` §3.2 puts on a call belongs to
+   * the asynchronous {@link send} the public `sendToChannel` path uses, not here.
+   */
   trySend(
     channelName: string,
     packetName: string | undefined,
@@ -44,7 +50,7 @@ export class ZLinkChannelOutboundOperations {
   ): ZLinkSubmitResult {
     const dealer = this.sockets.clientDealerForOutbound(channelName);
     if (dealer === undefined) {
-      return { status: ZLinkSubmitStatus.RouteNotConnected };
+      return { status: ZLinkSubmitStatus.TargetNotFound };
     }
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
@@ -78,9 +84,9 @@ export class ZLinkChannelOutboundOperations {
     metadata: ReadonlyMap<string, string> = new Map()
   ): Promise<ZLinkSubmitResult> {
     throwIfAborted(signal);
-    const dealer = this.sockets.clientDealerForOutbound(channelName);
+    const dealer = await this.sockets.awaitClientDealerForOutbound(channelName, signal);
     if (dealer === undefined) {
-      return { status: ZLinkSubmitStatus.RouteNotConnected };
+      return { status: ZLinkSubmitStatus.TargetNotFound };
     }
     const correlationId = newChannelCorrelationId();
     const parts = encodeChannelEnvelopeParts(
@@ -134,12 +140,11 @@ export class ZLinkChannelOutboundOperations {
     metadata?: ReadonlyMap<string, string>
   ): Promise<TReply> {
     throwIfAborted(signal);
-    const dealer = this.sockets.clientDealerForOutbound(channelName);
+    const dealer = await this.sockets.awaitClientDealerForOutbound(channelName, signal);
     if (dealer === undefined) {
       throw new ZLinkFrameworkException(
-        ZLinkFrameworkErrorKind.RouteNotConnected,
-        `Channel '${channelName}' has no admitted ClientServer target.`,
-        true
+        ZLinkFrameworkErrorKind.RequestTargetNotFound,
+        `Channel '${channelName}' has no ready ClientServer server.`
       );
     }
     const correlationId = newChannelCorrelationId();

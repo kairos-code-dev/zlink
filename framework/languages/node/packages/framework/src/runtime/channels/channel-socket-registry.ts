@@ -20,6 +20,7 @@ import type {
   ZLinkMonitoringBackendAdapter
 } from '../backend/contracts';
 import { ZLinkAsyncSubmitter } from '../messaging';
+import { throwIfAborted } from '../abort';
 import { ZLinkRouteDisconnectedError } from './route-disconnected-error';
 import { attachEndpointConnections } from '../../contracts/Configuration/RuntimeEndpointConnections';
 import { ZLinkRouteMemberSnapshot } from './route-member-snapshot';
@@ -46,6 +47,9 @@ import {
 const MAX_LIFECYCLE_GENERATION = 0x7fff_ffff_ffff_ffffn;
 const CLIENT_SERVER_PROBE_INTERVAL_MS = 5_000;
 const CLIENT_SERVER_PEER_DEADLINE_MS = 15_000;
+const CLIENT_SERVER_READY_WAIT_CAP_MS = 5_000;
+const CLIENT_SERVER_READY_POLL_INTERVAL_MS = 5;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 export interface ZLinkClientServerServerSocketIdentity {
   readonly serverRid: string;
@@ -558,6 +562,49 @@ export class ZLinkChannelSocketRegistry {
       throw new ZLinkConfigurationException(`Channel client '${channelName}' is not registered.`);
     }
     return this.selectClientServerDealer(channelName);
+  }
+
+  /**
+   * Resolves a ClientServer send target, waiting when the ready candidate set is still empty, as
+   * `framework/doc/framework/common/spec/11-channel-messaging.ko.md` §3.2 requires: the call waits
+   * at call time for a bounded period and then fails with no-target. The bound is the shorter of
+   * this Channel's request timeout and five seconds, mirroring the .NET reference
+   * `ZLinkClientServerClientRuntime.WaitForReadyAsync`. The wait lives here because this registry
+   * owns ClientServer connections, admission and weighted selection.
+   *
+   * The wait only observes admission that is already in flight: it never opens or reconnects a
+   * connection, so it cannot trigger the admission it waits for, and Framework startup keeps not
+   * waiting for local ClientServer admission. It applies whenever nothing is selectable, including
+   * candidate sets excluded by weight 0 or drain, because `selectClientServerDealer` filters the
+   * same way the reference `SelectReady()` does.
+   *
+   * Every attempt yields to the event loop between polls. ClientServer admission completes on the
+   * monitor callbacks that the backend poll timer pumps, so a synchronous wait would starve the
+   * admission it is waiting for and burn the whole bound before failing anyway. That is this
+   * execution model's form of the hazard the JVM mirror avoids by not holding the admission
+   * monitor across its sleep.
+   */
+  async awaitClientDealerForOutbound(
+    channelName: string,
+    signal?: AbortSignal
+  ): Promise<ZLinkBackendDealerSocket | undefined> {
+    const deadline = Date.now() + this.clientServerReadyWaitBoundMs(channelName);
+    for (;;) {
+      const dealer = this.clientDealerForOutbound(channelName);
+      if (dealer !== undefined) return dealer;
+      if (Date.now() >= deadline) return undefined;
+      throwIfAborted(signal);
+      await new Promise<void>(resolve => {
+        setTimeout(resolve, CLIENT_SERVER_READY_POLL_INTERVAL_MS);
+      });
+    }
+  }
+
+  private clientServerReadyWaitBoundMs(channelName: string): number {
+    const requestTimeoutMs = this.registration.channels.get(channelName)?.requestTimeoutMs
+      ?? this.registration.requestTimeoutMs
+      ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    return Math.min(requestTimeoutMs, CLIENT_SERVER_READY_WAIT_CAP_MS);
   }
 
   startManualClientServerConnections(): void {

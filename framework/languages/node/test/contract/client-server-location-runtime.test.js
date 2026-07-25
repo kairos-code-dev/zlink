@@ -12,6 +12,9 @@ const {
 const clientServerWire = require(
   '../../packages/framework/dist/runtime/channels/client-server-service-wire'
 );
+const submissionResult = require(
+  '../../packages/framework/dist/runtime/messaging/submission-result'
+);
 
 function descriptor(owner, overrides = {}) {
   return {
@@ -1043,6 +1046,119 @@ test('periodic ClientServer discovery failures remain observable on location run
   store.listClientServers = originalList;
   await discovery.stop();
   await runtime.stop();
+});
+
+function readyWaitSockets(requestTimeoutMs) {
+  const registration = internal.createFrameworkRegistration({
+    channels: {
+      orders: {
+        client: { manualConnections: [] },
+        requestTimeoutMs
+      }
+    },
+    locations: { useInMemoryStores: true }
+  });
+  const dealer = fakeDealer('dealer-0');
+  const sockets = new ZLinkChannelSocketRegistry(
+    registration,
+    { createDealerSocket() { return dealer; } },
+    {},
+    {
+      openSocketMonitor() {
+        return { nativeInstance: {}, onEvent() {}, async dispose() {} };
+      }
+    }
+  );
+  sockets.openClientServerConnection(
+    'orders',
+    'orders-a:7',
+    'tcp://10.0.0.1:9401',
+    { onTransportReady() {}, onTerminated() {} }
+  );
+  return { sockets, dealer };
+}
+
+test('ClientServer send target waits for admission already in flight instead of failing at once', async () => {
+  const { sockets, dealer } = readyWaitSockets(60_000);
+  assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
+
+  const startedAt = Date.now();
+  let admittedAfterMs;
+  const admission = setTimeout(() => {
+    admittedAfterMs = Date.now() - startedAt;
+    sockets.admitClientServerConnection(discoveryDescriptor('server-a', 100), 'orders-a:7');
+  }, 40);
+  const selected = await sockets.awaitClientDealerForOutbound('orders');
+  clearTimeout(admission);
+  const elapsed = Date.now() - startedAt;
+
+  assert.equal(selected, dealer);
+  // A wait that did not yield to the event loop would starve this timer, which stands in for the
+  // monitor callbacks that carry real admission, and would fail after burning the whole bound.
+  assert.equal(typeof admittedAfterMs, 'number');
+  assert.ok(elapsed >= 40, `expected the wait to span admission, waited ${elapsed}ms`);
+  assert.ok(elapsed < 5_000, `expected admission to end the wait early, waited ${elapsed}ms`);
+  await sockets.dispose();
+});
+
+test('ClientServer send target waits the Channel request timeout when only a weight 0 candidate exists', async () => {
+  const { sockets } = readyWaitSockets(120);
+  sockets.admitClientServerConnection(discoveryDescriptor('server-a', 0), 'orders-a:7');
+  assert.equal(sockets.clientDealerForOutbound('orders'), undefined);
+
+  const startedAt = Date.now();
+  const selected = await sockets.awaitClientDealerForOutbound('orders');
+  const elapsed = Date.now() - startedAt;
+
+  assert.equal(selected, undefined);
+  assert.ok(elapsed >= 120, `expected the configured request timeout to bound the wait, waited ${elapsed}ms`);
+  assert.ok(elapsed < 5_000, `expected the shorter request timeout to win over the 5s cap, waited ${elapsed}ms`);
+  await sockets.dispose();
+});
+
+test('ClientServer send target caps the readiness wait at five seconds', async () => {
+  const { sockets } = readyWaitSockets(60_000);
+
+  const startedAt = Date.now();
+  const selected = await sockets.awaitClientDealerForOutbound('orders');
+  const elapsed = Date.now() - startedAt;
+
+  assert.equal(selected, undefined);
+  assert.ok(elapsed >= 5_000, `expected the five second cap to bound the wait, waited ${elapsed}ms`);
+  assert.ok(elapsed < 8_000, `expected the cap to end the wait, waited ${elapsed}ms`);
+  await sockets.dispose();
+});
+
+test('ClientServer outbound reports no selectable target as RequestTargetNotFound', async () => {
+  const registration = internal.createFrameworkRegistration({
+    channels: {
+      orders: {
+        client: { manualConnections: [] },
+        requestTimeoutMs: 60
+      }
+    },
+    locations: { useInMemoryStores: true }
+  });
+  const manager = new internal.ZLinkChannelRuntimeManager(
+    registration,
+    {},
+    { nativeInstance: {}, shutdown() {}, async dispose() {} }
+  );
+
+  assert.deepEqual(
+    manager.trySend('orders', 'Notice', { id: 1 }),
+    { status: submissionResult.ZLinkSubmitStatus.TargetNotFound }
+  );
+  assert.deepEqual(
+    await manager.send('orders', 'Notice', { id: 1 }),
+    { status: submissionResult.ZLinkSubmitStatus.TargetNotFound }
+  );
+  await assert.rejects(
+    () => manager.request('orders', 'Lookup', { id: 1 }, 60),
+    (error) => error instanceof framework.ZLinkFrameworkException
+      && error.kind === framework.ZLinkFrameworkErrorKind.RequestTargetNotFound
+  );
+  await manager.dispose();
 });
 
 function automaticClientServerSockets() {

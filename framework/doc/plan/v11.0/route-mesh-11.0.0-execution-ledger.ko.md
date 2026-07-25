@@ -194,25 +194,46 @@ ledger다.
 
 ### 2.3 구현 순서와 동형 수렴
 
-기본 순서는 .NET 우선이다. 계약이 확정된 기능은 .NET lane이 먼저 설계·구현하고 나머지 네 언어가 그 형태를
-미러링한다. 네 lane이 같은 기능을 각자 설계하면 설계 비용이 네 배가 될 뿐 아니라 발산 자체가 수렴 비용으로
-돌아오기 때문이다. 기능 단위로 다음 네 단계를 반복한다.
+기본 순서는 .NET 우선이다. 먼저 .NET Framework가 정식 spec·.NET exact interface·wire schema의 전체
+계약을 구현하고 .NET runtime regression을 통과한다. 이 시점의 revision을 reference candidate로 고정한
+뒤 나머지 네 언어가 그 형태를 미러링한다. 네 언어가 미완성 .NET 구현을 기능별로 따라가거나 같은 기능을
+각자 설계하지 않는다. 전자는 기준 변경을 반복해서 전파하고, 후자는 설계 비용과 수렴 비용을 함께 늘리기
+때문이다. 다음 네 단계를 순서대로 수행한다.
 
-1. **기준 구현.** .NET lane이 정식 spec·exact interface·wire schema를 입력으로 구현하고 internal
-   contract·regression을 통과시킨다. 이 구현이 나머지 언어의 기준 형태가 된다.
-2. **미러링.** 나머지 lane이 기준 형태의 component 경계, state machine, ordering·ownership, 오류 분류,
-   resource 수명, test 구성을 자기 언어로 옮긴다. 형태를 바꾸려면 그 이유를 담당 row 증거 칸에 남긴다.
-3. **교차 리뷰.** 다섯 언어가 준비되면 §18의 `I4` 축으로 한 번에 비교한다. 이 단계는 순서와 무관하게 항상
-   수행하는 완료 gate다. 미러링은 형태를 미묘하게 비틀기 때문에 기준 구현이 있어도 리뷰 없이는 발산을
-   잡지 못한다. 비교 축은 component 분리와 이름, state machine과 전이 조건, ownership·lock·queue 순서,
-   오류 분류와 복구, resource 해제 시점, test 구성과 negative coverage다.
+1. **기준 구현.** .NET lane이 정식 spec·exact interface·wire schema의 M6A·M6B·M6C와 연결된 amendment
+   runtime을 모두 구현한다. 기능별 focused test를 통과한 뒤 전체 .NET internal contract·regression을
+   통과시키고 reference candidate revision과 evidence를 고정한다. 일부 기능만 통과한 작업 revision은
+   다른 언어의 미러링 기준으로 사용하지 않는다.
+2. **미러링.** reference candidate가 고정된 뒤 나머지 lane이 기준 형태의 component 경계, state machine,
+   ordering·ownership, 오류 분류, resource 수명과 test 구성을 자기 언어로 옮긴다. 형태를 바꾸려면 그
+   이유를 담당 row 증거 칸에 기록한다.
+3. **교차 리뷰.** 다섯 언어가 준비되면 §18의 `I4` 축으로 한 번에 비교한다. 이 단계는 구현 순서와 무관하게
+   항상 수행하는 완료 gate다. 미러링은 형태를 미묘하게 비틀기 때문에 기준 구현이 있어도 리뷰 없이는
+   발산을 잡지 못한다. 비교 축은 component 분리와 이름, state machine과 전이 조건,
+   ownership·lock·queue 순서, 오류 분류와 복구, resource 해제 시점, test 구성과 negative coverage다.
 4. **동형 수렴.** 리뷰에서 기준 구현보다 나은 형태가 나오면 그것을 새 기준으로 채택하고 .NET을 포함한
    다섯 언어를 정렬한다. 축마다 선택과 사유를 기록하며, 우열이 분명하지 않으면 .NET 형태를 유지한다.
    수렴 뒤 정식 spec·common internals·다섯 exact interface에 반영한다.
 
+기준 구현을 빠르게 완성하기 위해 .NET 내부 작업은 기능별로 병렬 실행한다. 병렬 실행은 설계를 여러 개
+만드는 것이 아니라, 같은 정식 계약과 하나의 기준 구조를 서로 겹치지 않는 책임 영역에서 구현하는 방식이다.
+
+lane은 남은 row 수에 맞춰 나눈다. 남은 .NET row가 적으면 나누지 않고 순서대로 처리한다. 분할 비용이 이득보다
+큰 구간에서 lane을 늘리면 통합 순서만 길어진다.
+
+각 source 파일에는 한 lane만 write owner를 둔다. `ZLinkManagedMeshNode`처럼 여러 책임을 연결하는 파일과
+public registration surface는 .NET integration owner 한 명만 수정한다. 각 lane은 담당 focused test까지
+통과시키며, integration owner는 `Topology·Store foundation → Object runtime → Maintenance·relocation`
+순서로 합친다. 같은 `bin`·`obj`를 쓰는 full build와 전체 test를 여러 lane이 동시에 실행하지 않는다.
+전체 .NET regression은 통합된 candidate에서 한 runner가 실행하고, 통과한 revision만 reference candidate로
+고정한다. 그전에는 C++·JVM·Node production runtime을 확장하지 않는다.
+
 실행 모델에 민감한 새 메커니즘은 예외다. 동시성, 순서, 수명 원시처럼 .NET 형태가 다른 실행 모델로 옮겨지지
 않을 수 있는 기능은 기준을 확정하기 전에 실행 모델이 가장 다른 C++(RAII·스레드)와 Node.js(event loop)
-두 곳에서 먼저 짧게 시험 구현한다. 다섯 언어를 모두 병렬로 설계하지 않는다. 시험 결과로 기준 형태를 정한
+두 곳에서 먼저 짧게 시험 구현할 수 있다. 공통 wire schema·fixture 변경 때문에 필요한 최소 compile·parity
+수정도 허용한다. 언어별 build·package·test infra 결함과 정식 spec 위반 수정도 기준 구현과 무관하게 계속
+진행한다. 이 수정은 기준 형태를 만들지 않고, 미루면 실행 재활성화 구간에서 한꺼번에 드러나기 때문이다.
+이 예외를 다른 언어의 일반 runtime 구현으로 넓히지 않으며, 시험 결과로 기준 형태를 정한
 뒤에는 다시 1~4단계를 따른다.
 
 한 개념에는 한 이름만 쓴다. 이름의 기준은 정식 spec과

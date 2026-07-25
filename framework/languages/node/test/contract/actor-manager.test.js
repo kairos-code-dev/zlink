@@ -175,7 +175,7 @@ test('actor transfer registry uses custom state adapters and defaults missing ad
   const registry = new framework.ZLinkActorTransferRegistry(
     new Map([[TransferActor, TransferAdapter]])
   );
-  const source = new TransferActor('alice', 41, {});
+  const source = new TransferActor('alice', 41, { actorId: 'alice' });
   const transferred = await registry.transferOut(source);
   assert.equal(transferred.adapterKey, 'TransferActor');
   assert.deepEqual(transferred.state.decode(), { value: 41 });
@@ -340,7 +340,7 @@ test('ZLinkActorManager create notifies Entry Spot after native actor creation',
       this.context = context;
     }
     configure() {
-      events.push(`configure:${this.actorId}`);
+      events.push(`configure:${this.context.actorId}`);
     }
   }
   class PlayerFactory {
@@ -360,7 +360,7 @@ test('ZLinkActorManager create notifies Entry Spot after native actor creation',
     actorFactories: new Map([['player', PlayerFactory]]),
     nativeActorNode: node,
     async actorCreatedNotifier(nodeRid, actor) {
-      events.push(`entryCreate:${nodeRid}:${actor.actorId}`);
+      events.push(`entryCreate:${nodeRid}:${actor.context.actorId}`);
     }
   });
 
@@ -1121,7 +1121,7 @@ test('ZLinkActorContext delegates join calls to coordinator with timeout', async
     actor.context.joinEntrySpot().timeout(5)
   );
 
-  assert.equal(joinResult.accepted, true);
+  assert.equal(joinResult.status, 'accepted');
   assert.deepEqual(joinResult.actor, actorRef);
   assert.deepEqual(entryResult.actor, actorRef);
   assert.deepEqual(emptyEntryResult.actor, actorRef);
@@ -2199,6 +2199,7 @@ test('Entry actor transaction keeps committed entry state when joined callback r
 
 test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot state', async () => {
   const events = [];
+  const entryTimeouts = [];
   const createdRef = { nodeRid: 'node-a', actorId: 'alice', generation: 1n };
   const entryRef = { nodeRid: 'node-b', actorId: 'alice', generation: 4n };
   class PlayerActor {
@@ -2221,7 +2222,9 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
       return createdRef;
     },
     joinActorEntrySpot(actorRef, nodeRid, request, callback, timeoutMs) {
-      events.push(`joinEntry:${actorRef.generation}:${nodeRid}:${request.data().toString()}:${timeoutMs}`);
+      // Deferred Join은 절대 deadline을 유지하므로 남은 시간이 전달된다.
+      entryTimeouts.push(timeoutMs);
+      events.push(`joinEntry:${actorRef.generation}:${nodeRid}:${request.data().toString()}`);
       callback({
         result: 0,
         joinResultCode: 0,
@@ -2245,13 +2248,17 @@ test('ZLinkActorNativeJoinCoordinator joins entry spot and clears user spot stat
   manager.getState('alice').setJoinedSpot('stage-1');
 
   const entryRequest = encodedMessage('entry');
-  const result = await submitDeferredActorJoin(actor, actor.context.joinEntrySpot('node-b', entryRequest).timeout(50));
+  const result = await submitDeferredActorJoin(actor, actor.context.joinEntrySpot(entryRequest).timeout(50));
 
   assert.deepEqual(result.actor, { ...entryRef, nodeRid: 'node-b' });
-  assert.equal(actor.context.isJoined, false);
+  // isJoined는 runtime state가 소유한다. Context 계약은 spotId만 노출한다.
+  assert.equal(manager.getState('alice').isJoined, false);
   assert.equal(actor.context.spotId, undefined);
   assert.equal(manager.getState('alice').nativeActorRef, entryRef);
-  assert.deepEqual(events, ['joinEntry:1:node-b:entry:50']);
+  assert.deepEqual(events, ['joinEntry:1:node-a:entry']);
+  assert.equal(entryTimeouts.length, 1);
+  assert.ok(entryTimeouts[0] > 0 && entryTimeouts[0] <= 50,
+    `entry join timeout ${entryTimeouts[0]} must be within (0, 50]`);
 });
 
 test('DefaultZLinkActorManager destroys only entry-owned actors and ignores stale instances', async () => {
@@ -2539,7 +2546,7 @@ test('ZLinkEntrySpotActivation destroyActor does not invoke Entry Spot lifecycle
     entryActorRuntime: createEntryActorRuntime(
       () => undefined,
       async (_node, nodeRid, actor) => {
-        events.push(`destroyHook:${nodeRid}:${actor.actorId}`);
+        events.push(`destroyHook:${nodeRid}:${actor.context.actorId}`);
       }
     )
   });
@@ -3154,7 +3161,7 @@ test('ZLinkSpotActorHandlerRegistryRuntime resolves actor packets registered wit
   }
   class MoveRequestHandler {
     async handle(_spot, actor, context, request) {
-      events.push(`${actor.context.actorId}:${context.packetName}:${request}`);
+      events.push(`${actor.actorId}:${context.packetName}:${request}`);
       return 'ok';
     }
   }

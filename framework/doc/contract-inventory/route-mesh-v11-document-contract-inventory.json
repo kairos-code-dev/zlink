@@ -496,15 +496,19 @@
         ]
       },
       {
-        "id": "language-parallel-best-of-convergence",
+        "id": "dotnet-reference-review-and-convergence",
         "path": "route-mesh-11.0.0-execution-ledger.ko.md",
         "required_fragments": [
           "### 2.3 구현 순서와 동형 수렴",
           "기본 순서는 .NET 우선이다.",
           "1. **기준 구현.**",
-          "2. **미러링.**",
-          "3. **교차 리뷰.**",
-          "4. **동형 수렴.**",
+          "2. **중간 refactoring checkpoint.**",
+          "3. **.NET 전체 회귀.**",
+          "4. **.NET 정식 POSD·DDD review.**",
+          "5. **Review refactoring과 재회귀.**",
+          "6. **.NET reference 고정.**",
+          "7. **미러링.**",
+          "8. **교차 review와 동형 수렴.**",
           "실행 모델에 민감한 새 메커니즘은 예외다.",
           "언어 고유 idiom은 억지로 통일하지 않는다.",
           "| `I4` |"

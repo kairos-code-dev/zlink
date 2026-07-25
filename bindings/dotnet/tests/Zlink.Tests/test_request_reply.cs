@@ -109,6 +109,57 @@ namespace Systems.Zlink.Tests;
     }
 
     [Fact]
+    public async Task dealer_receives_unsolicited_message_after_dontwait_polled_request_reply()
+    {
+        if (!CoreTestSupport.IsNativeAvailable())
+            return;
+
+        using var ctx = Zlink.CreateContext();
+        using var router = ctx.CreateRouterSocket();
+        using var dealer = ctx.CreateDealerSocket();
+        dealer.SetRoutingId(CoreTestSupport.RoutingIdUtf8("dontwait-probe-client"));
+        string endpoint = CoreTestSupport.NewEndpoint(
+            "tcp",
+            "request-then-unsolicited-dontwait");
+        router.Bind(endpoint);
+        dealer.Connect(endpoint);
+
+        using Message request = Message.From("hello");
+        Task<IReadOnlyList<Message>> replyTask = dealer.Request()
+            .Message(request)
+            .Timeout(TimeSpan.FromSeconds(2))
+            .Async();
+
+        // Regression guard for BLK-004: the ROUTER side of a ClientServer
+        // admission handshake polls its initial recv with RecvFlags.DontWait
+        // (see ZLinkClientServerClientRuntime/ZLinkBackendRouterSocketWrapper),
+        // not a blocking Recv. A DEALER that completed exactly one async
+        // request must still surface a later unsolicited raw record through
+        // Recv() when the peer's request was received via DontWait polling.
+        Received inbound = RecvWithRetry(router);
+        RoutingId sourceRid = inbound.RoutingId
+            ?? throw new InvalidOperationException("missing routing id");
+        ulong requestSeq = inbound.RequestSeq
+            ?? throw new InvalidOperationException("missing request sequence");
+        foreach (Message part in inbound.Parts) part.Dispose();
+
+        using Message admitted = Message.From("admitted");
+        router.Reply(sourceRid, requestSeq)
+            .Message(admitted)
+            .Submit();
+        IReadOnlyList<Message> reply = await replyTask;
+        foreach (Message part in reply)
+            part.Dispose();
+
+        using Message update = Message.From("unsolicited");
+        Assert.True(router.Send(sourceRid).Message(update).Submit());
+
+        using Received delivered = RecvWithRetry(dealer);
+        Assert.Equal("unsolicited", delivered.Parts[0].GetString());
+        dealer.Disconnect(endpoint);
+    }
+
+    [Fact]
     public async Task dealer_received_reply_routes_same_sequence_to_source_peer()
     {
         if (!CoreTestSupport.IsNativeAvailable())
@@ -662,6 +713,22 @@ namespace Systems.Zlink.Tests;
         owned.Dispose();
         Assert.Throws<ObjectDisposedException>(() => _ = owned.Size);
         await serverTask;
+    }
+
+    private static Received RecvWithRetry(IRouterSocket socket)
+    {
+        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            var received = Received.Create();
+            if (socket.Recv(received, RecvFlags.DontWait))
+                return received;
+
+            received.Dispose();
+            Thread.Sleep(1);
+        }
+
+        throw new TimeoutException("Timed out waiting for router message.");
     }
 
     private static Received RecvWithRetry(IDealerSocket socket)

@@ -2163,7 +2163,7 @@ int main ()
      * They drive runtime::route_channel_host_service_t, which 1de8f43917 removed from the
      * zlink_framework source list and which no longer compiles against Core 11, and no
      * document under framework/doc/framework/common/spec/ defines a RouteChannel. See
-     * BLK-031 for the evidence and the contract decision that is owed. */
+     * BLK-032 for the evidence and the contract decision that is owed. */
 
     if (!route_runtime.complete_request (route_request.value ())
         || route_runtime.pending_request_count () != 1) {

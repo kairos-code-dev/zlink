@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: FSL-1.1-ALv2 */
 /*
  * quarantineStatus: pending-disabled-by-contract-amendment (ledger v11.0 §2 rules 13-14)
- * blocker: BLK-031 (framework/doc/plan/v11.0/blocked-issue-log.md)
+ * blocker: BLK-032 (framework/doc/plan/v11.0/blocked-issue-log.md)
  *
  * THIS IS NOT A TRANSLATION UNIT AND IS NOT REFERENCED BY ANY CMakeLists.
  * It is the verbatim retained source of the RouteChannel host-service scenarios that

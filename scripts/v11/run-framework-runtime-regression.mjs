@@ -362,6 +362,11 @@ function jvmPlan() {
       `${runtime}:zlink-framework-core:test`,
       "--tests", "*CloseGateTest", "--tests", "*TeardownExecutorTest",
       "--tests", "*Drain*Test", "--tests", "*Relocation*Test", "--tests", "*Lease*Test"),
+    // The codec modules ship the Protobuf and MessagePack wire contracts but were in
+    // no gate. Measured before wiring: protobuf 1/1, msgpack 2/2, 0 failures.
+    command("jvm-protocol-codecs", "protocol", cwd, ...gradle,
+      `${runtime}:zlink-framework-codec-protobuf:test`,
+      `${runtime}:zlink-framework-codec-msgpack:test`),
     command("jvm-protocol-core", "protocol", cwd, ...gradle,
       `${runtime}:zlink-framework-core:test`,
       "--tests", "*CodecTest", "--tests", "*WireCodecTest", "--tests", "*FrameCodecTest"),

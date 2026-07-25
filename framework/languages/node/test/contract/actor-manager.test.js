@@ -1399,6 +1399,7 @@ test('ZLinkActorContext joinSpot uses binary codec extensions without raw reques
 
 test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined spot state', async () => {
   const events = [];
+  const joinTimeouts = [];
   const locationWrites = [];
   const createdRef = { nodeRid: 'node-a', actorId: 'alice', generation: 1n };
   const joinedRef = { nodeRid: 'node-a', actorId: 'alice', generation: 2n };
@@ -1424,7 +1425,9 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
       return createdRef;
     },
     joinActor(actorRef, targetNodeRid, targetSpotId, payload, callback, timeoutMs) {
-      events.push(`join:${actorRef.generation}:${targetNodeRid}:${targetSpotId}:${payload.data().toString()}:${timeoutMs}`);
+      // Deferred Join은 절대 deadline을 유지하므로 남은 시간이 전달된다.
+      joinTimeouts.push(timeoutMs);
+      events.push(`join:${actorRef.generation}:${targetNodeRid}:${targetSpotId}:${payload.data().toString()}`);
       callback({
         result: 0,
         joinResultCode: 7,
@@ -1482,8 +1485,11 @@ test('ZLinkActorNativeJoinCoordinator creates native actor and updates joined sp
   assert.deepEqual(events, [
     'lookup:alice',
     'createNative:alice',
-    'join:1:node-a:stage-1:payload:hello:25'
+    'join:1:node-a:stage-1:payload:hello'
   ]);
+  assert.equal(joinTimeouts.length, 1);
+  assert.ok(joinTimeouts[0] > 0 && joinTimeouts[0] <= 25,
+    `join timeout ${joinTimeouts[0]} must be within (0, 25]`);
 });
 
 test('ZLinkActorNativeJoinCoordinator uses the formal Core operation for a remote join', async () => {

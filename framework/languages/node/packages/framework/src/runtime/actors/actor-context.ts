@@ -43,6 +43,7 @@ export const ZLINK_ACTOR_JOIN_ENTRY_SPOT_RUNTIME = Symbol('zlink.actor.join-entr
 
 export class DefaultZLinkActorContext implements ZLinkActorContext {
   readonly boundSession: ZLinkBoundSession;
+  private resolvedMeshName: string | undefined;
 
   constructor(
     private readonly state: ZLinkActorRuntimeState,
@@ -55,6 +56,17 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
   }
 
   get meshName(): string {
+    // The membership resolves once per actor. A getter that re-entered the
+    // application provider on every read would make an observable side effect
+    // out of reading identity.
+    if (this.resolvedMeshName !== undefined) {
+      return this.resolvedMeshName;
+    }
+    const remembered = this.state.meshName;
+    if (remembered !== undefined) {
+      this.resolvedMeshName = remembered;
+      return remembered;
+    }
     const actorType = this.state.actorType;
     const meshName = actorType === undefined ? undefined : this.meshNameProvider?.(actorType);
     if (meshName === undefined) {
@@ -62,6 +74,7 @@ export class DefaultZLinkActorContext implements ZLinkActorContext {
         `Actor '${this.state.actorId}' does not belong to a registered RouteMesh.`
       );
     }
+    this.resolvedMeshName = meshName;
     return meshName;
   }
 

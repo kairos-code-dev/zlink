@@ -55,6 +55,7 @@ export class ZLinkActorRuntimeState {
   private configured = false;
   private context: ZLinkActorContext | undefined;
   private actorTypeValue: string | undefined;
+  private meshNameValue: string | undefined;
   private actorValue: ZLinkActor | undefined;
   private spotValue: ZLinkSpot | undefined;
   private spotIdValue: RoutingId | undefined;
@@ -75,6 +76,16 @@ export class ZLinkActorRuntimeState {
 
   get actorType(): string | undefined {
     return this.actorTypeValue;
+  }
+
+  // The manager resolves RouteMesh membership once when it registers the
+  // actor, so identity reads never re-enter the application provider.
+  get meshName(): string | undefined {
+    return this.meshNameValue;
+  }
+
+  rememberMeshName(meshName: string): void {
+    this.meshNameValue = meshName;
   }
 
   get actor(): ZLinkActor | undefined {

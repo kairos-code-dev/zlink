@@ -343,6 +343,7 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
       );
     }
     this.actorMeshNames.set(actorId, meshName);
+    this.states.get(actorId)?.rememberMeshName(meshName);
   }
 
   private rememberActorMeshFromType(actorId: string, actorType: string): void {
@@ -558,6 +559,10 @@ export class DefaultZLinkActorManager implements ZLinkActorManager {
     }
 
     const state = new ZLinkActorRuntimeState(actorId);
+    const remembered = this.actorMeshNames.get(actorId);
+    if (remembered !== undefined) {
+      state.rememberMeshName(remembered);
+    }
     this.states.set(actorId, state);
     this.options.metrics?.change('zlink.actor.count', 1);
     return state;

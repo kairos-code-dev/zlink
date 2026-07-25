@@ -132,10 +132,16 @@ static_assert (std::is_same_v<
 
 bool wait_until_admitted (zlink::framework::detail::mesh_node_runtime_t &node)
 {
+    // The transport drains its socket monitor from dispatch_ready, so a waiter
+    // pumps the node the way the host service does instead of sleeping blind.
     const auto deadline = std::chrono::steady_clock::now () + 5s;
     while (std::chrono::steady_clock::now () < deadline) {
         if (node.admitted_peer_count () > 0)
             return true;
+        (void) node.dispatch_ready (
+          [] (const zlink::framework::runtime::host::ready_record_t &,
+              const zlink::framework::runtime::host::receive_record_t &,
+              std::vector<zlink::message_t>) {});
         std::this_thread::sleep_for (10ms);
     }
     std::fprintf (stderr, "[vertical] admission timeout rid=%s peers=%zu state=%d\n",
@@ -152,6 +158,10 @@ bool wait_until_admitted_count (zlink::framework::detail::mesh_node_runtime_t &n
     while (std::chrono::steady_clock::now () < deadline) {
         if (node.admitted_peer_count () >= expected)
             return true;
+        (void) node.dispatch_ready (
+          [] (const zlink::framework::runtime::host::ready_record_t &,
+              const zlink::framework::runtime::host::receive_record_t &,
+              std::vector<zlink::message_t>) {});
         std::this_thread::sleep_for (10ms);
     }
     return false;

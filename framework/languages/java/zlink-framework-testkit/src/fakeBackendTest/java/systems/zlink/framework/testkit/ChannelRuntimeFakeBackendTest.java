@@ -9,7 +9,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import org.junit.jupiter.api.Test;
 import systems.zlink.contracts.core.RoutingId;
-import systems.zlink.framework.channels.ZLinkRequestContext;
+import systems.zlink.framework.ZLinkMessageContext;
 import systems.zlink.framework.channels.ZLinkRequestHandler;
 import systems.zlink.framework.handlers.ZLinkPacket;
 import systems.zlink.framework.runtime.configuration.DefaultZLinkFrameworkOptions;
@@ -19,7 +19,7 @@ final class ChannelRuntimeFakeBackendTest {
     @Test
     void manualClientServerSendAndRequestReachBackendDealer() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
+        { var channel = options.addClientServerChannel("profile"); channel.client().connect("inproc://profile-server"); };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
 
         try (ZLinkFrameworkRuntime runtime = RuntimeTestSupport.startFramework(options, backendFactory)) {
@@ -54,7 +54,7 @@ final class ChannelRuntimeFakeBackendTest {
     @Test
     void channelCallsUseMessageTypePacketNameByDefault() {
         DefaultZLinkFrameworkOptions options = new DefaultZLinkFrameworkOptions();
-        { var channel = options.addClientServerChannel("profile"); channel.enableClient("inproc://profile-server"); };
+        { var channel = options.addClientServerChannel("profile"); channel.client().connect("inproc://profile-server"); };
         { var route = options.addRouteMeshChannel("route"); route.enableServer("inproc://route");
             route.enableClient("inproc://route-peer"); };
         FakeZLinkBackendAdapterFactory backendFactory = new FakeZLinkBackendAdapterFactory();
@@ -107,7 +107,7 @@ final class ChannelRuntimeFakeBackendTest {
         @Override
         public CompletionStage<String> handle(
             String request,
-            ZLinkRequestContext context) {
+            ZLinkMessageContext context) {
             return CompletableFuture.completedFuture(request);
         }
     }

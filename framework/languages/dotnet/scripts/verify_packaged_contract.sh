@@ -346,7 +346,8 @@ var removedContracts = new[]
     "Zlink.Framework.Contracts.Codecs.Json.ZLinkJsonCodecNamespace",
     "Zlink.Framework.Contracts.Handlers.ZLinkStreamRawAttribute",
     "Zlink.Framework.Contracts.Locations.IZLinkSpotRefResolver",
-    "Zlink.Framework.Contracts.Locations.IZLinkActorAddressResolver"
+    "Zlink.Framework.Contracts.Locations.IZLinkActorAddressResolver",
+    "Zlink.Framework.Contracts.Actors.IZLinkActorJoinCall"
 }.Where(name => assembly.GetType(name) is not null).ToArray();
 if (removedContracts.Length > 0)
     throw new InvalidOperationException(
@@ -354,7 +355,7 @@ if (removedContracts.Length > 0)
 if (!typeof(SpotHandle).IsAbstract
     || !typeof(IZLinkSpotHandleResolver).GetMethods()
         .Any(method => method.Name == "ResolveSpotHandleAsync")
-    || !typeof(IZLinkActorJoinCall).GetMethods().Any(method => method.Name == "Async"))
+    || typeof(IZLinkActorDeferredJoinCall).GetMethods().Select(method => method.Name).Order().SequenceEqual(new[] { "Defer" }) == false)
     throw new InvalidOperationException("The frozen public contract is missing from the package.");
 var packagedAssemblies = new[]
 {

@@ -669,8 +669,11 @@ int main ()
       = join_call_begin == std::string::npos || join_call_end == std::string::npos
           ? std::string ()
           : actor_hpp.substr (join_call_begin, join_call_end - join_call_begin);
-    gate.require (!join_call_block.empty (), "CPP-G0-ACTOR-002",
-                  "actor_join_call_t declaration is missing");
+    /* The defer terminal anchors the extracted block: a truncated block would make the
+     * terminal checks below vacuous, so require the anchor rather than only non-empty. */
+    gate.require (join_call_block.find ("void defer ()") != std::string::npos,
+                  "CPP-G0-ACTOR-002",
+                  "actor_join_call_t declaration is missing or was not extracted whole");
     for (const std::string forbidden : {"submit (", "async (", "yield ("}) {
         gate.require (join_call_block.find (forbidden) == std::string::npos,
                       "CPP-G0-ACTOR-002",

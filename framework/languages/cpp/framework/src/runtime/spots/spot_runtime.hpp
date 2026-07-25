@@ -137,7 +137,7 @@ class spot_node_builder_state_t
                                                              const zlink::message_t &,
                                                              service_provider_t &,
                                                              serializer_registry_t &,
-                                                             spot_actor_message_metadata_t)>
+                                                             spot_inbound_message_t)>
       actor_packet_relay;
     std::function<result_t<actor_join_reply_t> (const actor_ref_t &,
                                                 node_rid_t,
@@ -483,7 +483,7 @@ class spot_node_runtime_t
                                                                const zlink::message_t &,
                                                                service_provider_t &,
                                                                serializer_registry_t &,
-                                                               spot_actor_message_metadata_t)>
+                                                               spot_inbound_message_t)>
         relay);
     spot_manager_t manager () const;
     result_t<actor_join_reply_t> join_actor_to_spot_erased (
@@ -584,7 +584,7 @@ class spot_node_runtime_t
                         const zlink::message_t &message,
                         service_provider_t &services,
                         serializer_registry_t &serializers,
-                        spot_actor_message_metadata_t metadata = {});
+                        spot_inbound_message_t metadata = {});
     result_t<std::optional<zlink::message_t>>
     relay_actor_packet (const actor_ref_t &actor_ref,
                         actor_context_t actor_context,
@@ -593,7 +593,7 @@ class spot_node_runtime_t
                         const zlink::message_t &message,
                         service_provider_t &services,
                         serializer_registry_t &serializers,
-                        spot_actor_message_metadata_t metadata = {});
+                        spot_inbound_message_t metadata = {});
     result_t<void> notify_actor_disconnected_erased (const actor_ref_t &actor_ref) const;
 
     template <typename TActor>

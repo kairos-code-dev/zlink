@@ -34,7 +34,7 @@ class route_channel_registration_t
     template <typename TOwner, typename TMessage>
     route_channel_registration_t &add_send_handler (
       std::string packet_name,
-      void (TOwner::*method) (const TMessage &, const framework::route_handler_context_t &))
+      void (TOwner::*method) (const TMessage &, const framework::route_message_context_t &))
     {
         _send_handlers.push_back (
           [packet = std::move (packet_name), method] (route_handler_registry_t &handlers,
@@ -47,7 +47,7 @@ class route_channel_registration_t
     template <typename TOwner, typename TRequest, typename TReply>
     route_channel_registration_t &add_request_handler (
       std::string packet_name,
-      TReply (TOwner::*method) (const TRequest &, const framework::route_handler_context_t &))
+      TReply (TOwner::*method) (const TRequest &, const framework::route_message_context_t &))
     {
         _request_handlers.push_back (
           [packet = std::move (packet_name), method] (route_handler_registry_t &handlers,

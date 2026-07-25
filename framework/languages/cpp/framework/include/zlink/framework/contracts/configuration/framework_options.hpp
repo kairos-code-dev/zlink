@@ -144,7 +144,7 @@ class handler_options_builder_t
               });
         } else if constexpr (requires {
                                  static_cast<reply_type (THandler::*) (
-                                   const request_type &, const route_handler_context_t &)> (
+                                   const request_type &, const route_message_context_t &)> (
                                    &THandler::handle);
                              }) {
             _state->add_route_installer (
@@ -153,11 +153,11 @@ class handler_options_builder_t
                   channel.add_request_handler<THandler, request_type, reply_type> (
                     detail::message_name<request_type> (),
                     static_cast<reply_type (THandler::*) (
-                      const request_type &, const route_handler_context_t &)> (&THandler::handle));
+                      const request_type &, const route_message_context_t &)> (&THandler::handle));
               });
         } else if constexpr (requires {
                                  static_cast<task_t<reply_type> (THandler::*) (
-                                   const request_type &, const route_handler_context_t &)> (
+                                   const request_type &, const route_message_context_t &)> (
                                    &THandler::handle);
                              }) {
             _state->add_route_installer (
@@ -166,7 +166,7 @@ class handler_options_builder_t
                   channel.add_request_handler<THandler, request_type, reply_type> (
                     detail::message_name<request_type> (),
                     static_cast<task_t<reply_type> (THandler::*) (
-                      const request_type &, const route_handler_context_t &)> (&THandler::handle));
+                      const request_type &, const route_message_context_t &)> (&THandler::handle));
               });
         }
     }
@@ -221,7 +221,7 @@ class handler_options_builder_t
               });
         } else if constexpr (requires {
                                  static_cast<void (THandler::*) (const message_type &,
-                                                                 const route_handler_context_t &)> (
+                                                                 const route_message_context_t &)> (
                                    &THandler::handle);
                              }) {
             _state->add_route_installer (
@@ -230,11 +230,11 @@ class handler_options_builder_t
                   channel.add_send_handler<THandler, message_type> (
                     detail::message_name<message_type> (),
                     static_cast<void (THandler::*) (
-                      const message_type &, const route_handler_context_t &)> (&THandler::handle));
+                      const message_type &, const route_message_context_t &)> (&THandler::handle));
               });
         } else if constexpr (requires {
                                  static_cast<task_t<void> (THandler::*) (
-                                   const message_type &, const route_handler_context_t &)> (
+                                   const message_type &, const route_message_context_t &)> (
                                    &THandler::handle);
                              }) {
             _state->add_route_installer (
@@ -243,7 +243,7 @@ class handler_options_builder_t
                   channel.add_send_handler<THandler, message_type> (
                     detail::message_name<message_type> (),
                     static_cast<task_t<void> (THandler::*) (
-                      const message_type &, const route_handler_context_t &)> (&THandler::handle));
+                      const message_type &, const route_message_context_t &)> (&THandler::handle));
               });
         }
     }
@@ -842,7 +842,7 @@ class route_mesh_channel_builder_t
     template <typename TOwner, typename TMessage>
     route_mesh_channel_builder_t &
     add_send_handler (std::string packet_name,
-                      void (TOwner::*method) (const TMessage &, const route_handler_context_t &))
+                      void (TOwner::*method) (const TMessage &, const route_message_context_t &))
     {
         _route_handlers.push_back (
           [packet = std::move (packet_name), method] (route_channel_builder_t &channel) mutable {
@@ -855,7 +855,7 @@ class route_mesh_channel_builder_t
     template <typename TOwner, typename TRequest, typename TReply>
     route_mesh_channel_builder_t &add_request_handler (
       std::string packet_name,
-      TReply (TOwner::*method) (const TRequest &, const route_handler_context_t &))
+      TReply (TOwner::*method) (const TRequest &, const route_message_context_t &))
     {
         _route_handlers.push_back (
           [packet = std::move (packet_name), method] (route_channel_builder_t &channel) mutable {

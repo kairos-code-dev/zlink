@@ -9,6 +9,7 @@
 #include <zlink/framework/contracts/dispatch/task.hpp>
 #include <zlink/framework/contracts/errors/error.hpp>
 #include <zlink/framework/contracts/locations/spot_handle.hpp>
+#include <zlink/framework/contracts/messaging/message_context.hpp>
 #include <zlink/framework/contracts/spots/spot_identity.hpp>
 
 #include <cstddef>
@@ -79,14 +80,6 @@ struct channel_snapshot_t
     channel_capability_snapshot_t subscriber;
 };
 
-struct route_handler_context_t
-{
-    std::string router_channel_id;
-    zlink::routing_id_t source_node_rid;
-    std::string packet_name;
-    std::string content_type;
-};
-
 enum class route_handler_kind_t
 {
     send = 0,
@@ -103,7 +96,7 @@ struct route_handler_registration_t
     std::function<task_t<zlink::message_t> (service_provider_t &,
                                             serializer_registry_t &,
                                             const zlink::message_t &,
-                                            const route_handler_context_t &)>
+                                            const route_message_context_t &)>
       invoker;
 };
 
@@ -183,7 +176,7 @@ class route_channel_builder_t
     template <typename TOwner, typename TMessage>
     route_channel_builder_t &
     add_send_handler (std::string packet_name,
-                      void (TOwner::*method) (const TMessage &, const route_handler_context_t &))
+                      void (TOwner::*method) (const TMessage &, const route_message_context_t &))
     {
         const auto packet =
           packet_name.empty () ? detail::message_name<TMessage> () : std::move (packet_name);
@@ -192,7 +185,7 @@ class route_channel_builder_t
           std::type_index (typeid (TMessage)), std::type_index (typeid (void)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
                     const zlink::message_t &message,
-                    const route_handler_context_t &context) -> task_t<zlink::message_t> {
+                    const route_message_context_t &context) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
                   auto payload = serializers.get<TMessage> ().deserialize (
@@ -223,7 +216,7 @@ class route_channel_builder_t
           std::type_index (typeid (TMessage)), std::type_index (typeid (void)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
                     const zlink::message_t &message,
-                    const route_handler_context_t &) -> task_t<zlink::message_t> {
+                    const route_message_context_t &) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
                   auto payload = serializers.get<TMessage> ().deserialize (
@@ -254,7 +247,7 @@ class route_channel_builder_t
           std::type_index (typeid (TMessage)), std::type_index (typeid (void)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
                     const zlink::message_t &message,
-                    const route_handler_context_t &) -> task_t<zlink::message_t> {
+                    const route_message_context_t &) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
                   auto payload = serializers.get<TMessage> ().deserialize (
@@ -276,7 +269,7 @@ class route_channel_builder_t
     template <typename TOwner, typename TRequest, typename TReply>
     route_channel_builder_t &add_request_handler (
       std::string packet_name,
-      TReply (TOwner::*method) (const TRequest &, const route_handler_context_t &))
+      TReply (TOwner::*method) (const TRequest &, const route_message_context_t &))
     {
         const auto packet =
           packet_name.empty () ? detail::message_name<TRequest> () : std::move (packet_name);
@@ -285,7 +278,7 @@ class route_channel_builder_t
           std::type_index (typeid (TRequest)), std::type_index (typeid (TReply)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
                     const zlink::message_t &message,
-                    const route_handler_context_t &context) -> task_t<zlink::message_t> {
+                    const route_message_context_t &context) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
                   auto request = serializers.get<TRequest> ().deserialize (
@@ -316,7 +309,7 @@ class route_channel_builder_t
           std::type_index (typeid (TRequest)), std::type_index (typeid (TReply)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
                     const zlink::message_t &message,
-                    const route_handler_context_t &) -> task_t<zlink::message_t> {
+                    const route_message_context_t &) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
                   auto request = serializers.get<TRequest> ().deserialize (
@@ -348,7 +341,7 @@ class route_channel_builder_t
           std::type_index (typeid (TRequest)), std::type_index (typeid (TReply)),
           [method] (service_provider_t &services, serializer_registry_t &serializers,
                     const zlink::message_t &message,
-                    const route_handler_context_t &) -> task_t<zlink::message_t> {
+                    const route_message_context_t &) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
                   auto request = serializers.get<TRequest> ().deserialize (

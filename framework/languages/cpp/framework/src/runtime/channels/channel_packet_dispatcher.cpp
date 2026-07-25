@@ -13,6 +13,30 @@
 namespace zlink::framework::detail
 {
 
+namespace
+{
+
+/// Builds the inbound context once from the decoded envelope so request, send and publish handlers
+/// see the same universal fields.
+inbound_message_context_t
+make_inbound_context (const std::string &channel_name,
+                      const runtime::messaging::envelope_header_t &header)
+{
+    inbound_message_context_t inbound;
+    inbound.message.channel_name = channel_name;
+    inbound.message.packet_name = header.message_name;
+    inbound.message.content_type = header.content_type;
+    inbound.message.metadata = message_metadata_t (header.metadata);
+    if (!header.correlation_id.empty ()) {
+        inbound.message.correlation_id = header.correlation_id;
+    }
+    inbound.topic = header.topic.value_or ("");
+    inbound.source = header.source;
+    return inbound;
+}
+
+} // namespace
+
 channel_packet_dispatcher_t::channel_packet_dispatcher_t (channel_runtime_t runtime) :
     _runtime (std::move (runtime))
 {
@@ -88,7 +112,8 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
     if (header.value ().kind == runtime::messaging::message_kind_t::request) {
         auto reply = _runtime.dispatch_request (
           channel_name, header.value ().topic.value_or (""), header.value ().message_name, services,
-          serializers, handlers, body.value (), header.value ().content_type);
+          serializers, handlers, body.value (),
+          make_inbound_context (channel_name, header.value ()));
         channel_reply_writer_t writer;
         if (!reply) {
             framework_exception_t error (reply.error_kind (), reply.error ()
@@ -130,7 +155,8 @@ result_t<runtime::messaging::message_parts_t> channel_packet_dispatcher_t::dispa
         || header.value ().kind == runtime::messaging::message_kind_t::publish) {
         auto result = _runtime.dispatch_send (
           channel_name, header.value ().topic.value_or (""), header.value ().message_name, services,
-          serializers, handlers, body.value (), header.value ().content_type);
+          serializers, handlers, body.value (),
+          make_inbound_context (channel_name, header.value ()));
         if (!result) {
             dispatch_error_reporter_t (_runtime.dispatch_options ())
               .report (message_dispatch_error_event_t{

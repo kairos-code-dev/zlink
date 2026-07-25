@@ -14,7 +14,7 @@ route_handler_invoker_t::invoke_send (const route_handler_registry_t &handlers,
                                       service_provider_t &services,
                                       serializer_registry_t &serializers,
                                       const zlink::message_t &message,
-                                      const framework::route_handler_context_t &context) const
+                                      const framework::route_message_context_t &context) const
 {
     return runtime::handler_coroutine_executor ().submit<void> (
       [&handlers, router_channel_id = std::string (router_channel_id),
@@ -48,7 +48,7 @@ route_handler_invoker_t::invoke_request (const route_handler_registry_t &handler
                                          service_provider_t &services,
                                          serializer_registry_t &serializers,
                                          const zlink::message_t &message,
-                                         const framework::route_handler_context_t &context) const
+                                         const framework::route_message_context_t &context) const
 {
     return runtime::handler_coroutine_executor ().submit<zlink::message_t> (
       [&handlers, router_channel_id = std::string (router_channel_id),

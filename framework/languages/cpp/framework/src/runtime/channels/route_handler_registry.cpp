@@ -40,7 +40,7 @@ route_handler_registry_t::invoke (std::string_view router_channel_id,
                                   service_provider_t &services,
                                   serializer_registry_t &serializers,
                                   const zlink::message_t &message,
-                                  const framework::route_handler_context_t &context) const
+                                  const framework::route_message_context_t &context) const
 {
     return invoke_async (router_channel_id, kind, packet_name, services, serializers, message,
                          context)
@@ -54,7 +54,7 @@ route_handler_registry_t::invoke_async (std::string_view router_channel_id,
                                         service_provider_t &services,
                                         serializer_registry_t &serializers,
                                         const zlink::message_t &message,
-                                        const framework::route_handler_context_t &context) const
+                                        const framework::route_message_context_t &context) const
 {
     const auto found =
       _handlers.find (key_t{std::string (router_channel_id), kind, std::string (packet_name)});

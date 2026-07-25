@@ -101,6 +101,27 @@ find_by_channel_packet (const std::map<handler_key_t, handler_entry_t> &handlers
     return nullptr;
 }
 
+/// Fills the routing-derived fields the caller left open so every handler sees the same context
+/// regardless of which dispatch surface produced it.
+inbound_message_context_t resolve_inbound_context (const inbound_message_context_t &inbound,
+                                                   const handler_descriptor_t &descriptor,
+                                                   std::string_view channel_name,
+                                                   std::string_view packet_name)
+{
+    inbound_message_context_t resolved = inbound;
+    if (!resolved.message.channel_name && !channel_name.empty ()) {
+        resolved.message.channel_name = std::string (channel_name);
+    }
+    if (resolved.message.packet_name.empty ()) {
+        resolved.message.packet_name =
+          packet_name.empty () ? descriptor.packet_name : std::string (packet_name);
+    }
+    if (resolved.topic.empty ()) {
+        resolved.topic = descriptor.topic;
+    }
+    return resolved;
+}
+
 class handler_registry_state_t
 {
   public:
@@ -158,9 +179,9 @@ handler_registry_t &handler_registry_t::send_raw (std::string channel_name,
     return add_handler (
       {std::move (channel_name), std::move (topic), packet, handler_kind_t::raw, options.execution,
        std::type_index (typeid (void)), std::type_index (typeid (zlink::message_t))},
-      [handler = std::move (handler)] (service_provider_t &, serializer_registry_t &,
-                                       const zlink::message_t &message,
-                                       std::string_view) -> task_t<zlink::message_t> {
+      [handler = std::move (handler)] (
+        service_provider_t &, serializer_registry_t &, const zlink::message_t &message,
+        const detail::inbound_message_context_t &) -> task_t<zlink::message_t> {
           const auto result = handler (payload_view_t (detail::encoded_payload_from_raw (message)));
           if (!result) {
               return task_t<zlink::message_t> (detail::propagate_failure<zlink::message_t> (result, "raw handler failed"));
@@ -205,9 +226,10 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
                                                        service_provider_t &services,
                                                        serializer_registry_t &serializers,
                                                        const zlink::message_t &message,
-                                                       std::string_view content_type) const
+                                                       const detail::inbound_message_context_t
+                                                         &inbound) const
 {
-    return invoke (channel_name, "", packet_name, services, serializers, message, content_type);
+    return invoke (channel_name, "", packet_name, services, serializers, message, inbound);
 }
 
 result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_name,
@@ -216,7 +238,8 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
                                                        service_provider_t &services,
                                                        serializer_registry_t &serializers,
                                                        const zlink::message_t &message,
-                                                       std::string_view content_type) const
+                                                       const detail::inbound_message_context_t
+                                                         &inbound) const
 {
     const auto found =
       _state->handlers.find (detail::make_handler_key (channel_name, topic, packet_name));
@@ -233,25 +256,23 @@ result_t<zlink::message_t> handler_registry_t::invoke (std::string_view channel_
 
     auto invoke_body = [this, entry, filters = _state->filters, &services, &serializers,
                         owned_message = std::make_shared<zlink::message_t> (message),
-                        owned_content_type = std::string (content_type)] () mutable {
+                        owned_inbound = detail::resolve_inbound_context (
+                          inbound, entry->descriptor, channel_name, packet_name)] () mutable {
         result_t<zlink::message_t> result =
           result_t<zlink::message_t>::failure (framework_error_kind_t::request_failed,
                                                "handler failed");
         try {
-            handler_invocation_context_t context{
-              entry->descriptor, make_handler_context<handler_context_t> (entry->descriptor),
-              owned_message};
-            context.context.content_type = owned_content_type;
+            handler_invocation_t invocation{entry->descriptor, owned_inbound.message,
+                                            owned_message};
             using chain_t = std::function<task_t<zlink::message_t> (std::size_t)>;
             auto chain = std::make_shared<chain_t> ();
-            *chain = [&services, &serializers, &context, &filters, entry, owned_message,
-                      &owned_content_type, chain] (std::size_t index) -> task_t<zlink::message_t> {
+            *chain = [&services, &serializers, &invocation, &filters, entry, owned_message,
+                      &owned_inbound, chain] (std::size_t index) -> task_t<zlink::message_t> {
                 if (index >= filters.size ()) {
-                    return entry->invoker (services, serializers, *owned_message,
-                                           owned_content_type);
+                    return entry->invoker (services, serializers, *owned_message, owned_inbound);
                 }
                 return filters[index](
-                  services, serializers, context,
+                  services, serializers, invocation,
                   [chain, next_index = index + 1] () mutable { return (*chain) (next_index); });
             };
             result = (*chain) (0).result ();
@@ -297,10 +318,10 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
                                                            service_provider_t &services,
                                                            serializer_registry_t &serializers,
                                                            const zlink::message_t &message,
-                                                           std::string_view content_type) const
+                                                           const detail::inbound_message_context_t
+                                                             &inbound) const
 {
-    return invoke_async (channel_name, "", packet_name, services, serializers, message,
-                         content_type);
+    return invoke_async (channel_name, "", packet_name, services, serializers, message, inbound);
 }
 
 task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view channel_name,
@@ -309,7 +330,8 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
                                                            service_provider_t &services,
                                                            serializer_registry_t &serializers,
                                                            const zlink::message_t &message,
-                                                           std::string_view content_type) const
+                                                           const detail::inbound_message_context_t
+                                                             &inbound) const
 {
     const auto found =
       _state->handlers.find (detail::make_handler_key (channel_name, topic, packet_name));
@@ -324,30 +346,28 @@ task_t<zlink::message_t> handler_registry_t::invoke_async (std::string_view chan
           framework_error_kind_t::handler_not_found, "handler is not registered"));
     }
     auto owned_message = std::make_shared<zlink::message_t> (message);
-    auto owned_content_type = std::string (content_type);
+    auto owned_inbound =
+      detail::resolve_inbound_context (inbound, entry->descriptor, channel_name, packet_name);
     auto filters = _state->filters;
     auto invoke_body = [this, entry, filters = std::move (filters), &services, &serializers,
                         owned_message = std::move (owned_message),
-                        owned_content_type = std::move (
-                          owned_content_type)] () mutable -> boost::asio::awaitable<
+                        owned_inbound = std::move (
+                          owned_inbound)] () mutable -> boost::asio::awaitable<
       result_t<zlink::message_t>> {
         result_t<zlink::message_t> result = result_t<zlink::message_t>::failure (
           framework_error_kind_t::request_failed, "handler failed");
         try {
-            handler_invocation_context_t context{
-              entry->descriptor, make_handler_context<handler_context_t> (entry->descriptor),
-              owned_message};
-            context.context.content_type = owned_content_type;
+            handler_invocation_t invocation{entry->descriptor, owned_inbound.message,
+                                            owned_message};
             using chain_t = std::function<task_t<zlink::message_t> (std::size_t)>;
             auto chain = std::make_shared<chain_t> ();
-            *chain = [&services, &serializers, &context, &filters, entry, owned_message,
-                      &owned_content_type, chain] (std::size_t index) -> task_t<zlink::message_t> {
+            *chain = [&services, &serializers, &invocation, &filters, entry, owned_message,
+                      &owned_inbound, chain] (std::size_t index) -> task_t<zlink::message_t> {
                 if (index >= filters.size ()) {
-                    return entry->invoker (services, serializers, *owned_message,
-                                           owned_content_type);
+                    return entry->invoker (services, serializers, *owned_message, owned_inbound);
                 }
                 return filters[index](
-                  services, serializers, context,
+                  services, serializers, invocation,
                   [chain, next_index = index + 1] () mutable { return (*chain) (next_index); });
             };
             result = co_await runtime::await_task_result ((*chain) (0));

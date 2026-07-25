@@ -310,13 +310,21 @@ void fanout_location_runtime_t::pump ()
                 const auto message =
                   zlink::message_t::from (
                     received->payload.payload);
+                detail::inbound_message_context_t
+                  inbound;
+                inbound.message.channel_name =
+                  subscriber->channel_name;
+                inbound.message.packet_name =
+                  received->payload.packet_name;
+                inbound.message.content_type =
+                  received->payload.content_type;
+                inbound.topic = received->topic;
                 (void) _channel_runtime.dispatch_send (
                   subscriber->channel_name,
                   received->topic,
                   received->payload.packet_name,
                   *_services, *_serializers, *_handlers,
-                  message,
-                  received->payload.content_type);
+                  message, inbound);
             }
             catch (...) {
             }

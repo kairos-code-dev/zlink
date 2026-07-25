@@ -14,6 +14,29 @@
 namespace zlink::framework::detail
 {
 
+namespace
+{
+
+/// RouteMesh node-direct dispatch has no ChannelName, so the router channel identity is carried in
+/// the Mesh name field exactly like the .NET reference invoker does.
+framework::route_message_context_t
+make_route_message_context (const std::string &router_channel_id,
+                            zlink::routing_id_t source_node_rid,
+                            const runtime::messaging::envelope_header_t &header)
+{
+    framework::message_context_t base;
+    base.mesh_name = router_channel_id;
+    base.packet_name = header.message_name;
+    base.content_type = header.content_type;
+    base.metadata = framework::message_metadata_t (header.metadata);
+    if (!header.correlation_id.empty ()) {
+        base.correlation_id = header.correlation_id;
+    }
+    return framework::route_message_context_t{std::move (base), source_node_rid};
+}
+
+} // namespace
+
 route_packet_dispatcher_t::route_packet_dispatcher_t (std::string router_channel_id) :
     _router_channel_id (std::move (router_channel_id))
 {
@@ -123,8 +146,7 @@ route_packet_dispatcher_t::dispatch_send (const route_received_packet_t &receive
             body.error () ? std::make_exception_ptr (*body.error ()) : std::exception_ptr{}});
         return detail::propagate_failure<std::optional<route_dispatch_reply_t>> (body, "route command body missing");
     }
-    framework::route_handler_context_t context{_router_channel_id, received.source_node_rid,
-                                               header.message_name, header.content_type};
+    auto context = make_route_message_context (_router_channel_id, received.source_node_rid, header);
     auto dispatched = _invoker
                         .invoke_send (*_handlers, _router_channel_id, header.message_name,
                                       *_services, *_serializers, body.value (), context)
@@ -186,8 +208,7 @@ result_t<std::optional<route_dispatch_reply_t>> route_packet_dispatcher_t::dispa
                                                            : "route request body missing");
         return reply_error (received, header, error);
     }
-    framework::route_handler_context_t context{_router_channel_id, received.source_node_rid,
-                                               header.message_name, header.content_type};
+    auto context = make_route_message_context (_router_channel_id, received.source_node_rid, header);
     auto reply = _invoker
                    .invoke_request (*_handlers, _router_channel_id, header.message_name, *_services,
                                     *_serializers, body.value (), context)

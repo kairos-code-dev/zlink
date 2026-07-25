@@ -202,7 +202,8 @@ class channel_runtime_t
                                                  serializer_registry_t &serializers,
                                                  const handler_registry_t &handlers,
                                                  const zlink::message_t &message,
-                                                 std::string_view content_type = "") const;
+                                                 const detail::inbound_message_context_t
+                                                   &inbound = {}) const;
 
     result_t<void> dispatch_send (std::string channel_name,
                                   std::string topic,
@@ -211,7 +212,7 @@ class channel_runtime_t
                                   serializer_registry_t &serializers,
                                   const handler_registry_t &handlers,
                                   const zlink::message_t &message,
-                                  std::string_view content_type = "") const;
+                                  const detail::inbound_message_context_t &inbound = {}) const;
 
     result_t<std::uint64_t> reserve_outbound_request (std::string channel_name);
     result_t<void> complete_outbound_reply (std::uint64_t request_seq);

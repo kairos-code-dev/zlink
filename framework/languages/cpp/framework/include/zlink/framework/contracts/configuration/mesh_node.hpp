@@ -30,7 +30,7 @@ using mesh_handler_invoker_t =
   std::function<task_t<zlink::message_t> (service_provider_t &,
                                           serializer_registry_t &,
                                           const zlink::message_t &,
-                                          const route_handler_context_t &)>;
+                                          const route_message_context_t &)>;
 struct mesh_handler_registration_t
 {
     bool request = false;
@@ -243,23 +243,23 @@ mesh_channel_builder_t::add_handler (bool request, std::string packet_name)
       [] (service_provider_t &services,
           serializer_registry_t &serializers,
           const zlink::message_t &message,
-          const route_handler_context_t &context) -> task_t<zlink::message_t> {
+          const route_message_context_t &context) -> task_t<zlink::message_t> {
           try {
               auto &owner = services.get_required<THandler> ();
               auto payload = serializers.get<TMessage> ().deserialize (
                 detail::encoded_payload_from_raw (message));
               if constexpr (requires {
                                 static_cast<void (THandler::*) (
-                                  const TMessage &, const route_handler_context_t &)> (
+                                  const TMessage &, const route_message_context_t &)> (
                                   &THandler::handle);
                             }) {
                   (owner.*static_cast<void (THandler::*) (
-                    const TMessage &, const route_handler_context_t &)> (&THandler::handle)) (
+                    const TMessage &, const route_message_context_t &)> (&THandler::handle)) (
                     payload, context);
                   co_return result_t<zlink::message_t>::success (zlink::message_t{});
               } else {
                   co_await (owner.*static_cast<task_t<void> (THandler::*) (
-                    const TMessage &, const route_handler_context_t &)> (&THandler::handle)) (
+                    const TMessage &, const route_message_context_t &)> (&THandler::handle)) (
                     payload, context);
                   co_return result_t<zlink::message_t>::success (zlink::message_t{});
               }
@@ -285,25 +285,25 @@ mesh_channel_builder_t::add_handler (bool request, std::string packet_name)
       [] (service_provider_t &services,
           serializer_registry_t &serializers,
           const zlink::message_t &message,
-          const route_handler_context_t &context) -> task_t<zlink::message_t> {
+          const route_message_context_t &context) -> task_t<zlink::message_t> {
           try {
               auto &owner = services.get_required<THandler> ();
               auto payload = serializers.get<TRequest> ().deserialize (
                 detail::encoded_payload_from_raw (message));
               if constexpr (requires {
                                 static_cast<TReply (THandler::*) (
-                                  const TRequest &, const route_handler_context_t &)> (
+                                  const TRequest &, const route_message_context_t &)> (
                                   &THandler::handle);
                             }) {
                   auto reply = (owner.*static_cast<TReply (THandler::*) (
-                    const TRequest &, const route_handler_context_t &)> (&THandler::handle)) (
+                    const TRequest &, const route_message_context_t &)> (&THandler::handle)) (
                     payload, context);
                   co_return result_t<zlink::message_t>::success (
                     detail::encoded_payload_to_raw (
                       serializers.get<TReply> ().serialize (reply)));
               } else {
                   auto reply = co_await (owner.*static_cast<task_t<TReply> (THandler::*) (
-                    const TRequest &, const route_handler_context_t &)> (&THandler::handle)) (
+                    const TRequest &, const route_message_context_t &)> (&THandler::handle)) (
                     payload, context);
                   co_return result_t<zlink::message_t>::success (
                     detail::encoded_payload_to_raw (

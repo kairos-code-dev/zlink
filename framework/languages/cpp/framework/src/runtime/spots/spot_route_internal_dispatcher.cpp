@@ -37,7 +37,7 @@ constexpr std::string_view actor_relay_kind_metadata_key = "__zlink.actorRelayKi
 constexpr std::string_view actor_relay_kind_send = "send";
 constexpr std::string_view actor_bind_session_route_metadata_key = "__zlink.actorBindSessionRoute";
 
-stream_message_kind_t actor_relay_kind_from_metadata (spot_actor_message_metadata_t &metadata)
+stream_message_kind_t actor_relay_kind_from_metadata (spot_inbound_message_t &metadata)
 {
     auto kind = stream_message_kind_t::request;
     const auto found = metadata.values.find (std::string (actor_relay_kind_metadata_key));
@@ -50,7 +50,7 @@ stream_message_kind_t actor_relay_kind_from_metadata (spot_actor_message_metadat
     return kind;
 }
 
-bool should_bind_actor_session_route (spot_actor_message_metadata_t &metadata)
+bool should_bind_actor_session_route (spot_inbound_message_t &metadata)
 {
     const auto found = metadata.values.find (std::string (actor_bind_session_route_metadata_key));
     if (found == metadata.values.end ()) {
@@ -430,9 +430,11 @@ result_t<zlink::message_t> spot_route_internal_dispatcher_t::dispatch_request (
               detail::encoded_payload_from_raw (body.value ()));
             auto runtime = _runtime;
             auto actor_ref = actor_ref_from_spot_route (request);
-            spot_actor_message_metadata_t metadata;
+            spot_inbound_message_t metadata;
             metadata.content_type = request.content_type;
             metadata.values = request.metadata;
+            if (!header.correlation_id.empty ())
+                metadata.correlation_id = header.correlation_id;
             const auto message_kind = actor_relay_kind_from_metadata (metadata);
             auto actor_gateway = should_bind_actor_session_route (metadata)
                                    ? bind_actor_route (actor_ref, header, received)

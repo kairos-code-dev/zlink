@@ -69,6 +69,21 @@ join_completion_operation_id (std::string_view transfer_id)
     return {high, low};
 }
 
+/// Projects one decoded envelope into the Spot dispatch carrier so every Spot, subscription and
+/// Actor handler receives the same universal message context fields.
+spot_inbound_message_t make_spot_inbound (const runtime::messaging::envelope_header_t &header,
+                                          std::optional<std::string> mesh_name = std::nullopt)
+{
+    spot_inbound_message_t inbound;
+    inbound.content_type = header.content_type;
+    inbound.values = header.metadata;
+    inbound.mesh_name = std::move (mesh_name);
+    if (!header.correlation_id.empty ())
+        inbound.correlation_id = header.correlation_id;
+    inbound.source = header.source;
+    return inbound;
+}
+
 void trace_actor_dispatch (std::string_view stage,
                            std::string_view actor_id)
 {
@@ -1928,7 +1943,7 @@ spot_handler_registry_t::invoke_erased (spot_handler_kind_t kind,
                                         service_provider_t &services,
                                         serializer_registry_t &serializers,
                                         const zlink::message_t &message,
-                                        spot_actor_message_metadata_t metadata,
+                                        spot_inbound_message_t metadata,
                                         bool serial_dispatch,
                                         std::string actor_execution_key,
                                         std::string actor_execution_spot_id) const
@@ -2467,7 +2482,7 @@ spot_manager_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                          const zlink::message_t &message,
                                          service_provider_t &services,
                                          serializer_registry_t &serializers,
-                                         spot_actor_message_metadata_t metadata)
+                                         spot_inbound_message_t metadata)
 {
     return relay_actor_packet (actor_ref, std::move (actor_context),
                                detail::stream_message_kind_t::request, packet_name, message,
@@ -2482,7 +2497,7 @@ spot_manager_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                          const zlink::message_t &message,
                                          service_provider_t &services,
                                          serializer_registry_t &serializers,
-                                         spot_actor_message_metadata_t metadata)
+                                         spot_inbound_message_t metadata)
 {
     if (_state->actor_packet_relay) {
         return _state->actor_packet_relay (actor_ref, std::move (actor_context), message_kind,
@@ -4035,7 +4050,7 @@ spot_node_runtime_t::finalize_remote_actor_to_spot (
         emit_actor_transfer_marker ("backlog_enqueued", committed, transfer_id,
                                     target_spot_id);
         const auto message = zlink::message_t::from (packet.payload);
-        spot_actor_message_metadata_t metadata;
+        spot_inbound_message_t metadata;
         metadata.content_type = std::move (packet.content_type);
         metadata.values = std::move (packet.metadata);
         std::string replay_request_id;
@@ -4166,7 +4181,7 @@ void spot_node_runtime_t::on_actor_packet_relay (
                                                            const zlink::message_t &,
                                                            service_provider_t &,
                                                            serializer_registry_t &,
-                                                           spot_actor_message_metadata_t)> relay)
+                                                           spot_inbound_message_t)> relay)
 {
     _state->actor_packet_relay = std::move (relay);
 }
@@ -4178,7 +4193,7 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                          const zlink::message_t &message,
                                          service_provider_t &services,
                                          serializer_registry_t &serializers,
-                                         spot_actor_message_metadata_t metadata)
+                                         spot_inbound_message_t metadata)
 {
     return relay_actor_packet (actor_ref, std::move (actor_context), stream_message_kind_t::request,
                                packet_name, message, services, serializers, std::move (metadata));
@@ -4192,7 +4207,7 @@ spot_node_runtime_t::relay_actor_packet (const actor_ref_t &actor_ref,
                                          const zlink::message_t &message,
                                          service_provider_t &services,
                                          serializer_registry_t &serializers,
-                                         spot_actor_message_metadata_t metadata)
+                                         spot_inbound_message_t metadata)
 {
     if (actor_ref.empty ()) {
         return result_t<std::optional<zlink::message_t>>::failure (
@@ -5563,9 +5578,8 @@ bool spot_node_runtime_t::dispatch_mesh_record (
                                std::type_index (typeid (void)),
                                context->_state->spot_instance.get (), nullptr,
                                services, serializers, body.value (),
-                               spot_actor_message_metadata_t{
-                                 .content_type = header.value ().content_type,
-                                 .values = header.value ().metadata})
+                               make_spot_inbound (header.value (),
+                                                  _state->snapshot.name))
                              .result ();
             if (!handled) {
                 const auto *error = handled.error ();
@@ -5702,8 +5716,7 @@ bool spot_node_runtime_t::dispatch_mesh_record (
             ? stream_message_kind_t::send
             : stream_message_kind_t::request,
           header.value ().message_name, body.value (), services, serializers,
-          spot_actor_message_metadata_t{.content_type = header.value ().content_type,
-                                        .values = header.value ().metadata});
+          make_spot_inbound (header.value (), _state->snapshot.name));
         if (!relayed) {
             reply_error (framework_exception_t (
               relayed.error_kind (),
@@ -6175,8 +6188,7 @@ std::size_t spot_node_runtime_t::drain_actor_packets (service_provider_t &servic
                         ? stream_message_kind_t::send
                         : stream_message_kind_t::request,
                       request_header.message_name, body, services, serializers,
-                      spot_actor_message_metadata_t{.content_type = request_header.content_type,
-                                                    .values = request_header.metadata});
+                      make_spot_inbound (request_header));
                 }
                 catch (const framework_exception_t &error) {
                     return detail::result_access_t::failure<std::optional<zlink::message_t>> (error);
@@ -6624,8 +6636,7 @@ std::size_t spot_node_runtime_t::drain_routed_packets (service_provider_t &servi
                   spot_handler_kind_t::packet, header.value ().message_name, {},
                   std::type_index (typeid (void)), context._state->spot_instance.get (), nullptr,
                   services, serializers, body.value (),
-                  spot_actor_message_metadata_t{.content_type = header.value ().content_type,
-                                                .values = header.value ().metadata});
+                  make_spot_inbound (header.value (), context._state->mesh_name));
             auto task_holder =
               std::make_shared<task_t<zlink::message_t>> (std::move (handler_task));
             auto native_for_reply = native;

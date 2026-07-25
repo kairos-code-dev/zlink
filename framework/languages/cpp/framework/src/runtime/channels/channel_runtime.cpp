@@ -412,14 +412,16 @@ result_t<zlink::message_t> channel_runtime_t::dispatch_request (std::string chan
                                                                 serializer_registry_t &serializers,
                                                                 const handler_registry_t &handlers,
                                                                 const zlink::message_t &message,
-                                                                std::string_view content_type) const
+                                                                const detail::
+                                                                  inbound_message_context_t
+                                                                    &inbound) const
 {
     if (!is_enabled (server_capability (*_state, channel_name))) {
         return result_t<zlink::message_t>::failure (framework_error_kind_t::route_not_connected,
                                                     "channel server capability is not enabled");
     }
     return handlers.invoke (channel_name, topic, packet_name, services, serializers, message,
-                            content_type);
+                            inbound);
 }
 
 result_t<void> channel_runtime_t::dispatch_send (std::string channel_name,
@@ -429,10 +431,11 @@ result_t<void> channel_runtime_t::dispatch_send (std::string channel_name,
                                                  serializer_registry_t &serializers,
                                                  const handler_registry_t &handlers,
                                                  const zlink::message_t &message,
-                                                 std::string_view content_type) const
+                                                 const detail::inbound_message_context_t
+                                                   &inbound) const
 {
     auto result = handlers.invoke (channel_name, topic, packet_name, services, serializers, message,
-                                   content_type);
+                                   inbound);
     if (!result) {
         return result_t<void>::failure (result.error_kind (), result.error ()
                                                                 ? result.error ()->what ()

@@ -48,18 +48,20 @@ void trace_actor_transfer (std::string_view stage,
               << " targetSpot=" << target_spot_id << '\n';
 }
 
-void remember_actor_relay_kind (spot_actor_message_metadata_t &metadata, stream_message_kind_t kind)
+void remember_actor_relay_kind (spot_inbound_message_t &metadata, stream_message_kind_t kind)
 {
     metadata.values[std::string (actor_relay_kind_metadata_key)] =
       kind == stream_message_kind_t::send ? std::string (actor_relay_kind_send)
                                           : std::string (actor_relay_kind_request);
 }
 
-spot_actor_message_metadata_t project_stream_metadata (const stream_header_t &header,
-                                                       const message_metadata_policy_t &policy)
+spot_inbound_message_t project_stream_metadata (const stream_header_t &header,
+                                                const message_metadata_policy_t &policy)
 {
     auto metadata = policy.project (header.metadata ().values ());
     remember_actor_relay_kind (metadata, header.kind ());
+    if (const auto correlation_id = header.correlation_id ())
+        metadata.correlation_id = std::string (*correlation_id);
     return metadata;
 }
 
@@ -508,7 +510,7 @@ join_actor_to_remote_entry_spot_mesh (spot_node_runtime_t runtime,
 runtime::messaging::message_parts_t
 make_actor_mesh_parts (const stream_header_t &header,
                        const zlink::message_t &payload,
-                       const spot_actor_message_metadata_t &metadata)
+                       const spot_inbound_message_t &metadata)
 {
     runtime::messaging::client_call_codec_t codec;
     auto envelope = codec.create_envelope (header.kind () == stream_message_kind_t::send
@@ -529,7 +531,7 @@ relay_actor_packet_to_remote_actor_mesh (spot_node_runtime_t runtime,
                                          const spot_id_t &target_spot_id,
                                          const stream_header_t &header,
                                          const zlink::message_t &payload,
-                                         const spot_actor_message_metadata_t &metadata,
+                                         const spot_inbound_message_t &metadata,
                                          serializer_registry_t &serializers)
 {
     try {
@@ -791,7 +793,7 @@ relay_actor_packet_through_route (spot_node_runtime_t runtime,
                                   const zlink::message_t &payload,
                                   service_provider_t &provider,
                                   serializer_registry_t &serializers,
-                                  spot_actor_message_metadata_t metadata)
+                                  spot_inbound_message_t metadata)
 {
     (void) route_client;
     (void) route_channel_name;
@@ -1349,13 +1351,13 @@ void configure_actor_gateway_spot_bridge (
             const actor_ref_t &actor_ref, actor_context_t actor_context,
             stream_message_kind_t message_kind, std::string_view packet_name,
             const zlink::message_t &payload, service_provider_t &services,
-            serializer_registry_t &serializers, spot_actor_message_metadata_t metadata) mutable {
+            serializer_registry_t &serializers, spot_inbound_message_t metadata) mutable {
               stream_header_t header (message_kind, stream_codec_t::message_pack,
                                       stream_header_flags_t::none, std::nullopt,
                                       std::string (packet_name));
               auto relay_with = [&] (actor_gateway_spot_node_binding_t &binding,
                                      actor_context_t context,
-                                     spot_actor_message_metadata_t relay_metadata) {
+                                     spot_inbound_message_t relay_metadata) {
                   return relay_actor_packet_through_route (
                     binding.runtime, actor_gateway, binding.route_client,
                     binding.route_channel_name, actor_ref, std::move (context), header, payload,

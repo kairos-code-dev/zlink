@@ -466,11 +466,21 @@ void client_server_location_runtime_t::dispatch_server (
                     record.parts[1]);
                 const auto message =
                   zlink::message_t::from (payload.payload);
+                detail::inbound_message_context_t
+                  inbound;
+                inbound.message.channel_name = record.owner;
+                inbound.message.packet_name =
+                  payload.packet_name;
+                inbound.message.content_type =
+                  payload.content_type;
+                if (record.correlation)
+                    inbound.message.correlation_id =
+                      std::to_string (*record.correlation);
                 if (record.request_sequence && record.correlation) {
                     auto reply = _channel_runtime.dispatch_request (
                       record.owner, {}, payload.packet_name,
                       *_services, *_serializers, *_handlers,
-                      message, payload.content_type);
+                      message, inbound);
                     if (reply) {
                         (void) server.owner->reply (
                           record,
@@ -485,7 +495,7 @@ void client_server_location_runtime_t::dispatch_server (
                     (void) _channel_runtime.dispatch_send (
                       record.owner, {}, payload.packet_name,
                       *_services, *_serializers, *_handlers,
-                      message, payload.content_type);
+                      message, inbound);
                 }
             }
             catch (...) {

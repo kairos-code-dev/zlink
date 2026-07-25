@@ -37,13 +37,13 @@ class route_handler_registry_t
       std::function<task_t<zlink::message_t> (service_provider_t &,
                                               serializer_registry_t &,
                                               const zlink::message_t &,
-                                              const framework::route_handler_context_t &)>;
+                                              const framework::route_message_context_t &)>;
 
     template <typename TOwner, typename TMessage>
     route_handler_registry_t &
     on_send (std::string router_channel_id,
              std::string packet_name,
-             void (TOwner::*method) (const TMessage &, const framework::route_handler_context_t &))
+             void (TOwner::*method) (const TMessage &, const framework::route_message_context_t &))
     {
         const auto packet = packet_name.empty () ? framework::detail::message_name<TMessage> ()
                                                  : std::move (packet_name);
@@ -54,7 +54,7 @@ class route_handler_registry_t
             std::type_index (typeid (void))},
           [method] (service_provider_t &services, serializer_registry_t &serializers,
                     const zlink::message_t &message,
-                    const framework::route_handler_context_t &context) -> task_t<zlink::message_t> {
+                    const framework::route_message_context_t &context) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
                   auto payload = serializers.get<TMessage> ().deserialize (
@@ -74,7 +74,7 @@ class route_handler_registry_t
     route_handler_registry_t &on_send (
       std::string router_channel_id,
       std::string packet_name,
-      task_t<void> (TOwner::*method) (const TMessage &, const framework::route_handler_context_t &))
+      task_t<void> (TOwner::*method) (const TMessage &, const framework::route_message_context_t &))
     {
         const auto packet = packet_name.empty () ? framework::detail::message_name<TMessage> ()
                                                  : std::move (packet_name);
@@ -85,7 +85,7 @@ class route_handler_registry_t
             std::type_index (typeid (void))},
           [method] (service_provider_t &services, serializer_registry_t &serializers,
                     const zlink::message_t &message,
-                    const framework::route_handler_context_t &context) -> task_t<zlink::message_t> {
+                    const framework::route_message_context_t &context) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
                   auto payload = serializers.get<TMessage> ().deserialize (
@@ -104,7 +104,7 @@ class route_handler_registry_t
     route_handler_registry_t &on_request (
       std::string router_channel_id,
       std::string packet_name,
-      TReply (TOwner::*method) (const TRequest &, const framework::route_handler_context_t &))
+      TReply (TOwner::*method) (const TRequest &, const framework::route_message_context_t &))
     {
         const auto packet = packet_name.empty () ? framework::detail::message_name<TRequest> ()
                                                  : std::move (packet_name);
@@ -115,7 +115,7 @@ class route_handler_registry_t
             std::type_index (typeid (TReply))},
           [method] (service_provider_t &services, serializer_registry_t &serializers,
                     const zlink::message_t &message,
-                    const framework::route_handler_context_t &context) -> task_t<zlink::message_t> {
+                    const framework::route_message_context_t &context) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
                   auto request = serializers.get<TRequest> ().deserialize (
@@ -134,7 +134,7 @@ class route_handler_registry_t
     on_request (std::string router_channel_id,
                 std::string packet_name,
                 task_t<TReply> (TOwner::*method) (const TRequest &,
-                                                  const framework::route_handler_context_t &))
+                                                  const framework::route_message_context_t &))
     {
         const auto packet = packet_name.empty () ? framework::detail::message_name<TRequest> ()
                                                  : std::move (packet_name);
@@ -145,7 +145,7 @@ class route_handler_registry_t
             std::type_index (typeid (TReply))},
           [method] (service_provider_t &services, serializer_registry_t &serializers,
                     const zlink::message_t &message,
-                    const framework::route_handler_context_t &context) -> task_t<zlink::message_t> {
+                    const framework::route_message_context_t &context) -> task_t<zlink::message_t> {
               try {
                   auto &owner = services.get_required<TOwner> ();
                   auto request = serializers.get<TRequest> ().deserialize (
@@ -174,14 +174,14 @@ class route_handler_registry_t
                                        service_provider_t &services,
                                        serializer_registry_t &serializers,
                                        const zlink::message_t &message,
-                                       const framework::route_handler_context_t &context) const;
+                                       const framework::route_message_context_t &context) const;
     task_t<zlink::message_t> invoke_async (std::string_view router_channel_id,
                                            runtime::messaging::message_kind_t kind,
                                            std::string_view packet_name,
                                            service_provider_t &services,
                                            serializer_registry_t &serializers,
                                            const zlink::message_t &message,
-                                           const framework::route_handler_context_t &context) const;
+                                           const framework::route_message_context_t &context) const;
 
   private:
     struct key_t

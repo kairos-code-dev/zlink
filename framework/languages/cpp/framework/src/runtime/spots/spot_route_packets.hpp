@@ -195,7 +195,7 @@ make_spot_actor_packet_route_request (const actor_ref_t &actor_ref,
                                       spot_id_t spot_id,
                                       std::string_view packet_name,
                                       const zlink::message_t &payload,
-                                      const spot_actor_message_metadata_t &metadata);
+                                      const spot_inbound_message_t &metadata);
 
 actor_ref_t actor_ref_from_spot_route (const spot_actor_packet_route_request_t &request);
 

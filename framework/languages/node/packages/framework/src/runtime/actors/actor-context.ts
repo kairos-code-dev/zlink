@@ -225,7 +225,8 @@ class DefaultZLinkActorJoinSpotCall implements ZLinkActorJoinSpotCall {
           || result.actor === undefined
           || String(sourceNodeRid) === String(result.actor.nodeRid)
         ) {
-          await notifyJoinCompletion(this.actor, operationId, result);
+          await notifyJoinCompletion(
+            this.actor, operationId, result, this.messageSerializers);
         } else {
           result.reply?.close();
         }
@@ -300,7 +301,8 @@ class DefaultZLinkActorJoinEntrySpotCall implements ZLinkActorJoinEntrySpotCall 
           || result.actor === undefined
           || String(sourceNodeRid) === String(result.actor.nodeRid)
         ) {
-          await notifyJoinCompletion(this.actor, operationId, result);
+          await notifyJoinCompletion(
+            this.actor, operationId, result, this.messageSerializers);
         } else {
           result.reply?.close();
         }
@@ -380,11 +382,17 @@ function createJoinOperationId(): { readonly high: bigint; readonly low: bigint 
 async function notifyJoinCompletion(
   actor: ZLinkActor,
   operationId: { readonly high: bigint; readonly low: bigint },
-  result: import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>
+  result: import('./actor-runtime-contracts').ZLinkActorJoinRuntimeResult<Message>,
+  messageSerializers: ReadonlyMap<string, ZLinkMessageSerializer> | undefined
 ): Promise<void> {
+  // The completion carries the registered codecs so the application decodes the
+  // join reply with the same serializer it configured for the request.
   const reply = result.reply === undefined
     ? undefined
-    : ZLinkMessage.fromEncoded(ZLinkEncodedPayload.from(result.reply.data()));
+    : ZLinkMessage.fromEncoded(
+      ZLinkEncodedPayload.from(result.reply.data()),
+      messageSerializers
+    );
   result.reply?.close();
   const completion: ZLinkActorJoinCompletion = result.accepted
     ? {

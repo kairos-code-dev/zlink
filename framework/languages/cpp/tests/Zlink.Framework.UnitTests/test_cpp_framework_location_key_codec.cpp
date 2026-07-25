@@ -20,7 +20,6 @@ TEST (ZLinkFrameworkLocationKeyCodec, MatchesDotNetCanonicalKeyBytes)
     using zlink::framework::runtime::location_key_codec_t;
 
     const auto node_rid = zlink::routing_id_t::from (std::uint32_t{0x01020304u});
-    const auto spot_id = zlink::routing_id_t::from (std::string ("spot-a"));
 
     EXPECT_EQ ("10:route-mesh9:mesh-main6:router8:01020304",
                location_key_codec_t::encode_peer_key (
@@ -38,9 +37,9 @@ TEST (ZLinkFrameworkLocationKeyCodec, MatchesDotNetCanonicalKeyBytes)
                  .node_rid = std::nullopt,
                  .endpoint = "tcp://127.0.0.1"}));
 
-    EXPECT_EQ ("9:mesh-main12:73706f742d61",
+    EXPECT_EQ ("6:spot-a",
                location_key_codec_t::encode_spot_key (
-                 spot_location_key_t{.mesh_name = "mesh-main", .spot_id = spot_id}));
+                 spot_location_key_t{.spot_id = "spot-a"}));
 
     EXPECT_EQ ("4:play7:actor-1",
                location_key_codec_t::encode_actor_key (

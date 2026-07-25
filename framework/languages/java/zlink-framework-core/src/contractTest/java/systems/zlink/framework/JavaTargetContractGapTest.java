@@ -92,11 +92,27 @@ final class JavaTargetContractGapTest {
 
     @Test
     void spotManagerExposesRequestCreationAndContextCloseContracts() throws Exception {
+        // spots.ko.md fixes ZLinkSpotManager on the fluent create calls: the creation request
+        // rides ZLinkSpotCreateCall.request(...), not a second create(...) parameter.
         Class<?> manager = Class.forName("systems.zlink.framework.spots.ZLinkSpotManager");
-        assertTrue(Arrays.stream(manager.getMethods()).anyMatch(method ->
-            method.getName().equals("create") && method.getParameterCount() >= 2));
+        Class<?> createCall = Class.forName("systems.zlink.framework.spots.ZLinkSpotCreateCall");
+        Class<?> getOrCreateCall =
+            Class.forName("systems.zlink.framework.spots.ZLinkSpotGetOrCreateCall");
+        assertEquals(createCall, manager.getMethod("create", String.class).getReturnType());
+        assertEquals(
+            getOrCreateCall,
+            manager.getMethod("getOrCreate", String.class, String.class).getReturnType());
+        assertFalse(Arrays.stream(manager.getMethods()).anyMatch(method ->
+            method.getName().equals("create") && method.getParameterCount() != 1));
+        for (Class<?> call : new Class<?>[] {createCall, getOrCreateCall}) {
+            assertEquals(call, call.getMethod("request", Object.class).getReturnType());
+            assertEquals(
+                call,
+                call.getMethod("request", Class.forName("systems.zlink.framework.messaging.ZLinkMessage"))
+                    .getReturnType());
+        }
         Class<?> context = Class.forName("systems.zlink.framework.spots.ZLinkSpotContext");
-        assertTrue(Arrays.stream(context.getMethods()).anyMatch(method -> method.getName().equals("close")));
+        assertEquals(CompletionStage.class, context.getMethod("close").getReturnType());
     }
 
     @Test
@@ -109,8 +125,19 @@ final class JavaTargetContractGapTest {
         assertNotNull(connections.getMethod("connect", String.class));
         assertNotNull(connections.getMethod("disconnect", String.class));
         assertNotNull(connections.getMethod("listConnections"));
-        assertNotNull(Class.forName("systems.zlink.framework.configuration.ClientServerChannelBuilder")
-            .getMethod("clientConnections"));
+        // channel-messaging.ko.md fixes ClientServerChannelBuilder on client()/server()
+        // sub-builders; the flat clientConnections()/enableClient(...) surface is gone.
+        Class<?> clientServer =
+            Class.forName("systems.zlink.framework.configuration.ClientServerChannelBuilder");
+        Class<?> clientBuilder = Class.forName(
+            "systems.zlink.framework.configuration.ZLinkClientServerChannelClientBuilder");
+        assertEquals(clientBuilder, clientServer.getMethod("client").getReturnType());
+        assertEquals(
+            Class.forName("systems.zlink.framework.configuration.ZLinkClientServerChannelServerBuilder"),
+            clientServer.getMethod("server").getReturnType());
+        assertEquals(clientBuilder, clientBuilder.getMethod("connect", String.class).getReturnType());
+        assertNoPublicMethodNamed(clientServer, "clientConnections");
+        assertNoPublicMethodNamed(clientServer, "enableClient");
         assertNotNull(Class.forName("systems.zlink.framework.configuration.FanoutChannelBuilder")
             .getMethod("subscriberConnections"));
         assertNotNull(Class.forName("systems.zlink.framework.configuration.RouteMeshChannelBuilder")

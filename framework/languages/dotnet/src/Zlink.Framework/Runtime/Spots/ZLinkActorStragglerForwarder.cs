@@ -26,7 +26,7 @@ internal sealed class ZLinkActorStragglerForwarder
         uint flags,
         ZlinkStreamHeader header,
         Message body,
-        ZLinkActorForwardingLease lease)
+        ZLinkActorForwardingWindow lease)
     {
         _runtime.ShutdownToken.ThrowIfCancellationRequested();
         if (!_admissionSlots.Wait(0))
@@ -221,7 +221,7 @@ internal sealed class ZLinkActorStragglerForwarder
         ZlinkStreamHeader header,
         byte[] headerBytes,
         byte[] bodyBytes,
-        ZLinkActorForwardingLease lease,
+        ZLinkActorForwardingWindow lease,
         SemaphoreSlim admissionSlots)
     {
         private int _admissionHeld = 1;
@@ -235,7 +235,7 @@ internal sealed class ZLinkActorStragglerForwarder
         public ZlinkStreamHeader Header { get; } = header;
         public byte[] HeaderBytes { get; } = headerBytes;
         public byte[] BodyBytes { get; } = bodyBytes;
-        public ZLinkActorForwardingLease Lease { get; } = lease;
+        public ZLinkActorForwardingWindow Lease { get; } = lease;
 
         public void ReleaseAdmission()
         {

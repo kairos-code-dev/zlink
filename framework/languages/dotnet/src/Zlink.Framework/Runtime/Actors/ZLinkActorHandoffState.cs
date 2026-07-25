@@ -289,7 +289,7 @@ internal sealed class ZLinkActorHandoffState(
                 _forwarding = new ZLinkActorForwardingMapping(
                     sourceActor,
                     targetActor,
-                    new ZLinkActorForwardingLease(timeProvider));
+                    new ZLinkActorForwardingWindow(timeProvider));
                 _staleSourceActor = sourceActor;
                 _sourcePhase = ZLinkActorSourceHandoffPhase.CutoverPending;
                 diagnostic?.Invoke(
@@ -422,14 +422,14 @@ internal sealed class ZLinkActorHandoffState(
         ZLinkBackendActorRef? currentActor,
         ZLinkBackendActorRef frameActor,
         out ZLinkBackendActorRef targetActor,
-        out ZLinkActorForwardingLease? forwardingLease)
+        out ZLinkActorForwardingWindow? forwardingWindow)
     {
         lock (_forwardGate)
         {
             lock (_gate)
             {
                 var route = ResolveFrameRouteLocked(currentActor, frameActor, out targetActor);
-                forwardingLease = route == ZLinkActorFrameRoute.Forward
+                forwardingWindow = route == ZLinkActorFrameRoute.Forward
                     ? _forwarding!.Value.Lease
                     : null;
                 return route;
@@ -560,12 +560,12 @@ internal sealed class ZLinkActorHandoffState(
 internal readonly record struct ZLinkActorForwardingMapping(
     ZLinkBackendActorRef SourceActor,
     ZLinkBackendActorRef TargetActor,
-    ZLinkActorForwardingLease Lease);
+    ZLinkActorForwardingWindow Lease);
 
-internal sealed class ZLinkActorForwardingLease(TimeProvider timeProvider)
+internal sealed class ZLinkActorForwardingWindow(TimeProvider timeProvider)
 {
     private readonly object _gate = new();
-    private ZLinkActorForwardingLeasePhase _phase;
+    private ZLinkActorForwardingWindowPhase _phase;
     private long _committedAt;
     private TimeSpan _window;
 
@@ -577,8 +577,8 @@ internal sealed class ZLinkActorForwardingLease(TimeProvider timeProvider)
             {
                 return _phase switch
                 {
-                    ZLinkActorForwardingLeasePhase.Pending => true,
-                    ZLinkActorForwardingLeasePhase.Committed =>
+                    ZLinkActorForwardingWindowPhase.Pending => true,
+                    ZLinkActorForwardingWindowPhase.Committed =>
                         timeProvider.GetElapsedTime(_committedAt) < _window,
                     _ => false
                 };
@@ -590,21 +590,21 @@ internal sealed class ZLinkActorForwardingLease(TimeProvider timeProvider)
     {
         lock (_gate)
         {
-            if (_phase != ZLinkActorForwardingLeasePhase.Pending)
+            if (_phase != ZLinkActorForwardingWindowPhase.Pending)
                 throw new InvalidOperationException("Actor forwarding lease is not pending.");
             _committedAt = timeProvider.GetTimestamp();
             _window = window;
-            _phase = ZLinkActorForwardingLeasePhase.Committed;
+            _phase = ZLinkActorForwardingWindowPhase.Committed;
         }
     }
 
     public void Cancel()
     {
-        lock (_gate) _phase = ZLinkActorForwardingLeasePhase.Cancelled;
+        lock (_gate) _phase = ZLinkActorForwardingWindowPhase.Cancelled;
     }
 }
 
-internal enum ZLinkActorForwardingLeasePhase
+internal enum ZLinkActorForwardingWindowPhase
 {
     Pending,
     Committed,

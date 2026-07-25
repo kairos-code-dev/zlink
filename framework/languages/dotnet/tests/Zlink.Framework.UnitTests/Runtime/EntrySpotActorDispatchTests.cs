@@ -756,8 +756,8 @@ public sealed partial class EntrySpotActorDispatchTests
             // The runtime's own node rid keeps this on the backend forward
             // path (a remote target now takes the actor-frame relay plane).
             var target = new ZLinkBackendActorRef(RoutingId.From("entry-node"), "actor-forward", 2);
-            var forwardingLease = new ZLinkActorForwardingLease(TimeProvider.System);
-            forwardingLease.Commit(TimeSpan.FromSeconds(5));
+            var forwardingWindow = new ZLinkActorForwardingWindow(TimeProvider.System);
+            forwardingWindow.Commit(TimeSpan.FromSeconds(5));
 
             var disposedBody = Message.From(Encoding.UTF8.GetBytes("disposed"));
             disposedBody.Dispose();
@@ -770,7 +770,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 0,
                 CreateHeader("forward-disposed"),
                 disposedBody,
-                forwardingLease));
+                forwardingWindow));
 
             forwarder.Enqueue(
                 source,
@@ -781,7 +781,7 @@ public sealed partial class EntrySpotActorDispatchTests
                 0,
                 CreateHeader("forward"),
                 body,
-                forwardingLease);
+                forwardingWindow);
 
             await node.FinalPartAttempted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -796,11 +796,11 @@ public sealed partial class EntrySpotActorDispatchTests
                         0,
                         CreateHeader("forward-overflow"),
                         overflowBody,
-                        forwardingLease))
+                        forwardingWindow))
                 .WaitAsync(TimeSpan.FromSeconds(1)));
             Assert.Equal(ZLinkFrameworkErrorKind.ActorLocationStale, overflow.Kind);
 
-            forwardingLease.Cancel();
+            forwardingWindow.Cancel();
             await Task.Delay(25);
             var attemptsAfterCutoff = node.ForwardedParts.Count;
             await Task.Delay(25);
@@ -810,7 +810,7 @@ public sealed partial class EntrySpotActorDispatchTests
             Assert.Equal(attemptsAfterCutoff, node.ForwardedParts.Count);
 
             using var nextBody = Message.From(Encoding.UTF8.GetBytes("next"));
-            var nextLease = new ZLinkActorForwardingLease(TimeProvider.System);
+            var nextLease = new ZLinkActorForwardingWindow(TimeProvider.System);
             nextLease.Commit(TimeSpan.FromSeconds(5));
             await Task.Run(() => forwarder.Enqueue(
                     source,

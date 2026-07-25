@@ -305,7 +305,8 @@ test('location wire enums retain numeric values while Node-facing result enums u
       Peer: 1,
       Spot: 2,
       Actor: 3,
-      Route: 4
+      Route: 4,
+      ClientServer: 5
     },
     ZLinkLocationWriteIntent: {
       NewClaim: 1,
@@ -333,19 +334,25 @@ test('location wire enums retain numeric values while Node-facing result enums u
     ZLinkSpotKind: {
       Invalid: 'invalid',
       Entry: 'entry',
-      User: 'user'
+      User: 'user',
+      Instance: 'instance'
     }
   };
 
+  // pickEnumValues projects the actual enum onto the expected key set, so a member
+  // ADDED to the runtime enum was invisible to deepEqual. Only AutoConnectType had a
+  // reverse key-set check; the other eight were unguarded. Assert both directions for
+  // every enum instead, so an added member fails rather than going unverified.
   for (const [enumName, expected] of Object.entries(expectedLocationEnums)) {
     assert.deepEqual(pickEnumValues(framework[enumName], Object.keys(expected)), expected, enumName);
+    assert.deepEqual(
+      Object.keys(framework[enumName])
+        .filter((name) => Number.isNaN(Number(name)))
+        .sort(),
+      Object.keys(expected).sort(),
+      `${enumName} key set`
+    );
   }
-  assert.deepEqual(
-    Object.keys(framework.ZLinkLocationAutoConnectType)
-      .filter((name) => Number.isNaN(Number(name)))
-      .sort(),
-    Object.keys(expectedLocationEnums.ZLinkLocationAutoConnectType).sort()
-  );
 
   assert.equal(framework.zlinkLocationAutoConnectTypeName, undefined);
   assert.equal(framework.zlinkLocationRoleName, undefined);
